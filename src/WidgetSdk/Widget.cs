@@ -80,10 +80,7 @@ public sealed record WidgetView(
     private static string RootScopeId(WidgetElement root) => root switch
     {
         ResponsiveBranchElement branch => RootScopeId(branch.Child),
-        StackElement stack => stack.InputScopeId ?? stack.Id,
-        RowElement row => row.InputScopeId ?? row.Id,
-        ScrollElement scroll => scroll.InputScopeId ?? scroll.Id,
-        GridElement grid => grid.InputScopeId ?? grid.Id,
+        ContainerElement container => container.InputScopeId ?? container.Id,
         _ => root.Id,
     };
 }

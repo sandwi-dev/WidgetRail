@@ -420,7 +420,10 @@ Rules:
   container ID; entry restores its last valid focused descendant, then the
   authored initial child, then the first valid focusable descendant. Ordinary
   spatial navigation is unchanged, and responsive or input-scope boundaries
-  cannot be crossed.
+  cannot be crossed. Groups may nest: focusing a descendant updates every
+  opted-in ancestor, while each explicit group target resolves that group's
+  memory independently. `UI.Card` is a styled `Stack` and follows this rule;
+  responsive and collection wrappers are not containers.
 - One node may bind each `(button, phase)` only once. Separate focused controls
   in one scope and separate scopes may reuse the same button.
 - Focus is remembered independently per widget and scope. Keep IDs stable.

@@ -275,19 +275,12 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
         WidgetNavigationSnapshot<TRoute> snapshot,
         TElement root,
         Func<TElement, string, IReadOnlyList<ControllerShortcut>, TElement> apply)
-        where TElement : WidgetElement
+        where TElement : ContainerElement
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(root);
-        var (existingScope, existing) = root switch
-        {
-            StackElement stack => (stack.InputScopeId, stack.Shortcuts),
-            RowElement row => (row.InputScopeId, row.Shortcuts),
-            ScrollElement scroll => (scroll.InputScopeId, scroll.Shortcuts),
-            GridElement grid => (grid.InputScopeId, grid.Shortcuts),
-            _ => throw new ArgumentException("A navigation scope requires a container root.",
-                nameof(root)),
-        };
+        var existingScope = root.InputScopeId;
+        var existing = root.Shortcuts;
         lock (_gate)
         {
             ThrowIfDisposed();

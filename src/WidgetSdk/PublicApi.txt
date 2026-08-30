@@ -470,6 +470,13 @@ method WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.Deconstruct
 method WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.ToString() -> string
+method WidgetRail.WidgetSdk.ContainerElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.ContainerElement.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.ContainerElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.ContainerElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.ContainerElement
+method WidgetRail.WidgetSdk.ContainerElement.RememberChildFocus(string initialChildFocusId) -> WidgetRail.WidgetSdk.ContainerElement
+method WidgetRail.WidgetSdk.ContainerElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ContainerElement
+method WidgetRail.WidgetSdk.ContainerElement.ToString() -> string
 method WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.<Clone>$() -> WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest
 method WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.Deconstruct(out string SessionId, out WidgetRail.WidgetSdk.WidgetMediaSessionCommand Command) -> void
 method WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.Equals(object? obj) -> bool
@@ -480,7 +487,7 @@ method WidgetRail.WidgetSdk.ControllerInputEvent.Deconstruct(out WidgetRail.Widg
 method WidgetRail.WidgetSdk.ControllerInputEvent.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ControllerInputEvent.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ControllerInputEvent.ToString() -> string
-method WidgetRail.WidgetSdk.GridElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.GridElement.Equals(WidgetRail.WidgetSdk.ContainerElement? other) -> bool
 method WidgetRail.WidgetSdk.GridElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.GridElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.GridElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.GridElement
@@ -548,7 +555,7 @@ method WidgetRail.WidgetSdk.ResponsiveBranchElement.Equals(WidgetRail.WidgetSdk.
 method WidgetRail.WidgetSdk.ResponsiveBranchElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ResponsiveBranchElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ResponsiveBranchElement.ToString() -> string
-method WidgetRail.WidgetSdk.RowElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.RowElement.Equals(WidgetRail.WidgetSdk.ContainerElement? other) -> bool
 method WidgetRail.WidgetSdk.RowElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.RowElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.RowElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.RowElement
@@ -560,12 +567,12 @@ method WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest.Deconstruct(out strin
 method WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest.GetHashCode() -> int
 method WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest.ToString() -> string
-method WidgetRail.WidgetSdk.ScrollElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.ScrollElement.Equals(WidgetRail.WidgetSdk.ContainerElement? other) -> bool
 method WidgetRail.WidgetSdk.ScrollElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ScrollElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ScrollElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.ScrollElement
-method WidgetRail.WidgetSdk.ScrollElement.RememberChildFocus(string initialChildFocusId) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.ScrollElement.Paginate(string? nearStartActionId, string? nearEndActionId, int threshold = 2) -> WidgetRail.WidgetSdk.ScrollElement
+method WidgetRail.WidgetSdk.ScrollElement.RememberChildFocus(string initialChildFocusId) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.ScrollElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.ScrollElement.ToString() -> string
 method WidgetRail.WidgetSdk.ScrubberElement.Activate(string actionId) -> WidgetRail.WidgetSdk.ScrubberElement
@@ -643,7 +650,7 @@ method WidgetRail.WidgetSdk.SpacerElement.Equals(WidgetRail.WidgetSdk.WidgetElem
 method WidgetRail.WidgetSdk.SpacerElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.SpacerElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.SpacerElement.ToString() -> string
-method WidgetRail.WidgetSdk.StackElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.StackElement.Equals(WidgetRail.WidgetSdk.ContainerElement? other) -> bool
 method WidgetRail.WidgetSdk.StackElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.StackElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.StackElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.StackElement
@@ -1266,6 +1273,7 @@ method WidgetRail.WidgetSdk.WidgetWifiRadioChanged.Deconstruct(out WidgetRail.Wi
 method WidgetRail.WidgetSdk.WidgetWifiRadioChanged.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetWifiRadioChanged.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetWifiRadioChanged.ToString() -> string
+method abstract WidgetRail.WidgetSdk.ContainerElement.<Clone>$() -> WidgetRail.WidgetSdk.ContainerElement
 method abstract WidgetRail.WidgetSdk.IWidgetCapabilityClient.InvokeAsync<TRequest,TResponse>(WidgetRail.WidgetSdk.WidgetCapabilityOperation<TRequest?,TResponse?> operation, TRequest? request, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<TResponse?>
 method abstract WidgetRail.WidgetSdk.IWidgetCapabilityClient.OpenSubscriptionAsync<TPayload>(WidgetRail.WidgetSdk.WidgetCapabilityEvent<TPayload?> platformEvent, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<TPayload?>>
 method abstract WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<TPayload>.ReadAllAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<TPayload?>
@@ -1287,6 +1295,8 @@ method static WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse.op_Equality(W
 method static WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse.op_Inequality(WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse? left, WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse? right) -> bool
 method static WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.op_Equality(WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest? left, WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest? right) -> bool
 method static WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.op_Inequality(WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest? left, WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest? right) -> bool
+method static WidgetRail.WidgetSdk.ContainerElement.op_Equality(WidgetRail.WidgetSdk.ContainerElement? left, WidgetRail.WidgetSdk.ContainerElement? right) -> bool
+method static WidgetRail.WidgetSdk.ContainerElement.op_Inequality(WidgetRail.WidgetSdk.ContainerElement? left, WidgetRail.WidgetSdk.ContainerElement? right) -> bool
 method static WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.op_Equality(WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest? left, WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest? right) -> bool
 method static WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.op_Inequality(WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest? left, WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest? right) -> bool
 method static WidgetRail.WidgetSdk.ControllerInputEvent.op_Equality(WidgetRail.WidgetSdk.ControllerInputEvent? left, WidgetRail.WidgetSdk.ControllerInputEvent? right) -> bool
@@ -1620,6 +1630,7 @@ method virtual WidgetRail.WidgetSdk.ComponentAction.Equals(WidgetRail.WidgetSdk.
 method virtual WidgetRail.WidgetSdk.ConfirmWidgetRunningAppRequest.Equals(WidgetRail.WidgetSdk.ConfirmWidgetRunningAppRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse.Equals(WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse? other) -> bool
 method virtual WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.Equals(WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest? other) -> bool
+method virtual WidgetRail.WidgetSdk.ContainerElement.Equals(WidgetRail.WidgetSdk.ContainerElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.Equals(WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.ControllerInputEvent.Equals(WidgetRail.WidgetSdk.ControllerInputEvent? other) -> bool
 method virtual WidgetRail.WidgetSdk.GridElement.<Clone>$() -> WidgetRail.WidgetSdk.GridElement
@@ -1779,10 +1790,7 @@ property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.Wi
 property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.WidgetPage<TItem>.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ActionSurfaceElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ButtonElement.Shortcuts { get; set; }
-property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.GridElement.Shortcuts { get; set; }
-property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.RowElement.Shortcuts { get; set; }
-property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ScrollElement.Shortcuts { get; set; }
-property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.StackElement.Shortcuts { get; set; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ContainerElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.PinnedPresentationLayout>? WidgetRail.WidgetSdk.WidgetView.PinnedLayouts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? WidgetRail.WidgetSdk.WidgetView.QuickActions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryAction> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilitySet.Actions { get; set; }
@@ -1796,10 +1804,7 @@ property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAva
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetBluetoothDevice> WidgetRail.WidgetSdk.WidgetBluetoothSnapshot.Devices { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>> WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.Viewports { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.ActionSurfaceElement.Children { get; set; }
-property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.GridElement.Children { get; set; }
-property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.RowElement.Children { get; set; }
-property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.ScrollElement.Children { get; set; }
-property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.StackElement.Children { get; set; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.ContainerElement.Children { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader> WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.Headers { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader> WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse.Headers { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetMediaSession> WidgetRail.WidgetSdk.WidgetMediaSessionsChanged.Sessions { get; set; }
@@ -2334,22 +2339,18 @@ property string? WidgetRail.WidgetSdk.ButtonElement.AccessibilityLabel { get; se
 property string? WidgetRail.WidgetSdk.ButtonElement.FocusPersistenceId { get; set; }
 property string? WidgetRail.WidgetSdk.ButtonElement.LeadingArtworkHandle { get; set; }
 property string? WidgetRail.WidgetSdk.ButtonElement.LeadingImageSource { get; set; }
+property string? WidgetRail.WidgetSdk.ContainerElement.InitialChildFocusId { get; set; }
+property string? WidgetRail.WidgetSdk.ContainerElement.InputScopeId { get; set; }
 property string? WidgetRail.WidgetSdk.ControllerInputEvent.ActiveInputScopeId { get; set; }
 property string? WidgetRail.WidgetSdk.ControllerInputEvent.FocusedElementId { get; set; }
 property string? WidgetRail.WidgetSdk.ControllerInputEvent.PinnedLayoutId { get; set; }
-property string? WidgetRail.WidgetSdk.GridElement.InputScopeId { get; set; }
-property string? WidgetRail.WidgetSdk.GridElement.InitialChildFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.ImageElement.ArtworkHandle { get; set; }
 property string? WidgetRail.WidgetSdk.NavigationShellDestination.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.PickerOption.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.PinnedLayoutHandle.ActiveInputScopeId { get; }
 property string? WidgetRail.WidgetSdk.PinnedLayoutHandle.InitialFocusId { get; }
 property string? WidgetRail.WidgetSdk.ProgressElement.AccessibilityLabel { get; set; }
-property string? WidgetRail.WidgetSdk.RowElement.InputScopeId { get; set; }
-property string? WidgetRail.WidgetSdk.RowElement.InitialChildFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.ScrollElement.CollectionAnchorKey { get; set; }
-property string? WidgetRail.WidgetSdk.ScrollElement.InputScopeId { get; set; }
-property string? WidgetRail.WidgetSdk.ScrollElement.InitialChildFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.ScrollElement.NearEndActionId { get; set; }
 property string? WidgetRail.WidgetSdk.ScrollElement.NearStartActionId { get; set; }
 property string? WidgetRail.WidgetSdk.ScrubberElement.ActivationActionId { get; set; }
@@ -2359,8 +2360,6 @@ property string? WidgetRail.WidgetSdk.ScrubberElement.FocusPersistenceId { get; 
 property string? WidgetRail.WidgetSdk.SegmentedTab.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.SliderElement.ActivationActionId { get; set; }
 property string? WidgetRail.WidgetSdk.SliderElement.FocusPersistenceId { get; set; }
-property string? WidgetRail.WidgetSdk.StackElement.InputScopeId { get; set; }
-property string? WidgetRail.WidgetSdk.StackElement.InitialChildFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.TextElement.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.TextEntryElement.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetActionEvent.CommittedText { get; set; }
@@ -2392,6 +2391,7 @@ property string? WidgetRail.WidgetSdk.WidgetScenarioStepResult.Message { get; se
 property string? WidgetRail.WidgetSdk.WidgetTestPrivateState.Json { get; }
 property string? WidgetRail.WidgetSdk.WidgetView.ActiveInputScopeId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetView.InitialFocusId { get; set; }
+type abstract class WidgetRail.WidgetSdk.ContainerElement : System.IEquatable<WidgetRail.WidgetSdk.ContainerElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type abstract class WidgetRail.WidgetSdk.Widget
 type abstract class WidgetRail.WidgetSdk.WidgetElement : System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>
 type abstract interface WidgetRail.WidgetSdk.IWidgetCapabilityClient
@@ -2456,7 +2456,7 @@ type sealed class WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse : System.
 type sealed class WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest : System.IEquatable<WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest>
 type sealed class WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest : System.IEquatable<WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest>
 type sealed class WidgetRail.WidgetSdk.ControllerInputEvent : System.IEquatable<WidgetRail.WidgetSdk.ControllerInputEvent>
-type sealed class WidgetRail.WidgetSdk.GridElement : System.IEquatable<WidgetRail.WidgetSdk.GridElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.GridElement : System.IEquatable<WidgetRail.WidgetSdk.ContainerElement>, System.IEquatable<WidgetRail.WidgetSdk.GridElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.ContainerElement
 type sealed class WidgetRail.WidgetSdk.IconElement : System.IEquatable<WidgetRail.WidgetSdk.IconElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.ImageElement : System.IEquatable<WidgetRail.WidgetSdk.ImageElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest : System.IEquatable<WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest>
@@ -2471,9 +2471,9 @@ type sealed class WidgetRail.WidgetSdk.ProgressElement : System.IEquatable<Widge
 type sealed class WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest : System.IEquatable<WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest>
 type sealed class WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse : System.IEquatable<WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse>
 type sealed class WidgetRail.WidgetSdk.ResponsiveBranchElement : System.IEquatable<WidgetRail.WidgetSdk.ResponsiveBranchElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
-type sealed class WidgetRail.WidgetSdk.RowElement : System.IEquatable<WidgetRail.WidgetSdk.RowElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.RowElement : System.IEquatable<WidgetRail.WidgetSdk.ContainerElement>, System.IEquatable<WidgetRail.WidgetSdk.RowElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.ContainerElement
 type sealed class WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest : System.IEquatable<WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest>
-type sealed class WidgetRail.WidgetSdk.ScrollElement : System.IEquatable<WidgetRail.WidgetSdk.ScrollElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.ScrollElement : System.IEquatable<WidgetRail.WidgetSdk.ContainerElement>, System.IEquatable<WidgetRail.WidgetSdk.ScrollElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.ContainerElement
 type sealed class WidgetRail.WidgetSdk.ScrubberElement : System.IEquatable<WidgetRail.WidgetSdk.ScrubberElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.SegmentedTab : System.IEquatable<WidgetRail.WidgetSdk.SegmentedTab>
 type sealed class WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest>
@@ -2486,7 +2486,7 @@ type sealed class WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest : System.I
 type sealed class WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest>
 type sealed class WidgetRail.WidgetSdk.SliderElement : System.IEquatable<WidgetRail.WidgetSdk.SliderElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.SpacerElement : System.IEquatable<WidgetRail.WidgetSdk.SpacerElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
-type sealed class WidgetRail.WidgetSdk.StackElement : System.IEquatable<WidgetRail.WidgetSdk.StackElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.StackElement : System.IEquatable<WidgetRail.WidgetSdk.ContainerElement>, System.IEquatable<WidgetRail.WidgetSdk.StackElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.ContainerElement
 type sealed class WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest : System.IEquatable<WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest>
 type sealed class WidgetRail.WidgetSdk.TextElement : System.IEquatable<WidgetRail.WidgetSdk.TextElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.TextEntryElement : System.IEquatable<WidgetRail.WidgetSdk.TextEntryElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement

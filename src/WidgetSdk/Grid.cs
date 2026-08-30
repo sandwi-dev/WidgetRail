@@ -8,13 +8,13 @@ namespace WidgetRail.WidgetSdk;
 /// column width, authored row/column gaps, and the optional column cap.
 /// Children retain stable document order across every reflow.
 /// </summary>
-public sealed record GridElement : WidgetElement
+public sealed record GridElement : ContainerElement
 {
     internal GridElement(
         string id,
         double minimumColumnWidth,
         int? maximumColumns,
-        IReadOnlyList<WidgetElement> children) : base(RequireId(id))
+        IReadOnlyList<WidgetElement> children) : base(RequireId(id), children)
     {
         StableIdentifier.Validate(id, nameof(id));
         if (!double.IsFinite(minimumColumnWidth) ||
@@ -27,34 +27,24 @@ public sealed record GridElement : WidgetElement
             throw new ArgumentOutOfRangeException(
                 nameof(maximumColumns),
                 $"Maximum columns must be between 1 and {ProtocolConstants.MaximumGridColumns}.");
-        ArgumentNullException.ThrowIfNull(children);
-        if (children.Any(child => child is null))
-            throw new ArgumentException("Grid children cannot contain null values.", nameof(children));
-
         MinimumColumnWidth = minimumColumnWidth;
         MaximumColumns = maximumColumns;
-        Children = children.ToArray();
         StyleClasses = ["wrail-responsive-grid"];
     }
 
     public double MinimumColumnWidth { get; init; }
     public int? MaximumColumns { get; init; }
-    public IReadOnlyList<WidgetElement> Children { get; init; }
-    public string? InputScopeId { get; init; }
-    public string? InitialChildFocusId { get; init; }
-    public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
-
-    public GridElement InputScope(string scopeId) => this with
+    public new GridElement InputScope(string scopeId) => this with
     {
         InputScopeId = RequireId(scopeId),
     };
 
-    public GridElement RememberChildFocus(string initialChildFocusId) => this with
+    public new GridElement RememberChildFocus(string initialChildFocusId) => this with
     {
-        InitialChildFocusId = ContainerElementContract.RequireInitialChild(initialChildFocusId),
+        InitialChildFocusId = RequireInitialChildFocusId(initialChildFocusId),
     };
 
-    public GridElement Shortcut(
+    public new GridElement Shortcut(
         ControllerButton button,
         string actionId,
         ControllerEventPhase phase = ControllerEventPhase.Pressed,
@@ -67,17 +57,10 @@ public sealed record GridElement : WidgetElement
             ],
         };
 
-    internal override ViewNode ToProtocolNode() => new()
+    internal override ViewNode ToProtocolNode() => ToContainerProtocolNode(ViewNodeKind.Grid) with
     {
-        Id = Id,
-        Kind = ViewNodeKind.Grid,
         GridMinimumColumnWidth = MinimumColumnWidth,
         GridMaximumColumns = MaximumColumns,
-        InputScopeId = InputScopeId,
-        InitialChildFocusId = InitialChildFocusId,
-        Shortcuts = Shortcuts,
-        StyleClasses = StyleClasses,
-        Children = Children.Select(child => child.ToProtocolNode()).ToArray(),
     };
 }
 
