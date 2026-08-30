@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Threading.Channels;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
@@ -135,6 +136,22 @@ internal static class TileComponentTests
         Equal(WidgetContextActionStyle.Danger, snapshot.Root.ContextActions[1].Style);
         Equal(true, snapshot.Root.ContextActions[1].IsDisabled);
         Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+
+        var boundarySnapshot = new WidgetView(
+            UI.Stack(
+                "context.root",
+                UI.Text("Legacy content", "context.legacy"),
+                tile),
+            InitialFocusId: tile.Id).CreateSnapshot("context.boundary", 2);
+        using (var document = JsonDocument.Parse(SnapshotJson.Serialize(boundarySnapshot)))
+        {
+            var root = document.RootElement.GetProperty("root");
+            Equal(0, root.GetProperty("contextActions").GetArrayLength());
+            Equal(0, root.GetProperty("children")[0]
+                .GetProperty("contextActions").GetArrayLength());
+            Equal(2, root.GetProperty("children")[1]
+                .GetProperty("contextActions").GetArrayLength());
+        }
 
         var legacy = snapshot with
         {

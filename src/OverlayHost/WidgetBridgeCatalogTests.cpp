@@ -417,13 +417,13 @@ void VerifyEmbeddedMediaSnapshotContract() {
                 "allowedFrameDomainFamilies":["example.com"],
                 "pendingCommand":{"sequence":8,"kind":"setPlaybackRate",
                     "mediaKey":"aurora-video","playbackRate":1.5}},
-            "root":{"id":"root","kind":"stack","children":[
-                {"id":"title","kind":"text","text":"Aurora fixture","children":[]},
+            "root":{"id":"root","kind":"stack","contextActions":[],"children":[
+                {"id":"title","kind":"text","text":"Aurora fixture","contextActions":[],"children":[]},
                 {"id":"viewport","kind":"mediaViewport","mediaSurfaceId":"media",
                  "accessibilityLabel":"Neutral media","styleClasses":["media-shell-viewport"],
-                 "shortcuts":[],"children":[]},
+                 "shortcuts":[],"contextActions":[],"children":[]},
                 {"id":"controls","kind":"button","text":"Play",
-                 "accessibilityLabel":"Play","actionId":"play","children":[]}
+                 "accessibilityLabel":"Play","actionId":"play","contextActions":[],"children":[]}
             ]}
         }
     })json", error);
@@ -979,8 +979,9 @@ int main() {
             "root": {
                 "id": "root",
                 "kind": "stack",
+                "contextActions": [],
                 "children": [
-                    {"id":"play","kind":"button","text":"Play","actionId":"play","focusPersistenceId":"transport.play"},
+                    {"id":"play","kind":"button","text":"Play","actionId":"play","focusPersistenceId":"transport.play","contextActions":[]},
                     {"id":"details","kind":"stack","children":[]},
                     {"id":"loading","kind":"loadingIndicator","accessibilityLabel":"Loading music","indicatorSize":"compact","visibleWhen":"compactOnly"},
                     {
@@ -1086,6 +1087,42 @@ int main() {
     CHECK(textEntry.textEntryValue == L"Halo");
     CHECK(textEntry.textEntryPlaceholder == L"Search installed games");
     CHECK(textEntry.textEntryMaximumLength == 96U);
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":34,"sequence":10,
+            "widgetInstanceId":"context.invalid-kind",
+            "activeInputScopeId":"root",
+            "root":{"id":"root","kind":"stack","contextActions":[
+                {"actionId":"root.open","label":"Open"}
+            ],"children":[]}
+        }
+    })json", error) && !error.empty());
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":34,"sequence":11,
+            "widgetInstanceId":"context.malformed",
+            "activeInputScopeId":"surface",
+            "initialFocusId":"surface",
+            "root":{"id":"surface","kind":"actionSurface","actionId":"open",
+                "accessibilityLabel":"Open","contextActions":[
+                    {"actionId":"surface.more","label":"More","style":"unknown"}
+                ],"children":[]}
+        }
+    })json", error) && !error.empty());
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":34,"sequence":12,
+            "widgetInstanceId":"context.wrong-type",
+            "activeInputScopeId":"root",
+            "root":{"id":"root","kind":"stack","contextActions":{},"children":[]}
+        }
+    })json", error) && !error.empty());
 
     error.clear();
     const auto rememberedGroup = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({

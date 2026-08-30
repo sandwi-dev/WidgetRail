@@ -702,7 +702,8 @@ WidgetNode ParseNode(const JsonObject& source) {
     if (node.kind == L"mediaViewport" &&
         !HasNoUnknownProperties(source,
             {L"id", L"kind", L"mediaSurfaceId", L"accessibilityLabel",
-             L"visibleWhen", L"styleClasses", L"shortcuts", L"children"}))
+             L"visibleWhen", L"styleClasses", L"shortcuts", L"contextActions",
+             L"children"}))
         throw winrt::hresult_invalid_argument(
             L"MediaViewport contains unsupported properties.");
     node.text = OptionalString(source, L"text");
@@ -711,7 +712,7 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.actionId = OptionalString(source, L"actionId");
     if (source.HasKey(L"contextActions")) {
         const auto actions = source.GetNamedArray(L"contextActions");
-        if (node.kind != L"actionSurface" ||
+        if ((node.kind != L"actionSurface" && actions.Size() != 0) ||
             actions.Size() > protocol_contract::MaximumContextActionCount)
             throw winrt::hresult_invalid_argument();
         std::unordered_set<std::wstring> actionIds;
