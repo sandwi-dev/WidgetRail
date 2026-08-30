@@ -1045,7 +1045,6 @@ internal static class SpotifyPresentation
         playback.RepeatState switch
         {
             SpotifyRepeatState.Off => playback.DisallowedActions.TogglingRepeatContext,
-            SpotifyRepeatState.Context => playback.DisallowedActions.TogglingRepeatTrack,
             _ => false,
         };
 

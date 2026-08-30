@@ -188,9 +188,7 @@ internal static class SpotifyPlaybackPolicy
         {
             SpotifyRepeatState.Off when !blocked.TogglingRepeatContext =>
                 SpotifyRepeatState.Context,
-            SpotifyRepeatState.Context when !blocked.TogglingRepeatTrack =>
-                SpotifyRepeatState.Track,
-            SpotifyRepeatState.Track => SpotifyRepeatState.Off,
+            SpotifyRepeatState.Context or SpotifyRepeatState.Track => SpotifyRepeatState.Off,
             _ => (SpotifyRepeatState?)null,
         };
         return next is null ? null : new(
