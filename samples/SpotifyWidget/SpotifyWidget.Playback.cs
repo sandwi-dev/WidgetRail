@@ -74,6 +74,17 @@ internal static class SpotifyPlaybackPolicy
         };
     }
 
+    // Spotify transport commands acknowledge without a playback representation.
+    // Only these commands replace a field in the shared presentation summary;
+    // Next/Previous keep their immediate authoritative read for track and queue
+    // reconciliation instead of carrying a synthetic track projection.
+    internal static bool HasOptimisticPresentation(SpotifyPlaybackOperation operation) =>
+        operation is SpotifyPlaybackOperation.Play or
+            SpotifyPlaybackOperation.Pause or
+            SpotifyPlaybackOperation.Seek or
+            SpotifyPlaybackOperation.SetShuffle or
+            SpotifyPlaybackOperation.SetRepeat;
+
     internal static SpotifyPlaybackSummary? Project(
         SpotifyPlaybackSummary? playback,
         long nowUnixMilliseconds)

@@ -1481,13 +1481,15 @@ public sealed class SpotifyWidget : Widget
             Invalidate();
             RecordActionDiagnostic(action, "action-invalidation", "provider-succeeded");
 
-            // The Web API acknowledges transport controls with no playback
-            // representation.  Retain the accepted optimistic Play/Pause
-            // projection until adaptive polling obtains Spotify's next
+            // The Web API acknowledges all transport controls without a
+            // playback representation. Retain only accepted optimistic field
+            // projections until adaptive polling obtains Spotify's next
             // authoritative observation; the immediate player read can still
             // report the pre-command state and otherwise makes every surface
-            // briefly revert its glyph.
-            if (operation is SpotifyPlaybackOperation.Play or SpotifyPlaybackOperation.Pause)
+            // briefly revert the shared field. Next/Previous do not project a
+            // track, so their immediate read remains responsible for queue
+            // reconciliation.
+            if (SpotifyPlaybackPolicy.HasOptimisticPresentation(operation))
                 return;
 
             var refreshQueueAfterPlayback = operation is SpotifyPlaybackOperation.Next or
@@ -1515,6 +1517,7 @@ public sealed class SpotifyWidget : Widget
         catch (Exception exception)
         {
             RecordActionDiagnostic(action, "playback-provider", PlaybackFailureCode(exception));
+            RestoreOptimistic(before, action);
             throw;
         }
     }
@@ -1557,7 +1560,6 @@ public sealed class SpotifyWidget : Widget
             _viewState = state;
             _status = status;
             _playback = playback;
-            _pendingOperation = null;
             _refreshWarning = null;
             _consecutiveRefreshFailures = 0;
         }
@@ -1587,7 +1589,6 @@ public sealed class SpotifyWidget : Widget
                 _refreshWarning = SpotifyRefreshFailurePolicy.CreateWarning(
                     failure, _consecutiveRefreshFailures);
                 _status = _refreshWarning.Status;
-                _pendingOperation = null;
                 invalidate = true;
             }
             else
@@ -1597,7 +1598,6 @@ public sealed class SpotifyWidget : Widget
                 _viewState = failure.FallbackState;
                 _status = failure.Status;
                 _playback = null;
-                _pendingOperation = null;
                 if (failure.Disposition != SpotifyRefreshFailureDisposition.Transient)
                 {
                     ClearPageCachesLocked();

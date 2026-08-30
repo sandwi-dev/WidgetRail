@@ -562,7 +562,7 @@ internal static class SpotifyPresentation
                     compact ? "spotify-compact-artwork" : "spotify-wide-artwork");
         var previous = UI.IconButton(WidgetGlyph.Previous, "spotify.previous",
                 previousId, "Previous track", size: IconButtonSize.Medium)
-            .Disabled(disallowed.SkippingPrevious)
+            .Disabled(disallowed.SkippingPrevious || pending == SpotifyPlaybackOperation.Previous)
             .Busy(pending == SpotifyPlaybackOperation.Previous)
             .PersistFocusAs("spotify.transport.previous")
             .FocusLeft(shuffleId).FocusUp(seekSliderId).FocusRight(toggleId)
@@ -571,7 +571,8 @@ internal static class SpotifyPresentation
                 "spotify.play-toggle", toggleId,
                 playback.IsPlaying ? "Pause" : "Play", IconButtonVariant.Primary,
                 IconButtonSize.Large)
-            .Disabled(toggleBlocked)
+            .Disabled(toggleBlocked || pending is SpotifyPlaybackOperation.Play or
+                SpotifyPlaybackOperation.Pause)
             .Busy(pending is SpotifyPlaybackOperation.Play or
                 SpotifyPlaybackOperation.Pause)
             .PersistFocusAs("spotify.transport.play-toggle")
@@ -579,7 +580,7 @@ internal static class SpotifyPresentation
             .Classes("spotify-play");
         var next = UI.IconButton(WidgetGlyph.Next, "spotify.next", nextId,
                 "Next track", size: IconButtonSize.Medium)
-            .Disabled(disallowed.SkippingNext)
+            .Disabled(disallowed.SkippingNext || pending == SpotifyPlaybackOperation.Next)
             .Busy(pending == SpotifyPlaybackOperation.Next)
             .PersistFocusAs("spotify.transport.next")
             .FocusLeft(toggleId).FocusUp(seekSliderId).FocusRight(repeatId)
@@ -587,7 +588,8 @@ internal static class SpotifyPresentation
         var shuffle = UI.IconButton(WidgetGlyph.Shuffle, "spotify.shuffle",
                 shuffleId, "Toggle shuffle", size: IconButtonSize.Small)
             .Selected(playback.ShuffleState)
-            .Disabled(disallowed.TogglingShuffle)
+            .Disabled(disallowed.TogglingShuffle || pending == SpotifyPlaybackOperation.SetShuffle)
+            .Busy(pending == SpotifyPlaybackOperation.SetShuffle)
             .PersistFocusAs("spotify.transport.shuffle")
             .FocusUp(seekSliderId).FocusRight(previousId)
             .Classes("spotify-secondary-action");
@@ -595,14 +597,15 @@ internal static class SpotifyPresentation
                 repeatId, $"Repeat {playback.RepeatState.ToString().ToLowerInvariant()}",
                 size: IconButtonSize.Small)
             .Selected(playback.RepeatState != SpotifyRepeatState.Off)
-            .Disabled(RepeatUnavailable(playback))
+            .Disabled(RepeatUnavailable(playback) || pending == SpotifyPlaybackOperation.SetRepeat)
+            .Busy(pending == SpotifyPlaybackOperation.SetRepeat)
             .PersistFocusAs("spotify.transport.repeat")
             .FocusUp(seekSliderId).FocusLeft(nextId)
             .Classes("spotify-secondary-action");
         var seek = UI.Scrubber(TimeSpan.FromMilliseconds(position),
                 TimeSpan.FromMilliseconds(duration), TimeSpan.FromSeconds(5), "spotify.seek",
                 seekId, "Spotify playback position")
-            .Disabled(disallowed.Seeking)
+            .Disabled(disallowed.Seeking || pending == SpotifyPlaybackOperation.Seek)
             .Busy(pending == SpotifyPlaybackOperation.Seek)
             .PersistFocusAs("spotify.transport.seek")
             .FocusDown(toggleId)
