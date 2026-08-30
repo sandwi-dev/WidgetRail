@@ -3,6 +3,7 @@ using WidgetRail.PlatformBroker;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WindowsAppLibraryProvider;
+using System.Text.Json;
 
 namespace GameLauncherCommunityApplication.Tests;
 
@@ -209,6 +210,60 @@ public sealed class PackageRuntimeTests
         }
     }
 
+    [TestMethod, Timeout(30_000)]
+    public async Task PlayniteConnectionRouteNeverPublishesTokenAndRejectsLateCompletion()
+    {
+        using var directory = new TestDirectory();
+        await using var service = Service(directory.Path, new PackageSource(1));
+        var client = new FakePlayniteBridgeClient();
+        var widget = WidgetTestHost.Attach(
+            new GameLauncherWidget(service, client),
+            new WidgetTestHostServicesBuilder().Build());
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+        await widget.WhenLibraryIdleAsync().WaitAsync(TimeSpan.FromSeconds(3));
+
+        client.ProbeResult = new(PlayniteBridgeConnectionKind.NotConfigured,
+            "credential_missing");
+        await widget.OnActionAsync(new(
+            GameLauncherWidget.PlayniteOpenActionId,
+            GameLauncherWidget.PlayniteOpenActionId));
+        var setup = Snapshot(widget, 20);
+        Assert.AreEqual("game-launcher.playnite.token", setup.InitialFocusId);
+        var entry = Nodes(setup.Root).Single(node =>
+            node.Id == "game-launcher.playnite.token");
+        Assert.AreEqual(TextEntryInputKind.Sensitive, entry.TextEntryInputKind);
+        Assert.AreEqual(string.Empty, entry.TextEntryValue);
+        Assert.IsNull(entry.AccessibilityValue);
+
+        const string sentinel = "fake-playnite-route-token";
+        client.ProbeResult = new(PlayniteBridgeConnectionKind.Connected, "connected");
+        await widget.OnActionAsync(new(
+            GameLauncherWidget.PlayniteSaveActionId,
+            "game-launcher.playnite.token") { CommittedText = sentinel });
+        var connected = Snapshot(widget, 21);
+        Assert.AreEqual(sentinel, client.LastSavedToken);
+        Assert.IsFalse(JsonSerializer.Serialize(connected).Contains(
+            sentinel, StringComparison.Ordinal));
+        Assert.IsNotNull(Nodes(connected.Root).SingleOrDefault(node =>
+            node.Id == "game-launcher.playnite.status"));
+
+        client.PendingProbe = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var late = widget.OnActionAsync(new(
+            GameLauncherWidget.PlayniteRefreshActionId,
+            GameLauncherWidget.PlayniteRefreshActionId)).AsTask();
+        await client.ProbeStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await widget.OnActionAsync(new(
+            GameLauncherWidget.PlayniteBackActionId,
+            GameLauncherWidget.PlayniteBackActionId));
+        client.PendingProbe.SetResult(
+            new(PlayniteBridgeConnectionKind.Malformed, "malformed_response"));
+        await late.WaitAsync(TimeSpan.FromSeconds(2));
+        var library = Snapshot(widget, 22);
+        Assert.IsNull(Nodes(library.Root).SingleOrDefault(node =>
+            node.Id == "game-launcher.playnite.root"));
+        Assert.AreEqual(1, client.MaximumConcurrentOperations);
+    }
+
     private static GameLauncherApplicationService Service(
         string root,
         PackageSource source)
@@ -307,6 +362,50 @@ public sealed class PackageRuntimeTests
             cancellationToken.ThrowIfCancellationRequested();
             ArtworkLoads++;
             return ArtworkContent;
+        }
+
+        public void Dispose() { }
+    }
+
+    private sealed class FakePlayniteBridgeClient : IPlayniteBridgeClient
+    {
+        private int _active;
+        internal PlayniteBridgeConnectionResult ProbeResult { get; set; } =
+            new(PlayniteBridgeConnectionKind.Connected, "connected");
+        internal TaskCompletionSource<PlayniteBridgeConnectionResult>? PendingProbe { get; set; }
+        internal TaskCompletionSource ProbeStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal string? LastSavedToken { get; private set; }
+        internal int MaximumConcurrentOperations { get; private set; }
+
+        public async ValueTask<PlayniteBridgeConnectionResult> ProbeAsync(
+            CancellationToken cancellationToken)
+        {
+            var active = Interlocked.Increment(ref _active);
+            MaximumConcurrentOperations = Math.Max(MaximumConcurrentOperations, active);
+            ProbeStarted.TrySetResult();
+            try
+            {
+                return PendingProbe is null
+                    ? ProbeResult
+                    : await PendingProbe.Task.ConfigureAwait(false);
+            }
+            finally { Interlocked.Decrement(ref _active); }
+        }
+
+        public ValueTask SaveCredentialAsync(
+            string token, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LastSavedToken = token;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask DeleteCredentialAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LastSavedToken = null;
+            return ValueTask.CompletedTask;
         }
 
         public void Dispose() { }

@@ -16,9 +16,27 @@ pwsh -NoProfile -File .\samples\GameLauncherWidget\Build-CommunityPackage.ps1 `
 ```
 
 The maintained sample declares the reviewed `full-trust-application-v1`
-executable with no product capabilities and packages as
+executable with no sandboxed host capabilities and packages as
 `widgetrail.samples.game-launcher`. Installation and enablement require the
 normal explicit full-trust disclosure.
+
+The **Connect Playnite** route is package-owned preparation for the later
+Playnite library migration. It talks only to the fixed
+`http://127.0.0.1:19821` authority through one package-owned bounded HTTP client, and its
+compatibility probe is the bounded installed-games page at
+`/api/games?installed=true&limit=1&offset=0`. The client does not accept a host,
+scheme, proxy, redirect, arbitrary HTTP method, path, request body, or raw
+socket. The route cannot invoke Playnite Bridge's eval, deletion, field
+mutation, add-on, backend-configuration, or token-rotation endpoints.
+
+The user copies the Playnite Bridge bearer token into a sensitive TextEntry.
+The package saves it under its exact Windows Credential Manager target; only
+the package-owned client reads it for the fixed loopback request. The
+token is never placed in package source, manifest settings, ordinary state,
+diagnostics, snapshots, accessibility, URLs, or response text. Replacing the
+entry rotates only the package-owned saved value, and **Remove saved token**
+deletes that slot. No Playnite account or live service is needed by the
+deterministic package tests.
 
 Package-local files under
 `%LOCALAPPDATA%\WidgetRail\community-apps\widgetrail.samples.game-launcher`

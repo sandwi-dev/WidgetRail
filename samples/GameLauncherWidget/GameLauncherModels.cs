@@ -43,6 +43,7 @@ internal enum GameLauncherRoute
     Hidden,
     Categories,
     Category,
+    PlayniteConnection,
 }
 
 internal enum GameLauncherLaunchState

@@ -57,6 +57,7 @@ internal static class GameLauncherPresentation
             GameLauncherRoute.Categories => "Categories",
             GameLauncherRoute.Category => GameLauncherCategoryPolicy.Find(
                 state.Organization, state.ActiveCategoryId)?.Name ?? "Category",
+            GameLauncherRoute.PlayniteConnection => "Playnite connection",
             _ => "Game Launcher",
         };
         var header = UI.Stack("game-launcher.header",
@@ -105,6 +106,9 @@ internal static class GameLauncherPresentation
                 .Disabled(!state.Interactive));
             filterControls.Add(UI.Button("Add running app", "game-launcher.running.open",
                     "game-launcher.running.open")
+                .Disabled(!state.Interactive));
+            filterControls.Add(UI.Button("Connect Playnite", GameLauncherWidget.PlayniteOpenActionId,
+                    GameLauncherWidget.PlayniteOpenActionId)
                 .Disabled(!state.Interactive));
             filterControls.Add(UI.Button(
                     $"Hidden ({state.Organization.ExcludedSavedIds.Count})",

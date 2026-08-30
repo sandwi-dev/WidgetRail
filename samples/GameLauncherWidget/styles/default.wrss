@@ -27,3 +27,6 @@
 .game-launcher-actions { flex-shrink: 0; gap: 10px; }
 .game-launcher-footer { flex-shrink: 0; flex-wrap: wrap; gap: 6px; }
 .game-launcher-warning { flex-shrink: 0; margin: 8px 0 0; }
+.game-launcher-playnite { gap: 14px; }
+.game-launcher-playnite-card { gap: 10px; padding: 14px; background: #18202a; }
+.game-launcher-playnite-token { min-height: 44px; }

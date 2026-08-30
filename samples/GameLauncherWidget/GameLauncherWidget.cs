@@ -9,7 +9,7 @@ namespace WidgetRail.Samples.GameLauncher;
 /// discovery and launch authority; this widget retains only a bounded cursor
 /// window plus a non-authorizing display projection.
 /// </summary>
-public sealed class GameLauncherWidget : Widget
+public sealed partial class GameLauncherWidget : Widget
 {
     public const int PageSize = WidgetAppLibraryService.MaximumPageSize;
     public const int MaximumRetainedItems = 192;
@@ -54,9 +54,12 @@ public sealed class GameLauncherWidget : Widget
     private string? _heroSavedId;
     private int _heroIndex;
 
-    internal GameLauncherWidget(IGameLauncherApplicationService application)
+    internal GameLauncherWidget(
+        IGameLauncherApplicationService application,
+        IPlayniteBridgeClient? playniteClient = null)
     {
         _application = application ?? throw new ArgumentNullException(nameof(application));
+        _playniteClient = playniteClient;
         _navigation = CreateNavigator("game-launcher.navigation", GameLauncherRoute.Library,
             maximumDepth: 1, maximumRoutes: 8);
         _library = CreateCursorResource<GameLauncherItem>("game-launcher.library", new()
@@ -96,12 +99,25 @@ public sealed class GameLauncherWidget : Widget
 
     public override WidgetView Render()
     {
+        var navigation = _navigation.Value;
+        if (navigation.Route == GameLauncherRoute.PlayniteConnection)
+        {
+            GameLauncherPlayniteConnectionState connection;
+            lock (_gate) connection = CapturePlayniteConnectionLocked();
+            var connectionView = GameLauncherPlayniteConnectionPresentation.Render(connection);
+            return connectionView with
+            {
+                Root = _navigation.Scope(navigation, (StackElement)connectionView.Root),
+                InitialFocusId = connectionView.InitialFocusId,
+                ActiveInputScopeId = navigation.InputScopeId,
+            };
+        }
+
         GameLauncherPresentationState state;
         GameLauncherDetailsState? details = null;
         GameLauncherDetailsState? actionSheet = null;
         GameLauncherTitleEditorState? titleEditor = null;
         bool preferLibraryContentFocus;
-        var navigation = _navigation.Value;
         lock (_gate)
         {
             state = CapturePresentationStateLocked(navigation.Route);
@@ -165,6 +181,7 @@ public sealed class GameLauncherWidget : Widget
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         _library.Reset(invalidate: false);
+        RetirePlayniteConnection();
         if (_navigation.Value.Route == GameLauncherRoute.Details)
             _navigation.Back();
         lock (_gate)
@@ -189,6 +206,7 @@ public sealed class GameLauncherWidget : Widget
     protected override ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
         _library.Reset(invalidate: false);
+        _playniteClient?.Dispose();
         return _application.DisposeAsync();
     }
 
@@ -241,6 +259,8 @@ public sealed class GameLauncherWidget : Widget
             }
             else
             {
+                if (routeBeforeBack == GameLauncherRoute.PlayniteConnection)
+                    RetirePlayniteConnection();
                 await ReturnToLibraryAsync().ConfigureAwait(false);
             }
             return;
@@ -341,6 +361,35 @@ public sealed class GameLauncherWidget : Widget
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
                 await MutateOrganizationAsync(GameLauncherOrganizationPolicy.Clear,
                     "Organization cleared", cancellationToken).ConfigureAwait(false);
+                return;
+            case PlayniteOpenActionId:
+                if (LifecycleState != WidgetLifecycleState.Interactive) return;
+                if (_navigation.Push(GameLauncherRoute.PlayniteConnection,
+                        action.SourceElementId) == WidgetNavigationResult.Changed)
+                    await RefreshPlayniteConnectionAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                return;
+            case PlayniteBackActionId:
+                if (_navigation.Value.Route != GameLauncherRoute.PlayniteConnection) return;
+                RetirePlayniteConnection();
+                if (_navigation.Back(action.SourceElementId) == WidgetNavigationResult.Changed)
+                    await ReturnToLibraryAsync().ConfigureAwait(false);
+                return;
+            case PlayniteRefreshActionId:
+                if (LifecycleState != WidgetLifecycleState.Interactive ||
+                    _navigation.Value.Route != GameLauncherRoute.PlayniteConnection) return;
+                await RefreshPlayniteConnectionAsync(cancellationToken).ConfigureAwait(false);
+                return;
+            case PlayniteSaveActionId when action.CommittedText is { } token:
+                if (LifecycleState != WidgetLifecycleState.Interactive ||
+                    _navigation.Value.Route != GameLauncherRoute.PlayniteConnection) return;
+                await SavePlayniteCredentialAsync(token, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            case PlayniteDeleteActionId:
+                if (LifecycleState != WidgetLifecycleState.Interactive ||
+                    _navigation.Value.Route != GameLauncherRoute.PlayniteConnection) return;
+                await DeletePlayniteCredentialAsync(cancellationToken).ConfigureAwait(false);
                 return;
             case "game-launcher.add.open":
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
