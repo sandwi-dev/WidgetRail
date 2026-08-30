@@ -209,6 +209,19 @@ Progress, Button, Row, and Stack nodes as any other widget. Reserved
 closed media command declarations after normal focus and generation admission;
 they do not expose DOM, browsing, script, or arbitrary pointer authority.
 
+Package-focused adapter tests should pass the authored snapshot and sealed
+adapter to `EmbeddedMediaAdapterConformanceGate`. The gate reads the serialized
+`EmbeddedMediaSurface.Commands` declaration, sends each corresponding adapter
+message through a deterministic fake player, and requires exactly one correlated
+terminal before the next operation. When adding a command, declare the public
+`EmbeddedMediaCommand`, implement its closed adapter message, and add any
+package-issued `EmbeddedMediaPlaybackCommandKind` to the same test. Missing
+support fails with a precise diagnostic such as
+`command-unsupported: declared:togglePlayback requires adapter message
+'toggle'`; missing correlation, retained in-flight work, and unsolicited events
+that claim command correlation fail independently. The gate uses no provider,
+browser, network, account, or credential state.
+
 Protocol v26 adds `AllowedFrameDomainFamilies` beside the existing exact
 `AllowedFrameOrigins`. Each family is a lowercase ASCII registrable DNS domain
 (for example, `example.test` when that suffix is registrable), never a URL or a

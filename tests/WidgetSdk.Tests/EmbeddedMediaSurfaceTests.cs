@@ -1,6 +1,7 @@
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.Samples.EmbeddedMediaWidget;
+using WidgetRail.EmbeddedMediaAdapterConformance;
 
 internal static class EmbeddedMediaSurfaceTests
 {
@@ -310,8 +311,15 @@ internal static class EmbeddedMediaSurfaceTests
         var sample = new EmbeddedMediaSampleWidget();
         var initialSample = sample.Render();
         Equal(null, initialSample.EmbeddedMedia?.PendingCommand);
-        Equal(0D, Find(initialSample.CreateSnapshot(
-            "embedded-media-sample.instance", 1).Root, "media-shell.timeline.slider").Value);
+        var initialSampleSnapshot = initialSample.CreateSnapshot(
+            "embedded-media-sample.instance", 1);
+        Equal(0D, Find(initialSampleSnapshot.Root, "media-shell.timeline.slider").Value);
+        await EmbeddedMediaAdapterConformanceGate.VerifyAsync(
+            initialSampleSnapshot,
+            Path.Combine(AppContext.BaseDirectory, "media",
+                "embedded-media-sample-adapter.html"),
+            EmbeddedMediaFakePlayerProfile.HtmlMediaElement,
+            Enum.GetValues<EmbeddedMediaPlaybackCommandKind>());
 
         await sample.OnActionAsync(new WidgetActionEvent(
             "host.embeddedMedia.togglePlayback", "media-shell.play"));

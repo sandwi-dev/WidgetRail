@@ -9,7 +9,13 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\WidgetSdk\WidgetSdk.csproj" />
     <ProjectReference Include="..\..\src\PlatformBroker\PlatformBroker.csproj" />
+    <ProjectReference Include="..\EmbeddedMediaAdapterConformance\EmbeddedMediaAdapterConformance.csproj" />
     <ProjectReference Include="..\..\samples\ClockWidget\ClockWidget.csproj" />
     <ProjectReference Include="..\..\samples\EmbeddedMediaWidget\EmbeddedMediaWidget.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\samples\EmbeddedMediaWidget\media\adapter.html"
+          Link="media\embedded-media-sample-adapter.html"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

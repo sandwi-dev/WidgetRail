@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WidgetRail.Samples.YouTubeWidget;
+using WidgetRail.EmbeddedMediaAdapterConformance;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
@@ -722,6 +723,60 @@ public sealed partial class YouTubeWidgetTests
         Assert.DoesNotContain("fetch(", adapter);
         Assert.DoesNotContain("XMLHttpRequest", adapter);
         Assert.DoesNotContain("apiKey", adapter, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [TestMethod]
+    public async Task DeclaredAdapterCapabilitiesCloseCorrelatedOperations()
+    {
+        var widget = await CreateConfiguredLinkWidgetAsync();
+        await CommitAsync(widget, $"https://youtu.be/{VideoId}");
+        var snapshot = widget.RenderSnapshot("youtube-test", 1);
+        var adapterPath = Path.Combine(AppContext.BaseDirectory, "media", "adapter.html");
+        await EmbeddedMediaAdapterConformanceGate.VerifyAsync(
+            snapshot,
+            adapterPath,
+            EmbeddedMediaFakePlayerProfile.StateCallbackPlayer,
+            [
+                EmbeddedMediaPlaybackCommandKind.Load,
+                EmbeddedMediaPlaybackCommandKind.Cue,
+                EmbeddedMediaPlaybackCommandKind.Play,
+                EmbeddedMediaPlaybackCommandKind.Pause,
+                EmbeddedMediaPlaybackCommandKind.Seek,
+                EmbeddedMediaPlaybackCommandKind.SetVolume,
+            ]);
+
+        var missingTogglePath = Path.Combine(
+            Path.GetTempPath(), $"wrail-youtube-adapter-{Guid.NewGuid():N}.html");
+        try
+        {
+            var adapter = await File.ReadAllTextAsync(adapterPath);
+            const string toggleHandler = "if(message.command==='toggle')";
+            Assert.IsTrue(adapter.Contains(toggleHandler, StringComparison.Ordinal));
+            await File.WriteAllTextAsync(
+                missingTogglePath,
+                adapter.Replace(toggleHandler, "if(message.command==='removed-toggle')",
+                    StringComparison.Ordinal));
+            var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+                EmbeddedMediaAdapterConformanceGate.VerifyAsync(
+                    snapshot,
+                    missingTogglePath,
+                    EmbeddedMediaFakePlayerProfile.StateCallbackPlayer,
+                    [
+                        EmbeddedMediaPlaybackCommandKind.Load,
+                        EmbeddedMediaPlaybackCommandKind.Cue,
+                        EmbeddedMediaPlaybackCommandKind.Play,
+                        EmbeddedMediaPlaybackCommandKind.Pause,
+                        EmbeddedMediaPlaybackCommandKind.Seek,
+                        EmbeddedMediaPlaybackCommandKind.SetVolume,
+                    ]));
+            StringAssert.Contains(failure.Message,
+                "command-unsupported: declared:togglePlayback requires adapter message 'toggle'");
+        }
+        finally
+        {
+            File.Delete(missingTogglePath);
+        }
+        await WidgetTestHost.DestroyAsync(widget);
     }
 
     [TestMethod]
