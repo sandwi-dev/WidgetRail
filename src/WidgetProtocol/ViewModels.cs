@@ -129,6 +129,19 @@ public enum ResponsiveVisibility
 }
 
 /// <summary>
+/// A widget's preferred host-owned surface treatment. This is a bounded hint:
+/// user and accessibility policy remain authoritative and may choose a safer
+/// effective treatment.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetSurfaceAppearance>))]
+public enum WidgetSurfaceAppearance
+{
+    Theme,
+    Transparent,
+    Solid,
+}
+
+/// <summary>
 /// Bounded logical-DIP hints for the currently published view. The host may
 /// choose any smaller or larger safe size; widgets must remain responsive.
 /// Numeric width/height pairs are atomic, while the typed sizing policy for
@@ -137,6 +150,8 @@ public enum ResponsiveVisibility
 public sealed record WidgetSurfaceHints
 {
     public WidgetSurfaceMode Mode { get; init; } = WidgetSurfaceMode.Adaptive;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public WidgetSurfaceAppearance Appearance { get; init; } = WidgetSurfaceAppearance.Theme;
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public WidgetSurfaceAxisMode WidthMode { get; init; } = WidgetSurfaceAxisMode.Preferred;
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]

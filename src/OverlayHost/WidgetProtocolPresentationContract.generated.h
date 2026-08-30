@@ -105,6 +105,7 @@ inline constexpr std::int32_t SemanticSeekGlyphVersion = 31;
 inline constexpr std::int32_t SensitiveTextEntryVersion = 28;
 inline constexpr std::int32_t SliderActivationVersion = 10;
 inline constexpr std::int32_t SliderVersion = 3;
+inline constexpr std::int32_t SurfaceAppearanceVersion = 35;
 inline constexpr std::int32_t SurfaceAxisSizingVersion = 17;
 inline constexpr std::int32_t SurfaceHintsVersion = 2;
 inline constexpr std::int32_t TextEntryVersion = 15;

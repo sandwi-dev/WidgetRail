@@ -26,13 +26,22 @@ public enum TransparencyPreference
     Reduced,
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetSurfaceAppearanceOverride>))]
+public enum WidgetSurfaceAppearanceOverride
+{
+    Widget,
+    Theme,
+    Transparent,
+    Solid,
+}
+
 public sealed record AppearanceSettings
 {
     public const double MinimumInterfaceScale = 0.8;
     public const double MaximumInterfaceScale = 1.25;
     public const double MinimumTextScale = 0.85;
     public const double MaximumTextScale = 1.5;
-    public const double MinimumBackdropOpacity = 0.35;
+    public const double MinimumBackdropOpacity = 0;
     public const double MaximumBackdropOpacity = 0.8;
 
     [JsonRequired]
@@ -71,6 +80,15 @@ public sealed record AppearanceSettings
     /// </summary>
     public bool AnimateWidgetSwitching { get; init; }
 
+    /// <summary>Global host-owned override; Widget preserves each declaration.</summary>
+    public WidgetSurfaceAppearanceOverride WidgetSurfaceAppearance { get; init; } =
+        WidgetSurfaceAppearanceOverride.Widget;
+
+    /// <summary>Bounded exact widget-ID overrides applied ahead of the global value.</summary>
+    public IReadOnlyDictionary<string, WidgetSurfaceAppearanceOverride>
+        WidgetSurfaceAppearanceOverrides { get; init; } =
+            new Dictionary<string, WidgetSurfaceAppearanceOverride>(StringComparer.Ordinal);
+
     public static AppearanceSettings Default { get; } = new()
     {
         ThemeId = ThemeIdentity.BuiltInDefault,
@@ -83,6 +101,7 @@ public sealed record AppearanceSettings
         BoldText = false,
         Transparency = TransparencyPreference.Full,
         AnimateWidgetSwitching = false,
+        WidgetSurfaceAppearance = WidgetSurfaceAppearanceOverride.Widget,
     };
 }
 
@@ -185,6 +204,27 @@ public static class PlatformSettingsValidator
             Add("$.appearance.contrast", "invalid_enum", "Contrast preference is invalid.");
         if (!Enum.IsDefined(appearance.Transparency))
             Add("$.appearance.transparency", "invalid_enum", "Transparency preference is invalid.");
+        if (!Enum.IsDefined(appearance.WidgetSurfaceAppearance))
+            Add("$.appearance.widgetSurfaceAppearance", "invalid_enum",
+                "Widget surface appearance preference is invalid.");
+        if (appearance.WidgetSurfaceAppearanceOverrides is null)
+            Add("$.appearance.widgetSurfaceAppearanceOverrides", "required",
+                "Widget surface appearance overrides are required.");
+        else
+        {
+            if (appearance.WidgetSurfaceAppearanceOverrides.Count > 256)
+                Add("$.appearance.widgetSurfaceAppearanceOverrides", "too_many",
+                    "At most 256 widget surface appearance overrides are allowed.");
+            foreach (var (widgetId, value) in appearance.WidgetSurfaceAppearanceOverrides)
+            {
+                if (!ThemeIdentity.IsValid(widgetId))
+                    Add("$.appearance.widgetSurfaceAppearanceOverrides", "invalid_widget_id",
+                        "Widget surface override IDs must be lowercase portable identifiers.");
+                if (!Enum.IsDefined(value))
+                    Add($"$.appearance.widgetSurfaceAppearanceOverrides.{widgetId}", "invalid_enum",
+                        "Widget surface appearance override is invalid.");
+            }
+        }
         return errors;
 
         void Range(double value, double minimum, double maximum, string path)

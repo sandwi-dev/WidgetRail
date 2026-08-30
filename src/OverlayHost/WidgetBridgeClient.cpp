@@ -549,7 +549,8 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     if (!HasOnlyProperties(payload,
             {L"revision", L"themeId", L"themeVersion", L"interfaceScale", L"textScale",
              L"backdropOpacity", L"motion", L"contrast", L"boldText",
-             L"transparency", L"animateWidgetSwitching", L"shellStyles"})) {
+             L"transparency", L"animateWidgetSwitching", L"widgetSurfaceAppearance",
+             L"widgetSurfaceAppearanceOverrides", L"shellStyles"})) {
         error = L"Platform appearance payload has missing or unknown properties.";
         return std::nullopt;
     }
@@ -566,6 +567,10 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
         payload.GetNamedValue(L"transparency").ValueType() != JsonValueType::String ||
         payload.GetNamedValue(L"animateWidgetSwitching").ValueType() !=
             JsonValueType::Boolean ||
+        payload.GetNamedValue(L"widgetSurfaceAppearance").ValueType() !=
+            JsonValueType::String ||
+        payload.GetNamedValue(L"widgetSurfaceAppearanceOverrides").ValueType() !=
+            JsonValueType::Object ||
         payload.GetNamedValue(L"shellStyles").ValueType() != JsonValueType::Object) {
         error = L"Platform appearance payload has invalid property types.";
         return std::nullopt;
@@ -584,7 +589,7 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
         appearance.interfaceScale > 1.25 ||
         !std::isfinite(appearance.textScale) || appearance.textScale < 0.85 ||
         appearance.textScale > 1.5 ||
-        !std::isfinite(appearance.backdropOpacity) || appearance.backdropOpacity < 0.35 ||
+        !std::isfinite(appearance.backdropOpacity) || appearance.backdropOpacity < 0.0 ||
         appearance.backdropOpacity > 0.8 ||
         !IsIdentifier(appearance.themeId) || !IsCanonicalThemeVersion(appearance.themeVersion)) {
         error = L"Platform appearance scalar values are outside their safety bounds.";
@@ -619,6 +624,40 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     else {
         error = L"Platform appearance transparency preference is invalid.";
         return std::nullopt;
+    }
+    const auto parseSurfaceOverride = [](const std::wstring_view value)
+        -> std::optional<PlatformSurfaceAppearanceOverride> {
+        if (value == L"widget") return PlatformSurfaceAppearanceOverride::Widget;
+        if (value == L"theme") return PlatformSurfaceAppearanceOverride::Theme;
+        if (value == L"transparent") return PlatformSurfaceAppearanceOverride::Transparent;
+        if (value == L"solid") return PlatformSurfaceAppearanceOverride::Solid;
+        return std::nullopt;
+    };
+    const auto globalSurface = parseSurfaceOverride(
+        std::wstring_view(payload.GetNamedString(L"widgetSurfaceAppearance")));
+    if (!globalSurface) {
+        error = L"Platform appearance widget surface preference is invalid.";
+        return std::nullopt;
+    }
+    appearance.widgetSurfaceAppearance = *globalSurface;
+    const auto widgetOverrides = payload.GetNamedObject(L"widgetSurfaceAppearanceOverrides");
+    if (widgetOverrides.Size() > 256) {
+        error = L"Platform appearance contains too many widget surface overrides.";
+        return std::nullopt;
+    }
+    for (const auto& pair : widgetOverrides) {
+        const std::wstring widgetId(std::wstring_view(pair.Key()));
+        if (!IsIdentifier(widgetId) || pair.Value().ValueType() != JsonValueType::String) {
+            error = L"Platform appearance widget surface override is invalid.";
+            return std::nullopt;
+        }
+        const auto value = parseSurfaceOverride(
+            std::wstring_view(pair.Value().GetString()));
+        if (!value) {
+            error = L"Platform appearance widget surface override is invalid.";
+            return std::nullopt;
+        }
+        appearance.widgetSurfaceAppearanceOverrides.emplace(widgetId, *value);
     }
 
     const auto styles = payload.GetNamedObject(L"shellStyles");
@@ -1252,12 +1291,13 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     snapshot.initialFocusId = OptionalString(source, L"initialFocusId");
     const auto parseSurface = [](const JsonObject& hints) {
         if (!HasNoUnknownProperties(hints,
-                {L"mode", L"widthMode", L"heightMode", L"preferredWidth",
+                {L"mode", L"appearance", L"widthMode", L"heightMode", L"preferredWidth",
                  L"preferredHeight", L"minimumWidth", L"minimumHeight"}))
             throw winrt::hresult_invalid_argument(
                 L"Widget surface hints contain an unknown property.");
         WidgetSurfaceHints parsed;
         parsed.mode = OptionalString(hints, L"mode");
+        parsed.appearance = OptionalString(hints, L"appearance");
         if (hints.HasKey(L"widthMode"))
             parsed.widthMode = OptionalString(hints, L"widthMode");
         if (hints.HasKey(L"heightMode"))
@@ -1273,6 +1313,9 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         const auto validMode = parsed.mode.empty() || parsed.mode == L"adaptive" ||
             parsed.mode == L"compact" || parsed.mode == L"standard" ||
             parsed.mode == L"wide";
+        const auto validAppearance = parsed.appearance.empty() ||
+            parsed.appearance == L"theme" || parsed.appearance == L"transparent" ||
+            parsed.appearance == L"solid";
         const auto validAxis = [](const std::optional<std::wstring>& value) {
             return !value || *value == L"preferred" || *value == L"content" ||
                 *value == L"fillAvailable";
@@ -1287,7 +1330,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                 *height >= surface_geometry::kMinimumAuthoredContentHeightDip &&
                 *height <= surface_geometry::kMaximumAuthoredContentHeightDip;
         };
-        if (!validMode || !validAxis(parsed.widthMode) ||
+        if (!validMode || !validAppearance || !validAxis(parsed.widthMode) ||
             !validAxis(parsed.heightMode) ||
             !validPair(parsed.preferredWidth, parsed.preferredHeight) ||
             !validPair(parsed.minimumWidth, parsed.minimumHeight) ||

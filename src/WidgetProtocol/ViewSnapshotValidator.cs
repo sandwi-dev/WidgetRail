@@ -463,6 +463,9 @@ public static class ViewSnapshotValidator
             if (surface is null) return;
             if (!Enum.IsDefined(surface.Mode))
                 Add($"{path}.mode", "invalid_surface_mode", "The surface mode is not supported.");
+            if (!Enum.IsDefined(surface.Appearance))
+                Add($"{path}.appearance", "invalid_surface_appearance",
+                    "The surface appearance is not supported.");
             if (!Enum.IsDefined(surface.WidthMode))
                 Add($"{path}.widthMode", "invalid_surface_axis_mode",
                     "The surface width mode is not supported.");

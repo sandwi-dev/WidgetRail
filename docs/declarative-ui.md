@@ -536,6 +536,7 @@ return new WidgetView(
     Surface: new WidgetSurfaceHints
     {
         Mode = WidgetSurfaceMode.Compact,
+        Appearance = WidgetSurfaceAppearance.Transparent,
         WidthMode = WidgetSurfaceAxisMode.Preferred,
         HeightMode = WidgetSurfaceAxisMode.Content,
         PreferredWidth = 560,
@@ -544,6 +545,13 @@ return new WidgetView(
         MinimumHeight = 260,
     });
 ```
+
+Protocol v35 adds the closed `Appearance` hint: `Theme`, `Transparent`, or
+`Solid`. The request is presentation-only and remains below host user and
+accessibility policy. Per-widget override wins over global override, then the
+widget hint; unsafe transparency deterministically falls back to solid.
+Transparent mode removes only the host-owned panel fill and does not expand
+pointer input beyond authored semantic regions.
 
 `Mode` retains the `Adaptive`, `Compact`, `Standard`, and `Wide` fallback
 dimensions. Protocol v17 adds symmetric independent `WidthMode` and

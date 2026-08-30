@@ -113,7 +113,15 @@ public sealed class EmbeddedMediaSampleWidget : Widget
                 UI.Row("media-shell.preferences", rate, mute, loopButton).Classes("media-shell-preferences"))
                 .Classes("media-shell-root"),
             InitialFocusId: "media-shell.play", ActiveInputScopeId: "media-shell.root",
-            Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = 760, PreferredHeight = 610, MinimumWidth = 440, MinimumHeight = 410 })
+            Surface: new WidgetSurfaceHints
+            {
+                Mode = WidgetSurfaceMode.Standard,
+                Appearance = WidgetSurfaceAppearance.Transparent,
+                PreferredWidth = 760,
+                PreferredHeight = 610,
+                MinimumWidth = 440,
+                MinimumHeight = 410,
+            })
         { EmbeddedMedia = media };
     }
 

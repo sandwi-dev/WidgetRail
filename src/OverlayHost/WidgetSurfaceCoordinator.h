@@ -7,6 +7,7 @@
 #include "PinnedSurfacePlacement.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetInteractionSession.h"
+#include "WidgetSurfaceAppearance.h"
 
 #include <Windows.h>
 #include <d2d1.h>
@@ -118,6 +119,7 @@ struct WidgetSurfaceAdmission final {
     // Host-injected policy. Public manifests cannot set physical geometry.
     PlacementLimits placementLimits{};
     std::vector<PinnedLayoutOption> pinnedLayouts;
+    surface_appearance::Policy surfaceAppearancePolicy;
 };
 
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
@@ -156,6 +158,7 @@ public:
         std::wstring_view runtimeGeneration,
         const WidgetSnapshot& snapshot,
         std::vector<PinnedLayoutOption> layouts = {});
+    void SetSurfaceAppearancePolicy(surface_appearance::Policy policy);
     [[nodiscard]] bool SetInteractionMode(InteractionMode mode);
     [[nodiscard]] bool ToggleInteractionMode();
     [[nodiscard]] bool EnterControllerFocus();
@@ -294,6 +297,7 @@ private:
         const std::vector<MonitorWorkArea>& monitors) noexcept;
     void ApplyPlacementBounds(const PhysicalRect& bounds) noexcept;
     void ApplyOpacity() noexcept;
+    [[nodiscard]] surface_appearance::Mode EffectiveSurfaceAppearance() const noexcept;
     [[nodiscard]] bool SaveCurrentState(std::wstring& error);
     void HandleAccessibilityActions();
     void QueueResolvedInput(

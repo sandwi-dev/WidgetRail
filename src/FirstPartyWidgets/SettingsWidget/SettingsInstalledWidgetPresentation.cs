@@ -1,6 +1,7 @@
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
+using WidgetRail.PlatformSettings;
 
 namespace WidgetRail.FirstPartyWidgets.Settings;
 
@@ -209,7 +210,8 @@ internal static class SettingsInstalledWidgetPresentation
         StackElement header,
         bool busy,
         SettingsInstalledWidgetState state,
-        SettingsPermissionState permissionState)
+        SettingsPermissionState permissionState,
+        PlatformSettingsDocument settings)
     {
         var package = state.SelectedInstalled;
         var builtIn = state.SelectedBuiltIn;
@@ -218,6 +220,17 @@ internal static class SettingsInstalledWidgetPresentation
         var permissionPackageIds = permissionState.Projection.Packages
             .Select(item => item.Id)
             .ToArray();
+        static WidgetElement SurfaceAppearanceButton(
+            string widgetId, PlatformSettingsDocument settings, bool busy)
+        {
+            var value = settings.Appearance.WidgetSurfaceAppearanceOverrides
+                .GetValueOrDefault(widgetId, WidgetSurfaceAppearanceOverride.Widget);
+            return UI.Button(
+                    $"Surface override: {value}",
+                    "installed.surface-appearance.cycle",
+                    "installed.details.surface-appearance")
+                .Busy(busy).Classes("setting-row");
+        }
         if (builtIn is not null && valid)
         {
             var builtInHasPermissions = permissionCatalogValid &&
@@ -262,6 +275,7 @@ internal static class SettingsInstalledWidgetPresentation
                                 : "No host permissions requested",
                             "installed.permissions.open", "installed.details.permissions")
                         .Disabled(!builtInHasPermissions).Busy(busy).Classes("setting-row"),
+                    SurfaceAppearanceButton(builtIn.Id, settings, busy),
                     LocalDataButton(state, busy),
                     UI.Button("Back", "back", "installed.details.back").Classes("secondary-button")),
                 builtInHasPermissions ? "installed.details.permissions" : "installed.details.back",
@@ -344,7 +358,9 @@ internal static class SettingsInstalledWidgetPresentation
             .Classes("secondary-button");
         var controls = new List<WidgetElement>
         {
-            versionsButton, permissionsButton, actionButton, localDataButton,
+            versionsButton, permissionsButton,
+            SurfaceAppearanceButton(manifest.Id, settings, busy),
+            actionButton, localDataButton,
         };
         if (canUninstall) controls.Add(uninstallButton);
         controls.Add(back);

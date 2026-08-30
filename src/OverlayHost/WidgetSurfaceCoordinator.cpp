@@ -31,6 +31,7 @@ constexpr std::size_t kMaximumPendingInputRequests = 16;
 constexpr std::size_t kMaximumPendingLayoutSelectionNotifications = 16;
 constexpr std::size_t kMaximumFeedbackCharacters = 160;
 constexpr std::wstring_view kFullWidgetLayoutId = L"host.full-widget";
+constexpr COLORREF kTransparentSurfaceColorKey = RGB(1, 2, 3);
 
 [[nodiscard]] std::filesystem::path DefaultPlacementPath() {
     std::array<wchar_t, 32768> localAppData{};
@@ -248,6 +249,7 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         return false;
     }
     ++workCounters_.snapshots;
+    const auto priorSurfaceAppearance = EffectiveSurfaceAppearance();
     const std::wstring priorLayoutId{SelectedLayoutId()};
     const std::wstring priorInputScopeId{
         SelectedSnapshot().activeInputScopeId};
@@ -271,6 +273,7 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     });
     selectedLayoutIndex_ = selected == layoutOptions_.end()
         ? 0 : static_cast<std::size_t>(selected - layoutOptions_.begin());
+    if (priorSurfaceAppearance != EffectiveSurfaceAppearance()) ApplyOpacity();
     if (selected == layoutOptions_.end() && selectedId != kFullWidgetLayoutId)
         QueueLayoutSelection(selectedId, false);
     actionFeedback_.clear();
@@ -908,6 +911,7 @@ bool WidgetSurfaceCoordinator::CycleLayout(const int delta) {
             admission_->widgetId, SelectedSnapshot(), focusedElementId_);
         inputRequests_.clear();
         if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
+        ApplyOpacity();
     }
     const auto monitor = CurrentWindowMonitor();
     if (!monitor) return false;
@@ -965,6 +969,7 @@ bool WidgetSurfaceCoordinator::CancelSetup() noexcept {
         focusedElementId_ = SelectedSnapshot().initialFocusId;
         focusGroupMemory_.Remember(
             admission_->widgetId, SelectedSnapshot(), focusedElementId_);
+        ApplyOpacity();
     }
     setupOriginalLayoutId_.clear();
     const bool canceled = CancelPlacement();
@@ -1084,7 +1089,30 @@ void WidgetSurfaceCoordinator::ApplyOpacity() noexcept {
     if (!window_) return;
     const BYTE alpha = static_cast<BYTE>(std::lround(
         static_cast<double>(opacityPercent_) * 255.0 / 100.0));
-    (void)SetLayeredWindowAttributes(window_, 0, alpha, LWA_ALPHA);
+    const bool transparent = admission_ &&
+        EffectiveSurfaceAppearance() == surface_appearance::Mode::Transparent;
+    (void)SetLayeredWindowAttributes(
+        window_, transparent ? kTransparentSurfaceColorKey : 0, alpha,
+        transparent ? LWA_ALPHA | LWA_COLORKEY : LWA_ALPHA);
+}
+
+surface_appearance::Mode WidgetSurfaceCoordinator::EffectiveSurfaceAppearance() const noexcept {
+    if (!admission_) return surface_appearance::Mode::Solid;
+    return surface_appearance::Resolve(
+        SelectedSnapshot().surface ? SelectedSnapshot().surface->appearance : L"theme",
+        admission_->surfaceAppearancePolicy,
+        admission_->widgetId,
+        true).effective;
+}
+
+void WidgetSurfaceCoordinator::SetSurfaceAppearancePolicy(
+    surface_appearance::Policy policy) {
+    if (!admission_) return;
+    const auto prior = EffectiveSurfaceAppearance();
+    admission_->surfaceAppearancePolicy = std::move(policy);
+    if (prior == EffectiveSurfaceAppearance()) return;
+    ApplyOpacity();
+    RequestPaint();
 }
 
 bool WidgetSurfaceCoordinator::SaveCurrentState(std::wstring& error) {
@@ -1942,7 +1970,11 @@ void WidgetSurfaceCoordinator::Paint() {
     renderTarget_->SetDpi(96.0F * dpiScale, 96.0F * dpiScale);
     ++workCounters_.rasterDraws;
     renderTarget_->BeginDraw();
-    renderTarget_->Clear(D2D1::ColorF(0x16212E));
+    const bool transparent = EffectiveSurfaceAppearance() ==
+        surface_appearance::Mode::Transparent;
+    renderTarget_->Clear(transparent
+        ? D2D1::ColorF(1.0F / 255.0F, 2.0F / 255.0F, 3.0F / 255.0F, 1.0F)
+        : D2D1::ColorF(0x16212E));
     const bool compactMedia = compactMediaPresentation();
     if (!compactMedia) {
         renderTarget_->FillRectangle(

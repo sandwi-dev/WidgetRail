@@ -4410,6 +4410,47 @@ private:
             *current, systemHighContrast, animationsEnabled != FALSE);
     }
 
+    [[nodiscard]] bool HighContrastSurfacePolicy() const noexcept {
+        const auto& current = appearanceState_.current();
+        if (current && current->contrast == widgetrail::PlatformContrastPreference::High)
+            return true;
+        HIGHCONTRASTW highContrast{sizeof(highContrast)};
+        return SystemParametersInfoW(
+                   SPI_GETHIGHCONTRAST, sizeof(highContrast), &highContrast, 0) &&
+            (highContrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
+    }
+
+    [[nodiscard]] widgetrail::surface_appearance::Policy
+    CurrentSurfaceAppearancePolicy() const {
+        const auto& current = appearanceState_.current();
+        if (!current) return {};
+        const auto accessibility = CurrentAccessibilityPolicy();
+        return widgetrail::surface_appearance::CreatePolicy(
+            *current, HighContrastSurfacePolicy(),
+            accessibility.reducedTransparency, compositionSurface_.available());
+    }
+
+    [[nodiscard]] widgetrail::surface_appearance::Resolution
+    ResolveRenderedSurfaceAppearance() const {
+        const std::wstring_view activeWidget = state_.activeWidget();
+        const auto presentation = sessions_.Presentation(activeWidget);
+        const auto& retained = presentationTransaction_.retainedPresentation();
+        const auto authority = widgetrail::ResolveWidgetContentAuthority(
+            presentation.snapshot != nullptr,
+            presentation.authority == widgetrail::WidgetPresentationAuthority::Current,
+            retained.has_value());
+        const widgetrail::WidgetSnapshot* snapshot = presentation.snapshot;
+        std::wstring_view renderedWidget = activeWidget;
+        if (authority == widgetrail::WidgetContentAuthority::RetainedCommittedSnapshot &&
+            retained) {
+            snapshot = &retained->snapshot;
+            renderedWidget = retained->widgetId;
+        }
+        return widgetrail::surface_appearance::Resolve(
+            snapshot && snapshot->surface ? snapshot->surface->appearance : L"theme",
+            CurrentSurfaceAppearancePolicy(), renderedWidget);
+    }
+
     widgetrail::NativeRenderStyle AdaptShellStyle(
         const std::wstring_view key,
         const bool focused = false,
@@ -4508,7 +4549,9 @@ private:
             backdropBrush_ = replacement;
         }
         targetBackdropOpacity_ = static_cast<BYTE>(std::lround(
-            std::clamp(current->backdropOpacity, 0.35, 0.8) * 255.0));
+            std::clamp(current->backdropOpacity, 0.0, 0.8) * 255.0));
+        pinnedSurfaceCoordinator_.SetSurfaceAppearancePolicy(
+            CurrentSurfaceAppearancePolicy());
         // Sampling here makes an accessibility change to reduced motion snap
         // an in-flight transition immediately rather than waiting for a timer.
         AdvanceOverlayTransition(GetTickCount64());
@@ -7609,9 +7652,25 @@ private:
         if (state_.surface() == widgetrail::Surface::Widget) {
             surface = ComputeCurrentWidgetSurfaceGeometry(
                 metrics->viewportWidthDip, metrics->viewportHeightDip);
-            if (surface && contains(contentX, contentY, {
+            const bool transparentSurface = ResolveRenderedSurfaceAppearance().effective ==
+                widgetrail::surface_appearance::Mode::Transparent;
+            if (surface && !transparentSurface && contains(contentX, contentY, {
                     surface->panelX, surface->panelY, surface->panelWidth,
                     surface->footerY - surface->panelY})) return true;
+            if (transparentSurface) {
+                const auto authoredContains = [&](const auto& region) {
+                    return contains(contentX, contentY, region.rect);
+                };
+                if (std::ranges::any_of(
+                        lastWidgetRenderResult_.hitRegions, authoredContains) ||
+                    std::ranges::any_of(
+                        lastWidgetRenderResult_.accessibilityRegions, authoredContains) ||
+                    std::ranges::any_of(
+                        lastWidgetRenderResult_.mediaViewportRegions,
+                        [&](const auto& region) {
+                            return contains(contentX, contentY, region.bounds);
+                        })) return true;
+            }
             if (compositionChromeSession_ && contains(guideX, guideY,
                     compositionChromeSession_->guideBounds)) return true;
             if (!compositionChromeSession_ && surface && contains(guideX, guideY, {
@@ -7657,6 +7716,7 @@ private:
                 pinnedSurface.panelWidthDip,
                 pinnedSurface.panelHeightDip,
             };
+        admission.surfaceAppearancePolicy = CurrentSurfaceAppearancePolicy();
         admission.pinnedLayouts = ResolvePinnedLayouts(*snapshot);
         if (snapshot->embeddedMedia &&
             snapshot->embeddedMedia->surface.preferredWidth &&
@@ -11866,7 +11926,7 @@ private:
     }
 
     [[nodiscard]] bool GraphicsResourcesReady() const noexcept {
-        return backgroundBrush_ && cardBrush_ && textBrush_ && secondaryBrush_ &&
+        return backgroundBrush_ && cardBrush_ && solidCardBrush_ && textBrush_ && secondaryBrush_ &&
                dashboardSecondaryBrush_ && dashboardTextBrush_ && accentBrush_ &&
                successBrush_ && trayItemBrush_ && trayItemTextBrush_ &&
                selectedTextBrush_ && focusBrush_ && titleFormat_ && bodyFormat_ &&
@@ -11964,6 +12024,10 @@ private:
             D2DColor(trayBackground), backgroundBrush_.ReleaseAndGetAddressOf());
         renderTarget_->CreateSolidColorBrush(
             D2DColor(panelBackground), cardBrush_.ReleaseAndGetAddressOf());
+        auto solidPanelBackground = panelBackground;
+        solidPanelBackground.alpha = 1.0F;
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(solidPanelBackground), solidCardBrush_.ReleaseAndGetAddressOf());
         renderTarget_->CreateSolidColorBrush(
             D2DColor(foreground), textBrush_.ReleaseAndGetAddressOf());
         renderTarget_->CreateSolidColorBrush(
@@ -12086,6 +12150,7 @@ private:
         dashboardSecondaryBrush_.Reset();
         dashboardTextBrush_.Reset();
         cardBrush_.Reset();
+        solidCardBrush_.Reset();
         backgroundBrush_.Reset();
         if (discardRenderTarget) {
             renderTarget_.Reset();
@@ -14207,11 +14272,33 @@ private:
         const D2D1_ROUNDED_RECT panel{
             D2D1::RectF(panelLeft, panelTop, panelLeft + panelWidth, visualPanelBottom),
             panelCornerRadius_, panelCornerRadius_};
-        widgetrail::shell::FillColorKeyRoundedRectangle(
-            renderTarget_.Get(), panel, cardBrush_.Get(),
-            compositionSurface_.available()
-                ? widgetrail::shell::OuterChromeBoundary::PremultipliedAlpha
-                : widgetrail::shell::OuterChromeBoundary::ColorKeyAliased);
+        const auto surfaceAppearance = ResolveRenderedSurfaceAppearance();
+        const std::wstring surfaceDiagnosticKey =
+            std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.declared)) + L"|" +
+            std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.requested)) + L"|" +
+            std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.effective)) + L"|" +
+            std::wstring(surfaceAppearance.fallbackReason);
+        if (surfaceDiagnosticKey != lastSurfaceAppearanceDiagnostic_) {
+            lastSurfaceAppearanceDiagnostic_ = surfaceDiagnosticKey;
+            AppendDiagnostic(
+                L"Widget surface appearance widget=" + std::wstring(widget) +
+                L" declared=" + std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.declared)) +
+                L" requested=" + std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.requested)) +
+                L" effective=" + std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.effective)) +
+                (surfaceAppearance.fallbackReason.empty()
+                    ? std::wstring{}
+                    : L" fallback=" + std::wstring(surfaceAppearance.fallbackReason)));
+        }
+        if (surfaceAppearance.effective !=
+            widgetrail::surface_appearance::Mode::Transparent) {
+            widgetrail::shell::FillColorKeyRoundedRectangle(
+                renderTarget_.Get(), panel,
+                surfaceAppearance.effective == widgetrail::surface_appearance::Mode::Solid
+                    ? solidCardBrush_.Get() : cardBrush_.Get(),
+                compositionSurface_.available()
+                    ? widgetrail::shell::OuterChromeBoundary::PremultipliedAlpha
+                    : widgetrail::shell::OuterChromeBoundary::ColorKeyAliased);
+        }
 
         if (bridgeWidget) {
             ComPtr<ID2D1Layer> contentLayer;
@@ -14923,6 +15010,7 @@ private:
     mutable std::optional<WidgetSurfaceResolutionCache>
         widgetSurfaceResolutionCache_;
     std::wstring lastWidgetPresentationPaintKey_;
+    std::wstring lastSurfaceAppearanceDiagnostic_;
     std::wstring lastFallbackPresentationCheckpointKey_;
     BYTE targetOverlayOpacity_{248};
     BYTE targetBackdropOpacity_{kBackdropOpacity};
@@ -14937,6 +15025,7 @@ private:
     ComPtr<ID2D1RenderTarget> renderTarget_;
     ComPtr<ID2D1SolidColorBrush> backgroundBrush_;
     ComPtr<ID2D1SolidColorBrush> cardBrush_;
+    ComPtr<ID2D1SolidColorBrush> solidCardBrush_;
     ComPtr<ID2D1SolidColorBrush> textBrush_;
     ComPtr<ID2D1SolidColorBrush> secondaryBrush_;
     ComPtr<ID2D1SolidColorBrush> dashboardTextBrush_;

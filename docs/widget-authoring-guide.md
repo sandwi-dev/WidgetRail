@@ -649,6 +649,7 @@ return new WidgetView(
     Surface: new WidgetSurfaceHints
     {
         Mode = WidgetSurfaceMode.Compact,
+        Appearance = WidgetSurfaceAppearance.Transparent,
         WidthMode = WidgetSurfaceAxisMode.Preferred,
         HeightMode = WidgetSurfaceAxisMode.Content,
         PreferredWidth = 560,
@@ -657,6 +658,15 @@ return new WidgetView(
         MinimumHeight = 260,
     });
 ```
+
+`Appearance` is a closed advisory treatment: `Theme` (the default),
+`Transparent`, or `Solid`. It changes only the host-owned widget surface and
+grants no compositor, opacity, window, input, focus, or accessibility
+authority. The user's exact per-widget override wins over the global override,
+which wins over the declaration. High contrast, reduced transparency,
+unavailable transparent composition, or a zero backdrop that would make
+content unreadable forces a safe solid fallback. Ordinary views and
+package-authored pinned layouts use the same rule.
 
 `Mode` supplies the existing `Adaptive`, `Compact`, `Standard`, or `Wide`
 fallback dimensions. `WidthMode` and `HeightMode` independently select how the

@@ -263,11 +263,15 @@ internal static class SettingsPresentation
             up: "interface.stepper.decrement",
             down: null,
             busy);
+        var surfaceAppearance = UI.Button(
+                $"Widget surfaces: {appearance.WidgetSurfaceAppearance}",
+                "surface-appearance.cycle", "surface-appearance.cycle")
+            .Busy(busy).Classes("setting-row");
         return View(header,
             PageScope("overlay.page",
                 UI.Text("Overlay", "overlay.heading", "Overlay settings")
                     .Classes("page-heading"),
-                interfaceScale, opacity,
+                interfaceScale, opacity, surfaceAppearance,
                 UI.Text("Changes are stored atomically and applied by the host theme pipeline.",
                     "overlay.help", "Overlay settings help").Classes("page-help")),
             "interface.stepper.decrement",

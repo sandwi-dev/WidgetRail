@@ -41,6 +41,14 @@ internal sealed class ProtocolVersionRequirements
                     "$.surface",
                     $"Surface axis sizing requires protocol version {ProtocolConstants.SurfaceAxisSizingVersion} or later.");
             }
+            if (snapshot.Surface.Appearance != WidgetSurfaceAppearance.Theme)
+            {
+                Add(
+                    "surface-appearance",
+                    ProtocolConstants.SurfaceAppearanceVersion,
+                    "$.surface.appearance",
+                    $"Surface appearance requires protocol version {ProtocolConstants.SurfaceAppearanceVersion} or later.");
+            }
         }
 
         if ((snapshot.PinnedLayouts?.Count ?? 0) != 0)
@@ -49,6 +57,13 @@ internal sealed class ProtocolVersionRequirements
                 ProtocolConstants.PinnedPresentationLayoutsVersion,
                 "$.pinnedLayouts",
                 $"Pinned presentation layouts require protocol version {ProtocolConstants.PinnedPresentationLayoutsVersion} or later.");
+        if (snapshot.PinnedLayouts?.Any(layout =>
+                layout?.Surface.Appearance != WidgetSurfaceAppearance.Theme) == true)
+            Add(
+                "surface-appearance",
+                ProtocolConstants.SurfaceAppearanceVersion,
+                "$.pinnedLayouts",
+                $"Surface appearance requires protocol version {ProtocolConstants.SurfaceAppearanceVersion} or later.");
         if (snapshot.PinnedLayouts?.Any(layout => layout?.Root is not null) == true)
             Add(
                 "pinned-presentation-projections",

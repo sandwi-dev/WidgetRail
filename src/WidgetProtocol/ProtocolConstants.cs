@@ -38,6 +38,7 @@ public static class ProtocolConstants
     public const int HeldButtonActionRepeatVersion = 32;
     public const int RememberedChildFocusGroupVersion = 33;
     public const int ContextActionsVersion = 34;
+    public const int SurfaceAppearanceVersion = 35;
     public const int TrustedEncodedArtworkVersion = 36;
     public const int PosterTileVersion = 37;
     public const int BackgroundSurfaceVersion = 38;

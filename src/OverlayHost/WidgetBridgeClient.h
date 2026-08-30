@@ -340,6 +340,7 @@ struct WidgetNode final {
 
 struct WidgetSurfaceHints final {
     std::wstring mode{L"adaptive"};
+    std::wstring appearance{L"theme"};
     std::optional<std::wstring> widthMode;
     std::optional<std::wstring> heightMode;
     std::optional<double> preferredWidth;
@@ -555,6 +556,7 @@ MaterializeWidgetPresentationUpdate(
 enum class PlatformMotionPreference { System, Full, Reduced };
 enum class PlatformContrastPreference { System, Standard, High };
 enum class PlatformTransparencyPreference { Full, Reduced };
+enum class PlatformSurfaceAppearanceOverride { Widget, Theme, Transparent, Solid };
 
 struct PlatformAppearance final {
     long long revision{};
@@ -568,6 +570,10 @@ struct PlatformAppearance final {
     bool boldText{};
     PlatformTransparencyPreference transparency{PlatformTransparencyPreference::Full};
     bool animateWidgetSwitching{};
+    PlatformSurfaceAppearanceOverride widgetSurfaceAppearance{
+        PlatformSurfaceAppearanceOverride::Widget};
+    std::unordered_map<std::wstring, PlatformSurfaceAppearanceOverride>
+        widgetSurfaceAppearanceOverrides;
     std::unordered_map<std::wstring, WidgetComputedStyle> shellStyles;
 };
 
