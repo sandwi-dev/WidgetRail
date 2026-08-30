@@ -274,6 +274,7 @@ public sealed partial class YouTubeVideoWidget
                         UI.Button("Search", SearchSubmitActionId, SearchSubmitActionId)
                             .Disabled(string.IsNullOrWhiteSpace(draft) || _searchResults.IsBusy)
                             .FocusLeft("youtube.search.query").Classes("youtube-primary", "youtube-search-submit"))
+                    .RememberChildFocus("youtube.search.query")
                     .Classes("youtube-search-controls"))
             .Classes("youtube-card", "youtube-search-task");
         WidgetElement content;
