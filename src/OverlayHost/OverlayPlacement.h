@@ -202,13 +202,19 @@ struct ControllerGuideAction final {
     std::wstring_view label;
 };
 
-/// Builds a sanitized, character-bounded one-line tray guide. Contextual
-/// widget actions are preferred when present so hover shortcuts remain
-/// discoverable; required Enter/Back escape actions are always retained.
+using MeasureControllerGuideText =
+    std::function<std::optional<float>(std::wstring_view)>;
+
+/// Builds a sanitized, pixel-bounded one-line tray guide. Complete contextual
+/// widget actions are preferred over generic Enter guidance. Required shell
+/// escape, reorder, and options affordances are always retained; individual
+/// labels are never truncated.
 [[nodiscard]] std::wstring BuildTrayControllerGuide(
     ControllerGuideDensity density,
     bool reorderMode,
     bool selectedBridgeWidget,
+    float availableWidth,
+    const MeasureControllerGuideText& measureText,
     std::span<const ControllerGuideAction> quickActions = {});
 
 /// Computes a bottom-centered physical-pixel window rectangle that is fully

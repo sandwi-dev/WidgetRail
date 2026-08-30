@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 namespace widgetrail {
 namespace {
@@ -428,6 +429,8 @@ std::wstring BuildTrayControllerGuide(
     const ControllerGuideDensity density,
     const bool reorderMode,
     const bool selectedBridgeWidget,
+    const float availableWidth,
+    const MeasureControllerGuideText& measureText,
     const std::span<const ControllerGuideAction> quickActions) {
     if (reorderMode) {
         return density == ControllerGuideDensity::Minimal
@@ -435,28 +438,17 @@ std::wstring BuildTrayControllerGuide(
             : L"←→ Move   Y Done   B Close";
     }
 
-    const std::size_t characterBudget =
-        density == ControllerGuideDensity::Full ? 92U :
-        density == ControllerGuideDensity::Compact ? 78U : 28U;
-    const std::size_t labelBudget =
-        density == ControllerGuideDensity::Full ? 14U :
-        density == ControllerGuideDensity::Compact ? 8U : 6U;
     const std::size_t actionBudget =
         density == ControllerGuideDensity::Minimal ? 1U : 3U;
-    const std::wstring_view suffix = selectedBridgeWidget
+    const std::wstring required = selectedBridgeWidget
         ? density == ControllerGuideDensity::Full
-            ? L"↑/A Enter   Y Tap reorder / Hold restart   B Close"
-            : density == ControllerGuideDensity::Compact
-                ? L"↑/A Enter   Y Tap/Hold   B Close"
-                : L"Y Tap/Hold   B Close"
-        : density == ControllerGuideDensity::Minimal
-            ? L"Y Reorder   B Close"
-            : L"↑/A Enter   Y Reorder   B Close";
+            ? L"Y Tap reorder / Hold restart   B Close   Menu Options"
+            : L"Y Tap/Hold   B Close   Menu Options"
+        : L"Y Reorder   B Close   Menu Options";
 
-    const auto sanitize = [](const std::wstring_view value,
-                             const std::size_t limit) {
+    const auto sanitize = [](const std::wstring_view value) {
         std::wstring result;
-        result.reserve(std::min(value.size(), limit));
+        result.reserve(value.size());
         bool priorSpace = false;
         for (const wchar_t character : value) {
             const bool whitespace = character == L' ' || character == L'\t' ||
@@ -468,49 +460,62 @@ std::wstring BuildTrayControllerGuide(
                 result.push_back(character);
                 priorSpace = false;
             }
-            if (result.size() >= limit) break;
         }
         while (!result.empty() && result.back() == L' ') result.pop_back();
-        if (value.size() > result.size() && result.size() >= 2) {
-            result.back() = L'…';
-        }
         return result;
     };
 
-    std::wstring result;
-    std::size_t accepted{};
+    const auto join = [&](const std::vector<std::wstring>& contextual,
+                          const bool includeEnter,
+                          const bool includeSwitch) {
+        std::wstring result;
+        const auto append = [&](const std::wstring_view segment) {
+            if (segment.empty()) return;
+            if (!result.empty()) result += L"   ";
+            result += segment;
+        };
+        if (includeSwitch) append(L"←→ Switch");
+        for (const auto& segment : contextual) append(segment);
+        if (includeEnter) append(L"↑/A Enter");
+        append(required);
+        return result;
+    };
+    const auto fits = [&](const std::wstring_view value) {
+        if (!std::isfinite(availableWidth) || availableWidth <= 0.0F ||
+            !measureText) return false;
+        const auto measured = measureText(value);
+        return measured && std::isfinite(*measured) &&
+            *measured <= availableWidth;
+    };
+
+    std::vector<std::wstring> contextual;
+    contextual.reserve(std::min(actionBudget, quickActions.size()));
     for (const auto& action : quickActions) {
-        if (accepted >= actionBudget) break;
-        const auto button = sanitize(action.button, 4U);
-        const auto label = sanitize(action.label, labelBudget);
+        if (contextual.size() >= actionBudget) break;
+        const auto button = sanitize(action.button);
+        const auto label = sanitize(action.label);
         if (button.empty() || label.empty()) continue;
-        std::wstring segment = button + L" " + label;
-        const std::size_t projected = result.size() +
-            (result.empty() ? 0U : 3U) + segment.size() + 3U + suffix.size();
-        if (projected > characterBudget) continue;
-        if (!result.empty()) result += L"   ";
-        result += segment;
-        ++accepted;
+        contextual.push_back(button + L" " + label);
     }
-    if (!result.empty()) {
-        result += L"   ";
-        result += suffix;
+
+    const bool genericEnter = density != ControllerGuideDensity::Minimal;
+    if (!contextual.empty()) {
+        auto result = join(contextual, genericEnter, false);
+        if (fits(result)) return result;
+        // Generic entry is less important than every exact authored action.
+        result = join(contextual, false, false);
+        while (!contextual.empty() && !fits(result)) {
+            contextual.pop_back();
+            result = join(contextual, false, false);
+        }
         return result;
     }
 
-    switch (density) {
-    case ControllerGuideDensity::Full:
-        return selectedBridgeWidget
-            ? L"←→ Switch   ↑/A Enter   Y Tap reorder / Hold restart   B Close"
-            : L"←→ Switch   ↑/A Enter   Y Reorder   B Close";
-    case ControllerGuideDensity::Compact:
-        return selectedBridgeWidget
-            ? L"←→ Switch   ↑/A Enter   Y Tap/Hold   B Close"
-            : L"←→ Switch   ↑/A Enter   Y Reorder   B Close";
-    case ControllerGuideDensity::Minimal:
-        return std::wstring{suffix};
-    }
-    return std::wstring{suffix};
+    auto result = join({}, genericEnter, density != ControllerGuideDensity::Minimal);
+    if (fits(result)) return result;
+    result = join({}, genericEnter, false);
+    if (fits(result)) return result;
+    return required;
 }
 
 std::optional<EmbeddedMediaSurfaceBounds> ResolveEmbeddedMediaSurfaceBounds(

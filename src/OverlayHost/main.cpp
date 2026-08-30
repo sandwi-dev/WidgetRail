@@ -13473,8 +13473,11 @@ private:
         auto guide = widgetrail::BuildTrayControllerGuide(
             widgetrail::ResolveControllerGuideDensity(
                 availableWidth, CurrentTextScale()),
-            state_.reorderMode(), TrayYRestartEligible(), quickActions);
-        if (!state_.reorderMode()) guide += L"    Menu  Options";
+            state_.reorderMode(), TrayYRestartEligible(), availableWidth,
+            [this](const std::wstring_view text) {
+                return MeasureGuideTextWidth(text);
+            },
+            quickActions);
         return guide;
     }
 

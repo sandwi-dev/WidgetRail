@@ -286,46 +286,73 @@ int main() {
               std::numeric_limits<float>::quiet_NaN(), 1.0F) ==
               ControllerGuideDensity::Minimal,
           "invalid guide width fails to the non-wrapping minimal form");
+    const auto measureGuide = [](const std::wstring_view text)
+        -> std::optional<float> {
+        return static_cast<float>(text.size());
+    };
     const std::array quickActions{
-        ControllerGuideAction{L"LB", L"Previous track"},
-        ControllerGuideAction{L"X", L"Play / pause"},
-        ControllerGuideAction{L"RB", L"Next track"},
+        ControllerGuideAction{L"X", L"Play or pause"},
+        ControllerGuideAction{L"LT", L"Seek backward"},
+        ControllerGuideAction{L"RT", L"Seek forward"},
     };
     const auto contextualGuide = BuildTrayControllerGuide(
-        ControllerGuideDensity::Compact, false, true, quickActions);
-    Check(contextualGuide.find(L"LB ") != std::wstring::npos &&
-              contextualGuide.find(L"X ") != std::wstring::npos &&
-              contextualGuide.find(L"RB ") != std::wstring::npos,
-          "compact YT guide keeps all three hover quick actions discoverable");
+        ControllerGuideDensity::Compact, false, true, 200.0F,
+        measureGuide, quickActions);
+    Check(contextualGuide.find(L"X Play or pause") != std::wstring::npos &&
+              contextualGuide.find(L"LT Seek backward") != std::wstring::npos &&
+              contextualGuide.find(L"RT Seek forward") != std::wstring::npos,
+          "compact media guide keeps all three complete authored actions");
     Check(contextualGuide.find(L"↑/A Enter") != std::wstring::npos &&
               contextualGuide.find(L"Y Tap/Hold") != std::wstring::npos &&
-              contextualGuide.find(L"B Close") != std::wstring::npos,
-          "contextual guide retains enter, tap-hold, and escape affordances");
-    Check(contextualGuide.size() <= 78U &&
-              contextualGuide.find_first_of(L"\r\n") == std::wstring::npos,
-          "compact contextual guide is sanitized to one bounded line");
+              contextualGuide.find(L"B Close") != std::wstring::npos &&
+              contextualGuide.find(L"Menu Options") != std::wstring::npos,
+          "wide contextual guide retains complete generic and shell affordances");
+    const std::wstring completeAuthoredWithoutEnter =
+        L"X Play or pause   LT Seek backward   RT Seek forward   "
+        L"Y Tap/Hold   B Close   Menu Options";
+    const auto authoredPriorityGuide = BuildTrayControllerGuide(
+        ControllerGuideDensity::Compact, false, true,
+        static_cast<float>(completeAuthoredWithoutEnter.size()),
+        measureGuide, quickActions);
+    Check(authoredPriorityGuide == completeAuthoredWithoutEnter &&
+              authoredPriorityGuide.find(L"↑/A Enter") == std::wstring::npos,
+          "constrained guide drops generic Enter before any authored action");
+    const auto wholeActionGuide = BuildTrayControllerGuide(
+        ControllerGuideDensity::Compact, false, true,
+        static_cast<float>(completeAuthoredWithoutEnter.size() - 1U),
+        measureGuide, quickActions);
+    Check(wholeActionGuide.find(L"X Play or pause") != std::wstring::npos &&
+              wholeActionGuide.find(L"LT Seek backward") != std::wstring::npos &&
+              wholeActionGuide.find(L"RT ") == std::wstring::npos &&
+              wholeActionGuide.find(L'…') == std::wstring::npos,
+          "further constraint removes the lowest-priority action whole");
     const std::array hostileAction{
         ControllerGuideAction{L"LB\nRB", L"A deliberately enormous\nwidget supplied label"},
     };
     const auto hostileGuide = BuildTrayControllerGuide(
-        ControllerGuideDensity::Minimal, false, true, hostileAction);
-    Check(hostileGuide.size() <= 28U &&
-              hostileGuide.find_first_of(L"\r\n") == std::wstring::npos,
-          "untrusted widget hint text cannot wrap or overflow minimal chrome");
+        ControllerGuideDensity::Minimal, false, true, 50.0F,
+        measureGuide, hostileAction);
+    Check(hostileGuide == L"Y Tap/Hold   B Close   Menu Options" &&
+              hostileGuide.find_first_of(L"\r\n…") == std::wstring::npos,
+          "untrusted widget hint is dropped whole without wrapping or ellipsis");
     Check(BuildTrayControllerGuide(
-              ControllerGuideDensity::Full, false, true).find(
+              ControllerGuideDensity::Full, false, true, 200.0F,
+              measureGuide).find(
                   L"Y Tap reorder / Hold restart") != std::wstring::npos,
           "full tray guide explains both sides of the Y gesture");
     Check(BuildTrayControllerGuide(
-              ControllerGuideDensity::Minimal, false, true) ==
-              L"Y Tap/Hold   B Close",
-          "minimal tray guide keeps the gesture and escape discoverable");
+              ControllerGuideDensity::Minimal, false, true, 200.0F,
+              measureGuide) ==
+              L"Y Tap/Hold   B Close   Menu Options",
+          "minimal tray guide keeps complete gesture, escape, and options");
     Check(BuildTrayControllerGuide(
-                ControllerGuideDensity::Full, false, false).find(L"Hold") ==
+                ControllerGuideDensity::Full, false, false, 200.0F,
+                measureGuide).find(L"Hold") ==
                 std::wstring::npos,
           "tray guide does not advertise hold restart for a non-bridge item");
     Check(BuildTrayControllerGuide(
-              ControllerGuideDensity::Full, true, true).find(L"Y Done") !=
+              ControllerGuideDensity::Full, true, true, 200.0F,
+              measureGuide).find(L"Y Done") !=
               std::wstring::npos,
           "reorder mode keeps tap-Y completion for bridge widgets");
 
