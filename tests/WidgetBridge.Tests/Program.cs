@@ -31,7 +31,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bridge startup scopes an explicit development installed catalog", DevelopmentCatalogRootIsScoped),
     ("Settings reviews the same catalog selected by the bridge", SettingsUsesSelectedCatalog),
     ("Catalog treats worker memory guidance as optional advisory metadata", CatalogMemoryGuidanceIsAdvisory),
-    ("Worker residency budget options are bounded and explicit", WorkerResidencyBudgetOptionsAreBounded),
+    ("Worker residency count is user-selected and optional", WorkerResidencyBudgetOptionsAreUserSelected),
     ("Worker residency budget admission is race safe", WorkerResidencyBudgetAdmissionIsRaceSafe),
     ("Permitted eighth worker pre-start timeout releases its exact slot", PermittedEighthWorkerPreStartTimeoutReleasesSlot),
     ("Catalog widget icons use the closed WidgetGlyph set with a safe fallback", CatalogGlyphIsClosed),
@@ -292,17 +292,26 @@ static Task DevelopmentCatalogRootIsScoped()
     return Task.CompletedTask;
 }
 
-static Task WorkerResidencyBudgetOptionsAreBounded()
+static Task WorkerResidencyBudgetOptionsAreUserSelected()
 {
     var defaults = WidgetRail.WidgetBridge.Program.ResolveWorkerResidencyBudget([]);
-    Assert.Equal(8, defaults.MaximumApplicationWorkers);
+    Assert.Equal<int?>(null, defaults.MaximumApplicationWorkers);
 
     var configured = WidgetRail.WidgetBridge.Program.ResolveWorkerResidencyBudget(
         ["--max-resident-workers", "3"]);
-    Assert.Equal(3, configured.MaximumApplicationWorkers);
+    Assert.Equal<int?>(3, configured.MaximumApplicationWorkers);
     Assert.Throws<ArgumentException>(() =>
         WidgetRail.WidgetBridge.Program.ResolveWorkerResidencyBudget(
             ["--max-resident-workers", "0"]));
+    Assert.Throws<ArgumentException>(() =>
+        WidgetRail.WidgetBridge.Program.ResolveWorkerResidencyBudget(
+            ["--max-resident-workers", "-1"]));
+    Assert.Throws<ArgumentException>(() =>
+        WidgetRail.WidgetBridge.Program.ResolveWorkerResidencyBudget(
+            ["--max-resident-workers", "many"]));
+    Assert.Throws<ArgumentException>(() =>
+        WidgetRail.WidgetBridge.Program.ResolveWorkerResidencyBudget(
+            ["--max-resident-workers", "3", "--max-resident-workers", "4"]));
     Assert.Throws<ArgumentException>(() =>
         WidgetRail.WidgetBridge.Program.ResolveWorkerResidencyBudget(
             ["--max-resident-memory-mb", "192"]));
@@ -311,10 +320,7 @@ static Task WorkerResidencyBudgetOptionsAreBounded()
 
 static async Task WorkerResidencyBudgetAdmissionIsRaceSafe()
 {
-    var budget = new WorkerResidencyBudget(new WorkerResidencyBudgetOptions
-    {
-        MaximumApplicationWorkers = 4,
-    });
+    var budget = new WorkerResidencyBudget(new WorkerResidencyBudgetOptions());
     var owners = Enumerable.Range(0, 32).Select(_ => new object()).ToArray();
     var admissions = await Task.WhenAll(owners.Select((owner, index) => Task.Run(() =>
     {
@@ -329,9 +335,9 @@ static async Task WorkerResidencyBudgetAdmissionIsRaceSafe()
         }
     })));
 
-    Assert.Equal(4, admissions.Count(admitted => admitted));
-    Assert.Equal(4, budget.Snapshot.ApplicationWorkers);
-    Assert.Equal(4_096L, budget.Snapshot.ApplicationAdvisoryMemoryMb);
+    Assert.Equal(32, admissions.Count(admitted => admitted));
+    Assert.Equal(32, budget.Snapshot.ApplicationWorkers);
+    Assert.Equal(32_768L, budget.Snapshot.ApplicationAdvisoryMemoryMb);
     foreach (var owner in owners) budget.Release(owner);
     Assert.Equal(0, budget.Snapshot.ApplicationWorkers);
     Assert.Equal(0L, budget.Snapshot.ApplicationAdvisoryMemoryMb);

@@ -44,6 +44,9 @@ internal static class BridgeDiagnosticsScenarios
             "The consent failure was not reduced to a safe code.");
         Equal(PlatformDiagnosticState.Unavailable, first.Providers.State,
             "An absent provider backend was not projected as unavailable.");
+        Contains("application workers 1 (no application-worker count limit)",
+            first.Bridge.Summary,
+            "Uncapped application-worker accounting was not reported truthfully.");
         Equal(1, first.Workers.Count,
             "Malformed worker input was not omitted from the bounded projection.");
         Equal("Safe widget", first.Workers[0].WidgetName,
@@ -62,6 +65,14 @@ internal static class BridgeDiagnosticsScenarios
         Equal(2, source.ConsentReads, "Consent projection performed an unexpected number of reads.");
         Equal(2, recoveryService.ListCalls, "Recovery projection performed an unexpected number of reads.");
         Equal(0, recoveryService.RetryCalls, "Read-only diagnostics invoked recovery mutation.");
+
+        var configuredProjection = new BridgeDiagnosticsProjection(
+            new ControlledDiagnosticsSource(Model(Catalog(), maximumApplicationWorkers: 8)),
+            () => new BridgeAuthorityRecoveryProjection(new ControlledRecoveryService([])));
+        var configured = await configuredProjection.CreateAsync(CancellationToken.None);
+        Contains("application workers 1/8 (user-configured count limit)",
+            configured.Bridge.Summary,
+            "The explicit application-worker cap was not reported truthfully.");
     }
 
     internal static async Task PartialFailureMalformedInputAndDeadlineAreClosed()
@@ -184,7 +195,9 @@ internal static class BridgeDiagnosticsScenarios
             "Verified recovery did not win the atomic commit decision.");
     }
 
-    private static BridgeDiagnosticsReadModel Model(BridgeCatalog catalog) => new(
+    private static BridgeDiagnosticsReadModel Model(
+        BridgeCatalog catalog,
+        int? maximumApplicationWorkers = null) => new(
         new BridgeClientRegistrySnapshot(
             catalog,
             4,
@@ -193,7 +206,8 @@ internal static class BridgeDiagnosticsScenarios
                 new BridgeClientWorkerStatus("unsafe widget", "bad\r\nname", false, -1,
                     "C:\\private\\failure", true),
             ],
-            new WorkerResidencyBudgetSnapshot(1, 48, 8, 1, 32)),
+            new WorkerResidencyBudgetSnapshot(
+                1, 48, maximumApplicationWorkers, 1, 32)),
         CatalogDiagnosticRevision: 4,
         CatalogDiagnosticCount: 0,
         CatalogRetainedLastGood: false,
