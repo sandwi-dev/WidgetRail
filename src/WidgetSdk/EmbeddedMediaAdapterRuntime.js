@@ -126,15 +126,17 @@
           width: Math.max(0, finiteNumber(bounds.width, 0)),
           height: Math.max(0, finiteNumber(bounds.height, 0)),
         },
-        mediaKey,
-        playbackState,
-        positionSeconds: observed.positionSeconds,
-        durationSeconds: observed.durationSeconds,
-        volume: observed.volume,
       };
-      if (observed.playbackRate !== undefined) value.playbackRate = observed.playbackRate;
-      if (observed.muted !== undefined) value.muted = observed.muted;
-      if (observed.loop !== undefined) value.loop = observed.loop;
+      if (mediaKey.length > 0) {
+        value.mediaKey = mediaKey;
+        value.playbackState = playbackState;
+        value.positionSeconds = observed.positionSeconds;
+        value.durationSeconds = observed.durationSeconds;
+        value.volume = observed.volume;
+        if (observed.playbackRate !== undefined) value.playbackRate = observed.playbackRate;
+        if (observed.muted !== undefined) value.muted = observed.muted;
+        if (observed.loop !== undefined) value.loop = observed.loop;
+      }
       if (errorCode) value.errorCode = fixedCode(errorCode);
       return value;
     }

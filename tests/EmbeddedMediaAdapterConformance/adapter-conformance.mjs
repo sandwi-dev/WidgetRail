@@ -1,13 +1,22 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import vm from 'node:vm';
 
 const [adapterPath, profile, encodedRequest] = process.argv.slice(2);
 const request = JSON.parse(Buffer.from(encodedRequest, 'base64').toString('utf8'));
 const html = fs.readFileSync(adapterPath, 'utf8');
+const externalScripts = [...html.matchAll(/<script\s+[^>]*src=["']([^"']+)["'][^>]*><\/script>/gi)]
+  .map(match => match[1]);
 const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)]
   .map(match => match[1]).filter(Boolean);
+if (externalScripts.length !== 1 || externalScripts[0] !== 'adapter-runtime.js')
+  fail('adapter-runtime-source', 'expected one adjacent adapter-runtime.js script');
 if (scripts.length !== 1)
   fail('adapter-script-count', `expected one inline script; got ${scripts.length}`);
+const runtimePath = path.join(path.dirname(adapterPath), externalScripts[0]);
+if (!fs.existsSync(runtimePath))
+  fail('adapter-runtime-missing', runtimePath);
+const runtimeScript = fs.readFileSync(runtimePath, 'utf8');
 
 const publicCommands = new Map([
   ['navigatePrevious', 'previous'],
@@ -117,6 +126,7 @@ const context = vm.createContext({
   Map,
   Number,
   Promise,
+  AbortController,
   String,
   Object,
   Math,
@@ -141,6 +151,7 @@ context.YT = {Player: function Player(_id, options) {
   return player;
 }};
 
+vm.runInContext(runtimeScript, context, {filename:runtimePath, timeout:2_000});
 vm.runInContext(scripts[0], context, {filename:adapterPath, timeout:2_000});
 await flush();
 if (!messageListener)
@@ -159,6 +170,18 @@ await send({command:'initialize', ...authority, commandId:++commandId});
 const ready = pageEvents.at(-1);
 if (ready?.type !== 'ready' || ready.commandId !== commandId)
   fail('initialize-correlation', 'initial ready envelope was absent or uncorrelated');
+const playbackKeys = [
+  'mediaKey', 'playbackState', 'positionSeconds', 'durationSeconds', 'volume'];
+const readyPlaybackKeys = playbackKeys.filter(key => Object.hasOwn(ready, key));
+if (readyPlaybackKeys.length !== 0 && readyPlaybackKeys.length !== playbackKeys.length)
+  fail('initialize-playback-block',
+    `initial ready envelope had partial playback keys: ${readyPlaybackKeys.join(',')}`);
+if (readyPlaybackKeys.length !== 0 &&
+    (typeof ready.mediaKey !== 'string' || ready.mediaKey.length === 0))
+  fail('initialize-media-key', 'initial ready playback block had an empty media key');
+if (profile === 'state-callback' && readyPlaybackKeys.length !== 0)
+  fail('initialize-empty-media-ready',
+    'state-callback initial ready must omit playback fields before media is loaded');
 
 await exercise({source:'bootstrap:load', command:'load'});
 for (const requirement of requirements) await exercise(requirement);
