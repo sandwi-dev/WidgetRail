@@ -127,7 +127,8 @@ class SurfaceInteractionTransactions final {
 public:
     [[nodiscard]] static DirectionalFocusResolution ResolveDirectionalFocus(
         const WidgetSnapshot&, std::wstring_view, NavigationDirection,
-        const RenderResult&);
+        const RenderResult&, const WidgetFocusGroupMemory* = nullptr,
+        std::wstring_view widgetId = {});
     [[nodiscard]] static FocusMutation MoveFocus(
         std::wstring&, std::wstring_view);
     [[nodiscard]] static FreeScrollAuthorityDecision EvaluateFreeScroll(
@@ -292,6 +293,11 @@ public:
     [[nodiscard]] const std::wstring& focusedElementId() const noexcept {
         return focusedElementId_;
     }
+    [[nodiscard]] DirectionalFocusResolution ResolveDirectionalFocus(
+        std::wstring_view widgetId,
+        const WidgetSnapshot& snapshot,
+        NavigationDirection direction,
+        const RenderResult& renderResult) const;
     [[nodiscard]] FreeScrollInteractionState& freeScrollState() noexcept {
         return freeScroll_;
     }
@@ -503,6 +509,7 @@ private:
     FreeScrollInteractionState freeScroll_;
     std::wstring focusedElementId_;
     WidgetSurfaceFocusMemory focusMemory_;
+    WidgetFocusGroupMemory focusGroupMemory_;
     SliderInteractionState sliders_;
     PressedInteractionState pressed_;
     std::uint64_t sliderReconcileAt_{};

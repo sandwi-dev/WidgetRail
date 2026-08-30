@@ -778,6 +778,11 @@ WidgetNode ParseNode(const JsonObject& source) {
         node.visibleWhen != L"compactOnly" && node.visibleWhen != L"expandedOnly")
         throw winrt::hresult_invalid_argument();
     node.inputScopeId = OptionalString(source, L"inputScopeId");
+    node.initialChildFocusId = OptionalString(source, L"initialChildFocusId");
+    if (!node.initialChildFocusId.empty() &&
+        !IsIdentifier(node.initialChildFocusId))
+        throw winrt::hresult_invalid_argument(
+            L"Initial child focus identity is invalid.");
     node.scrollAxis = OptionalString(source, L"scrollAxis");
     node.scrollNearStartActionId = OptionalString(source, L"scrollNearStartActionId");
     node.scrollNearEndActionId = OptionalString(source, L"scrollNearEndActionId");
@@ -1067,6 +1072,79 @@ bool IsNormalizedEmbeddedMediaPath(std::wstring_view value);
 bool IsEmbeddedMediaContentType(std::wstring_view value);
 bool IsEmbeddedMediaCommand(std::wstring_view value);
 
+bool IsFocusEntryContainer(const WidgetNode& node) noexcept {
+    return node.kind == L"stack" || node.kind == L"row" ||
+        node.kind == L"scroll" || node.kind == L"grid";
+}
+
+bool IsFocusableNode(const WidgetNode& node) noexcept {
+    return node.kind == L"button" || node.kind == L"slider" ||
+        node.kind == L"actionSurface";
+}
+
+void ValidateRememberedChildFocusGroups(
+    const WidgetNode& root,
+    const int protocolVersion) {
+    struct Info final {
+        const WidgetNode* node{};
+        std::wstring_view scope;
+        unsigned visibilityMask{};
+    };
+    std::unordered_map<std::wstring, Info> nodes;
+    const auto rootScope = root.inputScopeId.empty()
+        ? std::wstring_view(root.id) : std::wstring_view(root.inputScopeId);
+    const auto visit = [&](const auto& self, const WidgetNode& node,
+                           const std::wstring_view inheritedScope,
+                           const unsigned inheritedVisibility) -> void {
+        const auto scope = node.inputScopeId.empty()
+            ? inheritedScope : std::wstring_view(node.inputScopeId);
+        unsigned visibility = inheritedVisibility;
+        if (node.visibleWhen == L"compactOnly") visibility &= 1U;
+        else if (node.visibleWhen == L"expandedOnly") visibility &= 2U;
+        nodes.emplace(node.id, Info{&node, scope, visibility});
+        for (const auto& child : node.children)
+            self(self, child, scope, visibility);
+    };
+    visit(visit, root, rootScope, 3U);
+
+    const auto isDescendant = [](const auto& self, const WidgetNode& container,
+                                 const WidgetNode* target) -> bool {
+        for (const auto& child : container.children) {
+            if (&child == target || self(self, child, target)) return true;
+        }
+        return false;
+    };
+    for (const auto& [id, info] : nodes) {
+        const auto& node = *info.node;
+        if (!node.initialChildFocusId.empty()) {
+            const auto target = nodes.find(node.initialChildFocusId);
+            if (protocolVersion <
+                    protocol_contract::RememberedChildFocusGroupVersion ||
+                !IsFocusEntryContainer(node) || target == nodes.end() ||
+                !IsFocusableNode(*target->second.node) ||
+                target->second.scope != info.scope ||
+                !isDescendant(isDescendant, node, target->second.node) ||
+                (info.visibilityMask & ~target->second.visibilityMask) != 0) {
+                throw winrt::hresult_invalid_argument(
+                    L"Remembered-child focus group authority is invalid.");
+            }
+        }
+        for (const auto* focus : {&node.focusUp, &node.focusDown,
+                                  &node.focusLeft, &node.focusRight}) {
+            if (focus->empty()) continue;
+            const auto target = nodes.find(*focus);
+            if (target == nodes.end() || target->second.scope != info.scope ||
+                (!IsFocusableNode(*target->second.node) &&
+                 target->second.node->initialChildFocusId.empty()) ||
+                (!target->second.node->initialChildFocusId.empty() &&
+                 (info.visibilityMask & ~target->second.visibilityMask) != 0)) {
+                throw winrt::hresult_invalid_argument(
+                    L"Explicit focus target authority is invalid.");
+            }
+        }
+    }
+}
+
 WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     ValidatePinnedProjectionCatalogBounds(source);
     WidgetSnapshot snapshot;
@@ -1176,6 +1254,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                     throw winrt::hresult_invalid_argument(
                         L"Widget snapshot pinned projection version is invalid.");
                 parsed.root = ParseNode(layout.GetNamedObject(L"root"));
+                ValidateRememberedChildFocusGroups(
+                    *parsed.root, snapshot.protocolVersion);
                 parsed.activeInputScopeId = OptionalString(layout, L"activeInputScopeId");
                 parsed.initialFocusId = OptionalString(layout, L"initialFocusId");
                 if (!IsIdentifier(parsed.activeInputScopeId) ||
@@ -1414,6 +1494,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         }
     }
     snapshot.root = ParseNode(source.GetNamedObject(L"root"));
+    ValidateRememberedChildFocusGroups(snapshot.root, snapshot.protocolVersion);
     std::size_t mediaViewportCount{};
     std::wstring mediaViewportSurfaceId;
     std::wstring mediaViewportAccessibleName;
@@ -1519,7 +1600,7 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 39> properties{
+    static constexpr std::array<std::wstring_view, 40> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
@@ -1527,7 +1608,7 @@ bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
         L"artworkHandle", L"mediaSurfaceId", L"imageFit", L"glyph", L"indicatorSize",
         L"actionSurfaceOrientation", L"gridMinimumColumnWidth",
         L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
-        L"focusPersistenceId", L"focus", L"inputScopeId", L"scrollAxis",
+        L"focusPersistenceId", L"focus", L"inputScopeId", L"initialChildFocusId", L"scrollAxis",
         L"scrollNearStartActionId", L"scrollNearEndActionId",
         L"scrollPaginationThreshold", L"virtualCollectionWindow",
         L"collectionAnchorKey",
@@ -1569,7 +1650,7 @@ bool ValidateWidgetDocumentStructure(
                  L"indicatorSize", L"actionSurfaceOrientation",
                  L"gridMinimumColumnWidth", L"gridMaximumColumns", L"isDisabled",
                  L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
-                 L"inputScopeId", L"scrollAxis", L"scrollNearStartActionId",
+                 L"inputScopeId", L"initialChildFocusId", L"scrollAxis", L"scrollNearStartActionId",
                  L"scrollNearEndActionId", L"scrollPaginationThreshold",
                  L"virtualCollectionWindow",
                  L"collectionAnchorKey", L"collectionItemKey",
@@ -2063,7 +2144,8 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         return Effect::MeasureLayout | Effect::Paint |
             Effect::Interaction | Effect::Accessibility;
     }
-    if (property == L"inputScopeId" || property == L"shortcuts") {
+    if (property == L"inputScopeId" || property == L"initialChildFocusId" ||
+        property == L"shortcuts") {
         // Scope changes can move visual focus; shortcut changes can alter the
         // host-owned Back affordance.
         return Effect::Paint | Effect::Authority |

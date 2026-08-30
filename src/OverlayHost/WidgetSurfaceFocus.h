@@ -4,7 +4,10 @@
 
 #include <string>
 #include <string_view>
+#include <optional>
 #include <unordered_map>
+
+namespace widgetrail { struct RenderResult; }
 
 namespace widgetrail::input {
 
@@ -49,6 +52,29 @@ private:
         std::wstring_view scopeId);
 
     std::unordered_map<std::wstring, Entry> entries_;
+};
+
+/// Remembers the last valid focused descendant of each explicitly authored
+/// focus-entry container without making the container a focus or UIA node.
+class WidgetFocusGroupMemory final {
+public:
+    void Remember(
+        std::wstring_view widgetId,
+        const WidgetSnapshot& snapshot,
+        std::wstring_view focusedElementId);
+    [[nodiscard]] std::optional<std::wstring> Resolve(
+        std::wstring_view widgetId,
+        const WidgetSnapshot& snapshot,
+        std::wstring_view groupId,
+        const RenderResult& renderResult) const;
+    void Forget(std::wstring_view widgetId);
+
+private:
+    [[nodiscard]] static std::wstring Key(
+        std::wstring_view widgetId,
+        std::wstring_view scopeId,
+        std::wstring_view groupId);
+    std::unordered_map<std::wstring, std::wstring> entries_;
 };
 
 } // namespace widgetrail::input

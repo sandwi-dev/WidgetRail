@@ -145,6 +145,12 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.FocusPersistenceVersion,
                     $"{path}.focusPersistenceId",
                     $"Focus persistence requires protocol version {ProtocolConstants.FocusPersistenceVersion} or later.");
+            if (node.InitialChildFocusId is not null)
+                Add(
+                    "remembered-child-focus-group",
+                    ProtocolConstants.RememberedChildFocusGroupVersion,
+                    $"{path}.initialChildFocusId",
+                    $"Remembered-child focus groups require protocol version {ProtocolConstants.RememberedChildFocusGroupVersion} or later.");
             var shortcuts = node.Shortcuts ?? [];
             for (var shortcutIndex = 0; shortcutIndex < shortcuts.Count; shortcutIndex++)
             {

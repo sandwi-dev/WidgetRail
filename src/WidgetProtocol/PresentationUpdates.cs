@@ -54,6 +54,7 @@ public enum PresentationProperty
     FocusPersistenceId,
     Focus,
     InputScopeId,
+    InitialChildFocusId,
     ScrollAxis,
     ScrollNearStartActionId,
     ScrollNearEndActionId,
@@ -173,6 +174,7 @@ public static class PresentationPropertyMetadata
         PresentationProperty.ValueChangedActionId or
         PresentationProperty.Shortcuts or
         PresentationProperty.InputScopeId or
+        PresentationProperty.InitialChildFocusId or
         PresentationProperty.Focus or
         PresentationProperty.FocusPersistenceId or
         PresentationProperty.ScrollNearStartActionId or

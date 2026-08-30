@@ -56,7 +56,9 @@ bool SameScrollPaginationRequest(
 
 DirectionalFocusResolution SurfaceInteractionTransactions::ResolveDirectionalFocus(
     const WidgetSnapshot& snapshot, const std::wstring_view focusedElementId,
-    const NavigationDirection direction, const RenderResult& renderResult) {
+    const NavigationDirection direction, const RenderResult& renderResult,
+    const WidgetFocusGroupMemory* focusGroups,
+    const std::wstring_view widgetId) {
     const auto visible = ResolveVisibleFocusTarget(
         focusedElementId, snapshot.activeInputScopeId, renderResult);
     if (!visible) return {DirectionalFocusDisposition::MissingVisibleFocus, {}};
@@ -80,6 +82,13 @@ DirectionalFocusResolution SurfaceInteractionTransactions::ResolveDirectionalFoc
             focusedElementId, explicitTarget->id,
             IsEnabledFocusTarget(explicitTarget->id, renderResult))) {
         return {DirectionalFocusDisposition::Explicit, explicitTarget->id};
+    }
+    if (explicitTarget && focusGroups &&
+        !explicitTarget->initialChildFocusId.empty()) {
+        if (auto target = focusGroups->Resolve(
+                widgetId, snapshot, explicitTarget->id, renderResult)) {
+            return {DirectionalFocusDisposition::Explicit, std::move(target)};
+        }
     }
     if (const auto geometric = FindGeometricFocusTarget(
             focusedElementId, direction, renderResult)) {
@@ -232,6 +241,17 @@ void WidgetInteractionSession::SetFocus(
     const std::wstring_view target) {
     focusedElementId_ = target;
     focusMemory_.Remember(widgetId, snapshot, focusedElementId_);
+    focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
+}
+
+DirectionalFocusResolution WidgetInteractionSession::ResolveDirectionalFocus(
+    const std::wstring_view widgetId,
+    const WidgetSnapshot& snapshot,
+    const NavigationDirection direction,
+    const RenderResult& renderResult) const {
+    return SurfaceInteractionTransactions::ResolveDirectionalFocus(
+        snapshot, focusedElementId_, direction, renderResult,
+        &focusGroupMemory_, widgetId);
 }
 
 FocusMutation WidgetInteractionSession::MoveFocus(
@@ -249,6 +269,7 @@ FocusMutation WidgetInteractionSession::MoveFocus(
     result.pressedPresentationChanged =
         retirePressedPresentation && pressed_.Clear();
     focusMemory_.Remember(widgetId, snapshot, focusedElementId_);
+    focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
     if (retireSliderPresentations) RefreshSliderDeadline();
     return result;
 }
@@ -267,6 +288,7 @@ std::wstring WidgetInteractionSession::RestoreFocus(
     const std::wstring_view widgetId,
     const WidgetSnapshot& snapshot) {
     focusedElementId_ = focusMemory_.Restore(widgetId, snapshot);
+    focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
     return focusedElementId_;
 }
 
@@ -278,6 +300,7 @@ std::wstring WidgetInteractionSession::FocusRestoreCandidate(
 
 void WidgetInteractionSession::ForgetWidget(const std::wstring_view widgetId) {
     focusMemory_.Forget(widgetId);
+    focusGroupMemory_.Forget(widgetId);
     sliders_.ForgetWidget(widgetId);
     RefreshSliderDeadline();
 }

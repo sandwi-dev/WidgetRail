@@ -290,6 +290,8 @@ struct WidgetNode final {
     // interpreted only by the native host against its compact breakpoint.
     std::wstring visibleWhen;
     std::wstring inputScopeId;
+    // Protocol-v33 opt-in remembered-child focus group fallback.
+    std::wstring initialChildFocusId;
     std::wstring scrollAxis;
     std::wstring scrollNearStartActionId;
     std::wstring scrollNearEndActionId;

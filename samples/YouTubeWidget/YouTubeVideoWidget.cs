@@ -99,7 +99,7 @@ public sealed partial class YouTubeVideoWidget : Widget
                 ProtocolConstants.MaximumTextEntryLength)
             .FocusUp(showFullscreenAction && fullscreenActionEnabled
                 ? FullscreenFocusId : "youtube.player.back")
-            .FocusDown("youtube.playback.toggle")
+            .FocusDown("youtube.controls")
             .Classes("youtube-link", link.Length == 0 ? "is-empty" : "has-value");
         var toggleLabel = playbackSemantic == EmbeddedMediaPlaybackState.Playing ? "Pause" : "Play";
         var toggle = UI.Button("", ToggleActionId, "youtube.playback.toggle")
@@ -224,6 +224,7 @@ public sealed partial class YouTubeVideoWidget : Widget
                                                 UI.Text(FormatTime(duration), "youtube.duration").Classes("youtube-time", "is-end"))
                                             .Classes("youtube-timeline-group"),
                                         volumeControl)
+                                    .RememberChildFocus("youtube.playback.toggle")
                                     .Classes("youtube-controls"))
                             .Classes("youtube-control-deck", videoId is null ? "is-unavailable" : "is-ready"))
                     .Classes("youtube-player-shell"))

@@ -348,6 +348,7 @@ private:
     bool mediaViewportGeometryDirty_{true};
     mutable WidgetSurfaceWorkCounters workCounters_;
     std::wstring focusedElementId_;
+    input::WidgetFocusGroupMemory focusGroupMemory_;
     input::FreeScrollInteractionState freeScroll_;
     input::WidgetInteractionSession sliderInteraction_;
     std::vector<WidgetSurfaceInputRequest> inputRequests_;

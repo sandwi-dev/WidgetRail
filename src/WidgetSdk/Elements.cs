@@ -2,6 +2,33 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.WidgetSdk;
 
+internal static class ContainerElementContract
+{
+    internal static string RequireInitialChild(string id)
+    {
+        StableIdentifier.Validate(id, nameof(id));
+        return id;
+    }
+
+    internal static ViewNode Node(
+        string id,
+        ViewNodeKind kind,
+        IReadOnlyList<string> styleClasses,
+        string? inputScopeId,
+        string? initialChildFocusId,
+        IReadOnlyList<ControllerShortcut> shortcuts,
+        IReadOnlyList<WidgetElement> children) => new()
+    {
+        Id = id,
+        Kind = kind,
+        StyleClasses = styleClasses,
+        InputScopeId = inputScopeId,
+        InitialChildFocusId = initialChildFocusId,
+        Shortcuts = shortcuts,
+        Children = children.Select(child => child.ToProtocolNode()).ToArray(),
+    };
+}
+
 public abstract record WidgetElement(string Id)
 {
     public IReadOnlyList<string> StyleClasses { get; init; } = [];
@@ -86,8 +113,11 @@ public sealed record StackElement : WidgetElement
     internal StackElement(string id, IReadOnlyList<WidgetElement> children) : base(RequireId(id)) => Children = children;
     public IReadOnlyList<WidgetElement> Children { get; init; }
     public string? InputScopeId { get; init; }
+    public string? InitialChildFocusId { get; init; }
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
     public StackElement InputScope(string scopeId) => this with { InputScopeId = RequireId(scopeId) };
+    public StackElement RememberChildFocus(string initialChildFocusId) => this with
+        { InitialChildFocusId = ContainerElementContract.RequireInitialChild(initialChildFocusId) };
     public StackElement Shortcut(
         ControllerButton button,
         string actionId,
@@ -97,15 +127,9 @@ public sealed record StackElement : WidgetElement
             Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy)],
         };
 
-    internal override ViewNode ToProtocolNode() => new()
-    {
-        Id = Id,
-        Kind = ViewNodeKind.Stack,
-        StyleClasses = StyleClasses,
-        InputScopeId = InputScopeId,
-        Shortcuts = Shortcuts,
-        Children = Children.Select(child => child.ToProtocolNode()).ToArray(),
-    };
+    internal override ViewNode ToProtocolNode() => ContainerElementContract.Node(
+        Id, ViewNodeKind.Stack, StyleClasses, InputScopeId, InitialChildFocusId,
+        Shortcuts, Children);
 }
 
 public sealed record RowElement : WidgetElement
@@ -113,8 +137,11 @@ public sealed record RowElement : WidgetElement
     internal RowElement(string id, IReadOnlyList<WidgetElement> children) : base(RequireId(id)) => Children = children;
     public IReadOnlyList<WidgetElement> Children { get; init; }
     public string? InputScopeId { get; init; }
+    public string? InitialChildFocusId { get; init; }
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
     public RowElement InputScope(string scopeId) => this with { InputScopeId = RequireId(scopeId) };
+    public RowElement RememberChildFocus(string initialChildFocusId) => this with
+        { InitialChildFocusId = ContainerElementContract.RequireInitialChild(initialChildFocusId) };
     public RowElement Shortcut(
         ControllerButton button,
         string actionId,
@@ -124,15 +151,9 @@ public sealed record RowElement : WidgetElement
             Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy)],
         };
 
-    internal override ViewNode ToProtocolNode() => new()
-    {
-        Id = Id,
-        Kind = ViewNodeKind.Row,
-        StyleClasses = StyleClasses,
-        InputScopeId = InputScopeId,
-        Shortcuts = Shortcuts,
-        Children = Children.Select(child => child.ToProtocolNode()).ToArray(),
-    };
+    internal override ViewNode ToProtocolNode() => ContainerElementContract.Node(
+        Id, ViewNodeKind.Row, StyleClasses, InputScopeId, InitialChildFocusId,
+        Shortcuts, Children);
 }
 
 /// <summary>
@@ -153,6 +174,7 @@ public sealed record ScrollElement : WidgetElement
     public ScrollAxis Axis { get; init; }
     public IReadOnlyList<WidgetElement> Children { get; init; }
     public string? InputScopeId { get; init; }
+    public string? InitialChildFocusId { get; init; }
     public string? NearStartActionId { get; init; }
     public string? NearEndActionId { get; init; }
     public int? PaginationThreshold { get; init; }
@@ -160,6 +182,8 @@ public sealed record ScrollElement : WidgetElement
     internal VirtualCollectionWindow? VirtualCollectionWindow { get; init; }
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
     public ScrollElement InputScope(string scopeId) => this with { InputScopeId = RequireId(scopeId) };
+    public ScrollElement RememberChildFocus(string initialChildFocusId) => this with
+        { InitialChildFocusId = ContainerElementContract.RequireInitialChild(initialChildFocusId) };
     public ScrollElement Shortcut(
         ControllerButton button,
         string actionId,
@@ -205,6 +229,7 @@ public sealed record ScrollElement : WidgetElement
         CollectionAnchorKey = CollectionAnchorKey,
         StyleClasses = StyleClasses,
         InputScopeId = InputScopeId,
+        InitialChildFocusId = InitialChildFocusId,
         Shortcuts = Shortcuts,
         Children = Children.Select(child => child.ToProtocolNode()).ToArray(),
     };

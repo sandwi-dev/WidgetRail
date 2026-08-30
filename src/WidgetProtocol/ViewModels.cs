@@ -358,6 +358,12 @@ public sealed record ViewNode
     /// </summary>
     public string? InputScopeId { get; init; }
     /// <summary>
+    /// Protocol-v33 opt-in remembered-child focus entry. Only Stack, Row,
+    /// Scroll, and Grid containers may name an always-available focusable
+    /// descendant in their own input scope.
+    /// </summary>
+    public string? InitialChildFocusId { get; init; }
+    /// <summary>
     /// Selects the bounded axis for a Scroll node. The host owns the offset,
     /// clips descendants, and reveals controller focus; widgets never publish pixels.
     /// </summary>

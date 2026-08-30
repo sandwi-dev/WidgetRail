@@ -484,6 +484,7 @@ method WidgetRail.WidgetSdk.GridElement.Equals(WidgetRail.WidgetSdk.WidgetElemen
 method WidgetRail.WidgetSdk.GridElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.GridElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.GridElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.GridElement
+method WidgetRail.WidgetSdk.GridElement.RememberChildFocus(string initialChildFocusId) -> WidgetRail.WidgetSdk.GridElement
 method WidgetRail.WidgetSdk.GridElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.GridElement
 method WidgetRail.WidgetSdk.GridElement.ToString() -> string
 method WidgetRail.WidgetSdk.IconElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
@@ -551,6 +552,7 @@ method WidgetRail.WidgetSdk.RowElement.Equals(WidgetRail.WidgetSdk.WidgetElement
 method WidgetRail.WidgetSdk.RowElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.RowElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.RowElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.RowElement
+method WidgetRail.WidgetSdk.RowElement.RememberChildFocus(string initialChildFocusId) -> WidgetRail.WidgetSdk.RowElement
 method WidgetRail.WidgetSdk.RowElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.RowElement
 method WidgetRail.WidgetSdk.RowElement.ToString() -> string
 method WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest.<Clone>$() -> WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest
@@ -562,6 +564,7 @@ method WidgetRail.WidgetSdk.ScrollElement.Equals(WidgetRail.WidgetSdk.WidgetElem
 method WidgetRail.WidgetSdk.ScrollElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ScrollElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ScrollElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.ScrollElement
+method WidgetRail.WidgetSdk.ScrollElement.RememberChildFocus(string initialChildFocusId) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.ScrollElement.Paginate(string? nearStartActionId, string? nearEndActionId, int threshold = 2) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.ScrollElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.ScrollElement.ToString() -> string
@@ -644,6 +647,7 @@ method WidgetRail.WidgetSdk.StackElement.Equals(WidgetRail.WidgetSdk.WidgetEleme
 method WidgetRail.WidgetSdk.StackElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.StackElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.StackElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.StackElement
+method WidgetRail.WidgetSdk.StackElement.RememberChildFocus(string initialChildFocusId) -> WidgetRail.WidgetSdk.StackElement
 method WidgetRail.WidgetSdk.StackElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.StackElement
 method WidgetRail.WidgetSdk.StackElement.ToString() -> string
 method WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest.<Clone>$() -> WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest
@@ -2334,6 +2338,7 @@ property string? WidgetRail.WidgetSdk.ControllerInputEvent.ActiveInputScopeId { 
 property string? WidgetRail.WidgetSdk.ControllerInputEvent.FocusedElementId { get; set; }
 property string? WidgetRail.WidgetSdk.ControllerInputEvent.PinnedLayoutId { get; set; }
 property string? WidgetRail.WidgetSdk.GridElement.InputScopeId { get; set; }
+property string? WidgetRail.WidgetSdk.GridElement.InitialChildFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.ImageElement.ArtworkHandle { get; set; }
 property string? WidgetRail.WidgetSdk.NavigationShellDestination.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.PickerOption.AccessibilityLabel { get; set; }
@@ -2341,8 +2346,10 @@ property string? WidgetRail.WidgetSdk.PinnedLayoutHandle.ActiveInputScopeId { ge
 property string? WidgetRail.WidgetSdk.PinnedLayoutHandle.InitialFocusId { get; }
 property string? WidgetRail.WidgetSdk.ProgressElement.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.RowElement.InputScopeId { get; set; }
+property string? WidgetRail.WidgetSdk.RowElement.InitialChildFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.ScrollElement.CollectionAnchorKey { get; set; }
 property string? WidgetRail.WidgetSdk.ScrollElement.InputScopeId { get; set; }
+property string? WidgetRail.WidgetSdk.ScrollElement.InitialChildFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.ScrollElement.NearEndActionId { get; set; }
 property string? WidgetRail.WidgetSdk.ScrollElement.NearStartActionId { get; set; }
 property string? WidgetRail.WidgetSdk.ScrubberElement.ActivationActionId { get; set; }
@@ -2353,6 +2360,7 @@ property string? WidgetRail.WidgetSdk.SegmentedTab.AccessibilityLabel { get; set
 property string? WidgetRail.WidgetSdk.SliderElement.ActivationActionId { get; set; }
 property string? WidgetRail.WidgetSdk.SliderElement.FocusPersistenceId { get; set; }
 property string? WidgetRail.WidgetSdk.StackElement.InputScopeId { get; set; }
+property string? WidgetRail.WidgetSdk.StackElement.InitialChildFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.TextElement.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.TextEntryElement.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetActionEvent.CommittedText { get; set; }

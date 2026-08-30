@@ -41,11 +41,17 @@ public sealed record GridElement : WidgetElement
     public int? MaximumColumns { get; init; }
     public IReadOnlyList<WidgetElement> Children { get; init; }
     public string? InputScopeId { get; init; }
+    public string? InitialChildFocusId { get; init; }
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
 
     public GridElement InputScope(string scopeId) => this with
     {
         InputScopeId = RequireId(scopeId),
+    };
+
+    public GridElement RememberChildFocus(string initialChildFocusId) => this with
+    {
+        InitialChildFocusId = ContainerElementContract.RequireInitialChild(initialChildFocusId),
     };
 
     public GridElement Shortcut(
@@ -68,6 +74,7 @@ public sealed record GridElement : WidgetElement
         GridMinimumColumnWidth = MinimumColumnWidth,
         GridMaximumColumns = MaximumColumns,
         InputScopeId = InputScopeId,
+        InitialChildFocusId = InitialChildFocusId,
         Shortcuts = Shortcuts,
         StyleClasses = StyleClasses,
         Children = Children.Select(child => child.ToProtocolNode()).ToArray(),

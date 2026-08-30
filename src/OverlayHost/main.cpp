@@ -10370,10 +10370,8 @@ private:
         else if (direction == L"right") navigationDirection = widgetrail::input::NavigationDirection::Right;
         else if (direction == L"up") navigationDirection = widgetrail::input::NavigationDirection::Up;
         else if (direction == L"down") navigationDirection = widgetrail::input::NavigationDirection::Down;
-        const auto resolution =
-            widgetrail::input::SurfaceInteractionTransactions::ResolveDirectionalFocus(
-                *snapshot, interactionSession_.focusedElementId(),
-                navigationDirection, lastWidgetRenderResult_);
+        const auto resolution = interactionSession_.ResolveDirectionalFocus(
+            widgetId, *snapshot, navigationDirection, lastWidgetRenderResult_);
         if (resolution.disposition ==
             widgetrail::input::DirectionalFocusDisposition::MissingVisibleFocus) {
             // A constrained viewport or responsive branch can leave a valid

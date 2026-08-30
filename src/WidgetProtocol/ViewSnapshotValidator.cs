@@ -204,6 +204,24 @@ public static class ViewSnapshotValidator
 
         foreach (var (_, entry) in ids)
         {
+            if (entry.Node.InitialChildFocusId is { } initialChild)
+            {
+                CheckIdentifier(initialChild, $"{entry.Path}.initialChildFocusId",
+                    "initial child focus ID");
+                if (entry.Node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or
+                    ViewNodeKind.Scroll or ViewNodeKind.Grid))
+                    Add($"{entry.Path}.initialChildFocusId", "focus_group_on_non_container",
+                        "Only Stack, Row, Scroll, and Grid containers may opt into remembered-child focus.");
+                else if (!ids.TryGetValue(initialChild, out var initialTarget) ||
+                    !initialTarget.Node.IsFocusable ||
+                    !IsAlwaysAvailableDescendant(entry.Node, initialChild))
+                    Add($"{entry.Path}.initialChildFocusId", "invalid_initial_child_focus",
+                        "Initial child focus must name an always-available focusable descendant.");
+                else if (!string.Equals(entry.ScopeKey, initialTarget.ScopeKey, StringComparison.Ordinal))
+                    Add($"{entry.Path}.initialChildFocusId", "initial_child_focus_outside_scope",
+                        "Initial child focus must belong to the container's input scope.");
+            }
+
             var focus = entry.Node.Focus;
             if (focus is null) continue;
             CheckFocus(focus.Up, "up");
@@ -214,11 +232,16 @@ public static class ViewSnapshotValidator
             void CheckFocus(string? targetId, string direction)
             {
                 if (targetId is null) return;
-                if (!ids.TryGetValue(targetId, out var target) || !target.Node.IsFocusable)
-                    Add($"{entry.Path}.focus.{direction}", "invalid_focus_target", $"'{targetId}' is not a focusable node.");
+                if (!ids.TryGetValue(targetId, out var target) ||
+                    (!target.Node.IsFocusable && target.Node.InitialChildFocusId is null))
+                    Add($"{entry.Path}.focus.{direction}", "invalid_focus_target", $"'{targetId}' is not a focusable node or remembered-child focus group.");
                 else if (!string.Equals(entry.ScopeKey, target.ScopeKey, StringComparison.Ordinal))
                     Add($"{entry.Path}.focus.{direction}", "cross_input_scope_focus",
                         "Explicit focus neighbors cannot cross input-scope boundaries.");
+                else if (target.Node.InitialChildFocusId is not null &&
+                         target.Node.VisibleWhen is not (null or ResponsiveVisibility.Always))
+                    Add($"{entry.Path}.focus.{direction}", "hidden_focus_group_target",
+                        "An explicit focus-group target must be available whenever its source is visible.");
             }
         }
 
@@ -793,6 +816,9 @@ public static class ViewSnapshotValidator
                     Add($"{path}.inputScopeId", "input_scope_not_allowed",
                         "Only stack, row, scroll, and grid containers may start an input scope.");
             }
+            if (node.InitialChildFocusId is not null && !isContainer)
+                Add($"{path}.initialChildFocusId", "focus_group_on_non_container",
+                    "Only Stack, Row, Scroll, and Grid containers may opt into remembered-child focus.");
             var startsScope = depth == 1 || (isContainer && node.InputScopeId is not null);
             var scopeKey = startsScope ? path : inheritedScopeKey;
             if (startsScope)
@@ -1118,6 +1144,7 @@ public static class ViewSnapshotValidator
                     StringLength(node.ImageSource) + StringLength(node.ArtworkHandle) +
                     StringLength(node.MediaSurfaceId) +
                     StringLength(node.FocusPersistenceId) + StringLength(node.InputScopeId) +
+                    StringLength(node.InitialChildFocusId) +
                     StringLength(node.ScrollNearStartActionId) + StringLength(node.ScrollNearEndActionId) +
                     StringLength(node.CollectionAnchorKey) + StringLength(node.CollectionItemKey) +
                     StringLength(node.Focus?.Up) + StringLength(node.Focus?.Down) +
@@ -1133,6 +1160,18 @@ public static class ViewSnapshotValidator
         }
 
         static int StringLength(string? value) => value?.Length ?? 0;
+
+        static bool IsAlwaysAvailableDescendant(ViewNode container, string targetId)
+        {
+            foreach (var child in container.Children ?? [])
+            {
+                if (child is null) continue;
+                if (child.VisibleWhen is not (null or ResponsiveVisibility.Always)) continue;
+                if (string.Equals(child.Id, targetId, StringComparison.Ordinal)) return true;
+                if (IsAlwaysAvailableDescendant(child, targetId)) return true;
+            }
+            return false;
+        }
 
         void CheckCapabilityIdentifier(string? value, string path, string label)
         {

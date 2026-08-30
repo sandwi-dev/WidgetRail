@@ -210,6 +210,8 @@ bool WidgetSurfaceCoordinator::Pin(
     layoutOptions_ = std::move(layouts);
     selectedLayoutIndex_ = 0;
     focusedElementId_ = SelectedSnapshot().initialFocusId;
+    focusGroupMemory_.Remember(
+        admission_->widgetId, SelectedSnapshot(), focusedElementId_);
     RetireSliderInteraction();
     inputRequests_.clear();
     actionFeedback_.clear();
@@ -279,6 +281,8 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         !input::FindNodeInInputScope(
             selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId))
         focusedElementId_ = selectedSnapshot.initialFocusId;
+    focusGroupMemory_.Remember(
+        admission_->widgetId, selectedSnapshot, focusedElementId_);
     const input::WidgetInteractionAuthority authority{
         admission_->widgetId,
         &selectedSnapshot,
@@ -479,6 +483,8 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
         const auto mutation = input::SurfaceInteractionTransactions::MoveFocus(
             focusedElementId_, target);
         if (!mutation.changed) return true;
+        focusGroupMemory_.Remember(
+            admission_->widgetId, snapshot, focusedElementId_);
         RetireSliderInteraction();
         RECT client{};
         if (!renderer_ || !window_ || !GetClientRect(window_, &client)) {
@@ -532,7 +538,8 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
         ClearFreeScroll();
     }
     const auto resolution = input::SurfaceInteractionTransactions::ResolveDirectionalFocus(
-        snapshot, focusedElementId_, direction, lastRenderResult_);
+        snapshot, focusedElementId_, direction, lastRenderResult_,
+        &focusGroupMemory_, admission_->widgetId);
     return resolution.target ? applyFocus(*resolution.target) : false;
 }
 
@@ -897,6 +904,8 @@ bool WidgetSurfaceCoordinator::CycleLayout(const int delta) {
         QueueLayoutSelection(priorId, false);
         QueueLayoutSelection(layout.id, true);
         focusedElementId_ = SelectedSnapshot().initialFocusId;
+        focusGroupMemory_.Remember(
+            admission_->widgetId, SelectedSnapshot(), focusedElementId_);
         inputRequests_.clear();
         if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
     }
@@ -954,6 +963,8 @@ bool WidgetSurfaceCoordinator::CancelSetup() noexcept {
         QueueLayoutSelection(selectedId, false);
         QueueLayoutSelection(restoredId, true);
         focusedElementId_ = SelectedSnapshot().initialFocusId;
+        focusGroupMemory_.Remember(
+            admission_->widgetId, SelectedSnapshot(), focusedElementId_);
     }
     setupOriginalLayoutId_.clear();
     const bool canceled = CancelPlacement();
@@ -1244,6 +1255,7 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     ClearFreeScroll();
     if (admission_)
         sliderInteraction_.ForgetRuntime(admission_->instanceId);
+    if (admission_) focusGroupMemory_.Forget(admission_->widgetId);
     overlayVisible_ = false;
     pointerPlacement_ = false;
     pointerPlacementMode_ = PlacementMode::None;
@@ -1551,6 +1563,8 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
                 ClearFreeScroll();
                 if (focusedElementId_ != hit->id) RetireSliderInteraction();
                 focusedElementId_ = hit->id;
+                focusGroupMemory_.Remember(
+                    admission_->widgetId, SelectedSnapshot(), focusedElementId_);
                 pointerActionNode_ = hit->enabled ? hit->id : std::wstring{};
                 SetCapture(window_);
                 PublishAccessibility();
@@ -1739,6 +1753,8 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
                 if (focusedElementId_ != resolved->nodeId)
                     RetireSliderInteraction();
                 focusedElementId_ = resolved->nodeId;
+                focusGroupMemory_.Remember(
+                    admission_->widgetId, snapshot, focusedElementId_);
                 PublishAccessibility();
                 RequestPaint();
             } else {

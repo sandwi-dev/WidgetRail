@@ -255,7 +255,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.TextEntryValue or PresentationProperty.TextEntryPlaceholder or
                 PresentationProperty.ValueChangedActionId or PresentationProperty.ImageSource or
                 PresentationProperty.ArtworkHandle or PresentationProperty.FocusPersistenceId or
-                PresentationProperty.InputScopeId or PresentationProperty.ScrollNearStartActionId or
+                PresentationProperty.InputScopeId or PresentationProperty.InitialChildFocusId or PresentationProperty.ScrollNearStartActionId or
                 PresentationProperty.ScrollNearEndActionId or PresentationProperty.CollectionAnchorKey or
                 PresentationProperty.CollectionItemKey => Read<string?>(change.Value),
                 PresentationProperty.TextEntryMaximumLength or PresentationProperty.GridMaximumColumns or
@@ -402,6 +402,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.FocusPersistenceId => node with { FocusPersistenceId = Read<string?>(change.Value) },
                 PresentationProperty.Focus => node with { Focus = Read<FocusNeighbors?>(change.Value) },
                 PresentationProperty.InputScopeId => node with { InputScopeId = Read<string?>(change.Value) },
+                PresentationProperty.InitialChildFocusId => node with { InitialChildFocusId = Read<string?>(change.Value) },
                 PresentationProperty.ScrollAxis => node with { ScrollAxis = Read<ScrollAxis?>(change.Value) },
                 PresentationProperty.ScrollNearStartActionId => node with { ScrollNearStartActionId = Read<string?>(change.Value) },
                 PresentationProperty.ScrollNearEndActionId => node with { ScrollNearEndActionId = Read<string?>(change.Value) },

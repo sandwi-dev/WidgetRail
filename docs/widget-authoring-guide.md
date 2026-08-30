@@ -86,7 +86,7 @@ Do not use these version numbers interchangeably.
 | --- | ---: | --- | --- |
 | Manifest schema | `manifestVersion: 1` | `manifest.json` | Shape and validation rules of the package manifest. |
 | Package host API | major `1` | `hostApi.minimum` and `hostApi.maximumMajor` | Compatibility range used when the catalog decides whether this host may load the package. |
-| Declarative snapshot protocol | `1` through `27` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI checkpoint and the optional atomic update contract. The SDK selects the highest version required by the complete tree automatically. |
+| Declarative snapshot protocol | `1` through `33` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI checkpoint and the optional atomic update contract. The SDK selects the highest version required by the complete tree automatically. |
 
 A plain Stack/Row view is emitted as protocol 1. Scroll/surface hints require
 v2; Slider v3; dashboard gesture authority v4; LoadingIndicator v5; inline PNG
@@ -414,6 +414,13 @@ Rules:
 - `ActiveInputScopeId` must identify the root scope or one published nested
   scope.
 - `InitialFocusId` and explicit focus neighbors must remain inside that scope.
+- A `Stack`, `Row`, `Scroll`, or `Grid` can opt into remembered-child entry
+  with `.RememberChildFocus("controls.play")`. The container remains invisible
+  to focus and accessibility. An explicit directional neighbor may target the
+  container ID; entry restores its last valid focused descendant, then the
+  authored initial child, then the first valid focusable descendant. Ordinary
+  spatial navigation is unchanged, and responsive or input-scope boundaries
+  cannot be crossed.
 - One node may bind each `(button, phase)` only once. Separate focused controls
   in one scope and separate scopes may reuse the same button.
 - Focus is remembered independently per widget and scope. Keep IDs stable.
