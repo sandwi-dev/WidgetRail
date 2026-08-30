@@ -58,6 +58,16 @@ void TestAcceptedCompactMediaHostContract() {
     const auto has = [&](const std::string_view text) {
         return source.find(text) != std::string::npos;
     };
+    const auto section = [&](const std::string_view begin,
+                             const std::string_view end) {
+        const auto beginOffset = source.find(begin);
+        Check(beginOffset != std::string::npos,
+              "retained media host contract section begins");
+        const auto endOffset = source.find(end, beginOffset + begin.size());
+        Check(endOffset != std::string::npos,
+              "retained media host contract section ends");
+        return source.substr(beginOffset, endOffset - beginOffset);
+    };
     Check(has("if (current == std::numeric_limits<long long>::max()) return std::nullopt;") &&
               has("return current + 1;") &&
               has("NextEmbeddedMediaPlaybackObservationSequence(\n                embeddedMediaPlaybackEventSequence_)") &&
@@ -66,6 +76,47 @@ void TestAcceptedCompactMediaHostContract() {
               has("origin->commandSequence != commandSequence") &&
               has("origin->mediaKey != event.mediaKey"),
           "page-event restart projects onto a host-monotonic sequence, fails closed at exhaustion, and retains command/media/origin authority");
+    const auto residentSession = section(
+        "struct EmbeddedMediaSession final {",
+        "struct CommittedOverlayFullscreenMediaPresentation final {");
+    Check(residentSession.find("coordinator") != std::string::npos &&
+              residentSession.find("authority") != std::string::npos &&
+              residentSession.find("playbackEventSequence") == std::string::npos,
+          "resident session retains its controller and authority without owning a restartable playback observation epoch");
+    const auto residentOwnership = section(
+        "void SaveBoundEmbeddedMediaSession() {",
+        "[[nodiscard]] float MediaPixelsPerDip");
+    Check(residentOwnership.find("std::move(richMediaSurface_)") !=
+              std::string::npos &&
+              residentOwnership.find("std::move(found->second.coordinator)") !=
+              std::string::npos &&
+              residentOwnership.find("playbackEventSequence") == std::string::npos,
+          "cycling saves and rebinds the exact resident controller without resetting the process observation epoch");
+    const auto transfer = section(
+        "[[nodiscard]] bool TransferEmbeddedMediaSurface(",
+        "void ReconcileEmbeddedMediaProjection(");
+    const auto deferred = transfer.find("geometry=awaiting-committed-frame");
+    Check(transfer.find("presentationTransferPending()") != std::string::npos &&
+              deferred != std::string::npos &&
+              transfer.find("return true;", deferred) != std::string::npos &&
+              transfer.find("CompletePresentationTransfer") > deferred,
+          "cycling defers exact geometry reattachment without retiring the retained controller and completes it only after geometry resolves");
+    const auto residency = section(
+        "void SyncWidgetActivity(",
+        "void RetireBridgeSessionPresentationAuthority(");
+    Check(residency.find(
+              "SuspendBoundEmbeddedMediaPresentation(L\"active-widget-changed\")") !=
+              std::string::npos &&
+              residency.find(
+                  "TransferEmbeddedMediaSurface(\n                    destination, L\"lifecycle-reconciliation\")") !=
+              std::string::npos &&
+              residency.find(
+                  "if (richMediaSurface_->presentationTransferPending()) continue;") !=
+              std::string::npos &&
+              residency.find(
+                  "ReconcileEmbeddedMediaProjection(L\"lifecycle-reconciliation\")") !=
+              std::string::npos,
+          "lifecycle reconciliation suspends hidden residents and waits for exact deferred reattachment before projection admission");
     Check(has("XINPUT_GAMEPAD_X") &&
               has("Command::TogglePlayback") &&
               has("XINPUT_GAMEPAD_LEFT_SHOULDER") &&

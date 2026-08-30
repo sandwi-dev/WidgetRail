@@ -466,6 +466,38 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
 
 void RunContractCases() {
     using namespace widgetrail::richmedia;
+    const auto coordinatorSourcePath =
+        std::filesystem::path{__FILE__}.parent_path() /
+        "RichMediaSurfaceCoordinator.cpp";
+    std::ifstream coordinatorStream(coordinatorSourcePath, std::ios::binary);
+    Require(static_cast<bool>(coordinatorStream),
+            "rich media coordinator source opens");
+    const std::string coordinatorSource{
+        std::istreambuf_iterator<char>(coordinatorStream), {}};
+    const auto activationBegin = coordinatorSource.find(
+        "bool RichMediaSurfaceCoordinator::SendFocusedSpatialActivation() noexcept {");
+    const auto activationEnd = coordinatorSource.find(
+        "bool RichMediaSurfaceCoordinator::FocusedActionPoint(", activationBegin);
+    Require(activationBegin != std::string::npos &&
+                activationEnd != std::string::npos &&
+                activationBegin < activationEnd,
+            "focused activation owner source section is bounded");
+    const auto activation = coordinatorSource.substr(
+        activationBegin, activationEnd - activationBegin);
+    const auto move = activation.find("COREWEBVIEW2_MOUSE_EVENT_KIND_MOVE");
+    const auto down = activation.find(
+        "COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN", move);
+    const auto up = activation.find(
+        "COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP", down);
+    const auto leave = activation.find(
+        "COREWEBVIEW2_MOUSE_EVENT_KIND_LEAVE", up);
+    Require(move != std::string::npos && down != std::string::npos &&
+                up != std::string::npos && leave != std::string::npos &&
+                move < down && down < up && up < leave &&
+                activation.find(
+                    "return SUCCEEDED(result) && SUCCEEDED(leaveResult);") !=
+                    std::string::npos,
+            "retained controller activation publishes one complete move/down/up/leave gesture and terminalizes either send failure");
     widgetrail::EmbeddedMediaSurfaceDeclaration initialSurface;
     initialSurface.id = L"neutral.primary";
     initialSurface.accessibleName = L"Neutral media";
@@ -2195,6 +2227,11 @@ int wmain(int argc, wchar_t** argv) {
     try {
         RunContractCases();
         if (argc > 1 && std::wstring_view{argv[1]} == L"--contract-only") {
+            CoUninitialize();
+            return 0;
+        }
+        if (argc > 1 && std::wstring_view{argv[1]} == L"--provider-neutral-only") {
+            RunProviderNeutralAdapterCases();
             CoUninitialize();
             return 0;
         }
