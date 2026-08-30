@@ -74,7 +74,7 @@ silently truncate content.
   authenticated IPC, current presentation trees, actions, update admission,
   native/GPU resources, and host-owned queues/caches.
 - Community-domain integrations remain in the package. Core product code must
-  not recognize or implement Spotify, Game Launcher, IGDB, SteamGridDB, or
+  not recognize or implement Spotify, Playnite Library, IGDB, SteamGridDB, or
   another add-on through custom DTOs, providers, identities, or behavior.
 - Public identities are stable opaque values; widgets never receive raw paths,
   commands, AUMIDs, package/store IDs, provider records, or credentials.
@@ -158,13 +158,13 @@ The current exact queue is in `delivery-plan.md`; the feature intent is below.
 - GitHub-hosted community packages without checkout-relative SDK references.
 - Gallery/discovery only after package trust and update governance are sound.
 
-## Unified Game Launcher
+## Unified Playnite Library
 
 The authoritative product specification is
-[`game-launcher-requirements.md`](game-launcher-requirements.md). It is intended
+[`playnite-library-requirements.md`](playnite-library-requirements.md). It is intended
 to exceed Spotify in complexity and acts as the full-application Community-
-widget proof. Games & Apps remains bundled first-party functionality. Game
-Launcher must be an independently installable full-trust Community package
+widget proof. Games & Apps remains bundled first-party functionality. Playnite
+Library must be an independently installable full-trust Community package
 using public SDK artifacts, generic manifest/protocol contracts, explicit trust
 consent, and the supported package catalog. Its source may remain a maintained
 reference in this repository, but its runtime receives no first-party identity,
@@ -178,7 +178,7 @@ APIs, caching, persistence, and launch behavior.
   provenance, and tile/cover/hero/logo artwork roles.
 - Stable opaque SavedId/AppId authority and current launch revalidation.
 - Windows/Xbox installed-game discovery and optional store adapters live in the
-  full-trust Game Launcher package, using supported OS/store contracts and
+  full-trust Playnite Library package, using supported OS/store contracts and
   explicit source enablement/health.
 - Deduplication with distinct launch variants preserved.
 - Warm persisted organization and last-good display while providers refresh.
@@ -194,13 +194,13 @@ Current dependency chain:
 2. Add the generic full-trust Community application runtime and move supported
    Windows/Xbox plus opt-in local-store adapters into the reference package.
 3. Define one generic versioned advanced-presentation declaration usable by
-   any qualifying Community widget; never recognize Game Launcher by identity,
+   any qualifying Community widget; never recognize Playnite Library by identity,
    publisher, assembly, element IDs, style classes, or a private tree shape.
 4. Accept the strict data-only Launcher Experience catalog and native presets
    through that generic declaration.
 5. Add launcher-scoped style/artwork/recovery ownership without granting the
    widget new data or action authority.
-6. Package, install, disclose full trust, enable, select, update, and remove Game Launcher
+6. Package, install, disclose full trust, enable, select, update, and remove Playnite Library
    through the ordinary Community path, then project its state into every
    declared experience.
 7. Deliver author CLI, preview, pack, inspect, install, select, and removal for
@@ -212,7 +212,7 @@ Current dependency chain:
 - Provider-attributed metadata and artwork with revision, cache, licensing,
   attribution, offline, failure, and rate-limit policy.
 - No title-derived launch authority. Provider records and credentials remain
-  private to the full-trust Game Launcher backend and never enter its overlay
+  private to the full-trust Playnite Library backend and never enter its overlay
   presentation snapshot.
 - Metadata failure never removes trusted installed identity or grants launch.
 
@@ -222,7 +222,7 @@ plan and credentials; they must not block installed-only work.
 ### M3 — trusted content operations
 
 - Install/update/pause/resume/cancel/repair/move/import/uninstall/cloud-sync and
-  add-on operations belong to Game Launcher's explicitly trusted application
+  add-on operations belong to Playnite Library's explicitly trusted application
   backend, not OverlayHost, WidgetSdk, WidgetBridge, or PlatformBroker.
 - Destructive operations require explicit confirmation, progress, cancellation,
   rollback/recovery, disk/network policy, and exact current authority.
@@ -304,7 +304,7 @@ eligibility; credential-free structural work continues independently.
 - Trusted artwork/icons with semantic fallback.
 - Stable add/remove behavior, available-app list, refresh, focus, and layout.
 - Keep its bundled first-party library provider independent from the Community
-  Game Launcher backend; shared libraries are optional code reuse, not shared
+  Playnite Library backend; shared libraries are optional code reuse, not shared
   host authority or a Community requirement.
 
 ### Audio Mixer
@@ -373,7 +373,7 @@ eligibility; credential-free structural work continues independently.
    evidence plus a separate provider-fallback scenario.
 2. DLV-147/DLV-153 are accepted through `e5f9ece`: opt-in bounded GOG installed
    evidence remains, while the undocumented Galaxy command and all GOG launch
-   authority are removed. DLV-151 scoped Game Launcher actions are accepted
+   authority are removed. DLV-151 scoped Playnite Library actions are accepted
    through `b92e0ff`. DLV-148 production presentation and DLV-154 exact category
    foundations are accepted through `d78fc98`; DLV-156 removes prototype
    category capacity and adds direct LT/RT collection switching through
@@ -387,7 +387,7 @@ eligibility; credential-free structural work continues independently.
    trusted Settings selection/metadata/removal policy followed by private native
    adoption, last-good reload, and one-activation safe start. Do not expose a
    visible no-op selector on main.
-4. Keep accepted dashboard DLV-143, Spotify DLV-144, and Game Launcher
+4. Keep accepted dashboard DLV-143, Spotify DLV-144, and Playnite Library
    DLV-148/149/150/151/152/154/156/157/159/162/164 live-verifying on PID 41224 and queue any user-observed correction ahead of
    later feature work.
 5. Keep user-reported visible regressions ahead of internal refactors.
