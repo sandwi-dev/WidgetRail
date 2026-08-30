@@ -85,6 +85,38 @@ internal static class SpotifyPlaybackPolicy
             SpotifyPlaybackOperation.SetShuffle or
             SpotifyPlaybackOperation.SetRepeat;
 
+    internal static SpotifyPlaybackSummary? MergePendingOptimisticPresentation(
+        SpotifyPlaybackSummary? current,
+        SpotifyPlaybackSummary? observed,
+        SpotifyPlaybackOperation? pendingOperation)
+    {
+        if (pendingOperation is not { } operation ||
+            !HasOptimisticPresentation(operation) ||
+            current is not { IsAvailable: true } ||
+            observed is null)
+            return observed;
+
+        // A no-content success can race the provider's next playback
+        // observation. Retain only the field owned by the accepted command;
+        // all other fields remain the newly observed authoritative values.
+        if (!observed.IsAvailable) return current;
+        return operation switch
+        {
+            SpotifyPlaybackOperation.Play or SpotifyPlaybackOperation.Pause =>
+                observed with { IsPlaying = current.IsPlaying },
+            SpotifyPlaybackOperation.Seek => observed with
+            {
+                ProgressMilliseconds = current.ProgressMilliseconds,
+                CapturedAtUnixMilliseconds = current.CapturedAtUnixMilliseconds,
+            },
+            SpotifyPlaybackOperation.SetShuffle =>
+                observed with { ShuffleState = current.ShuffleState },
+            SpotifyPlaybackOperation.SetRepeat =>
+                observed with { RepeatState = current.RepeatState },
+            _ => observed,
+        };
+    }
+
     internal static SpotifyPlaybackSummary? Project(
         SpotifyPlaybackSummary? playback,
         long nowUnixMilliseconds)

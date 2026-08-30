@@ -1555,11 +1555,13 @@ public sealed class SpotifyWidget : Widget
         bool playbackIdentityChanged;
         lock (_gate)
         {
+            var admittedPlayback = SpotifyPlaybackPolicy.MergePendingOptimisticPresentation(
+                _playback, playback, _pendingOperation);
             playbackIdentityChanged = refreshDemandedQueueOnPlaybackChange &&
-                PlaybackQueueIdentity(_playback) != PlaybackQueueIdentity(playback);
+                PlaybackQueueIdentity(_playback) != PlaybackQueueIdentity(admittedPlayback);
             _viewState = state;
             _status = status;
-            _playback = playback;
+            _playback = admittedPlayback;
             _refreshWarning = null;
             _consecutiveRefreshFailures = 0;
         }
