@@ -1,3 +1,5 @@
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -32,6 +34,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("First activation starts one non-blocking automatic connection", AutoConnectStartsOnce),
     ("Runtime operation lanes replace widget-owned task registries", RuntimeOperationsOwnLifecycleWork),
     ("YT Music internals remain split by stable responsibility", ResponsibilitySplitContract),
+    ("Compiled render path references only the current Shortcut contract", CurrentShortcutContract),
     ("Closed action and connection policies are directly testable", DirectActionAndConnectionPolicies),
     ("Companion confirmation timeout and rollback are directly testable", DirectCompanionConfirmationPolicy),
     ("Repeated immutable presentation is byte deterministic", PurePresentationIsDeterministic),
@@ -597,6 +600,46 @@ static Task ResponsibilitySplitContract()
         "Snapshot-only presentation acquired ambient host authority.");
     Assert.True(!presentation.Contains("IYtMusicClient", StringComparison.Ordinal),
         "Snapshot-only presentation acquired provider ownership.");
+    return Task.CompletedTask;
+}
+
+static Task CurrentShortcutContract()
+{
+    var assemblyPath = typeof(YtMusicWidget).Assembly.Location;
+    using var stream = File.OpenRead(assemblyPath);
+    using var peReader = new PEReader(stream);
+    var metadata = peReader.GetMetadataReader();
+    var parameterCounts = new List<int>();
+
+    foreach (var handle in metadata.MemberReferences)
+    {
+        var member = metadata.GetMemberReference(handle);
+        if (!metadata.StringComparer.Equals(member.Name, "Shortcut") ||
+            member.Parent.Kind != HandleKind.TypeReference)
+            continue;
+
+        var declaringType = metadata.GetTypeReference((TypeReferenceHandle)member.Parent);
+        if (!metadata.StringComparer.Equals(declaringType.Namespace, "WidgetRail.WidgetSdk") ||
+            !metadata.StringComparer.Equals(declaringType.Name, "ScrollElement"))
+            continue;
+
+        var signature = metadata.GetBlobReader(member.Signature);
+        var header = signature.ReadSignatureHeader();
+        if (header.IsGeneric)
+            _ = signature.ReadCompressedInteger();
+        parameterCounts.Add(signature.ReadCompressedInteger());
+    }
+
+    Assert.Equal(1, parameterCounts.Count);
+    Assert.True(parameterCounts.All(count => count == 4),
+        $"Expected one interned current four-argument ScrollElement.Shortcut reference; found [{string.Join(", ", parameterCounts)}] in {assemblyPath}.");
+    var currentShortcut = typeof(ScrollElement).GetMethods(
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.DeclaredOnly)
+        .Single(method => method.Name == "Shortcut");
+    Assert.Equal(4, currentShortcut.GetParameters().Length);
+    Assert.Equal(typeof(ScrollElement), currentShortcut.ReturnType);
     return Task.CompletedTask;
 }
 
