@@ -1,7 +1,7 @@
 # Known issues and active bug ledger
 
 This file is the durable source of truth for user-visible bugs found during
-local product testing. Roadmap items describe planned capability; entries here
+local product testing. Plane work items describe planned capability; entries here
 describe behavior that is already expected to work or a current interaction
 that must be replaced. A bug is not closed until its acceptance evidence passes
 in the packaged Release overlay and the closing commit is recorded.

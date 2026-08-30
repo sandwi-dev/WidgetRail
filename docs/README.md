@@ -21,8 +21,8 @@ evidence:
   complete validated groups rather than through piecemeal path churn.
 
 The active [delivery plan](delivery-plan.md), [engineering review](engineering-quality-review.md),
-[widget-authoring review](widget-authoring-experience-review.md), and
-[roadmap](roadmap.md) are intentionally operational. Timestamped predecessors
+and [widget-authoring review](widget-authoring-experience-review.md) are
+intentionally operational. Timestamped predecessors
 live in their matching [`history/`](history/README.md) directories so routine
 planner and implementation turns do not spend context on closed evidence.
 
@@ -175,7 +175,6 @@ planner and implementation turns do not spend context on closed evidence.
 - [Plugin-platform research](plugin-platform.md)
 - [PS5 control-center interaction research](ps5-control-center-research.md)
 - [Visual design system](visual-design-system.md)
-- [Product roadmap](roadmap.md)
 
 The source of truth wins if a document and code disagree. Protocol types live
 under `src/WidgetProtocol`, the author-facing SDK under `src/WidgetSdk`, WRSS

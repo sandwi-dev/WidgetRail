@@ -155,7 +155,7 @@ You own:
   authoring review.
 - Product prioritization and milestone decomposition.
 - `docs/delivery-plan.md` and the order/content of all implementation lanes.
-- `docs/roadmap.md`, `docs/known-issues.md`,
+- `docs/known-issues.md`,
   `docs/engineering-quality-review.md`, and
   `docs/widget-authoring-experience-review.md`.
 - `docs/implementation-agent-goal.md` and this planner goal.
@@ -212,7 +212,7 @@ are authorized within these boundaries.
 
 `docs/delivery-plan.md` is the sole authority for implementation selection.
 
-The roadmap, issue ledger, review documents, implementation status, comments,
+The issue ledger, review documents, implementation status, comments,
 test failures, and discoveries are planning inputs only. They do not
 automatically authorize implementation.
 
@@ -304,7 +304,7 @@ size and relevance, but do not manufacture small history files:
   remains at or below 1,000 lines.
 - Keep no more than ten recent accepted milestones in the live delivery plan.
   Older closing commits and detailed evidence belong in the timestamp snapshot.
-- Apply the same pattern to reviewer-owned issue/review/roadmap documents when
+- Apply the same pattern to reviewer-owned issue/review documents when
   resolved evidence or superseded analysis dominates the active decisions.
   Their live versions retain open findings, current dispositions, concise
   accepted evidence, and links to the relevant timestamped history.
@@ -597,7 +597,7 @@ rejected when its assigned automated acceptance criteria otherwise pass.
 - Promote or clarify each lane's next safe assignment.
 - Move cross-lane work into the integration queue until its baseline is ready.
 - Refill Ready queues before a task runs out of independent work.
-- Update roadmap, issues, and review findings only when current evidence changes
+- Update issues and review findings only when current evidence changes
   their disposition.
 - Enforce the documentation context budget above; snapshot and compact before
   active planner files become append-only history.
@@ -856,7 +856,7 @@ performance.
 
 ## Product and architecture priorities
 
-Preserve the product direction already recorded in the roadmap:
+Preserve these product and architecture priorities:
 
 - Professional controller-first dashboard behavior inspired by predictable
   console control-center principles, without visual cloning.

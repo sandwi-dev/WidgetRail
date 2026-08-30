@@ -71,5 +71,5 @@ activation capability, and the real WinEvent adapter smoke. Packaged
 controller/visual testing, broader Windows app types, observer shutdown on
 revocation, and measured hidden-state resource evidence remain open.
 
-See [widget capabilities](capabilities.md), [roadmap](roadmap.md), and
+See [widget capabilities](capabilities.md) and
 [security and trust](security-and-trust.md).

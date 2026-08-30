@@ -71,7 +71,6 @@ The review and planning agent owns:
 - `docs/review-planner-goal.md`
 - `docs/implementation-agent-goal.md`
 - `docs/delivery-plan.md`
-- `docs/roadmap.md`
 - `docs/known-issues.md`
 - `docs/engineering-quality-review.md`
 - `docs/widget-authoring-experience-review.md`
@@ -79,8 +78,8 @@ The review and planning agent owns:
 
 Do not edit, stage, commit, rewrite, revert, or discard changes in those files.
 
-The roadmap describes long-term direction. The issue ledger records defects.
-The review documents contain evidence and recommendations. They provide context
+The issue ledger records defects. The review documents contain evidence and
+recommendations. They provide context
 but do not independently authorize implementation.
 
 Timestamped files under `docs/history/` are immutable reviewer evidence, not
@@ -133,7 +132,7 @@ Do not:
 - Merge multiple assignments into one milestone.
 - Broaden an assignment to include adjacent cleanup.
 - Begin the next assignment before committing the current one.
-- Select work directly from reviews, the roadmap, issue ledger, comments, or
+- Select work directly from reviews, the issue ledger, comments, or
   implementation-status.
 - Continue speculative work merely to stay busy.
 
@@ -674,7 +673,7 @@ an earlier assignment.
 
 Do not edit reviewer-owned documents to mark your work Done or pending review.
 The planning agent independently reviews the commit and updates assignment,
-issue, roadmap, and review dispositions.
+issue and review dispositions.
 
 ## Product interaction requirements
 
@@ -920,7 +919,7 @@ Update:
 Public examples must compile or be validated through the repository's documented
 example checks.
 
-Do not edit reviewer-owned planning, roadmap, issue, review, or goal documents.
+Do not edit reviewer-owned planning, issue, review, or goal documents.
 
 ## Product-level ship gates
 
