@@ -315,8 +315,13 @@ public sealed partial class YouTubeWidgetTests
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.back", "youtube.player.back"));
         var hidden = widget.RenderSnapshot("youtube-test", 3);
-        Assert.AreEqual(ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
+        var requiredProtocolVersion = Math.Max(
+            ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
+            ProtocolConstants.RememberedChildFocusGroupVersion);
+        Assert.AreEqual(requiredProtocolVersion,
             hidden.ProtocolVersion);
+        Assert.AreEqual("youtube.search.query",
+            Find(hidden.Root, "youtube.search.controls").InitialChildFocusId);
         Assert.IsNotNull(hidden.EmbeddedMedia);
         Assert.IsTrue(hidden.EmbeddedMedia.RetainSessionWhenHidden);
         Assert.IsNull(hidden.EmbeddedMedia.PendingCommand);
