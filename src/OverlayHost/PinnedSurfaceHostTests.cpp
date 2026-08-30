@@ -109,8 +109,13 @@ void TestAcceptedOverlayFullscreenMediaHostContract() {
         return source.substr(beginOffset, endOffset - beginOffset);
     };
 
+    // Anchored on the controller-frame branch specifically. The predicate is
+    // consulted in several places, so a bare "if (OverlayFullscreenMediaRequested()) {"
+    // would silently select an earlier presentation site and widen this section
+    // until the XINPUT_GAMEPAD_BACK exclusion below stopped meaning anything.
     const auto fullscreenInput = section(
-        "if (OverlayFullscreenMediaRequested()) {",
+        "if (OverlayFullscreenMediaRequested()) {\n"
+        "            if (frame.recoveryChordPressed",
         "const auto pinnedControllerCommand");
     Check(fullscreenInput.find("DispatchControllerAction(L\"B\", true);") !=
               std::string::npos &&
@@ -244,17 +249,38 @@ void TestAcceptedMediaBackOwnershipHostContract() {
               dispatchEnd != std::string::npos && dispatchBegin < dispatchEnd,
           "controller action owner has one bounded source section");
     const auto dispatch = source.substr(dispatchBegin, dispatchEnd - dispatchBegin);
-    const auto fullscreenBack = dispatch.find(
-        "button == L\"B\" && OverlayFullscreenMediaRequested()");
-    const auto mediaBack = dispatch.find(
-        "button == L\"B\" && EmbeddedMediaAuthorityCurrent()");
+    // The precedence between the fullscreen and media-Back routes is owned by
+    // RouteOverlayMediaBackButton and pinned exhaustively by
+    // ControllerNavigationTests. What must hold here is that this dispatcher
+    // defers to that one owner, and does so before the generic controller route.
+    const auto mediaBackRouter = dispatch.find(
+        "widgetrail::input::RouteOverlayMediaBackButton(");
     const auto genericRoute = dispatch.find(
-        "using widgetrail::input::ControllerActionContext", mediaBack);
-    Check(fullscreenBack != std::string::npos &&
-              mediaBack != std::string::npos && genericRoute != std::string::npos &&
-              fullscreenBack < mediaBack && mediaBack < genericRoute,
-          "fullscreen, media Back, and generic controller routes retain exact ownership order");
-    const auto mediaBackBranch = dispatch.substr(mediaBack, genericRoute - mediaBack);
+        "using widgetrail::input::ControllerActionContext", mediaBackRouter);
+    Check(mediaBackRouter != std::string::npos &&
+              genericRoute != std::string::npos && mediaBackRouter < genericRoute,
+          "media Back resolves through the shared route owner before generic controller routing");
+    // Overlay fullscreen is host-owned on both edges. B must clear the host's
+    // activation rather than reach the widget, so no package can strand a user
+    // in a presentation that paints no tray, guide, or accessibility tree.
+    const auto exitRoute = dispatch.find(
+        "OverlayMediaBackRoute::ExitOverlayFullscreen");
+    const auto hostExit = dispatch.find("ExitOverlayFullscreenMedia()", exitRoute);
+    const auto widgetBack = dispatch.find(
+        "OverlayMediaBackRoute::HostWidgetBack", exitRoute);
+    Check(exitRoute != std::string::npos && hostExit != std::string::npos &&
+              widgetBack != std::string::npos && exitRoute < hostExit &&
+              hostExit < widgetBack &&
+              dispatch.find("DispatchWidgetAction", exitRoute) > widgetBack,
+          "fullscreen B clears host-owned activation and never dispatches to the widget");
+    // The authority the router is handed still has to be assembled here, so the
+    // branch now spans from that assembly through the generic route.
+    const auto mediaBackBegin = dispatch.find(
+        "const bool overlayMediaAuthorityCurrent =");
+    Check(mediaBackBegin != std::string::npos && mediaBackBegin < genericRoute,
+          "media Back authority is assembled before generic controller routing");
+    const auto mediaBackBranch =
+        dispatch.substr(mediaBackBegin, genericRoute - mediaBackBegin);
     Check(mediaBackBranch.find(
               "embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay") !=
               std::string::npos &&

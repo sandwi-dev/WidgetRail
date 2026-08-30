@@ -389,6 +389,81 @@ int main() {
               ControllerActionContext::RootWidgetScope, L"X") ==
               ControllerActionRoute::None,
           "unhandled non-Back actions never become host navigation");
+    using widgetrail::input::OverlayMediaBackRoute;
+    using widgetrail::input::RouteOverlayMediaBackButton;
+    // Exhaustive over the three booleans that decide B for an overlay-projected
+    // media widget. Fullscreen outranks widget Back, and both outrank the
+    // widget's own bindings; changing that order fails here rather than
+    // stranding a user in a presentation that paints no tray or guide.
+    struct OverlayMediaBackCase final {
+        bool fullscreenActive;
+        bool authorityCurrent;
+        bool mediaWidgetFocused;
+        OverlayMediaBackRoute expected;
+        const char* reason;
+    };
+    constexpr std::array<OverlayMediaBackCase, 8> overlayMediaBackCases{{
+        {false, false, false, OverlayMediaBackRoute::Widget,
+         "no media authority leaves B to the widget"},
+        {false, false, true, OverlayMediaBackRoute::Widget,
+         "focus alone never makes B host-owned"},
+        {true, false, false, OverlayMediaBackRoute::Widget,
+         "a stale media authority cannot exit fullscreen"},
+        {true, false, true, OverlayMediaBackRoute::Widget,
+         "a stale media authority never claims B"},
+        {false, true, false, OverlayMediaBackRoute::Widget,
+         "an unfocused media widget leaves B to the widget"},
+        {false, true, true, OverlayMediaBackRoute::HostWidgetBack,
+         "focused media widget B backs out to the dashboard"},
+        {true, true, false, OverlayMediaBackRoute::ExitOverlayFullscreen,
+         "fullscreen B exits the host-owned mode without widget focus"},
+        {true, true, true, OverlayMediaBackRoute::ExitOverlayFullscreen,
+         "fullscreen B exits the mode instead of backing out"},
+    }};
+    for (const auto& testCase : overlayMediaBackCases) {
+        Check(RouteOverlayMediaBackButton(
+                  L"B", testCase.fullscreenActive, testCase.authorityCurrent,
+                  testCase.mediaWidgetFocused) == testCase.expected,
+              testCase.reason);
+    }
+    constexpr std::array<std::wstring_view, 5> nonBackButtons{
+        L"A", L"X", L"Y", L"LT", L"RT"};
+    for (const auto button : nonBackButtons) {
+        Check(RouteOverlayMediaBackButton(button, true, true, true) ==
+                  OverlayMediaBackRoute::Widget,
+              "fullscreen reserves B alone; every other button stays widget-owned");
+    }
+    using widgetrail::input::OverlayFullscreenMediaAuthority;
+    using widgetrail::input::OverlayFullscreenMediaAuthorityCurrent;
+    constexpr OverlayFullscreenMediaAuthority fullscreenAuthority{
+        L"fixture", L"instance-1", L"runtime-1", L"presentation-1", L"media"};
+    Check(OverlayFullscreenMediaAuthorityCurrent(
+              fullscreenAuthority, fullscreenAuthority, true, true, false),
+          "exact fullscreen authority remains current");
+    Check(!OverlayFullscreenMediaAuthorityCurrent(
+              fullscreenAuthority,
+              {L"other", L"instance-1", L"runtime-1", L"presentation-1", L"media"},
+              true, true, false),
+          "widget switch retires fullscreen authority");
+    Check(!OverlayFullscreenMediaAuthorityCurrent(
+              fullscreenAuthority, fullscreenAuthority, false, true, false),
+          "deactivation retires fullscreen authority");
+    Check(!OverlayFullscreenMediaAuthorityCurrent(
+              fullscreenAuthority, fullscreenAuthority, true, false, false),
+          "capability drop retires fullscreen authority");
+    Check(!OverlayFullscreenMediaAuthorityCurrent(
+              fullscreenAuthority, fullscreenAuthority, true, true, true),
+          "pinned takeover retires fullscreen authority");
+    Check(!OverlayFullscreenMediaAuthorityCurrent(
+              fullscreenAuthority,
+              {L"fixture", L"instance-1", L"runtime-2", L"presentation-1", L"media"},
+              true, true, false),
+          "worker restart retires fullscreen authority");
+    Check(!OverlayFullscreenMediaAuthorityCurrent(
+              fullscreenAuthority,
+              {L"fixture", L"instance-1", L"runtime-1", L"presentation-2", L"media"},
+              true, true, false),
+          "presentation replacement retires fullscreen authority");
     Check(RouteFailedWidgetAction(
               true, widgetrail::input::NavigationEventPhase::Pressed, L"A") ==
               FailedWidgetActionRoute::Retry,

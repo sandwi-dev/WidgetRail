@@ -39,9 +39,9 @@ public static class ProtocolConstants
     public const int RememberedChildFocusGroupVersion = 33;
     public const double MinimumEmbeddedMediaPlaybackRate = 0.5;
     public const double MaximumEmbeddedMediaPlaybackRate = 2.0;
-    public const double DefaultCompactPinnedMediaSeekStepSeconds = 10;
-    public const double MinimumCompactPinnedMediaSeekStepSeconds = 1;
-    public const double MaximumCompactPinnedMediaSeekStepSeconds = 60;
+    public const double DefaultMediaSeekStepSeconds = 10;
+    public const double MinimumMediaSeekStepSeconds = 1;
+    public const double MaximumMediaSeekStepSeconds = 60;
     public const int MaximumEmbeddedMediaResourceCount = 16;
     public const int MaximumEmbeddedMediaResourcePathLength = 160;
     public const int MaximumEmbeddedMediaContentTypeLength = 96;

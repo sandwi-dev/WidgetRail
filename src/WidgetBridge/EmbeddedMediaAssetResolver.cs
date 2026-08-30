@@ -97,9 +97,9 @@ internal static class EmbeddedMediaAssetResolver
             media.AllowedFrameDomainFamilies,
             media.PendingCommand,
             media.CompactPinnedPresentation,
-            media.CompactPinnedSeekStepSeconds,
+            media.MediaSeekStepSeconds,
             media.RetainSessionWhenHidden,
-            media.OverlayFullscreenPresentation,
+            media.OverlayFullscreenCapable,
             resources);
     }
 

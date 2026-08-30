@@ -279,7 +279,7 @@ widgetrail::WidgetSnapshot CompactMediaSnapshot(const long long sequence = 1) {
         L"togglePlayback", L"navigatePrevious", L"navigateNext",
         L"seekBackward", L"seekForward"};
     media.compactPinnedPresentation = true;
-    media.compactPinnedSeekStepSeconds = 7.0;
+    media.mediaSeekStepSeconds = 7.0;
     snapshot.embeddedMedia = std::move(media);
     return snapshot;
 }

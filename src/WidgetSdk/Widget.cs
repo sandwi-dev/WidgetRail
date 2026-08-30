@@ -105,6 +105,7 @@ public enum ControllerInputContext
     OpenWidget,
     PinnedLayoutSelection,
     PinnedSurface,
+    OverlayFullscreenPresentation,
 }
 
 /// <summary>
@@ -141,6 +142,8 @@ public sealed record ControllerInputEvent(
     /// </summary>
     public string? PinnedLayoutId { get; init; }
     public bool? IsPinnedLayoutSelected { get; init; }
+    /// <summary>Host-owned overlay fullscreen state; valid only for its notification context.</summary>
+    public bool? IsOverlayFullscreenActive { get; init; }
 }
 
 public sealed record WidgetInvalidatedEventArgs(long Revision);
@@ -196,6 +199,8 @@ public abstract partial class Widget
         new(StringComparer.Ordinal);
     private string? _selectedPinnedLayoutId;
     private CancellationTokenSource? _pinnedLayoutSelectionLifetime;
+    private readonly object _overlayFullscreenGate = new();
+    private bool? _overlayFullscreenActive;
 
     public event EventHandler<WidgetInvalidatedEventArgs>? Invalidated;
 
@@ -237,6 +242,14 @@ public abstract partial class Widget
         Volatile.Read(ref _activeLifetime)?.Token ?? InactiveCancellationToken;
 
     public abstract WidgetView Render();
+
+    /// <summary>
+    /// Returns the exact seek step declared by the latest admitted media
+    /// surface, or the protocol default when the declaration omits it.
+    /// </summary>
+    protected double CurrentMediaSeekStepSeconds =>
+        Volatile.Read(ref _latestSnapshot)?.EmbeddedMedia?.MediaSeekStepSeconds ??
+        ProtocolConstants.DefaultMediaSeekStepSeconds;
 
     /// <summary>
     /// Creates and uniquely registers one optional widget-instance handle for a
@@ -573,6 +586,18 @@ public abstract partial class Widget
     }
 
     /// <summary>
+    /// Observes the host-owned overlay fullscreen state. This notification
+    /// grants no provider, capability, focus, window, or presentation authority.
+    /// </summary>
+    public virtual ValueTask OnOverlayFullscreenChangedAsync(
+        bool isActive,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
     /// Resolves raw input against the latest host-rendered snapshot. Override
     /// this for controls that are not represented by declarative shortcuts.
     /// </summary>
@@ -591,6 +616,16 @@ public abstract partial class Widget
                 return ValueTask.FromResult(false);
             return ObservePinnedLayoutSelectionAsync(input, cancellationToken);
         }
+        if (input.Context == ControllerInputContext.OverlayFullscreenPresentation)
+        {
+            if (input.IsOverlayFullscreenActive is null ||
+                input.IsPinnedLayoutSelected is not null || input.PinnedLayoutId is not null)
+                return ValueTask.FromResult(false);
+            return ObserveOverlayFullscreenAsync(
+                input.IsOverlayFullscreenActive.Value, cancellationToken);
+        }
+        if (input.IsOverlayFullscreenActive is not null)
+            return ValueTask.FromResult(false);
         var snapshot = Volatile.Read(ref _latestSnapshot);
         if (snapshot is null) return ValueTask.FromResult(false);
 
@@ -766,6 +801,34 @@ public abstract partial class Widget
         finally
         {
             Invalidate();
+        }
+        return true;
+    }
+
+    private async ValueTask<bool> ObserveOverlayFullscreenAsync(
+        bool isActive,
+        CancellationToken cancellationToken)
+    {
+        bool? prior;
+        lock (_overlayFullscreenGate)
+        {
+            if (_overlayFullscreenActive == isActive) return true;
+            prior = _overlayFullscreenActive;
+            _overlayFullscreenActive = isActive;
+        }
+        try
+        {
+            await OnOverlayFullscreenChangedAsync(isActive, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            lock (_overlayFullscreenGate)
+            {
+                if (_overlayFullscreenActive == isActive)
+                    _overlayFullscreenActive = prior;
+            }
+            throw;
         }
         return true;
     }

@@ -1374,9 +1374,9 @@ bool WidgetSurfaceCoordinator::compactMediaPresentation() const noexcept {
 
 CompactPinnedMediaState WidgetSurfaceCoordinator::compactMediaState() const noexcept {
     const auto& media = SelectedSnapshot().embeddedMedia;
-    const double step = media && media->compactPinnedSeekStepSeconds
-        ? *media->compactPinnedSeekStepSeconds
-        : protocol_contract::DefaultCompactPinnedMediaSeekStepSeconds;
+    const double step = media && media->mediaSeekStepSeconds
+        ? *media->mediaSeekStepSeconds
+        : protocol_contract::DefaultMediaSeekStepSeconds;
     return {
         compactMediaPositionSeconds_, compactMediaDurationSeconds_,
         compactMediaScrubActive_ ? compactMediaPreviewSeconds_

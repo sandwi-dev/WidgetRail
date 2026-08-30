@@ -327,16 +327,16 @@ public static class ViewSnapshotValidator
                     Add($"{path}.commands[{index}]", "duplicate_command",
                         "Embedded media commands must be unique.");
             }
-            if (media.CompactPinnedSeekStepSeconds is { } seekStep &&
+            if (media.MediaSeekStepSeconds is { } seekStep &&
                 (!double.IsFinite(seekStep) ||
-                 seekStep < ProtocolConstants.MinimumCompactPinnedMediaSeekStepSeconds ||
-                 seekStep > ProtocolConstants.MaximumCompactPinnedMediaSeekStepSeconds))
-                Add($"{path}.compactPinnedSeekStepSeconds", "out_of_range",
-                    $"Compact pinned media seek step must be finite and between {ProtocolConstants.MinimumCompactPinnedMediaSeekStepSeconds} and {ProtocolConstants.MaximumCompactPinnedMediaSeekStepSeconds} seconds.");
-            if (!media.CompactPinnedPresentation &&
-                media.CompactPinnedSeekStepSeconds is not null)
-                Add($"{path}.compactPinnedSeekStepSeconds", "compact_presentation_required",
-                    "A compact pinned seek step requires compact pinned presentation.");
+                 seekStep < ProtocolConstants.MinimumMediaSeekStepSeconds ||
+                 seekStep > ProtocolConstants.MaximumMediaSeekStepSeconds))
+                Add($"{path}.mediaSeekStepSeconds", "out_of_range",
+                    $"Media seek step must be finite and between {ProtocolConstants.MinimumMediaSeekStepSeconds} and {ProtocolConstants.MaximumMediaSeekStepSeconds} seconds.");
+            if (!media.CompactPinnedPresentation && !media.OverlayFullscreenCapable &&
+                media.MediaSeekStepSeconds is not null)
+                Add($"{path}.mediaSeekStepSeconds", "seek_presentation_required",
+                    "A media seek step requires compact pinned presentation or overlay fullscreen capability.");
             if (media.CompactPinnedPresentation &&
                 (!knownCommands.Contains(EmbeddedMediaCommand.TogglePlayback) ||
                  !knownCommands.Contains(EmbeddedMediaCommand.SeekBackward) ||

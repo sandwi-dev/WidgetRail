@@ -137,6 +137,7 @@ enum WidgetRail.WidgetSdk.CardVariant.Subtle = WidgetRail.WidgetSdk.CardVariant.
 enum WidgetRail.WidgetSdk.CardVariant.Transparent = WidgetRail.WidgetSdk.CardVariant.Transparent
 enum WidgetRail.WidgetSdk.ControllerInputContext.DashboardQuickAction = WidgetRail.WidgetSdk.ControllerInputContext.DashboardQuickAction
 enum WidgetRail.WidgetSdk.ControllerInputContext.OpenWidget = WidgetRail.WidgetSdk.ControllerInputContext.OpenWidget
+enum WidgetRail.WidgetSdk.ControllerInputContext.OverlayFullscreenPresentation = WidgetRail.WidgetSdk.ControllerInputContext.OverlayFullscreenPresentation
 enum WidgetRail.WidgetSdk.ControllerInputContext.PinnedLayoutSelection = WidgetRail.WidgetSdk.ControllerInputContext.PinnedLayoutSelection
 enum WidgetRail.WidgetSdk.ControllerInputContext.PinnedSurface = WidgetRail.WidgetSdk.ControllerInputContext.PinnedSurface
 enum WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation = WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation
@@ -1688,6 +1689,7 @@ method virtual WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Equals(Wi
 method virtual WidgetRail.WidgetSdk.Widget.OnActionAsync(WidgetRail.WidgetSdk.WidgetActionEvent action, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnControllerInputAsync(WidgetRail.WidgetSdk.ControllerInputEvent input, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method virtual WidgetRail.WidgetSdk.Widget.OnEmbeddedMediaPlaybackEventAsync(WidgetRail.WidgetProtocol.EmbeddedMediaPlaybackEvent playbackEvent, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method virtual WidgetRail.WidgetSdk.Widget.OnOverlayFullscreenChangedAsync(bool isActive, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnPinnedLayoutSelectionChangedAsync(string? layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.WidgetActionEvent.Equals(WidgetRail.WidgetSdk.WidgetActionEvent? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.<Clone>$() -> WidgetRail.WidgetSdk.WidgetActionFailedEventArgs
@@ -2078,6 +2080,7 @@ property bool? WidgetRail.WidgetSdk.ButtonElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.ButtonElement.IsDisabled { get; set; }
 property bool? WidgetRail.WidgetSdk.ButtonElement.IsSelected { get; set; }
 property bool? WidgetRail.WidgetSdk.ControllerInputEvent.IsPinnedLayoutSelected { get; set; }
+property bool? WidgetRail.WidgetSdk.ControllerInputEvent.IsOverlayFullscreenActive { get; set; }
 property bool? WidgetRail.WidgetSdk.ScrubberElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.ScrubberElement.IsDisabled { get; set; }
 property bool? WidgetRail.WidgetSdk.SliderElement.IsBusy { get; set; }

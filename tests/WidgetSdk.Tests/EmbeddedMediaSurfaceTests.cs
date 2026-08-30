@@ -264,17 +264,52 @@ internal static class EmbeddedMediaSurfaceTests
             ProtocolVersion = ProtocolConstants.OverlayFullscreenMediaPresentationVersion,
             EmbeddedMedia = Valid("primary-media") with
             {
-                OverlayFullscreenPresentation = true,
+                OverlayFullscreenCapable = true,
             },
         };
         Equal(0, ViewSnapshotValidator.Validate(overlayFullscreen).Count);
         Equal(true, SnapshotJson.Deserialize(
             SnapshotJson.Serialize(overlayFullscreen)).EmbeddedMedia?
-            .OverlayFullscreenPresentation);
+            .OverlayFullscreenCapable);
         Error(overlayFullscreen with
         {
             ProtocolVersion = ProtocolConstants.OverlayFullscreenMediaPresentationVersion - 1,
         }, "feature_requires_version");
+        // The seek step drives overlay fullscreen as well as the compact pinned
+        // player, so a fullscreen-capable surface may declare one without opting
+        // into an unrelated pinned presentation to do it.
+        var fullscreenSeekStep = snapshot with
+        {
+            ProtocolVersion = ProtocolConstants.OverlayFullscreenMediaPresentationVersion,
+            EmbeddedMedia = Valid("primary-media") with
+            {
+                OverlayFullscreenCapable = true,
+                MediaSeekStepSeconds = 5,
+            },
+        };
+        Equal(0, ViewSnapshotValidator.Validate(fullscreenSeekStep).Count);
+        Equal(5.0, SnapshotJson.Deserialize(SnapshotJson.Serialize(fullscreenSeekStep))
+            .EmbeddedMedia?.MediaSeekStepSeconds);
+        // A step still needs some presentation that seeks on the widget's behalf.
+        Error(fullscreenSeekStep with
+        {
+            EmbeddedMedia = Valid("primary-media") with { MediaSeekStepSeconds = 5 },
+        }, "seek_presentation_required");
+        var fullscreenObserver = new FullscreenObserverWidget();
+        var entered = new ControllerInputEvent(
+            ControllerButton.View, ControllerEventPhase.Pressed,
+            ControllerInputContext.OverlayFullscreenPresentation)
+        {
+            IsOverlayFullscreenActive = true,
+        };
+        Equal(true, await fullscreenObserver.OnControllerInputAsync(entered));
+        Equal(true, await fullscreenObserver.OnControllerInputAsync(entered));
+        Equal("true", string.Join(',', fullscreenObserver.Changes));
+        Equal(true, await fullscreenObserver.OnControllerInputAsync(entered with
+        {
+            IsOverlayFullscreenActive = false,
+        }));
+        Equal("true,false", string.Join(',', fullscreenObserver.Changes));
         Error(snapshot with
         {
             ProtocolVersion = ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
@@ -450,6 +485,20 @@ internal static class EmbeddedMediaSurfaceTests
             EmbeddedMediaCommand.SeekForward,
         ],
     };
+
+    private sealed class FullscreenObserverWidget : Widget
+    {
+        internal List<bool> Changes { get; } = [];
+        public override WidgetView Render() => new(UI.Text("Fixture", "root"));
+        public override ValueTask OnOverlayFullscreenChangedAsync(
+            bool isActive,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Changes.Add(isActive);
+            return ValueTask.CompletedTask;
+        }
+    }
 
     private static ViewNode Find(ViewNode node, string id)
     {

@@ -562,7 +562,8 @@ void VerifyEmbeddedMediaSnapshotContract() {
             "protocolVersion":30,"sequence":9,
             "widgetInstanceId":"cedar.adapter","activeInputScopeId":"root",
             "embeddedMedia":{"id":"cedar-media","accessibleName":"Cedar media",
-                "entryAsset":"media/index.html","overlayFullscreenPresentation":true,
+                "entryAsset":"media/index.html","overlayFullscreenCapable":true,
+                "mediaSeekStepSeconds":5,
                 "aspectRatio":1.7777777778,
                 "surface":{"mode":"standard","preferredWidth":640,"preferredHeight":360,
                            "minimumWidth":240,"minimumHeight":180},
@@ -579,7 +580,8 @@ void VerifyEmbeddedMediaSnapshotContract() {
     const auto overlayFullscreen =
         widgetrail::testing::ParseWidgetSnapshotResponse(overlayFullscreenJson, error);
     Require(overlayFullscreen && overlayFullscreen->embeddedMedia &&
-                overlayFullscreen->embeddedMedia->overlayFullscreenPresentation &&
+                overlayFullscreen->embeddedMedia->overlayFullscreenCapable &&
+                overlayFullscreen->embeddedMedia->mediaSeekStepSeconds == 5.0 &&
                 error.empty(),
             "valid protocol-v30 overlay fullscreen media snapshot was rejected");
     error.clear();
@@ -597,6 +599,7 @@ void VerifyEmbeddedMediaBundleBoundary() {
         "runtimeGeneration":"runtime-1","presentationGeneration":"presentation-1",
         "sequence":7,"surfaceId":"media","entryAsset":"media/index.html",
         "retainSessionWhenHidden":true,
+        "overlayFullscreenCapable":true,"mediaSeekStepSeconds":5,
         "surface":{"mode":"standard","preferredWidth":760,"preferredHeight":425,
                    "minimumWidth":320,"minimumHeight":180},
         "aspectRatio":1.7777777778,"accessibleName":"Aurora media",
@@ -624,6 +627,8 @@ void VerifyEmbeddedMediaBundleBoundary() {
     };
     const auto parsed = parse(valid);
     Require(parsed && parsed->surface.retainSessionWhenHidden &&
+                parsed->surface.overlayFullscreenCapable &&
+                parsed->surface.mediaSeekStepSeconds == 5.0 &&
                 parsed->surface.allowedFrameDomainFamilies ==
                 std::vector<std::wstring>{L"example.com"} &&
                 parsed->surface.pendingCommand &&

@@ -2371,14 +2371,103 @@ private:
 
     enum class EmbeddedMediaProjection { Overlay, Pinned };
 
+    // Host-owned activation of the fullscreen media presentation. The package
+    // only declares that its surface may be presented fullscreen; whether it
+    // currently is remains host state, so no widget can leave the user inside a
+    // presentation that paints no tray, guide, or accessibility tree.
+    struct OverlayFullscreenMediaActivation final {
+        std::wstring widgetId;
+        std::wstring instanceId;
+        std::wstring runtimeGeneration;
+        std::wstring presentationGeneration;
+        std::wstring surfaceId;
+        long long snapshotSequence{};
+    };
+
     [[nodiscard]] bool OverlayFullscreenMediaRequested() const noexcept {
+        if (!overlayFullscreenMediaActivation_) return false;
+        const auto& activation = *overlayFullscreenMediaActivation_;
+        const auto* snapshot = SnapshotFor(state_.activeWidget());
+        const auto* descriptor = sessions_.FindDescriptor(state_.activeWidget());
+        // The activation never outlives the exact declaration that admitted it.
+        // Re-deriving the capability, instance, and surface identity here keeps
+        // every retirement path - widget switch, deactivation, a snapshot that
+        // drops the capability, runtime replacement, and pinned takeover -
+        // closing the mode without a separate imperative teardown per path.
+        if (!snapshot || !descriptor || !snapshot->embeddedMedia) return false;
+        return widgetrail::input::OverlayFullscreenMediaAuthorityCurrent(
+            {activation.widgetId, activation.instanceId,
+             activation.runtimeGeneration, activation.presentationGeneration,
+             activation.surfaceId},
+            {state_.activeWidget(), snapshot->instanceId,
+             descriptor->runtimeGeneration, descriptor->presentationGeneration,
+             snapshot->embeddedMedia->id},
+            state_.surface() == widgetrail::Surface::Widget,
+            snapshot->embeddedMedia->overlayFullscreenCapable,
+            pinnedSurfaceCoordinator_.pinned() &&
+                pinnedSurfaceCoordinator_.widgetId() == state_.activeWidget());
+    }
+
+    // Enters the host-owned mode for the exact declaration currently admitted
+    // for this widget. Returns false when nothing eligible is resident.
+    [[nodiscard]] bool EnterOverlayFullscreenMedia() {
         if (state_.surface() != widgetrail::Surface::Widget) return false;
         const auto* snapshot = SnapshotFor(state_.activeWidget());
-        if (!snapshot || !snapshot->embeddedMedia ||
-            !snapshot->embeddedMedia->overlayFullscreenPresentation)
+        const auto* descriptor = sessions_.FindDescriptor(state_.activeWidget());
+        if (!snapshot || !descriptor || !snapshot->embeddedMedia ||
+            !snapshot->embeddedMedia->overlayFullscreenCapable)
             return false;
-        return !pinnedSurfaceCoordinator_.pinned() ||
-            pinnedSurfaceCoordinator_.widgetId() != state_.activeWidget();
+        if (pinnedSurfaceCoordinator_.pinned() &&
+            pinnedSurfaceCoordinator_.widgetId() == state_.activeWidget())
+            return false;
+        overlayFullscreenMediaActivation_ = OverlayFullscreenMediaActivation{
+            std::wstring{state_.activeWidget()},
+            snapshot->instanceId,
+            descriptor->runtimeGeneration,
+            descriptor->presentationGeneration,
+            snapshot->embeddedMedia->id,
+            snapshot->sequence,
+        };
+        if (!NotifyOverlayFullscreenChanged(
+                *overlayFullscreenMediaActivation_, true)) {
+            overlayFullscreenMediaActivation_.reset();
+            return false;
+        }
+        return true;
+    }
+
+    bool ExitOverlayFullscreenMedia() {
+        if (!overlayFullscreenMediaActivation_) return false;
+        const auto activation = *overlayFullscreenMediaActivation_;
+        overlayFullscreenMediaActivation_.reset();
+        (void)NotifyOverlayFullscreenChanged(activation, false);
+        return true;
+    }
+
+    [[nodiscard]] bool NotifyOverlayFullscreenChanged(
+        const OverlayFullscreenMediaActivation& activation,
+        const bool active) {
+        const auto* snapshot = SnapshotFor(activation.widgetId);
+        const auto snapshotSequence = snapshot
+            ? snapshot->sequence : activation.snapshotSequence;
+        const auto delivered = bridge_.SendControllerInput(
+            activation.widgetId, L"view", L"overlayFullscreenPresentation",
+            L"", L"", snapshotSequence, ++controllerSequence_,
+            static_cast<long long>(GetTickCount64() * 1000), L"pressed",
+            std::nullopt,
+            widgetrail::ControllerInputOrigin::PhysicalController,
+            activation.runtimeGeneration, L"", std::nullopt, L"", active);
+        return delivered && *delivered;
+    }
+
+    // Drops an activation the predicate has already stopped honouring so the
+    // retained identity cannot survive the declaration that admitted it.
+    void ClearStaleOverlayFullscreenMediaActivation() {
+        if (overlayFullscreenMediaActivation_ && !OverlayFullscreenMediaRequested()) {
+            const auto activation = *overlayFullscreenMediaActivation_;
+            overlayFullscreenMediaActivation_.reset();
+            (void)NotifyOverlayFullscreenChanged(activation, false);
+        }
     }
 
     [[nodiscard]] widgetrail::OverlayPresentationExtent
@@ -2577,8 +2666,7 @@ private:
             if (!pinned) return std::nullopt;
             viewport = pinned->region;
             owner = pinnedSurfaceCoordinator_.window();
-        } else if (snapshot->embeddedMedia->overlayFullscreenPresentation &&
-                   OverlayFullscreenMediaRequested()) {
+        } else if (OverlayFullscreenMediaRequested()) {
             const auto* descriptor = sessions_.FindDescriptor(
                 embeddedMediaAuthority_->widgetId);
             const auto& committed = committedOverlayFullscreenMediaPresentation_;
@@ -2944,10 +3032,10 @@ private:
             playback.positionSeconds < 0.0 || playback.durationSeconds <= 0.0) {
             return std::nullopt;
         }
-        const double step = snapshot->embeddedMedia->compactPinnedSeekStepSeconds
+        const double step = snapshot->embeddedMedia->mediaSeekStepSeconds
             .value_or(
                 widgetrail::protocol_contract::
-                    DefaultCompactPinnedMediaSeekStepSeconds);
+                    DefaultMediaSeekStepSeconds);
         return widgetrail::pinned::ResolveBoundedMediaSeekTarget(
             playback.positionSeconds, playback.durationSeconds, step, direction);
     }
@@ -3656,12 +3744,12 @@ private:
                 declaration.allowedFrameDomainFamilies &&
             resolvedDeclaration.compactPinnedPresentation ==
                 declaration.compactPinnedPresentation &&
-            resolvedDeclaration.compactPinnedSeekStepSeconds ==
-                declaration.compactPinnedSeekStepSeconds &&
+            resolvedDeclaration.mediaSeekStepSeconds ==
+                declaration.mediaSeekStepSeconds &&
             resolvedDeclaration.retainSessionWhenHidden ==
                 declaration.retainSessionWhenHidden &&
-            resolvedDeclaration.overlayFullscreenPresentation ==
-                declaration.overlayFullscreenPresentation &&
+            resolvedDeclaration.overlayFullscreenCapable ==
+                declaration.overlayFullscreenCapable &&
             ((!resolvedDeclaration.pendingCommand && !declaration.pendingCommand) ||
              (resolvedDeclaration.pendingCommand && declaration.pendingCommand &&
               resolvedDeclaration.pendingCommand->sequence ==
@@ -3843,6 +3931,7 @@ private:
 
     void ReconcileCommittedEmbeddedMediaSurface() {
         if (richMediaProof_) return;
+        ClearStaleOverlayFullscreenMediaActivation();
         const std::wstring_view widgetId =
             state_.surface() == widgetrail::Surface::Widget
                 ? state_.activeWidget()
@@ -6826,6 +6915,11 @@ private:
                 pendingWidgetSwitchSnap_.reset();
             }
         }
+        // Retire the activation once the settled presentation stops honouring
+        // it. Without this the mode would merely go dormant while the overlay is
+        // hidden and resurrect on the next open, because the predicate would
+        // find the same widget, snapshot, and surface still admitted.
+        ClearStaleOverlayFullscreenMediaActivation();
     }
 
     struct TrayPointerTarget final {
@@ -10900,6 +10994,31 @@ private:
         return false;
     }
 
+    [[nodiscard]] bool HandleOverlayMediaBackButton(
+        const std::wstring_view button) {
+        const bool overlayMediaAuthorityCurrent = EmbeddedMediaAuthorityCurrent() &&
+            embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay;
+        switch (widgetrail::input::RouteOverlayMediaBackButton(
+            button, OverlayFullscreenMediaRequested(), overlayMediaAuthorityCurrent,
+            overlayMediaAuthorityCurrent &&
+                state_.surface() == widgetrail::Surface::Widget &&
+                state_.focusRegion() == widgetrail::FocusRegion::Widget &&
+                state_.activeWidget() == embeddedMediaAuthority_->widgetId)) {
+        case widgetrail::input::OverlayMediaBackRoute::ExitOverlayFullscreen:
+            if (ExitOverlayFullscreenMedia()) {
+                RefreshAndApplyPresentation([] {});
+                InvalidateRect(window_, nullptr, FALSE);
+            }
+            return true;
+        case widgetrail::input::OverlayMediaBackRoute::HostWidgetBack:
+            Dispatch(widgetrail::Command::SampleWidgetBack);
+            return true;
+        case widgetrail::input::OverlayMediaBackRoute::Widget:
+            return false;
+        }
+        return false;
+    }
+
     void DispatchControllerAction(
         const std::wstring_view button,
         const bool physicalPress = false) {
@@ -10915,21 +11034,7 @@ private:
         if (state_.surface() == widgetrail::Surface::Widget)
             (void)BindEmbeddedMediaSessionForWidget(
                 state_.activeWidget(), EmbeddedMediaProjection::Overlay);
-        if (button == L"B" && OverlayFullscreenMediaRequested() &&
-            EmbeddedMediaAuthorityCurrent() &&
-            embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay) {
-            DispatchWidgetAction(button, widgetrail::input::NavigationEventPhase::Pressed,
-                                 std::nullopt, physicalPress);
-            return;
-        }
-        if (button == L"B" && EmbeddedMediaAuthorityCurrent() &&
-            embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay &&
-            state_.surface() == widgetrail::Surface::Widget &&
-            state_.focusRegion() == widgetrail::FocusRegion::Widget &&
-            state_.activeWidget() == embeddedMediaAuthority_->widgetId) {
-            Dispatch(widgetrail::Command::SampleWidgetBack);
-            return;
-        }
+        if (HandleOverlayMediaBackButton(button)) return;
         using widgetrail::input::ControllerActionContext;
         using widgetrail::input::ControllerActionRoute;
         const auto context = state_.focusRegion() == widgetrail::FocusRegion::Tray
@@ -10977,6 +11082,17 @@ private:
                 return true;
             }
             return false;
+        }
+        // Entering fullscreen is reserved because leaving it is: the host owns
+        // both edges of the mode, so a package never holds half of it. The
+        // matching exit is B, routed by RouteOverlayMediaBackButton.
+        if (node.actionId == L"host.embeddedMedia.enterFullscreen") {
+            if (embeddedMediaAuthority_->projection != EmbeddedMediaProjection::Overlay)
+                return false;
+            if (!EnterOverlayFullscreenMedia()) return false;
+            RefreshAndApplyPresentation([] {});
+            InvalidateRect(window_, nullptr, FALSE);
+            return true;
         }
         // Native media controls remain ordinary package actions. The package
         // publishes one typed playback command in its next exact snapshot;
@@ -14369,6 +14485,8 @@ private:
     std::optional<CommittedWidgetVisualState> committedWidgetVisualState_;
     std::optional<CommittedOverlayFullscreenMediaPresentation>
         committedOverlayFullscreenMediaPresentation_;
+    std::optional<OverlayFullscreenMediaActivation>
+        overlayFullscreenMediaActivation_;
     std::optional<widgetrail::WidgetPresentationImpact>
         pendingWidgetPresentationImpact_;
     std::optional<widgetrail::IncrementalPresentationPlan>

@@ -1283,8 +1283,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                 {L"id", L"accessibleName", L"entryAsset", L"surface",
                  L"aspectRatio", L"resources", L"commands",
                  L"allowedFrameOrigins", L"allowedFrameDomainFamilies", L"pendingCommand",
-                 L"compactPinnedPresentation", L"compactPinnedSeekStepSeconds",
-                 L"retainSessionWhenHidden", L"overlayFullscreenPresentation"}))
+                 L"compactPinnedPresentation", L"mediaSeekStepSeconds",
+                 L"retainSessionWhenHidden", L"overlayFullscreenCapable"}))
             throw winrt::hresult_invalid_argument(
                 L"Embedded media contains an unknown property.");
         EmbeddedMediaSurfaceDeclaration parsed;
@@ -1297,11 +1297,11 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
             media.GetNamedBoolean(L"compactPinnedPresentation", false);
         parsed.retainSessionWhenHidden =
             media.GetNamedBoolean(L"retainSessionWhenHidden", false);
-        parsed.overlayFullscreenPresentation =
-            media.GetNamedBoolean(L"overlayFullscreenPresentation", false);
-        if (media.HasKey(L"compactPinnedSeekStepSeconds"))
-            parsed.compactPinnedSeekStepSeconds =
-                media.GetNamedNumber(L"compactPinnedSeekStepSeconds");
+        parsed.overlayFullscreenCapable =
+            media.GetNamedBoolean(L"overlayFullscreenCapable", false);
+        if (media.HasKey(L"mediaSeekStepSeconds"))
+            parsed.mediaSeekStepSeconds =
+                media.GetNamedNumber(L"mediaSeekStepSeconds");
         const auto resources = media.GetNamedArray(L"resources");
         const auto commands = media.GetNamedArray(L"commands");
         const auto frameOrigins = media.GetNamedArray(L"allowedFrameOrigins", JsonArray{});
@@ -1318,16 +1318,16 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
             !parsed.surface.minimumWidth || !parsed.surface.minimumHeight)
             throw winrt::hresult_invalid_argument(
                 L"Embedded media authority or bounds are invalid.");
-        if (parsed.compactPinnedSeekStepSeconds &&
-            (!std::isfinite(*parsed.compactPinnedSeekStepSeconds) ||
-             *parsed.compactPinnedSeekStepSeconds <
-                 protocol_contract::MinimumCompactPinnedMediaSeekStepSeconds ||
-             *parsed.compactPinnedSeekStepSeconds >
-                 protocol_contract::MaximumCompactPinnedMediaSeekStepSeconds))
+        if (parsed.mediaSeekStepSeconds &&
+            (!std::isfinite(*parsed.mediaSeekStepSeconds) ||
+             *parsed.mediaSeekStepSeconds <
+                 protocol_contract::MinimumMediaSeekStepSeconds ||
+             *parsed.mediaSeekStepSeconds >
+                 protocol_contract::MaximumMediaSeekStepSeconds))
             throw winrt::hresult_invalid_argument(
                 L"Compact pinned media seek step is invalid.");
         if (!parsed.compactPinnedPresentation &&
-            parsed.compactPinnedSeekStepSeconds)
+            !parsed.overlayFullscreenCapable && parsed.mediaSeekStepSeconds)
             throw winrt::hresult_invalid_argument(
                 L"Compact pinned media seek step requires compact presentation.");
         std::unordered_set<std::wstring> paths;
@@ -1373,12 +1373,12 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
             throw winrt::hresult_invalid_argument(
                 L"Compact pinned media capabilities are incomplete.");
         if ((parsed.compactPinnedPresentation ||
-             parsed.compactPinnedSeekStepSeconds) &&
+             parsed.mediaSeekStepSeconds) &&
             snapshot.protocolVersion <
                 protocol_contract::CompactPinnedMediaPresentationVersion)
             throw winrt::hresult_invalid_argument(
                 L"Compact pinned media presentation requires protocol version 25.");
-        if (parsed.overlayFullscreenPresentation &&
+        if (parsed.overlayFullscreenCapable &&
             snapshot.protocolVersion <
                 protocol_contract::OverlayFullscreenMediaPresentationVersion)
             throw winrt::hresult_invalid_argument(
@@ -2303,8 +2303,8 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
              L"presentationGeneration", L"sequence", L"surfaceId",
              L"entryAsset", L"surface", L"aspectRatio", L"accessibleName",
              L"commands", L"allowedFrameOrigins", L"allowedFrameDomainFamilies", L"pendingCommand",
-             L"compactPinnedPresentation", L"compactPinnedSeekStepSeconds",
-             L"retainSessionWhenHidden", L"overlayFullscreenPresentation",
+             L"compactPinnedPresentation", L"mediaSeekStepSeconds",
+             L"retainSessionWhenHidden", L"overlayFullscreenCapable",
              L"resources"}) ||
         !body.HasKey(L"widgetId") || !body.HasKey(L"instanceId") ||
         !body.HasKey(L"runtimeGeneration") ||
@@ -2328,11 +2328,11 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
         body.GetNamedBoolean(L"compactPinnedPresentation", false);
     bundle.surface.retainSessionWhenHidden =
         body.GetNamedBoolean(L"retainSessionWhenHidden", false);
-    bundle.surface.overlayFullscreenPresentation =
-        body.GetNamedBoolean(L"overlayFullscreenPresentation", false);
-    if (body.HasKey(L"compactPinnedSeekStepSeconds"))
-        bundle.surface.compactPinnedSeekStepSeconds =
-            body.GetNamedNumber(L"compactPinnedSeekStepSeconds");
+    bundle.surface.overlayFullscreenCapable =
+        body.GetNamedBoolean(L"overlayFullscreenCapable", false);
+    if (body.HasKey(L"mediaSeekStepSeconds"))
+        bundle.surface.mediaSeekStepSeconds =
+            body.GetNamedNumber(L"mediaSeekStepSeconds");
     if (bundle.widgetId != widgetId || bundle.instanceId != instanceId ||
         bundle.runtimeGeneration != runtimeGeneration ||
         bundle.presentationGeneration != presentationGeneration ||
@@ -2349,14 +2349,15 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
                     }) ||
         !std::isfinite(bundle.surface.aspectRatio) ||
         bundle.surface.aspectRatio < 0.1 || bundle.surface.aspectRatio > 10.0 ||
-        (bundle.surface.compactPinnedSeekStepSeconds &&
-            (!std::isfinite(*bundle.surface.compactPinnedSeekStepSeconds) ||
-             *bundle.surface.compactPinnedSeekStepSeconds <
-                 protocol_contract::MinimumCompactPinnedMediaSeekStepSeconds ||
-             *bundle.surface.compactPinnedSeekStepSeconds >
-                 protocol_contract::MaximumCompactPinnedMediaSeekStepSeconds)) ||
+        (bundle.surface.mediaSeekStepSeconds &&
+            (!std::isfinite(*bundle.surface.mediaSeekStepSeconds) ||
+             *bundle.surface.mediaSeekStepSeconds <
+                 protocol_contract::MinimumMediaSeekStepSeconds ||
+             *bundle.surface.mediaSeekStepSeconds >
+                 protocol_contract::MaximumMediaSeekStepSeconds)) ||
         (!bundle.surface.compactPinnedPresentation &&
-            bundle.surface.compactPinnedSeekStepSeconds) ||
+            !bundle.surface.overlayFullscreenCapable &&
+            bundle.surface.mediaSeekStepSeconds) ||
         !IsNormalizedEmbeddedMediaPath(bundle.surface.entryAsset))
         return std::nullopt;
 
@@ -3753,7 +3754,8 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const std::wstring_view runtimeGeneration,
     const std::wstring_view pinnedLayoutId,
     const std::optional<bool> pinnedLayoutSelected,
-    const std::wstring_view expectedActionId) {
+    const std::wstring_view expectedActionId,
+    const std::optional<bool> overlayFullscreenActive) {
     std::scoped_lock lock(requestMutex_);
     lastControllerInputResultCode_.clear();
     if (pipe_ == INVALID_HANDLE_VALUE) {
@@ -3798,6 +3800,10 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
         if (pinnedLayoutSelected) {
             input.Insert(L"isPinnedLayoutSelected",
                          JsonValue::CreateBooleanValue(*pinnedLayoutSelected));
+        }
+        if (overlayFullscreenActive) {
+            input.Insert(L"isOverlayFullscreenActive",
+                         JsonValue::CreateBooleanValue(*overlayFullscreenActive));
         }
         JsonObject payload;
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));

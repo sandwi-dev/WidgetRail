@@ -169,34 +169,37 @@ public sealed partial class YouTubeWidgetTests
         Assert.IsEmpty(ViewSnapshotValidator.Validate(ready));
         Assert.IsTrue(Find(ready.Root, "youtube.player.fullscreen").IsDisabled is not true);
         Assert.AreEqual("youtube.player.fullscreen", Find(ready.Root, "youtube.link").Focus!.Up);
-        Assert.IsFalse(ready.EmbeddedMedia!.OverlayFullscreenPresentation);
+
+        // Fullscreen is host-owned: the player route declares only the capability
+        // and offers the reserved entry action. The widget holds no fullscreen
+        // state, so repeated renders cannot disagree about the mode, and no B
+        // shortcut is needed - or possible - to leave it.
+        Assert.IsTrue(ready.EmbeddedMedia!.OverlayFullscreenCapable);
+        Assert.AreEqual("host.embeddedMedia.enterFullscreen",
+            Find(ready.Root, "youtube.player.fullscreen").ActionId);
+        Assert.IsEmpty(Find(ready.Root, "youtube.root").Shortcuts
+            .Where(shortcut => shortcut.Button == ControllerButton.B));
 
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.EnterFullscreenActionId, "youtube.player.fullscreen"));
-        var fullscreen = widget.RenderSnapshot("youtube-test", 3);
-        Assert.IsEmpty(ViewSnapshotValidator.Validate(fullscreen));
-        Assert.IsTrue(fullscreen.EmbeddedMedia!.OverlayFullscreenPresentation);
-        Assert.AreEqual(YouTubeVideoWidget.ExitFullscreenActionId,
-            Find(fullscreen.Root, "youtube.player.fullscreen").ActionId);
+        var afterEnter = widget.RenderSnapshot("youtube-test", 3);
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(afterEnter));
+        Assert.IsTrue(afterEnter.EmbeddedMedia!.OverlayFullscreenCapable);
+        Assert.AreEqual("host.embeddedMedia.enterFullscreen",
+            Find(afterEnter.Root, "youtube.player.fullscreen").ActionId);
 
-        await widget.OnActionAsync(new WidgetActionEvent(
-            YouTubeVideoWidget.ExitFullscreenActionId, "youtube.player.fullscreen"));
-        var exited = widget.RenderSnapshot("youtube-test", 4);
-        Assert.IsEmpty(ViewSnapshotValidator.Validate(exited));
-        Assert.IsFalse(exited.EmbeddedMedia!.OverlayFullscreenPresentation);
-        Assert.AreEqual(YouTubeVideoWidget.EnterFullscreenActionId,
-            Find(exited.Root, "youtube.player.fullscreen").ActionId);
-
+        // Leaving the player route withdraws the capability, which is the exact
+        // declaration the host requires to keep its activation alive.
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.back", "youtube.player.back"));
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.link.open", "youtube.link.open"));
-        var retainedLink = widget.RenderSnapshot("youtube-test", 5);
+        var retainedLink = widget.RenderSnapshot("youtube-test", 4);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(retainedLink));
         Assert.IsNull(TryFind(retainedLink.Root, "youtube.player.fullscreen"));
         Assert.AreEqual("youtube.player.back",
             Find(retainedLink.Root, "youtube.link").Focus!.Up);
-        Assert.IsFalse(retainedLink.EmbeddedMedia!.OverlayFullscreenPresentation);
+        Assert.IsFalse(retainedLink.EmbeddedMedia!.OverlayFullscreenCapable);
         await WidgetTestHost.DestroyAsync(widget);
     }
 

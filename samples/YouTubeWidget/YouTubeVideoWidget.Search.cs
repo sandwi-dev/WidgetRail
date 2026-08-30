@@ -110,7 +110,6 @@ public sealed partial class YouTubeVideoWidget
         lock (_gate)
         {
             _isActive = false;
-            _overlayFullscreen = false;
             ClearTransientSeekBufferingLocked();
             CancelPendingFeedbackLocked();
         }
@@ -536,11 +535,10 @@ public sealed partial class YouTubeVideoWidget
         return true;
     }
 
-    private void SetRouteLocked(YouTubeRoute route)
-    {
-        _route = route;
-        if (route != YouTubeRoute.Player) _overlayFullscreen = false;
-    }
+    // Leaving the Player route no longer has to retire a fullscreen flag: the
+    // host drops its own activation as soon as the admitted snapshot stops
+    // declaring the capability for this exact surface.
+    private void SetRouteLocked(YouTubeRoute route) => _route = route;
 
     private async ValueTask<WidgetCursorPage<YouTubeSearchItem>> LoadSearchPageAsync(
         WidgetCollectionCursor? cursor,

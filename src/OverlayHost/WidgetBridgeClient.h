@@ -386,9 +386,9 @@ struct EmbeddedMediaSurfaceDeclaration final {
     std::vector<std::wstring> allowedFrameDomainFamilies;
     std::optional<EmbeddedMediaPlaybackCommand> pendingCommand;
     bool compactPinnedPresentation{};
-    std::optional<double> compactPinnedSeekStepSeconds;
+    std::optional<double> mediaSeekStepSeconds;
     bool retainSessionWhenHidden{};
-    bool overlayFullscreenPresentation{};
+    bool overlayFullscreenCapable{};
 };
 
 struct EmbeddedMediaResource final {
@@ -678,7 +678,8 @@ public:
         std::wstring_view runtimeGeneration = {},
         std::wstring_view pinnedLayoutId = {},
         std::optional<bool> pinnedLayoutSelected = std::nullopt,
-        std::wstring_view expectedActionId = {});
+        std::wstring_view expectedActionId = {},
+        std::optional<bool> overlayFullscreenActive = std::nullopt);
     [[nodiscard]] std::optional<bool> SendAction(
         std::wstring_view widgetId,
         std::wstring_view actionId,

@@ -24,7 +24,6 @@ public sealed class EmbeddedMediaSampleWidget : Widget
     private double _playbackRate = 1;
     private bool _muted;
     private bool _loop = true;
-    private bool _overlayFullscreen;
     private EmbeddedMediaPlaybackCommand? _pendingCommand;
 
     public override WidgetView Render()
@@ -37,7 +36,6 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         double playbackRate;
         bool muted;
         bool loop;
-        bool overlayFullscreen;
         lock (_gate)
         {
             playbackState = _state;
@@ -48,7 +46,6 @@ public sealed class EmbeddedMediaSampleWidget : Widget
             playbackRate = _playbackRate;
             muted = _muted;
             loop = _loop;
-            overlayFullscreen = _overlayFullscreen;
         }
         var media = new EmbeddedMediaSurface
         {
@@ -65,9 +62,9 @@ public sealed class EmbeddedMediaSampleWidget : Widget
             ],
             Commands = [EmbeddedMediaCommand.Activate, EmbeddedMediaCommand.TogglePlayback, EmbeddedMediaCommand.Previous, EmbeddedMediaCommand.Next, EmbeddedMediaCommand.SeekBackward, EmbeddedMediaCommand.SeekForward],
             CompactPinnedPresentation = true,
-            CompactPinnedSeekStepSeconds = SeekStepSeconds,
+            MediaSeekStepSeconds = SeekStepSeconds,
             PendingCommand = pending,
-            OverlayFullscreenPresentation = overlayFullscreen,
+            OverlayFullscreenCapable = true,
         };
         var back = UI.Button("Back", "host.embeddedMedia.back", "media-shell.back").FocusDown("media-shell.timeline.slider").Classes("media-shell-back");
         var fullscreen = UI.Button(
@@ -113,8 +110,7 @@ public sealed class EmbeddedMediaSampleWidget : Widget
                 UI.Row("media-shell.timeline", UI.Text(FormatTime(position), "media-shell.position").Classes("media-shell-time"), timeline, UI.Text(FormatTime(duration), "media-shell.duration").Classes("media-shell-time", "is-end")).Classes("media-shell-timeline"),
                 UI.Row("media-shell.controls", previous, seekBack, play, seekForward, next).Classes("media-shell-controls"),
                 UI.Row("media-shell.preferences", rate, mute, loopButton).Classes("media-shell-preferences"))
-                .Classes("media-shell-root")
-                .Shortcut(ControllerButton.B, "host.embeddedMedia.exitFullscreen"),
+                .Classes("media-shell-root"),
             InitialFocusId: "media-shell.play", ActiveInputScopeId: "media-shell.root",
             Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = 760, PreferredHeight = 610, MinimumWidth = 440, MinimumHeight = 410 })
         { EmbeddedMedia = media };
@@ -127,18 +123,6 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            if (action.ActionId == "host.embeddedMedia.enterFullscreen")
-            {
-                _overlayFullscreen = true;
-                Invalidate();
-                return ValueTask.CompletedTask;
-            }
-            if (action.ActionId == "host.embeddedMedia.exitFullscreen")
-            {
-                _overlayFullscreen = false;
-                Invalidate();
-                return ValueTask.CompletedTask;
-            }
             if (_pendingCommand is not null)
                 return ValueTask.CompletedTask;
             EmbeddedMediaPlaybackCommandKind? kind = null;
@@ -153,11 +137,11 @@ public sealed class EmbeddedMediaSampleWidget : Widget
                     break;
                 case "host.embeddedMedia.seekBackward":
                     kind = EmbeddedMediaPlaybackCommandKind.Seek;
-                    position = Math.Max(0, _position - SeekStepSeconds);
+                    position = Math.Max(0, _position - CurrentMediaSeekStepSeconds);
                     break;
                 case "host.embeddedMedia.seekForward":
                     kind = EmbeddedMediaPlaybackCommandKind.Seek;
-                    position = Math.Min(_duration, _position + SeekStepSeconds);
+                    position = Math.Min(_duration, _position + CurrentMediaSeekStepSeconds);
                     break;
                 case "host.embeddedMedia.seek" when action.RequestedValue is { } requested &&
                                                          double.IsFinite(requested):

@@ -69,8 +69,9 @@ Protocol v25 additionally lets a widget opt into the host-owned compact pinned
 presentation with `CompactPinnedPresentation`. The pin keeps the same
 `MediaViewport` and media session, removes the authored title/transport rows,
 and overlays one native themed seek bar that hides during passive playback.
-`CompactPinnedSeekStepSeconds` defaults to 10 and accepts finite values from 1
-through 60 seconds. X toggles playback; LT/RT rewind or forward from the current
+`MediaSeekStepSeconds` defaults to 10 and accepts finite values from 1 through
+60 seconds; it is the step for both this presentation and overlay fullscreen, so
+declare it once and either mode honours it. X toggles playback; LT/RT rewind or forward from the current
 position by that interval; A does not enter a hidden seek mode; D-pad and left
 stick navigation do not seek; B exits compact controller interaction to
 click-through; LB/RB select Previous/Next only when those commands are declared;
@@ -485,13 +486,32 @@ a background session, and ordinary declaration removal, identity/resource or
 runtime replacement, widget removal, browser failure, slot retirement, and
 host shutdown remain terminal.
 
-Protocol v30 adds `OverlayFullscreenPresentation` to the existing embedded
-media declaration. It is presentation state rather than resource identity:
-changing it preserves the sealed adapter, controller, document, and playback
-session. The host owns safe-work-area placement, aspect fit, DPI, native guide,
-focus, accessibility, and return to the authored layout. Widgets provide an
-ordinary root B shortcut that clears the request; View remains host-owned.
-Webpages cannot request or exit fullscreen directly.
+Protocol v30 adds `OverlayFullscreenCapable` to the existing embedded media
+declaration. It is a capability, not state: the package declares that its
+surface may be presented fullscreen, and the host owns whether it currently is.
+Entering and leaving preserve the sealed adapter, controller, document, and
+playback session. The host owns safe-work-area placement, aspect fit, DPI,
+native guide, focus, accessibility, and return to the authored layout.
+
+Offer entry with the reserved `host.embeddedMedia.enterFullscreen` action; the
+host leaves the mode on B without routing it to the widget, and View remains
+host-owned. Webpages can neither request nor exit fullscreen. A widget holds no
+fullscreen state and needs no exit shortcut, so it cannot leave the user inside
+a presentation that draws no tray, guide, or accessibility tree. The host binds
+its activation to the exact admitted declaration and retires it whenever that
+declaration stops applying, which is why nothing has to be cleared on route
+changes, deactivation, or restart.
+
+While fullscreen is active the host services X and the triggers directly against
+the media plane, so optimistic pending/busy state in the widget does not apply;
+playback events still arrive through `OnEmbeddedMediaPlaybackEventAsync`.
+
+Override `OnOverlayFullscreenChangedAsync(bool)` only to observe the host-owned
+mode. The callback is delivered once per effective state change and grants no
+provider, capability, focus, window, or presentation authority. Use
+`CurrentMediaSeekStepSeconds` for package-side seek command math so it matches
+the exact `MediaSeekStepSeconds` declaration consumed by host-owned compact and
+fullscreen controls.
 
 Protocol v26 adds `AllowedFrameDomainFamilies` for the bounded case where an
 external frame legitimately spans one registrable DNS family. Entries are

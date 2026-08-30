@@ -70,7 +70,7 @@ internal sealed class ProtocolVersionRequirements
                 "$.embeddedMedia",
                 $"Embedded media playback requires protocol version {ProtocolConstants.EmbeddedMediaPlaybackVersion} or later.");
         if (snapshot.EmbeddedMedia is { CompactPinnedPresentation: true } ||
-            snapshot.EmbeddedMedia?.CompactPinnedSeekStepSeconds is not null)
+            snapshot.EmbeddedMedia?.MediaSeekStepSeconds is not null)
             Add(
                 "compact-pinned-media-presentation",
                 ProtocolConstants.CompactPinnedMediaPresentationVersion,
@@ -97,11 +97,11 @@ internal sealed class ProtocolVersionRequirements
                 ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
                 "$.embeddedMedia.retainSessionWhenHidden",
                 $"Retained hidden embedded media requires protocol version {ProtocolConstants.RetainedHiddenEmbeddedMediaVersion} or later.");
-        if (snapshot.EmbeddedMedia?.OverlayFullscreenPresentation == true)
+        if (snapshot.EmbeddedMedia?.OverlayFullscreenCapable == true)
             Add(
                 "overlay-fullscreen-media-presentation",
                 ProtocolConstants.OverlayFullscreenMediaPresentationVersion,
-                "$.embeddedMedia.overlayFullscreenPresentation",
+                "$.embeddedMedia.overlayFullscreenCapable",
                 $"Overlay fullscreen media presentation requires protocol version {ProtocolConstants.OverlayFullscreenMediaPresentationVersion} or later.");
 
         Visit(snapshot.Root, "$.root", 1);

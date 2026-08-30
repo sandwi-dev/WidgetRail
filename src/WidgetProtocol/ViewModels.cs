@@ -513,8 +513,12 @@ public sealed record EmbeddedMediaSurface
     public EmbeddedMediaPlaybackCommand? PendingCommand { get; init; }
     /// <summary>Opts the pinned surface into the host-owned compact media player.</summary>
     public bool CompactPinnedPresentation { get; init; }
-    /// <summary>Optional bounded scrub step; the host default applies when omitted.</summary>
-    public double? CompactPinnedSeekStepSeconds { get; init; }
+    /// <summary>
+    /// Optional bounded scrub step for every host-owned media presentation that
+    /// seeks on the widget's behalf: the compact pinned player and overlay
+    /// fullscreen. The host default applies when omitted.
+    /// </summary>
+    public double? MediaSeekStepSeconds { get; init; }
     /// <summary>
     /// Retains an already-resident controller/document while this snapshot
     /// intentionally contains no MediaViewport. It does not create a hidden
@@ -522,8 +526,11 @@ public sealed record EmbeddedMediaSurface
     /// </summary>
     public bool RetainSessionWhenHidden { get; init; }
     /// <summary>
-    /// Requests host-owned fullscreen presentation of this media surface in
-    /// the existing overlay window. The webpage remains a bounded pixel plane.
+    /// Declares that this media surface may be presented fullscreen inside the
+    /// existing overlay window. This is a capability, not a state: the host owns
+    /// whether fullscreen is currently active, entering it through the reserved
+    /// enter action and leaving it on B. The webpage remains a bounded pixel
+    /// plane and can neither request nor exit fullscreen itself.
     /// </summary>
-    public bool OverlayFullscreenPresentation { get; init; }
+    public bool OverlayFullscreenCapable { get; init; }
 }

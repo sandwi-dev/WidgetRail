@@ -13,8 +13,10 @@ public sealed partial class YouTubeVideoWidget : Widget
     internal const string SeekForwardActionId = "youtube.playback.seek-forward";
     internal const string SeekActionId = "youtube.playback.seek";
     internal const string VolumeActionId = "youtube.playback.volume";
-    internal const string EnterFullscreenActionId = "youtube.fullscreen.enter";
-    internal const string ExitFullscreenActionId = "youtube.fullscreen.exit";
+    // Fullscreen is a host-owned mode. The package declares the surface may be
+    // presented that way and offers this reserved entry action; the host owns
+    // the state and returns to this layout on B.
+    internal const string EnterFullscreenActionId = "host.embeddedMedia.enterFullscreen";
     private const string FullscreenFocusId = "youtube.player.fullscreen";
     private const double SeekStepSeconds = 10;
     private static readonly TimeSpan PendingFeedbackThreshold = TimeSpan.FromMilliseconds(250);
@@ -30,7 +32,6 @@ public sealed partial class YouTubeVideoWidget : Widget
     private double _position;
     private double _duration;
     private double _volume = 0.8;
-    private bool _overlayFullscreen;
     private EmbeddedMediaPlaybackCommand? _pendingCommand;
     private PendingMediaControl _pendingControl;
     private SeekBufferingState? _seekBuffering;
@@ -51,7 +52,6 @@ public sealed partial class YouTubeVideoWidget : Widget
         double position;
         double duration;
         double volume;
-        bool overlayFullscreen;
         bool isActive;
         YouTubeRoute route;
         PendingMediaControl busyControl;
@@ -66,7 +66,6 @@ public sealed partial class YouTubeVideoWidget : Widget
             position = _position;
             duration = _duration;
             volume = _volume;
-            overlayFullscreen = _overlayFullscreen;
             isActive = _isActive;
             route = _route;
             pending = _pendingCommand;
@@ -75,8 +74,6 @@ public sealed partial class YouTubeVideoWidget : Widget
                 ? _pendingControl : PendingMediaControl.None;
         }
 
-        var media = CreateMediaSurface(videoId, pending, retainSessionWhenHidden: false,
-            overlayFullscreen);
         var seekBuffering = state == EmbeddedMediaPlaybackState.Loading &&
             (pending?.Kind == EmbeddedMediaPlaybackCommandKind.Seek || seekBufferingState is not null);
         var playbackSemantic = seekBufferingState is { } retained
@@ -88,8 +85,11 @@ public sealed partial class YouTubeVideoWidget : Widget
                  EmbeddedMediaPlaybackCommandKind.Cue);
         var controlsUnavailable = videoId is null || error is not null || mediaLoading;
         var showFullscreenAction = includeDashboardQuickActions && videoId is not null;
-        var fullscreenActionEnabled = overlayFullscreen ||
-            (error is null && !mediaLoading);
+        var fullscreenActionEnabled = error is null && !mediaLoading;
+        // Declared only on the route that also offers the reserved entry action,
+        // so the capability never outlives a way to reach it.
+        var media = CreateMediaSurface(videoId, pending, retainSessionWhenHidden: false,
+            overlayFullscreenCapable: showFullscreenAction);
 
         var linkEntry = UI.TextEntry(
                 link,
@@ -186,9 +186,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         {
             if (fullscreenActionEnabled) back = back.FocusRight(FullscreenFocusId);
             headerActions.Add(UI.Button(
-                    overlayFullscreen ? "Exit fullscreen" : "Fullscreen",
-                    overlayFullscreen ? ExitFullscreenActionId : EnterFullscreenActionId,
-                    FullscreenFocusId)
+                    "Fullscreen", EnterFullscreenActionId, FullscreenFocusId)
                 .Disabled(!fullscreenActionEnabled)
                 .FocusLeft("youtube.player.back")
                 .FocusDown("youtube.link")
@@ -239,8 +237,6 @@ public sealed partial class YouTubeVideoWidget : Widget
                 .Shortcut(ControllerButton.RightTrigger, SeekForwardActionId,
                     repeatPolicy: ControllerActionRepeatPolicy.WhileHeld);
         }
-        if (overlayFullscreen)
-            root = root.Shortcut(ControllerButton.B, ExitFullscreenActionId);
         return new WidgetView(
             root,
             InitialFocusId: "youtube.playback.toggle",
@@ -261,7 +257,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         string? videoId,
         EmbeddedMediaPlaybackCommand? pendingCommand,
         bool retainSessionWhenHidden,
-        bool overlayFullscreenPresentation = false) => new()
+        bool overlayFullscreenCapable = false) => new()
     {
         Id = SurfaceId,
         AccessibleName = videoId is null
@@ -309,10 +305,10 @@ public sealed partial class YouTubeVideoWidget : Widget
             "gstatic.com",
         ],
         CompactPinnedPresentation = true,
-        CompactPinnedSeekStepSeconds = SeekStepSeconds,
+        MediaSeekStepSeconds = SeekStepSeconds,
         PendingCommand = pendingCommand,
         RetainSessionWhenHidden = retainSessionWhenHidden,
-        OverlayFullscreenPresentation = overlayFullscreenPresentation,
+        OverlayFullscreenCapable = overlayFullscreenCapable,
     };
 
     public override ValueTask OnActionAsync(
@@ -323,27 +319,6 @@ public sealed partial class YouTubeVideoWidget : Widget
         if (TryHandleApplicationAction(action)) return ValueTask.CompletedTask;
         lock (_gate)
         {
-            if (action.ActionId == EnterFullscreenActionId)
-            {
-                if (_route == YouTubeRoute.Player && _videoId is not null &&
-                    !_overlayFullscreen && _validationError is null &&
-                    _playbackError is null && _pendingCommand is null &&
-                    _state != EmbeddedMediaPlaybackState.Loading)
-                {
-                    _overlayFullscreen = true;
-                    Invalidate();
-                }
-                return ValueTask.CompletedTask;
-            }
-            if (action.ActionId == ExitFullscreenActionId)
-            {
-                if (_overlayFullscreen)
-                {
-                    _overlayFullscreen = false;
-                    Invalidate();
-                }
-                return ValueTask.CompletedTask;
-            }
             if (action.ActionId == LinkActionId && action.CommittedText is { } committed)
             {
                 _link = committed.Trim();
@@ -383,14 +358,14 @@ public sealed partial class YouTubeVideoWidget : Widget
                         EmbeddedMediaPlaybackCommandKind.Seek,
                         videoId,
                         PendingMediaControl.SeekBackward,
-                        position: Math.Max(0, _position - SeekStepSeconds));
+                        position: Math.Max(0, _position - CurrentMediaSeekStepSeconds));
                     break;
                 case SeekForwardActionId:
                     QueueCommand(
                         EmbeddedMediaPlaybackCommandKind.Seek,
                         videoId,
                         PendingMediaControl.SeekForward,
-                        position: Math.Min(Math.Max(0, _duration), _position + SeekStepSeconds));
+                        position: Math.Min(Math.Max(0, _duration), _position + CurrentMediaSeekStepSeconds));
                     break;
                 case SeekActionId when action.RequestedValue is { } requested &&
                                            double.IsFinite(requested):

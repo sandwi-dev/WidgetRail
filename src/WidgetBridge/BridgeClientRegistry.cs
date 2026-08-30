@@ -685,10 +685,11 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         try
         {
             DemandCurrent(registration);
-            if (input.Context == ControllerInputContext.PinnedSurface &&
+            if (input.Context is (ControllerInputContext.PinnedSurface or
+                    ControllerInputContext.OverlayFullscreenPresentation) &&
                 string.IsNullOrWhiteSpace(expectedRuntimeGeneration))
                 throw new BridgeProtocolException(
-                    "Pinned-surface input requires exact runtime generation authority.");
+                    "Host-owned controller notification requires exact runtime generation authority.");
             if (expectedRuntimeGeneration is not null &&
                 !string.Equals(
                     registration.Configured.PublicDescriptor().RuntimeGeneration,
@@ -696,7 +697,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     StringComparison.Ordinal))
                 throw new BridgeProtocolException(
                     "Controller input runtime authority is stale or unavailable.");
-            if (input.Context != ControllerInputContext.PinnedLayoutSelection)
+            if (input.Context is not (ControllerInputContext.PinnedLayoutSelection or
+                ControllerInputContext.OverlayFullscreenPresentation))
                 DemandInteractionAllowed(registration);
             var admitted = DemandPinnedSurfaceAuthority(
                 registration, input, expectedActionId);
@@ -2102,7 +2104,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             private string[] AllowedFrameOrigins { get; init; } = [];
             private string[] AllowedFrameDomainFamilies { get; init; } = [];
             private bool CompactPinnedPresentation { get; init; }
-            private double? CompactPinnedSeekStepSeconds { get; init; }
+            private double? MediaSeekStepSeconds { get; init; }
             private bool RetainSessionWhenHidden { get; init; }
 
             internal static EmbeddedMediaResourceAuthority Capture(
@@ -2117,7 +2119,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 AllowedFrameOrigins = media.AllowedFrameOrigins.ToArray(),
                 AllowedFrameDomainFamilies = media.AllowedFrameDomainFamilies.ToArray(),
                 CompactPinnedPresentation = media.CompactPinnedPresentation,
-                CompactPinnedSeekStepSeconds = media.CompactPinnedSeekStepSeconds,
+                MediaSeekStepSeconds = media.MediaSeekStepSeconds,
                 RetainSessionWhenHidden = media.RetainSessionWhenHidden,
             };
 
@@ -2133,7 +2135,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 AllowedFrameDomainFamilies.SequenceEqual(
                     media.AllowedFrameDomainFamilies, StringComparer.Ordinal) &&
                 CompactPinnedPresentation == media.CompactPinnedPresentation &&
-                CompactPinnedSeekStepSeconds == media.CompactPinnedSeekStepSeconds &&
+                MediaSeekStepSeconds == media.MediaSeekStepSeconds &&
                 RetainSessionWhenHidden == media.RetainSessionWhenHidden;
         }
 

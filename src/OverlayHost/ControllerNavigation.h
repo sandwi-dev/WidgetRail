@@ -221,6 +221,61 @@ enum class FocusedSliderButtonRoute {
     return ControllerActionRoute::Widget;
 }
 
+enum class OverlayMediaBackRoute {
+    Widget,
+    ExitOverlayFullscreen,
+    HostWidgetBack,
+};
+
+struct OverlayFullscreenMediaAuthority final {
+    std::wstring_view widgetId;
+    std::wstring_view instanceId;
+    std::wstring_view runtimeGeneration;
+    std::wstring_view presentationGeneration;
+    std::wstring_view surfaceId;
+};
+
+/// A host-owned fullscreen activation remains current only while every
+/// identity and presentation precondition that admitted it is unchanged.
+[[nodiscard]] constexpr bool OverlayFullscreenMediaAuthorityCurrent(
+    const OverlayFullscreenMediaAuthority& activation,
+    const OverlayFullscreenMediaAuthority& current,
+    const bool widgetSurfaceActive,
+    const bool capabilityPresent,
+    const bool pinnedTakeover) noexcept {
+    return widgetSurfaceActive && capabilityPresent && !pinnedTakeover &&
+        activation.widgetId == current.widgetId &&
+        activation.instanceId == current.instanceId &&
+        activation.runtimeGeneration == current.runtimeGeneration &&
+        activation.presentationGeneration == current.presentationGeneration &&
+        activation.surfaceId == current.surfaceId;
+}
+
+/// B is the only button an overlay-projected embedded-media widget shares with
+/// the host, so its precedence is stated here rather than emerging from
+/// statement order. The caller resolves the host's own non-current root Back
+/// authority ahead of this and returns early when it applies; every remaining
+/// B decision belongs to this function.
+///
+/// Overlay fullscreen is host-owned state, so B leaves the mode and never
+/// reaches the widget. That ownership is what stops an author from stranding
+/// the user in a presentation that paints no tray, no guide, and no
+/// accessibility tree: a widget cannot fail to declare an exit it does not own.
+/// Only outside fullscreen does B mean back out of the media widget, and only
+/// while that widget actually holds focus.
+[[nodiscard]] constexpr OverlayMediaBackRoute RouteOverlayMediaBackButton(
+    const std::wstring_view button,
+    const bool overlayFullscreenActive,
+    const bool overlayMediaAuthorityCurrent,
+    const bool mediaWidgetFocused) noexcept {
+    if (button != L"B") return OverlayMediaBackRoute::Widget;
+    if (!overlayMediaAuthorityCurrent) return OverlayMediaBackRoute::Widget;
+    if (overlayFullscreenActive)
+        return OverlayMediaBackRoute::ExitOverlayFullscreen;
+    if (mediaWidgetFocused) return OverlayMediaBackRoute::HostWidgetBack;
+    return OverlayMediaBackRoute::Widget;
+}
+
 /// Down exits a root widget only after both author-specified and geometric
 /// focus navigation are exhausted. Nested input scopes keep focus contained so
 /// their own Back hierarchy remains authoritative.

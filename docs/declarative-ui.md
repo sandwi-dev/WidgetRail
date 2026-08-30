@@ -174,8 +174,11 @@ Protocol v25 adds an optional compact pinned presentation to
 `EmbeddedMediaSurface`. Set `CompactPinnedPresentation` to keep the ordinary
 authored player in the overlay while the pinned owner presents the existing
 `MediaViewport` as a video-first surface with one host-native, auto-hiding seek
-bar. `CompactPinnedSeekStepSeconds` is optional (10 seconds by default) and is
-bounded to 1–60 seconds. Compact presentation requires the existing
+bar. `MediaSeekStepSeconds` is optional (10 seconds by default) and is
+bounded to 1–60 seconds. It is the step for every host-owned presentation that
+seeks on the widget's behalf — the compact pinned player and overlay fullscreen
+— so it is declarable by any surface that opts into either one. Compact
+presentation requires the existing
 `TogglePlayback`, `SeekBackward`, and `SeekForward` capabilities; Previous and
 Next become available only when those existing commands are declared. The host
 keeps controller mapping, focus, accessibility, theme, geometry, clipping, and
@@ -195,13 +198,34 @@ the background and does not survive declaration removal, incompatible
 authority/resource replacement, widget removal or restart, browser failure,
 slot retirement, or host shutdown.
 
-Protocol v30 adds `OverlayFullscreenPresentation`. A widget toggles this
-Boolean on its existing `EmbeddedMediaSurface`; the host then aspect-fits that
-same media plane inside the monitor work area using the existing overlay HWND,
-DirectComposition endpoint, controller session, input scope, and accessibility
-owner. Browser/DOM fullscreen is never used. The ordinary declarative player
-is restored when the request clears. In fullscreen, B remains a widget-owned
-exit action and View retains the host tray route.
+Protocol v30 adds `OverlayFullscreenCapable`. A widget sets this Boolean on its
+existing `EmbeddedMediaSurface` to declare that the surface *may* be presented
+fullscreen; whether it currently is remains host state. The host aspect-fits
+that same media plane inside the monitor work area using the existing overlay
+HWND, DirectComposition endpoint, controller session, input scope, and
+accessibility owner. Browser/DOM fullscreen is never used.
+
+The host owns both edges of the mode, so a package never holds half of it. The
+reserved `host.embeddedMedia.enterFullscreen` action enters; B leaves and never
+reaches the widget; View retains the host tray route. A widget therefore cannot
+strand the user by omitting an exit for a presentation that paints no tray, no
+guide, and no accessibility tree. The activation is bound to the exact admitted
+declaration, so it retires on its own when the widget switches, deactivates,
+publishes a snapshot without the capability, is replaced or restarted, or the
+surface becomes the pinned owner — no widget bookkeeping participates.
+
+Fullscreen is also where the host becomes authoritative for transport. It
+services X and the triggers directly against the media plane instead of routing
+them through the widget, so a widget's optimistic pending/busy model does not
+apply while the mode is active; playback events continue to arrive through
+`OnEmbeddedMediaPlaybackEventAsync`, which is what keeps position and state
+current for the layout restored on exit.
+
+The SDK reports each effective host-owned transition through
+`OnOverlayFullscreenChangedAsync(bool)`. This is observation only: it grants no
+provider, capability, focus, window, or presentation authority. Playback events
+continue through `OnEmbeddedMediaPlaybackEventAsync`, including while the host
+is fullscreen, so the ordinary view resumes from current media state.
 
 An embedded-media widget builds its visible shell from the same native Text,
 Progress, Button, Row, and Stack nodes as any other widget. Reserved
