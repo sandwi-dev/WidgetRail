@@ -36,6 +36,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Input surfaces serialize and validate scoped shortcuts", InputSurfacesValidate),
     ("Held-button action repeat is generic opt-in and never backlogs",
         HeldButtonActionRepeatTests.Run),
+    ("Remembered-child focus groups share one bounded container contract",
+        RememberedChildFocusGroupTests.Run),
     ("Dashboard quick action authority is typed bounded and versioned", DashboardAuthorityContract),
     ("Host-reserved View mappings fail with precise author diagnostics", HostReservedViewMappingsAreRejected),
     ("Unsafe image sources are rejected", UnsafeImageSourcesAreRejected),

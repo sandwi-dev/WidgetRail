@@ -1,3 +1,4 @@
+#include "DeclarativeRenderer.h"
 #include "WidgetSurfaceFocus.h"
 
 #include <cstdlib>
@@ -124,6 +125,60 @@ widgetrail::WidgetSnapshot EmbeddedMediaSnapshot(
     return snapshot;
 }
 
+widgetrail::WidgetSnapshot FocusGroupSnapshot(const long long sequence = 1) {
+    widgetrail::WidgetSnapshot snapshot;
+    snapshot.sequence = sequence;
+    snapshot.instanceId = L"groups.runtime.v1";
+    snapshot.activeInputScopeId = L"groups.root";
+    snapshot.initialFocusId = L"groups.entry";
+    snapshot.root.id = L"groups.root";
+    snapshot.root.kind = L"stack";
+    snapshot.root.inputScopeId = L"groups.root";
+
+    auto entry = Button(L"groups.entry");
+    entry.focusDown = L"groups.outer";
+
+    widgetrail::WidgetNode inner;
+    inner.id = L"groups.inner";
+    inner.kind = L"row";
+    inner.initialChildFocusId = L"groups.inner.first";
+    inner.children.push_back(Button(L"groups.inner.first"));
+    inner.children.push_back(Button(L"groups.inner.second"));
+
+    widgetrail::WidgetNode outer;
+    outer.id = L"groups.outer";
+    outer.kind = L"stack";
+    outer.initialChildFocusId = L"groups.outer.first";
+    outer.children.push_back(Button(L"groups.outer.first"));
+    outer.children.push_back(std::move(inner));
+    outer.children.push_back(Button(L"groups.outer.last"));
+
+    widgetrail::WidgetNode modal;
+    modal.id = L"groups.modal";
+    modal.kind = L"stack";
+    modal.inputScopeId = L"groups.modal";
+    modal.initialChildFocusId = L"groups.modal.first";
+    modal.children.push_back(Button(L"groups.modal.first"));
+    modal.children.push_back(Button(L"groups.modal.second"));
+
+    snapshot.root.children = {std::move(entry), std::move(outer), std::move(modal)};
+    return snapshot;
+}
+
+widgetrail::RenderResult FocusGroupRender(
+    std::initializer_list<const wchar_t*> visible) {
+    widgetrail::RenderResult result;
+    float y{};
+    for (const auto* id : visible) {
+        const widgetrail::declarative::Rect rect{0.0F, y, 160.0F, 32.0F};
+        result.focusRects[id] = rect;
+        result.navigationRects[id] = rect;
+        result.navigationEnabled[id] = true;
+        y += 40.0F;
+    }
+    return result;
+}
+
 } // namespace
 
 int main() {
@@ -186,6 +241,73 @@ int main() {
         mediaControlRemoved.root.children.begin() + 3);
     Check(memory.Restore(L"media-widget", mediaControlRemoved) == L"media.play",
           "removed media memory falls back to the nearest valid controller control");
+
+    widgetrail::input::WidgetFocusGroupMemory groups;
+    auto groupSnapshot = FocusGroupSnapshot();
+    const auto groupRender = FocusGroupRender({
+        L"groups.entry", L"groups.outer.first", L"groups.inner.first",
+        L"groups.inner.second", L"groups.outer.last"});
+    Check(groups.Resolve(
+              L"widget-a", groupSnapshot, L"groups.outer", groupRender) ==
+              L"groups.outer.first",
+          "fresh group entry uses its authored initial child");
+    groups.Remember(L"widget-a", groupSnapshot, L"groups.inner.second");
+    Check(groups.Resolve(
+              L"widget-a", groupSnapshot, L"groups.inner", groupRender) ==
+              L"groups.inner.second" &&
+          groups.Resolve(
+              L"widget-a", groupSnapshot, L"groups.outer", groupRender) ==
+              L"groups.inner.second",
+          "nested descendant updates inner and outer ancestor memories");
+    groups.Remember(L"widget-a", groupSnapshot, L"groups.outer.last");
+    Check(groups.Resolve(
+              L"widget-a", groupSnapshot, L"groups.outer", groupRender) ==
+              L"groups.outer.last" &&
+          groups.Resolve(
+              L"widget-a", groupSnapshot, L"groups.inner", groupRender) ==
+              L"groups.inner.second",
+          "nested groups resolve their independently retained descendants");
+    Check(groups.Resolve(
+              L"widget-b", groupSnapshot, L"groups.outer", groupRender) ==
+              L"groups.outer.first",
+          "group memory is isolated by widget");
+    auto compatibleGroup = FocusGroupSnapshot(2);
+    Check(groups.Resolve(
+              L"widget-a", compatibleGroup, L"groups.outer", groupRender) ==
+              L"groups.outer.last",
+          "compatible successor and reopen retain exact group memory");
+    const auto withoutRemembered = FocusGroupRender({
+        L"groups.entry", L"groups.outer.first", L"groups.inner.first"});
+    Check(groups.Resolve(
+              L"widget-a", compatibleGroup, L"groups.outer", withoutRemembered) ==
+              L"groups.outer.first",
+          "disabled or hidden remembered child falls back to the initial child");
+    auto removedGroupChild = compatibleGroup;
+    removedGroupChild.root.children[1].children.pop_back();
+    Check(groups.Resolve(
+              L"widget-a", removedGroupChild, L"groups.outer", groupRender) ==
+              L"groups.outer.first",
+          "removed remembered child falls back without crossing group authority");
+    auto modalGroups = FocusGroupSnapshot(3);
+    modalGroups.activeInputScopeId = L"groups.modal";
+    const auto modalRender = FocusGroupRender({
+        L"groups.modal.first", L"groups.modal.second"});
+    groups.Remember(L"widget-a", modalGroups, L"groups.modal.second");
+    Check(groups.Resolve(
+              L"widget-a", modalGroups, L"groups.modal", modalRender) ==
+              L"groups.modal.second" &&
+          groups.Resolve(
+              L"widget-a", compatibleGroup, L"groups.outer", groupRender) ==
+              L"groups.outer.last",
+          "modal scope memory is isolated from the ordinary root scope");
+    groups.Forget(L"widget-a");
+    Check(groups.Resolve(
+              L"widget-a", compatibleGroup, L"groups.outer", groupRender) ==
+              L"groups.outer.first" &&
+          groups.Resolve(
+              L"widget-b", compatibleGroup, L"groups.outer", groupRender) ==
+              L"groups.outer.first",
+          "runtime or package retirement clears only the retired widget memory");
 
     memory.Forget(L"widget");
     Check(memory.Restore(L"widget", root) == L"root-first",

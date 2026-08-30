@@ -608,6 +608,7 @@ function Invoke-TextEntryModalTests {
         (Join-Path $projectDirectory 'TextEntryActionAdmission.cpp'),
         (Join-Path $projectDirectory 'TextEntryModal.cpp'),
         (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
+        (Join-Path $projectDirectory 'FocusNavigation.cpp'),
         (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
         "/Fo:$textEntryModalTestObjectDirectory\",
@@ -663,7 +664,8 @@ function Invoke-WidgetInteractionTests {
         -ObjectDirectory $surfaceFocusTestObjectDirectory `
         -Sources @(
             (Join-Path $projectDirectory 'WidgetSurfaceFocusTests.cpp'),
-            (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'))
+            (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
+            (Join-Path $projectDirectory 'FocusNavigation.cpp'))
     Invoke-OverlayPlatformParityTest `
         -Name 'SliderInteractionTests' `
         -ObjectDirectory $sliderTestObjectDirectory `

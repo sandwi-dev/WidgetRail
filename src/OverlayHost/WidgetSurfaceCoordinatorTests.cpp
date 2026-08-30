@@ -314,6 +314,50 @@ widgetrail::WidgetSnapshot SliderSnapshot(
     return snapshot;
 }
 
+widgetrail::WidgetSnapshot FocusGroupSnapshot(const long long sequence = 1) {
+    auto snapshot = Snapshot(sequence);
+    snapshot.initialFocusId = L"pin.group.entry";
+    snapshot.root.children.clear();
+
+    widgetrail::WidgetNode entry;
+    entry.id = L"pin.group.entry";
+    entry.kind = L"button";
+    entry.text = L"Entry";
+    entry.accessibilityLabel = entry.text;
+    entry.actionId = L"entry";
+    entry.inputScopeId = L"root";
+    entry.focusDown = L"pin.group.controls";
+
+    widgetrail::WidgetNode first;
+    first.id = L"pin.group.first";
+    first.kind = L"button";
+    first.text = L"First";
+    first.accessibilityLabel = first.text;
+    first.actionId = L"first";
+    first.inputScopeId = L"root";
+    first.focusRight = L"pin.group.second";
+    first.focusUp = entry.id;
+
+    widgetrail::WidgetNode second;
+    second.id = L"pin.group.second";
+    second.kind = L"button";
+    second.text = L"Second";
+    second.accessibilityLabel = second.text;
+    second.actionId = L"second";
+    second.inputScopeId = L"root";
+    second.focusLeft = first.id;
+    second.focusUp = entry.id;
+
+    widgetrail::WidgetNode controls;
+    controls.id = L"pin.group.controls";
+    controls.kind = L"row";
+    controls.inputScopeId = L"root";
+    controls.initialChildFocusId = first.id;
+    controls.children = {std::move(first), std::move(second)};
+    snapshot.root.children = {std::move(entry), std::move(controls)};
+    return snapshot;
+}
+
 void PumpPendingMessages() {
     MSG message{};
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
@@ -519,6 +563,49 @@ int main() {
             slider.Dispose();
             std::error_code sliderCleanup;
             std::filesystem::remove_all(sliderRoot, sliderCleanup);
+        }
+
+        {
+            widgetrail::pinned::WidgetSurfaceCoordinator groups;
+            const auto groupRoot = placementRoot / L"focus-groups";
+            Check(groups.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x419,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      groupRoot / L"placement.ini"),
+                  "pinned focus-group fixture initializes through the production owner");
+            groups.OnOverlayShown();
+            auto admission = Admission();
+            admission.snapshot = FocusGroupSnapshot();
+            Check(groups.Pin(admission, error) && groups.CommitSetup(error) &&
+                      groups.SetInteractionMode(
+                          widgetrail::pinned::InteractionMode::Focusable) &&
+                      groups.EnterControllerFocus(),
+                  "pinned focus-group fixture enters its exact initial control");
+            PumpPendingMessages();
+            Check(groups.focusedElementId() == L"pin.group.entry" &&
+                      groups.MoveControllerFocus(
+                          widgetrail::input::NavigationDirection::Down) &&
+                      groups.focusedElementId() == L"pin.group.first",
+                  "fresh pinned group entry resolves the authored initial child");
+            Check(groups.MoveControllerFocus(
+                      widgetrail::input::NavigationDirection::Right) &&
+                      groups.focusedElementId() == L"pin.group.second" &&
+                      groups.MoveControllerFocus(
+                          widgetrail::input::NavigationDirection::Up) &&
+                      groups.focusedElementId() == L"pin.group.entry",
+                  "pinned owner remembers the exact descendant before leaving the group");
+            Check(groups.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      FocusGroupSnapshot(2)) &&
+                      groups.MoveControllerFocus(
+                          widgetrail::input::NavigationDirection::Down) &&
+                      groups.focusedElementId() == L"pin.group.second",
+                  "compatible pinned successor restores the remembered group child");
+            Check(groups.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "pinned group teardown retires its independent focus authority");
+            groups.Dispose();
+            std::error_code groupCleanup;
+            std::filesystem::remove_all(groupRoot, groupCleanup);
         }
 
         for (int variant = 0; variant < 2; ++variant) {

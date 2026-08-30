@@ -281,7 +281,7 @@ if(WRAIL_BUILD_TESTS)
 
     add_executable(TextEntryModalTests
         TextEntryModalTests.cpp TextEntryActionAdmission.cpp TextEntryModal.cpp
-        WidgetSurfaceFocus.cpp)
+        WidgetSurfaceFocus.cpp FocusNavigation.cpp)
     target_compile_features(TextEntryModalTests PRIVATE cxx_std_20)
     target_compile_options(TextEntryModalTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(TextEntryModalTests PRIVATE
@@ -341,7 +341,7 @@ if(WRAIL_BUILD_TESTS)
     add_test(NAME FocusNavigationTests COMMAND FocusNavigationTests)
 
     add_executable(WidgetSurfaceFocusTests
-        WidgetSurfaceFocusTests.cpp WidgetSurfaceFocus.cpp)
+        WidgetSurfaceFocusTests.cpp WidgetSurfaceFocus.cpp FocusNavigation.cpp)
     target_compile_features(WidgetSurfaceFocusTests PRIVATE cxx_std_20)
     target_compile_options(WidgetSurfaceFocusTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(WidgetSurfaceFocusTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)

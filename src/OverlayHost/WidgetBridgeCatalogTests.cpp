@@ -1070,6 +1070,61 @@ int main() {
     CHECK(textEntry.textEntryMaximumLength == 96U);
 
     error.clear();
+    const auto rememberedGroup = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":33,"sequence":1,
+            "widgetInstanceId":"focus-groups.instance",
+            "activeInputScopeId":"root","initialFocusId":"entry",
+            "root":{"id":"root","kind":"stack","inputScopeId":"root","children":[
+                {"id":"entry","kind":"button","text":"Entry","actionId":"entry",
+                 "focus":{"down":"controls"}},
+                {"id":"controls","kind":"row","initialChildFocusId":"controls.play","children":[
+                    {"id":"controls.play","kind":"button","text":"Play","actionId":"play"},
+                    {"id":"controls.seek","kind":"slider","accessibilityLabel":"Seek",
+                     "value":10,"minimum":0,"maximum":100,"step":5,
+                     "valueChangedActionId":"seek.changed"}
+                ]}
+            ]}
+        }
+    })json", error);
+    CHECK(rememberedGroup && error.empty());
+    CHECK(rememberedGroup->protocolVersion == 33 &&
+          rememberedGroup->root.children[0].focusDown == L"controls" &&
+          rememberedGroup->root.children[1].initialChildFocusId == L"controls.play");
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":33,"sequence":1,
+            "widgetInstanceId":"focus-groups.invalid-kind",
+            "activeInputScopeId":"root","initialFocusId":"entry",
+            "root":{"id":"root","kind":"stack","children":[
+                {"id":"entry","kind":"button","text":"Entry","actionId":"entry",
+                 "initialChildFocusId":"child","children":[
+                    {"id":"child","kind":"button","text":"Child","actionId":"child"}
+                 ]}
+            ]}
+        }
+    })json", error));
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":33,"sequence":1,
+            "widgetInstanceId":"focus-groups.cross-scope",
+            "activeInputScopeId":"root","initialFocusId":"entry",
+            "root":{"id":"root","kind":"stack","children":[
+                {"id":"entry","kind":"button","text":"Entry","actionId":"entry"},
+                {"id":"controls","kind":"row","initialChildFocusId":"dialog.play","children":[
+                    {"id":"dialog","kind":"stack","inputScopeId":"dialog","children":[
+                        {"id":"dialog.play","kind":"button","text":"Play","actionId":"play"}
+                    ]}
+                ]}
+            ]}
+        }
+    })json", error));
+
+    error.clear();
     const auto invalidGrid = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "sequence": 1,

@@ -272,6 +272,86 @@ void ResponsiveFocusHandoffUsesInteractionOwner() {
           "new snapshot authority with unchanged geometry preserves exact focus");
 }
 
+void RememberedGroupsUseOnlyExplicitEntryOwner() {
+    using namespace widgetrail::input;
+    widgetrail::WidgetSnapshot snapshot;
+    snapshot.sequence = 91;
+    snapshot.instanceId = L"groups.instance";
+    snapshot.activeInputScopeId = L"groups.root";
+    snapshot.initialFocusId = L"groups.entry";
+    snapshot.root.id = L"groups.root";
+    snapshot.root.kind = L"stack";
+    snapshot.root.inputScopeId = L"groups.root";
+
+    auto entry = Button(L"groups.entry");
+    entry.focusDown = L"groups.controls";
+    widgetrail::WidgetNode controls;
+    controls.id = L"groups.controls";
+    controls.kind = L"row";
+    controls.initialChildFocusId = L"groups.play";
+    controls.children.push_back(Button(L"groups.play"));
+    controls.children.push_back(Button(L"groups.seek"));
+    snapshot.root.children = {std::move(entry), std::move(controls)};
+
+    widgetrail::RenderResult render;
+    AddRenderTarget(render, L"groups.entry", {0.0F, 0.0F, 100.0F, 30.0F});
+    AddRenderTarget(render, L"groups.play", {0.0F, 50.0F, 100.0F, 30.0F});
+    AddRenderTarget(render, L"groups.seek", {120.0F, 50.0F, 100.0F, 30.0F});
+    render.focusScopes[L"groups.entry"] = L"groups.root";
+    render.focusScopes[L"groups.play"] = L"groups.root";
+    render.focusScopes[L"groups.seek"] = L"groups.root";
+
+    WidgetInteractionSession fresh;
+    fresh.SetFocus(L"groups.widget", snapshot, L"groups.entry");
+    auto initial = fresh.ResolveDirectionalFocus(
+        L"groups.widget", snapshot, NavigationDirection::Down, render);
+    Check(initial.disposition == DirectionalFocusDisposition::Explicit &&
+              initial.target == L"groups.play",
+          "explicit group entry resolves the authored initial descendant");
+
+    fresh.SetFocus(L"groups.widget", snapshot, L"groups.seek");
+    fresh.SetFocus(L"groups.widget", snapshot, L"groups.entry");
+    auto remembered = fresh.ResolveDirectionalFocus(
+        L"groups.widget", snapshot, NavigationDirection::Down, render);
+    Check(remembered.disposition == DirectionalFocusDisposition::Explicit &&
+              remembered.target == L"groups.seek",
+          "ordinary interaction owner restores the exact remembered group child");
+
+    auto successor = snapshot;
+    successor.sequence++;
+    fresh.ClearFocus();
+    fresh.SetFocus(L"groups.widget", successor, L"groups.entry");
+    auto reopened = fresh.ResolveDirectionalFocus(
+        L"groups.widget", successor, NavigationDirection::Down, render);
+    Check(reopened.target == L"groups.seek",
+          "compatible refresh and overlay reopen retain group memory");
+
+    render.navigationEnabled[L"groups.seek"] = false;
+    auto disabled = fresh.ResolveDirectionalFocus(
+        L"groups.widget", successor, NavigationDirection::Down, render);
+    Check(disabled.target == L"groups.play",
+          "disabled remembered child uses the bounded initial fallback");
+
+    WidgetInteractionSession ordinary;
+    auto plain = Snapshot(92);
+    widgetrail::RenderResult plainRender;
+    AddRenderTarget(plainRender, L"first", {0.0F, 0.0F, 100.0F, 30.0F});
+    AddRenderTarget(plainRender, L"volume-a", {120.0F, 0.0F, 100.0F, 30.0F});
+    ordinary.SetFocus(L"plain.widget", plain, L"first");
+    const auto geometric = ordinary.ResolveDirectionalFocus(
+        L"plain.widget", plain, NavigationDirection::Right, plainRender);
+    Check(geometric.disposition == DirectionalFocusDisposition::Geometric &&
+              geometric.target == L"volume-a",
+          "non-opted widgets retain unchanged geometric navigation");
+
+    fresh.ForgetWidget(L"groups.widget");
+    fresh.SetFocus(L"groups.widget", successor, L"groups.entry");
+    Check(fresh.ResolveDirectionalFocus(
+              L"groups.widget", successor, NavigationDirection::Down, render).target ==
+              L"groups.play",
+          "runtime or package retirement clears ordinary group memory");
+}
+
 void FreeScrollAndRetainedRefreshLifecycle() {
     using namespace widgetrail::input;
     auto snapshot = Snapshot();
@@ -715,6 +795,7 @@ void PaginationPrefetchLifecycle() {
 int main() {
     FocusAndSurfaceLifecycle();
     ResponsiveFocusHandoffUsesInteractionOwner();
+    RememberedGroupsUseOnlyExplicitEntryOwner();
     FreeScrollAndRetainedRefreshLifecycle();
     ExactSliderRequestAuthorityAndRollback();
     PressedAndAdmissionReconciliation();
