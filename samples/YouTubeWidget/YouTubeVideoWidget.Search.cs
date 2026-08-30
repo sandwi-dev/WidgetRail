@@ -3,8 +3,6 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.YouTubeWidget;
 
-internal enum YouTubeRoute { Setup, Search, Link, Player }
-
 public sealed partial class YouTubeVideoWidget
 {
     internal const int SearchPageSize = 12;
@@ -21,16 +19,15 @@ public sealed partial class YouTubeVideoWidget
     private const string LinkRouteActionId = "youtube.link.open";
     private const string SearchRouteActionId = "youtube.search.open-route";
     private const string BackActionId = "youtube.back";
+    private const string ConfigurationKey = "youtube.configuration";
+    private const string SetupCommandKey = "youtube.configure";
     private readonly IYouTubeApplicationService _application;
     private readonly WidgetCursorResource<YouTubeSearchItem> _searchResults;
-    private YouTubeRoute _route = YouTubeRoute.Setup;
-    private bool _configurationKnown;
-    private bool _configured;
-    private bool _setupBusy;
-    private string? _setupError;
-    private string _queryDraft = string.Empty;
-    private string _activeQuery = string.Empty;
-    private string? _searchReturnFocus;
+    private readonly WidgetOptimisticCommand<
+        YouTubeWidgetState,
+        YouTubeSetupRequest,
+        YouTubeSetupRequest,
+        YouTubeSetupOperation> _setupCommand;
 
     public YouTubeVideoWidget() : this(
         new UnavailableYouTubeApplicationService(), TimeProvider.System) { }
@@ -44,6 +41,7 @@ public sealed partial class YouTubeVideoWidget
     {
         _application = application ?? throw new ArgumentNullException(nameof(application));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _model = CreateModel(YouTubeWidgetState.Initial);
         _searchResults = CreateCursorResource<YouTubeSearchItem>("youtube.search", new()
         {
             PageSize = SearchPageSize,
@@ -62,115 +60,102 @@ public sealed partial class YouTubeVideoWidget
                 },
             ],
         });
+        // Both key mutations share one latest-wins key, so a delete supersedes an
+        // in-flight configure exactly as before. Cancellation removes only this
+        // command's Busy/Error projection from the current model.
+        _setupCommand = CreateOptimisticCommand(SetupCommandKey, _model,
+            new WidgetOptimisticCommandOptions<
+                YouTubeWidgetState,
+                YouTubeSetupRequest,
+                YouTubeSetupRequest,
+                YouTubeSetupOperation>
+            {
+                Policy = WidgetCommandPolicy.Latest,
+                Apply = (state, request) => new(state.WithSetupInFlight(), request),
+                Execute = ExecuteSetupAsync,
+                Reconcile = (state, _, result) => result == YouTubeSetupOperation.Configure
+                    ? state.WithConfiguredKey()
+                    : state.WithDeletedKey(),
+                Rollback = (current, baseline, _) =>
+                    current.WithSetupProjectionRolledBack(baseline.Setup),
+                Fail = (current, _, _, error) => current.WithSetupFailure(error),
+                MapError = MapSetupError,
+            });
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
-        lock (_gate)
-        {
-            _isActive = true;
-            _activeLifetime = activeLifetime;
-            SchedulePendingFeedbackLocked();
-        }
-        if (_configurationKnown) return ValueTask.CompletedTask;
-        Operations.RunSingleFlight("youtube.configuration", async context =>
+        _isActive = true;
+        var state = _model.Value;
+        if (state.Playback.PendingCommand is { } pending &&
+            state.Playback.PendingControl != PendingMediaControl.None)
+            SchedulePendingFeedback(pending.Sequence);
+        if (state.Setup.ConfigurationKnown) return ValueTask.CompletedTask;
+        Operations.RunSingleFlight(ConfigurationKey, async context =>
         {
             try
             {
                 var summary = await _application.GetConfigurationAsync(context.CancellationToken)
                     .ConfigureAwait(false);
                 if (!context.IsCurrent) return;
-                lock (_gate)
-                {
-                    _configurationKnown = true;
-                    _configured = summary.IsConfigured;
-                    SetRouteLocked(summary.IsConfigured
-                        ? YouTubeRoute.Search : YouTubeRoute.Setup);
-                    _setupError = null;
-                }
+                _model.Update(current => current.WithConfigurationSummary(summary.IsConfigured));
             }
             catch (Exception exception)
             {
                 if (!context.IsCurrent) return;
-                lock (_gate)
-                {
-                    _configurationKnown = true;
-                    _configured = false;
-                    SetRouteLocked(YouTubeRoute.Setup);
-                    _setupError = SafeMessage(exception);
-                }
+                _model.Update(current => current.WithConfigurationFailure(SafeMessage(exception)));
             }
-            finally { if (context.IsCurrent) Invalidate(); }
         });
         return ValueTask.CompletedTask;
     }
 
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
-        lock (_gate)
-        {
-            _isActive = false;
-            ClearTransientSeekBufferingLocked();
-            CancelPendingFeedbackLocked();
-        }
+        _isActive = false;
+        // The feedback timer runs under the Active lifetime, so the runtime
+        // cancels it here; only its committed projection needs retiring.
+        _model.Update(state => state.WithPlayback(
+            playback => playback.WithTransientStateCleared()));
         return ValueTask.CompletedTask;
     }
 
     protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
-        Task pendingFeedback;
-        lock (_gate)
-        {
-            _isActive = false;
-            ClearTransientSeekBufferingLocked();
-            CancelPendingFeedbackLocked();
-            pendingFeedback = _pendingFeedbackTask;
-        }
+        _isActive = false;
+        _model.Update(state => state.WithPlayback(
+            playback => playback.WithTransientStateCleared()));
         try
         {
-            await pendingFeedback.WaitAsync(shutdownToken).ConfigureAwait(false);
             await _application.DisposeAsync().AsTask().WaitAsync(shutdownToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (shutdownToken.IsCancellationRequested) { }
     }
 
-    private WidgetView RenderApplication()
+    private WidgetView RenderApplication(YouTubeWidgetState state)
     {
-        YouTubeRoute route;
-        bool known;
-        lock (_gate)
-        {
-            route = _route;
-            known = _configurationKnown;
-        }
-        if (!known)
+        if (!state.Setup.ConfigurationKnown)
             return ApplicationView(
+                state,
                 UI.Stack("youtube.configuration.loading",
                     UI.LoadingIndicator("youtube.configuration.indicator", "Checking YouTube setup"),
                     UI.Text("Checking YouTube setup…", "youtube.configuration.text"))
                     .Classes("youtube-page", "youtube-centered"),
                 null);
-        return route switch
+        return state.Route switch
         {
-            YouTubeRoute.Setup => RenderSetup(),
-            YouTubeRoute.Search => RenderSearch(),
-            YouTubeRoute.Link => RenderLinkPlayer(),
-            _ => RenderPlayer(),
+            YouTubeRoute.Setup => RenderSetup(state),
+            YouTubeRoute.Search => RenderSearch(state),
+            YouTubeRoute.Link => RenderLinkPlayer(state),
+            _ => RenderPlayer(state),
         };
     }
 
-    private WidgetView RenderSetup()
+    private WidgetView RenderSetup(YouTubeWidgetState state)
     {
-        bool configured;
-        bool busy;
-        string? error;
-        lock (_gate)
-        {
-            configured = _configured;
-            busy = _setupBusy;
-            error = _setupError;
-        }
+        var setup = state.Setup;
+        var configured = setup.Configured;
+        var busy = setup.Busy;
         var keyEntry = UI.SensitiveTextEntry(
                 configured ? "Enter a replacement Google API key" : "Enter your Google API key",
                 SetupKeyActionId,
@@ -220,7 +205,7 @@ public sealed partial class YouTubeVideoWidget
                     UI.Text("Testing and saving your key…", "youtube.setup.busy-text")
                         .Classes("youtube-copy"))
                 .Classes("youtube-state-card", "is-loading"));
-        if (error is not null)
+        if (setup.Error is { } error)
             children.Add(UI.Stack("youtube.setup.error-card",
                     UI.Text("Setup needs attention", "youtube.setup.error-title")
                         .Classes("youtube-card-title"),
@@ -235,19 +220,15 @@ public sealed partial class YouTubeVideoWidget
                         .Disabled(busy).FocusUp("youtube.setup.key").FocusDown(SearchRouteActionId)
                         .Classes("youtube-danger"))
                 .Classes("youtube-card", "youtube-setup-manage"));
-        return ApplicationView(UI.VerticalScroll("youtube.setup.scroll", children.ToArray())
-            .Classes("youtube-page", "youtube-setup"), "youtube.setup.console");
+        return ApplicationView(state,
+            UI.VerticalScroll("youtube.setup.scroll", children.ToArray())
+                .Classes("youtube-page", "youtube-setup"), "youtube.setup.console");
     }
 
-    private WidgetView RenderSearch()
+    private WidgetView RenderSearch(YouTubeWidgetState state)
     {
-        string draft;
-        string active;
-        lock (_gate)
-        {
-            draft = _queryDraft;
-            active = _activeQuery;
-        }
+        var search = state.Search;
+        var draft = search.QueryDraft;
         var snapshot = _searchResults.Snapshot;
         var query = UI.TextEntry(draft, "Search public YouTube videos", SearchCommitActionId,
                 "youtube.search.query", 96)
@@ -288,7 +269,7 @@ public sealed partial class YouTubeVideoWidget
             content = UI.Stack("youtube.search.loading",
                     UI.LoadingIndicator("youtube.search.loading.indicator", "Searching YouTube"),
                     UI.Text("Searching YouTube", "youtube.search.loading.title").Classes("youtube-card-title"),
-                    UI.Text($"Looking for {active}…", "youtube.search.loading.text")
+                    UI.Text($"Looking for {search.ActiveQuery}…", "youtube.search.loading.text")
                         .Classes("youtube-section-copy"))
                 .Classes("youtube-state-card", "is-loading");
         else if (snapshot.Status == WidgetPagedResourceStatus.Error && snapshot.Items.Count == 0)
@@ -323,11 +304,11 @@ public sealed partial class YouTubeVideoWidget
                 .Classes("youtube-results");
         }
         var children = new List<WidgetElement> { header, searchTask };
-        if (NowPlayingRow() is { } nowPlaying) children.Add(nowPlaying);
+        if (NowPlayingRow(state.Playback) is { } nowPlaying) children.Add(nowPlaying);
         children.Add(content);
         var root = UI.Stack("youtube.search.root", children.ToArray())
             .InputScope("youtube.search.root").Classes("youtube-root", "youtube-search-root");
-        return new WidgetView(root, SearchInitialFocus(snapshot),
+        return new WidgetView(root, SearchInitialFocus(search, snapshot),
             ActiveInputScopeId: "youtube.search.root", Surface: new WidgetSurfaceHints
         {
             Mode = WidgetSurfaceMode.Standard,
@@ -340,28 +321,28 @@ public sealed partial class YouTubeVideoWidget
             MinimumWidth = 420,
             MinimumHeight = 420,
         })
-        { EmbeddedMedia = RetainedHiddenMediaSurface() };
+        { EmbeddedMedia = RetainedHiddenMediaSurface(state.Playback) };
     }
 
-    private WidgetElement? NowPlayingRow()
+    private static WidgetElement? NowPlayingRow(YouTubePlaybackState playback)
     {
-        string? videoId;
-        EmbeddedMediaPlaybackState state;
-        lock (_gate) { videoId = _videoId; state = _state; }
-        return videoId is null ? null :
+        return playback.VideoId is null ? null :
             UI.Button(
-                    $"Return to player  ·  {(state == EmbeddedMediaPlaybackState.Playing ? "Playing" : "Paused or ready")}",
+                    $"Return to player  ·  {(playback.State == EmbeddedMediaPlaybackState.Playing ? "Playing" : "Paused or ready")}",
                     "youtube.player.return", "youtube.player.return")
                 .Classes("youtube-now-playing");
     }
 
-    private WidgetView RenderLinkPlayer()
+    private WidgetView RenderLinkPlayer(YouTubeWidgetState state)
     {
-        var view = RenderPlayer(includeDashboardQuickActions: false);
+        var view = RenderPlayer(state, includeDashboardQuickActions: false);
         return view with { InitialFocusId = "youtube.link" };
     }
 
-    private WidgetView ApplicationView(WidgetElement content, string? initialFocus)
+    private WidgetView ApplicationView(
+        YouTubeWidgetState state,
+        WidgetElement content,
+        string? initialFocus)
     {
         var root = UI.Stack("youtube.application.root", content)
             .InputScope("youtube.application.root").Classes("youtube-root");
@@ -376,17 +357,15 @@ public sealed partial class YouTubeVideoWidget
             MinimumWidth = 420,
             MinimumHeight = 420,
         })
-        { EmbeddedMedia = RetainedHiddenMediaSurface() };
+        { EmbeddedMedia = RetainedHiddenMediaSurface(state.Playback) };
     }
 
-    private EmbeddedMediaSurface? RetainedHiddenMediaSurface()
+    private static EmbeddedMediaSurface? RetainedHiddenMediaSurface(
+        YouTubePlaybackState playback)
     {
-        lock (_gate)
-        {
-            return _eventSequence > 0 && _videoId is { } videoId
-                ? CreateMediaSurface(videoId, _pendingCommand, retainSessionWhenHidden: true)
-                : null;
-        }
+        return playback.EventSequence > 0 && playback.VideoId is { } videoId
+            ? CreateMediaSurface(videoId, playback.PendingCommand, retainSessionWhenHidden: true)
+            : null;
     }
 
     private bool TryHandleApplicationAction(WidgetActionEvent action)
@@ -399,36 +378,28 @@ public sealed partial class YouTubeVideoWidget
                     context => _application.OpenGoogleCloudConsoleAsync(context.CancellationToken));
                 return true;
             case SetupKeyActionId when action.CommittedText is { } secret:
-                StartConfigure(secret);
+                _setupCommand.Run(new(YouTubeSetupOperation.Configure, secret));
                 return true;
             case SetupDeleteActionId:
-                StartDelete();
+                _setupCommand.Run(new(YouTubeSetupOperation.Delete));
                 return true;
             case SetupRouteActionId:
-                lock (_gate) { SetRouteLocked(YouTubeRoute.Setup); _setupError = null; }
-                Invalidate();
+                _model.Update(state => state.WithSetupRoute());
                 return true;
             case SearchRouteActionId:
-                lock (_gate) SetRouteLocked(_configured
-                    ? YouTubeRoute.Search : YouTubeRoute.Setup);
-                Invalidate();
+                _model.Update(state => state.WithConfiguredRoute());
                 return true;
             case LinkRouteActionId:
-                lock (_gate) SetRouteLocked(YouTubeRoute.Link);
-                Invalidate();
+                _model.Update(state => state.WithRoute(YouTubeRoute.Link));
                 return true;
             case "youtube.player.return":
-                lock (_gate) SetRouteLocked(YouTubeRoute.Player);
-                Invalidate();
+                _model.Update(state => state.WithRoute(YouTubeRoute.Player));
                 return true;
             case BackActionId:
-                lock (_gate) SetRouteLocked(_configured
-                    ? YouTubeRoute.Search : YouTubeRoute.Setup);
-                Invalidate();
+                _model.Update(state => state.WithConfiguredRoute());
                 return true;
             case SearchCommitActionId when action.CommittedText is { } query:
-                lock (_gate) _queryDraft = query.Trim();
-                Invalidate();
+                _model.Update(state => state.WithQueryDraft(query));
                 return true;
             case SearchSubmitActionId:
                 StartSearch();
@@ -443,72 +414,34 @@ public sealed partial class YouTubeVideoWidget
         }
     }
 
-    private void StartConfigure(string secret)
+    private async ValueTask<YouTubeSetupOperation> ExecuteSetupAsync(
+        YouTubeSetupRequest request,
+        CancellationToken cancellationToken)
     {
-        lock (_gate) { _setupBusy = true; _setupError = null; }
-        Invalidate();
-        Operations.RunLatest("youtube.configure", async context =>
+        if (request.Operation == YouTubeSetupOperation.Configure)
         {
-            try
-            {
-                await _application.ConfigureApiKeyAsync(secret, context.CancellationToken)
-                    .ConfigureAwait(false);
-                if (!context.IsCurrent) return;
-                lock (_gate)
-                {
-                    _configured = true;
-                    _configurationKnown = true;
-                    _setupBusy = false;
-                    _setupError = null;
-                    SetRouteLocked(YouTubeRoute.Search);
-                }
-            }
-            catch (Exception exception)
-            {
-                if (!context.IsCurrent) return;
-                lock (_gate) { _setupBusy = false; _setupError = SafeMessage(exception); }
-            }
-            finally { if (context.IsCurrent) Invalidate(); }
-        });
-    }
-
-    private void StartDelete()
-    {
-        lock (_gate) { _setupBusy = true; _setupError = null; }
-        Invalidate();
-        Operations.RunLatest("youtube.configure", async context =>
-        {
-            try
-            {
-                await _application.DeleteApiKeyAsync(context.CancellationToken).ConfigureAwait(false);
-                if (!context.IsCurrent) return;
-                _searchResults.Reset(invalidate: false);
-                lock (_gate)
-                {
-                    _configured = false;
-                    _setupBusy = false;
-                    _queryDraft = string.Empty;
-                    _activeQuery = string.Empty;
-                }
-            }
-            catch (Exception exception)
-            {
-                if (!context.IsCurrent) return;
-                lock (_gate) { _setupBusy = false; _setupError = SafeMessage(exception); }
-            }
-            finally { if (context.IsCurrent) Invalidate(); }
-        });
+            await _application.ConfigureApiKeyAsync(request.Secret, cancellationToken)
+                .ConfigureAwait(false);
+            return YouTubeSetupOperation.Configure;
+        }
+        await _application.DeleteApiKeyAsync(cancellationToken).ConfigureAwait(false);
+        // The cursor resource is not part of the model, so a superseded delete
+        // must not clear it. Cancellation here rolls the attempt back untouched.
+        cancellationToken.ThrowIfCancellationRequested();
+        _searchResults.Reset(invalidate: false);
+        return YouTubeSetupOperation.Delete;
     }
 
     private void StartSearch()
     {
-        string query;
-        lock (_gate) query = _queryDraft.Trim();
+        var query = _model.Value.Search.QueryDraft.Trim();
         if (query.Length == 0) return;
+        // Each owner publishes its own change: the model commits the active query,
+        // and the cursor resource publishes when its load starts. Adding an
+        // Invalidate() here would request a second render for one transition.
         _searchResults.Reset(invalidate: false);
-        lock (_gate) _activeQuery = query;
+        _model.Update(state => state.WithActiveQuery(query));
         _searchResults.EnsureLoaded();
-        Invalidate();
     }
 
     private bool OpenSearchResult(string sourceId)
@@ -520,26 +453,9 @@ public sealed partial class YouTubeVideoWidget
             string.Equals(candidate.VideoId, id, StringComparison.Ordinal));
         if (item is null) return true;
         _searchResults.SelectAnchor(new("youtube-video-" + item.VideoId), invalidate: false);
-        lock (_gate)
-        {
-            _searchReturnFocus = sourceId;
-            _link = "https://www.youtube.com/watch?v=" + item.VideoId;
-            _videoId = item.VideoId;
-            _validationError = null;
-            _playbackError = null;
-            ClearTransientSeekBufferingLocked();
-            _position = 0;
-            _duration = 0;
-            SetRouteLocked(YouTubeRoute.Player);
-            QueueCommand(EmbeddedMediaPlaybackCommandKind.Load, item.VideoId);
-        }
+        CommitPlayback(state => state.WithSelectedResult(sourceId, item.VideoId));
         return true;
     }
-
-    // Leaving the Player route no longer has to retire a fullscreen flag: the
-    // host drops its own activation as soon as the admitted snapshot stops
-    // declaring the capability for this exact surface.
-    private void SetRouteLocked(YouTubeRoute route) => _route = route;
 
     private async ValueTask<WidgetCursorPage<YouTubeSearchItem>> LoadSearchPageAsync(
         WidgetCollectionCursor? cursor,
@@ -547,8 +463,7 @@ public sealed partial class YouTubeVideoWidget
         int pageSize,
         CancellationToken cancellationToken)
     {
-        string query;
-        lock (_gate) query = _activeQuery;
+        var query = _model.Value.Search.ActiveQuery;
         var page = await _application.SearchAsync(query, cursor?.Value, pageSize, cancellationToken)
             .ConfigureAwait(false);
         return new WidgetCursorPage<YouTubeSearchItem>(
@@ -569,10 +484,29 @@ public sealed partial class YouTubeVideoWidget
         _ => new("youtube_search_failed", "YouTube search could not be completed. Try again."),
     };
 
-    private string? SearchInitialFocus(WidgetCursorResourceSnapshot<YouTubeSearchItem> snapshot)
+    /// <summary>
+    /// Preserves the existing setup copy exactly. A message the bounded command
+    /// error refuses falls back to the same text <see cref="SafeMessage"/> uses,
+    /// rather than to the SDK's generic wording.
+    /// </summary>
+    private static WidgetCommandError MapSetupError(Exception exception)
+    {
+        var code = exception is YouTubeApplicationException known
+            ? known.Code
+            : "youtube_setup_failed";
+        try { return new WidgetCommandError(code, SafeMessage(exception)); }
+        catch (ArgumentException)
+        {
+            return new WidgetCommandError("youtube_setup_failed", UnknownSetupFailure);
+        }
+    }
+
+    private string? SearchInitialFocus(
+        YouTubeSearchState search,
+        WidgetCursorResourceSnapshot<YouTubeSearchItem> snapshot)
     {
         if (snapshot.RequestedFocusId is { } requested) return requested;
-        if (_searchReturnFocus is { } retained && snapshot.Items.Any(item =>
+        if (search.ReturnFocusId is { } retained && snapshot.Items.Any(item =>
                 string.Equals(ResultFocusId(item.VideoId), retained, StringComparison.Ordinal)))
             return retained;
         return snapshot.Status switch
@@ -585,7 +519,9 @@ public sealed partial class YouTubeVideoWidget
 
     private static string ResultFocusId(string videoId) => "youtube.result." + videoId;
 
-    private static string SafeMessage(Exception exception) => exception is YouTubeApplicationException known
-        ? known.Message
-        : "YouTube setup could not be completed. Try again.";
+    private const string UnknownSetupFailure =
+        "YouTube setup could not be completed. Try again.";
+
+    private static string SafeMessage(Exception exception) =>
+        exception is YouTubeApplicationException known ? known.Message : UnknownSetupFailure;
 }

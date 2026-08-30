@@ -18,81 +18,48 @@ public sealed partial class YouTubeVideoWidget : Widget
     // the state and returns to this layout on B.
     internal const string EnterFullscreenActionId = "host.embeddedMedia.enterFullscreen";
     private const string FullscreenFocusId = "youtube.player.fullscreen";
+    private const string PendingFeedbackKey = "youtube.playback.feedback";
     private const double SeekStepSeconds = 10;
     private static readonly TimeSpan PendingFeedbackThreshold = TimeSpan.FromMilliseconds(250);
-    private readonly object _gate = new();
+    private readonly WidgetModel<YouTubeWidgetState> _model;
     private readonly TimeProvider _timeProvider;
-    private long _commandSequence;
-    private long _eventSequence;
-    private string _link = string.Empty;
-    private string? _videoId;
-    private string? _validationError;
-    private string? _playbackError;
-    private EmbeddedMediaPlaybackState _state = EmbeddedMediaPlaybackState.Ready;
-    private double _position;
-    private double _duration;
-    private double _volume = 0.8;
-    private EmbeddedMediaPlaybackCommand? _pendingCommand;
-    private PendingMediaControl _pendingControl;
-    private SeekBufferingState? _seekBuffering;
-    private long? _busyCommandSequence;
-    private bool _isActive;
-    private CancellationToken _activeLifetime;
-    private CancellationTokenSource? _pendingFeedbackCancellation;
-    private Task _pendingFeedbackTask = Task.CompletedTask;
 
-    public override WidgetView Render() => RenderApplication();
+    // This does affect the render: it gates CanDeclareTransportAction, which
+    // decides whether the view carries quick actions and root shortcuts. It stays
+    // out of the model because the widget never needs to *request* a render for
+    // it, not because it is render-irrelevant. Becoming visible is already a
+    // render the host performs to display the widget, and while the widget is not
+    // visible there is nothing on screen to repaint. Note the SDK does not
+    // invalidate around OnActivatedAsync/OnDeactivatedAsync, so this rests on host
+    // behaviour; putting the flag in the model would publish an invalidation on
+    // activation, which is a contract the widget did not previously have.
+    private volatile bool _isActive;
 
-    private WidgetView RenderPlayer(bool includeDashboardQuickActions = true)
+    // One committed state is captured here and threaded through every render
+    // helper. Rereading the model per helper would let a concurrent commit tear
+    // one frame across the header, the transport, and the media surface.
+    public override WidgetView Render() => RenderApplication(_model.Value);
+
+    private WidgetView RenderPlayer(
+        YouTubeWidgetState state,
+        bool includeDashboardQuickActions = true)
     {
-        string link;
-        string? videoId;
-        string? error;
-        EmbeddedMediaPlaybackState state;
-        double position;
-        double duration;
-        double volume;
-        bool isActive;
-        YouTubeRoute route;
-        PendingMediaControl busyControl;
-        EmbeddedMediaPlaybackCommand? pending;
-        SeekBufferingState? seekBufferingState;
-        lock (_gate)
-        {
-            link = _link;
-            videoId = _videoId;
-            error = _validationError ?? _playbackError;
-            state = _state;
-            position = _position;
-            duration = _duration;
-            volume = _volume;
-            isActive = _isActive;
-            route = _route;
-            pending = _pendingCommand;
-            seekBufferingState = _seekBuffering;
-            busyControl = pending is not null && _busyCommandSequence == pending.Sequence
-                ? _pendingControl : PendingMediaControl.None;
-        }
-
-        var seekBuffering = state == EmbeddedMediaPlaybackState.Loading &&
-            (pending?.Kind == EmbeddedMediaPlaybackCommandKind.Seek || seekBufferingState is not null);
-        var playbackSemantic = seekBufferingState is { } retained
-            ? retained.PlaybackSemantic
-            : state;
-        var mediaLoading = !seekBuffering &&
-            (state == EmbeddedMediaPlaybackState.Loading ||
-             pending?.Kind is EmbeddedMediaPlaybackCommandKind.Load or
-                 EmbeddedMediaPlaybackCommandKind.Cue);
+        var playback = state.Playback;
+        var videoId = playback.VideoId;
+        var error = playback.Error;
+        var seekBuffering = playback.IsSeekBuffering;
+        var mediaLoading = playback.IsMediaLoading;
+        var busyControl = playback.BusyControl;
         var controlsUnavailable = videoId is null || error is not null || mediaLoading;
         var showFullscreenAction = includeDashboardQuickActions && videoId is not null;
         var fullscreenActionEnabled = error is null && !mediaLoading;
         // Declared only on the route that also offers the reserved entry action,
         // so the capability never outlives a way to reach it.
-        var media = CreateMediaSurface(videoId, pending, retainSessionWhenHidden: false,
-            overlayFullscreenCapable: showFullscreenAction);
+        var media = CreateMediaSurface(videoId, playback.PendingCommand,
+            retainSessionWhenHidden: false, overlayFullscreenCapable: showFullscreenAction);
 
         var linkEntry = UI.TextEntry(
-                link,
+                playback.Link,
                 "Enter youtube.com or youtu.be link here",
                 LinkActionId,
                 "youtube.link",
@@ -100,12 +67,10 @@ public sealed partial class YouTubeVideoWidget : Widget
             .FocusUp(showFullscreenAction && fullscreenActionEnabled
                 ? FullscreenFocusId : "youtube.player.back")
             .FocusDown("youtube.controls")
-            .Classes("youtube-link", link.Length == 0 ? "is-empty" : "has-value");
-        var toggleLabel = playbackSemantic == EmbeddedMediaPlaybackState.Playing ? "Pause" : "Play";
+            .Classes("youtube-link", playback.Link.Length == 0 ? "is-empty" : "has-value");
+        var playing = playback.PlaybackSemantic == EmbeddedMediaPlaybackState.Playing;
         var toggle = UI.Button("", ToggleActionId, "youtube.playback.toggle")
-            .Icon(playbackSemantic == EmbeddedMediaPlaybackState.Playing
-                    ? WidgetGlyph.Pause : WidgetGlyph.Play,
-                toggleLabel)
+            .Icon(playing ? WidgetGlyph.Pause : WidgetGlyph.Play, playing ? "Pause" : "Play")
             .Disabled(controlsUnavailable)
             .Busy(busyControl == PendingMediaControl.TogglePlayback)
             .FocusUp("youtube.link")
@@ -126,14 +91,14 @@ public sealed partial class YouTubeVideoWidget : Widget
             .FocusRight("youtube.timeline")
             .Classes("youtube-secondary", "youtube-transport-button");
         var timeline = UI.Slider(
-                position,
+                playback.Position,
                 0,
-                Math.Max(1, duration),
-                Math.Min(SeekStepSeconds, Math.Max(1, duration)),
+                Math.Max(1, playback.Duration),
+                Math.Min(SeekStepSeconds, Math.Max(1, playback.Duration)),
                 SeekActionId,
                 "youtube.timeline",
-                $"Playback position. {FormatTime(position)} of {FormatTime(duration)}",
-                $"{FormatTime(position)} of {FormatTime(duration)}")
+                $"Playback position. {FormatTime(playback.Position)} of {FormatTime(playback.Duration)}",
+                $"{FormatTime(playback.Position)} of {FormatTime(playback.Duration)}")
             .RequireControllerActivation()
             .Disabled(controlsUnavailable)
             .Busy(busyControl == PendingMediaControl.Timeline)
@@ -142,14 +107,14 @@ public sealed partial class YouTubeVideoWidget : Widget
             .FocusRight("youtube.volume")
             .Classes("youtube-slider");
         var volumeControl = UI.Slider(
-                volume,
+                playback.Volume,
                 0,
                 1,
                 0.05,
                 VolumeActionId,
                 "youtube.volume",
-                $"Volume {Math.Round(volume * 100)} percent",
-                $"{Math.Round(volume * 100)} percent")
+                $"Volume {Math.Round(playback.Volume * 100)} percent",
+                $"{Math.Round(playback.Volume * 100)} percent")
             .RequireControllerActivation()
             .Disabled(controlsUnavailable)
             .Busy(busyControl == PendingMediaControl.Volume)
@@ -159,13 +124,12 @@ public sealed partial class YouTubeVideoWidget : Widget
 
         var status = error ?? (seekBuffering
             ? "Buffering YouTube video…"
-            : StatusText(videoId, state, mediaLoading));
+            : StatusText(videoId, playback.State, mediaLoading));
         var statusClass = error is not null ? "is-error" :
             mediaLoading || seekBuffering ? "is-busy" :
-            state == EmbeddedMediaPlaybackState.Playing ? "is-playing" : "is-normal";
+            playback.State == EmbeddedMediaPlaybackState.Playing ? "is-playing" : "is-normal";
         var playerActionsAvailable = includeDashboardQuickActions &&
-            CanDeclareTransportAction(
-                route, isActive, videoId, error, pending, state, seekBufferingState);
+            state.CanDeclareTransportAction(_isActive);
         IReadOnlyList<WidgetQuickAction>? quickActions = playerActionsAvailable
                 ?
                 [
@@ -217,9 +181,11 @@ public sealed partial class YouTubeVideoWidget : Widget
                                         seekForward,
                                         UI.Row(
                                                 "youtube.timeline-group",
-                                                UI.Text(FormatTime(position), "youtube.position").Classes("youtube-time"),
+                                                UI.Text(FormatTime(playback.Position), "youtube.position")
+                                                    .Classes("youtube-time"),
                                                 timeline,
-                                                UI.Text(FormatTime(duration), "youtube.duration").Classes("youtube-time", "is-end"))
+                                                UI.Text(FormatTime(playback.Duration), "youtube.duration")
+                                                    .Classes("youtube-time", "is-end"))
                                             .Classes("youtube-timeline-group"),
                                         volumeControl)
                                     .RememberChildFocus("youtube.playback.toggle")
@@ -322,74 +288,56 @@ public sealed partial class YouTubeVideoWidget : Widget
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (TryHandleApplicationAction(action)) return ValueTask.CompletedTask;
-        lock (_gate)
+        if (action.ActionId == LinkActionId && action.CommittedText is { } committed)
         {
-            if (action.ActionId == LinkActionId && action.CommittedText is { } committed)
-            {
-                _link = committed.Trim();
-                _playbackError = null;
-                ClearTransientSeekBufferingLocked();
-                if (!YouTubeLinkParser.TryParse(_link, out var parsedVideoId))
-                {
-                    _validationError = "Enter a supported youtube.com or youtu.be video link.";
-                    Invalidate();
-                    return ValueTask.CompletedTask;
-                }
-                _validationError = null;
-                _videoId = parsedVideoId;
-                SetRouteLocked(YouTubeRoute.Player);
-                _position = 0;
-                _duration = 0;
-                QueueCommand(EmbeddedMediaPlaybackCommandKind.Load, parsedVideoId);
-                return ValueTask.CompletedTask;
-            }
-
-            if (_videoId is not { } videoId ||
-                !CanDispatchTransportActionLocked())
-                return ValueTask.CompletedTask;
-            switch (action.ActionId)
-            {
-                case ToggleActionId:
-                    var playbackSemantic = _seekBuffering?.PlaybackSemantic ?? _state;
-                    QueueCommand(
-                        playbackSemantic == EmbeddedMediaPlaybackState.Playing
-                            ? EmbeddedMediaPlaybackCommandKind.Pause
-                            : EmbeddedMediaPlaybackCommandKind.Play,
-                        videoId,
-                        PendingMediaControl.TogglePlayback);
-                    break;
-                case SeekBackwardActionId:
-                    QueueCommand(
-                        EmbeddedMediaPlaybackCommandKind.Seek,
-                        videoId,
-                        PendingMediaControl.SeekBackward,
-                        position: Math.Max(0, _position - CurrentMediaSeekStepSeconds));
-                    break;
-                case SeekForwardActionId:
-                    QueueCommand(
-                        EmbeddedMediaPlaybackCommandKind.Seek,
-                        videoId,
-                        PendingMediaControl.SeekForward,
-                        position: Math.Min(Math.Max(0, _duration), _position + CurrentMediaSeekStepSeconds));
-                    break;
-                case SeekActionId when action.RequestedValue is { } requested &&
-                                           double.IsFinite(requested):
-                    QueueCommand(
-                        EmbeddedMediaPlaybackCommandKind.Seek,
-                        videoId,
-                        PendingMediaControl.Timeline,
-                        position: Math.Clamp(requested, 0, Math.Max(0, _duration)));
-                    break;
-                case VolumeActionId when action.RequestedValue is { } requested &&
-                                             double.IsFinite(requested):
-                    QueueCommand(
-                        EmbeddedMediaPlaybackCommandKind.SetVolume,
-                        videoId,
-                        PendingMediaControl.Volume,
-                        volume: Math.Clamp(requested, 0, 1));
-                    break;
-            }
+            CommitPlayback(state => state.WithCommittedLink(committed));
+            return ValueTask.CompletedTask;
         }
+
+        var isActive = _isActive;
+        var seekStep = CurrentMediaSeekStepSeconds;
+        CommitPlayback(state =>
+        {
+            if (state.Playback.VideoId is not { } videoId ||
+                !state.CanDispatchTransportAction(isActive))
+                return state;
+            var playback = state.Playback;
+            return action.ActionId switch
+            {
+                ToggleActionId => state.WithPlayback(current => current.WithQueuedCommand(
+                    playback.PlaybackSemantic == EmbeddedMediaPlaybackState.Playing
+                        ? EmbeddedMediaPlaybackCommandKind.Pause
+                        : EmbeddedMediaPlaybackCommandKind.Play,
+                    videoId,
+                    PendingMediaControl.TogglePlayback)),
+                SeekBackwardActionId => state.WithPlayback(current => current.WithQueuedCommand(
+                    EmbeddedMediaPlaybackCommandKind.Seek,
+                    videoId,
+                    PendingMediaControl.SeekBackward,
+                    position: Math.Max(0, playback.Position - seekStep))),
+                SeekForwardActionId => state.WithPlayback(current => current.WithQueuedCommand(
+                    EmbeddedMediaPlaybackCommandKind.Seek,
+                    videoId,
+                    PendingMediaControl.SeekForward,
+                    position: Math.Min(
+                        Math.Max(0, playback.Duration), playback.Position + seekStep))),
+                SeekActionId when action.RequestedValue is { } requested &&
+                    double.IsFinite(requested) => state.WithPlayback(current =>
+                        current.WithQueuedCommand(
+                            EmbeddedMediaPlaybackCommandKind.Seek,
+                            videoId,
+                            PendingMediaControl.Timeline,
+                            position: Math.Clamp(requested, 0, Math.Max(0, playback.Duration)))),
+                VolumeActionId when action.RequestedValue is { } requested &&
+                    double.IsFinite(requested) => state.WithPlayback(current =>
+                        current.WithQueuedCommand(
+                            EmbeddedMediaPlaybackCommandKind.SetVolume,
+                            videoId,
+                            PendingMediaControl.Volume,
+                            volume: Math.Clamp(requested, 0, 1))),
+                _ => state,
+            };
+        });
         return ValueTask.CompletedTask;
     }
 
@@ -400,182 +348,47 @@ public sealed partial class YouTubeVideoWidget : Widget
         cancellationToken.ThrowIfCancellationRequested();
         if (!string.Equals(playbackEvent.SurfaceId, SurfaceId, StringComparison.Ordinal))
             return ValueTask.CompletedTask;
-        lock (_gate)
-        {
-            if (playbackEvent.Sequence <= _eventSequence ||
-                _videoId is not { } videoId ||
-                !string.Equals(playbackEvent.MediaKey, videoId, StringComparison.Ordinal))
-                return ValueTask.CompletedTask;
-            if (playbackEvent.CommandSequence > 0 &&
-                (_pendingCommand is not { } pending ||
-                 pending.Sequence != playbackEvent.CommandSequence ||
-                 !string.Equals(pending.MediaKey, videoId, StringComparison.Ordinal)))
-                return ValueTask.CompletedTask;
-
-            var matchingSeekLoading =
-                playbackEvent.State == EmbeddedMediaPlaybackState.Loading &&
-                _pendingCommand is { Kind: EmbeddedMediaPlaybackCommandKind.Seek } currentSeek &&
-                playbackEvent.CommandSequence == currentSeek.Sequence;
-            if (matchingSeekLoading)
-            {
-                // A run of held seeks reports Loading throughout. Only the
-                // first one still sees a settled semantic worth capturing;
-                // later ones must inherit it rather than erase it, or the
-                // transport declaration disappears between repeats.
-                _seekBuffering = _state is EmbeddedMediaPlaybackState.Playing or
-                    EmbeddedMediaPlaybackState.Paused
-                        ? new SeekBufferingState(_state)
-                        : _seekBuffering;
-            }
-            else if (playbackEvent.State != EmbeddedMediaPlaybackState.Loading)
-            {
-                ClearTransientSeekBufferingLocked();
-            }
-
-            _eventSequence = playbackEvent.Sequence;
-            _state = playbackEvent.State;
-            _position = Math.Max(0, playbackEvent.PositionSeconds);
-            _duration = Math.Max(0, playbackEvent.DurationSeconds);
-            _volume = Math.Clamp(playbackEvent.Volume, 0, 1);
-            _playbackError = playbackEvent.State == EmbeddedMediaPlaybackState.Error
-                ? PlaybackErrorText(playbackEvent.ErrorCode)
-                : null;
-            if (_pendingCommand is { } current &&
-                playbackEvent.CommandSequence == current.Sequence)
-            {
-                _pendingCommand = null;
-                _pendingControl = PendingMediaControl.None;
-                CancelPendingFeedbackLocked();
-            }
-        }
+        // A completing report retires its own command and the busy projection with
+        // it; the feedback timer for that sequence can no longer commit anything.
+        _model.Update(state => state.WithPlayback(
+            playback => playback.WithPlaybackEvent(playbackEvent)));
         return ValueTask.CompletedTask;
     }
 
-    private void QueueCommand(
-        EmbeddedMediaPlaybackCommandKind kind,
-        string videoId,
-        PendingMediaControl control = PendingMediaControl.None,
-        double? position = null,
-        double? volume = null)
+    /// <summary>
+    /// Commits one playback transition and starts pending feedback for a command
+    /// the same committed revision produced, so the timer never races a reread.
+    /// </summary>
+    private void CommitPlayback(Func<YouTubeWidgetState, YouTubeWidgetState> transition)
     {
-        _playbackError = null;
-        if (kind != EmbeddedMediaPlaybackCommandKind.Seek)
-            ClearTransientSeekBufferingLocked();
-        _pendingCommand = new EmbeddedMediaPlaybackCommand
+        var update = _model.Update<long?>(state =>
         {
-            Sequence = ++_commandSequence,
-            Kind = kind,
-            MediaKey = videoId,
-            PositionSeconds = position,
-            Volume = volume,
-        };
-        _pendingControl = control;
-        SchedulePendingFeedbackLocked();
-        Invalidate();
+            var next = transition(state);
+            var queued = next.Playback.PendingCommand is { } pending &&
+                pending.Sequence != state.Playback.PendingCommand?.Sequence &&
+                next.Playback.PendingControl != PendingMediaControl.None
+                    ? pending.Sequence
+                    : (long?)null;
+            return (next, queued);
+        });
+        if (update.Result is { } sequence) SchedulePendingFeedback(sequence);
     }
-
-    private void ClearTransientSeekBufferingLocked()
-    {
-        _seekBuffering = null;
-    }
-
-    private bool CanDispatchTransportActionLocked() => CanDispatchTransportAction(
-        _route,
-        _isActive,
-        _videoId,
-        _validationError ?? _playbackError,
-        _pendingCommand,
-        _state,
-        _seekBuffering);
 
     /// <summary>
-    /// Whether the transport controls are part of this view at all. A command
-    /// already in flight does not belong here: withdrawing the declaration
-    /// while one is pending would retract a held button binding between its
-    /// repeats, so a hold could never outlive its own first action. Pending
-    /// work gates dispatch, not declaration.
+    /// Latest-wins so a newer command supersedes the previous timer, and Active so
+    /// the runtime cancels it when the widget stops being interactive. A timer
+    /// that outlives its own command commits nothing: the sequence no longer
+    /// matches the pending command.
     /// </summary>
-    private static bool CanDeclareTransportAction(
-        YouTubeRoute route,
-        bool isActive,
-        string? videoId,
-        string? error,
-        EmbeddedMediaPlaybackCommand? pending,
-        EmbeddedMediaPlaybackState state,
-        SeekBufferingState? seekBuffering) =>
-        route == YouTubeRoute.Player &&
-        isActive &&
-        videoId is not null &&
-        error is null &&
-        state != EmbeddedMediaPlaybackState.Error &&
-        pending?.Kind is not (EmbeddedMediaPlaybackCommandKind.Load or
-            EmbeddedMediaPlaybackCommandKind.Cue) &&
-        (state != EmbeddedMediaPlaybackState.Loading || seekBuffering is not null);
-
-    /// <summary>
-    /// Single-flight admission. Buffering does not appear here either: a seek
-    /// puts the player into Loading, so refusing to dispatch while Loading
-    /// would stall a hold after its first step. One command at a time is the
-    /// whole rule, and the completing event refreshes position before the next
-    /// command is admitted.
-    /// </summary>
-    private static bool CanDispatchTransportAction(
-        YouTubeRoute route,
-        bool isActive,
-        string? videoId,
-        string? error,
-        EmbeddedMediaPlaybackCommand? pending,
-        EmbeddedMediaPlaybackState state,
-        SeekBufferingState? seekBuffering) =>
-        pending is null &&
-        CanDeclareTransportAction(
-            route, isActive, videoId, error, pending, state, seekBuffering);
-
-    private void SchedulePendingFeedbackLocked()
-    {
-        CancelPendingFeedbackLocked();
-        if (!_isActive || _pendingControl == PendingMediaControl.None ||
-            _pendingCommand is not { } pending)
-            return;
-
-        var previous = _pendingFeedbackTask;
-        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_activeLifetime);
-        _pendingFeedbackCancellation = cancellation;
-        _pendingFeedbackTask = PublishPendingFeedbackAsync(
-            previous, pending.Sequence, cancellation);
-    }
-
-    private async Task PublishPendingFeedbackAsync(
-        Task previous,
-        long commandSequence,
-        CancellationTokenSource cancellation)
-    {
-        try
+    private void SchedulePendingFeedback(long commandSequence) =>
+        Operations.RunLatest(PendingFeedbackKey, async context =>
         {
-            await previous.ConfigureAwait(false);
-            await Task.Delay(PendingFeedbackThreshold, _timeProvider, cancellation.Token)
+            await Task.Delay(PendingFeedbackThreshold, _timeProvider, context.CancellationToken)
                 .ConfigureAwait(false);
-            lock (_gate)
-            {
-                if (!_isActive || !ReferenceEquals(_pendingFeedbackCancellation, cancellation) ||
-                    _pendingCommand?.Sequence != commandSequence)
-                    return;
-                _busyCommandSequence = commandSequence;
-                Invalidate();
-            }
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-    }
-
-    private void CancelPendingFeedbackLocked()
-    {
-        _busyCommandSequence = null;
-        var cancellation = _pendingFeedbackCancellation;
-        _pendingFeedbackCancellation = null;
-        if (cancellation is null) return;
-        cancellation.Cancel();
-        cancellation.Dispose();
-    }
+            if (!context.IsCurrent) return;
+            _model.Update(state => state.WithPlayback(
+                playback => playback.WithPendingFeedback(commandSequence)));
+        });
 
     private static string StatusText(
         string? videoId,
@@ -592,34 +405,9 @@ public sealed partial class YouTubeVideoWidget : Widget
             _ => "Ready — press Play to start",
         };
 
-    private static string PlaybackErrorText(string? errorCode) => errorCode switch
-    {
-        "invalid-video" => "YouTube rejected this video ID.",
-        "video-private-or-missing" => "This video is private, unavailable, or no longer exists.",
-        "embedding-disabled" => "The video owner does not allow embedded playback.",
-        "client-identity-rejected" => "YouTube could not verify this desktop client.",
-        "player-api-load-failed" => "The YouTube player could not be loaded. Check the network and retry.",
-        "playback-unavailable" => "YouTube could not play this video in the embedded player.",
-        "command-unsupported" => "This YouTube player control is unavailable.",
-        _ => "YouTube playback failed. Try another public embeddable video.",
-    };
-
     private static string FormatTime(double seconds)
     {
         var value = Math.Max(0, (int)Math.Round(seconds));
         return $"{value / 60}:{value % 60:00}";
     }
-
-    private enum PendingMediaControl
-    {
-        None,
-        TogglePlayback,
-        SeekBackward,
-        SeekForward,
-        Timeline,
-        Volume,
-    }
-
-    private readonly record struct SeekBufferingState(
-        EmbeddedMediaPlaybackState PlaybackSemantic);
 }
