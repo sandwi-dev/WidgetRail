@@ -973,7 +973,7 @@ QuickActions:
 [
     new WidgetQuickAction(ControllerButton.LeftBumper, "previous", "Previous"),
     new WidgetQuickAction(ControllerButton.X, "toggle", "Play or pause"),
-new WidgetQuickAction(ControllerButton.RightBumper, "next", "Next"),
+    new WidgetQuickAction(ControllerButton.RightBumper, "next", "Next"),
 ]
 ```
 

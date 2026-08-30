@@ -114,7 +114,6 @@ public sealed partial class YouTubeVideoWidget : Widget
         var seekBack = UI.Button("", SeekBackwardActionId, "youtube.playback.seek-backward")
             .Icon(WidgetGlyph.Rewind, "Seek backward 10 seconds")
             .Disabled(controlsUnavailable)
-            .Busy(busyControl == PendingMediaControl.SeekBackward)
             .FocusUp("youtube.link")
             .FocusLeft("youtube.playback.toggle")
             .FocusRight("youtube.playback.seek-forward")
@@ -122,7 +121,6 @@ public sealed partial class YouTubeVideoWidget : Widget
         var seekForward = UI.Button("", SeekForwardActionId, "youtube.playback.seek-forward")
             .Icon(WidgetGlyph.FastForward, "Seek forward 10 seconds")
             .Disabled(controlsUnavailable)
-            .Busy(busyControl == PendingMediaControl.SeekForward)
             .FocusUp("youtube.link")
             .FocusLeft("youtube.playback.seek-backward")
             .FocusRight("youtube.timeline")
@@ -166,7 +164,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             mediaLoading || seekBuffering ? "is-busy" :
             state == EmbeddedMediaPlaybackState.Playing ? "is-playing" : "is-normal";
         var playerActionsAvailable = includeDashboardQuickActions &&
-            CanDispatchTransportAction(
+            CanDeclareTransportAction(
                 route, isActive, videoId, error, pending, state, seekBufferingState);
         IReadOnlyList<WidgetQuickAction>? quickActions = playerActionsAvailable
                 ?
@@ -439,10 +437,14 @@ public sealed partial class YouTubeVideoWidget : Widget
                 playbackEvent.CommandSequence == currentSeek.Sequence;
             if (matchingSeekLoading)
             {
+                // A run of held seeks reports Loading throughout. Only the
+                // first one still sees a settled semantic worth capturing;
+                // later ones must inherit it rather than erase it, or the
+                // transport declaration disappears between repeats.
                 _seekBuffering = _state is EmbeddedMediaPlaybackState.Playing or
                     EmbeddedMediaPlaybackState.Paused
                         ? new SeekBufferingState(_state)
-                        : null;
+                        : _seekBuffering;
             }
             else if (playbackEvent.State != EmbeddedMediaPlaybackState.Loading)
             {
@@ -476,7 +478,8 @@ public sealed partial class YouTubeVideoWidget : Widget
         double? volume = null)
     {
         _playbackError = null;
-        ClearTransientSeekBufferingLocked();
+        if (kind != EmbeddedMediaPlaybackCommandKind.Seek)
+            ClearTransientSeekBufferingLocked();
         _pendingCommand = new EmbeddedMediaPlaybackCommand
         {
             Sequence = ++_commandSequence,
@@ -504,7 +507,14 @@ public sealed partial class YouTubeVideoWidget : Widget
         _state,
         _seekBuffering);
 
-    private static bool CanDispatchTransportAction(
+    /// <summary>
+    /// Whether the transport controls are part of this view at all. A command
+    /// already in flight does not belong here: withdrawing the declaration
+    /// while one is pending would retract a held button binding between its
+    /// repeats, so a hold could never outlive its own first action. Pending
+    /// work gates dispatch, not declaration.
+    /// </summary>
+    private static bool CanDeclareTransportAction(
         YouTubeRoute route,
         bool isActive,
         string? videoId,
@@ -516,9 +526,29 @@ public sealed partial class YouTubeVideoWidget : Widget
         isActive &&
         videoId is not null &&
         error is null &&
-        pending is null &&
         state != EmbeddedMediaPlaybackState.Error &&
+        pending?.Kind is not (EmbeddedMediaPlaybackCommandKind.Load or
+            EmbeddedMediaPlaybackCommandKind.Cue) &&
         (state != EmbeddedMediaPlaybackState.Loading || seekBuffering is not null);
+
+    /// <summary>
+    /// Single-flight admission. Buffering does not appear here either: a seek
+    /// puts the player into Loading, so refusing to dispatch while Loading
+    /// would stall a hold after its first step. One command at a time is the
+    /// whole rule, and the completing event refreshes position before the next
+    /// command is admitted.
+    /// </summary>
+    private static bool CanDispatchTransportAction(
+        YouTubeRoute route,
+        bool isActive,
+        string? videoId,
+        string? error,
+        EmbeddedMediaPlaybackCommand? pending,
+        EmbeddedMediaPlaybackState state,
+        SeekBufferingState? seekBuffering) =>
+        pending is null &&
+        CanDeclareTransportAction(
+            route, isActive, videoId, error, pending, state, seekBuffering);
 
     private void SchedulePendingFeedbackLocked()
     {

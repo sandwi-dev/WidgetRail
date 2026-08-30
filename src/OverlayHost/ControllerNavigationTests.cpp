@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
@@ -440,6 +441,107 @@ int main() {
           "a root self-loop is an exhausted boundary rather than movement");
     Check(!IsDistinctFocusMove(L"current", L"next", false),
           "an unavailable explicit target is not a focus move");
+
+    using widgetrail::input::HeldButtonActionRepeat;
+    using widgetrail::input::HeldButtonAuthorityState;
+    constexpr std::uint32_t kLeftTrigger = 0x1'0000;
+    constexpr std::uint32_t kRightTrigger = 0x2'0000;
+    constexpr std::uint32_t kX = 0x4000;
+    {
+        // A tap is exactly one action: the initial press already dispatched,
+        // and no repeat is due before the hold delay elapses.
+        HeldButtonActionRepeat repeat;
+        repeat.Begin(kLeftTrigger, 1'000);
+        Check(repeat.active(), "a begun hold owns its button");
+        Check(repeat.button() == kLeftTrigger, "the hold reports its own button");
+        Check(!repeat.Update(true, HeldButtonAuthorityState::Current, 1'100),
+              "a held action emits nothing before the initial delay");
+        Check(!repeat.Update(true, HeldButtonAuthorityState::Current, 1'359),
+              "the initial delay is not short by a millisecond");
+        Check(!repeat.Update(false, HeldButtonAuthorityState::Current, 1'200),
+              "releasing before the delay leaves a tap as one action");
+        Check(!repeat.active(), "release disarms the hold");
+    }
+    {
+        // Hold repeats once at 360 ms and then every 125 ms.
+        HeldButtonActionRepeat repeat;
+        repeat.Begin(kRightTrigger, 0);
+        Check(repeat.Update(true, HeldButtonAuthorityState::Current, 360),
+              "the first repeat lands exactly at the initial delay");
+        Check(!repeat.Update(true, HeldButtonAuthorityState::Current, 484),
+              "the steady cadence is not short by a millisecond");
+        Check(repeat.Update(true, HeldButtonAuthorityState::Current, 485),
+              "the steady cadence repeats at 125 ms");
+        Check(repeat.Update(true, HeldButtonAuthorityState::Current, 610),
+              "the steady cadence keeps repeating while held");
+    }
+    {
+        // A refresh withholding presentation authority is this hold's own
+        // consequence. It defers the emission and must not cancel the hold.
+        HeldButtonActionRepeat repeat;
+        repeat.Begin(kLeftTrigger, 0);
+        Check(!repeat.Update(true, HeldButtonAuthorityState::Deferred, 360),
+              "a deferred tick emits nothing");
+        Check(repeat.active(), "a deferred tick keeps the hold armed");
+        Check(!repeat.Update(true, HeldButtonAuthorityState::Deferred, 900),
+              "a long deferral still emits nothing");
+        Check(repeat.active(), "a long deferral still keeps the hold armed");
+        Check(repeat.Update(true, HeldButtonAuthorityState::Current, 901),
+              "the first tick after a deferral emits once");
+        Check(!repeat.Update(true, HeldButtonAuthorityState::Current, 1'000),
+              "a deferral does not repay withheld ticks as a burst");
+        Check(repeat.Update(true, HeldButtonAuthorityState::Current, 1'026),
+              "the cadence resumes from the emission that ended the deferral");
+    }
+    {
+        // Backpressure: ticks that come due while the action is still owned
+        // coalesce into one emission and never accumulate a backlog.
+        HeldButtonActionRepeat repeat;
+        repeat.Begin(kX, 0);
+        Check(repeat.Update(true, HeldButtonAuthorityState::Current, 10'000),
+              "a long stall still emits once when it is next polled");
+        Check(!repeat.Update(true, HeldButtonAuthorityState::Current, 10'001),
+              "missed ticks coalesce instead of queueing a backlog");
+    }
+    {
+        // Retirement is terminal: replaced authority cancels the hold, and a
+        // still-physical press cannot revive it without a fresh edge.
+        HeldButtonActionRepeat repeat;
+        repeat.Begin(kX, 0);
+        Check(!repeat.Update(true, HeldButtonAuthorityState::Retired, 360),
+              "retired authority emits nothing");
+        Check(!repeat.active(), "retired authority disarms the hold");
+        Check(!repeat.Update(true, HeldButtonAuthorityState::Current, 500),
+              "a disarmed hold stays silent until a fresh press");
+        repeat.Begin(kX, 500);
+        Check(repeat.Update(true, HeldButtonAuthorityState::Current, 860),
+              "a fresh press re-arms the hold from its full initial delay");
+    }
+    {
+        // One owner, one button: a second held button replaces the first.
+        HeldButtonActionRepeat repeat;
+        repeat.Begin(kLeftTrigger, 0);
+        repeat.Begin(kRightTrigger, 100);
+        Check(repeat.button() == kRightTrigger,
+              "the newest held button owns the single repeat slot");
+        Check(!repeat.Update(true, HeldButtonAuthorityState::Current, 400),
+              "the replacing button restarts the initial delay");
+        Check(repeat.Update(true, HeldButtonAuthorityState::Current, 460),
+              "the replacing button repeats on its own schedule");
+        repeat.Reset();
+        Check(!repeat.active(), "an explicit reset disarms the hold");
+        Check(repeat.button() == 0, "a disarmed hold owns no button");
+    }
+    {
+        // The cadence is fixed platform policy, but the owner still refuses a
+        // degenerate zero interval that would emit on every tick.
+        HeldButtonActionRepeat repeat{{0, 0}};
+        repeat.Begin(kLeftTrigger, 0);
+        Check(!repeat.Update(true, HeldButtonAuthorityState::Current, 0),
+              "a zero initial delay is clamped to a real interval");
+        Check(repeat.Update(true, HeldButtonAuthorityState::Current, 1),
+              "the clamped interval still emits");
+    }
 
     std::cout << "ControllerNavigationTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

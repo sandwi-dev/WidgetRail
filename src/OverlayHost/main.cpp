@@ -10395,6 +10395,10 @@ private:
 
     enum class HeldActionKind { Authored, CompactMedia, FullscreenMedia };
 
+    /// Why a resolve produced no authority. A binding whose owner is only
+    /// momentarily unavailable is still this hold's binding.
+    enum class HeldActionResolve { Resolved, Deferred, Retired };
+
     struct HeldActionAuthority final {
         HeldActionKind kind{HeldActionKind::Authored};
         std::wstring widgetId;
@@ -10407,7 +10411,6 @@ private:
         std::wstring actionId;
         bool dashboard{};
         bool pinned{};
-        long long lastDispatchedSnapshotSequence{};
     };
 
     [[nodiscard]] static bool RepeatShortcutMatches(
@@ -10446,32 +10449,55 @@ private:
         return nullptr;
     }
 
+    /// The shell conditions that admit an authored held action. None of them
+    /// read the widget's interaction snapshot, so they remain answerable while
+    /// a refresh is holding presentation authority.
+    [[nodiscard]] bool AuthoredHeldActionAdmissible() const {
+        return state_.surface() != widgetrail::Surface::Hidden &&
+            !textEntryModal_.active() && !trayContextMenu_ &&
+            !OverlayFullscreenMediaRequested() &&
+            !pinnedSurfaceCoordinator_.controllerFocused() &&
+            pinnedSurfaceCoordinator_.placementMode() ==
+                widgetrail::pinned::PlacementMode::None &&
+            !pinnedSurfaceCoordinator_.opacityAdjustmentActive() &&
+            !RichMediaInputCurrent();
+    }
+
     [[nodiscard]] std::optional<HeldActionAuthority> ResolveAuthoredHeldAction(
-        const std::wstring_view protocolButton) const {
-        if (state_.surface() == widgetrail::Surface::Hidden ||
-            textEntryModal_.active() || trayContextMenu_ ||
-            OverlayFullscreenMediaRequested() ||
-            pinnedSurfaceCoordinator_.controllerFocused() ||
-            pinnedSurfaceCoordinator_.placementMode() !=
-                widgetrail::pinned::PlacementMode::None ||
-            pinnedSurfaceCoordinator_.opacityAdjustmentActive() ||
-            RichMediaInputCurrent())
+        const std::wstring_view protocolButton,
+        std::wstring* reason = nullptr,
+        HeldActionResolve* outcome = nullptr) const {
+        if (outcome) *outcome = HeldActionResolve::Retired;
+        const auto bail = [&](const wchar_t* why,
+                              const HeldActionResolve resolve =
+                                  HeldActionResolve::Retired) {
+            if (reason) *reason = why;
+            if (outcome) *outcome = resolve;
+        };
+        if (!AuthoredHeldActionAdmissible()) {
+            bail(L"not-admissible");
             return std::nullopt;
+        }
         const bool dashboard = state_.focusRegion() == widgetrail::FocusRegion::Tray;
         const std::wstring_view widgetId = dashboard
             ? state_.selectedWidget() : state_.activeWidget();
         if (!dashboard && (state_.surface() != widgetrail::Surface::Widget ||
-                           state_.focusRegion() != widgetrail::FocusRegion::Widget))
+                           state_.focusRegion() != widgetrail::FocusRegion::Widget)) {
+            bail(L"not-open-widget");
             return std::nullopt;
+        }
         const auto* snapshot = InteractionSnapshotFor(widgetId);
         const auto* descriptor = sessions_.FindDescriptor(widgetId);
-        if (!snapshot || !descriptor) return std::nullopt;
+        if (!snapshot || !descriptor) {
+            bail(!snapshot ? L"no-snapshot" : L"no-descriptor");
+            return std::nullopt;
+        }
 
         HeldActionAuthority authority{
             HeldActionKind::Authored, std::wstring{widgetId}, snapshot->instanceId,
             descriptor->runtimeGeneration, descriptor->presentationGeneration,
             snapshot->activeInputScopeId, {}, std::wstring{protocolButton}, {},
-            dashboard, pinnedSurfaceCoordinator_.pinned(), snapshot->sequence};
+            dashboard, pinnedSurfaceCoordinator_.pinned()};
         if (dashboard) {
             const auto action = std::find_if(
                 snapshot->quickActions.begin(), snapshot->quickActions.end(),
@@ -10479,7 +10505,10 @@ private:
                     return candidate.button == protocolButton &&
                         candidate.repeatPolicy == L"whileHeld";
                 });
-            if (action == snapshot->quickActions.end()) return std::nullopt;
+            if (action == snapshot->quickActions.end()) {
+                bail(L"no-quick-action");
+                return std::nullopt;
+            }
             authority.sourceElementId = L"dashboard-card";
             authority.actionId = action->actionId;
             return authority;
@@ -10488,77 +10517,153 @@ private:
         const auto visible = widgetrail::input::ResolveVisibleFocusTarget(
             interactionSession_.focusedElementId(), snapshot->activeInputScopeId,
             lastWidgetRenderResult_);
-        if (!visible) return std::nullopt;
+        if (!visible) {
+            bail(L"no-visible-focus");
+            return std::nullopt;
+        }
         const auto* scopeRoot = FindScopeRoot(
             snapshot->root, snapshot->activeInputScopeId);
-        if (!scopeRoot) return std::nullopt;
-        std::vector<const widgetrail::WidgetNode*> path;
-        if (!FindNodePathInScope(*scopeRoot, *visible, true, path) || path.empty())
+        if (!scopeRoot) {
+            bail(L"no-scope-root");
             return std::nullopt;
-        const auto* focused = path.back();
-        if (focused->isDisabled || focused->isBusy) return std::nullopt;
+        }
+        std::vector<const widgetrail::WidgetNode*> path;
+        if (!FindNodePathInScope(*scopeRoot, *visible, true, path) || path.empty()) {
+            bail(L"no-node-path");
+            return std::nullopt;
+        }
         for (auto cursor = path.rbegin(); cursor != path.rend(); ++cursor) {
             const auto shortcut = std::find_if(
                 (*cursor)->shortcuts.begin(), (*cursor)->shortcuts.end(),
                 [&](const auto& candidate) {
                     return RepeatShortcutMatches(candidate, protocolButton);
                 });
-            if (shortcut != (*cursor)->shortcuts.end()) {
-                authority.sourceElementId = (*cursor)->id;
-                authority.actionId = shortcut->actionId;
-                return authority;
+            if (shortcut == (*cursor)->shortcuts.end()) continue;
+            // Only the node that declares the binding gates it. A sibling
+            // control that goes busy or disabled while its own command settles
+            // is not this binding's owner, and a momentary owner outage defers
+            // the next emission rather than ending the hold.
+            if ((*cursor)->isDisabled || (*cursor)->isBusy) {
+                bail((*cursor)->isDisabled ? L"owner-disabled" : L"owner-busy",
+                     HeldActionResolve::Deferred);
+                return std::nullopt;
             }
+            authority.sourceElementId = (*cursor)->id;
+            authority.actionId = shortcut->actionId;
+            if (outcome) *outcome = HeldActionResolve::Resolved;
+            return authority;
         }
+        bail(L"no-repeat-shortcut");
         return std::nullopt;
     }
 
-    [[nodiscard]] bool HeldActionAuthorityCurrent(
+    [[nodiscard]] bool MediaHeldActionAuthorityCurrent(
         const HeldActionAuthority& captured) const {
-        if (captured.kind != HeldActionKind::Authored) {
-            if (!embeddedMediaAuthority_ || !EmbeddedMediaAuthorityCurrent() ||
-                embeddedMediaAuthority_->widgetId != captured.widgetId ||
-                embeddedMediaAuthority_->instanceId != captured.instanceId ||
-                embeddedMediaAuthority_->runtimeGeneration != captured.runtimeGeneration ||
-                embeddedMediaAuthority_->presentationGeneration !=
-                    captured.presentationGeneration ||
-                pinnedSurfaceCoordinator_.pinned() != captured.pinned ||
-                !EmbeddedMediaCommandSupported(
-                    captured.protocolButton == L"leftTrigger"
-                        ? L"seekBackward" : L"seekForward"))
-                return false;
-            return captured.kind == HeldActionKind::CompactMedia
-                ? pinnedSurfaceCoordinator_.controllerFocused() &&
-                    pinnedSurfaceCoordinator_.compactMediaPresentation() &&
-                    embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Pinned
-                : OverlayFullscreenMediaRequested() &&
-                    embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay;
+        if (!embeddedMediaAuthority_ || !EmbeddedMediaAuthorityCurrent() ||
+            embeddedMediaAuthority_->widgetId != captured.widgetId ||
+            embeddedMediaAuthority_->instanceId != captured.instanceId ||
+            embeddedMediaAuthority_->runtimeGeneration != captured.runtimeGeneration ||
+            embeddedMediaAuthority_->presentationGeneration !=
+                captured.presentationGeneration ||
+            pinnedSurfaceCoordinator_.pinned() != captured.pinned ||
+            !EmbeddedMediaCommandSupported(
+                captured.protocolButton == L"leftTrigger"
+                    ? L"seekBackward" : L"seekForward"))
+            return false;
+        return captured.kind == HeldActionKind::CompactMedia
+            ? pinnedSurfaceCoordinator_.controllerFocused() &&
+                pinnedSurfaceCoordinator_.compactMediaPresentation() &&
+                embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Pinned
+            : OverlayFullscreenMediaRequested() &&
+                embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay;
+    }
+
+    /// A handled authored action always requests the widget's next snapshot,
+    /// and that refresh withholds presentation authority for a few frames. The
+    /// gap is this held action's own consequence, not a loss of its authority,
+    /// so it defers the next emission rather than cancelling the hold. Every
+    /// other change -- a different widget, scope, binding, runtime generation,
+    /// pin transition, or a failure -- retires the hold for good.
+    [[nodiscard]] widgetrail::input::HeldButtonAuthorityState
+    HeldActionAuthorityState(
+        const HeldActionAuthority& captured,
+        std::wstring* reason = nullptr) const {
+        using widgetrail::input::HeldButtonAuthorityState;
+        if (captured.kind != HeldActionKind::Authored)
+            return MediaHeldActionAuthorityCurrent(captured)
+                ? HeldButtonAuthorityState::Current
+                : HeldButtonAuthorityState::Retired;
+        if (!AuthoredHeldActionAdmissible())
+            return HeldButtonAuthorityState::Retired;
+        const bool dashboard =
+            state_.focusRegion() == widgetrail::FocusRegion::Tray;
+        const std::wstring_view widgetId = dashboard
+            ? state_.selectedWidget() : state_.activeWidget();
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        if (dashboard != captured.dashboard || widgetId != captured.widgetId ||
+            pinnedSurfaceCoordinator_.pinned() != captured.pinned ||
+            !descriptor ||
+            descriptor->runtimeGeneration != captured.runtimeGeneration ||
+            descriptor->presentationGeneration != captured.presentationGeneration) {
+            if (reason)
+                *reason = std::wstring(L"shell:") +
+                    (dashboard != captured.dashboard ? L"dashboard " : L"") +
+                    (widgetId != captured.widgetId ? L"widgetId " : L"") +
+                    (pinnedSurfaceCoordinator_.pinned() != captured.pinned
+                        ? L"pinned " : L"") +
+                    (!descriptor ? L"descriptor " : L"") +
+                    (descriptor && descriptor->runtimeGeneration !=
+                        captured.runtimeGeneration ? L"runtimeGen " : L"") +
+                    (descriptor && descriptor->presentationGeneration !=
+                        captured.presentationGeneration ? L"presentationGen " : L"");
+            return HeldButtonAuthorityState::Retired;
         }
-        const auto current = ResolveAuthoredHeldAction(captured.protocolButton);
-        return current && current->kind == captured.kind &&
-            current->widgetId == captured.widgetId &&
-            current->instanceId == captured.instanceId &&
-            current->runtimeGeneration == captured.runtimeGeneration &&
-            current->presentationGeneration == captured.presentationGeneration &&
-            current->inputScopeId == captured.inputScopeId &&
-            current->sourceElementId == captured.sourceElementId &&
-            current->actionId == captured.actionId &&
-            current->dashboard == captured.dashboard &&
-            current->pinned == captured.pinned;
+        if (!InteractionSnapshotFor(widgetId) &&
+            sessions_.Presentation(widgetId).authority ==
+                widgetrail::WidgetPresentationAuthority::RefreshRetained)
+            return HeldButtonAuthorityState::Deferred;
+        std::wstring resolveReason;
+        auto resolveOutcome = HeldActionResolve::Retired;
+        const auto current = ResolveAuthoredHeldAction(
+            captured.protocolButton, &resolveReason, &resolveOutcome);
+        if (!current) {
+            if (reason) *reason = L"resolve:" + resolveReason;
+            return resolveOutcome == HeldActionResolve::Deferred
+                ? HeldButtonAuthorityState::Deferred
+                : HeldButtonAuthorityState::Retired;
+        }
+        std::wstring mismatch;
+        const auto compare = [&](const wchar_t* name,
+                                 const std::wstring& a, const std::wstring& b) {
+            if (a != b)
+                mismatch += std::wstring(name) + L"[" + a + L"!=" + b + L"] ";
+        };
+        compare(L"widgetId", current->widgetId, captured.widgetId);
+        compare(L"instanceId", current->instanceId, captured.instanceId);
+        compare(L"runtimeGen", current->runtimeGeneration, captured.runtimeGeneration);
+        compare(L"presentationGen",
+            current->presentationGeneration, captured.presentationGeneration);
+        compare(L"inputScope", current->inputScopeId, captured.inputScopeId);
+        compare(L"source", current->sourceElementId, captured.sourceElementId);
+        compare(L"actionId", current->actionId, captured.actionId);
+        if (current->kind != captured.kind) mismatch += L"kind ";
+        if (current->dashboard != captured.dashboard) mismatch += L"dashboard ";
+        if (current->pinned != captured.pinned) mismatch += L"pinned ";
+        if (mismatch.empty()) return HeldButtonAuthorityState::Current;
+        if (reason) *reason = L"field:" + mismatch;
+        return HeldButtonAuthorityState::Retired;
     }
 
     [[nodiscard]] static std::uint32_t RepeatButtonKey(
         const std::wstring_view protocolButton) noexcept {
         if (protocolButton == L"leftTrigger") return 0x1'0000;
         if (protocolButton == L"rightTrigger") return 0x2'0000;
-        if (protocolButton == L"a") return XINPUT_GAMEPAD_A;
-        if (protocolButton == L"b") return XINPUT_GAMEPAD_B;
         if (protocolButton == L"x") return XINPUT_GAMEPAD_X;
         if (protocolButton == L"y") return XINPUT_GAMEPAD_Y;
         if (protocolButton == L"leftBumper") return XINPUT_GAMEPAD_LEFT_SHOULDER;
         if (protocolButton == L"rightBumper") return XINPUT_GAMEPAD_RIGHT_SHOULDER;
         if (protocolButton == L"leftStick") return XINPUT_GAMEPAD_LEFT_THUMB;
         if (protocolButton == L"rightStick") return XINPUT_GAMEPAD_RIGHT_THUMB;
-        if (protocolButton == L"menu") return XINPUT_GAMEPAD_START;
         return 0;
     }
 
@@ -10593,15 +10698,34 @@ private:
             embeddedMediaAuthority_->runtimeGeneration,
             embeddedMediaAuthority_->presentationGeneration,
             {}, {}, std::wstring{protocolButton}, {}, false,
-            pinnedSurfaceCoordinator_.pinned(), embeddedMediaAuthority_->sequence,
+            pinnedSurfaceCoordinator_.pinned(),
         }, now);
     }
 
     void DispatchRepeatableControllerAction(
         const std::wstring_view button,
         const ULONGLONG now) {
-        if (const auto authority = ResolveAuthoredHeldAction(ProtocolButton(button)))
-            BeginHeldActionRepeat(*authority, now);
+        const auto protocolButton = ProtocolButton(button);
+        if (RepeatButtonKey(protocolButton) != 0) {
+            const auto authority = ResolveAuthoredHeldAction(protocolButton);
+            AppendActionCorrelation(
+                L"stage=held-repeat-arm button=" + std::wstring(protocolButton) +
+                L" resolved=" + (authority ? L"1" : L"0") +
+                L" admissible=" + (AuthoredHeldActionAdmissible() ? L"1" : L"0") +
+                L" surface=" + std::to_wstring(static_cast<int>(state_.surface())) +
+                L" focusRegion=" + std::to_wstring(
+                    static_cast<int>(state_.focusRegion())) +
+                L" fullscreenMedia=" +
+                    (OverlayFullscreenMediaRequested() ? L"1" : L"0") +
+                L" pinnedFocused=" +
+                    (pinnedSurfaceCoordinator_.controllerFocused() ? L"1" : L"0") +
+                L" richMediaProof=" + (RichMediaInputCurrent() ? L"1" : L"0") +
+                L" action=" + (authority ? authority->actionId : L"none") +
+                L" source=" + (authority ? authority->sourceElementId : L"none") +
+                L" scope=" + (authority ? authority->inputScopeId : L"none"),
+                DiagnosticSeverity::Debug);
+            if (authority) BeginHeldActionRepeat(*authority, now);
+        }
         DispatchControllerAction(button, true);
     }
 
@@ -10610,31 +10734,54 @@ private:
         const ULONGLONG now) {
         if (!heldActionAuthority_) return;
         const auto key = heldActionRepeat_.button();
-        if (!heldActionRepeat_.Update(
-                RepeatButtonDown(frame, key),
-                HeldActionAuthorityCurrent(*heldActionAuthority_), now)) {
-            if (!heldActionRepeat_.active()) heldActionAuthority_.reset();
+        const bool down = RepeatButtonDown(frame, key);
+        std::wstring authorityReason;
+        const auto authorityState =
+            HeldActionAuthorityState(*heldActionAuthority_, &authorityReason);
+        const int verdict = down ? static_cast<int>(authorityState) + 1 : 0;
+        if (verdict != lastHeldRepeatVerdict_) {
+            lastHeldRepeatVerdict_ = verdict;
+            AppendActionCorrelation(
+                L"stage=held-repeat-pump button=" +
+                    heldActionAuthority_->protocolButton +
+                L" down=" + (down ? L"1" : L"0") +
+                L" rawLeft=" + std::to_wstring(frame.state.leftTrigger) +
+                L" rawRight=" + std::to_wstring(frame.state.rightTrigger) +
+                L" authority=" + std::to_wstring(static_cast<int>(authorityState)) +
+                L" snapshot=" +
+                    (InteractionSnapshotFor(heldActionAuthority_->widgetId)
+                        ? L"current" : L"absent") +
+                L" presentation=" + std::to_wstring(static_cast<int>(
+                    sessions_.Presentation(
+                        heldActionAuthority_->widgetId).authority)) +
+                L" why=" + (authorityReason.empty() ? L"none" : authorityReason),
+                DiagnosticSeverity::Debug);
+        }
+        if (!heldActionRepeat_.Update(down, authorityState, now)) {
+            if (!heldActionRepeat_.active()) {
+                heldActionAuthority_.reset();
+                lastHeldRepeatVerdict_ = -1;
+            }
             return;
         }
-        auto& authority = *heldActionAuthority_;
-        if (authority.kind == HeldActionKind::Authored) {
-            const auto* snapshot = InteractionSnapshotFor(authority.widgetId);
-            if (!snapshot || snapshot->sequence <=
-                    authority.lastDispatchedSnapshotSequence)
-                return;
-            authority.lastDispatchedSnapshotSequence = snapshot->sequence;
-            const auto button = DisplayButton(authority.protocolButton);
+        // Dispatching can retire the hold, so nothing below reads the captured
+        // authority through a reference the dispatch itself may destroy.
+        const auto kind = heldActionAuthority_->kind;
+        const std::wstring protocolButton = heldActionAuthority_->protocolButton;
+        if (kind == HeldActionKind::Authored) {
             DispatchWidgetAction(
-                button, widgetrail::input::NavigationEventPhase::Repeated);
+                DisplayButton(protocolButton),
+                widgetrail::input::NavigationEventPhase::Repeated);
             return;
         }
-        const auto direction = authority.protocolButton == L"leftTrigger"
+        const auto direction = protocolButton == L"leftTrigger"
             ? widgetrail::input::NavigationDirection::Left
             : widgetrail::input::NavigationDirection::Right;
-        const auto target = authority.kind == HeldActionKind::CompactMedia
+        const auto target = kind == HeldActionKind::CompactMedia
             ? pinnedSurfaceCoordinator_.CompactMediaSeekTarget(direction)
             : OverlayFullscreenMediaSeekTarget(direction);
-        if (target) (void)richMediaSurface_->SendSeekPosition(*target);
+        if (target && richMediaSurface_)
+            (void)richMediaSurface_->SendSeekPosition(*target);
     }
 
     bool HandleFocusedSliderModeButton(const std::wstring_view button) {
@@ -14076,6 +14223,7 @@ private:
     widgetrail::input::TrayYGesture trayYGesture_;
     widgetrail::input::HeldButtonActionRepeat heldActionRepeat_;
     std::optional<HeldActionAuthority> heldActionAuthority_;
+    int lastHeldRepeatVerdict_{-1};
     widgetrail::input::WidgetInteractionSession interactionSession_;
     std::wstring rightStickDropSignature_;
     std::uint64_t rightStickDropCount_{};

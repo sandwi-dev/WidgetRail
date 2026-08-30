@@ -95,12 +95,13 @@ public abstract partial class Widget
                 if (action.Phase == ControllerEventPhase.Repeated &&
                     ((queue.Active is { } active &&
                       IsSameDiscreteAction(active.Action, action)) ||
-                     (queue.Pending.Last is { } pending &&
-                      IsSameDiscreteAction(pending.Value.Action, action))))
+                     HasPendingDiscreteAction(queue, action)))
                 {
                     // A held action owns at most one active or pending
                     // invocation. Due ticks while it is still owned coalesce
                     // instead of filling the bounded discrete-action FIFO.
+                    // Unrelated actions can interleave, so the whole bounded
+                    // queue is scanned rather than just its tail.
                     admission = WidgetOperationAdmission.Joined;
                 }
                 else if (action.RequestedValue is not null && queue.Pending.Last is { } tail &&
@@ -141,6 +142,15 @@ public abstract partial class Widget
         string.Equals(previous.ActionId, current.ActionId, StringComparison.Ordinal) &&
         string.Equals(previous.SourceElementId, current.SourceElementId, StringComparison.Ordinal) &&
         string.Equals(previous.InputScopeId, current.InputScopeId, StringComparison.Ordinal);
+
+    private static bool HasPendingDiscreteAction(
+        ActionQueueState queue,
+        WidgetActionEvent action)
+    {
+        for (var node = queue.Pending.First; node is not null; node = node.Next)
+            if (IsSameDiscreteAction(node.Value.Action, action)) return true;
+        return false;
+    }
 
     private static bool IsSameDiscreteAction(
         WidgetActionEvent previous,

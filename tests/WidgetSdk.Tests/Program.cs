@@ -34,6 +34,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Loading indicators round-trip with bounded non-interactive semantics", LoadingIndicatorRoundTrip),
     ("Inline PNG images are bounded local and negotiate the highest protocol", InlinePngImagesAreBounded),
     ("Input surfaces serialize and validate scoped shortcuts", InputSurfacesValidate),
+    ("Held-button action repeat is generic opt-in and never backlogs",
+        HeldButtonActionRepeatTests.Run),
     ("Dashboard quick action authority is typed bounded and versioned", DashboardAuthorityContract),
     ("Host-reserved View mappings fail with precise author diagnostics", HostReservedViewMappingsAreRejected),
     ("Unsafe image sources are rejected", UnsafeImageSourcesAreRejected),

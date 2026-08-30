@@ -370,6 +370,10 @@ Declare shortcuts with the `Pressed` phase. Eligible discrete shortcuts can set
 `Repeated` action events after the initial press; the default is edge-only.
 Do not bind `Released` or `Repeated` directly, and do not bind `A` or D-pad as
 shortcuts. B and host-reserved shell/navigation buttons cannot opt into repeat.
+Keep a `WhileHeld` shortcut or QuickAction declaration published while its
+operation is pending or busy. Pending work gates dispatch and admission, not
+declaration: withdrawing the binding retires the host-owned hold without an
+error.
 
 ### B behavior
 

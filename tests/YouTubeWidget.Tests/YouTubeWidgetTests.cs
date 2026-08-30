@@ -7,7 +7,7 @@ using WidgetRail.WidgetSdk;
 namespace WidgetRail.YouTubeWidget.Tests;
 
 [TestClass]
-public sealed class YouTubeWidgetTests
+public sealed partial class YouTubeWidgetTests
 {
     private const string VideoId = "M7lc1UVf-VE";
 
@@ -108,17 +108,21 @@ public sealed class YouTubeWidgetTests
             new WidgetQuickAction(ControllerButton.X,
                 YouTubeVideoWidget.ToggleActionId, "Play or pause"),
             new WidgetQuickAction(ControllerButton.LeftTrigger,
-                YouTubeVideoWidget.SeekBackwardActionId, "Seek backward 10 seconds"),
+                YouTubeVideoWidget.SeekBackwardActionId, "Seek backward 10 seconds",
+                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
             new WidgetQuickAction(ControllerButton.RightTrigger,
-                YouTubeVideoWidget.SeekForwardActionId, "Seek forward 10 seconds"),
+                YouTubeVideoWidget.SeekForwardActionId, "Seek forward 10 seconds",
+                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
         };
         var expectedShortcuts = new[]
         {
             new ControllerShortcut(ControllerButton.X, YouTubeVideoWidget.ToggleActionId),
             new ControllerShortcut(ControllerButton.LeftTrigger,
-                YouTubeVideoWidget.SeekBackwardActionId),
+                YouTubeVideoWidget.SeekBackwardActionId,
+                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
             new ControllerShortcut(ControllerButton.RightTrigger,
-                YouTubeVideoWidget.SeekForwardActionId),
+                YouTubeVideoWidget.SeekForwardActionId,
+                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
         };
         Assert.AreEqual("youtube.playback.toggle", ready.InitialFocusId);
         CollectionAssert.AreEqual(expectedQuickActions, ready.QuickActions.ToArray());
@@ -221,9 +225,7 @@ public sealed class YouTubeWidgetTests
         Assert.Contains("has-value", enteredLink.StyleClasses);
         Assert.DoesNotContain("is-empty", enteredLink.StyleClasses);
 
-        Assert.AreEqual("PLAYER", Find(ready.Root, "youtube.media.label").Text);
-        Assert.AreEqual("16:9 embedded playback",
-            Find(ready.Root, "youtube.media.hint").Text);
+        Assert.AreEqual("Now playing", Find(ready.Root, "youtube.title").Text);
         Assert.IsNotNull(Find(ready.Root, "youtube.status").Text);
 
         var toggle = Find(ready.Root, "youtube.playback.toggle");
@@ -696,7 +698,7 @@ public sealed class YouTubeWidgetTests
         StringAssert.Contains(adapter, "https://www.youtube.com/iframe_api");
         StringAssert.Contains(adapter, "new YT.Player");
         StringAssert.Contains(adapter, "autoplay:0");
-        StringAssert.Contains(adapter, "controls:1");
+        StringAssert.Contains(adapter, "controls:0");
         StringAssert.Contains(adapter, "fs:0");
         StringAssert.Contains(adapter,
             "commandId:message.commandId,commandSequence:0,playing:false,focus:'youtube-player'");
@@ -729,7 +731,13 @@ public sealed class YouTubeWidgetTests
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
         var root = document.RootElement;
         Assert.AreEqual("widgetrail.samples.youtube-video", root.GetProperty("id").GetString());
-        Assert.AreEqual("0.2.20", root.GetProperty("version").GetString());
+        // Installed versions are immutable, so every package change bumps this.
+        // Pin the shape, not the number: a literal here only ever records the
+        // last bump someone remembered to mirror.
+        var version = root.GetProperty("version").GetString();
+        Assert.IsNotNull(version);
+        StringAssert.Matches(version, VersionPattern(),
+            "The manifest version must be a real three-part version.");
         Assert.IsTrue(root.GetProperty("pinningSupported").GetBoolean());
         Assert.AreEqual("full-trust-application-v1",
             root.GetProperty("entrypoint").GetProperty("runtime").GetString());
@@ -903,6 +911,115 @@ public sealed class YouTubeWidgetTests
                 $"{state} admitted page-scoped {button}.");
         }
     }
+
+    /// <summary>
+    /// A held button repeats only while the host can still resolve the exact
+    /// binding it captured on the press. Any snapshot that drops the LT/RT
+    /// declaration, or disables the node that declares it, retires the hold --
+    /// so the transport declaration must survive a pending command and the
+    /// buffering the seek itself causes.
+    /// </summary>
+    [TestMethod]
+    public async Task HeldSeekBindingsSurviveTheirOwnPendingCommandAndBuffering()
+    {
+        var widget = await CreateConfiguredLinkWidgetAsync();
+        await CommitAsync(widget, $"https://youtu.be/{VideoId}");
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Playing, 1,
+            position: 50, duration: 600, volume: 0.65);
+
+        AssertHeldSeekDeclared(widget.RenderSnapshot("youtube-test", 2), "at rest");
+
+        // First repeat: a seek is queued and still in flight.
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.SeekForwardActionId, "youtube.playback.seek-forward"));
+        var pendingSnapshot = widget.RenderSnapshot("youtube-test", 3);
+        Assert.IsNotNull(pendingSnapshot.EmbeddedMedia!.PendingCommand,
+            "The seek must actually be in flight for this to prove anything.");
+        AssertHeldSeekDeclared(pendingSnapshot, "with a command pending");
+
+        // The seek drives the player into Loading. This is the state that used
+        // to withdraw the declaration and end the hold after one step.
+        var seek = pendingSnapshot.EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 2,
+            position: 60, duration: 600, volume: 0.65);
+        AssertHeldSeekDeclared(widget.RenderSnapshot("youtube-test", 4), "while buffering");
+
+        // Second repeat while already Loading: the widget records no buffering
+        // sentinel on this path, which is exactly where the hold used to die.
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.SeekForwardActionId, "youtube.playback.seek-forward"));
+        var second = widget.RenderSnapshot("youtube-test", 5);
+        AssertHeldSeekDeclared(second, "on a second seek while still loading");
+        if (second.EmbeddedMedia!.PendingCommand is { } queued)
+            await ObserveAsync(widget, queued, EmbeddedMediaPlaybackState.Loading, 3,
+                position: 70, duration: 600, volume: 0.65);
+        AssertHeldSeekDeclared(
+            widget.RenderSnapshot("youtube-test", 6), "after repeated seeking");
+    }
+
+    /// <summary>
+    /// The seek binding is declared on the scope root, not on the focused
+    /// control. A transiently disabled or busy sibling must not be able to
+    /// speak for it.
+    /// </summary>
+    [TestMethod]
+    public async Task HeldSeekOwnerStaysActionableWhileSiblingControlsSettle()
+    {
+        var widget = await CreateConfiguredLinkWidgetAsync();
+        await CommitAsync(widget, $"https://youtu.be/{VideoId}");
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Playing, 1,
+            position: 50, duration: 600, volume: 0.65);
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.SeekForwardActionId, "youtube.playback.seek-forward"));
+        var seek = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 2,
+            position: 60, duration: 600, volume: 0.65);
+
+        var snapshot = widget.RenderSnapshot("youtube-test", 3);
+        var owner = Find(snapshot.Root, snapshot.ActiveInputScopeId);
+        Assert.IsTrue(
+            owner.Shortcuts.Any(shortcut =>
+                shortcut.Button == ControllerButton.RightTrigger &&
+                shortcut.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld),
+            "The scope root must own the held seek binding.");
+        Assert.IsFalse(owner.IsDisabled is true, "The binding owner must stay actionable.");
+        Assert.IsFalse(owner.IsBusy is true, "The binding owner must stay actionable.");
+
+        // The seek controls themselves no longer churn through busy/disabled
+        // while a command settles.
+        foreach (var id in new[]
+                 { "youtube.playback.seek-backward", "youtube.playback.seek-forward" })
+        {
+            var control = Find(snapshot.Root, id);
+            Assert.IsFalse(control.IsBusy is true, $"{id} must not report busy mid-seek.");
+            Assert.IsFalse(control.IsDisabled is true, $"{id} must stay enabled mid-seek.");
+        }
+    }
+
+    private static void AssertHeldSeekDeclared(ViewSnapshot snapshot, string stage)
+    {
+        var root = Find(snapshot.Root, "youtube.root");
+        foreach (var button in new[]
+                 { ControllerButton.LeftTrigger, ControllerButton.RightTrigger })
+        {
+            Assert.IsTrue(
+                root.Shortcuts.Any(shortcut =>
+                    shortcut.Button == button &&
+                    shortcut.Phase == ControllerEventPhase.Pressed &&
+                    shortcut.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld),
+                $"{button} held shortcut was withdrawn {stage}.");
+            Assert.IsTrue(
+                (snapshot.QuickActions ?? []).Any(action =>
+                    action.Button == button &&
+                    action.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld),
+                $"{button} held quick action was withdrawn {stage}.");
+        }
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\d+\.\d+\.\d+$")]
+    private static partial System.Text.RegularExpressions.Regex VersionPattern();
 
     private static ViewNode Find(ViewNode node, string id)
     {

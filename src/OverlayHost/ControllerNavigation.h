@@ -281,6 +281,17 @@ struct HeldButtonActionRepeatOptions final {
     std::uint64_t repeatMilliseconds{125};
 };
 
+/// The standing of a held action's captured authority at one tick.
+enum class HeldButtonAuthorityState {
+    /// The captured binding is current and an emission may be admitted.
+    Current,
+    /// The binding's owner still holds the hold, but its authority cannot be
+    /// read this tick. Emissions wait; the hold survives.
+    Deferred,
+    /// The captured binding is gone for good.
+    Retired,
+};
+
 /// Owns only the cadence of one explicitly repeatable discrete action. The
 /// caller retains the captured semantic authority and must revalidate it before
 /// every emission. Missed ticks coalesce into one event and are never queued.
@@ -302,12 +313,17 @@ public:
 
     [[nodiscard]] bool Update(
         const bool buttonStillDown,
-        const bool authorityCurrent,
+        const HeldButtonAuthorityState authority,
         const std::uint64_t now) noexcept {
-        if (button_ == 0 || !buttonStillDown || !authorityCurrent) {
+        if (button_ == 0 || !buttonStillDown ||
+            authority == HeldButtonAuthorityState::Retired) {
             Reset();
             return false;
         }
+        // A deferred tick is the held action waiting on its own last emission.
+        // It withholds this tick without disarming and without advancing the
+        // deadline, so the first tick after the wait emits once and only once.
+        if (authority == HeldButtonAuthorityState::Deferred) return false;
         if (now < nextRepeat_) return false;
         nextRepeat_ = now + options_.repeatMilliseconds;
         return true;
