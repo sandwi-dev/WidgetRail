@@ -1480,6 +1480,16 @@ public sealed class SpotifyWidget : Widget
             RecordActionDiagnostic(action, "action-status", "provider-succeeded");
             Invalidate();
             RecordActionDiagnostic(action, "action-invalidation", "provider-succeeded");
+
+            // The Web API acknowledges transport controls with no playback
+            // representation.  Retain the accepted optimistic Play/Pause
+            // projection until adaptive polling obtains Spotify's next
+            // authoritative observation; the immediate player read can still
+            // report the pre-command state and otherwise makes every surface
+            // briefly revert its glyph.
+            if (operation is SpotifyPlaybackOperation.Play or SpotifyPlaybackOperation.Pause)
+                return;
+
             var refreshQueueAfterPlayback = operation is SpotifyPlaybackOperation.Next or
                 SpotifyPlaybackOperation.Previous;
             var playbackRefreshed = await RefreshPlaybackAsync(
