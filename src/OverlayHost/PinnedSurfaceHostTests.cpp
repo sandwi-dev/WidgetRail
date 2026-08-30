@@ -241,46 +241,47 @@ void TestAcceptedWidgetOwnedFocusMemoryHostContract() {
 void TestAcceptedMediaBackOwnershipHostContract() {
     const auto source = ReadSource(
         fs::path{__FILE__}.parent_path() / "main.cpp");
+    const auto mediaBackBegin = source.find(
+        "[[nodiscard]] bool HandleOverlayMediaBackButton(");
     const auto dispatchBegin = source.find(
-        "void DispatchControllerAction(");
+        "void DispatchControllerAction(", mediaBackBegin);
     const auto dispatchEnd = source.find(
         "[[nodiscard]] bool TryDispatchNativeMediaAction(", dispatchBegin);
-    Check(dispatchBegin != std::string::npos &&
+    Check(mediaBackBegin != std::string::npos &&
+              dispatchBegin != std::string::npos &&
               dispatchEnd != std::string::npos && dispatchBegin < dispatchEnd,
           "controller action owner has one bounded source section");
+    const auto mediaBack = source.substr(
+        mediaBackBegin, dispatchBegin - mediaBackBegin);
     const auto dispatch = source.substr(dispatchBegin, dispatchEnd - dispatchBegin);
     // The precedence between the fullscreen and media-Back routes is owned by
     // RouteOverlayMediaBackButton and pinned exhaustively by
-    // ControllerNavigationTests. What must hold here is that this dispatcher
-    // defers to that one owner, and does so before the generic controller route.
-    const auto mediaBackRouter = dispatch.find(
+    // ControllerNavigationTests. This host helper owns the exact authority and
+    // side effects; the dispatcher must defer to it before the generic route.
+    const auto mediaBackRouter = mediaBack.find(
         "widgetrail::input::RouteOverlayMediaBackButton(");
-    const auto genericRoute = dispatch.find(
-        "using widgetrail::input::ControllerActionContext", mediaBackRouter);
-    Check(mediaBackRouter != std::string::npos &&
-              genericRoute != std::string::npos && mediaBackRouter < genericRoute,
-          "media Back resolves through the shared route owner before generic controller routing");
+    Check(mediaBackRouter != std::string::npos,
+          "media Back helper resolves through the shared route owner");
     // Overlay fullscreen is host-owned on both edges. B must clear the host's
     // activation rather than reach the widget, so no package can strand a user
     // in a presentation that paints no tray, guide, or accessibility tree.
-    const auto exitRoute = dispatch.find(
+    const auto exitRoute = mediaBack.find(
         "OverlayMediaBackRoute::ExitOverlayFullscreen");
-    const auto hostExit = dispatch.find("ExitOverlayFullscreenMedia()", exitRoute);
-    const auto widgetBack = dispatch.find(
+    const auto hostExit = mediaBack.find("ExitOverlayFullscreenMedia()", exitRoute);
+    const auto widgetBack = mediaBack.find(
         "OverlayMediaBackRoute::HostWidgetBack", exitRoute);
     Check(exitRoute != std::string::npos && hostExit != std::string::npos &&
               widgetBack != std::string::npos && exitRoute < hostExit &&
               hostExit < widgetBack &&
-              dispatch.find("DispatchWidgetAction", exitRoute) > widgetBack,
+              mediaBack.find("DispatchWidgetAction", exitRoute) == std::string::npos,
           "fullscreen B clears host-owned activation and never dispatches to the widget");
-    // The authority the router is handed still has to be assembled here, so the
-    // branch now spans from that assembly through the generic route.
-    const auto mediaBackBegin = dispatch.find(
+    const auto mediaBackAuthorityBegin = mediaBack.find(
         "const bool overlayMediaAuthorityCurrent =");
-    Check(mediaBackBegin != std::string::npos && mediaBackBegin < genericRoute,
-          "media Back authority is assembled before generic controller routing");
+    Check(mediaBackAuthorityBegin != std::string::npos &&
+              mediaBackAuthorityBegin < mediaBackRouter,
+          "media Back authority is assembled before the shared route");
     const auto mediaBackBranch =
-        dispatch.substr(mediaBackBegin, genericRoute - mediaBackBegin);
+        mediaBack.substr(mediaBackAuthorityBegin);
     Check(mediaBackBranch.find(
               "embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay") !=
               std::string::npos &&
@@ -300,6 +301,13 @@ void TestAcceptedMediaBackOwnershipHostContract() {
     Check(mediaBackBranch.find("youtube") == std::string::npos &&
               mediaBackBranch.find("YouTube") == std::string::npos,
           "media Back ownership remains provider-neutral");
+    const auto helperDispatch = dispatch.find(
+        "HandleOverlayMediaBackButton(button)");
+    const auto genericRoute = dispatch.find(
+        "using widgetrail::input::ControllerActionContext", helperDispatch);
+    Check(helperDispatch != std::string::npos &&
+              genericRoute != std::string::npos && helperDispatch < genericRoute,
+          "media Back resolves through the shared route owner before generic controller routing");
     Check(dispatch.find(
               "const auto context = state_.focusRegion() == widgetrail::FocusRegion::Tray") !=
               std::string::npos &&

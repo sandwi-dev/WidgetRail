@@ -304,12 +304,15 @@ internal static class EmbeddedMediaSurfaceTests
         };
         Equal(true, await fullscreenObserver.OnControllerInputAsync(entered));
         Equal(true, await fullscreenObserver.OnControllerInputAsync(entered));
-        Equal("true", string.Join(',', fullscreenObserver.Changes));
+        Equal(1, fullscreenObserver.Changes.Count);
+        Equal(true, fullscreenObserver.Changes[0]);
         Equal(true, await fullscreenObserver.OnControllerInputAsync(entered with
         {
             IsOverlayFullscreenActive = false,
         }));
-        Equal("true,false", string.Join(',', fullscreenObserver.Changes));
+        Equal(2, fullscreenObserver.Changes.Count);
+        Equal(true, fullscreenObserver.Changes[0]);
+        Equal(false, fullscreenObserver.Changes[1]);
         Error(snapshot with
         {
             ProtocolVersion = ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
@@ -346,7 +349,7 @@ internal static class EmbeddedMediaSurfaceTests
         var sample = new EmbeddedMediaSampleWidget();
         var initialSample = sample.Render();
         Equal(null, initialSample.EmbeddedMedia?.PendingCommand);
-        var initialSampleSnapshot = initialSample.CreateSnapshot(
+        var initialSampleSnapshot = sample.RenderSnapshot(
             "embedded-media-sample.instance", 1);
         Equal(0D, Find(initialSampleSnapshot.Root, "media-shell.timeline.slider").Value);
         await EmbeddedMediaAdapterConformanceGate.VerifyAsync(
