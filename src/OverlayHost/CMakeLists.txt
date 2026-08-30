@@ -76,6 +76,7 @@ add_executable(OverlayHost WIN32
     DeclarativeRenderer.cpp
     GuideInputCompatibility.cpp
     ControllerNavigation.cpp
+    ControllerGuide.cpp
     SliderInteraction.cpp
     WidgetInteractionSession.cpp
     TextEntryActionAdmission.cpp

@@ -1629,6 +1629,7 @@ $hostArguments = $hostCompileArguments + @(
     (Join-Path $projectDirectory 'OverlayTransition.cpp'),
     (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
     (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+    (Join-Path $projectDirectory 'ControllerGuide.cpp'),
     (Join-Path $projectDirectory 'SliderInteraction.cpp'),
     (Join-Path $projectDirectory 'WidgetInteractionSession.cpp'),
     (Join-Path $projectDirectory 'TextEntryActionAdmission.cpp'),

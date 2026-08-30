@@ -7,6 +7,7 @@
 #include "EmbeddedMediaResourceContract.h"
 #include "ControllerNavigation.h"
 #include "ControllerInputOwnership.h"
+#include "ControllerGuide.h"
 #include "FocusNavigation.h"
 #include "HostAccessibility.h"
 #include "NativeIcons.h"
@@ -12652,7 +12653,8 @@ private:
             key += L"\n" + DashboardHint(static_cast<float>(width));
         } else {
             if (const auto status = OpenWidgetStatus()) key += L"\n" + *status;
-            key += L"\n" + OpenWidgetPrompt();
+            key += L"\n" + ResolveOpenWidgetGuide(
+                static_cast<float>(width)).accessible;
             if (trayContextMenu_) {
                 key += L"\ntray-context=" + trayContextMenu_->widgetId + L":" +
                     std::to_wstring(trayContextMenu_->selectedItem);
@@ -13518,23 +13520,6 @@ private:
         }
     }
 
-    static void CollectShortcutPrompts(
-        const widgetrail::WidgetNode& node,
-        std::vector<std::pair<std::wstring, std::wstring>>& prompts) {
-        for (const auto& shortcut : node.shortcuts) {
-            const std::wstring_view label = !node.text.empty()
-                ? std::wstring_view(node.text)
-                : std::wstring_view(node.accessibilityLabel);
-            if (shortcut.phase != L"pressed" || label.empty()) continue;
-            const bool exists = std::any_of(
-                prompts.begin(), prompts.end(), [&](const auto& prompt) {
-                    return prompt.first == shortcut.button;
-                });
-            if (!exists) prompts.emplace_back(shortcut.button, label);
-        }
-        for (const auto& child : node.children) CollectShortcutPrompts(child, prompts);
-    }
-
     std::optional<std::wstring> OpenWidgetStatus() const {
         const auto now = GetTickCount64();
         if (const auto* startup = sessions_.Failure(state_.activeWidget()))
@@ -13550,32 +13535,26 @@ private:
         return std::nullopt;
     }
 
-    std::wstring OpenWidgetPrompt() {
-        if (sessions_.Failure(state_.activeWidget()))
-            return L"A  Retry    B  Back";
-        const auto* snapshot = GuideSnapshotFor(state_.activeWidget());
-        if (!snapshot) return L"A  Select";
-        std::vector<std::pair<std::wstring, std::wstring>> prompts;
-        CollectShortcutPrompts(snapshot->root, prompts);
-        const auto order = [](const std::wstring_view button) {
-            if (button == L"b") return 0;
-            if (button == L"x") return 1;
-            if (button == L"leftBumper") return 2;
-            if (button == L"rightBumper") return 3;
-            if (button == L"y") return 4;
-            return 10;
-        };
-        std::stable_sort(prompts.begin(), prompts.end(), [&](const auto& left, const auto& right) {
-            return order(left.first) < order(right.first);
-        });
-        std::wstring result;
-        for (std::size_t index = 0; index < prompts.size() && index < 4; ++index) {
-            if (!result.empty()) result += L"     ";
-            result += DisplayButton(prompts[index].first);
-            result += L"  ";
-            result += prompts[index].second;
+    [[nodiscard]] widgetrail::guide::OpenWidgetLine ResolveOpenWidgetGuide(
+        const float availableWidth) {
+        const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
+        const auto hostBack = NonCurrentHostRootBackAuthority();
+        const bool rootScope = snapshot &&
+            std::wstring_view(snapshot->activeInputScopeId) ==
+                widgetrail::input::RootInputScope(*snapshot);
+        const bool nestedBack = snapshot &&
+            widgetrail::accessibility::HasActiveScopeBackShortcut(
+                *snapshot, interactionSession_.focusedElementId());
+        widgetrail::guide::OpenWidgetAuthority authority;
+        if (snapshot) {
+            authority = widgetrail::guide::ResolveOpenWidgetAuthority(
+                *snapshot, interactionSession_.focusedElementId());
         }
-        return result.empty() ? L"A  Select" : result;
+        return widgetrail::guide::BuildOpenWidgetLine(
+            widgetrail::ResolveControllerGuideDensity(
+                availableWidth, CurrentTextScale()),
+            authority,
+            rootScope || nestedBack || hostBack.has_value());
     }
 
     void DrawWidgetFooter(
@@ -13628,8 +13607,6 @@ private:
             return;
         }
         const auto status = OpenWidgetStatus();
-        const std::wstring help = OpenWidgetPrompt();
-        const std::wstring prompt = status ? *status : help;
         const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
         const auto hostBack = NonCurrentHostRootBackAuthority();
         const bool rootScope = snapshot &&
@@ -13639,13 +13616,10 @@ private:
             widgetrail::accessibility::HasActiveScopeBackShortcut(
                 *snapshot, interactionSession_.focusedElementId());
         const bool hasBack = rootScope || nestedBack || hostBack.has_value();
-        std::wstring hostPrompt;
-        if (hasBack) {
-            if (!hostPrompt.empty()) hostPrompt += L"     ";
-            hostPrompt += L"B  Back";
-        }
-        if (!hostPrompt.empty()) hostPrompt += L"     ";
-        hostPrompt += L"Guide  Close";
+        const auto guide = ResolveOpenWidgetGuide(contentRight - contentLeft);
+        const std::wstring& help = guide.accessible;
+        const std::wstring prompt = status ? *status : guide.contextual;
+        const std::wstring& hostPrompt = guide.host;
         if (hasBack) {
             openWidgetAccessibility_.backAction = rootScope || hostBack
                 ? widgetrail::accessibility::HostAction::BackToTray
@@ -13654,7 +13628,7 @@ private:
                 ? hostBack->inputScopeId
                 : snapshot->activeInputScopeId;
         }
-        if (contentRight - contentLeft >= 420.0F || status) {
+        if (!guide.contextual.empty() || status) {
             const float backPromptWidth = hasBack ? 74.0F : 0.0F;
             const float closePromptWidth = 106.0F;
             const float hostPromptWidth = backPromptWidth + closePromptWidth;
@@ -13669,7 +13643,7 @@ private:
                 openWidgetAccessibility_.statusBounds = promptBounds;
             } else {
                 openWidgetAccessibility_.help = help;
-                openWidgetAccessibility_.helpBounds = promptBounds;
+                openWidgetAccessibility_.helpBounds = footerBounds;
             }
             float actionLeft = hostPromptLeft;
             if (hasBack) {
@@ -13687,17 +13661,20 @@ private:
                     textBottom - textTop,
                 };
             }
-            DrawTextLine(prompt, hintFormat_.Get(),
-                         D2D1::RectF(contentLeft, textTop,
-                                     contentRight - hostPromptWidth - 14.0F, textBottom),
-                         secondaryBrush_.Get());
+            if (!prompt.empty()) {
+                DrawTextLine(prompt, hintFormat_.Get(),
+                             D2D1::RectF(contentLeft, textTop,
+                                         contentRight - hostPromptWidth - 14.0F, textBottom),
+                             secondaryBrush_.Get());
+            }
             DrawTextLine(hostPrompt, hintFormat_.Get(),
                          D2D1::RectF(contentRight - hostPromptWidth, textTop,
                                      contentRight, textBottom),
                          secondaryBrush_.Get());
         } else {
-            // At narrow logical widths retain the hierarchy/escape affordance;
-            // widget action labels remain discoverable on larger surfaces.
+            openWidgetAccessibility_.help = help;
+            openWidgetAccessibility_.helpBounds = footerBounds;
+            // Minimal density retains only hierarchy/escape affordances.
             const int actionCount = 1 + (hasBack ? 1 : 0);
             const float actionWidth = footerBounds.width /
                 static_cast<float>(actionCount);
