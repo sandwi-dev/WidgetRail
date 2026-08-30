@@ -4280,6 +4280,10 @@ public sealed class GameLauncherTests
         var snapshot = widget.RenderSnapshot("launcher.test", 6);
 
         Assert.AreEqual(WidgetSurfaceMode.Wide, snapshot.Surface?.Mode);
+        Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, snapshot.Surface?.WidthMode);
+        Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, snapshot.Surface?.HeightMode);
+        Assert.AreEqual(1600, snapshot.Surface?.PreferredWidth);
+        Assert.AreEqual(1200, snapshot.Surface?.PreferredHeight);
         var rail = Nodes(snapshot.Root).Single(node =>
             node.Id == GameLauncherPresentation.ScrollId);
         Assert.AreEqual(ViewNodeKind.Scroll, rail.Kind);

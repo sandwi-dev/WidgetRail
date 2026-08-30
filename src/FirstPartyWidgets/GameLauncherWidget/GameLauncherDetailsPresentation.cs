@@ -197,8 +197,10 @@ internal static class GameLauncherDetailsPresentation
     private static readonly WidgetSurfaceHints Surface = new()
     {
         Mode = WidgetSurfaceMode.Wide,
-        PreferredWidth = 980,
-        PreferredHeight = 700,
+        WidthMode = WidgetSurfaceAxisMode.FillAvailable,
+        HeightMode = WidgetSurfaceAxisMode.FillAvailable,
+        PreferredWidth = 1600,
+        PreferredHeight = 1200,
         MinimumWidth = 420,
         MinimumHeight = 340,
     };

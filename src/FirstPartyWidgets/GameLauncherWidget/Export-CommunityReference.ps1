@@ -96,7 +96,7 @@ if (-not $sdkVersion.Success) {
   "id": "widgetrail.community.reference.game-launcher",
   "publisher": "widgetrail.community.reference",
   "name": "Game Launcher Community",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
   "entrypoint": {
     "runtime": "full-trust-application-v1",

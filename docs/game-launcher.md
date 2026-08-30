@@ -60,9 +60,10 @@ last-good rows cannot reach launch even if malformed input claims otherwise.
   immediate or multi-hop loops within the finite traversal evidence, stale
   generations, malformed pages, cancellation, and traversal beyond the explicit
   bound fail closed while preserving the last good window.
-- The Library route uses the built-in `hero-rail` presentation at its 980 by 700
-  preferred surface and 420 by 340 minimum. One bounded selected-game hero sits
-  above one horizontal cover rail. Left/Right updates only the selected hero;
+- The Library and details routes fill the monitor's host-admitted safe area,
+  with a 1600 by 1200 DIP preferred fallback and 420 by 340 minimum. The
+  built-in `hero-rail` presentation keeps one bounded selected-game hero above
+  one horizontal cover rail. Left/Right updates only the selected hero;
   it never dispatches launch or loses the cursor anchor. Add games, Add running
   app, and Hidden retain one bounded responsive vertical grid.
 - **Library sources** lists every normalized source relevant to the current

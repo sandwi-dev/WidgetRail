@@ -346,6 +346,10 @@ public sealed class GameLauncherLayoutTests
             node.Kind == ViewNodeKind.Scroll && node.ScrollAxis == ScrollAxis.Vertical));
         Assert.IsLessThan(40, Nodes(first.Root).Count());
         Assert.AreEqual(WidgetSurfaceMode.Wide, first.Surface?.Mode);
+        Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, first.Surface?.WidthMode);
+        Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, first.Surface?.HeightMode);
+        Assert.AreEqual(1600, first.Surface?.PreferredWidth);
+        Assert.AreEqual(1200, first.Surface?.PreferredHeight);
         foreach (var profile in new[]
                  {
                      (Name: "compact", Width: 420, Height: 340, Scale: 1.0),

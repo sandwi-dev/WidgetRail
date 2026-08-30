@@ -37,7 +37,8 @@ widget keeps no parallel scalar model: unavailable retained rows are explicit
 non-authorizing presentations, and launch requires a freshly resolved row whose
 availability and Launch capability agree.
 
-The surface requests 980 by 700 DIPs and supports a 420 by 340 DIP minimum. The
+The Library and details surfaces fill the monitor's host-admitted safe area,
+with a 1600 by 1200 DIP preferred fallback and a 420 by 340 DIP minimum. The
 Library route opens as the built-in `hero-rail` experience: a bounded selected-game
 hero above one horizontal cover rail. Left/Right focus movement changes only the
 hero selection; it does not launch or mutate organization. The header,
