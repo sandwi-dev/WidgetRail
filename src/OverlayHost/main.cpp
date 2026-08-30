@@ -1604,6 +1604,169 @@ private:
         }
     }
 
+    void PumpBridgeEvents(const bool controllerTick) {
+        // This order is an authority contract: drain transport frames before
+        // dispatching failures, input, resources, terminals, revisions,
+        // presentation demand, action feedback, and host effects. The hidden
+        // control-plane timer fills these queues but deliberately does not
+        // consume them until a visible or pinned presentation tick.
+        (void)bridge_.PumpEvents();
+        for (auto& failure : bridge_.TakeRuntimeFailures()) {
+            if (!sessions_.Contains(failure.widgetId)) {
+                AppendDiagnostic(
+                    L"Dropped stale widget runtime failure for " +
+                    failure.widgetId);
+                continue;
+            }
+            RecordWidgetStartupFailure(
+                failure.widgetId,
+                failure.safeMessage,
+                failure.category ==
+                        widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerStart
+                    ? widgetrail::WidgetSessionFailureStage::Start
+                    : widgetrail::WidgetSessionFailureStage::Lifecycle,
+                true);
+            if (pinnedSurfaceCoordinator_.pinned() &&
+                pinnedSurfaceCoordinator_.widgetId() == failure.widgetId) {
+                (void)pinnedSurfaceCoordinator_.Unpin(
+                    widgetrail::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
+            }
+        }
+        if (controllerTick && state_.surface() != widgetrail::Surface::Hidden)
+            PollController();
+        for (auto& artwork : bridge_.TakeArtworkResults()) {
+            if (artwork.pngBase64.empty())
+                (void)imageCache_->FailTrustedArtwork(
+                    artwork.widgetId, artwork.artworkHandle);
+            else
+                (void)imageCache_->SupplyTrustedArtwork(
+                    artwork.widgetId, artwork.artworkHandle,
+                    std::move(artwork.pngBase64));
+        }
+        for (auto& result : bridge_.TakeLocalWidgetPackageInstallResults()) {
+            if (!localWidgetPackageImport_.Complete(
+                    result.operationId,
+                    bridge_.bridgeSessionGeneration())) {
+                AppendDiagnostic(
+                    L"Dropped stale local widget package result operation=" +
+                    result.operationId);
+                continue;
+            }
+            lastLocalWidgetPackageInstallResult_ = result;
+            if (result.status != widgetrail::LocalWidgetPackageInstallStatus::Cancelled) {
+                lastActionWidgetId_ = L"settings";
+                lastActionMessage_ = result.safeMessage;
+                lastActionExpiresAt_ = GetTickCount64() + 5000;
+                AppendDiagnostic(L"Local widget package import: " +
+                                 result.safeMessage);
+            }
+        }
+        if (const auto revision = bridge_.TakePlatformAppearanceChangedRevision()) {
+            const auto& current = appearanceState_.current();
+            if (!current || *revision > current->revision) {
+                RefreshPlatformAppearance();
+            }
+        }
+        if (const auto revision = bridge_.TakeWidgetCatalogChangedRevision()) {
+            sessions_.ResetCatalogRetry();
+            AppendDiagnostic(L"Reconciling widget catalog revision " +
+                             std::to_wstring(*revision));
+            PostMessageW(window_, kCatalogRefreshMessage, 0, 0);
+        }
+        for (auto& invalidatedWidget : bridge_.TakeInvalidatedWidgetIds()) {
+            sessions_.MarkRefreshRequested(invalidatedWidget);
+            const auto currentWidget = state_.surface() == widgetrail::Surface::Widget
+                ? state_.activeWidget()
+                : state_.selectedWidget();
+            const bool pinnedInvalidation =
+                pinnedSurfaceCoordinator_.pinned() &&
+                pinnedSurfaceCoordinator_.widgetId() == invalidatedWidget;
+            if ((state_.surface() != widgetrail::Surface::Hidden &&
+                 currentWidget == invalidatedWidget) || pinnedInvalidation) {
+                RefreshAndApplyPresentation([&] {
+                    RefreshWidgetSnapshot(invalidatedWidget);
+                });
+            } else {
+                // Ordinary invalidation is refresh demand, not proof
+                // that the last admitted semantic checkpoint is unsafe.
+                // Keep the offscreen widget's own content and envelope;
+                // selection will request current state without waking it here.
+                renderedSnapshotSequences_.erase(invalidatedWidget);
+            }
+        }
+        const auto actionFailures = bridge_.TakeActionFailures();
+        for (const auto& failure : actionFailures)
+            ObserveScrollPaginationFailure(failure);
+        const auto actionFeedback =
+            actionFailureFeedback_.PublishBridgeFailures(actionFailures);
+        for (std::size_t index = 0; index < actionFeedback.count; ++index) {
+            const auto& failure = actionFailures[index];
+            const auto outcome = actionFeedback.OutcomeAt(index);
+            if (outcome == widgetrail::WidgetActionFeedbackOutcome::Stale) {
+                AppendDiagnostic(
+                    L"Dropped stale widget action failure for " + failure.widgetId);
+                continue;
+            }
+            if (outcome == widgetrail::WidgetActionFeedbackOutcome::Refused) {
+                AppendDiagnostic(
+                    L"Dropped widget action feedback at the bounded presentation seam for " +
+                    failure.widgetId);
+                continue;
+            }
+            const auto* failureSnapshot = SnapshotFor(failure.widgetId);
+            const auto* failureDescriptor =
+                sessions_.FindDescriptor(failure.widgetId);
+            if (failureSnapshot && failureDescriptor) {
+                const auto& presentationSnapshot = *failureSnapshot;
+                const auto* source = widgetrail::input::FindNodeInInputScope(
+                    presentationSnapshot, failure.sourceElementId,
+                    presentationSnapshot.activeInputScopeId);
+                const auto authority = InteractionAuthority(
+                    failure.widgetId, presentationSnapshot);
+                if (source && source->kind == L"slider" &&
+                    source->valueChangedActionId == failure.actionId &&
+                    authority &&
+                    interactionSession_.CancelSliderAction(
+                        *authority, *source,
+                        GetTickCount64()).visualChanged) {
+                    InvalidateWidgetSliderValues(
+                        presentationSnapshot, {source->id}, false);
+                }
+            }
+            AppendDiagnostic(
+                L"Widget action failed: widget=" + failure.widgetId +
+                L" generation=" + failure.runtimeGeneration +
+                L" code=" +
+                std::wstring(widgetrail::WidgetActionFailureCodeValue(failure.code)) +
+                L" action=" + failure.actionId +
+                L" source=" + failure.sourceElementId);
+        }
+        for (const auto& effect : bridge_.TakeHostEffects()) {
+            const auto* descriptor = sessions_.FindDescriptor(effect.widgetId);
+            const bool currentInteractiveWidget =
+                state_.surface() == widgetrail::Surface::Widget &&
+                state_.focusRegion() == widgetrail::FocusRegion::Widget &&
+                state_.activeWidget() == effect.widgetId &&
+                descriptor &&
+                descriptor->runtimeGeneration == effect.runtimeGeneration;
+            if (!currentInteractiveWidget) {
+                AppendDiagnostic(
+                    L"Dropped stale or non-interactive widget host effect for " +
+                    effect.widgetId);
+                continue;
+            }
+            if (effect.kind ==
+                widgetrail::WidgetHostEffectKind::CloseOverlayAfterAppLaunch) {
+                AppendDiagnostic(
+                    L"Closing overlay after confirmed app launch from " +
+                    effect.widgetId);
+                Dispatch(widgetrail::Command::CloseOverlay);
+                break;
+            }
+        }
+        RecordPinnedSurfaceWorkCounters();
+    }
+
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         switch (message) {
 #if defined(WRAIL_PINNED_SLIDER_ROUTE_TESTING)
@@ -1942,161 +2105,7 @@ private:
                 // surface consume navigation or advance its worker meanwhile;
                 // Guide/F1 continue to arrive through their dedicated paths.
                 if (awaitingSuccessfulOpenPaint_) return 0;
-                (void)bridge_.PumpEvents();
-                for (auto& failure : bridge_.TakeRuntimeFailures()) {
-                    if (!sessions_.Contains(failure.widgetId)) {
-                        AppendDiagnostic(
-                            L"Dropped stale widget runtime failure for " +
-                            failure.widgetId);
-                        continue;
-                    }
-                    RecordWidgetStartupFailure(
-                        failure.widgetId,
-                        failure.safeMessage,
-                        failure.category ==
-                                widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerStart
-                            ? widgetrail::WidgetSessionFailureStage::Start
-                            : widgetrail::WidgetSessionFailureStage::Lifecycle,
-                        true);
-                    if (pinnedSurfaceCoordinator_.pinned() &&
-                        pinnedSurfaceCoordinator_.widgetId() == failure.widgetId) {
-                        (void)pinnedSurfaceCoordinator_.Unpin(
-                            widgetrail::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
-                    }
-                }
-                if (controllerTick && state_.surface() != widgetrail::Surface::Hidden)
-                    PollController();
-                for (auto& artwork : bridge_.TakeArtworkResults()) {
-                    if (artwork.pngBase64.empty())
-                        (void)imageCache_->FailTrustedArtwork(
-                            artwork.widgetId, artwork.artworkHandle);
-                    else
-                        (void)imageCache_->SupplyTrustedArtwork(
-                            artwork.widgetId, artwork.artworkHandle,
-                            std::move(artwork.pngBase64));
-                }
-                for (auto& result : bridge_.TakeLocalWidgetPackageInstallResults()) {
-                    if (!localWidgetPackageImport_.Complete(
-                            result.operationId,
-                            bridge_.bridgeSessionGeneration())) {
-                        AppendDiagnostic(
-                            L"Dropped stale local widget package result operation=" +
-                            result.operationId);
-                        continue;
-                    }
-                    lastLocalWidgetPackageInstallResult_ = result;
-                    if (result.status != widgetrail::LocalWidgetPackageInstallStatus::Cancelled) {
-                        lastActionWidgetId_ = L"settings";
-                        lastActionMessage_ = result.safeMessage;
-                        lastActionExpiresAt_ = GetTickCount64() + 5000;
-                        AppendDiagnostic(L"Local widget package import: " +
-                                         result.safeMessage);
-                    }
-                }
-                if (const auto revision = bridge_.TakePlatformAppearanceChangedRevision()) {
-                    const auto& current = appearanceState_.current();
-                    if (!current || *revision > current->revision) {
-                        RefreshPlatformAppearance();
-                    }
-                }
-                if (const auto revision = bridge_.TakeWidgetCatalogChangedRevision()) {
-                    sessions_.ResetCatalogRetry();
-                    AppendDiagnostic(L"Reconciling widget catalog revision " +
-                                     std::to_wstring(*revision));
-                    PostMessageW(window_, kCatalogRefreshMessage, 0, 0);
-                }
-                for (auto& invalidatedWidget : bridge_.TakeInvalidatedWidgetIds()) {
-                    sessions_.MarkRefreshRequested(invalidatedWidget);
-                    const auto currentWidget = state_.surface() == widgetrail::Surface::Widget
-                        ? state_.activeWidget()
-                        : state_.selectedWidget();
-                    const bool pinnedInvalidation =
-                        pinnedSurfaceCoordinator_.pinned() &&
-                        pinnedSurfaceCoordinator_.widgetId() == invalidatedWidget;
-                    if ((state_.surface() != widgetrail::Surface::Hidden &&
-                         currentWidget == invalidatedWidget) || pinnedInvalidation) {
-                        RefreshAndApplyPresentation([&] {
-                            RefreshWidgetSnapshot(invalidatedWidget);
-                        });
-                    } else {
-                        // Ordinary invalidation is refresh demand, not proof
-                        // that the last admitted semantic checkpoint is unsafe.
-                        // Keep the offscreen widget's own content and envelope;
-                        // selection will request current state without waking it here.
-                        renderedSnapshotSequences_.erase(invalidatedWidget);
-                    }
-                }
-                const auto actionFailures = bridge_.TakeActionFailures();
-                for (const auto& failure : actionFailures)
-                    ObserveScrollPaginationFailure(failure);
-                const auto actionFeedback =
-                    actionFailureFeedback_.PublishBridgeFailures(actionFailures);
-                for (std::size_t index = 0; index < actionFeedback.count; ++index) {
-                    const auto& failure = actionFailures[index];
-                    const auto outcome = actionFeedback.OutcomeAt(index);
-                    if (outcome == widgetrail::WidgetActionFeedbackOutcome::Stale) {
-                        AppendDiagnostic(
-                            L"Dropped stale widget action failure for " + failure.widgetId);
-                        continue;
-                    }
-                    if (outcome == widgetrail::WidgetActionFeedbackOutcome::Refused) {
-                        AppendDiagnostic(
-                            L"Dropped widget action feedback at the bounded presentation seam for " +
-                            failure.widgetId);
-                        continue;
-                    }
-                    const auto* failureSnapshot = SnapshotFor(failure.widgetId);
-                    const auto* failureDescriptor =
-                        sessions_.FindDescriptor(failure.widgetId);
-                    if (failureSnapshot && failureDescriptor) {
-                        const auto& presentationSnapshot = *failureSnapshot;
-                        const auto* source = widgetrail::input::FindNodeInInputScope(
-                            presentationSnapshot, failure.sourceElementId,
-                            presentationSnapshot.activeInputScopeId);
-                        const auto authority = InteractionAuthority(
-                            failure.widgetId, presentationSnapshot);
-                        if (source && source->kind == L"slider" &&
-                            source->valueChangedActionId == failure.actionId &&
-                            authority &&
-                            interactionSession_.CancelSliderAction(
-                                *authority, *source,
-                                GetTickCount64()).visualChanged) {
-                            InvalidateWidgetSliderValues(
-                                presentationSnapshot, {source->id}, false);
-                        }
-                    }
-                    AppendDiagnostic(
-                        L"Widget action failed: widget=" + failure.widgetId +
-                        L" generation=" + failure.runtimeGeneration +
-                        L" code=" +
-                        std::wstring(widgetrail::WidgetActionFailureCodeValue(failure.code)) +
-                        L" action=" + failure.actionId +
-                        L" source=" + failure.sourceElementId);
-                }
-                for (const auto& effect : bridge_.TakeHostEffects()) {
-                    const auto* descriptor = sessions_.FindDescriptor(effect.widgetId);
-                    const bool currentInteractiveWidget =
-                        state_.surface() == widgetrail::Surface::Widget &&
-                        state_.focusRegion() == widgetrail::FocusRegion::Widget &&
-                        state_.activeWidget() == effect.widgetId &&
-                        descriptor &&
-                        descriptor->runtimeGeneration == effect.runtimeGeneration;
-                    if (!currentInteractiveWidget) {
-                        AppendDiagnostic(
-                            L"Dropped stale or non-interactive widget host effect for " +
-                            effect.widgetId);
-                        continue;
-                    }
-                    if (effect.kind ==
-                        widgetrail::WidgetHostEffectKind::CloseOverlayAfterAppLaunch) {
-                        AppendDiagnostic(
-                            L"Closing overlay after confirmed app launch from " +
-                            effect.widgetId);
-                        Dispatch(widgetrail::Command::CloseOverlay);
-                        break;
-                    }
-                }
-                RecordPinnedSurfaceWorkCounters();
+                PumpBridgeEvents(controllerTick);
             } else if (wParam == kGuideCompatibilityTimer) {
                 WidgetRailOverlayPlatformEvent event;
                 std::uint32_t hasEvent = WRAIL_OVERLAY_PLATFORM_FALSE;

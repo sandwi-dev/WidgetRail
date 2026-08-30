@@ -312,10 +312,55 @@ void TestAcceptedHiddenBridgeControlPlaneContract() {
     Check(hiddenTimer.find("TakeInvalidatedWidgetIds") == std::string::npos &&
               hiddenTimer.find("TakeRuntimeFailures") == std::string::npos &&
               hiddenTimer.find("PollController") == std::string::npos &&
+              hiddenTimer.find("PumpBridgeEvents") == std::string::npos &&
               hiddenTimer.find("InvalidateRect") == std::string::npos &&
               hiddenTimer.find("ApplyPresentation") == std::string::npos &&
               hiddenTimer.find("Reconcile") == std::string::npos,
           "hidden Bridge timer cannot consume presentation, input, render, layout, paint, or composition work");
+
+    const auto pump = section(
+        "void PumpBridgeEvents(const bool controllerTick) {",
+        "LRESULT HandleMessage(",
+        "visible and pinned Bridge event pump owns one named dispatch boundary");
+    const std::vector<std::string_view> orderedDispatches{
+        "bridge_.PumpEvents()",
+        "bridge_.TakeRuntimeFailures()",
+        "PollController()",
+        "bridge_.TakeArtworkResults()",
+        "bridge_.TakeLocalWidgetPackageInstallResults()",
+        "bridge_.TakePlatformAppearanceChangedRevision()",
+        "bridge_.TakeWidgetCatalogChangedRevision()",
+        "bridge_.TakeInvalidatedWidgetIds()",
+        "bridge_.TakeActionFailures()",
+        "actionFailureFeedback_.PublishBridgeFailures(actionFailures)",
+        "bridge_.TakeHostEffects()",
+        "RecordPinnedSurfaceWorkCounters()",
+    };
+    std::size_t priorDispatch{};
+    for (const auto token : orderedDispatches) {
+        const auto dispatch = pump.find(token, priorDispatch);
+        Check(dispatch != std::string::npos,
+              "Bridge event pump preserves every ordered dispatch stage");
+        priorDispatch = dispatch + token.size();
+    }
+    Check(pump.find(
+              "localWidgetPackageImport_.Complete(\n"
+              "                    result.operationId,\n"
+              "                    bridge_.bridgeSessionGeneration())") !=
+              std::string::npos,
+          "Bridge event pump preserves exact WIDGE-71 install terminal authority");
+
+    const auto presentationTimer = section(
+        "if (wParam == kControllerTimer || wParam == kPinnedSurfaceTimer) {",
+        "} else if (wParam == kGuideCompatibilityTimer)",
+        "visible and pinned timers own one presentation dispatch branch");
+    Check(presentationTimer.find("PumpBridgeEvents(controllerTick);") !=
+              std::string::npos &&
+              presentationTimer.find("bridge_.TakeRuntimeFailures()") ==
+              std::string::npos &&
+              presentationTimer.find("bridge_.TakeHostEffects()") ==
+              std::string::npos,
+          "presentation timers delegate Bridge dispatch exactly once to the named pump");
 
     const auto hide = section(
         "void HideOverlay() {",
