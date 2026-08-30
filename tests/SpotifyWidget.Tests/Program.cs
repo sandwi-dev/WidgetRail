@@ -56,6 +56,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing playback device produces actionable guidance", MissingPlaybackDeviceGuidance),
     ("Progress is projected locally without provider polling", ProjectedProgress),
     ("Playback actions publish optimistic state and reconcile", OptimisticPlayback),
+    ("Optimistic controls survive pre-response observations and settle",
+        OptimisticControlsSurvivePreResponseObservations),
+    ("Optimistic controls roll back with exact terminal ownership",
+        OptimisticControlsRollbackWithExactOwnership),
+    ("Repeat is binary and blocks only disallowed activation",
+        RepeatIsBinaryAndPreciselyAvailable),
     ("Playback diagnostics correlate queue classification provider and pending state", PlaybackDiagnosticsCorrelate),
     ("Failed controls roll back optimistic state", FailedControlRollback),
     ("Permission denial remains an actionable UI state", PermissionDenied),
@@ -2031,6 +2037,204 @@ static async Task OptimisticPlayback()
     await StopAsync(widget);
 }
 
+static async Task OptimisticControlsSurvivePreResponseObservations()
+{
+    foreach (var scenario in OptimisticControlScenarios())
+    {
+        var harness = SpotifyHarness.Ready();
+        harness.Playback = scenario.Initial;
+        var clock = new ManualTimeProvider(DateTimeOffset.FromUnixTimeSeconds(100));
+        var widget = await StartAsync(harness, clock);
+        await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+
+        var providerResponse = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.ControlWait = providerResponse.Task;
+        var commandTask = widget.OnActionAsync(scenario.Action).AsTask();
+        await WaitUntil(() => harness.Commands.Count == 1,
+            $"{scenario.Name} was not admitted by the provider seam.");
+
+        var pending = widget.Render().CreateSnapshot($"spotify.{scenario.Name}.pending", 2);
+        var initiatingControl = Find(pending.Root, scenario.ControlId);
+        Assert.True(initiatingControl.IsBusy == true,
+            $"{scenario.Name} did not retain Busy through its provider response.");
+        Assert.True(initiatingControl.IsDisabled == true,
+            $"{scenario.Name} did not remain disabled through its provider response.");
+        var unrelated = Find(pending.Root, "spotify.next");
+        Assert.True(unrelated.IsBusy is not true && unrelated.IsDisabled is not true,
+            $"{scenario.Name} changed an unrelated control's visual availability.");
+        Assert.Equal(scenario.ProjectedValue, scenario.OwnedValue(widget.Playback!));
+
+        var staleObservation = scenario.Initial with
+        {
+            Item = scenario.Initial.Item! with { Title = $"{scenario.Name} observed title" },
+            Attribution = $"{scenario.Name} observed authority",
+        };
+        var stalePoll = new TaskCompletionSource<SpotifyPlaybackSummary>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.PlaybackHandler = _ => new ValueTask<SpotifyPlaybackSummary>(stalePoll.Task);
+        var callsBeforePoll = harness.PlaybackCalls;
+        var refreshTask = widget.OnActionAsync(new WidgetActionEvent(
+            "spotify.refresh", "spotify.refresh")).AsTask();
+        await WaitUntil(() => harness.PlaybackCalls > callsBeforePoll,
+            $"{scenario.Name} did not start the pre-response playback observation.");
+
+        providerResponse.SetResult();
+        await commandTask;
+        var acknowledged = widget.Render().CreateSnapshot(
+            $"spotify.{scenario.Name}.acknowledged", 3);
+        initiatingControl = Find(acknowledged.Root, scenario.ControlId);
+        Assert.True(initiatingControl.IsBusy is not true,
+            $"{scenario.Name} remained Busy after its exact provider response.");
+        Assert.True(initiatingControl.IsDisabled is not true,
+            $"{scenario.Name} remained disabled after its exact provider response.");
+        Assert.Equal(scenario.ProjectedValue, scenario.OwnedValue(widget.Playback!));
+        var reconciliation = OptimisticReconciliation(widget);
+        Assert.NotNull(reconciliation);
+        Assert.Equal(clock.GetUtcNow() + TimeSpan.FromSeconds(12),
+            reconciliation!.ExpiresAt);
+        Assert.True(SpotifyPlaybackPolicy.MatchesOptimisticPresentation(
+                widget.Playback, reconciliation),
+            $"{scenario.Name} projected value was not recognized as matching.");
+
+        stalePoll.SetResult(staleObservation);
+        await refreshTask;
+        Assert.Equal(scenario.ProjectedValue, scenario.OwnedValue(widget.Playback!));
+        Assert.Equal(staleObservation.Item!.Title, widget.Playback!.Item!.Title);
+        Assert.Equal(staleObservation.Attribution, widget.Playback.Attribution);
+
+        var successor = scenario.Successor(staleObservation) with
+        {
+            Item = staleObservation.Item! with { Title = $"{scenario.Name} successor title" },
+            Attribution = $"{scenario.Name} successor authority",
+        };
+        harness.PlaybackHandler = _ => ValueTask.FromResult(successor);
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "spotify.refresh", "spotify.refresh"));
+        Assert.Equal(scenario.SuccessorValue, scenario.OwnedValue(widget.Playback!));
+        Assert.Equal(successor.Item!.Title, widget.Playback!.Item!.Title);
+        Assert.Equal(successor.Attribution, widget.Playback.Attribution);
+        Assert.True(OptimisticReconciliation(widget) is null,
+            $"{scenario.Name} reconciliation survived a post-response successor.");
+
+        await StopAsync(widget);
+    }
+}
+
+static async Task OptimisticControlsRollbackWithExactOwnership()
+{
+    foreach (var scenario in OptimisticControlScenarios())
+    {
+        var harness = SpotifyHarness.Ready();
+        harness.Playback = scenario.Initial;
+        harness.ControlError = new SpotifyApplicationException(
+            "forbidden", $"{scenario.Name} rejected");
+        var widget = await StartAsync(harness);
+        await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+
+        await widget.OnActionAsync(scenario.Action);
+        Assert.Equal(scenario.InitialValue, scenario.OwnedValue(widget.Playback!));
+        var restored = Find(widget.RenderSnapshot(
+            $"spotify.{scenario.Name}.failure", 2).Root, scenario.ControlId);
+        Assert.True(restored.IsBusy is not true && restored.IsDisabled is not true,
+            $"{scenario.Name} did not re-enable after provider failure.");
+        Assert.True(OptimisticReconciliation(widget) is null,
+            $"{scenario.Name} retained reconciliation after provider failure.");
+        await StopAsync(widget);
+    }
+
+    var cancellationHarness = SpotifyHarness.Ready();
+    cancellationHarness.Playback = cancellationHarness.Playback with
+        { ProgressMilliseconds = 45_000 };
+    var cancellationGate = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    cancellationHarness.ControlWait = cancellationGate.Task;
+    var cancellationWidget = await StartAsync(cancellationHarness);
+    await WaitUntil(() => cancellationWidget.ViewState == SpotifyWidgetViewState.Ready);
+    using var cancellation = new CancellationTokenSource();
+    var canceledAction = cancellationWidget.OnActionAsync(new WidgetActionEvent(
+        "spotify.seek", "spotify.seek.slider", RequestedValue: 120_000),
+        cancellation.Token).AsTask();
+    await WaitUntil(() => cancellationHarness.Commands.Count == 1);
+    cancellation.Cancel();
+    await canceledAction;
+    Assert.Equal(45_000L, cancellationWidget.Playback!.ProgressMilliseconds);
+    Assert.True(OptimisticReconciliation(cancellationWidget) is null,
+        "Canceled Seek retained optimistic reconciliation.");
+
+    var secondGate = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    cancellationHarness.ControlWait = secondGate.Task;
+    var secondAction = cancellationWidget.OnActionAsync(new WidgetActionEvent(
+        "spotify.shuffle", "spotify.shuffle")).AsTask();
+    await WaitUntil(() => cancellationHarness.Commands.Count == 2);
+    var currentSequence = PendingOperationSequence(cancellationWidget);
+    RestoreOptimisticForTest(cancellationWidget, cancellationHarness.Playback,
+        currentSequence - 1);
+    var stillPending = cancellationWidget.RenderSnapshot(
+        "spotify.exact-terminal-owner", 3);
+    Assert.True(Find(stillPending.Root, "spotify.shuffle").IsBusy == true,
+        "A stale terminal cleared the newer Shuffle pending owner.");
+    Assert.True(cancellationWidget.Playback!.ShuffleState,
+        "A stale terminal rolled back the newer Shuffle projection.");
+    secondGate.SetResult();
+    await secondAction;
+    await StopAsync(cancellationWidget);
+}
+
+static async Task RepeatIsBinaryAndPreciselyAvailable()
+{
+    var template = SpotifyHarness.Ready().Playback;
+    foreach (var (initial, expected) in new[]
+             {
+                 (SpotifyRepeatState.Off, SpotifyRepeatState.Context),
+                 (SpotifyRepeatState.Context, SpotifyRepeatState.Off),
+                 (SpotifyRepeatState.Track, SpotifyRepeatState.Off),
+             })
+    {
+        var harness = SpotifyHarness.Ready();
+        harness.Playback = template with
+        {
+            RepeatState = initial,
+            DisallowedActions = template.DisallowedActions with
+            {
+                TogglingRepeatContext = initial != SpotifyRepeatState.Off,
+                TogglingRepeatTrack = true,
+            },
+        };
+        var widget = await StartAsync(harness);
+        await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+        var before = Find(widget.RenderSnapshot(
+            $"spotify.repeat.{initial}.before", 1).Root, "spotify.repeat");
+        Assert.True(before.IsDisabled is not true,
+            $"Repeat {initial} incorrectly blocked its one-press binary transition.");
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "spotify.repeat", "spotify.repeat"));
+        Assert.Equal(expected, harness.Commands.Single().RepeatState);
+        await StopAsync(widget);
+    }
+
+    var blockedHarness = SpotifyHarness.Ready();
+    blockedHarness.Playback = template with
+    {
+        RepeatState = SpotifyRepeatState.Off,
+        DisallowedActions = template.DisallowedActions with
+        {
+            TogglingRepeatContext = true,
+            TogglingRepeatTrack = false,
+        },
+    };
+    var blockedWidget = await StartAsync(blockedHarness);
+    await WaitUntil(() => blockedWidget.ViewState == SpotifyWidgetViewState.Ready);
+    Assert.True(Find(blockedWidget.RenderSnapshot(
+            "spotify.repeat.blocked", 1).Root, "spotify.repeat").IsDisabled == true,
+        "Repeat Off remained enabled when Off-to-Context was disallowed.");
+    await blockedWidget.OnActionAsync(new WidgetActionEvent(
+        "spotify.repeat", "spotify.repeat"));
+    Assert.Equal(0, blockedHarness.Commands.Count);
+    await StopAsync(blockedWidget);
+}
+
 static async Task PlaybackDiagnosticsCorrelate()
 {
     var diagnostics = new RecordingSpotifyDiagnostics();
@@ -2161,7 +2365,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.28", manifest.Version);
+    Assert.Equal("0.3.33", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
@@ -2342,6 +2546,62 @@ static async Task WaitUntil(Func<bool> predicate, string? failure = null)
     }
 }
 
+static OptimisticControlScenario[] OptimisticControlScenarios()
+{
+    var template = SpotifyHarness.Ready().Playback;
+    return
+    [
+        new("pause", template with { IsPlaying = true },
+            new WidgetActionEvent("spotify.play-toggle", "spotify.play-toggle"),
+            "spotify.play-toggle", "True", "False", "True",
+            playback => playback.IsPlaying.ToString(),
+            observed => observed with { IsPlaying = true }),
+        new("play", template with { IsPlaying = false },
+            new WidgetActionEvent("spotify.play-toggle", "spotify.play-toggle"),
+            "spotify.play-toggle", "False", "True", "False",
+            playback => playback.IsPlaying.ToString(),
+            observed => observed with { IsPlaying = false }),
+        new("seek", template with { ProgressMilliseconds = 45_000 },
+            new WidgetActionEvent("spotify.seek", "spotify.seek.slider",
+                RequestedValue: 120_000),
+            "spotify.seek.slider", "45000", "120000", "90000",
+            playback => playback.ProgressMilliseconds.ToString(),
+            observed => observed with { ProgressMilliseconds = 90_000 }),
+        new("shuffle", template with { ShuffleState = false },
+            new WidgetActionEvent("spotify.shuffle", "spotify.shuffle"),
+            "spotify.shuffle", "False", "True", "False",
+            playback => playback.ShuffleState.ToString(),
+            observed => observed with { ShuffleState = false }),
+        new("repeat", template with { RepeatState = SpotifyRepeatState.Off },
+            new WidgetActionEvent("spotify.repeat", "spotify.repeat"),
+            "spotify.repeat", "Off", "Context", "Off",
+            playback => playback.RepeatState.ToString(),
+            observed => observed with { RepeatState = SpotifyRepeatState.Off }),
+    ];
+}
+
+static SpotifyOptimisticPlaybackReconciliation? OptimisticReconciliation(
+    SpotifyWidget widget) =>
+    (SpotifyOptimisticPlaybackReconciliation?)typeof(SpotifyWidget).GetField(
+        "_optimisticReconciliation",
+        System.Reflection.BindingFlags.Instance |
+        System.Reflection.BindingFlags.NonPublic)!.GetValue(widget);
+
+static long PendingOperationSequence(SpotifyWidget widget) =>
+    (long)typeof(SpotifyWidget).GetField("_pendingOperationSequence",
+        System.Reflection.BindingFlags.Instance |
+        System.Reflection.BindingFlags.NonPublic)!.GetValue(widget)!;
+
+static void RestoreOptimisticForTest(
+    SpotifyWidget widget,
+    SpotifyPlaybackSummary playback,
+    long operationSequence) =>
+    typeof(SpotifyWidget).GetMethod("RestoreOptimistic",
+        System.Reflection.BindingFlags.Instance |
+        System.Reflection.BindingFlags.NonPublic)!.Invoke(widget,
+        [playback, operationSequence,
+         new WidgetActionEvent("spotify.shuffle", "spotify.shuffle"), null]);
+
 static Task WaitForNode(SpotifyWidget widget, string id) => WaitUntil(() =>
 {
     try
@@ -2414,6 +2674,17 @@ static void AssertShortcut(ViewNode root, ControllerButton button, string action
     var shortcut = root.Shortcuts.Single(item => item.Button == button);
     Assert.Equal(action, shortcut.ActionId);
 }
+
+file sealed record OptimisticControlScenario(
+    string Name,
+    SpotifyPlaybackSummary Initial,
+    WidgetActionEvent Action,
+    string ControlId,
+    string InitialValue,
+    string ProjectedValue,
+    string SuccessorValue,
+    Func<SpotifyPlaybackSummary, string> OwnedValue,
+    Func<SpotifyPlaybackSummary, SpotifyPlaybackSummary> Successor);
 
 file sealed class SpotifyHarness : ISpotifyApplicationService
 {
