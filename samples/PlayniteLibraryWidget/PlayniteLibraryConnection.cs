@@ -79,7 +79,7 @@ internal static class PlayniteLibraryConnectionPresentation
                     UI.Row("playnite-library.playnite.actions", actions.ToArray())
                         .Classes("playnite-library-actions"))
                 .Classes("playnite-library-header"),
-            UI.Text("Local service · 127.0.0.1:19821",
+            UI.Text("Local service · localhost:19821",
                     "playnite-library.playnite.endpoint",
                     "Playnite Bridge local service on port 19821")
                 .Classes("playnite-library-source-summary"),

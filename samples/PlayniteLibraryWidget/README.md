@@ -13,7 +13,7 @@ and is never rendered, logged, or copied into package or private state. The UI
 offers explicit replace and remove actions. Missing credentials produce an
 actionable setup screen; no environment variable is part of the product flow.
 
-The transport is structurally limited to `127.0.0.1:19821`, disables proxy,
+The transport is structurally limited to `localhost:19821`, disables proxy,
 redirect, cookie, and decompression behavior, and exposes only the fixed routes
 needed for bounded library reads, artwork, launch request admission, favorites,
 hidden state, categories, and completion status. It does not expose arbitrary

@@ -735,7 +735,7 @@ internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
     internal const int MaximumJsonBytes = 96 * 1024;
     internal const int MaximumArtworkBytes = 256 * 1024;
     private static readonly Uri Origin = new(
-        $"http://127.0.0.1:{PlayniteBridgeClient.Port}/", UriKind.Absolute);
+        $"http://localhost:{PlayniteBridgeClient.Port}/", UriKind.Absolute);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
     private readonly HttpClient _http;
 

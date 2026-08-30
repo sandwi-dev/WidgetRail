@@ -119,7 +119,11 @@ public sealed class PlayniteBridgeTests
         Assert.AreEqual(256 * 1024, maximumArtworkBytes);
         var fixedOrigin = (Uri)typeof(PlayniteBridgeHttpTransport).GetField(
             "Origin", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
-        Assert.AreEqual("http://127.0.0.1:19821/", fixedOrigin.AbsoluteUri);
+        Assert.AreEqual("http://localhost:19821/", fixedOrigin.AbsoluteUri);
+        Assert.AreEqual("localhost", fixedOrigin.Host);
+        Assert.AreEqual("localhost:19821", fixedOrigin.Authority,
+            "The HTTP/1.1 Host authority must identify the fixed Playnite Bridge listener.");
+        Assert.AreEqual(PlayniteBridgeClient.Port, fixedOrigin.Port);
 
         var clientMethods = typeof(PlayniteBridgeClient).GetMethods(
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
@@ -182,7 +186,7 @@ public sealed class PlayniteBridgeTests
         var value = manifest.RootElement;
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, value.GetProperty("optionalPermissions").GetArrayLength());
-        Assert.AreEqual("0.2.4", value.GetProperty("version").GetString());
+        Assert.AreEqual("0.2.5", value.GetProperty("version").GetString());
         var manifestText = File.ReadAllText(manifestPath);
         Assert.IsFalse(manifestText.Contains("Bearer", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(manifestText.Contains("token", StringComparison.OrdinalIgnoreCase));
@@ -192,9 +196,21 @@ public sealed class PlayniteBridgeTests
         Assert.IsFalse(clientSource.Contains("Environment.", StringComparison.Ordinal));
         Assert.IsFalse(clientSource.Contains("/api/eval", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(clientSource.Contains("/api/auth/rotate", StringComparison.OrdinalIgnoreCase));
+        var sampleRoot = Path.Combine(root, "samples", "PlayniteLibraryWidget");
+        foreach (var sourcePath in Directory.EnumerateFiles(
+                     sampleRoot, "*", SearchOption.AllDirectories).Where(path =>
+                     new[] { ".cs", ".csproj", ".json", ".md", ".ps1", ".wrss" }
+                     .Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase) &&
+                     !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                         StringComparison.OrdinalIgnoreCase) &&
+                     !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                         StringComparison.OrdinalIgnoreCase)))
+            Assert.IsFalse(File.ReadAllText(sourcePath).Contains(
+                    "127.0.0.1:19821", StringComparison.Ordinal),
+                Path.GetRelativePath(root, sourcePath));
 
         var packagePath = Path.Combine(root, "artifacts", "community-addons",
-            "playnite-library", "widgetrail.samples.playnite-library-0.2.4.wrwidget");
+            "playnite-library", "widgetrail.samples.playnite-library-0.2.5.wrwidget");
         Assert.IsTrue(File.Exists(packagePath), "The validated package artifact is missing.");
         using var archive = ZipFile.OpenRead(packagePath);
         foreach (var entry in archive.Entries.Where(item => item.Length != 0))
