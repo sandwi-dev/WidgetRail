@@ -643,6 +643,8 @@ static async Task ExternalVersionedSdkConsumer()
     var nugetPackages = Path.Combine(temp.Path, "nuget-packages");
     Directory.CreateDirectory(distribution);
     Directory.CreateDirectory(Path.Combine(repository, ".git"));
+    var toolchain = await ExternalConsumerToolchain.ConfigureAsync(repository);
+    await AssertExternalConsumerToolchainAsync(repository, toolchain);
     CopyWrailDistribution(AppContext.BaseDirectory, distribution);
 
     var wrail = Path.Combine(distribution, "wrail.exe");
@@ -857,6 +859,8 @@ static async Task ExternalFullApplicationOnboarding()
     var catalog = Path.Combine(temp.Path, "isolated-catalog");
     Directory.CreateDirectory(distribution);
     Directory.CreateDirectory(Path.Combine(repository, ".git"));
+    var toolchain = await ExternalConsumerToolchain.ConfigureAsync(repository);
+    await AssertExternalConsumerToolchainAsync(repository, toolchain);
     CopyWrailDistribution(AppContext.BaseDirectory, distribution);
     var environment = new Dictionary<string, string?>
     {
@@ -1002,6 +1006,8 @@ static async Task ExternalGameLauncherCommunityReference()
     var catalog = Path.Combine(temp.Path, "catalog");
     Directory.CreateDirectory(distribution);
     Directory.CreateDirectory(Path.Combine(repository, ".git"));
+    var toolchain = await ExternalConsumerToolchain.ConfigureAsync(repository);
+    await AssertExternalConsumerToolchainAsync(repository, toolchain);
     CopyWrailDistribution(AppContext.BaseDirectory, distribution);
     var environment = new Dictionary<string, string?>
     {
@@ -1136,6 +1142,34 @@ static async Task ExternalGameLauncherCommunityReference()
         "A newly installed Community reference became visible without explicit enablement.");
     await AssertArchiveHasNoPathsAsync(
         archive, checkout, distribution, repository, packages, catalog);
+}
+
+static async Task AssertExternalConsumerToolchainAsync(
+    string repository,
+    ExternalConsumerToolchain toolchain)
+{
+    Assert.SequenceEqual(
+        new[]
+        {
+            "Microsoft.AspNetCore.App.Ref",
+            "Microsoft.NETCore.App.Host.win-x64",
+            "Microsoft.NETCore.App.Ref",
+            "Microsoft.WindowsDesktop.App.Ref",
+        },
+        toolchain.InstalledPacks.Keys.Order(StringComparer.Ordinal));
+    var configurationPath = Path.Combine(repository, "global.json");
+    var configurationText = await File.ReadAllTextAsync(configurationPath);
+    using var configuration = JsonDocument.Parse(configurationText);
+    Assert.Equal(
+        toolchain.SdkVersion,
+        configuration.RootElement.GetProperty("sdk").GetProperty("version").GetString());
+    Assert.Contains("\"rollForward\": \"disable\"", configurationText);
+    Assert.DoesNotContain(repository, configurationText);
+    Console.WriteLine(
+        $"External consumer local toolchain: SDK {toolchain.SdkVersion}; " +
+        string.Join(", ", toolchain.InstalledPacks
+            .OrderBy(pack => pack.Key, StringComparer.Ordinal)
+            .Select(pack => $"{pack.Key}/{pack.Value}")));
 }
 
 static void CopyWrailDistribution(string source, string destination)
