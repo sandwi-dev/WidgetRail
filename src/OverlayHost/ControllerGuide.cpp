@@ -1,6 +1,7 @@
 #include "ControllerGuide.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace widgetrail::guide {
 namespace {
@@ -77,11 +78,9 @@ std::wstring_view DisplayButton(const std::wstring_view button) noexcept {
     return button;
 }
 
-std::wstring Sanitize(
-    const std::wstring_view value,
-    const std::size_t limit) {
+std::wstring Sanitize(const std::wstring_view value) {
     std::wstring result;
-    result.reserve(std::min(value.size(), limit));
+    result.reserve(value.size());
     bool priorSpace = false;
     for (const wchar_t character : value) {
         const bool whitespace = character == L' ' || character == L'\t' ||
@@ -93,11 +92,33 @@ std::wstring Sanitize(
             result.push_back(character);
             priorSpace = false;
         }
-        if (result.size() >= limit) break;
     }
     while (!result.empty() && result.back() == L' ') result.pop_back();
-    if (value.size() > result.size() && result.size() >= 2) result.back() = L'…';
     return result;
+}
+
+std::wstring BuildContextual(
+    const std::vector<OpenWidgetAction>& actions,
+    const std::vector<std::wstring>& labels) {
+    std::wstring result;
+    for (std::size_t index = 0; index < actions.size(); ++index) {
+        if (!result.empty()) result += L"   ";
+        result += DisplayButton(actions[index].button);
+        result += L' ';
+        result += labels[index];
+    }
+    return result;
+}
+
+bool Fits(
+    const std::wstring_view value,
+    const float availableWidth,
+    const MeasureOpenWidgetText& measureText) {
+    if (value.empty()) return true;
+    if (!std::isfinite(availableWidth) || availableWidth <= 0.0F || !measureText)
+        return false;
+    const auto measured = measureText(value);
+    return measured && std::isfinite(*measured) && *measured <= availableWidth;
 }
 
 } // namespace
@@ -164,37 +185,49 @@ OpenWidgetAuthority ResolveOpenWidgetAuthority(
 OpenWidgetLine BuildOpenWidgetLine(
     const ControllerGuideDensity density,
     const OpenWidgetAuthority& authority,
-    const bool hasBack) {
+    const bool hasBack,
+    const float availableWidth,
+    const MeasureOpenWidgetText& measureText) {
     OpenWidgetLine result;
     result.host = hasBack ? L"B Back   Guide Close" : L"Guide Close";
-    const std::size_t characterBudget =
-        density == ControllerGuideDensity::Full ? 92U :
-        density == ControllerGuideDensity::Compact ? 78U : 28U;
-    const std::size_t labelBudget =
-        density == ControllerGuideDensity::Full ? 20U :
-        density == ControllerGuideDensity::Compact ? 12U : 0U;
+    const auto reserved = measureText
+        ? measureText(result.host + L"   ")
+        : std::nullopt;
+    const float contextualWidth = reserved && std::isfinite(*reserved)
+        ? std::max(0.0F, availableWidth - *reserved)
+        : 0.0F;
     const std::size_t actionBudget =
         density == ControllerGuideDensity::Full ? 4U :
         density == ControllerGuideDensity::Compact ? 3U : 0U;
 
-    std::size_t accepted{};
-    auto append = [&](const std::wstring_view button,
-                      const std::wstring_view label) {
-        if (accepted >= actionBudget) return;
-        const auto displayButton = Sanitize(DisplayButton(button), 4U);
-        const auto displayLabel = Sanitize(label, labelBudget);
-        if (displayButton.empty() || displayLabel.empty()) return;
-        const std::wstring segment = displayButton + L" " + displayLabel;
-        const std::size_t projected = result.contextual.size() +
-            (result.contextual.empty() ? 0U : 3U) + segment.size() + 3U +
-            result.host.size();
-        if (projected > characterBudget) return;
-        if (!result.contextual.empty()) result.contextual += L"   ";
-        result.contextual += segment;
-        ++accepted;
-    };
-    for (const auto& action : authority.actions) append(action.button, action.label);
-    if (authority.focusedActivation) append(L"a", L"Select");
+    std::vector<OpenWidgetAction> actions;
+    actions.reserve(actionBudget);
+    for (const auto& action : authority.actions) {
+        if (actions.size() >= actionBudget) break;
+        const auto label = Sanitize(action.label);
+        if (!label.empty()) actions.push_back({action.button, label});
+    }
+    std::vector<std::wstring> labels;
+    labels.reserve(actions.size());
+    for (const auto& action : actions) labels.push_back(action.label);
+
+    while (!actions.empty()) {
+        const auto line = BuildContextual(actions, labels);
+        if (Fits(line, contextualWidth, measureText)) {
+            result.contextual = line;
+            break;
+        }
+        actions.pop_back();
+        labels.pop_back();
+    }
+
+    if (authority.focusedActivation && actions.size() < actionBudget) {
+        auto withActivation = result.contextual;
+        if (!withActivation.empty()) withActivation += L"   ";
+        withActivation += L"A Select";
+        if (Fits(withActivation, contextualWidth, measureText))
+            result.contextual = std::move(withActivation);
+    }
 
     result.accessible = result.contextual;
     if (!result.accessible.empty()) result.accessible += L"   ";

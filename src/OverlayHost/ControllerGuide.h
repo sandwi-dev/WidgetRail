@@ -3,6 +3,8 @@
 #include "OverlayPlacement.h"
 #include "WidgetBridgeClient.h"
 
+#include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -31,11 +33,18 @@ struct OpenWidgetLine final {
     std::wstring accessible;
 };
 
+using MeasureOpenWidgetText =
+    std::function<std::optional<float>(std::wstring_view)>;
+
 /// Builds one bounded, whitespace-sanitized line while always retaining the
-/// host escape actions. Accessibility text is the same complete resolved line.
+/// host escape actions. Contextual actions are removed by deterministic
+/// priority when complete labels do not fit; labels are never truncated.
+/// Accessibility text is the same complete resolved line.
 [[nodiscard]] OpenWidgetLine BuildOpenWidgetLine(
     ControllerGuideDensity density,
     const OpenWidgetAuthority& authority,
-    bool hasBack);
+    bool hasBack,
+    float availableWidth,
+    const MeasureOpenWidgetText& measureText);
 
 } // namespace widgetrail::guide
