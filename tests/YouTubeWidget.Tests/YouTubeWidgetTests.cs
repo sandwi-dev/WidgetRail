@@ -697,30 +697,27 @@ public sealed partial class YouTubeWidgetTests
     [TestMethod]
     public void SealedAdapterUsesOfficialApiAndFixedErrorVocabulary()
     {
-        var adapter = File.ReadAllText(
-            Path.Combine(AppContext.BaseDirectory, "media", "adapter.html"));
+        var mediaDirectory = Path.Combine(AppContext.BaseDirectory, "media");
+        var adapter = File.ReadAllText(Path.Combine(mediaDirectory, "adapter.html"));
+        var runtime = File.ReadAllText(
+            Path.Combine(mediaDirectory, "adapter-runtime.js"));
+        StringAssert.Contains(adapter, "<script src=\"adapter-runtime.js\"></script>");
         StringAssert.Contains(adapter, "https://www.youtube.com/iframe_api");
         StringAssert.Contains(adapter, "new YT.Player");
-        StringAssert.Contains(adapter, "autoplay:0");
-        StringAssert.Contains(adapter, "controls:0");
-        StringAssert.Contains(adapter, "fs:0");
-        StringAssert.Contains(adapter,
-            "commandId:message.commandId,commandSequence:0,playing:false,focus:'youtube-player'");
-        StringAssert.Contains(adapter,
-            "commandId,commandSequence,focus:'youtube-player',playing:state==='playing',bounds:bounds(),mediaKey:key,playbackState:state,positionSeconds:position(),durationSeconds:duration(),volume:volume()");
-        Assert.AreEqual(2, CountOccurrences(adapter, "chrome.webview.postMessage("),
-            "Only initialization and the shared closed event envelope may write page events.");
-        StringAssert.Contains(adapter,
-            "emit('media',operation.id,operation.sequence,errorCode,playbackState,operation.mediaKey)");
-        StringAssert.Contains(adapter, "return}emit('media')");
-        StringAssert.Contains(adapter, "emit('media',0,0,code,'error')");
-        StringAssert.Contains(adapter, "lastProgressSecond=second;emit('media')");
-        StringAssert.Contains(adapter,
-            "emit('armed',operation.id,operation.sequence,undefined,playbackState,operation.mediaKey)");
-        StringAssert.Contains(adapter,
-            "if((operation.kind==='load'||operation.kind==='cue')&&event.data===5)complete(operation,undefined,'ready')");
-        StringAssert.Contains(adapter,
-            "if(message.command==='load'||message.command==='cue'){mediaKey=operation.mediaKey;playbackState='loading';player.cueVideoById");
+        StringAssert.Contains(adapter, "autoplay: 0");
+        StringAssert.Contains(adapter, "controls: 0");
+        StringAssert.Contains(adapter, "fs: 0");
+        StringAssert.Contains(adapter, "WidgetRailEmbeddedMediaAdapter.create({");
+        Assert.AreEqual(0, CountOccurrences(adapter, "chrome.webview.postMessage("),
+            "The provider driver must not publish host envelopes directly.");
+        Assert.AreEqual(1, CountOccurrences(runtime, "global.chrome.webview.postMessage("),
+            "The shared runtime must remain the sole host-envelope writer.");
+        StringAssert.Contains(runtime, "if (mediaKey.length > 0)");
+        StringAssert.Contains(runtime, "emit(\"ready\", initial)");
+        StringAssert.Contains(runtime, "\"arm-activate\": \"activate\"");
+        StringAssert.Contains(adapter, "async load(command)");
+        StringAssert.Contains(adapter, "async cue(command)");
+        StringAssert.Contains(adapter, "async toggle(command)");
         StringAssert.Contains(adapter, "client-identity-rejected");
         StringAssert.Contains(adapter, "embedding-disabled");
         Assert.DoesNotContain("fetch(", adapter);
@@ -748,17 +745,22 @@ public sealed partial class YouTubeWidgetTests
                 EmbeddedMediaPlaybackCommandKind.SetVolume,
             ]);
 
-        var missingTogglePath = Path.Combine(
-            Path.GetTempPath(), $"wrail-youtube-adapter-{Guid.NewGuid():N}.html");
+        var missingToggleRoot = Path.Combine(
+            Path.GetTempPath(), $"wrail-youtube-adapter-{Guid.NewGuid():N}");
+        var missingTogglePath = Path.Combine(missingToggleRoot, "adapter.html");
         try
         {
+            Directory.CreateDirectory(missingToggleRoot);
             var adapter = await File.ReadAllTextAsync(adapterPath);
-            const string toggleHandler = "if(message.command==='toggle')";
+            const string toggleHandler = "async toggle(command)";
             Assert.IsTrue(adapter.Contains(toggleHandler, StringComparison.Ordinal));
             await File.WriteAllTextAsync(
                 missingTogglePath,
-                adapter.Replace(toggleHandler, "if(message.command==='removed-toggle')",
+                adapter.Replace(toggleHandler, "async removedToggle(command)",
                     StringComparison.Ordinal));
+            File.Copy(
+                Path.Combine(AppContext.BaseDirectory, "media", "adapter-runtime.js"),
+                Path.Combine(missingToggleRoot, "adapter-runtime.js"));
             var failure = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 EmbeddedMediaAdapterConformanceGate.VerifyAsync(
                     snapshot,
@@ -777,7 +779,10 @@ public sealed partial class YouTubeWidgetTests
         }
         finally
         {
-            File.Delete(missingTogglePath);
+            if (Directory.Exists(missingToggleRoot))
+            {
+                Directory.Delete(missingToggleRoot, recursive: true);
+            }
         }
         await WidgetTestHost.DestroyAsync(widget);
     }

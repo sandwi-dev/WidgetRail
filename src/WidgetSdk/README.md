@@ -35,11 +35,52 @@ does not expose navigation, DOM access, script execution, arbitrary URLs, or a
 second HWND/input owner. Widgets that omit `EmbeddedMedia` retain their existing
 snapshot and rendering behavior.
 
-Use the SDK's readable `EmbeddedMediaAdapterRuntime.js` for the adapter command
-boundary. The SDK package carries it under
-`contentFiles/any/any/WidgetRail`; stage it beside the entry document, declare
-it in `EmbeddedMediaSurface.Resources` with
-`ContentType = "application/javascript"`, and load it before the driver.
+Use the SDK's readable `EmbeddedMediaAdapterRuntime.js` as the canonical adapter
+command boundary. The SDK package carries it under
+`contentFiles/any/any/WidgetRail`, but this is opt-in content: WidgetRail does
+not inject it, and declaring `EmbeddedMedia` does not add it automatically.
+Copy it beside the entry document (optionally as the package-local alias
+`adapter-runtime.js`), declare that exact staged path in
+`EmbeddedMediaSurface.Resources` with `ContentType = "application/javascript"`,
+and load the same relative path before the provider driver.
+
+```xml
+<PackageReference Include="WidgetRail.WidgetSdk" Version="0.3.0-dev"
+                  GeneratePathProperty="true" />
+<None Include="$(PkgWidgetRail_WidgetSdk)\contentFiles\any\any\WidgetRail\EmbeddedMediaAdapterRuntime.js"
+      Link="media\adapter-runtime.js"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest" />
+```
+
+```csharp
+Resources =
+[
+    new EmbeddedMediaResource
+    {
+        Path = "payload/media/adapter-runtime.js",
+        ContentType = "application/javascript",
+    },
+];
+```
+
+```html
+<script src="adapter-runtime.js"></script>
+<script>
+const adapter = WidgetRailEmbeddedMediaAdapter.create({
+  focus: "media-plane",
+  bounds: () => ({ x: 0, y: 0, width: innerWidth, height: innerHeight }),
+  snapshot: () => playerSnapshot,
+  driver: { load, cue, activate, pause, toggle, seek, setVolume },
+});
+</script>
+```
+
+Repository samples explicitly link/copy the source-tree runtime in MSBuild, and
+their package scripts explicitly `Copy-Item` it into sealed payloads. External
+NuGet consumers use the `contentFiles` path above; neither mechanism is host
+injection.
+
 `WidgetRailEmbeddedMediaAdapter.create` accepts a focus ID, bounds and snapshot
 readers, an optional bounded error mapper, and explicit player-driver hooks.
 The runtime—not the driver—owns initialization authority, generation checks,

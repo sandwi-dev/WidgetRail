@@ -246,12 +246,58 @@ support fails with a precise diagnostic such as
 that claim command correlation fail independently. The gate uses no provider,
 browser, network, account, or credential state.
 
-`EmbeddedMediaAdapterRuntime.js` is the readable provider-neutral implementation
-of that closed adapter boundary. It ships in the WidgetSdk package under
-`contentFiles/any/any/WidgetRail` and is also the single source linked into the
-repository samples. Package it beside the entry document, declare it as an
-`application/javascript` embedded-media resource, and load it before the
-package driver. The runtime owns initialization generations, exact authority
+`EmbeddedMediaAdapterRuntime.js` is the canonical readable provider-neutral
+implementation of that closed adapter boundary. It ships as WidgetSdk package
+content under `contentFiles/any/any/WidgetRail`, but inclusion is opt-in: the
+host does not inject it, and neither ordinary widgets nor embedded-media widgets
+receive it automatically. An author must copy or stage that canonical file
+beside the embedded-media entry document (the package-local name may be
+`adapter-runtime.js`), declare that exact staged path as an
+`application/javascript` resource, and load the same relative path before any
+provider code.
+
+For example, a NuGet-consuming widget can stage the SDK content explicitly:
+
+```xml
+<PackageReference Include="WidgetRail.WidgetSdk" Version="0.3.0-dev"
+                  GeneratePathProperty="true" />
+<None Include="$(PkgWidgetRail_WidgetSdk)\contentFiles\any\any\WidgetRail\EmbeddedMediaAdapterRuntime.js"
+      Link="media\adapter-runtime.js"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest" />
+```
+
+Then declare and load that exact package path before creating the driver:
+
+```csharp
+Resources =
+[
+    new EmbeddedMediaResource
+    {
+        Path = "payload/media/adapter-runtime.js",
+        ContentType = "application/javascript",
+    },
+];
+```
+
+```html
+<script src="adapter-runtime.js"></script>
+<script>
+const adapter = WidgetRailEmbeddedMediaAdapter.create({
+  focus: "media-plane",
+  bounds: () => ({ x: 0, y: 0, width: innerWidth, height: innerHeight }),
+  snapshot: () => playerSnapshot,
+  driver: { load, cue, activate, pause, toggle, seek, setVolume },
+});
+</script>
+```
+
+The repository samples do not rely on NuGet content injection. Their project
+files explicitly `Link` and `Copy` the source-tree runtime, while package scripts
+such as YouTube's explicitly `Copy-Item` it into the sealed payload. External
+authors instead copy from the NuGet `contentFiles` location shown above.
+
+The runtime owns initialization generations, exact authority
 matching, command correlation, one in-flight operation, armed activation,
 terminal and unsolicited envelopes, and bounded error tokens. A driver supplies
 only `snapshot` plus the applicable `load`, `cue`, `activate`, `pause`,
