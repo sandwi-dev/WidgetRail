@@ -39,6 +39,7 @@ public sealed class SpotifyWidget : Widget
     private static readonly TimeSpan SetupRefreshTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan QueueLoadTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan DevicesCacheLifetime = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan OptimisticReconciliationLifetime = TimeSpan.FromSeconds(12);
     private static readonly IReadOnlyList<SpotifyAuthorizationScope> SpotifyScopes =
     [
         SpotifyAuthorizationScope.PlaybackStateRead,
@@ -80,6 +81,10 @@ public sealed class SpotifyWidget : Widget
     private long _presentationCaptureSequence;
     private long _queueLoadOperationSequence;
     private SpotifyPlaybackOperation? _pendingOperation;
+    private long _pendingOperationSequence;
+    private long _playbackOperationSequence;
+    private long _playbackObservationSequence;
+    private SpotifyOptimisticPlaybackReconciliation? _optimisticReconciliation;
     private string _status = "Spotify loads when this widget becomes visible";
     private SpotifyRefreshWarning? _refreshWarning;
     private int _consecutiveRefreshFailures;
@@ -257,6 +262,7 @@ public sealed class SpotifyWidget : Widget
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         Interlocked.Increment(ref _activeGeneration);
+        lock (_gate) ClearOptimisticReconciliationLocked();
         var tasks = new[] { _pollTask, _progressTask }
             .Where(task => task is not null).Cast<Task>().ToArray();
         _pollTask = null;
@@ -267,6 +273,7 @@ public sealed class SpotifyWidget : Widget
 
     protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
+        lock (_gate) ClearOptimisticReconciliationLocked();
         Task? authorization;
         lock (_authorizationGate) authorization = _authorizationTask;
         var tasks = new[] { authorization }
@@ -844,12 +851,13 @@ public sealed class SpotifyWidget : Widget
             }
             try
             {
+                var observationSequence = Interlocked.Increment(ref _playbackObservationSequence);
                 var playback = await _spotify.GetPlaybackAsync(cancellationToken)
                     .ConfigureAwait(false);
                 if (generation != Volatile.Read(ref _activeGeneration)) return false;
                 SetState(generation, SpotifyWidgetViewState.Ready,
                     playback.IsAvailable ? "Live from Spotify" : "Connected · no active playback",
-                    playback, refreshDemandedQueueOnPlaybackChange);
+                    playback, refreshDemandedQueueOnPlaybackChange, observationSequence);
                 return true;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -938,11 +946,12 @@ public sealed class SpotifyWidget : Widget
                     return;
             }
 
+            var observationSequence = Interlocked.Increment(ref _playbackObservationSequence);
             var playback = await _spotify.GetPlaybackAsync(cancellationToken)
                 .ConfigureAwait(false);
             SetState(generation, SpotifyWidgetViewState.Ready,
                 playback.IsAvailable ? "Live from Spotify" : "Connected · no active playback",
-                playback);
+                playback, observationSequence: observationSequence);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception exception)
@@ -1442,6 +1451,7 @@ public sealed class SpotifyWidget : Widget
     {
         SpotifyPlaybackSummary? before;
         SpotifyPlaybackCommand? command;
+        long operationSequence;
         lock (_gate)
         {
             before = _playback;
@@ -1457,7 +1467,10 @@ public sealed class SpotifyWidget : Widget
                 RecordActionDiagnostic(action, "action-invalidation", "control-unavailable");
                 return;
             }
+            _optimisticReconciliation = null;
+            operationSequence = ++_playbackOperationSequence;
             _pendingOperation = operation;
+            _pendingOperationSequence = operationSequence;
             _playback = SpotifyPlaybackPolicy.ApplyOptimistic(
                 before!, command, _timeProvider.GetUtcNow().ToUnixTimeMilliseconds());
             _status = SpotifyPlaybackPolicy.OperationStatus(operation);
@@ -1474,7 +1487,20 @@ public sealed class SpotifyWidget : Widget
             RecordActionDiagnostic(action, "playback-provider", "succeeded");
             lock (_gate)
             {
+                if (_pendingOperation != operation ||
+                    _pendingOperationSequence != operationSequence) return;
                 _pendingOperation = null;
+                _pendingOperationSequence = 0;
+                if (SpotifyPlaybackPolicy.HasOptimisticPresentation(operation) &&
+                    _playback is { IsAvailable: true } projectedPlayback)
+                {
+                    _optimisticReconciliation = new(
+                        operationSequence,
+                        operation,
+                        projectedPlayback,
+                        Volatile.Read(ref _playbackObservationSequence),
+                        _timeProvider.GetUtcNow() + OptimisticReconciliationLifetime);
+                }
                 _status = "Updated in Spotify";
             }
             RecordActionDiagnostic(action, "action-status", "provider-succeeded");
@@ -1504,12 +1530,12 @@ public sealed class SpotifyWidget : Widget
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             RecordActionDiagnostic(action, "playback-provider", "canceled");
-            RestoreOptimistic(before, action);
+            RestoreOptimistic(before, operationSequence, action);
         }
         catch (SpotifyApplicationException exception)
         {
             RecordActionDiagnostic(action, "playback-provider", PlaybackFailureCode(exception));
-            RestoreOptimistic(before, action, SpotifyPlaybackPolicy.SafeMessage(exception,
+            RestoreOptimistic(before, operationSequence, action, SpotifyPlaybackPolicy.SafeMessage(exception,
                 exception.Code == "forbidden"
                     ? "Spotify did not allow playback control"
                     : "Spotify rejected that control"));
@@ -1517,20 +1543,24 @@ public sealed class SpotifyWidget : Widget
         catch (Exception exception)
         {
             RecordActionDiagnostic(action, "playback-provider", PlaybackFailureCode(exception));
-            RestoreOptimistic(before, action);
+            RestoreOptimistic(before, operationSequence, action);
             throw;
         }
     }
 
     private void RestoreOptimistic(
         SpotifyPlaybackSummary? playback,
+        long operationSequence,
         WidgetActionEvent action,
         string? status = null)
     {
         lock (_gate)
         {
+            if (_pendingOperationSequence != operationSequence) return;
             _playback = playback;
             _pendingOperation = null;
+            _pendingOperationSequence = 0;
+            _optimisticReconciliation = null;
             if (status is not null) _status = status;
         }
         RecordActionDiagnostic(action, "action-status", "restored");
@@ -1549,14 +1579,15 @@ public sealed class SpotifyWidget : Widget
         SpotifyWidgetViewState state,
         string status,
         SpotifyPlaybackSummary? playback,
-        bool refreshDemandedQueueOnPlaybackChange = false)
+        bool refreshDemandedQueueOnPlaybackChange = false,
+        long observationSequence = 0)
     {
         if (generation != Volatile.Read(ref _activeGeneration)) return;
         bool playbackIdentityChanged;
         lock (_gate)
         {
-            var admittedPlayback = SpotifyPlaybackPolicy.MergePendingOptimisticPresentation(
-                _playback, playback, _pendingOperation);
+            var admittedPlayback = AdmitPlaybackObservationLocked(
+                playback, observationSequence);
             playbackIdentityChanged = refreshDemandedQueueOnPlaybackChange &&
                 PlaybackQueueIdentity(_playback) != PlaybackQueueIdentity(admittedPlayback);
             _viewState = state;
@@ -1564,6 +1595,8 @@ public sealed class SpotifyWidget : Widget
             _playback = admittedPlayback;
             _refreshWarning = null;
             _consecutiveRefreshFailures = 0;
+            if (state != SpotifyWidgetViewState.Ready || playback is null)
+                ClearOptimisticReconciliationLocked();
         }
         Invalidate();
         if (playbackIdentityChanged) InvalidateQueueCollection();
@@ -1574,6 +1607,38 @@ public sealed class SpotifyWidget : Widget
         playback is { IsAvailable: true }
             ? (true, playback.Item?.Uri)
             : (false, null);
+
+    private SpotifyPlaybackSummary? AdmitPlaybackObservationLocked(
+        SpotifyPlaybackSummary? observed,
+        long observationSequence)
+    {
+        if (_pendingOperation is { } pendingOperation)
+            return SpotifyPlaybackPolicy.MergeOptimisticPresentation(
+                _playback, observed, pendingOperation);
+
+        var reconciliation = _optimisticReconciliation;
+        if (reconciliation is null || observed is null) return observed;
+
+        var now = _timeProvider.GetUtcNow();
+        if (now >= reconciliation.ExpiresAt ||
+            observationSequence > reconciliation.ObservationBoundary ||
+            SpotifyPlaybackPolicy.MatchesOptimisticPresentation(observed, reconciliation))
+        {
+            _optimisticReconciliation = null;
+            return observed;
+        }
+
+        // This request began before the status-only command response and did
+        // not yet reflect the accepted field. Preserve only that owned field;
+        // all independent observation data is admitted immediately.
+        return SpotifyPlaybackPolicy.MergeOptimisticPresentation(
+            reconciliation.ProjectedPlayback, observed, reconciliation.Operation);
+    }
+
+    private void ClearOptimisticReconciliationLocked()
+    {
+        _optimisticReconciliation = null;
+    }
 
     private void ApplyRefreshFailure(long generation, Exception exception)
     {
@@ -1600,6 +1665,7 @@ public sealed class SpotifyWidget : Widget
                 _viewState = failure.FallbackState;
                 _status = failure.Status;
                 _playback = null;
+                ClearOptimisticReconciliationLocked();
                 if (failure.Disposition != SpotifyRefreshFailureDisposition.Transient)
                 {
                     ClearPageCachesLocked();

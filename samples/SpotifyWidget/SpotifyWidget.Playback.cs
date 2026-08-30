@@ -85,13 +85,13 @@ internal static class SpotifyPlaybackPolicy
             SpotifyPlaybackOperation.SetShuffle or
             SpotifyPlaybackOperation.SetRepeat;
 
-    internal static SpotifyPlaybackSummary? MergePendingOptimisticPresentation(
+    internal static SpotifyPlaybackSummary? MergeOptimisticPresentation(
         SpotifyPlaybackSummary? current,
         SpotifyPlaybackSummary? observed,
-        SpotifyPlaybackOperation? pendingOperation)
+        SpotifyPlaybackOperation? operation)
     {
-        if (pendingOperation is not { } operation ||
-            !HasOptimisticPresentation(operation) ||
+        if (operation is not { } ownedOperation ||
+            !HasOptimisticPresentation(ownedOperation) ||
             current is not { IsAvailable: true } ||
             observed is null)
             return observed;
@@ -100,7 +100,7 @@ internal static class SpotifyPlaybackPolicy
         // observation. Retain only the field owned by the accepted command;
         // all other fields remain the newly observed authoritative values.
         if (!observed.IsAvailable) return current;
-        return operation switch
+        return ownedOperation switch
         {
             SpotifyPlaybackOperation.Play or SpotifyPlaybackOperation.Pause =>
                 observed with { IsPlaying = current.IsPlaying },
@@ -116,6 +116,22 @@ internal static class SpotifyPlaybackPolicy
             _ => observed,
         };
     }
+
+    internal static bool MatchesOptimisticPresentation(
+        SpotifyPlaybackSummary? observed,
+        SpotifyOptimisticPlaybackReconciliation reconciliation) =>
+        observed is { IsAvailable: true } && reconciliation.Operation switch
+        {
+            SpotifyPlaybackOperation.Play or SpotifyPlaybackOperation.Pause =>
+                observed.IsPlaying == reconciliation.ProjectedPlayback.IsPlaying,
+            SpotifyPlaybackOperation.Seek =>
+                observed.ProgressMilliseconds == reconciliation.ProjectedPlayback.ProgressMilliseconds,
+            SpotifyPlaybackOperation.SetShuffle =>
+                observed.ShuffleState == reconciliation.ProjectedPlayback.ShuffleState,
+            SpotifyPlaybackOperation.SetRepeat =>
+                observed.RepeatState == reconciliation.ProjectedPlayback.RepeatState,
+            _ => false,
+        };
 
     internal static SpotifyPlaybackSummary? Project(
         SpotifyPlaybackSummary? playback,
@@ -181,3 +197,13 @@ internal static class SpotifyPlaybackPolicy
             SpotifyPlaybackOperation.SetRepeat, RepeatState: next);
     }
 }
+
+// A provider control response is an acknowledgement, not a playback snapshot.
+// This record outlives only the Busy/pending owner so a GET which started before
+// that acknowledgement cannot overwrite its projected field after it returns.
+internal sealed record SpotifyOptimisticPlaybackReconciliation(
+    long OperationSequence,
+    SpotifyPlaybackOperation Operation,
+    SpotifyPlaybackSummary ProjectedPlayback,
+    long ObservationBoundary,
+    DateTimeOffset ExpiresAt);
