@@ -144,26 +144,23 @@ enum class PresentationBaseRule {
 struct PresentationTransactionRule final {
     WidgetPresentationTransactionKind kind;
     PresentationBaseRule baseRule;
-    bool requireFreshVirtualWindowBaseline;
 };
 
-[[nodiscard]] bool AdmitPresentationTransaction(
+[[nodiscard]] bool AdmitPresentationTransactionAuthority(
     const WidgetPresentationTransactionKind requestedKind,
     const std::optional<WidgetPresentationTransactionKind> returnedKind,
     const long long retainedHostSequence,
     const long long requestBaseSequence,
     const long long recoveryOriginSequence,
     const long long candidateSequence,
-    const bool authorityCurrent,
-    const bool ordinaryWindowTransitionValid,
-    const bool freshWindowBaselineValid) noexcept {
+    const bool authorityCurrent) noexcept {
     static constexpr PresentationTransactionRule rules[] = {
         {WidgetPresentationTransactionKind::IncrementalUpdate,
-         PresentationBaseRule::ExactRetained, false},
+         PresentationBaseRule::ExactRetained},
         {WidgetPresentationTransactionKind::OrdinaryCheckpoint,
-         PresentationBaseRule::Zero, false},
+         PresentationBaseRule::Zero},
         {WidgetPresentationTransactionKind::RecoveryCheckpoint,
-         PresentationBaseRule::RecoveryOrigin, true},
+         PresentationBaseRule::RecoveryOrigin},
     };
     const auto found = std::find_if(
         std::begin(rules), std::end(rules), [&](const auto& rule) {
@@ -184,9 +181,7 @@ struct PresentationTransactionRule final {
             : requestBaseSequence == 0 && retainedHostSequence > 0 &&
                 recoveryOriginSequence == retainedHostSequence &&
                 candidateSequence > recoveryOriginSequence;
-    return baseValid && (found->requireFreshVirtualWindowBaseline
-        ? freshWindowBaselineValid
-        : ordinaryWindowTransitionValid);
+    return baseValid;
 }
 
 } // namespace
@@ -267,16 +262,17 @@ std::optional<WidgetSnapshot> WidgetSessionCoordinator::EstablishPresentationFor
         candidate = std::move(materialized.value->snapshot);
     }
     if (!candidate || candidate->instanceId != descriptor->instanceId ||
-        !AdmitPresentationTransaction(
+        !AdmitPresentationTransactionAuthority(
             transactionKind,
             established.value->transactionKind,
             retained ? retained->sequence : 0,
             established.value->requestBaseSequence,
             established.value->recoveryOriginSequence,
             candidate->sequence,
-            established.value->requestBaseSequence == baseSequence,
-            AdmitVirtualWindowTransition(retained, *candidate),
-            AdmitVirtualWindowTransition(nullptr, *candidate)))
+            established.value->requestBaseSequence == baseSequence) ||
+        !(transactionKind == WidgetPresentationTransactionKind::RecoveryCheckpoint
+            ? AdmitVirtualWindowTransition(nullptr, *candidate)
+            : AdmitVirtualWindowTransition(retained, *candidate)))
         return std::nullopt;
     const auto id = std::wstring(widgetId);
     snapshots_.insert_or_assign(id, *candidate);
@@ -661,7 +657,8 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
             const auto retainedHostSequence = retainedCheckpoint
                 ? retainedCheckpoint->sequence
                 : 0;
-            const bool transitionAdmitted = AdmitPresentationTransaction(
+            const bool transactionAdmitted =
+                AdmitPresentationTransactionAuthority(
                 request.transactionKind,
                 completion.transactionKind,
                 retainedHostSequence,
@@ -669,16 +666,21 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 request.recoveryOriginSequence,
                 completion.snapshot->sequence,
                 completionCurrent && runtimeCurrent && snapshotIdentityCurrent &&
-                    transactionAuthorityCurrent,
-                AdmitVirtualWindowTransition(
-                    retainedCheckpoint, *completion.snapshot),
-                AdmitVirtualWindowTransition(nullptr, *completion.snapshot));
-            if (!transitionAdmitted) {
+                    transactionAuthorityCurrent);
+            const bool virtualWindowAdmitted =
+                request.transactionKind ==
+                    WidgetPresentationTransactionKind::RecoveryCheckpoint
+                ? AdmitVirtualWindowTransition(nullptr, *completion.snapshot)
+                : AdmitVirtualWindowTransition(
+                    retainedCheckpoint, *completion.snapshot);
+            if (!transactionAdmitted || !virtualWindowAdmitted) {
                 CompleteRefresh(request, false);
                 ReleasePresentationAdmission(request);
                 auto failure = FailureFrom(
                     WidgetSessionFailureStage::Protocol,
-                    L"The widget returned an invalid or stale virtual collection window transition.");
+                    !transactionAdmitted
+                        ? L"The widget returned an invalid or stale presentation transaction."
+                        : L"The widget returned an invalid or stale virtual collection window transition.");
                 failures_.insert_or_assign(request.widgetId, failure);
                 auto event = makeEvent(WidgetSessionEventKind::Failed);
                 event.failure = failure;

@@ -382,10 +382,12 @@ internal sealed class WidgetWorkerServer
                     WidgetPresentationTransactionKind.IncrementalUpdate
                     ? presentationRequest.PresentationGeneration!
                     : new string('0', 32),
-                Interlocked.Increment(ref _sequence),
+                NextPresentationSequence(
+                    presentationRequest.RecoveryOriginSequence),
                 presentationRequest.BaseSequence,
                 presentationRequest.UpdateCapabilities,
-                presentationRequest.TransactionKind);
+                presentationRequest.TransactionKind,
+                presentationRequest.RecoveryOriginSequence);
             if (publication.Update is { } update)
             {
                 var updateBytes = PresentationUpdateJson.Serialize(update);
@@ -593,23 +595,46 @@ internal sealed class WidgetWorkerServer
         if (!none && !bounded)
             throw new WidgetProtocolViolationException(
                 "Presentation update capabilities are malformed or unsupported.");
-        var transactionKind = render.RequireCheckpoint
-            ? WidgetPresentationTransactionKind.OrdinaryCheckpoint
-            : WidgetPresentationTransactionKind.IncrementalUpdate;
+        var transactionKind = !render.RequireCheckpoint
+            ? WidgetPresentationTransactionKind.IncrementalUpdate
+            : render.BaseSequence > 0
+                ? WidgetPresentationTransactionKind.RecoveryCheckpoint
+                : WidgetPresentationTransactionKind.OrdinaryCheckpoint;
         if (bounded && (render.RequireCheckpoint || render.BaseSequence <= 0 ||
                 render.PresentationGeneration is not { Length: 32 or 64 } ||
                 !render.PresentationGeneration.All(char.IsAsciiHexDigit)))
             throw new WidgetProtocolViolationException(
                 "Presentation update admission is incomplete or malformed.");
-        if (none && (!render.RequireCheckpoint || render.BaseSequence != 0 ||
+        if (none && (!render.RequireCheckpoint || render.BaseSequence < 0 ||
                 render.PresentationGeneration is not null))
             throw new WidgetProtocolViolationException(
                 "Checkpoint render admission is malformed.");
         return new RuntimeRenderRequest(
             transactionKind,
-            render.BaseSequence,
+            transactionKind == WidgetPresentationTransactionKind.IncrementalUpdate
+                ? render.BaseSequence
+                : 0,
+            transactionKind == WidgetPresentationTransactionKind.RecoveryCheckpoint
+                ? render.BaseSequence
+                : 0,
             render.PresentationGeneration,
             capabilities);
+    }
+
+    private long NextPresentationSequence(long recoveryOriginSequence)
+    {
+        while (true)
+        {
+            var localSequence = Volatile.Read(ref _sequence);
+            var origin = Math.Max(localSequence, recoveryOriginSequence);
+            if (origin == long.MaxValue)
+                throw new WidgetProtocolViolationException(
+                    "Presentation sequence authority is exhausted.");
+            var next = origin + 1;
+            if (Interlocked.CompareExchange(ref _sequence, next, localSequence) ==
+                localSequence)
+                return next;
+        }
     }
 
 

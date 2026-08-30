@@ -60,6 +60,7 @@ internal sealed record RenderPayload
 internal sealed record RuntimeRenderRequest(
     WidgetPresentationTransactionKind TransactionKind,
     long BaseSequence,
+    long RecoveryOriginSequence,
     string? PresentationGeneration,
     PresentationUpdateCapabilities UpdateCapabilities);
 internal sealed record WidgetRuntimePresentation(

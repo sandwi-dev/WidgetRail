@@ -117,7 +117,12 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 {
                     UpdateCapabilities = incrementalCurrent
                         ? capabilities : PresentationUpdateCapabilities.None,
-                    BaseSequence = incrementalCurrent ? baseSequence : 0,
+                    BaseSequence = incrementalCurrent
+                        ? baseSequence
+                        : transactionKind ==
+                            WidgetPresentationTransactionKind.RecoveryCheckpoint
+                            ? recoveryOriginSequence
+                            : 0,
                     PresentationGeneration = incrementalCurrent
                         ? presentationGeneration : null,
                     RequireCheckpoint = !incrementalCurrent,
