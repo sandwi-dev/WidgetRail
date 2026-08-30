@@ -82,6 +82,19 @@ public sealed class PackageRuntimeTests
         Assert.AreEqual("Completed",
             result.Authority.CompletionStatuses[client.Games[0].Id]);
 
+        var exactSubset = await service.QueryWithAuthorityAsync(
+            AllGames with { FavoriteSavedIds = [client.Games[1].Id] },
+            new(PlayniteLibraryQueryScope.Library), null, null,
+            32, refresh: false, CancellationToken.None);
+        Assert.AreEqual(client.Games[1].Id, exactSubset.Page.Items.Single().SavedId,
+            "The exact requested saved-ID subset must include a non-favorite game.");
+        Assert.IsFalse(exactSubset.Page.Items.Any(item =>
+                item.SavedId == client.Games[0].Id),
+            "An unrelated favorite game must not satisfy an exact saved-ID subset.");
+        CollectionAssert.AreEqual(result.Authority.FavoriteGameIds.ToArray(),
+            exactSubset.Authority.FavoriteGameIds.ToArray(),
+            "Exact subset filtering must not change authoritative favorite metadata.");
+
         var favorite = await service.SetFavoriteAsync(
             client.Games[0].Id, false, CancellationToken.None);
         Assert.IsNotNull(favorite);

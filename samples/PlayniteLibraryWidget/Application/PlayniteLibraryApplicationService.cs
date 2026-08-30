@@ -334,7 +334,8 @@ internal sealed class PlayniteLibraryApplicationService(
             values = values.Where(game => string.Equals(
                 game.Source, query.SourceAttribution, StringComparison.OrdinalIgnoreCase));
         if (query.FavoriteSavedIds.Count != 0)
-            values = values.Where(game => game.Favorite);
+            values = values.Where(game => query.FavoriteSavedIds.Contains(
+                game.Id, StringComparer.Ordinal));
         return query.Sort switch
         {
             WidgetAppLibrarySortOrder.DisplayNameDescending => values
