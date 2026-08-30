@@ -975,6 +975,136 @@ void RunContractCases() {
     std::cout << "RichMediaSurfaceCoordinator contract cases passed=48\n";
 }
 
+void RunSharedEnvironmentRecoveryOwnerCases() {
+    const auto sourcePath = std::filesystem::path{__FILE__}.parent_path() /
+        "RichMediaSurfaceCoordinator.cpp";
+    std::ifstream stream(sourcePath, std::ios::binary);
+    Require(static_cast<bool>(stream),
+            "shared environment owner source opens");
+    const std::string source{
+        std::istreambuf_iterator<char>(stream), {}};
+    const auto section = [&](const std::string_view begin,
+                             const std::string_view end) {
+        const auto beginOffset = source.find(begin);
+        Require(beginOffset != std::string::npos,
+                "shared environment owner section begins");
+        const auto endOffset = source.find(end, beginOffset + begin.size());
+        Require(endOffset != std::string::npos,
+                "shared environment owner section ends");
+        return source.substr(beginOffset, endOffset - beginOffset);
+    };
+
+    const auto initialize = section(
+        "HRESULT RichMediaSurfaceCoordinator::Initialize(Configuration configuration) noexcept {",
+        "HRESULT RichMediaSurfaceCoordinator::RecoverExitedSharedEnvironment() noexcept {");
+    Require(initialize.find(
+                "const HRESULT recovery = RecoverExitedSharedEnvironment();") !=
+                std::string::npos &&
+            initialize.find(
+                "Fault(L\"shared-environment-exited-with-live-controller\", recovery);") !=
+                std::string::npos &&
+            initialize.find("if (FAILED(recovery))") <
+                initialize.find("return S_OK;", initialize.find("if (FAILED(recovery))")) &&
+            initialize.find(
+                "if (shared.lifecycle == EnvironmentLifecycle::Creating)\n"
+                "        return AwaitSharedEnvironment();") != std::string::npos &&
+            initialize.find(
+                "if (shared.lifecycle != EnvironmentLifecycle::Cold) return E_UNEXPECTED;\n"
+                "    return BeginEnvironment();") != std::string::npos,
+        "exited shared environment admission is terminalized once or advances through one explicit recovery path");
+    Require(initialize.find(
+                "shared.lifecycle == EnvironmentLifecycle::Ready &&\n"
+                "        !shared.faulted && shared.environment") !=
+                std::string::npos &&
+            initialize.find(
+                "!shared.signal || !shared.signal->browserProcessExited.load") !=
+                std::string::npos &&
+            initialize.find("environment_ = shared.environment;") !=
+                std::string::npos &&
+            initialize.find("state_.authority.environmentGeneration = shared.generation;") !=
+                std::string::npos &&
+            initialize.find("return BeginController();") != std::string::npos,
+        "healthy shared environment and peer generation remain reusable without replacement");
+
+    const auto recover = section(
+        "HRESULT RichMediaSurfaceCoordinator::RecoverExitedSharedEnvironment() noexcept {",
+        "HRESULT RichMediaSurfaceCoordinator::Retry(Configuration configuration) noexcept {");
+    const auto ownerGuard = recover.find(
+        "if (shared.liveControllerOwners != 0 || !shared.waiters.empty())");
+    const auto shuttingDown = recover.find(
+        "shared.lifecycle = EnvironmentLifecycle::ShuttingDown;");
+    const auto cold = recover.find(
+        "shared.lifecycle = EnvironmentLifecycle::Cold;", shuttingDown);
+    Require(recover.find("shared.lifecycle != EnvironmentLifecycle::Ready") !=
+                std::string::npos &&
+            recover.find("!shared.signal") != std::string::npos &&
+            recover.find("!shared.signal->browserProcessExited.load") !=
+                std::string::npos &&
+            recover.find("return S_FALSE;") != std::string::npos &&
+            ownerGuard != std::string::npos &&
+            recover.find("return HRESULT_FROM_WIN32(ERROR_BUSY);", ownerGuard) !=
+                std::string::npos,
+        "recovery requires an exited Ready owner and refuses live controllers or waiters");
+    Require(shuttingDown != std::string::npos && cold != std::string::npos &&
+            shuttingDown < cold &&
+            recover.find("environmentProfileDirectory_ = shared.profileDirectory;",
+                         shuttingDown) < cold &&
+            recover.find("shared.environment5.Reset();", shuttingDown) < cold &&
+            recover.find("shared.environment.Reset();", shuttingDown) < cold &&
+            recover.find("MarkCurrentProfileForDeferredCleanup();", shuttingDown) < cold &&
+            recover.find("shared.signal.reset();", shuttingDown) < cold &&
+            recover.find("shared.profileDirectory.clear();", shuttingDown) < cold &&
+            recover.find("shared.faulted = false;", shuttingDown) < cold &&
+            recover.find("return S_OK;", cold) != std::string::npos,
+        "last-controller recovery retires the exited environment/profile and returns one clean Cold owner");
+
+    const auto beginEnvironment = section(
+        "HRESULT RichMediaSurfaceCoordinator::BeginEnvironment() noexcept {",
+        "HRESULT RichMediaSurfaceCoordinator::AwaitSharedEnvironment() noexcept {");
+    Require(beginEnvironment.find(
+                "shared.lifecycle != EnvironmentLifecycle::Cold") !=
+                std::string::npos &&
+            beginEnvironment.find("shared.generation++;") != std::string::npos &&
+            beginEnvironment.find(
+                "L\"wrail-rich-media-\" + std::to_wstring(GetCurrentProcessId()) + L\"-\" +\n"
+                "          std::to_wstring(shared.generation)") != std::string::npos &&
+            beginEnvironment.find(
+                "state_.authority.environmentGeneration = shared.generation;") !=
+                std::string::npos &&
+            beginEnvironment.find("CreateCoreWebView2EnvironmentWithOptions(") !=
+                std::string::npos,
+        "recovered Cold admission advances generation and authors one fresh profile/environment create");
+
+    const auto controllerCreated = section(
+        "HRESULT RichMediaSurfaceCoordinator::OnControllerCreated(",
+        "HRESULT RichMediaSurfaceCoordinator::ConfigureCore() noexcept {");
+    const auto teardown = section(
+        "void RichMediaSurfaceCoordinator::BeginSessionTeardown() noexcept {",
+        "void RichMediaSurfaceCoordinator::CompleteSessionTeardown() noexcept {");
+    Require(controllerCreated.find("if (!ownsSharedController_)") !=
+                std::string::npos &&
+            controllerCreated.find("++sharedEnvironment_->liveControllerOwners;") !=
+                std::string::npos &&
+            controllerCreated.find("ownsSharedController_ = true;") !=
+                std::string::npos &&
+            teardown.find("if (ownsSharedController_)") != std::string::npos &&
+            teardown.find("--sharedEnvironment_->liveControllerOwners;") !=
+                std::string::npos &&
+            teardown.find("ownsSharedController_ = false;") != std::string::npos,
+        "controller ownership is counted once and released at exact session teardown");
+
+    const auto retry = section(
+        "HRESULT RichMediaSurfaceCoordinator::Retry(Configuration configuration) noexcept {",
+        "std::shared_ptr<RichMediaSurfaceCoordinator::CallbackLease>");
+    Require(retry.find("if (sharedEnvironment_->faulted ||") !=
+                std::string::npos &&
+            retry.find("sharedEnvironment_->signal->browserProcessExited.load") !=
+                std::string::npos &&
+            retry.find("return E_UNEXPECTED;") != std::string::npos,
+        "Retry cannot relabel a faulted or exited shared browser as healthy");
+    std::cout << "RichMedia shared-environment recovery owner cases passed=6\n";
+}
+
 struct ProcessSample final {
     struct Entry final {
         DWORD processId{};
@@ -2232,6 +2362,12 @@ int wmain(int argc, wchar_t** argv) {
         }
         if (argc > 1 && std::wstring_view{argv[1]} == L"--provider-neutral-only") {
             RunProviderNeutralAdapterCases();
+            CoUninitialize();
+            return 0;
+        }
+        if (argc > 1 &&
+            std::wstring_view{argv[1]} == L"--environment-recovery-owner-only") {
+            RunSharedEnvironmentRecoveryOwnerCases();
             CoUninitialize();
             return 0;
         }
