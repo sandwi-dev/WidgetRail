@@ -234,6 +234,35 @@ int main() {
               widgetrail::WidgetContentAuthority::StableStartupStatus,
           "startup status is reserved for an open with no committed content");
 
+    constexpr widgetrail::WidgetContentFocusSources focusSources{
+        L"current.focus", L"refresh.focus", L"committed.focus"};
+    static_assert(widgetrail::WidgetContentAuthorityCount == 4);
+    Check(widgetrail::ResolveWidgetContentFocusId(
+              widgetrail::WidgetContentAuthority::AdmittedSnapshot, focusSources) ==
+              L"current.focus",
+          "current content uses the live widget focus identifier");
+    Check(widgetrail::ResolveWidgetContentFocusId(
+              widgetrail::WidgetContentAuthority::InertRetainedSnapshot, focusSources) ==
+              L"refresh.focus",
+          "RefreshRetained content uses only its retained focus identifier");
+    Check(widgetrail::ResolveWidgetContentFocusId(
+              widgetrail::WidgetContentAuthority::RetainedCommittedSnapshot, focusSources) ==
+              L"committed.focus",
+          "transition fallback content uses its committed focus identifier");
+    Check(widgetrail::ResolveWidgetContentFocusId(
+              widgetrail::WidgetContentAuthority::StableStartupStatus, focusSources) ==
+              L"current.focus",
+          "startup fallback preserves the existing live-focus source");
+    bool unknownContentAuthorityRejected = false;
+    try {
+        static_cast<void>(widgetrail::ResolveWidgetContentFocusId(
+            widgetrail::WidgetContentAuthority::Count, focusSources));
+    } catch (const std::invalid_argument&) {
+        unknownContentAuthorityRejected = true;
+    }
+    Check(unknownContentAuthorityRejected,
+          "an unknown content authority cannot silently select a focus source");
+
     Check(widgetrail::DecideDisplayRefresh(false, DisplayEnvironmentChange::Dpi) ==
               DisplayRefreshPlan{},
           "hidden DPI changes defer work until the next authoritative show");

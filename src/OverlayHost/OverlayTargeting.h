@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <stdexcept>
+#include <string_view>
 
 namespace widgetrail {
 
@@ -382,7 +385,40 @@ enum class WidgetContentAuthority {
     InertRetainedSnapshot,
     RetainedCommittedSnapshot,
     StableStartupStatus,
+    Count,
 };
+
+inline constexpr std::size_t WidgetContentAuthorityCount =
+    static_cast<std::size_t>(WidgetContentAuthority::Count);
+static_assert(
+    WidgetContentAuthorityCount == 4,
+    "Update the exhaustive WidgetContentAuthority focus-source mapping");
+
+struct WidgetContentFocusSources final {
+    std::wstring_view current{};
+    std::wstring_view refreshRetained{};
+    std::wstring_view retainedCommitted{};
+};
+
+/// Selects rendered focus from the exact content owner. Unknown authorities
+/// are rejected rather than inheriting an unrelated focus source.
+[[nodiscard]] constexpr std::wstring_view ResolveWidgetContentFocusId(
+    const WidgetContentAuthority authority,
+    const WidgetContentFocusSources sources) {
+    switch (authority) {
+    case WidgetContentAuthority::AdmittedSnapshot:
+        return sources.current;
+    case WidgetContentAuthority::InertRetainedSnapshot:
+        return sources.refreshRetained;
+    case WidgetContentAuthority::RetainedCommittedSnapshot:
+        return sources.retainedCommitted;
+    case WidgetContentAuthority::StableStartupStatus:
+        return sources.current;
+    case WidgetContentAuthority::Count:
+        break;
+    }
+    throw std::invalid_argument{"unknown_widget_content_authority"};
+}
 
 /// The host-generated worker-start copy must not replace already-painted
 /// widget content for a single frame. A refreshing or failed session keeps its

@@ -13898,17 +13898,22 @@ private:
             const bool retainedRefreshFreeScroll =
                 freeScrollDecision.disposition ==
                 widgetrail::input::FreeScrollAuthorityDisposition::Retained;
-            const std::wstring_view renderedFocusId = transitionRetainedSnapshot
-                ? std::wstring_view{retainedPresentation->focusId}
-                : sessionRetainedSnapshot
-                    ? retainedRefreshFreeScroll &&
-                            interactionSession_.freeScrollBinding()
-                        ? std::wstring_view{
-                            interactionSession_.freeScrollBinding()->focusedElementId}
-                        : std::wstring_view{}
-                    : state_.focusRegion() == widgetrail::FocusRegion::Widget
-                        ? std::wstring_view{interactionSession_.focusedElementId()}
-                        : std::wstring_view{};
+            const std::wstring_view currentFocusId =
+                state_.focusRegion() == widgetrail::FocusRegion::Widget
+                    ? std::wstring_view{interactionSession_.focusedElementId()}
+                    : std::wstring_view{};
+            const std::wstring_view refreshRetainedFocusId =
+                retainedRefreshFreeScroll && interactionSession_.freeScrollBinding()
+                    ? std::wstring_view{
+                        interactionSession_.freeScrollBinding()->focusedElementId}
+                    : std::wstring_view{};
+            const std::wstring_view retainedCommittedFocusId =
+                transitionRetainedSnapshot
+                    ? std::wstring_view{retainedPresentation->focusId}
+                    : std::wstring_view{};
+            const auto renderedFocusId = widgetrail::ResolveWidgetContentFocusId(
+                contentAuthority,
+                {currentFocusId, refreshRetainedFocusId, retainedCommittedFocusId});
             if (snapshot && declarativeRenderer_) {
                 const widgetrail::declarative::Rect viewport{
                     geometry->widgetViewportX,
