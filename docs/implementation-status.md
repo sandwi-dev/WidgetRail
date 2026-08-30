@@ -5781,3 +5781,20 @@ replacement, widget removal or restart, Bridge/session replacement, browser or
 environment failure, explicit slot retirement, and host shutdown still retire
 the session. No playback persistence, hidden geometry convention, retry loop,
 or provider-specific route was added.
+
+### WIDGE-68 — provider-neutral embedded-media authoring template
+
+The version-2 ControllerWidget inventory adds an `embedded-media` profile beside
+the existing package-authored pinned-layout `media` profile. It generates one
+two-source native full player, configurable seek policy, optional host-owned
+compact pinning, retained-hidden library route, exact single-flight command and
+terminal state, bounded errors, sealed fake media, deterministic scenario tests,
+and a lifecycle cookbook. The profile explicitly stages the canonical WidgetSdk
+`EmbeddedMediaAdapterRuntime.js`; neither the host nor the template system
+injects it implicitly.
+
+The registered focused verifier generates the external scaffold, builds and
+tests it, executes an isolated semantic preview, applies the existing WIDGE-66
+adapter conformance harness, validates it, and inspects its packed inventory.
+No provider SDK, credentials, network, browser automation, native-host branch,
+protocol revision, or duplicate runtime lifecycle implementation is involved.

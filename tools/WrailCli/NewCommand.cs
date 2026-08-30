@@ -14,7 +14,7 @@ internal static partial class NewCommand
         if (parsed.Positionals.Count != 2 || parsed.Positionals[0] != "widget")
             throw new CliUsageException(
                 "Usage: wrail new widget <Name> [--output <directory>] [--id <id>] " +
-                "[--publisher <id>] [--template <basic|data|media|multipage>]");
+                "[--publisher <id>] [--template <basic|data|media|embedded-media|multipage>]");
 
         var name = parsed.Positionals[1];
         if (!TypeNameRegex().IsMatch(name))
@@ -29,7 +29,7 @@ internal static partial class NewCommand
         var profile = parsed.Option("--template") ?? "basic";
         if (!WidgetTemplateProfiles.All.Contains(profile, StringComparer.Ordinal))
             throw new CliUsageException(
-                $"Unknown widget template '{profile}'. Choose basic, data, media, or multipage.");
+                $"Unknown widget template '{profile}'. Choose basic, data, media, embedded-media, or multipage.");
         var target = Path.GetFullPath(parsed.Option("--output") ?? Path.Combine(Environment.CurrentDirectory, name));
         if (File.Exists(target) || Directory.Exists(target))
             throw new CliUsageException(
@@ -80,7 +80,8 @@ internal static partial class NewCommand
 
 internal static class WidgetTemplateProfiles
 {
-    internal static readonly string[] All = ["basic", "data", "media", "multipage"];
+    internal static readonly string[] All =
+        ["basic", "data", "media", "embedded-media", "multipage"];
 }
 
 internal static class TemplateLocator

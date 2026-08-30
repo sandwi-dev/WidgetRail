@@ -1,0 +1,20 @@
+{
+  "manifestVersion": 1,
+  "id": "{{WidgetId}}",
+  "publisher": "{{Publisher}}",
+  "name": "{{WidgetName}}",
+  "version": "0.1.0",
+  "pinningSupported": true,
+  "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/{{WidgetName}}.dll",
+    "type": "{{Publisher}}.{{WidgetName}}.{{WidgetName}}"
+  },
+  "presentation": { "icon": "play" },
+  "permissions": [],
+  "optionalPermissions": [],
+  "residencyPolicy": { "schemaVersion": 1, "mode": "suspend-when-hidden" },
+  "resourceRequest": { "memoryMb": 48, "updateHz": 2 },
+  "architectures": ["x64", "arm64"]
+}

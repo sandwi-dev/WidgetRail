@@ -41,6 +41,10 @@ planner and implementation turns do not spend context on closed evidence.
   bounded scenario declarations, render trusted code, replay, and run a
   controller widget through the isolated `wrail dev` watch loop with
   authenticated readiness and last-good recovery.
+- [Embedded-media widget template](embedded-media-widget.md) — generate and
+  verify a provider-neutral two-source player, explicitly stage the shared
+  adapter runtime, and follow route, command, terminal, replacement, and
+  shutdown lifecycle ownership.
 - [Widget SDK compatibility and release unit](widget-sdk-compatibility.md) —
   checked-in public API baseline, exact CLI/template/package version contract,
   and the intentional pre-release addition or breaking-reset workflow.

@@ -60,8 +60,8 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
 
 ## Commands
 
-- `new widget` selects the closed version-2 `basic`, `data`, `media`, or
-  `multipage` controller-first C# template inventory and a
+- `new widget` selects the closed version-2 `basic`, `data`, `media`,
+  `embedded-media`, or `multipage` controller-first C# template inventory and a
   matching `WidgetRail.WidgetSdk` package in `.widgetrail/packages`. Its
   `template.json` is a closed inventory of bounded text templates and
   byte-preserved binary assets; undeclared, missing, duplicate, traversing,

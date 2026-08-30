@@ -13,6 +13,7 @@ using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetRuntime;
 using WidgetRail.WidgetSdk;
+using WidgetRail.EmbeddedMediaAdapterConformance;
 
 if (args is ["--dev-persistent-grandchild", ..])
 {
@@ -73,14 +74,22 @@ if (args.Contains("--game-launcher-community-reference", StringComparer.Ordinal)
     return 0;
 }
 
+if (args.Contains("--embedded-media-template", StringComparer.Ordinal))
+{
+    await EmbeddedMediaTemplateEndToEnd();
+    Console.WriteLine("PASS Embedded media template end to end");
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Help describes the complete workflow", HelpWorks),
     ("Authority recovery is exact, stale-safe, and sanitized", AuthorityRecoveryWorkflow),
     ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
     ("New scaffolds a token-free controller widget", NewScaffolds),
-    ("New ships four deterministic template profiles", AdvancedTemplateProfiles),
+    ("New ships five deterministic template profiles", AdvancedTemplateProfiles),
     ("Media template authors typed pinned layouts end to end", MediaTemplatePinnedLayouts),
+    ("Embedded media template closes its lifecycle and adapter contract", EmbeddedMediaTemplateEndToEnd),
     ("New validates a bounded versioned template transaction", ScaffoldTransactionScenarios.Run),
     ("CLI template and WidgetSdk form one release unit", WidgetSdkReleaseUnitScenarios.Run),
     ("Built wrail artifacts support an isolated external SDK consumer", ExternalVersionedSdkConsumer),
@@ -395,7 +404,8 @@ static async Task AdvancedTemplateProfiles()
     using var temp = new TemporaryDirectory();
     foreach (var profile in WidgetTemplateProfiles.All)
     {
-        var typeName = char.ToUpperInvariant(profile[0]) + profile[1..] + "Starter";
+        var typeName = string.Concat(profile.Split('-').Select(segment =>
+            char.ToUpperInvariant(segment[0]) + segment[1..])) + "Starter";
         var destination = Path.Combine(temp.Path, typeName);
         var id = $"dev.templates.{profile}";
         var created = await RunCli(
@@ -437,7 +447,7 @@ static async Task AdvancedTemplateProfiles()
         "new", "widget", "InvalidStarter", "--template", "unknown",
         "--output", invalidTarget);
     Assert.Equal(2, invalid.Code);
-    Assert.Contains("Choose basic, data, media, or multipage", invalid.Error);
+    Assert.Contains("Choose basic, data, media, embedded-media, or multipage", invalid.Error);
     Assert.True(!Directory.Exists(invalidTarget),
         "An invalid template selection published a partial target.");
 }
@@ -492,6 +502,64 @@ static async Task MediaTemplatePinnedLayouts()
         all.Output.IndexOf("Layout media.detailed |", StringComparison.Ordinal),
         "Pinned layout declaration order changed.");
     Assert.Equal(0, (await RunCli("validate", destination)).Code);
+}
+
+static async Task EmbeddedMediaTemplateEndToEnd()
+{
+    using var temp = new TemporaryDirectory();
+    var destination = Path.Combine(temp.Path, "EmbeddedMediaStarter");
+    var created = await RunCli(
+        "new", "widget", "EmbeddedMediaStarter", "--template", "embedded-media",
+        "--output", destination, "--id", "dev.templates.embedded-media",
+        "--publisher", "dev.templates");
+    Assert.Equal(0, created.Code);
+    Assert.Contains("Template: embedded-media", created.Output);
+
+    var project = Path.Combine(destination, "EmbeddedMediaStarter.csproj");
+    var build = await RunProcessAsync(
+        "dotnet", ["build", project, "-c", "Release", "--nologo"],
+        TimeSpan.FromSeconds(120), destination);
+    Assert.True(build.Code == 0, "build: " + build.Output);
+
+    var tests = await RunProcessAsync(
+        "dotnet", ["run", "--project",
+            Path.Combine(destination, "tests", "EmbeddedMediaStarter.Tests.csproj"),
+            "--configuration", "Release", "--", "--no-ansi", "--progress", "off",
+            "--output", "Detailed", "--minimum-expected-tests", "4"],
+        TimeSpan.FromSeconds(120), destination);
+    Assert.True(tests.Code == 0, "tests: " + tests.Output);
+    Assert.Contains("Passed!", tests.Output);
+
+    var resultPath = Path.Combine(destination, "fixtures", "ready.scenario.json");
+    var preview = await RunCli(
+        "preview", destination, "--scenario", "ready", "--output", resultPath);
+    Assert.Equal(0, preview.Code);
+    var result = JsonSerializer.Deserialize<WidgetScenarioResult>(
+        await File.ReadAllBytesAsync(resultPath),
+        new JsonSerializerOptions(JsonSerializerDefaults.Web))
+        ?? throw new InvalidOperationException("Embedded media scenario result was empty.");
+    Assert.Equal(0, ViewSnapshotValidator.Validate(result.Snapshot).Count);
+    await EmbeddedMediaAdapterConformanceGate.VerifyAsync(
+        result.Snapshot,
+        Path.Combine(destination, "bin", "Release", "net8.0", "media", "adapter.html"),
+        EmbeddedMediaFakePlayerProfile.HtmlMediaElement,
+        Enum.GetValues<EmbeddedMediaPlaybackCommandKind>());
+
+    Assert.Equal(0, (await RunCli("validate", destination)).Code);
+    var archive = Path.Combine(temp.Path, "embedded-media.wrwidget");
+    Assert.Equal(0, (await RunCli(
+        "pack", destination, "--configuration", "Release", "--output", archive)).Code);
+    using var package = ZipFile.OpenRead(archive);
+    var entries = package.Entries.Select(entry => entry.FullName)
+        .ToHashSet(StringComparer.Ordinal);
+    foreach (var required in new[]
+    {
+        "payload/media/adapter.html",
+        "payload/media/adapter-runtime.js",
+        "payload/media/sample.mp4",
+        "payload/media/horizon.mp4",
+    })
+        Assert.True(entries.Contains(required), $"Package omitted {required}.");
 }
 
 static async Task NewScaffoldsOutsideCheckout()

@@ -95,7 +95,7 @@ public static class CliApplication
         wrail - controller widget development tools
 
         Usage:
-          wrail new widget <Name> [--output <directory>] [--id <reverse.dns.id>] [--publisher <reverse.dns.id>] [--template <basic|data|media|multipage>]
+          wrail new widget <Name> [--output <directory>] [--id <reverse.dns.id>] [--publisher <reverse.dns.id>] [--template <basic|data|media|embedded-media|multipage>]
           wrail validate <widget-directory|manifest.json|style.wrss>
           wrail dev <widget-directory|widget.csproj|file.wrwidget> [--host <OverlayHost.exe>] [--configuration <name>] [--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>]
           wrail preview <widget-directory|widgetrail.scenarios.json> [--scenario <name>] [--pinned-layout <id|@all>] [--output <snapshot.json>] [--instance <id>]

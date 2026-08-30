@@ -1,0 +1,291 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>Local media plane</title>
+<style>
+html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#090b12}
+#media{width:100%;height:100%;display:block;object-fit:cover;background:#090b12}
+</style>
+<video id="media" playsinline preload="auto"></video>
+<script src="adapter-runtime.js"></script>
+<script>
+const media = document.querySelector("#media");
+const sources = new Map([
+  ["aurora-video-0", "sample.mp4"],
+  ["horizon-video-1", "horizon.mp4"],
+]);
+const sourceOrder = [...sources.keys()];
+let mediaKey = sourceOrder[0];
+let lastTick = -1;
+let pendingActivation = null;
+
+media.loop = true;
+media.muted = false;
+media.volume = 0.8;
+media.src = sources.get(mediaKey);
+media.load();
+
+function bounds() {
+  return {
+    x: 0,
+    y: 0,
+    width: document.documentElement.clientWidth,
+    height: document.documentElement.clientHeight,
+  };
+}
+
+function playbackState() {
+  if (media.error) return "error";
+  if (!media.paused) return "playing";
+  return media.currentTime > 0 ? "paused" : "ready";
+}
+
+function snapshot() {
+  return {
+    mediaKey,
+    playbackState: playbackState(),
+    positionSeconds: Number.isFinite(media.currentTime) ? media.currentTime : 0,
+    durationSeconds: Number.isFinite(media.duration) ? media.duration : 60,
+    volume: media.volume,
+    playbackRate: media.playbackRate,
+    muted: media.muted,
+    loop: media.loop,
+  };
+}
+
+function playbackFailure(error) {
+  const code = Number.isInteger(media.error?.code) ? media.error.code : 0;
+  const name = String(error?.name || "error")
+    .toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 24) || "error";
+  return `playback-failed-media-${code}-${name}`;
+}
+
+function loadMedia(key, signal) {
+  const source = sources.get(key);
+  if (!source) return Promise.reject(new DOMException("media-key-unsupported", "NotSupportedError"));
+  const retained = {
+    playbackRate: media.playbackRate,
+    muted: media.muted,
+    loop: media.loop,
+    volume: media.volume,
+  };
+  media.pause();
+  mediaKey = key;
+  lastTick = -1;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      media.removeEventListener("loadedmetadata", ready);
+      media.removeEventListener("error", failed);
+      media.removeEventListener("abort", failed);
+      signal?.removeEventListener("abort", cancelled);
+    };
+    const finish = callback => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+    const ready = () => finish(() => {
+      media.playbackRate = retained.playbackRate;
+      media.muted = retained.muted;
+      media.loop = retained.loop;
+      media.volume = retained.volume;
+      resolve();
+    });
+    const failed = () => finish(() => reject(
+      new DOMException("media-load-failed", "AbortError")));
+    const cancelled = () => finish(() => reject(
+      WidgetRailEmbeddedMediaAdapter.error("authority-replaced")));
+    media.addEventListener("loadedmetadata", ready, { once: true });
+    media.addEventListener("error", failed, { once: true });
+    media.addEventListener("abort", failed, { once: true });
+    signal?.addEventListener("abort", cancelled, { once: true });
+    if (signal?.aborted) {
+      cancelled();
+      return;
+    }
+    media.src = source;
+    media.load();
+    if (media.readyState >= 1) ready();
+  });
+}
+
+function seekTo(position, signal) {
+  const source = media.currentSrc || media.src;
+  const target = Math.max(0, Math.min(media.duration || 20, position));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      media.removeEventListener("seeked", complete);
+      media.removeEventListener("error", fail);
+      media.removeEventListener("abort", fail);
+      media.removeEventListener("emptied", fail);
+      signal?.removeEventListener("abort", cancelled);
+    };
+    const finish = callback => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+    const complete = () => finish(() =>
+      (media.currentSrc || media.src) === source
+        ? resolve()
+        : reject(new DOMException("source-replaced", "AbortError")));
+    const fail = () => finish(() => reject(
+      new DOMException("seek-failed", "AbortError")));
+    const cancelled = () => finish(() => reject(
+      WidgetRailEmbeddedMediaAdapter.error("authority-replaced")));
+    media.addEventListener("seeked", complete, { once: true });
+    media.addEventListener("error", fail, { once: true });
+    media.addEventListener("abort", fail, { once: true });
+    media.addEventListener("emptied", fail, { once: true });
+    signal?.addEventListener("abort", cancelled, { once: true });
+    if (signal?.aborted) {
+      cancelled();
+      return;
+    }
+    try {
+      media.currentTime = target;
+      if (!media.seeking && Math.abs(media.currentTime - target) <= 0.05) complete();
+    } catch (error) {
+      finish(() => reject(error));
+    }
+  });
+}
+
+async function playMedia(signal) {
+  try {
+    if (signal?.aborted) {
+      throw WidgetRailEmbeddedMediaAdapter.error("authority-replaced");
+    }
+    await media.play();
+    if (signal?.aborted) {
+      throw WidgetRailEmbeddedMediaAdapter.error("authority-replaced");
+    }
+    if (media.paused) throw new Error("inactive");
+    return { playbackState: "playing" };
+  } catch (error) {
+    media.pause();
+    throw error;
+  }
+}
+
+async function navigate(direction, signal) {
+  const retainedState = playbackState();
+  const index = sourceOrder.indexOf(mediaKey);
+  if (index < 0) throw new DOMException("media-key-unsupported", "NotSupportedError");
+  const nextKey = sourceOrder[(index + direction + sourceOrder.length) % sourceOrder.length];
+  await loadMedia(nextKey, signal);
+  if (retainedState === "playing") await playMedia(signal);
+  return {
+    mediaKey: nextKey,
+    playbackState: retainedState === "paused" ? "paused" : retainedState,
+  };
+}
+
+const adapter = WidgetRailEmbeddedMediaAdapter.create({
+  focus: "media-plane",
+  bounds,
+  snapshot,
+  errorCode(error, operation) {
+    return operation.command === "playback-rate"
+      ? "playback-rate-unavailable"
+      : playbackFailure(error);
+  },
+  driver: {
+    initialize() {
+      if (pendingActivation) {
+        pendingActivation.reject(WidgetRailEmbeddedMediaAdapter.error("authority-replaced"));
+        pendingActivation = null;
+      }
+    },
+    async load(command) {
+      await loadMedia(command.mediaKey, command.signal);
+      return { playbackState: "ready" };
+    },
+    async cue(command) {
+      await loadMedia(command.mediaKey, command.signal);
+      return { playbackState: "ready" };
+    },
+    activate(command) {
+      return {
+        completion: new Promise((resolve, reject) => {
+          pendingActivation = { resolve, reject, signal: command.signal };
+          const cancel = () => {
+            if (pendingActivation?.reject !== reject) return;
+            pendingActivation = null;
+            reject(WidgetRailEmbeddedMediaAdapter.error("authority-replaced"));
+          };
+          command.signal.addEventListener("abort", cancel, { once: true });
+          if (command.signal.aborted) cancel();
+        }),
+      };
+    },
+    pause() {
+      media.pause();
+      return { playbackState: "paused" };
+    },
+    async toggle(command) {
+      if (!media.paused) {
+        media.pause();
+        return { playbackState: "paused" };
+      }
+      return playMedia(command.signal);
+    },
+    async seek(command) {
+      await seekTo(command.positionSeconds, command.signal);
+    },
+    async seekBackward(command) {
+      await seekTo(media.currentTime - 2, command.signal);
+    },
+    async seekForward(command) {
+      await seekTo(media.currentTime + 2, command.signal);
+    },
+    setVolume(command) {
+      media.volume = command.volume;
+    },
+    setPlaybackRate(command) {
+      if (!Number.isFinite(command.playbackRate) ||
+          command.playbackRate < 0.5 || command.playbackRate > 2) {
+        throw WidgetRailEmbeddedMediaAdapter.error("playback-rate-invalid");
+      }
+      media.playbackRate = command.playbackRate;
+      if (media.playbackRate !== command.playbackRate) {
+        throw WidgetRailEmbeddedMediaAdapter.error("playback-rate-unavailable");
+      }
+    },
+    setMuted(command) {
+      if (typeof command.muted !== "boolean") {
+        throw WidgetRailEmbeddedMediaAdapter.error("muted-invalid");
+      }
+      media.muted = command.muted;
+    },
+    setLoop(command) {
+      if (typeof command.loop !== "boolean") {
+        throw WidgetRailEmbeddedMediaAdapter.error("loop-invalid");
+      }
+      media.loop = command.loop;
+    },
+    previous(command) {
+      return navigate(-1, command.signal);
+    },
+    next(command) {
+      return navigate(1, command.signal);
+    },
+  },
+});
+
+media.onclick = () => {
+  const activation = pendingActivation;
+  if (!activation) return;
+  pendingActivation = null;
+  void playMedia(activation.signal).then(activation.resolve, activation.reject);
+};
+media.addEventListener("timeupdate", () => {
+  const tick = Math.floor(media.currentTime);
+  if (tick !== lastTick && adapter.observe()) lastTick = tick;
+});
+media.addEventListener("ended", () => adapter.observe());
+</script>

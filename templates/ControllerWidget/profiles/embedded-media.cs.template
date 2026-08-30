@@ -1,0 +1,290 @@
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+
+namespace {{Publisher}}.{{WidgetName}};
+
+public sealed class {{WidgetName}} : Widget
+{
+    public const string SurfaceId = "media.primary";
+    public const double SeekStepSeconds = 5;
+    public const bool EnableCompactPinnedPresentation = true;
+    private static readonly MediaSource[] Sources =
+    [
+        new("aurora-video-0", "Aurora Signal"),
+        new("horizon-video-1", "Horizon Grid"),
+    ];
+
+    private readonly object _gate = new();
+    private long _commandSequence;
+    private long _eventSequence;
+    private int _sourceIndex;
+    private string _mediaKey = Sources[0].Key;
+    private EmbeddedMediaPlaybackState _playbackState = EmbeddedMediaPlaybackState.Ready;
+    private double _position;
+    private double _duration = 60;
+    private double _volume = 1;
+    private EmbeddedMediaPlaybackCommand? _pendingCommand;
+    private string? _errorCode;
+    private bool _sessionResident;
+    private bool _showPlayer = true;
+
+    public override WidgetView Render()
+    {
+        lock (_gate)
+        {
+            var media = CreateSurface(retainSessionWhenHidden: !_showPlayer && _sessionResident);
+            if (!_showPlayer)
+            {
+                return new WidgetView(
+                    UI.Stack("media.library.root",
+                        UI.Text("Media library", "media.library.title"),
+                        UI.Text(_sessionResident
+                            ? $"{Sources[_sourceIndex].Title} remains resident"
+                            : "Open the player to begin",
+                            "media.library.status"),
+                        UI.Button("Return to player", "media.route.player", "media.library.open"))
+                        .InputScope("media.library.root"),
+                    "media.library.open", ActiveInputScopeId: "media.library.root")
+                {
+                    EmbeddedMedia = _sessionResident ? media : null,
+                };
+            }
+
+            var pending = _pendingCommand;
+            var playing = _playbackState == EmbeddedMediaPlaybackState.Playing;
+            var unavailable = !_sessionResident && pending is null ||
+                              _playbackState == EmbeddedMediaPlaybackState.Error;
+            var previous = UI.Button("", "host.embeddedMedia.previous", "media.previous")
+                .Icon(WidgetGlyph.Previous, "Previous source")
+                .Disabled(unavailable).Busy(pending?.Kind == EmbeddedMediaPlaybackCommandKind.Load);
+            var play = UI.Button("", "host.embeddedMedia.togglePlayback", "media.toggle")
+                .Icon(playing ? WidgetGlyph.Pause : WidgetGlyph.Play,
+                    playing ? "Pause media" : "Play media")
+                .Disabled(unavailable).Busy(pending?.Kind is EmbeddedMediaPlaybackCommandKind.Play or
+                    EmbeddedMediaPlaybackCommandKind.Pause);
+            var next = UI.Button("", "host.embeddedMedia.next", "media.next")
+                .Icon(WidgetGlyph.Next, "Next source")
+                .Disabled(unavailable).Busy(pending?.Kind == EmbeddedMediaPlaybackCommandKind.Load);
+            var timeline = UI.Slider(_position, 0, Math.Max(1, _duration), SeekStepSeconds,
+                    "host.embeddedMedia.seek", "media.timeline", "Playback position",
+                    $"{FormatTime(_position)} of {FormatTime(_duration)}")
+                .RequireControllerActivation()
+                .Disabled(unavailable).Busy(pending?.Kind == EmbeddedMediaPlaybackCommandKind.Seek);
+            var volume = UI.Slider(_volume, 0, 1, 0.05,
+                    "media.volume", "media.volume.slider", "Playback volume",
+                    $"{Math.Round(_volume * 100)} percent")
+                .RequireControllerActivation()
+                .Disabled(unavailable).Busy(pending?.Kind == EmbeddedMediaPlaybackCommandKind.SetVolume);
+            var status = _errorCode is not null
+                ? $"Playback error: {_errorCode}"
+                : _playbackState switch
+                {
+                    EmbeddedMediaPlaybackState.Playing => "Playing",
+                    EmbeddedMediaPlaybackState.Paused => "Paused",
+                    EmbeddedMediaPlaybackState.Loading => "Loading",
+                    _ => _sessionResident ? "Ready" : "Starting player",
+                };
+            return new WidgetView(
+                UI.Stack("media.root",
+                    UI.Row("media.header",
+                        UI.Stack("media.heading",
+                            UI.Text(Sources[_sourceIndex].Title, "media.title"),
+                            UI.Text(status, "media.status")),
+                        UI.Button("Library", "media.route.library", "media.library")),
+                    UI.MediaViewport(media, "media.viewport"),
+                    timeline,
+                    UI.Row("media.transport", previous, play, next),
+                    UI.Row("media.volume.row", UI.Text("Volume", "media.volume.label"), volume))
+                    .InputScope("media.root"),
+                "media.toggle", ActiveInputScopeId: "media.root",
+                Surface: new WidgetSurfaceHints
+                {
+                    Mode = WidgetSurfaceMode.Standard,
+                    MinimumWidth = 440, MinimumHeight = 410,
+                    PreferredWidth = 760, PreferredHeight = 610,
+                })
+            {
+                EmbeddedMedia = media,
+            };
+        }
+    }
+
+    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
+    {
+        activeLifetime.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (!_sessionResident && _pendingCommand is null)
+                QueueCommand(EmbeddedMediaPlaybackCommandKind.Load, _mediaKey);
+        }
+        return ValueTask.CompletedTask;
+    }
+
+    public override ValueTask OnActionAsync(
+        WidgetActionEvent action, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (action.ActionId == "media.route.library")
+            {
+                _showPlayer = false;
+                Invalidate();
+                return ValueTask.CompletedTask;
+            }
+            if (action.ActionId == "media.route.player")
+            {
+                _showPlayer = true;
+                if (!_sessionResident && _pendingCommand is null)
+                    QueueCommand(EmbeddedMediaPlaybackCommandKind.Load, _mediaKey);
+                Invalidate();
+                return ValueTask.CompletedTask;
+            }
+            if (_pendingCommand is not null) return ValueTask.CompletedTask;
+
+            switch (action.ActionId)
+            {
+                case "host.embeddedMedia.togglePlayback":
+                    QueueCommand(
+                        _playbackState == EmbeddedMediaPlaybackState.Playing
+                            ? EmbeddedMediaPlaybackCommandKind.Pause
+                            : EmbeddedMediaPlaybackCommandKind.Play,
+                        _mediaKey);
+                    break;
+                case "host.embeddedMedia.seekBackward":
+                    QueueCommand(EmbeddedMediaPlaybackCommandKind.Seek, _mediaKey,
+                        Math.Max(0, _position - SeekStepSeconds));
+                    break;
+                case "host.embeddedMedia.seekForward":
+                    QueueCommand(EmbeddedMediaPlaybackCommandKind.Seek, _mediaKey,
+                        Math.Min(_duration, _position + SeekStepSeconds));
+                    break;
+                case "host.embeddedMedia.seek" when action.RequestedValue is { } requested &&
+                                                    double.IsFinite(requested):
+                    QueueCommand(EmbeddedMediaPlaybackCommandKind.Seek, _mediaKey,
+                        Math.Clamp(requested, 0, Math.Max(0, _duration)));
+                    break;
+                case "media.volume" when action.RequestedValue is { } requested &&
+                                         double.IsFinite(requested):
+                    QueueCommand(EmbeddedMediaPlaybackCommandKind.SetVolume, _mediaKey,
+                        volume: Math.Clamp(requested, 0, 1));
+                    break;
+                case "host.embeddedMedia.previous":
+                    QueueSource(-1);
+                    break;
+                case "host.embeddedMedia.next":
+                    QueueSource(1);
+                    break;
+            }
+        }
+        return ValueTask.CompletedTask;
+    }
+
+    public override ValueTask OnEmbeddedMediaPlaybackEventAsync(
+        EmbeddedMediaPlaybackEvent playbackEvent,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!string.Equals(playbackEvent.SurfaceId, SurfaceId, StringComparison.Ordinal))
+            return ValueTask.CompletedTask;
+        lock (_gate)
+        {
+            if (playbackEvent.Sequence <= _eventSequence) return ValueTask.CompletedTask;
+            var observedIndex = Array.FindIndex(Sources, source =>
+                string.Equals(source.Key, playbackEvent.MediaKey, StringComparison.Ordinal));
+            if (observedIndex < 0) return ValueTask.CompletedTask;
+            if (playbackEvent.CommandSequence > 0 &&
+                (_pendingCommand is not { } pending ||
+                 pending.Sequence != playbackEvent.CommandSequence ||
+                 !string.Equals(pending.MediaKey, playbackEvent.MediaKey, StringComparison.Ordinal)))
+                return ValueTask.CompletedTask;
+
+            var wasResident = _sessionResident;
+            _eventSequence = playbackEvent.Sequence;
+            _sourceIndex = observedIndex;
+            _mediaKey = Sources[observedIndex].Key;
+            _playbackState = playbackEvent.State;
+            _position = playbackEvent.PositionSeconds;
+            _duration = playbackEvent.DurationSeconds;
+            _volume = playbackEvent.Volume;
+            _errorCode = playbackEvent.ErrorCode;
+            _sessionResident = playbackEvent.State != EmbeddedMediaPlaybackState.Error || wasResident;
+            if (_pendingCommand is { } current &&
+                playbackEvent.CommandSequence == current.Sequence)
+                _pendingCommand = null;
+            Invalidate();
+        }
+        return ValueTask.CompletedTask;
+    }
+
+    private EmbeddedMediaSurface CreateSurface(bool retainSessionWhenHidden) => new()
+    {
+        Id = SurfaceId,
+        AccessibleName = "Two-source embedded media player",
+        EntryAsset = "payload/media/adapter.html",
+        Surface = new WidgetSurfaceHints
+        {
+            MinimumWidth = 320, MinimumHeight = 180,
+            PreferredWidth = 640, PreferredHeight = 360,
+        },
+        AspectRatio = 16.0 / 9.0,
+        Resources =
+        [
+            new() { Path = "payload/media/adapter.html", ContentType = "text/html" },
+            new() { Path = "payload/media/adapter-runtime.js", ContentType = "application/javascript" },
+            new() { Path = "payload/media/sample.mp4", ContentType = "video/mp4" },
+            new() { Path = "payload/media/horizon.mp4", ContentType = "video/mp4" },
+        ],
+        Commands =
+        [
+            EmbeddedMediaCommand.Activate,
+            EmbeddedMediaCommand.TogglePlayback,
+            EmbeddedMediaCommand.Previous,
+            EmbeddedMediaCommand.Next,
+            EmbeddedMediaCommand.SeekBackward,
+            EmbeddedMediaCommand.SeekForward,
+        ],
+        CompactPinnedPresentation = EnableCompactPinnedPresentation,
+        MediaSeekStepSeconds = SeekStepSeconds,
+        RetainSessionWhenHidden = retainSessionWhenHidden,
+        PendingCommand = _pendingCommand,
+    };
+
+    private void QueueSource(int delta)
+    {
+        var target = (_sourceIndex + Sources.Length + delta) % Sources.Length;
+        QueueCommand(EmbeddedMediaPlaybackCommandKind.Load, Sources[target].Key);
+    }
+
+    private void QueueCommand(
+        EmbeddedMediaPlaybackCommandKind kind,
+        string mediaKey,
+        double? position = null,
+        double? volume = null)
+    {
+        _errorCode = null;
+        _pendingCommand = new EmbeddedMediaPlaybackCommand
+        {
+            Sequence = ++_commandSequence,
+            Kind = kind,
+            MediaKey = mediaKey,
+            PositionSeconds = position,
+            Volume = volume,
+        };
+        Invalidate();
+    }
+
+    private static string FormatTime(double seconds)
+    {
+        var value = Math.Max(0, (int)Math.Round(seconds));
+        return $"{value / 60}:{value % 60:00}";
+    }
+
+    private sealed record MediaSource(string Key, string Title);
+}
+
+public static class Scenarios
+{
+    public static WidgetScenarioDefinition Ready() => new(
+        new {{WidgetName}}(), new WidgetTestHostServicesBuilder().Build());
+}

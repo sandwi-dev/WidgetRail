@@ -53,6 +53,25 @@
       ]
     },
     {
+      "id": "embedded-media",
+      "name": "Embedded media player",
+      "description": "Two sealed sources, native full-player controls, retained-hidden routes, and optional compact pinning.",
+      "files": [
+        { "source": "WidgetName.embedded-media.csproj.template", "destination": "{{WidgetName}}.csproj", "kind": "text" },
+        { "source": "manifest.embedded-media.json.template", "destination": "manifest.json", "kind": "text" },
+        { "source": "NuGet.Config.template", "destination": "NuGet.Config", "kind": "text" },
+        { "source": "README.embedded-media.md.template", "destination": "README.md", "kind": "text" },
+        { "source": "profiles/embedded-media.cs.template", "destination": "src/{{WidgetName}}.cs", "kind": "text" },
+        { "source": "tests/WidgetName.Tests.csproj.template", "destination": "tests/{{WidgetName}}.Tests.csproj", "kind": "text" },
+        { "source": "tests/EmbeddedMediaScenarioTests.cs.template", "destination": "tests/ScenarioTests.cs", "kind": "text" },
+        { "source": "widgetrail.scenarios.json.template", "destination": "widgetrail.scenarios.json", "kind": "text" },
+        { "source": "styles/embedded-media.wrss", "destination": "styles/default.wrss", "kind": "binary" },
+        { "source": "embedded-media/adapter.html", "destination": "media/adapter.html", "kind": "binary" },
+        { "source": "embedded-media/sample.mp4", "destination": "media/sample.mp4", "kind": "binary" },
+        { "source": "embedded-media/horizon.mp4", "destination": "media/horizon.mp4", "kind": "binary" }
+      ]
+    },
+    {
       "id": "multipage",
       "name": "Responsive multipage widget",
       "description": "Bounded route navigation composed through one responsive navigation shell.",

@@ -28,6 +28,8 @@
       <Link>templates\ControllerWidget\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <EmbeddedResource Include="..\..\src\WidgetSdk\EmbeddedMediaAdapterRuntime.js"
+                      LogicalName="WidgetRail.WrailCli.EmbeddedMediaAdapterRuntime.js" />
   </ItemGroup>
   <Target Name="RemoveRetiredControllerWidgetTemplateOutput"
           AfterTargets="CopyFilesToOutputDirectory">

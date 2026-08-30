@@ -81,7 +81,7 @@ MSTest scenario proves activation, a state-changing action, stable focus, and
 the same semantic scenario exported for the snapshot used below. This local
 dependency bundle is an offline scaffold contract, not a public NuGet release
 or a publisher-trust claim. The bundled version-2 inventory declares the closed
-`basic`, `data`, `media`, and `multipage` profiles plus every bounded text or
+`basic`, `data`, `media`, `embedded-media`, and `multipage` profiles plus every bounded text or
 binary input. `wrail new` builds and validates the
 complete result in a private sibling staging directory, then publishes it with
 one rename. The requested output path must not already exist; malformed or
@@ -102,6 +102,12 @@ queue loading, stable controller focus/scopes, and deterministic lifecycle
 tests. Use `wrail preview ... --pinned-layout media.compact`,
 `media.detailed`, or `@all` to inspect the real validated authored trees without
 opening the overlay.
+
+Choose `--template embedded-media` for a provider-neutral two-source native
+player, retained-hidden route behavior, and optional host-owned compact pinning.
+The generated README is the lifecycle cookbook; the public
+[embedded-media template guide](embedded-media-widget.md) explains runtime
+staging, command ownership, exact terminals, replacement, and shutdown.
 
 ### Prove the workflow in an isolated catalog
 

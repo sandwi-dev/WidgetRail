@@ -1,0 +1,84 @@
+# {{WidgetName}}
+
+`{{WidgetId}}` is the provider-neutral two-source WidgetRail embedded-media
+starter. It keeps native controller controls outside one host-owned media plane,
+uses the public compact pinned presentation, and has no provider, network,
+credential, DOM, window, or browser authority.
+
+## Build and verify
+
+```powershell
+dotnet build .\{{WidgetName}}.csproj --configuration Release
+dotnet test --project .\tests\{{WidgetName}}.Tests.csproj `
+  --configuration Release --no-ansi --progress off --output Detailed `
+  --minimum-expected-tests 4
+wrail preview . --scenario ready
+wrail validate .
+wrail pack . --configuration Release --output .\{{WidgetName}}-0.1.0.wrwidget
+```
+
+The generated tests use deterministic playback events: no WebView, provider,
+account, network, or credential is involved. WidgetRail's own template gate also
+runs the sealed adapter through the provider-neutral adapter-conformance harness.
+
+## Runtime and resource staging are opt-in
+
+`EmbeddedMediaAdapterRuntime.js` is the canonical SDK runtime. The host does not
+inject it. This project explicitly takes it from the WidgetSdk NuGet
+`contentFiles/any/any/WidgetRail` location and stages it as
+`media/adapter-runtime.js`; `adapter.html` loads that exact relative file before
+calling `WidgetRailEmbeddedMediaAdapter.create`. Keep the same staged path in
+`EmbeddedMediaSurface.Resources` with `application/javascript`.
+
+The two MP4s are sealed, package-local example sources. Replace both the files
+and their bounded key-to-path map together. Do not accept arbitrary paths or
+URLs from actions or playback events.
+
+## Command matrix
+
+| Native control | Declared adapter message | Package command |
+| --- | --- | --- |
+| Play after user activation | `arm-activate` / `activate` | `Play` |
+| Play or pause | `toggle` | `Play` or `Pause` |
+| Timeline, LT, or RT seek | `seek`, `seek-back`, `seek-forward` | `Seek` |
+| Volume slider | `volume` | `SetVolume` |
+| Previous or next source | `previous`, `next` | `Load` |
+
+`SeekStepSeconds` is package policy. Change it once; the normal buttons and the
+host-owned compact pinned player use the same declared step. Add a command only
+when the surface declaration, native action, adapter hook, and conformance case
+all agree.
+
+## Lifecycle cookbook
+
+1. **First activation:** queue exactly one `Load` for the first bounded media
+   key. The runtime waits for document initialization and owns command
+   correlation; the widget does not poll or resend.
+2. **One command in flight:** retain one `PendingCommand`. Every initiating
+   control derives Busy from its exact kind. Ignore additional actions until the
+   exact terminal event clears it; there is no backlog.
+3. **Terminal admission:** accept a correlated terminal only when surface ID,
+   monotonic event sequence, command sequence, and bounded media key all match.
+   Unsolicited observations use command sequence zero and may update current
+   playback state, but never acknowledge a pending command.
+4. **Route hide/show:** after a session is resident, the library route publishes
+   the same surface with `RetainSessionWhenHidden = true` and no `MediaViewport`.
+   Returning publishes the exact viewport without `Load`, `Cue`, or recreation.
+   Before residency, the library route declares no media surface.
+5. **Provider error:** an exact error terminal clears its command and exposes a
+   bounded error code. A prior resident session remains represented; an initial
+   load failure does not invent residency or fake playback.
+6. **Replacement:** changing the surface identity, entry document, resource
+   declaration, or controller generation retires the old document and all of
+   its pending work. The shared runtime aborts driver hooks; package code must
+   reject late events by current authority.
+7. **Shutdown:** widget removal/restart, adapter failure, eviction, and host
+   shutdown are terminal boundaries. Do not promise restoration unless the
+   package deliberately persists provider-neutral durable state. Never persist
+   a pending command or browser/controller identity.
+
+The optional compact presentation is enabled by
+`EnableCompactPinnedPresentation`. Setting it to `false` removes only that host
+projection; the ordinary native full player and its command authority remain.
+The pinned surface owns X/LT/RT/B/View behavior through the declared generic
+media contract—do not author a second pinned control tree.

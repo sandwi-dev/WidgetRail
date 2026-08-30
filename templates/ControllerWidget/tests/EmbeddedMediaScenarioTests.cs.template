@@ -1,0 +1,164 @@
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+
+namespace {{Publisher}}.{{WidgetName}}.Tests;
+
+[TestClass]
+public sealed class EmbeddedMediaScenarioTests
+{
+    [TestMethod]
+    public async Task PlayerDeclaresTwoSourcesRuntimeCommandsAndCompactPresentation()
+    {
+        var widget = await Activated();
+        var snapshot = widget.RenderSnapshot("embedded.template", 1);
+        var media = snapshot.EmbeddedMedia!;
+
+        Assert.AreEqual({{WidgetName}}.SurfaceId, media.Id);
+        Assert.AreEqual("media.primary", snapshot.Root.Children.Single(
+            child => child.Kind == ViewNodeKind.MediaViewport).MediaSurfaceId);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "payload/media/adapter.html",
+                "payload/media/adapter-runtime.js",
+                "payload/media/sample.mp4",
+                "payload/media/horizon.mp4",
+            },
+            media.Resources.Select(resource => resource.Path).ToArray());
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                EmbeddedMediaCommand.Activate,
+                EmbeddedMediaCommand.TogglePlayback,
+                EmbeddedMediaCommand.Previous,
+                EmbeddedMediaCommand.Next,
+                EmbeddedMediaCommand.SeekBackward,
+                EmbeddedMediaCommand.SeekForward,
+            }, media.Commands.ToArray());
+        Assert.IsTrue(media.CompactPinnedPresentation);
+        Assert.AreEqual({{WidgetName}}.SeekStepSeconds, media.MediaSeekStepSeconds);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+    }
+
+    [TestMethod]
+    public async Task ExactTerminalOwnsPendingStateAndSourceNavigation()
+    {
+        var widget = await Activated();
+        var load = widget.Render().EmbeddedMedia!.PendingCommand!;
+        Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Load, load.Kind);
+        Assert.AreEqual("aurora-video-0", load.MediaKey);
+
+        await widget.OnEmbeddedMediaPlaybackEventAsync(Event(
+            sequence: 1, commandSequence: load.Sequence + 1,
+            mediaKey: load.MediaKey, EmbeddedMediaPlaybackState.Ready));
+        Assert.AreEqual(load, widget.Render().EmbeddedMedia!.PendingCommand);
+
+        await widget.OnEmbeddedMediaPlaybackEventAsync(Event(
+            sequence: 1, commandSequence: load.Sequence,
+            mediaKey: load.MediaKey, EmbeddedMediaPlaybackState.Paused));
+        Assert.IsNull(widget.Render().EmbeddedMedia!.PendingCommand);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "host.embeddedMedia.next", "media.next"));
+        var next = widget.Render().EmbeddedMedia!.PendingCommand!;
+        Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Load, next.Kind);
+        Assert.AreEqual("horizon-video-1", next.MediaKey);
+        await widget.OnEmbeddedMediaPlaybackEventAsync(Event(
+            sequence: 2, commandSequence: next.Sequence,
+            mediaKey: next.MediaKey, EmbeddedMediaPlaybackState.Playing));
+        Assert.IsNull(widget.Render().EmbeddedMedia!.PendingCommand);
+        Assert.AreEqual("Horizon Grid", Find(widget.RenderSnapshot(
+            "embedded.template", 2).Root, "media.title")?.Text);
+    }
+
+    [TestMethod]
+    public async Task RetainedHiddenRouteDetachesViewportAndReturnDoesNotReload()
+    {
+        var widget = await Activated();
+        var load = widget.Render().EmbeddedMedia!.PendingCommand!;
+        await widget.OnEmbeddedMediaPlaybackEventAsync(Event(
+            sequence: 1, commandSequence: load.Sequence,
+            mediaKey: load.MediaKey, EmbeddedMediaPlaybackState.Playing,
+            position: 18));
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "media.route.library", "media.library"));
+        var hidden = widget.RenderSnapshot("embedded.template", 3);
+        Assert.IsTrue(hidden.EmbeddedMedia!.RetainSessionWhenHidden);
+        Assert.IsFalse(ContainsKind(hidden.Root, ViewNodeKind.MediaViewport));
+        Assert.IsNull(hidden.EmbeddedMedia.PendingCommand);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(hidden).Count);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "media.route.player", "media.library.open"));
+        var returned = widget.RenderSnapshot("embedded.template", 4);
+        Assert.IsFalse(returned.EmbeddedMedia!.RetainSessionWhenHidden);
+        Assert.IsTrue(ContainsKind(returned.Root, ViewNodeKind.MediaViewport));
+        Assert.IsNull(returned.EmbeddedMedia.PendingCommand);
+        Assert.AreEqual(18D, Find(returned.Root, "media.timeline")?.Value);
+    }
+
+    [TestMethod]
+    public async Task ProviderErrorClearsExactPendingAndKeepsLastResidentSession()
+    {
+        var widget = await Activated();
+        var load = widget.Render().EmbeddedMedia!.PendingCommand!;
+        await widget.OnEmbeddedMediaPlaybackEventAsync(Event(
+            sequence: 1, commandSequence: load.Sequence,
+            mediaKey: load.MediaKey, EmbeddedMediaPlaybackState.Paused));
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "host.embeddedMedia.seekForward", "media.next"));
+        var seek = widget.Render().EmbeddedMedia!.PendingCommand!;
+        await widget.OnEmbeddedMediaPlaybackEventAsync(Event(
+            sequence: 2, commandSequence: seek.Sequence,
+            mediaKey: seek.MediaKey, EmbeddedMediaPlaybackState.Error,
+            errorCode: "media-unavailable"));
+
+        var errored = widget.RenderSnapshot("embedded.template", 5);
+        Assert.IsNull(errored.EmbeddedMedia!.PendingCommand);
+        StringAssert.Contains(Find(errored.Root, "media.status")?.Text,
+            "media-unavailable");
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "media.route.library", "media.library"));
+        Assert.IsTrue(widget.Render().EmbeddedMedia!.RetainSessionWhenHidden);
+    }
+
+    private static async Task<{{WidgetName}}> Activated()
+    {
+        var widget = new {{WidgetName}}();
+        await WidgetTestHost.InitializeAsync(widget);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+        return widget;
+    }
+
+    private static EmbeddedMediaPlaybackEvent Event(
+        long sequence,
+        long commandSequence,
+        string mediaKey,
+        EmbeddedMediaPlaybackState state,
+        double position = 0,
+        string? errorCode = null) => new()
+    {
+        SurfaceId = {{WidgetName}}.SurfaceId,
+        Sequence = sequence,
+        CommandSequence = commandSequence,
+        MediaKey = mediaKey,
+        State = state,
+        PositionSeconds = position,
+        DurationSeconds = 60,
+        Volume = 1,
+        ErrorCode = errorCode,
+    };
+
+    private static bool ContainsKind(ViewNode node, ViewNodeKind kind) =>
+        node.Kind == kind || node.Children.Any(child => ContainsKind(child, kind));
+
+    private static ViewNode? Find(ViewNode node, string id)
+    {
+        if (node.Id == id) return node;
+        foreach (var child in node.Children)
+            if (Find(child, id) is { } match) return match;
+        return null;
+    }
+}

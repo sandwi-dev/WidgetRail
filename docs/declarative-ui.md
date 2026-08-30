@@ -308,6 +308,12 @@ or duplicate command IDs, generations, or event sequencing. Every hook receives
 the operation's abort signal so driver-owned waits retire when initialization
 authority changes.
 
+Generate the provider-neutral two-source starter and follow its complete route,
+pending-command, replacement, and shutdown model in the
+[embedded-media lifecycle cookbook](embedded-media-widget.md). The starter
+uses this exact opt-in runtime and the WIDGE-66 conformance contract; it does not
+add another lifecycle or correlation implementation.
+
 Protocol v26 adds `AllowedFrameDomainFamilies` beside the existing exact
 `AllowedFrameOrigins`. Each family is a lowercase ASCII registrable DNS domain
 (for example, `example.test` when that suffix is registrable), never a URL or a

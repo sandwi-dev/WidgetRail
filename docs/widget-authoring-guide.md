@@ -226,10 +226,11 @@ one local artifact: keep the executable, sibling runtime/assembly files, and
 `templates/ControllerWidget` together. A copied distribution can scaffold,
 build, validate, and package a basic widget from an unrelated repository with
 no source-tree project reference or template override. Choose the `basic`,
-`data`, `media`, or `multipage`
+`data`, `media`, `embedded-media`, or `multipage`
 profile with `--template`. They respectively demonstrate local lifecycle state,
-`WidgetResource` loading/error/retry, `WidgetOptimisticCommand` progress and
-rollback, and `WidgetNavigator` plus one responsive `NavigationShell` tree.
+`WidgetResource` loading/error/retry, package-authored pinned layouts, the
+provider-neutral embedded-media lifecycle, and `WidgetNavigator` plus one
+responsive `NavigationShell` tree.
 Each sibling `MSTest.Sdk` 4.3.2 test executes the same credential-free semantic
 scenario declared for isolated `wrail preview`. If the CLI installation lacks its SDK assemblies or the
 bundled template, scaffolding fails before the target directory is written.
@@ -248,6 +249,12 @@ Contributors changing public SDK signatures must use the checked-in
 [Widget SDK compatibility workflow](widget-sdk-compatibility.md); additions,
 removals, and signature changes all require an intentional baseline diff, and
 breaking pre-release resets do not require retaining obsolete APIs.
+
+For a two-source native player, generate `--template embedded-media` and follow
+the [embedded-media lifecycle cookbook](embedded-media-widget.md). It stages the
+canonical runtime explicitly, declares one full player plus optional compact
+pinning, and demonstrates retained-hidden route changes and exact terminal
+correlation without provider credentials or native-host source.
 
 Omitting `--template` selects `basic`; an unknown profile is rejected before
 staging and leaves no target. Every generated widget project builds from its

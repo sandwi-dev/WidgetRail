@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\\..\\tools\\WrailCli\\WrailCli.csproj" />
+    <ProjectReference Include="..\\EmbeddedMediaAdapterConformance\\EmbeddedMediaAdapterConformance.csproj" />
   </ItemGroup>
   <Target Name="RemoveRetiredControllerWidgetTemplateOutput"
           AfterTargets="CopyFilesToOutputDirectory">

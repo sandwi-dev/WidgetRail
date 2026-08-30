@@ -17,6 +17,13 @@ internal sealed record LocalWidgetSdkBundle(
 internal static class LocalWidgetSdkPackage
 {
     private const int MaximumAssemblyBytes = 16 * 1024 * 1024;
+    private const int MaximumAdapterRuntimeBytes = 256 * 1024;
+    internal const string AdapterRuntimePackagePath =
+        "contentFiles/any/any/WidgetRail/EmbeddedMediaAdapterRuntime.js";
+    internal const string AdapterRuntimeContentFilesContract =
+        "any/any/WidgetRail/EmbeddedMediaAdapterRuntime.js|None|false|false";
+    private const string AdapterRuntimeResourceName =
+        "WidgetRail.WrailCli.EmbeddedMediaAdapterRuntime.js";
     private static readonly DateTimeOffset ReproducibleTimestamp =
         new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -28,10 +35,13 @@ internal static class LocalWidgetSdkPackage
         var applicationRuntime = ReadAssembly(
             typeof(WidgetApplicationBootstrap).Assembly.Location,
             "WidgetApplicationRuntime.dll");
+        var adapterRuntime = ReadAdapterRuntime();
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(sdk);
         hash.AppendData(protocol);
         hash.AppendData(applicationRuntime);
+        hash.AppendData(adapterRuntime);
+        hash.AppendData(Encoding.UTF8.GetBytes(AdapterRuntimeContentFilesContract));
         var suffix = Convert.ToHexString(hash.GetHashAndReset())[..16]
             .ToLowerInvariant();
         var contract = WidgetSdkReleaseContract.Current;
@@ -46,12 +56,29 @@ internal static class LocalWidgetSdkPackage
             WriteBytes(archive, "lib/net8.0/WidgetProtocol.dll", protocol);
             WriteBytes(archive, "lib/net8.0/WidgetApplicationRuntime.dll",
                 applicationRuntime);
+            WriteBytes(archive, AdapterRuntimePackagePath, adapterRuntime);
         }
         return new(
             contract.PackageId,
             version,
             $"{contract.PackageId}.{version}.nupkg",
             output.ToArray());
+    }
+
+    private static byte[] ReadAdapterRuntime()
+    {
+        using var stream = typeof(LocalWidgetSdkPackage).Assembly
+            .GetManifestResourceStream(AdapterRuntimeResourceName)
+            ?? throw new CliUsageException(
+                "The bundled embedded-media adapter runtime required for offline scaffolding " +
+                "is unavailable. Rebuild or reinstall wrail; no scaffold files were created.");
+        if (stream.Length is <= 0 or > MaximumAdapterRuntimeBytes)
+            throw new CliUsageException(
+                "The bundled embedded-media adapter runtime is outside the supported size bound. " +
+                "Rebuild or reinstall wrail; no scaffold files were created.");
+        using var output = new MemoryStream((int)stream.Length);
+        stream.CopyTo(output);
+        return output.ToArray();
     }
 
     private static byte[] ReadAssembly(string path, string expectedName)
@@ -120,6 +147,12 @@ internal static class LocalWidgetSdkPackage
             <packageTypes>
               <packageType name="Dependency" />
             </packageTypes>
+            <contentFiles>
+              <files include="any/any/WidgetRail/EmbeddedMediaAdapterRuntime.js"
+                     buildAction="None"
+                     copyToOutput="false"
+                     flatten="false" />
+            </contentFiles>
           </metadata>
         </package>
         """;

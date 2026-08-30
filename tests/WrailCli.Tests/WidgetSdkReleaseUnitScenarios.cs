@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using WidgetRail.WrailCli;
 using WidgetRail.WidgetSdk;
@@ -31,8 +32,31 @@ internal static class WidgetSdkReleaseUnitScenarios
         var nuspec = reader.ReadToEnd();
         Contains($"<id>{contract.PackageId}</id>", nuspec);
         Contains($"<version>{first.Version}</version>", nuspec);
+        Contains("<files include=\"any/any/WidgetRail/EmbeddedMediaAdapterRuntime.js\"", nuspec);
+        Contains("buildAction=\"None\"", nuspec);
+        Contains("copyToOutput=\"false\"", nuspec);
+        Contains("flatten=\"false\"", nuspec);
         True(!nuspec.Contains(Environment.CurrentDirectory, StringComparison.OrdinalIgnoreCase),
             "Local SDK package metadata leaked the checkout path.");
+
+        var adapterRuntime = ReadEntry(archive, LocalWidgetSdkPackage.AdapterRuntimePackagePath);
+        True(adapterRuntime.Length > 0,
+            "Local SDK package emitted an empty embedded-media adapter runtime.");
+        Contains("WidgetRailEmbeddedMediaAdapter", Encoding.UTF8.GetString(adapterRuntime));
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (var path in new[]
+                 {
+                     "lib/net8.0/WidgetSdk.dll",
+                     "lib/net8.0/WidgetProtocol.dll",
+                     "lib/net8.0/WidgetApplicationRuntime.dll",
+                 })
+            hash.AppendData(ReadEntry(archive, path));
+        hash.AppendData(adapterRuntime);
+        hash.AppendData(Encoding.UTF8.GetBytes(
+            LocalWidgetSdkPackage.AdapterRuntimeContentFilesContract));
+        var expectedSuffix = Convert.ToHexString(hash.GetHashAndReset())[..16]
+            .ToLowerInvariant();
+        Equal(contract.LocalPackageVersion(expectedSuffix), first.Version);
 
         foreach (var assembly in new[] { typeof(Widget).Assembly, typeof(CliApplication).Assembly })
         {
@@ -43,6 +67,16 @@ internal static class WidgetSdkReleaseUnitScenarios
             Equal(contract.TemplateVersion.ToString(), metadata["ControllerWidgetTemplateVersion"]);
         }
         return Task.CompletedTask;
+    }
+
+    private static byte[] ReadEntry(ZipArchive archive, string path)
+    {
+        var entry = archive.GetEntry(path)
+            ?? throw new InvalidOperationException($"Local SDK package omitted '{path}'.");
+        using var stream = entry.Open();
+        using var output = new MemoryStream();
+        stream.CopyTo(output);
+        return output.ToArray();
     }
 
     private static void Contains(string expected, string actual)
