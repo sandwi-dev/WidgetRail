@@ -13,9 +13,4 @@
     <ProjectReference Include="..\..\..\src\WidgetApplicationRuntime\WidgetApplicationRuntime.csproj" />
     <ProjectReference Include="..\PlayniteLibraryWidget.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="..\..\..\src\WindowsAppLibraryProvider\*.cs"
-             Exclude="..\..\..\src\WindowsAppLibraryProvider\AssemblyInfo.cs"
-             Link="Backend\%(Filename)%(Extension)" />
-  </ItemGroup>
 </Project>

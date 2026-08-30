@@ -1,22 +1,17 @@
-using WidgetRail.PlatformBroker;
+using System.Security.Cryptography;
+using System.Text;
 using WidgetRail.WidgetSdk;
-using WidgetRail.WindowsAppLibraryProvider;
-using PackageAppLibraryProvider =
-    WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider;
 
 namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal sealed class PlayniteLibraryApplicationService(
-    PackageAppLibraryProvider provider,
-    PlayniteLibrarySavedIdIssuer savedIds,
+    IPlayniteLibraryBridgeClient client,
     PlayniteLibraryStateFileStore state) : IPlayniteLibraryApplicationService
 {
-    private const int MaximumTraversalPages = 160;
     private const int MaximumArtworkEntries = 128;
-    private readonly PackageAppLibraryProvider _provider = provider ??
-        throw new ArgumentNullException(nameof(provider));
-    private readonly PlayniteLibrarySavedIdIssuer _savedIds = savedIds ??
-        throw new ArgumentNullException(nameof(savedIds));
+    private const int MaximumCategoryMemberships = PlayniteBridgeClient.MaximumGames;
+    private readonly IPlayniteLibraryBridgeClient _client = client ??
+        throw new ArgumentNullException(nameof(client));
     private readonly PlayniteLibraryStateFileStore _state = state ??
         throw new ArgumentNullException(nameof(state));
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -24,7 +19,9 @@ internal sealed class PlayniteLibraryApplicationService(
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, string?> _artworkContent =
         new(StringComparer.Ordinal);
-    private readonly Queue<string> _artworkOrder = new();
+    private readonly Queue<string> _artworkOrder = [];
+    private Catalog? _lastGood;
+
     public bool OwnsArtworkContent => true;
 
     public async ValueTask<WidgetAppLibraryPage> QueryAsync(
@@ -33,43 +30,77 @@ internal sealed class PlayniteLibraryApplicationService(
         WidgetCursorDirection? direction,
         int limit,
         bool refresh,
+        CancellationToken cancellationToken) => (await QueryWithAuthorityAsync(
+            query, new(PlayniteLibraryQueryScope.Library), cursor, direction,
+            limit, refresh, cancellationToken).ConfigureAwait(false)).Page;
+
+    public async ValueTask<PlayniteLibraryQueryResult> QueryWithAuthorityAsync(
+        WidgetAppLibraryQuery query,
+        PlayniteLibraryQueryContext context,
+        WidgetCollectionCursor? cursor,
+        WidgetCursorDirection? direction,
+        int limit,
+        bool refresh,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(context);
+        if (limit is < 1 or > WidgetAppLibraryService.MaximumPageSize)
+            throw new ArgumentOutOfRangeException(nameof(limit));
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var backendQuery = ToBackend(query);
-            if (query.FavoriteSavedIds.Count != 0)
+            var stale = false;
+            Catalog catalog;
+            try
             {
-                backendQuery = backendQuery with
-                {
-                    StableIdentityFilter = await ResolveStableIdentitiesAsync(
-                        query.FavoriteSavedIds,
-                        backendQuery with { StableIdentityFilter = null },
-                        refresh,
-                        cancellationToken).ConfigureAwait(false),
-                };
-                refresh = false;
+                catalog = refresh || _lastGood is null
+                    ? await FetchCatalogAsync(cancellationToken).ConfigureAwait(false)
+                    : _lastGood;
+                _lastGood = catalog;
             }
-            var page = await _provider.QueryAppLibraryAsync(
-                new AppLibraryBackendCursorRequest(
-                    backendQuery,
-                    cursor?.Value,
-                    direction is null ? null : ToBackend(direction.Value),
-                    limit,
-                    refresh),
-                cancellationToken).ConfigureAwait(false);
-            return Project(page);
+            catch (Exception exception) when (CanRetain(exception, cancellationToken) &&
+                                               _lastGood is not null)
+            {
+                catalog = _lastGood;
+                stale = true;
+            }
+
+            var filtered = ApplyQuery(catalog.Games, query, context).ToArray();
+            var offset = CursorOffset(cursor, direction, limit, filtered.Length);
+            var pageItems = filtered.Skip(offset).Take(limit)
+                .Select(game => Project(game, stale)).ToArray();
+            var before = offset == 0 ? null : Math.Max(0, offset - limit).ToString();
+            var after = offset + pageItems.Length >= filtered.Length
+                ? null
+                : (offset + pageItems.Length).ToString();
+            var sourceHealth = stale
+                ? WidgetAppLibrarySourceHealth.Degraded
+                : WidgetAppLibrarySourceHealth.Healthy;
+            var sources = catalog.Games.Select(game => game.Source)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .Take(PlayniteLibraryPrivateState.MaximumProvenSources)
+                .Select(value => new WidgetAppLibrarySource(
+                    SourceId(value), value, sourceHealth, catalog.Sequence,
+                    stale ? "stale_last_good" : "connected")
+                {
+                    AccountState = WidgetAppLibrarySourceAccountState.NotApplicable,
+                    LastSuccessfulRefreshAtUnixMilliseconds = catalog.RetrievedAt,
+                }).ToArray();
+            var page = new WidgetAppLibraryPage(
+                pageItems, before, after, catalog.Revision) { Sources = sources };
+            return new(page, ProjectAuthority(catalog.Games));
         }
-        catch (BrokerException exception)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
         {
             throw Safe(exception);
         }
-        finally
-        {
-            _gate.Release();
-        }
+        finally { _gate.Release(); }
     }
 
     public async ValueTask<IReadOnlyList<WidgetAppLibraryItem>> ResolveSavedAsync(
@@ -77,100 +108,38 @@ internal sealed class PlayniteLibraryApplicationService(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(savedIds);
-        if (savedIds.Count == 0) return [];
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        if (savedIds.Count > WidgetAppLibraryService.MaximumSavedItems)
+            throw new ArgumentOutOfRangeException(nameof(savedIds));
+        var result = new List<WidgetAppLibraryItem>();
+        foreach (var value in savedIds.Distinct(StringComparer.Ordinal))
         {
-            var requested = savedIds.ToHashSet(StringComparer.Ordinal);
-            var matches = new Dictionary<string, AppLibraryBackendItemSummary>(
-                StringComparer.Ordinal);
-            await TraverseAsync(
-                new AppLibraryBackendQuery(),
-                refresh: true,
-                cancellationToken,
-                item =>
-                {
-                    var savedId = _savedIds.Issue(item.StableProviderIdentity);
-                    if (requested.Contains(savedId)) matches[savedId] = item;
-                    return matches.Count == requested.Count;
-                }).ConfigureAwait(false);
-            return savedIds.Where(matches.ContainsKey)
-                .Select(savedId => Project(matches[savedId], []))
-                .ToArray();
+            cancellationToken.ThrowIfCancellationRequested();
+            PlayniteBridgeGame? game;
+            try { game = await _client.ResolveGameAsync(value, cancellationToken)
+                    .ConfigureAwait(false); }
+            catch (PlayniteBridgeDataException exception) when (
+                exception.Code == "game_not_found") { continue; }
+            if (game is not null) result.Add(Project(game, stale: false));
         }
-        catch (BrokerException exception)
-        {
-            throw Safe(exception);
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        return result;
     }
 
-    public async ValueTask<WidgetRunningAppObservation> ObserveRunningAsync(
+    public ValueTask<WidgetRunningAppObservation> ObserveRunningAsync(
         CancellationToken cancellationToken)
     {
-        try
-        {
-            var observed = await _provider.ObserveRunningAppsAsync(cancellationToken)
-                .ConfigureAwait(false);
-            return new(
-                observed.Items.Select(item => new WidgetRunningAppCandidate(
-                    _savedIds.Issue(item.StableProviderIdentity),
-                    item.DisplayName,
-                    ToWidget(item.Kind),
-                    item.SourceAttribution)).ToArray(),
-                observed.Revision);
-        }
-        catch (BrokerException exception)
-        {
-            throw Safe(exception);
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(new WidgetRunningAppObservation([], "playnite-unavailable"));
     }
 
-    public async ValueTask<WidgetAppLibraryItem?> ConfirmRunningAsync(
+    public ValueTask<WidgetAppLibraryItem?> ConfirmRunningAsync(
         string savedId,
         string revision,
         CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            var observed = await _provider.ObserveRunningAppsAsync(cancellationToken)
-                .ConfigureAwait(false);
-            if (!string.Equals(observed.Revision, revision, StringComparison.Ordinal))
-                return null;
-            var match = observed.Items.SingleOrDefault(item => string.Equals(
-                _savedIds.Issue(item.StableProviderIdentity),
-                savedId,
-                StringComparison.Ordinal));
-            if (match is null) return null;
-            var page = await _provider.QueryAppLibraryAsync(
-                new AppLibraryBackendCursorRequest(
-                    new AppLibraryBackendQuery
-                    {
-                        StableIdentityFilter = [match.StableProviderIdentity],
-                    },
-                    null,
-                    null,
-                    1),
-                cancellationToken).ConfigureAwait(false);
-            return page.Items.Count == 1 && string.Equals(
-                page.Items[0].StableProviderIdentity,
-                match.StableProviderIdentity,
-                StringComparison.Ordinal)
-                    ? Project(page.Items[0], page.Sources)
-                    : null;
-        }
-        catch (BrokerException exception)
-        {
-            throw Safe(exception);
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = savedId;
+        _ = revision;
+        return ValueTask.FromResult<WidgetAppLibraryItem?>(null);
     }
 
     public async ValueTask<WidgetAppLaunchObservation> LaunchObservedAsync(
@@ -181,26 +150,18 @@ internal sealed class PlayniteLibraryApplicationService(
         _ = overlayBehavior;
         try
         {
-            var result = await _provider.LaunchAppLibraryItemObservedAsync(
-                appId, cancellationToken).ConfigureAwait(false);
-            return new(
-                result.State switch
-                {
-                    AppLibraryLaunchObservationState.LauncherStarted =>
-                        WidgetAppLaunchObservationState.LauncherStarted,
-                    AppLibraryLaunchObservationState.Running =>
-                        WidgetAppLaunchObservationState.Running,
-                    AppLibraryLaunchObservationState.Ended =>
-                        WidgetAppLaunchObservationState.Ended,
-                    _ => WidgetAppLaunchObservationState.RequestAccepted,
-                },
-                result.SupportsRunning,
-                result.SupportsEnded);
+            var game = await _client.ResolveGameAsync(appId, cancellationToken)
+                .ConfigureAwait(false);
+            if (game is null || !game.IsInstalled)
+                throw new PlayniteBridgeDataException("game_not_found");
+            if (!await _client.LaunchAsync(game.Id, cancellationToken).ConfigureAwait(false))
+                throw new PlayniteBridgeDataException("game_not_found");
+            // Bridge acknowledges request admission only. WIDGE-121 owns observed-start and
+            // overlay-close semantics; HTTP success is deliberately not projected as started.
+            return new(WidgetAppLaunchObservationState.RequestAccepted,
+                SupportsRunning: false, SupportsEnded: false);
         }
-        catch (BrokerException exception)
-        {
-            throw Safe(exception);
-        }
+        catch (Exception exception) { throw Safe(exception); }
     }
 
     public async ValueTask<string?> ResolveArtworkAsync(
@@ -213,26 +174,74 @@ internal sealed class PlayniteLibraryApplicationService(
         {
             if (!_artwork.TryGetValue(artwork.Handle, out var registration) ||
                 !string.Equals(registration.Revision, artwork.Revision,
-                    StringComparison.Ordinal))
-                return null;
-            if (_artworkContent.TryGetValue(artwork.Handle, out var cached))
-                return cached;
-            var result = await _provider.GetAppLibraryIconAsync(
-                registration.AppId, cancellationToken).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            _artworkContent[artwork.Handle] = result.PngBase64;
-            return result.PngBase64;
+                    StringComparison.Ordinal)) return null;
+            if (_artworkContent.TryGetValue(artwork.Handle, out var cached)) return cached;
+            var bytes = await _client.ResolveArtworkAsync(
+                    registration.GameId, registration.Kind, cancellationToken)
+                .ConfigureAwait(false);
+            var content = bytes is null ? null : Convert.ToBase64String(bytes);
+            _artworkContent[artwork.Handle] = content;
+            return content;
         }
-        catch (BrokerException exception)
+        catch (PlayniteBridgeDataException exception) when (
+            exception.Code is "game_not_found" or "playnite_unavailable")
         {
-            if (exception.Code is "app_not_found" or "platform_unavailable")
-                return null;
-            throw Safe(exception);
+            return null;
         }
-        finally
+        finally { _gate.Release(); }
+    }
+
+    public ValueTask<WidgetAppLibraryItem?> SetFavoriteAsync(
+        string gameId, bool favorite, CancellationToken cancellationToken) =>
+        MutateAsync(gameId,
+            (id, token) => _client.SetFavoriteAsync(id, favorite, token),
+            cancellationToken);
+
+    public ValueTask<WidgetAppLibraryItem?> SetHiddenAsync(
+        string gameId, bool hidden, CancellationToken cancellationToken) =>
+        MutateAsync(gameId,
+            (id, token) => _client.SetHiddenAsync(id, hidden, token),
+            cancellationToken);
+
+    public ValueTask<WidgetAppLibraryItem?> SetCategoriesAsync(
+        string gameId,
+        IReadOnlyList<string> categories,
+        CancellationToken cancellationToken) => MutateAsync(gameId,
+        (id, token) => _client.SetCategoriesAsync(id, categories, token),
+        cancellationToken);
+
+    public ValueTask<WidgetAppLibraryItem?> SetCompletionStatusAsync(
+        string gameId,
+        string completionStatus,
+        CancellationToken cancellationToken) => MutateAsync(gameId,
+        (id, token) => _client.SetCompletionStatusAsync(id, completionStatus, token),
+        cancellationToken);
+
+    public async ValueTask<PlayniteLibraryCategory?> CreateCategoryAsync(
+        string name,
+        CancellationToken cancellationToken)
+    {
+        try
         {
-            _gate.Release();
+            var value = await _client.CreateCategoryAsync(name, cancellationToken)
+                .ConfigureAwait(false);
+            return value is null || !Guid.TryParse(value.Id, out var id)
+                ? null
+                : new("category." + id.ToString("N"), value.Name, []);
         }
+        catch (Exception exception) { throw Safe(exception); }
+    }
+
+    public async ValueTask<IReadOnlyList<string>> GetCompletionStatusesAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return (await _client.ListCompletionStatusesAsync(cancellationToken)
+                    .ConfigureAwait(false))
+                .Select(value => value.Name).ToArray();
+        }
+        catch (Exception exception) { throw Safe(exception); }
     }
 
     public ValueTask<WidgetPrivateStateValue<PlayniteLibraryPrivateState>> ReadStateAsync(
@@ -246,137 +255,149 @@ internal sealed class PlayniteLibraryApplicationService(
 
     public async ValueTask DisposeAsync()
     {
-        await _provider.DisposeAsync().ConfigureAwait(false);
+        await _client.DisposeAsync().ConfigureAwait(false);
         _artwork.Clear();
         _artworkContent.Clear();
         _artworkOrder.Clear();
         _gate.Dispose();
     }
 
-    private async Task<IReadOnlyList<string>> ResolveStableIdentitiesAsync(
-        IReadOnlyList<string> requestedSavedIds,
-        AppLibraryBackendQuery query,
-        bool refresh,
+    private async ValueTask<WidgetAppLibraryItem?> MutateAsync(
+        string gameId,
+        Func<string, CancellationToken, ValueTask<PlayniteBridgeGame?>> mutation,
         CancellationToken cancellationToken)
     {
-        var requested = requestedSavedIds.ToHashSet(StringComparer.Ordinal);
-        var matches = new List<string>(requested.Count);
-        await TraverseAsync(query, refresh, cancellationToken, item =>
+        try
         {
-            if (requested.Contains(_savedIds.Issue(item.StableProviderIdentity)))
-                matches.Add(item.StableProviderIdentity);
-            return matches.Count == requested.Count;
-        }).ConfigureAwait(false);
-        return matches;
-    }
-
-    private async Task TraverseAsync(
-        AppLibraryBackendQuery query,
-        bool refresh,
-        CancellationToken cancellationToken,
-        Func<AppLibraryBackendItemSummary, bool> visit)
-    {
-        var cursors = new HashSet<string>(StringComparer.Ordinal);
-        string? cursor = null;
-        string? revision = null;
-        for (var pageIndex = 0; pageIndex < MaximumTraversalPages; pageIndex++)
-        {
-            var page = await _provider.QueryAppLibraryAsync(
-                new AppLibraryBackendCursorRequest(
-                    query,
-                    cursor,
-                    cursor is null ? null : AppLibraryCursorDirection.After,
-                    WidgetAppLibraryService.MaximumPageSize,
-                    Refresh: cursor is null && refresh),
-                cancellationToken).ConfigureAwait(false);
-            revision ??= page.Revision;
-            if (!string.Equals(revision, page.Revision, StringComparison.Ordinal))
-                throw new BrokerException(
-                    "invalid_backend_data", "The app library changed during traversal.");
-            foreach (var item in page.Items)
-                if (visit(item)) return;
-            if (page.After is null) return;
-            if (!cursors.Add(page.After)) throw new BrokerException(
-                "invalid_backend_data", "The app-library cursor loop is invalid.");
-            cursor = page.After;
+            var current = await _client.ResolveGameAsync(gameId, cancellationToken)
+                .ConfigureAwait(false);
+            if (current is null) return null;
+            var changed = await mutation(current.Id, cancellationToken).ConfigureAwait(false);
+            if (changed is null || !string.Equals(changed.Id, current.Id, StringComparison.Ordinal))
+                return null;
+            _lastGood = null;
+            return Project(changed, stale: false);
         }
-        throw new BrokerException(
-            "invalid_backend_data", "The app library exceeded its traversal bound.");
+        catch (Exception exception) { throw Safe(exception); }
     }
 
-    private WidgetAppLibraryPage Project(AppLibraryBackendCursorPage page) => new(
-        page.Items.Select(item => Project(item, page.Sources)).ToArray(),
-        page.Before,
-        page.After,
-        page.Revision)
+    private async Task<Catalog> FetchCatalogAsync(CancellationToken cancellationToken)
     {
-        Sources = page.Sources.Select(Project).ToArray(),
-    };
+        var games = new List<PlayniteBridgeGame>();
+        int? expectedTotal = null;
+        for (var offset = 0; ; offset += PlayniteBridgeClient.MaximumPageSize)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var page = await _client.QueryGamesAsync(new(
+                    offset,
+                    PlayniteBridgeClient.MaximumPageSize,
+                    InstalledOnly: false,
+                    IncludeHidden: true), cancellationToken)
+                .ConfigureAwait(false);
+            expectedTotal ??= page.Total;
+            if (page.Total != expectedTotal || page.Offset != offset ||
+                games.Count + page.Games.Count > PlayniteBridgeClient.MaximumGames)
+                throw new PlayniteBridgeDataException("invalid_playnite_data");
+            games.AddRange(page.Games);
+            if (games.Count == page.Total) break;
+            if (page.Games.Count == 0)
+                throw new PlayniteBridgeDataException("invalid_playnite_data");
+        }
+        if (games.Select(game => game.Id).Distinct(StringComparer.Ordinal).Count() != games.Count)
+            throw new PlayniteBridgeDataException("invalid_playnite_data");
+        var revision = Revision(games);
+        var sequence = _lastGood is null ? 1 : _lastGood.Sequence +
+            (string.Equals(_lastGood.Revision, revision, StringComparison.Ordinal) ? 0 : 1);
+        return new(games, revision, sequence,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+    }
 
-    private WidgetAppLibraryItem Project(
-        AppLibraryBackendItemSummary item,
-        IReadOnlyList<AppLibrarySourceSummary> sources)
+    private static IEnumerable<PlayniteBridgeGame> ApplyQuery(
+        IReadOnlyList<PlayniteBridgeGame> games,
+        WidgetAppLibraryQuery query,
+        PlayniteLibraryQueryContext context)
     {
-        var sourceId = SourceId(string.IsNullOrWhiteSpace(item.SourceIdentity)
-            ? item.SourceAttribution
-            : item.SourceIdentity);
-        var source = sources.FirstOrDefault(candidate => string.Equals(
-                         candidate.SourceId, sourceId, StringComparison.Ordinal)) ??
-                     sources.FirstOrDefault(candidate => string.Equals(
-                         candidate.DisplayName, item.SourceAttribution,
-                         StringComparison.Ordinal));
-        sourceId = source?.SourceId ?? sourceId;
-        var actions = item.SupportedActions ?? (item.IsLaunchable
-            ? [AppLibraryAction.Launch]
-            : []);
-        var artwork = RegisterArtwork(item);
-        var metadataRevision = ContentId(
-            "metadata", item.StableProviderIdentity, item.ArtworkRevision);
-        var retrievedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        return new(
-            item.ProviderAppId,
-            _savedIds.Issue(item.StableProviderIdentity),
-            new WidgetAppLibraryPresentation(
-                item.DisplayName,
-                ToWidget(item.Kind),
-                new WidgetAppLibrarySourceReference(
-                    sourceId, source?.DisplayName ?? item.SourceAttribution),
-                new WidgetAppLibraryAvailability(
-                    item.AvailabilityState switch
-                    {
-                        AppLibraryAvailabilityState.StaleSource =>
-                            WidgetAppLibraryAvailabilityState.StaleSource,
-                        AppLibraryAvailabilityState.Unavailable =>
-                            WidgetAppLibraryAvailabilityState.Unavailable,
-                        _ => WidgetAppLibraryAvailabilityState.Installed,
-                    },
-                    item.IsLaunchable,
-                    item.AvailabilityStatusCode ??
-                        (item.IsLaunchable ? "installed" : "play_unavailable")),
-                artwork,
-                new WidgetAppLibraryMetadata(
-                    metadataRevision,
-                    new WidgetAppLibraryMetadataAttribution(
-                        "Playnite Library Community",
-                        metadataRevision,
-                        source?.DisplayName ?? item.SourceAttribution,
-                        retrievedAt)),
-                new WidgetAppLibraryCapabilitySet(actions.Select(ToWidget).ToArray()),
-                ActiveOperation: null));
+        IEnumerable<PlayniteBridgeGame> values = games;
+        if (query.InstalledOnly) values = values.Where(game => game.IsInstalled);
+        if (context.Scope == PlayniteLibraryQueryScope.Hidden)
+            values = values.Where(game => game.Hidden);
+        else
+            values = values.Where(game => !game.Hidden);
+        if (context.Scope == PlayniteLibraryQueryScope.Category)
+            values = values.Where(game => context.CategoryName is not null &&
+                game.Categories.Contains(context.CategoryName,
+                    StringComparer.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(query.SearchText))
+            values = values.Where(game => game.Name.Contains(
+                query.SearchText, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(query.SourceAttribution))
+            values = values.Where(game => string.Equals(
+                game.Source, query.SourceAttribution, StringComparison.OrdinalIgnoreCase));
+        if (query.FavoriteSavedIds.Count != 0)
+            values = values.Where(game => game.Favorite);
+        return query.Sort switch
+        {
+            WidgetAppLibrarySortOrder.DisplayNameDescending => values
+                .OrderByDescending(game => game.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(game => game.Id, StringComparer.Ordinal),
+            WidgetAppLibrarySortOrder.SourceThenDisplayName => values
+                .OrderBy(game => game.Source, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(game => game.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(game => game.Id, StringComparer.Ordinal),
+            _ => values.OrderBy(game => game.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(game => game.Id, StringComparer.Ordinal),
+        };
+    }
+
+    private WidgetAppLibraryItem Project(PlayniteBridgeGame game, bool stale)
+    {
+        var revision = GameRevision(game);
+        var artwork = RegisterArtwork(game, revision);
+        var installed = game.IsInstalled && !stale;
+        var availability = stale
+            ? new WidgetAppLibraryAvailability(
+                WidgetAppLibraryAvailabilityState.StaleSource, false, "stale_last_good")
+            : game.IsInstalled
+                ? new WidgetAppLibraryAvailability(
+                    WidgetAppLibraryAvailabilityState.Installed, true, "installed")
+                : new WidgetAppLibraryAvailability(
+                    WidgetAppLibraryAvailabilityState.Unavailable, false, "owned_not_installed");
+        var categories = game.Categories.ToList();
+        if (!string.IsNullOrWhiteSpace(game.CompletionStatus))
+            categories.Add("Status: " + game.CompletionStatus);
+        return new(game.Id, game.Id, new WidgetAppLibraryPresentation(
+            game.Name,
+            WidgetAppLibraryKind.Game,
+            new WidgetAppLibrarySourceReference(SourceId(game.Source), game.Source),
+            availability,
+            artwork,
+            new WidgetAppLibraryMetadata(
+                revision,
+                new WidgetAppLibraryMetadataAttribution(
+                    "Playnite Bridge", revision, game.Source,
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()))
+            {
+                Version = game.Version,
+                LastPlayedAtUnixMilliseconds = game.LastActivityUnixMilliseconds,
+                PlaytimeMinutes = game.PlaytimeSeconds / 60,
+                Categories = categories,
+                Description = game.Description,
+            },
+            new WidgetAppLibraryCapabilitySet(installed
+                ? [WidgetAppLibraryAction.Launch]
+                : []),
+            ActiveOperation: null));
     }
 
     private WidgetAppLibraryArtworkSet RegisterArtwork(
-        AppLibraryBackendItemSummary item)
+        PlayniteBridgeGame game,
+        string gameRevision)
     {
-        if (string.IsNullOrWhiteSpace(item.ArtworkRevision))
-            return new([]);
-        var revision = ContentId(
-            "artwork-revision", item.StableProviderIdentity, item.ArtworkRevision);
-        var handle = ContentId(
-            "artwork-handle", item.StableProviderIdentity, item.ArtworkRevision);
+        var revision = ContentId("artwork-revision", game.Id, gameRevision);
+        var handle = ContentId("artwork-handle", game.Id, revision);
         if (!_artwork.ContainsKey(handle))
         {
-            _artwork.Add(handle, new(item.ProviderAppId, revision));
+            _artwork.Add(handle, new(game.Id, revision, PlayniteBridgeArtworkKind.Cover));
             _artworkOrder.Enqueue(handle);
             while (_artworkOrder.Count > MaximumArtworkEntries)
             {
@@ -385,118 +406,118 @@ internal sealed class PlayniteLibraryApplicationService(
                 _artworkContent.Remove(retired);
             }
         }
-        var fallback = item.Kind == AppLibraryKind.Game
-            ? WidgetAppLibraryArtworkFallback.Game
-            : WidgetAppLibraryArtworkFallback.Application;
         return new([
-            new(WidgetAppLibraryArtworkRole.Tile, handle, revision, fallback),
-            new(WidgetAppLibraryArtworkRole.Cover, handle, revision, fallback),
-            new(WidgetAppLibraryArtworkRole.Hero, handle, revision, fallback),
+            new(WidgetAppLibraryArtworkRole.Tile, handle, revision,
+                WidgetAppLibraryArtworkFallback.Game),
+            new(WidgetAppLibraryArtworkRole.Cover, handle, revision,
+                WidgetAppLibraryArtworkFallback.Game),
+            new(WidgetAppLibraryArtworkRole.Hero, handle, revision,
+                WidgetAppLibraryArtworkFallback.Game),
         ]);
     }
 
-    private static WidgetAppLibrarySource Project(AppLibrarySourceSummary source) => new(
-        source.SourceId,
-        source.DisplayName,
-        source.Health switch
-        {
-            AppLibrarySourceHealth.Degraded => WidgetAppLibrarySourceHealth.Degraded,
-            AppLibrarySourceHealth.Unavailable => WidgetAppLibrarySourceHealth.Unavailable,
-            AppLibrarySourceHealth.Refreshing => WidgetAppLibrarySourceHealth.Refreshing,
-            _ => WidgetAppLibrarySourceHealth.Healthy,
-        },
-        source.Revision,
-        source.StatusCode)
+    private static PlayniteLibraryAuthorityProjection ProjectAuthority(
+        IReadOnlyList<PlayniteBridgeGame> games)
     {
-        AccountState = source.AccountState switch
+        var favorite = games.Where(game => game.Favorite).Select(game => game.Id).ToArray();
+        var hidden = games.Where(game => game.Hidden).Select(game => game.Id).ToArray();
+        var categoryMembers = new Dictionary<string, List<string>>(
+            StringComparer.OrdinalIgnoreCase);
+        var memberships = 0;
+        foreach (var game in games)
+        foreach (var name in game.Categories)
         {
-            AppLibrarySourceAccountState.SignedOut =>
-                WidgetAppLibrarySourceAccountState.SignedOut,
-            AppLibrarySourceAccountState.SigningIn =>
-                WidgetAppLibrarySourceAccountState.SigningIn,
-            AppLibrarySourceAccountState.Ready => WidgetAppLibrarySourceAccountState.Ready,
-            AppLibrarySourceAccountState.Expired => WidgetAppLibrarySourceAccountState.Expired,
-            AppLibrarySourceAccountState.Denied => WidgetAppLibrarySourceAccountState.Denied,
-            AppLibrarySourceAccountState.Unavailable =>
-                WidgetAppLibrarySourceAccountState.Unavailable,
-            _ => WidgetAppLibrarySourceAccountState.NotApplicable,
-        },
-        LastSuccessfulRefreshAtUnixMilliseconds =
-            source.LastSuccessfulRefreshAtUnixMilliseconds,
-    };
+            if (memberships >= MaximumCategoryMemberships) break;
+            if (!categoryMembers.TryGetValue(name, out var members))
+            {
+                if (categoryMembers.Count >= PlayniteLibraryPrivateState.MaximumCategories)
+                    continue;
+                categoryMembers.Add(name, members = []);
+            }
+            members.Add(game.Id);
+            memberships++;
+        }
+        var categories = categoryMembers.OrderBy(pair => pair.Key,
+                StringComparer.OrdinalIgnoreCase)
+            .Select(pair => new PlayniteLibraryCategory(
+                CategoryId(pair.Key), pair.Key, pair.Value)).ToArray();
+        var completion = games.ToDictionary(
+            game => game.Id, game => game.CompletionStatus, StringComparer.Ordinal);
+        return new(favorite, hidden, categories, completion);
+    }
 
-    private static AppLibraryBackendQuery ToBackend(WidgetAppLibraryQuery query) => new(
-        query.InstalledOnly,
-        query.Kind switch
-        {
-            WidgetAppLibraryKind.Application => AppLibraryKind.Application,
-            WidgetAppLibraryKind.Game => AppLibraryKind.Game,
-            WidgetAppLibraryKind.Unknown => AppLibraryKind.Unknown,
-            _ => null,
-        },
-        query.SourceAttribution,
-        query.Sort switch
-        {
-            WidgetAppLibrarySortOrder.DisplayNameDescending =>
-                AppLibrarySortOrder.DisplayNameDescending,
-            WidgetAppLibrarySortOrder.SourceThenDisplayName =>
-                AppLibrarySortOrder.SourceThenDisplayName,
-            _ => AppLibrarySortOrder.DisplayName,
-        })
+    private static int CursorOffset(
+        WidgetCollectionCursor? cursor,
+        WidgetCursorDirection? direction,
+        int limit,
+        int count)
     {
-        SearchText = query.SearchText,
-    };
+        if (direction is null) return 0;
+        if (cursor is null || !int.TryParse(cursor.Value.Value, out var offset) ||
+            offset < 0 || offset > count)
+            throw new WidgetCapabilityException("invalid_cursor", "The cursor is invalid.");
+        return direction == WidgetCursorDirection.Before
+            ? Math.Max(0, offset)
+            : offset;
+    }
 
-    private static AppLibraryCursorDirection ToBackend(WidgetCursorDirection direction) =>
-        direction == WidgetCursorDirection.Before
-            ? AppLibraryCursorDirection.Before
-            : AppLibraryCursorDirection.After;
+    private static bool CanRetain(Exception exception, CancellationToken cancellationToken) =>
+        !cancellationToken.IsCancellationRequested && exception is
+            PlayniteBridgeDataException or PlayniteBridgeTransportException or
+            PlayniteCredentialException;
 
-    private static WidgetAppLibraryKind ToWidget(AppLibraryKind kind) => kind switch
-    {
-        AppLibraryKind.Application => WidgetAppLibraryKind.Application,
-        AppLibraryKind.Game => WidgetAppLibraryKind.Game,
-        _ => WidgetAppLibraryKind.Unknown,
-    };
+    private static string Revision(IReadOnlyList<PlayniteBridgeGame> games) => ContentId(
+        "catalog", games.OrderBy(game => game.Id, StringComparer.Ordinal)
+            .Select(GameRevision).ToArray());
 
-    private static WidgetAppLibraryAction ToWidget(AppLibraryAction action) => action switch
-    {
-        AppLibraryAction.Install => WidgetAppLibraryAction.Install,
-        AppLibraryAction.Pause => WidgetAppLibraryAction.Pause,
-        AppLibraryAction.Resume => WidgetAppLibraryAction.Resume,
-        AppLibraryAction.Cancel => WidgetAppLibraryAction.Cancel,
-        AppLibraryAction.Update => WidgetAppLibraryAction.Update,
-        AppLibraryAction.Repair => WidgetAppLibraryAction.Repair,
-        AppLibraryAction.Move => WidgetAppLibraryAction.Move,
-        AppLibraryAction.Import => WidgetAppLibraryAction.Import,
-        AppLibraryAction.Uninstall => WidgetAppLibraryAction.Uninstall,
-        AppLibraryAction.CloudSync => WidgetAppLibraryAction.CloudSync,
-        AppLibraryAction.OpenSourceClient => WidgetAppLibraryAction.OpenSourceClient,
-        AppLibraryAction.ManageAddOns => WidgetAppLibraryAction.ManageAddOns,
-        _ => WidgetAppLibraryAction.Launch,
-    };
+    private static string GameRevision(PlayniteBridgeGame game) => ContentId(
+        "game", game.Id, game.Name, game.Source, game.IsInstalled.ToString(),
+        game.Favorite.ToString(), game.Hidden.ToString(), game.CompletionStatus ?? string.Empty,
+        string.Join('\u001f', game.Categories), game.PlaytimeSeconds.ToString(),
+        game.LastActivityUnixMilliseconds?.ToString() ?? string.Empty,
+        game.Version ?? string.Empty, game.Description ?? string.Empty);
 
     private static string SourceId(string value) => "source-" + Convert.ToHexString(
-        System.Security.Cryptography.SHA256.HashData(
-        System.Text.Encoding.UTF8.GetBytes(value)).AsSpan(0, 12)).ToLowerInvariant();
+        SHA256.HashData(Encoding.UTF8.GetBytes(value)).AsSpan(0, 12)).ToLowerInvariant();
+
+    private static string CategoryId(string value) => "category." + Convert.ToHexString(
+        SHA256.HashData(Encoding.UTF8.GetBytes(value)).AsSpan(0, 16)).ToLowerInvariant();
 
     private static string ContentId(string kind, params string[] values) =>
-        "gl-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-            System.Text.Encoding.UTF8.GetBytes(
-                kind + "\0" + string.Join("\0", values))).AsSpan(0, 16))
-            .ToLowerInvariant();
+        "pl-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            kind + "\0" + string.Join("\0", values))).AsSpan(0, 16)).ToLowerInvariant();
 
-    private static WidgetCapabilityException Safe(BrokerException exception) => new(
-        exception.Code is "invalid_payload" or "invalid_cursor" or "app_not_found" or
-            "stale_observation" or "platform_unavailable"
-            ? exception.Code
-            : "app_library_unavailable",
-        exception.Code switch
+    private static WidgetCapabilityException Safe(Exception exception)
+    {
+        if (exception is WidgetCapabilityException capability) return capability;
+        var code = exception switch
         {
-            "app_not_found" => "The selected game is no longer available.",
-            "stale_observation" => "The running application list changed.",
-            _ => "The installed game library is unavailable.",
+            PlayniteBridgeDataException data when data.Code is
+                "credential_missing" or "authentication_required" => data.Code,
+            PlayniteBridgeDataException data when data.Code is
+                "game_not_found" => "app_not_found",
+            PlayniteBridgeDataException data when data.Code is
+                "invalid_playnite_data" => "invalid_payload",
+            _ => "platform_unavailable",
+        };
+        return new(code, code switch
+        {
+            "credential_missing" => "Configure Playnite Bridge before loading the library.",
+            "authentication_required" => "The saved Playnite Bridge token was rejected.",
+            "app_not_found" => "The selected Playnite game is no longer current.",
+            "invalid_payload" => "Playnite Bridge returned malformed library data.",
+            _ => "Playnite Bridge is unavailable.",
         });
+    }
 
-    private sealed record ArtworkRegistration(string AppId, string Revision);
+    private sealed record Catalog(
+        IReadOnlyList<PlayniteBridgeGame> Games,
+        string Revision,
+        long Sequence,
+        long RetrievedAt);
+
+    private sealed record ArtworkRegistration(
+        string GameId,
+        string Revision,
+        PlayniteBridgeArtworkKind Kind);
 }

@@ -404,8 +404,11 @@ internal static class PlayniteLibraryOrganizationPolicy
         ValidSavedId(item.SavedId) && item.DisplayName is { Length: > 0 and <= 96 } &&
         item.SourceAttribution is { Length: > 0 and <= 64 } &&
         !item.DisplayName.Any(char.IsControl) && !item.SourceAttribution.Any(char.IsControl);
-    private static bool ValidSavedId(string? value) => value is { Length: > 0 and <= 128 } &&
-        value.StartsWith("saved-", StringComparison.Ordinal) && !value.Any(char.IsControl);
+    private static bool ValidSavedId(string? value) =>
+        value is { Length: 36 } && Guid.TryParseExact(value, "D", out _) ||
+        value is { Length: > 0 and <= 128 } &&
+            value.StartsWith("saved-", StringComparison.Ordinal) &&
+            !value.Any(char.IsControl);
     private static bool ValidGroupId(string? value) => value is { Length: 28 } &&
         value.StartsWith("variant.", StringComparison.Ordinal) &&
         value.AsSpan(8).IndexOfAnyExcept("0123456789abcdef") < 0;

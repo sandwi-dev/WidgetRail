@@ -7,38 +7,16 @@ namespace PlayniteLibraryCommunityApplication.Tests;
 public sealed class PackageStateTests
 {
     [TestMethod]
-    public async Task SourceConfigurationImportsOnceThenBecomesPackageOwned()
-    {
-        using var directory = new TestDirectory();
-        var product = Path.Combine(directory.Path, "product");
-        var package = Path.Combine(directory.Path, "package");
-        Directory.CreateDirectory(product);
-        var legacy = Path.Combine(product, "platform-settings.json");
-        await File.WriteAllTextAsync(legacy,
-            "{\"appLibrary\":{\"epicInstalledGamesEnabled\":true,\"gogInstalledGamesEnabled\":false}}");
-        var paths = Paths(package, legacy);
-
-        var imported = await PlayniteLibrarySourceConfiguration.LoadAsync(paths);
-        Assert.IsTrue(imported.EpicInstalledGamesEnabled);
-        Assert.IsFalse(imported.GogInstalledGamesEnabled);
-        Assert.IsTrue(File.Exists(paths.SourceConfigurationFile));
-
-        await File.WriteAllTextAsync(legacy,
-            "{\"appLibrary\":{\"epicInstalledGamesEnabled\":false,\"gogInstalledGamesEnabled\":true}}");
-        var retained = await PlayniteLibrarySourceConfiguration.LoadAsync(paths);
-        Assert.IsTrue(retained.EpicInstalledGamesEnabled);
-        Assert.IsFalse(retained.GogInstalledGamesEnabled);
-    }
-
-    [TestMethod]
-    public async Task OrganizationStateIsRevisionedAndRestartSafe()
+    public async Task OrganizationStateIsRevisionedRestartSafeAndConflictBounded()
     {
         using var directory = new TestDirectory();
         var path = Path.Combine(directory.Path, "organization.json");
+        var gameId = "00000000-0000-0000-0000-000000000001";
         var first = new PlayniteLibraryStateFileStore(path);
         var expected = PlayniteLibraryPrivateState.Empty with
         {
-            ProvenSources = ["Steam"],
+            Items = [new(gameId, "Game", "Playnite")],
+            ProvenSources = ["Playnite"],
         };
 
         var mutation = await first.WriteAsync(expected, 0, CancellationToken.None);
@@ -48,7 +26,8 @@ public sealed class PackageStateTests
         var actual = await restarted.ReadAsync(CancellationToken.None);
         Assert.IsTrue(actual.Exists);
         Assert.AreEqual(1L, actual.Revision);
-        Assert.AreEqual("Steam", actual.Value!.ProvenSources.Single());
+        Assert.AreEqual(gameId, actual.Value!.Items.Single().SavedId);
+        Assert.AreEqual("Playnite", actual.Value.ProvenSources.Single());
 
         var conflict = await Assert.ThrowsExactlyAsync<WidgetCapabilityException>(
             async () => await restarted.WriteAsync(
@@ -57,34 +36,36 @@ public sealed class PackageStateTests
     }
 
     [TestMethod]
-    public void SavedIdsArePackageOwnedStableAndIdentityDistinct()
+    public void ApplicationPathsOwnOnlyPackageOrganizationState()
     {
-        using var directory = new TestDirectory();
-        var path = Path.Combine(directory.Path, "saved-id.key");
-        var first = new PlayniteLibrarySavedIdIssuer(path);
-        var one = first.Issue("steam:1");
-        var two = first.Issue("steam:2");
-        var restarted = new PlayniteLibrarySavedIdIssuer(path);
-
-        Assert.AreEqual(one, restarted.Issue("steam:1"));
-        Assert.AreNotEqual(one, two);
-        Assert.AreEqual(32L, new FileInfo(path).Length);
-        Assert.IsFalse(File.ReadAllBytes(path).AsSpan().IndexOf("steam"u8) >= 0);
+        var properties = typeof(PlayniteLibraryApplicationPaths).GetProperties()
+            .Select(property => property.Name).Order(StringComparer.Ordinal).ToArray();
+        CollectionAssert.AreEqual(new[] { "Root", "StateFile" }, properties);
+        var source = File.ReadAllText(Path.Combine(RepositoryRoot(), "samples",
+            "PlayniteLibraryWidget", "Application", "PlayniteLibraryApplicationPaths.cs"));
+        Assert.IsFalse(source.Contains("PlatformSettings", StringComparison.Ordinal));
+        Assert.IsFalse(source.Contains("sources.json", StringComparison.Ordinal));
+        Assert.IsFalse(source.Contains("saved-id.key", StringComparison.Ordinal));
     }
 
-    private static PlayniteLibraryApplicationPaths Paths(string root, string legacy) => new(
-        root,
-        Path.Combine(root, "organization.json"),
-        Path.Combine(root, "saved-id.key"),
-        Path.Combine(root, "sources.json"),
-        legacy);
+    private static string RepositoryRoot()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null &&
+               !(File.Exists(Path.Combine(current.FullName, "README.md")) &&
+                 File.Exists(Path.Combine(current.FullName, "docs", "README.md")) &&
+                 File.Exists(Path.Combine(current.FullName, "global.json"))))
+            current = current.Parent;
+        return current?.FullName ?? throw new InvalidOperationException(
+            "Repository root is unavailable.");
+    }
 
     private sealed class TestDirectory : IDisposable
     {
         internal TestDirectory()
         {
-            Path = System.IO.Path.Combine(
-                System.IO.Path.GetTempPath(), "wrail-playnite-library-app-" + Guid.NewGuid().ToString("N"));
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                "wrail-playnite-library-app-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Path);
         }
 

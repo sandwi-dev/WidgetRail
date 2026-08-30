@@ -10,7 +10,8 @@ The proposed multi-source console-home expansion and launcher-specific theme
 system are specified separately in
 [Playnite Library product and engineering requirements](playnite-library-requirements.md).
 
-Playnite Library is the complete-library companion to the curated Games & Apps
+Playnite Library is the complete-library Community sample backed by the user's
+local Playnite Bridge. It is the companion to the curated Games & Apps
 tray. Both consume the same normalized installed-game records, opaque SavedIds,
 and fresh launch resolution. The widget does not discover stores, retain raw
 provider identity, infer games from titles, or cache a complete library.
@@ -245,7 +246,7 @@ normalize whitespace and Unicode compatibility form, are limited to 32
 characters, and must be unique ignoring case. The shared 64-KiB private-state
 budget—not the old four-member/eight-total prototype cap—is the ordinary
 admission boundary; focused coverage retains 32 categories and 256 compact
-exact SavedId memberships. Create, rename, open, and delete remain in one bounded
+exact Playnite GUID memberships. Create and open remain in one bounded
 controller route; deleting a category removes only that category and never hides,
 removes, launches, or merges a game. The Y action sheet adds or removes the exact
 focused game.

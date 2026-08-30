@@ -5,7 +5,7 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal static class PlayniteLibraryActionSheet
 {
-    private const int FixedActionCount = 8;
+    private const int FixedActionCount = 9;
     internal const string ScopeId = "playnite-library.actions.scope";
     internal const string CloseAction = "playnite-library.actions.close";
     internal const string OpenAction = "playnite-library.actions.open";
@@ -50,6 +50,15 @@ internal static class PlayniteLibraryActionSheet
                 ActionSheetItemTone.Danger,
                 IsDisabled: !available),
             new(
+                "playnite-library.actions.completion",
+                state.CompletionStatus is null
+                    ? "Set completion status"
+                    : $"Completion · {state.CompletionStatus}",
+                "playnite-library.completion.next",
+                WidgetGlyph.Check,
+                "Choose the next Playnite completion status",
+                IsDisabled: !available),
+            new(
                 "playnite-library.actions.variant",
                 state.VariantActionLabel,
                 "playnite-library.variant",
@@ -91,7 +100,7 @@ internal static class PlayniteLibraryActionSheet
             "Manage categories",
             ManageCategoriesAction,
             WidgetGlyph.Settings,
-            "Create, rename, browse, or delete categories",
+            "Create or browse Playnite categories",
             IsDisabled: !state.Interactive || state.Busy));
         items.Add(new(
             "playnite-library.actions.refresh-source",

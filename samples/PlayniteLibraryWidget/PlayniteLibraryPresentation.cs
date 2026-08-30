@@ -22,6 +22,8 @@ internal sealed record PlayniteLibraryPresentationState(
 {
     internal string? ActiveCategoryId { get; init; }
     internal IReadOnlyList<PlayniteLibraryCollectionOption> Collections { get; init; } = [];
+    internal IReadOnlyDictionary<string, string?> CompletionStatuses { get; init; } =
+        new Dictionary<string, string?>(StringComparer.Ordinal);
 }
 
 internal enum PlayniteLibraryRecentMode
@@ -207,18 +209,10 @@ internal static class PlayniteLibraryPresentation
                     UI.Text($"{category.Name} · {category.SavedIds.Count} games",
                         "playnite-library.category.summary." + category.Id,
                         $"{category.Name}, {category.SavedIds.Count} games"),
-                    UI.TextEntry(category.Name, "Rename category",
-                            "playnite-library.category.rename." + category.Id,
-                            "playnite-library.category.name." + category.Id,
-                            PlayniteLibraryPrivateState.MaximumCategoryNameLength)
-                        .Disabled(!state.Interactive || state.OrganizationBusy),
                     UI.Row("playnite-library.category.actions." + category.Id,
                         UI.Button("Open", "playnite-library.category.open." + category.Id,
                                 "playnite-library.category.open-button." + category.Id)
-                            .Disabled(!state.Interactive),
-                        UI.Button("Delete", "playnite-library.category.delete." + category.Id,
-                                "playnite-library.category.delete-button." + category.Id)
-                            .Disabled(!state.Interactive || state.OrganizationBusy)))
+                            .Disabled(!state.Interactive)))
                     .Classes("playnite-library-category"))
                 .ToArray();
             var management = new List<WidgetElement>
@@ -235,8 +229,8 @@ internal static class PlayniteLibraryPresentation
             };
             management.AddRange(categoryRows);
             content = UI.Stack("playnite-library.content",
-                    UI.Text("Create local categories within the shared 64 KiB " +
-                            "organization budget. Membership uses exact saved game identity.",
+                    UI.Text("Categories are read from Playnite. Creating or changing " +
+                            "membership uses the exact current Playnite game identity.",
                         "playnite-library.categories.help", "Category help"),
                     UI.VerticalScroll("playnite-library.categories.list",
                         management.ToArray()))

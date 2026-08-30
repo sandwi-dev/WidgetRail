@@ -357,7 +357,12 @@ public sealed class PlayniteLibraryTests
             node.Id == "playnite-library.title").Text);
         Assert.AreEqual(selected.Id, beta.InitialFocusId);
 
-        await widget.OnActionAsync(new(PlayniteLibraryActionSheet.OpenAction, selected.Id));
+        var currentBetaTile = Nodes(beta.Root).Single(node =>
+            node.ActionId == "playnite-library.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Game 00001", StringComparison.Ordinal));
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActionSheet.OpenAction, currentBetaTile.Id));
         var sheet = Snapshot(widget, 33);
         Assert.IsFalse(await Route(widget, sheet, ControllerButton.RightTrigger,
             PlayniteLibraryActionSheet.InitialFocusId));
@@ -366,7 +371,12 @@ public sealed class PlayniteLibraryTests
             PlayniteLibraryActionSheet.InitialFocusId));
 
         beta = Snapshot(widget, 35);
-        Assert.IsTrue(await Route(widget, beta, ControllerButton.RightTrigger, selected.Id));
+        currentBetaTile = Nodes(beta.Root).Single(node =>
+            node.ActionId == "playnite-library.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Game 00001", StringComparison.Ordinal));
+        Assert.IsTrue(await Route(
+            widget, beta, ControllerButton.RightTrigger, currentBetaTile.Id));
         await WaitUntil(() => Nodes(Snapshot(widget, 302).Root).Any(node =>
             node.Id == "playnite-library.title" && node.Text == "Empty"));
         await Bounded(widget.WhenLibraryIdleAsync(), "empty category switch");
@@ -398,7 +408,7 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task CategoriesCreateAssignBrowseRestartRenameDeleteAndRevalidate()
+    public async Task CategoriesCreateAssignBrowseRestartAndRevalidatePlayniteOwnership()
     {
         var state = new WidgetTestPrivateState();
         var host = new FakeHost(3, state);
@@ -417,21 +427,24 @@ public sealed class PlayniteLibraryTests
         await widget.OnActionAsync(new WidgetActionEvent(
             "playnite-library.category.create", "playnite-library.category.create")
             { CommittedText = "  Co-op   Night  " });
-        var created = widget.Organization.Categories.Single();
+        var created = host.Authority.Categories.Single();
         Assert.AreEqual("Co-op Night", created.Name);
 
         await widget.OnActionAsync(new("playnite-library.categories.back",
             "playnite-library.categories.all-games"));
         await Bounded(widget.WhenLibraryIdleAsync(), "category return reload");
-        var current = Nodes(Snapshot(widget, 12).Root).Single(node =>
-            node.Id == tiles[1].Id);
+        var returnedLibrary = Snapshot(widget, 12);
+        var current = Nodes(returnedLibrary.Root).Single(node =>
+            node.ActionId == "playnite-library.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Game 00001", StringComparison.Ordinal));
         await widget.OnActionAsync(new(PlayniteLibraryActionSheet.OpenAction, current.Id));
         var membershipAction = PlayniteLibraryActionSheet.CategoryActionPrefix + created.Id;
         Assert.AreEqual("Add to Co-op Night", Nodes(Snapshot(widget, 13).Root).Single(node =>
             node.Id == membershipAction).Text);
         await widget.OnActionAsync(new(membershipAction, membershipAction));
         CollectionAssert.AreEqual(new[] { "saved-00001" },
-            widget.Organization.Categories.Single().SavedIds.ToArray());
+            host.Authority.Categories.Single().SavedIds.ToArray());
 
         await widget.OnActionAsync(new(PlayniteLibraryActionSheet.CloseAction,
             PlayniteLibraryActionSheet.InitialFocusId));
@@ -457,26 +470,26 @@ public sealed class PlayniteLibraryTests
         var restarted = Create(restartedHost);
         await Interactive(restarted);
         await Ready(restarted, restartedHost);
-        Assert.AreEqual("Co-op Night", restarted.Organization.Categories.Single().Name);
+        Assert.AreEqual("Co-op Night", restartedHost.Authority.Categories.Single().Name);
         CollectionAssert.AreEqual(new[] { "saved-00001" },
-            restarted.Organization.Categories.Single().SavedIds.ToArray());
+            restartedHost.Authority.Categories.Single().SavedIds.ToArray());
         await restarted.OnActionAsync(new("playnite-library.categories.open",
             "playnite-library.categories.open"));
-        await restarted.OnActionAsync(new WidgetActionEvent(
-            "playnite-library.category.rename." + created.Id,
-            "playnite-library.category.name." + created.Id)
-            { CommittedText = "Favorites Two" });
-        Assert.AreEqual("Favorites Two", restarted.Organization.Categories.Single().Name);
+        var managed = Snapshot(restarted, 15);
+        Assert.IsFalse(Nodes(managed.Root).Any(node =>
+            node.ActionId?.StartsWith("playnite-library.category.rename.",
+                StringComparison.Ordinal) == true));
+        Assert.IsFalse(Nodes(managed.Root).Any(node =>
+            node.ActionId?.StartsWith("playnite-library.category.delete.",
+                StringComparison.Ordinal) == true));
         await restarted.OnActionAsync(new WidgetActionEvent(
             "playnite-library.category.create", "playnite-library.category.create")
-            { CommittedText = " favorites two " });
-        Assert.AreEqual(1, restarted.Organization.Categories.Count);
-        StringAssert.Contains(Nodes(Snapshot(restarted, 15).Root).Single(node =>
-            node.Id == "playnite-library.status").Text!, "already exists");
-        await restarted.OnActionAsync(new("playnite-library.category.delete." + created.Id,
-            "playnite-library.category.delete-button." + created.Id));
-        Assert.AreEqual(0, restarted.Organization.Categories.Count);
-        Assert.AreEqual(3, restarted.Collection.Items.Count);
+            { CommittedText = " co-op night " });
+        Assert.AreEqual(1, restartedHost.Authority.Categories.Count);
+        StringAssert.Contains(Nodes(Snapshot(restarted, 16).Root).Single(node =>
+            node.Id == "playnite-library.status").Text!, "Category was not created");
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            restartedHost.Authority.Categories.Single().SavedIds.ToArray());
         await Background(restarted);
     }
 
@@ -835,8 +848,8 @@ public sealed class PlayniteLibraryTests
             {
                 Assert.AreEqual(beforeQueries, host.Queries.Count);
                 Assert.AreEqual(
-                    "Create local categories within the shared 64 KiB " +
-                    "organization budget. Membership uses exact saved game identity.",
+                    "Categories are read from Playnite. Creating or changing " +
+                    "membership uses the exact current Playnite game identity.",
                     Nodes(route.Root).Single(node =>
                         node.Id == "playnite-library.categories.help").Text);
                 Assert.AreEqual(ViewNodeKind.TextEntry, Nodes(route.Root).Single(node =>
@@ -1018,7 +1031,7 @@ public sealed class PlayniteLibraryTests
 
         await widget.OnActionAsync(new("playnite-library.favorite",
             PlayniteLibraryActionSheet.InitialFocusId));
-        Assert.IsTrue(widget.Organization.FavoriteSavedIds.Contains("saved-00000"));
+        Assert.IsTrue(host.Authority.FavoriteGameIds.Contains("saved-00000"));
         Assert.AreEqual("Remove favorite", Nodes(Snapshot(widget, 962).Root).Single(node =>
             node.Id == PlayniteLibraryActionSheet.InitialFocusId).Text);
 
@@ -1056,13 +1069,17 @@ public sealed class PlayniteLibraryTests
         Assert.IsFalse(Nodes(Snapshot(widget, 967).Root).Any(node =>
             node.Id == "playnite-library.actions.sheet"));
 
-        var currentSecond = Nodes(Snapshot(widget, 968).Root).Single(node =>
-            node.Id == tiles[1].Id);
+        var refreshedLibrary = Snapshot(widget, 968);
+        var currentSecond = Nodes(refreshedLibrary.Root).Single(node =>
+            node.ActionId == "playnite-library.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Game 00001", StringComparison.Ordinal));
         await widget.OnActionAsync(new(PlayniteLibraryActionSheet.OpenAction, currentSecond.Id));
         await widget.OnActionAsync(new("playnite-library.hide", "playnite-library.actions.hide"));
-        Assert.IsTrue(widget.Organization.ExcludedSavedIds.Contains("saved-00001"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "action-sheet hidden library refresh");
+        Assert.IsTrue(host.Authority.HiddenGameIds.Contains("saved-00001"));
         Assert.IsFalse(Nodes(Snapshot(widget, 969).Root).Any(node =>
-            node.Id == "playnite-library.actions.sheet"));
+            node.Id == "playnite-library.actions.sheet" || node.Id == currentSecond.Id));
         await Background(widget);
     }
 
@@ -1430,7 +1447,7 @@ public sealed class PlayniteLibraryTests
         await widget.OnActionAsync(new("playnite-library.hide", first.Id));
         await Bounded(widget.WhenLibraryIdleAsync(), "hidden library refresh");
         CollectionAssert.AreEqual(new[] { "saved-00000" },
-            widget.Organization.ExcludedSavedIds.ToArray());
+            host.Authority.HiddenGameIds.ToArray());
         Assert.IsFalse(Nodes(Snapshot(widget, 302).Root).Any(node =>
             node.ActionId == "playnite-library.launch" && node.Id == first.Id));
         var afterHide = Snapshot(widget, 3021);
@@ -1469,9 +1486,9 @@ public sealed class PlayniteLibraryTests
         Assert.AreEqual(0, restartedHost.Launches.Count,
             "A display-only hidden row must not authorize launch.");
         await restarted.OnActionAsync(new("playnite-library.restore", hidden.Id));
-        Assert.AreEqual(0, restarted.Organization.ExcludedSavedIds.Count);
+        Assert.AreEqual(0, restartedHost.Authority.HiddenGameIds.Count);
         CollectionAssert.AreEqual(new[] { "saved-00000" },
-            restarted.Organization.FavoriteSavedIds.ToArray());
+            restartedHost.Authority.FavoriteGameIds.ToArray());
         Assert.IsTrue(Nodes(Snapshot(restarted, 305).Root).Any(node =>
             node.Id == "playnite-library.hidden.empty.action"));
         await restarted.OnActionAsync(new(
@@ -1597,7 +1614,8 @@ public sealed class PlayniteLibraryTests
         await Bounded(reclassified.WhenLibraryIdleAsync(), "reclassified hidden route");
         var current = Nodes(Snapshot(reclassified, 314).Root).Single(node =>
             node.ActionId == "playnite-library.restore");
-        StringAssert.Contains(current.AccessibilityLabel!, "Hidden · Restore");
+        StringAssert.Contains(current.AccessibilityLabel!,
+            "Game 00000, Steam, Hidden · Restore");
         await Background(reclassified);
     }
 
@@ -1694,7 +1712,7 @@ public sealed class PlayniteLibraryTests
         await widget.OnActionAsync(new("playnite-library.variant", tiles[0].Id));
         await widget.OnActionAsync(new("playnite-library.variant", tiles[1].Id));
         await widget.OnActionAsync(new("playnite-library.prefer", tiles[1].Id));
-        Assert.IsTrue(widget.Organization.FavoriteSavedIds.Contains("saved-00000"));
+        Assert.IsTrue(host.Authority.FavoriteGameIds.Contains("saved-00000"));
         Assert.AreEqual(1, widget.Organization.VariantGroups.Count);
         var group = widget.Organization.VariantGroups.Single();
         Assert.AreEqual("saved-00001", group.PreferredSavedId);
@@ -1728,10 +1746,14 @@ public sealed class PlayniteLibraryTests
         await restored.OnActionAsync(new("playnite-library.variant", restoredTiles[0].Id));
         await restored.OnActionAsync(new("playnite-library.variant", restoredTiles[1].Id));
         Assert.AreEqual(0, restored.Organization.VariantGroups.Count);
-        Assert.IsTrue(restored.Organization.FavoriteSavedIds.Contains("saved-00000"));
+        Assert.IsTrue(restoredHost.Authority.FavoriteGameIds.Contains("saved-00000"));
         await restored.OnActionAsync(new(
             "playnite-library.organization.reset", "playnite-library.organization.reset"));
-        Assert.AreEqual(0, restored.Organization.FavoriteSavedIds.Count);
+        Assert.IsTrue(restoredHost.Authority.FavoriteGameIds.Contains("saved-00000"));
+        Assert.IsTrue(Nodes(Snapshot(restored, 14).Root).Any(node =>
+            node.ActionId == "playnite-library.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Favorite", StringComparison.Ordinal)));
         await Background(restored);
     }
 
@@ -2984,13 +3006,13 @@ public sealed class PlayniteLibraryTests
         CollectionAssert.AreEqual(new[] { "saved-00000" },
             restarted.Organization.RecentSavedIds.ToArray());
         CollectionAssert.AreEqual(new[] { "saved-00000" },
-            restarted.Organization.FavoriteSavedIds.ToArray());
+            restartedHost.Authority.FavoriteGameIds.ToArray());
 
         await restarted.OnActionAsync(new("playnite-library.recent.clear",
             "playnite-library.recent.clear"));
         Assert.AreEqual(0, restarted.Organization.RecentSavedIds.Count);
         CollectionAssert.AreEqual(new[] { "saved-00000" },
-            restarted.Organization.FavoriteSavedIds.ToArray());
+            restartedHost.Authority.FavoriteGameIds.ToArray());
         await Background(restarted);
     }
 
@@ -3976,7 +3998,7 @@ public sealed class PlayniteLibraryTests
 
         await widget.OnActionAsync(new("playnite-library.favorite",
             "playnite-library.details.favorite"));
-        Assert.IsTrue(widget.Organization.FavoriteSavedIds.Contains(
+        Assert.IsTrue(host.Authority.FavoriteGameIds.Contains(
             "saved-00001", StringComparer.Ordinal));
 
         await widget.OnActionAsync(new("playnite-library.launch",
@@ -4186,7 +4208,7 @@ public sealed class PlayniteLibraryTests
             "first selected game is no longer available");
 
         await widget.OnActionAsync(new("playnite-library.hide", "playnite-library.details.hide"));
-        Assert.IsTrue(widget.Organization.ExcludedSavedIds.Contains(
+        Assert.IsTrue(host.Authority.HiddenGameIds.Contains(
             "saved-00001", StringComparer.Ordinal));
         Assert.IsFalse(Nodes(Snapshot(widget, 63).Root).Any(node =>
             node.Id == "playnite-library.details.root"));
@@ -4358,7 +4380,7 @@ public sealed class PlayniteLibraryTests
     {
         var services = host.Services();
         return WidgetTestHost.Attach(
-            new LauncherWidget(new TestApplicationService(services)), services);
+            new LauncherWidget(new TestApplicationService(services, host)), services);
     }
 
     private static Task Visible(LauncherWidget widget) => Bounded(
@@ -4517,7 +4539,9 @@ public sealed class PlayniteLibraryTests
         };
     }
 
-    private sealed class TestApplicationService(WidgetHostServices services) :
+    private sealed class TestApplicationService(
+        WidgetHostServices services,
+        FakeHost host) :
         IPlayniteLibraryApplicationService
     {
         public bool OwnsArtworkContent => false;
@@ -4527,6 +4551,19 @@ public sealed class PlayniteLibraryTests
             WidgetCursorDirection? direction, int limit, bool refresh,
             CancellationToken cancellationToken) => services.AppLibrary.QueryAsync(
                 query, cursor, direction, limit, refresh, cancellationToken);
+
+        public async ValueTask<PlayniteLibraryQueryResult> QueryWithAuthorityAsync(
+            WidgetAppLibraryQuery query,
+            PlayniteLibraryQueryContext context,
+            WidgetCollectionCursor? cursor,
+            WidgetCursorDirection? direction,
+            int limit,
+            bool refresh,
+            CancellationToken cancellationToken)
+        {
+            return await host.QueryWithCurrentAuthorityAsync(
+                query, context, cursor, direction, limit, refresh, cancellationToken);
+        }
 
         public ValueTask<IReadOnlyList<WidgetAppLibraryItem>> ResolveSavedAsync(
             IReadOnlyList<string> savedIds, CancellationToken cancellationToken) =>
@@ -4551,6 +4588,50 @@ public sealed class PlayniteLibraryTests
             WidgetAppLibraryArtwork artwork, CancellationToken cancellationToken) =>
             ValueTask.FromResult<string?>(null);
 
+        public async ValueTask<WidgetAppLibraryItem?> SetFavoriteAsync(
+            string gameId, bool favorite, CancellationToken cancellationToken)
+        {
+            host.SetFavorite(gameId, favorite);
+            return (await ResolveSavedAsync([gameId], cancellationToken)).SingleOrDefault();
+        }
+
+        public async ValueTask<WidgetAppLibraryItem?> SetHiddenAsync(
+            string gameId, bool hidden, CancellationToken cancellationToken)
+        {
+            host.SetHidden(gameId, hidden);
+            return (await ResolveSavedAsync([gameId], cancellationToken)).SingleOrDefault();
+        }
+
+        public async ValueTask<WidgetAppLibraryItem?> SetCategoriesAsync(
+            string gameId, IReadOnlyList<string> categories,
+            CancellationToken cancellationToken)
+        {
+            host.SetCategories(gameId, categories);
+            return (await ResolveSavedAsync([gameId], cancellationToken)).SingleOrDefault();
+        }
+
+        public async ValueTask<WidgetAppLibraryItem?> SetCompletionStatusAsync(
+            string gameId, string completionStatus, CancellationToken cancellationToken)
+        {
+            host.SetCompletionStatus(gameId, completionStatus);
+            return (await ResolveSavedAsync([gameId], cancellationToken)).SingleOrDefault();
+        }
+
+        public ValueTask<PlayniteLibraryCategory?> CreateCategoryAsync(
+            string name, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(host.CreateCategory(name));
+        }
+
+        public ValueTask<IReadOnlyList<string>> GetCompletionStatusesAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<IReadOnlyList<string>>(
+                ["Not Played", "Playing", "Completed"]);
+        }
+
         public ValueTask<WidgetPrivateStateValue<PlayniteLibraryPrivateState>> ReadStateAsync(
             CancellationToken cancellationToken) =>
             services.PrivateState.ReadAsync<PlayniteLibraryPrivateState>(
@@ -4566,9 +4647,13 @@ public sealed class PlayniteLibraryTests
 
     private sealed class FakeHost
     {
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+            WidgetTestPrivateState, AuthorityBox> Authorities = new();
         private readonly int _count;
         private readonly WidgetTestPrivateState _state;
+        private readonly AuthorityBox _authority;
         internal WidgetTestPrivateState State => _state;
+        internal PlayniteLibraryAuthorityProjection Authority => _authority.Value;
         internal int MaximumObservedIndex { get; private set; } = -1;
         internal int MaximumRequestedLimit { get; private set; }
         internal int RunningObservationCount { get; private set; }
@@ -4597,6 +4682,167 @@ public sealed class PlayniteLibraryTests
         {
             _count = count;
             _state = state ?? new WidgetTestPrivateState();
+            _authority = Authorities.GetValue(_state, CreateAuthority);
+        }
+
+        internal async ValueTask<PlayniteLibraryQueryResult> QueryWithCurrentAuthorityAsync(
+            WidgetAppLibraryQuery query,
+            PlayniteLibraryQueryContext context,
+            WidgetCollectionCursor? cursor,
+            WidgetCursorDirection? direction,
+            int limit,
+            bool refresh,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var request = new WidgetAppLibraryCursorRequest(
+                query, cursor?.Value, direction, limit, refresh);
+            if (QueryHandler is not null)
+            {
+                var custom = await Query(request, cancellationToken);
+                return new(FilterPage(custom, query, context), _authority.Value);
+            }
+
+            FirstQueryStarted.TrySetResult();
+            Queries.Add(request);
+            var source = Enumerable.Range(0, _count)
+                .Select(index => (Index: index, Item: ItemFactory(index)));
+            var authority = _authority.Value;
+            source = Filter(source, query, context, authority);
+            var values = source.ToArray();
+            var offset = request.Cursor is null ? 0 : int.Parse(
+                request.Cursor.AsSpan(request.Cursor.LastIndexOf('.') + 1),
+                System.Globalization.CultureInfo.InvariantCulture);
+            if (FailAfterOffset == offset)
+                throw new WidgetCapabilityException("platform_unavailable", "private");
+            MaximumRequestedLimit = Math.Max(MaximumRequestedLimit, limit);
+            var pageValues = values.Skip(offset).Take(limit).ToArray();
+            if (pageValues.Length != 0)
+                MaximumObservedIndex = Math.Max(
+                    MaximumObservedIndex, pageValues.Max(value => value.Index));
+            var before = offset == 0 ? null :
+                $"cursor.{Math.Max(0, offset - limit)}";
+            var after = offset + pageValues.Length < values.Length
+                ? $"cursor.{offset + pageValues.Length}"
+                : null;
+            var page = new WidgetAppLibraryPage(
+                pageValues.Select(value => value.Item).ToArray(),
+                before, after, "revision-1");
+            return new(page, authority);
+        }
+
+        private WidgetAppLibraryPage FilterPage(
+            WidgetAppLibraryPage page,
+            WidgetAppLibraryQuery query,
+            PlayniteLibraryQueryContext context)
+        {
+            var indexed = page.Items.Select((item, index) => (Index: index, Item: item));
+            var filtered = Filter(indexed, query, context, _authority.Value)
+                .Select(value => value.Item).ToArray();
+            return new(filtered, page.Before, page.After, page.Revision)
+            {
+                Sources = page.Sources,
+            };
+        }
+
+        private static IEnumerable<(int Index, WidgetAppLibraryItem Item)> Filter(
+            IEnumerable<(int Index, WidgetAppLibraryItem Item)> source,
+            WidgetAppLibraryQuery query,
+            PlayniteLibraryQueryContext context,
+            PlayniteLibraryAuthorityProjection authority)
+        {
+            var items = source;
+            if (context.Scope == PlayniteLibraryQueryScope.Hidden)
+                items = items.Where(value => authority.HiddenGameIds.Contains(
+                    value.Item.SavedId, StringComparer.Ordinal));
+            else
+                items = items.Where(value => !authority.HiddenGameIds.Contains(
+                    value.Item.SavedId, StringComparer.Ordinal));
+            if (context.Scope == PlayniteLibraryQueryScope.Category)
+            {
+                var members = authority.Categories.FirstOrDefault(category =>
+                    string.Equals(category.Name, context.CategoryName,
+                        StringComparison.OrdinalIgnoreCase))?.SavedIds ?? [];
+                items = items.Where(value => members.Contains(
+                    value.Item.SavedId, StringComparer.Ordinal));
+            }
+            if (query.FavoriteSavedIds.Count != 0)
+                items = items.Where(value => query.FavoriteSavedIds.Contains(
+                    value.Item.SavedId, StringComparer.Ordinal));
+            return items;
+        }
+
+        internal void SetFavorite(string gameId, bool favorite)
+        {
+            var values = _authority.Value.FavoriteGameIds
+                .Where(value => value != gameId).ToList();
+            if (favorite) values.Add(gameId);
+            _authority.Value = _authority.Value with { FavoriteGameIds = values };
+        }
+
+        internal void SetHidden(string gameId, bool hidden)
+        {
+            var values = _authority.Value.HiddenGameIds
+                .Where(value => value != gameId).ToList();
+            if (hidden) values.Add(gameId);
+            _authority.Value = _authority.Value with { HiddenGameIds = values };
+        }
+
+        internal void SetCategories(string gameId, IReadOnlyList<string> names)
+        {
+            _authority.Value = _authority.Value with
+            {
+                Categories = _authority.Value.Categories.Select(category => category with
+                {
+                    SavedIds = names.Contains(category.Name,
+                            StringComparer.OrdinalIgnoreCase)
+                        ? category.SavedIds.Append(gameId).Distinct(StringComparer.Ordinal).ToArray()
+                        : category.SavedIds.Where(value => value != gameId).ToArray(),
+                }).ToArray(),
+            };
+        }
+
+        internal void SetCompletionStatus(string gameId, string completionStatus)
+        {
+            var values = new Dictionary<string, string?>(
+                _authority.Value.CompletionStatuses, StringComparer.Ordinal)
+            {
+                [gameId] = completionStatus,
+            };
+            _authority.Value = _authority.Value with { CompletionStatuses = values };
+        }
+
+        internal PlayniteLibraryCategory? CreateCategory(string name)
+        {
+            if (_authority.Value.Categories.Any(category => string.Equals(
+                    category.Name, name, StringComparison.OrdinalIgnoreCase))) return null;
+            var created = new PlayniteLibraryCategory(
+                "category." + (_authority.Value.Categories.Count + 1).ToString("x32"),
+                name, []);
+            _authority.Value = _authority.Value with
+            {
+                Categories = _authority.Value.Categories.Append(created).ToArray(),
+            };
+            return created;
+        }
+
+        private static AuthorityBox CreateAuthority(WidgetTestPrivateState state)
+        {
+            PlayniteLibraryPrivateState? persisted = null;
+            if (state.Json is { } json)
+                try { persisted = JsonSerializer.Deserialize<PlayniteLibraryPrivateState>(json); }
+                catch (JsonException) { }
+            persisted = PlayniteLibraryOrganizationPolicy.Normalize(persisted);
+            return new(new(
+                persisted.FavoriteSavedIds.ToArray(),
+                persisted.ExcludedSavedIds.ToArray(),
+                persisted.Categories.ToArray(),
+                new Dictionary<string, string?>(StringComparer.Ordinal)));
+        }
+
+        private sealed class AuthorityBox(PlayniteLibraryAuthorityProjection value)
+        {
+            internal PlayniteLibraryAuthorityProjection Value { get; set; } = value;
         }
 
         internal WidgetHostServices Services()

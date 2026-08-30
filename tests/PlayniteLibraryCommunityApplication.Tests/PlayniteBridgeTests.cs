@@ -26,6 +26,7 @@ public sealed class PlayniteBridgeTests
         Assert.AreEqual(PlayniteBridgeConnectionKind.Connected, result.Kind);
         Assert.AreEqual(credentials.Secret, transport.ObservedBearer);
         Assert.AreEqual(1, transport.Calls);
+        Assert.AreEqual(PlayniteBridgeCommandKind.Probe, transport.ObservedCommand!.Kind);
 
         transport.Response = new(401, "{}");
         Assert.AreEqual(PlayniteBridgeConnectionKind.AuthenticationRequired,
@@ -108,15 +109,17 @@ public sealed class PlayniteBridgeTests
         Assert.IsNull(handler.Credentials);
         Assert.AreEqual(1, handler.MaxConnectionsPerServer);
         Assert.AreEqual(16, handler.MaxResponseHeadersLength);
-        var maximumResponseBytes = (int)typeof(PlayniteBridgeHttpTransport).GetField(
-            nameof(PlayniteBridgeHttpTransport.MaximumResponseBytes),
+        var maximumJsonBytes = (int)typeof(PlayniteBridgeHttpTransport).GetField(
+            nameof(PlayniteBridgeHttpTransport.MaximumJsonBytes),
             BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
-        Assert.AreEqual(96 * 1024, maximumResponseBytes);
-        var fixedUri = (Uri)typeof(PlayniteBridgeHttpTransport).GetField(
-            "CompatibilityUri", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
-        Assert.AreEqual(
-            "http://127.0.0.1:19821/api/games?installed=true&limit=1&offset=0",
-            fixedUri.AbsoluteUri);
+        Assert.AreEqual(96 * 1024, maximumJsonBytes);
+        var maximumArtworkBytes = (int)typeof(PlayniteBridgeHttpTransport).GetField(
+            nameof(PlayniteBridgeHttpTransport.MaximumArtworkBytes),
+            BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
+        Assert.AreEqual(256 * 1024, maximumArtworkBytes);
+        var fixedOrigin = (Uri)typeof(PlayniteBridgeHttpTransport).GetField(
+            "Origin", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        Assert.AreEqual("http://127.0.0.1:19821/", fixedOrigin.AbsoluteUri);
 
         var clientMethods = typeof(PlayniteBridgeClient).GetMethods(
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
@@ -126,14 +129,29 @@ public sealed class PlayniteBridgeTests
             .ToArray();
         CollectionAssert.AreEqual(new[]
         {
+            nameof(PlayniteBridgeClient.CreateCategoryAsync),
             nameof(PlayniteBridgeClient.DeleteCredentialAsync),
             nameof(IDisposable.Dispose),
+            nameof(IAsyncDisposable.DisposeAsync),
+            nameof(PlayniteBridgeClient.LaunchAsync),
+            nameof(PlayniteBridgeClient.ListCategoriesAsync),
+            nameof(PlayniteBridgeClient.ListCompletionStatusesAsync),
             nameof(PlayniteBridgeClient.ProbeAsync),
+            nameof(PlayniteBridgeClient.QueryGamesAsync),
+            nameof(PlayniteBridgeClient.ResolveArtworkAsync),
+            nameof(PlayniteBridgeClient.ResolveGameAsync),
             nameof(PlayniteBridgeClient.SaveCredentialAsync),
+            nameof(PlayniteBridgeClient.SetCategoriesAsync),
+            nameof(PlayniteBridgeClient.SetCompletionStatusAsync),
+            nameof(PlayniteBridgeClient.SetFavoriteAsync),
+            nameof(PlayniteBridgeClient.SetHiddenAsync),
         }, clientMethods);
         var transportMethod = typeof(IPlayniteBridgeTransport).GetMethod(
-            nameof(IPlayniteBridgeTransport.ProbeAsync))!;
-        CollectionAssert.AreEqual(new[] { typeof(string), typeof(CancellationToken) },
+            nameof(IPlayniteBridgeTransport.SendAsync))!;
+        CollectionAssert.AreEqual(new[]
+        {
+            typeof(PlayniteBridgeCommand), typeof(string), typeof(CancellationToken),
+        },
             transportMethod.GetParameters().Select(parameter => parameter.ParameterType).ToArray());
         var compatibilityPath = (string)typeof(PlayniteBridgeClient).GetField(
             nameof(PlayniteBridgeClient.CompatibilityPath),
@@ -150,7 +168,7 @@ public sealed class PlayniteBridgeTests
                  {
                      "eval", "delete", "rotate", "addons", "config", "install", "uninstall",
                  })
-            Assert.IsFalse(fixedUri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries)
+            Assert.IsFalse(compatibilityPath.Split('/', StringSplitOptions.RemoveEmptyEntries)
                 .Any(segment => string.Equals(
                     segment, prohibited, StringComparison.OrdinalIgnoreCase)), prohibited);
     }
@@ -164,7 +182,7 @@ public sealed class PlayniteBridgeTests
         var value = manifest.RootElement;
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, value.GetProperty("optionalPermissions").GetArrayLength());
-        Assert.AreEqual("0.2.3", value.GetProperty("version").GetString());
+        Assert.AreEqual("0.2.4", value.GetProperty("version").GetString());
         var manifestText = File.ReadAllText(manifestPath);
         Assert.IsFalse(manifestText.Contains("Bearer", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(manifestText.Contains("token", StringComparison.OrdinalIgnoreCase));
@@ -176,7 +194,7 @@ public sealed class PlayniteBridgeTests
         Assert.IsFalse(clientSource.Contains("/api/auth/rotate", StringComparison.OrdinalIgnoreCase));
 
         var packagePath = Path.Combine(root, "artifacts", "community-addons",
-            "playnite-library", "widgetrail.samples.playnite-library-0.2.3.wrwidget");
+            "playnite-library", "widgetrail.samples.playnite-library-0.2.4.wrwidget");
         Assert.IsTrue(File.Exists(packagePath), "The validated package artifact is missing.");
         using var archive = ZipFile.OpenRead(packagePath);
         foreach (var entry in archive.Entries.Where(item => item.Length != 0))
@@ -239,13 +257,16 @@ public sealed class PlayniteBridgeTests
     {
         internal PlayniteBridgeResponse Response { get; set; } = new(503, "{}");
         internal string? ObservedBearer { get; private set; }
+        internal PlayniteBridgeCommand? ObservedCommand { get; private set; }
         internal int Calls { get; private set; }
         internal bool WaitForCancellation { get; set; }
 
-        public async ValueTask<PlayniteBridgeResponse> ProbeAsync(
+        public async ValueTask<PlayniteBridgeResponse> SendAsync(
+            PlayniteBridgeCommand command,
             string bearerToken,
             CancellationToken cancellationToken)
         {
+            ObservedCommand = command;
             ObservedBearer = bearerToken;
             Calls++;
             if (WaitForCancellation)

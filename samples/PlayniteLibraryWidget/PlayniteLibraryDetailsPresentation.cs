@@ -35,6 +35,7 @@ internal sealed record PlayniteLibraryDetailsState(
     internal string? LastPlayed { get; init; }
     internal string? Playtime { get; init; }
     internal string? Operation { get; init; }
+    internal string? CompletionStatus { get; init; }
 }
 
 internal static class PlayniteLibraryDetailsPolicy
@@ -68,7 +69,8 @@ internal static class PlayniteLibraryDetailsPolicy
         string status,
         string? variantSeedSavedId,
         bool organizationBusy,
-        bool interactive)
+        bool interactive,
+        IReadOnlyDictionary<string, string?>? completionStatuses = null)
     {
         var current = collection.Items.Concat(fixedRows.All).FirstOrDefault(item =>
             item.Key == selection.Key && string.Equals(item.Value.SavedId,
@@ -148,6 +150,7 @@ internal static class PlayniteLibraryDetailsPolicy
                 ? null
                 : $"{FormatName(operation.Kind.ToString())} · " +
                   FormatName(operation.State.ToString()),
+            CompletionStatus = completionStatuses?.GetValueOrDefault(selection.SavedId),
         };
     }
 
@@ -240,6 +243,9 @@ internal static class PlayniteLibraryDetailsPresentation
         if (state.Playtime is { } playtime)
             details.Add(UI.Text($"Playtime · {playtime}",
                 "playnite-library.details.playtime", "Game playtime"));
+        if (state.CompletionStatus is { } completionStatus)
+            details.Add(UI.Text($"Completion · {completionStatus}",
+                "playnite-library.details.completion", "Game completion status"));
         if (state.Operation is { } operation)
             details.Add(UI.Text($"Operation · {operation}",
                 "playnite-library.details.operation", "Game operation"));
