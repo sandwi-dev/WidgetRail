@@ -1006,13 +1006,15 @@ controller scaffold selects `unload-after-idle` with a five-minute bound. Use
 that bounded policy for ordinary widgets. Choose `keep-alive` only when a
 documented process-lifetime Background operation genuinely requires it.
 
-Before launch, the bridge also admits application workers against a host-wide
-default envelope of eight worker sessions. Optional memory guidance is reported
-but neither reserved nor enforced as a private-size limit. It never silently
-evicts a `keep-alive` worker. When capacity is full, a new launch
-fails with a remediation message until a resident worker is disabled, removed,
-crashes, or reaches its explicit idle-unload bound. The trusted Settings worker
-has one separate control-plane slot so diagnostics remain reachable.
+Before launch, the bridge atomically accounts for application workers without a
+framework-selected count limit. A user or administrator may opt into an exact
+positive cap with `--max-resident-workers`; only then can count capacity reject a
+new launch. Optional memory guidance is reported but neither reserved nor
+enforced as a private-size limit. A configured cap never silently evicts a
+`keep-alive` worker. When that cap is full, a new launch fails with a remediation
+message until a resident worker is disabled, removed, crashes, or reaches its
+explicit idle-unload bound. The trusted Settings worker has one separate
+control-plane slot so diagnostics remain reachable.
 
 The host never calls undocumented process/thread suspension APIs and never
 infers unload from CPU or memory. Your callbacks and cancellation tokens still

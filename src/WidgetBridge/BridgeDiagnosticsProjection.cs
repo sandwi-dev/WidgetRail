@@ -133,14 +133,18 @@ internal sealed class BridgeDiagnosticsProjection(
                     $"{Math.Clamp(input.Appearance.ErrorCount, 0, 64)} errors")
             : Area("appearance", "Appearance", PlatformDiagnosticState.Unavailable,
                 "Appearance service is not configured");
+        var applicationWorkers = residency.MaximumApplicationWorkers is { } configuredMaximum
+            ? $"{Math.Max(0, residency.ApplicationWorkers)}/{Math.Max(0, configuredMaximum)} " +
+              "(user-configured count limit)"
+            : $"{Math.Max(0, residency.ApplicationWorkers)} " +
+              "(no application-worker count limit)";
 
         return new PlatformDiagnosticsSnapshot(
             PlatformDiagnosticsSnapshot.CurrentSchemaVersion,
             Interlocked.Increment(ref _revision),
             Area("bridge", "Bridge", PlatformDiagnosticState.Healthy,
-                $"Native host connected; application workers " +
-                $"{Math.Max(0, residency.ApplicationWorkers)}/" +
-                $"{Math.Max(0, residency.MaximumApplicationWorkers)}; reported memory guidance " +
+                $"Native host connected; application workers {applicationWorkers}; " +
+                $"reported memory guidance " +
                 $"{Math.Max(0, residency.ApplicationAdvisoryMemoryMb)} MiB; control plane " +
                 $"{Math.Max(0, residency.ControlPlaneWorkers)} " +
                 $"({Math.Max(0, residency.ControlPlaneAdvisoryMemoryMb)} MiB reported)"),

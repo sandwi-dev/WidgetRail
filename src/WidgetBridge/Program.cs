@@ -166,14 +166,21 @@ internal static class Program
         if (args.Contains("--max-resident-memory-mb", StringComparer.Ordinal))
             throw new ArgumentException(
                 "--max-resident-memory-mb is no longer supported; worker memory is reported, not capped.");
+        var requestedMaximum = OptionalValue(args, "--max-resident-workers");
+        int? maximumApplicationWorkers = null;
+        if (requestedMaximum is not null)
+        {
+            if (!int.TryParse(
+                    requestedMaximum,
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out var parsedMaximum) || parsedMaximum < 1)
+                throw new ArgumentException("Invalid value for --max-resident-workers.");
+            maximumApplicationWorkers = parsedMaximum;
+        }
         return new WorkerResidencyBudgetOptions
         {
-            MaximumApplicationWorkers = OptionalInt(
-                args,
-                "--max-resident-workers",
-                WorkerResidencyBudgetOptions.DefaultMaximumApplicationWorkers,
-                1,
-                256),
+            MaximumApplicationWorkers = maximumApplicationWorkers,
         };
     }
 }

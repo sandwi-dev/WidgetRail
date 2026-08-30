@@ -158,15 +158,16 @@ recreates the worker lazily when it becomes visible. Intentional unload does not
 consume crash budget. The capability broker denies normal operations and every
 subscription in Background.
 
-Process launch is additionally gated by a supervisor-owned aggregate envelope
-of eight application worker sessions by default. `--max-resident-workers`
-provides the bounded trusted launch-time override. Optional manifest memory
-guidance is reported in diagnostics but is neither reserved nor enforced as a
-private-memory ceiling. Admission is serialized before launch; capacity refusal
-does not evict an existing `keep-alive` worker. Reservations are released by
+Application-worker count has no framework limit by default.
+`--max-resident-workers` provides an optional positive trusted launch-time cap
+for a user or administrator who wants one. Optional manifest memory guidance is
+reported in diagnostics but is neither reserved nor enforced as a private-memory
+ceiling. Admission and accounting remain serialized before launch. A configured
+cap never evicts an existing `keep-alive` worker. Reservations are released by
 failed launch/crash, idle unload, restart retirement, catalog removal, and
 shutdown. The exact trusted Settings identity uses one separate control-plane
-slot and reports both envelopes through private diagnostics.
+slot, and private diagnostics report the configured application cap or its
+absence alongside both worker counts and advisory memory.
 
 For a widget with closed declared capabilities, the bridge creates a fresh
 `BrokerWidgetProcessCompanion` on every worker start/restart. Package,

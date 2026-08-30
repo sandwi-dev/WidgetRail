@@ -4,13 +4,11 @@ namespace WidgetRail.WidgetBridge;
 
 public sealed record WorkerResidencyBudgetOptions
 {
-    public const int DefaultMaximumApplicationWorkers = 8;
-
-    public int MaximumApplicationWorkers { get; init; } = DefaultMaximumApplicationWorkers;
+    public int? MaximumApplicationWorkers { get; init; }
 
     internal void Validate()
     {
-        if (MaximumApplicationWorkers is < 1 or > 256)
+        if (MaximumApplicationWorkers is < 1)
             throw new ArgumentOutOfRangeException(nameof(MaximumApplicationWorkers));
     }
 }
@@ -18,7 +16,7 @@ public sealed record WorkerResidencyBudgetOptions
 public readonly record struct WorkerResidencyBudgetSnapshot(
     int ApplicationWorkers,
     long ApplicationAdvisoryMemoryMb,
-    int MaximumApplicationWorkers,
+    int? MaximumApplicationWorkers,
     int ControlPlaneWorkers,
     long ControlPlaneAdvisoryMemoryMb)
 {
@@ -87,9 +85,11 @@ internal sealed class WorkerResidencyBudget
                 return new ReservationLease(this, owner);
             }
 
-            if (_applicationWorkers >= _options.MaximumApplicationWorkers)
+            if (_options.MaximumApplicationWorkers is { } maximumApplicationWorkers &&
+                _applicationWorkers >= maximumApplicationWorkers)
                 throw CapacityException(widgetId,
-                    $"the application worker limit ({_applicationWorkers}/{_options.MaximumApplicationWorkers})");
+                    $"the user-configured application worker limit " +
+                    $"({_applicationWorkers}/{maximumApplicationWorkers})");
             _reservations.Add(owner, new Reservation(reportedMemoryMb, IsControlPlane: false));
             _applicationWorkers++;
             _applicationAdvisoryMemoryMb += reportedMemoryMb;

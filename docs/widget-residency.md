@@ -40,20 +40,24 @@ Omitting `residencyPolicy` means keep-alive.
 | `suspend-when-hidden` | Resident | Background callback/tokens; visible/state work must stop | Suppresses hidden snapshots, invalidations, input, and broker access |
 | `unload-after-idle` | Resident until the explicit idle bound, then destroyed | Background first; `Destroying` if the bound expires | Caches last validated snapshot, bounded teardown, lazy recreation on visibility |
 
-The bridge also owns a host-wide admission envelope. By default, application
-widgets may reserve at most eight resident worker sessions. Admission is
-atomic and happens before launch. If the session limit is full, the requested
-worker remains stopped and the host receives an
-actionable error; an existing `keep-alive` worker is never silently evicted.
+The bridge also owns host-wide worker accounting. Application-worker count has
+no framework limit by default. Admission is atomic and happens before launch.
+When a user or administrator supplies the optional positive
+`--max-resident-workers` cap and that selected limit is full, the requested
+worker remains stopped and the host receives an actionable error; an existing
+`keep-alive` worker is never silently evicted.
 Crash, failed launch, idle unload, restart retirement, catalog removal, and
 bridge shutdown release the reservation exactly once. The exact trusted
 Settings worker has one separate control-plane slot so the diagnostics surface
 remains reachable when the application envelope is full. Optional manifest
 memory guidance is reported for both envelopes but is not reserved capacity.
 
-The bridge process accepts the trusted launch-time override
-`--max-resident-workers`. The former `--max-resident-memory-mb` option is
-rejected rather than pretending to enforce a full-application memory ceiling.
+The bridge process accepts the trusted launch-time option
+`--max-resident-workers` as an explicit positive application-worker cap. Zero,
+negative, missing, duplicate, and non-integer values are rejected. Omitting the
+option leaves application-worker count uncapped. The former
+`--max-resident-memory-mb` option is rejected rather than pretending to enforce
+a full-application memory ceiling.
 Every admitted worker and helper remains in one non-breakaway accounting Job
 with kill-on-close cleanup.
 
