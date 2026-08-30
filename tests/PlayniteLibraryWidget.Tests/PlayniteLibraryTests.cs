@@ -13,6 +13,60 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed class PlayniteLibraryTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task InteractiveLifecycleRepublishesActionablePlayniteControls()
+    {
+        var host = new FakeHost(0);
+        using var playnite = new FakeConnectionClient();
+        var services = host.Services();
+        var widget = WidgetTestHost.Attach(
+            new LauncherWidget(new TestApplicationService(services, host), playnite), services);
+
+        await Visible(widget);
+        await Ready(widget, host);
+        var visible = Snapshot(widget, 1);
+        var visibleConnect = Nodes(visible.Root).Single(node =>
+            node.ActionId == LauncherWidget.PlayniteOpenActionId);
+        Assert.IsTrue(visibleConnect.IsDisabled,
+            "Visible preview must keep Playnite connection inert.");
+        Assert.IsFalse(await Route(widget, visible, ControllerButton.A, visibleConnect.Id),
+            "The disabled preview control must not admit A.");
+
+        var invalidations = 0;
+        widget.Invalidated += (_, _) => invalidations++;
+        await Interactive(widget);
+        Assert.AreEqual(1, invalidations,
+            "Entering Interactive must publish the newly actionable controls once.");
+
+        var interactive = Snapshot(widget, 2);
+        var interactiveConnect = Nodes(interactive.Root).Single(node =>
+            node.ActionId == LauncherWidget.PlayniteOpenActionId);
+        Assert.IsTrue(interactiveConnect.IsDisabled != true);
+        Assert.IsTrue(await Route(widget, interactive, ControllerButton.A,
+            interactiveConnect.Id), "The fresh Interactive snapshot must admit A.");
+        await WaitUntil(() => playnite.ProbeCalls == 1);
+        Assert.AreEqual(1, playnite.ProbeCalls);
+        var connection = Snapshot(widget, 3);
+        Assert.IsTrue(Nodes(connection.Root).Any(node =>
+            node.Id == "playnite-library.playnite.root"));
+
+        invalidations = 0;
+        await Visible(widget);
+        Assert.AreEqual(1, invalidations,
+            "Leaving Interactive for Visible must republish inert controls once.");
+        var returnedVisible = Snapshot(widget, 4);
+        Assert.IsTrue(Nodes(returnedVisible.Root)
+            .Where(node => node.ActionId is not null)
+            .All(node => node.IsDisabled == true),
+            "Every action on the visible connection preview must remain inert.");
+
+        invalidations = 0;
+        await Visible(widget);
+        Assert.AreEqual(0, invalidations,
+            "A repeated stable lifecycle state must not churn publications.");
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task ExactTitleOverrideChangesPresentationAndSearchButNeverLaunchIdentity()
     {
         var privateState = new WidgetTestPrivateState();
@@ -4479,6 +4533,29 @@ public sealed class PlayniteLibraryTests
                 $"{error.Path}: {error.Code}: {error.Message}")));
             throw;
         }
+    }
+
+    private sealed class FakeConnectionClient : IPlayniteBridgeClient
+    {
+        internal int ProbeCalls { get; private set; }
+
+        public ValueTask<PlayniteBridgeConnectionResult> ProbeAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ProbeCalls++;
+            return ValueTask.FromResult(new PlayniteBridgeConnectionResult(
+                PlayniteBridgeConnectionKind.NotConfigured, "credential_missing"));
+        }
+
+        public ValueTask SaveCredentialAsync(
+            string token, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Credential mutation is outside this fixture.");
+
+        public ValueTask DeleteCredentialAsync(CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Credential mutation is outside this fixture.");
+
+        public void Dispose() { }
     }
 
     private static WidgetAppLibraryItem Item(int index) =>

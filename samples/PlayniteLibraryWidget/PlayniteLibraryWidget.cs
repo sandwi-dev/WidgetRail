@@ -182,6 +182,18 @@ public sealed partial class PlayniteLibraryWidget : Widget
         return ValueTask.CompletedTask;
     }
 
+    protected override ValueTask OnLifecycleStateChangedAsync(
+        WidgetLifecycleState previous,
+        WidgetLifecycleState current,
+        CancellationToken stateLifetime)
+    {
+        if (current == WidgetLifecycleState.Interactive ||
+            previous == WidgetLifecycleState.Interactive &&
+            current == WidgetLifecycleState.Visible)
+            Invalidate();
+        return ValueTask.CompletedTask;
+    }
+
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         _library.Reset(invalidate: false);
