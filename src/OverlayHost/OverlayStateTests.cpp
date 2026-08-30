@@ -181,7 +181,7 @@ int main() {
           "Left reaches the first widget through the same stable order");
 
     const std::vector<std::wstring> productionOrder{
-        L"settings", L"now-playing", L"games-apps", L"game-launcher",
+        L"settings", L"now-playing", L"games-apps", L"playnite-library",
         L"audio-mixer", L"network-controls", L"yt-music", L"spotify",
     };
     OverlayState productionStartup({}, {});
@@ -223,7 +223,7 @@ int main() {
     (void)catalogTray.SetAvailableWidgets(reorderedDiscovery);
     Check(catalogTray.order() ==
               std::vector<std::wstring>{
-                  L"settings", L"now-playing", L"games-apps", L"game-launcher",
+                  L"settings", L"now-playing", L"games-apps", L"playnite-library",
                   L"audio-mixer", L"network-controls", L"yt-music", L"spotify",
                   L"catalog-probe"} &&
               catalogTray.selectedWidget() == L"audio-mixer" &&

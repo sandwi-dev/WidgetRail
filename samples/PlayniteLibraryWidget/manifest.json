@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "widgetrail.samples.playnite-library",
+  "publisher": "widgetrail.samples",
+  "name": "Playnite Library",
+  "version": "0.2.3",
+  "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "entrypoint": {
+    "runtime": "full-trust-application-v1",
+    "executable": "payload/PlayniteLibraryApplication.exe"
+  },
+  "presentation": { "icon": "play" },
+  "permissions": [],
+  "optionalPermissions": [],
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "keep-alive"
+  },
+  "resourceRequest": { "memoryMb": 48, "updateHz": 4 },
+  "architectures": [ "x64" ]
+}

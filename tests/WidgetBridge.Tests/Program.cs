@@ -54,7 +54,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Enabled installed widgets join the bridge catalog without eager launch", InstalledWidgetsJoinCatalog),
     ("Two unrelated full-trust applications use one ordinary runtime", FullTrustCommunityScenarios.TwoApplicationsUseTheOrdinaryRuntime),
     ("Packaged Spotify uses the ordinary full-trust runtime", FullTrustCommunityScenarios.SpotifyUsesTheOrdinaryRuntime),
-    ("Packaged Game Launcher uses the ordinary full-trust runtime", FullTrustCommunityScenarios.GameLauncherUsesTheOrdinaryRuntime),
+    ("Packaged Playnite Library uses the ordinary full-trust runtime", FullTrustCommunityScenarios.PlayniteLibraryUsesTheOrdinaryRuntime),
     ("Full-trust missing entrypoints and silent promotion fail closed", FullTrustCommunityScenarios.MissingEntrypointAndManifestPromotionFailClosed),
     ("Installed content generations receive distinct isolation identities", InstalledContentGenerationIsIsolated),
     ("Installed launch admission rejects content changed after catalog publication", InstalledLaunchAdmissionRejectsRace),
@@ -3748,14 +3748,14 @@ static Task ActionSurfaceRenderRole()
 static Task TextEntryRenderRole()
 {
     var snapshot = new WidgetView(
-        UI.TextEntry("", "Search games", "game-launcher.search.commit", "game-launcher.search", 96),
-        InitialFocusId: "game-launcher.search")
+        UI.TextEntry("", "Search games", "playnite-library.search.commit", "playnite-library.search", 96),
+        InitialFocusId: "playnite-library.search")
         .CreateSnapshot("bridge.text-entry", 1);
 
     var unthemed = BridgeRenderStyleResolver.Resolve(snapshot, theme: null);
-    Assert.True(unthemed.ContainsKey("game-launcher.search"),
+    Assert.True(unthemed.ContainsKey("playnite-library.search"),
         "TextEntry node ID was omitted from the unthemed bridge style map.");
-    Assert.Equal(0, unthemed["game-launcher.search"].Base.Count);
+    Assert.Equal(0, unthemed["playnite-library.search"].Base.Count);
 
     var parsed = WrssParser.Parse("textEntry { color: #2468ac; }", "text-entry.wrss");
     Assert.Equal(0, parsed.Diagnostics.Count(diagnostic =>
@@ -3763,7 +3763,7 @@ static Task TextEntryRenderRole()
     var compiled = WrssThemeCompiler.Compile([parsed.Document]);
     Assert.True(compiled.IsValid, "TextEntry WRSS fixture did not compile.");
     var themed = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
-    Assert.Equal("#2468ac", themed["game-launcher.search"].Base["color"].Text);
+    Assert.Equal("#2468ac", themed["playnite-library.search"].Base["color"].Text);
 
     var unknown = snapshot with
     {

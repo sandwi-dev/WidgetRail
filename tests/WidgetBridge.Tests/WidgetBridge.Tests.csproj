@@ -19,8 +19,8 @@
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\samples\SpotifyWidget\PlaybackHost\SpotifyPlaybackHost.csproj"
                       ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\samples\GameLauncherWidget\Application\GameLauncherApplication.csproj"
+    <ProjectReference Include="..\..\samples\PlayniteLibraryWidget\Application\PlayniteLibraryApplication.csproj"
                       ReferenceOutputAssembly="false"
-                      Condition="'$(SkipGameLauncherFixture)' != 'true'" />
+                      Condition="'$(SkipPlayniteLibraryFixture)' != 'true'" />
   </ItemGroup>
 </Project>

@@ -253,20 +253,20 @@ internal static class FullTrustCommunityScenarios
             "The ordinary Spotify package did not disable and remove cleanly.");
     }
 
-    internal static async Task GameLauncherUsesTheOrdinaryRuntime()
+    internal static async Task PlayniteLibraryUsesTheOrdinaryRuntime()
     {
         var root = RepositoryRoot();
         var applicationOutput = Path.Combine(
-            root, "samples", "GameLauncherWidget", "Application",
+            root, "samples", "PlayniteLibraryWidget", "Application",
             "bin", "Release", "net8.0-windows10.0.19041.0", "win-x64");
-        Check(File.Exists(Path.Combine(applicationOutput, "GameLauncherApplication.exe")),
-            "The package-owned Game Launcher application was not built.");
+        Check(File.Exists(Path.Combine(applicationOutput, "PlayniteLibraryApplication.exe")),
+            "The package-owned Playnite Library application was not built.");
         Check(File.Exists(Path.Combine(applicationOutput, "Microsoft.Windows.SDK.NET.dll")) &&
-              File.Exists(Path.Combine(applicationOutput, "GameLauncherWidget.dll")),
-            "The Game Launcher package graph did not contain the Windows runtime and " +
+              File.Exists(Path.Combine(applicationOutput, "PlayniteLibraryWidget.dll")),
+            "The Playnite Library package graph did not contain the Windows runtime and " +
             "capability-free widget core exclusively.");
         using var temporary = new ScenarioDirectory();
-        var package = CreateGameLauncherPackage(root, applicationOutput, temporary.Path);
+        var package = CreatePlayniteLibraryPackage(root, applicationOutput, temporary.Path);
         var installedRoot = Path.Combine(temporary.Path, "installed");
         var catalog = new CatalogService(installedRoot);
         var installed = await catalog.InstallAsync(
@@ -278,14 +278,14 @@ internal static class FullTrustCommunityScenarios
         var load = await BridgeCatalog.LoadWithInstalledAsync(
             trustedCatalog.CatalogPath, installedRoot, trustedCatalog.WorkerHostPath);
         Check(load.InstalledCatalogValid && load.Warnings.Count == 0,
-            "The packaged Game Launcher application failed ordinary catalog admission.");
+            "The packaged Playnite Library application failed ordinary catalog admission.");
         var configured = load.Catalog.GetConfigured(installed.Id);
-        AssertFullTrust(configured, "GameLauncherApplication.exe");
+        AssertFullTrust(configured, "PlayniteLibraryApplication.exe");
         Check(configured.DeclaredCapabilities.Count == 0 &&
               configured.WorkerArguments.Count == 0,
-            "Game Launcher retained a product capability or special host argument.");
+            "Playnite Library retained a product capability or special host argument.");
 
-        var variable = "WRAIL_GAME_LAUNCHER_DATA_ROOT";
+        var variable = "WRAIL_PLAYNITE_LIBRARY_DATA_ROOT";
         var previousRoot = Environment.GetEnvironmentVariable(variable);
         Environment.SetEnvironmentVariable(variable, Path.Combine(temporary.Path, "data"));
         try
@@ -297,11 +297,11 @@ internal static class FullTrustCommunityScenarios
             var snapshot = await client.GetSnapshotAsync();
             for (var attempt = 0; attempt != 12; attempt++)
             {
-                if (UsableGameLauncherLibrary(snapshot)) break;
+                if (UsablePlayniteLibraryLibrary(snapshot)) break;
                 await invalidated.WaitAsync(TimeSpan.FromSeconds(5));
                 snapshot = await client.GetSnapshotAsync();
             }
-            Check(UsableGameLauncherLibrary(snapshot),
+            Check(UsablePlayniteLibraryLibrary(snapshot),
                 $"The ordinary full-trust route did not reach a usable library/source " +
                 $"snapshot. Root '{snapshot.Root.Id}', focus " +
                 $"'{snapshot.InitialFocusId ?? "<null>"}'.");
@@ -315,17 +315,17 @@ internal static class FullTrustCommunityScenarios
         await catalog.SetEnabledAsync(installed.Id, false);
         var removed = await catalog.UninstallAsync(installed.Id);
         Check(removed.RemovedVersions.Count == 1,
-            "The ordinary Game Launcher package did not disable and remove cleanly.");
+            "The ordinary Playnite Library package did not disable and remove cleanly.");
     }
 
-    private static bool UsableGameLauncherLibrary(ViewSnapshot snapshot)
+    private static bool UsablePlayniteLibraryLibrary(ViewSnapshot snapshot)
     {
         if (snapshot.InitialFocusId is null ||
-            TryFind(snapshot.Root, "game-launcher.sources") is null ||
-            TryFind(snapshot.Root, "game-launcher.retry") is not null)
+            TryFind(snapshot.Root, "playnite-library.sources") is null ||
+            TryFind(snapshot.Root, "playnite-library.retry") is not null)
             return false;
         return Descendants(snapshot.Root).Any(node =>
-            node.Id.StartsWith("game-launcher.source.source-", StringComparison.Ordinal) &&
+            node.Id.StartsWith("playnite-library.source.source-", StringComparison.Ordinal) &&
             node.Text is { } text &&
             (text.Contains(": Healthy", StringComparison.Ordinal) ||
              text.Contains(": Degraded", StringComparison.Ordinal)));
@@ -513,18 +513,18 @@ internal static class FullTrustCommunityScenarios
         }
     }
 
-    private static string CreateGameLauncherPackage(
+    private static string CreatePlayniteLibraryPackage(
         string repositoryRoot,
         string applicationOutput,
         string destination)
     {
         var package = Path.Combine(
-            destination, "widgetrail.samples.game-launcher-0.2.2.wrwidget");
+            destination, "widgetrail.samples.playnite-library-0.2.2.wrwidget");
         using var stream = new FileStream(
             package, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
         var widgetRoot = Path.Combine(
-            repositoryRoot, "samples", "GameLauncherWidget");
+            repositoryRoot, "samples", "PlayniteLibraryWidget");
         Write(archive, "manifest.json", File.ReadAllBytes(Path.Combine(
             widgetRoot, "manifest.json")));
         Write(archive, "styles/default.wrss", File.ReadAllBytes(Path.Combine(

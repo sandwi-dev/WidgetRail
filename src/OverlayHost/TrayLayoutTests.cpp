@@ -183,7 +183,7 @@ int main() {
         "Network Controls compact overflow reaches both catalog edges");
     CheckCompleteReachability(
         1052, 878, 8, 7, productionBand(878),
-        "Game Launcher wide tray reaches every identity without overflow loss");
+        "Playnite Library wide tray reaches every identity without overflow loss");
     const auto compact = widgetrail::shell::ComputeTrayLayout(40, 120, 4, 2);
     Check(compact && compact->tiles.size() == 1 &&
           compact->tiles[0].slot == 2 && compact->tiles[0].bounds.width == 28,

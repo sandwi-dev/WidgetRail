@@ -130,7 +130,7 @@ visible tray counts, previous/next overflow state, and whether the selected
 identity is visible. It also records shared shell, bounded body/viewport, tray,
 and selected-tile bounds. Widget surface hints affect only that inner body: the
 host recomputes one work-area-fitted shell from live `rcWork`, DPI, and interface
-scale, so small, Game Launcher, and Spotify switches cannot move the tray or
+scale, so small, Playnite Library, and Spotify switches cannot move the tray or
 change its capacity. Paint, pointer hit testing, and UI Automation continue to
 consume the same tray layout.
 

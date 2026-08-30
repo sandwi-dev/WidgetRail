@@ -3957,7 +3957,7 @@ void TrustedArtworkTerminalFallbackIsStable() {
         snapshot.initialFocusId = snapshot.root.children.front().id;
         return snapshot;
     };
-    auto gameLauncher = makeSnapshot(L"game-launcher");
+    auto playniteLibrary = makeSnapshot(L"playnite-library");
     auto gamesApps = makeSnapshot(L"games-apps");
     DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
     const Rect viewport{0.0F, 0.0F, 420.0F, 360.0F};
@@ -3974,10 +3974,10 @@ void TrustedArtworkTerminalFallbackIsStable() {
         Check(result.succeeded, "production-shaped trusted artwork frame succeeds");
         return result;
     };
-    const auto launcherPending = render(gameLauncher, L"game-launcher");
+    const auto launcherPending = render(playniteLibrary, L"playnite-library");
     const auto gamesPending = render(gamesApps, L"games-apps");
     Check(requested.size() == 6,
-        "Game Launcher and Games & Apps request available pending and unavailable handles lazily");
+        "Playnite Library and Games & Apps request available pending and unavailable handles lazily");
 
     const auto resolve = [&](const std::wstring_view widgetId) {
         Check(cache.SupplyTrustedArtwork(widgetId, availableHandle, L"AAAA"),
@@ -3985,7 +3985,7 @@ void TrustedArtworkTerminalFallbackIsStable() {
         Check(cache.FailTrustedArtwork(widgetId, unavailableHandle),
             "unavailable trusted artwork enters one terminal state");
     };
-    resolve(L"game-launcher");
+    resolve(L"playnite-library");
     resolve(L"games-apps");
     {
         std::unique_lock lock(transitionMutex);
@@ -4091,15 +4091,15 @@ void TrustedArtworkTerminalFallbackIsStable() {
         Check(terminalTransitions() == 2,
             "repaint and snapshot refresh do not duplicate terminal diagnostics");
     };
-    verifyFixture(gameLauncher, L"game-launcher", launcherPending);
+    verifyFixture(playniteLibrary, L"playnite-library", launcherPending);
     verifyFixture(gamesApps, L"games-apps", gamesPending);
 
-    auto& recoveredArtwork = gameLauncher.root.children[2].children[0];
+    auto& recoveredArtwork = playniteLibrary.root.children[2].children[0];
     recoveredArtwork.artworkHandle = recoveredHandle;
-    (void)render(gameLauncher, L"game-launcher");
-    Check(!cache.SupplyTrustedArtwork(L"game-launcher", unavailableHandle, L"AAAA"),
+    (void)render(playniteLibrary, L"playnite-library");
+    Check(!cache.SupplyTrustedArtwork(L"playnite-library", unavailableHandle, L"AAAA"),
         "late prior revision cannot replace current artwork");
-    Check(cache.SupplyTrustedArtwork(L"game-launcher", recoveredHandle, L"AAAA"),
+    Check(cache.SupplyTrustedArtwork(L"playnite-library", recoveredHandle, L"AAAA"),
         "new trusted artwork revision can recover from terminal fallback");
     {
         std::unique_lock lock(transitionMutex);
@@ -4107,8 +4107,8 @@ void TrustedArtworkTerminalFallbackIsStable() {
             return transitions.size() == 5;
         }), "new trusted artwork revision completes");
     }
-    const auto recovered = render(gameLauncher, L"game-launcher");
-    const auto recoveredPixels = rasterEvidence(recovered, L"game-launcher");
+    const auto recovered = render(playniteLibrary, L"playnite-library");
+    const auto recoveredPixels = rasterEvidence(recovered, L"playnite-library");
     Check(recoveredPixels.unavailableBright > 1'000,
         "new revision replaces the terminal fallback with supplied pixels");
     Check(terminalTransitions() == 2,

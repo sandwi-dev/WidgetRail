@@ -167,7 +167,7 @@ OS APIs rather than product/domain capability contracts. Assembly/type fields
 and declared capabilities conflict with this runtime and fail manifest
 validation.
 
-The [Game Launcher Community sample](../samples/GameLauncherWidget/README.md) is
+The [Playnite Library Community sample](../samples/PlayniteLibraryWidget/README.md) is
 the complete domain example: its Community
 package owns installed-game discovery, bounded caches and organization state,
 opaque SavedIds, source health, and exact launch revalidation while the host owns
@@ -693,7 +693,7 @@ first-page contracts are intentionally stable unless a row notes otherwise:
 | Audio Mixer | Preferred / Preferred | 520x520 | 320x360 | Provider-driven session rows keep a stable surface; cards and slider rows stretch to the admitted width while each slider owns the flexible remainder. |
 | Network Controls | Preferred / Preferred | 560x700 | 320x420 | The first Scan action/status fit at preferred height; dynamic scan/Bluetooth rows stay stable and scroll-reveal at constrained height. |
 | Games & Apps | Preferred / Preferred | 820x600 library; 820x280 bounded state page | 420x300 library; 420x250 state page | Library/catalog content is paged and dynamic; bounded status pages keep explicit stable extents. |
-| Game Launcher | Preferred / Preferred | 980x700 | 420x340 | Its large cursor collection, hero rail, and details routes share one stable envelope. |
+| Playnite Library | Preferred / Preferred | 980x700 | 420x340 | Its large cursor collection, hero rail, and details routes share one stable envelope. |
 | Now Playing | Preferred / Preferred | 580x400 | 360x330 | Media-session availability and metadata change independently of host placement. |
 | Spotify | Preferred / Preferred | 980x560 | 620x400 | Playback, queue, devices, and cursor collections are provider-driven. |
 | YT Music | Preferred / Preferred | 760x440 | 480x340 | One full-width raised media panel reflows at compact width while playback state remains live. |

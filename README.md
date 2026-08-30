@@ -92,7 +92,7 @@ and physical-display gates remain explicit manual release evidence.
 - [Widget authoring guide and API map](docs/widget-authoring-guide.md)
 - [SDK Gallery Community addon reference](samples/SdkGalleryWidget/README.md)
 - [Games & Apps reference](docs/games-and-apps.md)
-- [Game Launcher Community sample](samples/GameLauncherWidget/README.md)
+- [Playnite Library Community sample](samples/PlayniteLibraryWidget/README.md)
 - [YT Music Community addon reference](samples/YtMusicWidget/README.md)
 - [Retired Recent Apps reference](docs/recent-apps.md)
 - [Platform architecture](docs/platform-architecture.md)

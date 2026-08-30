@@ -135,7 +135,7 @@ the intentional pre-release consolidation required no deprecation interval.
 The current pre-release SDK adds public `WidgetAppLaunchObservationState`,
 `WidgetAppLaunchObservation`, and
 `WidgetAppLibraryService.LaunchObservedAsync`. This additive contract replaces
-repository friend access previously used by the bundled Game Launcher. It
+repository friend access previously used by the bundled Playnite Library. It
 returns only bounded sanitized progress and support flags; it exposes no
 process, path, launcher identity, provider authority, or durable launch token.
 Community launchers must still persist only `SavedId`, resolve it immediately

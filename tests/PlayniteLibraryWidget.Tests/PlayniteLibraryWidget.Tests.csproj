@@ -1,0 +1,18 @@
+<Project Sdk="MSTest.Sdk/4.3.2">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\samples\PlayniteLibraryWidget\PlayniteLibraryWidget.csproj" />
+    <ProjectReference Include="..\..\src\WidgetSdk\WidgetSdk.csproj" />
+    <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\samples\PlayniteLibraryWidget\styles\default.wrss"
+          Link="styles\default.wrss"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -407,23 +407,23 @@ int main() {
         },
         [](std::wstring_view) { return true; });
     const auto failedRevision =
-        L"wrail-artwork\x1fgame-launcher\x1ftile.artwork\x1f"
+        L"wrail-artwork\x1fplaynite-library\x1ftile.artwork\x1f"
         L"library.art.11111111111111111111111111111111";
     const auto recoveredRevision =
-        L"wrail-artwork\x1fgame-launcher\x1ftile.artwork\x1f"
+        L"wrail-artwork\x1fplaynite-library\x1ftile.artwork\x1f"
         L"library.art.22222222222222222222222222222222";
     assert(failureCache.RequestTrustedArtwork(failedRevision) ==
            RemoteImageRequestResult::Queued);
     assert(failureCache.GetState(failedRevision) == RemoteImageState::Loading);
     assert(failureCache.FailTrustedArtwork(
-        L"game-launcher", L"library.art.11111111111111111111111111111111"));
+        L"playnite-library", L"library.art.11111111111111111111111111111111"));
     assert(failureCache.GetState(failedRevision) == RemoteImageState::Failed);
     assert(!failureCache.FailTrustedArtwork(
-        L"game-launcher", L"library.art.11111111111111111111111111111111"));
+        L"playnite-library", L"library.art.11111111111111111111111111111111"));
     assert(!failureCache.SupplyTrustedArtwork(
-        L"game-launcher", L"library.art.11111111111111111111111111111111", L"AAAA"));
+        L"playnite-library", L"library.art.11111111111111111111111111111111", L"AAAA"));
     const auto sharedFailedRevision =
-        L"wrail-artwork\x1fgame-launcher\x1fsecond-tile.artwork\x1f"
+        L"wrail-artwork\x1fplaynite-library\x1fsecond-tile.artwork\x1f"
         L"library.art.11111111111111111111111111111111";
     assert(failureCache.RequestTrustedArtwork(sharedFailedRevision) ==
            RemoteImageRequestResult::AlreadyTracked);
@@ -439,9 +439,9 @@ int main() {
            RemoteImageRequestResult::Queued);
     assert(failureCache.GetState(failedRevision) == RemoteImageState::Missing);
     assert(!failureCache.SupplyTrustedArtwork(
-        L"game-launcher", L"library.art.11111111111111111111111111111111", L"AAAA"));
+        L"playnite-library", L"library.art.11111111111111111111111111111111", L"AAAA"));
     assert(failureCache.SupplyTrustedArtwork(
-        L"game-launcher", L"library.art.22222222222222222222222222222222", L"AAAA"));
+        L"playnite-library", L"library.art.22222222222222222222222222222222", L"AAAA"));
     {
         std::unique_lock lock(failureMutex);
         assert(failureCompleted.wait_for(lock, std::chrono::seconds(2), [&] {
@@ -457,7 +457,7 @@ int main() {
     assert(failureCache.RequestTrustedArtwork(failedRevision) ==
            RemoteImageRequestResult::Queued);
     assert(failureCache.FailTrustedArtwork(
-        L"game-launcher", L"library.art.11111111111111111111111111111111"));
+        L"playnite-library", L"library.art.11111111111111111111111111111111"));
     {
         std::scoped_lock lock(failureMutex);
         assert(artworkTransitions.size() == 3);

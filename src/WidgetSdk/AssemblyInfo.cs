@@ -9,4 +9,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("WidgetSdk.Tests")]
 [assembly: InternalsVisibleTo("YtMusicWidget.Tests")]
 [assembly: InternalsVisibleTo("SettingsWidget.Tests")]
-[assembly: InternalsVisibleTo("GameLauncherWidget.Tests")]
+[assembly: InternalsVisibleTo("PlayniteLibraryWidget.Tests")]

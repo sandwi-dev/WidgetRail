@@ -208,9 +208,9 @@ RequireLink(Path.Combine(repository, "README.md"), "docs/community-companion-ser
 RequireLink(Path.Combine(repository, "docs", "README.md"), "widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"), "community-companion-services.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"),
-    "../samples/GameLauncherWidget/README.md");
+    "../samples/PlayniteLibraryWidget/README.md");
 RequireLink(Path.Combine(repository, "README.md"),
-    "samples/GameLauncherWidget/README.md");
+    "samples/PlayniteLibraryWidget/README.md");
 RequireLink(Path.Combine(repository, "samples", "ClockWidget", "README.md"),
     "../../docs/widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "samples", "YtMusicWidget", "README.md"),

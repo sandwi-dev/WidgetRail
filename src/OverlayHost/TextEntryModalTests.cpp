@@ -240,97 +240,97 @@ widgetrail::WidgetSnapshot TextEntrySnapshot() {
 void CheckAdmission() {
     auto snapshot = TextEntrySnapshot();
     const auto request = widgetrail::input::CaptureTextEntryActionRequest(
-        L"game-launcher", L"runtime-a", L"presentation-a", snapshot, L"search");
+        L"playnite-library", L"runtime-a", L"presentation-a", snapshot, L"search");
     Check(request.has_value(), "current text entry captures bounded immutable authority");
     if (!request) return;
     const auto current = widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-a", L"presentation-a", snapshot);
+        *request, true, L"playnite-library", L"runtime-a", L"presentation-a", snapshot);
     Check(current && current->actionId == L"search.commit" &&
         current->sourceElementId == L"search" &&
         current->activeInputScopeId == L"root",
         "unchanged current request re-resolves one exact action");
     const widgetrail::accessibility::ActionRequest focusRequest{
         widgetrail::accessibility::ActionKind::Focus,
-        L"game-launcher", L"generation-a", snapshot.sequence,
+        L"playnite-library", L"generation-a", snapshot.sequence,
         snapshot.activeInputScopeId,
         widgetrail::accessibility::ElementDomain::Widget,
         L"search", L"search.commit",
     };
     const auto focused = widgetrail::accessibility::ResolveActionRequest(
-        focusRequest, L"game-launcher", L"generation-a", snapshot);
+        focusRequest, L"playnite-library", L"generation-a", snapshot);
     Check(focused && focused->kind == widgetrail::accessibility::ActionKind::Focus &&
         focused->nodeId == L"search",
         "current TextEntry admits exact UIA focus through the existing action owner");
     auto invokeRequest = focusRequest;
     invokeRequest.kind = widgetrail::accessibility::ActionKind::Invoke;
     const auto invoked = widgetrail::accessibility::ResolveActionRequest(
-        invokeRequest, L"game-launcher", L"generation-a", snapshot);
+        invokeRequest, L"playnite-library", L"generation-a", snapshot);
     Check(invoked && invoked->protocolButton == L"A" &&
         invoked->nodeId == L"search",
         "current TextEntry Invoke resolves to the existing modal-opening A action");
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
-        *request, false, L"game-launcher", L"runtime-a", L"presentation-a", snapshot),
+        *request, false, L"playnite-library", L"runtime-a", L"presentation-a", snapshot),
         "hidden or inactive widget rejects modal commit");
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
         *request, true, L"replacement", L"runtime-a", L"presentation-a", snapshot),
         "active widget replacement rejects modal commit");
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-b", L"presentation-a", snapshot),
+        *request, true, L"playnite-library", L"runtime-b", L"presentation-a", snapshot),
         "runtime replacement rejects modal commit");
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-a", L"presentation-b", snapshot),
+        *request, true, L"playnite-library", L"runtime-a", L"presentation-b", snapshot),
         "presentation replacement rejects modal commit");
 
     auto changed = snapshot;
     ++changed.sequence;
     Check(widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-a", L"presentation-a", changed)
+        *request, true, L"playnite-library", L"runtime-a", L"presentation-a", changed)
             .has_value(),
         "harmless higher-sequence refresh retains exact modal action authority");
     changed = snapshot;
     --changed.sequence;
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-a", L"presentation-a", changed),
+        *request, true, L"playnite-library", L"runtime-a", L"presentation-a", changed),
         "regressive snapshot authority rejects modal commit");
     changed = snapshot;
     changed.activeInputScopeId = L"replacement-scope";
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-a", L"presentation-a", changed),
+        *request, true, L"playnite-library", L"runtime-a", L"presentation-a", changed),
         "input-scope replacement rejects modal commit");
     changed = snapshot;
     changed.root.children.clear();
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-a", L"presentation-a", changed),
+        *request, true, L"playnite-library", L"runtime-a", L"presentation-a", changed),
         "removed source node rejects modal commit");
     changed = snapshot;
     changed.root.children[0].isDisabled = true;
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-a", L"presentation-a", changed),
+        *request, true, L"playnite-library", L"runtime-a", L"presentation-a", changed),
         "disabled source node rejects modal commit");
     changed = snapshot;
     changed.root.children[0].isBusy = true;
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-a", L"presentation-a", changed),
+        *request, true, L"playnite-library", L"runtime-a", L"presentation-a", changed),
         "busy source node rejects modal commit");
     changed = snapshot;
     changed.root.children[0].actionId = L"replacement.action";
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-a", L"presentation-a", changed),
+        *request, true, L"playnite-library", L"runtime-a", L"presentation-a", changed),
         "replaced source action rejects modal commit");
     changed = snapshot;
     changed.root.children[0].textEntryValue = L"replacement";
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-a", L"presentation-a", changed),
+        *request, true, L"playnite-library", L"runtime-a", L"presentation-a", changed),
         "changed committed value rejects modal commit");
     changed = snapshot;
     changed.root.children[0].textEntryMaximumLength = 63;
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-a", L"presentation-a", changed),
+        *request, true, L"playnite-library", L"runtime-a", L"presentation-a", changed),
         "changed text-entry bound rejects modal commit");
     changed = snapshot;
     changed.root.children[0].textEntryInputKind = L"sensitive";
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
-        *request, true, L"game-launcher", L"runtime-a", L"presentation-a", changed),
+        *request, true, L"playnite-library", L"runtime-a", L"presentation-a", changed),
         "changed text-entry sensitivity rejects modal commit");
 
     auto sensitiveSnapshot = snapshot;

@@ -109,12 +109,12 @@ planner and implementation turns do not spend context on closed evidence.
   auto-curation with durable exclusions, opt-in Applications/Unknown entries,
   stable opaque identity reconciliation, paged SDK, separately consented exact
   launch, controller UX, and current source/icon/classification limits.
-- [Game Launcher Community sample](../samples/GameLauncherWidget/README.md) and
-  [architecture reference](game-launcher.md) — autonomous full-trust Community
+- [Playnite Library Community sample](../samples/PlayniteLibraryWidget/README.md) and
+  [architecture reference](playnite-library.md) — autonomous full-trust Community
   game library over bounded opaque cursors, package-owned Windows/store discovery,
   responsive virtualized semantics, favorites and groups, display-only warm state,
   and fresh exact SavedId launch admission through the generic application runtime.
-- [Game Launcher product and engineering requirements](game-launcher-requirements.md)
+- [Playnite Library product and engineering requirements](playnite-library-requirements.md)
   — proposed console-home expansion informed by Heroic and One Game Launcher,
   including trusted multi-source adapters and optional content operations.
 - [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the

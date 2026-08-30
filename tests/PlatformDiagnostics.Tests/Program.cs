@@ -101,32 +101,32 @@ static async Task WidgetLocalDataRoundTrip()
         inspect: (widgetId, cancellationToken) =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Assert.Equal("game-launcher", widgetId);
+            Assert.Equal("playnite-library", widgetId);
             Interlocked.Increment(ref inspected);
             return ValueTask.FromResult(new PlatformWidgetLocalDataInspection(
-                widgetId, "Game Launcher", true, "local_data_present", token));
+                widgetId, "Playnite Library", true, "local_data_present", token));
         },
         clear: (widgetId, observed, cancellationToken) =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Assert.Equal("game-launcher", widgetId);
+            Assert.Equal("playnite-library", widgetId);
             Assert.Equal(token, observed);
             Interlocked.Increment(ref cleared);
             return ValueTask.FromResult(new PlatformWidgetLocalDataClearResult(
                 PlatformWidgetLocalDataClearStatus.Cleared, "cleared"));
         });
 
-    var result = await harness.Client.InspectWidgetLocalDataAsync("game-launcher");
+    var result = await harness.Client.InspectWidgetLocalDataAsync("playnite-library");
     Assert.True(result.Exists);
     Assert.Equal(token, result.ConfirmationToken);
-    var clear = await harness.Client.ClearWidgetLocalDataAsync("game-launcher", token);
+    var clear = await harness.Client.ClearWidgetLocalDataAsync("playnite-library", token);
     Assert.Equal(PlatformWidgetLocalDataClearStatus.Cleared, clear.Status);
     Assert.Equal(1, inspected);
     Assert.Equal(1, cleared);
     await Assert.ThrowsAsync<PlatformDiagnosticsException>(() =>
         harness.Client.InspectWidgetLocalDataAsync("missing/widget").AsTask());
     await Assert.ThrowsAsync<ArgumentException>(() =>
-        harness.Client.ClearWidgetLocalDataAsync("game-launcher", "bad").AsTask());
+        harness.Client.ClearWidgetLocalDataAsync("playnite-library", "bad").AsTask());
     Assert.Equal(1, inspected);
     Assert.Equal(1, cleared);
 }

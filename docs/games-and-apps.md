@@ -12,7 +12,7 @@ broker, normal lifecycle, and declarative renderer. It is not a privileged
 native shell panel.
 
 Games & Apps intentionally remains the small curated dashboard tray. The
-separate [Game Launcher](game-launcher.md) traverses the complete installed-game
+separate [Playnite Library](playnite-library.md) traverses the complete installed-game
 catalog through the same trusted provider cache and launch authority without
 copying provider/source policy into either widget.
 

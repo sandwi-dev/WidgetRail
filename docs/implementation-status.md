@@ -33,7 +33,7 @@ three-process tree used 132.1 MiB working set. The Release host is 2,164,224
 bytes and the intermediate Rust static archive is 4,184,950 bytes.
 
 DLV-286 removes the dormant Launcher Experience and advanced-presentation
-vertical slice before release. Widgets, including Game Launcher, now use only
+vertical slice before release. Widgets, including Playnite Library, now use only
 the ordinary declarative presentation contract. Platform Settings schema 1 is
 read through one bounded migration that removes only the retired launcher
 selection object while preserving unrelated settings; newly persisted state is
@@ -982,7 +982,7 @@ the selected destination; outgoing widget descendants cannot remain focused,
 actionable, or present in UIA. The bounded presentation diagnostic records the
 input owner, selected stable ID, rendered visual focus, and semantic focus on
 each authority transition. The production-shaped Audio Mixer to 420-ms cold
-Game Launcher fixture proves both retained and admitted frames stay tray-owned
+Playnite Library fixture proves both retained and admitted frames stay tray-owned
 until an explicit Up/A entry.
 
 DLV-118 closes the remaining compact-tray catalog churn seam. The responsibility
@@ -992,7 +992,7 @@ map for the touched `OverlayApp` hotspot is:
 | --- | --- | --- |
 | Catalog-to-shell transition | `ApplyWidgetCatalogChange` mutated `OverlayState`, persisted, and synchronized lifecycle directly, bypassing the normal shell transition owner. | Catalog inventory changes enter `ApplyStateTransition`; descriptor-only replacements still synchronize lifecycle and invalidate visible chrome. |
 | Published tray frame | Open-widget diagnostics and paint recomputed layout independently, and catalog events could return before replacement pixels were committed. | One per-frame `TrayLayout` feeds the diagnostic and painted tray; a visible catalog event synchronously commits that invalidated frame before later pointer messages. |
-| Verification | Deterministic layout cases did not use the installed eight-item production order, and the production switch fixture did not churn the catalog. | Release-hard layout/state checks prove complete overflow reachability at Audio Mixer, Network Controls, and Game Launcher extents; the eight-widget production fixture proves compact selection/overflow, rapid cycling, and add/remove republish with exact focus/order retention. |
+| Verification | Deterministic layout cases did not use the installed eight-item production order, and the production switch fixture did not churn the catalog. | Release-hard layout/state checks prove complete overflow reachability at Audio Mixer, Network Controls, and Playnite Library extents; the eight-widget production fixture proves compact selection/overflow, rapid cycling, and add/remove republish with exact focus/order retention. |
 
 Focused Release evidence passes `TrayLayoutTests` (283 checks),
 `OverlayStateTests`, `HostAccessibilityTests` (34 checks), and
@@ -1493,7 +1493,7 @@ The installed generic-AppContainer route passed 6/6 with exact consented
 details projection and one revision-driven refresh at
 `artifacts/verification/20260811T203857Z-1e230efe/verification-result.json`.
 A later repetition after removing an unused internal test counter stopped on
-the inherited Game Launcher fixture's all-Unavailable catalog rows; Network
+the inherited Playnite Library fixture's all-Unavailable catalog rows; Network
 Controls was unchanged by that removal and the unrelated failure is retained at
 `artifacts/verification/20260811T204150Z-2e2e8009/verification-result.json`.
 
@@ -1876,7 +1876,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  evidence also retains 85/85 Widget SDK cases, 49 native focus checks, and
  4,777 native renderer checks; the earlier single clean aggregate remains the
  only Tier-3 run.
- DLV-060 adds a separately bundled Game Launcher while preserving Games & Apps
+ DLV-060 adds a separately bundled Playnite Library while preserving Games & Apps
  as the curated tray. The launcher queries only installed trusted Game rows,
  traverses 2,000- and 10,000-item fake catalogs in 64-item provider pages,
  retains at most 192 rows and 256 cursor tokens, and renders only its retained
@@ -1888,7 +1888,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  opaque lazy artwork handle, and exact launch through the AppContainer route.
  Focused Release verification
  `artifacts/verification/20260811T121636Z-e6ecf7c2` passes Widget SDK 86/86,
- PlatformBroker 52/52, Windows app-library provider 43/43, Game Launcher 10/10,
+ PlatformBroker 52/52, Windows app-library provider 43/43, Playnite Library 10/10,
  WidgetCatalog 35/35, and the documentation contract across 55 Markdown files.
  The separately bounded installed generic-worker/AppContainer suite passes 6/6.
  DLV-074 aligns the checked public API and current author documentation with the
@@ -1896,7 +1896,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  `artifacts/verification/20260811T123616Z-fe1edc94` passes API compatibility
  12/12, Widget SDK 86/86, and the documentation contract across 55 Markdown
  files; refresh or direction change still resets traversal evidence.
- DLV-066 advances Game Launcher to package 0.2.0 with one current schema-v2
+ DLV-066 advances Playnite Library to package 0.2.0 with one current schema-v2
  organization policy. X toggles favorites, LB explicitly groups or ungroups
  selected SavedIds, and RB chooses a preferred group member. No title heuristic
  establishes identity or redirects launch: preference changes bounded ordering
@@ -1909,9 +1909,9 @@ themes also use non-shrinking fixed regions, a thin native Slider
  choice, while replacement identity remains independent. Invalid/unsupported
  pre-release state is atomically reset to empty v2 before current reconciliation.
  Focused Release verification
- `artifacts/verification/20260811T123312Z-b54b995b` passes Game Launcher 15/15
+ `artifacts/verification/20260811T123312Z-b54b995b` passes Playnite Library 15/15
  and the documentation contract across 55 Markdown files.
- DLV-067 advances Game Launcher to package 0.3.0 and separates launch request
+ DLV-067 advances Playnite Library to package 0.3.0 and separates launch request
  acknowledgement from adapter evidence. The first-party-only broker route
  returns only Request accepted, Launcher started, Running, or Ended plus bounded
  supported-state flags; failures remain sanitized. Current Windows and Steam
@@ -1922,12 +1922,12 @@ themes also use non-shrinking fixed regions, a thin native Slider
  Focused Release verification
  `artifacts/verification/20260811T125214Z-2c2150ad` passes Windows app-library
  provider 45/45 and PlatformBroker 52/52. The final affected-suite run
- `artifacts/verification/20260811T125525Z-325c9d53` passes Game Launcher 20/20
+ `artifacts/verification/20260811T125525Z-325c9d53` passes Playnite Library 20/20
  and the documentation contract across 55 Markdown files. The smallest installed
  generic-worker route
  `artifacts/verification/20260811T125249Z-fa9ce5d8` passes 6/6, including the
- exact current Game Launcher launch path.
- DLV-075 advances Game Launcher to package 0.4.0 with provider-owned normalized
+ exact current Playnite Library launch path.
+ DLV-075 advances Playnite Library to package 0.4.0 with provider-owned normalized
  search, exact source/favorite criteria, and closed display/source sorts over
  one immutable cursor revision. The widget retains only its bounded cursor
  window and opaque SavedIds. Protocol v15 adds one bounded TextEntry primitive;
@@ -1936,7 +1936,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  worker receives only one final `CommittedText`. Query replacement resets the
  shared cursor generation, and stale cancellation-ignoring results cannot
  publish. Focused Release evidence passes Windows app-library provider 46/46,
- PlatformBroker 52/52, Widget SDK 87/87, API compatibility 12/12, Game Launcher
+ PlatformBroker 52/52, Widget SDK 87/87, API compatibility 12/12, Playnite Library
  22/22, CLI replay 56/56, the documentation contract across 55 Markdown files,
  TextEntryModalTests, the native bridge parser, and the Release OverlayHost
  target. The installed generic-worker/AppContainer route passes 6/6 at
@@ -1956,7 +1956,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  geometry and true spatial row navigation without wraparound. Focused Release
  evidence passes TextEntryModal admission/layout/UIA/controller tests, the
  existing native bridge text-entry parser, and the production OverlayHost target.
- DLV-076 advances Game Launcher to package 0.5.0 and one current private schema
+ DLV-076 advances Playnite Library to package 0.5.0 and one current private schema
  v3. The widget retains at most 32 opaque SavedIds in deterministic newest-
  accepted order, updated only by exact current Launcher-started/Running/Ended
  evidence. Acknowledgement-only, failed, stale, replaced, and canceled outcomes
@@ -1965,9 +1965,9 @@ themes also use non-shrinking fixed regions, a thin native Slider
  preserves unrelated organization and another launch's order. Missing identity,
  replacement identity, warm restart, whole-schema reset, clear-history, and the
  64 KiB state ceiling have direct deterministic coverage. Focused Release
- verification passes Game Launcher 27/27 and the documentation contract across
+ verification passes Playnite Library 27/27 and the documentation contract across
  55 Markdown files.
- DLV-077 advances Game Launcher to package 0.6.0 and one current private schema
+ DLV-077 advances Playnite Library to package 0.6.0 and one current private schema
  v4 with at most 32 explicitly included opaque SavedIds. The Add games nested
  route queries only the existing trusted installed catalog, exposes current
  Game/Application/Unknown classification, and stores no executable, command,
@@ -1975,7 +1975,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  resolved into the bounded Library window after restart and still require exact
  SavedId revalidation before launch. Add/remove CAS replay preserves unrelated
  favorites, groups, and recent ordering; missing and replacement identities
- remain non-authorizing. Focused Release evidence covers Game Launcher 32/32,
+ remain non-authorizing. Focused Release evidence covers Playnite Library 32/32,
  Widget SDK app-library contracts, PlatformBroker exact resolution/launch,
  generic-worker routing, an installed add/exact-launch route, direct restart,
  remove, stale-rejection fixtures, and 55 documentation contracts.
@@ -1994,17 +1994,17 @@ themes also use non-shrinking fixed regions, a thin native Slider
  revision through one additive app-library page contract. The broker accepts at
  most 16 unique opaque source IDs with bounded labels and safe status codes;
  the SDK rejects malformed or over-bound responses and grants no per-source
- operation. Game Launcher renders Healthy, Degraded, Unavailable, and transient
+ operation. Playnite Library renders Healthy, Degraded, Unavailable, and transient
  Refreshing text while retaining usable games and the existing refresh owner.
  Deterministic source-isolation, partial-result, stale/recovery/disappearance,
  broker validation, SDK compatibility, installed-worker, and documentation
  evidence accompanies the public API baseline addition.
- DLV-083 scopes LB/RB page switching to the Game Launcher results scroll and
+ DLV-083 scopes LB/RB page switching to the Playnite Library results scroll and
  composes it with the existing cursor owner. Only current Ready directions are
  authored, so boundary, busy, repeated, and replaced input cannot create an
  additional page transition; fixed sections remain outside cursor accounting.
  Single-page tiles retain their existing variant-group and preference shortcuts.
- DLV-084 advances Game Launcher private organization to schema v5 and adds a
+ DLV-084 advances Playnite Library private organization to schema v5 and adds a
  bounded exact-SavedId hide/restore policy. Y hides only a current resolved game;
  the Hidden route retains at most 32 sanitized display rows and never carries
  launch authority. Restore removes one exclusion while bounded CAS replay
@@ -2012,7 +2012,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  Missing rows remain display-only, same-title replacement identities stay
  independent, and incompatible development schemas reset as a whole. The
  128-row/96-character display projection remains below the 64 KiB private-state
- limit at its proven worst case. Focused Release coverage passes Game Launcher
+ limit at its proven worst case. Focused Release coverage passes Playnite Library
  42/42 and the documentation contract across 55 Markdown files. The retained
  installed-worker run at
  `artifacts/verification/20260811T170031Z-c45cff26` passes 5/6: after the new
@@ -2021,7 +2021,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  transition remains explicit verification debt for planner disposition; it is
  not reported as a passing AppContainer acceptance result.
  DLV-095 adds a separate optional `system.apps.running.read.v1` grant and an
- explicit **Add running app** route to Games & Apps and Game Launcher. The
+ explicit **Add running app** route to Games & Apps and Playnite Library. The
  trusted Windows provider observes visible unowned top-level application windows
  on demand, excludes owned/cloaked/background/inaccessible/elevated/overlay/
  worker/tool windows, and maps packaged or canonical executable identity
@@ -2037,7 +2037,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  used by pages and resolution to every non-null confirmation response; malformed
  data returns `malformed_response` before either widget can project or persist
  it. Focused Release evidence passes Widget SDK 87/87, API compatibility 12/12,
- Windows app-library provider 57/57, Games & Apps 59/59, and Game Launcher 45/45.
+ Windows app-library provider 57/57, Games & Apps 59/59, and Playnite Library 45/45.
  The prior credential-free generic-AppContainer route remains the packaged
  DLV-095 evidence; no aggregate or screenshot verification ran for DLV-097.
  DLV-007 now captures Spotify rendering through one private immutable
@@ -2981,9 +2981,9 @@ with C++ installed:
   closed WRSS role, null/default themes still emit an empty style entry keyed by
   the stable node ID, and unknown node kinds retain an exact fail-closed bridge
   diagnostic. The production-shaped installed AppContainer route admits both
-  the Game Launcher search entry and Network Controls protected entry, then
-  commits a Game Launcher search through the existing action path. Focused
-  Release evidence passes WidgetBridge 77/77, Game Launcher 45/45, Network
+  the Playnite Library search entry and Network Controls protected entry, then
+  commits a Playnite Library search through the existing action path. Focused
+  Release evidence passes WidgetBridge 77/77, Playnite Library 45/45, Network
   Controls 24/24, the exact installed TextEntry route, and 55 documentation
   files. The first broader installed attempt continued past this milestone into
   an unrelated unavailable-launch workflow; the final acceptance mode is
@@ -3033,16 +3033,16 @@ with C++ installed:
   installed AppContainer route also passes initial/empty snapshots, transient
   failure and Retry, stale-completion rejection, reactivation, and teardown.
 
-- DLV-164 corrects the Game Launcher Experience controller-hints slot at its
-  managed projection owner. The `.game-launcher-footer` wrapping style now
+- DLV-164 corrects the Playnite Library Experience controller-hints slot at its
+  managed projection owner. The `.playnite-library-footer` wrapping style now
   belongs to a non-scrolling row rather than a stack, so strict native style
   validation no longer has to ignore `flex-wrap`. All four launcher experiences
   retain identical hint, action, focus, and SavedId authority across compact,
   standard, and wide projections at 100% and 150% text scale. Focused Release
-  evidence passes Game Launcher 77/77. The existing production-host preset and
+  evidence passes Playnite Library 77/77. The existing production-host preset and
   fallback route passes, and a separate ordinary installed diagnostic run
-  admitted current Game Launcher sequence 2 with zero
-  `game-launcher.slot.controller-hints` `invalid_style` records.
+  admitted current Playnite Library sequence 2 with zero
+  `playnite-library.slot.controller-hints` `invalid_style` records.
 
 - DLV-107 corrects the accepted DLV-025 composition alpha and motion contract.
   The overlay HWND is now one `WS_EX_NOREDIRECTIONBITMAP` transparent container;
@@ -3059,30 +3059,30 @@ with C++ installed:
   native host build, Placement 108547, Targeting 64, Transition 56, Chrome 45,
   Accessibility Provider 152, Focus Navigation 49, Host Accessibility 34, and
   Declarative Renderer 4777 checks. The production-host temporal matrix passed
-  Audio Mixer, Game Launcher, Now Playing, Games & Apps, Network Controls,
+  Audio Mixer, Playnite Library, Now Playing, Games & Apps, Network Controls,
   YT Music, Spotify, and Settings with eight complete destination samples:
   draw max 2681 us, surface commit max 1491 us, fixed-container placement max
   1641 us, and nonblocking visual commit max 68 us. No aggregate, capture,
   screenshot, delay, public protocol change, or second renderer was used;
   packaged visual confirmation remains the planner/user gate.
 
-- DLV-104 gives Game Launcher one explicit vertical-layout contract without
+- DLV-104 gives Playnite Library one explicit vertical-layout contract without
   increasing its preferred surface. Header, source status, query controls, and
-  footer actions are fixed chrome; `game-launcher.library.scroll` alone owns
+  footer actions are fixed chrome; `playnite-library.library.scroll` alone owns
   the remaining vertical extent and stable collection offset. Narrow or short
   surfaces use local compact title/source-summary branches, while query and
   action strips remain horizontally reachable. The Library, Add games, Add
   running app, Hidden, warm, loading, error, and empty routes retain one
   semantic tree and the existing collection/focus identities. Focused Release
-  coverage passes Game Launcher 46/46 across minimum/standard/wide profiles at
+  coverage passes Playnite Library 46/46 across minimum/standard/wide profiles at
   100/125/150 percent, including first/middle/last collection reachability and
   deterministic reopen. The unchanged native renderer and shared-component
   geometry dependencies pass 4,777 and 589 checks respectively. The public
-  `wrail pack` path also produced the unchanged Game Launcher 0.6.0 package (10
+  `wrail pack` path also produced the unchanged Playnite Library 0.6.0 package (10
   files, 803,117 bytes). No native layout semantics, preferred-height increase,
   provider behavior, or screenshot acceptance was introduced.
 
-- DLV-114 adds one bounded Game Launcher details route without adding provider,
+- DLV-114 adds one bounded Playnite Library details route without adding provider,
   lifecycle, persistence, or launch authority. View selects an exact current
   SavedId and immutable return-focus identity; a separate pure details policy and
   presenter project full title, normalized source, availability, launch evidence,
@@ -3091,7 +3091,7 @@ with C++ installed:
   single-page group/prefer or multi-page traversal meaning. B restores the
   originating tile and retained collection offset. Removed/replaced identities
   become unavailable and cannot route actions to a same-title neighbor. Focused
-  Release evidence passes Game Launcher 50/50, including duplicate titles,
+  Release evidence passes Playnite Library 50/50, including duplicate titles,
   disappearing identities, busy/unavailable action state, exact Back focus,
   page-bumper non-overlap, long labels, and deterministic bounded rendering.
 
@@ -3102,9 +3102,9 @@ with C++ installed:
   single operation **Group with selected game** or **Remove from variant group**
   and retains committed success/failure feedback. Same and stale identities fail
   closed; successful hide still closes details only after the exact persisted
-  exclusion is observed. Game Launcher remains the sole lifecycle, committed
+  exclusion is observed. Playnite Library remains the sole lifecycle, committed
   state, provider, and persistence owner; the pure details projection gains no
-  task, lock, timer, or resource. Focused Release evidence passes Game Launcher
+  task, lock, timer, or resource. Focused Release evidence passes Playnite Library
   55/55, including exact CAS replay and canceled second-selection refusal.
 
 - DLV-102 gives trusted app artwork an explicit bounded terminal-unavailable
@@ -3118,7 +3118,7 @@ with C++ installed:
   geometry. A new opaque revision evicts the prior node revision and supplied
   pixels replace the fallback; stale results cannot do so. Focused Release
   evidence passes RemoteImageCache and DeclarativeRenderer (4,839 checks),
-  including production-shaped Game Launcher and Games & Apps available,
+  including production-shaped Playnite Library and Games & Apps available,
   pending, unavailable, repaint, republish, stale-result, recovery, raster,
   semantics, and cache-bound cases, plus the OverlayHost Release build. No
   provider discovery, public protocol, compositor, screenshot, live Steam, or
@@ -3219,9 +3219,9 @@ Settings 57/57, and WidgetBridge 83/83. The generic-worker and documentation
 groups plus the required single exact-commit canonical checkpoint are recorded
 with the closing commit evidence.
 
-### Game Launcher control and collection continuity (DLV-126)
+### Playnite Library control and collection continuity (DLV-126)
 
-Game Launcher now derives every warm replacement anchor from the exact rendered
+Playnite Library now derives every warm replacement anchor from the exact rendered
 non-hidden rows instead of the unfiltered private display projection. Add games,
 Add running app, Hidden, Favorites, Recent, Source, Sort, and Clear therefore
 retain protocol-valid current snapshots while their managed replacement is in
@@ -3231,10 +3231,10 @@ is removed during launch or organization work and restored with actionability.
 The existing host-owned scroll-edge contract remains unchanged: one Down-edge
 cursor action appends the next bounded provider page and requests an entering
 game focus, while final partial rows expose no looping continuation. Focused
-Release evidence passes Game Launcher 60/60. No Widget SDK, protocol, provider,
+Release evidence passes Playnite Library 60/60. No Widget SDK, protocol, provider,
 native host, or launch-authority contract changed.
 
-### Game Launcher built-in hero rail (DLV-128)
+### Playnite Library built-in hero rail (DLV-128)
 
 The Library route now composes one bounded selected-game hero above one
 horizontal cover rail while preserving the existing installed-only cursor,
@@ -3246,11 +3246,11 @@ The hero reuses only the selected row's opaque trusted artwork handle and falls
 back to a semantic Play glyph; snapshots and private state contain no URL, path,
 image bytes, or provider identity.
 
-Responsibility changed from `GameLauncherPresentation` owning Library ordering
-and three responsive grids to `GameLauncherHeroRailPolicy` owning the bounded
+Responsibility changed from `PlayniteLibraryPresentation` owning Library ordering
+and three responsive grids to `PlayniteLibraryHeroRailPolicy` owning the bounded
 recent/manual/catalog rail projection plus deterministic nearest-index fallback,
-and `GameLauncherHeroRailPresentation` owning hero semantics and fallback.
-`GameLauncherWidget` remains the sole lifecycle, cursor, committed organization,
+and `PlayniteLibraryHeroRailPresentation` owning hero semantics and fallback.
+`PlayniteLibraryWidget` remains the sole lifecycle, cursor, committed organization,
 launch, and invalidation owner; its only new responsibility is the two-field
 in-memory hero selection and controller admission that feeds the pure policy.
 There is no new task, lock, resource, capability, protocol, or native layout
@@ -3259,7 +3259,7 @@ The root moves from 1,279 to 1,350 physical lines because it remains the one
 cohesive lifecycle/cursor/capability/action owner and now admits focused-element
 selection; the general presenter falls from 747 to 694 lines, while the new
 271-line hero policy/component contains the extracted ordering and composition.
-Final focused evidence passes Game Launcher 62/62 and the documentation contract
+Final focused evidence passes Playnite Library 62/62 and the documentation contract
 across 61 Markdown files.
 
 ### Complete scenario verification discovery (DLV-125)
@@ -3297,7 +3297,7 @@ Focused Release evidence passes 111,253 placement checks, 64 targeting checks,
 63 transition checks, 45 chrome checks, 152 accessibility-provider checks, 49
 focus checks, 34 host-accessibility checks, 4,839 renderer checks, and 54 tray-
 layout checks. The production `WidgetSwitchHostTests` fixture passes eight real
-OverlayHost transitions across compact, Game Launcher wide, and Spotify
+OverlayHost transitions across compact, Playnite Library wide, and Spotify
 adaptive bodies; it records zero widget-shell motion commits, live placement
 re-resolution, contained `rcWork` bounds, and maxima of 3,023 us draw, 1,339 us
 commit, and 1,510 us coordinated geometry.
@@ -3330,7 +3330,7 @@ artwork scalar constructors and accessors have no compatibility facade. The SDK
 validates the complete shape, cross-checks explicit launchability with the
 Launch capability, and rejects unknown versions, enums, duplicate roles or
 actions, unsafe provenance, and malformed operations as `malformed_response`.
-Game Launcher and Games & Apps consume this same model, keep retained rows
+Playnite Library and Games & Apps consume this same model, keep retained rows
 explicitly non-authorizing, and enable launch only after fresh exact resolution.
 
 The trusted provider supplies only currently proven installed/source/artwork
@@ -3344,7 +3344,7 @@ including the no-artwork Game fallback.
 
 Retained dirty-worktree Release run `20260812T085816Z-dc9417d9` passes Widget
 SDK 88/88, API compatibility 12/12, Windows app-library provider 62/62, Games &
-Apps 59/59, Game Launcher 62/62, Bridge 83/83, and 61-document validation. After
+Apps 59/59, Playnite Library 62/62, Bridge 83/83, and 61-document validation. After
 the empty-artwork correction, focused run `20260812T091559Z-f1574fba` passes
 broker 56/56 and Bridge 83/83. The exact bounded command
 `dotnet run --project tests/FirstPartyWidgetConformance.Tests/FirstPartyWidgetConformance.Tests.csproj --configuration Release -- --games-apps-installed-acceptance`
@@ -3375,7 +3375,7 @@ and game evidence before constrained packaged activation.
 Focused Release verification covers installed/non-game/mismatched evidence,
 AppsFolder deduplication, multiple variants, add/remove/update, failure-retained
 display without authority, exact launch revalidation, cancellation, and catalog
-bounds in the Windows provider suite. Games & Apps and Game Launcher fixtures
+bounds in the Windows provider suite. Games & Apps and Playnite Library fixtures
 cover automatic Game projection, exact source attribution, semantic artwork
 fallback, and opaque launch routing. No network, credential, account-owned game,
 install/update operation, external helper, native, capture, or aggregate work is
@@ -3404,7 +3404,7 @@ public protocol change, helper binary, native work, capture, or aggregate is in
 scope.
 
 Focused Release evidence passes Windows app-library provider 71/71, platform
-settings 16/16, Settings 58/58, Games & Apps 61/61, Game Launcher 64/64,
+settings 16/16, Settings 58/58, Games & Apps 61/61, Playnite Library 64/64,
 WidgetBridge 83/83, and the 61-document contract. Authored local fixtures cover
 disabled/no-read, valid, duplicate, unknown-schema, unsafe-path, changed-during-
 read, add/remove, stale launch, unavailable last-good display, exact status, and
@@ -3443,7 +3443,7 @@ user-selected path, external helper, public SDK/protocol change, native work, or
 capture work is included.
 
 Focused Release evidence passes Windows app-library provider 75/75,
-PlatformSettings 17/17, Settings 58/58, Games & Apps 63/63, and Game Launcher
+PlatformSettings 17/17, Settings 58/58, Games & Apps 63/63, and Playnite Library
 69/69. A dedicated installed generic-worker/AppContainer route proves disabled
 zero-I/O admission, enabled GOG attribution, a disabled **Play unavailable**
 projection, and that attempted Play does not cross the broker/provider boundary.
@@ -3470,7 +3470,7 @@ operation requires its matching capability, with `Resume` required for a
 paused operation. Availability validation separately
 requires `Unavailable` and `StaleSource` values to be non-launchable.
 
-Games & Apps and Game Launcher now also state the final admission explicitly:
+Games & Apps and Playnite Library now also state the final admission explicitly:
 only a freshly resolved `Installed` item with matching launchability and Launch
 capability can reach host launch. Focused fixtures reject unavailable, stale,
 retained-last-good, missing-capability, mismatched-operation, unknown enum, and
@@ -3480,13 +3480,13 @@ behavior.
 
 Focused Release evidence passes WidgetSdk 89/89, PlatformBroker 56/56,
 WidgetBridge 83/83, Windows app-library provider 71/71, Games & Apps 62/62,
-Game Launcher 65/65, the installed Games & Apps normalized app-library
+Playnite Library 65/65, the installed Games & Apps normalized app-library
 acceptance route, and the 65-document contract. No canonical aggregate, native,
 network, external-provider, credential, or capture suite was run.
 
-### Game Launcher public SDK portability (DLV-212)
+### Playnite Library public SDK portability (DLV-212)
 
-Game Launcher no longer has an SDK `InternalsVisibleTo` exception. The smallest
+Playnite Library no longer has an SDK `InternalsVisibleTo` exception. The smallest
 generic public addition is sanitized launch observation state/result plus
 `WidgetAppLibraryService.LaunchObservedAsync`; raw provider and OS identities
 remain unavailable. `Export-CommunityReference.ps1` copies the one maintained
@@ -3496,9 +3496,9 @@ friend declaration, or unpublished assembly dependency. The currently bundled
 package and tray entry remain unchanged pending the generic native contract and
 atomic Community cutover.
 
-Focused Release evidence passes Widget SDK 89/89 and Game Launcher 90/90. The
+Focused Release evidence passes Widget SDK 89/89 and Playnite Library 90/90. The
 dedicated CLI path restores from a fresh NuGet cache, builds, validates, packs,
-and installs `widgetrail.community.reference.game-launcher` disabled as Community.
+and installs `widgetrail.community.reference.playnite-library` disabled as Community.
 The resulting four-file 222,523-byte archive then runs through the ordinary
 generic AppContainer worker with declared app-library permissions and exercises
 the 10,000-item cursor page, Search, collection navigation, details/Back,
@@ -3559,7 +3559,7 @@ accessibility-geometry producer.
 Focused Release evidence passes 1,307 native layout/renderer/focus/pointer/UIA
 checks. The freshly rebuilt production `OverlayHost.exe` semantic route exits
 zero after verifying host-owned launch and Back actions on the same admitted
-surface geometry. No capture, pack catalog, Game Launcher domain, window,
+surface geometry. No capture, pack catalog, Playnite Library domain, window,
 composition, or motion behavior changed.
 
 ### Launcher Experience encountered-entry bound (DLV-141)
@@ -3585,7 +3585,7 @@ URL, package record, action, or game/provider identity crosses into a worker.
 | Catalog and package safety | `LauncherExperienceCatalog` validated immutable recipes, WRSS files, asset headers, identity, digest, and package bounds. | It remains the only package-selection/validation authority; native presentation accepts only an opaque revision and sealed bytes/styles. |
 | Responsive layout and semantics | `LauncherExperienceLayout` and `LauncherExperienceAdapter` owned slot bounds, orientation, renderer projection, focus, pointer, and UIA geometry. | Those owners are unchanged; the adapter consumes an optional immutable presentation frame and paints its decoded background through the existing D2D target before rendering the same host-owned slots. |
 | Style, artwork, and recovery | No native launcher-only cascade, decode-before-crossfade state, revision quarantine, or safe-start owner existed. | `LauncherExperiencePresentation` exclusively owns pack/user overrides, bounded PNG/JPEG/WebP decode, selected-art revision matching, last-good background retention, effect timing/degradation, accessibility overrides, three-failure revision isolation, and built-in safe-start recovery. |
-| Domain/actions/compositor | Fixed host proof content supplied exact action IDs; live Game Launcher projection and composition lifetime were deliberately absent. | They remain absent. Presentation cannot create content/actions, change focus identity, change window/compositor ownership, or project live launcher state. |
+| Domain/actions/compositor | Fixed host proof content supplied exact action IDs; live Playnite Library projection and composition lifetime were deliberately absent. | They remain absent. Presentation cannot create content/actions, change focus identity, change window/compositor ownership, or project live launcher state. |
 
 Focused Release evidence passes 1,361 native style/asset/recovery/layout/
 renderer/focus/pointer/UIA checks. It includes successful real WIC decode for
@@ -3621,9 +3621,9 @@ No production source or alternate automation surface is retained. A product UX
 decision is required to permit taskbar/Alt-Tab presence or a supported control-
 tool change is required to admit the existing tool/owned overlay identity.
 
-### Game Launcher native-experience managed boundary (DLV-134)
+### Playnite Library native-experience managed boundary (DLV-134)
 
-Game Launcher now owns one bounded persisted built-in experience selection and
+Playnite Library now owns one bounded persisted built-in experience selection and
 one pure semantic-state partition. Hero Rail, Cover Wall, Carousel, and Compact
 Grid snapshots contain the same exact action/source-element pairs,
 SavedId-derived collection keys, focus IDs, collection anchor, source truth,
@@ -3635,13 +3635,13 @@ The managed snapshot marks six host-owned slot roots: details panel, game rail,
 collection tabs, source status, operation status, and controller hints. The
 projector only moves existing elements and adds non-authorizing wrappers; it
 does not add a public protocol field or pack-authored action surface. Focused
-Release evidence passes 68/68 Game Launcher tests, including all four profiles,
+Release evidence passes 68/68 Playnite Library tests, including all four profiles,
 long-title and missing-art fallback, deterministic repeated projection,
 selection persistence/recovery, and the existing 2,000/10,000-item bounded
 cursor cases.
 
 The bounded production-shaped conformance group completed 5/6 in 83.1
-seconds. Its unchanged installed Game Launcher route still returned 64
+seconds. Its unchanged installed Playnite Library route still returned 64
 provider rows plus the retained manual row as `Unavailable` after 10 app-
 library refreshes and two reads, so no launch action was admitted. That
 provider/current-resolution limitation is outside this managed projection
@@ -3652,10 +3652,10 @@ production host through the private native projection seam. The same admitted
 snapshot identities, actions, cursor semantics, and persisted profile remain
 managed-owned; no public WidgetProtocol/WidgetSdk expansion was introduced.
 
-### Game Launcher production slot adoption (DLV-145)
+### Playnite Library production slot adoption (DLV-145)
 
 The ordinary production host now recognizes only the first-party
-`game-launcher-experience` root with one closed profile marker and exactly one
+`playnite-library-experience` root with one closed profile marker and exactly one
 of each six held slot classes. A focused native projection owner extracts those
 slots, renders the existing Launcher Experience adapter into one reusable
 offscreen D2D target, and commits the complete bitmap only after every slot
@@ -3666,8 +3666,8 @@ unchanged ordinary declarative tree with one bounded diagnostic.
 | --- | --- | --- |
 | Private marker recognition and fallback | No production owner consumed the held managed marker; `OverlayApp` always called the ordinary renderer directly. | `LauncherExperienceProjection` exclusively validates the exact first-party widget/root/profile/six-slot shape, selects the existing preset, owns atomic staging and last canonical result, and otherwise delegates to the same ordinary renderer. |
 | Layout and paint | `LauncherExperienceAdapter` was exercised only by focused proof code and synthesized a test-only semantic envelope. | The production seam supplies admitted snapshot metadata, focus, viewport, accessibility/options, and work area to the same adapter. The adapter preserves a real Scroll root and changes only its preset orientation while retaining pagination and collection identity. |
-| Input, focus, scroll, and UIA | Production pointer/focus/action/scroll/UIA consumers used the admitted ordinary tree and its one render result. | Those same consumers use the canonical snapshot only when it matches the exact widget, instance, sequence, and input scope that produced the current adapter geometry. Exact node/action/focus IDs, collection anchor/keys, sequence, instance, surface, and Back scope remain authored by Game Launcher. |
-| Domain, protocol, and presentation lifetime | Game Launcher owned provider, organization, cursor, action, and persisted profile state; the ordinary host owned one renderer/window/compositor. | Those owners are unchanged. Native code adds no game/provider/action state, public schema, protocol field, managed edit, window, compositor, or second renderer. One reusable compatible target is discarded with existing graphics resources. |
+| Input, focus, scroll, and UIA | Production pointer/focus/action/scroll/UIA consumers used the admitted ordinary tree and its one render result. | Those same consumers use the canonical snapshot only when it matches the exact widget, instance, sequence, and input scope that produced the current adapter geometry. Exact node/action/focus IDs, collection anchor/keys, sequence, instance, surface, and Back scope remain authored by Playnite Library. |
+| Domain, protocol, and presentation lifetime | Playnite Library owned provider, organization, cursor, action, and persisted profile state; the ordinary host owned one renderer/window/compositor. | Those owners are unchanged. Native code adds no game/provider/action state, public schema, protocol field, managed edit, window, compositor, or second renderer. One reusable compatible target is discarded with existing graphics resources. |
 
 Focused Release evidence originally passed 1,540 launcher layout/adapter/renderer/focus/
 pointer/UIA checks. It covers all four profiles over compact, standard, wide,
@@ -3688,7 +3688,7 @@ cursor projection. No production bypass was added.
 ### Launcher Experience production presentation (DLV-148)
 
 The existing `LauncherExperienceProjection` now connects one native
-presentation owner to the ordinary adopted Game Launcher path. Each complete
+presentation owner to the ordinary adopted Playnite Library path. Each complete
 frame atomically carries the selected background, slot paint, focus effects,
 pointer geometry, canonical input scope, and UIA semantics for the same
 admitted snapshot sequence. Trusted artwork is decoded through the existing
@@ -3835,7 +3835,7 @@ was made.
    the Web Playback SDK local-audio host as a separate later security and
    performance slice.
 10. Run the documented controller/game/presentation/anti-cheat matrix.
-### Game Launcher scoped action sheet (DLV-151)
+### Playnite Library scoped action sheet (DLV-151)
 
 The focused game's Y shortcut now opens one bounded SDK `ActionSheet` scope.
 Its immutable projection reuses the existing details and organization state for
@@ -3843,11 +3843,11 @@ current favorite, hide, variant, preferred-variant, and source-refresh actions.
 B returns to the existing Library or details owner, while View remains the sole
 full-details route. The sheet adds no launch, content, or provider authority.
 
-Focused Release coverage passes Game Launcher 70/70.
+Focused Release coverage passes Playnite Library 70/70.
 
-### Game Launcher exact categories (DLV-154)
+### Playnite Library exact categories (DLV-154)
 
-Game Launcher private organization now contains a bounded category slice: four
+Playnite Library private organization now contains a bounded category slice: four
 opaque local category IDs, normalized unique names of at most 32 characters,
 four members per category, eight exact SavedId memberships total, and an exact
 64 KiB serialized-state admission check. Invalid or aggregate-over-budget
@@ -3857,12 +3857,12 @@ Responsibility changed as follows:
 
 | Concern | Before | After |
 |---|---|---|
-| Category validation/mutation | No owner. | `GameLauncherCategoryPolicy` alone validates bounds/names/identities and owns create, rename, delete, and exact membership mutations. |
-| Category projection | No category route. | Game Launcher presentation projects All Games, management, and one exact-member category view from immutable organization/current-window state. |
-| Lifecycle, effects, and persistence | `GameLauncherWidget` owned one lifecycle, cursor, navigation, and two-attempt CAS adapter. | The same root remains the sole lifecycle/effect/committed-state adapter and invokes category policy through the existing CAS owner. |
+| Category validation/mutation | No owner. | `PlayniteLibraryCategoryPolicy` alone validates bounds/names/identities and owns create, rename, delete, and exact membership mutations. |
+| Category projection | No category route. | Playnite Library presentation projects All Games, management, and one exact-member category view from immutable organization/current-window state. |
+| Lifecycle, effects, and persistence | `PlayniteLibraryWidget` owned one lifecycle, cursor, navigation, and two-attempt CAS adapter. | The same root remains the sole lifecycle/effect/committed-state adapter and invokes category policy through the existing CAS owner. |
 | Launch authority | Every tile required fresh exact SavedId resolution. | Unchanged; missing category members are display-only and a current category tile reuses the same exact resolution/launch path. |
 
-Focused Release evidence passes Game Launcher 73/73. One ordinary generic
+Focused Release evidence passes Playnite Library 73/73. One ordinary generic
 AppContainer worker route creates and assigns a category, restarts the worker,
 browses the retained exact member, and observes one exact launch revalidation.
 
@@ -3874,7 +3874,7 @@ four-member, and eight-total prototype caps are removed; focused state evidence
 retains 32 categories and 256 compact exact SavedId memberships and rejects an
 over-budget mutation without changing the last committed organization.
 
-`GameLauncherCategoryPolicy` also owns the immutable ordered collection cycle.
+`PlayniteLibraryCategoryPolicy` also owns the immutable ordered collection cycle.
 The existing widget navigation/query adapter applies that decision: LT/RT wrap
 through All Games and category order, preserve the focused exact member when it
 exists, and fall back to the first member or an explicit empty-category action.
@@ -3882,16 +3882,16 @@ Search TextEntry, category management, details, and the action sheet expose no
 collection-switch shortcut. No provider, launch authority, SDK/protocol, native,
 or held Launcher Experience state changed.
 
-Focused Release evidence passes Game Launcher 75/75. The ordinary generic
+Focused Release evidence passes Playnite Library 75/75. The ordinary generic
 AppContainer worker route creates and assigns a category, restarts, cycles
 RT to the retained category, LT to All Games, RT back to the category, and
 observes one exact launch revalidation.
 
 ### Exact per-game title override (DLV-157)
 
-Game Launcher now exposes **Edit title** from the existing Y action sheet. A
+Playnite Library now exposes **Edit title** from the existing Y action sheet. A
 separate scoped TextEntry stores one normalized, 96-character-bounded title by
-exact SavedId; **Reset title** removes that mapping. `GameLauncherTitlePolicy`
+exact SavedId; **Reset title** removes that mapping. `PlayniteLibraryTitlePolicy`
 alone validates, normalizes, applies, searches, and produces immutable render
 projection while the existing widget/state-store adapter remains the sole
 lifecycle, provider-effect, and two-attempt CAS owner.
@@ -3904,7 +3904,7 @@ Malformed title fields reset without clearing favorites/categories, a rejected
 byte-budget mutation preserves committed state, and CAS replay reapplies only
 the requested SavedId override.
 
-Focused Release evidence passes Game Launcher 77/77. The ordinary generic
+Focused Release evidence passes Playnite Library 77/77. The ordinary generic
 AppContainer worker route edits a title, restarts, renders and exactly launches
 the retained override, resets it, and restores the provider title.
 
@@ -3969,9 +3969,9 @@ that a later over-budget mutation rejects without changing the committed bytes.
 Malformed, duplicate, and missing-display title fields reset only the title
 slice while preserving favorites, hidden/recent/manual rows, variants, and
 categories. Rename/reset/restart/search/category/CAS/exact-launch behavior stays
-under the same `GameLauncherTitlePolicy` and widget effect owners.
+under the same `PlayniteLibraryTitlePolicy` and widget effect owners.
 
-Focused Release evidence passes Game Launcher 77/77 and documentation 66 files.
+Focused Release evidence passes Playnite Library 77/77 and documentation 66 files.
 The ordinary generic AppContainer route also passes after retaining 257 exact
 title overrides through a fresh worker session under the 64-KiB boundary.
 
@@ -3998,7 +3998,7 @@ Experience 1,691 checks, and the production-host selection, safe-start, custom
 matrix, provider-fallback, and 60-second motion scenarios. The temporal window
 records p95 input-to-focus latency of 16 ms with 2 degraded frames.
 
-### Exact Game Launcher launch availability (DLV-165)
+### Exact Playnite Library launch availability (DLV-165)
 
 The managed broker pipe now retains a bounded set of explicitly canceled
 request correlations so one late `request_canceled` response cannot invalidate
@@ -4009,7 +4009,7 @@ correlations still fail closed, and the retained cancellation set is capped at
 The deterministic broker regression pauses the first canceled response, admits
 a replacement request on the same channel, releases the late response, and
 proves both the replacement and a later request succeed. Focused Release
-evidence passes Platform Broker 56/56 and Game Launcher 77/77. The exact
+evidence passes Platform Broker 56/56 and Playnite Library 77/77. The exact
  installed AppContainer route passes after Hide, Restore, Back, current provider
  resolution, and exact launch revalidation, with no temporary diagnostics in the
  committed route.
@@ -4074,7 +4074,7 @@ Focused Release evidence passes Windows App Library Provider 75/75 and Games &
 Apps 64/64. The dedicated installed generic-AppContainer Games & Apps normalized
 app-library acceptance also passes through two worker generations.
 
-### Game Launcher controls and continuation audit (DLV-171)
+### Playnite Library controls and continuation audit (DLV-171)
 
 No managed product gap reproduced. The existing credential-free 32-game
 projection admits Add games, Add running app, Experiences, filters, and current
@@ -4084,7 +4084,7 @@ busy. Full, partial, and final cursor pages retain valid collection anchors;
 last-row Down advances once to the adjacent entering game while more results
 exist, and a terminal page exposes no continuation loop or footer substitution.
 
-Focused Release evidence passes Game Launcher 77/77. The dedicated installed
+Focused Release evidence passes Playnite Library 77/77. The dedicated installed
 generic-AppContainer exact-launch acceptance also passes with current SavedId
 resolution and launch revalidation.
 
@@ -4102,11 +4102,11 @@ focus identity.
 Focused Release evidence passes `TextEntryModalTests`, `AccessibilityTreeTests`
 (17 checks), and the installed generic-worker `LauncherExperienceHostTests`
 TextEntry route. That production route focuses and invokes
-`widget:game-launcher.search`, types an uncommitted value into the native edit,
+`widget:playnite-library.search`, types an uncommitted value into the native edit,
 cancels through Escape (the keyboard/controller-B modal path), observes exactly
 one cancel with `action-dispatched=false` and `committed-value=preserved`, sends
 no additional app-library query, and restores exact UIA focus to
-`widget:game-launcher.search`.
+`widget:playnite-library.search`.
 
 ### Tray UIA Invoke completion evidence (DLV-168)
 
@@ -4121,11 +4121,11 @@ selection paths are unchanged.
 Focused Release evidence passes `AccessibilityProviderTests` (155 checks),
 `HostAccessibilityTests` (34 checks), `OverlayStateTests`, and the installed
 generic-worker `LauncherExperienceHostTests` tray route. That real HWND/UIA route
-invokes Network Controls from Game Launcher, observes selected UIA state and
-exactly one `game-launcher` to `network-controls` presentation transition, and
+invokes Network Controls from Playnite Library, observes selected UIA state and
+exactly one `playnite-library` to `network-controls` presentation transition, and
 receives successful Invoke completion.
 
-### Game Launcher M1 organization and details (DLV-172 through DLV-190)
+### Playnite Library M1 organization and details (DLV-172 through DLV-190)
 
 The Library now exposes bounded controller-reachable **All installed**,
 **Continue**, **Favorites**, **Manual**, and non-empty row-proven source
@@ -4156,7 +4156,7 @@ replace that state.
 
 Launch uses serialized latest-wins admission and fresh exact-SavedId resolution.
 Only current Installed plus Launch evidence can cross the broker boundary.
-`GameLauncherLaunchPersistenceCoordinator` owns launch generation admission,
+`PlayniteLibraryLaunchPersistenceCoordinator` owns launch generation admission,
 invalidation, accepted-observation Recent transition, stale-write detection,
 and restoration through the existing CAS state callback. A newer accepted Play
 therefore supersedes a cancellation-ignoring predecessor even when the older
@@ -4165,7 +4165,7 @@ admissions do not reserve generations. The root remains the sole lifecycle,
 operation, private-state I/O, committed-state, and render owner and shrinks
 rather than accumulating another coordination region.
 
-Focused Release evidence passes Game Launcher 90/90. Installed credential-free
+Focused Release evidence passes Playnite Library 90/90. Installed credential-free
 AppContainer routes cover organization and later-page source persistence,
 source removal and empty-source exclusion, mixed installed/owned presentation,
 exact launch denial/admission, TextEntry scope restoration, availability and
@@ -4329,19 +4329,19 @@ The adjacent internal tray gesture state/action names now say `Restart` rather
 than `Refresh`; its 700 ms timing, Y tap/release/cancellation behavior, generic
 worker-restart authority, help text, and public protocol are unchanged.
 
-The maintained Game Launcher projection and its bundled and supported
+The maintained Playnite Library projection and its bundled and supported
 `Export-CommunityReference` manifests now consume protocol v16 with the typed
 declaration, preset, and all six slot roles. The retired private profile/slot
 style markers are absent. The exact exported candidate, not a lookalike test
 package, is installed beside an unrelated differently named and shaped fixture
 through the ordinary package route. The production host admits both through the
 generic contract, preserves their authored action/focus/collection/Back/UIA
-semantics, and also admits the currently packaged Game Launcher without an
+semantics, and also admits the currently packaged Playnite Library without an
 advanced-presentation fallback.
 
 Focused corrected Release evidence passes Widget SDK 91/91, Widget SDK
 compatibility 12/12, installed bridge declaration 1/1, native bridge catalog
-parsing, Game Launcher 90/90, the Full Application Community reference 4/4,
+parsing, Playnite Library 90/90, the Full Application Community reference 4/4,
 the exact CLI export case, verifier self-test, 1,695 native
 projection/layout/render/focus/UIA checks, and the three-candidate ordinary-host
 run described above. The `0b756df` clean-commit aggregate attempt failed in the
@@ -5127,13 +5127,13 @@ profile-scoped owner with the existing authenticated activation pipe.
 ### Pending admission-stall evidence (DLV-239)
 
 This observation is recorded only for the next DLV-239 assignment and was not
-addressed by DLV-244. Live transition 23 at 06:54:33 selected `game-launcher`
+addressed by DLV-244. Live transition 23 at 06:54:33 selected `playnite-library`
 with `currentSnapshot=false`; refresh dequeued after 78 ms, lifecycle Establish
 was skipped with `reason=already-current`, and no snapshot request queued,
 started, or completed. The trace crossed its 250-ms slow threshold while retained
 Games & Apps pixels stayed visible. The user closed the overlay via Guide at
 06:54:35.707 and reopened it at 06:54:36.338. Only that new visible session then
-committed and triggered the Game Launcher extent refresh/sequence 10 from
+committed and triggered the Playnite Library extent refresh/sequence 10 from
 06:54:36.464 onward. There was no automatic recovery while the overlay remained
 open; close/reopen was required. Transition 22 to Games & Apps had queued,
 started, and completed Establish normally. The evidence shows snapshot eviction
@@ -5190,9 +5190,9 @@ No public protocol/SDK, residency policy, incremental Taffy/damage, aggregate,
 launch, capture, provider, packaging, or push work was performed. The linked
 host continuity route and physical retained-selection latency remain residual
 planner/user verification.
-### Autonomous full-trust Community Game Launcher (DLV-217)
+### Autonomous full-trust Community Playnite Library (DLV-217)
 
-Game Launcher now ships as `widgetrail.community.reference.game-launcher` through
+Playnite Library now ships as `widgetrail.community.reference.playnite-library` through
 the generic `full-trust-application-v1` runtime. The package executable owns its
 Windows/Xbox and opt-in installed-store source composition, source health, bounded
 cursor queries, opaque SavedId key, organization-state CAS file, running-app
@@ -5200,7 +5200,7 @@ observation, and exact launch revalidation. It uses the public normalized SDK
 presentation values and generic application bootstrap; the staged payload contains
 neither `PlatformBroker.dll`, `WindowsAppLibraryProvider.dll`, nor
 `PlatformSettings.dll`, and the manifest declares no product capability. The
-package ships `GameLauncherWidget.Core.dll`, which has no dormant
+package ships `PlayniteLibraryWidget.Core.dll`, which has no dormant
 `system.apps.library.*` or `storage.private-state.v1` adapter. The payload also
 includes the required `Microsoft.Windows.SDK.NET.dll` runtime projection. The
 finite archive defaults remain 64 MiB total and 512 entries; the per-entry limit is
@@ -5214,7 +5214,7 @@ arguments or AppContainer identity, returns a valid credential-free snapshot, an
 supports disable/uninstall cleanup. Package-local organization state is a narrow
 pre-release reset from the retired overlay state; the existing Epic/GOG opt-in
 booleans are imported once, while external store/account data and credentials are
-left untouched. Game Launcher appears as Community; Games & Apps remains Built-in.
+left untouched. Playnite Library appears as Community; Games & Apps remains Built-in.
 Package service coverage now traverses all 10,000 items, searches a later-page
 item, demands and caches exact artwork, retains a degraded last-good catalog,
 routes exact SavedId launch success/failure, drives collection and Details/Back
@@ -5330,22 +5330,22 @@ build output. The autonomous Community package, its package-owned backend and
 playback projects, stable configuration path, and Credential Manager target are
 unchanged.
 
-Game Launcher is no longer a bundled/private widget. The retired host-service
+Playnite Library is no longer a bundled/private widget. The retired host-service
 adapter, built-in manifest/project, trusted catalog entry, and bundled build
-output are removed. `GameLauncherWidget.Core` and the autonomous Community
+output are removed. `PlayniteLibraryWidget.Core` and the autonomous Community
 application remain the sole maintained launcher domain. Generic normalized App
 Library contracts, provider composition, opaque SavedId/launch authority, and
 the built-in Games & Apps widget remain unchanged.
 
 An architecture contract scans product core for retired Spotify capability and
-provider markers plus private/community Game Launcher identities and adapters,
+provider markers plus private/community Playnite Library identities and adapters,
 while separately requiring the generic App Library backend contract. This
 milestone performs no migration or deletion of credentials, provider/account
 data, installed Community packages, private package state, or user files.
 
 Focused Release evidence passes WidgetSdk 89/89, WidgetSdk compatibility 12/12,
-PlatformBroker 52/52, WidgetBridge 90/90, Settings 60/60, Game Launcher core
-90/90, autonomous Community Game Launcher 6/6, and Wrail CLI/package 65/65. The
+PlatformBroker 52/52, WidgetBridge 90/90, Settings 60/60, Playnite Library core
+90/90, autonomous Community Playnite Library 6/6, and Wrail CLI/package 65/65. The
 new core-domain retirement check reports no retirement or App Library failure;
 the documentation executable remains red only on 13 pre-existing links in
 reviewer-owned archived delivery-plan snapshots, which this milestone does not
@@ -5356,7 +5356,7 @@ native build, package mutation, credential access, user-data migration, push,
 or live-account verification ran.
 
 The packaging correction seeds a pre-retirement incremental Release output with
-the private `runtime\GameLauncher` and `runtime\SpotifyPlaybackHost` trees plus
+the private `runtime\PlayniteLibrary` and `runtime\SpotifyPlaybackHost` trees plus
 retired Spotify provider/protocol/host assemblies inside `runtime\Bridge`. One
 ordinary `build.ps1 -Configuration Release -SkipTests` run removes every seeded
 retired output, republishes current WidgetBridge, WidgetWorkerHost, Settings, and
@@ -5502,7 +5502,7 @@ primary output directory. `OverlayHost.exe` SHA-256 is
 `16D5BE7CC2D831BA72D701A8C5C63086C4EFCB790FF6ABAFAC69CAE6056A46F8`;
 the six existing `C4244` warnings remain in `main.cpp`. Bridge, protocol,
 Settings-worker, and generic-worker outputs are present and exact build-output
-hashes match the packaged copies. Retired Game Launcher, Spotify playback-host,
+hashes match the packaged copies. Retired Playnite Library, Spotify playback-host,
 and YT Music runtime directories are absent. No launch, Tier 3, live-state
 access, publication, integration, or push was performed.
 
@@ -5719,7 +5719,7 @@ executed. Its unchanged query count therefore did not prove a production
 failure. Durable deterministic coverage instead proves the committed-text
 field crosses the real worker receive/action queue and the complete Widget
 Bridge-to-worker route without logging or echoing the value; both focused cases
-pass 1/1. The existing Game Launcher committed-query handler case also passes
+pass 1/1. The existing Playnite Library committed-query handler case also passes
 1/1. Packaged worker-dequeue/result publication remains an explicitly unproven
 host-fixture boundary rather than a claimed product defect. No production,
 public protocol, widget package, credential, configuration, or running-process
