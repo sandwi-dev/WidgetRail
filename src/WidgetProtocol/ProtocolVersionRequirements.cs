@@ -151,6 +151,12 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.RememberedChildFocusGroupVersion,
                     $"{path}.initialChildFocusId",
                     $"Remembered-child focus groups require protocol version {ProtocolConstants.RememberedChildFocusGroupVersion} or later.");
+            if ((node.ContextActions?.Count ?? 0) != 0)
+                Add(
+                    "context-actions",
+                    ProtocolConstants.ContextActionsVersion,
+                    $"{path}.contextActions",
+                    $"Context actions require protocol version {ProtocolConstants.ContextActionsVersion} or later.");
             var shortcuts = node.Shortcuts ?? [];
             for (var shortcutIndex = 0; shortcutIndex < shortcuts.Count; shortcutIndex++)
             {

@@ -141,6 +141,7 @@ public sealed record ActionSurfaceElement : WidgetElement
     public string? FocusPersistenceId { get; init; }
     public FocusNeighbors? FocusNeighbors { get; init; }
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
+    public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
 
     public ActionSurfaceElement FocusUp(string id) => this with
     {
@@ -187,6 +188,33 @@ public sealed record ActionSurfaceElement : WidgetElement
                 new ControllerShortcut(button, actionId ?? ActionId, phase, repeatPolicy),
             ],
         };
+    public ActionSurfaceElement ContextAction(
+        string actionId,
+        string label,
+        WidgetContextActionStyle style = WidgetContextActionStyle.Default,
+        bool disabled = false,
+        bool busy = false)
+    {
+        StableIdentifier.Validate(actionId, nameof(actionId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        if (label.Length > ProtocolConstants.MaximumStringLength)
+            throw new ArgumentException(
+                $"Context-action labels may not exceed {ProtocolConstants.MaximumStringLength} characters.",
+                nameof(label));
+        if (!Enum.IsDefined(style))
+            throw new ArgumentOutOfRangeException(nameof(style));
+        if (ContextActions.Count >= ProtocolConstants.MaximumContextActionCount)
+            throw new InvalidOperationException(
+                $"An action surface may expose at most {ProtocolConstants.MaximumContextActionCount} context actions.");
+        return this with
+        {
+            ContextActions =
+            [
+                .. ContextActions,
+                new WidgetContextAction(actionId, label, style, disabled, busy),
+            ],
+        };
+    }
 
     internal override ViewNode ToProtocolNode() => new()
     {
@@ -194,6 +222,7 @@ public sealed record ActionSurfaceElement : WidgetElement
         Kind = ViewNodeKind.ActionSurface,
         AccessibilityLabel = AccessibilityLabel,
         ActionId = ActionId,
+        ContextActions = ContextActions,
         ActionSurfaceOrientation = Orientation,
         IsDisabled = IsDisabled,
         IsSelected = IsSelected,

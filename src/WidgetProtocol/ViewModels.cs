@@ -255,6 +255,25 @@ public sealed record WidgetQuickAction(
     WidgetQuickActionCapability? Capability = null,
     ControllerActionRepeatPolicy RepeatPolicy = ControllerActionRepeatPolicy.None);
 
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetContextActionStyle>))]
+public enum WidgetContextActionStyle
+{
+    Default,
+    Danger,
+}
+
+/// <summary>
+/// Protocol-v34 bounded secondary action for one ActionSurface. The host owns
+/// menu placement, focus, dismissal, and accessibility; invoking an enabled
+/// item emits the same typed action event as ordinary widget activation.
+/// </summary>
+public sealed record WidgetContextAction(
+    string ActionId,
+    string Label,
+    WidgetContextActionStyle Style = WidgetContextActionStyle.Default,
+    bool IsDisabled = false,
+    bool IsBusy = false);
+
 [JsonConverter(typeof(JsonStringEnumConverter<VirtualCollectionWindowChange>))]
 public enum VirtualCollectionWindowChange
 {
@@ -295,6 +314,7 @@ public sealed record ViewNode
     /// <summary>A localized, human-readable value announced for value controls.</summary>
     public string? AccessibilityValue { get; init; }
     public string? ActionId { get; init; }
+    public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
     /// <summary>Current bounded value for a host-owned text-entry modal.</summary>
     public string? TextEntryValue { get; init; }
     public string? TextEntryPlaceholder { get; init; }

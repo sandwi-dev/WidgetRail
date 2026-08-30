@@ -56,6 +56,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Toasts are bounded semantic notifications that never steal controller focus", ToastsAreNonInteractive),
     ("Tiles expose one rich full-tile controller target", TileComponentTests.TilesAreSemantic),
     ("Tiles constrain artwork and keep state non-color-only", TileComponentTests.TilesConstrainArtworkAndState),
+    ("Action surfaces expose bounded versioned context actions", TileComponentTests.ContextActionsAreBoundedAndVersioned),
     ("Action surfaces fail closed and route one activation", TileComponentTests.ActionSurfacesValidateAndRoute),
     ("Responsive grids round-trip typed column semantics", GridComponentTests.RoundTripsTypedSemantics),
     ("Responsive grids validate bounds and preserve old protocols", GridComponentTests.ValidatesBoundsAndCompatibility),

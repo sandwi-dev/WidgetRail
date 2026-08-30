@@ -4109,6 +4109,8 @@ private:
             trayContextMenu_.reset();
             retainedTrayPaintState_.reset();
         }
+        if (widgetContextMenu_ && !WidgetContextMenuAuthorityCurrent())
+            widgetContextMenu_.reset();
         // Any accepted shell transition changes focus, selection, presentation,
         // reorder, or lifecycle authority. A pending Y must never survive it;
         // the gesture's own tap action has already retired its capture here.
@@ -6842,6 +6844,11 @@ private:
                 ? std::wstring(state_.activeWidget())
                 : std::wstring(state_.selectedWidget());
         std::forward<Refresh>(refresh)();
+        // Snapshot admission can retire the captured node/action authority
+        // without changing shell state. Close before presentation admission so
+        // stale menu state is never rendered or dispatched for the successor.
+        if (widgetContextMenu_ && !WidgetContextMenuAuthorityCurrent())
+            widgetContextMenu_.reset();
         const bool isVisible = state_.surface() != widgetrail::Surface::Hidden;
         const bool settleOverlayFullscreenExit =
             committedOverlayFullscreen && !OverlayFullscreenMediaRequested();
@@ -6972,6 +6979,24 @@ private:
         widgetrail::accessibility::TrayContextMenuSemantics semantics;
     };
 
+    struct WidgetContextMenuState final {
+        std::wstring widgetId;
+        std::wstring instanceId;
+        std::wstring runtimeGeneration;
+        std::wstring presentationGeneration;
+        long long snapshotSequence{};
+        std::wstring inputScopeId;
+        std::wstring sourceNodeId;
+        widgetrail::declarative::Rect anchor;
+        std::vector<widgetrail::WidgetContextAction> actions;
+        std::size_t selectedItem{};
+    };
+
+    struct WidgetContextMenuLayout final {
+        widgetrail::declarative::Rect bounds;
+        widgetrail::accessibility::TrayContextMenuSemantics semantics;
+    };
+
     static constexpr float kTrayContextMenuItemHeightDip = 48.0F;
     static constexpr float kTrayContextMenuGapDip = 8.0F;
     static constexpr std::size_t kTrayContextMenuMaximumItems = 3;
@@ -6979,6 +7004,81 @@ private:
         kTrayContextMenuGapDip +
         kTrayContextMenuItemHeightDip *
             static_cast<float>(kTrayContextMenuMaximumItems);
+
+    [[nodiscard]] bool WidgetContextMenuAuthorityCurrent() const {
+        if (!widgetContextMenu_ ||
+            state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget ||
+            state_.activeWidget() != widgetContextMenu_->widgetId)
+            return false;
+        const auto* snapshot = InteractionSnapshotFor(widgetContextMenu_->widgetId);
+        const auto* descriptor = sessions_.FindDescriptor(widgetContextMenu_->widgetId);
+        if (!snapshot || !descriptor ||
+            snapshot->instanceId != widgetContextMenu_->instanceId ||
+            descriptor->runtimeGeneration != widgetContextMenu_->runtimeGeneration ||
+            descriptor->presentationGeneration != widgetContextMenu_->presentationGeneration ||
+            snapshot->sequence != widgetContextMenu_->snapshotSequence ||
+            snapshot->activeInputScopeId != widgetContextMenu_->inputScopeId)
+            return false;
+        const auto* node = widgetrail::input::FindNodeInInputScope(
+            *snapshot, widgetContextMenu_->sourceNodeId,
+            widgetContextMenu_->inputScopeId);
+        if (!node || node->kind != L"actionSurface" || node->isDisabled ||
+            node->isBusy || node->contextActions.size() !=
+                widgetContextMenu_->actions.size())
+            return false;
+        for (std::size_t index = 0; index < node->contextActions.size(); ++index) {
+            const auto& current = node->contextActions[index];
+            const auto& origin = widgetContextMenu_->actions[index];
+            if (current.actionId != origin.actionId ||
+                current.label != origin.label || current.style != origin.style ||
+                current.isDisabled != origin.isDisabled ||
+                current.isBusy != origin.isBusy)
+                return false;
+        }
+        return true;
+    }
+
+    [[nodiscard]] std::optional<WidgetContextMenuLayout>
+    CurrentWidgetContextMenuLayout(const float width, const float height) const {
+        if (!WidgetContextMenuAuthorityCurrent() ||
+            widgetContextMenu_->actions.empty()) return std::nullopt;
+        const float menuWidth = std::min(320.0F, std::max(1.0F, width - 16.0F));
+        const float menuHeight = kTrayContextMenuItemHeightDip *
+            static_cast<float>(widgetContextMenu_->actions.size());
+        const float left = std::clamp(
+            widgetContextMenu_->anchor.x + widgetContextMenu_->anchor.width * 0.5F -
+                menuWidth * 0.5F,
+            8.0F, std::max(8.0F, width - menuWidth - 8.0F));
+        const float below = widgetContextMenu_->anchor.y +
+            widgetContextMenu_->anchor.height + kTrayContextMenuGapDip;
+        const float top = below + menuHeight <= height - 8.0F
+            ? below
+            : std::max(8.0F, widgetContextMenu_->anchor.y -
+                kTrayContextMenuGapDip - menuHeight);
+        WidgetContextMenuLayout result;
+        result.bounds = {left, top, menuWidth, menuHeight};
+        result.semantics.targetId = widgetContextMenu_->sourceNodeId;
+        const auto selected = std::min(
+            widgetContextMenu_->selectedItem,
+            widgetContextMenu_->actions.size() - 1);
+        for (std::size_t index = 0;
+             index < widgetContextMenu_->actions.size(); ++index) {
+            const auto& action = widgetContextMenu_->actions[index];
+            result.semantics.items.push_back({
+                L"host.widget.context." + std::to_wstring(index),
+                action.label,
+                action.isBusy ? L"Busy" : action.style == L"danger" ? L"Danger" : L"",
+                widgetContextMenu_->sourceNodeId,
+                {left, top + kTrayContextMenuItemHeightDip * static_cast<float>(index),
+                 menuWidth, kTrayContextMenuItemHeightDip},
+                widgetrail::accessibility::HostAction::InvokeWidgetContextAction,
+                !action.isDisabled && !action.isBusy,
+                index == selected,
+            });
+        }
+        return result;
+    }
 
     [[nodiscard]] CurrentPinActionState PinActionFor(
         const std::wstring_view widgetId) const {
@@ -7310,6 +7410,27 @@ private:
                         surfaceGeometry->trayY + surfaceGeometry->trayHeight}}
                     : std::nullopt);
         }
+        if (widgetContextMenu_) {
+            const auto menu = CurrentWidgetContextMenuLayout(
+                metrics->viewportWidthDip, metrics->viewportHeightDip);
+            if (menu) {
+                const auto item = std::find_if(
+                    menu->semantics.items.begin(), menu->semantics.items.end(),
+                    [&](const auto& candidate) {
+                        const auto& bounds = candidate.bounds;
+                        return x >= bounds.x && y >= bounds.y &&
+                            x <= bounds.x + bounds.width &&
+                            y <= bounds.y + bounds.height;
+                    });
+                if (item != menu->semantics.items.end()) {
+                    ActivateWidgetContextMenuItem(static_cast<std::size_t>(
+                        std::distance(menu->semantics.items.begin(), item)));
+                    return;
+                }
+            }
+            CloseWidgetContextMenu();
+            return;
+        }
         if (trayContextMenu_ && trayLayout) {
             const auto menu = CurrentTrayContextMenuLayout(
                 *trayLayout,
@@ -7333,7 +7454,7 @@ private:
             return;
         }
 
-        if (!openContext && state_.surface() == widgetrail::Surface::Widget) {
+        if (state_.surface() == widgetrail::Surface::Widget) {
             const std::wstring widget{state_.activeWidget()};
             const auto* snapshot = InteractionSnapshotFor(widget);
             if (snapshot) {
@@ -7352,10 +7473,20 @@ private:
                         widget, *snapshot, hit->id);
                     InvalidateWidgetFocusChange(
                         focus.priorFocus, focus.sliderDamageNodeIds);
-                    if (hit->enabled) DispatchControllerAction(L"A");
+                    if (openContext) {
+                        const auto anchor = lastWidgetRenderResult_.focusRects.find(hit->id);
+                        (void)OpenWidgetContextMenu(
+                            hit->id,
+                            anchor == lastWidgetRenderResult_.focusRects.end()
+                                ? std::nullopt
+                                : std::optional<widgetrail::declarative::Rect>{anchor->second});
+                    } else if (hit->enabled) {
+                        DispatchControllerAction(L"A");
+                    }
                     return;
                 }
             }
+            if (openContext) return;
         }
 
         std::optional<TrayPointerTarget> trayTarget;
@@ -7530,11 +7661,83 @@ private:
         InvalidateRect(window_, nullptr, FALSE);
     }
 
+    void CloseWidgetContextMenu() {
+        if (!widgetContextMenu_) return;
+        widgetContextMenu_.reset();
+        (void)SetFocus(window_);
+        InvalidateRect(window_, nullptr, FALSE);
+    }
+
+    bool OpenWidgetContextMenu(
+        const std::wstring_view nodeId,
+        const std::optional<widgetrail::declarative::Rect> pointerAnchor =
+            std::nullopt) {
+        if (state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget ||
+            nodeId.empty()) return false;
+        const std::wstring widget{state_.activeWidget()};
+        const auto* snapshot = InteractionSnapshotFor(widget);
+        const auto* descriptor = sessions_.FindDescriptor(widget);
+        const auto* node = snapshot
+            ? widgetrail::input::FindNodeInInputScope(
+                *snapshot, nodeId, snapshot->activeInputScopeId)
+            : nullptr;
+        const auto focusRect = lastWidgetRenderResult_.focusRects.find(nodeId);
+        if (!snapshot || !descriptor || !node ||
+            node->kind != L"actionSurface" || node->isDisabled || node->isBusy ||
+            node->contextActions.empty() ||
+            (!pointerAnchor && focusRect == lastWidgetRenderResult_.focusRects.end()))
+            return false;
+        trayContextMenu_.reset();
+        widgetContextMenu_ = WidgetContextMenuState{
+            widget,
+            snapshot->instanceId,
+            descriptor->runtimeGeneration,
+            descriptor->presentationGeneration,
+            snapshot->sequence,
+            snapshot->activeInputScopeId,
+            std::wstring{nodeId},
+            pointerAnchor.value_or(focusRect->second),
+            node->contextActions,
+            0,
+        };
+        (void)SetFocus(window_);
+        InvalidateRect(window_, nullptr, FALSE);
+        return true;
+    }
+
+    void ActivateWidgetContextMenuItem(const std::size_t itemIndex) {
+        if (!WidgetContextMenuAuthorityCurrent() ||
+            itemIndex >= widgetContextMenu_->actions.size()) {
+            CloseWidgetContextMenu();
+            return;
+        }
+        const auto action = widgetContextMenu_->actions[itemIndex];
+        if (action.isDisabled || action.isBusy) return;
+        const auto authority = *widgetContextMenu_;
+        CloseWidgetContextMenu();
+        const auto handled = bridge_.SendAction(
+            authority.widgetId, action.actionId, authority.sourceNodeId,
+            authority.inputScopeId);
+        lastActionWidgetId_ = authority.widgetId;
+        lastActionMessage_ = !handled
+            ? L"Context action transport failed"
+            : *handled ? L"Context action sent" : L"Context action was not handled";
+        lastActionExpiresAt_ = GetTickCount64() + 3000;
+        if (handled && *handled) {
+            RefreshAndApplyPresentation([&] {
+                RefreshWidgetSnapshot(authority.widgetId);
+            });
+        }
+        InvalidateRect(window_, nullptr, FALSE);
+    }
+
     void OpenTrayContextMenu(const std::wstring_view widgetId) {
         if (state_.surface() == widgetrail::Surface::Hidden ||
             state_.focusRegion() != widgetrail::FocusRegion::Tray ||
             pinnedSurfaceCoordinator_.controllerFocused() ||
             widgetId.empty() || widgetId != state_.selectedWidget()) return;
+        widgetContextMenu_.reset();
         trayContextMenu_ = TrayContextMenuState{std::wstring(widgetId), 0};
         retainedTrayPaintState_.reset();
         (void)SetFocus(window_);
@@ -7795,6 +7998,40 @@ private:
 
     void HandleKey(const UINT key, const bool repeated) {
         if (state_.surface() == widgetrail::Surface::Hidden) return;
+        if (widgetContextMenu_) {
+            if (!WidgetContextMenuAuthorityCurrent()) {
+                CloseWidgetContextMenu();
+                return;
+            }
+            const auto count = widgetContextMenu_->actions.size();
+            if (count != 0 && key == VK_UP)
+                widgetContextMenu_->selectedItem =
+                    widgetContextMenu_->selectedItem == 0
+                        ? count - 1 : widgetContextMenu_->selectedItem - 1;
+            else if (count != 0 && key == VK_DOWN)
+                widgetContextMenu_->selectedItem =
+                    (widgetContextMenu_->selectedItem + 1) % count;
+            else if (!repeated && key == VK_RETURN)
+                ActivateWidgetContextMenuItem(widgetContextMenu_->selectedItem);
+            else if (!repeated && (key == VK_ESCAPE || key == VK_APPS ||
+                                   (key == VK_F10 &&
+                                    (GetKeyState(VK_SHIFT) & 0x8000) != 0)))
+                CloseWidgetContextMenu();
+            else
+                return;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        if (!repeated &&
+            (key == VK_APPS ||
+             (key == VK_F10 && (GetKeyState(VK_SHIFT) & 0x8000) != 0))) {
+            if (state_.focusRegion() == widgetrail::FocusRegion::Tray)
+                OpenTrayContextMenu(state_.selectedWidget());
+            else
+                (void)OpenWidgetContextMenu(
+                    interactionSession_.focusedElementId());
+            return;
+        }
         if (!repeated && key == 'H' &&
             (GetKeyState(VK_CONTROL) & 0x8000) != 0 &&
             (GetKeyState(VK_SHIFT) & 0x8000) != 0) {
@@ -8695,6 +8932,35 @@ private:
             retainedTrayPaintState_.reset();
             InvalidateRect(window_, nullptr, FALSE);
         };
+        if (widgetContextMenu_) {
+            if (!WidgetContextMenuAuthorityCurrent()) {
+                CloseWidgetContextMenu();
+                return;
+            }
+            const auto moveWidgetMenuSelection = [&](
+                const widgetrail::input::StickNavigationEvent& event) {
+                const auto count = widgetContextMenu_->actions.size();
+                if (count == 0) return;
+                if (event.direction == widgetrail::input::NavigationDirection::Up)
+                    widgetContextMenu_->selectedItem =
+                        widgetContextMenu_->selectedItem == 0
+                            ? count - 1 : widgetContextMenu_->selectedItem - 1;
+                else if (event.direction == widgetrail::input::NavigationDirection::Down)
+                    widgetContextMenu_->selectedItem =
+                        (widgetContextMenu_->selectedItem + 1) % count;
+                else return;
+                InvalidateRect(window_, nullptr, FALSE);
+            };
+            if (const auto direction = DecodeNavigation(frame.stickNavigation))
+                moveWidgetMenuSelection(*direction);
+            if (const auto direction = DecodeNavigation(frame.dpadNavigation))
+                moveWidgetMenuSelection(*direction);
+            if ((pressed & XINPUT_GAMEPAD_A) != 0)
+                ActivateWidgetContextMenuItem(widgetContextMenu_->selectedItem);
+            else if ((pressed & (XINPUT_GAMEPAD_B | XINPUT_GAMEPAD_START)) != 0)
+                CloseWidgetContextMenu();
+            return;
+        }
         if (trayContextMenu_) {
             if (trayContextMenu_->widgetId != state_.selectedWidget() ||
                 state_.focusRegion() != widgetrail::FocusRegion::Tray ||
@@ -8751,6 +9017,14 @@ private:
             state_.focusRegion() == widgetrail::FocusRegion::Tray &&
             !pinnedSurfaceCoordinator_.controllerFocused()) {
             OpenTrayContextMenu(state_.selectedWidget());
+            return;
+        }
+        if (!recoveryChordDown &&
+            (pressed & XINPUT_GAMEPAD_START) != 0 &&
+            state_.surface() == widgetrail::Surface::Widget &&
+            state_.focusRegion() == widgetrail::FocusRegion::Widget) {
+            (void)OpenWidgetContextMenu(
+                interactionSession_.focusedElementId());
             return;
         }
         const auto pinnedControllerCommand = widgetrail::pinned::ResolveControllerCommand({
@@ -9365,6 +9639,34 @@ private:
                         }
                     }
                 } else if (request.hostAction ==
+                               widgetrail::accessibility::HostAction::InvokeWidgetContextAction) {
+                    if ((request.kind != widgetrail::accessibility::ActionKind::Invoke &&
+                         request.kind != widgetrail::accessibility::ActionKind::Focus) ||
+                        !WidgetContextMenuAuthorityCurrent() ||
+                        request.hostTargetId != widgetContextMenu_->sourceNodeId)
+                        continue;
+                    const auto layout = CurrentWidgetContextMenuLayout(
+                        lastWidgetRenderResult_.responsiveSurface
+                            ? lastWidgetRenderResult_.responsiveSurface->viewport.width
+                            : 1600.0F,
+                        lastWidgetRenderResult_.responsiveSurface
+                            ? lastWidgetRenderResult_.responsiveSurface->viewport.height
+                            : 1200.0F);
+                    if (!layout) continue;
+                    const auto item = std::find_if(
+                        layout->semantics.items.begin(), layout->semantics.items.end(),
+                        [&](const auto& candidate) {
+                            return candidate.id == request.nodeId;
+                        });
+                    if (item == layout->semantics.items.end()) continue;
+                    const auto index = static_cast<std::size_t>(
+                        std::distance(layout->semantics.items.begin(), item));
+                    if (request.kind == widgetrail::accessibility::ActionKind::Focus) {
+                        widgetContextMenu_->selectedItem = index;
+                    } else {
+                        ActivateWidgetContextMenuItem(index);
+                    }
+                } else if (request.hostAction ==
                                widgetrail::accessibility::HostAction::PinTrayWidget ||
                            request.hostAction ==
                                widgetrail::accessibility::HostAction::AdjustPinnedSurface ||
@@ -9834,9 +10136,11 @@ private:
         }
         const auto menuLayout = CurrentTrayContextMenuLayout(
             layout, CurrentTrayViewportWidthDip(width));
+        const auto widgetMenuLayout = CurrentWidgetContextMenuLayout(width, height);
         const widgetrail::accessibility::TrayContextMenuSemantics menuSemantics =
-            menuLayout ? menuLayout->semantics
-                       : widgetrail::accessibility::TrayContextMenuSemantics{};
+            widgetMenuLayout ? widgetMenuLayout->semantics
+            : menuLayout ? menuLayout->semantics
+            : widgetrail::accessibility::TrayContextMenuSemantics{};
         if (state_.surface() == widgetrail::Surface::Widget) {
             openWidgetAccessibility_.contextMenu = menuSemantics;
             const bool currentWidgetSemantics =
@@ -10611,6 +10915,7 @@ private:
     [[nodiscard]] bool AuthoredHeldActionAdmissible() const {
         return state_.surface() != widgetrail::Surface::Hidden &&
             !textEntryModal_.active() && !trayContextMenu_ &&
+            !widgetContextMenu_ &&
             !OverlayFullscreenMediaRequested() &&
             !pinnedSurfaceCoordinator_.controllerFocused() &&
             pinnedSurfaceCoordinator_.placementMode() ==
@@ -12679,6 +12984,10 @@ private:
                 key += L"\ntray-context=" + trayContextMenu_->widgetId + L":" +
                     std::to_wstring(trayContextMenu_->selectedItem);
             }
+            if (widgetContextMenu_) {
+                key += L"\nwidget-context=" + widgetContextMenu_->sourceNodeId + L":" +
+                    std::to_wstring(widgetContextMenu_->selectedItem);
+            }
             if (const auto* snapshot = GuideSnapshotFor(state_.activeWidget()))
                 key += L"\n" + snapshot->activeInputScopeId;
         }
@@ -13739,6 +14048,45 @@ private:
         }
     }
 
+    void DrawWidgetContextMenu(const float width, const float height) {
+        const auto menu = CurrentWidgetContextMenuLayout(width, height);
+        if (!menu) return;
+        const D2D1_ROUNDED_RECT panel{
+            D2D1::RectF(
+                menu->bounds.x, menu->bounds.y,
+                menu->bounds.x + menu->bounds.width,
+                menu->bounds.y + menu->bounds.height),
+            trayItemCornerRadius_, trayItemCornerRadius_};
+        renderTarget_->FillRoundedRectangle(panel, backgroundBrush_.Get());
+        renderTarget_->DrawRoundedRectangle(
+            panel, focusBrush_.Get(), focusOutlineWidth_);
+        for (std::size_t index = 0;
+             index < menu->semantics.items.size(); ++index) {
+            const auto& item = menu->semantics.items[index];
+            const auto& action = widgetContextMenu_->actions[index];
+            const auto& bounds = item.bounds;
+            if (item.selected) {
+                const D2D1_ROUNDED_RECT selection{
+                    D2D1::RectF(
+                        bounds.x + 3.0F, bounds.y + 3.0F,
+                        bounds.x + bounds.width - 3.0F,
+                        bounds.y + bounds.height - 3.0F),
+                    trayItemCornerRadius_ * 0.65F,
+                    trayItemCornerRadius_ * 0.65F};
+                renderTarget_->FillRoundedRectangle(selection, accentBrush_.Get());
+            }
+            const std::wstring visual = action.style == L"danger"
+                ? L"Danger · " + item.name : item.name;
+            DrawTextLine(
+                visual, hintFormat_.Get(),
+                D2D1::RectF(
+                    bounds.x + 14.0F, bounds.y + 10.0F,
+                    bounds.x + bounds.width - 12.0F,
+                    bounds.y + bounds.height - 8.0F),
+                item.enabled ? textBrush_.Get() : secondaryBrush_.Get());
+        }
+    }
+
     void DrawWidget(
         const float width,
         const float height,
@@ -14337,6 +14685,8 @@ private:
                              secondaryBrush_.Get());
             }
             if (contentLayerPushed) renderTarget_->PopLayer();
+            if (widgetContextMenu_)
+                DrawWidgetContextMenu(width, height);
             if (drawGuide) DrawWidgetFooter(
                 *geometry, fixedGuideBounds ? &*fixedGuideBounds : nullptr);
             if (drawTray) {
@@ -14429,6 +14779,7 @@ private:
     std::wstring lastActionWidgetId_;
     ULONGLONG lastActionExpiresAt_{};
     std::optional<TrayContextMenuState> trayContextMenu_;
+    std::optional<WidgetContextMenuState> widgetContextMenu_;
     widgetrail::input::StickNavigator placementMoveStickNavigator_{
         widgetrail::input::kPinnedPlacementNavigationOptions};
     widgetrail::input::StickNavigator placementDpadNavigator_{

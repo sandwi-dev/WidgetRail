@@ -419,6 +419,7 @@ method WidgetRail.WidgetSdk.ActionSheetItem.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ActionSheetItem.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ActionSheetItem.ToString() -> string
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Busy(bool busy = true) -> WidgetRail.WidgetSdk.ActionSurfaceElement
+method WidgetRail.WidgetSdk.ActionSurfaceElement.ContextAction(string actionId, string label, WidgetRail.WidgetProtocol.WidgetContextActionStyle style = WidgetRail.WidgetProtocol.WidgetContextActionStyle.Default, bool disabled = false, bool busy = false) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Disabled(bool disabled = true) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Equals(object? obj) -> bool
@@ -1794,6 +1795,7 @@ property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.Cont
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ButtonElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ContainerElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.PinnedPresentationLayout>? WidgetRail.WidgetSdk.WidgetView.PinnedLayouts { get; set; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetContextAction> WidgetRail.WidgetSdk.ActionSurfaceElement.ContextActions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? WidgetRail.WidgetSdk.WidgetView.QuickActions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryAction> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilitySet.Actions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryArtwork> WidgetRail.WidgetSdk.WidgetAppLibraryArtworkSet.Items { get; set; }
@@ -2079,8 +2081,8 @@ property bool? WidgetRail.WidgetSdk.ActionSurfaceElement.IsSelected { get; set; 
 property bool? WidgetRail.WidgetSdk.ButtonElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.ButtonElement.IsDisabled { get; set; }
 property bool? WidgetRail.WidgetSdk.ButtonElement.IsSelected { get; set; }
-property bool? WidgetRail.WidgetSdk.ControllerInputEvent.IsPinnedLayoutSelected { get; set; }
 property bool? WidgetRail.WidgetSdk.ControllerInputEvent.IsOverlayFullscreenActive { get; set; }
+property bool? WidgetRail.WidgetSdk.ControllerInputEvent.IsPinnedLayoutSelected { get; set; }
 property bool? WidgetRail.WidgetSdk.ScrubberElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.ScrubberElement.IsDisabled { get; set; }
 property bool? WidgetRail.WidgetSdk.SliderElement.IsBusy { get; set; }

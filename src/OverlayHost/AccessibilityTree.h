@@ -45,6 +45,7 @@ enum class HostAction {
     AdjustPinnedSurface,
     AdjustPinnedOpacity,
     UnpinSurface,
+    InvokeWidgetContextAction,
     CloseOverlay,
 };
 

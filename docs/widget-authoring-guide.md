@@ -797,7 +797,7 @@ or `ResponsiveGrid` when only placement, not hierarchy, changes.
 | `UI.Icon(glyph, id, label)` | semantic icon | Closed host-rendered glyph vocabulary. |
 | `UI.LoadingIndicator(id, label, size?)` | indeterminate status | Protocol 5; native, nonfocusable, static under reduced motion. |
 | `UI.ActionSurface(action, id, label, orientation, children...)` | rich full-surface action | Protocol 7; one focus/pointer/action target with bounded presentational children. |
-| `UI.Tile(...)` | rich tile ActionSurface | Optional `TileArtwork`, multiline copy, visible state, and one full-tile action. |
+| `UI.Tile(...)` | rich tile ActionSurface | Optional `TileArtwork`, multiline copy, visible state, one full-tile action, and protocol-v34 bounded contextual actions. |
 | `UI.Toast(title, message, tone, id, duration?, glyph?)` | transient feedback | No focus or timer; remove through lifecycle-owned widget state. |
 | `UI.IconButton(...)` | icon-only button | Required accessible name plus stable size/variant classes. |
 | `UI.Card(...)`, `UI.SectionHeader(...)`, `UI.Divider(...)` | nonfocusable hierarchy | Theme-respecting grouping, heading, and separator compositions. |
@@ -819,8 +819,15 @@ Button focus target; it accepts only the same bounded canonical PNG contract as
 Sliders provide
 `.FocusUp/Down(id)`, `.Disabled(...)`, `.Busy(...)`, and `.Activate(...)`;
 horizontal focus links are invalid because the control owns Left/Right.
-ActionSurfaces provide directional focus helpers, Disabled/Selected/Busy, and
-shortcuts on their one stable root. Their descendants cannot own input,
+ActionSurfaces provide directional focus helpers, Disabled/Selected/Busy,
+shortcuts, and up to eight `.ContextAction(actionId, label, style?, disabled?, busy?)`
+items on their one stable root. Controller Menu/Options, Shift+F10, the keyboard
+menu key, right-click, and UI Automation open the same host-owned anchored menu.
+Use `WidgetContextActionStyle.Danger` for destructive commands; disabled and
+busy items remain announced but cannot dispatch. Keep IDs stable and publish
+the complete current collection in every snapshot—the host retires an open menu
+on any widget, instance, runtime, presentation, sequence, scope, node, binding,
+or enabled/busy authority change. Their descendants cannot own input,
 actions, focus, scopes, scrolling, shortcuts, or interaction state.
 
 Current semantic glyphs are `Music`, `Play`, `Pause`, `Previous`, `Next`,
@@ -1852,8 +1859,10 @@ and `U` remains the unpin fallback. From tray focus, controller View enters the
 single pin independent of tray selection; View remains package-owned while
 widget content has focus. The surface starts click-through; a second
 `P` or a bare right-stick click while the same widget is open explicitly makes
-it Interactive. Menu while widget content owns focus remains available to the
-widget, as do all package-declared bumper, trigger, stick-click, and View actions.
+it Interactive. Menu while widget content owns focus opens the focused
+ActionSurface's declared context actions when present; it does not reuse or
+replace the tray-owned Pin menu. Other package-declared bumper, trigger,
+stick-click, and View actions keep their ordinary routing.
 Supporting widgets may also set the optional `WidgetView.PinnedLayouts` init
 property. Each `PinnedPresentationLayout` has a stable ID, visible name, and
 ordinary bounded `WidgetSurfaceHints`; use `WidgetView.PinnedLayout(...)` when

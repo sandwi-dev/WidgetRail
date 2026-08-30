@@ -29,6 +29,7 @@ public enum PresentationProperty
     AccessibilityLabel,
     AccessibilityValue,
     ActionId,
+    ContextActions,
     TextEntryValue,
     TextEntryPlaceholder,
     TextEntryMaximumLength,
@@ -171,6 +172,7 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.ActionId or
+        PresentationProperty.ContextActions or
         PresentationProperty.ValueChangedActionId or
         PresentationProperty.Shortcuts or
         PresentationProperty.InputScopeId or

@@ -118,6 +118,53 @@ internal static class TileComponentTests
         return Task.CompletedTask;
     }
 
+    internal static Task ContextActionsAreBoundedAndVersioned()
+    {
+        var tile = UI.Tile(
+                "Album", "Ready", "album.open", "album.tile")
+            .ContextAction("album.queue", "Add to queue")
+            .ContextAction(
+                "album.remove", "Remove from library",
+                WidgetContextActionStyle.Danger, disabled: true);
+        var snapshot = new WidgetView(tile, InitialFocusId: tile.Id)
+            .CreateSnapshot("context.instance", 1);
+
+        Equal(ProtocolConstants.ContextActionsVersion, snapshot.ProtocolVersion);
+        Equal(2, snapshot.Root.ContextActions.Count);
+        Equal("album.queue", snapshot.Root.ContextActions[0].ActionId);
+        Equal(WidgetContextActionStyle.Danger, snapshot.Root.ContextActions[1].Style);
+        Equal(true, snapshot.Root.ContextActions[1].IsDisabled);
+        Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+
+        var legacy = snapshot with
+        {
+            ProtocolVersion = ProtocolConstants.ContextActionsVersion - 1,
+        };
+        True(ViewSnapshotValidator.Validate(legacy).Any(error =>
+                error.Code == "feature_requires_version"),
+            "Context actions must fail closed before protocol v34.");
+        var duplicate = snapshot with
+        {
+            Root = snapshot.Root with
+            {
+                ContextActions =
+                [
+                    new("same", "First"),
+                    new("same", "Second"),
+                ],
+            },
+        };
+        True(ViewSnapshotValidator.Validate(duplicate).Any(error =>
+                error.Code == "duplicate_context_action"),
+            "Duplicate context action IDs must fail closed.");
+        Throws<InvalidOperationException>(() => Enumerable.Range(
+                0, ProtocolConstants.MaximumContextActionCount + 1)
+            .Aggregate(tile with { ContextActions = [] },
+                (current, index) => current.ContextAction(
+                    $"action.{index}", $"Action {index}")));
+        return Task.CompletedTask;
+    }
+
     internal static async Task ActionSurfacesValidateAndRoute()
     {
         var surface = UI.ActionSurface(

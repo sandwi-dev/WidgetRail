@@ -146,6 +146,8 @@ public sealed class SdkGalleryWidget : Widget
             case "gallery.empty.populate":
             case "gallery.media.open":
             case "gallery.app.open":
+            case "gallery.media.queue":
+            case "gallery.media.remove":
             case "gallery.refresh":
             case "gallery.sheet.pin":
             case "gallery.sheet.share":
@@ -271,7 +273,11 @@ public sealed class SdkGalleryWidget : Widget
                 "gallery.media",
                 subtitle: "Example Artist",
                 metadata: "Controller UI Sessions",
-                artwork: TileArtwork.FromGlyph(WidgetGlyph.Music, "Music artwork")),
+                artwork: TileArtwork.FromGlyph(WidgetGlyph.Music, "Music artwork"))
+                .ContextAction("gallery.media.queue", "Add to queue")
+                .ContextAction(
+                    "gallery.media.remove", "Remove from library",
+                    WidgetContextActionStyle.Danger),
             UI.Tile(
                 "Sample Game",
                 "Ready",

@@ -236,6 +236,14 @@ struct WidgetShortcut final {
     std::wstring repeatPolicy;
 };
 
+struct WidgetContextAction final {
+    std::wstring actionId;
+    std::wstring label;
+    std::wstring style;
+    bool isDisabled{};
+    bool isBusy{};
+};
+
 struct WidgetStyleValue final {
     std::wstring kind;
     std::wstring text;
@@ -304,6 +312,7 @@ struct WidgetNode final {
     std::optional<std::size_t> gridMaximumColumns;
     std::vector<std::wstring> styleClasses;
     std::vector<WidgetShortcut> shortcuts;
+    std::vector<WidgetContextAction> contextActions;
     std::wstring focusUp;
     std::wstring focusDown;
     std::wstring focusLeft;

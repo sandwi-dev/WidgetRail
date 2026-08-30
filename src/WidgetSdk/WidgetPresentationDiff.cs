@@ -363,6 +363,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.AccessibilityLabel, before.AccessibilityLabel, after.AccessibilityLabel);
         Add(PresentationProperty.AccessibilityValue, before.AccessibilityValue, after.AccessibilityValue);
         Add(PresentationProperty.ActionId, before.ActionId, after.ActionId);
+        Add(PresentationProperty.ContextActions, before.ContextActions, after.ContextActions);
         Add(PresentationProperty.TextEntryValue, before.TextEntryValue, after.TextEntryValue);
         Add(PresentationProperty.TextEntryInputKind, before.TextEntryInputKind, after.TextEntryInputKind);
         Add(PresentationProperty.TextEntryPlaceholder, before.TextEntryPlaceholder, after.TextEntryPlaceholder);

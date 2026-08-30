@@ -709,6 +709,36 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.accessibilityLabel = OptionalString(source, L"accessibilityLabel");
     node.accessibilityValue = OptionalString(source, L"accessibilityValue");
     node.actionId = OptionalString(source, L"actionId");
+    if (source.HasKey(L"contextActions")) {
+        const auto actions = source.GetNamedArray(L"contextActions");
+        if (node.kind != L"actionSurface" ||
+            actions.Size() > protocol_contract::MaximumContextActionCount)
+            throw winrt::hresult_invalid_argument();
+        std::unordered_set<std::wstring> actionIds;
+        node.contextActions.reserve(actions.Size());
+        for (std::uint32_t index = 0; index < actions.Size(); ++index) {
+            const auto encoded = actions.GetObjectAt(index);
+            if (!HasNoUnknownProperties(encoded,
+                    {L"actionId", L"label", L"style", L"isDisabled", L"isBusy"}))
+                throw winrt::hresult_invalid_argument();
+            WidgetContextAction action{
+                std::wstring(std::wstring_view(encoded.GetNamedString(L"actionId"))),
+                std::wstring(std::wstring_view(encoded.GetNamedString(L"label"))),
+                std::wstring(std::wstring_view(encoded.GetNamedString(L"style", L"default"))),
+                encoded.GetNamedBoolean(L"isDisabled", false),
+                encoded.GetNamedBoolean(L"isBusy", false),
+            };
+            if (!IsIdentifier(action.actionId) ||
+                action.label.empty() ||
+                action.label.size() > protocol_contract::MaximumStringLength ||
+                std::any_of(action.label.begin(), action.label.end(),
+                    [](const wchar_t value) { return std::iswcntrl(value) != 0; }) ||
+                (action.style != L"default" && action.style != L"danger") ||
+                !actionIds.insert(action.actionId).second)
+                throw winrt::hresult_invalid_argument();
+            node.contextActions.push_back(std::move(action));
+        }
+    }
     node.textEntryValue = OptionalString(source, L"textEntryValue");
     node.textEntryPlaceholder = OptionalString(source, L"textEntryPlaceholder");
     node.textEntryInputKind = OptionalString(source, L"textEntryInputKind");
@@ -1495,6 +1525,15 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     }
     snapshot.root = ParseNode(source.GetNamedObject(L"root"));
     ValidateRememberedChildFocusGroups(snapshot.root, snapshot.protocolVersion);
+    const auto validateContextActions = [&](const auto& self,
+                                            const WidgetNode& node) -> void {
+        if (!node.contextActions.empty() &&
+            snapshot.protocolVersion < protocol_contract::ContextActionsVersion)
+            throw winrt::hresult_invalid_argument(
+                L"Context actions require protocol version 34.");
+        for (const auto& child : node.children) self(self, child);
+    };
+    validateContextActions(validateContextActions, snapshot.root);
     std::size_t mediaViewportCount{};
     std::wstring mediaViewportSurfaceId;
     std::wstring mediaViewportAccessibleName;
@@ -1600,9 +1639,9 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 40> properties{
+    static constexpr std::array<std::wstring_view, 41> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
-        L"actionId", L"textEntryValue", L"textEntryPlaceholder",
+        L"actionId", L"contextActions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
         L"valueChangedActionId", L"sliderInteractionMode", L"imageSource",
         L"artworkHandle", L"mediaSurfaceId", L"imageFit", L"glyph", L"indicatorSize",
@@ -1642,7 +1681,7 @@ bool ValidateWidgetDocumentStructure(
         }
         if (!HasNoUnknownProperties(node,
                 {L"id", L"kind", L"visibleWhen", L"text",
-                 L"accessibilityLabel", L"accessibilityValue", L"actionId",
+                 L"accessibilityLabel", L"accessibilityValue", L"actionId", L"contextActions",
                  L"textEntryValue", L"textEntryPlaceholder",
                  L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum",
                  L"step", L"valueChangedActionId", L"sliderInteractionMode",
@@ -2151,7 +2190,8 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         return Effect::Paint | Effect::Authority |
             Effect::Interaction | Effect::Accessibility;
     }
-    if (property == L"actionId" || property == L"valueChangedActionId" ||
+    if (property == L"actionId" || property == L"contextActions" ||
+        property == L"valueChangedActionId" ||
         property == L"focus" || property == L"focusPersistenceId" ||
         property == L"scrollNearStartActionId" ||
         property == L"scrollNearEndActionId") {

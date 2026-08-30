@@ -930,6 +930,40 @@ public static class ViewSnapshotValidator
                 node.ActionId is not null)
                 Add($"{path}.actionId", "action_not_allowed",
                     "Action IDs apply only to buttons, sliders, action surfaces, and text entry.");
+            var contextActions = node.ContextActions ?? [];
+            if (node.ContextActions is null)
+                Add($"{path}.contextActions", "required", "Context actions cannot be null.");
+            else if (node.Kind is not ViewNodeKind.ActionSurface && contextActions.Count != 0)
+                Add($"{path}.contextActions", "context_actions_not_allowed",
+                    "Only action surfaces may declare contextual actions.");
+            else if (contextActions.Count > ProtocolConstants.MaximumContextActionCount)
+                Add($"{path}.contextActions", "too_many_context_actions",
+                    $"An action surface may expose at most {ProtocolConstants.MaximumContextActionCount} context actions.");
+            var contextActionIds = new HashSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < Math.Min(
+                     contextActions.Count, ProtocolConstants.MaximumContextActionCount); index++)
+            {
+                var action = contextActions[index];
+                var actionPath = $"{path}.contextActions[{index}]";
+                if (action is null)
+                {
+                    Add(actionPath, "required", "A context action cannot be null.");
+                    continue;
+                }
+                CheckIdentifier(action.ActionId, $"{actionPath}.actionId", "context action ID");
+                if (!string.IsNullOrWhiteSpace(action.ActionId) &&
+                    !contextActionIds.Add(action.ActionId))
+                    Add($"{actionPath}.actionId", "duplicate_context_action",
+                        $"The context action ID '{action.ActionId}' is repeated.");
+                if (string.IsNullOrWhiteSpace(action.Label) ||
+                    action.Label.Length > ProtocolConstants.MaximumStringLength ||
+                    action.Label.Any(char.IsControl))
+                    Add($"{actionPath}.label", "invalid_context_action_label",
+                        "A context action requires bounded control-free visible text.");
+                if (!Enum.IsDefined(action.Style))
+                    Add($"{actionPath}.style", "invalid_context_action_style",
+                        "The context action style is not supported.");
+            }
             var supportsImageSource = node.Kind is ViewNodeKind.Image or ViewNodeKind.Button;
             if (node.ArtworkHandle is not null)
             {

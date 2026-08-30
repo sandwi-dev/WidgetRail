@@ -137,6 +137,40 @@ void TestAcceptedCompactMediaHostContract() {
           "compact B exits to click-through, View uses the tray route, and A/navigation expose no scrub mapping");
 }
 
+void TestWidgetContextActionHostContract() {
+    const auto source = ReadSource(
+        fs::path{__FILE__}.parent_path() / "main.cpp");
+    const auto begin = source.find("struct WidgetContextMenuState final {");
+    const auto end = source.find("struct WidgetContextMenuLayout final {", begin);
+    Check(begin != std::string::npos && end != std::string::npos,
+          "widget context menu owns one bounded authority record");
+    const auto authority = source.substr(begin, end - begin);
+    Check(authority.find("instanceId") != std::string::npos &&
+              authority.find("runtimeGeneration") != std::string::npos &&
+              authority.find("presentationGeneration") != std::string::npos &&
+              authority.find("snapshotSequence") != std::string::npos &&
+              authority.find("inputScopeId") != std::string::npos &&
+              authority.find("sourceNodeId") != std::string::npos,
+          "context menu captures exact widget, generation, sequence, scope, and node authority");
+    const auto validate = source.find("bool WidgetContextMenuAuthorityCurrent() const");
+    const auto layout = source.find("CurrentWidgetContextMenuLayout", validate);
+    Check(validate != std::string::npos && layout != std::string::npos,
+          "context menu revalidates authority before projection");
+    const auto dispatch = source.find("void ActivateWidgetContextMenuItem(");
+    const auto trayOpen = source.find("void OpenTrayContextMenu", dispatch);
+    Check(dispatch != std::string::npos && trayOpen != std::string::npos,
+          "context action dispatch has one bounded owner");
+    const auto dispatchSlice = source.substr(dispatch, trayOpen - dispatch);
+    Check(dispatchSlice.find("WidgetContextMenuAuthorityCurrent()") != std::string::npos &&
+              dispatchSlice.find("bridge_.SendAction(") != std::string::npos &&
+              dispatchSlice.find("CloseWidgetContextMenu();") != std::string::npos,
+          "context action revalidates, dismisses, and dispatches exactly once");
+    Check(source.find("HostAction::InvokeWidgetContextAction") != std::string::npos &&
+              source.find("key == VK_APPS") != std::string::npos &&
+              source.find("OpenWidgetContextMenu(\n                interactionSession_.focusedElementId())") != std::string::npos,
+          "context menu exposes UIA, keyboard, and controller entry paths");
+}
+
 void TestAcceptedOverlayFullscreenMediaHostContract() {
     const auto source = ReadSource(
         fs::path{__FILE__}.parent_path() / "main.cpp");
@@ -1034,6 +1068,7 @@ int wmain(const int argc, wchar_t** argv) {
         Check(SUCCEEDED(apartment), "COM apartment initializes");
         (void)SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         TestAcceptedCompactMediaHostContract();
+        TestWidgetContextActionHostContract();
         TestAcceptedOverlayFullscreenMediaHostContract();
         TestAcceptedWidgetOwnedFocusMemoryHostContract();
         TestAcceptedHiddenBridgeControlPlaneContract();

@@ -4,7 +4,7 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 33;
+    public const int CurrentVersion = 34;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
@@ -37,6 +37,7 @@ public static class ProtocolConstants
     public const int SemanticSeekGlyphVersion = 31;
     public const int HeldButtonActionRepeatVersion = 32;
     public const int RememberedChildFocusGroupVersion = 33;
+    public const int ContextActionsVersion = 34;
     public const double MinimumEmbeddedMediaPlaybackRate = 0.5;
     public const double MaximumEmbeddedMediaPlaybackRate = 2.0;
     public const double DefaultMediaSeekStepSeconds = 10;
@@ -87,6 +88,7 @@ public static class ProtocolConstants
     public const int MaximumInlinePngSourceLength =
         22 + ((MaximumInlinePngBytes + 2) / 3) * 4;
     public const int MaximumQuickActionCount = 3;
+    public const int MaximumContextActionCount = 8;
     public const int MaximumActionSurfaceDirectChildren = 8;
     public const int MaximumActionSurfaceDescendants = 32;
     public const int MaximumActionSurfaceRelativeDepth = 4;

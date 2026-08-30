@@ -248,6 +248,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ActiveInputScopeId => ReadRequired<string>(change.Value),
                 PresentationProperty.InitialFocusId => Read<string?>(change.Value),
                 PresentationProperty.QuickActions => ReadRequired<IReadOnlyList<WidgetQuickAction>>(change.Value),
+                PresentationProperty.ContextActions => ReadRequired<IReadOnlyList<WidgetContextAction>>(change.Value),
                 PresentationProperty.Surface => Read<WidgetSurfaceHints?>(change.Value),
                 PresentationProperty.VisibleWhen => Read<ResponsiveVisibility?>(change.Value),
                 PresentationProperty.Text or PresentationProperty.AccessibilityLabel or
@@ -378,6 +379,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.AccessibilityLabel => node with { AccessibilityLabel = Read<string?>(change.Value) },
                 PresentationProperty.AccessibilityValue => node with { AccessibilityValue = Read<string?>(change.Value) },
                 PresentationProperty.ActionId => node with { ActionId = Read<string?>(change.Value) },
+                PresentationProperty.ContextActions => node with { ContextActions = ReadRequired<IReadOnlyList<WidgetContextAction>>(change.Value) },
                 PresentationProperty.TextEntryValue => node with { TextEntryValue = Read<string?>(change.Value) },
                 PresentationProperty.TextEntryPlaceholder => node with { TextEntryPlaceholder = Read<string?>(change.Value) },
                 PresentationProperty.TextEntryMaximumLength => node with { TextEntryMaximumLength = Read<int?>(change.Value) },

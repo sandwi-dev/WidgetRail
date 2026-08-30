@@ -971,6 +971,7 @@ int main() {
     error.clear();
     const auto styledSnapshot = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
+            "protocolVersion": 34,
             "sequence": 9,
             "widgetInstanceId": "music.runtime.v1",
             "activeInputScopeId": "root",
@@ -985,6 +986,10 @@ int main() {
                     {
                         "id":"album","kind":"actionSurface","actionId":"open-album",
                         "accessibilityLabel":"Open album","actionSurfaceOrientation":"horizontal",
+                        "contextActions":[
+                            {"actionId":"album.queue","label":"Add to queue","style":"default","isDisabled":false,"isBusy":false},
+                            {"actionId":"album.remove","label":"Remove","style":"danger","isDisabled":true,"isBusy":false}
+                        ],
                         "children":[
                             {"id":"album.art","kind":"image","imageSource":"https://example.test/album.png","imageFit":"cover"},
                             {"id":"album.copy","kind":"stack","children":[
@@ -1047,6 +1052,14 @@ int main() {
     CHECK(actionSurface.actionId == L"open-album");
     CHECK(actionSurface.accessibilityLabel == L"Open album");
     CHECK(actionSurface.actionSurfaceOrientation == L"horizontal");
+    CHECK(actionSurface.contextActions.size() == 2);
+    CHECK(actionSurface.contextActions[0].actionId == L"album.queue" &&
+          actionSurface.contextActions[0].label == L"Add to queue" &&
+          actionSurface.contextActions[0].style == L"default" &&
+          !actionSurface.contextActions[0].isDisabled);
+    CHECK(actionSurface.contextActions[1].actionId == L"album.remove" &&
+          actionSurface.contextActions[1].style == L"danger" &&
+          actionSurface.contextActions[1].isDisabled);
     CHECK(actionSurface.children.size() == 2);
     CHECK(actionSurface.children[0].kind == L"image");
     CHECK(actionSurface.children[0].imageFit == L"cover");
