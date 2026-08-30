@@ -238,6 +238,59 @@ void TestAcceptedWidgetOwnedFocusMemoryHostContract() {
           "widget hide remembers exact focus, clears only live focus, and restores on exact Hidden-to-Widget authority before presentation");
 }
 
+void TestAcceptedHiddenBridgeControlPlaneContract() {
+    const auto source = ReadSource(
+        fs::path{__FILE__}.parent_path() / "main.cpp");
+    const auto section = [&](const std::string_view begin,
+                             const std::string_view end,
+                             const std::string_view message) {
+        const auto beginOffset = source.find(begin);
+        Check(beginOffset != std::string::npos, message);
+        const auto endOffset = source.find(end, beginOffset + begin.size());
+        Check(endOffset != std::string::npos, message);
+        return source.substr(beginOffset, endOffset - beginOffset);
+    };
+
+    const auto hiddenTimer = section(
+        "if (wParam == kBridgeControlPlaneTimer) {",
+        "if (performanceCountersActive_)",
+        "hidden Bridge timer owns one bounded WM_TIMER branch");
+    Check(hiddenTimer.find("(void)bridge_.PumpEvents();") != std::string::npos &&
+              hiddenTimer.find("return 0;") != std::string::npos,
+          "hidden Bridge timer drains the native control plane and terminates its branch");
+    Check(hiddenTimer.find("TakeInvalidatedWidgetIds") == std::string::npos &&
+              hiddenTimer.find("TakeRuntimeFailures") == std::string::npos &&
+              hiddenTimer.find("PollController") == std::string::npos &&
+              hiddenTimer.find("InvalidateRect") == std::string::npos &&
+              hiddenTimer.find("ApplyPresentation") == std::string::npos &&
+              hiddenTimer.find("Reconcile") == std::string::npos,
+          "hidden Bridge timer cannot consume presentation, input, render, layout, paint, or composition work");
+
+    const auto hide = section(
+        "void HideOverlay() {",
+        "void RetireCompositionMotionForHiddenState()",
+        "hidden overlay timer ownership section exists");
+    Check(hide.find("KillTimer(window_, kControllerTimer);") != std::string::npos &&
+              hide.find("KillTimer(window_, kPinnedSurfaceTimer);") != std::string::npos &&
+              hide.find("KillTimer(window_, kBridgeControlPlaneTimer);") != std::string::npos &&
+              hide.find("if (pinnedSurfaceCoordinator_.pinned())\n"
+                        "            SetTimer(window_, kPinnedSurfaceTimer, 100, nullptr);\n"
+                        "        else\n"
+                        "            SetTimer(window_, kBridgeControlPlaneTimer, 100, nullptr);") !=
+                  std::string::npos,
+          "hidden unpinned state owns only the Bridge timer while hidden pinned state retains its existing timer");
+
+    const auto show = section(
+        "if (!wasVisible) {\n            actionFailureFeedback_.Show();",
+        "pinnedSurfaceCoordinator_.OnOverlayShown();",
+        "visible overlay timer ownership section exists");
+    Check(show.find("KillTimer(window_, kBridgeControlPlaneTimer);") !=
+              std::string::npos &&
+              show.find("SetTimer(window_, kControllerTimer, 16, nullptr);") !=
+              std::string::npos,
+          "visible overlay retires the hidden Bridge timer before controller sampling");
+}
+
 void TestAcceptedMediaBackOwnershipHostContract() {
     const auto source = ReadSource(
         fs::path{__FILE__}.parent_path() / "main.cpp");
@@ -887,6 +940,7 @@ int wmain(const int argc, wchar_t** argv) {
         TestAcceptedCompactMediaHostContract();
         TestAcceptedOverlayFullscreenMediaHostContract();
         TestAcceptedWidgetOwnedFocusMemoryHostContract();
+        TestAcceptedHiddenBridgeControlPlaneContract();
         TestAcceptedMediaBackOwnershipHostContract();
         TestPolicyAndPlacement();
         const auto result = TestRealHostWindow(ParseEvidencePath(argc, argv));

@@ -24,6 +24,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bridge framing rejects oversized messages", OversizedFrameIsRejected),
     ("Protected Wi-Fi secret frames zero every mutable managed owner", ProtectedWifiSecretFramesAreZeroed),
     ("Event cancellation preserves the serialized frame boundary", BridgeEventWriteBoundaryScenarios.CancellationPreservesFrameBoundary),
+    ("Bridge-wide revision notifications are latest-wins and bounded", BridgeRevisionNotificationScenarios.LatestRevisionsAreBoundedAndOrdered),
     ("Bridge read and reply timeouts have exact frame owners", BridgeFrameOwnershipScenarios.TimeoutAndCancellationHaveExactOwners),
     ("Strict catalog rejects unknown properties", StrictCatalogRejectsUnknownProperties),
     ("Catalog rejects host-reserved View quick actions", CatalogRejectsHostReservedView),

@@ -10,6 +10,8 @@ internal static class BridgeEventWriteBoundaryScenarios
         await QueuedCancellationWritesNothingAsync();
         await StartedFrameDeadlineEndsSessionAsync();
         await OrdinaryReplyCancellationFinishesExactFrameAsync();
+        await NotificationBackpressurePreservesSessionAndRepliesAsync();
+        await NotificationStopsOnlyWithItsSessionAsync();
     }
 
     private static async Task QueuedCancellationWritesNothingAsync()
@@ -137,6 +139,67 @@ internal static class BridgeEventWriteBoundaryScenarios
         BoundaryAssert.Equal(0, adapter.AbortCount);
     }
 
+    private static async Task NotificationBackpressurePreservesSessionAndRepliesAsync()
+    {
+        await using var adapter = new ManualEventWriteAdapter(
+            initiallyAdmitWriter: true,
+            blockFrameBody: true,
+            releaseBlockedBody: true);
+        var boundary = new BridgeFrameWriteBoundary(adapter);
+
+        var notification = boundary.WriteNotificationAsync(
+            Envelope(BridgeMessageTypes.Invalidation, "backpressured"),
+            CancellationToken.None);
+        await adapter.Stream.BodyWriteEntered.WaitAsync(TimeSpan.FromSeconds(2));
+        BoundaryAssert.True(
+            !notification.IsCompleted,
+            "Notification backpressure incorrectly observed the reply deadline.");
+        BoundaryAssert.Equal(TimeSpan.Zero, adapter.ObservedDeadline);
+        BoundaryAssert.Equal(0, adapter.AbortCount);
+        BoundaryAssert.True(
+            !adapter.SessionCancellation.IsCancellationRequested,
+            "Notification backpressure terminated the shared Bridge session.");
+
+        var reply = boundary.WriteAsync(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.Acknowledged,
+            RequestId = 73,
+            Payload = BridgeJson.ToElement(new { }),
+        }, CancellationToken.None);
+        await adapter.SecondWriterWaiting.WaitAsync(TimeSpan.FromSeconds(2));
+        adapter.Stream.ReleaseBody();
+        await Task.WhenAll(notification, reply).WaitAsync(TimeSpan.FromSeconds(2));
+
+        await using var stream = new MemoryStream(adapter.Stream.Bytes, writable: false);
+        var channel = new BridgeFrameChannel(stream, MaximumMessageBytes);
+        var first = await channel.ReadAsync(CancellationToken.None);
+        var second = await channel.ReadAsync(CancellationToken.None);
+        BoundaryAssert.Equal(BridgeMessageTypes.Invalidation, first.Type);
+        BoundaryAssert.Equal(73L, second.RequestId);
+        BoundaryAssert.Equal(stream.Length, stream.Position);
+        BoundaryAssert.Equal(0, adapter.AbortCount);
+    }
+
+    private static async Task NotificationStopsOnlyWithItsSessionAsync()
+    {
+        await using var adapter = new ManualEventWriteAdapter(
+            initiallyAdmitWriter: true,
+            blockFrameBody: true);
+        var boundary = new BridgeFrameWriteBoundary(adapter);
+
+        var notification = boundary.WriteNotificationAsync(
+            Envelope(BridgeMessageTypes.Failure, "session-terminal"),
+            CancellationToken.None);
+        await adapter.Stream.BodyWriteEntered.WaitAsync(TimeSpan.FromSeconds(2));
+        adapter.StopSession();
+        _ = await BoundaryAssert.ThrowsAsync<OperationCanceledException>(
+            () => notification.WaitAsync(TimeSpan.FromSeconds(2)));
+        BoundaryAssert.Equal(0, adapter.AbortCount);
+        BoundaryAssert.True(
+            adapter.SessionCancellation.IsCancellationRequested,
+            "Explicit session termination did not cancel the notification writer.");
+    }
+
     private static BridgeEnvelope Envelope(string type, string value) => new()
     {
         Type = type,
@@ -215,6 +278,7 @@ internal sealed class ManualEventWriteAdapter : IBridgeFrameWriteAdapter, IAsync
 
     internal void AdmitWriter() => _writerGate.Release();
     internal void TriggerDeadline() => _deadline.Cancel();
+    internal void StopSession() => _session.Cancel();
 
     public async ValueTask DisposeAsync()
     {
