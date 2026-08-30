@@ -85,6 +85,8 @@ Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
     -Destination (Join-Path $stagingRoot 'styles\default.wrss') -Force
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'media\adapter.html') `
     -Destination (Join-Path $mediaRoot 'adapter.html') -Force
+Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\WidgetSdk\EmbeddedMediaAdapterRuntime.js') `
+    -Destination (Join-Path $mediaRoot 'adapter-runtime.js') -Force
 
 $requiredFiles = @(
     'manifest.json',
@@ -95,6 +97,7 @@ $requiredFiles = @(
     'payload\WidgetSdk.dll',
     'payload\WidgetProtocol.dll',
     'payload\media\adapter.html',
+    'payload\media\adapter-runtime.js',
     'styles\default.wrss'
 )
 $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEach-Object {

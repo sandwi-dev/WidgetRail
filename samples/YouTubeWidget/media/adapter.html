@@ -7,28 +7,325 @@ html,body,#player{width:100%;height:100%;margin:0;overflow:hidden;background:#00
 iframe{width:100%;height:100%;display:block;border:0}
 </style>
 <div id="player" aria-label="YouTube video player"></div>
+<script src="adapter-runtime.js"></script>
 <script>
-const apiDeadlineMs=12000;
-let authority={},eventSequence=0,player=null,initialized=false,apiFailure=null;
-let mediaKey='',playbackState='ready',inFlight=null,lastProgressSecond=-1;
-let resolveApi,rejectApi;
-const apiReady=new Promise((resolve,reject)=>{resolveApi=resolve;rejectApi=reject});
-const apiTimer=setTimeout(()=>failApi('player-api-load-failed'),apiDeadlineMs);
-function bounds(){return{x:0,y:0,width:document.documentElement.clientWidth,height:document.documentElement.clientHeight}}
-function fixedCode(value){return String(value||'player-error').toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,48)||'player-error'}
-function playerError(code){return code===2?'invalid-video':code===5?'playback-unavailable':code===100?'video-private-or-missing':code===101||code===150?'embedding-disabled':code===153?'client-identity-rejected':'player-error'}
-function stateName(value){return value===1?'playing':value===2?'paused':value===3?'loading':value===0?'ended':'ready'}
-function position(){const value=Number(player?.getCurrentTime?.());return Number.isFinite(value)?Math.max(0,value):0}
-function duration(){const value=Number(player?.getDuration?.());return Number.isFinite(value)?Math.max(0,value):0}
-function volume(){const value=Number(player?.getVolume?.());return Number.isFinite(value)?Math.max(0,Math.min(1,value/100)):.8}
-function emit(type,commandId=0,commandSequence=0,errorCode,state=playbackState,key=mediaKey){if(!initialized)return;const value={type,...authority,eventSequence:++eventSequence,commandId,commandSequence,focus:'youtube-player',playing:state==='playing',bounds:bounds(),mediaKey:key,playbackState:state,positionSeconds:position(),durationSeconds:duration(),volume:volume()};if(errorCode)value.errorCode=fixedCode(errorCode);chrome.webview.postMessage(value)}
-function failApi(code){if(apiFailure)return;apiFailure=fixedCode(code);clearTimeout(apiTimer);rejectApi(new Error(apiFailure))}
-function complete(operation,errorCode,state=playbackState){if(inFlight!==operation)return;playbackState=errorCode?'error':state;emit('media',operation.id,operation.sequence,errorCode,playbackState,operation.mediaKey);inFlight=null}
-function onReady(){clearTimeout(apiTimer);resolveApi(player)}
-function onStateChange(event){playbackState=stateName(event.data);const operation=inFlight;if(operation){if((operation.kind==='load'||operation.kind==='cue')&&event.data===5)complete(operation,undefined,'ready');else if(operation.kind==='pause'&&event.data===2)complete(operation,undefined,'paused');else if(operation.kind==='play'&&event.data===1)complete(operation,undefined,'playing');return}emit('media')}
-function onError(event){const operation=inFlight,code=playerError(Number(event.data));if(operation)complete(operation,code,'error');else{playbackState='error';emit('media',0,0,code,'error')}}
-window.onYouTubeIframeAPIReady=()=>{try{player=new YT.Player('player',{width:'100%',height:'100%',playerVars:{autoplay:0,controls:0,disablekb:1,enablejsapi:1,fs:0,playsinline:1,origin:location.origin,rel:0},events:{onReady,onStateChange,onError}})}catch{failApi('player-api-load-failed')}};
-const script=document.createElement('script');script.src='https://www.youtube.com/iframe_api';script.async=true;script.onerror=()=>failApi('player-api-load-failed');document.head.appendChild(script);
-setInterval(()=>{if(!inFlight&&playbackState==='playing'){const second=Math.floor(position());if(second!==lastProgressSecond){lastProgressSecond=second;emit('media')}}},500);
-chrome.webview.addEventListener('message',async event=>{const message=event.data;if(!message)return;if(message.command==='initialize'){authority={environmentGeneration:message.environmentGeneration,surfaceGeneration:message.surfaceGeneration,sessionGeneration:message.sessionGeneration,controllerGeneration:message.controllerGeneration,documentGeneration:message.documentGeneration};eventSequence=0;inFlight=null;initialized=true;chrome.webview.postMessage({type:'ready',...authority,eventSequence:++eventSequence,commandId:message.commandId,commandSequence:0,playing:false,focus:'youtube-player',bounds:bounds()});return}for(const key of Object.keys(authority))if(message[key]!==authority[key])return;if(inFlight)return;const operation={id:message.commandId,sequence:message.commandSequence||0,mediaKey:message.mediaKey||mediaKey,kind:message.command};inFlight=operation;try{await apiReady;if(apiFailure)throw new Error(apiFailure);if(message.command==='load'||message.command==='cue'){mediaKey=operation.mediaKey;playbackState='loading';player.cueVideoById({videoId:mediaKey,startSeconds:0});return}if(operation.mediaKey!==mediaKey){complete(operation,'media-key-mismatch','error');return}if(message.command==='arm-activate'){operation.kind='play';emit('armed',operation.id,operation.sequence,undefined,playbackState,operation.mediaKey);return}if(message.command==='pause'){operation.kind='pause';player.pauseVideo();if(player.getPlayerState()===2)complete(operation,undefined,'paused');return}if(message.command==='toggle'){if(player.getPlayerState()===1){operation.kind='pause';player.pauseVideo();if(player.getPlayerState()===2)complete(operation,undefined,'paused')}else{operation.kind='play';player.playVideo();if(player.getPlayerState()===1)complete(operation,undefined,'playing')}return}if(message.command==='seek-back'||message.command==='seek-forward'){const duration=Math.max(0,Number(player.getDuration())||0),direction=message.command==='seek-back'?-1:1,target=Math.max(0,Math.min(duration,position()+(direction*10)));player.seekTo(target,true);setTimeout(()=>complete(operation,undefined,stateName(player.getPlayerState())),100);return}if(message.command==='seek'){player.seekTo(Math.max(0,Number(message.positionSeconds)||0),true);setTimeout(()=>complete(operation,undefined,stateName(player.getPlayerState())),100);return}if(message.command==='volume'){player.setVolume(Math.round(Math.max(0,Math.min(1,Number(message.volume)||0))*100));complete(operation,undefined,stateName(player.getPlayerState()));return}complete(operation,'command-unsupported','error')}catch(error){complete(operation,apiFailure||fixedCode(error?.message),'error')}});
+const apiDeadlineMs = 12000;
+let player = null;
+let adapter = null;
+let apiFailure = null;
+let mediaKey = "";
+let playbackState = "ready";
+let lastProgressSecond = -1;
+let pendingProviderOperation = null;
+let resolveApi;
+let rejectApi;
+
+const apiReady = new Promise((resolve, reject) => {
+  resolveApi = resolve;
+  rejectApi = reject;
+});
+const apiTimer = setTimeout(
+  () => failApi("player-api-load-failed"), apiDeadlineMs);
+
+function bounds() {
+  return {
+    x: 0,
+    y: 0,
+    width: document.documentElement.clientWidth,
+    height: document.documentElement.clientHeight,
+  };
+}
+
+function playerError(code) {
+  if (code === 2) return "invalid-video";
+  if (code === 5) return "playback-unavailable";
+  if (code === 100) return "video-private-or-missing";
+  if (code === 101 || code === 150) return "embedding-disabled";
+  if (code === 153) return "client-identity-rejected";
+  return "player-error";
+}
+
+function stateName(value) {
+  if (value === 1) return "playing";
+  if (value === 2) return "paused";
+  if (value === 3) return "loading";
+  if (value === 0) return "ended";
+  return "ready";
+}
+
+function position() {
+  const value = Number(player?.getCurrentTime?.());
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function duration() {
+  const value = Number(player?.getDuration?.());
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function volume() {
+  const value = Number(player?.getVolume?.());
+  return Number.isFinite(value)
+    ? Math.max(0, Math.min(1, value / 100))
+    : 0.8;
+}
+
+function snapshot() {
+  return {
+    mediaKey,
+    playbackState,
+    positionSeconds: position(),
+    durationSeconds: duration(),
+    volume: volume(),
+  };
+}
+
+function failApi(code) {
+  if (apiFailure) return;
+  apiFailure = code;
+  clearTimeout(apiTimer);
+  rejectApi(WidgetRailEmbeddedMediaAdapter.error(code));
+}
+
+function clearPendingProvider(error) {
+  const pending = pendingProviderOperation;
+  pendingProviderOperation = null;
+  pending?.cleanup?.();
+  if (pending && error) pending.reject(error);
+}
+
+async function readyFor(command) {
+  await apiReady;
+  if (command.signal.aborted) {
+    throw WidgetRailEmbeddedMediaAdapter.error("authority-replaced");
+  }
+}
+
+function waitForState(
+  expectedStates, start, admitCurrentState, signal) {
+  if (pendingProviderOperation) {
+    return Promise.reject(
+      WidgetRailEmbeddedMediaAdapter.error("player-operation-overlap"));
+  }
+  return new Promise((resolve, reject) => {
+    const cancel = () => {
+      if (pendingProviderOperation !== pending) return;
+      pendingProviderOperation = null;
+      pending.cleanup();
+      reject(WidgetRailEmbeddedMediaAdapter.error("authority-replaced"));
+    };
+    const pending = {
+      expectedStates: new Set(expectedStates),
+      resolve,
+      reject,
+      cleanup: () => signal.removeEventListener("abort", cancel),
+    };
+    pendingProviderOperation = pending;
+    signal.addEventListener("abort", cancel, { once: true });
+    if (signal.aborted) {
+      cancel();
+      return;
+    }
+    try {
+      start?.();
+      const current = player?.getPlayerState?.();
+      if (admitCurrentState && pending.expectedStates.has(current)) {
+        pendingProviderOperation = null;
+        pending.cleanup();
+        playbackState = stateName(current);
+        resolve({ playbackState });
+      }
+    } catch (error) {
+      if (pendingProviderOperation === pending) pendingProviderOperation = null;
+      pending.cleanup();
+      reject(error);
+    }
+  });
+}
+
+function completeAfterDelay(start, signal) {
+  if (pendingProviderOperation) {
+    return Promise.reject(
+      WidgetRailEmbeddedMediaAdapter.error("player-operation-overlap"));
+  }
+  return new Promise((resolve, reject) => {
+    const cancel = () => {
+      if (pendingProviderOperation !== pending) return;
+      pendingProviderOperation = null;
+      pending.cleanup();
+      reject(WidgetRailEmbeddedMediaAdapter.error("authority-replaced"));
+    };
+    const pending = {
+      expectedStates: null,
+      resolve,
+      reject,
+      cleanup: () => signal.removeEventListener("abort", cancel),
+    };
+    pendingProviderOperation = pending;
+    signal.addEventListener("abort", cancel, { once: true });
+    if (signal.aborted) {
+      cancel();
+      return;
+    }
+    try {
+      start();
+      setTimeout(() => {
+        if (pendingProviderOperation !== pending) return;
+        pendingProviderOperation = null;
+        pending.cleanup();
+        playbackState = stateName(player.getPlayerState());
+        resolve({ playbackState });
+      }, 100);
+    } catch (error) {
+      if (pendingProviderOperation === pending) pendingProviderOperation = null;
+      pending.cleanup();
+      reject(error);
+    }
+  });
+}
+
+function onReady() {
+  clearTimeout(apiTimer);
+  resolveApi(player);
+}
+
+function onStateChange(event) {
+  playbackState = stateName(event.data);
+  const pending = pendingProviderOperation;
+  if (pending?.expectedStates?.has(event.data)) {
+    pendingProviderOperation = null;
+    pending.cleanup();
+    pending.resolve({ playbackState });
+    return;
+  }
+  adapter?.observe();
+}
+
+function onError(event) {
+  playbackState = "error";
+  const error = WidgetRailEmbeddedMediaAdapter.error(
+    playerError(Number(event.data)));
+  const pending = pendingProviderOperation;
+  if (pending) {
+    pendingProviderOperation = null;
+    pending.cleanup();
+    pending.reject(error);
+    return;
+  }
+  adapter?.observeError(error.adapterCode);
+}
+
+window.onYouTubeIframeAPIReady = () => {
+  try {
+    player = new YT.Player("player", {
+      width: "100%",
+      height: "100%",
+      playerVars: {
+        autoplay: 0,
+        controls: 0,
+        disablekb: 1,
+        enablejsapi: 1,
+        fs: 0,
+        playsinline: 1,
+        origin: location.origin,
+        rel: 0,
+      },
+      events: { onReady, onStateChange, onError },
+    });
+  } catch {
+    failApi("player-api-load-failed");
+  }
+};
+
+const script = document.createElement("script");
+script.src = "https://www.youtube.com/iframe_api";
+script.async = true;
+script.onerror = () => failApi("player-api-load-failed");
+document.head.appendChild(script);
+
+adapter = WidgetRailEmbeddedMediaAdapter.create({
+  focus: "youtube-player",
+  bounds,
+  snapshot,
+  errorCode(error) {
+    return apiFailure || error?.adapterCode || error?.message || "player-error";
+  },
+  driver: {
+    initialize() {
+      clearPendingProvider(
+        WidgetRailEmbeddedMediaAdapter.error("authority-replaced"));
+    },
+    async load(command) {
+      await readyFor(command);
+      mediaKey = command.mediaKey;
+      playbackState = "loading";
+      return waitForState([5], () => player.cueVideoById({
+        videoId: mediaKey,
+        startSeconds: 0,
+      }), false, command.signal);
+    },
+    async cue(command) {
+      await readyFor(command);
+      mediaKey = command.mediaKey;
+      playbackState = "loading";
+      return waitForState([5], () => player.cueVideoById({
+        videoId: mediaKey,
+        startSeconds: 0,
+      }), false, command.signal);
+    },
+    async activate(command) {
+      await readyFor(command);
+      return {
+        completion: waitForState(
+          [1], undefined, false, command.signal),
+      };
+    },
+    async pause(command) {
+      await readyFor(command);
+      return waitForState(
+        [2], () => player.pauseVideo(), true, command.signal);
+    },
+    async toggle(command) {
+      await readyFor(command);
+      if (player.getPlayerState() === 1) {
+        return waitForState(
+          [2], () => player.pauseVideo(), true, command.signal);
+      }
+      return waitForState(
+        [1], () => player.playVideo(), true, command.signal);
+    },
+    async seek(command) {
+      await readyFor(command);
+      return completeAfterDelay(() => player.seekTo(
+        Math.max(0, command.positionSeconds), true), command.signal);
+    },
+    async seekBackward(command) {
+      await readyFor(command);
+      const target = Math.max(0, Math.min(
+        duration(), position() - 10));
+      return completeAfterDelay(
+        () => player.seekTo(target, true), command.signal);
+    },
+    async seekForward(command) {
+      await readyFor(command);
+      const target = Math.max(0, Math.min(
+        duration(), position() + 10));
+      return completeAfterDelay(
+        () => player.seekTo(target, true), command.signal);
+    },
+    async setVolume(command) {
+      await readyFor(command);
+      player.setVolume(Math.round(command.volume * 100));
+      return { playbackState: stateName(player.getPlayerState()) };
+    },
+  },
+});
+
+setInterval(() => {
+  if (playbackState !== "playing") return;
+  const second = Math.floor(position());
+  if (second !== lastProgressSecond && adapter.observe()) {
+    lastProgressSecond = second;
+  }
+}, 500);
 </script>

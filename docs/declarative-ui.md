@@ -246,6 +246,22 @@ support fails with a precise diagnostic such as
 that claim command correlation fail independently. The gate uses no provider,
 browser, network, account, or credential state.
 
+`EmbeddedMediaAdapterRuntime.js` is the readable provider-neutral implementation
+of that closed adapter boundary. It ships in the WidgetSdk package under
+`contentFiles/any/any/WidgetRail` and is also the single source linked into the
+repository samples. Package it beside the entry document, declare it as an
+`application/javascript` embedded-media resource, and load it before the
+package driver. The runtime owns initialization generations, exact authority
+matching, command correlation, one in-flight operation, armed activation,
+terminal and unsolicited envelopes, and bounded error tokens. A driver supplies
+only `snapshot` plus the applicable `load`, `cue`, `activate`, `pause`,
+`toggle`, `seek`, `seekBackward`, `seekForward`, `setVolume`,
+`setPlaybackRate`, `setMuted`, `setLoop`, `previous`, and `next` hooks.
+Provider callbacks resolve or reject those hooks; they never post host envelopes
+or duplicate command IDs, generations, or event sequencing. Every hook receives
+the operation's abort signal so driver-owned waits retire when initialization
+authority changes.
+
 Protocol v26 adds `AllowedFrameDomainFamilies` beside the existing exact
 `AllowedFrameOrigins`. Each family is a lowercase ASCII registrable DNS domain
 (for example, `example.test` when that suffix is registrable), never a URL or a

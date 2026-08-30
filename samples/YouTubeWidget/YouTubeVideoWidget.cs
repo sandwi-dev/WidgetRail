@@ -279,6 +279,11 @@ public sealed partial class YouTubeVideoWidget : Widget
                 Path = "payload/media/adapter.html",
                 ContentType = "text/html",
             },
+            new EmbeddedMediaResource
+            {
+                Path = "payload/media/adapter-runtime.js",
+                ContentType = "application/javascript",
+            },
         ],
         Commands =
         [

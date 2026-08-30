@@ -35,6 +35,22 @@ does not expose navigation, DOM access, script execution, arbitrary URLs, or a
 second HWND/input owner. Widgets that omit `EmbeddedMedia` retain their existing
 snapshot and rendering behavior.
 
+Use the SDK's readable `EmbeddedMediaAdapterRuntime.js` for the adapter command
+boundary. The SDK package carries it under
+`contentFiles/any/any/WidgetRail`; stage it beside the entry document, declare
+it in `EmbeddedMediaSurface.Resources` with
+`ContentType = "application/javascript"`, and load it before the driver.
+`WidgetRailEmbeddedMediaAdapter.create` accepts a focus ID, bounds and snapshot
+readers, an optional bounded error mapper, and explicit player-driver hooks.
+The runtime—not the driver—owns initialization authority, generation checks,
+one-in-flight admission, command/event correlation, armed activation, terminal
+publication, unsolicited observations, and error-token bounding. See the local
+embedded-media sample for an HTML-media driver and the YouTube package for a
+callback-based external-player driver.
+Each hook receives the current operation's `AbortSignal`; use it to detach
+provider callbacks and reject pending driver work when the runtime admits a new
+initialization authority.
+
 The host retains at most four exact per-widget embedded-media sessions in one
 shared WebView2 environment/profile. Normal widget cycling, overlay hide/show,
 and overlay-to-pin transfer only change visibility and input focus; they do not

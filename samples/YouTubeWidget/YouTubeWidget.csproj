@@ -19,5 +19,9 @@
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="media\adapter.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\src\WidgetSdk\EmbeddedMediaAdapterRuntime.js"
+          Link="media\adapter-runtime.js"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

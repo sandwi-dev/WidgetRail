@@ -57,6 +57,7 @@ public sealed class EmbeddedMediaSampleWidget : Widget
             Resources =
             [
                 new EmbeddedMediaResource { Path = "payload/media/adapter.html", ContentType = "text/html" },
+                new EmbeddedMediaResource { Path = "payload/media/adapter-runtime.js", ContentType = "application/javascript" },
                 new EmbeddedMediaResource { Path = "payload/media/sample.mp4", ContentType = "video/mp4" },
                 new EmbeddedMediaResource { Path = "payload/media/horizon.mp4", ContentType = "video/mp4" },
             ],

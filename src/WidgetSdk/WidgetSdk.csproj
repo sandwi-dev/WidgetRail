@@ -20,4 +20,9 @@
     <Compile Include="..\Shared\CommunityPlatformContractLimits.cs"
              Link="Internal\CommunityPlatformContractLimits.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="EmbeddedMediaAdapterRuntime.js"
+          Pack="true"
+          PackagePath="contentFiles/any/any/WidgetRail/EmbeddedMediaAdapterRuntime.js" />
+  </ItemGroup>
 </Project>
