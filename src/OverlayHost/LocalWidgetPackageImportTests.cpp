@@ -18,6 +18,7 @@ LocalWidgetPackageOrigin SettingsOrigin() {
     return {
         L"settings", L"widgetrail.firstparty.settings", L"widgetrail.firstparty",
         L"settings.default", L"runtime-one", L"presentation-one",
+        1,
         widgetrail::WidgetLifecycleState::Interactive};
 }
 
@@ -150,9 +151,11 @@ void ExactPrivateActionOwnsTheCompleteOperation() {
                 repeated.import.status == LocalWidgetPackageImportStatus::Busy &&
                 selections == 1 && submissions == 1,
             "repeated activation duplicated the picker or submission");
-    Require(!importer.Complete(L"wrong-operation") && importer.active(),
+    Require(!importer.Complete(L"wrong-operation", 1) && importer.active(),
             "wrong completion retired the active operation");
-    Require(importer.Complete(accepted.import.operationId) && !importer.active(),
+    Require(!importer.Complete(accepted.import.operationId, 2) && importer.active(),
+            "wrong Bridge session retired the active operation");
+    Require(importer.Complete(accepted.import.operationId, 1) && !importer.active(),
             "exact completion did not retire the active operation");
 
     const auto unrelated = [&] {
@@ -190,6 +193,9 @@ void ExactPrivateActionOwnsTheCompleteOperation() {
     forged = SettingsInvocation();
     forged.origin->presentationGeneration.clear();
     Require(refused(forged), "missing presentation generation was admitted");
+    forged = SettingsInvocation();
+    forged.origin->bridgeSessionGeneration = 0;
+    Require(refused(forged), "missing Bridge session generation was admitted");
     forged = SettingsInvocation();
     forged.activeInputScopeId = L"installed.details";
     Require(refused(forged), "wrong input scope was admitted");
@@ -244,6 +250,44 @@ void ExactPrivateActionOwnsTheCompleteOperation() {
             "overlay-close operation cancellation lost exact ownership");
 }
 
+void BridgeReplacementTerminalizesExactlyOnce() {
+    FakePicker picker;
+    auto origin = SettingsOrigin();
+    LocalWidgetPackageImport importer(
+        picker, [&] { return std::optional{origin}; },
+        [](auto, const auto&, auto) { return true; });
+
+    const auto first = importer.Invoke(
+        reinterpret_cast<HWND>(1), SettingsInvocation());
+    Require(first.import.status == LocalWidgetPackageImportStatus::Submitted,
+            "first Bridge session did not submit");
+    Require(!importer.RetireBridgeSession(1) && importer.active(),
+            "current Bridge session retired its own operation");
+    const auto retired = importer.RetireBridgeSession(2);
+    Require(retired && *retired == first.import.operationId && !importer.active(),
+            "replacement Bridge session did not retire the exact operation");
+    Require(!importer.RetireBridgeSession(2),
+            "replacement Bridge session duplicated the cancellation terminal");
+    Require(!importer.Complete(first.import.operationId, 1),
+            "late retired-session completion was re-admitted");
+
+    origin.bridgeSessionGeneration = 2;
+    auto invocation = SettingsInvocation();
+    invocation.origin = origin;
+    const auto replacement = importer.Invoke(
+        reinterpret_cast<HWND>(1), invocation);
+    Require(replacement.import.status == LocalWidgetPackageImportStatus::Submitted &&
+                importer.active(),
+            "replacement Bridge session could not admit the next operation");
+    Require(!importer.Complete(first.import.operationId, 1) && importer.active(),
+            "late old completion cleared the replacement-session operation");
+    Require(importer.Complete(replacement.import.operationId, 2) &&
+                !importer.active(),
+            "replacement-session operation did not complete exactly once");
+    Require(!importer.Complete(replacement.import.operationId, 2),
+            "terminal replacement-session completion was duplicated");
+}
+
 } // namespace
 
 int main() {
@@ -251,5 +295,6 @@ int main() {
     DuplicateAndCloseCancellation();
     StaleGenerationAndSubmissionAreBounded();
     ExactPrivateActionOwnsTheCompleteOperation();
-    std::cout << "LocalWidgetPackageImportTests passed (4 scenarios)\n";
+    BridgeReplacementTerminalizesExactlyOnce();
+    std::cout << "LocalWidgetPackageImportTests passed (5 scenarios)\n";
 }

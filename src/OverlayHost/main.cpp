@@ -1976,7 +1976,9 @@ private:
                             std::move(artwork.pngBase64));
                 }
                 for (auto& result : bridge_.TakeLocalWidgetPackageInstallResults()) {
-                    if (!localWidgetPackageImport_.Complete(result.operationId)) {
+                    if (!localWidgetPackageImport_.Complete(
+                            result.operationId,
+                            bridge_.bridgeSessionGeneration())) {
                         AppendDiagnostic(
                             L"Dropped stale local widget package result operation=" +
                             result.operationId);
@@ -4794,6 +4796,20 @@ private:
             L"WidgetBridge session replaced generation=" +
             std::to_wstring(bridgeSessionGeneration) +
             L" presentation-authority=retired");
+        if (const auto operation =
+                localWidgetPackageImport_.RetireBridgeSession(
+                    bridgeSessionGeneration)) {
+            (void)bridge_.CancelLocalWidgetPackageInstall(*operation);
+            lastLocalWidgetPackageInstallResult_ =
+                widgetrail::LocalWidgetPackageInstallResult{
+                    *operation,
+                    widgetrail::LocalWidgetPackageInstallStatus::Cancelled,
+                    {}, {},
+                    L"Local widget package installation was cancelled because the WidgetBridge session changed."};
+            AppendDiagnostic(
+                L"Local widget package import cancelled operation=" +
+                *operation + L" reason=bridge-session-replaced");
+        }
         pendingWidgetSwitchSnap_.reset();
         pendingWidgetPresentationImpact_.reset();
         pendingContentRevealWidget_.clear();
@@ -5084,6 +5100,7 @@ private:
             descriptor->instanceId,
             descriptor->runtimeGeneration,
             descriptor->presentationGeneration,
+            bridge_.bridgeSessionGeneration(),
             *lifecycle};
     }
 

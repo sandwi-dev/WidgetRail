@@ -145,6 +145,7 @@ LocalWidgetPackageImportResult LocalWidgetPackageImport::Begin(HWND owner) {
         return {LocalWidgetPackageImportStatus::TransportFailed, {},
                 L"The local widget package install request could not be submitted."};
     activeOperationId_ = operationId;
+    activeBridgeSessionGeneration_ = current->bridgeSessionGeneration;
     return {LocalWidgetPackageImportStatus::Submitted, operationId,
             L"Installing the selected widget package disabled."};
 }
@@ -156,13 +157,27 @@ void LocalWidgetPackageImport::CancelPicker() noexcept {
 std::optional<std::wstring>
 LocalWidgetPackageImport::CancelActiveOperation() noexcept {
     if (activeOperationId_.empty()) return std::nullopt;
+    activeBridgeSessionGeneration_ = 0;
     return std::exchange(activeOperationId_, {});
 }
 
+std::optional<std::wstring> LocalWidgetPackageImport::RetireBridgeSession(
+    const long long currentBridgeSessionGeneration) noexcept {
+    if (activeOperationId_.empty() || currentBridgeSessionGeneration <= 0 ||
+        activeBridgeSessionGeneration_ == currentBridgeSessionGeneration)
+        return std::nullopt;
+    return CancelActiveOperation();
+}
+
 bool LocalWidgetPackageImport::Complete(
-    const std::wstring_view operationId) noexcept {
-    if (operationId.empty() || operationId != activeOperationId_) return false;
+    const std::wstring_view operationId,
+    const long long bridgeSessionGeneration) noexcept {
+    if (operationId.empty() || operationId != activeOperationId_ ||
+        bridgeSessionGeneration <= 0 ||
+        bridgeSessionGeneration != activeBridgeSessionGeneration_)
+        return false;
     activeOperationId_.clear();
+    activeBridgeSessionGeneration_ = 0;
     return true;
 }
 
@@ -173,7 +188,8 @@ bool LocalWidgetPackageImport::Admit(const LocalWidgetPackageOrigin& origin) noe
            origin.publisherId == L"widgetrail.firstparty" &&
            origin.instanceId == L"settings.default" &&
            !origin.runtimeGeneration.empty() &&
-           !origin.presentationGeneration.empty();
+           !origin.presentationGeneration.empty() &&
+           origin.bridgeSessionGeneration > 0;
 }
 
 LocalWidgetPackageActionDisposition LocalWidgetPackageImport::Classify(
@@ -200,6 +216,7 @@ bool LocalWidgetPackageImport::SameOrigin(
            left.publisherId == right.publisherId && left.instanceId == right.instanceId &&
            left.runtimeGeneration == right.runtimeGeneration &&
            left.presentationGeneration == right.presentationGeneration &&
+           left.bridgeSessionGeneration == right.bridgeSessionGeneration &&
            left.lifecycle == right.lifecycle;
 }
 

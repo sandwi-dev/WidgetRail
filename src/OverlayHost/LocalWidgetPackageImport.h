@@ -19,6 +19,7 @@ struct LocalWidgetPackageOrigin final {
     std::wstring instanceId;
     std::wstring runtimeGeneration;
     std::wstring presentationGeneration;
+    long long bridgeSessionGeneration{};
     WidgetLifecycleState lifecycle{WidgetLifecycleState::Background};
 };
 
@@ -113,7 +114,11 @@ public:
     [[nodiscard]] LocalWidgetPackageImportResult Begin(HWND owner);
     void CancelPicker() noexcept;
     [[nodiscard]] std::optional<std::wstring> CancelActiveOperation() noexcept;
-    [[nodiscard]] bool Complete(std::wstring_view operationId) noexcept;
+    [[nodiscard]] std::optional<std::wstring> RetireBridgeSession(
+        long long currentBridgeSessionGeneration) noexcept;
+    [[nodiscard]] bool Complete(
+        std::wstring_view operationId,
+        long long bridgeSessionGeneration) noexcept;
     [[nodiscard]] bool active() const noexcept {
         return active_ || !activeOperationId_.empty();
     }
@@ -136,6 +141,7 @@ private:
     Submit submit_;
     bool active_{};
     std::wstring activeOperationId_;
+    long long activeBridgeSessionGeneration_{};
 };
 
 } // namespace widgetrail::packages
