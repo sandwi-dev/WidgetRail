@@ -861,6 +861,98 @@ int main() {
         }
 
         {
+            widgetrail::pinned::WidgetSurfaceCoordinator scheduler;
+            const auto schedulerRoot = placementRoot / L"compact-media-scheduler";
+            const HWND schedulerNotification = CreateWindowExW(
+                0, L"STATIC", L"Pinned media work notification fixture", 0,
+                0, 0, 0, 0, HWND_MESSAGE, nullptr,
+                GetModuleHandleW(nullptr), nullptr);
+            Check(schedulerNotification != nullptr,
+                  "compact media scheduler fixture owns one real host notification target");
+            Check(scheduler.Initialize(
+                      GetModuleHandleW(nullptr), schedulerNotification, WM_APP + 0x415,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      schedulerRoot / L"placement.ini"),
+                  "compact media scheduler fixture reuses the pinned frame owner");
+            scheduler.OnOverlayShown();
+            auto admission = Admission();
+            admission.snapshot = CompactMediaSnapshot();
+            Check(scheduler.Pin(admission, error) && scheduler.CommitSetup(error) &&
+                      scheduler.ToggleInteractionMode() &&
+                      scheduler.EnterControllerFocus(),
+                  "compact media scheduler fixture establishes one native presentation");
+            UpdateWindow(scheduler.window());
+            const auto settledWork = scheduler.workCounters();
+            Check(settledWork.paintMessages > 0 &&
+                      settledWork.rasterDraws == settledWork.paintMessages &&
+                      settledWork.mediaViewportReconciliations == 1,
+                  "initial compact frame reconciles its media viewport exactly once");
+
+            scheduler.UpdateCompactMediaPlayback(3.0, 20.0, false);
+            scheduler.UpdateCompactMediaPlayback(4.0, 20.0, true);
+            scheduler.UpdateCompactMediaPlayback(5.0, 20.0, true);
+            UpdateWindow(scheduler.window());
+            const auto afterProgress = scheduler.workCounters();
+            Check(afterProgress.snapshots == settledWork.snapshots &&
+                      afterProgress.invalidations == settledWork.invalidations &&
+                      afterProgress.paintMessages == settledWork.paintMessages &&
+                      afterProgress.rasterDraws == settledWork.rasterDraws &&
+                      afterProgress.mediaViewportReconciliations ==
+                          settledWork.mediaViewportReconciliations &&
+                      afterProgress.ownerNotifications ==
+                          settledWork.ownerNotifications,
+                  "compatible playback observations update native media state without raster or owner amplification");
+
+            Check(scheduler.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      CompactMediaSnapshot(2)) &&
+                      scheduler.UpdateSnapshot(
+                          admission.widgetId, admission.runtimeGeneration,
+                          CompactMediaSnapshot(3)) &&
+                      scheduler.UpdateSnapshot(
+                          admission.widgetId, admission.runtimeGeneration,
+                          CompactMediaSnapshot(4)),
+                  "compatible compact snapshot burst is admitted without changing media authority");
+            const auto queuedBurst = scheduler.workCounters();
+            Check(queuedBurst.snapshots == afterProgress.snapshots + 3 &&
+                      queuedBurst.invalidations == afterProgress.invalidations + 3 &&
+                      queuedBurst.coalescedInvalidations >=
+                          afterProgress.coalescedInvalidations + 2 &&
+                      queuedBurst.paintMessages == afterProgress.paintMessages,
+                  "compatible snapshot burst retains one pending Win32 paint instead of multiplying raster work");
+            UpdateWindow(scheduler.window());
+            const auto afterBurst = scheduler.workCounters();
+            Check(afterBurst.paintMessages == afterProgress.paintMessages + 1 &&
+                      afterBurst.rasterDraws == afterProgress.rasterDraws + 1 &&
+                      afterBurst.mediaViewportReconciliations ==
+                          afterProgress.mediaViewportReconciliations &&
+                      afterBurst.ownerNotifications ==
+                          afterProgress.ownerNotifications &&
+                      scheduler.compactMediaState().positionSeconds == 5.0,
+                  "one coalesced paint presents the newest compatible snapshot without media geometry churn");
+
+            auto replacement = CompactMediaSnapshot(5);
+            replacement.embeddedMedia->aspectRatio = 4.0 / 3.0;
+            Check(scheduler.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      replacement),
+                  "genuine compact media geometry successor is admitted");
+            UpdateWindow(scheduler.window());
+            const auto afterGeometry = scheduler.workCounters();
+            Check(afterGeometry.mediaViewportReconciliations ==
+                          afterBurst.mediaViewportReconciliations + 1 &&
+                      afterGeometry.ownerNotifications ==
+                          afterBurst.ownerNotifications + 1,
+                  "genuine media geometry replacement reconciles and notifies its owner exactly once");
+            Check(scheduler.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "compact media scheduler fixture performs exact teardown");
+            scheduler.Dispose();
+            DestroyWindow(schedulerNotification);
+            std::error_code schedulerCleanup;
+            std::filesystem::remove_all(schedulerRoot, schedulerCleanup);
+        }
+
+        {
             widgetrail::pinned::WidgetSurfaceCoordinator scrolling;
             const auto scrollRoot = placementRoot / L"scroll-retention";
             Check(scrolling.Initialize(
