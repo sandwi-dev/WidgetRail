@@ -88,6 +88,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Cancellation-ignoring retired gesture grants are revoked", WidgetProcessOwnershipScenarios.CancellationIgnoringGestureGrantIsRevoked),
     ("Worker launch is lazy and snapshot is validated", LazyLaunchAndSnapshot),
     ("Negotiated presentation updates materialize against the exact runtime base", NegotiatedPresentationUpdates),
+    ("Fresh-worker recovery rebases exactly and fails closed at exhaustion", RecoveryCheckpointSequenceAuthorityIsExact),
     ("Frozen runtime-v2 applications retain checkpoint compatibility", WidgetRuntimeProtocolCompatibilityScenarios.FrozenV2ApplicationCheckpointCompatibility),
     ("Worker handshake requires the exact random session nonce", SessionNonceMismatchIsRejected),
     ("Process admission failures stay pre-launch and are not worker failures", ProcessAdmissionFailsBeforeLaunch),
@@ -1835,6 +1836,57 @@ static async Task NegotiatedPresentationUpdates()
     Assert.Equal(WidgetPresentationTransactionKind.RecoveryCheckpoint,
         recovery.TransactionKind);
     Assert.Equal(changed.Snapshot.Sequence, recovery.RecoveryOriginSequence);
+}
+
+static async Task RecoveryCheckpointSequenceAuthorityIsExact()
+{
+    await using var client = CreateClient();
+
+    var cold = await client.GetPresentationAsync(
+        PresentationUpdateCapabilities.None,
+        presentationGeneration: null,
+        baseSequence: 0,
+        WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+        recoveryOriginSequence: 0);
+    Assert.Equal(1L, cold.Snapshot.Sequence);
+
+    var live = await client.GetPresentationAsync(
+        PresentationUpdateCapabilities.None,
+        presentationGeneration: null,
+        baseSequence: 0,
+        WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+        recoveryOriginSequence: 0);
+    Assert.Equal(2L, live.Snapshot.Sequence);
+
+    var recovered = await client.GetPresentationAsync(
+        PresentationUpdateCapabilities.None,
+        presentationGeneration: null,
+        baseSequence: 0,
+        WidgetPresentationTransactionKind.RecoveryCheckpoint,
+        recoveryOriginSequence: 40);
+    Assert.Equal(41L, recovered.Snapshot.Sequence);
+    Assert.Equal(WidgetPresentationTransactionKind.RecoveryCheckpoint,
+        recovered.TransactionKind);
+    Assert.Equal(40L, recovered.RecoveryOriginSequence);
+
+    var resumed = await client.GetPresentationAsync(
+        PresentationUpdateCapabilities.None,
+        presentationGeneration: null,
+        baseSequence: 0,
+        WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+        recoveryOriginSequence: 0);
+    Assert.Equal(42L, resumed.Snapshot.Sequence);
+
+    var exhausted = await Assert.ThrowsAsync<WidgetProcessException>(() =>
+        client.GetPresentationAsync(
+            PresentationUpdateCapabilities.None,
+            presentationGeneration: null,
+            baseSequence: 0,
+            WidgetPresentationTransactionKind.RecoveryCheckpoint,
+            recoveryOriginSequence: long.MaxValue));
+    Assert.Equal(WorkerErrorCodes.RequestFailed, exhausted.WorkerErrorCode);
+    Assert.True(client.IsRunning,
+        "A rejected exhausted recovery origin terminated the live worker session.");
 }
 
 static Task LegacyActionAdmissionCompatibility()

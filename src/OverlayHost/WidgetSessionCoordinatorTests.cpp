@@ -140,6 +140,7 @@ struct FakeBridge final {
     std::vector<PresentationRequest> presentationRequests;
     int lifecycleCalls{};
     int restartCalls{};
+    std::atomic<long long> bridgeSessionGeneration{1};
 
     WidgetSessionOperations Operations() {
         return {
@@ -207,6 +208,7 @@ struct FakeBridge final {
                 ++restartCalls;
                 return WidgetSessionOperationResult<bool>::Success(true);
             },
+            [this] { return bridgeSessionGeneration.load(); },
         };
     }
 
@@ -2096,6 +2098,16 @@ void PublicationInvariantMatrixOwnsRecoveryCheckpointAdmission() {
                        ? 7 : row.collectionGeneration));
             assert(committed.root.virtualCollectionWindow->change ==
                    VirtualCollectionWindowChange::Replace);
+        } else {
+            const auto failed = std::find_if(
+                events.begin(), events.end(), [](const auto& event) {
+                    return event.kind == WidgetSessionEventKind::Failed;
+                });
+            assert(failed != events.end());
+            assert(failed->failure.safeMessage ==
+                   (row.responseSequence <= row.priorHostSequence
+                       ? L"The widget returned an invalid or stale presentation transaction."
+                       : L"The widget returned an invalid or stale virtual collection window transition."));
         }
         (void)row.name;
     }
@@ -2171,6 +2183,55 @@ void RecoveryOriginAndRetryBoundsRemainExact() {
         0, WidgetPresentationTransactionKind::RecoveryCheckpoint, 31}));
     assert(coordinator.Snapshot(L"alpha") &&
            coordinator.Snapshot(L"alpha")->sequence == 31);
+}
+
+void BridgeSessionReplacementHardResetsRecoveryAuthority() {
+    FakeBridge bridge;
+    bridge.catalog = {Descriptor(
+        L"alpha", L"alpha.one", L"runtime-1", L"view-1")};
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 12);
+    WidgetSessionCoordinator coordinator(bridge.Operations());
+    assert(coordinator.EstablishCatalog());
+    coordinator.SetLifecycleTargets({{L"alpha", WidgetLifecycleState::Visible}});
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 12);
+
+    bridge.bridgeSessionGeneration.store(2);
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 13);
+    assert(coordinator.RequestSnapshot(L"alpha"));
+    const auto replaced = WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::BridgeSessionReplaced;
+        });
+    });
+    assert(std::any_of(replaced.begin(), replaced.end(), [](const auto& event) {
+        return event.kind == WidgetSessionEventKind::BridgeSessionReplaced &&
+               event.bridgeSessionGeneration == 2;
+    }));
+    assert(!coordinator.Snapshot(L"alpha"));
+
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::CatalogChanged;
+        });
+    });
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 1);
+    coordinator.SetLifecycleTargets({{L"alpha", WidgetLifecycleState::Visible}});
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 1);
+    assert(!bridge.presentationRequests.empty());
+    assert((bridge.presentationRequests.back() == FakeBridge::PresentationRequest{
+        0, WidgetPresentationTransactionKind::OrdinaryCheckpoint, 0}));
 }
 
 void MismatchedTypedPublicationCannotMutateRetainedState() {
@@ -2462,10 +2523,11 @@ int main() {
     AtomicUpdateAdmissionAndCheckpointFallback();
     PublicationInvariantMatrixOwnsRecoveryCheckpointAdmission();
     RecoveryOriginAndRetryBoundsRemainExact();
+    BridgeSessionReplacementHardResetsRecoveryAuthority();
     MismatchedTypedPublicationCannotMutateRetainedState();
     VirtualWindowAdmissionRejectsStaleAndRetainsCheckpoint();
     VirtualWindowAdmissionEnforcesDirectionalAuthority();
     VirtualWindowReplacementOwnsMutationAndUnknownPosition();
     VirtualWindowFreshSessionRequiresReplacement();
-    std::cout << "WidgetSessionCoordinatorTests passed (29 scenarios)\n";
+    std::cout << "WidgetSessionCoordinatorTests passed (30 scenarios)\n";
 }

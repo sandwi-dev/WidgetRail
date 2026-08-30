@@ -616,7 +616,9 @@ internal static class BridgeClientRegistryScenarios
                 Mode = WidgetResidencyPolicies.SuspendWhenHidden,
             });
         await using var fixture = new RegistryFixture(
-            Catalog(gamesApps, networkControls), delay: delay.InvokeAsync);
+            Catalog(gamesApps, networkControls),
+            configure: (_, client) => client.RebaseRecoverySequence = true,
+            delay: delay.InvokeAsync);
 
         var retained = new Dictionary<string, ViewSnapshot>(StringComparer.Ordinal);
         foreach (var configured in new[] { gamesApps, networkControls })
@@ -666,7 +668,9 @@ internal static class BridgeClientRegistryScenarios
                 WidgetPresentationTransactionKind.RecoveryCheckpoint,
                 baseSequence: 0,
                 recoveryOriginSequence: retained[configured.Id].Sequence);
-            RegistryAssert.True(recovered.Sequence > retained[configured.Id].Sequence);
+            RegistryAssert.Equal(
+                retained[configured.Id].Sequence + 1,
+                recovered.Sequence);
             RegistryAssert.Equal(2, client.Starts);
             RegistryAssert.Equal(2, client.PresentationRequests.Count);
             RegistryAssert.Equal(
@@ -1655,6 +1659,7 @@ internal sealed class RegistryTestClient(
     internal List<ControllerInputEvent> ControllerInputs { get; } = [];
     internal List<EmbeddedMediaPlaybackEvent> EmbeddedMediaPlaybackEvents { get; } = [];
     internal Func<long, ViewSnapshot>? SnapshotFactory { get; set; }
+    internal bool RebaseRecoverySequence { get; set; }
     public bool IsRunning => Volatile.Read(ref _running) != 0;
     public int Starts => Volatile.Read(ref _starts);
 
@@ -1701,6 +1706,11 @@ internal sealed class RegistryTestClient(
     {
         PresentationRequests.Add((transactionKind, baseSequence, recoveryOriginSequence));
         var snapshot = await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        if (RebaseRecoverySequence &&
+            transactionKind == WidgetPresentationTransactionKind.RecoveryCheckpoint)
+        {
+            snapshot = snapshot with { Sequence = checked(recoveryOriginSequence + 1) };
+        }
         return new(
             transactionKind,
             baseSequence,
