@@ -182,7 +182,7 @@ The helper publishes only `payload/YtMusicWidget.dll`, `manifest.json`, and
 `wrail pack`. By default the package is written to:
 
 ```text
-artifacts/community-addons/ytmusic/widgetrail.samples.ytmusic-0.2.9.wrwidget
+artifacts/community-addons/ytmusic/widgetrail.samples.ytmusic-0.2.10.wrwidget
 ```
 
 To install and enable it for the current user through the same public catalog
@@ -197,7 +197,7 @@ commands used by any addon publisher:
 ```powershell
 $wrail = '.\tools\WrailCli\bin\Release\net8.0\wrail.exe'
 & $wrail install `
-  .\artifacts\community-addons\ytmusic\widgetrail.samples.ytmusic-0.2.9.wrwidget
+  .\artifacts\community-addons\ytmusic\widgetrail.samples.ytmusic-0.2.10.wrwidget
 & $wrail enable widgetrail.samples.ytmusic
 & $wrail list
 ```

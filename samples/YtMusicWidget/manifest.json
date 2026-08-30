@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.ytmusic",
   "publisher": "widgetrail.samples",
   "name": "YT Music",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
