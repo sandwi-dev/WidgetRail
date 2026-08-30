@@ -26,7 +26,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeWidgetPackageUninstallService _packageUninstall;
     private readonly BridgeLocalWidgetPackageImportService? _localPackageImport;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
+    private readonly SemaphoreSlim _notificationWriteGate = new(1, 1);
     private readonly BridgeFrameWriteBoundary _frameWriter;
+    private readonly BridgeRevisionNotificationLane _revisionNotifications;
     private readonly Action<string, BrokerCapabilityDiagnostic>? _capabilityDiagnosticSink;
     private readonly Action<BridgeWidgetRequestDiagnostic>? _requestDiagnosticSink;
     private long _hostEffectSequence;
@@ -122,6 +124,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             () => _authorityRecovery);
         _frameWriter = new BridgeFrameWriteBoundary(
             new ServerFrameWriteAdapter(this));
+        _revisionNotifications = new BridgeRevisionNotificationLane();
     }
 
     public int RunningWorkerCount => _registry.RunningWorkerCount;
@@ -264,6 +267,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         {
             sessionCancellation.Cancel();
             await requestDispatcher.CancelAndDrainAsync().ConfigureAwait(false);
+            await _revisionNotifications.CloseAndDrainAsync().ConfigureAwait(false);
             if (_catalogMonitor is not null) _catalogMonitor.Changed -= OnCatalogChanged;
             if (_appearance is not null) _appearance.Changed -= OnAppearanceChanged;
             _channel = null;
@@ -320,6 +324,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         if (_localPackageImport is not null)
             await _localPackageImport.DisposeAsync().ConfigureAwait(false);
         await _registry.DisposeAsync().ConfigureAwait(false);
+        _notificationWriteGate.Dispose();
         _writeGate.Dispose();
     }
 
@@ -972,9 +977,17 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         T payload,
         CancellationToken publicationCancellation)
     {
+        var notificationGateEntered = false;
+        using var admission = CancellationTokenSource.CreateLinkedTokenSource(
+            _sessionCancellation, publicationCancellation);
         try
         {
-            await _frameWriter.WriteAsync(new BridgeEnvelope
+            // Only one asynchronous publication may compete with correlated
+            // replies at the shared frame writer. Upstream widget lanes retain
+            // their existing per-registration bounds and coalescing.
+            await _notificationWriteGate.WaitAsync(admission.Token).ConfigureAwait(false);
+            notificationGateEntered = true;
+            await _frameWriter.WriteNotificationAsync(new BridgeEnvelope
             {
                 Type = type,
                 Payload = BridgeJson.ToElement(payload),
@@ -987,21 +1000,34 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         {
             // The main request loop owns native-host disconnect handling.
         }
+        finally
+        {
+            if (notificationGateEntered) _notificationWriteGate.Release();
+        }
     }
 
     private void OnAppearanceChanged(object? sender, ThemeSnapshot snapshot) =>
-        _ = SendEventAsync(
-            BridgeMessageTypes.AppearanceChanged,
-            new BridgeAppearanceChanged(snapshot.Revision));
+        _revisionNotifications.Enqueue(
+            BridgeRevisionNotificationKind.Appearance,
+            snapshot.Revision,
+            cancellationToken => SendEventAsync(
+                BridgeMessageTypes.AppearanceChanged,
+                new BridgeAppearanceChanged(snapshot.Revision),
+                cancellationToken));
 
     private void OnCatalogChanged(object? sender, BridgeCatalogChanged change) =>
         ApplyCatalog(change.Catalog, change.Revision, publishEvent: true);
 
     internal void ApplyCatalog(BridgeCatalog catalog, long revision, bool publishEvent = true)
     {
-        if (_registry.ApplyCatalog(catalog, revision) && publishEvent) _ = SendEventAsync(
-            BridgeMessageTypes.CatalogChanged,
-            new BridgeCatalogChangedEvent(revision));
+        if (_registry.ApplyCatalog(catalog, revision) && publishEvent)
+            _revisionNotifications.Enqueue(
+                BridgeRevisionNotificationKind.Catalog,
+                revision,
+                cancellationToken => SendEventAsync(
+                    BridgeMessageTypes.CatalogChanged,
+                    new BridgeCatalogChangedEvent(revision),
+                    cancellationToken));
     }
 
     private Task ReplyAsync<T>(string type, long requestId, T payload, CancellationToken cancellationToken) =>

@@ -12,6 +12,27 @@ internal sealed class BridgeFrameWriteBoundary
         BridgeEnvelope envelope,
         CancellationToken admissionCancellation)
     {
+        await WriteAsync(
+            envelope,
+            admissionCancellation,
+            applyWriteDeadline: true).ConfigureAwait(false);
+    }
+
+    internal async Task WriteNotificationAsync(
+        BridgeEnvelope envelope,
+        CancellationToken admissionCancellation)
+    {
+        await WriteAsync(
+            envelope,
+            admissionCancellation,
+            applyWriteDeadline: false).ConfigureAwait(false);
+    }
+
+    private async Task WriteAsync(
+        BridgeEnvelope envelope,
+        CancellationToken admissionCancellation,
+        bool applyWriteDeadline)
+    {
         ArgumentNullException.ThrowIfNull(envelope);
         var gateEntered = false;
         var sessionCancellation = _adapter.SessionCancellation;
@@ -24,6 +45,16 @@ internal sealed class BridgeFrameWriteBoundary
             admission.Token.ThrowIfCancellationRequested();
             var channel = _adapter.Channel ?? throw new InvalidOperationException(
                 "Native host is not connected.");
+            if (!applyWriteDeadline)
+            {
+                // Notifications are bounded/coalesced before this boundary.
+                // Once admitted, let temporary native-reader backpressure hold
+                // this one exact frame until the host drains again. Only real
+                // session termination may interrupt it; a timeout must not
+                // retire every unrelated widget behind the shared session.
+                await channel.WriteAsync(envelope, sessionCancellation).ConfigureAwait(false);
+                return;
+            }
             using var writeDeadline = _adapter.CreateDeadline(WriteDeadline) ??
                 throw new InvalidOperationException(
                     "Frame write deadline factory returned null.");

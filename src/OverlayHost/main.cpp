@@ -79,6 +79,7 @@ constexpr UINT_PTR kCatalogRetryTimer = 4;
 constexpr UINT_PTR kForegroundLossTimer = 5;
 constexpr UINT_PTR kActionFeedbackTimer = 6;
 constexpr UINT_PTR kPinnedSurfaceTimer = 7;
+constexpr UINT_PTR kBridgeControlPlaneTimer = 8;
 constexpr UINT kPlatformEventMessage = WM_APP + 1;
 constexpr UINT kImageReadyMessage = WM_APP + 2;
 constexpr UINT kCatalogRefreshMessage = WM_APP + 3;
@@ -1740,10 +1741,13 @@ private:
                 ResetPinnedPlacementNavigation();
             }
             if (state_.surface() == widgetrail::Surface::Hidden) {
-                if (pinnedSurfaceCoordinator_.pinned())
+                if (pinnedSurfaceCoordinator_.pinned()) {
+                    KillTimer(window_, kBridgeControlPlaneTimer);
                     SetTimer(window_, kPinnedSurfaceTimer, 100, nullptr);
-                else
+                } else {
                     KillTimer(window_, kPinnedSurfaceTimer);
+                    SetTimer(window_, kBridgeControlPlaneTimer, 100, nullptr);
+                }
             }
             SyncWidgetActivity();
             InvalidateRect(window_, nullptr, FALSE);
@@ -1893,6 +1897,14 @@ private:
                 static_cast<float>(static_cast<short>(HIWORD(lParam))), true);
             return 0;
         case WM_TIMER:
+            if (wParam == kBridgeControlPlaneTimer) {
+                // A fully hidden, unpinned overlay retains only the native
+                // Bridge control plane. Pumping frames here fills the client's
+                // bounded/coalesced event queues; their presentation effects
+                // remain deferred until an ordinary visible/pinned tick.
+                (void)bridge_.PumpEvents();
+                return 0;
+            }
             if (performanceCountersActive_) {
                 ++performanceTimerMessages_;
                 if (wParam == kControllerTimer) {
@@ -3926,6 +3938,7 @@ private:
             KillTimer(window_, kForegroundLossTimer);
             KillTimer(window_, kActionFeedbackTimer);
             KillTimer(window_, kPinnedSurfaceTimer);
+            KillTimer(window_, kBridgeControlPlaneTimer);
             UnregisterHotKey(window_, kDeveloperHotkey);
         }
         if (platform_) {
@@ -5603,6 +5616,7 @@ private:
         if (!wasVisible) {
             actionFailureFeedback_.Show();
             KillTimer(window_, kPinnedSurfaceTimer);
+            KillTimer(window_, kBridgeControlPlaneTimer);
             SetTimer(window_, kControllerTimer, 16, nullptr);
             PrimeControllerState();
         }
@@ -5819,8 +5833,11 @@ private:
         pinnedSurfaceCoordinator_.OnOverlayHidden();
         KillTimer(window_, kControllerTimer);
         KillTimer(window_, kPinnedSurfaceTimer);
+        KillTimer(window_, kBridgeControlPlaneTimer);
         if (pinnedSurfaceCoordinator_.pinned())
             SetTimer(window_, kPinnedSurfaceTimer, 100, nullptr);
+        else
+            SetTimer(window_, kBridgeControlPlaneTimer, 100, nullptr);
         trayYGesture_.Reset();
         if (platform_) {
             (void)WidgetRailOverlayPlatformSetWindowState(
