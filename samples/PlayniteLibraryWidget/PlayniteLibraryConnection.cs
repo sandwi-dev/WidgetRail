@@ -124,17 +124,14 @@ public sealed partial class PlayniteLibraryWidget
     internal const string PlayniteDeleteActionId = "playnite-library.playnite.delete";
 
     private IPlayniteBridgeClient? _playniteClient;
-    private PlayniteBridgeConnectionKind _playniteKind =
-        PlayniteBridgeConnectionKind.NotConfigured;
-    private string _playniteCode = "credential_missing";
-    private bool _playniteBusy;
     private long _playniteGeneration;
 
     private IPlayniteBridgeClient PlayniteClient =>
         _playniteClient ??= PlayniteBridgeClient.CreateDefault();
 
-    private PlayniteLibraryConnectionState CapturePlayniteConnectionLocked() =>
-        new(_playniteKind, _playniteBusy, _playniteCode,
+    private PlayniteLibraryConnectionState CapturePlayniteConnection(
+        PlayniteLibraryRenderState state) =>
+        new(state.PlayniteKind, state.PlayniteBusy, state.PlayniteCode,
             LifecycleState == WidgetLifecycleState.Interactive);
 
     private async ValueTask RefreshPlayniteConnectionAsync(CancellationToken cancellationToken)
@@ -212,17 +209,18 @@ public sealed partial class PlayniteLibraryWidget
 
     private bool TryBeginPlayniteOperation(out long generation)
     {
+        var admitted = _model.Update(state => state.PlayniteBusy
+            ? (state, false)
+            : (state with { PlayniteBusy = true }, true));
+        if (!admitted.Result)
+        {
+            generation = 0;
+            return false;
+        }
         lock (_gate)
         {
-            if (_playniteBusy)
-            {
-                generation = 0;
-                return false;
-            }
             generation = ++_playniteGeneration;
-            _playniteBusy = true;
         }
-        Invalidate();
         return true;
     }
 
@@ -233,11 +231,13 @@ public sealed partial class PlayniteLibraryWidget
         {
             if (generation != _playniteGeneration ||
                 _navigation.Value.Route != PlayniteLibraryRoute.PlayniteConnection) return;
-            _playniteKind = result.Kind;
-            _playniteCode = result.Code;
-            _playniteBusy = false;
+            _model.Update(state => state with
+            {
+                PlayniteKind = result.Kind,
+                PlayniteCode = result.Code,
+                PlayniteBusy = false,
+            });
         }
-        Invalidate();
     }
 
     private void CancelPlayniteOperation(long generation)
@@ -245,17 +245,17 @@ public sealed partial class PlayniteLibraryWidget
         lock (_gate)
         {
             if (generation != _playniteGeneration) return;
-            _playniteBusy = false;
+            _model.Update(state => state with { PlayniteBusy = false });
         }
-        Invalidate();
     }
 
-    private void RetirePlayniteConnection()
+    private void RetirePlayniteConnection(bool clearPresentation = true)
     {
         lock (_gate)
         {
             _playniteGeneration++;
-            _playniteBusy = false;
         }
+        if (clearPresentation)
+            _model.Update(state => state with { PlayniteBusy = false });
     }
 }

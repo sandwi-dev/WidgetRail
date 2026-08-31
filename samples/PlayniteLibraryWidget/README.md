@@ -56,3 +56,27 @@ or launch unless its separate explicit install switch is supplied.
 
 Focused deterministic coverage uses fake Playnite Bridge and credential seams;
 it neither reads a real credential nor connects to a live Playnite instance.
+
+## State ownership
+
+The widget owns render-facing local state through one constructor-created
+`WidgetModel<PlayniteLibraryRenderState>`. Each render reads one atomic model
+snapshot, and equal updates publish neither a model revision nor a widget
+invalidation. Related transitions commit together, so query, route-local
+selection, modal selection, hero, status, and connection presentation cannot be
+observed as a partially updated field cluster.
+
+Provider and persistence authority deliberately remain outside that model:
+
+| Owner | State and responsibility |
+| --- | --- |
+| `WidgetModel<PlayniteLibraryRenderState>` | Immutable query/collection projection, fixed rows and source observations, details/action-sheet/title-editor selections, route-local category/running/hero/focus state, local status/busy/launching presentation, and Playnite connection presentation. |
+| `WidgetCursorResource` | Remote page lifecycle, cursors, retained item window, stale-generation rejection, cancellation, and provider errors. |
+| `WidgetNavigator` | Route stack, route input scopes, and route-return focus. |
+| `WidgetOperations` | Named asynchronous operation admission, cancellation, and drain. |
+| Playnite application/Bridge authority | Current catalog identities, favorites, hidden/category/completion state, and exact mutation/launch authorization. |
+| Private-state and launch-persistence owners | CAS revision, bounded organization persistence, launch-state retention, and their independent generations. |
+
+Remote collections, mutable dictionaries, tasks, cancellation tokens, provider
+clients, and resource/navigator state never move into the render model. The model
+contains only immutable local projections needed to produce a coherent view.

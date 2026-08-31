@@ -34,6 +34,51 @@ internal sealed record PlayniteLibraryFixedRows(
     internal IEnumerable<PlayniteLibraryItem> All => Recent.Concat(Manual).Concat(TitleMatches);
 }
 
+internal sealed record PlayniteLibraryRenderState(
+    PlayniteLibraryCollectionState Collection,
+    PlayniteLibraryFixedRows FixedRows,
+    IReadOnlyList<WidgetAppLibrarySource> SourceObservations,
+    PlayniteLibraryDetailsSelection? DetailsSelection,
+    PlayniteLibraryDetailsSelection? ActionSheetSelection,
+    PlayniteLibraryDetailsSelection? TitleEditorSelection,
+    string? ActiveCategoryId,
+    string? RunningRevision,
+    long FixedRowsRevision,
+    string? PendingRestoredSavedId,
+    bool PreferLibraryContentFocus,
+    string? HeroSavedId,
+    int HeroIndex,
+    string? VariantSeedSavedId,
+    bool OrganizationBusy,
+    string Status,
+    string? LaunchingSavedId,
+    PlayniteBridgeConnectionKind PlayniteKind,
+    string PlayniteCode,
+    bool PlayniteBusy)
+{
+    internal static PlayniteLibraryRenderState Initial(WidgetAppLibraryQuery query) => new(
+        new(query),
+        PlayniteLibraryFixedRows.Empty,
+        [],
+        null,
+        null,
+        null,
+        null,
+        null,
+        0,
+        null,
+        false,
+        null,
+        0,
+        null,
+        false,
+        "Playnite Library loads when visible",
+        null,
+        PlayniteBridgeConnectionKind.NotConfigured,
+        "credential_missing",
+        false);
+}
+
 internal enum PlayniteLibraryRoute
 {
     Library,

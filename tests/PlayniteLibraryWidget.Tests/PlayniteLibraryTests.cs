@@ -1181,6 +1181,69 @@ public sealed class PlayniteLibraryTests
         Assert.AreEqual("Beta", search.TextEntryValue);
         await Background(widget);
     }
+
+    [TestMethod]
+    public void RenderStateHasOneModelOwnerAndNoRetiredScalarOwners()
+    {
+        var fields = typeof(LauncherWidget).GetFields(
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        var models = fields.Where(field => field.FieldType.IsGenericType &&
+            field.FieldType.GetGenericTypeDefinition() == typeof(WidgetModel<>)).ToArray();
+
+        Assert.AreEqual(1, models.Length,
+            "Render-facing state must have one WidgetModel owner.");
+        Assert.AreEqual(typeof(PlayniteLibraryRenderState),
+            models[0].FieldType.GetGenericArguments()[0]);
+        CollectionAssert.AreEquivalent(new[]
+        {
+            "_application", "_gate", "_launchPersistence", "_launchStateRecency",
+            "_launchStates", "_library", "_model", "_navigation", "_organization",
+            "_playniteAuthority", "_playniteClient", "_playniteGeneration",
+            "_stateGate", "_stateRevision",
+        }, fields.Select(field => field.Name).ToArray(),
+            "A mutable presentation owner was added outside the model boundary.");
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task EqualHeroTransitionPublishesNoRevisionOrInvalidation()
+    {
+        var host = new FakeHost(2);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await Bounded(widget.WhenWarmStateIdleAsync(), "model warm-state drain");
+        await Bounded(widget.WhenLibraryIdleAsync(), "model projection drain");
+        var tiles = Nodes(Snapshot(widget, 98).Root).Where(node =>
+            node.ActionId == "playnite-library.launch").ToArray();
+        var invalidations = 0;
+        EventHandler<WidgetInvalidatedEventArgs> handler = (_, _) => invalidations++;
+        widget.Invalidated += handler;
+        try
+        {
+            var before = widget.RenderState;
+            await widget.OnActionAsync(new("unhandled.fixture", tiles[1].Id));
+            var changed = widget.RenderState;
+            Assert.AreEqual(before.Revision + 1, changed.Revision,
+                "One semantic hero change must commit one model revision.");
+            Assert.AreEqual("saved-00001", changed.Value.HeroSavedId);
+            Assert.AreEqual(1, invalidations,
+                "One semantic hero change must publish one invalidation.");
+
+            await widget.OnActionAsync(new("unhandled.fixture", tiles[1].Id));
+            var unchanged = widget.RenderState;
+            Assert.AreEqual(changed.Revision, unchanged.Revision,
+                "An equal model replacement must not advance the revision.");
+            Assert.AreEqual(1, invalidations,
+                "An equal model replacement must not publish an invalidation.");
+        }
+        finally
+        {
+            widget.Invalidated -= handler;
+        }
+        await Background(widget);
+    }
+
     [TestMethod, Timeout(30_000)]
     [DataRow(2_000)]
     [DataRow(10_000)]
