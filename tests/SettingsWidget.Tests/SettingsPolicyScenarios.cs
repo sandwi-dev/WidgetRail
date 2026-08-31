@@ -95,9 +95,11 @@ internal static class SettingsPolicyScenarios
             currentIsValid: false,
             increase,
             CancellationToken.None);
-        Equal(0.40d, recovered.Appearance.BackdropOpacity,
+        Equal(
+            AppearanceSettings.MinimumBackdropOpacity + SettingsPreferencePolicy.OpacityStep,
+            recovered.Appearance.BackdropOpacity,
             "Invalid-state recovery did not replace from the committed safe document.");
-        Equal(recovered, await store.LoadAsync(),
+        DocumentEqual(recovered, await store.LoadAsync(),
             "Preference persistence did not commit its returned document.");
     }
 
@@ -396,6 +398,46 @@ internal static class SettingsPolicyScenarios
     {
         if (!EqualityComparer<T>.Default.Equals(expected, actual))
             throw new InvalidOperationException($"{message} Expected {expected}; actual {actual}.");
+    }
+
+    private static void DocumentEqual(
+        PlatformSettingsDocument expected,
+        PlatformSettingsDocument actual,
+        string message)
+    {
+        Equal(expected.SchemaVersion, actual.SchemaVersion, message);
+        Equal(expected.Appearance.ThemeId, actual.Appearance.ThemeId, message);
+        Equal(expected.Appearance.ThemeVersion, actual.Appearance.ThemeVersion, message);
+        Equal(expected.Appearance.InterfaceScale, actual.Appearance.InterfaceScale, message);
+        Equal(expected.Appearance.TextScale, actual.Appearance.TextScale, message);
+        Equal(expected.Appearance.BackdropOpacity, actual.Appearance.BackdropOpacity, message);
+        Equal(expected.Appearance.Motion, actual.Appearance.Motion, message);
+        Equal(expected.Appearance.Contrast, actual.Appearance.Contrast, message);
+        Equal(expected.Appearance.BoldText, actual.Appearance.BoldText, message);
+        Equal(expected.Appearance.Transparency, actual.Appearance.Transparency, message);
+        Equal(
+            expected.Appearance.AnimateWidgetSwitching,
+            actual.Appearance.AnimateWidgetSwitching,
+            message);
+        Equal(
+            expected.Appearance.WidgetSurfaceAppearance,
+            actual.Appearance.WidgetSurfaceAppearance,
+            message);
+        Require(
+            expected.Appearance.WidgetSurfaceAppearanceOverrides
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .SequenceEqual(actual.Appearance.WidgetSurfaceAppearanceOverrides.OrderBy(
+                    pair => pair.Key,
+                    StringComparer.Ordinal)),
+            message);
+        Equal(
+            expected.AppLibrary.EpicInstalledGamesEnabled,
+            actual.AppLibrary.EpicInstalledGamesEnabled,
+            message);
+        Equal(
+            expected.AppLibrary.GogInstalledGamesEnabled,
+            actual.AppLibrary.GogInstalledGamesEnabled,
+            message);
     }
 
     private sealed class PolicyTemporaryDirectory : IDisposable

@@ -108,7 +108,7 @@ static async Task SettingsRoundTrip()
     Assert.Equal(true, updated.AppLibrary.GogInstalledGamesEnabled);
     Assert.Equal(true, updated.Appearance.AnimateWidgetSwitching);
     var reloaded = await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync();
-    Assert.Equal(updated, reloaded);
+    Assert.DocumentEqual(updated, reloaded);
     Assert.Equal(true, reloaded.Appearance.AnimateWidgetSwitching);
     var source = await File.ReadAllTextAsync(store.Paths.SettingsFile);
     Assert.Contains("\"schemaVersion\": 2", source);
@@ -228,7 +228,7 @@ static async Task FailedMutationPreservesState()
             Appearance = current.Appearance with { TextScale = 99 },
         }));
     Assert.Equal("out_of_range", exception.Code);
-    Assert.Equal(saved, await store.LoadAsync());
+    Assert.DocumentEqual(saved, await store.LoadAsync());
     Assert.True(!Directory.EnumerateFiles(temp.Path, ".platform-settings.*.tmp").Any(),
         "Rejected mutation leaked a temporary file.");
 }
@@ -587,7 +587,7 @@ static async Task ThemeVersionMutation()
     Assert.True(!Directory.Exists(first), "Retired exact version remained in the catalog.");
     Assert.True(Directory.Exists(second), "Selected sibling version was removed.");
     Assert.True(Directory.Exists(unrelated), "Unrelated theme was removed.");
-    Assert.Equal(selected, await store.LoadAsync());
+    Assert.DocumentEqual(selected, await store.LoadAsync());
     Assert.True(!catalog.Discover().Themes.Any(item =>
         item.Descriptor.Id == "dev.example.family" && item.Descriptor.Version == new Version(1, 0, 0)),
         "Retired version remained discoverable.");
@@ -775,6 +775,37 @@ file sealed class TemporaryDirectory : IDisposable
 
 file static class Assert
 {
+    public static void DocumentEqual(
+        PlatformSettingsDocument expected,
+        PlatformSettingsDocument actual)
+    {
+        Equal(expected.SchemaVersion, actual.SchemaVersion);
+        Equal(expected.Appearance.ThemeId, actual.Appearance.ThemeId);
+        Equal(expected.Appearance.ThemeVersion, actual.Appearance.ThemeVersion);
+        Equal(expected.Appearance.InterfaceScale, actual.Appearance.InterfaceScale);
+        Equal(expected.Appearance.TextScale, actual.Appearance.TextScale);
+        Equal(expected.Appearance.BackdropOpacity, actual.Appearance.BackdropOpacity);
+        Equal(expected.Appearance.Motion, actual.Appearance.Motion);
+        Equal(expected.Appearance.Contrast, actual.Appearance.Contrast);
+        Equal(expected.Appearance.BoldText, actual.Appearance.BoldText);
+        Equal(expected.Appearance.Transparency, actual.Appearance.Transparency);
+        Equal(expected.Appearance.AnimateWidgetSwitching, actual.Appearance.AnimateWidgetSwitching);
+        Equal(expected.Appearance.WidgetSurfaceAppearance, actual.Appearance.WidgetSurfaceAppearance);
+        SequenceEqual(
+            expected.Appearance.WidgetSurfaceAppearanceOverrides.OrderBy(
+                pair => pair.Key,
+                StringComparer.Ordinal),
+            actual.Appearance.WidgetSurfaceAppearanceOverrides.OrderBy(
+                pair => pair.Key,
+                StringComparer.Ordinal));
+        Equal(
+            expected.AppLibrary.EpicInstalledGamesEnabled,
+            actual.AppLibrary.EpicInstalledGamesEnabled);
+        Equal(
+            expected.AppLibrary.GogInstalledGamesEnabled,
+            actual.AppLibrary.GogInstalledGamesEnabled);
+    }
+
     public static void True(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);

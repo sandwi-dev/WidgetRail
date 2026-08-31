@@ -437,7 +437,7 @@ static async Task ResetConfirmation()
     Assert.Equal(SettingsPage.Reset, widget.CurrentPage);
     Assert.Equal(1.3D, (await store.LoadAsync()).Appearance.TextScale);
     await Action(widget, "reset.confirm");
-    Assert.Equal(PlatformSettingsDocument.Default, await store.LoadAsync());
+    Assert.DocumentEqual(PlatformSettingsDocument.Default, await store.LoadAsync());
     Assert.Equal(SettingsPage.Root, widget.CurrentPage);
 }
 
@@ -454,7 +454,7 @@ static async Task InvalidSettingsRecovery()
         "Invalid settings did not expose error styling.");
     await Action(widget, "open.reset");
     await Action(widget, "reset.confirm");
-    Assert.Equal(PlatformSettingsDocument.Default, await Store(temp.Path).LoadAsync());
+    Assert.DocumentEqual(PlatformSettingsDocument.Default, await Store(temp.Path).LoadAsync());
 }
 
 static async Task BusyFeedback()
@@ -1483,7 +1483,7 @@ static async Task InstalledWidgetVersionLimitRetry()
     Assert.True(!Button(recovered.Root, "installed.item.0").Text!
         .Contains("Last good", StringComparison.Ordinal),
         "Retry did not replace the last-good catalog projection.");
-    Assert.Equal(retainedSettings, await Store(temp.Path).LoadAsync());
+    Assert.DocumentEqual(retainedSettings, await Store(temp.Path).LoadAsync());
     Assert.Valid(limited);
     Assert.Valid(reactivated);
     Assert.Valid(details);
@@ -2616,6 +2616,37 @@ file sealed class CancelingAuthorityRecoveryDiagnosticsService(
 
 file static class Assert
 {
+    public static void DocumentEqual(
+        PlatformSettingsDocument expected,
+        PlatformSettingsDocument actual)
+    {
+        Equal(expected.SchemaVersion, actual.SchemaVersion);
+        Equal(expected.Appearance.ThemeId, actual.Appearance.ThemeId);
+        Equal(expected.Appearance.ThemeVersion, actual.Appearance.ThemeVersion);
+        Equal(expected.Appearance.InterfaceScale, actual.Appearance.InterfaceScale);
+        Equal(expected.Appearance.TextScale, actual.Appearance.TextScale);
+        Equal(expected.Appearance.BackdropOpacity, actual.Appearance.BackdropOpacity);
+        Equal(expected.Appearance.Motion, actual.Appearance.Motion);
+        Equal(expected.Appearance.Contrast, actual.Appearance.Contrast);
+        Equal(expected.Appearance.BoldText, actual.Appearance.BoldText);
+        Equal(expected.Appearance.Transparency, actual.Appearance.Transparency);
+        Equal(expected.Appearance.AnimateWidgetSwitching, actual.Appearance.AnimateWidgetSwitching);
+        Equal(expected.Appearance.WidgetSurfaceAppearance, actual.Appearance.WidgetSurfaceAppearance);
+        SequenceEqual(
+            expected.Appearance.WidgetSurfaceAppearanceOverrides.OrderBy(
+                pair => pair.Key,
+                StringComparer.Ordinal),
+            actual.Appearance.WidgetSurfaceAppearanceOverrides.OrderBy(
+                pair => pair.Key,
+                StringComparer.Ordinal));
+        Equal(
+            expected.AppLibrary.EpicInstalledGamesEnabled,
+            actual.AppLibrary.EpicInstalledGamesEnabled);
+        Equal(
+            expected.AppLibrary.GogInstalledGamesEnabled,
+            actual.AppLibrary.GogInstalledGamesEnabled);
+    }
+
     public static void True(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
