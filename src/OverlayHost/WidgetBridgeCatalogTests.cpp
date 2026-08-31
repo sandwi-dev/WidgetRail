@@ -1067,6 +1067,60 @@ int main() {
     CHECK(actionSurface.children[1].kind == L"stack");
     CHECK(actionSurface.children[1].children.size() == 2);
     CHECK(actionSurface.children[1].children[0].text == L"Album title");
+    error.clear();
+    const auto posterSnapshot = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":37,"sequence":1,
+            "widgetInstanceId":"poster.instance",
+            "activeInputScopeId":"poster","initialFocusId":"poster",
+            "root":{"id":"poster","kind":"actionSurface","actionId":"poster.open",
+                "accessibilityLabel":"Open complete poster",
+                "actionSurfaceOrientation":"vertical",
+                "actionSurfacePresentation":"poster",
+                "children":[
+                    {"id":"poster.artwork","kind":"image",
+                     "imageSource":"https://example.test/poster.jpg","imageFit":"cover",
+                     "accessibilityLabel":"Poster artwork","children":[]},
+                    {"id":"poster.scrim","kind":"stack","children":[
+                        {"id":"poster.title","kind":"text","text":"Poster title","children":[]}
+                    ]}
+                ]}
+        }
+    })json", error);
+    CHECK(posterSnapshot && error.empty());
+    CHECK(posterSnapshot->root.actionSurfacePresentation == L"poster");
+    CHECK(posterSnapshot->root.children.size() == 2U &&
+          posterSnapshot->root.children.front().imageFit == L"cover");
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":36,"sequence":1,
+            "widgetInstanceId":"poster.legacy",
+            "activeInputScopeId":"poster","initialFocusId":"poster",
+            "root":{"id":"poster","kind":"actionSurface","actionId":"poster.open",
+                "accessibilityLabel":"Poster","actionSurfaceOrientation":"vertical",
+                "actionSurfacePresentation":"poster",
+                "children":[{"id":"poster.scrim","kind":"stack","children":[]}]}
+        }
+    })json", error) && !error.empty());
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":37,"sequence":1,
+            "widgetInstanceId":"poster.contain",
+            "activeInputScopeId":"poster","initialFocusId":"poster",
+            "root":{"id":"poster","kind":"actionSurface","actionId":"poster.open",
+                "accessibilityLabel":"Poster","actionSurfaceOrientation":"vertical",
+                "actionSurfacePresentation":"poster",
+                "children":[
+                    {"id":"poster.artwork","kind":"image",
+                     "imageSource":"https://example.test/poster.jpg","imageFit":"contain","children":[]},
+                    {"id":"poster.scrim","kind":"stack","children":[]}
+                ]}
+        }
+    })json", error) && !error.empty());
     const auto& cursorList = styledSnapshot->root.children[5];
     (void)cursorList;
     CHECK(cursorList.collectionAnchorKey == L"game.2");

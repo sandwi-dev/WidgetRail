@@ -133,6 +133,7 @@ public sealed record ActionSurfaceElement : WidgetElement
     public string ActionId { get; init; }
     public string AccessibilityLabel { get; init; }
     public ActionSurfaceOrientation Orientation { get; init; }
+    public ActionSurfacePresentation? Presentation { get; init; }
     public IReadOnlyList<WidgetElement> Children { get; init; }
     public bool? IsDisabled { get; init; }
     public bool? IsSelected { get; init; }
@@ -224,6 +225,7 @@ public sealed record ActionSurfaceElement : WidgetElement
         ActionId = ActionId,
         ContextActions = ContextActions,
         ActionSurfaceOrientation = Orientation,
+        ActionSurfacePresentation = Presentation,
         IsDisabled = IsDisabled,
         IsSelected = IsSelected,
         IsBusy = IsBusy,
@@ -306,6 +308,27 @@ public static partial class UI
             title, stateLabel, action, id, subtitle, metadata,
             artwork, accessibilityLabel, orientation);
 
+    /// <summary>
+    /// Creates one fixed-aspect poster action surface. Optional bounded Cover
+    /// artwork fills the complete surface behind a bottom scrim/content region;
+    /// all generated descendants remain presentational and the complete poster
+    /// remains the sole focus, pointer, pressed, action, and accessibility target.
+    /// Outer geometry is owned by the authored grid and poster theme rather than
+    /// the length of any visible copy.
+    /// </summary>
+    public static ActionSurfaceElement PosterTile(
+        string title,
+        string stateLabel,
+        string action,
+        string id,
+        string? subtitle = null,
+        string? metadata = null,
+        TileArtwork? artwork = null,
+        string? accessibilityLabel = null) =>
+        BuildPosterTile(
+            title, stateLabel, action, id, subtitle, metadata,
+            artwork, accessibilityLabel);
+
     private static ActionSurfaceElement BuildTile(
         string title,
         string stateLabel,
@@ -351,16 +374,7 @@ public static partial class UI
         var children = new List<WidgetElement>();
         if (artwork is not null)
         {
-            WidgetElement leading = artwork.Glyph is { } glyph
-                ? new IconElement(
-                    StableIdentifier.Child(id, "artwork"), glyph, artwork.AccessibilityLabel)
-                : artwork.ArtworkHandle is { } handle
-                    ? UI.Artwork(
-                        handle, StableIdentifier.Child(id, "artwork"),
-                        artwork.AccessibilityLabel, artwork.ImageFit)
-                : new ImageElement(
-                    StableIdentifier.Child(id, "artwork"), artwork.ImageSource!,
-                    artwork.AccessibilityLabel, artwork.ImageFit);
+            WidgetElement leading = BuildTileArtworkElement(id, artwork);
             children.Add(leading with
             {
                 StyleClasses = ["wrail-tile__artwork"],
@@ -380,6 +394,105 @@ public static partial class UI
             StyleClasses = ["wrail-action-surface", "wrail-tile"],
         };
     }
+
+    private static ActionSurfaceElement BuildPosterTile(
+        string title,
+        string stateLabel,
+        string action,
+        string id,
+        string? subtitle,
+        string? metadata,
+        TileArtwork? artwork,
+        string? accessibilityLabel)
+    {
+        ValidateTileText(title, nameof(title), MaximumTileTitleCharacters);
+        ValidateTileText(stateLabel, nameof(stateLabel), MaximumTileStateCharacters);
+        ValidateOptionalTileText(subtitle, nameof(subtitle));
+        ValidateOptionalTileText(metadata, nameof(metadata));
+        StableIdentifier.Validate(id, nameof(id));
+        foreach (var suffix in new[]
+                 {
+                     "artwork", "scrim", "content", "title", "subtitle",
+                     "details", "metadata", "state",
+                 })
+            _ = StableIdentifier.Child(id, suffix);
+
+        if (artwork is { Glyph: not null })
+            throw new ArgumentException(
+                "Poster artwork must be an HTTPS, inline PNG, or trusted encoded artwork image.",
+                nameof(artwork));
+        if (artwork is not null && artwork.ImageFit != ImageFit.Cover)
+            throw new ArgumentException("Poster artwork must use Cover fit.", nameof(artwork));
+
+        var copy = new List<WidgetElement>();
+        if (subtitle is not null)
+            copy.Add(new TextElement(
+                StableIdentifier.Child(id, "subtitle"), subtitle, subtitle)
+            {
+                StyleClasses = ["wrail-poster-tile__subtitle"],
+            });
+        copy.Add(new TextElement(StableIdentifier.Child(id, "title"), title, title)
+        {
+            StyleClasses = ["wrail-poster-tile__title"],
+        });
+
+        var details = new List<WidgetElement>();
+        if (metadata is not null)
+            details.Add(new TextElement(
+                StableIdentifier.Child(id, "metadata"), metadata, metadata)
+            {
+                StyleClasses = ["wrail-poster-tile__metadata"],
+            });
+        details.Add(new TextElement(
+            StableIdentifier.Child(id, "state"), stateLabel, $"State: {stateLabel}")
+        {
+            StyleClasses = ["wrail-poster-tile__state"],
+        });
+        copy.Add(new RowElement(StableIdentifier.Child(id, "details"), details)
+        {
+            StyleClasses = ["wrail-poster-tile__details"],
+        });
+
+        var content = new StackElement(StableIdentifier.Child(id, "content"), copy)
+        {
+            StyleClasses = ["wrail-poster-tile__content"],
+        };
+        var scrim = new StackElement(
+            StableIdentifier.Child(id, "scrim"), [content])
+        {
+            StyleClasses = ["wrail-poster-tile__scrim"],
+        };
+        var children = new List<WidgetElement>();
+        if (artwork is not null)
+            children.Add(BuildTileArtworkElement(id, artwork) with
+            {
+                StyleClasses = ["wrail-poster-tile__artwork"],
+            });
+        children.Add(scrim);
+
+        var spoken = accessibilityLabel ?? string.Join(", ",
+            new[] { subtitle, title, metadata, stateLabel }
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
+        ValidateTileText(spoken, nameof(accessibilityLabel), ProtocolConstants.MaximumStringLength);
+        return new ActionSurfaceElement(
+            id, action, spoken, ActionSurfaceOrientation.Vertical, children)
+        {
+            Presentation = ActionSurfacePresentation.Poster,
+            StyleClasses = ["wrail-action-surface", "wrail-poster-tile"],
+        };
+    }
+
+    private static WidgetElement BuildTileArtworkElement(string id, TileArtwork artwork) =>
+        artwork.Glyph is { } glyph
+            ? new IconElement(
+                StableIdentifier.Child(id, "artwork"), glyph, artwork.AccessibilityLabel)
+            : artwork.ArtworkHandle is { } handle
+                ? UI.Artwork(
+                    handle, StableIdentifier.Child(id, "artwork"),
+                    artwork.AccessibilityLabel, artwork.ImageFit)
+                : new ImageElement(
+                    StableIdentifier.Child(id, "artwork"), artwork.ImageSource!,
+                    artwork.AccessibilityLabel, artwork.ImageFit);
 
     private static void ValidateTileText(string? value, string parameterName, int maximumCharacters)
     {

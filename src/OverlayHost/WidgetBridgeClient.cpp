@@ -900,6 +900,11 @@ WidgetNode ParseNode(const JsonObject& source) {
         node.virtualCollectionWindow = window;
     }
     node.actionSurfaceOrientation = OptionalString(source, L"actionSurfaceOrientation");
+    node.actionSurfacePresentation = OptionalString(source, L"actionSurfacePresentation");
+    if (!node.actionSurfacePresentation.empty() &&
+        node.actionSurfacePresentation != L"standard" &&
+        node.actionSurfacePresentation != L"poster")
+        throw winrt::hresult_invalid_argument();
     if (source.HasKey(L"gridMinimumColumnWidth")) {
         if (source.GetNamedValue(L"gridMinimumColumnWidth").ValueType() != JsonValueType::Number)
             throw winrt::hresult_invalid_argument();
@@ -1004,6 +1009,18 @@ WidgetNode ParseNode(const JsonObject& source) {
             (window.firstItemIndex && window.totalItemCount &&
              *window.firstItemIndex + itemCount == *window.totalItemCount &&
              window.hasAfter))
+            throw winrt::hresult_invalid_argument();
+    }
+    if (!node.actionSurfacePresentation.empty() && node.kind != L"actionSurface")
+        throw winrt::hresult_invalid_argument();
+    if (node.actionSurfacePresentation == L"poster") {
+        const auto hasArtwork = node.children.size() == 2U;
+        if (node.actionSurfaceOrientation != L"vertical" ||
+            node.children.empty() || node.children.size() > 2U ||
+            node.children.back().kind != L"stack" ||
+            (hasArtwork &&
+             (node.children.front().kind != L"image" ||
+              node.children.front().imageFit != L"cover")))
             throw winrt::hresult_invalid_argument();
     }
     return node;
@@ -1177,6 +1194,17 @@ void ValidateRememberedChildFocusGroups(
     }
 }
 
+void ValidatePosterTiles(const WidgetNode& root, const int protocolVersion) {
+    const auto visit = [&](const auto& self, const WidgetNode& node) -> void {
+        if (!node.actionSurfacePresentation.empty() &&
+            protocolVersion < protocol_contract::PosterTileVersion)
+            throw winrt::hresult_invalid_argument(
+                L"Poster tiles require protocol version 37.");
+        for (const auto& child : node.children) self(self, child);
+    };
+    visit(visit, root);
+}
+
 WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     ValidatePinnedProjectionCatalogBounds(source);
     WidgetSnapshot snapshot;
@@ -1286,6 +1314,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                     throw winrt::hresult_invalid_argument(
                         L"Widget snapshot pinned projection version is invalid.");
                 parsed.root = ParseNode(layout.GetNamedObject(L"root"));
+                ValidatePosterTiles(*parsed.root, snapshot.protocolVersion);
                 ValidateRememberedChildFocusGroups(
                     *parsed.root, snapshot.protocolVersion);
                 parsed.activeInputScopeId = OptionalString(layout, L"activeInputScopeId");
@@ -1526,6 +1555,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         }
     }
     snapshot.root = ParseNode(source.GetNamedObject(L"root"));
+    ValidatePosterTiles(snapshot.root, snapshot.protocolVersion);
     ValidateRememberedChildFocusGroups(snapshot.root, snapshot.protocolVersion);
     const auto validateContextActions = [&](const auto& self,
                                             const WidgetNode& node) -> void {
@@ -1641,13 +1671,13 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 41> properties{
+    static constexpr std::array<std::wstring_view, 42> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextActions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
         L"valueChangedActionId", L"sliderInteractionMode", L"imageSource",
         L"artworkHandle", L"mediaSurfaceId", L"imageFit", L"glyph", L"indicatorSize",
-        L"actionSurfaceOrientation", L"gridMinimumColumnWidth",
+        L"actionSurfaceOrientation", L"actionSurfacePresentation", L"gridMinimumColumnWidth",
         L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
         L"focusPersistenceId", L"focus", L"inputScopeId", L"initialChildFocusId", L"scrollAxis",
         L"scrollNearStartActionId", L"scrollNearEndActionId",
@@ -1688,7 +1718,7 @@ bool ValidateWidgetDocumentStructure(
                  L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum",
                  L"step", L"valueChangedActionId", L"sliderInteractionMode",
                  L"imageSource", L"artworkHandle", L"mediaSurfaceId", L"imageFit", L"glyph",
-                 L"indicatorSize", L"actionSurfaceOrientation",
+                 L"indicatorSize", L"actionSurfaceOrientation", L"actionSurfacePresentation",
                  L"gridMinimumColumnWidth", L"gridMaximumColumns", L"isDisabled",
                  L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
                  L"inputScopeId", L"initialChildFocusId", L"scrollAxis", L"scrollNearStartActionId",
@@ -2212,6 +2242,7 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         property == L"imageFit" ||
         property == L"glyph" || property == L"indicatorSize" ||
         property == L"actionSurfaceOrientation" ||
+        property == L"actionSurfacePresentation" ||
         property == L"scrollAxis" ||
         property == L"scrollPaginationThreshold" ||
         property == L"virtualCollectionWindow" ||

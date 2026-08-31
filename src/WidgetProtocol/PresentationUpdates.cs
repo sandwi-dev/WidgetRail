@@ -47,6 +47,7 @@ public enum PresentationProperty
     Glyph,
     IndicatorSize,
     ActionSurfaceOrientation,
+    ActionSurfacePresentation,
     GridMinimumColumnWidth,
     GridMaximumColumns,
     IsDisabled,
@@ -195,6 +196,7 @@ public static class PresentationPropertyMetadata
         PresentationProperty.Glyph or
         PresentationProperty.IndicatorSize or
         PresentationProperty.ActionSurfaceOrientation or
+        PresentationProperty.ActionSurfacePresentation or
         PresentationProperty.ScrollAxis or
         PresentationProperty.ScrollPaginationThreshold or
         PresentationProperty.VirtualCollectionWindow or

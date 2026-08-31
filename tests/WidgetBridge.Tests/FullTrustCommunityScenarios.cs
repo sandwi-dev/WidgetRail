@@ -375,8 +375,8 @@ internal static class FullTrustCommunityScenarios
         var runtimeRoot = Path.Combine(hostOutput, "runtime");
         var expectedDirectories = new[]
         {
-            "AudioMixer", "Bridge", "GamesApps", "MediaSessions", "NetworkControls",
-            "Settings", "WidgetWorkerHost",
+            "AudioMixer", "Bridge", "EmbeddedMediaSample", "GamesApps", "MediaSessions",
+            "NetworkControls", "Settings", "WidgetWorkerHost",
         };
         var actualDirectories = Directory.EnumerateDirectories(runtimeRoot)
             .Select(Path.GetFileName)

@@ -319,7 +319,17 @@ public sealed class SdkGalleryWidget : Widget
                 metadata: "Bounded encoded artwork",
                 artwork: TileArtwork.FromHandle(
                     new WidgetArtworkHandle(SampleWebPArtworkHandle),
-                    "Provider-neutral encoded WebP artwork"))))
+                    "Provider-neutral encoded WebP artwork")),
+            UI.PosterTile(
+                "A deliberately longer poster title that demonstrates bounded two-line copy",
+                "Available",
+                "gallery.app.open",
+                "gallery.poster",
+                subtitle: "SDK Gallery",
+                metadata: "Provider-neutral poster",
+                artwork: TileArtwork.FromHandle(
+                    new WidgetArtworkHandle(SampleArtworkHandle),
+                    "Provider-neutral poster artwork"))))
         .AddClasses("gallery-page");
 
     private StackElement UtilitiesPage() => UI.Stack("gallery.utilities",

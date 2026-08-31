@@ -798,6 +798,7 @@ or `ResponsiveGrid` when only placement, not hierarchy, changes.
 | `UI.LoadingIndicator(id, label, size?)` | indeterminate status | Protocol 5; native, nonfocusable, static under reduced motion. |
 | `UI.ActionSurface(action, id, label, orientation, children...)` | rich full-surface action | Protocol 7; one focus/pointer/action target with bounded presentational children. |
 | `UI.Tile(...)` | rich tile ActionSurface | Optional `TileArtwork`, multiline copy, visible state, one full-tile action, and protocol-v34 bounded contextual actions. |
+| `UI.PosterTile(...)` | fixed-aspect poster ActionSurface | Protocol 37; optional bounded Cover artwork fills the card behind a themeable bottom scrim and fixed copy rows while the whole poster remains one action/accessibility target. |
 | `UI.Toast(title, message, tone, id, duration?, glyph?)` | transient feedback | No focus or timer; remove through lifecycle-owned widget state. |
 | `UI.IconButton(...)` | icon-only button | Required accessible name plus stable size/variant classes. |
 | `UI.Card(...)`, `UI.SectionHeader(...)`, `UI.Divider(...)` | nonfocusable hierarchy | Theme-respecting grouping, heading, and separator compositions. |

@@ -122,6 +122,7 @@ struct RenderResult final {
     // only interactive geometry so ordinary paints do not allocate two maps
     // for every decorative and structural node.
     std::map<std::wstring, declarative::Rect, std::less<>> elementRects;
+    std::map<std::wstring, declarative::Rect, std::less<>> posterArtworkRects;
     std::map<std::wstring, declarative::Rect, std::less<>> elementVisibleRects;
     std::map<std::wstring, float, std::less<>> sliderThumbXs;
     std::map<std::wstring, ButtonContentPlacement, std::less<>> buttonContentPlacements;

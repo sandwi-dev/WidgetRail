@@ -252,6 +252,16 @@ ActionSurface. Preserve generated `id.artwork`, `id.content`, `id.title`,
 `id.subtitle`, `id.metadata`, and `id.state` suffixes and `wrail-action-surface`/
 `wrail-tile` classes when adding widget-specific classes.
 
+Use `UI.PosterTile` for a portrait, fixed-aspect card whose optional image
+fills the complete surface with bounded `Cover` placement. Protocol v37 keeps
+the same `ActionSurface` focus, activation, state, shortcut, contextual-action,
+and accessibility owner while the native renderer layers the generated
+`id.artwork` behind `id.scrim`/`id.content`. The default theme reserves fixed
+rows for the optional subtitle, two-line ellipsized title, metadata, and state;
+visible copy therefore never changes the outer card geometry, while the
+complete untruncated strings remain in the poster's accessible name. Customize
+the stable `wrail-poster-tile__*` classes rather than adding nested controls.
+
 Use `UI.Toast` for brief feedback that must not steal focus. Tone is paired
 with visible text, duration is bounded to 2–30 seconds (five by default), and
 the widget—not the host or component—owns removal through normal lifecycle-

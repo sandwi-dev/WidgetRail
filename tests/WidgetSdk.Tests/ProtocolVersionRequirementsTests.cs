@@ -184,6 +184,25 @@ internal static class ProtocolVersionRequirementsTests
                     ActionSurfaceOrientation = ActionSurfaceOrientation.Horizontal,
                     Children = [Text("surface-text")],
                 }),
+            NodeCase("poster tile", "poster-tile", ProtocolConstants.PosterTileVersion,
+                new()
+                {
+                    Id = "poster",
+                    Kind = ViewNodeKind.ActionSurface,
+                    ActionId = "open.poster",
+                    AccessibilityLabel = "Open poster",
+                    ActionSurfaceOrientation = ActionSurfaceOrientation.Vertical,
+                    ActionSurfacePresentation = ActionSurfacePresentation.Poster,
+                    Children =
+                    [
+                        new ViewNode
+                        {
+                            Id = "poster.content",
+                            Kind = ViewNodeKind.Stack,
+                            Children = [Text("poster-title")],
+                        },
+                    ],
+                }, "$.root.children[0].actionSurfacePresentation"),
             NodeCase("responsive grid", "responsive-grid", ProtocolConstants.ResponsiveGridVersion,
                 new()
                 {

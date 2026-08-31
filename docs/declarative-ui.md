@@ -153,6 +153,7 @@ primary accessibility contract.
 | `UI.LoadingIndicator(id, accessibilityLabel, size?)` | `loadingIndicator` | Protocol-v5 nonfocusable native activity arc with Compact, Standard, or Large sizing. |
 | `UI.ActionSurface(action, id, accessibilityLabel, orientation, children...)` | `actionSurface` | Protocol-v7 rich full-surface action whose bounded descendants are presentation only. |
 | `UI.Tile(...)` | `actionSurface` | Controller-first tile composition with optional artwork, multiline copy, visible state, and one full-tile target. |
+| `UI.PosterTile(...)` | `actionSurface` | Protocol-v37 fixed-aspect poster composition with optional full-background Cover artwork, bounded bottom copy, and one full-tile target. |
 | `UI.Toast(title, message, tone, id, duration?, glyph?)` | baseline `row`, `stack`, `text`, `icon` | Nonfocusable lifecycle-owned notification with bounded copy, tone, and duration metadata. |
 | `UI.IconButton(glyph, action, id, accessibilityLabel, variant?, size?)` | `button` | Accessible icon-only action with controller-safe semantic classes. |
 | `UI.SettingsRow(label, action, id, ...)` | `stack`, `row`, `text`, `button` | Responsive setting summary whose `id.action` Button is its only focus stop. |

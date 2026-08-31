@@ -773,6 +773,116 @@ void ActionSurfacePlanningAndInteractionGeometry() {
           "clipped ActionSurface hit testing never escapes the viewport");
 }
 
+WidgetSnapshot PosterTileSnapshot(const std::wstring_view titleText) {
+    WidgetSnapshot snapshot;
+    snapshot.sequence = 37;
+    snapshot.instanceId = L"poster.runtime.v1";
+    snapshot.activeInputScopeId = L"poster.root";
+    snapshot.initialFocusId = L"poster.card";
+    snapshot.root = Node(L"poster.root", L"stack");
+    snapshot.root.inputScopeId = L"poster.root";
+
+    auto poster = Node(L"poster.card", L"actionSurface");
+    poster.actionId = L"poster.open";
+    poster.accessibilityLabel = L"Complete accessible poster description";
+    poster.actionSurfaceOrientation = L"vertical";
+    poster.actionSurfacePresentation = L"poster";
+    poster.baseStyle = {
+        {L"width", Length(180)},
+        {L"aspect-ratio", Number(2.0 / 3.0)},
+        {L"padding", LengthList(L"0px")},
+        {L"overflow", Keyword(L"clip")},
+        {L"corner-radius", Length(12)},
+        {L"flex-shrink", Number(0)},
+    };
+
+    auto artwork = Node(L"poster.card.artwork", L"image");
+    artwork.imageSource = L"https://cdn.example.test/poster.jpg";
+    artwork.imageFit = L"cover";
+    artwork.accessibilityLabel = L"Poster artwork";
+    artwork.baseStyle = {
+        {L"width", Length(180)},
+        {L"height", Length(270)},
+        {L"corner-radius", Length(12)},
+    };
+
+    auto scrim = Node(L"poster.card.scrim", L"stack");
+    scrim.baseStyle = {
+        {L"width", Length(180)},
+        {L"height", Length(106)},
+        {L"padding", LengthList(L"12px")},
+        {L"background", Color(L"#101010")},
+        {L"flex-shrink", Number(0)},
+    };
+    auto title = Node(L"poster.card.title", L"text");
+    title.text = std::wstring(titleText);
+    title.accessibilityLabel = std::wstring(titleText);
+    title.baseStyle = {
+        {L"height", Length(42)},
+        {L"line-height", Number(1.2)},
+        {L"max-lines", Number(2)},
+        {L"text-overflow", Keyword(L"ellipsis")},
+    };
+    auto details = Node(L"poster.card.details", L"row");
+    details.baseStyle = {{L"height", Length(18)}};
+    auto state = Node(L"poster.card.state", L"text");
+    state.text = L"Available";
+    details.children = {std::move(state)};
+    scrim.children = {std::move(title), std::move(details)};
+    poster.children = {std::move(artwork), std::move(scrim)};
+    snapshot.root.children = {std::move(poster)};
+    return snapshot;
+}
+
+void PosterTileUsesFixedFullBleedGeometry() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+              DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+              reinterpret_cast<IUnknown**>(write.GetAddressOf()))),
+        "create DirectWrite factory for poster geometry");
+    DeclarativeRenderer renderer{nullptr, write.Get(), nullptr};
+    const auto render = [&](const std::wstring_view title) {
+        auto snapshot = PosterTileSnapshot(title);
+        widgetrail::DeclarativeRenderOptions options;
+        options.collectAccessibility = true;
+        return renderer.Render(
+            nullptr, snapshot, L"poster.card",
+            {0.0F, 0.0F, 360.0F, 360.0F}, options);
+    };
+    const auto shortTitle = render(L"Short");
+    const auto twoLines = render(L"A title that occupies the reserved second line");
+    const auto overlong = render(
+        L"A deliberately overlong title that must clamp after two lines without changing the poster extent");
+
+    const auto& shortRect = shortTitle.elementRects.at(L"poster.card");
+    for (const auto* result : {&twoLines, &overlong}) {
+        const auto& rect = result->elementRects.at(L"poster.card");
+        Near(rect.width, shortRect.width,
+            "poster title length cannot change outer width");
+        Near(rect.height, shortRect.height,
+            "poster title length cannot change fixed-aspect height");
+        const auto& artwork = result->posterArtworkRects.at(L"poster.card.artwork");
+        Near(artwork.x, rect.x, "poster artwork begins at the surface left edge");
+        Near(artwork.y, rect.y, "poster artwork begins at the surface top edge");
+        Near(artwork.width, rect.width, "poster artwork fills the surface width");
+        Near(artwork.height, rect.height, "poster artwork fills the surface height");
+    }
+    Check(shortRect.width > 0.0F && shortRect.height > shortRect.width,
+        "default poster geometry remains a positive portrait aspect");
+    Near(overlong.elementRects.at(L"poster.card.title").height, 42.0F,
+        "poster title retains its deterministic reserved two-line box");
+    Check(overlong.focusRects.size() == 1U &&
+              overlong.focusRects.contains(L"poster.card") &&
+              overlong.hitRegions.size() == 1U,
+        "poster descendants do not create a second input target");
+    Check(overlong.accessibilityRegions.end() != std::find_if(
+              overlong.accessibilityRegions.begin(),
+              overlong.accessibilityRegions.end(),
+              [](const auto& region) { return region.nodeId == L"poster.card"; }),
+        "poster retains one full-surface accessibility semantic");
+}
+
 WidgetSnapshot ResponsiveGridSnapshot() {
     WidgetSnapshot snapshot;
     snapshot.sequence = 8;
@@ -4353,6 +4463,7 @@ int main() {
     ResponsiveNavigationShellFitsBoundedSurfaces();
     SliderPlanningAndAccessibilityTargets();
     ActionSurfacePlanningAndInteractionGeometry();
+    PosterTileUsesFixedFullBleedGeometry();
     ResponsiveGridFlowsThroughNativePlanning();
     FocusMotionUsesStableSnapshotIdentity();
     SubtreeTranslationKeepsPresentationGeometryAligned();

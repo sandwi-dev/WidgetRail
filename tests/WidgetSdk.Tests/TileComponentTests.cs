@@ -119,6 +119,74 @@ internal static class TileComponentTests
         return Task.CompletedTask;
     }
 
+    internal static Task PosterTilesAreBoundedAndVersioned()
+    {
+        const string fullTitle =
+            "A complete accessible poster title that is intentionally longer than two visible lines";
+        var poster = UI.PosterTile(
+                fullTitle,
+                "Available",
+                "poster.open",
+                "poster.card",
+                subtitle: "Provider label",
+                metadata: "Platform · 2026",
+                artwork: TileArtwork.FromHttps(
+                    "https://cdn.example.test/posters/sample.jpg",
+                    "Sample poster artwork"))
+            .Shortcut(ControllerButton.X, actionId: "poster.secondary")
+            .Selected();
+        var snapshot = new WidgetView(poster, InitialFocusId: poster.Id)
+            .CreateSnapshot("poster.instance", 1);
+
+        Equal(ProtocolConstants.PosterTileVersion, snapshot.ProtocolVersion);
+        Equal(ViewNodeKind.ActionSurface, snapshot.Root.Kind);
+        Equal(ActionSurfaceOrientation.Vertical, snapshot.Root.ActionSurfaceOrientation);
+        Equal(ActionSurfacePresentation.Poster, snapshot.Root.ActionSurfacePresentation);
+        Equal(fullTitle, snapshot.Root.AccessibilityLabel!.Split(", ")[1]);
+        True(snapshot.Root.AccessibilityLabel.Contains(fullTitle, StringComparison.Ordinal),
+            "Poster accessibility must retain complete unclamped title copy.");
+        True(snapshot.Root.StyleClasses.SequenceEqual(
+                ["wrail-action-surface", "wrail-poster-tile"]),
+            "Poster root classes changed.");
+        True(snapshot.Root.Children.Select(child => child.Id).SequenceEqual(
+                ["poster.card.artwork", "poster.card.scrim"]),
+            "Poster layering order or stable IDs changed.");
+        Equal(ImageFit.Cover, Find(snapshot.Root, "poster.card.artwork").ImageFit);
+        True(Find(snapshot.Root, "poster.card.artwork").StyleClasses
+                .SequenceEqual(["wrail-poster-tile__artwork"]),
+            "Poster artwork class changed.");
+        True(Find(snapshot.Root, "poster.card.scrim").StyleClasses
+                .SequenceEqual(["wrail-poster-tile__scrim"]),
+            "Poster scrim class changed.");
+        Equal(fullTitle, Find(snapshot.Root, "poster.card.title").Text);
+        Equal("Platform · 2026", Find(snapshot.Root, "poster.card.metadata").Text);
+        Equal("Available", Find(snapshot.Root, "poster.card.state").Text);
+        Equal(1, AllNodes(snapshot.Root).Count(candidate => candidate.IsFocusable));
+        Equal(1, AllNodes(snapshot.Root).Count(candidate => candidate.ActionId is not null));
+        Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+
+        var withoutArtwork = UI.PosterTile(
+            "No artwork", "Unavailable", "poster.open", "poster.fallback");
+        var fallbackSnapshot = new WidgetView(withoutArtwork, InitialFocusId: withoutArtwork.Id)
+            .CreateSnapshot("poster.fallback.instance", 1);
+        Equal(1, fallbackSnapshot.Root.Children.Count);
+        Equal("poster.fallback.scrim", fallbackSnapshot.Root.Children[0].Id);
+        Equal(ProtocolConstants.PosterTileVersion, fallbackSnapshot.ProtocolVersion);
+
+        var legacy = snapshot with { ProtocolVersion = ProtocolConstants.PosterTileVersion - 1 };
+        True(ViewSnapshotValidator.Validate(legacy).Any(error =>
+                error.Code == "feature_requires_version"),
+            "Poster presentation must fail closed before protocol v37.");
+        Throws<ArgumentException>(() => UI.PosterTile(
+            "Glyph", "Ready", "poster.open", "poster.glyph",
+            artwork: TileArtwork.FromGlyph(WidgetGlyph.Play, "Glyph")));
+        Throws<ArgumentException>(() => UI.PosterTile(
+            "Contain", "Ready", "poster.open", "poster.contain",
+            artwork: TileArtwork.FromHttps(
+                "https://cdn.example.test/poster.jpg", "Poster", ImageFit.Contain)));
+        return Task.CompletedTask;
+    }
+
     internal static Task ContextActionsAreBoundedAndVersioned()
     {
         var tile = UI.Tile(

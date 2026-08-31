@@ -1405,6 +1405,7 @@ method static WidgetRail.WidgetSdk.UI.LoadingIndicator(string id, string accessi
 method static WidgetRail.WidgetSdk.UI.MediaViewport(WidgetRail.WidgetProtocol.EmbeddedMediaSurface surface, string id) -> WidgetRail.WidgetSdk.MediaViewportElement
 method static WidgetRail.WidgetSdk.UI.NavigationShell(string id, string selectedDestinationId, string contentEntryFocusId, WidgetRail.WidgetSdk.WidgetElement content, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.NavigationShellDestination> destinations, WidgetRail.WidgetSdk.WidgetElement? expandedPane = null, string? expandedPaneEntryFocusId = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Picker(string title, string id, string scopeId, string backAction, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.PickerOption> options, string? description = null) -> WidgetRail.WidgetSdk.StackElement
+method static WidgetRail.WidgetSdk.UI.PosterTile(string title, string stateLabel, string action, string id, string? subtitle = null, string? metadata = null, WidgetRail.WidgetSdk.TileArtwork? artwork = null, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method static WidgetRail.WidgetSdk.UI.Progress(double value, double maximum, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ProgressElement
 method static WidgetRail.WidgetSdk.UI.ResponsiveBranch(WidgetRail.WidgetProtocol.ResponsiveVisibility visibility, WidgetRail.WidgetSdk.WidgetElement child) -> WidgetRail.WidgetSdk.WidgetElement
 method static WidgetRail.WidgetSdk.UI.ResponsiveGrid(string id, double minimumColumnWidth, int? maximumColumns = null, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.GridElement
@@ -1878,6 +1879,7 @@ property TState WidgetRail.WidgetSdk.WidgetModelUpdate<TState>.Current { get; se
 property TState WidgetRail.WidgetSdk.WidgetModelUpdate<TState>.Previous { get; set; }
 property TValue? WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Value { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfaceOrientation WidgetRail.WidgetSdk.ActionSurfaceElement.Orientation { get; set; }
+property WidgetRail.WidgetProtocol.ActionSurfacePresentation? WidgetRail.WidgetSdk.ActionSurfaceElement.Presentation { get; set; }
 property WidgetRail.WidgetProtocol.ControllerButton WidgetRail.WidgetSdk.ControllerInputEvent.Button { get; set; }
 property WidgetRail.WidgetProtocol.ControllerButton? WidgetRail.WidgetSdk.WidgetActionEvent.ControllerButton { get; set; }
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.ControllerInputEvent.Phase { get; set; }

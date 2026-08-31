@@ -745,15 +745,21 @@ struct DeclarativeRenderer::RenderPass final {
                 element.children.push_back(std::move(*leading));
             }
         }
-        for (const auto& child : node.children) {
+        for (std::size_t childIndex = 0; childIndex < node.children.size(); ++childIndex) {
+            const auto& child = node.children[childIndex];
             if (!IsResponsiveVisible(child)) continue;
-            element.children.push_back(PrepareNode(
+            auto preparedChild = PrepareNode(
                 child,
                 narrowId,
                 parentWidth,
                 parentHeight,
                 style.fontSizePx() / textScale,
-                effectiveBackground));
+                effectiveBackground);
+            const auto posterArtwork = node.kind == L"actionSurface" &&
+                node.actionSurfacePresentation == L"poster" &&
+                node.children.size() == 2U && childIndex == 0U;
+            if (!posterArtwork)
+                element.children.push_back(std::move(preparedChild));
         }
         if (node.kind == L"scroll" && node.virtualCollectionWindow &&
             node.virtualCollectionWindow->firstItemIndex &&
@@ -2902,6 +2908,11 @@ struct DeclarativeRenderer::RenderPass final {
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         result.elementRects[node.id] = presented.borderBox;
         result.elementVisibleRects[node.id] = presented.visibleBox;
+        if (node.kind == L"actionSurface" &&
+            node.actionSurfacePresentation == L"poster" &&
+            node.children.size() == 2U) {
+            result.posterArtworkRects[node.children.front().id] = presented.borderBox;
+        }
 #endif
 
         const auto visibleRect = presented.visibleBox;
@@ -2979,6 +2990,24 @@ struct DeclarativeRenderer::RenderPass final {
         // control surface; the Slider itself stays visually lightweight.
         if (node.kind != L"slider" && node.kind != L"loadingIndicator")
             DrawSurface(node, style, paintRect, opacity);
+
+        if (node.kind == L"actionSurface" &&
+            node.actionSurfacePresentation == L"poster") {
+            if (node.children.size() == 2U) {
+                const auto& artwork = node.children.front();
+                if (const auto preparedArtwork = prepared.find(NarrowStableId(artwork.id));
+                    preparedArtwork != prepared.end()) {
+                    DrawImage(
+                        artwork, preparedArtwork->second.paintStyle,
+                        paintRect, opacity, false);
+                }
+            } else {
+                DrawSemanticIcon(
+                    node, style,
+                    Inset(paintRect, std::min(paintRect.width, paintRect.height) * 0.34F),
+                    opacity * 0.65F, L"play");
+            }
+        }
 
         if (node.kind == L"text") {
             DrawTextContent(node, style, presented.contentBox, opacity);

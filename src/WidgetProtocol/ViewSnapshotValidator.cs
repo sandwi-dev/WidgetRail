@@ -789,6 +789,23 @@ public static class ViewSnapshotValidator
                 else if (!Enum.IsDefined(node.ActionSurfaceOrientation.Value))
                     Add($"{path}.actionSurfaceOrientation", "invalid_action_surface_orientation",
                         "The action-surface orientation is not supported.");
+                if (node.ActionSurfacePresentation is { } presentation &&
+                    !Enum.IsDefined(presentation))
+                    Add($"{path}.actionSurfacePresentation", "invalid_action_surface_presentation",
+                        "The action-surface presentation is not supported.");
+                if (node.ActionSurfacePresentation == ActionSurfacePresentation.Poster)
+                {
+                    if (node.ActionSurfaceOrientation != ActionSurfaceOrientation.Vertical)
+                        Add($"{path}.actionSurfaceOrientation", "poster_orientation_required",
+                            "A poster ActionSurface requires vertical content orientation.");
+                    if (node.Children.Count is < 1 or > 2 ||
+                        node.Children[^1].Kind != ViewNodeKind.Stack ||
+                        (node.Children.Count == 2 &&
+                         (node.Children[0].Kind != ViewNodeKind.Image ||
+                          node.Children[0].ImageFit != ImageFit.Cover)))
+                        Add($"{path}.children", "invalid_poster_structure",
+                            "A poster ActionSurface requires one bounded bottom Stack and may precede it with one Cover Image artwork child.");
+                }
                 if (string.IsNullOrWhiteSpace(node.ActionId))
                     Add($"{path}.actionId", "required", "An action surface requires an action ID.");
                 if (string.IsNullOrWhiteSpace(node.AccessibilityLabel))
@@ -804,10 +821,11 @@ public static class ViewSnapshotValidator
                     Add(path, "action_surface_property_not_allowed",
                         "Action surfaces accept interaction metadata, orientation, style classes, shortcuts, and bounded presentational children only.");
             }
-            else if (node.ActionSurfaceOrientation is not null)
+            else if (node.ActionSurfaceOrientation is not null ||
+                     node.ActionSurfacePresentation is not null)
             {
-                Add($"{path}.actionSurfaceOrientation", "action_surface_orientation_not_allowed",
-                    "Action-surface orientation applies only to action surfaces.");
+                Add(path, "action_surface_presentation_not_allowed",
+                    "Action-surface orientation and presentation apply only to action surfaces.");
             }
             if (node.InputScopeId is not null)
             {

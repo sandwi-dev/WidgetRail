@@ -157,6 +157,12 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.ContextActionsVersion,
                     $"{path}.contextActions",
                     $"Context actions require protocol version {ProtocolConstants.ContextActionsVersion} or later.");
+            if (node.ActionSurfacePresentation is not null)
+                Add(
+                    "poster-tile",
+                    ProtocolConstants.PosterTileVersion,
+                    $"{path}.actionSurfacePresentation",
+                    $"Poster tiles require protocol version {ProtocolConstants.PosterTileVersion} or later.");
             var shortcuts = node.Shortcuts ?? [];
             for (var shortcutIndex = 0; shortcutIndex < shortcuts.Count; shortcutIndex++)
             {

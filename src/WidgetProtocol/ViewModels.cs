@@ -34,6 +34,19 @@ public enum ActionSurfaceOrientation
     Vertical,
 }
 
+/// <summary>
+/// Selects one closed host-owned visual composition for an ActionSurface.
+/// Omission preserves the ordinary flow layout. Poster composes one optional
+/// Cover artwork child behind one bounded bottom content subtree while the
+/// ActionSurface remains the only interaction and accessibility target.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ActionSurfacePresentation>))]
+public enum ActionSurfacePresentation
+{
+    Standard,
+    Poster,
+}
+
 [JsonConverter(typeof(JsonStringEnumConverter<LoadingIndicatorSize>))]
 public enum LoadingIndicatorSize
 {
@@ -351,6 +364,11 @@ public sealed record ViewNode
     /// host/theme concern.
     /// </summary>
     public ActionSurfaceOrientation? ActionSurfaceOrientation { get; init; }
+    /// <summary>
+    /// Optional protocol-v37 ActionSurface visual composition. Omission is
+    /// equivalent to <see cref="WidgetProtocol.ActionSurfacePresentation.Standard"/>.
+    /// </summary>
+    public ActionSurfacePresentation? ActionSurfacePresentation { get; init; }
     /// <summary>
     /// Smallest desired logical-DIP column width for a responsive Grid. The
     /// host computes a stable column count from the grid's actual content

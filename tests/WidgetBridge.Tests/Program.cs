@@ -118,7 +118,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
     ("Protocol-v19 virtual collection window crosses worker and bridge", VirtualCollectionWindowCrossesBridge),
     ("Admitted registry invalidation reaches the client event queue", AdmittedRegistryInvalidationReachesClientEventQueue),
-    ("Protocol-v8 grids, action surfaces, and loading indicators resolve bridge render roles", ActionSurfaceRenderRole),
+    ("Protocol-v37 poster and ordinary action surfaces resolve bridge render roles", ActionSurfaceRenderRole),
     ("Protocol-v15 text entries resolve one closed bridge render role", TextEntryRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
     ("Late action failures retain worker generation", ActionFailureIsGenerationOwned),
@@ -3735,6 +3735,15 @@ static Task ActionSurfaceRenderRole()
                 "library.app",
                 subtitle: "Application",
                 artwork: TileArtwork.FromGlyph(WidgetGlyph.Play, "Application icon")),
+            UI.PosterTile(
+                "Poster application",
+                "Ready",
+                "launch.poster",
+                "library.poster",
+                subtitle: "Provider",
+                metadata: "Platform",
+                artwork: TileArtwork.FromHttps(
+                    "https://cdn.example.test/poster.jpg", "Poster artwork")),
             UI.ResponsiveGrid(
                 "library.grid", 180, 2,
                 UI.Button("One", "open.one", "library.one"),
@@ -3747,9 +3756,13 @@ static Task ActionSurfaceRenderRole()
         "ActionSurface role was omitted from bridge styles.");
     Assert.True(styles.ContainsKey("library.loading"),
         "LoadingIndicator role was omitted from bridge styles.");
+    Assert.True(styles.ContainsKey("library.poster") &&
+                styles.ContainsKey("library.poster.artwork") &&
+                styles.ContainsKey("library.poster.scrim"),
+        "Poster ActionSurface layering roles were omitted from bridge styles.");
     Assert.True(styles.ContainsKey("library.grid"),
         "Grid role was omitted from bridge styles.");
-    Assert.Equal(ProtocolConstants.ResponsiveGridVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.PosterTileVersion, snapshot.ProtocolVersion);
     return Task.CompletedTask;
 }
 
@@ -4114,8 +4127,28 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
         var media = initial.EmbeddedMedia
             ?? throw new InvalidOperationException("Built sample omitted embedded media.");
         Assert.Equal(
-            ProtocolConstants.CompactPinnedMediaPresentationVersion,
+            ProtocolConstants.OverlayFullscreenMediaPresentationVersion,
             initial.ProtocolVersion);
+        Assert.True(media.CompactPinnedPresentation,
+            "Built sample omitted compact pinned media presentation.");
+        Assert.Equal<double?>(2D, media.MediaSeekStepSeconds);
+        Assert.True(media.OverlayFullscreenCapable,
+            "Built sample omitted overlay fullscreen presentation.");
+        Assert.SequenceEqual(
+            new[]
+            {
+                EmbeddedMediaCommand.Activate,
+                EmbeddedMediaCommand.TogglePlayback,
+                EmbeddedMediaCommand.Previous,
+                EmbeddedMediaCommand.Next,
+                EmbeddedMediaCommand.SeekBackward,
+                EmbeddedMediaCommand.SeekForward,
+            },
+            media.Commands);
+        Assert.True(Flatten(initial.Root).Any(node =>
+                node.Id == "media-shell.fullscreen" &&
+                node.ActionId == "host.embeddedMedia.enterFullscreen"),
+            "Built sample omitted its exact fullscreen action declaration.");
         Assert.Equal<EmbeddedMediaPlaybackCommand?>(null, media.PendingCommand);
 
         var resolved = await client.RequestAsync(
@@ -4143,11 +4176,24 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
         var adapter = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(
             bundle.Resources.Single(resource =>
                 resource.Path == "payload/media/adapter.html").ContentBase64));
-        Assert.True(adapter.Contains("m.command==='previous'", StringComparison.Ordinal) &&
-                    adapter.Contains("m.command==='next'", StringComparison.Ordinal) &&
-                    adapter.Contains("await navigate(operation,-1)", StringComparison.Ordinal) &&
-                    adapter.Contains("await navigate(operation,1)", StringComparison.Ordinal),
-            "Built sample adapter did not retain both bounded spatial navigation routes.");
+        static void AssertSpatialNavigationContract(string content, string owner)
+        {
+            Assert.True(System.Text.RegularExpressions.Regex.IsMatch(
+                    content,
+                    @"previous\s*\(\s*command\s*\)\s*\{\s*return\s+navigate\s*\(\s*-1\s*,\s*command\.signal\s*\)\s*;\s*\}",
+                    System.Text.RegularExpressions.RegexOptions.CultureInvariant),
+                $"{owner} omitted the exact previous(command) navigation route.");
+            Assert.True(System.Text.RegularExpressions.Regex.IsMatch(
+                    content,
+                    @"next\s*\(\s*command\s*\)\s*\{\s*return\s+navigate\s*\(\s*1\s*,\s*command\.signal\s*\)\s*;\s*\}",
+                    System.Text.RegularExpressions.RegexOptions.CultureInvariant),
+                $"{owner} omitted the exact next(command) navigation route.");
+        }
+        AssertSpatialNavigationContract(
+            File.ReadAllText(Path.Combine(
+                "samples", "EmbeddedMediaWidget", "media", "adapter.html")),
+            "Built sample adapter source");
+        AssertSpatialNavigationContract(adapter, "Sealed built sample adapter");
 
         var eventSequence = 0L;
         async Task<(ViewSnapshot Snapshot, EmbeddedMediaPlaybackCommand Command)>
@@ -4254,7 +4300,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
         var (play, playCommand) = await CommandAsync(
             "host.embeddedMedia.togglePlayback", "media-shell.play");
         Assert.Equal(
-            ProtocolConstants.CompactPinnedMediaPresentationVersion,
+            ProtocolConstants.OverlayFullscreenMediaPresentationVersion,
             play.ProtocolVersion);
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Play, playCommand.Kind);
         var playing = await AcknowledgeAsync(

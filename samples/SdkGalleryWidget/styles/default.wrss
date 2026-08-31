@@ -242,6 +242,25 @@
 .wrail-tile__subtitle { color: var(--text-muted); font-size: 12px; max-lines: 2; }
 .wrail-tile__metadata { color: var(--text-muted); opacity: 0.75; font-size: 10px; max-lines: 2; }
 .wrail-tile__state { color: var(--success); font-size: 10px; font-weight: 500; max-lines: 1; }
+.wrail-poster-tile {
+  min-width: 0px;
+  min-height: 0px;
+  aspect-ratio: 2/3;
+  padding: 0px;
+  gap: 0px;
+  align: stretch;
+  justify: end;
+  overflow: clip;
+  corner-radius: 12px;
+}
+.wrail-poster-tile__artwork { width: 100%; height: 100%; object-fit: cover; corner-radius: 12px; }
+.wrail-poster-tile__scrim { width: 100%; padding: 28px 14px 12px 14px; background: rgba(9, 9, 8, 0.82); }
+.wrail-poster-tile__content { min-width: 0px; gap: 4px; }
+.wrail-poster-tile__subtitle { height: 18px; color: var(--text-muted); font-size: 11px; font-weight: 600; line-height: 1.2; max-lines: 1; text-overflow: ellipsis; }
+.wrail-poster-tile__title { height: 42px; color: var(--text); font-size: 17px; font-weight: 600; line-height: 1.2; max-lines: 2; text-overflow: ellipsis; }
+.wrail-poster-tile__details { height: 18px; min-width: 0px; gap: 8px; align: center; }
+.wrail-poster-tile__metadata { min-width: 0px; color: var(--text-muted); font-size: 11px; line-height: 1.2; max-lines: 1; text-overflow: ellipsis; flex-grow: 1; flex-shrink: 1; }
+.wrail-poster-tile__state { color: var(--accent); font-size: 11px; font-weight: 600; line-height: 1.2; max-lines: 1; text-overflow: ellipsis; flex-grow: 0; flex-shrink: 0; }
 
 .gallery-utilities-code-card { min-width: 0px; }
 .wrail-code-text {

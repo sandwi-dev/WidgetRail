@@ -309,6 +309,10 @@ struct WidgetNode final {
     std::wstring collectionAnchorKey;
     std::wstring collectionItemKey;
     std::wstring actionSurfaceOrientation;
+    // Protocol-v37 closed visual composition for an ActionSurface. Empty and
+    // "standard" preserve ordinary child flow; "poster" paints one optional
+    // Cover artwork child behind one bounded bottom content subtree.
+    std::wstring actionSurfacePresentation;
     std::optional<double> gridMinimumColumnWidth;
     std::optional<std::size_t> gridMaximumColumns;
     std::vector<std::wstring> styleClasses;
