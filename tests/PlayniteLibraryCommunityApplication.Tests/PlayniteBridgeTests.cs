@@ -186,7 +186,7 @@ public sealed class PlayniteBridgeTests
         var value = manifest.RootElement;
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, value.GetProperty("optionalPermissions").GetArrayLength());
-        Assert.AreEqual("0.2.6", value.GetProperty("version").GetString());
+        Assert.AreEqual("0.2.7", value.GetProperty("version").GetString());
         var manifestText = File.ReadAllText(manifestPath);
         Assert.IsFalse(manifestText.Contains("Bearer", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(manifestText.Contains("token", StringComparison.OrdinalIgnoreCase));
@@ -210,7 +210,7 @@ public sealed class PlayniteBridgeTests
                 Path.GetRelativePath(root, sourcePath));
 
         var packagePath = Path.Combine(root, "artifacts", "community-addons",
-            "playnite-library", "widgetrail.samples.playnite-library-0.2.6.wrwidget");
+            "playnite-library", "widgetrail.samples.playnite-library-0.2.7.wrwidget");
         Assert.IsTrue(File.Exists(packagePath), "The validated package artifact is missing.");
         using var archive = ZipFile.OpenRead(packagePath);
         foreach (var entry in archive.Entries.Where(item => item.Length != 0))

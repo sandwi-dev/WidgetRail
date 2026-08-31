@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.spotify",
   "publisher": "widgetrail.samples",
   "name": "Spotify",
-  "version": "0.3.33",
+  "version": "0.3.34",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
