@@ -939,10 +939,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             _playniteAuthority = result.Authority;
             organization = PresentationOrganizationLocked();
         }
-        var rawArtwork = await ResolveArtworkAsync(page.Items, cancellationToken)
-            .ConfigureAwait(false);
-        var rawItems = page.Items.Select(item => ProjectArtwork(
-            item, rawArtwork.GetValueOrDefault(item.SavedId))).ToArray();
+        var rawItems = page.Items.Select(PlayniteLibraryItem.From).ToArray();
         var fixedRows = PlayniteLibraryFixedRows.Empty;
         var rawFixedRows = PlayniteLibraryFixedRows.Empty;
         if (direction is null)
@@ -963,8 +960,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 : await _application.ResolveSavedAsync(
                     fixedSavedIds, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
-            var resolvedArtwork = await ResolveArtworkAsync(resolved, cancellationToken)
-                .ConfigureAwait(false);
             var resolvedBySavedId = resolved.ToDictionary(
                 item => item.SavedId, StringComparer.Ordinal);
             var automaticManualGames = route == PlayniteLibraryRoute.Library
@@ -989,8 +984,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     .OfType<WidgetAppLibraryItem>()
                     .Where(item => MatchesFixedQuery(
                         PlayniteLibraryTitlePolicy.Project(organization, item), query))
-                    .Select(item => ProjectArtwork(
-                        item, resolvedArtwork.GetValueOrDefault(item.SavedId)))
+                    .Select(PlayniteLibraryItem.From)
                     .Take(PlayniteLibraryPrivateState.MaximumRecentItems)
                     .ToArray();
             PlayniteLibraryItem[] manual = route != PlayniteLibraryRoute.Library ||
@@ -1003,8 +997,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                         item.Presentation.Kind != WidgetAppLibraryKind.Game &&
                         MatchesFixedQuery(
                             PlayniteLibraryTitlePolicy.Project(organization, item), query))
-                    .Select(item => ProjectArtwork(
-                        item, resolvedArtwork.GetValueOrDefault(item.SavedId)))
+                    .Select(PlayniteLibraryItem.From)
                     .Take(PlayniteLibraryPrivateState.MaximumManualItems)
                     .ToArray();
             var occupied = recent.Concat(manual).Select(item => item.Value.SavedId)
@@ -1015,14 +1008,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 .OfType<WidgetAppLibraryItem>()
                 .Select(item => PlayniteLibraryTitlePolicy.Project(organization, item))
                 .Where(item => MatchesFixedQuery(item, query))
-                .Select(item => ProjectArtwork(
-                    item, resolvedArtwork.GetValueOrDefault(item.SavedId)))
+                .Select(PlayniteLibraryItem.From)
                 .Take(WidgetAppLibraryService.MaximumSavedItems)
                 .ToArray();
             rawFixedRows = new(recent, manual,
                 titleMatches.Select(item => resolvedBySavedId[item.Value.SavedId])
-                    .Select(item => ProjectArtwork(
-                        item, resolvedArtwork.GetValueOrDefault(item.SavedId))).ToArray());
+                    .Select(PlayniteLibraryItem.From).ToArray());
             fixedRows = new(
                 recent.Select(item => item.WithValue(
                     PlayniteLibraryTitlePolicy.Project(organization, item.Value))).ToArray(),
@@ -1078,37 +1069,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
             page.After is null ? null : new WidgetCollectionCursor(page.After));
     }
 
-    private async ValueTask<IReadOnlyDictionary<string, string>> ResolveArtworkAsync(
-        IReadOnlyList<WidgetAppLibraryItem> items,
-        CancellationToken cancellationToken)
-    {
-        var content = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (!_application.OwnsArtworkContent) return content;
-        foreach (var item in items)
-        {
-            var artwork = item.Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile);
-            if (artwork is null) continue;
-            var png = await _application.ResolveArtworkAsync(artwork, cancellationToken)
-                .ConfigureAwait(false);
-            if (png is not null) content[item.SavedId] = png;
-        }
-        return content;
-    }
-
-    private PlayniteLibraryItem ProjectArtwork(
-        WidgetAppLibraryItem item,
-        string? pngBase64)
-    {
-        if (!_application.OwnsArtworkContent)
-            return PlayniteLibraryItem.From(item, pngBase64);
-        return PlayniteLibraryItem.From(item with
-        {
-            Presentation = item.Presentation with
-            {
-                Artwork = new WidgetAppLibraryArtworkSet([]),
-            },
-        }, pngBase64);
-    }
+    public override ValueTask<WidgetEncodedArtwork?> OnResolveArtworkAsync(
+        WidgetArtworkHandle handle,
+        CancellationToken cancellationToken = default) =>
+        _application.OwnsArtworkContent
+            ? _application.ResolveArtworkAsync(handle, cancellationToken)
+            : ValueTask.FromResult<WidgetEncodedArtwork?>(null);
 
     private async Task LaunchAsync(string sourceElementId, CancellationToken cancellationToken)
     {

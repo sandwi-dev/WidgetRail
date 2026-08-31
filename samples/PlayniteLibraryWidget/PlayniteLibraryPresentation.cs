@@ -789,9 +789,7 @@ internal static class PlayniteLibraryPresentation
     {
         var id = PlayniteLibraryIdentity.FocusId("grid", key);
         var launching = string.Equals(savedId, launchingSavedId, StringComparison.Ordinal);
-        var artwork = current?.ArtworkPngBase64 is { } png
-            ? TileArtwork.FromInlinePng(png, title, ImageFit.Cover)
-            : artworkHandle is { Length: > 0 }
+        var artwork = artworkHandle is { Length: > 0 }
             ? TileArtwork.FromHandle(new WidgetArtworkHandle(artworkHandle), title, ImageFit.Cover)
             : TileArtwork.FromGlyph(WidgetGlyph.Play, title);
         var availability = PlayniteLibraryAvailabilityPresentation.Tile(current, interactive);
@@ -834,13 +832,10 @@ internal static class PlayniteLibraryPresentation
     }
 
     private static TileArtwork Artwork(PlayniteLibraryItem item) =>
-        item.ArtworkPngBase64 is { } png
-            ? TileArtwork.FromInlinePng(
-                png, item.Presentation.DisplayName, ImageFit.Cover)
-            : item.Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile) is { } artwork
-                ? TileArtwork.FromHandle(new WidgetArtworkHandle(artwork.Handle),
-                    item.Presentation.DisplayName, ImageFit.Cover)
-                : TileArtwork.FromGlyph(WidgetGlyph.Play, item.Presentation.DisplayName);
+        item.Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile) is { } artwork
+            ? TileArtwork.FromHandle(new WidgetArtworkHandle(artwork.Handle),
+                item.Presentation.DisplayName, ImageFit.Cover)
+            : TileArtwork.FromGlyph(WidgetGlyph.Play, item.Presentation.DisplayName);
 
     private static PlayniteLibraryLaunchState? LaunchStateFor(
         IReadOnlyDictionary<string, PlayniteLibraryLaunchState> states,

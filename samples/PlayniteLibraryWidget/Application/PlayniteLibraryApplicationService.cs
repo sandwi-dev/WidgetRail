@@ -6,9 +6,12 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal sealed class PlayniteLibraryApplicationService(
     IPlayniteLibraryBridgeClient client,
-    PlayniteLibraryStateFileStore state) : IPlayniteLibraryApplicationService
+    PlayniteLibraryStateFileStore state,
+    IPlayniteLibraryArtworkDiagnostics? artworkDiagnostics = null)
+    : IPlayniteLibraryApplicationService
 {
-    private const int MaximumArtworkEntries = 128;
+    private const int MaximumArtworkEntries =
+        PlayniteLibraryWidget.MaximumRetainedItems + WidgetAppLibraryService.MaximumSavedItems;
     private const int MaximumCategoryMemberships = PlayniteBridgeClient.MaximumGames;
     private readonly IPlayniteLibraryBridgeClient _client = client ??
         throw new ArgumentNullException(nameof(client));
@@ -17,10 +20,12 @@ internal sealed class PlayniteLibraryApplicationService(
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, ArtworkRegistration> _artwork =
         new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string?> _artworkContent =
+    private readonly Dictionary<string, WidgetEncodedArtwork> _artworkContent =
         new(StringComparer.Ordinal);
     private readonly Queue<string> _artworkOrder = [];
     private Catalog? _lastGood;
+    private readonly IPlayniteLibraryArtworkDiagnostics _artworkDiagnostics =
+        artworkDiagnostics ?? PlayniteLibraryArtworkDiagnostics.None;
 
     public bool OwnsArtworkContent => true;
 
@@ -164,32 +169,63 @@ internal sealed class PlayniteLibraryApplicationService(
         catch (Exception exception) { throw Safe(exception); }
     }
 
-    public async ValueTask<string?> ResolveArtworkAsync(
-        WidgetAppLibraryArtwork artwork,
+    public async ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(
+        WidgetArtworkHandle handle,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(artwork);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!_artwork.TryGetValue(artwork.Handle, out var registration) ||
-                !string.Equals(registration.Revision, artwork.Revision,
-                    StringComparison.Ordinal)) return null;
-            if (_artworkContent.TryGetValue(artwork.Handle, out var cached)) return cached;
-            var bytes = await _client.ResolveArtworkAsync(
+            if (!_artwork.TryGetValue(handle.Value, out var registration))
+            {
+                _artworkDiagnostics.Record("authority", "unknown-handle", 1, "unknown");
+                return null;
+            }
+            if (_artworkContent.TryGetValue(handle.Value, out var cached)) return cached;
+            var result = await _client.ResolveArtworkAsync(
                     registration.GameId, registration.Kind, cancellationToken)
                 .ConfigureAwait(false);
-            var content = bytes is null ? null : Convert.ToBase64String(bytes);
-            _artworkContent[artwork.Handle] = content;
-            return content;
+            if (result.Artwork is null)
+            {
+                _artworkDiagnostics.Record("resolve", result.Code, 1, result.SizeClass);
+                return null;
+            }
+            _artworkContent[handle.Value] = result.Artwork;
+            return result.Artwork;
         }
-        catch (PlayniteBridgeDataException exception) when (
-            exception.Code is "game_not_found" or "playnite_unavailable")
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            throw;
+        }
+        catch (Exception exception) when (IsArtworkFailure(exception))
+        {
+            _artworkDiagnostics.Record("resolve", ArtworkFailureCode(exception), 1,
+                "unknown");
             return null;
         }
         finally { _gate.Release(); }
     }
+
+    private static bool IsArtworkFailure(Exception exception) => exception is
+        PlayniteBridgeDataException or PlayniteBridgeTransportException or
+        HttpRequestException or IOException or InvalidOperationException;
+
+    internal static string ArtworkFailureCode(Exception exception) => exception switch
+    {
+        PlayniteBridgeDataException data when data.Code == "game_not_found" => "not-found",
+        PlayniteBridgeDataException data when data.Code == "playnite_unavailable" =>
+            "provider-unavailable",
+        PlayniteBridgeTransportException transport when transport.IsOverBudget =>
+            "response-over-budget",
+        PlayniteBridgeTransportException transport when transport.IsMalformed =>
+            "response-over-budget-or-malformed",
+        PlayniteBridgeTransportException transport when
+            transport.InnerException is OperationCanceledException => "timeout",
+        PlayniteBridgeTransportException => "transport-failure",
+        HttpRequestException => "transport-failure",
+        IOException => "io-failure",
+        _ => "unexpected-failure",
+    };
 
     public ValueTask<WidgetAppLibraryItem?> SetFavoriteAsync(
         string gameId, bool favorite, CancellationToken cancellationToken) =>

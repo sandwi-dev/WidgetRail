@@ -6,16 +6,13 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal sealed record PlayniteLibraryItem(
     WidgetAppLibraryItem Value,
-    WidgetCollectionItemKey Key,
-    string? ArtworkPngBase64 = null)
+    WidgetCollectionItemKey Key)
 {
-    internal static PlayniteLibraryItem From(
-        WidgetAppLibraryItem item,
-        string? artworkPngBase64 = null) =>
-        new(item, PlayniteLibraryIdentity.Key(item.SavedId), artworkPngBase64);
+    internal static PlayniteLibraryItem From(WidgetAppLibraryItem item) =>
+        new(item, PlayniteLibraryIdentity.Key(item.SavedId));
 
     internal PlayniteLibraryItem WithValue(WidgetAppLibraryItem item) =>
-        From(item, ArtworkPngBase64);
+        From(item);
 
     internal WidgetAppLibraryPresentation Presentation => Value.Presentation;
 }

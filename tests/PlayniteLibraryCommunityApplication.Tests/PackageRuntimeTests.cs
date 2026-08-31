@@ -119,12 +119,18 @@ public sealed class PackageRuntimeTests
             refresh: true, CancellationToken.None);
         var artwork = current.Items[0].Presentation.Artwork.Find(
             WidgetAppLibraryArtworkRole.Tile)!;
-        Assert.AreEqual(FakeLibraryClient.TinyPng,
-            await service.ResolveArtworkAsync(artwork, CancellationToken.None));
+        var resolvedArtwork = await service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(artwork.Handle), CancellationToken.None);
+        Assert.IsNotNull(resolvedArtwork);
+        Assert.AreEqual(WidgetArtworkContentType.Png, resolvedArtwork.ContentType);
+        CollectionAssert.AreEqual(
+            Convert.FromBase64String(FakeLibraryClient.TinyPng),
+            resolvedArtwork.Bytes.ToArray());
         client.Artwork = null;
         var otherArtwork = current.Items[1].Presentation.Artwork.Find(
             WidgetAppLibraryArtworkRole.Tile)!;
-        Assert.IsNull(await service.ResolveArtworkAsync(otherArtwork, CancellationToken.None));
+        Assert.IsNull(await service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(otherArtwork.Handle), CancellationToken.None));
 
         client.FailQueries = true;
         var stale = await service.QueryAsync(AllGames, null, null, 32,
@@ -216,16 +222,21 @@ public sealed class PackageRuntimeTests
             return ValueTask.FromResult(Games.SingleOrDefault(game => game.Id == gameId));
         }
 
-        public ValueTask<byte[]?> ResolveArtworkAsync(
+        public ValueTask<PlayniteBridgeArtworkResult> ResolveArtworkAsync(
             string gameId, PlayniteBridgeArtworkKind kind,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Assert.AreEqual(PlayniteBridgeArtworkKind.Cover, kind);
             Assert.IsTrue(Games.Any(game => game.Id == gameId));
-            return ValueTask.FromResult(Artwork is null
-                ? null
-                : Convert.FromBase64String(Artwork));
+            if (Artwork is null)
+                return ValueTask.FromResult(new PlayniteBridgeArtworkResult(
+                    null, "not-found", "none"));
+            var bytes = Convert.FromBase64String(Artwork);
+            return ValueTask.FromResult(new PlayniteBridgeArtworkResult(
+                new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes),
+                "resolved",
+                PlayniteBridgeClient.ArtworkSizeClass(bytes.Length)));
         }
 
         public ValueTask<bool> LaunchAsync(string gameId, CancellationToken cancellationToken)

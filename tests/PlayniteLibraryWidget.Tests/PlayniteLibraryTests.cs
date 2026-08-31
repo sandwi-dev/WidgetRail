@@ -4724,9 +4724,12 @@ public sealed class PlayniteLibraryTests
             services.AppLibrary.LaunchObservedAsync(
                 appId, overlayBehavior, cancellationToken);
 
-        public ValueTask<string?> ResolveArtworkAsync(
-            WidgetAppLibraryArtwork artwork, CancellationToken cancellationToken) =>
-            ValueTask.FromResult<string?>(null);
+        public ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(
+            WidgetArtworkHandle handle, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<WidgetEncodedArtwork?>(null);
+        }
 
         public async ValueTask<WidgetAppLibraryItem?> SetFavoriteAsync(
             string gameId, bool favorite, CancellationToken cancellationToken)

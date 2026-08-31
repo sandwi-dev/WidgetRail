@@ -68,8 +68,8 @@ internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
         WidgetAppLaunchOverlayBehavior overlayBehavior,
         CancellationToken cancellationToken);
 
-    ValueTask<string?> ResolveArtworkAsync(
-        WidgetAppLibraryArtwork artwork,
+    ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(
+        WidgetArtworkHandle handle,
         CancellationToken cancellationToken);
 
     ValueTask<WidgetAppLibraryItem?> SetFavoriteAsync(

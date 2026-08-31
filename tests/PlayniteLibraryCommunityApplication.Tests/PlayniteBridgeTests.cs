@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using WidgetRail.Samples.PlayniteLibrary;
+using WidgetRail.WidgetSdk;
 
 namespace PlayniteLibraryCommunityApplication.Tests;
 
@@ -116,7 +117,9 @@ public sealed class PlayniteBridgeTests
         var maximumArtworkBytes = (int)typeof(PlayniteBridgeHttpTransport).GetField(
             nameof(PlayniteBridgeHttpTransport.MaximumArtworkBytes),
             BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
-        Assert.AreEqual(256 * 1024, maximumArtworkBytes);
+        Assert.AreEqual(
+            WidgetRail.WidgetProtocol.ProtocolConstants.MaximumEncodedArtworkBytes,
+            maximumArtworkBytes);
         var fixedOrigin = (Uri)typeof(PlayniteBridgeHttpTransport).GetField(
             "Origin", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
         Assert.AreEqual("http://localhost:19821/", fixedOrigin.AbsoluteUri);
@@ -178,6 +181,62 @@ public sealed class PlayniteBridgeTests
     }
 
     [TestMethod]
+    public async Task ArtworkTransportAdmitsTheExactPublicBoundAndRejectsTheNextByte()
+    {
+        var maximumBytes =
+            WidgetRail.WidgetProtocol.ProtocolConstants.MaximumEncodedArtworkBytes;
+        using var exactContent = new ByteArrayContent(new byte[maximumBytes]);
+        var exact = await PlayniteBridgeHttpTransport.ReadBoundedAsync(
+            exactContent, maximumBytes, CancellationToken.None);
+        Assert.AreEqual(maximumBytes, exact.Length,
+            "The accepted encoded-artwork maximum must pass the bounded reader exactly.");
+
+        using var oversizedContent = new ByteArrayContent([]);
+        oversizedContent.Headers.ContentLength = maximumBytes + 1L;
+        var overBudget = await Assert.ThrowsExactlyAsync<PlayniteBridgeTransportException>(
+            async () => await PlayniteBridgeHttpTransport.ReadBoundedAsync(
+                oversizedContent, maximumBytes, CancellationToken.None));
+        Assert.IsTrue(overBudget.IsMalformed,
+            "An over-budget transport body remains a closed malformed response.");
+        Assert.IsTrue(overBudget.IsOverBudget,
+            "The bounded reader must classify the size rejection without reading the body.");
+        Assert.AreEqual("response-over-budget",
+            PlayniteLibraryApplicationService.ArtworkFailureCode(overBudget));
+    }
+
+    [TestMethod]
+    public async Task ArtworkClassificationUsesEncodedBytesInsteadOfExtensionDerivedHeaders()
+    {
+        var credentials = new FakeCredentialStore { Secret = "fake-playnite-token-one" };
+        var transport = new FakeTransport();
+        using var client = new PlayniteBridgeClient(transport, credentials);
+
+        var png = new byte[24];
+        new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }.CopyTo(png, 0);
+        transport.Response = new(200, png, "image/jpeg");
+        var pngResult = await client.ResolveArtworkAsync("00000000-0000-0000-0000-000000000001",
+            PlayniteBridgeArtworkKind.Cover, CancellationToken.None);
+        Assert.IsNotNull(pngResult.Artwork);
+        Assert.AreEqual(WidgetArtworkContentType.Png, pngResult.Artwork.ContentType);
+        CollectionAssert.AreEqual(png, pngResult.Artwork.Bytes.ToArray());
+
+        var jpeg = new byte[] { 0xff, 0xd8, 0xff, 0xd9 };
+        transport.Response = new(200, jpeg, "image/png");
+        var jpegResult = await client.ResolveArtworkAsync("00000000-0000-0000-0000-000000000002",
+            PlayniteBridgeArtworkKind.Cover, CancellationToken.None);
+        Assert.IsNotNull(jpegResult.Artwork);
+        Assert.AreEqual(WidgetArtworkContentType.Jpeg, jpegResult.Artwork.ContentType);
+        CollectionAssert.AreEqual(jpeg, jpegResult.Artwork.Bytes.ToArray());
+
+        transport.Response = new(200,
+            new byte[] { 82, 73, 70, 70, 4, 0, 0, 0, 87, 69, 66, 80 }, "image/jpeg");
+        var webpResult = await client.ResolveArtworkAsync("00000000-0000-0000-0000-000000000003",
+            PlayniteBridgeArtworkKind.Cover, CancellationToken.None);
+        Assert.IsNull(webpResult.Artwork);
+        Assert.AreEqual("unsupported-encoded-artwork", webpResult.Code);
+    }
+
+    [TestMethod]
     public void ManifestAndPackageSourceContainNoCapabilityOrCredentialValue()
     {
         var root = RepositoryRoot();
@@ -186,7 +245,7 @@ public sealed class PlayniteBridgeTests
         var value = manifest.RootElement;
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, value.GetProperty("optionalPermissions").GetArrayLength());
-        Assert.AreEqual("0.2.7", value.GetProperty("version").GetString());
+        Assert.AreEqual("0.2.10", value.GetProperty("version").GetString());
         var manifestText = File.ReadAllText(manifestPath);
         Assert.IsFalse(manifestText.Contains("Bearer", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(manifestText.Contains("token", StringComparison.OrdinalIgnoreCase));
@@ -210,7 +269,7 @@ public sealed class PlayniteBridgeTests
                 Path.GetRelativePath(root, sourcePath));
 
         var packagePath = Path.Combine(root, "artifacts", "community-addons",
-            "playnite-library", "widgetrail.samples.playnite-library-0.2.7.wrwidget");
+            "playnite-library", "widgetrail.samples.playnite-library-0.2.10.wrwidget");
         Assert.IsTrue(File.Exists(packagePath), "The validated package artifact is missing.");
         using var archive = ZipFile.OpenRead(packagePath);
         foreach (var entry in archive.Entries.Where(item => item.Length != 0))

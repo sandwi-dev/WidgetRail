@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.PlayniteLibrary;
 
@@ -67,6 +68,11 @@ internal sealed record PlayniteBridgeResponse(
 }
 
 internal enum PlayniteBridgeArtworkKind { Cover, Background, Icon }
+
+internal sealed record PlayniteBridgeArtworkResult(
+    WidgetEncodedArtwork? Artwork,
+    string Code,
+    string SizeClass);
 
 internal sealed record PlayniteBridgeGameQuery(
     int Offset,
@@ -135,7 +141,7 @@ internal interface IPlayniteLibraryBridgeClient : IAsyncDisposable
     ValueTask<PlayniteBridgeGame?> ResolveGameAsync(
         string gameId,
         CancellationToken cancellationToken);
-    ValueTask<byte[]?> ResolveArtworkAsync(
+    ValueTask<PlayniteBridgeArtworkResult> ResolveArtworkAsync(
         string gameId,
         PlayniteBridgeArtworkKind kind,
         CancellationToken cancellationToken);
@@ -271,7 +277,7 @@ internal sealed class PlayniteBridgeClient(
             : throw new PlayniteBridgeDataException("invalid_playnite_data");
     }
 
-    public async ValueTask<byte[]?> ResolveArtworkAsync(
+    public async ValueTask<PlayniteBridgeArtworkResult> ResolveArtworkAsync(
         string gameId,
         PlayniteBridgeArtworkKind kind,
         CancellationToken cancellationToken)
@@ -280,15 +286,47 @@ internal sealed class PlayniteBridgeClient(
                 PlayniteBridgeCommandKind.ResolveArtwork,
                 CanonicalGameId(gameId), ArtworkKind: kind), cancellationToken)
             .ConfigureAwait(false);
-        if (response.StatusCode == 404) return null;
+        if (response.StatusCode == 404)
+            return new(null, "not-found", "none");
         EnsureSuccess(response);
-        if (!string.Equals(response.ContentType, "image/png", StringComparison.OrdinalIgnoreCase) ||
-            response.Body.Length is < 8 or > PlayniteBridgeHttpTransport.MaximumArtworkBytes ||
-            !response.Body.AsSpan(0, 8).SequenceEqual(
-                new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }))
-            return null;
-        return response.Body.ToArray();
+        var sizeClass = ArtworkSizeClass(response.Body.Length);
+        var contentType = ClassifyArtworkContentType(response.Body);
+        if (contentType is null)
+            return new(null, "unsupported-encoded-artwork", sizeClass);
+        return new(new WidgetEncodedArtwork(contentType.Value, response.Body),
+            "resolved", sizeClass);
     }
+
+    internal static WidgetArtworkContentType? ClassifyArtworkContentType(
+        ReadOnlySpan<byte> bytes)
+    {
+        if (HasValidArtworkEnvelope(WidgetArtworkContentType.Png, bytes))
+            return WidgetArtworkContentType.Png;
+        if (HasValidArtworkEnvelope(WidgetArtworkContentType.Jpeg, bytes))
+            return WidgetArtworkContentType.Jpeg;
+        return null;
+    }
+
+    private static bool HasValidArtworkEnvelope(
+        WidgetArtworkContentType contentType,
+        ReadOnlySpan<byte> bytes) => contentType switch
+        {
+            WidgetArtworkContentType.Png => bytes.Length >= 24 &&
+                bytes[..8].SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }),
+            WidgetArtworkContentType.Jpeg => bytes.Length >= 4 &&
+                bytes[0] == 0xff && bytes[1] == 0xd8 &&
+                bytes[^2] == 0xff && bytes[^1] == 0xd9,
+            _ => false,
+        };
+
+    internal static string ArtworkSizeClass(int length) => length switch
+    {
+        <= 0 => "none",
+        <= 16 * 1024 => "small",
+        <= 64 * 1024 => "medium",
+        <= PlayniteBridgeHttpTransport.MaximumArtworkBytes => "large",
+        _ => "over-budget",
+    };
 
     public async ValueTask<bool> LaunchAsync(
         string gameId,
@@ -733,7 +771,8 @@ internal sealed class PlayniteBridgeClient(
 internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
 {
     internal const int MaximumJsonBytes = 96 * 1024;
-    internal const int MaximumArtworkBytes = 256 * 1024;
+    internal const int MaximumArtworkBytes =
+        WidgetRail.WidgetProtocol.ProtocolConstants.MaximumEncodedArtworkBytes;
     private static readonly Uri Origin = new(
         $"http://localhost:{PlayniteBridgeClient.Port}/", UriKind.Absolute);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
@@ -870,13 +909,14 @@ internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
         }
     }
 
-    private static async Task<byte[]> ReadBoundedAsync(
+    internal static async Task<byte[]> ReadBoundedAsync(
         HttpContent content,
         int maximumBytes,
         CancellationToken cancellationToken)
     {
         if (content.Headers.ContentLength is { } length && length > maximumBytes)
-            throw new PlayniteBridgeTransportException(isMalformed: true);
+            throw new PlayniteBridgeTransportException(
+                isMalformed: true, isOverBudget: true);
         await using var stream = await content.ReadAsStreamAsync(cancellationToken)
             .ConfigureAwait(false);
         using var buffer = new MemoryStream();
@@ -886,7 +926,8 @@ internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
             var read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false);
             if (read == 0) break;
             if (buffer.Length + read > maximumBytes)
-                throw new PlayniteBridgeTransportException(isMalformed: true);
+                throw new PlayniteBridgeTransportException(
+                    isMalformed: true, isOverBudget: true);
             buffer.Write(chunk, 0, read);
         }
         return buffer.ToArray();
@@ -1021,11 +1062,18 @@ internal sealed class WindowsCredentialPlayniteTokenStore : IPlayniteCredentialS
 
 internal sealed class PlayniteBridgeTransportException : Exception
 {
-    internal PlayniteBridgeTransportException(bool isMalformed, Exception? inner = null)
-        : base("The bounded Playnite Bridge transport failed.", inner) =>
+    internal PlayniteBridgeTransportException(
+        bool isMalformed,
+        Exception? inner = null,
+        bool isOverBudget = false)
+        : base("The bounded Playnite Bridge transport failed.", inner)
+    {
         IsMalformed = isMalformed;
+        IsOverBudget = isOverBudget;
+    }
 
     internal bool IsMalformed { get; }
+    internal bool IsOverBudget { get; }
 }
 
 internal sealed class PlayniteBridgeDataException : Exception
