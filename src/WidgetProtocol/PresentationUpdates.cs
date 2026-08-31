@@ -42,6 +42,7 @@ public enum PresentationProperty
     SliderInteractionMode,
     ImageSource,
     ArtworkHandle,
+    FocusBackgroundArtworkHandle,
     MediaSurfaceId,
     ImageFit,
     Glyph,
@@ -57,6 +58,7 @@ public enum PresentationProperty
     Focus,
     InputScopeId,
     InitialChildFocusId,
+    UsesFocusedDescendantArtwork,
     ScrollAxis,
     ScrollNearStartActionId,
     ScrollNearEndActionId,
@@ -160,6 +162,10 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Resource |
             PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Accessibility,
+        PresentationProperty.FocusBackgroundArtworkHandle or
+        PresentationProperty.UsesFocusedDescendantArtwork =>
+            PresentationPropertyImpact.Resource |
+            PresentationPropertyImpact.Paint,
         PresentationProperty.MediaSurfaceId =>
             PresentationPropertyImpact.Authority |
             PresentationPropertyImpact.SurfacePlacement |

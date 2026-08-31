@@ -296,6 +296,15 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.TrustedEncodedArtworkVersion,
                     $"{path}.artworkHandle",
                     $"Trusted encoded artwork handles require protocol version {ProtocolConstants.TrustedEncodedArtworkVersion} or later.");
+            if (node.FocusBackgroundArtworkHandle is not null ||
+                node.UsesFocusedDescendantArtwork is true)
+                Add(
+                    "focused-background-artwork",
+                    ProtocolConstants.FocusedBackgroundArtworkVersion,
+                    node.FocusBackgroundArtworkHandle is not null
+                        ? $"{path}.focusBackgroundArtworkHandle"
+                        : $"{path}.usesFocusedDescendantArtwork",
+                    $"Focused descendant background artwork requires protocol version {ProtocolConstants.FocusedBackgroundArtworkVersion} or later.");
             if (ViewSnapshotValidator.IsValidInlinePng(node.ImageSource))
                 Add(
                     "inline-png-image",

@@ -31,6 +31,14 @@ public abstract record WidgetElement(string Id)
     public WidgetElement CollectionItem(WidgetCollectionItemKey key) =>
         new CollectionItemElement(this, key);
 
+    /// <summary>
+    /// Associates one trusted artwork resource with this exact focusable node.
+    /// The nearest opted-in BackgroundSurface may paint it while the host owns
+    /// focus; the declaration grants no input, URL, path, or provider authority.
+    /// </summary>
+    public WidgetElement FocusBackground(WidgetArtworkHandle artwork) =>
+        new FocusBackgroundElement(this, artwork);
+
 }
 
 /// <summary>
@@ -118,6 +126,31 @@ public sealed record CollectionItemElement : WidgetElement
     internal override ViewNode ToProtocolNode() => Child.ToProtocolNode() with
     {
         CollectionItemKey = Key.Value,
+        StyleClasses = StyleClasses,
+    };
+}
+
+/// <summary>
+/// A serialization-only focused-background modifier. It does not add a layout,
+/// focus, input, or accessibility node.
+/// </summary>
+public sealed record FocusBackgroundElement : WidgetElement
+{
+    internal FocusBackgroundElement(WidgetElement child, WidgetArtworkHandle artwork)
+        : base((child ?? throw new ArgumentNullException(nameof(child))).Id)
+    {
+        StableIdentifier.Validate(artwork.Value, nameof(artwork));
+        Child = child;
+        Artwork = artwork;
+        StyleClasses = child.StyleClasses;
+    }
+
+    public WidgetElement Child { get; init; }
+    public WidgetArtworkHandle Artwork { get; init; }
+
+    internal override ViewNode ToProtocolNode() => Child.ToProtocolNode() with
+    {
+        FocusBackgroundArtworkHandle = Artwork.Value,
         StyleClasses = StyleClasses,
     };
 }

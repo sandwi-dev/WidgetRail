@@ -14439,6 +14439,12 @@ private:
                 options.pressedElementId =
                     interactionPresentation.pressedElementId;
                 options.artworkWidgetId = std::wstring{renderedWidget};
+                if (descriptor) {
+                    options.artworkAuthorityId =
+                        std::wstring{renderedWidget} + L"\x1f" +
+                        descriptor->runtimeGeneration + L"\x1f" +
+                        descriptor->presentationGeneration;
+                }
                 const bool matchingFreeScrollBinding =
                     interactionSession_.freeScrollBinding() &&
                     (freeScrollDecision.disposition ==

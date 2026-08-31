@@ -188,19 +188,31 @@ static async Task BackgroundSurfaceArtworkCrossesBridge()
     Assert.Equal(ViewNodeKind.BackgroundSurface, snapshot.Root.Kind);
     Assert.Equal(BackgroundSurfaceTestWidget.ArtworkHandle, snapshot.Root.ArtworkHandle);
     Assert.Equal(ImageFit.Cover, snapshot.Root.ImageFit);
+    Assert.Equal(true, snapshot.Root.UsesFocusedDescendantArtwork);
+    Assert.Equal(BackgroundSurfaceTestWidget.FirstFocusArtworkHandle,
+        FindNode(snapshot.Root, "background-surface-test.first").FocusBackgroundArtworkHandle);
+    Assert.Equal(BackgroundSurfaceTestWidget.SecondFocusArtworkHandle,
+        FindNode(snapshot.Root, "background-surface-test.second").FocusBackgroundArtworkHandle);
 
-    var acknowledged = await harness.Client.RequestAsync(
-        BridgeMessageTypes.ResolveArtwork,
-        new BridgeArtworkRequest("test-widget", BackgroundSurfaceTestWidget.ArtworkHandle));
-    Assert.Equal(BridgeMessageTypes.Acknowledged, acknowledged.Type);
-    var artwork = await harness.Client.ReadEventAsync(BridgeMessageTypes.Artwork);
-    Assert.Equal("test-widget", artwork.Payload.GetProperty("widgetId").GetString());
-    Assert.Equal(BackgroundSurfaceTestWidget.ArtworkHandle,
-        artwork.Payload.GetProperty("artworkHandle").GetString());
-    Assert.Equal("image/png", artwork.Payload.GetProperty("contentType").GetString());
-    var bytes = Convert.FromBase64String(
-        artwork.Payload.GetProperty("contentBase64").GetString()!);
-    Assert.SequenceEqual(BackgroundSurfaceTestWidget.ArtworkBytes.ToArray(), bytes);
+    foreach (var handle in new[]
+    {
+        BackgroundSurfaceTestWidget.ArtworkHandle,
+        BackgroundSurfaceTestWidget.FirstFocusArtworkHandle,
+        BackgroundSurfaceTestWidget.SecondFocusArtworkHandle,
+    })
+    {
+        var acknowledged = await harness.Client.RequestAsync(
+            BridgeMessageTypes.ResolveArtwork,
+            new BridgeArtworkRequest("test-widget", handle));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, acknowledged.Type);
+        var artwork = await harness.Client.ReadEventAsync(BridgeMessageTypes.Artwork);
+        Assert.Equal("test-widget", artwork.Payload.GetProperty("widgetId").GetString());
+        Assert.Equal(handle, artwork.Payload.GetProperty("artworkHandle").GetString());
+        Assert.Equal("image/png", artwork.Payload.GetProperty("contentType").GetString());
+        var bytes = Convert.FromBase64String(
+            artwork.Payload.GetProperty("contentBase64").GetString()!);
+        Assert.SequenceEqual(BackgroundSurfaceTestWidget.ArtworkBytes.ToArray(), bytes);
+    }
 }
 
 static async Task OversizedFrameIsRejected()

@@ -586,7 +586,8 @@ public abstract partial class Widget
 
         bool Contains(ViewNode node)
         {
-            if (string.Equals(node.ArtworkHandle, artworkHandle, StringComparison.Ordinal))
+            if (string.Equals(node.ArtworkHandle, artworkHandle, StringComparison.Ordinal) ||
+                string.Equals(node.FocusBackgroundArtworkHandle, artworkHandle, StringComparison.Ordinal))
                 return true;
             foreach (var child in node.Children)
                 if (Contains(child)) return true;

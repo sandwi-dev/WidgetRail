@@ -376,6 +376,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.SliderInteractionMode, before.SliderInteractionMode, after.SliderInteractionMode);
         Add(PresentationProperty.ImageSource, before.ImageSource, after.ImageSource);
         Add(PresentationProperty.ArtworkHandle, before.ArtworkHandle, after.ArtworkHandle);
+        Add(PresentationProperty.FocusBackgroundArtworkHandle, before.FocusBackgroundArtworkHandle, after.FocusBackgroundArtworkHandle);
         Add(PresentationProperty.MediaSurfaceId, before.MediaSurfaceId, after.MediaSurfaceId);
         Add(PresentationProperty.ImageFit, before.ImageFit, after.ImageFit);
         Add(PresentationProperty.Glyph, before.Glyph, after.Glyph);
@@ -391,6 +392,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.Focus, before.Focus, after.Focus);
         Add(PresentationProperty.InputScopeId, before.InputScopeId, after.InputScopeId);
         Add(PresentationProperty.InitialChildFocusId, before.InitialChildFocusId, after.InitialChildFocusId);
+        Add(PresentationProperty.UsesFocusedDescendantArtwork, before.UsesFocusedDescendantArtwork, after.UsesFocusedDescendantArtwork);
         Add(PresentationProperty.ScrollAxis, before.ScrollAxis, after.ScrollAxis);
         Add(PresentationProperty.ScrollNearStartActionId, before.ScrollNearStartActionId, after.ScrollNearStartActionId);
         Add(PresentationProperty.ScrollNearEndActionId, before.ScrollNearEndActionId, after.ScrollNearEndActionId);

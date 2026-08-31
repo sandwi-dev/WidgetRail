@@ -420,6 +420,30 @@ The stable default class is `.wrail-background-surface`. Keep foreground text
 contrast explicit in the widget theme and provide complete accessible names on
 the foreground controls and content; the background itself is not announced.
 
+### Focus-driven background artwork (protocol v39)
+
+An authored focusable node can associate an already-authorized artwork handle
+with `.FocusBackground(handle)`. The nearest enclosing BackgroundSurface opts
+in with `.UseFocusedDescendantArtwork()`:
+
+```csharp
+var page = UI.BackgroundSurface(
+        UI.Row("library.rail",
+            firstPoster.FocusBackground(first.BackgroundHandle),
+            secondPoster.FocusBackground(second.BackgroundHandle)),
+        "library.background",
+        BackgroundSurfaceArtwork.FromHandle(fallbackHandle))
+    .UseFocusedDescendantArtwork();
+```
+
+Focus remains entirely host-owned: the declaration adds no action, callback,
+input, layout, or accessibility node. A nested BackgroundSurface is a hard
+ownership boundary. If the exact focused descendant has no declaration, the
+surface uses its authored default. While a newly focused resource is pending
+or fails, the host retains the last admitted image; a late result for an older
+focus cannot replace the current selection. Keep every referenced handle
+resolvable through the ordinary bounded `OnResolveArtworkAsync` contract.
+
 `UI.Toast(...)` creates brief, non-interactive feedback without adding a focus
 stop or shortcut. Tones are Neutral, Info, Success, Warning, and Danger; text
 must communicate the state because color is supplementary. Title and message

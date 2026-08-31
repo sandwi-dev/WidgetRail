@@ -565,6 +565,20 @@ public static class ViewSnapshotValidator
                     Add($"{path}.focusPersistenceId", "focus_persistence_on_non_focusable_node",
                         "Only focusable nodes may declare focus persistence.");
             }
+            if (node.FocusBackgroundArtworkHandle is not null)
+            {
+                CheckIdentifier(node.FocusBackgroundArtworkHandle,
+                    $"{path}.focusBackgroundArtworkHandle", "focus-background artwork handle");
+                if (!node.IsFocusable)
+                    Add($"{path}.focusBackgroundArtworkHandle",
+                        "focus_background_on_non_focusable_node",
+                        "Only focusable nodes may declare focus-background artwork.");
+            }
+            if (node.UsesFocusedDescendantArtwork is not null &&
+                node.Kind is not ViewNodeKind.BackgroundSurface)
+                Add($"{path}.usesFocusedDescendantArtwork",
+                    "focused_descendant_artwork_not_allowed",
+                    "Only BackgroundSurface may consume focused-descendant artwork.");
             if (node.Kind is not (ViewNodeKind.Image or ViewNodeKind.Button) ||
                 node.ImageSource is null)
                 CheckString(node.ImageSource, $"{path}.imageSource");
@@ -588,6 +602,7 @@ public static class ViewSnapshotValidator
                     node.Minimum is not null || node.Maximum is not null || node.Step is not null ||
                     node.ValueChangedActionId is not null || node.Focus is not null ||
                     node.ImageSource is not null || node.ArtworkHandle is not null ||
+                    node.FocusBackgroundArtworkHandle is not null ||
                     node.ImageFit is not null || node.Glyph is not null ||
                     node.IndicatorSize is not null || node.InputScopeId is not null ||
                     node.ScrollAxis is not null || node.GridMinimumColumnWidth is not null ||
@@ -1208,6 +1223,7 @@ public static class ViewSnapshotValidator
                     StringLength(node.ActionId) + StringLength(node.TextEntryValue) +
                     StringLength(node.TextEntryPlaceholder) + StringLength(node.ValueChangedActionId) +
                     StringLength(node.ImageSource) + StringLength(node.ArtworkHandle) +
+                    StringLength(node.FocusBackgroundArtworkHandle) +
                     StringLength(node.MediaSurfaceId) +
                     StringLength(node.FocusPersistenceId) + StringLength(node.InputScopeId) +
                     StringLength(node.InitialChildFocusId) +
@@ -1217,7 +1233,8 @@ public static class ViewSnapshotValidator
                     StringLength(node.Focus?.Left) + StringLength(node.Focus?.Right) +
                     (node.StyleClasses?.Sum(StringLength) ?? 0) +
                     (node.Shortcuts?.Sum(shortcut => StringLength(shortcut?.ActionId)) ?? 0);
-                if (node.ImageSource is not null || node.ArtworkHandle is not null)
+                if (node.ImageSource is not null || node.ArtworkHandle is not null ||
+                    node.FocusBackgroundArtworkHandle is not null)
                     aggregateResources++;
                 if (node.Children is not null)
                     foreach (var child in node.Children)

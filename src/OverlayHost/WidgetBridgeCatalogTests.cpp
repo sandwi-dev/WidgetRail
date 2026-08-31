@@ -44,6 +44,8 @@ constexpr std::string_view ValidAppearance = R"json({
     "boldText": true,
     "transparency": "reduced",
     "animateWidgetSwitching": false,
+    "widgetSurfaceAppearance": "theme",
+    "widgetSurfaceAppearanceOverrides": {},
     "shellStyles": {
         "canvas": {
             "background": {"kind":"color","text":"#101820","number":null,"unit":null}
@@ -1665,7 +1667,8 @@ int main() {
     CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"cinematic","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,"shellStyles":{}
+        "motion":"cinematic","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,
+        "widgetSurfaceAppearance":"theme","widgetSurfaceAppearanceOverrides":{},"shellStyles":{}
     })json", error));
     CHECK(error.find(L"motion") != std::wstring::npos);
 
@@ -1673,7 +1676,8 @@ int main() {
     CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"extreme","boldText":false,"transparency":"full","animateWidgetSwitching":false,"shellStyles":{}
+        "motion":"system","contrast":"extreme","boldText":false,"transparency":"full","animateWidgetSwitching":false,
+        "widgetSurfaceAppearance":"theme","widgetSurfaceAppearanceOverrides":{},"shellStyles":{}
     })json", error));
     CHECK(error.find(L"contrast") != std::wstring::npos);
 
@@ -1681,7 +1685,8 @@ int main() {
     CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"system","boldText":false,"transparency":"blurred","animateWidgetSwitching":false,"shellStyles":{}
+        "motion":"system","contrast":"system","boldText":false,"transparency":"blurred","animateWidgetSwitching":false,
+        "widgetSurfaceAppearance":"theme","widgetSurfaceAppearanceOverrides":{},"shellStyles":{}
     })json", error));
     CHECK(error.find(L"transparency") != std::wstring::npos);
 
@@ -1689,7 +1694,8 @@ int main() {
     CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"system","boldText":"yes","transparency":"full","animateWidgetSwitching":false,"shellStyles":{}
+        "motion":"system","contrast":"system","boldText":"yes","transparency":"full","animateWidgetSwitching":false,
+        "widgetSurfaceAppearance":"theme","widgetSurfaceAppearanceOverrides":{},"shellStyles":{}
     })json", error));
     CHECK(error.find(L"types") != std::wstring::npos);
 
@@ -1697,7 +1703,8 @@ int main() {
     CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":2,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,"shellStyles":{}
+        "motion":"system","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,
+        "widgetSurfaceAppearance":"theme","widgetSurfaceAppearanceOverrides":{},"shellStyles":{}
     })json", error));
     CHECK(error.find(L"bounds") != std::wstring::npos);
 
@@ -1705,7 +1712,8 @@ int main() {
     CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,"shellStyles":{"unknown":{}}
+        "motion":"system","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,
+        "widgetSurfaceAppearance":"theme","widgetSurfaceAppearanceOverrides":{},"shellStyles":{"unknown":{}}
     })json", error));
     CHECK(error.find(L"unknown") != std::wstring::npos);
 
@@ -1713,7 +1721,8 @@ int main() {
     CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,"shellStyles":{"canvas":{
+        "motion":"system","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,
+        "widgetSurfaceAppearance":"theme","widgetSurfaceAppearanceOverrides":{},"shellStyles":{"canvas":{
             "background":{"kind":"script","text":"unsafe","number":null,"unit":null}
         }}
     })json", error));
@@ -1723,7 +1732,8 @@ int main() {
     CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,"shellStyles":{},"unexpected":true
+        "motion":"system","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,
+        "widgetSurfaceAppearance":"theme","widgetSurfaceAppearanceOverrides":{},"shellStyles":{},"unexpected":true
     })json", error));
     CHECK(error.find(L"unknown properties") != std::wstring::npos);
 
@@ -1731,7 +1741,9 @@ int main() {
         "{\"revision\":0,\"themeId\":\"default\",\"themeVersion\":\"1.0.0\","
         "\"interfaceScale\":1,\"textScale\":1,\"backdropOpacity\":0.64,"
         "\"motion\":\"system\",\"contrast\":\"system\",\"boldText\":false,"
-        "\"transparency\":\"full\",\"animateWidgetSwitching\":false,\"shellStyles\":{\"canvas\":{";
+        "\"transparency\":\"full\",\"animateWidgetSwitching\":false,"
+        "\"widgetSurfaceAppearance\":\"theme\","
+        "\"widgetSurfaceAppearanceOverrides\":{},\"shellStyles\":{\"canvas\":{";
     for (int index = 0; index < 65; ++index) {
         if (index != 0) tooManyStyleProperties += ',';
         tooManyStyleProperties += "\"property-" + std::to_string(index) +

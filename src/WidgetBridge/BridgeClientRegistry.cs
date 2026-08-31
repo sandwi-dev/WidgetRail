@@ -1154,7 +1154,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
     private static bool Contains(ViewNode node, string artworkHandle)
     {
-        if (string.Equals(node.ArtworkHandle, artworkHandle, StringComparison.Ordinal))
+        if (string.Equals(node.ArtworkHandle, artworkHandle, StringComparison.Ordinal) ||
+            string.Equals(node.FocusBackgroundArtworkHandle, artworkHandle, StringComparison.Ordinal))
             return true;
         foreach (var child in node.Children)
             if (Contains(child, artworkHandle)) return true;

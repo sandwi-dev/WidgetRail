@@ -2034,6 +2034,10 @@ void WidgetSurfaceCoordinator::Paint() {
         std::move(sliderPresentation.sliderValueOverrides);
     options.pressedElementId =
         std::move(sliderPresentation.pressedElementId);
+    options.artworkWidgetId = admission_->widgetId;
+    options.artworkAuthorityId = admission_->widgetId + L"\x1f" +
+        admission_->runtimeGeneration + L"\x1f" +
+        admission_->presentationGeneration;
     const input::WidgetInteractionAuthority authority{
         admission_->widgetId,
         &selectedSnapshot,

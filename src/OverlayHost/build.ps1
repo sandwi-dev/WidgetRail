@@ -549,6 +549,7 @@ function Invoke-DeclarativeRendererTests {
 function Invoke-BackgroundSurfaceHostTests {
     $arguments = $common + @(
         '/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING',
+        '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'BackgroundSurfaceHostTests.cpp'),
         (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
         (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),

@@ -7,8 +7,8 @@ using WidgetRail.WidgetSdk;
 var widget = new BackgroundSurfaceTestWidget();
 var snapshot = widget.RenderSnapshot("background-surface-test.instance", 1);
 
-Require(snapshot.ProtocolVersion == ProtocolConstants.BackgroundSurfaceVersion,
-    "The isolation snapshot did not require the BackgroundSurface protocol version.");
+Require(snapshot.ProtocolVersion == ProtocolConstants.FocusedBackgroundArtworkVersion,
+    "The isolation snapshot did not require the focused-background protocol version.");
 Require(snapshot.Root.Kind == ViewNodeKind.BackgroundSurface,
     "The isolation snapshot root is not BackgroundSurface.");
 Require(snapshot.Root.Id == "background-surface-test.root",
@@ -17,9 +17,15 @@ Require(snapshot.Root.ArtworkHandle == BackgroundSurfaceTestWidget.ArtworkHandle
     "The isolation snapshot did not publish the exact artwork handle.");
 Require(snapshot.Root.ImageFit == ImageFit.Cover,
     "The isolation snapshot did not publish Cover fitting.");
+Require(snapshot.Root.UsesFocusedDescendantArtwork is true,
+    "The isolation snapshot did not opt into descendant focus artwork.");
 Require(snapshot.Root.Children is [{ Id: "background-surface-test.foreground" }],
     "BackgroundSurface did not retain exactly one foreground subtree.");
-Require(snapshot.InitialFocusId == "background-surface-test.action" &&
+Require(snapshot.Root.Children[0].Children
+        .Single(child => child.Id == "background-surface-test.actions").Children is
+        [{ FocusBackgroundArtworkHandle: BackgroundSurfaceTestWidget.FirstFocusArtworkHandle },
+         { FocusBackgroundArtworkHandle: BackgroundSurfaceTestWidget.SecondFocusArtworkHandle }] &&
+        snapshot.InitialFocusId == "background-surface-test.first" &&
         snapshot.ActiveInputScopeId == "background-surface-test.root",
     "The semantic foreground lost its exact input authority.");
 Require(snapshot.Surface?.Appearance == WidgetSurfaceAppearance.Transparent,
@@ -36,6 +42,11 @@ Require(Convert.ToHexString(SHA256.HashData(artwork.Bytes.Span)) ==
     "The deterministic artwork byte hash changed.");
 Require(await widget.OnResolveArtworkAsync(new WidgetArtworkHandle("unknown")) is null,
     "An unknown resource handle resolved unexpectedly.");
+Require(await widget.OnResolveArtworkAsync(
+        new WidgetArtworkHandle(BackgroundSurfaceTestWidget.FirstFocusArtworkHandle)) is not null &&
+        await widget.OnResolveArtworkAsync(
+        new WidgetArtworkHandle(BackgroundSurfaceTestWidget.SecondFocusArtworkHandle)) is not null,
+    "The exact focus-background resource handles did not resolve.");
 
 var manifest = ManifestJson.Deserialize(
     File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "manifest.json")));

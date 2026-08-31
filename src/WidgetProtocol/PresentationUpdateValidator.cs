@@ -256,6 +256,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.TextEntryValue or PresentationProperty.TextEntryPlaceholder or
                 PresentationProperty.ValueChangedActionId or PresentationProperty.ImageSource or
                 PresentationProperty.ArtworkHandle or PresentationProperty.FocusPersistenceId or
+                PresentationProperty.FocusBackgroundArtworkHandle or
                 PresentationProperty.InputScopeId or PresentationProperty.InitialChildFocusId or PresentationProperty.ScrollNearStartActionId or
                 PresentationProperty.ScrollNearEndActionId or PresentationProperty.CollectionAnchorKey or
                 PresentationProperty.CollectionItemKey => Read<string?>(change.Value),
@@ -273,7 +274,8 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ActionSurfaceOrientation => Read<ActionSurfaceOrientation?>(change.Value),
                 PresentationProperty.ActionSurfacePresentation => Read<ActionSurfacePresentation?>(change.Value),
                 PresentationProperty.IsDisabled or PresentationProperty.IsSelected or
-                PresentationProperty.IsBusy => Read<bool?>(change.Value),
+                PresentationProperty.IsBusy or
+                PresentationProperty.UsesFocusedDescendantArtwork => Read<bool?>(change.Value),
                 PresentationProperty.Focus => Read<FocusNeighbors?>(change.Value),
                 PresentationProperty.ScrollAxis => Read<ScrollAxis?>(change.Value),
                 PresentationProperty.StyleClasses => ReadRequired<IReadOnlyList<string>>(change.Value),
@@ -393,6 +395,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.SliderInteractionMode => node with { SliderInteractionMode = Read<SliderInteractionMode?>(change.Value) },
                 PresentationProperty.ImageSource => node with { ImageSource = Read<string?>(change.Value) },
                 PresentationProperty.ArtworkHandle => node with { ArtworkHandle = Read<string?>(change.Value) },
+                PresentationProperty.FocusBackgroundArtworkHandle => node with { FocusBackgroundArtworkHandle = Read<string?>(change.Value) },
                 PresentationProperty.ImageFit => node with { ImageFit = Read<ImageFit?>(change.Value) },
                 PresentationProperty.Glyph => node with { Glyph = Read<WidgetGlyph?>(change.Value) },
                 PresentationProperty.IndicatorSize => node with { IndicatorSize = Read<LoadingIndicatorSize?>(change.Value) },
@@ -407,6 +410,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.Focus => node with { Focus = Read<FocusNeighbors?>(change.Value) },
                 PresentationProperty.InputScopeId => node with { InputScopeId = Read<string?>(change.Value) },
                 PresentationProperty.InitialChildFocusId => node with { InitialChildFocusId = Read<string?>(change.Value) },
+                PresentationProperty.UsesFocusedDescendantArtwork => node with { UsesFocusedDescendantArtwork = Read<bool?>(change.Value) },
                 PresentationProperty.ScrollAxis => node with { ScrollAxis = Read<ScrollAxis?>(change.Value) },
                 PresentationProperty.ScrollNearStartActionId => node with { ScrollNearStartActionId = Read<string?>(change.Value) },
                 PresentationProperty.ScrollNearEndActionId => node with { ScrollNearEndActionId = Read<string?>(change.Value) },

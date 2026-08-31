@@ -40,6 +40,56 @@ internal static class BackgroundSurfaceTests
         True(ViewSnapshotValidator.Validate(invalid).Any(error =>
                 error.Code == "background_surface_child_count"),
             "BackgroundSurface accepted more than one foreground subtree.");
+
+        var focused = new WidgetView(
+            UI.BackgroundSurface(
+                    UI.Row("focused.content",
+                        UI.Button("First", "first", "focused.first")
+                            .FocusBackground(new WidgetArtworkHandle("focused.art.first")),
+                        UI.Button("Second", "second", "focused.second")
+                            .FocusBackground(new WidgetArtworkHandle("focused.art.second"))),
+                    "focused.surface",
+                    BackgroundSurfaceArtwork.FromHandle(
+                        new WidgetArtworkHandle("focused.art.default")))
+                .UseFocusedDescendantArtwork(),
+            InitialFocusId: "focused.first").CreateSnapshot("focused.instance", 1);
+        Equal(ProtocolConstants.FocusedBackgroundArtworkVersion, focused.ProtocolVersion);
+        True(focused.Root.UsesFocusedDescendantArtwork is true,
+            "The BackgroundSurface focus-artwork opt-in was not serialized.");
+        Equal("focused.art.first", focused.Root.Children[0].Children[0]
+            .FocusBackgroundArtworkHandle);
+        Equal("focused.art.second", focused.Root.Children[0].Children[1]
+            .FocusBackgroundArtworkHandle);
+        Equal("focused.art.default", focused.Root.ArtworkHandle);
+
+        var nonFocusable = focused with
+        {
+            Root = focused.Root with
+            {
+                Children = [focused.Root.Children[0] with
+                {
+                    FocusBackgroundArtworkHandle = "focused.art.invalid",
+                }],
+            },
+        };
+        True(ViewSnapshotValidator.Validate(nonFocusable).Any(error =>
+                error.Code == "focus_background_on_non_focusable_node"),
+            "A non-focusable node accepted focus-background artwork authority.");
+
+        var wrongOwner = focused with
+        {
+            Root = focused.Root with
+            {
+                UsesFocusedDescendantArtwork = null,
+                Children = [focused.Root.Children[0] with
+                {
+                    UsesFocusedDescendantArtwork = true,
+                }],
+            },
+        };
+        True(ViewSnapshotValidator.Validate(wrongOwner).Any(error =>
+                error.Code == "focused_descendant_artwork_not_allowed"),
+            "A non-BackgroundSurface node accepted focused-artwork consumption authority.");
         return Task.CompletedTask;
     }
 

@@ -4,7 +4,7 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 38;
+    public const int CurrentVersion = 39;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
@@ -42,6 +42,7 @@ public static class ProtocolConstants
     public const int TrustedEncodedArtworkVersion = 36;
     public const int PosterTileVersion = 37;
     public const int BackgroundSurfaceVersion = 38;
+    public const int FocusedBackgroundArtworkVersion = 39;
     public const double MinimumEmbeddedMediaPlaybackRate = 0.5;
     public const double MaximumEmbeddedMediaPlaybackRate = 2.0;
     public const double DefaultMediaSeekStepSeconds = 10;

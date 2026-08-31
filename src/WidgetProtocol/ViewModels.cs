@@ -367,6 +367,11 @@ public sealed record ViewNode
     /// </summary>
     public string? ArtworkHandle { get; init; }
     /// <summary>
+    /// Optional protocol-v39 trusted artwork selected only while this exact
+    /// focusable node owns host focus inside an opted-in BackgroundSurface.
+    /// </summary>
+    public string? FocusBackgroundArtworkHandle { get; init; }
+    /// <summary>
     /// Protocol-v23 identity of the one top-level EmbeddedMedia declaration
     /// whose pixels are placed inside this native layout node.
     /// </summary>
@@ -417,6 +422,11 @@ public sealed record ViewNode
     /// descendant in their own input scope.
     /// </summary>
     public string? InitialChildFocusId { get; init; }
+    /// <summary>
+    /// Protocol-v39 opt-in for a BackgroundSurface to consume the exact
+    /// focused descendant's focus-background artwork declaration.
+    /// </summary>
+    public bool? UsesFocusedDescendantArtwork { get; init; }
     /// <summary>
     /// Selects the bounded axis for a Scroll node. The host owns the offset,
     /// clips descendants, and reveals controller focus; widgets never publish pixels.

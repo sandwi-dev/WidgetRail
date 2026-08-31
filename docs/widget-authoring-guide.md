@@ -2364,6 +2364,18 @@ Style crop position, tint, scrim, and radius with WRSS. Always author a safe
 surface color and readable foreground treatment so missing, late, or rejected
 artwork preserves the same usable geometry and semantics.
 
+For a controller rail whose background follows focus, attach an opaque trusted
+artwork handle to each eligible control with `.FocusBackground(handle)` and opt
+the nearest surface in with `.UseFocusedDescendantArtwork()` (protocol v39).
+This is a paint/resource declaration only: it does not notify the worker or add
+focus, input, layout, or accessibility authority. A nested BackgroundSurface
+owns its own descendants and prevents an outer surface from consuming their
+focus artwork. A focused node without a declaration restores the surface's
+authored default. Pending or failed replacements retain the last admitted
+image, and stale completions cannot overwrite the current focus selection.
+Resolve every declared handle through the same bounded
+`OnResolveArtworkAsync` path as ordinary trusted artwork.
+
 During local development:
 
 - `wrail validate` reports manifest/WRSS JSON paths and source-located styling

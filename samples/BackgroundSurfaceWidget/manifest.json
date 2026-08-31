@@ -3,7 +3,7 @@
   "id": "widgetrail.tests.background-surface",
   "publisher": "widgetrail.tests",
   "name": "Background Surface Test",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "pinningSupported": false,
   "hostApi": {
     "minimum": "1.0",

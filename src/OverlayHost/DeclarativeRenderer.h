@@ -127,6 +127,7 @@ struct RenderResult final {
     std::map<std::wstring, float, std::less<>> sliderThumbXs;
     std::map<std::wstring, ButtonContentPlacement, std::less<>> buttonContentPlacements;
     std::map<std::wstring, std::uint32_t, std::less<>> textLineCounts;
+    std::map<std::wstring, std::wstring, std::less<>> backgroundArtworkHandles;
 #endif
     std::map<std::wstring, declarative::Rect, std::less<>> focusRects;
     // Full logical controller geometry includes offscreen descendants of a
@@ -265,6 +266,9 @@ struct DeclarativeRenderOptions final {
     std::wstring pressedElementId;
     /// Current bridge widget ID used only to bind lazy opaque artwork demand.
     std::wstring artworkWidgetId;
+    /// Exact runtime/presentation authority for host-retained focused
+    /// BackgroundSurface selection. Empty preserves test/source compatibility.
+    std::wstring artworkAuthorityId;
     /// Right-stick free scroll deliberately retains semantic focus without
     /// allowing that descendant to pull the viewport back until re-entry.
     bool suppressFocusedDescendantFollow{};
@@ -487,6 +491,12 @@ private:
         std::size_t bytes{};
         std::uint64_t lastUse{};
     };
+    struct FocusBackgroundEntry final {
+        std::wstring imageSource;
+        std::wstring artworkHandle;
+        std::wstring imageFit;
+        std::uint64_t lastUse{};
+    };
 
     [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap> GetImageBitmap(
         ID2D1RenderTarget* renderTarget,
@@ -524,6 +534,8 @@ private:
     std::uint64_t bitmapSupersededArtworkEvictions_{};
     std::uint64_t bitmapResourceInvalidations_{};
     std::uint64_t bitmapResourceGeneration_{};
+    std::unordered_map<std::wstring, FocusBackgroundEntry> focusBackgrounds_;
+    std::uint64_t focusBackgroundAccessClock_{};
     std::unordered_map<std::wstring, ScrollStateEntry> scrollOffsets_;
     std::uint64_t scrollStateAccessClock_{};
     DeclarativeMotionTimeline motionTimeline_;

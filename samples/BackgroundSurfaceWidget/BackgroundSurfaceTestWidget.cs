@@ -9,6 +9,8 @@ namespace WidgetRail.Samples.BackgroundSurfaceWidget;
 public sealed class BackgroundSurfaceTestWidget : Widget
 {
     public const string ArtworkHandle = "background-surface-test.artwork";
+    public const string FirstFocusArtworkHandle = "background-surface-test.focus.first";
+    public const string SecondFocusArtworkHandle = "background-surface-test.focus.second";
     public static ReadOnlyMemory<byte> ArtworkBytes { get; } = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xh8ftQAAAABJRU5ErkJggg==");
 
@@ -20,16 +22,25 @@ public sealed class BackgroundSurfaceTestWidget : Widget
                             .Classes("background-surface-test-text"),
                         UI.Text("Generic artwork isolation", "background-surface-test.title")
                             .Classes("background-surface-test-text"),
-                        UI.Button(
-                            "Foreground action",
-                            "background-surface-test.activate",
-                            "background-surface-test.action"))
+                        UI.Row(
+                            "background-surface-test.actions",
+                            UI.Button(
+                                    "First background",
+                                    "background-surface-test.first",
+                                    "background-surface-test.first")
+                                .FocusBackground(new WidgetArtworkHandle(FirstFocusArtworkHandle)),
+                            UI.Button(
+                                    "Second background",
+                                    "background-surface-test.second",
+                                    "background-surface-test.second")
+                                .FocusBackground(new WidgetArtworkHandle(SecondFocusArtworkHandle))))
                     .Classes("background-surface-test-foreground"),
                 "background-surface-test.root",
                 BackgroundSurfaceArtwork.FromHandle(
                     new WidgetArtworkHandle(ArtworkHandle), ImageFit.Cover))
+            .UseFocusedDescendantArtwork()
             .Classes("background-surface-test-root"),
-        InitialFocusId: "background-surface-test.action",
+        InitialFocusId: "background-surface-test.first",
         ActiveInputScopeId: "background-surface-test.root",
         Surface: new WidgetSurfaceHints
         {
@@ -47,7 +58,7 @@ public sealed class BackgroundSurfaceTestWidget : Widget
     {
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult<WidgetEncodedArtwork?>(
-            string.Equals(handle.Value, ArtworkHandle, StringComparison.Ordinal)
+            handle.Value is ArtworkHandle or FirstFocusArtworkHandle or SecondFocusArtworkHandle
                 ? new WidgetEncodedArtwork(WidgetArtworkContentType.Png, ArtworkBytes)
                 : null);
     }

@@ -328,7 +328,8 @@ if(WRAIL_BUILD_TESTS)
     target_compile_features(BackgroundSurfaceHostTests PRIVATE cxx_std_20)
     target_compile_options(BackgroundSurfaceHostTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(BackgroundSurfaceHostTests PRIVATE
-        WRAIL_WIDGET_BRIDGE_CLIENT_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        WRAIL_WIDGET_BRIDGE_CLIENT_TESTING WRAIL_DECLARATIVE_RENDERER_TESTING
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(BackgroundSurfaceHostTests PRIVATE
         windowsapp user32 bcrypt normaliz d2d1 dwrite winhttp windowscodecs ole32)
     widgetrail_link_taffy(BackgroundSurfaceHostTests)

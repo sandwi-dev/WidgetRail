@@ -79,6 +79,17 @@ public sealed record BackgroundSurfaceElement : WidgetElement
 
     public WidgetElement Content { get; init; }
     public BackgroundSurfaceArtwork? Artwork { get; init; }
+    public bool UsesFocusedDescendantArtwork { get; init; }
+
+    /// <summary>
+    /// Lets this surface consume the exact focused descendant's optional
+    /// FocusBackground declaration. Nested BackgroundSurface nodes are hard
+    /// ownership boundaries.
+    /// </summary>
+    public BackgroundSurfaceElement UseFocusedDescendantArtwork() => this with
+    {
+        UsesFocusedDescendantArtwork = true,
+    };
 
     internal override ViewNode ToProtocolNode() => new()
     {
@@ -87,6 +98,7 @@ public sealed record BackgroundSurfaceElement : WidgetElement
         ImageSource = Artwork?.ImageSource,
         ArtworkHandle = Artwork?.ArtworkHandle?.Value,
         ImageFit = Artwork?.Fit,
+        UsesFocusedDescendantArtwork = UsesFocusedDescendantArtwork ? true : null,
         StyleClasses = StyleClasses,
         Children = [Content.ToProtocolNode()],
     };

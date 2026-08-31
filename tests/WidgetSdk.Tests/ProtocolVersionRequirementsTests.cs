@@ -211,6 +211,19 @@ internal static class ProtocolVersionRequirementsTests
                     Kind = ViewNodeKind.BackgroundSurface,
                     Children = [Text("background-content")],
                 }),
+            NodeCase("focused background artwork", "focused-background-artwork",
+                ProtocolConstants.FocusedBackgroundArtworkVersion,
+                Button() with { FocusBackgroundArtworkHandle = "artwork.focused" },
+                "$.root.children[0].focusBackgroundArtworkHandle"),
+            NodeCase("focused background surface", "focused-background-artwork",
+                ProtocolConstants.FocusedBackgroundArtworkVersion,
+                new()
+                {
+                    Id = "focused-background",
+                    Kind = ViewNodeKind.BackgroundSurface,
+                    UsesFocusedDescendantArtwork = true,
+                    Children = [Button()],
+                }, "$.root.children[0].usesFocusedDescendantArtwork"),
             NodeCase("responsive grid", "responsive-grid", ProtocolConstants.ResponsiveGridVersion,
                 new()
                 {

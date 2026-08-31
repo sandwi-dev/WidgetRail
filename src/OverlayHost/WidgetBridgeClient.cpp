@@ -831,6 +831,13 @@ WidgetNode ParseNode(const JsonObject& source) {
          (node.artworkHandle.size() > kMaximumIdentifierLength ||
           !IsIdentifier(node.artworkHandle))))
         throw winrt::hresult_invalid_argument();
+    node.focusBackgroundArtworkHandle =
+        OptionalString(source, L"focusBackgroundArtworkHandle");
+    if (source.HasKey(L"focusBackgroundArtworkHandle") &&
+        (node.focusBackgroundArtworkHandle.empty() ||
+         node.focusBackgroundArtworkHandle.size() > kMaximumIdentifierLength ||
+         !IsIdentifier(node.focusBackgroundArtworkHandle)))
+        throw winrt::hresult_invalid_argument();
     node.mediaSurfaceId = OptionalString(source, L"mediaSurfaceId");
     if (!node.mediaSurfaceId.empty() &&
         (node.kind != L"mediaViewport" ||
@@ -854,6 +861,13 @@ WidgetNode ParseNode(const JsonObject& source) {
         !IsIdentifier(node.initialChildFocusId))
         throw winrt::hresult_invalid_argument(
             L"Initial child focus identity is invalid.");
+    if (source.HasKey(L"usesFocusedDescendantArtwork")) {
+        if (source.GetNamedValue(L"usesFocusedDescendantArtwork").ValueType() !=
+                JsonValueType::Boolean || node.kind != L"backgroundSurface")
+            throw winrt::hresult_invalid_argument();
+        node.usesFocusedDescendantArtwork =
+            source.GetNamedBoolean(L"usesFocusedDescendantArtwork");
+    }
     node.scrollAxis = OptionalString(source, L"scrollAxis");
     node.scrollNearStartActionId = OptionalString(source, L"scrollNearStartActionId");
     node.scrollNearEndActionId = OptionalString(source, L"scrollNearEndActionId");
@@ -1052,6 +1066,11 @@ WidgetNode ParseNode(const JsonObject& source) {
     }
     if (!node.actionSurfacePresentation.empty() && node.kind != L"actionSurface")
         throw winrt::hresult_invalid_argument();
+    if (!node.focusBackgroundArtworkHandle.empty() &&
+        node.kind != L"button" && node.kind != L"slider" &&
+        node.kind != L"actionSurface")
+        throw winrt::hresult_invalid_argument(
+            L"Focus-background artwork requires a focusable node.");
     if (node.actionSurfacePresentation == L"poster") {
         const auto hasArtwork = node.children.size() == 2U;
         if (node.actionSurfaceOrientation != L"vertical" ||
@@ -1260,6 +1279,11 @@ void ValidateBackgroundSurfaces(const WidgetNode& root, const int protocolVersio
             protocolVersion < protocol_contract::BackgroundSurfaceVersion)
             throw winrt::hresult_invalid_argument(
                 L"Background surfaces require protocol version 38.");
+        if ((!node.focusBackgroundArtworkHandle.empty() ||
+             node.usesFocusedDescendantArtwork) &&
+            protocolVersion < protocol_contract::FocusedBackgroundArtworkVersion)
+            throw winrt::hresult_invalid_argument(
+                L"Focused background artwork requires protocol version 39.");
         for (const auto& child : node.children) self(self, child);
     };
     visit(visit, root);
@@ -1737,15 +1761,17 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 42> properties{
+    static constexpr std::array<std::wstring_view, 44> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextActions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
         L"valueChangedActionId", L"sliderInteractionMode", L"imageSource",
-        L"artworkHandle", L"mediaSurfaceId", L"imageFit", L"glyph", L"indicatorSize",
+        L"artworkHandle", L"focusBackgroundArtworkHandle", L"mediaSurfaceId",
+        L"imageFit", L"glyph", L"indicatorSize",
         L"actionSurfaceOrientation", L"actionSurfacePresentation", L"gridMinimumColumnWidth",
         L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
-        L"focusPersistenceId", L"focus", L"inputScopeId", L"initialChildFocusId", L"scrollAxis",
+        L"focusPersistenceId", L"focus", L"inputScopeId", L"initialChildFocusId",
+        L"usesFocusedDescendantArtwork", L"scrollAxis",
         L"scrollNearStartActionId", L"scrollNearEndActionId",
         L"scrollPaginationThreshold", L"virtualCollectionWindow",
         L"collectionAnchorKey",
@@ -1783,11 +1809,13 @@ bool ValidateWidgetDocumentStructure(
                  L"textEntryValue", L"textEntryPlaceholder",
                  L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum",
                  L"step", L"valueChangedActionId", L"sliderInteractionMode",
-                 L"imageSource", L"artworkHandle", L"mediaSurfaceId", L"imageFit", L"glyph",
+                 L"imageSource", L"artworkHandle", L"focusBackgroundArtworkHandle",
+                 L"mediaSurfaceId", L"imageFit", L"glyph",
                  L"indicatorSize", L"actionSurfaceOrientation", L"actionSurfacePresentation",
                  L"gridMinimumColumnWidth", L"gridMaximumColumns", L"isDisabled",
                  L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
-                 L"inputScopeId", L"initialChildFocusId", L"scrollAxis", L"scrollNearStartActionId",
+                 L"inputScopeId", L"initialChildFocusId", L"usesFocusedDescendantArtwork",
+                 L"scrollAxis", L"scrollNearStartActionId",
                  L"scrollNearEndActionId", L"scrollPaginationThreshold",
                  L"virtualCollectionWindow",
                  L"collectionAnchorKey", L"collectionItemKey",
@@ -2276,6 +2304,9 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         return Effect::Resource | Effect::MeasureLayout |
             Effect::Paint | Effect::Accessibility;
     }
+    if (property == L"focusBackgroundArtworkHandle" ||
+        property == L"usesFocusedDescendantArtwork")
+        return Effect::Resource | Effect::Paint;
     if (property == L"mediaSurfaceId") {
         return Effect::Authority | Effect::SurfacePlacement |
             Effect::MeasureLayout | Effect::Paint | Effect::Accessibility;

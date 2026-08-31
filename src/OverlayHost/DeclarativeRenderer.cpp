@@ -218,6 +218,45 @@ constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
     return false;
 }
 
+struct FocusBackgroundSelection final {
+    const WidgetNode* surface{};
+    const WidgetNode* focused{};
+    std::wstring_view imageSource;
+    std::wstring_view artworkHandle;
+};
+
+[[nodiscard]] FocusBackgroundSelection ResolveFocusBackgroundSelection(
+    const WidgetNode& root,
+    const std::wstring_view focusedElementId) {
+    if (focusedElementId.empty()) return {};
+    std::vector<const WidgetNode*> path;
+    if (!FindNodePath(root, focusedElementId, path) || path.empty()) return {};
+    const WidgetNode* nearestSurface{};
+    for (const auto* node : path) {
+        if (node->kind == L"backgroundSurface") nearestSurface = node;
+    }
+    if (!nearestSurface || !nearestSurface->usesFocusedDescendantArtwork)
+        return {};
+    const auto* focused = path.back();
+    return {
+        nearestSurface,
+        focused,
+        focused->focusBackgroundArtworkHandle.empty()
+            ? std::wstring_view{nearestSurface->imageSource}
+            : std::wstring_view{},
+        focused->focusBackgroundArtworkHandle.empty()
+            ? std::wstring_view{nearestSurface->artworkHandle}
+            : std::wstring_view{focused->focusBackgroundArtworkHandle},
+    };
+}
+
+[[nodiscard]] bool SameFocusBackgroundSelection(
+    const FocusBackgroundSelection& left,
+    const FocusBackgroundSelection& right) noexcept {
+    return left.surface == right.surface && left.imageSource == right.imageSource &&
+        left.artworkHandle == right.artworkHandle;
+}
+
 [[nodiscard]] float PositionFactorX(const NativeObjectPosition position) noexcept {
     switch (position) {
     case NativeObjectPosition::Left:
@@ -2645,14 +2684,14 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
-    void DrawImage(
+    bool DrawImage(
         const WidgetNode& node,
         const NativeRenderStyle& style,
         const Rect rect,
         const float opacity,
         const bool focused,
         const bool drawFailureFallback = true) {
-        if (!target) return;
+        if (!target) return false;
         auto presentationState = ImagePresentationState::Pending;
         auto bitmap = owner->GetImageBitmap(
             target, node, *this, options.artworkWidgetId, presentationState);
@@ -2673,7 +2712,7 @@ struct DeclarativeRenderer::RenderPass final {
                     Inset(rect, std::min(rect.width, rect.height) * 0.32F),
                     opacity * 0.65F, L"warning");
             }
-            return;
+            return false;
         }
         auto fit = style.imageFit();
         if (!HasComputedProperty(node, L"object-fit", focused, node.id == pressedId)) {
@@ -2721,6 +2760,84 @@ struct DeclarativeRenderer::RenderPass final {
         }
         if (pushed) target->PopLayer();
         else target->PopAxisAlignedClip();
+        return true;
+    }
+
+    void DrawBackgroundSurfaceImage(
+        const WidgetNode& node,
+        const NativeRenderStyle& style,
+        const Rect rect,
+        const float opacity) {
+        std::wstring authority = options.artworkAuthorityId.empty()
+            ? options.artworkWidgetId
+            : options.artworkAuthorityId;
+        authority.push_back(L'\x1f');
+        authority.append(snapshot->instanceId);
+        authority.push_back(L'\x1f');
+        authority.append(node.id);
+
+        if (!node.usesFocusedDescendantArtwork) {
+            owner->focusBackgrounds_.erase(authority);
+            if (!node.imageSource.empty() || !node.artworkHandle.empty())
+                (void)DrawImage(node, style, rect, opacity, false, false);
+            return;
+        }
+
+        const auto selection = ResolveFocusBackgroundSelection(
+            snapshot->root, focusedId);
+        WidgetNode desired = node;
+        if (selection.surface == &node && selection.focused &&
+            !selection.focused->focusBackgroundArtworkHandle.empty()) {
+            desired.imageSource.clear();
+            desired.artworkHandle = selection.focused->focusBackgroundArtworkHandle;
+            if (desired.imageFit.empty()) desired.imageFit = L"cover";
+        }
+        if (desired.imageSource.empty() && desired.artworkHandle.empty()) {
+            owner->focusBackgrounds_.erase(authority);
+            return;
+        }
+
+        if (DrawImage(desired, style, rect, opacity, false, false)) {
+            constexpr std::size_t maximumRetainedSurfaces = 256;
+            if (!owner->focusBackgrounds_.contains(authority) &&
+                owner->focusBackgrounds_.size() >= maximumRetainedSurfaces) {
+                const auto oldest = std::min_element(
+                    owner->focusBackgrounds_.begin(),
+                    owner->focusBackgrounds_.end(),
+                    [](const auto& left, const auto& right) {
+                        return left.second.lastUse < right.second.lastUse;
+                    });
+                if (oldest != owner->focusBackgrounds_.end())
+                    owner->focusBackgrounds_.erase(oldest);
+            }
+            owner->focusBackgrounds_.insert_or_assign(
+                authority,
+                FocusBackgroundEntry{
+                    desired.imageSource,
+                    desired.artworkHandle,
+                    desired.imageFit,
+                    ++owner->focusBackgroundAccessClock_,
+                });
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+            if (!desired.artworkHandle.empty())
+                result.backgroundArtworkHandles[node.id] = desired.artworkHandle;
+#endif
+            return;
+        }
+
+        const auto retained = owner->focusBackgrounds_.find(authority);
+        if (retained == owner->focusBackgrounds_.end()) return;
+        retained->second.lastUse = ++owner->focusBackgroundAccessClock_;
+        WidgetNode fallback = node;
+        fallback.imageSource = retained->second.imageSource;
+        fallback.artworkHandle = retained->second.artworkHandle;
+        fallback.imageFit = retained->second.imageFit;
+        if (DrawImage(fallback, style, rect, opacity, false, false)) {
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+            if (!fallback.artworkHandle.empty())
+                result.backgroundArtworkHandles[node.id] = fallback.artworkHandle;
+#endif
+        }
     }
 
     void DrawProgress(
@@ -3000,10 +3117,8 @@ struct DeclarativeRenderer::RenderPass final {
         if (node.kind != L"slider" && node.kind != L"loadingIndicator")
             DrawSurface(node, style, paintRect, opacity);
 
-        if (node.kind == L"backgroundSurface" &&
-            (!node.imageSource.empty() || !node.artworkHandle.empty())) {
-            DrawImage(node, style, paintRect, opacity, false, false);
-        }
+        if (node.kind == L"backgroundSurface")
+            DrawBackgroundSurfaceImage(node, style, paintRect, opacity);
 
         if (node.kind == L"actionSurface" &&
             node.actionSurfacePresentation == L"poster") {
@@ -3370,6 +3485,21 @@ DeclarativeRenderer::PlanFocusUpdate(
     if (!addNode(priorFocusedElementId, false) ||
         !addNode(nextFocusedElementId, true)) {
         return std::nullopt;
+    }
+    const auto priorBackground = ResolveFocusBackgroundSelection(
+        snapshot.root, priorFocusedElementId);
+    const auto nextBackground = ResolveFocusBackgroundSelection(
+        snapshot.root, nextFocusedElementId);
+    if (!SameFocusBackgroundSelection(priorBackground, nextBackground)) {
+        for (const auto* surface :
+             {priorBackground.surface, nextBackground.surface}) {
+            if (!surface) continue;
+            const auto found = cache->nodes.find(surface->id);
+            if (found == cache->nodes.end()) return std::nullopt;
+            const auto bounded = Intersection(found->second.paintBounds, viewport);
+            if (bounded.width > 0.0F && bounded.height > 0.0F)
+                damage = UnionRect(damage, bounded);
+        }
     }
     for (const auto& nodeId : additionalPaintNodeIds) {
         const auto found = cache->nodes.find(nodeId);
@@ -4029,6 +4159,11 @@ void DeclarativeRenderer::ForgetWidgetState(
         return entry.first.starts_with(prefix);
     });
     motionTimeline_.ForgetPrefix(prefix);
+    const std::wstring authorityNeedle =
+        L"\x1f" + std::wstring(widgetInstanceId) + L"\x1f";
+    std::erase_if(focusBackgrounds_, [&](const auto& entry) {
+        return entry.first.find(authorityNeedle) != std::wstring::npos;
+    });
 }
 
 ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
