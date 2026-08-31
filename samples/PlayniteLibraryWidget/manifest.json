@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.playnite-library",
   "publisher": "widgetrail.samples",
   "name": "Playnite Library",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
   "entrypoint": {
     "runtime": "full-trust-application-v1",

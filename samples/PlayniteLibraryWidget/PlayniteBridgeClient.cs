@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
@@ -304,6 +305,8 @@ internal sealed class PlayniteBridgeClient(
             return WidgetArtworkContentType.Png;
         if (HasValidArtworkEnvelope(WidgetArtworkContentType.Jpeg, bytes))
             return WidgetArtworkContentType.Jpeg;
+        if (HasValidWebPEnvelope(bytes))
+            return WidgetArtworkContentType.WebP;
         return null;
     }
 
@@ -318,6 +321,101 @@ internal sealed class PlayniteBridgeClient(
                 bytes[^2] == 0xff && bytes[^1] == 0xd9,
             _ => false,
         };
+
+    private static bool HasValidWebPEnvelope(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 20 || !bytes[..4].SequenceEqual("RIFF"u8) ||
+            !bytes.Slice(8, 4).SequenceEqual("WEBP"u8) ||
+            BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(4, 4)) != bytes.Length - 8)
+            return false;
+
+        var extended = false;
+        var animated = false;
+        var animationHeader = false;
+        var animationFrame = false;
+        var imagePayload = false;
+        var offset = 12;
+        while (bytes.Length - offset >= 8)
+        {
+            var encodedLength = BinaryPrimitives.ReadUInt32LittleEndian(
+                bytes.Slice(offset + 4, 4));
+            if (encodedLength > int.MaxValue) return false;
+            var length = (int)encodedLength;
+            var data = offset + 8;
+            if (length > bytes.Length - data) return false;
+            var end = data + length;
+            var chunk = bytes.Slice(offset, 4);
+            if (chunk.SequenceEqual("VP8 "u8))
+            {
+                if (length < 10 || !bytes.Slice(data + 3, 3)
+                        .SequenceEqual(new byte[] { 0x9d, 0x01, 0x2a }))
+                    return false;
+                imagePayload = true;
+            }
+            else if (chunk.SequenceEqual("VP8L"u8))
+            {
+                if (length < 5 || bytes[data] != 0x2f) return false;
+                imagePayload = true;
+            }
+            else if (chunk.SequenceEqual("VP8X"u8))
+            {
+                if (extended || length != 10 || (bytes[data] & 0xc1) != 0) return false;
+                extended = true;
+                animated = (bytes[data] & 0x02) != 0;
+            }
+            else if (chunk.SequenceEqual("ANIM"u8))
+            {
+                if (!extended || !animated || length != 6) return false;
+                animationHeader = true;
+            }
+            else if (chunk.SequenceEqual("ANMF"u8))
+            {
+                if (!extended || !animated || length < 24 ||
+                    !ContainsWebPImageChunk(bytes, data + 16, end))
+                    return false;
+                animationFrame = true;
+            }
+            var padded = length + (length & 1);
+            if (padded > bytes.Length - data) return false;
+            offset = data + padded;
+        }
+        return offset == bytes.Length &&
+            (animated ? animationHeader && animationFrame : imagePayload);
+    }
+
+    private static bool ContainsWebPImageChunk(
+        ReadOnlySpan<byte> bytes,
+        int offset,
+        int end)
+    {
+        var imagePayload = false;
+        while (end - offset >= 8)
+        {
+            var encodedLength = BinaryPrimitives.ReadUInt32LittleEndian(
+                bytes.Slice(offset + 4, 4));
+            if (encodedLength > int.MaxValue) return false;
+            var length = (int)encodedLength;
+            var data = offset + 8;
+            if (length > end - data) return false;
+            var chunk = bytes.Slice(offset, 4);
+            if (chunk.SequenceEqual("VP8 "u8))
+            {
+                if (length < 10 || !bytes.Slice(data + 3, 3)
+                        .SequenceEqual(new byte[] { 0x9d, 0x01, 0x2a }))
+                    return false;
+                imagePayload = true;
+            }
+            else if (chunk.SequenceEqual("VP8L"u8))
+            {
+                if (length < 5 || bytes[data] != 0x2f) return false;
+                imagePayload = true;
+            }
+            var padded = length + (length & 1);
+            if (padded > end - data) return false;
+            offset = data + padded;
+        }
+        return offset == end && imagePayload;
+    }
 
     internal static string ArtworkSizeClass(int length) => length switch
     {

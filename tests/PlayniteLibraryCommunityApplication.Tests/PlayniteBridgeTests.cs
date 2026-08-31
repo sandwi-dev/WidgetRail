@@ -228,12 +228,23 @@ public sealed class PlayniteBridgeTests
         Assert.AreEqual(WidgetArtworkContentType.Jpeg, jpegResult.Artwork.ContentType);
         CollectionAssert.AreEqual(jpeg, jpegResult.Artwork.Bytes.ToArray());
 
-        transport.Response = new(200,
-            new byte[] { 82, 73, 70, 70, 4, 0, 0, 0, 87, 69, 66, 80 }, "image/jpeg");
+        var webp = Convert.FromBase64String(
+            "UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAAdQmWZ0qf+BiOh/AAA=");
+        transport.Response = new(200, webp, "image/jpeg");
         var webpResult = await client.ResolveArtworkAsync("00000000-0000-0000-0000-000000000003",
             PlayniteBridgeArtworkKind.Cover, CancellationToken.None);
-        Assert.IsNull(webpResult.Artwork);
-        Assert.AreEqual("unsupported-encoded-artwork", webpResult.Code);
+        Assert.IsNotNull(webpResult.Artwork);
+        Assert.AreEqual(WidgetArtworkContentType.WebP, webpResult.Artwork.ContentType);
+        CollectionAssert.AreEqual(webp, webpResult.Artwork.Bytes.ToArray());
+
+        var malformedWebp = webp.ToArray();
+        malformedWebp[4]++;
+        transport.Response = new(200, malformedWebp, "image/webp");
+        var malformedResult = await client.ResolveArtworkAsync(
+            "00000000-0000-0000-0000-000000000004",
+            PlayniteBridgeArtworkKind.Cover, CancellationToken.None);
+        Assert.IsNull(malformedResult.Artwork);
+        Assert.AreEqual("unsupported-encoded-artwork", malformedResult.Code);
     }
 
     [TestMethod]
@@ -245,7 +256,7 @@ public sealed class PlayniteBridgeTests
         var value = manifest.RootElement;
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, value.GetProperty("optionalPermissions").GetArrayLength());
-        Assert.AreEqual("0.2.10", value.GetProperty("version").GetString());
+        Assert.AreEqual("0.2.11", value.GetProperty("version").GetString());
         var manifestText = File.ReadAllText(manifestPath);
         Assert.IsFalse(manifestText.Contains("Bearer", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(manifestText.Contains("token", StringComparison.OrdinalIgnoreCase));
@@ -269,7 +280,7 @@ public sealed class PlayniteBridgeTests
                 Path.GetRelativePath(root, sourcePath));
 
         var packagePath = Path.Combine(root, "artifacts", "community-addons",
-            "playnite-library", "widgetrail.samples.playnite-library-0.2.10.wrwidget");
+            "playnite-library", "widgetrail.samples.playnite-library-0.2.11.wrwidget");
         Assert.IsTrue(File.Exists(packagePath), "The validated package artifact is missing.");
         using var archive = ZipFile.OpenRead(packagePath);
         foreach (var entry in archive.Entries.Where(item => item.Length != 0))
