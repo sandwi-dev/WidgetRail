@@ -321,14 +321,19 @@ internal static class FullTrustCommunityScenarios
     private static bool UsablePlayniteLibraryLibrary(ViewSnapshot snapshot)
     {
         if (snapshot.InitialFocusId is null ||
-            TryFind(snapshot.Root, "playnite-library.sources") is null ||
             TryFind(snapshot.Root, "playnite-library.retry") is not null)
             return false;
-        return Descendants(snapshot.Root).Any(node =>
-            node.Id.StartsWith("playnite-library.source.source-", StringComparison.Ordinal) &&
-            node.Text is { } text &&
-            (text.Contains(": Healthy", StringComparison.Ordinal) ||
-             text.Contains(": Degraded", StringComparison.Ordinal)));
+        var focused = TryFind(snapshot.Root, snapshot.InitialFocusId);
+        return focused is
+            {
+                Kind: ViewNodeKind.ActionSurface,
+                ActionId: "playnite-library.launch",
+            } &&
+            focused.Id.StartsWith("playnite-library.item.grid.", StringComparison.Ordinal) &&
+            Descendants(snapshot.Root).Any(node =>
+                node.Kind == ViewNodeKind.ActionSurface &&
+                node.ActionId == "playnite-library.launch" &&
+                node.Id.StartsWith("playnite-library.item.grid.", StringComparison.Ordinal));
     }
 
     private static IEnumerable<ViewNode> Descendants(ViewNode root)

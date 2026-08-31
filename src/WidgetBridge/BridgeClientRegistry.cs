@@ -45,13 +45,87 @@ internal sealed record BridgeClientRuntimeFailure(string WidgetId, WidgetFailure
 internal sealed record BridgeWidgetRequestDiagnostic(
     string WidgetId,
     string RequestType,
-    string WorkerErrorCode)
+    string WorkerErrorCode,
+    string? ValidationPath = null,
+    string? ValidationCode = null)
 {
-    internal static BridgeWidgetRequestDiagnostic From(BridgeWidgetRequestException exception) =>
-        new(
+    private const string ValidationPrefix = "Widget protocol validation failed at ";
+    private const int MaximumValidationPathLength = 256;
+
+    internal static BridgeWidgetRequestDiagnostic From(BridgeWidgetRequestException exception)
+    {
+        string? validationPath = null;
+        string? validationCode = null;
+        if (string.Equals(exception.WorkerErrorCode,
+                WorkerErrorCodes.ProtocolValidationFailed, StringComparison.Ordinal))
+            TryParseValidationDiagnostic(
+                exception.WorkerDiagnosticMessage, out validationPath, out validationCode);
+        return new(
             exception.WidgetId,
             exception.RequestType!,
-            exception.WorkerErrorCode!);
+            exception.WorkerErrorCode!,
+            validationPath,
+            validationCode);
+    }
+
+    private static bool TryParseValidationDiagnostic(
+        string? diagnostic,
+        out string? path,
+        out string? code)
+    {
+        path = null;
+        code = null;
+        if (diagnostic is null ||
+            !diagnostic.StartsWith(ValidationPrefix, StringComparison.Ordinal) ||
+            !diagnostic.EndsWith(").", StringComparison.Ordinal))
+            return false;
+
+        var separator = diagnostic.LastIndexOf(" (", StringComparison.Ordinal);
+        if (separator < ValidationPrefix.Length) return false;
+        var candidatePath = diagnostic[ValidationPrefix.Length..separator];
+        var candidateCode = diagnostic[(separator + 2)..^2];
+        if (!IsSafeValidationPath(candidatePath) || !IsSafeValidationCode(candidateCode))
+            return false;
+
+        path = candidatePath;
+        code = candidateCode;
+        return true;
+    }
+
+    internal static bool IsSafeValidationCode(string code) =>
+        code.Length is > 0 and <= 64 && code.All(character =>
+            character >= 'a' && character <= 'z' || char.IsAsciiDigit(character) ||
+            character == '_');
+
+    internal static bool IsSafeValidationPath(string path)
+    {
+        if (path.Length is < 1 or > MaximumValidationPathLength || path[0] != '$')
+            return false;
+        for (var index = 1; index < path.Length;)
+        {
+            if (path[index] == '.')
+            {
+                index++;
+                var start = index;
+                while (index < path.Length &&
+                       (char.IsAsciiLetterOrDigit(path[index]) || path[index] == '_'))
+                    index++;
+                if (index == start) return false;
+                continue;
+            }
+            if (path[index] == '[')
+            {
+                index++;
+                var start = index;
+                while (index < path.Length && char.IsAsciiDigit(path[index])) index++;
+                if (index == start || index >= path.Length || path[index] != ']') return false;
+                index++;
+                continue;
+            }
+            return false;
+        }
+        return true;
+    }
 }
 internal sealed class BridgeWidgetRequestException : Exception
 {

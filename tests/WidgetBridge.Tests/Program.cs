@@ -649,15 +649,12 @@ static async Task WorkerRequestDiagnosticsAreBounded()
 {
     using var temporary = new TemporaryDirectory("wrail-worker-request-diagnostics");
     var path = System.IO.Path.Combine(temporary.Path, "overlay.log");
-    var forgedValidation = new ProtocolValidationException([
-        new ProtocolValidationError(
-            "$.credentials.providerToken",
-            "provider_secret",
-            "credential=FORGED_STRUCTURAL_SECRET"),
-    ]);
-    var forgedError = forgedValidation.Errors[0];
-    var forgedStructuralDiagnostic =
-        $"Widget protocol validation failed at {forgedError.Path} ({forgedError.Code}).";
+    const string structuralDiagnostic =
+        "Widget protocol validation failed at $.root.children[3].contextActions " +
+        "(context_actions_not_allowed).";
+    const string unsafeStructuralDiagnostic =
+        "Widget protocol validation failed at $.root.children[3].text " +
+        "credential=FORGED_STRUCTURAL_SECRET (too_long).";
     await using (var diagnostics = new MediaSessionsDiagnosticLog(path, bridgeSessionGeneration: 7))
     {
         WidgetBridgeServer.ReportWidgetRequestFailure(
@@ -677,7 +674,16 @@ static async Task WorkerRequestDiagnosticsAreBounded()
                 new WidgetProcessException(
                     MessageTypes.Render,
                     WorkerErrorCodes.ProtocolValidationFailed,
-                    forgedStructuralDiagnostic)));
+                    structuralDiagnostic)));
+        WidgetBridgeServer.ReportWidgetRequestFailure(
+            diagnostics.RecordRequestFailure,
+            new BridgeWidgetRequestException(
+                "unsafe-protocol-widget",
+                "worker-protocol-failed",
+                new WidgetProcessException(
+                    MessageTypes.Render,
+                    WorkerErrorCodes.ProtocolValidationFailed,
+                    unsafeStructuralDiagnostic)));
         diagnostics.RecordRequestFailure(new BridgeWidgetRequestDiagnostic(
             "unsafe widget/path",
             MessageTypes.Render,
@@ -685,7 +691,7 @@ static async Task WorkerRequestDiagnosticsAreBounded()
     }
 
     var lines = File.ReadAllLines(path);
-    Assert.Equal(2, lines.Length);
+    Assert.Equal(3, lines.Length);
     Assert.True(lines[0].Contains(
         "Widget request diagnostic bridge-session=7 widget=installed-widget " +
         "request=render worker-code=worker_request_failed",
@@ -694,19 +700,24 @@ static async Task WorkerRequestDiagnosticsAreBounded()
         "A general worker failure retained arbitrary diagnostic detail.");
     Assert.True(lines[1].Contains(
         "widget=protocol-widget request=render " +
+        "worker-code=worker_protocol_validation_failed " +
+        "validation-path=$.root.children[3].contextActions " +
+        "validation-code=context_actions_not_allowed",
+        StringComparison.Ordinal), "The bounded validator path and code were not retained.");
+    Assert.True(!lines[0].Contains("validation-path=", StringComparison.Ordinal) &&
+                !lines[0].Contains("validation-code=", StringComparison.Ordinal),
+        "A non-validation worker error projected validation detail.");
+    Assert.True(lines[2].Contains(
+        "widget=unsafe-protocol-widget request=render " +
         "worker-code=worker_protocol_validation_failed",
-        StringComparison.Ordinal), "The structural failure lost its correlated metadata.");
-    Assert.True(!lines[1].Contains("detail=", StringComparison.Ordinal),
-        "A forged structural diagnostic entered the persistent record.");
-    Assert.True(lines.All(line =>
-        !line.Contains(forgedStructuralDiagnostic, StringComparison.Ordinal)),
-        "A forged ProtocolValidationException diagnostic entered the persistent log.");
+        StringComparison.Ordinal), "The malformed validation failure lost its correlation record.");
+    Assert.True(!lines[2].Contains("validation-path=", StringComparison.Ordinal) &&
+                !lines[2].Contains("validation-code=", StringComparison.Ordinal),
+        "An unsafe validator diagnostic crossed the bounded projection.");
     Assert.True(lines.All(line =>
         !line.Contains("credential", StringComparison.OrdinalIgnoreCase) &&
         !line.Contains("provider response", StringComparison.OrdinalIgnoreCase) &&
         !line.Contains("C:\\", StringComparison.Ordinal) &&
-        !line.Contains("$.credentials", StringComparison.Ordinal) &&
-        !line.Contains("provider_secret", StringComparison.Ordinal) &&
         !line.Contains("FORGED_STRUCTURAL_SECRET", StringComparison.Ordinal)),
         "Sensitive or package-private detail crossed the persistent log boundary.");
 }
@@ -2561,7 +2572,7 @@ static async Task PlatformAppearanceIsLazy()
     var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
     Assert.SequenceEqual(
-        ["animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency"],
+        ["animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides"],
         response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
     Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());
@@ -4140,7 +4151,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
         var media = initial.EmbeddedMedia
             ?? throw new InvalidOperationException("Built sample omitted embedded media.");
         Assert.Equal(
-            ProtocolConstants.OverlayFullscreenMediaPresentationVersion,
+            ProtocolConstants.SurfaceAppearanceVersion,
             initial.ProtocolVersion);
         Assert.True(media.CompactPinnedPresentation,
             "Built sample omitted compact pinned media presentation.");
@@ -4313,7 +4324,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
         var (play, playCommand) = await CommandAsync(
             "host.embeddedMedia.togglePlayback", "media-shell.play");
         Assert.Equal(
-            ProtocolConstants.OverlayFullscreenMediaPresentationVersion,
+            ProtocolConstants.SurfaceAppearanceVersion,
             play.ProtocolVersion);
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Play, playCommand.Kind);
         var playing = await AcknowledgeAsync(
