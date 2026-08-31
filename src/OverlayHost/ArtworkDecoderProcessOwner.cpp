@@ -5,6 +5,7 @@
 #include <limits>
 #include <sstream>
 #include <utility>
+#include <wincodec.h>
 
 namespace widgetrail {
 namespace {
@@ -70,7 +71,8 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
         return Failure(E_ABORT, L"Trusted artwork decode was cancelled.");
     const ContentType contentType = mimeType == L"image/jpeg"
         ? ContentType::Jpeg
-        : mimeType == L"image/png" ? ContentType::Png : ContentType::Invalid;
+        : mimeType == L"image/png" ? ContentType::Png
+        : mimeType == L"image/webp" ? ContentType::WebP : ContentType::Invalid;
     if (contentType == ContentType::Invalid || bytes.empty() ||
         bytes.size() > limits_.maximumEncodedArtworkBytes ||
         bytes.size() > maximumEncodedBytes)
@@ -80,6 +82,7 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
     if (!EnsureProcess(startError))
         return Failure(HRESULT_FROM_WIN32(ERROR_RETRY), std::move(startError));
 
+    const auto encodedBytes = bytes.size();
     const std::uint64_t correlation = nextCorrelation_++;
     if (nextCorrelation_ == 0) nextCorrelation_ = 1;
     auto* const header = reinterpret_cast<SharedHeader*>(view_);
@@ -90,7 +93,7 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
     header->contentType = contentType;
     header->testBehavior = testBehavior;
     header->correlation = correlation;
-    header->encodedBytes = bytes.size();
+    header->encodedBytes = encodedBytes;
     header->maximumDecodedBytes = limits_.maximumDecodedImageBytes;
     header->maximumPixels = limits_.maximumArtworkPixels;
     header->maximumDimension = limits_.maximumArtworkDimension;
@@ -147,9 +150,13 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
 
     if (FAILED(header->result)) {
         ++failed_;
+        SecureZeroMemory(view_ + encodedOffset, encodedBytes);
         return Failure(header->result,
             header->result == HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE)
                 ? L"Trusted artwork dimensions exceed the allowed bound."
+                : contentType == ContentType::WebP &&
+                    header->result == WINCODEC_ERR_COMPONENTNOTFOUND
+                ? L"Trusted artwork WebP decoder is unavailable."
                 : L"Trusted artwork decoder rejected the image.");
     }
 
@@ -173,8 +180,7 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
     image.premultipliedBgra.resize(header->decodedBytes);
     std::memcpy(image.premultipliedBgra.data(),
                 view_ + decodedOffset, header->decodedBytes);
-    SecureZeroMemory(view_ + encodedOffset,
-                     static_cast<SIZE_T>(header->encodedBytes));
+    SecureZeroMemory(view_ + encodedOffset, encodedBytes);
     SecureZeroMemory(view_ + decodedOffset, header->decodedBytes);
     ++completed_;
     return {S_OK, std::move(image), {}};

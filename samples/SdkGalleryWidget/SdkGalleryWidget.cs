@@ -14,8 +14,11 @@ public readonly record struct GalleryRoute(GalleryPage Page, GalleryModal Modal)
 public sealed class SdkGalleryWidget : Widget
 {
     private const string SampleArtworkHandle = "gallery.artwork.sample-png";
+    private const string SampleWebPArtworkHandle = "gallery.artwork.sample-webp";
     private static readonly byte[] SampleArtworkBytes = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xh8ftQAAAABJRU5ErkJggg==");
+    private static readonly byte[] SampleWebPArtworkBytes = Convert.FromBase64String(
+        "UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAAdQmWZ0qf+BiOh/AAA=");
     private static readonly WidgetIdScope Ids = WidgetIds.Scope("gallery");
     private static readonly NavigationShellDestination[] Destinations =
     [
@@ -174,9 +177,14 @@ public sealed class SdkGalleryWidget : Widget
     {
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult<WidgetEncodedArtwork?>(
-            string.Equals(handle.Value, SampleArtworkHandle, StringComparison.Ordinal)
-                ? new WidgetEncodedArtwork(WidgetArtworkContentType.Png, SampleArtworkBytes)
-                : null);
+            handle.Value switch
+            {
+                SampleArtworkHandle => new WidgetEncodedArtwork(
+                    WidgetArtworkContentType.Png, SampleArtworkBytes),
+                SampleWebPArtworkHandle => new WidgetEncodedArtwork(
+                    WidgetArtworkContentType.WebP, SampleWebPArtworkBytes),
+                _ => null,
+            });
     }
 
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
@@ -301,7 +309,17 @@ public sealed class SdkGalleryWidget : Widget
                 metadata: "Community library",
                 artwork: TileArtwork.FromHandle(
                     new WidgetArtworkHandle(SampleArtworkHandle),
-                    "Provider-neutral encoded PNG artwork"))))
+                    "Provider-neutral encoded PNG artwork")),
+            UI.Tile(
+                "WebP First Frame",
+                "Ready",
+                "gallery.app.open",
+                "gallery.webp",
+                subtitle: "Provider-neutral",
+                metadata: "Bounded encoded artwork",
+                artwork: TileArtwork.FromHandle(
+                    new WidgetArtworkHandle(SampleWebPArtworkHandle),
+                    "Provider-neutral encoded WebP artwork"))))
         .AddClasses("gallery-page");
 
     private StackElement UtilitiesPage() => UI.Stack("gallery.utilities",

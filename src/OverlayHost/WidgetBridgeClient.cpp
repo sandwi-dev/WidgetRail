@@ -2003,7 +2003,8 @@ bool HandleAsyncEvent(
             ((8U * 1024U * 1024U + 2U) / 3U) * 4U;
         const bool unavailable = contentType.empty() && content.empty();
         if (!IsIdentifier(handle) ||
-            (!unavailable && contentType != L"image/png" && contentType != L"image/jpeg") ||
+            (!unavailable && contentType != L"image/png" && contentType != L"image/jpeg" &&
+             contentType != L"image/webp") ||
             content.size() > maximumEncodedCharacters ||
             !artworkResults->Push({widgetId, handle, contentType, content})) {
             status = L"WidgetBridge artwork event could not be queued.";

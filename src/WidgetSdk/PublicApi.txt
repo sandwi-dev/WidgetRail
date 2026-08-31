@@ -222,6 +222,7 @@ enum WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth.Refreshing = WidgetRail.W
 enum WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth.Unavailable = WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth.Unavailable
 enum WidgetRail.WidgetSdk.WidgetArtworkContentType.Jpeg = WidgetRail.WidgetSdk.WidgetArtworkContentType.Jpeg
 enum WidgetRail.WidgetSdk.WidgetArtworkContentType.Png = WidgetRail.WidgetSdk.WidgetArtworkContentType.Png
+enum WidgetRail.WidgetSdk.WidgetArtworkContentType.WebP = WidgetRail.WidgetSdk.WidgetArtworkContentType.WebP
 enum WidgetRail.WidgetSdk.WidgetAudioDeviceDirection.Input = WidgetRail.WidgetSdk.WidgetAudioDeviceDirection.Input
 enum WidgetRail.WidgetSdk.WidgetAudioDeviceDirection.Output = WidgetRail.WidgetSdk.WidgetAudioDeviceDirection.Output
 enum WidgetRail.WidgetSdk.WidgetBluetoothDiscoveryState.Enumerating = WidgetRail.WidgetSdk.WidgetBluetoothDiscoveryState.Enumerating

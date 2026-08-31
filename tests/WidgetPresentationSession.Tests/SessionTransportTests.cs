@@ -111,7 +111,7 @@ public sealed class SessionTransportTests
     public async Task ArtworkCompletionRetainsExactSnapshotAuthority()
     {
         var expectedBytes = Convert.FromBase64String(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==");
+            "UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAAdQmWZ0qf+BiOh/AAA=");
         await using var server = new ScriptedBridgeServer();
         var serverTask = server.RunAuthenticatedAsync(async channel =>
         {
@@ -177,7 +177,7 @@ public sealed class SessionTransportTests
                 {
                     widgetId = "session-widget",
                     artworkHandle = "app-library.test-artwork",
-                    contentType = "image/png",
+                    contentType = "image/webp",
                     contentBase64 = Convert.ToBase64String(expectedBytes),
                 }),
             }, CancellationToken.None);
@@ -196,7 +196,7 @@ public sealed class SessionTransportTests
                 frame.Authority, "app-library.test-artwork")
                 .WaitAsync(TestDeadline);
             Assert.AreEqual(frame.Authority, artwork.Authority);
-            Assert.AreEqual(WidgetArtworkContentType.Png, artwork.ContentType);
+            Assert.AreEqual(WidgetArtworkContentType.WebP, artwork.ContentType);
             CollectionAssert.AreEqual(expectedBytes, artwork.EncodedBytes.ToArray());
         }
         finally

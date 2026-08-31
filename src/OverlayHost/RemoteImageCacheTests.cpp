@@ -91,6 +91,33 @@ std::wstring ExecutableSibling(const wchar_t* const name) {
     return path;
 }
 
+std::vector<std::uint8_t> StillWebP() {
+    return {
+        0x52, 0x49, 0x46, 0x46, 0x1e, 0x00, 0x00, 0x00,
+        0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4c,
+        0x11, 0x00, 0x00, 0x00, 0x2f, 0x01, 0x00, 0x00,
+        0x00, 0x07, 0x50, 0x99, 0x66, 0x74, 0xa9, 0xff,
+        0x81, 0x88, 0xe8, 0x7f, 0x00, 0x00,
+    };
+}
+
+std::vector<std::uint8_t> AnimatedWebP() {
+    return {
+        0x52,0x49,0x46,0x46,0x88,0x00,0x00,0x00,0x57,0x45,0x42,0x50,
+        0x56,0x50,0x38,0x58,0x0a,0x00,0x00,0x00,0x02,0x00,0x00,0x00,
+        0x01,0x00,0x00,0x00,0x00,0x00,0x41,0x4e,0x49,0x4d,0x06,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x41,0x4e,0x4d,0x46,
+        0x2a,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0x00,
+        0x00,0x00,0x00,0x00,0x64,0x00,0x00,0x02,0x56,0x50,0x38,0x4c,
+        0x11,0x00,0x00,0x00,0x2f,0x01,0x00,0x00,0x00,0x07,0x50,0x99,
+        0x66,0x74,0xa9,0xff,0x81,0x88,0xe8,0x7f,0x00,0x00,0x41,0x4e,
+        0x4d,0x46,0x2a,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x01,0x00,0x00,0x00,0x00,0x00,0x64,0x00,0x00,0x00,0x56,0x50,
+        0x38,0x4c,0x11,0x00,0x00,0x00,0x2f,0x01,0x00,0x00,0x00,0x07,
+        0xd0,0xbe,0x92,0xd5,0xb2,0xff,0x81,0x88,0xe8,0x7f,0x00,0x00,
+    };
+}
+
 } // namespace
 
 int main() {
@@ -126,6 +153,8 @@ int main() {
         const auto png4096 = EncodeWicImage(GUID_ContainerFormatPng, 4'096, 1);
         const auto jpeg = EncodeWicImage(GUID_ContainerFormatJpeg, 1, 1);
         const auto png = EncodeWicImage(GUID_ContainerFormatPng, 2, 1);
+        const auto stillWebP = StillWebP();
+        const auto animatedWebP = AnimatedWebP();
 
         {
             RemoteImageLimits decoderLimits;
@@ -148,6 +177,28 @@ int main() {
             auto decoderStats = decoder.Stats();
             assert(decoderStats.starts == 1);
             assert(decoderStats.completed == 2);
+
+            auto decodedStillWebP = decoder.Decode(
+                stillWebP, L"image/webp", {}, artworkdecoder::TestBehavior::Succeed);
+            assert(SUCCEEDED(decodedStillWebP.result));
+            assert(decodedStillWebP.image.width == 2 &&
+                   decodedStillWebP.image.height == 1);
+            assert(decodedStillWebP.image.mimeType == L"image/webp");
+            auto decodedAnimatedWebP = decoder.Decode(
+                animatedWebP, L"image/webp", {}, artworkdecoder::TestBehavior::Succeed);
+            assert(SUCCEEDED(decodedAnimatedWebP.result));
+            assert(decodedAnimatedWebP.image.width == 2 &&
+                   decodedAnimatedWebP.image.height == 1);
+            const auto missingCodec = decoder.Decode(
+                stillWebP, L"image/webp", {}, artworkdecoder::TestBehavior::MissingCodec);
+            assert(missingCodec.result == WINCODEC_ERR_COMPONENTNOTFOUND);
+            assert(missingCodec.error == L"Trusted artwork WebP decoder is unavailable.");
+            auto afterMissingCodec = decoder.Decode(png, L"image/png", {});
+            assert(SUCCEEDED(afterMissingCodec.result));
+            decoderStats = decoder.Stats();
+            assert(decoderStats.starts == 1);
+            assert(decoderStats.completed == 5);
+            assert(decoderStats.failed == 1);
 
             const auto timeoutStarted = std::chrono::steady_clock::now();
             const auto timeout = decoder.Decode(
@@ -255,10 +306,21 @@ int main() {
         assert(!nativeCache.SupplyTrustedArtwork(
             L"native-artwork", L"artwork.mismatch", L"image/jpeg", Base64(png4096)));
         assert(nativeCache.FailTrustedArtwork(L"native-artwork", L"artwork.mismatch"));
+        const auto malformedWebPKey = RemoteImageCache::TrustedArtworkKey(
+            L"native-artwork", L"webp-node", L"artwork.webp-malformed");
+        assert(nativeCache.RequestTrustedArtwork(malformedWebPKey) ==
+               RemoteImageRequestResult::Queued);
+        auto malformedWebP = stillWebP;
+        malformedWebP[4]++;
+        assert(!nativeCache.SupplyTrustedArtwork(
+            L"native-artwork", L"artwork.webp-malformed",
+            L"image/webp", Base64(malformedWebP)));
+        assert(nativeCache.FailTrustedArtwork(
+            L"native-artwork", L"artwork.webp-malformed"));
         {
             std::scoped_lock lock(nativeMutex);
             assert(nativeReady == 3);
-            assert(nativeFailed == 2);
+            assert(nativeFailed == 3);
         }
         nativeCache.Shutdown();
         if (SUCCEEDED(initialized)) CoUninitialize();

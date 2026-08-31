@@ -1447,6 +1447,15 @@ int main() {
     CHECK(artwork->contentBase64 == L"/9j/2Q==");
 
     error.clear();
+    const auto webpArtwork = widgetrail::testing::ParseWidgetArtworkResultEvent(R"json({
+        "type":"artwork","requestId":0,
+        "payload":{"widgetId":"gallery","artworkHandle":"gallery.artwork.webp","contentType":"image/webp","contentBase64":"UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAAdQmWZ0qf+BiOh/AAA="}
+    })json", error);
+    CHECK(webpArtwork && error.empty());
+    CHECK(webpArtwork->contentType == L"image/webp");
+    CHECK(webpArtwork->artworkHandle == L"gallery.artwork.webp");
+
+    error.clear();
     const auto localPackage =
         widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"local-widget-package-install-completed","requestId":0,

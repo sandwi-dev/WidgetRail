@@ -1077,6 +1077,8 @@ static async Task CommittedTextCrossesBridgeAndWorker()
 
 static async Task TrustedArtworkDemandIsExact()
 {
+    Assert.Equal("image/webp", WidgetEncodedArtworkContract.ContentTypeValue(
+        WidgetArtworkContentType.WebP));
     if (!OperatingSystem.IsWindows()) return;
     const string png =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" +

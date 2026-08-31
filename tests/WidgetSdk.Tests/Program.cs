@@ -362,6 +362,36 @@ static Task TrustedEncodedArtworkIsVersionedAndValueOwned()
     Assert.Equal((byte)137, artwork.Bytes.Span[0]);
     Assert.Equal(WidgetArtworkContentType.Png, artwork.ContentType);
 
+    var stillWebPBytes = Convert.FromBase64String(
+        "UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAAdQmWZ0qf+BiOh/AAA=");
+    var stillWebP = new WidgetEncodedArtwork(
+        WidgetArtworkContentType.WebP, stillWebPBytes);
+    stillWebPBytes[0] = 0;
+    Assert.Equal((byte)'R', stillWebP.Bytes.Span[0]);
+    Assert.True(WidgetEncodedArtworkContract.IsValid(stillWebP),
+        "A valid bounded still WebP resource was rejected.");
+    Assert.Equal("image/webp", WidgetEncodedArtworkContract.ContentTypeValue(
+        WidgetArtworkContentType.WebP));
+    Assert.Equal(WidgetArtworkContentType.WebP,
+        WidgetEncodedArtworkContract.ParseContentType("image/webp"));
+
+    var animatedWebP = new WidgetEncodedArtwork(
+        WidgetArtworkContentType.WebP,
+        Convert.FromBase64String(
+            "UklGRogAAABXRUJQVlA4WAoAAAACAAAAAQAAAAAAQU5JTQYAAAAAAAAAAABBTk1G" +
+            "KgAAAAAAAAAAAAEAAAAAAGQAAAJWUDhMEQAAAC8BAAAAB1CZZnSp/4GI6H8AAEFO" +
+            "TUYqAAAAAAAAAAAAAQAAAAAAZAAAAFZQOEwRAAAALwEAAAAH0L6S1bL/gYjofwAA"));
+    Assert.True(WidgetEncodedArtworkContract.IsValid(animatedWebP),
+        "A valid bounded animated WebP resource was rejected.");
+    var malformedWebP = animatedWebP.Bytes.ToArray();
+    malformedWebP[4]++;
+    Assert.True(!WidgetEncodedArtworkContract.IsValid(
+            new WidgetEncodedArtwork(WidgetArtworkContentType.WebP, malformedWebP)),
+        "A malformed RIFF length was admitted as WebP artwork.");
+    Assert.True(!WidgetEncodedArtworkContract.IsValid(
+            new WidgetEncodedArtwork(WidgetArtworkContentType.Png, animatedWebP.Bytes)),
+        "A WebP payload was admitted under the PNG content type.");
+
     var snapshot = new WidgetView(UI.Stack("root",
         UI.Artwork(
             new WidgetArtworkHandle("trusted.artwork.example"),

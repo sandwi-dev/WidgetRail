@@ -75,10 +75,14 @@ static async Task PageCoverage()
 
     await Act(widget, "gallery.tab.tiles");
     var tiles = Snapshot(widget, 3);
-    Assert.Equal(2, Nodes(tiles.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface));
-    Assert.Equal(2, Nodes(tiles.Root).Count(node =>
+    Assert.Equal(3, Nodes(tiles.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface));
+    Assert.Equal(3, Nodes(tiles.Root).Count(node =>
         node.StyleClasses.SequenceEqual(["wrail-action-surface", "wrail-tile"])));
-    Assert.Equal(ViewNodeKind.Grid, Find(tiles, "gallery.tiles.grid").Kind);
+    var tilesGrid = Find(tiles, "gallery.tiles.grid");
+    Assert.Equal(ViewNodeKind.Grid, tilesGrid.Kind);
+    Assert.Equal(1, tilesGrid.Children.Count(node => node.Id == "gallery.media"));
+    Assert.Equal(1, tilesGrid.Children.Count(node => node.Id == "gallery.app"));
+    Assert.Equal(1, tilesGrid.Children.Count(node => node.Id == "gallery.webp"));
 
     await Act(widget, "gallery.tab.utilities");
     var utilities = Snapshot(widget, 4);
@@ -182,6 +186,13 @@ static async Task TrustedArtwork()
     Assert.Equal(WidgetArtworkContentType.Png, artwork!.ContentType);
     Assert.True(artwork.Bytes.Span[..8].SequenceEqual(
         new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }));
+    var webPHandle = Find(snapshot, "gallery.webp.artwork").ArtworkHandle;
+    Assert.Equal("gallery.artwork.sample-webp", webPHandle);
+    var webP = await widget.OnResolveArtworkAsync(new WidgetArtworkHandle(webPHandle!));
+    Assert.True(webP is not null);
+    Assert.Equal(WidgetArtworkContentType.WebP, webP!.ContentType);
+    Assert.True(webP.Bytes.Span[..12].SequenceEqual(
+        new byte[] { 82, 73, 70, 70, 30, 0, 0, 0, 87, 69, 66, 80 }));
 }
 
 static Task PackageContract()
@@ -191,7 +202,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.2", manifest.Version);
+    Assert.Equal("0.1.3", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);

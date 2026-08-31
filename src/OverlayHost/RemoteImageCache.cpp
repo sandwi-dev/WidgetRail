@@ -1,5 +1,6 @@
 #include "RemoteImageCache.h"
 #include "ArtworkDecoderProcessOwner.h"
+#include "EncodedArtworkEnvelope.h"
 
 #include <WinHttp.h>
 #include <wincodec.h>
@@ -261,13 +262,7 @@ constexpr UINT32 maximumInlinePngDimension = 64;
 [[nodiscard]] bool MatchesArtworkSignature(
     const std::wstring_view contentType,
     const std::span<const std::uint8_t> bytes) noexcept {
-    constexpr std::uint8_t png[]{137, 80, 78, 71, 13, 10, 26, 10};
-    if (contentType == L"image/png")
-        return bytes.size() >= 24 &&
-            std::equal(std::begin(png), std::end(png), bytes.begin());
-    return contentType == L"image/jpeg" && bytes.size() >= 4 &&
-        bytes[0] == 0xff && bytes[1] == 0xd8 &&
-        bytes[bytes.size() - 2] == 0xff && bytes.back() == 0xd9;
+    return encoded_artwork::Matches(contentType, bytes);
 }
 
 } // namespace

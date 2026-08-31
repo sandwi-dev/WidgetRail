@@ -1,4 +1,5 @@
 #include "ArtworkDecoderProtocol.h"
+#include "EncodedArtworkEnvelope.h"
 
 #include <Windows.h>
 #include <wincodec.h>
@@ -36,16 +37,14 @@ using namespace widgetrail::artworkdecoder;
 [[nodiscard]] bool MatchesSignature(
     const ContentType type,
     const std::span<const std::uint8_t> bytes) noexcept {
-    constexpr std::uint8_t png[]{137, 80, 78, 71, 13, 10, 26, 10};
-    if (type == ContentType::Png)
-        return bytes.size() >= 24 &&
-            std::equal(std::begin(png), std::end(png), bytes.begin());
-    return type == ContentType::Jpeg && bytes.size() >= 4 &&
-        bytes[0] == 0xff && bytes[1] == 0xd8 &&
-        bytes[bytes.size() - 2] == 0xff && bytes.back() == 0xd9;
+    if (type == ContentType::Png) return widgetrail::encoded_artwork::IsPng(bytes);
+    if (type == ContentType::Jpeg) return widgetrail::encoded_artwork::IsJpeg(bytes);
+    return type == ContentType::WebP && widgetrail::encoded_artwork::IsWebP(bytes);
 }
 
-[[nodiscard]] HRESULT Decode(SharedHeader& header, std::byte* const view) {
+[[nodiscard]] HRESULT ValidateRequest(
+    const SharedHeader& header,
+    const std::byte* const view) {
     if (header.magic != protocolMagic || header.version != protocolVersion ||
         header.state != SharedState::Request || header.correlation == 0 ||
         header.encodedBytes == 0 || header.encodedBytes > maximumEncodedBytes ||
@@ -59,6 +58,16 @@ using namespace widgetrail::artworkdecoder;
         reinterpret_cast<const std::uint8_t*>(view + encodedOffset),
         static_cast<std::size_t>(header.encodedBytes));
     if (!MatchesSignature(header.contentType, encoded)) return E_INVALIDARG;
+    return S_OK;
+}
+
+[[nodiscard]] HRESULT Decode(SharedHeader& header, std::byte* const view) {
+    const HRESULT admission = ValidateRequest(header, view);
+    if (FAILED(admission)) return admission;
+
+    const auto encoded = std::span<const std::uint8_t>(
+        reinterpret_cast<const std::uint8_t*>(view + encodedOffset),
+        static_cast<std::size_t>(header.encodedBytes));
 
     ComPtr<IWICImagingFactory> factory;
     HRESULT result = CoCreateInstance(CLSID_WICImagingFactory2, nullptr,
@@ -112,6 +121,30 @@ using namespace widgetrail::artworkdecoder;
     return result;
 }
 
+#ifdef WRAIL_ARTWORK_DECODER_TESTING
+[[nodiscard]] HRESULT DecodeForTesting(SharedHeader& header, std::byte* const view) {
+    const HRESULT admission = ValidateRequest(header, view);
+    if (FAILED(admission)) return admission;
+    if (header.testBehavior == TestBehavior::MissingCodec)
+        return WINCODEC_ERR_COMPONENTNOTFOUND;
+    if (header.testBehavior != TestBehavior::Succeed) return E_INVALIDARG;
+    constexpr std::uint8_t pixels[]{
+        75, 50, 25, 255,
+        150, 125, 100, 255,
+    };
+    if (header.maximumDimension < 2 || header.maximumPixels < 2 ||
+        header.maximumDecodedBytes < sizeof(pixels))
+        return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+    std::copy(std::begin(pixels), std::end(pixels),
+        reinterpret_cast<std::uint8_t*>(view + decodedOffset));
+    header.width = 2;
+    header.height = 1;
+    header.stride = 8;
+    header.decodedBytes = sizeof(pixels);
+    return S_OK;
+}
+#endif
+
 } // namespace
 
 int wmain(const int count, wchar_t** values) {
@@ -148,6 +181,10 @@ int wmain(const int count, wchar_t** values) {
             exitCode = ERROR_PROCESS_ABORTED;
             break;
         }
+        if (header.testBehavior == TestBehavior::Succeed ||
+            header.testBehavior == TestBehavior::MissingCodec)
+            header.result = DecodeForTesting(header, view);
+        else
 #else
         if (header.testBehavior != TestBehavior::Normal)
             header.result = E_INVALIDARG;

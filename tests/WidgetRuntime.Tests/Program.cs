@@ -335,6 +335,13 @@ static async Task TrustedArtworkTransportPreservesBytes()
     Assert.Equal(
         TrustedArtworkProbeWidget.ExpectedHash,
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(artwork.Bytes.Span)));
+    var webPHandle = Find(snapshot.Root, "trusted-webp.artwork").ArtworkHandle;
+    Assert.Equal(TrustedArtworkProbeWidget.WebPHandle, webPHandle);
+    var webP = await client.ResolveArtworkAsync(webPHandle!);
+    Assert.True(webP is not null, "Exact current WebP artwork handle did not resolve.");
+    Assert.Equal(WidgetArtworkContentType.WebP, webP!.ContentType);
+    Assert.Equal(TrustedArtworkProbeWidget.WebPExpectedHash,
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(webP.Bytes.Span)));
     Assert.True(await client.ResolveArtworkAsync("trusted.artwork.forged") is null,
         "Undeclared artwork handle crossed worker authority.");
 }
@@ -3188,10 +3195,15 @@ file sealed class TestWidget : Widget
 file sealed class TrustedArtworkProbeWidget : Widget
 {
     internal const string Handle = "trusted.artwork.transport";
+    internal const string WebPHandle = "trusted.artwork.transport-webp";
     internal const int ByteCount = 888_424;
     private static readonly byte[] EncodedBytes = CreateBytes();
     internal static readonly string ExpectedHash = Convert.ToHexString(
         System.Security.Cryptography.SHA256.HashData(EncodedBytes));
+    private static readonly byte[] WebPBytes = Convert.FromBase64String(
+        "UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAAdQmWZ0qf+BiOh/AAA=");
+    internal static readonly string WebPExpectedHash = Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(WebPBytes));
 
     public override WidgetView Render() => new(
         UI.Stack("root",
@@ -3202,7 +3214,15 @@ file sealed class TrustedArtworkProbeWidget : Widget
                 "trusted-artwork",
                 artwork: TileArtwork.FromHandle(
                     new WidgetArtworkHandle(Handle),
-                    "Trusted encoded artwork"))));
+                    "Trusted encoded artwork")),
+            UI.Tile(
+                "WebP artwork",
+                "Transport",
+                "webp.open",
+                "trusted-webp",
+                artwork: TileArtwork.FromHandle(
+                    new WidgetArtworkHandle(WebPHandle),
+                    "Trusted encoded WebP artwork"))));
 
     public override ValueTask<WidgetEncodedArtwork?> OnResolveArtworkAsync(
         WidgetArtworkHandle handle,
@@ -3210,9 +3230,14 @@ file sealed class TrustedArtworkProbeWidget : Widget
     {
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult<WidgetEncodedArtwork?>(
-            handle.Value == Handle
-                ? new WidgetEncodedArtwork(WidgetArtworkContentType.Jpeg, EncodedBytes)
-                : null);
+            handle.Value switch
+            {
+                Handle => new WidgetEncodedArtwork(
+                    WidgetArtworkContentType.Jpeg, EncodedBytes),
+                WebPHandle => new WidgetEncodedArtwork(
+                    WidgetArtworkContentType.WebP, WebPBytes),
+                _ => null,
+            });
     }
 
     private static byte[] CreateBytes()
