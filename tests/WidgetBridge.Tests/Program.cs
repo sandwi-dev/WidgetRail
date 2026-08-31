@@ -15,6 +15,7 @@ using WidgetRail.WidgetRuntime;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetStyling;
 using WidgetRail.WindowsCommunityProvider;
+using WidgetRail.Samples.BackgroundSurfaceWidget;
 
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
@@ -43,6 +44,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Protected Wi-Fi host admission is exact trusted and bounded", ProtectedWifiHostAdmissionIsExact),
     ("Protected Wi-Fi production dispatch clears one exact secret owner", ProtectedWifiProductionDispatchIsZeroed),
     ("Trusted artwork demand is exact current and lazy through the production bridge", TrustedArtworkDemandIsExact),
+    ("Packaged BackgroundSurface artwork crosses the worker and Bridge boundary", BackgroundSurfaceArtworkCrossesBridge),
     ("Two provider-neutral media adapters resolve through one sealed contract", EmbeddedMediaAssetsAreProviderNeutral),
     ("Built embedded media sample completes the typed playback loop", BuiltEmbeddedMediaSampleCompletesPlaybackLoop),
     ("Request dispatcher preserves FIFO and predecessor failure", RequestDispatcherOwnsWidgetOrdering),
@@ -163,7 +165,41 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         arguments,
         _ => string.Equals(instance, "virtual.instance", StringComparison.Ordinal)
             ? new VirtualCollectionBridgeWidget()
-            : new BridgeTestWidget(instance));
+            : string.Equals(instance, "background-surface-test.instance", StringComparison.Ordinal)
+                ? new BackgroundSurfaceTestWidget()
+                : new BridgeTestWidget(instance));
+}
+
+static async Task BackgroundSurfaceArtworkCrossesBridge()
+{
+    await using var harness = await BridgeHarness.StartAsync(
+        instanceId: "background-surface-test.instance");
+    var lifecycle = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
+
+    var response = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, response.Type);
+    var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        response.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal(ViewNodeKind.BackgroundSurface, snapshot.Root.Kind);
+    Assert.Equal(BackgroundSurfaceTestWidget.ArtworkHandle, snapshot.Root.ArtworkHandle);
+    Assert.Equal(ImageFit.Cover, snapshot.Root.ImageFit);
+
+    var acknowledged = await harness.Client.RequestAsync(
+        BridgeMessageTypes.ResolveArtwork,
+        new BridgeArtworkRequest("test-widget", BackgroundSurfaceTestWidget.ArtworkHandle));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, acknowledged.Type);
+    var artwork = await harness.Client.ReadEventAsync(BridgeMessageTypes.Artwork);
+    Assert.Equal("test-widget", artwork.Payload.GetProperty("widgetId").GetString());
+    Assert.Equal(BackgroundSurfaceTestWidget.ArtworkHandle,
+        artwork.Payload.GetProperty("artworkHandle").GetString());
+    Assert.Equal("image/png", artwork.Payload.GetProperty("contentType").GetString());
+    var bytes = Convert.FromBase64String(
+        artwork.Payload.GetProperty("contentBase64").GetString()!);
+    Assert.SequenceEqual(BackgroundSurfaceTestWidget.ArtworkBytes.ToArray(), bytes);
 }
 
 static async Task OversizedFrameIsRejected()

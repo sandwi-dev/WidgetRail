@@ -10,6 +10,7 @@ param(
     [switch]$SemanticChurnTestsOnly,
     [switch]$DeclarativeLayoutTestsOnly,
     [switch]$DeclarativeRendererTestsOnly,
+    [switch]$BackgroundSurfaceHostTestsOnly,
     [switch]$AccessibilityTreeTestsOnly,
     [switch]$PinnedSurfaceTestsOnly,
     [switch]$PinnedPlacementTestsOnly,
@@ -266,6 +267,7 @@ $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catal
 $localPackageImportTestObjectDirectory = Join-Path $outputDirectory 'obj\local-package-import-tests'
 $textEntryModalTestObjectDirectory = Join-Path $outputDirectory 'obj\text-entry-modal-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
+$backgroundSurfaceHostTestObjectDirectory = Join-Path $outputDirectory 'obj\background-surface-host-tests'
 $semanticChurnTestObjectDirectory = Join-Path $outputDirectory 'obj\semantic-churn-performance-tests'
 $pinnedSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\pinned-surface-host-tests'
 $pinnedPlacementTestObjectDirectory = Join-Path $outputDirectory 'obj\pinned-placement-tests'
@@ -277,7 +279,7 @@ $trayRefreshHostTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-refre
 $trayRefreshCommunityFixtureOutput = Join-Path $outputDirectory 'obj\tray-refresh-community-fixture'
 $richMediaTestObjectDirectory = Join-Path $outputDirectory 'obj\rich-media-tests'
 $bundledPackageSealOutput = Join-Path $outputDirectory 'obj\bundled-package-seal'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $artworkDecoderObjectDirectory, $artworkDecoderTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $richMediaTestObjectDirectory, $bundledPackageSealOutput | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $artworkDecoderObjectDirectory, $artworkDecoderTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $backgroundSurfaceHostTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $richMediaTestObjectDirectory, $bundledPackageSealOutput | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\THIRD_PARTY_NOTICES.md') `
     -Destination (Join-Path $outputDirectory 'THIRD_PARTY_NOTICES.md') -Force
 Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\third_party\public_suffix_list\public_suffix_list.dat') `
@@ -541,6 +543,37 @@ function Invoke-DeclarativeRendererTests {
     & (Join-Path $outputDirectory 'DeclarativeRendererTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "DeclarativeRendererTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-BackgroundSurfaceHostTests {
+    $arguments = $common + @(
+        '/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING',
+        (Join-Path $projectDirectory 'BackgroundSurfaceHostTests.cpp'),
+        (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
+        (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp'),
+        "/Fo:$backgroundSurfaceHostTestObjectDirectory\",
+        "/Fe:$outputDirectory\BackgroundSurfaceHostTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'windowsapp.lib', 'user32.lib', 'bcrypt.lib', 'normaliz.lib',
+        'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
+    )
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "BackgroundSurfaceHostTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'BackgroundSurfaceHostTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "BackgroundSurfaceHostTests failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -1396,6 +1429,14 @@ if ($DeclarativeRendererTestsOnly) {
         throw 'DeclarativeRendererTestsOnly cannot be combined with SkipTests.'
     }
     Invoke-DeclarativeRendererTests
+    return
+}
+
+if ($BackgroundSurfaceHostTestsOnly) {
+    if ($SkipTests) {
+        throw 'BackgroundSurfaceHostTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-BackgroundSurfaceHostTests
     return
 }
 
