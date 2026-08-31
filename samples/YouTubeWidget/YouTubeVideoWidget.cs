@@ -24,17 +24,6 @@ public sealed partial class YouTubeVideoWidget : Widget
     private readonly WidgetModel<YouTubeWidgetState> _model;
     private readonly TimeProvider _timeProvider;
 
-    // This does affect the render: it gates CanDeclareTransportAction, which
-    // decides whether the view carries quick actions and root shortcuts. It stays
-    // out of the model because the widget never needs to *request* a render for
-    // it, not because it is render-irrelevant. Becoming visible is already a
-    // render the host performs to display the widget, and while the widget is not
-    // visible there is nothing on screen to repaint. Note the SDK does not
-    // invalidate around OnActivatedAsync/OnDeactivatedAsync, so this rests on host
-    // behaviour; putting the flag in the model would publish an invalidation on
-    // activation, which is a contract the widget did not previously have.
-    private volatile bool _isActive;
-
     // One committed state is captured here and threaded through every render
     // helper. Rereading the model per helper would let a concurrent commit tear
     // one frame across the header, the transport, and the media surface.
@@ -129,7 +118,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             mediaLoading || seekBuffering ? "is-busy" :
             playback.State == EmbeddedMediaPlaybackState.Playing ? "is-playing" : "is-normal";
         var playerActionsAvailable = includeDashboardQuickActions &&
-            state.CanDeclareTransportAction(_isActive);
+            state.CanDeclareTransportAction(IsActive);
         IReadOnlyList<WidgetQuickAction>? quickActions = playerActionsAvailable
                 ?
                 [
@@ -294,7 +283,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             return ValueTask.CompletedTask;
         }
 
-        var isActive = _isActive;
+        var isActive = IsActive;
         var seekStep = CurrentMediaSeekStepSeconds;
         CommitPlayback(state =>
         {

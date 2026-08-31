@@ -85,7 +85,6 @@ public sealed partial class YouTubeVideoWidget
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
-        _isActive = true;
         var state = _model.Value;
         if (state.Playback.PendingCommand is { } pending &&
             state.Playback.PendingControl != PendingMediaControl.None)
@@ -111,7 +110,6 @@ public sealed partial class YouTubeVideoWidget
 
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
-        _isActive = false;
         // The feedback timer runs under the Active lifetime, so the runtime
         // cancels it here; only its committed projection needs retiring.
         _model.Update(state => state.WithPlayback(
@@ -121,7 +119,6 @@ public sealed partial class YouTubeVideoWidget
 
     protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
-        _isActive = false;
         _model.Update(state => state.WithPlayback(
             playback => playback.WithTransientStateCleared()));
         try

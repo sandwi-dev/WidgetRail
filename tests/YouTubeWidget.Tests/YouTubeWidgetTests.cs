@@ -633,6 +633,80 @@ public sealed partial class YouTubeWidgetTests
     }
 
     [TestMethod]
+    public async Task RetainedPlayerLifecycleUsesSdkActivityAndRepublishesBothTransportSurfaces()
+    {
+        Assert.IsNull(typeof(YouTubeVideoWidget).GetField(
+                "_isActive",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.DeclaredOnly),
+            "The widget must use Widget.IsActive instead of a second lifecycle owner.");
+
+        var (widget, _, _) = await CreateTransportWidgetAsync(
+            EmbeddedMediaPlaybackState.Playing, seekBuffering: false);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+        await AssertTransportInputsRejectedAsync(
+            widget, widget.RenderSnapshot("youtube-test", 21), "Background player");
+
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+        await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
+        {
+            SurfaceId = YouTubeVideoWidget.SurfaceId,
+            Sequence = 3,
+            CommandSequence = 0,
+            MediaKey = VideoId,
+            State = EmbeddedMediaPlaybackState.Playing,
+            PositionSeconds = 51,
+            DurationSeconds = 120,
+            Volume = 0.65,
+        });
+
+        var reactivated = widget.RenderSnapshot("youtube-test", 22);
+        var root = Find(reactivated.Root, "youtube.root");
+        foreach (var (button, actionId) in new[]
+                 {
+                     (ControllerButton.X, YouTubeVideoWidget.ToggleActionId),
+                     (ControllerButton.LeftTrigger, YouTubeVideoWidget.SeekBackwardActionId),
+                     (ControllerButton.RightTrigger, YouTubeVideoWidget.SeekForwardActionId),
+                 })
+        {
+            Assert.IsTrue(reactivated.QuickActions.Any(action =>
+                    action.Button == button && action.ActionId == actionId),
+                $"Reactivated dashboard omitted {button} -> {actionId}.");
+            Assert.IsTrue(root.Shortcuts.Any(shortcut =>
+                    shortcut.Button == button && shortcut.ActionId == actionId),
+                $"Reactivated page scope omitted {button} -> {actionId}.");
+        }
+
+        Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.X,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.DashboardQuickAction,
+            Sequence: 94,
+            SnapshotSequence: reactivated.Sequence)));
+        var pause = widget.RenderSnapshot("youtube-test", 23).EmbeddedMedia!.PendingCommand!;
+        Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Pause, pause.Kind);
+        await ObserveAsync(widget, pause, EmbeddedMediaPlaybackState.Paused, 4,
+            position: 51, duration: 120, volume: 0.65);
+
+        var paused = widget.RenderSnapshot("youtube-test", 24);
+        Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.RightTrigger,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: "youtube.playback.toggle",
+            Sequence: 95,
+            ActiveInputScopeId: paused.ActiveInputScopeId,
+            SnapshotSequence: paused.Sequence)));
+        var seek = widget.RenderSnapshot("youtube-test", 25).EmbeddedMedia!.PendingCommand!;
+        Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Seek, seek.Kind);
+        Assert.AreEqual(61d, seek.PositionSeconds);
+        Assert.AreEqual(VideoId, seek.MediaKey);
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    [TestMethod]
     public async Task ProviderErrorsRemainFixedClearAndNonSecret()
     {
         var expected = new Dictionary<string, string>
