@@ -693,18 +693,21 @@ public sealed partial class YouTubeWidgetTests
                 $"Reactivated page scope omitted {button} -> {actionId}.");
         }
 
+        var pauseInvalidated = NextInvalidation(widget);
         Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
             ControllerButton.X,
             ControllerEventPhase.Pressed,
             ControllerInputContext.DashboardQuickAction,
             Sequence: 94,
             SnapshotSequence: reactivated.Sequence)));
+        await pauseInvalidated;
         var pause = widget.RenderSnapshot("youtube-test", 23).EmbeddedMedia!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Pause, pause.Kind);
         await ObserveAsync(widget, pause, EmbeddedMediaPlaybackState.Paused, 4,
             position: 51, duration: 120, volume: 0.65);
 
         var paused = widget.RenderSnapshot("youtube-test", 24);
+        var seekInvalidated = NextInvalidation(widget);
         Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
             ControllerButton.RightTrigger,
             ControllerEventPhase.Pressed,
@@ -713,6 +716,7 @@ public sealed partial class YouTubeWidgetTests
             Sequence: 95,
             ActiveInputScopeId: paused.ActiveInputScopeId,
             SnapshotSequence: paused.Sequence)));
+        await seekInvalidated;
         var seek = widget.RenderSnapshot("youtube-test", 25).EmbeddedMedia!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Seek, seek.Kind);
         Assert.AreEqual(61d, seek.PositionSeconds);
@@ -780,12 +784,14 @@ public sealed partial class YouTubeWidgetTests
                     $"Visible Link-player omitted {button} -> {actionId} on cycle {cycle}.");
             }
 
+            var toggleInvalidated = NextInvalidation(widget);
             Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
                 ControllerButton.X,
                 ControllerEventPhase.Pressed,
                 ControllerInputContext.DashboardQuickAction,
                 Sequence: 96 + cycle,
                 SnapshotSequence: dashboardLink.Sequence)));
+            await toggleInvalidated;
             var toggle = widget.RenderSnapshot("youtube-test", 34 + cycle * 10)
                 .EmbeddedMedia!.PendingCommand!;
             var expectedState = cycle == 0
@@ -847,6 +853,7 @@ public sealed partial class YouTubeWidgetTests
                 $"Live Link-player scoped shortcut {button} -> {actionId} was omitted.");
         }
 
+        var pauseInvalidated = NextInvalidation(widget);
         Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
             ControllerButton.A,
             ControllerEventPhase.Pressed,
@@ -855,12 +862,14 @@ public sealed partial class YouTubeWidgetTests
             Sequence: 101,
             ActiveInputScopeId: link.ActiveInputScopeId,
             SnapshotSequence: link.Sequence)));
+        await pauseInvalidated;
         var pause = widget.RenderSnapshot("youtube-test", 41).EmbeddedMedia!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Pause, pause.Kind);
         await ObserveAsync(widget, pause, EmbeddedMediaPlaybackState.Paused, 3,
             position: 50, duration: 120, volume: 0.65);
 
         var paused = widget.RenderSnapshot("youtube-test", 42);
+        var seekInvalidated = NextInvalidation(widget);
         Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
             ControllerButton.A,
             ControllerEventPhase.Pressed,
@@ -869,6 +878,7 @@ public sealed partial class YouTubeWidgetTests
             Sequence: 102,
             ActiveInputScopeId: paused.ActiveInputScopeId,
             SnapshotSequence: paused.Sequence)));
+        await seekInvalidated;
         var seek = widget.RenderSnapshot("youtube-test", 43).EmbeddedMedia!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Seek, seek.Kind);
         Assert.AreEqual(60d, seek.PositionSeconds);
@@ -876,18 +886,21 @@ public sealed partial class YouTubeWidgetTests
             position: 60, duration: 120, volume: 0.65);
 
         var settled = widget.RenderSnapshot("youtube-test", 44);
+        var playInvalidated = NextInvalidation(widget);
         Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
             ControllerButton.X,
             ControllerEventPhase.Pressed,
             ControllerInputContext.DashboardQuickAction,
             Sequence: 103,
             SnapshotSequence: settled.Sequence)));
+        await playInvalidated;
         var play = widget.RenderSnapshot("youtube-test", 45).EmbeddedMedia!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Play, play.Kind);
         await ObserveAsync(widget, play, EmbeddedMediaPlaybackState.Playing, 5,
             position: 60, duration: 120, volume: 0.65);
 
         var playing = widget.RenderSnapshot("youtube-test", 46);
+        var backInvalidated = NextInvalidation(widget);
         Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
             ControllerButton.LeftTrigger,
             ControllerEventPhase.Pressed,
@@ -896,6 +909,7 @@ public sealed partial class YouTubeWidgetTests
             Sequence: 104,
             ActiveInputScopeId: playing.ActiveInputScopeId,
             SnapshotSequence: playing.Sequence)));
+        await backInvalidated;
         var back = widget.RenderSnapshot("youtube-test", 47).EmbeddedMedia!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Seek, back.Kind);
         Assert.AreEqual(50d, back.PositionSeconds);
@@ -903,12 +917,14 @@ public sealed partial class YouTubeWidgetTests
             position: 50, duration: 120, volume: 0.65);
 
         var afterBack = widget.RenderSnapshot("youtube-test", 48);
+        var forwardInvalidated = NextInvalidation(widget);
         Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
             ControllerButton.RightTrigger,
             ControllerEventPhase.Pressed,
             ControllerInputContext.DashboardQuickAction,
             Sequence: 105,
             SnapshotSequence: afterBack.Sequence)));
+        await forwardInvalidated;
         var forward = widget.RenderSnapshot("youtube-test", 49).EmbeddedMedia!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Seek, forward.Kind);
         Assert.AreEqual(60d, forward.PositionSeconds);
