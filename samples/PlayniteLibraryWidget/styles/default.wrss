@@ -1,32 +1,49 @@
-.playnite-library-widget { padding: 18px; gap: 14px; min-height: 0; background: #11151b; color: #f4f7fa; }
-.playnite-library-fixed { flex-shrink: 0; }
-.playnite-library-header { gap: 4px; }
-.playnite-library-header-expanded { gap: 4px; }
+.playnite-library-widget {
+  width: 100%;
+  height: 100%;
+  min-width: 0px;
+  min-height: 0px;
+  max-width: 1180px;
+  max-height: 760px;
+  padding: 12px;
+  align: center;
+  justify: center;
+  overflow: clip;
+  background: #11151b;
+  color: #f4f7fa;
+}
+.playnite-library-canvas { flex-grow: 1; flex-basis: 0; }
+.playnite-library-header { min-width: 0px; gap: 3px; }
+.playnite-library-header-expanded { min-width: 0px; gap: 3px; }
 .playnite-library-eyebrow { color: #75b9ff; font-size: 12px; }
-.playnite-library-title { font-size: 26px; font-weight: 700; }
-.playnite-library-status { color: #aeb9c6; }
-.playnite-library-source-status { gap: 6px; }
+.playnite-library-title { color: #f4f7fa; font-size: 25px; font-weight: 700; line-height: 1.15; max-lines: 2; }
+.playnite-library-status { color: #aeb9c6; font-size: 13px; max-lines: 2; }
+.playnite-library-source-status { min-width: 0px; gap: 5px; }
 .playnite-library-source-rows { gap: 3px; }
 .playnite-library-source-row { color: #d6dee8; font-size: 13px; }
 .playnite-library-source-summary { color: #aeb9c6; font-size: 13px; }
-.playnite-library-query { gap: 10px; }
-.playnite-library-search { flex-shrink: 0; }
-.playnite-library-filters { flex-shrink: 0; gap: 10px; }
-.playnite-library-main { flex-grow: 1; min-height: 0; }
-.playnite-library-content { flex-grow: 1; min-height: 0; gap: 12px; }
-.playnite-library-scroll { flex-grow: 1; min-height: 0; gap: 12px; }
-.playnite-library-hero { flex-shrink: 0; min-height: 150px; gap: 14px; }
-.playnite-library-hero-artwork { min-width: 220px; min-height: 128px; }
-.playnite-library-hero-content { gap: 6px; }
-.playnite-library-hero-title { font-size: 24px; font-weight: 700; }
+.playnite-library-query { min-width: 0px; gap: 8px; }
+.playnite-library-search { min-width: 0px; flex-shrink: 0; }
+.playnite-library-collections,
+.playnite-library-filters { min-width: 0px; flex-shrink: 0; gap: 8px; }
+.playnite-library-main { width: 100%; min-width: 0px; min-height: 0; }
+.playnite-library-content { width: 100%; min-width: 0px; min-height: 0; gap: 10px; }
+.playnite-library-page-scroll { width: 100%; height: 100%; min-width: 0px; min-height: 0; max-width: 980px; max-height: 680px; flex-grow: 1; flex-basis: 0; gap: 12px; overflow: clip; }
+.playnite-library-scroll { width: 100%; min-width: 0px; flex-grow: 1; flex-basis: 0; min-height: 0; gap: 10px; overflow: clip; }
+.playnite-library-hero { min-width: 0px; flex-shrink: 0; min-height: 132px; gap: 12px; }
+.playnite-library-hero-artwork { min-width: 180px; min-height: 112px; }
+.playnite-library-hero-content { min-width: 0px; gap: 5px; }
+.playnite-library-hero-title { color: #f4f7fa; font-size: 22px; font-weight: 700; line-height: 1.15; max-lines: 2; }
 .playnite-library-hero-source { color: #d6dee8; }
 .playnite-library-hero-state { color: #aeb9c6; }
-.playnite-library-rail { flex-shrink: 0; min-height: 150px; gap: 12px; }
-.playnite-library-grid { gap: 12px; }
+.playnite-library-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; }
 .playnite-library-tile { min-height: 150px; }
-.playnite-library-actions { flex-shrink: 0; gap: 10px; }
+.playnite-library-actions,
+.playnite-library-details-actions { min-width: 0px; flex-shrink: 0; gap: 8px; }
 .playnite-library-footer { flex-shrink: 0; flex-wrap: wrap; gap: 6px; }
 .playnite-library-warning { flex-shrink: 0; margin: 8px 0 0; }
+.playnite-library-details { max-width: 980px; max-height: 720px; }
+.playnite-library-details-scroll { padding: 2px 4px 2px 0; }
 .playnite-library-playnite { gap: 14px; }
 .playnite-library-playnite-card { gap: 10px; padding: 14px; background: #18202a; }
 .playnite-library-playnite-token { min-height: 44px; }

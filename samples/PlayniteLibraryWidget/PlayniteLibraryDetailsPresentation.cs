@@ -200,12 +200,12 @@ internal static class PlayniteLibraryDetailsPresentation
     private static readonly WidgetSurfaceHints Surface = new()
     {
         Mode = WidgetSurfaceMode.Wide,
-        WidthMode = WidgetSurfaceAxisMode.FillAvailable,
-        HeightMode = WidgetSurfaceAxisMode.FillAvailable,
-        PreferredWidth = 1600,
-        PreferredHeight = 1200,
-        MinimumWidth = 420,
-        MinimumHeight = 340,
+        WidthMode = WidgetSurfaceAxisMode.Preferred,
+        HeightMode = WidgetSurfaceAxisMode.Preferred,
+        PreferredWidth = 980,
+        PreferredHeight = 720,
+        MinimumWidth = 520,
+        MinimumHeight = 420,
     };
 
     internal static WidgetView Render(PlayniteLibraryDetailsState state)
@@ -270,9 +270,10 @@ internal static class PlayniteLibraryDetailsPresentation
                         UI.Button(state.VariantActionLabel,
                                 "playnite-library.variant", "playnite-library.details.variant")
                             .Disabled(!enabled || !state.VariantActionEnabled),
-                        UI.Button("Prefer variant", "playnite-library.prefer",
-                                "playnite-library.details.prefer")
-                            .Disabled(!enabled || state.GroupSize < 2 || state.Preferred)),
+                         UI.Button("Prefer variant", "playnite-library.prefer",
+                                 "playnite-library.details.prefer")
+                             .Disabled(!enabled || state.GroupSize < 2 || state.Preferred))
+                        .Classes("playnite-library-details-actions"),
                     UI.Row("playnite-library.details.hints",
                         UI.ControllerHint(ControllerButton.A, "Launch", "playnite-library.details.hint.launch"),
                         UI.ControllerHint(ControllerButton.X, "Favorite", "playnite-library.details.hint.favorite"),
@@ -280,11 +281,13 @@ internal static class PlayniteLibraryDetailsPresentation
         ]);
         var scroll = UI.VerticalScroll("playnite-library.details.scroll",
                 UI.Stack("playnite-library.details.content", details.ToArray()))
-            .Classes("playnite-library-scroll", "playnite-library-main")
+            .Classes("playnite-library-scroll", "playnite-library-main",
+                "playnite-library-details-scroll")
             .Shortcut(ControllerButton.X, actionId: "playnite-library.favorite")
             .Shortcut(ControllerButton.Y, actionId: PlayniteLibraryActionSheet.OpenAction);
         return new WidgetView(
-            UI.Stack("playnite-library.details.root", scroll).Classes("playnite-library-widget"),
+            UI.Stack("playnite-library.details.root", scroll)
+                .Classes("playnite-library-widget", "playnite-library-details"),
             PlayniteLibraryDetailsPolicy.ActionSourceId,
             Surface: Surface);
     }

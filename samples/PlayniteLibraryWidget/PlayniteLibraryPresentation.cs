@@ -40,12 +40,12 @@ internal static class PlayniteLibraryPresentation
     private static readonly WidgetSurfaceHints Surface = new()
     {
         Mode = WidgetSurfaceMode.Wide,
-        WidthMode = WidgetSurfaceAxisMode.FillAvailable,
-        HeightMode = WidgetSurfaceAxisMode.FillAvailable,
-        PreferredWidth = 1600,
-        PreferredHeight = 1200,
-        MinimumWidth = 420,
-        MinimumHeight = 340,
+        WidthMode = WidgetSurfaceAxisMode.Preferred,
+        HeightMode = WidgetSurfaceAxisMode.Preferred,
+        PreferredWidth = 1180,
+        PreferredHeight = 760,
+        MinimumWidth = 520,
+        MinimumHeight = 420,
     };
 
     internal static WidgetView Render(PlayniteLibraryPresentationState state)
@@ -78,9 +78,7 @@ internal static class PlayniteLibraryPresentation
                             .Classes("playnite-library-status"))
                     .Classes("playnite-library-header-expanded")
                     .VisibleWhen(ResponsiveVisibility.ExpandedOnly))
-            .Classes("playnite-library-header", "playnite-library-fixed");
-        var sourceStatus = SourceStatus(state.Sources, snapshot.Status)
-            .AddClasses("playnite-library-fixed");
+            .Classes("playnite-library-header");
         var filterControls = new List<WidgetElement>();
         if (state.Route != PlayniteLibraryRoute.Library)
             filterControls.Add(UI.Button("Back",
@@ -162,7 +160,7 @@ internal static class PlayniteLibraryPresentation
         {
             queryControls =
                 UI.HorizontalScroll("playnite-library.query", filterControls.ToArray())
-                    .Classes("playnite-library-query", "playnite-library-fixed");
+                    .Classes("playnite-library-query");
         }
         else
         {
@@ -194,13 +192,17 @@ internal static class PlayniteLibraryPresentation
                     .Classes("playnite-library-collections"));
             queryChildren.Add(UI.HorizontalScroll(
                     "playnite-library.filters", filterControls.ToArray())
-                .Classes("playnite-library-filters")
-                .VisibleWhen(ResponsiveVisibility.ExpandedOnly));
+                .Classes("playnite-library-filters"));
             queryControls = UI.Stack("playnite-library.query", queryChildren.ToArray())
-                .Classes("playnite-library-query", "playnite-library-fixed");
+                .Classes("playnite-library-query");
         }
 
         WidgetElement content;
+        var catalogPage = false;
+        string? catalogAnchorKey = null;
+        string? pageBeforeActionId = null;
+        string? pageAfterActionId = null;
+        var pageShortcuts = false;
         string? initialFocus = snapshot.RequestedFocusId;
         if (state.Route == PlayniteLibraryRoute.Categories)
         {
@@ -245,18 +247,20 @@ internal static class PlayniteLibraryPresentation
                     .Contains(item.Value.SavedId, StringComparer.Ordinal),
                 state.Route == PlayniteLibraryRoute.Running,
                 state.Interactive && !state.OrganizationBusy)).ToArray();
-            var scroll = UI.VerticalScroll(ScrollId,
-                    UI.ResponsiveGrid("playnite-library.library.grid", 170, 5, tiles)
-                        .Classes("playnite-library-grid"))
-                .Classes("playnite-library-scroll");
+            catalogPage = true;
+            catalogAnchorKey = snapshot.Anchor?.Value;
             if (snapshot.HasBefore || snapshot.HasAfter)
-                scroll = scroll.Paginate(
-                    snapshot.HasBefore ? "playnite-library.library.cursor.before" : null,
-                    snapshot.HasAfter ? "playnite-library.library.cursor.after" : null, 2);
-            scroll = PageShortcuts(scroll, snapshot, state.Interactive);
-            scroll = scroll with { CollectionAnchorKey = snapshot.Anchor?.Value };
+            {
+                pageBeforeActionId = snapshot.HasBefore
+                    ? "playnite-library.library.cursor.before"
+                    : null;
+                pageAfterActionId = snapshot.HasAfter
+                    ? "playnite-library.library.cursor.after"
+                    : null;
+            }
+            pageShortcuts = true;
             content = UI.Stack("playnite-library.content",
-                    scroll,
+                    GameGrid("playnite-library.library.grid", tiles),
                     UI.HorizontalScroll("playnite-library.actions",
                         UI.Button("Previous page", "playnite-library.previous",
                                 "playnite-library.previous")
@@ -320,15 +324,11 @@ internal static class PlayniteLibraryPresentation
                         pageBumpers: false,
                         collectionSwitch: state.Organization.Categories.Count != 0);
                 }).ToArray();
-                var scroll = UI.VerticalScroll(ScrollId,
-                        UI.ResponsiveGrid("playnite-library.category.grid", 170, 5, tiles)
-                            .Classes("playnite-library-grid"))
-                    .Classes("playnite-library-scroll") with
-                {
-                    CollectionAnchorKey = PlayniteLibraryIdentity.Key(
-                        rows[0].Display.SavedId).Value,
-                };
-                content = UI.Stack("playnite-library.content", scroll,
+                catalogPage = true;
+                catalogAnchorKey = PlayniteLibraryIdentity.Key(
+                    rows[0].Display.SavedId).Value;
+                content = UI.Stack("playnite-library.content",
+                        GameGrid("playnite-library.category.grid", tiles),
                         UI.ControllerHint(ControllerButton.Y, "Game actions",
                             "playnite-library.category.hint.actions"))
                     .Classes("playnite-library-content");
@@ -371,11 +371,13 @@ internal static class PlayniteLibraryPresentation
             {
                 var tiles = rows.Select(row => HiddenTile(
                     row, state.Interactive && !state.OrganizationBusy)).ToArray();
-                var scroll = UI.VerticalScroll(ScrollId,
-                        UI.ResponsiveGrid("playnite-library.hidden.grid", 170, 5, tiles)
-                            .Classes("playnite-library-grid"))
-                    .Classes("playnite-library-scroll");
-                content = UI.Stack("playnite-library.content", scroll,
+                catalogPage = true;
+                // Hidden rows are display-only restore targets, not retained cursor
+                // collection members. The outer catalog scroll must therefore not
+                // declare an anchor for a key that this route does not publish.
+                catalogAnchorKey = null;
+                content = UI.Stack("playnite-library.content",
+                        GameGrid("playnite-library.hidden.grid", tiles),
                         UI.ControllerHint(ControllerButton.A, "Restore selected game",
                             "playnite-library.hint.restore"))
                     .Classes("playnite-library-content");
@@ -410,18 +412,19 @@ internal static class PlayniteLibraryPresentation
                     row.CollectionItem,
                     collectionSwitch: state.Organization.Categories.Count != 0))
                 .ToArray();
-            var scroll = UI.HorizontalScroll(ScrollId, tiles)
-                .Classes("playnite-library-scroll", "playnite-library-rail");
+            catalogPage = true;
+            catalogAnchorKey = rail.CatalogAnchorKey;
             if (snapshot.Status != WidgetPagedResourceStatus.Error &&
                 (snapshot.HasBefore || snapshot.HasAfter))
-                scroll = scroll.Paginate(
-                    snapshot.HasBefore ? "playnite-library.library.cursor.before" : null,
-                    snapshot.HasAfter ? "playnite-library.library.cursor.after" : null, 2);
-            scroll = PageShortcuts(scroll, snapshot, state.Interactive);
-            scroll = scroll with
             {
-                CollectionAnchorKey = rail.CatalogAnchorKey,
-            };
+                pageBeforeActionId = snapshot.HasBefore
+                    ? "playnite-library.library.cursor.before"
+                    : null;
+                pageAfterActionId = snapshot.HasAfter
+                    ? "playnite-library.library.cursor.after"
+                    : null;
+            }
+            pageShortcuts = true;
             var controls = UI.HorizontalScroll("playnite-library.actions",
                     UI.Button("Previous page", "playnite-library.previous", "playnite-library.previous")
                         .Disabled(!snapshot.HasBefore || !state.Interactive),
@@ -478,7 +481,7 @@ internal static class PlayniteLibraryPresentation
                 PlayniteLibraryHeroRailPresentation.Render(
                         rail.Selected, state.LaunchingSavedId, state.LaunchStates)
                     .VisibleWhen(ResponsiveVisibility.ExpandedOnly),
-                scroll,
+                GameGrid("playnite-library.library.grid", tiles),
                 controls,
             };
             if (hintItems.Count != 0)
@@ -523,10 +526,9 @@ internal static class PlayniteLibraryPresentation
                     state.Organization, item.SavedId)?.SavedIds.Count ?? 0,
                 interactive: false, key: PlayniteLibraryIdentity.Key(item.SavedId),
                 pageBumpers: false)).ToArray();
-            var warmScroll = UI.HorizontalScroll(ScrollId, warm) with
-                { CollectionAnchorKey = PlayniteLibraryIdentity.Key(
-                    warmRows[0].SavedId).Value };
-            warmScroll = warmScroll.Classes("playnite-library-scroll", "playnite-library-rail");
+            catalogPage = true;
+            catalogAnchorKey = PlayniteLibraryIdentity.Key(
+                warmRows[0].SavedId).Value;
             content = UI.Stack("playnite-library.content",
                     PlayniteLibraryHeroRailPresentation.Fallback(
                         warmRows[0].DisplayName,
@@ -536,7 +538,7 @@ internal static class PlayniteLibraryPresentation
                         snapshot.Error is null ? AlertTone.Info : AlertTone.Warning,
                         "playnite-library.warm-status",
                         new ComponentAction("Try again", "playnite-library.retry", WidgetGlyph.Refresh)),
-                    warmScroll)
+                    GameGrid("playnite-library.library.grid", warm))
                 .Classes("playnite-library-content");
             initialFocus = "playnite-library.warm-status.action";
         }
@@ -604,8 +606,25 @@ internal static class PlayniteLibraryPresentation
                 .Classes("playnite-library-content");
         }
         content = content.AddClasses("playnite-library-main");
-        var root = UI.Stack("playnite-library.root", header, sourceStatus, queryControls, content)
-            .Classes("playnite-library-widget");
+        WidgetElement root;
+        if (catalogPage)
+        {
+            var page = UI.VerticalScroll(ScrollId, header, queryControls, content)
+                .Classes("playnite-library-page-scroll");
+            if (pageBeforeActionId is not null || pageAfterActionId is not null)
+                page = page.Paginate(pageBeforeActionId, pageAfterActionId, 2);
+            if (pageShortcuts)
+                page = PageShortcuts(page, snapshot, state.Interactive);
+            page = page with { CollectionAnchorKey = catalogAnchorKey };
+            root = UI.Stack("playnite-library.root", page)
+                .Classes("playnite-library-widget", "playnite-library-canvas");
+        }
+        else
+        {
+            root = UI.Stack("playnite-library.root", header,
+                    SourceStatus(state.Sources, snapshot.Status), queryControls, content)
+                .Classes("playnite-library-widget");
+        }
         return new WidgetView(root, initialFocus, Surface: Surface);
     }
 
@@ -670,6 +689,10 @@ internal static class PlayniteLibraryPresentation
                 ControllerButton.RightBumper, "playnite-library.next");
         return scroll;
     }
+
+    private static GridElement GameGrid(string id, params WidgetElement[] tiles) =>
+        UI.ResponsiveGrid(id, 220, 4, tiles)
+            .Classes("playnite-library-grid");
 
     private sealed record PresentedRow(
         PlayniteLibraryItem? Current,
