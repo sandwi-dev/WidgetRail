@@ -287,6 +287,16 @@ internal sealed record YouTubeWidgetState
     // declaring the capability for this exact surface.
     public YouTubeWidgetState WithRoute(YouTubeRoute route) => this with { Route = route };
 
+    /// <summary>
+    /// Returns a retained, already-observed media session to its transport route
+    /// when the open widget yields input back to the dashboard. Setup and search
+    /// without resident media remain on their authored routes.
+    /// </summary>
+    public YouTubeWidgetState WithDashboardPlayerRoute() =>
+        Playback.EventSequence > 0 && Playback.VideoId is not null
+            ? WithRoute(YouTubeRoute.Player)
+            : this;
+
     /// <summary>The route to fall back to, which needs a key before search is reachable.</summary>
     public YouTubeWidgetState WithConfiguredRoute() =>
         WithRoute(Setup.Configured ? YouTubeRoute.Search : YouTubeRoute.Setup);

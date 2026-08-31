@@ -108,6 +108,18 @@ public sealed partial class YouTubeVideoWidget
         return ValueTask.CompletedTask;
     }
 
+    protected override ValueTask OnLifecycleStateChangedAsync(
+        WidgetLifecycleState previous,
+        WidgetLifecycleState current,
+        CancellationToken stateLifetime)
+    {
+        stateLifetime.ThrowIfCancellationRequested();
+        if (previous == WidgetLifecycleState.Interactive &&
+            current == WidgetLifecycleState.Visible)
+            _model.Update(state => state.WithDashboardPlayerRoute());
+        return ValueTask.CompletedTask;
+    }
+
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         // The feedback timer runs under the Active lifetime, so the runtime
