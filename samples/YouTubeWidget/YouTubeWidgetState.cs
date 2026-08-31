@@ -255,6 +255,10 @@ internal sealed record YouTubeWidgetState
     public YouTubeSearchState Search { get; init; } = YouTubeSearchState.Initial;
     public YouTubePlaybackState Playback { get; init; } = YouTubePlaybackState.Initial;
 
+    /// <summary>Whether this route actually renders the live native transport.</summary>
+    public bool RendersLiveTransport =>
+        Route is YouTubeRoute.Player or YouTubeRoute.Link;
+
     /// <summary>
     /// Whether the transport controls are part of this view at all. A command
     /// already in flight does not belong here: withdrawing the declaration while
@@ -263,7 +267,7 @@ internal sealed record YouTubeWidgetState
     /// dispatch, not declaration.
     /// </summary>
     public bool CanDeclareTransportAction(bool isActive) =>
-        (Route is YouTubeRoute.Player or YouTubeRoute.Link) &&
+        RendersLiveTransport &&
         isActive &&
         Playback.VideoId is not null &&
         Playback.Error is null &&
@@ -286,16 +290,6 @@ internal sealed record YouTubeWidgetState
     // host drops its own activation as soon as the admitted snapshot stops
     // declaring the capability for this exact surface.
     public YouTubeWidgetState WithRoute(YouTubeRoute route) => this with { Route = route };
-
-    /// <summary>
-    /// Returns a retained, already-observed media session to its transport route
-    /// when the open widget yields input back to the dashboard. Setup and search
-    /// without resident media remain on their authored routes.
-    /// </summary>
-    public YouTubeWidgetState WithDashboardPlayerRoute() =>
-        Playback.EventSequence > 0 && Playback.VideoId is not null
-            ? WithRoute(YouTubeRoute.Player)
-            : this;
 
     /// <summary>The route to fall back to, which needs a key before search is reachable.</summary>
     public YouTubeWidgetState WithConfiguredRoute() =>

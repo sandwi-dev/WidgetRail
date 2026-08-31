@@ -214,6 +214,76 @@ public sealed class YouTubeWidgetStateTests
     }
 
     [TestMethod]
+    public void RouteLifecyclePlaybackAndPendingMatrixHasOneTransportPredicate()
+    {
+        var routes = Enum.GetValues<YouTubeRoute>();
+        var playbackCases = new[]
+        {
+            (EmbeddedMediaPlaybackState.Ready, (EmbeddedMediaPlaybackState?)null, false),
+            (EmbeddedMediaPlaybackState.Playing, (EmbeddedMediaPlaybackState?)null, false),
+            (EmbeddedMediaPlaybackState.Paused, (EmbeddedMediaPlaybackState?)null, false),
+            (EmbeddedMediaPlaybackState.Ended, (EmbeddedMediaPlaybackState?)null, false),
+            (EmbeddedMediaPlaybackState.Loading, (EmbeddedMediaPlaybackState?)null, false),
+            (EmbeddedMediaPlaybackState.Loading,
+                (EmbeddedMediaPlaybackState?)EmbeddedMediaPlaybackState.Playing, false),
+            (EmbeddedMediaPlaybackState.Error, (EmbeddedMediaPlaybackState?)null, true),
+        };
+        var pendingCases = Enum.GetValues<EmbeddedMediaPlaybackCommandKind>()
+            .Select(kind => (EmbeddedMediaPlaybackCommandKind?)kind)
+            .Prepend(null)
+            .ToArray();
+
+        foreach (var route in routes)
+        foreach (var active in new[] { false, true })
+        foreach (var (playbackState, semantic, hasError) in playbackCases)
+        foreach (var pendingKind in pendingCases)
+        {
+            var playback = new YouTubePlaybackState
+            {
+                Link = $"https://youtu.be/{VideoId}",
+                VideoId = VideoId,
+                State = playbackState,
+                PlaybackError = hasError ? "Playback failed." : null,
+                SeekBufferingSemantic = semantic,
+                CommandSequence = pendingKind is null ? 1 : 2,
+                EventSequence = 1,
+                PendingCommand = pendingKind is null ? null : new EmbeddedMediaPlaybackCommand
+                {
+                    Sequence = 2,
+                    Kind = pendingKind.Value,
+                    MediaKey = VideoId,
+                },
+                PendingControl = pendingKind is null
+                    ? PendingMediaControl.None
+                    : PendingMediaControl.TogglePlayback,
+            };
+            var state = YouTubeWidgetState.Initial with
+            {
+                Route = route,
+                Playback = playback,
+            };
+            var liveRoute = route is YouTubeRoute.Player or YouTubeRoute.Link;
+            var expectedDeclaration = liveRoute && active && !hasError &&
+                playbackState != EmbeddedMediaPlaybackState.Error &&
+                pendingKind is not (EmbeddedMediaPlaybackCommandKind.Load or
+                    EmbeddedMediaPlaybackCommandKind.Cue) &&
+                (playbackState != EmbeddedMediaPlaybackState.Loading || semantic is not null);
+            var label = $"route={route}, active={active}, state={playbackState}, " +
+                $"semantic={semantic}, pending={pendingKind}";
+
+            Assert.AreEqual(liveRoute, state.RendersLiveTransport, label);
+            Assert.AreEqual(expectedDeclaration,
+                state.CanDeclareTransportAction(active), label);
+            Assert.AreEqual(expectedDeclaration && pendingKind is null,
+                state.CanDispatchTransportAction(active), label);
+        }
+
+        var missingMedia = YouTubeWidgetState.Initial.WithRoute(YouTubeRoute.Player);
+        Assert.IsFalse(missingMedia.CanDeclareTransportAction(isActive: true));
+        Assert.IsFalse(missingMedia.CanDispatchTransportAction(isActive: true));
+    }
+
+    [TestMethod]
     public void DeactivationRetiresOnlyTransientPresentationState()
     {
         var buffering = YouTubeWidgetState.Initial

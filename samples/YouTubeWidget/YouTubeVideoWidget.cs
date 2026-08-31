@@ -29,9 +29,7 @@ public sealed partial class YouTubeVideoWidget : Widget
     // one frame across the header, the transport, and the media surface.
     public override WidgetView Render() => RenderApplication(_model.Value);
 
-    private WidgetView RenderPlayer(
-        YouTubeWidgetState state,
-        bool includeFullscreenAction = true)
+    private WidgetView RenderPlayer(YouTubeWidgetState state)
     {
         var playback = state.Playback;
         var videoId = playback.VideoId;
@@ -39,8 +37,9 @@ public sealed partial class YouTubeVideoWidget : Widget
         var seekBuffering = playback.IsSeekBuffering;
         var mediaLoading = playback.IsMediaLoading;
         var busyControl = playback.BusyControl;
-        var controlsUnavailable = videoId is null || error is not null || mediaLoading;
-        var showFullscreenAction = includeFullscreenAction && videoId is not null;
+        var transportActionsAvailable = state.CanDeclareTransportAction(IsActive);
+        var controlsUnavailable = !transportActionsAvailable;
+        var showFullscreenAction = state.Route == YouTubeRoute.Player && videoId is not null;
         var fullscreenActionEnabled = error is null && !mediaLoading;
         // Declared only on the route that also offers the reserved entry action,
         // so the capability never outlives a way to reach it.
@@ -117,8 +116,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         var statusClass = error is not null ? "is-error" :
             mediaLoading || seekBuffering ? "is-busy" :
             playback.State == EmbeddedMediaPlaybackState.Playing ? "is-playing" : "is-normal";
-        var playerActionsAvailable = state.CanDeclareTransportAction(IsActive);
-        IReadOnlyList<WidgetQuickAction>? quickActions = playerActionsAvailable
+        IReadOnlyList<WidgetQuickAction>? quickActions = transportActionsAvailable
                 ?
                 [
                     new WidgetQuickAction(ControllerButton.X, ToggleActionId, "Play or pause"),
@@ -182,7 +180,7 @@ public sealed partial class YouTubeVideoWidget : Widget
                     .Classes("youtube-player-shell"))
             .InputScope("youtube.root")
             .Classes("youtube-root");
-        if (playerActionsAvailable)
+        if (transportActionsAvailable)
         {
             root = root
                 .Shortcut(ControllerButton.X, ToggleActionId)

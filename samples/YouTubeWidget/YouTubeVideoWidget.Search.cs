@@ -108,18 +108,6 @@ public sealed partial class YouTubeVideoWidget
         return ValueTask.CompletedTask;
     }
 
-    protected override ValueTask OnLifecycleStateChangedAsync(
-        WidgetLifecycleState previous,
-        WidgetLifecycleState current,
-        CancellationToken stateLifetime)
-    {
-        stateLifetime.ThrowIfCancellationRequested();
-        if (previous == WidgetLifecycleState.Interactive &&
-            current == WidgetLifecycleState.Visible)
-            _model.Update(state => state.WithDashboardPlayerRoute());
-        return ValueTask.CompletedTask;
-    }
-
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         // The feedback timer runs under the Active lifetime, so the runtime
@@ -337,14 +325,14 @@ public sealed partial class YouTubeVideoWidget
     {
         return playback.VideoId is null ? null :
             UI.Button(
-                    $"Return to player  ·  {(playback.State == EmbeddedMediaPlaybackState.Playing ? "Playing" : "Paused or ready")}",
+                    $"Return to player  ·  {(playback.PlaybackSemantic == EmbeddedMediaPlaybackState.Playing ? "Playing" : "Paused or ready")}",
                     "youtube.player.return", "youtube.player.return")
                 .Classes("youtube-now-playing");
     }
 
     private WidgetView RenderLinkPlayer(YouTubeWidgetState state)
     {
-        var view = RenderPlayer(state, includeFullscreenAction: false);
+        var view = RenderPlayer(state);
         return view with { InitialFocusId = "youtube.link" };
     }
 
