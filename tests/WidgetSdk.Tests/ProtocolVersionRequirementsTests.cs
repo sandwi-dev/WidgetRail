@@ -232,8 +232,8 @@ internal static class ProtocolVersionRequirementsTests
             NodeCase("collection item", "cursor-collection-item",
                 ProtocolConstants.CursorCollectionVersion,
                 CursorCollection(), "$.root.children[0].children[0].collectionItemKey"),
-            NodeCase("image artwork handle", "artwork-handle",
-                ProtocolConstants.CursorCollectionVersion,
+            NodeCase("image artwork handle", "trusted-encoded-artwork",
+                ProtocolConstants.TrustedEncodedArtworkVersion,
                 new()
                 {
                     Id = "artwork",
@@ -242,8 +242,8 @@ internal static class ProtocolVersionRequirementsTests
                     ImageFit = ImageFit.Cover,
                     AccessibilityLabel = "Artwork",
                 }, "$.root.children[0].artworkHandle"),
-            NodeCase("button artwork handle", "artwork-handle",
-                ProtocolConstants.CursorCollectionVersion,
+            NodeCase("button artwork handle", "trusted-encoded-artwork",
+                ProtocolConstants.TrustedEncodedArtworkVersion,
                 Button() with { ArtworkHandle = "artwork.1", ImageFit = ImageFit.Contain },
                 "$.root.children[0].artworkHandle"),
             NodeCase("text entry", "text-entry", ProtocolConstants.TextEntryVersion,

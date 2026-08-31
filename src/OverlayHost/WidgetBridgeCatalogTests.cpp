@@ -1438,13 +1438,13 @@ int main() {
     error.clear();
     const auto artwork = widgetrail::testing::ParseWidgetArtworkResultEvent(R"json({
         "type":"artwork","requestId":0,
-        "payload":{"widgetId":"games-apps","artworkHandle":"library.art.0123456789abcdef0123456789abcdef","pngBase64":"AAAA"}
+        "payload":{"widgetId":"games-apps","artworkHandle":"gallery.artwork.cover","contentType":"image/jpeg","contentBase64":"/9j/2Q=="}
     })json", error);
     CHECK(artwork && error.empty());
     CHECK(artwork->widgetId == L"games-apps");
-    CHECK(artwork->artworkHandle ==
-           L"library.art.0123456789abcdef0123456789abcdef");
-    CHECK(artwork->pngBase64 == L"AAAA");
+    CHECK(artwork->artworkHandle == L"gallery.artwork.cover");
+    CHECK(artwork->contentType == L"image/jpeg");
+    CHECK(artwork->contentBase64 == L"/9j/2Q==");
 
     error.clear();
     const auto localPackage =

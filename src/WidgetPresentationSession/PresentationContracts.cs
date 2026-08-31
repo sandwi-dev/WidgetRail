@@ -1,6 +1,7 @@
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.WidgetPresentationSession;
 
@@ -79,7 +80,8 @@ public sealed record WidgetPresentationInvalidation(string WidgetId, long Revisi
 public sealed record WidgetPresentationArtwork(
     WidgetPresentationAuthority Authority,
     string ArtworkHandle,
-    ReadOnlyMemory<byte> PngBytes);
+    WidgetArtworkContentType ContentType,
+    ReadOnlyMemory<byte> EncodedBytes);
 
 public sealed record WidgetPresentationDiagnostic(
     DateTimeOffset Timestamp,
@@ -130,5 +132,4 @@ internal sealed record BridgeRequestFailure(string Code, string Message);
 internal static class PresentationContractLimits
 {
     internal const int MaximumDiagnosticTextLength = 512;
-    internal const int MaximumArtworkBytes = 8 * 1024 * 1024;
 }

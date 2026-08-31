@@ -226,6 +226,8 @@ $platformObjectDirectory = Join-Path $outputDirectory 'obj\platform-interop'
 $platformTestObjectDirectory = Join-Path $outputDirectory 'obj\platform-interop-tests'
 $testObjectDirectory = Join-Path $outputDirectory 'obj\tests'
 $imageTestObjectDirectory = Join-Path $outputDirectory 'obj\image-tests'
+$artworkDecoderObjectDirectory = Join-Path $outputDirectory 'obj\artwork-decoder'
+$artworkDecoderTestObjectDirectory = Join-Path $outputDirectory 'obj\artwork-decoder-tests'
 $layoutTestObjectDirectory = Join-Path $outputDirectory 'obj\layout-tests'
 $iconTestObjectDirectory = Join-Path $outputDirectory 'obj\icon-tests'
 $styleTestObjectDirectory = Join-Path $outputDirectory 'obj\style-tests'
@@ -275,7 +277,7 @@ $trayRefreshHostTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-refre
 $trayRefreshCommunityFixtureOutput = Join-Path $outputDirectory 'obj\tray-refresh-community-fixture'
 $richMediaTestObjectDirectory = Join-Path $outputDirectory 'obj\rich-media-tests'
 $bundledPackageSealOutput = Join-Path $outputDirectory 'obj\bundled-package-seal'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $richMediaTestObjectDirectory, $bundledPackageSealOutput | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $artworkDecoderObjectDirectory, $artworkDecoderTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $richMediaTestObjectDirectory, $bundledPackageSealOutput | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\THIRD_PARTY_NOTICES.md') `
     -Destination (Join-Path $outputDirectory 'THIRD_PARTY_NOTICES.md') -Force
 Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\third_party\public_suffix_list\public_suffix_list.dat') `
@@ -305,6 +307,30 @@ $libraryArguments = @(
 )
 $common = @('/nologo', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-', '/DUSING_GAMEINPUT', '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX') +
     $optimization + $includeArguments
+
+function Invoke-ArtworkDecoderBuild {
+    param([switch]$Testing)
+    $name = if ($Testing) { 'ArtworkDecoderTestHost' } else { 'ArtworkDecoderHost' }
+    $objectDirectory = if ($Testing) {
+        $artworkDecoderTestObjectDirectory
+    } else {
+        $artworkDecoderObjectDirectory
+    }
+    $definitions = if ($Testing) { @('/DWRAIL_ARTWORK_DECODER_TESTING') } else { @() }
+    $arguments = $common + $definitions + @(
+        (Join-Path $projectDirectory 'ArtworkDecoderHost.cpp'),
+        "/Fo:$objectDirectory\",
+        "/Fe:$outputDirectory\$name.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('windowscodecs.lib', 'ole32.lib')
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$name build failed with exit code $LASTEXITCODE."
+    }
+}
+
+Invoke-ArtworkDecoderBuild
+if ($TrustedArtworkTestsOnly) { Invoke-ArtworkDecoderBuild -Testing }
 
 function Invoke-OverlayPlatformInteropBuild {
     $arguments = $common + @(
@@ -454,6 +480,7 @@ function Invoke-SemanticChurnPerformanceTests {
         (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp'),
         "/Fo:$semanticChurnTestObjectDirectory\",
         "/Fe:$outputDirectory\SemanticChurnPerformanceTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -500,6 +527,7 @@ function Invoke-DeclarativeRendererTests {
         (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp'),
         "/Fo:$rendererTestObjectDirectory\",
         "/Fe:$outputDirectory\DeclarativeRendererTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -581,6 +609,7 @@ function Invoke-WidgetSurfaceCoordinatorTests {
         (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp'),
         '/DWRAIL_WIDGET_SURFACE_COORDINATOR_TESTING',
         "/Fo:$widgetSurfaceTestObjectDirectory\",
         "/Fe:$outputDirectory\WidgetSurfaceCoordinatorTests.exe",
@@ -661,7 +690,8 @@ function Invoke-WidgetInteractionTests {
             (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
             (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
             (Join-Path $projectDirectory 'NativeIcons.cpp'),
-            (Join-Path $projectDirectory 'RemoteImageCache.cpp')) `
+            (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+            (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp')) `
         -Libraries @(
             'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib')
     Invoke-OverlayPlatformParityTest `
@@ -932,6 +962,7 @@ function Invoke-CompositionTests {
         (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp'),
         "/Fo:$rendererTestObjectDirectory\",
         "/Fe:$outputDirectory\DeclarativeRendererTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -1436,6 +1467,7 @@ function Invoke-TrustedArtworkTests {
     $imageArguments = $common + @(
         (Join-Path $projectDirectory 'RemoteImageCacheTests.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp'),
         "/Fo:$imageTestObjectDirectory\",
         "/Fe:$outputDirectory\RemoteImageCacheTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -1461,6 +1493,7 @@ function Invoke-TrustedArtworkTests {
         (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp'),
         "/Fo:$rendererTestObjectDirectory\",
         "/Fe:$outputDirectory\DeclarativeRendererTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -1614,6 +1647,7 @@ $hostArguments = $hostCompileArguments + @(
     (Join-Path $projectDirectory 'WidgetSessionCoordinator.cpp'),
     (Join-Path $projectDirectory 'WidgetAdmissionTrace.cpp'),
     (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+    (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp'),
     (Join-Path $projectDirectory 'ScrollEvidenceProbe.cpp'),
     (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
     (Join-Path $projectDirectory 'NativeIcons.cpp'),
@@ -1932,6 +1966,7 @@ if (-not $SkipTests) {
     $imageTestArguments = $common + @(
         (Join-Path $projectDirectory 'RemoteImageCacheTests.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp'),
         "/Fo:$imageTestObjectDirectory\",
         "/Fe:$outputDirectory\RemoteImageCacheTests.exe",
         '/link'
@@ -2304,6 +2339,7 @@ if (-not $SkipTests) {
         (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp'),
         (Join-Path $projectDirectory 'FocusNavigation.cpp'),
         "/Fo:$realHostAccessibilityTestObjectDirectory\",
         "/Fe:$outputDirectory\RealHostAccessibilityTests.exe",
@@ -2476,6 +2512,7 @@ if (-not $SkipTests) {
         (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp'),
         "/Fo:$rendererTestObjectDirectory\",
         "/Fe:$outputDirectory\DeclarativeRendererTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -2503,6 +2540,7 @@ if (-not $SkipTests) {
         (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        (Join-Path $projectDirectory 'ArtworkDecoderProcessOwner.cpp'),
         "/Fo:$componentGeometryTestObjectDirectory\",
         "/Fe:$outputDirectory\SharedComponentGeometryTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'

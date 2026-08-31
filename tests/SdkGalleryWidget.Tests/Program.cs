@@ -9,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Controls preserve stable state and requested scrub values", ControlState),
     ("Picker and action sheet own nested B scopes", NestedScopes),
     ("Toast feedback adds no focus or action target", ToastDoesNotTakeFocus),
+    ("Trusted artwork preserves provider-neutral encoded bytes", TrustedArtwork),
     ("Manifest and project use the generic capability-free community path", PackageContract),
     ("Gallery WRSS is valid, responsive, and theme-token based", StyleContract),
 };
@@ -166,6 +167,21 @@ static async Task ToastDoesNotTakeFocus()
     Assert.Equal(0, toast.Shortcuts.Count);
     Assert.Equal("gallery.refresh", snapshot.InitialFocusId);
     await WidgetTestHost.DestroyAsync(widget);
+}
+
+static async Task TrustedArtwork()
+{
+    var widget = new SdkGalleryWidget();
+    await Act(widget, "gallery.tab.tiles");
+    var snapshot = Snapshot(widget, 1);
+    var artworkHandle = Find(snapshot, "gallery.app.artwork").ArtworkHandle;
+    Assert.True(artworkHandle is not null);
+    Assert.Equal(ProtocolConstants.TrustedEncodedArtworkVersion, snapshot.ProtocolVersion);
+    var artwork = await widget.OnResolveArtworkAsync(new WidgetArtworkHandle(artworkHandle!));
+    Assert.True(artwork is not null);
+    Assert.Equal(WidgetArtworkContentType.Png, artwork!.ContentType);
+    Assert.True(artwork.Bytes.Span[..8].SequenceEqual(
+        new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }));
 }
 
 static Task PackageContract()

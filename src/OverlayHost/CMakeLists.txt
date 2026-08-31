@@ -50,6 +50,13 @@ endfunction()
 # path compile identical literals (including test executables).
 add_compile_options(/utf-8)
 
+add_executable(ArtworkDecoderHost ArtworkDecoderHost.cpp)
+target_compile_features(ArtworkDecoderHost PRIVATE cxx_std_20)
+target_compile_options(ArtworkDecoderHost PRIVATE /W4 /permissive- /EHsc)
+target_compile_definitions(ArtworkDecoderHost PRIVATE
+    UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(ArtworkDecoderHost PRIVATE windowscodecs ole32)
+
 add_executable(OverlayHost WIN32
     main.cpp
     OverlayCompositionSurface.cpp
@@ -60,6 +67,7 @@ add_executable(OverlayHost WIN32
     WidgetSessionCoordinator.cpp
     WidgetAdmissionTrace.cpp
     RemoteImageCache.cpp
+    ArtworkDecoderProcessOwner.cpp
     ScrollEvidenceProbe.cpp
     DeclarativeLayout.cpp
     NativeIcons.cpp
@@ -127,6 +135,12 @@ widgetrail_link_taffy(OverlayHost)
 
 if(WRAIL_BUILD_TESTS)
     enable_testing()
+    add_executable(ArtworkDecoderTestHost ArtworkDecoderHost.cpp)
+    target_compile_features(ArtworkDecoderTestHost PRIVATE cxx_std_20)
+    target_compile_options(ArtworkDecoderTestHost PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ArtworkDecoderTestHost PRIVATE
+        WRAIL_ARTWORK_DECODER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(ArtworkDecoderTestHost PRIVATE windowscodecs ole32)
     add_executable(WidgetSessionCoordinatorTests
         WidgetSessionCoordinatorTests.cpp WidgetSessionCoordinator.cpp
         WidgetAdmissionTrace.cpp)
@@ -219,7 +233,8 @@ if(WRAIL_BUILD_TESTS)
         PinnedSurfacePolicy.cpp PinnedSurfacePlacement.cpp AccessibilityProvider.cpp AccessibilityEvents.cpp
         AccessibilityTree.cpp ControllerNavigation.cpp FocusNavigation.cpp WidgetSurfaceFocus.cpp
         DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
-        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp
+        ArtworkDecoderProcessOwner.cpp)
     target_compile_features(WidgetSurfaceCoordinatorTests PRIVATE cxx_std_20)
     target_compile_options(WidgetSurfaceCoordinatorTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(WidgetSurfaceCoordinatorTests PRIVATE
@@ -324,7 +339,7 @@ if(WRAIL_BUILD_TESTS)
         ControllerNavigation.cpp FocusNavigation.cpp SliderInteraction.cpp
         WidgetSurfaceFocus.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
         NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp
-        NativeIcons.cpp RemoteImageCache.cpp)
+        NativeIcons.cpp RemoteImageCache.cpp ArtworkDecoderProcessOwner.cpp)
     target_compile_features(WidgetInteractionSessionTests PRIVATE cxx_std_20)
     target_compile_options(WidgetInteractionSessionTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(WidgetInteractionSessionTests PRIVATE
@@ -381,7 +396,7 @@ if(WRAIL_BUILD_TESTS)
         AccessibilityProvider.cpp AccessibilityEvents.cpp TrayLayout.cpp
         WidgetBridgeClient.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
         NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp
-        RemoteImageCache.cpp FocusNavigation.cpp)
+        RemoteImageCache.cpp ArtworkDecoderProcessOwner.cpp FocusNavigation.cpp)
     target_compile_features(RealHostAccessibilityTests PRIVATE cxx_std_20)
     target_compile_options(RealHostAccessibilityTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(RealHostAccessibilityTests PRIVATE
@@ -457,7 +472,8 @@ if(WRAIL_BUILD_TESTS)
 
     add_executable(DeclarativeRendererTests
         DeclarativeRendererTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
-        NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+        NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp
+        RemoteImageCache.cpp ArtworkDecoderProcessOwner.cpp)
     target_compile_features(DeclarativeRendererTests PRIVATE cxx_std_20)
     target_compile_options(DeclarativeRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(DeclarativeRendererTests PRIVATE
@@ -471,7 +487,8 @@ if(WRAIL_BUILD_TESTS)
     add_executable(YtMusicResponsiveRendererTests
         YtMusicResponsiveRendererTests.cpp WidgetBridgeClient.cpp
         DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
-        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp
+        ArtworkDecoderProcessOwner.cpp)
     target_compile_features(YtMusicResponsiveRendererTests PRIVATE cxx_std_20)
     target_compile_options(YtMusicResponsiveRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(YtMusicResponsiveRendererTests PRIVATE
@@ -486,7 +503,8 @@ if(WRAIL_BUILD_TESTS)
     add_executable(SettingsContentRendererTests
         SettingsContentRendererTests.cpp WidgetBridgeClient.cpp
         DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
-        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp
+        ArtworkDecoderProcessOwner.cpp)
     target_compile_features(SettingsContentRendererTests PRIVATE cxx_std_20)
     target_compile_options(SettingsContentRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(SettingsContentRendererTests PRIVATE
@@ -501,7 +519,8 @@ if(WRAIL_BUILD_TESTS)
     add_executable(AudioMixerWidthRendererTests
         AudioMixerWidthRendererTests.cpp WidgetBridgeClient.cpp
         DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
-        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp
+        ArtworkDecoderProcessOwner.cpp)
     target_compile_features(AudioMixerWidthRendererTests PRIVATE cxx_std_20)
     target_compile_options(AudioMixerWidthRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(AudioMixerWidthRendererTests PRIVATE
@@ -516,7 +535,8 @@ if(WRAIL_BUILD_TESTS)
     add_executable(NetworkFirstPageRendererTests
         NetworkFirstPageRendererTests.cpp WidgetBridgeClient.cpp
         DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
-        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp
+        ArtworkDecoderProcessOwner.cpp)
     target_compile_features(NetworkFirstPageRendererTests PRIVATE cxx_std_20)
     target_compile_options(NetworkFirstPageRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(NetworkFirstPageRendererTests PRIVATE
@@ -529,7 +549,7 @@ if(WRAIL_BUILD_TESTS)
     add_executable(SemanticChurnPerformanceTests
         SemanticChurnPerformanceTests.cpp AccessibilityTree.cpp DeclarativeRenderer.cpp
         DeclarativeLayout.cpp NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp
-        NativeIcons.cpp RemoteImageCache.cpp)
+        NativeIcons.cpp RemoteImageCache.cpp ArtworkDecoderProcessOwner.cpp)
     target_compile_features(SemanticChurnPerformanceTests PRIVATE cxx_std_20)
     target_compile_options(SemanticChurnPerformanceTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(SemanticChurnPerformanceTests PRIVATE
@@ -541,7 +561,8 @@ if(WRAIL_BUILD_TESTS)
 
     add_executable(SharedComponentGeometryTests
         SharedComponentGeometryTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
-        NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+        NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp
+        RemoteImageCache.cpp ArtworkDecoderProcessOwner.cpp)
     target_compile_features(SharedComponentGeometryTests PRIVATE cxx_std_20)
     target_compile_options(SharedComponentGeometryTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(SharedComponentGeometryTests PRIVATE
@@ -552,7 +573,8 @@ if(WRAIL_BUILD_TESTS)
     add_test(NAME SharedComponentGeometryTests COMMAND SharedComponentGeometryTests)
 
     add_executable(RemoteImageCacheTests
-        RemoteImageCacheTests.cpp RemoteImageCache.cpp)
+        RemoteImageCacheTests.cpp RemoteImageCache.cpp ArtworkDecoderProcessOwner.cpp)
+    add_dependencies(RemoteImageCacheTests ArtworkDecoderHost ArtworkDecoderTestHost)
     target_compile_features(RemoteImageCacheTests PRIVATE cxx_std_20)
     target_compile_options(RemoteImageCacheTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(RemoteImageCacheTests PRIVATE

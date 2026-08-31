@@ -1,12 +1,15 @@
 #include "RemoteImageCache.h"
+#include "ArtworkDecoderProcessOwner.h"
 
 #include <WinHttp.h>
 #include <wincodec.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cwctype>
 #include <limits>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <utility>
 
@@ -223,6 +226,50 @@ constexpr UINT32 maximumInlinePngDimension = 64;
     return decoded;
 }
 
+[[nodiscard]] std::optional<std::vector<std::uint8_t>> DecodeBoundedBase64(
+    std::wstring_view source,
+    const std::size_t maximumBytes) {
+    if (source.empty() || source.size() % 4 != 0 ||
+        source.size() > ((maximumBytes + 2U) / 3U) * 4U)
+        return std::nullopt;
+    std::vector<std::uint8_t> decoded;
+    decoded.reserve(source.size() / 4U * 3U);
+    for (std::size_t offset = 0; offset < source.size(); offset += 4) {
+        const bool last = offset + 4 == source.size();
+        const int a = DecodeBase64Character(source[offset]);
+        const int b = DecodeBase64Character(source[offset + 1]);
+        const int c = source[offset + 2] == L'=' ? -2 : DecodeBase64Character(source[offset + 2]);
+        const int d = source[offset + 3] == L'=' ? -2 : DecodeBase64Character(source[offset + 3]);
+        if (a < 0 || b < 0 || c == -1 || d == -1 ||
+            (c == -2 && d != -2) || (!last && (c == -2 || d == -2)))
+            return std::nullopt;
+        decoded.push_back(static_cast<std::uint8_t>((a << 2) | (b >> 4)));
+        if (c != -2) {
+            decoded.push_back(static_cast<std::uint8_t>((b << 4) | (c >> 2)));
+            if (d != -2)
+                decoded.push_back(static_cast<std::uint8_t>((c << 6) | d));
+            else if ((c & 0x03) != 0)
+                return std::nullopt;
+        } else if ((b & 0x0f) != 0) {
+            return std::nullopt;
+        }
+    }
+    if (decoded.empty() || decoded.size() > maximumBytes) return std::nullopt;
+    return decoded;
+}
+
+[[nodiscard]] bool MatchesArtworkSignature(
+    const std::wstring_view contentType,
+    const std::span<const std::uint8_t> bytes) noexcept {
+    constexpr std::uint8_t png[]{137, 80, 78, 71, 13, 10, 26, 10};
+    if (contentType == L"image/png")
+        return bytes.size() >= 24 &&
+            std::equal(std::begin(png), std::end(png), bytes.begin());
+    return contentType == L"image/jpeg" && bytes.size() >= 4 &&
+        bytes[0] == 0xff && bytes[1] == 0xd8 &&
+        bytes[bytes.size() - 2] == 0xff && bytes.back() == 0xd9;
+}
+
 } // namespace
 
 RemoteImageCache::RemoteImageCache(
@@ -232,17 +279,35 @@ RemoteImageCache::RemoteImageCache(
     ArtworkRequestFunction artworkRequest)
     : limits_(limits),
       completion_(std::move(completion)),
+      usesCustomFetch_(static_cast<bool>(fetch)),
       fetch_(fetch ? std::move(fetch) : FetchAndDecodeSource),
       artworkRequest_(std::move(artworkRequest)) {
     if (limits_.maximumEntries == 0 || limits_.maximumEntries > 1'024 ||
         limits_.maximumReadyEntries == 0 || limits_.maximumReadyEntries > 1'024 ||
         limits_.maximumPendingEntries == 0 || limits_.maximumPendingEntries > 1'024 ||
         limits_.maximumDecodedImageBytes < 4 ||
-        limits_.maximumDecodedImageBytes > 32U * 1024U * 1024U ||
+        limits_.maximumDecodedImageBytes > 64U * 1024U * 1024U ||
         limits_.maximumDecodedBytes < 4 ||
         limits_.maximumDecodedBytes > 256U * 1024U * 1024U ||
         limits_.maximumDownloadBytes == 0 ||
         limits_.maximumDownloadBytes > 5U * 1024U * 1024U ||
+        limits_.maximumEncodedArtworkBytes == 0 ||
+        limits_.maximumEncodedArtworkBytes > 8U * 1024U * 1024U ||
+        limits_.maximumEncodedArtworkBytesPerWidget < limits_.maximumEncodedArtworkBytes ||
+        limits_.maximumEncodedArtworkBytesTotal < limits_.maximumEncodedArtworkBytesPerWidget ||
+        limits_.maximumEncodedArtworkBytesTotal > 256U * 1024U * 1024U ||
+        limits_.maximumArtworkPixels < 1 || limits_.maximumArtworkPixels > 16'777'216 ||
+        limits_.maximumArtworkDimension < 1 || limits_.maximumArtworkDimension > 4'096 ||
+        limits_.maximumArtworkDecodeMilliseconds == 0 ||
+        limits_.maximumArtworkDecodeMilliseconds > 60'000 ||
+        limits_.maximumArtworkDecoderRestarts == 0 ||
+        limits_.maximumArtworkDecoderRestarts > 16 ||
+        limits_.artworkDecoderRestartWindowMilliseconds == 0 ||
+        limits_.artworkDecoderRestartWindowMilliseconds > 300'000 ||
+        limits_.artworkDecoderCircuitBreakerMilliseconds == 0 ||
+        limits_.artworkDecoderCircuitBreakerMilliseconds > 300'000 ||
+        limits_.artworkDecoderShutdownMilliseconds == 0 ||
+        limits_.artworkDecoderShutdownMilliseconds > 10'000 ||
         limits_.maximumRedirects > 10 ||
         limits_.resolveTimeoutMilliseconds == 0 || limits_.resolveTimeoutMilliseconds > 60'000 ||
         limits_.connectTimeoutMilliseconds == 0 || limits_.connectTimeoutMilliseconds > 60'000 ||
@@ -250,6 +315,8 @@ RemoteImageCache::RemoteImageCache(
         limits_.receiveTimeoutMilliseconds == 0 || limits_.receiveTimeoutMilliseconds > 60'000) {
         throw std::invalid_argument("Invalid remote image cache limits.");
     }
+    if (!usesCustomFetch_)
+        artworkDecoder_ = std::make_unique<ArtworkDecoderProcessOwner>(limits_);
     worker_ = std::jthread([this](std::stop_token token) { WorkerLoop(token); });
 }
 
@@ -280,16 +347,6 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring ke
         const auto handleSeparator = key.rfind(L'\x1f');
         if (handleSeparator == std::wstring::npos)
             return RemoteImageRequestResult::InvalidUrl;
-        const auto identityPrefix = key.substr(0, handleSeparator + 1);
-        for (auto iterator = entries_.begin(); iterator != entries_.end();) {
-            if (iterator->first != key && iterator->first.starts_with(identityPrefix)) {
-                if (iterator->second.image)
-                    decodedBytes_ -= iterator->second.image->premultipliedBgra.size();
-                iterator = entries_.erase(iterator);
-                ++evictions_;
-                ++supersededEntries_;
-            } else ++iterator;
-        }
         const auto widgetEnd = key.find(L'\x1f', prefix.size());
         const auto handleSuffix = key.substr(handleSeparator);
         const bool handleIsTerminal = std::any_of(
@@ -313,12 +370,12 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring ke
         }
         if (handleIsTerminal) {
             entries_.emplace(key, Entry{
-                RemoteImageState::Failed, {}, L"Trusted artwork is unavailable.", {},
+                RemoteImageState::Failed, {}, L"Trusted artwork is unavailable.", {}, {}, {},
                 ++useCounter_});
             return RemoteImageRequestResult::AlreadyTracked;
         }
         entries_.emplace(key, Entry{
-            RemoteImageState::Loading, {}, {}, {}, ++useCounter_});
+            RemoteImageState::Loading, {}, {}, {}, {}, {}, ++useCounter_});
     }
     if (artworkRequest_ && artworkRequest_(key))
         return RemoteImageRequestResult::Queued;
@@ -334,17 +391,27 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring ke
 bool RemoteImageCache::SupplyTrustedArtwork(
     const std::wstring_view widgetId,
     const std::wstring_view artworkHandle,
-    std::wstring pngBase64) {
-    if (pngBase64.empty() || pngBase64.size() > 16'384) return false;
+    std::wstring contentType,
+    std::wstring contentBase64) {
+    auto bytes = DecodeBoundedBase64(contentBase64, limits_.maximumEncodedArtworkBytes);
+    if (!bytes || !MatchesArtworkSignature(contentType, *bytes)) return false;
     std::scoped_lock lock(mutex_);
     if (shuttingDown_) return false;
     const auto prefix = L"wrail-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
     const auto suffix = L"\x1f" + std::wstring(artworkHandle);
+    std::size_t widgetEncodedBytes = 0;
+    for (const auto& [key, entry] : entries_)
+        if (key.starts_with(prefix)) widgetEncodedBytes += entry.pendingBytes.size();
+    if (encodedArtworkBytes_ + bytes->size() > limits_.maximumEncodedArtworkBytesTotal ||
+        widgetEncodedBytes + bytes->size() > limits_.maximumEncodedArtworkBytesPerWidget)
+        return false;
     bool supplied = false;
     for (auto& [key, entry] : entries_) {
         if (!key.starts_with(prefix) || !key.ends_with(suffix) ||
             entry.state != RemoteImageState::Loading) continue;
-        entry.pendingSource = L"data:image/png;base64," + pngBase64;
+        entry.pendingBytes = *bytes;
+        entry.pendingMimeType = contentType;
+        encodedArtworkBytes_ += entry.pendingBytes.size();
         entry.state = RemoteImageState::Queued;
         queue_.push_back(key);
         supplied = true;
@@ -444,10 +511,11 @@ std::wstring RemoteImageCache::TrustedArtworkKey(
     const std::wstring_view nodeId,
     const std::wstring_view artworkHandle) {
     if (widgetId.empty() || nodeId.empty() || artworkHandle.empty()) return {};
+    (void)nodeId;
     std::wstring result = L"wrail-artwork\x1f";
     result.append(widgetId);
     result.push_back(L'\x1f');
-    result.append(nodeId);
+    result.append(L"resource");
     result.push_back(L'\x1f');
     result.append(artworkHandle);
     return result;
@@ -504,6 +572,7 @@ void RemoteImageCache::Shutdown() noexcept {
     worker_.request_stop();
     condition_.notify_all();
     if (worker_.joinable()) worker_.join();
+    if (artworkDecoder_) artworkDecoder_->Shutdown();
 }
 
 bool RemoteImageCache::IsAllowedHttpsUrl(std::wstring_view url) noexcept {
@@ -550,7 +619,7 @@ RemoteImageRequestResult RemoteImageCache::QueueLocked(std::wstring url, bool re
             return RemoteImageRequestResult::CapacityExceeded;
         }
     }
-    entries_.emplace(url, Entry{RemoteImageState::Queued, {}, {}, {}, ++useCounter_});
+    entries_.emplace(url, Entry{RemoteImageState::Queued, {}, {}, {}, {}, {}, ++useCounter_});
     queue_.push_back(std::move(url));
     condition_.notify_one();
     return RemoteImageRequestResult::Queued;
@@ -611,6 +680,8 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
         }
 
         std::wstring source = url;
+        std::vector<std::uint8_t> encodedArtwork;
+        std::wstring encodedArtworkMime;
         {
             std::scoped_lock lock(mutex_);
             const auto found = entries_.find(url);
@@ -618,8 +689,33 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
                 source = std::move(found->second.pendingSource);
                 found->second.pendingSource.clear();
             }
+            if (found != entries_.end() && !found->second.pendingBytes.empty()) {
+                encodedArtwork = std::move(found->second.pendingBytes);
+                encodedArtworkMime = std::move(found->second.pendingMimeType);
+                encodedArtworkBytes_ -= encodedArtwork.size();
+            }
         }
-        auto result = fetch_(source, stopToken, limits_);
+        RemoteImageFetchResult result;
+        if (!encodedArtwork.empty()) {
+            if (usesCustomFetch_) {
+                source = L"data:" + encodedArtworkMime + L";base64,validated";
+                result = fetch_(source, stopToken, limits_);
+            } else {
+                result = artworkDecoder_->Decode(
+                    std::move(encodedArtwork), std::move(encodedArtworkMime), stopToken);
+            }
+            if (stopToken.stop_requested())
+                result = Failure(E_ABORT, L"Trusted artwork decode was cancelled.");
+            else if (result.succeeded() &&
+                (result.image.width > limits_.maximumArtworkDimension ||
+                 result.image.height > limits_.maximumArtworkDimension ||
+                 static_cast<std::uint64_t>(result.image.width) * result.image.height >
+                    limits_.maximumArtworkPixels))
+                result = Failure(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE),
+                    L"Trusted artwork dimensions exceed the allowed bound.");
+        } else {
+            result = fetch_(source, stopToken, limits_);
+        }
         RemoteImageState finalState = RemoteImageState::Failed;
         {
             std::scoped_lock lock(mutex_);

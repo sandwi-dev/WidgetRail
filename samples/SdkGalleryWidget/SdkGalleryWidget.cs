@@ -13,6 +13,9 @@ public readonly record struct GalleryRoute(GalleryPage Page, GalleryModal Modal)
 /// </summary>
 public sealed class SdkGalleryWidget : Widget
 {
+    private const string SampleArtworkHandle = "gallery.artwork.sample-png";
+    private static readonly byte[] SampleArtworkBytes = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xh8ftQAAAABJRU5ErkJggg==");
     private static readonly WidgetIdScope Ids = WidgetIds.Scope("gallery");
     private static readonly NavigationShellDestination[] Destinations =
     [
@@ -165,6 +168,17 @@ public sealed class SdkGalleryWidget : Widget
         return ValueTask.CompletedTask;
     }
 
+    public override ValueTask<WidgetEncodedArtwork?> OnResolveArtworkAsync(
+        WidgetArtworkHandle handle,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<WidgetEncodedArtwork?>(
+            string.Equals(handle.Value, SampleArtworkHandle, StringComparison.Ordinal)
+                ? new WidgetEncodedArtwork(WidgetArtworkContentType.Png, SampleArtworkBytes)
+                : null);
+    }
+
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         if (_showToast)
@@ -285,7 +299,9 @@ public sealed class SdkGalleryWidget : Widget
                 "gallery.app",
                 subtitle: "Recently used",
                 metadata: "Community library",
-                artwork: TileArtwork.FromGlyph(WidgetGlyph.Play, "Application icon"))))
+                artwork: TileArtwork.FromHandle(
+                    new WidgetArtworkHandle(SampleArtworkHandle),
+                    "Provider-neutral encoded PNG artwork"))))
         .AddClasses("gallery-page");
 
     private StackElement UtilitiesPage() => UI.Stack("gallery.utilities",

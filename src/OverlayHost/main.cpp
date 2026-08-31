@@ -1636,13 +1636,18 @@ private:
         if (controllerTick && state_.surface() != widgetrail::Surface::Hidden)
             PollController();
         for (auto& artwork : bridge_.TakeArtworkResults()) {
-            if (artwork.pngBase64.empty())
+            if (artwork.contentBase64.empty())
                 (void)imageCache_->FailTrustedArtwork(
                     artwork.widgetId, artwork.artworkHandle);
             else
-                (void)imageCache_->SupplyTrustedArtwork(
-                    artwork.widgetId, artwork.artworkHandle,
-                    std::move(artwork.pngBase64));
+            {
+                if (!imageCache_->SupplyTrustedArtwork(
+                        artwork.widgetId, artwork.artworkHandle,
+                        std::move(artwork.contentType),
+                        std::move(artwork.contentBase64)))
+                    (void)imageCache_->FailTrustedArtwork(
+                        artwork.widgetId, artwork.artworkHandle);
+            }
         }
         for (auto& result : bridge_.TakeLocalWidgetPackageInstallResults()) {
             if (!localWidgetPackageImport_.Complete(

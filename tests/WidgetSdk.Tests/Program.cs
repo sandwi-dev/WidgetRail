@@ -33,6 +33,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Image and icon nodes round-trip as renderer-neutral primitives", VisualNodesRoundTrip),
     ("Loading indicators round-trip with bounded non-interactive semantics", LoadingIndicatorRoundTrip),
     ("Inline PNG images are bounded local and negotiate the highest protocol", InlinePngImagesAreBounded),
+    ("Trusted encoded artwork is versioned and value-owned", TrustedEncodedArtworkIsVersionedAndValueOwned),
     ("Input surfaces serialize and validate scoped shortcuts", InputSurfacesValidate),
     ("Held-button action repeat is generic opt-in and never backlogs",
         HeldButtonActionRepeatTests.Run),
@@ -348,6 +349,27 @@ static Task InlinePngImagesAreBounded()
             .CreateSnapshot("bad-inline-image", 1));
     Assert.Throws<ArgumentException>(() =>
         UI.InlinePngImage("not-base64", "bad-base64", "Bad icon"));
+    return Task.CompletedTask;
+}
+
+static Task TrustedEncodedArtworkIsVersionedAndValueOwned()
+{
+    var bytes = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" +
+        "AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==");
+    var artwork = new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes);
+    bytes[0] = 0;
+    Assert.Equal((byte)137, artwork.Bytes.Span[0]);
+    Assert.Equal(WidgetArtworkContentType.Png, artwork.ContentType);
+
+    var snapshot = new WidgetView(UI.Stack("root",
+        UI.Artwork(
+            new WidgetArtworkHandle("trusted.artwork.example"),
+            "artwork", "Provider-neutral artwork")))
+        .CreateSnapshot("trusted-artwork-sdk", 1);
+    Assert.Equal(ProtocolConstants.TrustedEncodedArtworkVersion, snapshot.ProtocolVersion);
+    Assert.Equal("trusted.artwork.example", snapshot.Root.Children[0].ArtworkHandle);
+    Assert.Equal(8 * 1024 * 1024, ProtocolConstants.MaximumEncodedArtworkBytes);
     return Task.CompletedTask;
 }
 

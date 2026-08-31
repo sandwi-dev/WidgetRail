@@ -20,6 +20,8 @@
 
 namespace widgetrail {
 
+class ArtworkDecoderProcessOwner;
+
 enum class RemoteImageState {
     Missing,
     Queued,
@@ -45,9 +47,19 @@ struct RemoteImageLimits {
     std::size_t maximumPendingEntries{32};
     // Each untrusted decoded image remains capped independently from the
     // bounded process-wide retention budget.
-    std::size_t maximumDecodedImageBytes{32U * 1024U * 1024U};
-    std::size_t maximumDecodedBytes{96U * 1024U * 1024U};
+    std::size_t maximumDecodedImageBytes{64U * 1024U * 1024U};
+    std::size_t maximumDecodedBytes{192U * 1024U * 1024U};
     std::size_t maximumDownloadBytes{5U * 1024U * 1024U};
+    std::size_t maximumEncodedArtworkBytes{8U * 1024U * 1024U};
+    std::size_t maximumEncodedArtworkBytesPerWidget{32U * 1024U * 1024U};
+    std::size_t maximumEncodedArtworkBytesTotal{64U * 1024U * 1024U};
+    std::uint64_t maximumArtworkPixels{16'777'216};
+    UINT32 maximumArtworkDimension{4'096};
+    DWORD maximumArtworkDecodeMilliseconds{2'000};
+    std::size_t maximumArtworkDecoderRestarts{3};
+    DWORD artworkDecoderRestartWindowMilliseconds{60'000};
+    DWORD artworkDecoderCircuitBreakerMilliseconds{30'000};
+    DWORD artworkDecoderShutdownMilliseconds{1'000};
     DWORD resolveTimeoutMilliseconds{2'000};
     DWORD connectTimeoutMilliseconds{3'000};
     DWORD sendTimeoutMilliseconds{3'000};
@@ -88,7 +100,8 @@ struct RemoteImageCacheStats {
     std::uint64_t pendingCapacityRejections{};
 };
 
-/// Thread-safe CPU image cache. Network and WIC decode execute on its worker.
+/// Thread-safe CPU image cache. Network and legacy image decode execute on its
+/// worker; admitted trusted artwork decode is isolated in its private process.
 /// Completion runs on that worker thread, so UI users should PostMessage from
 /// the callback and call CreateBitmap only on their render thread.
 class RemoteImageCache final {
@@ -124,7 +137,8 @@ public:
     [[nodiscard]] bool SupplyTrustedArtwork(
         std::wstring_view widgetId,
         std::wstring_view artworkHandle,
-        std::wstring pngBase64);
+        std::wstring contentType,
+        std::wstring contentBase64);
     [[nodiscard]] bool FailTrustedArtwork(
         std::wstring_view widgetId,
         std::wstring_view artworkHandle);
@@ -179,6 +193,8 @@ private:
         std::shared_ptr<const RemoteDecodedImage> image;
         std::wstring error;
         std::wstring pendingSource;
+        std::vector<std::uint8_t> pendingBytes;
+        std::wstring pendingMimeType;
         std::uint64_t lastUse{};
     };
 
@@ -193,14 +209,17 @@ private:
     void CompleteLocked(const std::wstring& url, RemoteImageFetchResult result);
     RemoteImageLimits limits_;
     CompletionCallback completion_;
+    bool usesCustomFetch_{};
     FetchFunction fetch_;
     ArtworkRequestFunction artworkRequest_;
+    std::unique_ptr<ArtworkDecoderProcessOwner> artworkDecoder_;
     mutable std::mutex mutex_;
     std::condition_variable condition_;
     std::unordered_map<std::wstring, Entry> entries_;
     std::deque<std::wstring> queue_;
     std::jthread worker_;
     std::size_t decodedBytes_{};
+    std::size_t encodedArtworkBytes_{};
     std::uint64_t useCounter_{};
     std::uint64_t evictions_{};
     std::uint64_t countPressureEvictions_{};

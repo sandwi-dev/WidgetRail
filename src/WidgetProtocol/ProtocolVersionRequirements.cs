@@ -264,10 +264,10 @@ internal sealed class ProtocolVersionRequirements
                     $"Cursor collection item keys require protocol version {ProtocolConstants.CursorCollectionVersion} or later.");
             if (node.ArtworkHandle is not null)
                 Add(
-                    "artwork-handle",
-                    ProtocolConstants.CursorCollectionVersion,
+                    "trusted-encoded-artwork",
+                    ProtocolConstants.TrustedEncodedArtworkVersion,
                     $"{path}.artworkHandle",
-                    $"Opaque artwork handles require protocol version {ProtocolConstants.CursorCollectionVersion} or later.");
+                    $"Trusted encoded artwork handles require protocol version {ProtocolConstants.TrustedEncodedArtworkVersion} or later.");
             if (ViewSnapshotValidator.IsValidInlinePng(node.ImageSource))
                 Add(
                     "inline-png-image",

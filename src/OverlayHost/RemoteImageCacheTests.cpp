@@ -1,4 +1,7 @@
 #include "RemoteImageCache.h"
+#include "ArtworkDecoderProcessOwner.h"
+
+#include <wincodec.h>
 
 #include <algorithm>
 #ifdef NDEBUG
@@ -10,6 +13,85 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <thread>
+
+namespace {
+
+std::vector<std::uint8_t> EncodeWicImage(
+    const GUID& containerFormat, const UINT width, const UINT height) {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IWICImagingFactory> factory;
+    assert(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(factory.ReleaseAndGetAddressOf()))));
+    ComPtr<IStream> stream;
+    assert(SUCCEEDED(CreateStreamOnHGlobal(nullptr, TRUE, stream.ReleaseAndGetAddressOf())));
+    ComPtr<IWICBitmapEncoder> encoder;
+    assert(SUCCEEDED(factory->CreateEncoder(
+        containerFormat, nullptr, encoder.ReleaseAndGetAddressOf())));
+    assert(SUCCEEDED(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache)));
+    ComPtr<IWICBitmapFrameEncode> frame;
+    assert(SUCCEEDED(encoder->CreateNewFrame(frame.ReleaseAndGetAddressOf(), nullptr)));
+    assert(SUCCEEDED(frame->Initialize(nullptr)));
+    assert(SUCCEEDED(frame->SetSize(width, height)));
+    WICPixelFormatGUID pixelFormat = GUID_WICPixelFormat24bppBGR;
+    assert(SUCCEEDED(frame->SetPixelFormat(&pixelFormat)));
+    assert(IsEqualGUID(pixelFormat, GUID_WICPixelFormat24bppBGR));
+    const UINT stride = width * 3U;
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(stride) * height);
+    for (std::size_t offset = 0; offset < pixels.size(); offset += 3U) {
+        pixels[offset] = 0xD0;
+        pixels[offset + 1] = 0x60;
+        pixels[offset + 2] = 0x20;
+    }
+    assert(SUCCEEDED(frame->WritePixels(
+        height, stride, static_cast<UINT>(pixels.size()), pixels.data())));
+    assert(SUCCEEDED(frame->Commit()));
+    assert(SUCCEEDED(encoder->Commit()));
+    STATSTG stat{};
+    assert(SUCCEEDED(stream->Stat(&stat, STATFLAG_NONAME)));
+    assert(stat.cbSize.QuadPart > 0 && stat.cbSize.QuadPart <= 8U * 1024U * 1024U);
+    LARGE_INTEGER beginning{};
+    assert(SUCCEEDED(stream->Seek(beginning, STREAM_SEEK_SET, nullptr)));
+    std::vector<std::uint8_t> encoded(static_cast<std::size_t>(stat.cbSize.QuadPart));
+    ULONG read = 0;
+    assert(SUCCEEDED(stream->Read(encoded.data(), static_cast<ULONG>(encoded.size()), &read)));
+    assert(read == encoded.size());
+    return encoded;
+}
+
+std::wstring Base64(const std::vector<std::uint8_t>& bytes) {
+    constexpr wchar_t alphabet[] =
+        L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::wstring result;
+    result.reserve(((bytes.size() + 2U) / 3U) * 4U);
+    for (std::size_t index = 0; index < bytes.size(); index += 3U) {
+        const auto remaining = bytes.size() - index;
+        const std::uint32_t value = static_cast<std::uint32_t>(bytes[index]) << 16U |
+            (remaining > 1U ? static_cast<std::uint32_t>(bytes[index + 1]) << 8U : 0U) |
+            (remaining > 2U ? bytes[index + 2] : 0U);
+        result.push_back(alphabet[(value >> 18U) & 0x3fU]);
+        result.push_back(alphabet[(value >> 12U) & 0x3fU]);
+        result.push_back(remaining > 1U ? alphabet[(value >> 6U) & 0x3fU] : L'=');
+        result.push_back(remaining > 2U ? alphabet[value & 0x3fU] : L'=');
+    }
+    return result;
+}
+
+std::wstring ExecutableSibling(const wchar_t* const name) {
+    std::wstring path(32'768, L'\0');
+    const DWORD length = GetModuleFileNameW(
+        nullptr, path.data(), static_cast<DWORD>(path.size()));
+    assert(length > 0 && length < path.size());
+    path.resize(length);
+    const auto separator = path.find_last_of(L"\\/");
+    assert(separator != std::wstring::npos);
+    path.resize(separator + 1);
+    path.append(name);
+    return path;
+}
+
+} // namespace
 
 int main() {
     using namespace widgetrail;
@@ -18,6 +100,9 @@ int main() {
     assert(!RemoteImageCache::IsAllowedHttpsUrl(L"https://user:secret@example.test/image.png"));
     constexpr auto inlinePng =
         L"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+        L"AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
+    constexpr auto trustedPngBase64 =
+        L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
         L"AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
     (void)inlinePng;
     assert(RemoteImageCache::IsAllowedImageSource(inlinePng));
@@ -29,8 +114,155 @@ int main() {
     assert(defaultLimits.maximumEntries == 320);
     assert(defaultLimits.maximumReadyEntries == 256);
     assert(defaultLimits.maximumPendingEntries == 32);
-    assert(defaultLimits.maximumDecodedImageBytes == 32U * 1024U * 1024U);
-    assert(defaultLimits.maximumDecodedBytes == 96U * 1024U * 1024U);
+    assert(defaultLimits.maximumDecodedImageBytes == 64U * 1024U * 1024U);
+    assert(defaultLimits.maximumDecodedBytes == 192U * 1024U * 1024U);
+    assert(defaultLimits.maximumEncodedArtworkBytes == 8U * 1024U * 1024U);
+    assert(defaultLimits.maximumArtworkDimension == 4'096);
+    assert(defaultLimits.maximumArtworkPixels == 16'777'216);
+
+    {
+        const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        assert(SUCCEEDED(initialized) || initialized == RPC_E_CHANGED_MODE);
+        const auto png4096 = EncodeWicImage(GUID_ContainerFormatPng, 4'096, 1);
+        const auto jpeg = EncodeWicImage(GUID_ContainerFormatJpeg, 1, 1);
+        const auto png = EncodeWicImage(GUID_ContainerFormatPng, 2, 1);
+
+        {
+            RemoteImageLimits decoderLimits;
+            decoderLimits.maximumArtworkDecodeMilliseconds = 100;
+            decoderLimits.maximumArtworkDecoderRestarts = 2;
+            decoderLimits.artworkDecoderRestartWindowMilliseconds = 5'000;
+            decoderLimits.artworkDecoderCircuitBreakerMilliseconds = 5'000;
+            decoderLimits.artworkDecoderShutdownMilliseconds = 250;
+            ArtworkDecoderProcessOwner decoder(
+                decoderLimits, ExecutableSibling(L"ArtworkDecoderTestHost.exe"));
+
+            auto decodedJpeg = decoder.Decode(jpeg, L"image/jpeg", {});
+            assert(SUCCEEDED(decodedJpeg.result));
+            assert(decodedJpeg.image.width == 1 && decodedJpeg.image.height == 1);
+            assert(decodedJpeg.image.mimeType == L"image/jpeg");
+            auto decodedPng = decoder.Decode(png, L"image/png", {});
+            assert(SUCCEEDED(decodedPng.result));
+            assert(decodedPng.image.width == 2 && decodedPng.image.height == 1);
+            assert(decodedPng.image.mimeType == L"image/png");
+            auto decoderStats = decoder.Stats();
+            assert(decoderStats.starts == 1);
+            assert(decoderStats.completed == 2);
+
+            const auto timeoutStarted = std::chrono::steady_clock::now();
+            const auto timeout = decoder.Decode(
+                png, L"image/png", {}, artworkdecoder::TestBehavior::Hang);
+            assert(timeout.result == HRESULT_FROM_WIN32(ERROR_TIMEOUT));
+            assert(std::chrono::steady_clock::now() - timeoutStarted <
+                   std::chrono::seconds(1));
+            auto recovered = decoder.Decode(png, L"image/png", {});
+            assert(SUCCEEDED(recovered.result));
+            decoderStats = decoder.Stats();
+            assert(decoderStats.starts == 2);
+            assert(decoderStats.timedOut == 1);
+            assert(decoderStats.terminated == 1);
+
+            const auto exited = decoder.Decode(
+                png, L"image/png", {}, artworkdecoder::TestBehavior::Exit);
+            assert(exited.result == HRESULT_FROM_WIN32(ERROR_BROKEN_PIPE));
+            const auto circuit = decoder.Decode(png, L"image/png", {});
+            assert(FAILED(circuit.result));
+            assert(decoder.Stats().circuitRejected == 1);
+            decoder.Shutdown();
+        }
+
+        {
+            RemoteImageLimits shutdownLimits;
+            shutdownLimits.maximumArtworkDecodeMilliseconds = 10'000;
+            shutdownLimits.artworkDecoderShutdownMilliseconds = 250;
+            ArtworkDecoderProcessOwner decoder(
+                shutdownLimits, ExecutableSibling(L"ArtworkDecoderTestHost.exe"));
+            std::jthread request([&](const std::stop_token token) {
+                const auto result = decoder.Decode(
+                    png, L"image/png", token, artworkdecoder::TestBehavior::Hang);
+                assert(result.result == E_ABORT);
+            });
+            const auto waitDeadline = std::chrono::steady_clock::now() +
+                std::chrono::seconds(2);
+            while (decoder.Stats().starts == 0 &&
+                   std::chrono::steady_clock::now() < waitDeadline)
+                std::this_thread::yield();
+            assert(decoder.Stats().starts == 1);
+            const auto cancellationStarted = std::chrono::steady_clock::now();
+            request.request_stop();
+            request.join();
+            assert(std::chrono::steady_clock::now() - cancellationStarted <
+                   std::chrono::seconds(1));
+            assert(decoder.Stats().terminated == 1);
+            decoder.Shutdown();
+        }
+
+        auto maximumPng = EncodeWicImage(GUID_ContainerFormatPng, 1, 1);
+        maximumPng.resize(defaultLimits.maximumEncodedArtworkBytes, 0);
+        std::mutex nativeMutex;
+        std::condition_variable nativeChanged;
+        int nativeReady = 0;
+        int nativeFailed = 0;
+        RemoteImageCache nativeCache(
+            defaultLimits,
+            [&](std::wstring_view, const RemoteImageState state) {
+                {
+                    std::scoped_lock lock(nativeMutex);
+                    if (state == RemoteImageState::Ready) ++nativeReady;
+                    else if (state == RemoteImageState::Failed) ++nativeFailed;
+                    else assert(false && "trusted artwork published a non-terminal callback");
+                }
+                nativeChanged.notify_all();
+            },
+            {},
+            [](std::wstring_view) { return true; });
+        const auto admit = [&](const std::wstring_view handle,
+                               const std::wstring_view mime,
+                               const std::vector<std::uint8_t>& bytes,
+                               const int expectedReady) {
+            const auto key = RemoteImageCache::TrustedArtworkKey(
+                L"native-artwork", L"fixture-node", handle);
+            assert(nativeCache.RequestTrustedArtwork(key) == RemoteImageRequestResult::Queued);
+            assert(nativeCache.SupplyTrustedArtwork(
+                L"native-artwork", handle, std::wstring(mime), Base64(bytes)));
+            std::unique_lock lock(nativeMutex);
+            assert(nativeChanged.wait_for(lock, std::chrono::seconds(3), [&] {
+                return nativeReady == expectedReady;
+            }));
+            lock.unlock();
+            assert(nativeCache.GetState(key) == RemoteImageState::Ready);
+            return key;
+        };
+        const auto pngKey = admit(L"artwork.png-4096", L"image/png", png4096, 1);
+        const auto jpegKey = admit(L"artwork.jpeg", L"image/jpeg", jpeg, 2);
+        const auto maximumKey = admit(L"artwork.png-8mib", L"image/png", maximumPng, 3);
+        assert(nativeCache.GetReadyImage(pngKey)->width == 4'096);
+        assert(nativeCache.GetReadyImage(jpegKey)->mimeType == L"image/jpeg");
+        assert(nativeCache.GetReadyImage(maximumKey)->width == 1);
+
+        const auto oversizedKey = RemoteImageCache::TrustedArtworkKey(
+            L"native-artwork", L"oversized-node", L"artwork.oversized");
+        assert(nativeCache.RequestTrustedArtwork(oversizedKey) == RemoteImageRequestResult::Queued);
+        auto oversized = maximumPng;
+        oversized.push_back(0);
+        assert(!nativeCache.SupplyTrustedArtwork(
+            L"native-artwork", L"artwork.oversized", L"image/png", Base64(oversized)));
+        assert(nativeCache.FailTrustedArtwork(L"native-artwork", L"artwork.oversized"));
+
+        const auto mismatchKey = RemoteImageCache::TrustedArtworkKey(
+            L"native-artwork", L"mismatch-node", L"artwork.mismatch");
+        assert(nativeCache.RequestTrustedArtwork(mismatchKey) == RemoteImageRequestResult::Queued);
+        assert(!nativeCache.SupplyTrustedArtwork(
+            L"native-artwork", L"artwork.mismatch", L"image/jpeg", Base64(png4096)));
+        assert(nativeCache.FailTrustedArtwork(L"native-artwork", L"artwork.mismatch"));
+        {
+            std::scoped_lock lock(nativeMutex);
+            assert(nativeReady == 3);
+            assert(nativeFailed == 2);
+        }
+        nativeCache.Shutdown();
+        if (SUCCEEDED(initialized)) CoUninitialize();
+    }
 
     {
         std::mutex pendingMutex;
@@ -311,7 +543,7 @@ int main() {
             artworkCompleted.notify_all();
         },
         [](std::wstring_view source, std::stop_token, const RemoteImageLimits&) {
-            assert(source.starts_with(L"data:image/png;base64,"));
+            assert(source == L"data:image/png;base64,validated");
             RemoteDecodedImage image;
             image.width = 1;
             image.height = 1;
@@ -327,7 +559,7 @@ int main() {
             const auto handleStart = key.rfind(L'\x1f');
             return artworkCacheOwner->SupplyTrustedArtwork(
                 key.substr(prefix.size(), widgetEnd - prefix.size()),
-                key.substr(handleStart + 1), L"AAAA");
+                key.substr(handleStart + 1), L"image/png", trustedPngBase64);
         });
     artworkCacheOwner = &artworkCache;
     assert(artworkCache.RequestTrustedArtwork(L"https://example.test/not-trusted") ==
@@ -354,12 +586,12 @@ int main() {
         assert(stats.decodedBytes <= 32 * 4);
     }
     assert(artworkFetches == largeCollectionItems);
-    const auto oldRevision =
-        L"wrail-artwork\x1fgames-apps\x1frow-revision\x1f"
-        L"library.art.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    const auto newRevision =
-        L"wrail-artwork\x1fgames-apps\x1frow-revision\x1f"
-        L"library.art.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const auto oldRevision = RemoteImageCache::TrustedArtworkKey(
+        L"games-apps", L"row-revision", L"library.art.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    const auto newRevision = RemoteImageCache::TrustedArtworkKey(
+        L"games-apps", L"row-revision", L"library.art.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    assert(oldRevision == RemoteImageCache::TrustedArtworkKey(
+        L"games-apps", L"another-node", L"library.art.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
     assert(artworkCache.RequestTrustedArtwork(oldRevision) ==
            RemoteImageRequestResult::Queued);
     {
@@ -371,7 +603,7 @@ int main() {
     assert(artworkCache.GetState(oldRevision) == RemoteImageState::Ready);
     assert(artworkCache.RequestTrustedArtwork(newRevision) ==
            RemoteImageRequestResult::Queued);
-    assert(artworkCache.GetState(oldRevision) == RemoteImageState::Missing);
+    assert(artworkCache.GetState(oldRevision) == RemoteImageState::Ready);
     {
         std::unique_lock lock(artworkMutex);
         assert(artworkCompleted.wait_for(
@@ -379,6 +611,7 @@ int main() {
             [&] { return artworkFetches == largeCollectionItems + 2; }));
     }
     assert(artworkCache.GetState(newRevision) == RemoteImageState::Ready);
+    assert(artworkCache.GetState(oldRevision) == RemoteImageState::Ready);
     artworkCache.Shutdown();
 
     std::vector<std::pair<std::wstring, RemoteImageState>> artworkTransitions;
@@ -421,7 +654,8 @@ int main() {
     assert(!failureCache.FailTrustedArtwork(
         L"playnite-library", L"library.art.11111111111111111111111111111111"));
     assert(!failureCache.SupplyTrustedArtwork(
-        L"playnite-library", L"library.art.11111111111111111111111111111111", L"AAAA"));
+        L"playnite-library", L"library.art.11111111111111111111111111111111",
+        L"image/png", trustedPngBase64));
     const auto sharedFailedRevision =
         L"wrail-artwork\x1fplaynite-library\x1fsecond-tile.artwork\x1f"
         L"library.art.11111111111111111111111111111111";
@@ -439,9 +673,11 @@ int main() {
            RemoteImageRequestResult::Queued);
     assert(failureCache.GetState(failedRevision) == RemoteImageState::Missing);
     assert(!failureCache.SupplyTrustedArtwork(
-        L"playnite-library", L"library.art.11111111111111111111111111111111", L"AAAA"));
+        L"playnite-library", L"library.art.11111111111111111111111111111111",
+        L"image/png", trustedPngBase64));
     assert(failureCache.SupplyTrustedArtwork(
-        L"playnite-library", L"library.art.22222222222222222222222222222222", L"AAAA"));
+        L"playnite-library", L"library.art.22222222222222222222222222222222",
+        L"image/png", trustedPngBase64));
     {
         std::unique_lock lock(failureMutex);
         assert(failureCompleted.wait_for(lock, std::chrono::seconds(2), [&] {

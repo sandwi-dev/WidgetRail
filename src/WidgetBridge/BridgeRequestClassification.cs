@@ -40,6 +40,7 @@ internal readonly record struct BridgeRequestKey
     internal static BridgeRequestKey Global(BridgeRequestKind kind)
     {
         if (kind is BridgeRequestKind.GetSnapshot or
+            BridgeRequestKind.ResolveArtwork or
             BridgeRequestKind.ResolveEmbeddedMedia or
             BridgeRequestKind.EmbeddedMediaPlaybackEvent or
             BridgeRequestKind.RestartWidget or
@@ -55,6 +56,7 @@ internal readonly record struct BridgeRequestKey
     internal static BridgeRequestKey Widget(BridgeRequestKind kind, string? widgetId)
     {
         if (kind is not (BridgeRequestKind.GetSnapshot or
+            BridgeRequestKind.ResolveArtwork or
             BridgeRequestKind.ResolveEmbeddedMedia or
             BridgeRequestKind.EmbeddedMediaPlaybackEvent or
             BridgeRequestKind.RestartWidget or
@@ -145,9 +147,9 @@ internal static class BridgeRequestClassifier
     {
         var request = BridgeJson.FromElement<BridgeArtworkRequest>(payload);
         _ = BridgeRequestKey.Widget(BridgeRequestKind.GetSnapshot, request.WidgetId);
-        if (!AppLibraryArtworkRegistry.IsHandle(request.ArtworkHandle))
+        if (!BridgeRequestKey.IsBoundedIdentifier(request.ArtworkHandle))
             throw new BridgeProtocolException("Artwork handle is invalid.");
-        return BridgeRequestKey.Global(BridgeRequestKind.ResolveArtwork);
+        return BridgeRequestKey.Widget(BridgeRequestKind.ResolveArtwork, request.WidgetId);
     }
 
     private static BridgeRequestKey EmbeddedMedia(JsonElement payload)

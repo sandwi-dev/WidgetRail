@@ -619,18 +619,26 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
 
     private void HandleArtwork(JsonElement payload)
     {
-        RequireObjectProperties(payload, "widgetId", "artworkHandle", "pngBase64");
+        RequireObjectProperties(
+            payload, "widgetId", "artworkHandle", "contentType", "contentBase64");
         var widgetId = ReadString(payload, "widgetId");
         var handle = ReadString(payload, "artworkHandle");
-        var encoded = ReadString(payload, "pngBase64", allowEmpty: true);
+        var contentTypeValue = ReadString(payload, "contentType", allowEmpty: true);
+        var encoded = ReadString(payload, "contentBase64", allowEmpty: true);
         byte[] bytes;
         try { bytes = encoded.Length == 0 ? [] : Convert.FromBase64String(encoded); }
         catch (FormatException exception)
         {
             throw new BridgeProtocolException("WidgetBridge returned malformed artwork.", exception);
         }
-        if (bytes.Length > PresentationContractLimits.MaximumArtworkBytes)
+        if (bytes.Length > ProtocolConstants.MaximumEncodedArtworkBytes)
             throw new BridgeProtocolException("WidgetBridge returned oversized artwork.");
+        var contentType = WidgetEncodedArtworkContract.ParseContentType(contentTypeValue);
+        if (bytes.Length != 0 &&
+            (contentType is null ||
+             !WidgetEncodedArtworkContract.IsValid(
+                 new WidgetEncodedArtwork(contentType.Value, bytes))))
+            throw new BridgeProtocolException("WidgetBridge returned invalid artwork.");
 
         PendingArtwork? pending = null;
         lock (_gate)
@@ -651,7 +659,11 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         try
         {
             _ = ValidateAuthority(pending.Authority);
-            var result = new WidgetPresentationArtwork(pending.Authority, handle, bytes);
+            var result = new WidgetPresentationArtwork(
+                pending.Authority,
+                handle,
+                contentType ?? WidgetArtworkContentType.Png,
+                bytes);
             pending.Completion.TrySetResult(result);
             ArtworkResolved?.Invoke(this, new WidgetPresentationArtworkEventArgs(result));
         }

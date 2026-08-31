@@ -370,46 +370,77 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         }
         case BridgeMessageTypes.ResolveArtwork:
         {
-            if (_appLibraryArtwork is null)
-                throw new BridgeProtocolException("Trusted application artwork is unavailable.");
             var artworkRequest = BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload);
-            if (!AppLibraryArtworkRegistry.IsHandle(artworkRequest.ArtworkHandle))
+            if (!BridgeRequestKey.IsBoundedIdentifier(artworkRequest.ArtworkHandle))
                 throw new BridgeProtocolException("Artwork handle is invalid.");
-            ConfiguredWidget configured;
-            using (var artworkAdmission = _registry.AdmitArtwork(artworkRequest.WidgetId))
-                configured = artworkAdmission.Value;
-            var identity = new BrokerWidgetIdentity(
-                configured.PackageId, configured.PublisherId, configured.InstanceId);
+            using (var admission = _registry.AdmitArtwork(
+                artworkRequest.WidgetId, artworkRequest.ArtworkHandle))
+            {
+                // The publication closes the pre-ack authority race. Resolution
+                // repeats this proof under the exact worker operation gate.
+            }
             await ReplyAsync(
                 BridgeMessageTypes.Acknowledged,
                 request.RequestId,
                 new { },
                 cancellationToken).ConfigureAwait(false);
 
-            string? pngBase64 = null;
+            var contentType = string.Empty;
+            var contentBase64 = string.Empty;
+            ConfiguredWidget configured;
+            string workerFingerprint;
+            WidgetEncodedArtwork? workerArtwork;
             try
             {
-                pngBase64 = await _appLibraryArtwork.ResolveAsync(
-                    identity, artworkRequest.ArtworkHandle, cancellationToken)
-                    .ConfigureAwait(false);
+                using (var resolution = await _registry.ResolveArtworkAsync(
+                    artworkRequest.WidgetId,
+                    artworkRequest.ArtworkHandle,
+                    _sessionCancellation,
+                    cancellationToken).ConfigureAwait(false))
+                {
+                    configured = resolution.Value.Configured;
+                    workerFingerprint = resolution.Value.WorkerFingerprint;
+                    workerArtwork = resolution.Value.Artwork;
+                }
+                if (workerArtwork is { } artwork)
+                {
+                    contentType = WidgetEncodedArtworkContract.ContentTypeValue(
+                        artwork.ContentType);
+                    contentBase64 = Convert.ToBase64String(artwork.Bytes.Span);
+                }
+                else if (_appLibraryArtwork is not null &&
+                    AppLibraryArtworkRegistry.IsHandle(artworkRequest.ArtworkHandle))
+                {
+                    var identity = new BrokerWidgetIdentity(
+                        configured.PackageId, configured.PublisherId, configured.InstanceId);
+                    contentBase64 = await _appLibraryArtwork.ResolveAsync(
+                        identity, artworkRequest.ArtworkHandle, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (contentBase64 is not null)
+                        contentType = WidgetEncodedArtworkContract.PngContentType;
+                    if (!_appLibraryArtwork.IsCurrent(identity, artworkRequest.ArtworkHandle))
+                        contentBase64 = contentType = string.Empty;
+                    contentBase64 ??= string.Empty;
+                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 // Publish an unavailable completion only if the exact worker
                 // generation remains current. Session shutdown suppresses it.
+                return;
             }
 
             using var artworkCompletion = _registry.TryAdmitArtwork(
-                artworkRequest.WidgetId, configured.WorkerFingerprint);
-            if (artworkCompletion is null ||
-                !_appLibraryArtwork.IsCurrent(identity, artworkRequest.ArtworkHandle)) break;
+                artworkRequest.WidgetId, workerFingerprint);
+            if (artworkCompletion is null) break;
             await SendEventAsync(
                 BridgeMessageTypes.Artwork,
                 new
                 {
                     widgetId = artworkRequest.WidgetId,
                     artworkHandle = artworkRequest.ArtworkHandle,
-                    pngBase64 = pngBase64 ?? string.Empty,
+                    contentType,
+                    contentBase64,
                 },
                 _sessionCancellation).ConfigureAwait(false);
             break;

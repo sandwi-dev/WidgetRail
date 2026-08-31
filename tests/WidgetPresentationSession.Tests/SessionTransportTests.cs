@@ -2,6 +2,7 @@ using System.IO.Pipes;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.WidgetPresentationSession.Tests;
 
@@ -109,6 +110,8 @@ public sealed class SessionTransportTests
     [TestMethod]
     public async Task ArtworkCompletionRetainsExactSnapshotAuthority()
     {
+        var expectedBytes = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==");
         await using var server = new ScriptedBridgeServer();
         var serverTask = server.RunAuthenticatedAsync(async channel =>
         {
@@ -174,7 +177,8 @@ public sealed class SessionTransportTests
                 {
                     widgetId = "session-widget",
                     artworkHandle = "app-library.test-artwork",
-                    pngBase64 = Convert.ToBase64String([1, 2, 3, 4]),
+                    contentType = "image/png",
+                    contentBase64 = Convert.ToBase64String(expectedBytes),
                 }),
             }, CancellationToken.None);
             await ExpectStopAsync(channel);
@@ -192,8 +196,8 @@ public sealed class SessionTransportTests
                 frame.Authority, "app-library.test-artwork")
                 .WaitAsync(TestDeadline);
             Assert.AreEqual(frame.Authority, artwork.Authority);
-            CollectionAssert.AreEqual(
-                new byte[] { 1, 2, 3, 4 }, artwork.PngBytes.ToArray());
+            Assert.AreEqual(WidgetArtworkContentType.Png, artwork.ContentType);
+            CollectionAssert.AreEqual(expectedBytes, artwork.EncodedBytes.ToArray());
         }
         finally
         {

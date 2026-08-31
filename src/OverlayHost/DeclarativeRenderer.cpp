@@ -4008,18 +4008,6 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
             L"Only bounded HTTPS or canonical inline PNG image sources are accepted.");
         return {};
     }
-    if (trustedArtwork) {
-        const auto separator = source.rfind(L'\x1f');
-        const auto identityPrefix = source.substr(0, separator + 1);
-        for (auto iterator = bitmaps_.begin(); iterator != bitmaps_.end();) {
-            if (iterator->first != source && iterator->first.starts_with(identityPrefix)) {
-                bitmapBytes_ -= iterator->second.bytes;
-                iterator = bitmaps_.erase(iterator);
-                ++bitmapEvictions_;
-                ++bitmapSupersededArtworkEvictions_;
-            } else ++iterator;
-        }
-    }
     if (const auto existing = bitmaps_.find(source); existing != bitmaps_.end())
     {
         existing->second.lastUse = ++bitmapAccessClock_;

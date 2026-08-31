@@ -17,6 +17,11 @@ internal sealed record BridgeClientPresentation(
     ViewSnapshot Snapshot,
     PresentationUpdateBatch? Update);
 
+internal sealed record BridgeResolvedArtwork(
+    ConfiguredWidget Configured,
+    string WorkerFingerprint,
+    WidgetEncodedArtwork? Artwork);
+
 internal sealed record BridgeClientWorkerStatus(
     string Id,
     string Name,
@@ -136,6 +141,10 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
     Task<WidgetOperationAdmission> AdmitActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken);
+    Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
+        string artworkHandle,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<WidgetEncodedArtwork?>(null);
     Task SendEmbeddedMediaPlaybackEventAsync(
         EmbeddedMediaPlaybackEvent playbackEvent,
         CancellationToken cancellationToken);
@@ -201,6 +210,10 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         WidgetActionEvent action,
         CancellationToken cancellationToken) =>
         client.AdmitActionAsync(action, cancellationToken);
+    public Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
+        string artworkHandle,
+        CancellationToken cancellationToken) =>
+        client.ResolveArtworkAsync(artworkHandle, cancellationToken);
     public Task SendEmbeddedMediaPlaybackEventAsync(
         EmbeddedMediaPlaybackEvent playbackEvent,
         CancellationToken cancellationToken) =>
@@ -993,15 +1006,77 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         return null;
     }
 
-    internal BridgeClientPublication<ConfiguredWidget> AdmitArtwork(string widgetId)
+    internal BridgeClientPublication<ConfiguredWidget> AdmitArtwork(
+        string widgetId,
+        string artworkHandle)
     {
         lock (_gate)
         {
             if (_clients.TryGetValue(widgetId, out var registration) &&
-                !registration.IsRetiring)
+                !registration.IsRetiring &&
+                registration.CachedSnapshot is { } snapshot &&
+                ContainsArtwork(snapshot, artworkHandle))
                 return AdmitPublicationLocked(registration, registration.Configured);
         }
-        throw new BridgeProtocolException($"Widget '{widgetId}' has no current generation.");
+        throw new BridgeProtocolException(
+            "Artwork authority is stale or unavailable.");
+    }
+
+    internal async Task<BridgeClientPublication<BridgeResolvedArtwork>> ResolveArtworkAsync(
+        string widgetId,
+        string artworkHandle,
+        CancellationToken sessionCancellation,
+        CancellationToken cancellationToken)
+    {
+        if (!BridgeRequestKey.IsBoundedIdentifier(artworkHandle))
+            throw new BridgeProtocolException("Artwork handle is invalid.");
+        var registration = await GetOrCreateAsync(widgetId, cancellationToken)
+            .ConfigureAwait(false);
+        await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            DemandCurrent(registration);
+            if (registration.CachedSnapshot is not { } snapshot ||
+                !ContainsArtwork(snapshot, artworkHandle))
+                throw new BridgeProtocolException(
+                    "Artwork authority is stale or unavailable.");
+            registration.CancelIdleUnload();
+            var artwork = await ExecuteClientOperationAsync(
+                    registration,
+                    (client, token) => client.ResolveArtworkAsync(artworkHandle, token),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            DemandCurrent(registration);
+            if (registration.CachedSnapshot is not { } current ||
+                !ContainsArtwork(current, artworkHandle))
+                throw new BridgeProtocolException(
+                    "Artwork authority retired during resolution.");
+            ScheduleIdleUnload(registration, sessionCancellation);
+            return AdmitPublication(
+                registration,
+                new BridgeResolvedArtwork(
+                    registration.Configured,
+                    registration.Configured.WorkerFingerprint,
+                    artwork));
+        }
+        finally
+        {
+            registration.OperationGate.Release();
+        }
+    }
+
+    private static bool ContainsArtwork(ViewSnapshot snapshot, string artworkHandle) =>
+        Contains(snapshot.Root, artworkHandle) ||
+        snapshot.PinnedLayouts.Any(layout =>
+            layout.Root is not null && Contains(layout.Root, artworkHandle));
+
+    private static bool Contains(ViewNode node, string artworkHandle)
+    {
+        if (string.Equals(node.ArtworkHandle, artworkHandle, StringComparison.Ordinal))
+            return true;
+        foreach (var child in node.Children)
+            if (Contains(child, artworkHandle)) return true;
+        return false;
     }
 
     internal BridgeClientPublication<BridgeClientSnapshot> AdmitEmbeddedMedia(

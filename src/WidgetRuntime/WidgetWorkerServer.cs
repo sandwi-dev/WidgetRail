@@ -422,6 +422,21 @@ internal sealed class WidgetWorkerServer
                     cancellationToken)
                 .ConfigureAwait(false);
             break;
+        case MessageTypes.ResolveArtwork:
+            var artworkRequest = RuntimeJson.FromElement<ResolveArtworkPayload>(request.Payload);
+            var artwork = await _widget.ResolveArtworkAsync(
+                artworkRequest.ArtworkHandle, cancellationToken).ConfigureAwait(false);
+            if (artwork is not null && !WidgetEncodedArtworkContract.IsValid(artwork))
+                throw new WidgetProtocolViolationException(
+                    "Widget returned invalid trusted encoded artwork.");
+            await ReplyAsync(
+                MessageTypes.Artwork,
+                request.RequestId,
+                new EncodedArtworkPayload(
+                    artwork is null ? null : WidgetEncodedArtworkContract.ContentTypeValue(artwork.ContentType),
+                    artwork is null ? null : Convert.ToBase64String(artwork.Bytes.Span)),
+                cancellationToken).ConfigureAwait(false);
+            break;
         case MessageTypes.ControllerInput:
             var input = RuntimeJson.FromElement<ControllerInputEvent>(request.Payload);
             ValidateControllerInput(input);

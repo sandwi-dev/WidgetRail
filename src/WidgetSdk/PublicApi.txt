@@ -75,6 +75,7 @@ ctor WidgetRail.WidgetSdk.WidgetCursorPage<TItem>(System.Collections.Generic.IRe
 ctor WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>()
 ctor WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>(WidgetRail.WidgetSdk.WidgetPagedResourceStatus Status, System.Collections.Generic.IReadOnlyList<TItem> Items, WidgetRail.WidgetSdk.WidgetCollectionCursor? Before, WidgetRail.WidgetSdk.WidgetCollectionCursor? After, WidgetRail.WidgetSdk.WidgetCollectionItemKey? Anchor, string? RequestedFocusId, WidgetRail.WidgetSdk.WidgetResourceError? Error, long Revision)
 ctor WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>(string ScrollId, System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> ItemKey, System.Func<TItem,string> ItemFocusId, string? EmptyFocusId = null)
+ctor WidgetRail.WidgetSdk.WidgetEncodedArtwork(WidgetRail.WidgetSdk.WidgetArtworkContentType contentType, System.ReadOnlyMemory<byte> bytes)
 ctor WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs(long Revision)
 ctor WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader(string Name, string Value)
 ctor WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest(string Path, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader> Headers, string? BearerSecretSlot, string? JsonBody, int TimeoutMilliseconds, bool InvalidateBearerSecretOnUnauthorized = false)
@@ -219,6 +220,8 @@ enum WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth.Degraded = WidgetRail.Wid
 enum WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth.Healthy = WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth.Healthy
 enum WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth.Refreshing = WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth.Refreshing
 enum WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth.Unavailable = WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth.Unavailable
+enum WidgetRail.WidgetSdk.WidgetArtworkContentType.Jpeg = WidgetRail.WidgetSdk.WidgetArtworkContentType.Jpeg
+enum WidgetRail.WidgetSdk.WidgetArtworkContentType.Png = WidgetRail.WidgetSdk.WidgetArtworkContentType.Png
 enum WidgetRail.WidgetSdk.WidgetAudioDeviceDirection.Input = WidgetRail.WidgetSdk.WidgetAudioDeviceDirection.Input
 enum WidgetRail.WidgetSdk.WidgetAudioDeviceDirection.Output = WidgetRail.WidgetSdk.WidgetAudioDeviceDirection.Output
 enum WidgetRail.WidgetSdk.WidgetBluetoothDiscoveryState.Enumerating = WidgetRail.WidgetSdk.WidgetBluetoothDiscoveryState.Enumerating
@@ -1692,6 +1695,7 @@ method virtual WidgetRail.WidgetSdk.Widget.OnControllerInputAsync(WidgetRail.Wid
 method virtual WidgetRail.WidgetSdk.Widget.OnEmbeddedMediaPlaybackEventAsync(WidgetRail.WidgetProtocol.EmbeddedMediaPlaybackEvent playbackEvent, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnOverlayFullscreenChangedAsync(bool isActive, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnPinnedLayoutSelectionChangedAsync(string? layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method virtual WidgetRail.WidgetSdk.Widget.OnResolveArtworkAsync(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>
 method virtual WidgetRail.WidgetSdk.WidgetActionEvent.Equals(WidgetRail.WidgetSdk.WidgetActionEvent? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.<Clone>$() -> WidgetRail.WidgetSdk.WidgetActionFailedEventArgs
 method virtual WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.Equals(WidgetRail.WidgetSdk.WidgetActionFailedEventArgs? other) -> bool
@@ -1842,6 +1846,7 @@ property System.Func<TState,TState,TExecution,TState> WidgetRail.WidgetSdk.Widge
 property System.Func<TState,TState,TExecution,WidgetRail.WidgetSdk.WidgetCommandError,TState>? WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Fail { get; set; }
 property System.Func<WidgetRail.WidgetSdk.WidgetCollectionCursor?,WidgetRail.WidgetSdk.WidgetCursorDirection?,int,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetCursorPage<TItem>>> WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.LoadPage { get; set; }
 property System.Func<int,int,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetPage<TItem>>> WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.LoadPage { get; set; }
+property System.ReadOnlyMemory<byte> WidgetRail.WidgetSdk.WidgetEncodedArtwork.Bytes { get; }
 property System.Threading.CancellationToken WidgetRail.WidgetSdk.PinnedLayoutHandle.SelectionCancellationToken { get; }
 property System.Threading.CancellationToken WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.RouteCancellationToken { get; set; }
 property System.Threading.CancellationToken WidgetRail.WidgetSdk.WidgetOperationContext.CancellationToken { get; }
@@ -1934,6 +1939,7 @@ property WidgetRail.WidgetSdk.WidgetAppLibrarySortOrder WidgetRail.WidgetSdk.Wid
 property WidgetRail.WidgetSdk.WidgetAppLibrarySourceAccountState WidgetRail.WidgetSdk.WidgetAppLibrarySource.AccountState { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth WidgetRail.WidgetSdk.WidgetAppLibrarySource.Health { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibrarySourceReference WidgetRail.WidgetSdk.WidgetAppLibraryPresentation.Source { get; set; }
+property WidgetRail.WidgetSdk.WidgetArtworkContentType WidgetRail.WidgetSdk.WidgetEncodedArtwork.ContentType { get; }
 property WidgetRail.WidgetSdk.WidgetAudioDeviceDirection WidgetRail.WidgetSdk.WidgetAudioDevice.Direction { get; set; }
 property WidgetRail.WidgetSdk.WidgetAudioInput? WidgetRail.WidgetSdk.WidgetAudioInputChanged.Input { get; set; }
 property WidgetRail.WidgetSdk.WidgetAudioOutput? WidgetRail.WidgetSdk.WidgetAudioOutputChanged.Output { get; set; }
@@ -2423,6 +2429,7 @@ type enum WidgetRail.WidgetSdk.WidgetAppLibraryOperationState : System.IComparab
 type enum WidgetRail.WidgetSdk.WidgetAppLibrarySortOrder : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetAppLibrarySourceAccountState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum WidgetRail.WidgetSdk.WidgetArtworkContentType : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetAudioDeviceDirection : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetBluetoothDiscoveryState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetBluetoothPairingOutcome : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -2545,6 +2552,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetCursorResource<TItem>
 type sealed class WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetCursorViewport<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>>
+type sealed class WidgetRail.WidgetSdk.WidgetEncodedArtwork
 type sealed class WidgetRail.WidgetSdk.WidgetHostServices
 type sealed class WidgetRail.WidgetSdk.WidgetIdScope
 type sealed class WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs : System.IEquatable<WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs>

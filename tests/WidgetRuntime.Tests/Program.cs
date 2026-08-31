@@ -87,6 +87,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Retired sessions cannot grant gesture authority into replacements", WidgetProcessOwnershipScenarios.StaleGestureCannotGrantReplacementAuthority),
     ("Cancellation-ignoring retired gesture grants are revoked", WidgetProcessOwnershipScenarios.CancellationIgnoringGestureGrantIsRevoked),
     ("Worker launch is lazy and snapshot is validated", LazyLaunchAndSnapshot),
+    ("Trusted encoded artwork preserves exact bytes across the worker transport", TrustedArtworkTransportPreservesBytes),
     ("Negotiated presentation updates materialize against the exact runtime base", NegotiatedPresentationUpdates),
     ("Fresh-worker recovery rebases exactly and fails closed at exhaustion", RecoveryCheckpointSequenceAuthorityIsExact),
     ("Frozen runtime-v2 applications retain checkpoint compatibility", WidgetRuntimeProtocolCompatibilityScenarios.FrozenV2ApplicationCheckpointCompatibility),
@@ -218,6 +219,8 @@ static async Task<int> RunWorkerAsync(string[] arguments)
             ? new DiagnosticCursorNotificationWidget()
         : arguments.Contains("--notification-lifecycle-cursor-probe", StringComparer.Ordinal)
             ? new DiagnosticCursorNotificationWidget(loadOnActivation: true)
+        : arguments.Contains("--trusted-artwork-probe", StringComparer.Ordinal)
+            ? new TrustedArtworkProbeWidget()
         : arguments.Contains("--isolation-probe", StringComparer.Ordinal)
             ? new IsolationProbeWidget(
                 RequiredValue(arguments, "--probe-readable-path"),
@@ -313,6 +316,27 @@ static async Task LazyLaunchAndSnapshot()
     Assert.Equal("runtime.test", snapshot.WidgetInstanceId);
     Assert.Equal("button", snapshot.InitialFocusId);
     await client.StopAsync();
+}
+
+static async Task TrustedArtworkTransportPreservesBytes()
+{
+    await using var client = CreateClient(
+        requestTimeout: TimeSpan.FromSeconds(3),
+        extraArguments: ["--trusted-artwork-probe"],
+        maximumMessageBytes: WidgetRuntimeProtocol.DefaultMaximumMessageBytes);
+    var snapshot = await client.GetSnapshotAsync();
+    var handle = Find(snapshot.Root, "trusted-artwork.artwork").ArtworkHandle;
+    Assert.Equal(TrustedArtworkProbeWidget.Handle, handle);
+
+    var artwork = await client.ResolveArtworkAsync(handle!);
+    Assert.True(artwork is not null, "Exact current artwork handle did not resolve.");
+    Assert.Equal(WidgetArtworkContentType.Jpeg, artwork!.ContentType);
+    Assert.Equal(TrustedArtworkProbeWidget.ByteCount, artwork.Bytes.Length);
+    Assert.Equal(
+        TrustedArtworkProbeWidget.ExpectedHash,
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(artwork.Bytes.Span)));
+    Assert.True(await client.ResolveArtworkAsync("trusted.artwork.forged") is null,
+        "Undeclared artwork handle crossed worker authority.");
 }
 
 static async Task ProcessAdmissionFailsBeforeLaunch()
@@ -2986,7 +3010,8 @@ static WidgetProcessClient CreateClient(
     TimeSpan? contentLeaseTimeout = null,
     IAppContainerAuthorityOperations? contentAuthorityOperations = null,
     IAppContainerAuthorityJournal? contentAuthorityJournal = null,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    int maximumMessageBytes = 64 * 1024)
 {
     var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Test process path is unavailable.");
     var options = new WidgetProcessOptions
@@ -2997,7 +3022,7 @@ static WidgetProcessClient CreateClient(
         ConnectTimeout = TimeSpan.FromSeconds(3),
         RequestTimeout = requestTimeout ?? TimeSpan.FromSeconds(2),
         MaximumRestartAttempts = maximumRestarts,
-        MaximumMessageBytes = 64 * 1024,
+        MaximumMessageBytes = maximumMessageBytes,
         CompanionSessionFactory = companionFactory,
         ProcessLeaseFactory = processLeaseFactory,
         ContentLeaseFactory = contentLeaseFactory,
@@ -3157,6 +3182,49 @@ file sealed class TestWidget : Widget
     private string ControllerHistory()
     {
         lock (_historyLock) return string.Join(',', _controllerHistory);
+    }
+}
+
+file sealed class TrustedArtworkProbeWidget : Widget
+{
+    internal const string Handle = "trusted.artwork.transport";
+    internal const int ByteCount = 888_424;
+    private static readonly byte[] EncodedBytes = CreateBytes();
+    internal static readonly string ExpectedHash = Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(EncodedBytes));
+
+    public override WidgetView Render() => new(
+        UI.Stack("root",
+            UI.Tile(
+                "Artwork",
+                "Transport",
+                "artwork.open",
+                "trusted-artwork",
+                artwork: TileArtwork.FromHandle(
+                    new WidgetArtworkHandle(Handle),
+                    "Trusted encoded artwork"))));
+
+    public override ValueTask<WidgetEncodedArtwork?> OnResolveArtworkAsync(
+        WidgetArtworkHandle handle,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<WidgetEncodedArtwork?>(
+            handle.Value == Handle
+                ? new WidgetEncodedArtwork(WidgetArtworkContentType.Jpeg, EncodedBytes)
+                : null);
+    }
+
+    private static byte[] CreateBytes()
+    {
+        var bytes = new byte[ByteCount];
+        bytes[0] = 0xff;
+        bytes[1] = 0xd8;
+        for (var index = 2; index < bytes.Length - 2; index++)
+            bytes[index] = unchecked((byte)(index * 31));
+        bytes[^2] = 0xff;
+        bytes[^1] = 0xd9;
+        return bytes;
     }
 }
 

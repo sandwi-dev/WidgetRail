@@ -550,6 +550,51 @@ public abstract partial class Widget
     }
 
     /// <summary>
+    /// Resolves one exact artwork handle declared by the current snapshot.
+    /// The runtime validates format, size, and current-handle authority before
+    /// publishing the encoded bytes to the host.
+    /// </summary>
+    public virtual ValueTask<WidgetEncodedArtwork?> OnResolveArtworkAsync(
+        WidgetArtworkHandle handle,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<WidgetEncodedArtwork?>(null);
+    }
+
+    internal async ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(
+        string artworkHandle,
+        CancellationToken cancellationToken)
+    {
+        StableIdentifier.Validate(artworkHandle, nameof(artworkHandle));
+        var snapshot = Volatile.Read(ref _latestSnapshot);
+        if (snapshot is null || !DeclaresArtwork(snapshot, artworkHandle))
+            return null;
+        var result = await OnResolveArtworkAsync(
+            new WidgetArtworkHandle(artworkHandle), cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!ReferenceEquals(snapshot, Volatile.Read(ref _latestSnapshot)) ||
+            !DeclaresArtwork(snapshot, artworkHandle))
+            return null;
+        return result;
+    }
+
+    private static bool DeclaresArtwork(ViewSnapshot snapshot, string artworkHandle)
+    {
+        if (Contains(snapshot.Root)) return true;
+        return snapshot.PinnedLayouts.Any(layout => layout.Root is not null && Contains(layout.Root));
+
+        bool Contains(ViewNode node)
+        {
+            if (string.Equals(node.ArtworkHandle, artworkHandle, StringComparison.Ordinal))
+                return true;
+            foreach (var child in node.Children)
+                if (Contains(child)) return true;
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Receives one validated playback observation from the exact current
     /// host-owned embedded-media session. The runtime republishes the widget
     /// after this callback completes.

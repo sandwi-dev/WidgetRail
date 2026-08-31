@@ -178,7 +178,8 @@ private:
 struct WidgetArtworkResult final {
     std::wstring widgetId;
     std::wstring artworkHandle;
-    std::wstring pngBase64;
+    std::wstring contentType;
+    std::wstring contentBase64;
 };
 
 struct LocalWidgetPackageInstallOrigin final {

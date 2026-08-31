@@ -688,7 +688,7 @@ internal static class WidgetCursorResourceTests
                 CollectionAnchorKey = "item.42",
             }));
         var snapshot = view.CreateSnapshot("cursor.contract", 1);
-        Equal(ProtocolConstants.CursorCollectionVersion, snapshot.ProtocolVersion);
+        Equal(ProtocolConstants.TrustedEncodedArtworkVersion, snapshot.ProtocolVersion);
         var image = snapshot.Root.Children[1].Children[0].Children[0];
         Equal("library.art.42", image.ArtworkHandle);
         True(image.ImageSource is null, "An opaque artwork handle became fetch authority.");

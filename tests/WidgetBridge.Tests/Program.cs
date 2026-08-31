@@ -884,7 +884,7 @@ static Task RequestClassificationIsClosed()
             "widget-a", "library.art.0123456789abcdef0123456789abcdef")),
     });
     Assert.Equal(BridgeRequestKind.ResolveArtwork, artwork.Kind);
-    Assert.Equal<string?>(null, artwork.WidgetId);
+    Assert.Equal("widget-a", artwork.WidgetId);
 
     var embeddedMedia = BridgeRequestClassifier.Classify(new BridgeEnvelope
     {
@@ -1158,7 +1158,8 @@ static async Task TrustedArtworkDemandIsExact()
         Assert.Equal(BridgeMessageTypes.Widgets, concurrent.Type);
         releaseIcon.TrySetResult();
         var artwork = await client.ReadEventAsync(BridgeMessageTypes.Artwork);
-        Assert.Equal(png, artwork.Payload.GetProperty("pngBase64").GetString());
+        Assert.Equal("image/png", artwork.Payload.GetProperty("contentType").GetString());
+        Assert.Equal(png, artwork.Payload.GetProperty("contentBase64").GetString());
         Assert.Equal(1, backend.AppLibraryIconCalls);
 
         var staleStarted = new TaskCompletionSource(
@@ -1189,9 +1190,16 @@ static async Task TrustedArtworkDemandIsExact()
                 "provider-game", "stable-game", "Trusted Game", string.Empty,
                 AppLibraryKind.Game, "source-steam", "Steam"),
         ]);
-        _ = await client.RequestAsync(
-            BridgeMessageTypes.SetWidgetLifecycle,
-            new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
+        server.ApplyCatalog(
+            new BridgeCatalog([]),
+            revision: 1,
+            publishEvent: false);
+        releaseStale.TrySetResult();
+        await staleFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitUntilAsync(
+            () => server.RunningWorkerCount == 0,
+            TimeSpan.FromSeconds(3));
+        server.ApplyCatalog(catalog, revision: 2, publishEvent: false);
         _ = await client.RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
             new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
@@ -1203,8 +1211,6 @@ static async Task TrustedArtworkDemandIsExact()
             node => node.Id == "artwork.image").ArtworkHandle!;
         Assert.True(rotatedHandle != firstHandle,
             "Changed trusted artwork revision reused the prior handle.");
-        releaseStale.TrySetResult();
-        await staleFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
         _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
         Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
         Assert.Equal(2, backend.AppLibraryIconCalls);
@@ -1213,7 +1219,7 @@ static async Task TrustedArtworkDemandIsExact()
             BridgeMessageTypes.ResolveArtwork,
             new BridgeArtworkRequest(
                 "test-widget", "library.art.00000000000000000000000000000000"));
-        Assert.Equal(BridgeMessageTypes.Acknowledged, forged.Type);
+        Assert.Equal(BridgeMessageTypes.Error, forged.Type);
         _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
         Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
         Assert.Equal(2, backend.AppLibraryIconCalls);

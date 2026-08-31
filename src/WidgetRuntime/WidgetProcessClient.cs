@@ -287,6 +287,36 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         return ParseActionAdmission(response.Payload);
     }
 
+    internal async Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
+        string artworkHandle,
+        CancellationToken cancellationToken = default)
+    {
+        StableIdentifier.Validate(artworkHandle, nameof(artworkHandle));
+        var response = await RequestAsync(
+            MessageTypes.ResolveArtwork,
+            new ResolveArtworkPayload(artworkHandle),
+            cancellationToken).ConfigureAwait(false);
+        if (response.Type != MessageTypes.Artwork)
+            throw new WidgetProtocolViolationException(
+                $"Expected artwork, received '{response.Type}'.");
+        var payload = RuntimeJson.FromElement<EncodedArtworkPayload>(response.Payload);
+        if (payload.ContentType is null && payload.ContentBase64 is null) return null;
+        if (payload.ContentType is null || payload.ContentBase64 is null ||
+            WidgetEncodedArtworkContract.ParseContentType(payload.ContentType) is not { } contentType)
+            throw new WidgetProtocolViolationException("Worker returned invalid artwork metadata.");
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(payload.ContentBase64); }
+        catch (FormatException exception)
+        {
+            throw new WidgetProtocolViolationException(
+                "Worker returned malformed artwork bytes.", exception);
+        }
+        var artwork = new WidgetEncodedArtwork(contentType, bytes);
+        if (!WidgetEncodedArtworkContract.IsValid(artwork))
+            throw new WidgetProtocolViolationException("Worker returned invalid artwork bytes.");
+        return artwork;
+    }
+
     public async Task SendEmbeddedMediaPlaybackEventAsync(
         EmbeddedMediaPlaybackEvent playbackEvent,
         CancellationToken cancellationToken = default)

@@ -1443,12 +1443,29 @@ while removal uses the existing deterministic nearest retained fallback.
 Omitting `EstimatedItemExtent` keeps the protocol-v14 eager Scroll behavior
 unchanged.
 
-`WidgetArtworkHandle` is also protocol v14. `UI.Artwork(handle, ...)` and
+`WidgetArtworkHandle` was introduced in protocol v14. The trusted encoded
+resource contract is protocol v35. `UI.Artwork(handle, ...)` and
 `ButtonElement.LeadingArtwork(handle, ...)` publish a bounded opaque identity.
 It is not a URL or path and grants no file, network, decode, or launch
 authority. Until a trusted host resolver supplies pixels, authors must retain
 accessible text or a semantic fallback. Do not embed artwork bytes in cursor
 snapshots.
+
+Override `OnResolveArtworkAsync` and return a value-owned
+`WidgetEncodedArtwork` with `Png` or `Jpeg` for an exact handle declared by the
+current snapshot. The runtime preserves accepted bytes without resizing,
+recompression, transcoding, or metadata rewriting; the native host decodes and
+scales them only for presentation. Honor cancellation and keep lookup bounded.
+Never encode a path, URL, credential, provider identity, title, or other private
+body data into the handle.
+
+The encoded resource limit is 8 MiB. Native admission permits an axis through
+4096 pixels and at most 16,777,216 decoded pixels, with bounded decode,
+concurrency, and cache ownership. The declared MIME type must match the PNG or
+JPEG signature. Malformed, oversized, stale, cancelled, unavailable, or
+evicted resources fail independently without invalidating the last good widget
+presentation. The legacy inline-PNG contract remains available for small icons
+and retains its separate 12 KiB and 64 by 64 pixel limits.
 
 `WidgetPagedResource<TItem>` remains the offset-based replacement-window API;
 its compatibility behavior is unchanged. Use `WidgetResource<TValue>` for one

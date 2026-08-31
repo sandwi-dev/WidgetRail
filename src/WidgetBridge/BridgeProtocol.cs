@@ -9,8 +9,8 @@ namespace WidgetRail.WidgetBridge;
 public static class BridgeProtocol
 {
     public const int CurrentVersion = 1;
-    public const int DefaultMaximumMessageBytes = 1_048_576;
-    public const int AbsoluteMaximumMessageBytes = 4_194_304;
+    public const int DefaultMaximumMessageBytes = ProtocolConstants.MaximumEncodedArtworkFrameBytes;
+    public const int AbsoluteMaximumMessageBytes = ProtocolConstants.MaximumEncodedArtworkFrameBytes;
 }
 
 internal static class BridgeMessageTypes

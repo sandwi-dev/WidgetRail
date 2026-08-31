@@ -81,7 +81,8 @@ using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValue;
 using winrt::Windows::Data::Json::JsonValueType;
 
-constexpr DWORD kMaximumFrameBytes = 1024 * 1024;
+constexpr DWORD kMaximumFrameBytes =
+    protocol_contract::MaximumEncodedArtworkFrameBytes;
 constexpr uint32_t kMaximumWidgetDescriptors = 256;
 constexpr uint32_t kMaximumDescriptorQuickActions = 16;
 constexpr std::size_t kMaximumIdentifierLength =
@@ -1991,15 +1992,20 @@ bool HandleAsyncEvent(
     }
     if (type == L"artwork") {
         if (!artworkResults || !HasOnlyProperties(
-                payload, {L"widgetId", L"artworkHandle", L"pngBase64"})) {
+                payload, {L"widgetId", L"artworkHandle", L"contentType", L"contentBase64"})) {
             status = L"WidgetBridge artwork event has an invalid payload.";
             return false;
         }
         const auto handle = OptionalString(payload, L"artworkHandle");
-        const auto png = OptionalString(payload, L"pngBase64");
-        if (handle.size() != 44 || !handle.starts_with(L"library.art.") ||
-            !IsIdentifier(handle) || png.size() > 16'384 ||
-            !artworkResults->Push({widgetId, handle, png})) {
+        const auto contentType = OptionalString(payload, L"contentType");
+        const auto content = OptionalString(payload, L"contentBase64");
+        constexpr std::size_t maximumEncodedCharacters =
+            ((8U * 1024U * 1024U + 2U) / 3U) * 4U;
+        const bool unavailable = contentType.empty() && content.empty();
+        if (!IsIdentifier(handle) ||
+            (!unavailable && contentType != L"image/png" && contentType != L"image/jpeg") ||
+            content.size() > maximumEncodedCharacters ||
+            !artworkResults->Push({widgetId, handle, contentType, content})) {
             status = L"WidgetBridge artwork event could not be queued.";
             return false;
         }
@@ -3604,7 +3610,6 @@ std::optional<bool> WidgetBridgeClient::RequestArtwork(
     std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() ||
         widgetId.size() > kMaximumIdentifierLength || !IsIdentifier(widgetId) ||
-        artworkHandle.size() != 44 || !artworkHandle.starts_with(L"library.art.") ||
         !IsIdentifier(artworkHandle)) return std::nullopt;
     try {
         JsonObject payload;

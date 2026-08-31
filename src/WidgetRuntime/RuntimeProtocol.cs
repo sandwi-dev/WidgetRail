@@ -9,8 +9,8 @@ namespace WidgetRail.WidgetRuntime;
 internal static class WidgetRuntimeProtocol
 {
     public const int CurrentVersion = 2;
-    public const int DefaultMaximumMessageBytes = 1_048_576;
-    public const int AbsoluteMaximumMessageBytes = 4_194_304;
+    public const int DefaultMaximumMessageBytes = ProtocolConstants.MaximumEncodedArtworkFrameBytes;
+    public const int AbsoluteMaximumMessageBytes = ProtocolConstants.MaximumEncodedArtworkFrameBytes;
 }
 
 internal static class MessageTypes
@@ -25,6 +25,8 @@ internal static class MessageTypes
     public const string ControllerInput = "controller-input";
     public const string ControllerInputResult = "controller-input-result";
     public const string EmbeddedMediaPlaybackEvent = "embedded-media-playback-event";
+    public const string ResolveArtwork = "resolve-artwork";
+    public const string Artwork = "artwork";
     public const string DashboardGestureActivationRequested = "dashboard-gesture-activation-requested";
     public const string DashboardGestureActivationResult = "dashboard-gesture-activation-result";
     public const string Acknowledged = "acknowledged";
@@ -77,6 +79,8 @@ internal sealed record ControllerActionFailurePayload(
     string Message);
 internal sealed record ErrorPayload(string Code, string Message);
 internal sealed record ControllerInputResultPayload(bool Handled);
+internal sealed record ResolveArtworkPayload(string ArtworkHandle);
+internal sealed record EncodedArtworkPayload(string? ContentType, string? ContentBase64);
 internal sealed record DashboardGestureActivationRequestPayload(
     long ActivationId,
     string CapabilityId,
