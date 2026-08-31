@@ -1093,6 +1093,42 @@ int main() {
           posterSnapshot->root.children.front().imageFit == L"cover");
 
     error.clear();
+    const auto backgroundSnapshot = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":38,"sequence":1,
+            "widgetInstanceId":"background.instance",
+            "activeInputScopeId":"background.content","initialFocusId":"background.open",
+            "root":{"id":"background","kind":"backgroundSurface",
+                "artworkHandle":"gallery.background","imageFit":"cover",
+                "styleClasses":["wrail-background-surface"],
+                "children":[{"id":"background.content","kind":"stack","children":[
+                    {"id":"background.open","kind":"button","text":"Open",
+                     "actionId":"open","children":[]}
+                ]}]}
+        }
+    })json", error);
+    CHECK(backgroundSnapshot && error.empty());
+    CHECK(backgroundSnapshot->root.kind == L"backgroundSurface" &&
+          backgroundSnapshot->root.artworkHandle == L"gallery.background" &&
+          backgroundSnapshot->root.imageFit == L"cover" &&
+          backgroundSnapshot->root.children.size() == 1U);
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":37,"sequence":1,
+            "widgetInstanceId":"background.legacy",
+            "activeInputScopeId":"background.content","initialFocusId":"background.open",
+            "root":{"id":"background","kind":"backgroundSurface","children":[
+                {"id":"background.content","kind":"stack","children":[
+                    {"id":"background.open","kind":"button","text":"Open",
+                     "actionId":"open","children":[]}
+                ]}
+            ]}
+        }
+    })json", error) && !error.empty());
+
+    error.clear();
     CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "protocolVersion":36,"sequence":1,

@@ -57,21 +57,21 @@ public sealed class SdkGalleryWidget : Widget
                 PageContent(navigation.Route.Page),
                 Destinations)
             : ModalContent(navigation);
-        var root = UI.Stack("gallery.root",
+        var rootContent = UI.Stack("gallery.root.content",
             Header(),
             body)
             .Classes("gallery-root");
 
         if (navigation.Route.Modal == GalleryModal.None)
-            root = _navigation.Scope(navigation, root);
+            rootContent = _navigation.Scope(navigation, rootContent);
 
         if (_showToast)
         {
-            root = root with
+            rootContent = rootContent with
             {
                 Children =
                 [
-                    .. root.Children,
+                    .. rootContent.Children,
                     UI.Toast(
                         "Action received",
                         "The widget updated local state without taking controller focus.",
@@ -81,6 +81,13 @@ public sealed class SdkGalleryWidget : Widget
                 ],
             };
         }
+
+        var root = UI.BackgroundSurface(
+                rootContent,
+                "gallery.root",
+                BackgroundSurfaceArtwork.FromHandle(
+                    new WidgetArtworkHandle(SampleArtworkHandle)))
+            .Classes("gallery-root-background");
 
         return new WidgetView(
             root,
@@ -287,7 +294,8 @@ public sealed class SdkGalleryWidget : Widget
             "Rich action surfaces",
             "gallery.tiles.header",
             description: "Each complete tile is one focus target; its descendants stay presentational."),
-        UI.ResponsiveGrid("gallery.tiles.grid", 250, 2,
+        UI.BackgroundSurface(
+            UI.ResponsiveGrid("gallery.tiles.grid", 250, 2,
             UI.Tile(
                 "Night Drive",
                 "Playing",
@@ -329,7 +337,9 @@ public sealed class SdkGalleryWidget : Widget
                 metadata: "Provider-neutral poster",
                 artwork: TileArtwork.FromHandle(
                     new WidgetArtworkHandle(SampleArtworkHandle),
-                    "Provider-neutral poster artwork"))))
+                    "Provider-neutral poster artwork"))),
+            "gallery.tiles.surface")
+            .Classes("gallery-nested-background"))
         .AddClasses("gallery-page");
 
     private StackElement UtilitiesPage() => UI.Stack("gallery.utilities",

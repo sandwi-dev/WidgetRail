@@ -982,12 +982,13 @@ public static class ViewSnapshotValidator
                     Add($"{actionPath}.style", "invalid_context_action_style",
                         "The context action style is not supported.");
             }
-            var supportsImageSource = node.Kind is ViewNodeKind.Image or ViewNodeKind.Button;
+            var supportsImageSource = node.Kind is ViewNodeKind.Image or ViewNodeKind.Button or
+                ViewNodeKind.BackgroundSurface;
             if (node.ArtworkHandle is not null)
             {
                 if (!supportsImageSource)
                     Add($"{path}.artworkHandle", "artwork_handle_not_allowed",
-                        "Opaque artwork handles apply only to image and button nodes.");
+                        "Opaque artwork handles apply only to image, button, and background-surface nodes.");
                 CheckIdentifier(node.ArtworkHandle, $"{path}.artworkHandle", "artwork handle");
                 if (node.ImageSource is not null)
                     Add(path, "multiple_artwork_sources",
@@ -1022,12 +1023,18 @@ public static class ViewSnapshotValidator
                 (node.ImageSource is not null || node.ImageFit is not null || node.ArtworkHandle is not null))
             {
                 Add(path, "image_property_not_allowed",
-                    "Image source and fit apply only to images and buttons with leading artwork.");
+                    "Image source and fit apply only to images, buttons with leading artwork, and background surfaces.");
             }
             else if (node.Kind is ViewNodeKind.Button && node.ImageFit is not null && node.ArtworkHandle is null)
             {
                 Add($"{path}.imageFit", "image_fit_without_source",
                     "A button image fit requires a leading image source.");
+            }
+            else if (node.Kind is ViewNodeKind.BackgroundSurface &&
+                node.ImageFit is not null && node.ImageSource is null && node.ArtworkHandle is null)
+            {
+                Add($"{path}.imageFit", "image_fit_without_source",
+                    "A background-surface image fit requires an image source or artwork handle.");
             }
             if (node.Kind is ViewNodeKind.Button &&
                 (node.ImageSource is not null || node.ArtworkHandle is not null) && node.Glyph is not null)
@@ -1081,7 +1088,7 @@ public static class ViewSnapshotValidator
                 }
             }
             if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or
-                ViewNodeKind.ActionSurface or ViewNodeKind.Grid) &&
+                ViewNodeKind.ActionSurface or ViewNodeKind.Grid or ViewNodeKind.BackgroundSurface) &&
                 children.Count != 0)
                 Add($"{path}.children", "children_not_allowed", $"{node.Kind} cannot contain children.");
             if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid or
@@ -1102,6 +1109,10 @@ public static class ViewSnapshotValidator
                     ValidateActionSurfaceContent(
                         children[index], $"{path}.children[{index}]", 1, ref descendantCount);
             }
+
+            if (node.Kind is ViewNodeKind.BackgroundSurface && children.Count != 1)
+                Add($"{path}.children", "background_surface_child_count",
+                    "A background surface requires exactly one foreground child.");
 
             var shortcutButtons = new HashSet<(ControllerButton, ControllerEventPhase)>();
             for (var index = 0; index < shortcuts.Count; index++)

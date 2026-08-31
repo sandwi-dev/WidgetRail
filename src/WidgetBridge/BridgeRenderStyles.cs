@@ -134,6 +134,7 @@ internal static class BridgeRenderStyleResolver
         ViewNodeKind.Grid => "grid",
         ViewNodeKind.TextEntry => "textEntry",
         ViewNodeKind.MediaViewport => "mediaViewport",
+        ViewNodeKind.BackgroundSurface => "backgroundSurface",
         _ => throw new BridgeProtocolException($"Unsupported view node kind '{kind}'."),
     };
 }

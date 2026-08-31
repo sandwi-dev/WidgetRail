@@ -392,6 +392,34 @@ v7 instead of interpreting the rich action as a different control.
 
 ## Toast feedback
 
+## Bounded background surfaces (protocol v38)
+
+`UI.BackgroundSurface(...)` paints one optional image behind exactly one
+foreground subtree. The foreground alone determines the surface's size and
+owns focus, input, shortcuts, accessibility, and semantic state; the image
+cannot enlarge the layout or create another interaction layer.
+
+```csharp
+var page = UI.BackgroundSurface(
+    UI.Stack("library.content", header, rail, details),
+    "library.background",
+    BackgroundSurfaceArtwork.FromHandle(selectedGame.BackgroundHandle))
+    .Classes("library-background");
+```
+
+Background artwork accepts an absolute credential-free HTTPS source, bounded
+canonical inline PNG, or an already-authorized opaque artwork handle. Cover,
+Contain, and Fill reuse `ImageFit`; WRSS owns bounded `object-position`, tint,
+scrim, and corner-radius styling. Missing, pending, rejected, or late artwork
+falls back to the authored surface background without changing child geometry
+or granting stale artwork authority. Use the same primitive at a page root or
+around a nested section. It never replaces the host panel/backdrop and cannot
+escape its subtree's clipped bounds.
+
+The stable default class is `.wrail-background-surface`. Keep foreground text
+contrast explicit in the widget theme and provide complete accessible names on
+the foreground controls and content; the background itself is not announced.
+
 `UI.Toast(...)` creates brief, non-interactive feedback without adding a focus
 stop or shortcut. Tones are Neutral, Info, Success, Warning, and Danger; text
 must communicate the state because color is supplementary. Title and message

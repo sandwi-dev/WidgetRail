@@ -872,6 +872,12 @@ slider:focused {
 .wrail-action-surface:selected { border-color: var(--accent); }
 .wrail-action-surface:disabled { color: var(--text-muted); }
 .wrail-tile { flex-wrap: wrap; }
+.wrail-background-surface {
+  overflow: clip;
+  background: rgba(18, 18, 20, 0.96);
+  object-fit: cover;
+  object-position: center;
+}
 .wrail-tile__artwork {
   width: 56px;
   height: 56px;

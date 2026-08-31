@@ -260,6 +260,13 @@ internal sealed class ProtocolVersionRequirements
                         path,
                         $"MediaViewport requires protocol version {ProtocolConstants.MediaViewportVersion} or later.");
                     break;
+                case ViewNodeKind.BackgroundSurface:
+                    Add(
+                        "background-surface",
+                        ProtocolConstants.BackgroundSurfaceVersion,
+                        path,
+                        $"BackgroundSurface requires protocol version {ProtocolConstants.BackgroundSurfaceVersion} or later.");
+                    break;
             }
 
             if (node.CollectionItemKey is not null)

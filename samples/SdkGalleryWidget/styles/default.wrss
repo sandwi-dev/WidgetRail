@@ -262,6 +262,24 @@
 .wrail-poster-tile__metadata { min-width: 0px; color: var(--text-muted); font-size: 11px; line-height: 1.2; max-lines: 1; text-overflow: ellipsis; flex-grow: 1; flex-shrink: 1; }
 .wrail-poster-tile__state { color: var(--accent); font-size: 11px; font-weight: 600; line-height: 1.2; max-lines: 1; text-overflow: ellipsis; flex-grow: 0; flex-shrink: 0; }
 
+.gallery-root-background {
+  width: 100%;
+  min-width: 0px;
+  min-height: 0px;
+  object-fit: cover;
+  object-position: center;
+  image-tint: rgba(8, 12, 18, 0.76);
+  scrim-color: rgba(8, 12, 18, 0.72);
+  corner-radius: 14px;
+}
+.gallery-nested-background {
+  width: 100%;
+  min-width: 0px;
+  padding: 10px;
+  background: var(--surface-active, #242933);
+  corner-radius: 10px;
+}
+
 .gallery-utilities-code-card { min-width: 0px; }
 .wrail-code-text {
   width: 100%;

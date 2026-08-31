@@ -436,6 +436,10 @@ method WidgetRail.WidgetSdk.ActionSurfaceElement.PersistFocusAs(string id) -> Wi
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Selected(bool selected = true) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? actionId = null, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.ToString() -> string
+method WidgetRail.WidgetSdk.BackgroundSurfaceElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.BackgroundSurfaceElement.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.BackgroundSurfaceElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.BackgroundSurfaceElement.ToString() -> string
 method WidgetRail.WidgetSdk.ButtonElement.Busy(bool busy = true) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.Disabled(bool disabled = true) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
@@ -1293,6 +1297,11 @@ method static WidgetRail.WidgetSdk.ActionSheetItem.op_Equality(WidgetRail.Widget
 method static WidgetRail.WidgetSdk.ActionSheetItem.op_Inequality(WidgetRail.WidgetSdk.ActionSheetItem? left, WidgetRail.WidgetSdk.ActionSheetItem? right) -> bool
 method static WidgetRail.WidgetSdk.ActionSurfaceElement.op_Equality(WidgetRail.WidgetSdk.ActionSurfaceElement? left, WidgetRail.WidgetSdk.ActionSurfaceElement? right) -> bool
 method static WidgetRail.WidgetSdk.ActionSurfaceElement.op_Inequality(WidgetRail.WidgetSdk.ActionSurfaceElement? left, WidgetRail.WidgetSdk.ActionSurfaceElement? right) -> bool
+method static WidgetRail.WidgetSdk.BackgroundSurfaceArtwork.FromHandle(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Cover) -> WidgetRail.WidgetSdk.BackgroundSurfaceArtwork
+method static WidgetRail.WidgetSdk.BackgroundSurfaceArtwork.FromHttps(string source, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Cover) -> WidgetRail.WidgetSdk.BackgroundSurfaceArtwork
+method static WidgetRail.WidgetSdk.BackgroundSurfaceArtwork.FromInlinePng(string pngBase64, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Cover) -> WidgetRail.WidgetSdk.BackgroundSurfaceArtwork
+method static WidgetRail.WidgetSdk.BackgroundSurfaceElement.op_Equality(WidgetRail.WidgetSdk.BackgroundSurfaceElement? left, WidgetRail.WidgetSdk.BackgroundSurfaceElement? right) -> bool
+method static WidgetRail.WidgetSdk.BackgroundSurfaceElement.op_Inequality(WidgetRail.WidgetSdk.BackgroundSurfaceElement? left, WidgetRail.WidgetSdk.BackgroundSurfaceElement? right) -> bool
 method static WidgetRail.WidgetSdk.ButtonElement.op_Equality(WidgetRail.WidgetSdk.ButtonElement? left, WidgetRail.WidgetSdk.ButtonElement? right) -> bool
 method static WidgetRail.WidgetSdk.ButtonElement.op_Inequality(WidgetRail.WidgetSdk.ButtonElement? left, WidgetRail.WidgetSdk.ButtonElement? right) -> bool
 method static WidgetRail.WidgetSdk.CollectionItemElement.op_Equality(WidgetRail.WidgetSdk.CollectionItemElement? left, WidgetRail.WidgetSdk.CollectionItemElement? right) -> bool
@@ -1392,6 +1401,7 @@ method static WidgetRail.WidgetSdk.UI.ActionSheet(string title, string id, strin
 method static WidgetRail.WidgetSdk.UI.ActionSurface(string action, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ActionSurfaceOrientation orientation, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method static WidgetRail.WidgetSdk.UI.Alert(string title, string message, WidgetRail.WidgetSdk.AlertTone tone, string id, WidgetRail.WidgetSdk.ComponentAction? action = null, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Artwork(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Cover) -> WidgetRail.WidgetSdk.ImageElement
+method static WidgetRail.WidgetSdk.UI.BackgroundSurface(WidgetRail.WidgetSdk.WidgetElement content, string id, WidgetRail.WidgetSdk.BackgroundSurfaceArtwork? artwork = null) -> WidgetRail.WidgetSdk.BackgroundSurfaceElement
 method static WidgetRail.WidgetSdk.UI.Button(string label, string action, string id) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.Card(string id, WidgetRail.WidgetSdk.CardVariant variant, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Card(string id, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.StackElement
@@ -1633,6 +1643,8 @@ method static WidgetRail.WidgetSdk.WidgetWifiRadioChanged.op_Inequality(WidgetRa
 method virtual WidgetRail.WidgetSdk.ActionSheetItem.Equals(WidgetRail.WidgetSdk.ActionSheetItem? other) -> bool
 method virtual WidgetRail.WidgetSdk.ActionSurfaceElement.<Clone>$() -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method virtual WidgetRail.WidgetSdk.ActionSurfaceElement.Equals(WidgetRail.WidgetSdk.ActionSurfaceElement? other) -> bool
+method virtual WidgetRail.WidgetSdk.BackgroundSurfaceElement.<Clone>$() -> WidgetRail.WidgetSdk.BackgroundSurfaceElement
+method virtual WidgetRail.WidgetSdk.BackgroundSurfaceElement.Equals(WidgetRail.WidgetSdk.BackgroundSurfaceElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.ButtonElement.<Clone>$() -> WidgetRail.WidgetSdk.ButtonElement
 method virtual WidgetRail.WidgetSdk.ButtonElement.Equals(WidgetRail.WidgetSdk.ButtonElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.CollectionItemElement.<Clone>$() -> WidgetRail.WidgetSdk.CollectionItemElement
@@ -1917,6 +1929,7 @@ property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ToastElemen
 property WidgetRail.WidgetProtocol.WidgetSurfaceHints WidgetRail.WidgetSdk.PinnedLayoutHandle.Surface { get; }
 property WidgetRail.WidgetProtocol.WidgetSurfaceHints? WidgetRail.WidgetSdk.WidgetView.Surface { get; set; }
 property WidgetRail.WidgetSdk.ActionSheetItemTone WidgetRail.WidgetSdk.ActionSheetItem.Tone { get; set; }
+property WidgetRail.WidgetSdk.BackgroundSurfaceArtwork? WidgetRail.WidgetSdk.BackgroundSurfaceElement.Artwork { get; set; }
 property WidgetRail.WidgetSdk.ControllerInputContext WidgetRail.WidgetSdk.ControllerInputEvent.Context { get; set; }
 property WidgetRail.WidgetSdk.ControllerInputOrigin WidgetRail.WidgetSdk.ControllerInputEvent.Origin { get; set; }
 property WidgetRail.WidgetSdk.IWidgetCapabilityClient WidgetRail.WidgetSdk.WidgetHostServices.Capabilities { get; }
@@ -1966,6 +1979,7 @@ property WidgetRail.WidgetSdk.WidgetCollectionItemKey? WidgetRail.WidgetSdk.Widg
 property WidgetRail.WidgetSdk.WidgetCommandPolicy WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Policy { get; set; }
 property WidgetRail.WidgetSdk.WidgetCursorDirection? WidgetRail.WidgetSdk.WidgetAppLibraryCursorRequest.Direction { get; set; }
 property WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Snapshot { get; }
+property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.BackgroundSurfaceElement.Content { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.CollectionItemElement.Child { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.ResponsiveBranchElement.Child { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetView.Root { get; set; }
@@ -2467,6 +2481,8 @@ type enum WidgetRail.WidgetSdk.WidgetWifiScanState : System.IComparable, System.
 type enum WidgetRail.WidgetSdk.WidgetWifiSecurityKind : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type sealed class WidgetRail.WidgetSdk.ActionSheetItem : System.IEquatable<WidgetRail.WidgetSdk.ActionSheetItem>
 type sealed class WidgetRail.WidgetSdk.ActionSurfaceElement : System.IEquatable<WidgetRail.WidgetSdk.ActionSurfaceElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.BackgroundSurfaceArtwork
+type sealed class WidgetRail.WidgetSdk.BackgroundSurfaceElement : System.IEquatable<WidgetRail.WidgetSdk.BackgroundSurfaceElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.ButtonElement : System.IEquatable<WidgetRail.WidgetSdk.ButtonElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.CollectionItemElement : System.IEquatable<WidgetRail.WidgetSdk.CollectionItemElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.ComponentAction : System.IEquatable<WidgetRail.WidgetSdk.ComponentAction>

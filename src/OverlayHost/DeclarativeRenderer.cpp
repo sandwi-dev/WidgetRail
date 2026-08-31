@@ -665,6 +665,10 @@ struct DeclarativeRenderer::RenderPass final {
             // painted content can never extend beyond the actionable bounds.
             element.minWidth = std::max(element.minWidth.value_or(0.0F), kMinimumControlSize);
             element.minHeight = std::max(element.minHeight.value_or(0.0F), kMinimumControlSize);
+        } else if (node.kind == L"backgroundSurface") {
+            // The single foreground child owns intrinsic geometry. The image
+            // is paint-only and is clipped to that resulting bounded surface.
+            element.overflow = declarative::OverflowBehavior::Clip;
         } else if (node.kind == L"loadingIndicator") {
             const auto semanticSize = node.indicatorSize == L"compact"
                 ? 16.0F
@@ -681,7 +685,8 @@ struct DeclarativeRenderer::RenderPass final {
         element.overflow = style.overflow() == NativeOverflow::Clip
             ? declarative::OverflowBehavior::Clip
             : declarative::OverflowBehavior::Visible;
-        if (node.kind == L"actionSurface" || node.kind == L"mediaViewport")
+        if (node.kind == L"actionSurface" || node.kind == L"mediaViewport" ||
+            node.kind == L"backgroundSurface")
             element.overflow = declarative::OverflowBehavior::Clip;
         if (node.kind == L"scroll") {
             element.overflow = declarative::OverflowBehavior::Clip;
@@ -800,6 +805,7 @@ struct DeclarativeRenderer::RenderPass final {
         const WidgetNode& node,
         const NativeRenderStyle& style) noexcept {
         return node.kind == L"scroll" || node.kind == L"actionSurface" ||
+            node.kind == L"backgroundSurface" ||
             style.overflow() == NativeOverflow::Clip;
     }
 
@@ -2644,13 +2650,15 @@ struct DeclarativeRenderer::RenderPass final {
         const NativeRenderStyle& style,
         const Rect rect,
         const float opacity,
-        const bool focused) {
+        const bool focused,
+        const bool drawFailureFallback = true) {
         if (!target) return;
         auto presentationState = ImagePresentationState::Pending;
         auto bitmap = owner->GetImageBitmap(
             target, node, *this, options.artworkWidgetId, presentationState);
         if (!bitmap) {
-            if (presentationState == ImagePresentationState::TrustedArtworkUnavailable) {
+            if (drawFailureFallback &&
+                presentationState == ImagePresentationState::TrustedArtworkUnavailable) {
                 // Tile's no-artwork presentation uses this same closed
                 // semantic glyph. A terminal host resolution failure must not
                 // leave the authored image box blank or change tile geometry.
@@ -2658,7 +2666,8 @@ struct DeclarativeRenderer::RenderPass final {
                     node, style,
                     Inset(rect, std::min(rect.width, rect.height) * 0.32F),
                     opacity * 0.75F, L"play");
-            } else if (presentationState == ImagePresentationState::Failed) {
+            } else if (drawFailureFallback &&
+                       presentationState == ImagePresentationState::Failed) {
                 DrawSemanticIcon(
                     node, style,
                     Inset(rect, std::min(rect.width, rect.height) * 0.32F),
@@ -2913,6 +2922,11 @@ struct DeclarativeRenderer::RenderPass final {
             node.children.size() == 2U) {
             result.posterArtworkRects[node.children.front().id] = presented.borderBox;
         }
+
+        if (node.kind == L"backgroundSurface" &&
+            (!node.imageSource.empty() || !node.artworkHandle.empty())) {
+            DrawImage(node, style, paintRect, opacity, false, false);
+        }
 #endif
 
         const auto visibleRect = presented.visibleBox;
@@ -3080,6 +3094,7 @@ struct DeclarativeRenderer::RenderPass final {
             // this exact content box only after the render commits.
         } else if (node.kind != L"stack" && node.kind != L"row" &&
                    node.kind != L"scroll" && node.kind != L"grid" &&
+                   node.kind != L"backgroundSurface" &&
                    node.kind != L"spacer") {
             if (node.kind != L"actionSurface")
             Add(node.id, L"unknown_kind", L"Unsupported declarative node kind: " + node.kind);

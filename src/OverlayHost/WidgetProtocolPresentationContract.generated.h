@@ -10,12 +10,13 @@ namespace widgetrail::protocol_contract {
 
 inline constexpr std::int32_t ActionSurfaceVersion = 7;
 inline constexpr std::int32_t AtomicPresentationUpdateVersion = 18;
+inline constexpr std::int32_t BackgroundSurfaceVersion = 38;
 inline constexpr std::int32_t BaselineVersion = 1;
 inline constexpr std::int32_t CompactPinnedMediaPresentationVersion = 25;
 inline constexpr std::int32_t ContextActionsVersion = 34;
 inline constexpr std::int32_t CurrentHostApiMajor = 1;
 inline constexpr std::int32_t CurrentManifestVersion = 1;
-inline constexpr std::int32_t CurrentVersion = 37;
+inline constexpr std::int32_t CurrentVersion = 38;
 inline constexpr std::int32_t CursorCollectionVersion = 14;
 inline constexpr std::int32_t DashboardGestureAuthorityVersion = 4;
 inline constexpr double DefaultMediaSeekStepSeconds = 10.0;

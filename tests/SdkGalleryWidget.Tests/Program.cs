@@ -40,7 +40,7 @@ static async Task PageCoverage()
 {
     var widget = new SdkGalleryWidget();
     var overview = Snapshot(widget, 1);
-    Assert.Equal(ProtocolConstants.FocusPersistenceVersion, overview.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.BackgroundSurfaceVersion, overview.ProtocolVersion);
     Assert.Equal("gallery.refresh", overview.InitialFocusId);
     Assert.Equal(widget.Navigation.InputScopeId, overview.ActiveInputScopeId);
     Assert.Equal(WidgetSurfaceMode.Standard, overview.Surface!.Mode);
@@ -186,7 +186,10 @@ static async Task TrustedArtwork()
     var snapshot = Snapshot(widget, 1);
     var artworkHandle = Find(snapshot, "gallery.app.artwork").ArtworkHandle;
     Assert.True(artworkHandle is not null);
-    Assert.Equal(ProtocolConstants.PosterTileVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.BackgroundSurfaceVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ViewNodeKind.BackgroundSurface, snapshot.Root.Kind);
+    Assert.Equal("gallery.root.content", snapshot.Root.Children.Single().Id);
+    Assert.Equal(ViewNodeKind.BackgroundSurface, Find(snapshot, "gallery.tiles.surface").Kind);
     var artwork = await widget.OnResolveArtworkAsync(new WidgetArtworkHandle(artworkHandle!));
     Assert.True(artwork is not null);
     Assert.Equal(WidgetArtworkContentType.Png, artwork!.ContentType);
@@ -208,7 +211,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.4", manifest.Version);
+    Assert.Equal("0.1.5", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);
@@ -259,7 +262,8 @@ static Task StyleContract()
     Assert.True(source.Contains("var(--surface)", StringComparison.Ordinal));
     Assert.True(source.Contains(":pressed", StringComparison.Ordinal));
     Assert.False(source.Contains("font-family:", StringComparison.OrdinalIgnoreCase));
-    Assert.False(source.Contains("position:", StringComparison.OrdinalIgnoreCase));
+    Assert.False(source.Split('\n').Any(line =>
+        line.TrimStart().StartsWith("position:", StringComparison.OrdinalIgnoreCase)));
     return Task.CompletedTask;
 }
 

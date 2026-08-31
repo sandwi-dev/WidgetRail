@@ -20,6 +20,7 @@ public enum ViewNodeKind
     Grid,
     TextEntry,
     MediaViewport,
+    BackgroundSurface,
 }
 
 /// <summary>

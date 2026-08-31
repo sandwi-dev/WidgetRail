@@ -203,6 +203,14 @@ internal static class ProtocolVersionRequirementsTests
                         },
                     ],
                 }, "$.root.children[0].actionSurfacePresentation"),
+            NodeCase("background surface", "background-surface",
+                ProtocolConstants.BackgroundSurfaceVersion,
+                new()
+                {
+                    Id = "background",
+                    Kind = ViewNodeKind.BackgroundSurface,
+                    Children = [Text("background-content")],
+                }),
             NodeCase("responsive grid", "responsive-grid", ProtocolConstants.ResponsiveGridVersion,
                 new()
                 {

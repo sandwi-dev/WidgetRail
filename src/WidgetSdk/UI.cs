@@ -36,6 +36,15 @@ public static partial class UI
     public static ScrollElement HorizontalScroll(string id, params WidgetElement[] children) =>
         Scroll(id, ScrollAxis.Horizontal, children);
 
+    /// <summary>
+    /// Paints one optional bounded image behind one foreground subtree. The
+    /// foreground remains the sole layout, input, focus, and accessibility owner.
+    /// </summary>
+    public static BackgroundSurfaceElement BackgroundSurface(
+        WidgetElement content,
+        string id,
+        BackgroundSurfaceArtwork? artwork = null) => new(id, content, artwork);
+
     public static TextElement Text(string text, string id, string? accessibilityLabel = null) =>
         new(id, text, accessibilityLabel);
 

@@ -1023,6 +1023,16 @@ WidgetNode ParseNode(const JsonObject& source) {
               node.children.front().imageFit != L"cover")))
             throw winrt::hresult_invalid_argument();
     }
+    if (node.kind == L"backgroundSurface") {
+        if (node.children.size() != 1U ||
+            (!node.imageSource.empty() && !node.artworkHandle.empty()) ||
+            ((!node.imageSource.empty() || !node.artworkHandle.empty()) &&
+             node.imageFit.empty()) ||
+            (node.imageSource.empty() && node.artworkHandle.empty() &&
+             !node.imageFit.empty()))
+            throw winrt::hresult_invalid_argument(
+                L"BackgroundSurface image and foreground authority is invalid.");
+    }
     return node;
 }
 
@@ -1205,6 +1215,17 @@ void ValidatePosterTiles(const WidgetNode& root, const int protocolVersion) {
     visit(visit, root);
 }
 
+void ValidateBackgroundSurfaces(const WidgetNode& root, const int protocolVersion) {
+    const auto visit = [&](const auto& self, const WidgetNode& node) -> void {
+        if (node.kind == L"backgroundSurface" &&
+            protocolVersion < protocol_contract::BackgroundSurfaceVersion)
+            throw winrt::hresult_invalid_argument(
+                L"Background surfaces require protocol version 38.");
+        for (const auto& child : node.children) self(self, child);
+    };
+    visit(visit, root);
+}
+
 WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     ValidatePinnedProjectionCatalogBounds(source);
     WidgetSnapshot snapshot;
@@ -1315,6 +1336,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                         L"Widget snapshot pinned projection version is invalid.");
                 parsed.root = ParseNode(layout.GetNamedObject(L"root"));
                 ValidatePosterTiles(*parsed.root, snapshot.protocolVersion);
+                ValidateBackgroundSurfaces(*parsed.root, snapshot.protocolVersion);
                 ValidateRememberedChildFocusGroups(
                     *parsed.root, snapshot.protocolVersion);
                 parsed.activeInputScopeId = OptionalString(layout, L"activeInputScopeId");
@@ -1556,6 +1578,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     }
     snapshot.root = ParseNode(source.GetNamedObject(L"root"));
     ValidatePosterTiles(snapshot.root, snapshot.protocolVersion);
+    ValidateBackgroundSurfaces(snapshot.root, snapshot.protocolVersion);
     ValidateRememberedChildFocusGroups(snapshot.root, snapshot.protocolVersion);
     const auto validateContextActions = [&](const auto& self,
                                             const WidgetNode& node) -> void {

@@ -3762,6 +3762,19 @@ static Task ActionSurfaceRenderRole()
         "Poster ActionSurface layering roles were omitted from bridge styles.");
     Assert.True(styles.ContainsKey("library.grid"),
         "Grid role was omitted from bridge styles.");
+    var backgroundSnapshot = new WidgetView(
+        UI.BackgroundSurface(
+            UI.Button("Open", "open", "background.open"),
+            "background",
+            BackgroundSurfaceArtwork.FromHandle(
+                new WidgetArtworkHandle("library.background"))),
+        InitialFocusId: "background.open")
+        .CreateSnapshot("bridge.background", 1);
+    var backgroundStyles = BridgeRenderStyleResolver.Resolve(backgroundSnapshot, theme: null);
+    Assert.True(backgroundStyles.ContainsKey("background") &&
+                backgroundStyles.ContainsKey("background.open"),
+        "BackgroundSurface and its semantic foreground roles were omitted from bridge styles.");
+    Assert.Equal(ProtocolConstants.BackgroundSurfaceVersion, backgroundSnapshot.ProtocolVersion);
     Assert.Equal(ProtocolConstants.PosterTileVersion, snapshot.ProtocolVersion);
     return Task.CompletedTask;
 }

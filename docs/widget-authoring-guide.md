@@ -2343,6 +2343,17 @@ matrices remain release evidence—not completed universal compatibility.
 
 ## Diagnostics and recovery
 
+## Image-backed sections
+
+Use `UI.BackgroundSurface` only when one bounded page or section needs an image
+behind its existing content. The foreground subtree remains independently
+sized and is the only focus, input, and accessibility owner. Supply artwork
+through `BackgroundSurfaceArtwork.FromHttps`, `FromInlinePng`, or `FromHandle`;
+never publish local paths, arbitrary CSS URLs, or image-sized layout values.
+Style crop position, tint, scrim, and radius with WRSS. Always author a safe
+surface color and readable foreground treatment so missing, late, or rejected
+artwork preserves the same usable geometry and semantics.
+
 During local development:
 
 - `wrail validate` reports manifest/WRSS JSON paths and source-located styling

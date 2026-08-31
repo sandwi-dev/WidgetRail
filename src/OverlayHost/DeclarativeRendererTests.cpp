@@ -883,6 +883,67 @@ void PosterTileUsesFixedFullBleedGeometry() {
         "poster retains one full-surface accessibility semantic");
 }
 
+void BackgroundSurfacePreservesForegroundAuthority() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+              DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+              reinterpret_cast<IUnknown**>(write.GetAddressOf()))),
+        "create DirectWrite factory for background-surface geometry");
+    DeclarativeRenderer renderer{nullptr, write.Get(), nullptr};
+
+    WidgetSnapshot snapshot;
+    snapshot.sequence = 38;
+    snapshot.instanceId = L"background.runtime.v1";
+    snapshot.activeInputScopeId = L"background.content";
+    snapshot.initialFocusId = L"background.open";
+    snapshot.root = Node(L"background.root", L"stack");
+    auto background = Node(L"background", L"backgroundSurface");
+    background.artworkHandle = L"gallery.background";
+    background.imageFit = L"cover";
+    background.baseStyle = {
+        {L"width", Length(320)},
+        {L"corner-radius", Length(16)},
+        {L"overflow", Keyword(L"clip")},
+    };
+    auto content = Node(L"background.content", L"stack");
+    content.inputScopeId = L"background.content";
+    content.baseStyle = {
+        {L"width", Length(320)},
+        {L"height", Length(120)},
+        {L"padding", LengthList(L"12px")},
+    };
+    auto button = Node(L"background.open", L"button");
+    button.text = L"Open";
+    button.actionId = L"open";
+    content.children = {std::move(button)};
+    background.children = {std::move(content)};
+    snapshot.root.children = {std::move(background)};
+
+    widgetrail::DeclarativeRenderOptions options;
+    options.collectAccessibility = true;
+    const auto result = renderer.Render(
+        nullptr, snapshot, L"background.open",
+        {0.0F, 0.0F, 420.0F, 240.0F}, options);
+    const auto& root = result.elementRects.at(L"background.root");
+    Near(root.width, 420.0F, "ordinary root is bounded to admitted viewport width");
+    Near(root.height, 240.0F, "ordinary root is bounded to admitted viewport height");
+    const auto& surface = result.elementRects.at(L"background");
+    const auto& foreground = result.elementRects.at(L"background.content");
+    Near(surface.width, foreground.width,
+        "background image cannot expand foreground width");
+    Near(surface.height, foreground.height,
+        "background image cannot expand foreground height");
+    Check(result.focusRects.size() == 1U &&
+          result.focusRects.contains(L"background.open") &&
+          !result.navigationRects.contains(L"background"),
+        "BackgroundSurface contributes no focus or input target");
+    Check(std::none_of(
+              result.accessibilityRegions.begin(), result.accessibilityRegions.end(),
+              [](const auto& region) { return region.nodeId == L"background"; }),
+        "BackgroundSurface contributes no duplicate accessibility semantic");
+}
+
 WidgetSnapshot ResponsiveGridSnapshot() {
     WidgetSnapshot snapshot;
     snapshot.sequence = 8;
@@ -4464,6 +4525,7 @@ int main() {
     SliderPlanningAndAccessibilityTargets();
     ActionSurfacePlanningAndInteractionGeometry();
     PosterTileUsesFixedFullBleedGeometry();
+    BackgroundSurfacePreservesForegroundAuthority();
     ResponsiveGridFlowsThroughNativePlanning();
     FocusMotionUsesStableSnapshotIdentity();
     SubtreeTranslationKeepsPresentationGeometryAligned();
