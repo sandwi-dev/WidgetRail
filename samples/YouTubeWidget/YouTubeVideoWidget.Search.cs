@@ -344,7 +344,7 @@ public sealed partial class YouTubeVideoWidget
 
     private WidgetView RenderLinkPlayer(YouTubeWidgetState state)
     {
-        var view = RenderPlayer(state, includeDashboardQuickActions: false);
+        var view = RenderPlayer(state, includeFullscreenAction: false);
         return view with { InitialFocusId = "youtube.link" };
     }
 

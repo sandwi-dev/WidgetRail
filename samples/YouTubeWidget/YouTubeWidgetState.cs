@@ -263,7 +263,7 @@ internal sealed record YouTubeWidgetState
     /// dispatch, not declaration.
     /// </summary>
     public bool CanDeclareTransportAction(bool isActive) =>
-        Route == YouTubeRoute.Player &&
+        (Route is YouTubeRoute.Player or YouTubeRoute.Link) &&
         isActive &&
         Playback.VideoId is not null &&
         Playback.Error is null &&

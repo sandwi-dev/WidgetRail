@@ -178,7 +178,7 @@ public sealed class YouTubeWidgetStateTests
     }
 
     [TestMethod]
-    public void TransportFailsClosedOffThePlayerRouteWhileInactiveAndOnError()
+    public void TransportIncludesTheLiveLinkPlayerAndFailsClosedElsewhere()
     {
         var playing = YouTubeWidgetState.Initial
             .WithCommittedLink($"https://youtu.be/{VideoId}")
@@ -189,12 +189,21 @@ public sealed class YouTubeWidgetStateTests
         Assert.IsFalse(playing.CanDeclareTransportAction(isActive: false));
         Assert.IsFalse(playing.WithRoute(YouTubeRoute.Search)
             .CanDeclareTransportAction(isActive: true));
-        Assert.IsFalse(playing.WithRoute(YouTubeRoute.Link)
+        Assert.IsTrue(playing.WithRoute(YouTubeRoute.Link)
+            .CanDeclareTransportAction(isActive: true),
+            "The Link route renders the live player transport and must admit it.");
+        Assert.IsFalse(playing.WithRoute(YouTubeRoute.Setup)
             .CanDeclareTransportAction(isActive: true));
 
         var loading = YouTubeWidgetState.Initial.WithCommittedLink($"https://youtu.be/{VideoId}");
         Assert.IsFalse(loading.CanDeclareTransportAction(isActive: true),
             "An initial load is not a state the transport may act on.");
+
+        var cuePending = playing.WithPlayback(playback => playback.WithQueuedCommand(
+            EmbeddedMediaPlaybackCommandKind.Cue, VideoId,
+            PendingMediaControl.TogglePlayback));
+        Assert.IsFalse(cuePending.CanDeclareTransportAction(isActive: true),
+            "A pending Cue must keep transport declarations fail-closed.");
 
         var failed = playing.WithPlayback(playback => playback.WithPlaybackEvent(
             Event(EmbeddedMediaPlaybackState.Error, sequence: 2, commandSequence: 0,

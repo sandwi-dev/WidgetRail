@@ -31,7 +31,7 @@ public sealed partial class YouTubeVideoWidget : Widget
 
     private WidgetView RenderPlayer(
         YouTubeWidgetState state,
-        bool includeDashboardQuickActions = true)
+        bool includeFullscreenAction = true)
     {
         var playback = state.Playback;
         var videoId = playback.VideoId;
@@ -40,7 +40,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         var mediaLoading = playback.IsMediaLoading;
         var busyControl = playback.BusyControl;
         var controlsUnavailable = videoId is null || error is not null || mediaLoading;
-        var showFullscreenAction = includeDashboardQuickActions && videoId is not null;
+        var showFullscreenAction = includeFullscreenAction && videoId is not null;
         var fullscreenActionEnabled = error is null && !mediaLoading;
         // Declared only on the route that also offers the reserved entry action,
         // so the capability never outlives a way to reach it.
@@ -117,8 +117,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         var statusClass = error is not null ? "is-error" :
             mediaLoading || seekBuffering ? "is-busy" :
             playback.State == EmbeddedMediaPlaybackState.Playing ? "is-playing" : "is-normal";
-        var playerActionsAvailable = includeDashboardQuickActions &&
-            state.CanDeclareTransportAction(IsActive);
+        var playerActionsAvailable = state.CanDeclareTransportAction(IsActive);
         IReadOnlyList<WidgetQuickAction>? quickActions = playerActionsAvailable
                 ?
                 [
