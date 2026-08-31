@@ -3611,7 +3611,13 @@ private:
                 return;
             }
             AdvanceCompatibleEmbeddedMediaCommandAuthority(snapshot, declaration);
-            if (!SuspendBoundEmbeddedMediaPresentation(L"declared-retained-hidden")) {
+            const bool pinnedPresentationCurrent =
+                embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Pinned &&
+                pinnedSurfaceCoordinator_.pinned() &&
+                pinnedSurfaceCoordinator_.widgetId() == widgetId &&
+                pinnedSurfaceCoordinator_.CurrentMediaViewport(declaration.id).has_value();
+            if (!pinnedPresentationCurrent &&
+                !SuspendBoundEmbeddedMediaPresentation(L"declared-retained-hidden")) {
                 StopEmbeddedMediaSurface(L"retained-hidden-detach-failed");
                 return;
             }
