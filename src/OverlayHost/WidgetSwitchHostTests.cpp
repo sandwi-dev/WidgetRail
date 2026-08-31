@@ -3285,6 +3285,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                 }), "Unarmed Settings Ready priming did not restore exact current Ready UIA authority");
     }
 
+    std::size_t interactiveLifecycleTerminalAt{};
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 const auto current = ReadUtf8(logPath);
                 for (auto at = current.find("Admission trace", focusBefore);
@@ -3296,12 +3297,68 @@ void RunRetentionScenario(const Arguments& arguments) {
                         TextField(record, "lifecycle=") == "interactive" &&
                         TextField(record, "kind=") == "lifecycle" &&
                         TextField(record, "disposition=") == "admitted") {
+                        interactiveLifecycleTerminalAt = at + record.size();
                         return true;
                     }
                 }
                 return false;
             }), "Settings interactive lifecycle request did not terminally complete before the blocked refresh; log=" +
                 ReadUtf8(logPath).substr(focusBefore));
+
+    constexpr std::string_view lifecycleCurrentNeedle =
+        "Widget presentation paint target=";
+    std::string lifecycleCurrent;
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto current = ReadUtf8(logPath);
+                const auto paintAt = current.find(
+                    lifecycleCurrentNeedle, interactiveLifecycleTerminalAt);
+                if (paintAt == std::string::npos) return false;
+                lifecycleCurrent = std::string(RecordLine(current, paintAt));
+                const auto sequence = ParsePositiveSequence(
+                    TextField(lifecycleCurrent, "sequence="));
+                return TextField(lifecycleCurrent, "target=") == "settings" &&
+                    TextField(lifecycleCurrent, "content=") == "admitted" &&
+                    TextField(lifecycleCurrent, "rendered=") == "settings" &&
+                    TextField(lifecycleCurrent, "semantics=") == "current" &&
+                    TextField(lifecycleCurrent, "input-owner=") == "widget" &&
+                    TextField(lifecycleCurrent, "visual-focus=") ==
+                        "settings-ready" &&
+                    TextField(lifecycleCurrent, "semantic-focus=") ==
+                        "widget:settings-ready" &&
+                    sequence && *sequence >= *settingsInteractiveSequenceValue &&
+                    lifecycleCurrent.find("tray-total=8") != std::string::npos &&
+                    lifecycleCurrent.find("tray-selected-visible=true") !=
+                        std::string::npos;
+            }),
+            "Settings interactive lifecycle admission omitted its exact non-regressing "
+            "Current presentation; log=" +
+                ReadUtf8(logPath).substr(interactiveLifecycleTerminalAt));
+    const auto lifecycleCurrentSequence = ParsePositiveSequence(
+        TextField(lifecycleCurrent, "sequence="));
+    Require(lifecycleCurrentSequence &&
+                *lifecycleCurrentSequence >= *settingsInteractiveSequenceValue &&
+                TextField(lifecycleCurrent, "semantics=") == "current" &&
+                TextField(lifecycleCurrent, "input-owner=") == "widget" &&
+                TextField(lifecycleCurrent, "visual-focus=") == "settings-ready" &&
+                TextField(lifecycleCurrent, "semantic-focus=") ==
+                    "widget:settings-ready",
+            "Settings interactive lifecycle admission did not restore exact non-regressing "
+            "Current focus authority before the blocked refresh; record=" +
+                lifecycleCurrent);
+    requireCurrentPresentationCompletion(
+        interactiveLifecycleTerminalAt, lifecycleCurrent, kTargets.back().id,
+        "interactive-lifecycle-current-before-block", L"widget:settings-ready");
+    if (*interactiveMode) {
+        const auto current = ReadUtf8(logPath);
+        const auto paintAt = current.find(
+            lifecycleCurrent, interactiveLifecycleTerminalAt);
+        Require(paintAt != std::string::npos,
+                "Settings interactive lifecycle Current paint disappeared before "
+                "composition completion");
+        recordComposition(
+            paintAt + lifecycleCurrent.size(), L"Settings interactive lifecycle Current");
+    }
+    FenceWindow(window);
 
     const auto ordinaryRefreshBefore = ReadUtf8(logPath).size();
     const auto ordinaryRefreshEpoch = blockSnapshot();
@@ -3415,33 +3472,37 @@ void RunRetentionScenario(const Arguments& arguments) {
                 "Active-extent RefreshRetained did not preserve exact inert Settings authority; record=" +
                     std::string(retainedPaint));
 
-        const auto extentAt = heldRefreshLog.rfind(
-            "Widget presentation extent refresh widget=settings", retainedPaintAt);
-        const auto placementAt = heldRefreshLog.find(
-            "Composition placement committed content=complete",
-            retainedPaintAt + retainedPaint.size());
-        const auto motionAt = heldRefreshLog.find("Composition motion start", placementAt);
-        Require(extentAt != std::string::npos && placementAt != std::string::npos &&
-                    motionAt != std::string::npos && extentAt < retainedPaintAt &&
-                    retainedPaintAt < placementAt && placementAt < motionAt &&
-                    heldRefreshLog.find("Widget presentation extent refresh", extentAt + 1) ==
+        const auto completeHeldLog = ReadUtf8(logPath);
+        const auto retainedPaintGlobalAt = completeHeldLog.size() - heldRefreshLog.size() + retainedPaintAt;
+        const auto priorSampleAt = completeHeldLog.rfind(
+            "Composition child sample step=", retainedPaintGlobalAt);
+        const auto firstSampleAt = heldRefreshLog.find(
+            "Composition child sample step=", retainedPaintAt + retainedPaint.size());
+        const auto motionGlobalAt = completeHeldLog.rfind(
+            "Composition motion start", retainedPaintGlobalAt);
+        Require(heldRefreshLog.find("Widget presentation extent refresh widget=settings") ==
                         std::string::npos &&
-                    heldRefreshLog.find("Composition placement committed content=complete", placementAt + 1) ==
+                    heldRefreshLog.find("Composition placement committed content=complete") ==
                         std::string::npos &&
-                    heldRefreshLog.find("Composition motion start", motionAt + 1) ==
-                        std::string::npos,
-                "Active-extent RefreshRetained omitted or duplicated its one placement transition; log=" +
+                    heldRefreshLog.find("Composition motion start") == std::string::npos &&
+                    priorSampleAt != std::string::npos &&
+                    firstSampleAt != std::string::npos &&
+                    motionGlobalAt != std::string::npos,
+                "Active-extent RefreshRetained changed the committed extent or started a new placement; log=" +
                     heldRefreshLog);
-        std::size_t retainedPaintsInTransition{};
+        const auto priorSample = RecordLine(completeHeldLog, priorSampleAt);
+        const auto firstSample = RecordLine(heldRefreshLog, firstSampleAt);
+        const auto firstSampleGlobalAt = completeHeldLog.size() - heldRefreshLog.size() + firstSampleAt;
+        std::size_t retainedPaintsInBracket{};
         bool invalidRetainedAuthority{};
-        for (auto paintAt = heldRefreshLog.find(
-                 "Widget presentation paint target=", extentAt);
-             paintAt != std::string::npos && paintAt < placementAt;
-             paintAt = heldRefreshLog.find(
+        for (auto paintAt = completeHeldLog.find(
+                 "Widget presentation paint target=", priorSampleAt);
+             paintAt != std::string::npos && paintAt < firstSampleGlobalAt;
+             paintAt = completeHeldLog.find(
                  "Widget presentation paint target=", paintAt + 1)) {
-            const auto paint = RecordLine(heldRefreshLog, paintAt);
+            const auto paint = RecordLine(completeHeldLog, paintAt);
             if (TextField(paint, "content=") != "refresh-retained") continue;
-            ++retainedPaintsInTransition;
+            ++retainedPaintsInBracket;
             const auto candidateDamage = ParseBounds(TextField(paint, "damage="));
             const auto candidateShell = ParseBounds(TextField(paint, "shell-bounds="));
             invalidRetainedAuthority = invalidRetainedAuthority ||
@@ -3460,33 +3521,9 @@ void RunRetentionScenario(const Arguments& arguments) {
                 candidateDamage.width != candidateShell.width ||
                 candidateDamage.height != candidateShell.height;
         }
-        Require(retainedPaintsInTransition == 1 && !invalidRetainedAuthority,
-                "Active-extent RefreshRetained transition bracket did not contain "
+        Require(retainedPaintsInBracket == 1 && !invalidRetainedAuthority,
+                "Active-extent RefreshRetained sample bracket did not contain "
                 "exactly one matching inert Settings paint; log=" + heldRefreshLog);
-        const auto extent = RecordLine(heldRefreshLog, extentAt);
-        const auto placement = RecordLine(heldRefreshLog, placementAt);
-        const auto motion = RecordLine(heldRefreshLog, motionAt);
-        Require(TextField(extent, "from=") == presentedExtent &&
-                    TextField(extent, "to=") == desiredExtent &&
-                    TextField(extent, "identity=") == "retained" &&
-                    TextField(extent, "target=") == "composition-motion" &&
-                    TextField(placement, "order=") == "commit-motion-container" &&
-                    TextField(placement, "from=") == TextField(motion, "from=") &&
-                    TextField(placement, "to=") == TextField(motion, "to="),
-                "Active-extent RefreshRetained did not atomically advance prior-presented to desired extent; paint=" +
-                    std::string(retainedPaint) + " extent=" + std::string(extent) +
-                    " placement=" + std::string(placement) + " motion=" + std::string(motion));
-
-        const auto completeHeldLog = ReadUtf8(logPath);
-        const auto retainedPaintGlobalAt = completeHeldLog.size() - heldRefreshLog.size() + retainedPaintAt;
-        const auto priorSampleAt = completeHeldLog.rfind(
-            "Composition child sample step=", retainedPaintGlobalAt);
-        const auto firstSampleAt = heldRefreshLog.find("Composition child sample step=", motionAt);
-        Require(priorSampleAt != std::string::npos && firstSampleAt != std::string::npos,
-                "Active-extent RefreshRetained lacked its immediate pre/post setup samples; log=" +
-                    heldRefreshLog);
-        const auto priorSample = RecordLine(completeHeldLog, priorSampleAt);
-        const auto firstSample = RecordLine(heldRefreshLog, firstSampleAt);
         const auto paintCount = [](const std::string_view sample, const std::string_view owner) {
             const auto paints = TextField(sample, "paints=");
             return TimingField(paints, owner);
@@ -3501,6 +3538,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                     retainedContentPaints == priorContentPaints + 1 &&
                     retainedGuidePaints == priorGuidePaints + 1 &&
                     retainedTrayPaints == priorTrayPaints &&
+                    TextField(firstSample, "content=") == TextField(priorSample, "content=") &&
                     TextField(firstSample, "guide=") == TextField(priorSample, "guide=") &&
                     TextField(firstSample, "tray=") == sessionTrayAuthority->trayScreen &&
                     TextField(firstSample, "chrome-hwnd=") == sessionTrayAuthority->chromeHwnd &&
@@ -3511,9 +3549,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                 "Active-extent RefreshRetained changed fixed chrome or painted outside its one setup frame; prior=" +
                     std::string(priorSample) + " retained=" + std::string(firstSample));
 
-        const auto heldLogStart = completeHeldLog.size() - heldRefreshLog.size();
-        const auto motionGlobalAt = heldLogStart + motionAt;
-        const auto firstSampleGlobalAt = heldLogStart + firstSampleAt;
+        const auto motion = RecordLine(completeHeldLog, motionGlobalAt);
         std::string settledMotionLog;
         std::size_t motionFinalAt{};
         Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
