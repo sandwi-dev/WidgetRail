@@ -84,6 +84,8 @@ public sealed partial class YouTubeWidgetTests
 
         var search = widget.RenderSnapshot("youtube-test", 1);
         Assert.AreEqual("youtube.search.query", search.InitialFocusId);
+        Assert.AreEqual("youtube.link.open",
+            Find(search.Root, "youtube.search.routes").InitialChildFocusId);
         Assert.IsEmpty(search.QuickActions);
         Assert.IsEmpty(Find(search.Root, "youtube.search.root").Shortcuts);
 

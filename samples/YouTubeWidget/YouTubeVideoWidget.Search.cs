@@ -241,6 +241,7 @@ public sealed partial class YouTubeVideoWidget
                         .Classes("youtube-route-button"),
                     UI.Button("Setup", SetupRouteActionId, "youtube.search.setup")
                         .Classes("youtube-route-button"))
+                    .RememberChildFocus(LinkRouteActionId)
                     .Classes("youtube-route-actions"))
             .Classes("youtube-appbar");
         var searchTask = UI.Stack("youtube.search.task-card",
