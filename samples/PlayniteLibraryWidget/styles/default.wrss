@@ -37,7 +37,7 @@
 .playnite-library-hero-source { color: #d6dee8; }
 .playnite-library-hero-state { color: #aeb9c6; }
 .playnite-library-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; }
-.playnite-library-tile { min-height: 150px; }
+.playnite-library-tile { min-width: 0px; min-height: 0px; }
 .playnite-library-actions,
 .playnite-library-details-actions { min-width: 0px; flex-shrink: 0; gap: 8px; }
 .playnite-library-footer { flex-shrink: 0; flex-wrap: wrap; gap: 6px; }

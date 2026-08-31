@@ -305,6 +305,56 @@ public sealed class PlayniteLibraryLayoutTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public void CatalogCardsAdoptPosterTilePresentationWithSemanticArtworkFallback()
+    {
+        var artwork = PlayniteLibraryItem.From(Item(
+            "app-poster", "saved-poster", "Poster game", "Steam", "poster-handle"));
+        var fallback = PlayniteLibraryItem.From(Item(
+            "app-fallback", "saved-fallback", "Fallback game", "Windows"));
+        var items = new[] { artwork, fallback };
+        var display = items.Select(item => new PlayniteLibraryDisplayItem(
+            item.Value.SavedId, item.Value.Presentation.DisplayName,
+            item.Value.Presentation.Source.DisplayName)).ToArray();
+        var view = PlayniteLibraryPresentation.Render(State(
+            Snapshot(WidgetPagedResourceStatus.Ready, items),
+            new PlayniteLibraryPrivateState(
+                PlayniteLibraryPrivateState.CurrentVersion, display),
+            PlayniteLibraryRoute.Library, []));
+        var snapshot = new PresentationWidget(view).RenderSnapshot(
+            "playnite-library.poster", 1);
+        var nodes = Nodes(snapshot.Root).ToArray();
+        var posterId = PlayniteLibraryIdentity.FocusId("grid", artwork.Key);
+        var fallbackId = PlayniteLibraryIdentity.FocusId("grid", fallback.Key);
+
+        foreach (var id in new[] { posterId, fallbackId })
+        {
+            var card = nodes.Single(node => node.Id == id);
+            Assert.AreEqual(ViewNodeKind.ActionSurface, card.Kind);
+            Assert.AreEqual(ActionSurfacePresentation.Poster, card.ActionSurfacePresentation);
+            Assert.AreEqual(ActionSurfaceOrientation.Vertical, card.ActionSurfaceOrientation);
+            Assert.AreEqual("playnite-library.launch", card.ActionId);
+            CollectionAssert.AreEqual(
+            new[]
+            {
+                "wrail-action-surface",
+                "wrail-poster-tile",
+                "playnite-library-tile",
+            }, card.StyleClasses.ToArray());
+            Assert.IsNotNull(card.CollectionItemKey);
+            Assert.IsTrue(nodes.Any(node => node.Id == id + ".scrim"));
+            Assert.IsTrue(nodes.Any(node => node.Id == id + ".content"));
+        }
+
+        var renderedArtwork = nodes.Single(node => node.Id == posterId + ".artwork");
+        Assert.AreEqual("poster-handle", renderedArtwork.ArtworkHandle);
+        Assert.AreEqual(ImageFit.Cover, renderedArtwork.ImageFit);
+        Assert.IsFalse(nodes.Any(node => node.Id == fallbackId + ".artwork"),
+            "A missing cover must use the generic poster fallback rather than glyph artwork.");
+        Assert.AreEqual("Fallback game, Windows, Ready",
+            nodes.Single(node => node.Id == fallbackId).AccessibilityLabel);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public void DetailsProjectionIsBoundedDeterministicAndPreservesLongLabels()
     {
         var title = new string('T', 96);

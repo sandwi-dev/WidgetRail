@@ -758,39 +758,35 @@ internal static class PlayniteLibraryPresentation
         var actionId = automatic
             ? "playnite-library.manual.included"
             : "playnite-library.manual.toggle";
-        return UI.Tile(item.Presentation.DisplayName, state,
+        return UI.PosterTile(item.Presentation.DisplayName, state,
                 actionId,
                 PlayniteLibraryIdentity.FocusId("add", item.Key),
                 subtitle: $"{kind} · {item.Presentation.Source.DisplayName}",
-                artwork: Artwork(item),
+                artwork: PosterArtwork(item),
                 accessibilityLabel: $"{item.Presentation.DisplayName}, {kind}, " +
                     (automatic ? "Included automatically" : included
                         ? runningRoute ? "Already included" : "Added, remove from library"
-                        : "Available, add to library"),
-                orientation: ActionSurfaceOrientation.Vertical)
+                        : "Available, add to library"))
             .Disabled(!interactive || automatic || runningRoute && included)
             .CollectionItem(item.Key)
-            .Classes("playnite-library-tile");
+            .AddClasses("playnite-library-tile");
     }
 
     private static WidgetElement HiddenTile(PresentedRow row, bool interactive)
     {
         var current = row.Current;
-        var artwork = current is null
-            ? TileArtwork.FromGlyph(WidgetGlyph.Play, row.Display.DisplayName)
-            : Artwork(current);
+        var artwork = current is null ? null : PosterArtwork(current);
         var availability = current is null ? "Unavailable · Restore" : "Hidden · Restore";
-        return UI.Tile(row.Display.DisplayName, availability,
+        return UI.PosterTile(row.Display.DisplayName, availability,
                 "playnite-library.restore",
                 PlayniteLibraryIdentity.FocusId(
                     "hidden", PlayniteLibraryIdentity.Key(row.Display.SavedId)),
                 subtitle: row.Display.SourceAttribution,
                 artwork: artwork,
                 accessibilityLabel:
-                    $"{row.Display.DisplayName}, {row.Display.SourceAttribution}, {availability}",
-                orientation: ActionSurfaceOrientation.Vertical)
+                    $"{row.Display.DisplayName}, {row.Display.SourceAttribution}, {availability}")
             .Disabled(!interactive)
-            .Classes("playnite-library-tile");
+            .AddClasses("playnite-library-tile");
     }
 
     private static WidgetElement Tile(
@@ -814,7 +810,7 @@ internal static class PlayniteLibraryPresentation
         var launching = string.Equals(savedId, launchingSavedId, StringComparison.Ordinal);
         var artwork = artworkHandle is { Length: > 0 }
             ? TileArtwork.FromHandle(new WidgetArtworkHandle(artworkHandle), title, ImageFit.Cover)
-            : TileArtwork.FromGlyph(WidgetGlyph.Play, title);
+            : null;
         var availability = PlayniteLibraryAvailabilityPresentation.Tile(current, interactive);
         var state = launching ? "Pending" : launchState switch
         {
@@ -830,13 +826,12 @@ internal static class PlayniteLibraryPresentation
         if (preferred) traits.Add("Preferred variant");
         if (groupSize > 1) traits.Add($"{groupSize} grouped variants");
         var subtitle = traits.Count == 0 ? source : source + " · " + string.Join(" · ", traits);
-        var tile = UI.Tile(title, state,
+        var tile = UI.PosterTile(title, state,
                 "playnite-library.launch", id, subtitle: subtitle, artwork: artwork,
-                accessibilityLabel: $"{title}, {subtitle}, {state}",
-                orientation: ActionSurfaceOrientation.Vertical)
+                accessibilityLabel: $"{title}, {subtitle}, {state}")
             .Busy(launching || availability.Busy)
             .Disabled(!interactive || !availability.Launchable)
-            .Classes("playnite-library-tile");
+            .AddClasses("playnite-library-tile");
         if (interactive && current is not null && !launching)
             tile = tile
                 .Shortcut(ControllerButton.X, actionId: "playnite-library.favorite")
@@ -854,11 +849,11 @@ internal static class PlayniteLibraryPresentation
         return collectionItem ? tile.CollectionItem(key) : tile;
     }
 
-    private static TileArtwork Artwork(PlayniteLibraryItem item) =>
+    private static TileArtwork? PosterArtwork(PlayniteLibraryItem item) =>
         item.Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile) is { } artwork
             ? TileArtwork.FromHandle(new WidgetArtworkHandle(artwork.Handle),
                 item.Presentation.DisplayName, ImageFit.Cover)
-            : TileArtwork.FromGlyph(WidgetGlyph.Play, item.Presentation.DisplayName);
+            : null;
 
     private static PlayniteLibraryLaunchState? LaunchStateFor(
         IReadOnlyDictionary<string, PlayniteLibraryLaunchState> states,
