@@ -272,7 +272,7 @@ void ResponsiveFocusHandoffUsesInteractionOwner() {
           "new snapshot authority with unchanged geometry preserves exact focus");
 }
 
-void RememberedGroupsUseOnlyExplicitEntryOwner() {
+void RememberedGroupsUseExplicitAndGeometricEntryOwners() {
     using namespace widgetrail::input;
     widgetrail::WidgetSnapshot snapshot;
     snapshot.sequence = 91;
@@ -309,13 +309,27 @@ void RememberedGroupsUseOnlyExplicitEntryOwner() {
               initial.target == L"groups.play",
           "explicit group entry resolves the authored initial descendant");
 
+    snapshot.root.children.front().focusDown.clear();
+    initial = fresh.ResolveDirectionalFocus(
+        L"groups.widget", snapshot, NavigationDirection::Down, render);
+    Check(initial.disposition == DirectionalFocusDisposition::Geometric &&
+              initial.target == L"groups.play",
+          "external geometric entry treats the group as one composite and resolves its initial child");
+
     fresh.SetFocus(L"groups.widget", snapshot, L"groups.seek");
     fresh.SetFocus(L"groups.widget", snapshot, L"groups.entry");
     auto remembered = fresh.ResolveDirectionalFocus(
         L"groups.widget", snapshot, NavigationDirection::Down, render);
-    Check(remembered.disposition == DirectionalFocusDisposition::Explicit &&
+    Check(remembered.disposition == DirectionalFocusDisposition::Geometric &&
               remembered.target == L"groups.seek",
-          "ordinary interaction owner restores the exact remembered group child");
+          "geometric group entry restores the exact remembered child");
+
+    fresh.SetFocus(L"groups.widget", snapshot, L"groups.play");
+    const auto internal = fresh.ResolveDirectionalFocus(
+        L"groups.widget", snapshot, NavigationDirection::Right, render);
+    Check(internal.disposition == DirectionalFocusDisposition::Geometric &&
+              internal.target == L"groups.seek",
+          "navigation inside a remembered group remains ordinary leaf geometry");
 
     auto successor = snapshot;
     successor.sequence++;
@@ -795,7 +809,7 @@ void PaginationPrefetchLifecycle() {
 int main() {
     FocusAndSurfaceLifecycle();
     ResponsiveFocusHandoffUsesInteractionOwner();
-    RememberedGroupsUseOnlyExplicitEntryOwner();
+    RememberedGroupsUseExplicitAndGeometricEntryOwners();
     FreeScrollAndRetainedRefreshLifecycle();
     ExactSliderRequestAuthorityAndRollback();
     PressedAndAdmissionReconciliation();

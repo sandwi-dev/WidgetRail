@@ -20,6 +20,16 @@ struct PointerHitTarget final {
     bool enabled{};
 };
 
+/// One non-focusable remembered-child group projected into geometric
+/// navigation. Bounds exist only when at least one descendant is currently
+/// visible and navigable. All in-scope descendant focus IDs remain listed so
+/// hidden or revealable leaves cannot bypass their external-entry owner.
+struct GeometricFocusGroupCandidate final {
+    std::wstring groupId;
+    std::optional<declarative::Rect> bounds;
+    std::vector<std::wstring> descendantFocusIds;
+};
+
 enum class ScrollPaginationEdge {
     Before,
     After,
@@ -95,6 +105,26 @@ struct FocusedScrollResolution final {
 [[nodiscard]] std::optional<std::wstring> FindGeometricFocusTarget(
     std::wstring_view currentId,
     NavigationDirection direction,
+    const RenderResult& renderResult);
+
+/// Applies the ordinary geometric score to standalone controls plus external
+/// remembered-child group candidates. Descendant leaves of supplied groups
+/// are suppressed, even when clipped or revealable, so entry cannot bypass
+/// remembered/initial group authority.
+[[nodiscard]] std::optional<std::wstring> FindGeometricFocusTarget(
+    std::wstring_view currentId,
+    NavigationDirection direction,
+    const RenderResult& renderResult,
+    const std::vector<GeometricFocusGroupCandidate>& groups);
+
+/// Collects deterministic outermost remembered-child groups in the active
+/// input scope. A group is represented by the union of its currently visible,
+/// navigable descendants. If focus is already inside any such group, returns
+/// no groups so internal navigation remains ordinary leaf-to-leaf geometry.
+[[nodiscard]] std::vector<GeometricFocusGroupCandidate>
+FindExternalFocusGroupCandidates(
+    const WidgetSnapshot& snapshot,
+    std::wstring_view focusedElementId,
     const RenderResult& renderResult);
 
 /// Re-enters ordinary focus navigation after right-stick free scroll. The

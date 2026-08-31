@@ -204,6 +204,22 @@ public sealed partial class YouTubeWidgetTests
     }
 
     [TestMethod]
+    public async Task SetupAppBarDeclaresItsEnabledRouteAsRememberedGroupEntry()
+    {
+        var widget = await CreateConfiguredSearchWidgetAsync();
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "youtube.setup.open", "youtube.search.setup"));
+
+        var setup = widget.RenderSnapshot("youtube-test", 1);
+        var appBar = Find(setup.Root, "youtube.setup.appbar");
+        Assert.AreEqual("youtube.search.open-route", appBar.InitialChildFocusId);
+        Assert.AreNotEqual(true,
+            Find(setup.Root, "youtube.search.open-route").IsDisabled);
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(setup));
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    [TestMethod]
     public async Task AcceptedPlayerSnapshotAndStylesStayCompactAccessibleAndStateful()
     {
         var widget = await CreateConfiguredLinkWidgetAsync();

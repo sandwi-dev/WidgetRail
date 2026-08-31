@@ -108,6 +108,137 @@ bool Intersects(const Rect& item, const Rect& viewport) noexcept {
         item.y + item.height > viewport.y + epsilon;
 }
 
+void ExpandBounds(std::optional<Rect>& bounds, const Rect& candidate) noexcept {
+    if (!bounds) {
+        bounds = candidate;
+        return;
+    }
+    const float left = std::min(bounds->x, candidate.x);
+    const float top = std::min(bounds->y, candidate.y);
+    const float right = std::max(
+        bounds->x + bounds->width, candidate.x + candidate.width);
+    const float bottom = std::max(
+        bounds->y + bounds->height, candidate.y + candidate.height);
+    *bounds = {left, top, right - left, bottom - top};
+}
+
+void CollectFocusGroupDescendants(
+    const WidgetNode& group,
+    const std::wstring_view activeScopeId,
+    const std::wstring_view inheritedScope,
+    const RenderResult& renderResult,
+    GeometricFocusGroupCandidate& candidate) {
+    const auto& geometry = renderResult.navigationRects.empty()
+        ? renderResult.focusRects
+        : renderResult.navigationRects;
+    for (const auto& child : group.children) {
+        const std::wstring_view childScope = child.inputScopeId.empty()
+            ? inheritedScope
+            : std::wstring_view(child.inputScopeId);
+        const auto navigation = geometry.find(child.id);
+        const auto scope = renderResult.focusScopes.find(child.id);
+        if (childScope == activeScopeId &&
+            navigation != geometry.end() &&
+            scope != renderResult.focusScopes.end() &&
+            scope->second == activeScopeId) {
+            candidate.descendantFocusIds.push_back(child.id);
+            const auto visible = renderResult.focusRects.find(child.id);
+            if (visible != renderResult.focusRects.end() &&
+                visible->second.width > 0.0F && visible->second.height > 0.0F &&
+                IsEnabledFocusTarget(child.id, renderResult)) {
+                ExpandBounds(candidate.bounds, visible->second);
+            }
+        }
+        CollectFocusGroupDescendants(
+            child, activeScopeId, childScope, renderResult, candidate);
+    }
+}
+
+void CollectOutermostFocusGroups(
+    const WidgetNode& node,
+    const std::wstring_view activeScopeId,
+    const std::wstring_view inheritedScope,
+    const RenderResult& renderResult,
+    std::vector<GeometricFocusGroupCandidate>& groups) {
+    const std::wstring_view scope = node.inputScopeId.empty()
+        ? inheritedScope
+        : std::wstring_view(node.inputScopeId);
+    if (scope == activeScopeId && !node.initialChildFocusId.empty()) {
+        GeometricFocusGroupCandidate candidate;
+        candidate.groupId = node.id;
+        CollectFocusGroupDescendants(
+            node, activeScopeId, scope, renderResult, candidate);
+        groups.push_back(std::move(candidate));
+        return;
+    }
+    for (const auto& child : node.children) {
+        CollectOutermostFocusGroups(
+            child, activeScopeId, scope, renderResult, groups);
+    }
+}
+
+bool ContainsFocusId(
+    const GeometricFocusGroupCandidate& group,
+    const std::wstring_view id) noexcept {
+    return std::ranges::find(group.descendantFocusIds, id) !=
+        group.descendantFocusIds.end();
+}
+
+struct GeometricFocusScore final {
+    bool inDirection{};
+    std::tuple<bool, float, float, std::wstring> value{
+        true,
+        std::numeric_limits<float>::infinity(),
+        std::numeric_limits<float>::infinity(),
+        {}};
+};
+
+GeometricFocusScore ScoreGeometricCandidate(
+    const Rect& current,
+    const Rect& candidate,
+    const NavigationDirection direction,
+    std::wstring id) {
+    const float dx = CenterX(candidate) - CenterX(current);
+    const float dy = CenterY(candidate) - CenterY(current);
+    float primary{};
+    float perpendicular{};
+    bool inDirection{};
+    bool inBeam{};
+    switch (direction) {
+    case NavigationDirection::Left:
+        inDirection = dx < -0.5F;
+        primary = -dx;
+        perpendicular = std::abs(dy);
+        inBeam = Overlaps(current.y, current.y + current.height,
+                          candidate.y, candidate.y + candidate.height);
+        break;
+    case NavigationDirection::Right:
+        inDirection = dx > 0.5F;
+        primary = dx;
+        perpendicular = std::abs(dy);
+        inBeam = Overlaps(current.y, current.y + current.height,
+                          candidate.y, candidate.y + candidate.height);
+        break;
+    case NavigationDirection::Up:
+        inDirection = dy < -0.5F;
+        primary = -dy;
+        perpendicular = std::abs(dx);
+        inBeam = Overlaps(current.x, current.x + current.width,
+                          candidate.x, candidate.x + candidate.width);
+        break;
+    case NavigationDirection::Down:
+        inDirection = dy > 0.5F;
+        primary = dy;
+        perpendicular = std::abs(dx);
+        inBeam = Overlaps(current.x, current.x + current.width,
+                          candidate.x, candidate.x + candidate.width);
+        break;
+    case NavigationDirection::None:
+        break;
+    }
+    return {inDirection, {!inBeam, primary, perpendicular, std::move(id)}};
+}
+
 void CollectScrollPaginationActions(
     const WidgetNode& node,
     const std::wstring_view activeScopeId,
@@ -374,6 +505,14 @@ std::optional<std::wstring> FindGeometricFocusTarget(
     const std::wstring_view currentId,
     const NavigationDirection direction,
     const RenderResult& renderResult) {
+    return FindGeometricFocusTarget(currentId, direction, renderResult, {});
+}
+
+std::optional<std::wstring> FindGeometricFocusTarget(
+    const std::wstring_view currentId,
+    const NavigationDirection direction,
+    const RenderResult& renderResult,
+    const std::vector<GeometricFocusGroupCandidate>& groups) {
     if (direction == NavigationDirection::None) return std::nullopt;
     const auto& geometry = renderResult.navigationRects.empty()
         ? renderResult.focusRects
@@ -392,61 +531,56 @@ std::optional<std::wstring> FindGeometricFocusTarget(
         std::numeric_limits<float>::infinity(),
         std::wstring{}};
     for (const auto& [id, candidate] : geometry) {
-        if (id == currentId || !IsEnabledFocusTarget(id, renderResult)) continue;
+        if (id == currentId || !IsEnabledFocusTarget(id, renderResult) ||
+            std::ranges::any_of(groups, [&](const auto& group) {
+                return ContainsFocusId(group, id);
+            })) continue;
         const auto candidateScopeEntry = renderResult.focusScopes.find(id);
         const std::wstring_view candidateScope =
             candidateScopeEntry == renderResult.focusScopes.end()
                 ? std::wstring_view{}
                 : std::wstring_view(candidateScopeEntry->second);
         if (candidateScope != currentScope) continue;
-        const float dx = CenterX(candidate) - CenterX(current);
-        const float dy = CenterY(candidate) - CenterY(current);
-        float primary{};
-        float perpendicular{};
-        bool inDirection{};
-        bool inBeam{};
-        switch (direction) {
-        case NavigationDirection::Left:
-            inDirection = dx < -0.5F;
-            primary = -dx;
-            perpendicular = std::abs(dy);
-            inBeam = Overlaps(current.y, current.y + current.height,
-                              candidate.y, candidate.y + candidate.height);
-            break;
-        case NavigationDirection::Right:
-            inDirection = dx > 0.5F;
-            primary = dx;
-            perpendicular = std::abs(dy);
-            inBeam = Overlaps(current.y, current.y + current.height,
-                              candidate.y, candidate.y + candidate.height);
-            break;
-        case NavigationDirection::Up:
-            inDirection = dy < -0.5F;
-            primary = -dy;
-            perpendicular = std::abs(dx);
-            inBeam = Overlaps(current.x, current.x + current.width,
-                              candidate.x, candidate.x + candidate.width);
-            break;
-        case NavigationDirection::Down:
-            inDirection = dy > 0.5F;
-            primary = dy;
-            perpendicular = std::abs(dx);
-            inBeam = Overlaps(current.x, current.x + current.width,
-                              candidate.x, candidate.x + candidate.width);
-            break;
-        default: break;
-        }
-        if (!inDirection) continue;
+        const auto score = ScoreGeometricCandidate(
+            current, candidate, direction, id);
+        if (!score.inDirection) continue;
         // Lexicographic scoring makes behavior deterministic: controls in the
         // same row/column win, then nearest forward distance, then lateral
         // distance, then stable ID for exact geometric ties.
-        const auto score = std::tuple{!inBeam, primary, perpendicular, id};
-        if (score < bestScore) {
-            bestScore = score;
+        if (score.value < bestScore) {
+            bestScore = score.value;
             best = id;
         }
     }
+    for (const auto& group : groups) {
+        if (!group.bounds) continue;
+        const auto score = ScoreGeometricCandidate(
+            current, *group.bounds, direction, group.groupId);
+        if (score.inDirection && score.value < bestScore) {
+            bestScore = score.value;
+            best = group.groupId;
+        }
+    }
     return best;
+}
+
+std::vector<GeometricFocusGroupCandidate> FindExternalFocusGroupCandidates(
+    const WidgetSnapshot& snapshot,
+    const std::wstring_view focusedElementId,
+    const RenderResult& renderResult) {
+    std::vector<GeometricFocusGroupCandidate> groups;
+    const std::wstring_view rootScope = snapshot.root.inputScopeId.empty()
+        ? std::wstring_view(snapshot.root.id)
+        : std::wstring_view(snapshot.root.inputScopeId);
+    CollectOutermostFocusGroups(
+        snapshot.root, snapshot.activeInputScopeId, rootScope,
+        renderResult, groups);
+    if (std::ranges::any_of(groups, [&](const auto& group) {
+            return ContainsFocusId(group, focusedElementId);
+        })) {
+        groups.clear();
+    }
+    return groups;
 }
 
 std::optional<std::wstring> FindFreeScrollReentryTarget(

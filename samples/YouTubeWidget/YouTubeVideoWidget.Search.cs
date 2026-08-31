@@ -173,6 +173,7 @@ public sealed partial class YouTubeVideoWidget
                         .Classes("youtube-appbar-copy"),
                     UI.Button(routeActionLabel, routeActionId, routeActionId)
                         .Disabled(busy).Classes("youtube-route-button"))
+                .RememberChildFocus(routeActionId)
                 .Classes("youtube-appbar"),
             UI.Stack("youtube.setup.intro-card",
                     UI.Text(configured ? "Update your search access" : "Connect public-video search",

@@ -90,8 +90,25 @@ DirectionalFocusResolution SurfaceInteractionTransactions::ResolveDirectionalFoc
             return {DirectionalFocusDisposition::Explicit, std::move(target)};
         }
     }
+    const auto focusGroupCandidates = focusGroups
+        ? FindExternalFocusGroupCandidates(
+              snapshot, focusedElementId, renderResult)
+        : std::vector<GeometricFocusGroupCandidate>{};
     if (const auto geometric = FindGeometricFocusTarget(
-            focusedElementId, direction, renderResult)) {
+            focusedElementId, direction, renderResult,
+            focusGroupCandidates)) {
+        const auto group = std::ranges::find_if(
+            focusGroupCandidates, [&](const auto& candidate) {
+                return candidate.groupId == *geometric;
+            });
+        if (group != focusGroupCandidates.end()) {
+            if (auto target = focusGroups->Resolve(
+                    widgetId, snapshot, group->groupId, renderResult)) {
+                return {DirectionalFocusDisposition::Geometric,
+                        std::move(target)};
+            }
+            return {DirectionalFocusDisposition::Boundary, {}};
+        }
         return {DirectionalFocusDisposition::Geometric, *geometric};
     }
     return {DirectionalFocusDisposition::Boundary, {}};
