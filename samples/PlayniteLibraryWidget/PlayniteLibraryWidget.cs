@@ -95,7 +95,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             var connectionView = PlayniteLibraryConnectionPresentation.Render(connection);
             return connectionView with
             {
-                Root = _navigation.Scope(navigation, (StackElement)connectionView.Root),
+                Root = _navigation.Scope(navigation, connectionView.Root),
                 InitialFocusId = connectionView.InitialFocusId,
                 ActiveInputScopeId = navigation.InputScopeId,
             };
@@ -137,7 +137,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             : PlayniteLibraryDetailsPresentation.Render(details);
         var root = titleEditor is not null || actionSheet is not null
             ? view.Root
-            : _navigation.Scope(navigation, (StackElement)view.Root);
+            : _navigation.Scope(navigation, view.Root);
         return view with
         {
             Root = root,

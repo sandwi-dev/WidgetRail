@@ -465,7 +465,11 @@ it only as a pressed action from the exact current input scope. Leaving a route
 cancels `Value.RouteCancellationToken` before invalidating the new snapshot;
 bind route-specific reads to that token. It remembers focus per route and the
 parent source focus for Back. Depth is bounded (eight by default, 16 maximum),
-known routes are bounded (32), and overflow returns `RejectedCapacity`.
+known routes are bounded (32), and overflow returns `RejectedCapacity`. Pass a
+page `ContainerElement` directly to `Scope`: Stack, Row, Scroll, Grid, and
+future container roots preserve their concrete immutable type. Do not cast a
+page root to a particular layout type; a leaf control is rejected immediately
+because it cannot own the navigator input scope or its Back shortcut.
 
 Use `WidgetIds` for large stable hierarchies:
 

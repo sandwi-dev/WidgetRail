@@ -1027,14 +1027,18 @@ method WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.ToString() -> strin
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Back(string? sourceFocusId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Navigate(TRoute route, string? sourceFocusId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Push(TRoute route, string? sourceFocusId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
+method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.ContainerElement root) -> WidgetRail.WidgetSdk.ContainerElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.GridElement root) -> WidgetRail.WidgetSdk.GridElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.RowElement root) -> WidgetRail.WidgetSdk.RowElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.ScrollElement root) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.StackElement root) -> WidgetRail.WidgetSdk.StackElement
+method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetElement root) -> WidgetRail.WidgetSdk.ContainerElement
+method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, WidgetRail.WidgetSdk.ContainerElement root) -> WidgetRail.WidgetSdk.ContainerElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, WidgetRail.WidgetSdk.GridElement root) -> WidgetRail.WidgetSdk.GridElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, WidgetRail.WidgetSdk.RowElement root) -> WidgetRail.WidgetSdk.RowElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, WidgetRail.WidgetSdk.ScrollElement root) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, WidgetRail.WidgetSdk.StackElement root) -> WidgetRail.WidgetSdk.StackElement
+method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, WidgetRail.WidgetSdk.WidgetElement root) -> WidgetRail.WidgetSdk.ContainerElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.TryHandleBack(WidgetRail.WidgetSdk.WidgetActionEvent action, string? sourceFocusId = null) -> bool
 method WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.<Clone>$() -> WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails
 method WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.Deconstruct(out long Revision, out WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsState State, out WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity Connectivity, out WidgetRail.WidgetSdk.WidgetNetworkTransportKind Transport, out System.Collections.Generic.IReadOnlyList<string> IpAddresses, out System.Collections.Generic.IReadOnlyList<string> DefaultGateways, out System.Collections.Generic.IReadOnlyList<string> DnsServers) -> void

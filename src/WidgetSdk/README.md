@@ -504,8 +504,12 @@ destination, `Push` opens a nested route, `Back` pops it, and
 current input scope. Render the current route through `Scope(root)` and publish
 `Value.InitialFocusId` plus `Value.InputScopeId`. Route changes cancel
 `Value.RouteCancellationToken` before invalidating, and focus is remembered per
-route and restored to the parent source on Back. The default maximum depth is
-eight (16 hard maximum) and the route-identity table is bounded at 32.
+route and restored to the parent source on Back. `Scope` accepts every
+`ContainerElement` root, preserving its concrete Stack, Row, Scroll, Grid, or
+future container type; it rejects a leaf control before any route dispatch
+because only a container can own an input scope and Back shortcut. The default
+maximum depth is eight (16 hard maximum) and the route-identity table is bounded
+at 32.
 
 All open-widget actions produced by the standard router carry the current
 `WidgetActionEvent.InputScopeId`, including A activation, focused/root

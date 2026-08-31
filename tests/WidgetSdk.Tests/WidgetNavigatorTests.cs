@@ -7,6 +7,7 @@ internal static class WidgetNavigatorTests
     {
         await RoutesRestoreFocusAndCancelStaleWorkAsync();
         await NestedBackIsScopedAndLifecycleOwnedAsync();
+        await ScopeComposesEveryContainerAndRejectsLeafRootsAsync();
         CapacityAndAuthoringConflictsFailClosed();
     }
 
@@ -111,6 +112,40 @@ internal static class WidgetNavigatorTests
         Throws<ObjectDisposedException>(() => widget.Navigation.Back());
     }
 
+    private static async Task ScopeComposesEveryContainerAndRejectsLeafRootsAsync()
+    {
+        using var widget = new NavigationWidget();
+        await WidgetTestHost.InitializeAsync(widget);
+        Equal(WidgetNavigationResult.Changed,
+            widget.Navigation.Push(Route.Detail, "player.open-detail"));
+        var nested = widget.Navigation.Value;
+        var roots = new ContainerElement[]
+        {
+            UI.Stack("scope.stack", UI.Button("Open", "open", "scope.stack.action")),
+            UI.Row("scope.row", UI.Button("Open", "open", "scope.row.action")),
+            UI.VerticalScroll("scope.scroll", UI.Button("Open", "open", "scope.scroll.action")),
+            UI.ResponsiveGrid("scope.grid", 220, 4,
+                UI.Button("Open", "open", "scope.grid.action")),
+        };
+
+        foreach (var root in roots)
+        {
+            var scoped = widget.Navigation.Scope(nested, (WidgetElement)root);
+            Equal(root.GetType(), scoped.GetType());
+            Equal(root.Id, scoped.Id);
+            Equal(nested.InputScopeId, scoped.InputScopeId!);
+            Equal(1, scoped.Shortcuts.Count(IsPressedBack));
+            False(root.Shortcuts.Any(IsPressedBack),
+                "Scope composition mutated an immutable authored container.");
+        }
+
+        var leaf = Throws<ArgumentException>(() => widget.Navigation.Scope(
+            nested, (WidgetElement)UI.Button("Open", "open", "scope.leaf.action")));
+        True(leaf.Message.Contains("ContainerElement", StringComparison.Ordinal),
+            "Leaf-root rejection did not identify the required container contract.");
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
     private static void CapacityAndAuthoringConflictsFailClosed()
     {
         using var widget = new NavigationWidget(maximumDepth: 1, maximumRoutes: 2);
@@ -201,15 +236,15 @@ internal static class WidgetNavigatorTests
             throw new InvalidOperationException($"Expected '{expected}', got '{actual}'.");
     }
 
-    private static void Throws<TException>(Action action) where TException : Exception
+    private static TException Throws<TException>(Action action) where TException : Exception
     {
         try
         {
             action();
         }
-        catch (TException)
+        catch (TException exception)
         {
-            return;
+            return exception;
         }
         throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
     }

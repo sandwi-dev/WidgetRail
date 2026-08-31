@@ -208,52 +208,59 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
 
     /// <summary>
     /// Applies the current stable input scope and publishes B only for a nested
-    /// route. Use the returned scope and <see cref="Value"/> together when
-    /// constructing a <see cref="WidgetView"/>.
+    /// route. Scope accepts any declarative container while preserving its
+    /// concrete immutable container type at runtime. Use the returned scope and
+    /// <see cref="Value"/> together when constructing a <see cref="WidgetView"/>.
     /// </summary>
+    public ContainerElement Scope(ContainerElement root) => Scope(Value, root);
+
+    public ContainerElement Scope(
+        WidgetNavigationSnapshot<TRoute> snapshot,
+        ContainerElement root) => ApplyScope(snapshot, root);
+
+    /// <summary>
+    /// Validates a dynamically supplied page root before applying navigator
+    /// scope ownership. Only layout containers can own a scope or Back shortcut.
+    /// </summary>
+    public ContainerElement Scope(WidgetElement root) => Scope(Value, root);
+
+    public ContainerElement Scope(
+        WidgetNavigationSnapshot<TRoute> snapshot,
+        WidgetElement root)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        if (root is not ContainerElement container)
+            throw new ArgumentException(
+                "A WidgetNavigator scope root must be a ContainerElement; leaf controls cannot own an input scope or Back shortcut.",
+                nameof(root));
+        return Scope(snapshot, container);
+    }
+
+    // Keep concrete overloads for source and binary compatibility. Every
+    // container type delegates to the one shared ContainerElement owner above.
     public StackElement Scope(StackElement root) => Scope(Value, root);
 
     public StackElement Scope(
         WidgetNavigationSnapshot<TRoute> snapshot,
-        StackElement root) => ApplyScope(snapshot, root,
-        static (value, scope, shortcuts) => value with
-        {
-            InputScopeId = scope,
-            Shortcuts = shortcuts,
-        });
+        StackElement root) => (StackElement)Scope(snapshot, (ContainerElement)root);
 
     public RowElement Scope(RowElement root) => Scope(Value, root);
 
     public RowElement Scope(
         WidgetNavigationSnapshot<TRoute> snapshot,
-        RowElement root) => ApplyScope(snapshot, root,
-        static (value, scope, shortcuts) => value with
-        {
-            InputScopeId = scope,
-            Shortcuts = shortcuts,
-        });
+        RowElement root) => (RowElement)Scope(snapshot, (ContainerElement)root);
 
     public ScrollElement Scope(ScrollElement root) => Scope(Value, root);
 
     public ScrollElement Scope(
         WidgetNavigationSnapshot<TRoute> snapshot,
-        ScrollElement root) => ApplyScope(snapshot, root,
-        static (value, scope, shortcuts) => value with
-        {
-            InputScopeId = scope,
-            Shortcuts = shortcuts,
-        });
+        ScrollElement root) => (ScrollElement)Scope(snapshot, (ContainerElement)root);
 
     public GridElement Scope(GridElement root) => Scope(Value, root);
 
     public GridElement Scope(
         WidgetNavigationSnapshot<TRoute> snapshot,
-        GridElement root) => ApplyScope(snapshot, root,
-        static (value, scope, shortcuts) => value with
-        {
-            InputScopeId = scope,
-            Shortcuts = shortcuts,
-        });
+        GridElement root) => (GridElement)Scope(snapshot, (ContainerElement)root);
 
     public void Dispose()
     {
@@ -271,11 +278,9 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
         CancelAndDispose(lifetime);
     }
 
-    private TElement ApplyScope<TElement>(
+    private ContainerElement ApplyScope(
         WidgetNavigationSnapshot<TRoute> snapshot,
-        TElement root,
-        Func<TElement, string, IReadOnlyList<ControllerShortcut>, TElement> apply)
-        where TElement : ContainerElement
+        ContainerElement root)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(root);
@@ -319,7 +324,11 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
                 shortcuts = [.. shortcuts, new ControllerShortcut(
                     ControllerButton.B, snapshot.BackActionId)];
         }
-        return apply(root, snapshot.InputScopeId, shortcuts);
+        return root with
+        {
+            InputScopeId = snapshot.InputScopeId,
+            Shortcuts = shortcuts,
+        };
     }
 
     private CancellationTokenSource Advance(string? restoredFocus)
