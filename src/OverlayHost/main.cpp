@@ -6583,6 +6583,33 @@ private:
         };
     }
 
+    [[nodiscard]] std::optional<widgetrail::OverlayPresentationExtent>
+    ExactRefreshRetainedPresentationExtentDip() const noexcept {
+        if (state_.surface() != widgetrail::Surface::Widget ||
+            !committedWidgetVisualState_) {
+            return std::nullopt;
+        }
+        const std::wstring_view widgetId = state_.activeWidget();
+        const auto presentation = sessions_.Presentation(widgetId);
+        const auto* snapshot = presentation.snapshot;
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        const auto& committed = *committedWidgetVisualState_;
+        const auto& destination = presentationTransaction_.committedDestination();
+        if (presentation.authority !=
+                widgetrail::WidgetPresentationAuthority::RefreshRetained ||
+            !snapshot || !descriptor || !destination ||
+            committed.widgetId != widgetId ||
+            committed.instanceId != snapshot->instanceId ||
+            committed.runtimeGeneration != descriptor->runtimeGeneration ||
+            committed.presentationGeneration !=
+                descriptor->presentationGeneration ||
+            committed.snapshotSequence != snapshot->sequence ||
+            destination->widgetId != widgetId) {
+            return std::nullopt;
+        }
+        return destination->extentDip;
+    }
+
     [[nodiscard]] std::optional<widgetrail::OverlaySurfaceGeometry>
     ComputeCurrentWidgetSurfaceGeometry(
         const float viewportWidthDip,
@@ -6603,6 +6630,8 @@ private:
         }
         if (OverlayFullscreenMediaRequested())
             return OverlayFullscreenPresentationExtentDip();
+        if (const auto retained = ExactRefreshRetainedPresentationExtentDip())
+            return *retained;
         const auto target = DesiredWidgetSurfaceTarget();
         if (compositionSurface_.available()) {
             return DesiredContentPanelExtentDip();
@@ -6693,6 +6722,8 @@ private:
     struct CommittedWidgetVisualState final {
         std::wstring widgetId;
         std::wstring instanceId;
+        std::wstring runtimeGeneration;
+        std::wstring presentationGeneration;
         std::wstring focusId;
         std::wstring pressedElementId;
         long long snapshotSequence{};
@@ -12185,6 +12216,7 @@ private:
         if (overlayFullscreen && layer == CompositionPaintLayer::Content) {
             ClearAccessibilityTree();
             const auto* snapshot = SnapshotFor(state_.activeWidget());
+            const auto* descriptor = sessions_.FindDescriptor(state_.activeWidget());
             if (snapshot && snapshot->embeddedMedia) {
                 const auto bounds =
                     widgetrail::ResolveOverlayFullscreenMediaSurfaceBounds(
@@ -12216,6 +12248,8 @@ private:
                         lastWidgetRenderResult_ = result;
                         committedWidgetVisualState_ = CommittedWidgetVisualState{
                             std::wstring{state_.activeWidget()}, snapshot->instanceId,
+                            descriptor ? descriptor->runtimeGeneration : std::wstring{},
+                            descriptor ? descriptor->presentationGeneration : std::wstring{},
                             {}, {}, snapshot->sequence, 0,
                             appearanceState_.current()
                                 ? appearanceState_.current()->revision : 0,
@@ -14636,6 +14670,8 @@ private:
                     committedWidgetVisualState_ = CommittedWidgetVisualState{
                         std::wstring{renderedWidget},
                         snapshot->instanceId,
+                        descriptor ? descriptor->runtimeGeneration : std::wstring{},
+                        descriptor ? descriptor->presentationGeneration : std::wstring{},
                         std::wstring{renderedFocusId},
                         options.pressedElementId,
                         snapshot->sequence,
