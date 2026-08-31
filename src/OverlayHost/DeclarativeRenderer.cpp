@@ -2922,11 +2922,6 @@ struct DeclarativeRenderer::RenderPass final {
             node.children.size() == 2U) {
             result.posterArtworkRects[node.children.front().id] = presented.borderBox;
         }
-
-        if (node.kind == L"backgroundSurface" &&
-            (!node.imageSource.empty() || !node.artworkHandle.empty())) {
-            DrawImage(node, style, paintRect, opacity, false, false);
-        }
 #endif
 
         const auto visibleRect = presented.visibleBox;
@@ -3004,6 +2999,11 @@ struct DeclarativeRenderer::RenderPass final {
         // control surface; the Slider itself stays visually lightweight.
         if (node.kind != L"slider" && node.kind != L"loadingIndicator")
             DrawSurface(node, style, paintRect, opacity);
+
+        if (node.kind == L"backgroundSurface" &&
+            (!node.imageSource.empty() || !node.artworkHandle.empty())) {
+            DrawImage(node, style, paintRect, opacity, false, false);
+        }
 
         if (node.kind == L"actionSurface" &&
             node.actionSurfacePresentation == L"poster") {

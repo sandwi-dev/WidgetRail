@@ -885,12 +885,38 @@ void PosterTileUsesFixedFullBleedGeometry() {
 
 void BackgroundSurfacePreservesForegroundAuthority() {
     using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+              D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "create D2D factory for background-surface painting");
     ComPtr<IDWriteFactory> write;
     Check(SUCCEEDED(DWriteCreateFactory(
               DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
               reinterpret_cast<IUnknown**>(write.GetAddressOf()))),
         "create DirectWrite factory for background-surface geometry");
-    DeclarativeRenderer renderer{nullptr, write.Get(), nullptr};
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+              CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+              IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "create WIC factory for background-surface painting");
+    ComPtr<IWICBitmap> canvas;
+    Check(SUCCEEDED(wic->CreateBitmap(
+              420, 240, GUID_WICPixelFormat32bppPBGRA,
+              WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+        "create WIC canvas for background-surface painting");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+              canvas.Get(), D2D1::RenderTargetProperties(),
+              target.ReleaseAndGetAddressOf())),
+        "create render target for background-surface painting");
+    std::vector<std::wstring> requestedArtwork;
+    widgetrail::RemoteImageCache cache(
+        {}, {}, {},
+        [&](const std::wstring_view key) {
+            requestedArtwork.emplace_back(key);
+            return true;
+        });
+    DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
 
     WidgetSnapshot snapshot;
     snapshot.sequence = 38;
@@ -922,9 +948,13 @@ void BackgroundSurfacePreservesForegroundAuthority() {
 
     widgetrail::DeclarativeRenderOptions options;
     options.collectAccessibility = true;
+    options.artworkWidgetId = L"background-widget";
+    target->BeginDraw();
     const auto result = renderer.Render(
-        nullptr, snapshot, L"background.open",
+        target.Get(), snapshot, L"background.open",
         {0.0F, 0.0F, 420.0F, 240.0F}, options);
+    Check(SUCCEEDED(target->EndDraw()),
+        "ordinary background-surface raster draw completes");
     const auto& root = result.elementRects.at(L"background.root");
     Near(root.width, 420.0F, "ordinary root is bounded to admitted viewport width");
     Near(root.height, 240.0F, "ordinary root is bounded to admitted viewport height");
@@ -942,6 +972,11 @@ void BackgroundSurfacePreservesForegroundAuthority() {
               result.accessibilityRegions.begin(), result.accessibilityRegions.end(),
               [](const auto& region) { return region.nodeId == L"background"; }),
         "BackgroundSurface contributes no duplicate accessibility semantic");
+    Check(requestedArtwork.size() == 1U && requestedArtwork.front() ==
+              widgetrail::RemoteImageCache::TrustedArtworkKey(
+                  L"background-widget", L"background", L"gallery.background"),
+        "ordinary rendering requests the exact trusted background behind its foreground child");
+    cache.Shutdown();
 }
 
 WidgetSnapshot ResponsiveGridSnapshot() {
@@ -4383,17 +4418,20 @@ void MediaViewportUsesFinalDeclarativeGeometry() {
     snapshot.sequence = 7;
     snapshot.instanceId = L"aurora.instance";
     snapshot.activeInputScopeId = L"aurora.root";
-    snapshot.embeddedMedia = widgetrail::EmbeddedMediaSurfaceDeclaration{
-        L"aurora.primary",
-        L"Aurora local media",
-        L"media/aurora.html",
-        widgetrail::WidgetSurfaceHints{
-            L"adaptive", std::nullopt, std::nullopt,
-            640.0, 360.0, 240.0, 180.0},
-        16.0 / 9.0,
-        {{L"media/aurora.html", L"text/html"}},
-        {L"activate", L"togglePlayback"},
-    };
+    widgetrail::EmbeddedMediaSurfaceDeclaration mediaDeclaration;
+    mediaDeclaration.id = L"aurora.primary";
+    mediaDeclaration.accessibleName = L"Aurora local media";
+    mediaDeclaration.entryAsset = L"media/aurora.html";
+    mediaDeclaration.surface.mode = L"adaptive";
+    mediaDeclaration.surface.appearance = L"theme";
+    mediaDeclaration.surface.preferredWidth = 640.0;
+    mediaDeclaration.surface.preferredHeight = 360.0;
+    mediaDeclaration.surface.minimumWidth = 240.0;
+    mediaDeclaration.surface.minimumHeight = 180.0;
+    mediaDeclaration.aspectRatio = 16.0 / 9.0;
+    mediaDeclaration.resources = {{L"media/aurora.html", L"text/html"}};
+    mediaDeclaration.commands = {L"activate", L"togglePlayback"};
+    snapshot.embeddedMedia = std::move(mediaDeclaration);
     snapshot.root = Node(L"aurora.root", L"stack");
     snapshot.root.baseStyle = {
         {L"padding", LengthList(L"12px")},
