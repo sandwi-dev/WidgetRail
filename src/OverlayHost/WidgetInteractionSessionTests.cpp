@@ -291,15 +291,26 @@ void RememberedGroupsUseExplicitAndGeometricEntryOwners() {
     controls.initialChildFocusId = L"groups.play";
     controls.children.push_back(Button(L"groups.play"));
     controls.children.push_back(Button(L"groups.seek"));
-    snapshot.root.children = {std::move(entry), std::move(controls)};
+    widgetrail::WidgetNode routes;
+    routes.id = L"groups.routes";
+    routes.kind = L"row";
+    routes.initialChildFocusId = L"groups.link";
+    routes.children.push_back(Button(L"groups.link"));
+    routes.children.push_back(Button(L"groups.setup"));
+    snapshot.root.children = {
+        std::move(entry), std::move(controls), std::move(routes)};
 
     widgetrail::RenderResult render;
     AddRenderTarget(render, L"groups.entry", {0.0F, 0.0F, 100.0F, 30.0F});
     AddRenderTarget(render, L"groups.play", {0.0F, 50.0F, 100.0F, 30.0F});
     AddRenderTarget(render, L"groups.seek", {120.0F, 50.0F, 100.0F, 30.0F});
+    AddRenderTarget(render, L"groups.link", {0.0F, 100.0F, 100.0F, 30.0F});
+    AddRenderTarget(render, L"groups.setup", {120.0F, 100.0F, 100.0F, 30.0F});
     render.focusScopes[L"groups.entry"] = L"groups.root";
     render.focusScopes[L"groups.play"] = L"groups.root";
     render.focusScopes[L"groups.seek"] = L"groups.root";
+    render.focusScopes[L"groups.link"] = L"groups.root";
+    render.focusScopes[L"groups.setup"] = L"groups.root";
 
     WidgetInteractionSession fresh;
     fresh.SetFocus(L"groups.widget", snapshot, L"groups.entry");
@@ -330,6 +341,20 @@ void RememberedGroupsUseExplicitAndGeometricEntryOwners() {
     Check(internal.disposition == DirectionalFocusDisposition::Geometric &&
               internal.target == L"groups.seek",
           "navigation inside a remembered group remains ordinary leaf geometry");
+
+    const auto siblingInitial = fresh.ResolveDirectionalFocus(
+        L"groups.widget", snapshot, NavigationDirection::Down, render);
+    Check(siblingInitial.disposition == DirectionalFocusDisposition::Geometric &&
+              siblingInitial.target == L"groups.link",
+          "current-group leaf navigation retains a sibling composite group and resolves its initial child");
+
+    fresh.SetFocus(L"groups.widget", snapshot, L"groups.setup");
+    fresh.SetFocus(L"groups.widget", snapshot, L"groups.seek");
+    const auto siblingRemembered = fresh.ResolveDirectionalFocus(
+        L"groups.widget", snapshot, NavigationDirection::Down, render);
+    Check(siblingRemembered.disposition == DirectionalFocusDisposition::Geometric &&
+              siblingRemembered.target == L"groups.setup",
+          "sibling composite entry restores its deliberately remembered child");
 
     auto successor = snapshot;
     successor.sequence++;

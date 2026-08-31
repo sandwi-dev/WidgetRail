@@ -575,11 +575,9 @@ std::vector<GeometricFocusGroupCandidate> FindExternalFocusGroupCandidates(
     CollectOutermostFocusGroups(
         snapshot.root, snapshot.activeInputScopeId, rootScope,
         renderResult, groups);
-    if (std::ranges::any_of(groups, [&](const auto& group) {
-            return ContainsFocusId(group, focusedElementId);
-        })) {
-        groups.clear();
-    }
+    std::erase_if(groups, [&](const auto& group) {
+        return ContainsFocusId(group, focusedElementId);
+    });
     return groups;
 }
 
