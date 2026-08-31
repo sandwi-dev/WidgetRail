@@ -35,6 +35,10 @@ planner and implementation turns do not spend context on closed evidence.
   workflows, security, performance, responsive layout, and diagnostics.
   Scenario factory execution fails closed until an AppContainer preview worker
   exists.
+- [Immutable widget models](widget-model.md) — choose between local models,
+  resources, cursors, navigation, operations, and optimistic commands; define
+  equality-safe immutable state; and migrate a multi-field widget without a
+  second state owner.
 - [Platform architecture](platform-architecture.md) — process boundaries,
   data flow, and current implementation limits.
 - [Widget quickstart](widget-quickstart.md) — scaffold, build, validate, list

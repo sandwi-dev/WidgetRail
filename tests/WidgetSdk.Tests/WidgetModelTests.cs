@@ -8,8 +8,50 @@ internal static class WidgetModelTests
         await PublishesOnlyChangedStateAsync();
         await SerializesConcurrentUpdatesAsync();
         await DerivesResultsFromTheCommittedRevisionAsync();
+        await CustomComparerDefinesSemanticCollectionEqualityAsync();
+        await FailedUpdaterDoesNotCommitOrPublishAsync();
         await ContainsObserversAndStopsInvalidatingAfterDestroyAsync();
         RejectsInvalidInputs();
+    }
+
+    private static async Task CustomComparerDefinesSemanticCollectionEqualityAsync()
+    {
+        var widget = new CollectionModelWidget(
+            new CollectionState(["one", "two"], "ready"));
+        var invalidations = 0;
+        widget.Invalidated += (_, _) => invalidations++;
+        await WidgetTestHost.InitializeAsync(widget);
+
+        var equal = widget.Model.Set(new(["one", "two"], "ready"));
+        False(equal.Changed,
+            "The configured sequence comparer did not suppress an equal collection.");
+        Equal(0L, equal.Revision);
+        Equal(0, invalidations);
+
+        var changed = widget.Model.Set(new(["one", "three"], "ready"));
+        True(changed.Changed, "A distinct collection was not committed.");
+        Equal(1L, changed.Revision);
+        Equal(1, invalidations);
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    private static async Task FailedUpdaterDoesNotCommitOrPublishAsync()
+    {
+        var widget = new ModelWidget(new State(7, "ready"));
+        var invalidations = 0;
+        var changes = 0;
+        widget.Invalidated += (_, _) => invalidations++;
+        widget.Model.Changed += (_, _) => changes++;
+        await WidgetTestHost.InitializeAsync(widget);
+
+        Throws<InvalidOperationException>(() => widget.Model.Update(_ =>
+            throw new InvalidOperationException("fixture")));
+
+        Equal(new State(7, "ready"), widget.Model.Value);
+        Equal(0L, widget.Model.Snapshot.Revision);
+        Equal(0, invalidations);
+        Equal(0, changes);
+        await WidgetTestHost.DestroyAsync(widget);
     }
 
     private static async Task PublishesOnlyChangedStateAsync()
@@ -108,6 +150,26 @@ internal static class WidgetModelTests
 
     private sealed record State(int Count, string Status);
 
+    private sealed record CollectionState(IReadOnlyList<string> ItemIds, string Status);
+
+    private sealed class CollectionStateComparer : IEqualityComparer<CollectionState>
+    {
+        public bool Equals(CollectionState? left, CollectionState? right) =>
+            ReferenceEquals(left, right) ||
+            left is not null && right is not null &&
+            left.Status == right.Status &&
+            left.ItemIds.SequenceEqual(right.ItemIds, StringComparer.Ordinal);
+
+        public int GetHashCode(CollectionState state)
+        {
+            var hash = new HashCode();
+            hash.Add(state.Status, StringComparer.Ordinal);
+            foreach (var itemId in state.ItemIds)
+                hash.Add(itemId, StringComparer.Ordinal);
+            return hash.ToHashCode();
+        }
+    }
+
     private sealed class ModelWidget : Widget
     {
         internal ModelWidget(State initial) => Model = CreateModel(initial);
@@ -118,6 +180,18 @@ internal static class WidgetModelTests
 
         public override WidgetView Render() => new(
             UI.Stack("model.root", UI.Text(Model.Value.Status, "model.status")));
+    }
+
+    private sealed class CollectionModelWidget : Widget
+    {
+        internal CollectionModelWidget(CollectionState initial) =>
+            Model = CreateModel(initial, new CollectionStateComparer());
+
+        internal WidgetModel<CollectionState> Model { get; }
+
+        public override WidgetView Render() => new(
+            UI.Stack("collection-model.root", UI.Text(
+                Model.Value.Status, "collection-model.status")));
     }
 
     private static void True(bool value, string message)

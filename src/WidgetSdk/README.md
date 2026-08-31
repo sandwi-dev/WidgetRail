@@ -294,6 +294,11 @@ invalidation.
 Use `CreateModel<TState>(initialState)` in the widget constructor when several
 fields form one immutable render state:
 
+The complete public contract—including owner selection, collection equality,
+atomic reads, revisions, result-bearing updates, failure/publication behavior,
+Destroying semantics, and migration guidance—is in
+[Immutable widget models](../../docs/widget-model.md).
+
 ```csharp
 private readonly WidgetModel<PlayerState> _model;
 

@@ -33,6 +33,46 @@ foreach (var markdown in markdownFiles)
 
 var guidePath = Path.Combine(repository, "docs", "widget-authoring-guide.md");
 var guide = File.ReadAllText(guidePath);
+var modelPath = Path.Combine(repository, "docs", "widget-model.md");
+var model = File.ReadAllText(modelPath);
+var modelSource = File.ReadAllText(Path.Combine(
+    repository, "src", "WidgetSdk", "WidgetModel.cs"));
+string[] requiredModelContracts =
+[
+    "## Choose the owner, not just a container",
+    "## Equality is the publication contract",
+    "## Read one committed state",
+    "## Set and Update",
+    "## Publication and observation",
+    "## Migrate a field cluster without creating two owners",
+    "## Anti-patterns",
+    "WidgetResource<TValue>",
+    "WidgetCursorResource<TItem>",
+    "WidgetNavigator<TRoute>",
+    "WidgetOperations",
+    "WidgetOptimisticCommand<TState,TRequest,TExecution,TResult>",
+    "private readonly WidgetModel<CounterState> _model;",
+    "_model = CreateModel(CounterState.Initial);",
+    "var snapshot = _model.Snapshot;",
+    "return (next, new RefreshRequest(next.Filter));",
+    "../src/FirstPartyWidgets/MediaSessionsWidget/MediaSessionsWidget.cs",
+    "../samples/PlayniteLibraryWidget/PlayniteLibraryWidget.cs",
+];
+foreach (var contract in requiredModelContracts)
+    if (!model.Contains(contract, StringComparison.Ordinal))
+        failures.Add($"docs/widget-model.md is missing '{contract}'.");
+string[] requiredModelSourceContracts =
+[
+    "public TState Value",
+    "public WidgetModelSnapshot<TState> Snapshot",
+    "public WidgetModelUpdate<TState> Set(TState value)",
+    "public WidgetModelUpdate<TState> Update(Func<TState, TState> updater)",
+    "public WidgetModelUpdate<TState, TResult> Update<TResult>",
+    "if (LifecycleState != WidgetLifecycleState.Destroying) Invalidate();",
+];
+foreach (var contract in requiredModelSourceContracts)
+    if (!modelSource.Contains(contract, StringComparison.Ordinal))
+        failures.Add($"WidgetModel source no longer supports documented claim '{contract}'.");
 string[] requiredGuideContracts =
 [
     "## Versions: three different contracts",
@@ -206,7 +246,12 @@ if (bridgeOutputDeclaration < 0 || bridgeOutputCleanup <= bridgeOutputDeclaratio
 RequireLink(Path.Combine(repository, "README.md"), "docs/widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "README.md"), "docs/community-companion-services.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"), "widget-authoring-guide.md");
+RequireLink(Path.Combine(repository, "docs", "README.md"), "widget-model.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"), "community-companion-services.md");
+RequireLink(Path.Combine(repository, "docs", "widget-authoring-guide.md"),
+    "widget-model.md");
+RequireLink(Path.Combine(repository, "src", "WidgetSdk", "README.md"),
+    "../../docs/widget-model.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"),
     "../samples/PlayniteLibraryWidget/README.md");
 RequireLink(Path.Combine(repository, "README.md"),

@@ -1104,6 +1104,11 @@ that do not come from an operation busy edge.
 
 ### Immutable widget models
 
+For the complete owner-selection table, equality and collection rules,
+revision/publication semantics, result-bearing update pattern, lifecycle
+boundary, and multi-field migration recipe, see
+[Immutable widget models](widget-model.md).
+
 When a group of fields forms one render state, create a model in the widget
 constructor:
 
