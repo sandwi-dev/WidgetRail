@@ -83,6 +83,7 @@ public static class WidgetWorkerBootstrap
         try
         {
             var launch = WidgetWorkerLaunchArguments.Parse(args);
+            var diagnostics = WidgetWorkerDiagnosticLog.TryCreate(args);
             await using var capabilityConnection = await WorkerCapabilityConnection
                 .ConnectAsync(launch.Broker, shutdown.Token).ConfigureAwait(false);
             var services = new WidgetHostServices(capabilityConnection.Client);
@@ -95,7 +96,8 @@ public static class WidgetWorkerBootstrap
                     launch.WidgetPipeName,
                     launch.MaximumMessageBytes,
                     capabilityConnection.Client,
-                    launch.SessionNonce)
+                    launch.SessionNonce,
+                    diagnostics)
                 .RunAsync(shutdown.Token).ConfigureAwait(false);
             return 0;
         }

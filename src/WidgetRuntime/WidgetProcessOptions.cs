@@ -194,6 +194,11 @@ public sealed record WidgetProcessOptions
     public IReadOnlyDictionary<int, string> StartupExitDiagnostics { get; init; } =
         new Dictionary<int, string>();
     /// <summary>
+    /// Host-owned root for bounded worker-origin diagnostics. Packages and
+    /// worker messages never provide or observe this authority.
+    /// </summary>
+    internal string? WorkerDiagnosticRoot { get; init; }
+    /// <summary>
     /// Trusted host factory invoked once for every worker start or restart.
     /// Widget packages and worker protocol messages cannot provide this value.
     /// </summary>
@@ -260,6 +265,11 @@ public sealed record WidgetProcessOptions
             throw new ArgumentException(
                 "Worker startup diagnostics must be a closed bounded safe-code map.",
                 nameof(StartupExitDiagnostics));
+        if (WorkerDiagnosticRoot is { } diagnosticRoot &&
+            (string.IsNullOrWhiteSpace(diagnosticRoot) || diagnosticRoot.Length > 4096))
+            throw new ArgumentException(
+                "Worker diagnostic roots must be bounded host paths.",
+                nameof(WorkerDiagnosticRoot));
         if (ContentLeaseTimeout <= TimeSpan.Zero || ContentLeaseTimeout > TimeSpan.FromMinutes(1))
             throw new ArgumentOutOfRangeException(nameof(ContentLeaseTimeout));
         if (Arguments.Any(argument => argument is null))

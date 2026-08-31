@@ -46,13 +46,17 @@ internal sealed record BridgeWidgetRequestDiagnostic(
     string WidgetId,
     string RequestType,
     string WorkerErrorCode,
+    long BridgeRequestId = 0,
+    long WorkerRequestId = 0,
     string? ValidationPath = null,
     string? ValidationCode = null)
 {
     private const string ValidationPrefix = "Widget protocol validation failed at ";
     private const int MaximumValidationPathLength = 256;
 
-    internal static BridgeWidgetRequestDiagnostic From(BridgeWidgetRequestException exception)
+    internal static BridgeWidgetRequestDiagnostic From(
+        BridgeWidgetRequestException exception,
+        long bridgeRequestId = 0)
     {
         string? validationPath = null;
         string? validationCode = null;
@@ -64,6 +68,8 @@ internal sealed record BridgeWidgetRequestDiagnostic(
             exception.WidgetId,
             exception.RequestType!,
             exception.WorkerErrorCode!,
+            bridgeRequestId,
+            exception.WorkerRequestId ?? 0,
             validationPath,
             validationCode);
     }
@@ -142,6 +148,7 @@ internal sealed class BridgeWidgetRequestException : Exception
             RequestType = processException.RequestType;
             WorkerErrorCode = processException.WorkerErrorCode;
             WorkerDiagnosticMessage = processException.WorkerDiagnosticMessage;
+            WorkerRequestId = processException.WorkerRequestId;
         }
     }
 
@@ -150,6 +157,7 @@ internal sealed class BridgeWidgetRequestException : Exception
     internal string? RequestType { get; }
     internal string? WorkerErrorCode { get; }
     internal string? WorkerDiagnosticMessage { get; }
+    internal long? WorkerRequestId { get; }
 }
 internal sealed record BridgeClientLifetimeDiagnostic(
     string WidgetId,

@@ -31,6 +31,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeRevisionNotificationLane _revisionNotifications;
     private readonly Action<string, BrokerCapabilityDiagnostic>? _capabilityDiagnosticSink;
     private readonly Action<BridgeWidgetRequestDiagnostic>? _requestDiagnosticSink;
+    private readonly string? _workerDiagnosticRoot;
     private long _hostEffectSequence;
     private BridgeFrameChannel? _channel;
     private CancellationToken _sessionCancellation;
@@ -57,7 +58,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             residencyBudget,
             capabilityDiagnosticSink: null,
             lifetimeDiagnosticSink: null,
-            requestDiagnosticSink: null)
+            requestDiagnosticSink: null,
+            workerDiagnosticRoot: null)
     {
     }
 
@@ -72,7 +74,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         WorkerResidencyBudgetOptions? residencyBudget,
         Action<string, BrokerCapabilityDiagnostic>? capabilityDiagnosticSink,
         Action<BridgeClientLifetimeDiagnostic>? lifetimeDiagnosticSink = null,
-        Action<BridgeWidgetRequestDiagnostic>? requestDiagnosticSink = null)
+        Action<BridgeWidgetRequestDiagnostic>? requestDiagnosticSink = null,
+        string? workerDiagnosticRoot = null)
     {
         _pipeName = ValidatePipeName(pipeName);
         _maximumMessageBytes = maximumMessageBytes is >= 256 and <=
@@ -86,6 +89,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         _catalogMonitor = catalogMonitor;
         _capabilityDiagnosticSink = capabilityDiagnosticSink;
         _requestDiagnosticSink = requestDiagnosticSink;
+        _workerDiagnosticRoot = workerDiagnosticRoot;
         _registry = new BridgeClientRegistry(
             catalog ?? throw new ArgumentNullException(nameof(catalog)),
             residencyBudget ?? new WorkerResidencyBudgetOptions(),
@@ -632,7 +636,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         }
         catch (BridgeWidgetRequestException exception)
         {
-            ReportWidgetRequestFailure(_requestDiagnosticSink, exception);
+            ReportWidgetRequestFailure(
+                _requestDiagnosticSink, exception, request.RequestId);
             await ReplyRequestFailureAsync(request.RequestId, exception, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -653,7 +658,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
 
     internal static void ReportWidgetRequestFailure(
         Action<BridgeWidgetRequestDiagnostic>? diagnosticSink,
-        BridgeWidgetRequestException exception)
+        BridgeWidgetRequestException exception,
+        long bridgeRequestId = 0)
     {
         ArgumentNullException.ThrowIfNull(exception);
         if (diagnosticSink is null ||
@@ -663,7 +669,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
 
         try
         {
-            diagnosticSink(BridgeWidgetRequestDiagnostic.From(exception));
+            diagnosticSink(BridgeWidgetRequestDiagnostic.From(
+                exception, bridgeRequestId));
         }
         catch (Exception diagnosticException) when (diagnosticException is not OutOfMemoryException)
         {
@@ -804,6 +811,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             StartupExitDiagnostics = configured.UsesGenericWorkerHost
                 ? WidgetWorkerStartupDiagnostics.LoaderExitCodes
                 : new Dictionary<int, string>(),
+            WorkerDiagnosticRoot = _workerDiagnosticRoot,
             ProcessLeaseFactory = processLeaseFactory,
             ContentLeaseFactory = configured.ContentLeaseFactory,
             IsolationPolicy = configured.ExecutionTrust ==

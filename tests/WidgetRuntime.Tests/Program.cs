@@ -69,7 +69,16 @@ if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     {
         var diagnosticPath = OptionalValue(args, "--worker-exception-diagnostic");
         if (diagnosticPath is not null)
-            await File.WriteAllTextAsync(diagnosticPath, exception.ToString());
+        {
+            var workerDiagnosticPath = OptionalValue(args, "--worker-diagnostics-path");
+            if (!Path.IsPathFullyQualified(diagnosticPath) && workerDiagnosticPath is not null)
+                diagnosticPath = Path.Combine(
+                    Path.GetDirectoryName(workerDiagnosticPath)!, diagnosticPath);
+            await File.WriteAllTextAsync(
+                diagnosticPath,
+                $"type={exception.GetType().FullName ?? exception.GetType().Name} " +
+                $"hresult={exception.HResult.ToString(CultureInfo.InvariantCulture)}");
+        }
         throw;
     }
 }
@@ -160,6 +169,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Non-completing companion disposal cannot hold worker teardown", CompanionDisposalIsBounded),
     ("Hung actions acknowledge promptly and cancel without restart", HungActionAdmissionIsPrompt),
     ("Worker protocol diagnostics expose only the first validation path and code", ProtocolValidationDiagnosticIsStructural),
+    ("Worker-origin diagnostics are bounded rotating and IPC-independent", WorkerOriginDiagnosticsAreBounded),
     ("Malformed worker snapshots are rejected by host", MalformedSnapshotIsRejected),
     ("Worker destruction is bounded when widget cleanup hangs", DestroyIsBounded),
 };
@@ -240,7 +250,13 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         ? new string('0', 64)
         : sessionNonce;
     await new WidgetWorkerServer(
-        widget, instance, pipe, maximumBytes, capabilityClient, workerNonce).RunAsync();
+        widget,
+        instance,
+        pipe,
+        maximumBytes,
+        capabilityClient,
+        workerNonce,
+        WidgetWorkerDiagnosticLog.TryCreate(arguments)).RunAsync();
     return 0;
 }
 
@@ -2992,6 +3008,115 @@ static async Task ProtocolValidationDiagnosticIsStructural()
         "The public process exception exposed a developer-only structural diagnostic.");
 }
 
+static async Task WorkerOriginDiagnosticsAreBounded()
+{
+    using var temporary = new TemporaryDirectory();
+    var root = Path.Combine(temporary.Path, "workers");
+    const string startupDiagnosticFileName = "worker-startup.txt";
+    await using (var client = CreateClient(
+                     extraArguments:
+                     [
+                         "--invalid-protocol-widget",
+                         "--worker-exception-diagnostic",
+                         startupDiagnosticFileName,
+                     ],
+                     workerDiagnosticRoot: root))
+    {
+        WidgetFailure? observedFailure = null;
+        var lifetime = new List<WidgetProcessLifetimeDiagnostic>();
+        client.Failed += (_, failure) => observedFailure = failure;
+        client.LifetimeChanged += (_, diagnostic) => lifetime.Add(diagnostic);
+        var exception = await Assert.ThrowsAsync<WidgetProcessException>(
+            () => client.GetSnapshotAsync());
+        var workerRecordExists = Directory.Exists(root) &&
+            Directory.EnumerateFiles(
+                    root,
+                    WidgetWorkerDiagnosticLog.FileName,
+                    SearchOption.AllDirectories)
+                .Any(path => new FileInfo(path).Length > 0);
+        var started = lifetime.LastOrDefault(item =>
+            item.Kind == WidgetProcessLifetimeEventKind.WorkerStarted);
+        var exited = lifetime.LastOrDefault(item =>
+            item.Kind == WidgetProcessLifetimeEventKind.ProcessExited);
+        var handshake = observedFailure?.Reason == WidgetFailureReason.ConnectionFailed &&
+                        exception.RequestType is null
+            ? "not-completed"
+            : "completed-or-requested";
+        var startupDiagnosticPath = Directory.Exists(root)
+            ? Directory.EnumerateFiles(
+                    root,
+                    startupDiagnosticFileName,
+                    SearchOption.AllDirectories)
+                .SingleOrDefault()
+            : null;
+        var startupDiagnostic = startupDiagnosticPath is not null
+            ? await File.ReadAllTextAsync(startupDiagnosticPath)
+            : "none";
+        Console.Error.WriteLine(
+            "WORKER_DIAGNOSTIC " +
+            $"request-type={exception.RequestType ?? "none"} " +
+            $"worker-code={exception.WorkerErrorCode ?? "none"} " +
+            $"inner-type={exception.InnerException?.GetType().Name ?? "none"} " +
+            $"failure-reason={observedFailure?.Reason.ToString() ?? "none"} " +
+            $"diagnostic-code={observedFailure?.DiagnosticCode ?? "none"} " +
+            $"start-ordinal={started?.StartOrdinal.ToString(CultureInfo.InvariantCulture) ?? "none"} " +
+            $"pid={started?.ProcessId?.ToString(CultureInfo.InvariantCulture) ?? "none"} " +
+            $"exit={exited?.ExitCode?.ToString(CultureInfo.InvariantCulture) ?? "none"} " +
+            $"exit-failure={exited?.FailureCode ?? "none"} " +
+            $"handshake={handshake} " +
+            $"startup={startupDiagnostic} " +
+            $"process-directory-exists={Directory.Exists(root).ToString().ToLowerInvariant()} " +
+            $"record-exists={workerRecordExists.ToString().ToLowerInvariant()}");
+        Assert.True(exception.WorkerRequestId > 0,
+            "The worker rejection lost its exact request identity.");
+    }
+
+    var path = Directory.EnumerateFiles(
+        root, WidgetWorkerDiagnosticLog.FileName, SearchOption.AllDirectories).Single();
+    using (var document = JsonDocument.Parse(File.ReadAllText(path).Trim()))
+    {
+        var record = document.RootElement;
+        Assert.Equal(MessageTypes.Render, record.GetProperty("requestType").GetString());
+        Assert.Equal("$.activeInputScopeId",
+            record.GetProperty("validationPath").GetString());
+        Assert.Equal("invalid_active_input_scope",
+            record.GetProperty("validationCode").GetString());
+        Assert.True(!record.GetRawText().Contains(
+                "FIRST_WIDGET_SECRET", StringComparison.Ordinal) &&
+            !record.GetRawText().Contains(
+                "SECOND_WIDGET_SECRET", StringComparison.Ordinal) &&
+            !record.GetRawText().Contains(temporary.Path, StringComparison.OrdinalIgnoreCase),
+            "The worker-origin diagnostic exposed widget text or its storage path.");
+    }
+
+    var log = WidgetWorkerDiagnosticLog.TryCreate(
+        ["--worker-diagnostics-path", path])
+        ?? throw new InvalidOperationException("The worker diagnostic owner was unavailable.");
+    var validation = new ProtocolValidationException(
+    [
+        new ProtocolValidationError(
+            "$.activeInputScopeId", "invalid_active_input_scope", "PRIVATE_MESSAGE"),
+    ]);
+    for (var index = 0; index < 4_000; index++)
+        log.RecordRequestFailure(index + 1, MessageTypes.Render, validation);
+
+    var generations = Enumerable.Range(0, WidgetWorkerDiagnosticLog.RetainedGenerationCount + 1)
+        .Select(generation => generation == 0 ? path : $"{path}.{generation}")
+        .Where(File.Exists)
+        .ToArray();
+    Assert.Equal(WidgetWorkerDiagnosticLog.RetainedGenerationCount + 1, generations.Length);
+    Assert.True(generations.All(candidate =>
+            new FileInfo(candidate).Length <= WidgetWorkerDiagnosticLog.MaximumFileBytes + 1024),
+        "A worker diagnostic generation exceeded its documented bound.");
+    Assert.True(generations.Sum(candidate => new FileInfo(candidate).Length) <=
+                (WidgetWorkerDiagnosticLog.RetainedGenerationCount + 1) *
+                (WidgetWorkerDiagnosticLog.MaximumFileBytes + 1024),
+        "Worker diagnostic retention exceeded its fixed total bound.");
+    Assert.True(!generations.SelectMany(File.ReadLines).Any(line =>
+            line.Contains("PRIVATE_MESSAGE", StringComparison.Ordinal)),
+        "A validator message crossed the safe worker diagnostic boundary.");
+}
+
 static async Task DestroyIsBounded()
 {
     await using var client = CreateClient(
@@ -3018,7 +3143,8 @@ static WidgetProcessClient CreateClient(
     IAppContainerAuthorityOperations? contentAuthorityOperations = null,
     IAppContainerAuthorityJournal? contentAuthorityJournal = null,
     TimeProvider? timeProvider = null,
-    int maximumMessageBytes = 64 * 1024)
+    int maximumMessageBytes = 64 * 1024,
+    string? workerDiagnosticRoot = null)
 {
     var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Test process path is unavailable.");
     var options = new WidgetProcessOptions
@@ -3030,6 +3156,7 @@ static WidgetProcessClient CreateClient(
         RequestTimeout = requestTimeout ?? TimeSpan.FromSeconds(2),
         MaximumRestartAttempts = maximumRestarts,
         MaximumMessageBytes = maximumMessageBytes,
+        WorkerDiagnosticRoot = workerDiagnosticRoot,
         CompanionSessionFactory = companionFactory,
         ProcessLeaseFactory = processLeaseFactory,
         ContentLeaseFactory = contentLeaseFactory,

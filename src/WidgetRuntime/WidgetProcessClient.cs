@@ -569,6 +569,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 _timeProvider,
                 MaximumDashboardGestureReservationLifetime);
             Volatile.Write(ref _session, currentSession);
+            var workerDiagnosticPath = WidgetWorkerDiagnosticPath.TryPrepare(
+                _options.WorkerDiagnosticRoot,
+                _options.WidgetInstanceId);
             if (_options.ProcessLeaseFactory is { } leaseFactory)
             {
                 currentSession.AttachProcessLease(
@@ -621,6 +624,18 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                         "Worker content authority overlaps the trusted runtime directory.");
                 appContainer.GrantReadAndExecute(
                     new[] { executableDirectory }.Concat(_options.ReadOnlyPaths));
+                if (workerDiagnosticPath is not null)
+                {
+                    try
+                    {
+                        appContainer.GrantModify(Path.GetDirectoryName(workerDiagnosticPath)!);
+                    }
+                    catch (Exception exception) when (exception is IOException or
+                        UnauthorizedAccessException or NotSupportedException)
+                    {
+                        workerDiagnosticPath = null;
+                    }
+                }
                 startupToken.ThrowIfCancellationRequested();
                 if (currentSession.ContentLease is not null)
                 {
@@ -680,6 +695,11 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             startInfo.ArgumentList.Add(sessionNonce);
             startInfo.ArgumentList.Add("--max-message-bytes");
             startInfo.ArgumentList.Add(_options.MaximumMessageBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (workerDiagnosticPath is not null)
+            {
+                startInfo.ArgumentList.Add("--worker-diagnostics-path");
+                startInfo.ArgumentList.Add(workerDiagnosticPath);
+            }
 
             if (_testHooks?.BeforeProcessStartAsync is { } beforeProcessStart)
                 await beforeProcessStart(startupToken).ConfigureAwait(false);
@@ -1326,7 +1346,24 @@ public sealed class WidgetProcessException : Exception
         WorkerDiagnosticMessage = ValidateDiagnostic(workerDiagnosticMessage);
     }
 
+    internal WidgetProcessException(
+        long workerRequestId,
+        string requestType,
+        string workerErrorCode,
+        string workerDiagnosticMessage)
+        : base(FormatWorkerRejection(requestType, workerErrorCode, workerDiagnosticMessage))
+    {
+        WorkerRequestId = workerRequestId > 0
+            ? workerRequestId
+            : throw new WidgetProtocolViolationException(
+                "Worker error request ID is invalid.");
+        RequestType = ValidateToken(requestType, nameof(requestType));
+        WorkerErrorCode = ValidateToken(workerErrorCode, nameof(workerErrorCode));
+        WorkerDiagnosticMessage = ValidateDiagnostic(workerDiagnosticMessage);
+    }
+
     internal string? RequestType { get; }
+    internal long? WorkerRequestId { get; }
     internal string? WorkerErrorCode { get; }
     internal string? WorkerDiagnosticMessage { get; }
 

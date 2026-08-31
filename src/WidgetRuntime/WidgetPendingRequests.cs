@@ -30,7 +30,7 @@ internal sealed class WidgetPendingRequests
         {
             var error = RuntimeJson.FromElement<ErrorPayload>(response.Payload);
             pending.Completion.TrySetException(new WidgetProcessException(
-                pending.RequestType, error.Code, error.Message));
+                response.RequestId, pending.RequestType, error.Code, error.Message));
         }
         else
         {

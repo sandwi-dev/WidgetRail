@@ -136,6 +136,25 @@ internal sealed class WindowsAppContainer : IDisposable
         }
     }
 
+    internal void GrantModify(string path)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var fullPath = Path.GetFullPath(path);
+        if (!Directory.Exists(fullPath) ||
+            (File.GetAttributes(fullPath) & FileAttributes.ReparsePoint) != 0)
+            throw new DirectoryNotFoundException(
+                "The AppContainer writable diagnostic directory was not found.");
+        var directory = new DirectoryInfo(fullPath);
+        var security = directory.GetAccessControl(AccessControlSections.Access);
+        security.AddAccessRule(new FileSystemAccessRule(
+            _identity,
+            FileSystemRights.Modify | FileSystemRights.Synchronize,
+            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+            PropagationFlags.None,
+            AccessControlType.Allow));
+        directory.SetAccessControl(security);
+    }
+
     /// <summary>
     /// Replaces any prior inheriting grant on a content root with direct grants
     /// for the verified directory and file set. Later files therefore do not

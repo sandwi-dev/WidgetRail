@@ -15,6 +15,7 @@ internal sealed class WidgetWorkerServer
     private readonly string _pipeName;
     private readonly string _sessionNonce;
     private readonly int _maximumMessageBytes;
+    private readonly WidgetWorkerDiagnosticLog? _diagnostics;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly ConcurrentDictionary<long, TaskCompletionSource<bool>>
         _dashboardGestureActivations = new();
@@ -30,7 +31,8 @@ internal sealed class WidgetWorkerServer
         string pipeName,
         int maximumMessageBytes = WidgetRuntimeProtocol.DefaultMaximumMessageBytes,
         IWidgetCapabilityClient? capabilityClient = null,
-        string sessionNonce = "")
+        string sessionNonce = "",
+        WidgetWorkerDiagnosticLog? diagnostics = null)
         : this(
             widget,
             widgetInstanceId,
@@ -38,7 +40,8 @@ internal sealed class WidgetWorkerServer
             maximumMessageBytes,
             new WidgetHostServices(
                 capabilityClient ?? UnavailableWidgetCapabilityClient.Instance),
-            sessionNonce)
+            sessionNonce,
+            diagnostics)
     {
     }
 
@@ -48,7 +51,8 @@ internal sealed class WidgetWorkerServer
         string pipeName,
         int maximumMessageBytes,
         WidgetHostServices hostServices,
-        string sessionNonce)
+        string sessionNonce,
+        WidgetWorkerDiagnosticLog? diagnostics = null)
     {
         _widget = widget ?? throw new ArgumentNullException(nameof(widget));
         _widgetInstanceId = ValidateIdentifier(widgetInstanceId);
@@ -57,6 +61,7 @@ internal sealed class WidgetWorkerServer
         _maximumMessageBytes = maximumMessageBytes is >= 256 and <= WidgetRuntimeProtocol.AbsoluteMaximumMessageBytes
             ? maximumMessageBytes
             : throw new ArgumentOutOfRangeException(nameof(maximumMessageBytes));
+        _diagnostics = diagnostics;
         _widget.AttachHostServices(hostServices ?? throw new ArgumentNullException(nameof(hostServices)));
         if (hostServices.Capabilities is IDashboardGestureActivatingCapabilityClient activatingClient)
             activatingClient.SetDashboardGestureActivator(ActivateDashboardGestureAuthorityAsync);
@@ -213,6 +218,8 @@ internal sealed class WidgetWorkerServer
                         }
                         catch (Exception exception) when (exception is not OperationCanceledException)
                         {
+                            _diagnostics?.RecordRequestFailure(
+                                request.RequestId, request.Type, exception);
                             await ReplyAsync(MessageTypes.Error, request.RequestId,
                                     new ErrorPayload(
                                         ErrorCode(exception), SafeMessage(exception)),

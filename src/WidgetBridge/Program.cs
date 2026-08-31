@@ -87,7 +87,8 @@ internal static class Program
                 catalogMonitor, residencyBudget,
                 mediaDiagnostics.Record,
                 mediaDiagnostics.RecordLifetime,
-                mediaDiagnostics.RecordRequestFailure);
+                mediaDiagnostics.RecordRequestFailure,
+                Path.Combine(settingsPaths.RootDirectory, "worker-diagnostics"));
             await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
                 .ConfigureAwait(false);
             return 0;

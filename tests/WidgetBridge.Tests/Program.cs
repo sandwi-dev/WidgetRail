@@ -99,6 +99,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Private diagnostics attach only to the exact trusted Settings identity", DiagnosticsAreSettingsOnly),
     ("Media Sessions diagnostics are bounded transition-only and sanitized", MediaSessionDiagnosticsAreBounded),
     ("Worker request diagnostics are bounded developer-only records", WorkerRequestDiagnosticsAreBounded),
+    ("Worker validator diagnostics persist and correlate across the Bridge", WorkerValidatorDiagnosticsPersistAndCorrelate),
     ("Diagnostics projection is bounded sanitized and read only", BridgeDiagnosticsScenarios.ProjectionIsBoundedSanitizedAndReadOnly),
     ("Diagnostics partial failures malformed input and deadline are closed", BridgeDiagnosticsScenarios.PartialFailureMalformedInputAndDeadlineAreClosed),
     ("Authority recovery projection is exact bounded and cancellation safe", BridgeDiagnosticsScenarios.RecoveryRetryIsExactBoundedAndCancellationSafe),
@@ -756,6 +757,94 @@ static async Task WorkerRequestDiagnosticsAreBounded()
         !line.Contains("C:\\", StringComparison.Ordinal) &&
         !line.Contains("FORGED_STRUCTURAL_SECRET", StringComparison.Ordinal)),
         "Sensitive or package-private detail crossed the persistent log boundary.");
+}
+
+static async Task WorkerValidatorDiagnosticsPersistAndCorrelate()
+{
+    using var temporary = new TemporaryDirectory("wrail-worker-origin-diagnostics");
+    var bridgeLog = System.IO.Path.Combine(temporary.Path, "overlay.log");
+    var workerRoot = System.IO.Path.Combine(temporary.Path, "workers");
+    await using var diagnostics = new MediaSessionsDiagnosticLog(
+        bridgeLog, bridgeSessionGeneration: 11);
+
+    await VerifyFailureAsync(
+        "validator-home.instance",
+        "validator.home.details",
+        "validator.home.details",
+        "$.activeInputScopeId",
+        "invalid_active_input_scope");
+    await VerifyFailureAsync(
+        "validator-hidden.instance",
+        "validator.hidden.back",
+        "validator.hidden.back",
+        "$.initialFocusId",
+        "invalid_focus_target");
+    await diagnostics.DisposeAsync();
+
+    var bridgeLines = File.ReadAllLines(bridgeLog);
+    Assert.Equal(2, bridgeLines.Length);
+    foreach (var workerPath in Directory.EnumerateFiles(
+                 workerRoot, WidgetWorkerDiagnosticLog.FileName, SearchOption.AllDirectories))
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(workerPath).Trim());
+        var record = document.RootElement;
+        var workerRequest = record.GetProperty("requestId").GetInt64();
+        var path = record.GetProperty("validationPath").GetString();
+        var code = record.GetProperty("validationCode").GetString();
+        Assert.True(workerRequest > 0, "The worker-origin record lost request correlation.");
+        Assert.True(record.GetProperty("processId").GetInt32() > 0,
+            "The worker-origin record lost its process identity.");
+        Assert.Equal(MessageTypes.Render, record.GetProperty("requestType").GetString());
+        Assert.Equal(WorkerErrorCodes.ProtocolValidationFailed,
+            record.GetProperty("code").GetString());
+        Assert.True(bridgeLines.Any(line =>
+                line.Contains($"worker-request={workerRequest}", StringComparison.Ordinal) &&
+                line.Contains($"validation-path={path}", StringComparison.Ordinal) &&
+                line.Contains($"validation-code={code}", StringComparison.Ordinal)),
+            "Bridge diagnostics did not correlate the exact worker-origin failure.");
+    }
+    Assert.Equal(2, Directory.EnumerateFiles(
+        workerRoot, WidgetWorkerDiagnosticLog.FileName, SearchOption.AllDirectories).Count());
+    Assert.True(bridgeLines.All(line =>
+            line.Contains("bridge-request=", StringComparison.Ordinal) &&
+            !line.Contains("secret", StringComparison.OrdinalIgnoreCase) &&
+            !line.Contains(temporary.Path, StringComparison.OrdinalIgnoreCase)),
+        "Worker/Bridge correlation leaked unsafe data or omitted host request identity.");
+
+    async Task VerifyFailureAsync(
+        string instanceId,
+        string actionId,
+        string sourceElementId,
+        string expectedPath,
+        string expectedCode)
+    {
+        await using var harness = await BridgeHarness.StartAsync(
+            instanceId: instanceId,
+            workerDiagnosticRoot: workerRoot,
+            requestDiagnosticSink: diagnostics.RecordRequestFailure);
+        var activated = await harness.Client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, activated.Type);
+        var initial = await harness.Client.RequestAsync(
+            BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+        Assert.Equal(BridgeMessageTypes.Snapshot, initial.Type);
+        var action = await harness.Client.RequestAsync(
+            BridgeMessageTypes.Action,
+            new BridgeActionRequest(
+                "test-widget", new WidgetActionEvent(actionId, sourceElementId)));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, action.Type);
+        var failure = await harness.Client.RequestAsync(
+            BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+        Assert.Equal(BridgeMessageTypes.Error, failure.Type);
+
+        var currentWorker = Directory.EnumerateFiles(
+                workerRoot, WidgetWorkerDiagnosticLog.FileName, SearchOption.AllDirectories)
+            .Select(File.ReadAllText)
+            .Single(text => text.Contains(expectedPath, StringComparison.Ordinal));
+        Assert.True(currentWorker.Contains(expectedCode, StringComparison.Ordinal),
+            "The worker-origin record lost the exact validation code.");
+    }
 }
 
 static ConfiguredWidget DiagnosticCandidate() => new()
@@ -4471,6 +4560,9 @@ file sealed class BridgeTestWidget : Widget
     private readonly bool _artworkFixture;
     private readonly bool _oversizedFixture;
     private readonly bool _sensitiveTextEntryFixture;
+    private readonly bool _validatorHomeFixture;
+    private readonly bool _validatorHiddenFixture;
+    private bool _validatorFailure;
     private bool _oversized;
     private WidgetAppLibraryItem? _artworkItem;
 
@@ -4482,10 +4574,25 @@ file sealed class BridgeTestWidget : Widget
             instanceId, "oversized.instance", StringComparison.Ordinal);
         _sensitiveTextEntryFixture = string.Equals(
             instanceId, "sensitive-text-entry.instance", StringComparison.Ordinal);
+        _validatorHomeFixture = string.Equals(
+            instanceId, "validator-home.instance", StringComparison.Ordinal);
+        _validatorHiddenFixture = string.Equals(
+            instanceId, "validator-hidden.instance", StringComparison.Ordinal);
     }
 
     public override WidgetView Render()
     {
+        if (_validatorFailure)
+        {
+            if (_validatorHomeFixture)
+                return new WidgetView(
+                    UI.Stack("root"),
+                    ActiveInputScopeId: "validator.missing.scope");
+            if (_validatorHiddenFixture)
+                return new WidgetView(
+                    UI.Stack("root"),
+                    InitialFocusId: "validator.missing.focus");
+        }
         var children = new List<WidgetElement>
         {
             UI.Button("Refresh", "refresh", "button")
@@ -4499,6 +4606,12 @@ file sealed class BridgeTestWidget : Widget
             UI.Slider(_volume, 0, 1, 0.1, "volume.changed", "volume",
                 "Volume", $"{_volume:P0}"),
         };
+        if (_validatorHomeFixture)
+            children.Add(UI.Button(
+                "Details", "validator.home.details", "validator.home.details"));
+        if (_validatorHiddenFixture)
+            children.Add(UI.Button(
+                "Back", "validator.hidden.back", "validator.hidden.back"));
         if (_sensitiveTextEntryFixture)
             children.Add(UI.SensitiveTextEntry(
                 "Enter provider-neutral secret", "committed-text", "credential.entry", 64));
@@ -4611,6 +4724,14 @@ file sealed class BridgeTestWidget : Widget
         {
             var origin = _inputOrigins.GetValueOrDefault(action.Sequence, "unknown");
             _actionOrder = _actionOrder == "none" ? origin : $"{_actionOrder},{origin}";
+            Invalidate();
+        }
+        else if ((_validatorHomeFixture &&
+                  action.ActionId == "validator.home.details") ||
+                 (_validatorHiddenFixture &&
+                  action.ActionId == "validator.hidden.back"))
+        {
+            _validatorFailure = true;
             Invalidate();
         }
         else if (action.ActionId == "artwork.load" && _artworkFixture)
@@ -4922,7 +5043,9 @@ file sealed class BridgeHarness : IAsyncDisposable
     public static async Task<BridgeHarness> StartAsync(
         bool withAppearance = false,
         WidgetResidencyPolicy? residencyPolicy = null,
-        string instanceId = "test.instance")
+        string instanceId = "test.instance",
+        string? workerDiagnosticRoot = null,
+        Action<BridgeWidgetRequestDiagnostic>? requestDiagnosticSink = null)
     {
         var temporary = TemporaryCatalog.Create(
             instanceId: instanceId, residencyPolicy: residencyPolicy);
@@ -4932,7 +5055,19 @@ file sealed class BridgeHarness : IAsyncDisposable
             if (withAppearance) appearance = await TemporaryAppearance.CreateAsync();
             var catalog = BridgeCatalog.Load(temporary.Path);
             var pipeName = $"wrail-bridge-test-{Guid.NewGuid():N}";
-            var server = new WidgetBridgeServer(pipeName, catalog, 64 * 1024, appearance?.Service);
+            var server = new WidgetBridgeServer(
+                pipeName,
+                catalog,
+                64 * 1024,
+                appearance?.Service,
+                consentStore: null,
+                platformBackend: null,
+                catalogMonitor: null,
+                residencyBudget: null,
+                capabilityDiagnosticSink: null,
+                lifetimeDiagnosticSink: null,
+                requestDiagnosticSink: requestDiagnosticSink,
+                workerDiagnosticRoot: workerDiagnosticRoot);
             var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
             var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
             return new BridgeHarness(temporary, appearance, server, client, serverTask);

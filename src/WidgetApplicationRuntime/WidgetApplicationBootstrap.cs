@@ -28,6 +28,7 @@ public static class WidgetApplicationBootstrap
         try
         {
             var launch = ApplicationLaunchArguments.Parse(args);
+            var diagnostics = WidgetWorkerDiagnosticLog.TryCreate(args);
             var widget = widgetFactory() ?? throw new InvalidOperationException(
                 "The widget factory returned no widget.");
             await new WidgetWorkerServer(
@@ -35,7 +36,8 @@ public static class WidgetApplicationBootstrap
                     launch.WidgetInstanceId,
                     launch.WidgetPipeName,
                     launch.MaximumMessageBytes,
-                    sessionNonce: launch.SessionNonce)
+                    sessionNonce: launch.SessionNonce,
+                    diagnostics: diagnostics)
                 .RunAsync(shutdown.Token).ConfigureAwait(false);
             return 0;
         }

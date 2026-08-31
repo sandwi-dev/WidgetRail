@@ -108,6 +108,12 @@ internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
             $"{DateTimeOffset.UtcNow:O} Widget request diagnostic " +
             $"bridge-session={_bridgeSessionGeneration} widget={diagnostic.WidgetId} " +
             $"request={diagnostic.RequestType} worker-code={diagnostic.WorkerErrorCode}" +
+            (diagnostic.BridgeRequestId > 0
+                ? $" bridge-request={diagnostic.BridgeRequestId}"
+                : string.Empty) +
+            (diagnostic.WorkerRequestId > 0
+                ? $" worker-request={diagnostic.WorkerRequestId}"
+                : string.Empty) +
             (diagnostic.ValidationPath is { } validationPath &&
              diagnostic.ValidationCode is { } validationCode &&
              BridgeWidgetRequestDiagnostic.IsSafeValidationPath(validationPath) &&
