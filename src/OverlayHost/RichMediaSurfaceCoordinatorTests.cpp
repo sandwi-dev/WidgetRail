@@ -18,6 +18,7 @@
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <regex>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -1874,11 +1875,23 @@ void RunProviderNeutralAdapterCases() {
     constexpr std::wstring_view primaryMediaKey = L"aurora-video-0";
     constexpr std::wstring_view secondaryMediaKey = L"horizon-video-1";
     const std::string sampleAdapter(sampleBytes.begin(), sampleBytes.end());
-    Require(sampleAdapter.find("['aurora-video-0','sample.mp4']") !=
-                std::string::npos &&
-                sampleAdapter.find("['horizon-video-1','horizon.mp4']") !=
-                    std::string::npos,
+    const std::regex primaryMediaDeclaration{
+        R"(\[\s*"aurora-video-0"\s*,\s*"sample\.mp4"\s*\])"};
+    const std::regex secondaryMediaDeclaration{
+        R"(\[\s*"horizon-video-1"\s*,\s*"horizon\.mp4"\s*\])"};
+    Require(std::regex_search(sampleAdapter, primaryMediaDeclaration) &&
+                std::regex_search(sampleAdapter, secondaryMediaDeclaration),
             "built sample adapter did not declare the expected media keys");
+    const auto adapterRuntimePath = samplePath.parent_path() /
+        L"adapter-runtime.js";
+    std::ifstream adapterRuntimeStream(adapterRuntimePath, std::ios::binary);
+    Require(adapterRuntimeStream.good(),
+            "built sample adapter runtime was unavailable");
+    const std::vector<std::uint8_t> adapterRuntimeBytes(
+        std::istreambuf_iterator<char>{adapterRuntimeStream},
+        std::istreambuf_iterator<char>{});
+    Require(!adapterRuntimeBytes.empty(),
+            "built sample adapter runtime was empty");
     const auto videoPath = samplePath.parent_path() / L"sample.mp4";
     std::ifstream videoStream(videoPath, std::ios::binary);
     Require(videoStream.good(), "built sample sealed video asset was unavailable");
@@ -1896,24 +1909,37 @@ void RunProviderNeutralAdapterCases() {
     Require(!horizonVideoBytes.empty(),
             "built sample secondary sealed video asset was empty");
     std::string forcedProgressAdapter(sampleBytes.begin(), sampleBytes.end());
-    const auto inject = [&](const std::string_view marker,
+    std::string forcedProgressRuntime(
+        adapterRuntimeBytes.begin(), adapterRuntimeBytes.end());
+    const auto inject = [&](std::string& target,
+                            const std::string_view marker,
                             const std::string_view replacement) {
-        const auto offset = forcedProgressAdapter.find(marker);
+        const auto offset = target.find(marker);
         Require(offset != std::string::npos,
                 "built adapter progress-boundary seam was unavailable");
-        forcedProgressAdapter.replace(offset, marker.size(), replacement);
+        target.replace(offset, marker.size(), replacement);
     };
-    inject("inFlight=operation;if(m.command==='arm-activate')",
-           "inFlight=operation;media.dispatchEvent(new Event('timeupdate'));"
-           "if(m.command==='arm-activate')");
-    inject("operation.phase='media';void play(operation)",
-           "operation.phase='media';media.dispatchEvent(new Event('timeupdate'));void play(operation)");
+    inject(forcedProgressRuntime,
+           "      inFlight = operation;",
+           "      inFlight = operation;\n"
+           "      global.document.querySelector('video')?.dispatchEvent("
+           "new Event('timeupdate'));");
+    inject(forcedProgressAdapter,
+           "  void playMedia(activation.signal).then(activation.resolve, "
+           "activation.reject);",
+           "  media.dispatchEvent(new Event('timeupdate'));\n"
+           "  void playMedia(activation.signal).then(activation.resolve, "
+           "activation.reject);");
     const std::vector<std::uint8_t> forcedProgressBytes(
         forcedProgressAdapter.begin(), forcedProgressAdapter.end());
+    const std::vector<std::uint8_t> forcedProgressRuntimeBytes(
+        forcedProgressRuntime.begin(), forcedProgressRuntime.end());
     const auto forcedCallbackProbe = std::make_shared<FixtureCallbackProbe>();
     {
         Fixture forcedProgress(ordinal++, true, {}, {}, {
             {L"payload/media/adapter.html", L"text/html", forcedProgressBytes},
+            {L"payload/media/adapter-runtime.js", L"application/javascript",
+             forcedProgressRuntimeBytes},
             {L"payload/media/sample.mp4", L"video/mp4", videoBytes},
             {L"payload/media/horizon.mp4", L"video/mp4", horizonVideoBytes},
         }, forcedCallbackProbe);
@@ -1950,6 +1976,8 @@ void RunProviderNeutralAdapterCases() {
     }
     Fixture sample(ordinal++, true, {}, {}, {
         {L"payload/media/adapter.html", L"text/html", sampleBytes},
+        {L"payload/media/adapter-runtime.js", L"application/javascript",
+         adapterRuntimeBytes},
         {L"payload/media/sample.mp4", L"video/mp4", videoBytes},
         {L"payload/media/horizon.mp4", L"video/mp4", horizonVideoBytes},
     });
