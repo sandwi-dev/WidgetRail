@@ -188,6 +188,27 @@ private bytes are reported under their own names and are not treated as the
 missing metric. The dirty-worktree provenance makes this focused implementation
 evidence, not release evidence.
 
+WIDGE-104 remeasured the production host before changing its visible timer.
+The clean-baseline run
+`overlay-performance-20260901-000149749-d40cfdf3` and corrected run
+`overlay-performance-20260901-000718717-36f3181c` each used 31 observations
+per Hidden, Visible, and Interactive state against commit
+`69e260c4156c9d093ff54290b03968a50c290932`. Reducing only the visible
+controller `WM_TIMER` request from 16 ms to 15 ms avoids crossing the common
+default clock-tick boundary; it does not request higher system timer
+resolution or change the 100 ms hidden/pinned tiers:
+
+| State | Controller messages/s before | Controller messages/s after | CPU p95 before | CPU p95 after | Paints/frames after |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Hidden | 0 | 0 | 0.49247% | 0.68077% | 0 / 0 |
+| Visible | 39.65965 | 58.50584 | 0.29432% | 0.39348% | 0 / 0 |
+| Interactive | 39.37776 | 59.23888 | 0.39193% | 0.39248% | 0 / 0 |
+
+The concurrently required legacy Guide compatibility timer remained separate
+at approximately 31 messages per second in both runs. These are bounded local
+observations, not scheduler-wakeup or hardware-input guarantees; `WM_TIMER` is
+low priority and its delivery remains approximate under message-queue load.
+
 Native repeated run `dlv016-native-20260811T063924Z-2b5ac019` used five
 independent Release processes over an exact 55-node snapshot, 48 projected
 semantic nodes, 256 updates per process, 12,288 total projected nodes, 960

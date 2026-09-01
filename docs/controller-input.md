@@ -40,8 +40,10 @@ Authors still declare the shortcut phase as `Pressed`; `Released` and authored
 
 ### Tray Y tap/hold arbitration
 
-The visible host's existing 16 ms controller cadence drives a fixed 700 ms Y
-hold; no gesture timer or controller polling remains active while hidden. Before
+The visible host requests a 15 ms controller cadence; bounded WIDGE-104 host
+measurements delivered 58.51-59.24 controller ticks per second without
+post-warmup paint. That cadence drives a fixed 700 ms Y hold; no gesture timer
+or controller polling remains active while hidden. Before
 the threshold, release performs the ordinary reorder tap. At or after the
 threshold, the host revalidates tray focus, non-reorder state, and the exact
 selected bridge widget ID, then uses the same selected-worker restart authority

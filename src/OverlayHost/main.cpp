@@ -81,6 +81,7 @@ constexpr UINT_PTR kForegroundLossTimer = 5;
 constexpr UINT_PTR kActionFeedbackTimer = 6;
 constexpr UINT_PTR kPinnedSurfaceTimer = 7;
 constexpr UINT_PTR kBridgeControlPlaneTimer = 8;
+constexpr UINT kVisibleControllerTimerMilliseconds = 15;
 constexpr UINT kPlatformEventMessage = WM_APP + 1;
 constexpr UINT kImageReadyMessage = WM_APP + 2;
 constexpr UINT kCatalogRefreshMessage = WM_APP + 3;
@@ -5789,7 +5790,8 @@ private:
             actionFailureFeedback_.Show();
             KillTimer(window_, kPinnedSurfaceTimer);
             KillTimer(window_, kBridgeControlPlaneTimer);
-            SetTimer(window_, kControllerTimer, 16, nullptr);
+            SetTimer(window_, kControllerTimer,
+                     kVisibleControllerTimerMilliseconds, nullptr);
             PrimeControllerState();
         }
         pinnedSurfaceCoordinator_.OnOverlayShown();
@@ -5966,7 +5968,8 @@ private:
                 AdvanceOverlayTransition(now);
                 transitionReopened = true;
                 if (overlayTransition_.active()) {
-                    SetTimer(window_, kControllerTimer, 16, nullptr);
+                    SetTimer(window_, kControllerTimer,
+                             kVisibleControllerTimerMilliseconds, nullptr);
                 }
 
                 // ShowOverlay already performs the one acquisition attempt
@@ -6728,7 +6731,8 @@ private:
             RetireCompositionMotionForHiddenState();
             overlayTransition_.BeginClose(
                 GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
-            SetTimer(window_, kControllerTimer, 16, nullptr);
+            SetTimer(window_, kControllerTimer,
+                     kVisibleControllerTimerMilliseconds, nullptr);
             AdvanceOverlayTransition(GetTickCount64());
             return;
         case widgetrail::OverlayPresentationDirective::Place:

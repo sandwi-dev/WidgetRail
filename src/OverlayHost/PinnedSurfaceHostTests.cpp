@@ -416,8 +416,11 @@ void TestAcceptedHiddenBridgeControlPlaneContract() {
         "visible overlay timer ownership section exists");
     Check(show.find("KillTimer(window_, kBridgeControlPlaneTimer);") !=
               std::string::npos &&
-              show.find("SetTimer(window_, kControllerTimer, 16, nullptr);") !=
-              std::string::npos,
+              source.find("constexpr UINT kVisibleControllerTimerMilliseconds = 15;") !=
+                  std::string::npos &&
+              show.find("SetTimer(window_, kControllerTimer,\n"
+                        "                     kVisibleControllerTimerMilliseconds, nullptr);") !=
+                  std::string::npos,
           "visible overlay retires the hidden Bridge timer before controller sampling");
 }
 
