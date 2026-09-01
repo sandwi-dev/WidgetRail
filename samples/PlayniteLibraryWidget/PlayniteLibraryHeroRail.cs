@@ -33,6 +33,45 @@ internal sealed record PlayniteLibraryHeroRailModel(
 /// </summary>
 internal static class PlayniteLibraryHeroRailPolicy
 {
+    internal static PlayniteLibraryHeroRailModel ProjectBrowse(
+        PlayniteLibraryPresentationState state,
+        string? selectedSavedId,
+        int fallbackIndex)
+    {
+        var snapshot = state.Collection;
+        var favorites = state.Organization.FavoriteSavedIds.ToHashSet(StringComparer.Ordinal);
+        var preferred = state.Organization.VariantGroups.ToDictionary(
+            group => group.PreferredSavedId, group => group.Id, StringComparer.Ordinal);
+        var groups = state.Organization.VariantGroups
+            .SelectMany(group => group.SavedIds.Select(savedId => (savedId, group)))
+            .ToDictionary(value => value.savedId, value => value.group,
+                StringComparer.Ordinal);
+        var excluded = state.Organization.ExcludedSavedIds.ToHashSet(StringComparer.Ordinal);
+        var rows = snapshot.Items
+            .Where(item => !excluded.Contains(item.Value.SavedId))
+            .Select(item => new PlayniteLibraryHeroRailItem(
+                item,
+                new(item.Value.SavedId, item.Presentation.DisplayName,
+                    item.Presentation.Source.DisplayName),
+                favorites.Contains(item.Value.SavedId),
+                preferred.ContainsKey(item.Value.SavedId),
+                groups.GetValueOrDefault(item.Value.SavedId)?.SavedIds.Count ?? 0,
+                CollectionItem: true))
+            .ToArray();
+        var selectedIndex = selectedSavedId is null ? -1 : Array.FindIndex(rows,
+            row => string.Equals(row.Display.SavedId, selectedSavedId,
+                StringComparison.Ordinal));
+        if (selectedIndex < 0 && rows.Length != 0)
+            selectedIndex = Math.Clamp(fallbackIndex, 0, rows.Length - 1);
+        var anchor = snapshot.Anchor is { } currentAnchor && snapshot.Items.Any(item =>
+                item.Key == currentAnchor && rows.Any(row => string.Equals(
+                    row.Display.SavedId, item.Value.SavedId, StringComparison.Ordinal)))
+            ? currentAnchor.Value
+            : rows.FirstOrDefault()?.Current?.Key.Value;
+        return new(rows, selectedIndex, anchor,
+            snapshot.HasBefore || snapshot.HasAfter);
+    }
+
     internal static PlayniteLibraryHeroRailModel Project(
         PlayniteLibraryPresentationState state,
         string? selectedSavedId,

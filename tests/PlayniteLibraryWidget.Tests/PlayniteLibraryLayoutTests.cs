@@ -54,6 +54,9 @@ public sealed class PlayniteLibraryLayoutTests
         CollectionAssert.Contains(library.StyleClasses.ToArray(),
             "playnite-library-control");
         CollectionAssert.AreEqual(new[] { "playnite-library.search.open", "playnite-library.browse.open", "playnite-library.filter.recent", "playnite-library.filter.favorites", "playnite-library.categories.open", "playnite-library.hidden.open", LauncherWidget.PlayniteOpenActionId, "playnite-library.management.open" }, library.ContextActions.Select(action => action.ActionId).ToArray());
+        StringAssert.Contains(library.AccessibilityLabel!, "Press Menu");
+        Assert.IsTrue(nodes.Any(node =>
+            node.Id == "playnite-library.library.menu.hint.key" && node.Text == "Menu"));
         var rail = nodes.Single(node => node.Id == PlayniteLibraryPresentation.HomeRailId);
         Assert.AreEqual(ViewNodeKind.Scroll, rail.Kind);
         Assert.AreEqual(ScrollAxis.Horizontal, rail.ScrollAxis);
@@ -161,7 +164,6 @@ public sealed class PlayniteLibraryLayoutTests
         var browseNodes = Nodes(browseSnapshot.Root).ToArray();
         foreach (var id in new[]
                  {
-                     "playnite-library.browse.back",
                      "playnite-library.filter.favorites",
                      "playnite-library.filter.recent",
                      "playnite-library.filter.source",
@@ -175,6 +177,8 @@ public sealed class PlayniteLibraryLayoutTests
                 "playnite-library-control",
                 id + " must share the Library control styling contract.");
         }
+        Assert.IsFalse(browseNodes.Any(node =>
+            node.ActionId == "playnite-library.browse.back"));
     }
 
     [TestMethod, Timeout(30_000)]
@@ -322,6 +326,137 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.AreEqual(2D / 3D, browseTileStyle.Get("aspect-ratio")?.Number);
         Assert.AreEqual(0D, browseTileStyle.Get("flex-grow")?.Number);
         Assert.AreEqual(1D, browseTileStyle.Get("flex-shrink")?.Number);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public void BrowseShellAndPackageControlsRemainStableAcrossResourceStates()
+    {
+        var item = PlayniteLibraryItem.From(Item(
+            "app-state", "saved-state", "State game", "Steam"));
+        var organization = new PlayniteLibraryPrivateState(
+            PlayniteLibraryPrivateState.CurrentVersion,
+            [new(item.Value.SavedId, item.Presentation.DisplayName,
+                item.Presentation.Source.DisplayName)]);
+        var states = new[]
+        {
+            ("ready", State(Snapshot(WidgetPagedResourceStatus.Ready, [item]),
+                organization, PlayniteLibraryRoute.Browse, [])),
+            ("not-loaded", State(Snapshot(WidgetPagedResourceStatus.NotLoaded, []),
+                organization, PlayniteLibraryRoute.Browse, [])),
+            ("loading", State(Snapshot(WidgetPagedResourceStatus.Loading, []),
+                organization, PlayniteLibraryRoute.Browse, [])),
+            ("refreshing", State(Snapshot(WidgetPagedResourceStatus.Refreshing, [item]),
+                organization, PlayniteLibraryRoute.Browse, [])),
+            ("error", State(Snapshot(WidgetPagedResourceStatus.Error, [],
+                    error: new WidgetResourceError("fixture_error", "Try again.")),
+                organization, PlayniteLibraryRoute.Browse, [])),
+            ("empty", State(Snapshot(WidgetPagedResourceStatus.Ready, []),
+                PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, [])),
+        };
+
+        foreach (var (phase, state) in states)
+        {
+            var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(state))
+                .RenderSnapshot("playnite-library.browse." + phase, 10);
+            var nodes = Nodes(snapshot.Root).ToArray();
+            Assert.AreEqual("playnite-library.root", snapshot.Root.Id, phase);
+            CollectionAssert.Contains(snapshot.Root.StyleClasses.ToArray(),
+                "playnite-library-browse-surface", phase);
+            var background = nodes.Single(node =>
+                node.Id == "playnite-library.browse.cinematic");
+            Assert.AreEqual(ViewNodeKind.BackgroundSurface, background.Kind, phase);
+            CollectionAssert.Contains(background.StyleClasses.ToArray(),
+                "playnite-library-browse-background", phase);
+            var foreground = nodes.Single(node =>
+                node.Id == PlayniteLibraryPresentation.ScrollId);
+            CollectionAssert.Contains(foreground.StyleClasses.ToArray(),
+                "playnite-library-browse-foreground", phase);
+            Assert.IsTrue(nodes.Any(node => node.Id == "playnite-library.header"), phase);
+            Assert.IsTrue(nodes.Any(node => node.Id == "playnite-library.query"), phase);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count,
+                phase + " must remain protocol-valid.");
+            if (phase == "ready")
+                Assert.AreEqual(item.Key.Value, foreground.CollectionAnchorKey);
+            else
+            {
+                Assert.IsNull(foreground.CollectionAnchorKey, phase);
+                Assert.IsFalse(nodes.Any(node =>
+                        node.ActionId == "playnite-library.launch"),
+                    phase + " must not retain stale actionable rows.");
+            }
+        }
+
+        var filtered = State(Snapshot(WidgetPagedResourceStatus.Ready, []),
+            organization, PlayniteLibraryRoute.Browse, []) with
+        {
+            Query = new WidgetAppLibraryQuery { SearchText = "missing" },
+        };
+        var filteredSnapshot = new PresentationWidget(
+                PlayniteLibraryPresentation.Render(filtered))
+            .RenderSnapshot("playnite-library.browse.filtered-empty", 11);
+        var filteredNodes = Nodes(filteredSnapshot.Root).ToArray();
+        Assert.AreEqual("No matching games", filteredNodes.Single(node =>
+            node.Id == "playnite-library.browse.empty.title").Text);
+        Assert.AreEqual("playnite-library.query.clear", filteredNodes.Single(node =>
+            node.Id == "playnite-library.browse.empty.action").ActionId);
+        Assert.AreEqual(1, filteredNodes.Count(node =>
+            node.Id == "playnite-library.browse.empty"));
+        Assert.IsFalse(filteredNodes.Any(node =>
+            node.Id.StartsWith("playnite-library.hero", StringComparison.Ordinal) ||
+            node.Id.StartsWith("playnite-library.empty", StringComparison.Ordinal) ||
+            node.Id == "playnite-library.browse.empty.icon"));
+
+        var trulyEmpty = new PresentationWidget(PlayniteLibraryPresentation.Render(
+                State(Snapshot(WidgetPagedResourceStatus.Ready, []),
+                    PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, [])))
+            .RenderSnapshot("playnite-library.browse.catalog-empty", 12);
+        var emptyNodes = Nodes(trulyEmpty.Root).ToArray();
+        Assert.AreEqual("No installed games", emptyNodes.Single(node =>
+            node.Id == "playnite-library.browse.empty.title").Text);
+        Assert.AreEqual("playnite-library.refresh", emptyNodes.Single(node =>
+            node.Id == "playnite-library.browse.empty.action").ActionId);
+
+        var theme = CompileStyles();
+        var classes = new HashSet<string>(["playnite-library-control"],
+            StringComparer.Ordinal);
+        var control = theme.Resolve(new WrssElement("button", null, classes));
+        Assert.AreEqual("Segoe UI Variable Text, Segoe UI",
+            control.Get("font-family")?.Text);
+        Assert.AreEqual("13px", control.Get("font-size")?.Text);
+        Assert.AreEqual("600", control.Get("font-weight")?.Text);
+        Assert.AreEqual("center", control.Get("text-align")?.Text);
+        Assert.AreEqual("rgba(15, 24, 35, 0.96)", control.Get("background")?.Text);
+        Assert.AreEqual("1px", control.Get("border-width")?.Text);
+        Assert.AreEqual("10px", control.Get("corner-radius")?.Text);
+        foreach (var state in new[]
+                 {
+                     WrssPseudoState.Focused,
+                     WrssPseudoState.Pressed,
+                     WrssPseudoState.Selected,
+                     WrssPseudoState.Disabled,
+                 })
+        {
+            var styled = theme.Resolve(new WrssElement("button", null, classes,
+                new HashSet<WrssPseudoState>([state])));
+            Assert.IsNotNull(styled.Get("background"), state.ToString());
+            Assert.IsNotNull(styled.Get("border-color"), state.ToString());
+            if (state == WrssPseudoState.Focused)
+            {
+                Assert.AreEqual("2px", styled.Get("outline-width")?.Text);
+                Assert.AreEqual("#ffffff", styled.Get("outline-color")?.Text);
+            }
+        }
+        var search = theme.Resolve(new WrssElement("text-entry", null,
+            new HashSet<string>(["playnite-library-control", "playnite-library-search"],
+                StringComparer.Ordinal)));
+        Assert.AreEqual("start", search.Get("text-align")?.Text);
+        Assert.AreEqual("400", search.Get("font-weight")?.Text);
+        var emptyAction = emptyNodes.Single(node =>
+            node.Id == "playnite-library.browse.empty.action");
+        CollectionAssert.Contains(emptyAction.StyleClasses.ToArray(),
+            "playnite-library-control");
+        CollectionAssert.Contains(emptyAction.StyleClasses.ToArray(),
+            "playnite-library-empty-action");
     }
 
     [TestMethod, Timeout(30_000)]

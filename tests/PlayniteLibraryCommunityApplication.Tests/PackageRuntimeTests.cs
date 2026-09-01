@@ -110,6 +110,74 @@ public sealed class PackageRuntimeTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task PackageServiceOwnsBrowseFilteringSortingAndCompleteSourceObservations()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(40);
+        client.Games[0] = client.Games[0] with
+            { Name = "Zulu", Source = "Steam", Favorite = false };
+        client.Games[1] = client.Games[1] with
+            { Name = "Alpha", Source = "GOG", Favorite = true };
+        client.Games[39] = client.Games[39] with
+            { Name = "Omega Xbox", Source = "Xbox", Favorite = false };
+        for (var index = 2; index < client.Games.Count - 1; index++)
+            client.Games[index] = client.Games[index] with { Source = "Steam" };
+        await using var service = Service(directory.Path, client);
+
+        var observed = await service.QueryWithAuthorityAsync(AllGames,
+            new(PlayniteLibraryQueryScope.Library), null, null, 32,
+            refresh: true, CancellationToken.None);
+        CollectionAssert.AreEquivalent(new[] { "GOG", "Steam", "Xbox" },
+            observed.Page.Sources.Select(source => source.DisplayName).ToArray(),
+            "Source observations must cover the complete bounded catalog, not only the visible page.");
+        Assert.IsFalse(observed.Page.Items.Any(item =>
+                item.Presentation.Source.DisplayName == "Xbox"),
+            "The Xbox source fixture must remain beyond the visible first page.");
+
+        var ascending = await Query(WidgetAppLibrarySortOrder.DisplayName);
+        Assert.AreEqual("Alpha", ascending.Items[0].Presentation.DisplayName);
+        Assert.AreEqual("Zulu", ascending.Items[^1].Presentation.DisplayName);
+
+        var descending = await Query(WidgetAppLibrarySortOrder.DisplayNameDescending);
+        Assert.AreEqual("Zulu", descending.Items[0].Presentation.DisplayName);
+        Assert.AreEqual("Alpha", descending.Items[^1].Presentation.DisplayName);
+
+        var bySource = await Query(WidgetAppLibrarySortOrder.SourceThenDisplayName);
+        Assert.AreEqual("GOG", bySource.Items[0].Presentation.Source.DisplayName);
+        Assert.AreEqual("Alpha", bySource.Items[0].Presentation.DisplayName);
+        Assert.IsTrue(bySource.Items.Zip(bySource.Items.Skip(1), (left, right) =>
+                StringComparer.OrdinalIgnoreCase.Compare(
+                    left.Presentation.Source.DisplayName,
+                    right.Presentation.Source.DisplayName) <= 0)
+            .All(value => value));
+        var steamNames = bySource.Items.Where(item =>
+                item.Presentation.Source.DisplayName == "Steam")
+            .Select(item => item.Presentation.DisplayName).ToArray();
+        CollectionAssert.AreEqual(steamNames.OrderBy(value => value,
+                StringComparer.OrdinalIgnoreCase).ToArray(), steamNames,
+            "Source sorting must use display name as its deterministic secondary key.");
+
+        var source = await service.QueryAsync(AllGames with
+            {
+                SourceAttribution = "Xbox",
+                Sort = WidgetAppLibrarySortOrder.DisplayName,
+            }, null, null, 64, refresh: false, CancellationToken.None);
+        Assert.AreEqual(client.Games[39].Id, source.Items.Single().SavedId);
+
+        var favorite = await service.QueryAsync(AllGames with
+            {
+                FavoriteSavedIds = [client.Games[1].Id],
+            }, null, null, 64, refresh: false, CancellationToken.None);
+        Assert.AreEqual(client.Games[1].Id, favorite.Items.Single().SavedId);
+        Assert.IsTrue(favorite.Items.Single().Presentation.DisplayName == "Alpha");
+
+        ValueTask<WidgetAppLibraryPage> Query(WidgetAppLibrarySortOrder sort) =>
+            service.QueryAsync(AllGames with { Sort = sort }, null, null, 64,
+                refresh: false,
+                CancellationToken.None);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task ArtworkMissingMalformedAndStaleLastGoodFailClosed()
     {
         using var directory = new TestDirectory();

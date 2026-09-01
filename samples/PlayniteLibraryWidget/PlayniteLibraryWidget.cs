@@ -39,6 +39,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         new(StringComparer.Ordinal);
     private readonly LinkedList<string> _launchStateRecency = [];
     private readonly PlayniteLibraryLaunchPersistenceCoordinator _launchPersistence = new();
+    private readonly object _pendingBackFocusGate = new();
+    private readonly Dictionary<(long Sequence, string ScopeId), string>
+        _pendingBackFocus = [];
 
     internal PlayniteLibraryWidget(
         IPlayniteLibraryApplicationService application,
@@ -59,6 +62,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
             Viewports =
             [
                 new(PlayniteLibraryPresentation.ScrollId, item => item.Key,
+                    item => PlayniteLibraryIdentity.FocusId("grid", item.Key),
+                    "playnite-library.empty.action"),
+                new(PlayniteLibraryPresentation.HomeRailId, item => item.Key,
                     item => PlayniteLibraryIdentity.FocusId("grid", item.Key),
                     "playnite-library.empty.action"),
             ],
@@ -166,6 +172,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         WidgetLifecycleState current,
         CancellationToken stateLifetime)
     {
+        if (current != WidgetLifecycleState.Interactive)
+            ClearPendingBackFocus();
         if (current == WidgetLifecycleState.Interactive ||
             previous == WidgetLifecycleState.Interactive &&
             current == WidgetLifecycleState.Visible)
@@ -175,6 +183,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
+        ClearPendingBackFocus();
         RetirePlayniteConnection(clearPresentation: false);
         lock (_gate)
         {
@@ -191,9 +200,38 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     protected override ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
+        ClearPendingBackFocus();
         _library.Reset(invalidate: false);
         _playniteClient?.Dispose();
         return _application.DisposeAsync();
+    }
+
+    public override async ValueTask<bool> OnControllerInputAsync(
+        ControllerInputEvent input,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        var capture = input.Context == ControllerInputContext.OpenWidget &&
+            input.Button == ControllerButton.B &&
+            input.Phase == ControllerEventPhase.Pressed &&
+            input.FocusedElementId is { Length: > 0 } &&
+            input.ActiveInputScopeId is { Length: > 0 } &&
+            _navigation.Value.CanGoBack;
+        if (capture)
+        {
+            lock (_pendingBackFocusGate)
+            {
+                if (_pendingBackFocus.Count < ActionQueueCapacity)
+                    _pendingBackFocus[(input.Sequence, input.ActiveInputScopeId!)] =
+                        input.FocusedElementId!;
+            }
+        }
+
+        var handled = await base.OnControllerInputAsync(input, cancellationToken)
+            .ConfigureAwait(false);
+        if (!handled && capture)
+            RemovePendingBackFocus(input.Sequence, input.ActiveInputScopeId!);
+        return handled;
     }
 
     public override async ValueTask OnActionAsync(
@@ -219,7 +257,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
             return;
         }
         var routeBeforeBack = _navigation.Value.Route;
-        if (_navigation.TryHandleBack(action, action.SourceElementId))
+        var backFocus = TakePendingBackFocus(action);
+        if (_navigation.TryHandleBack(action, backFocus ?? action.SourceElementId))
         {
             if (routeBeforeBack == PlayniteLibraryRoute.PlayniteConnection)
                 RetirePlayniteConnection();
@@ -378,11 +417,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     WidgetNavigationResult.Changed)
                     _model.Update(state => state with { SearchExpanded = false });
                 return;
-            case "playnite-library.browse.back":
-                if (_navigation.Value.Route != PlayniteLibraryRoute.Browse) return;
-                if (_navigation.Back(action.SourceElementId) == WidgetNavigationResult.Changed)
-                    await ReturnToLibraryAsync(preferContentFocus: true).ConfigureAwait(false);
-                return;
             case "playnite-library.filter.favorites":
                 if (!TryOpenBrowse(action.SourceElementId)) return;
                 _model.Update(state => state with
@@ -490,6 +524,34 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
     }
 
+    private string? TakePendingBackFocus(WidgetActionEvent action)
+    {
+        if (action.ControllerButton != ControllerButton.B ||
+            action.Phase != ControllerEventPhase.Pressed ||
+            action.InputScopeId is not { Length: > 0 } scopeId)
+            return null;
+        string? focusId;
+        lock (_pendingBackFocusGate)
+        {
+            if (!_pendingBackFocus.Remove((action.Sequence, scopeId), out focusId))
+                return null;
+        }
+        return string.Equals(action.ActionId, _navigation.Value.BackActionId,
+            StringComparison.Ordinal) ? focusId : null;
+    }
+
+    private void RemovePendingBackFocus(long sequence, string scopeId)
+    {
+        lock (_pendingBackFocusGate)
+            _pendingBackFocus.Remove((sequence, scopeId));
+    }
+
+    private void ClearPendingBackFocus()
+    {
+        lock (_pendingBackFocusGate)
+            _pendingBackFocus.Clear();
+    }
+
     private void TryMovePage(
         WidgetActionEvent action,
         WidgetCursorDirection direction)
@@ -504,7 +566,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             direction == WidgetCursorDirection.After && !snapshot.HasAfter)
             return;
         Operations.Cancel("playnite-library.launch-lifecycle");
-        _ = _library.Move(direction, PlayniteLibraryPresentation.ScrollId);
+        _ = _library.Move(direction, action.SourceElementId);
     }
 
     private static string? NormalizeSearch(string value)
@@ -932,7 +994,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 var reconciled = PlayniteLibrarySourceCatalog.Reconcile(
                     organization.ProvenSources, collectionState, direction, rawItems,
                     page.Sources, page.Before is null && page.After is null);
-                return (state with { SourceObservations = page.Sources.ToArray() },
+                var observations = PlayniteLibrarySourceCatalog.RetainObservations(
+                    state.SourceObservations, page.Sources);
+                return (ReferenceEquals(observations, state.SourceObservations)
+                        ? state
+                        : state with { SourceObservations = observations },
                     (string[]?)reconciled);
             }).Result;
         var projectionSaved = await PersistProjectionAsync(

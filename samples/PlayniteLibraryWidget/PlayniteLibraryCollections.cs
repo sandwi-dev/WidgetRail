@@ -80,6 +80,11 @@ internal sealed record PlayniteLibraryCollectionOption(
 
 internal static class PlayniteLibrarySourceCatalog
 {
+    internal static IReadOnlyList<WidgetAppLibrarySource> RetainObservations(
+        IReadOnlyList<WidgetAppLibrarySource> current,
+        IReadOnlyList<WidgetAppLibrarySource> incoming) =>
+        current.SequenceEqual(incoming) ? current : incoming.ToArray();
+
     internal static string[] Normalize(IReadOnlyList<string>? sources)
     {
         if (sources is null || sources.Count > PlayniteLibraryPrivateState.MaximumProvenSources)
@@ -113,8 +118,9 @@ internal static class PlayniteLibrarySourceCatalog
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             sources.RemoveWhere(source => !authoritative.Contains(source));
         }
-        foreach (var source in items.Select(item =>
-                     item.Value.Presentation.Source.DisplayName)
+        foreach (var source in observations.Select(observation => observation.DisplayName)
+                 .Concat(items.Select(item =>
+                     item.Value.Presentation.Source.DisplayName))
                  .Where(source => !string.IsNullOrWhiteSpace(source)))
         {
             if (sources.Count >= PlayniteLibraryPrivateState.MaximumProvenSources &&
