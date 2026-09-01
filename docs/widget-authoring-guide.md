@@ -2371,9 +2371,12 @@ the nearest surface in with `.UseFocusedDescendantArtwork()` (protocol v39).
 This is a paint/resource declaration only: it does not notify the worker or add
 focus, input, layout, or accessibility authority. A nested BackgroundSurface
 owns its own descendants and prevents an outer surface from consuming their
-focus artwork. A focused node without a declaration restores the surface's
-authored default. Pending or failed replacements retain the last admitted
-image, and stale completions cannot overwrite the current focus selection.
+focus artwork, including when the nested surface does not opt into focused
+artwork itself. Within the same opted-in surface, a focused node without a
+declaration, a pending or failed replacement, or temporary host/tray focus
+retains the last admitted image without retaining a focus ID. Selecting a
+different nested surface retires the prior surface override; stale completions
+cannot overwrite the current selection.
 Resolve every declared handle through the same bounded
 `OnResolveArtworkAsync` path as ordinary trusted artwork.
 

@@ -240,14 +240,15 @@ struct FocusBackgroundSelection final {
     for (const auto* node : path) {
         if (node->kind == L"backgroundSurface") nearestSurface = node;
     }
-    if (!nearestSurface || !nearestSurface->usesFocusedDescendantArtwork)
-        return {};
+    if (!nearestSurface) return {};
     const auto* focused = path.back();
     return {
         nearestSurface,
         focused,
         {},
-        focused->focusBackgroundArtworkHandle,
+        nearestSurface->usesFocusedDescendantArtwork
+            ? std::wstring_view(focused->focusBackgroundArtworkHandle)
+            : std::wstring_view{},
     };
 }
 
@@ -2840,8 +2841,13 @@ struct DeclarativeRenderer::RenderPass final {
 
         if (!node.usesFocusedDescendantArtwork) {
             focusBackgrounds.erase(authority);
-            if (!node.imageSource.empty() || !node.artworkHandle.empty())
-                (void)DrawImage(node, style, rect, opacity, false, false);
+            if ((!node.imageSource.empty() || !node.artworkHandle.empty()) &&
+                DrawImage(node, style, rect, opacity, false, false)) {
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+                if (!node.artworkHandle.empty())
+                    result.backgroundArtworkHandles[node.id] = node.artworkHandle;
+#endif
+            }
             return;
         }
 

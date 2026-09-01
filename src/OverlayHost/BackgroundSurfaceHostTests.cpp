@@ -581,9 +581,20 @@ int wmain() {
                     L"nested.inner.default",
             "re-added inner surface did not initialize independently from default");
 
-        (void)renderNested(L"nested.action");
+        const auto outerOverrideBeforeNonOpt =
+            renderNested(L"nested.outer.action");
+        Require(outerOverrideBeforeNonOpt.backgroundArtworkHandles.at(
+                    L"nested.outer") == L"nested.outer.focus" &&
+                outerOverrideBeforeNonOpt.backgroundArtworkHandles.at(
+                    L"nested.inner") == L"nested.inner.default",
+            "non-opt-in boundary fixture did not establish the outer override");
         outerContent.children.front().usesFocusedDescendantArtwork = false;
-        (void)renderNested(L"nested.ordinary");
+        const auto nestedNonOpt = renderNested(L"nested.action");
+        Require(nestedNonOpt.backgroundArtworkHandles.at(L"nested.outer") ==
+                    L"nested.outer.default" &&
+                nestedNonOpt.backgroundArtworkHandles.at(L"nested.inner") ==
+                    L"nested.inner.default",
+            "focus inside a nested non-opt-in surface retained the outer override");
         outerContent.children.front().usesFocusedDescendantArtwork = true;
         const auto innerReset = renderNested(L"nested.ordinary");
         Require(innerReset.backgroundArtworkHandles.at(L"nested.outer") ==
