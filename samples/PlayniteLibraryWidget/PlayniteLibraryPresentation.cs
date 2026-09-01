@@ -30,6 +30,8 @@ internal sealed record PlayniteLibraryPresentationState(
 
 internal static class PlayniteLibraryPresentation
 {
+    private const double CompactPosterWidth = 150;
+    private const int CompactPosterMaximumColumns = 7;
     internal const string ScrollId = "playnite-library.library.scroll";
     internal const string HomeRailId = "playnite-library.library.grid";
     internal const string RetryId = PlayniteLibraryActions.Retry;
@@ -346,7 +348,7 @@ internal static class PlayniteLibraryPresentation
                 catalogAnchorKey = null;
                 content = UI.Stack("playnite-library.content",
                         UI.VerticalScroll(ScrollId,
-                                GameGrid("playnite-library.hidden.grid", tiles))
+                                CompactGameGrid("playnite-library.hidden.grid", tiles))
                             .Classes("playnite-library-catalog-scroll",
                                 "playnite-library-hidden-scroll"),
                         UI.ControllerHint(ControllerButton.A, "Restore selected game",
@@ -742,7 +744,8 @@ internal static class PlayniteLibraryPresentation
         params WidgetElement[] tiles)
     {
         var grid = UI.ResponsiveGrid(
-                "playnite-library.browse.grid", 150, maximumColumns: 7, tiles)
+                "playnite-library.browse.grid", CompactPosterWidth,
+                maximumColumns: CompactPosterMaximumColumns, tiles)
             .Classes("playnite-library-browse-grid");
         var scroll = UI.VerticalScroll(ScrollId, grid)
             .Classes("playnite-library-catalog-scroll",
@@ -777,6 +780,12 @@ internal static class PlayniteLibraryPresentation
     private static GridElement GameGrid(string id, params WidgetElement[] tiles) =>
         UI.ResponsiveGrid(id, 220, 4, tiles)
             .Classes("playnite-library-grid");
+
+    private static GridElement CompactGameGrid(
+        string id,
+        params WidgetElement[] tiles) =>
+        UI.ResponsiveGrid(id, CompactPosterWidth, CompactPosterMaximumColumns, tiles)
+            .Classes("playnite-library-grid", "playnite-library-hidden-grid");
 
     private sealed record PresentedRow(
         PlayniteLibraryItem? Current,
@@ -870,7 +879,7 @@ internal static class PlayniteLibraryPresentation
                 accessibilityLabel:
                     $"{row.Display.DisplayName}, {row.Display.SourceAttribution}, {availability}")
             .Disabled(!interactive)
-            .AddClasses("playnite-library-tile");
+            .AddClasses("playnite-library-tile", "playnite-library-fixed-tile");
     }
 
     private static WidgetElement Tile(

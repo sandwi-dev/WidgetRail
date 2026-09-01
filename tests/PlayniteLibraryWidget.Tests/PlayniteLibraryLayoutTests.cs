@@ -378,6 +378,126 @@ public sealed class PlayniteLibraryLayoutTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public void HiddenMatchesHomePosterGeometryAndConnectionShellCentersAcrossWideSurfaces()
+    {
+        var item = PlayniteLibraryItem.From(Item(
+            "app-layout", "saved-layout", "Layout game", "Steam"));
+        var display = new PlayniteLibraryDisplayItem(
+            item.Value.SavedId, item.Presentation.DisplayName,
+            item.Presentation.Source.DisplayName);
+        var home = new PresentationWidget(PlayniteLibraryPresentation.Render(State(
+                Snapshot(WidgetPagedResourceStatus.Ready, [item]),
+                new PlayniteLibraryPrivateState(
+                    PlayniteLibraryPrivateState.CurrentVersion, [display]),
+                PlayniteLibraryRoute.Library, [])))
+            .RenderSnapshot("playnite-library.layout.home", 1);
+        var hiddenOrganization = new PlayniteLibraryPrivateState(
+            PlayniteLibraryPrivateState.CurrentVersion, [display])
+        {
+            ExcludedSavedIds = [display.SavedId],
+        };
+        var hiddenState = State(
+            Snapshot(WidgetPagedResourceStatus.Ready, []),
+            hiddenOrganization, PlayniteLibraryRoute.Hidden, []) with
+        {
+            HiddenRows = [item],
+        };
+        var hidden = new PresentationWidget(
+                PlayniteLibraryPresentation.Render(hiddenState))
+            .RenderSnapshot("playnite-library.layout.hidden", 2);
+        var category = new PlayniteLibraryCategory(
+            "category.layout", "Layout", [display.SavedId]);
+        var categoryState = State(
+            Snapshot(WidgetPagedResourceStatus.Ready, [item]),
+            new PlayniteLibraryPrivateState(
+                PlayniteLibraryPrivateState.CurrentVersion, [display])
+            {
+                Categories = [category],
+            }, PlayniteLibraryRoute.Category, []) with
+        {
+            ActiveCategoryId = category.Id,
+        };
+        var categorySnapshot = new PresentationWidget(
+                PlayniteLibraryPresentation.Render(categoryState))
+            .RenderSnapshot("playnite-library.layout.category", 3);
+
+        var homeTile = Nodes(home.Root).Single(node =>
+            node.ActionId == PlayniteLibraryActions.Launch);
+        var hiddenTile = Nodes(hidden.Root).Single(node =>
+            node.ActionId == PlayniteLibraryActions.Restore);
+        CollectionAssert.Contains(homeTile.StyleClasses.ToArray(),
+            "playnite-library-fixed-tile");
+        CollectionAssert.Contains(hiddenTile.StyleClasses.ToArray(),
+            "playnite-library-fixed-tile");
+        var hiddenGrid = Nodes(hidden.Root).Single(node =>
+            node.Id == "playnite-library.hidden.grid");
+        Assert.AreEqual(150D, hiddenGrid.GridMinimumColumnWidth);
+        Assert.AreEqual(7, hiddenGrid.GridMaximumColumns);
+        CollectionAssert.Contains(hiddenGrid.StyleClasses.ToArray(),
+            "playnite-library-hidden-grid");
+        var categoryGrid = Nodes(categorySnapshot.Root).Single(node =>
+            node.Id == "playnite-library.category.grid");
+        Assert.AreEqual(220D, categoryGrid.GridMinimumColumnWidth);
+        Assert.AreEqual(4, categoryGrid.GridMaximumColumns);
+
+        var theme = CompileStyles();
+        var homeStyle = theme.Resolve(new WrssElement("action-surface", null,
+            homeTile.StyleClasses.ToHashSet(StringComparer.Ordinal)));
+        var hiddenStyle = theme.Resolve(new WrssElement("action-surface", null,
+            hiddenTile.StyleClasses.ToHashSet(StringComparer.Ordinal)));
+        Assert.AreEqual("150px", homeStyle.Get("width")?.Text);
+        Assert.AreEqual(homeStyle.Get("width")?.Text,
+            hiddenStyle.Get("width")?.Text);
+        Assert.AreEqual(2D / 3D, hiddenStyle.Get("aspect-ratio")?.Number);
+        Assert.AreEqual(225D, 150D / hiddenStyle.Get("aspect-ratio")!.Number!.Value,
+            0.001D);
+
+        var connection = PlayniteLibraryConnectionPresentation.Render(new(
+            PlayniteBridgeConnectionKind.NotConfigured, Busy: false,
+            "credential_missing", Interactive: true));
+        CollectionAssert.DoesNotContain(connection.Root.StyleClasses.ToArray(),
+            "playnite-library-widget");
+        CollectionAssert.Contains(connection.Root.StyleClasses.ToArray(),
+            "playnite-library-playnite");
+        var connectionRootStyle = theme.Resolve(new WrssElement("stack", null,
+            connection.Root.StyleClasses.ToHashSet(StringComparer.Ordinal)));
+        Assert.AreEqual("100%", connectionRootStyle.Get("width")?.Text);
+        Assert.AreEqual("100%", connectionRootStyle.Get("height")?.Text);
+        Assert.IsNull(connectionRootStyle.Get("max-width"));
+        Assert.IsNull(connectionRootStyle.Get("max-height"));
+        Assert.AreEqual("center", connectionRootStyle.Get("align")?.Text);
+        Assert.AreEqual("center", connectionRootStyle.Get("justify")?.Text);
+        Assert.AreEqual("12px", connectionRootStyle.Get("padding")?.Text);
+        Assert.AreEqual("rgba(0, 0, 0, 0)",
+            connectionRootStyle.Get("background")?.Text);
+        var shell = Nodes(new PresentationWidget(connection).RenderSnapshot(
+                "playnite-library.layout.connection", 4).Root)
+            .Single(node => node.Id == "playnite-library.playnite.shell");
+        var shellStyle = theme.Resolve(new WrssElement("stack", null,
+            shell.StyleClasses.ToHashSet(StringComparer.Ordinal)));
+        Assert.AreEqual("100%", shellStyle.Get("width")?.Text);
+        Assert.AreEqual("100%", shellStyle.Get("height")?.Text);
+        Assert.AreEqual("900px", shellStyle.Get("max-width")?.Text);
+        Assert.AreEqual("620px", shellStyle.Get("max-height")?.Text);
+
+        foreach (var (surfaceWidth, surfaceHeight) in new[]
+                 {
+                     (1920D, 1080D),
+                     (3440D, 1440D),
+                 })
+        {
+            var shellWidth = Math.Min(900D, surfaceWidth - 24D);
+            var shellHeight = Math.Min(620D, surfaceHeight - 24D);
+            var left = (surfaceWidth - shellWidth) / 2D;
+            var top = (surfaceHeight - shellHeight) / 2D;
+            Assert.AreEqual(surfaceWidth / 2D, left + shellWidth / 2D, 0.001D);
+            Assert.AreEqual(surfaceHeight / 2D, top + shellHeight / 2D, 0.001D);
+            Assert.IsGreaterThan(0D, left);
+            Assert.IsGreaterThan(0D, top);
+        }
+    }
+
+    [TestMethod, Timeout(30_000)]
     public void BrowseShellAndPackageControlsRemainStableAcrossResourceStates()
     {
         var item = PlayniteLibraryItem.From(Item(

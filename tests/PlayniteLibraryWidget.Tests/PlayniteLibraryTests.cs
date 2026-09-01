@@ -394,6 +394,64 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task HiddenBackThenDelayedAuthorityRefreshSelectsACurrentHomePoster()
+    {
+        var displays = Enumerable.Range(0, 3).Select(index =>
+            new PlayniteLibraryDisplayItem(
+                $"saved-{index:D5}", $"Game {index:D5}", "Steam")).ToArray();
+        var persisted = new PlayniteLibraryPrivateState(
+            PlayniteLibraryPrivateState.CurrentVersion, displays)
+        {
+            ExcludedSavedIds = [displays[0].SavedId],
+        };
+        var host = new FakeHost(3, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1));
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        var home = Snapshot(widget, 70_001);
+        var returningPoster = Nodes(home.Root).Single(node =>
+            node.ActionId == PlayniteLibraryActions.Launch &&
+            (node.AccessibilityLabel ?? string.Empty).StartsWith(
+                displays[1].DisplayName, StringComparison.Ordinal));
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.HiddenOpen, returningPoster.Id));
+        await Bounded(widget.WhenHiddenRowsIdleAsync(), "Hidden route load");
+        var hidden = Snapshot(widget, 70_002);
+        var hiddenPoster = Nodes(hidden.Root).Single(node =>
+            node.ActionId == PlayniteLibraryActions.Restore);
+        var returnInvalidation = NextInvalidation(widget);
+        Assert.IsTrue(await Route(
+            widget, hidden, ControllerButton.B, hiddenPoster.Id));
+        await Bounded(returnInvalidation, "Hidden controller Back invalidation");
+        var returned = Snapshot(widget, 70_003);
+        Assert.AreEqual(returningPoster.Id, returned.InitialFocusId);
+
+        host.SetHidden(displays[1].SavedId, hidden: true);
+        var refreshInvalidation = NextInvalidation(widget);
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.Refresh, PlayniteLibraryActions.Refresh));
+        await Bounded(refreshInvalidation, "post-Back refresh invalidation");
+        await Bounded(widget.WhenLibraryIdleAsync(),
+            "post-Back authority refresh completion");
+        var refreshed = Snapshot(widget, 70_004);
+        var errors = ViewSnapshotValidator.Validate(refreshed);
+        Assert.AreEqual(0, errors.Count, string.Join(Environment.NewLine,
+            errors.Select(error => $"{error.Path}: {error.Code}: {error.Message}")));
+        Assert.AreNotEqual(returningPoster.Id, refreshed.InitialFocusId,
+            "An asynchronously retired return target must not survive as Home focus.");
+        Assert.IsTrue(refreshed.InitialFocusId is not null &&
+            Nodes(refreshed.Root).Any(node =>
+                node.Id == refreshed.InitialFocusId &&
+                node.ActionId == PlayniteLibraryActions.Launch &&
+                node.IsFocusable && node.IsDisabled is not true),
+            "Home must fall back to a current, enabled, focusable poster.");
+
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task HomeLibraryNavigationPrimaryActionOpensBrowseAndReactivationRetainsLastGoodPosters()
     {
         var displays = Enumerable.Range(0, 3).Select(index =>

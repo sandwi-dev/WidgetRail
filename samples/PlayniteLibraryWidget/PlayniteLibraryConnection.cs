@@ -103,7 +103,7 @@ internal static class PlayniteLibraryConnectionPresentation
         var shell = UI.Stack("playnite-library.playnite.shell", children.ToArray())
             .Classes("playnite-library-playnite-shell");
         var root = UI.Stack("playnite-library.playnite.root", shell)
-            .Classes("playnite-library-widget", "playnite-library-playnite");
+            .Classes("playnite-library-playnite");
         return new WidgetView(root,
             configured ? PlayniteLibraryWidget.PlayniteRefreshActionId :
                 "playnite-library.playnite.token",
