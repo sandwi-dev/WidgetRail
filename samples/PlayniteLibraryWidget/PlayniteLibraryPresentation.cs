@@ -58,6 +58,7 @@ internal static class PlayniteLibraryPresentation
     };
     private static readonly WidgetSurfaceHints CategoriesSurface = Surface with
     {
+        Mode = WidgetSurfaceMode.Standard,
         WidthMode = WidgetSurfaceAxisMode.FillAvailable,
         HeightMode = WidgetSurfaceAxisMode.FillAvailable,
         PreferredWidth = 900,
@@ -118,9 +119,28 @@ internal static class PlayniteLibraryPresentation
                 .Classes("playnite-library-header", "playnite-library-header-copy");
         if (state.Route == PlayniteLibraryRoute.Browse)
             header = header.AddClasses("playnite-library-browse-header");
+        if (state.Route == PlayniteLibraryRoute.Categories)
+            header = UI.Row("playnite-library.categories.header",
+                    UI.Stack("playnite-library.categories.heading",
+                            UI.Text("PLAYNITE LIBRARY",
+                                    "playnite-library.categories.eyebrow", "Playnite Library")
+                                .Classes("playnite-library-eyebrow"),
+                            UI.Text("Categories", "playnite-library.categories.title",
+                                    "Categories")
+                                .Classes("playnite-library-title"),
+                            UI.Text(state.Status, "playnite-library.categories.status",
+                                    state.Status)
+                                .Classes("playnite-library-status"))
+                        .Classes("playnite-library-categories-heading"),
+                    UI.Button("Back", PlayniteLibraryActions.CategoriesBack,
+                            PlayniteLibraryActions.CategoriesBack)
+                        .Disabled(!renderActionsEnabled)
+                        .AddClasses("playnite-library-control",
+                            "playnite-library-categories-back"))
+                .Classes("playnite-library-categories-header");
         var filterControls = new List<WidgetElement>();
         if (state.Route is not (PlayniteLibraryRoute.Library or
-            PlayniteLibraryRoute.Browse))
+            PlayniteLibraryRoute.Browse or PlayniteLibraryRoute.Categories))
             filterControls.Add(UI.Button("Back",
                 state.Route switch
                 {
@@ -237,15 +257,17 @@ internal static class PlayniteLibraryPresentation
         {
             var categoryRows = state.Organization.Categories.Select(category =>
                 UI.Card("playnite-library.category.card." + category.Id,
-                    UI.Text(category.Name,
-                        "playnite-library.category.summary." + category.Id,
-                        $"{category.Name}, {category.SavedIds.Count} games")
-                        .Classes("playnite-library-category-summary"),
-                    UI.Text($"{category.SavedIds.Count} games",
-                        "playnite-library.category.count." + category.Id,
-                        $"{category.SavedIds.Count} games")
-                        .Classes("playnite-library-category-count"),
-                    UI.Row("playnite-library.category.actions." + category.Id,
+                    UI.Row("playnite-library.category.row." + category.Id,
+                        UI.Stack("playnite-library.category.copy." + category.Id,
+                                UI.Text(category.Name,
+                                        "playnite-library.category.summary." + category.Id,
+                                        $"{category.Name}, {category.SavedIds.Count} games")
+                                    .Classes("playnite-library-category-summary"),
+                                UI.Text($"{category.SavedIds.Count} games",
+                                        "playnite-library.category.count." + category.Id,
+                                        $"{category.SavedIds.Count} games")
+                                    .Classes("playnite-library-category-count"))
+                            .Classes("playnite-library-category-copy"),
                         (UI.Button("Open",
                                 PlayniteLibraryActions.CategoryOpen(category.Id),
                                 "playnite-library.category.open-button." + category.Id)
@@ -253,7 +275,7 @@ internal static class PlayniteLibraryPresentation
                             .Disabled(!state.Interactive)
                             .AddClasses("playnite-library-control",
                                 "playnite-library-category-open"))
-                        .Classes("playnite-library-category-actions"))
+                        .Classes("playnite-library-category-row"))
                     .AddClasses("playnite-library-category"))
                 .ToArray();
             var create = UI.TextEntry(string.Empty, "Create category",
@@ -678,7 +700,7 @@ internal static class PlayniteLibraryPresentation
         else if (state.Route == PlayniteLibraryRoute.Categories)
         {
             var shell = UI.Stack("playnite-library.categories.shell",
-                    header, queryControls, content)
+                    header, content)
                 .Classes("playnite-library-categories-shell");
             root = UI.Stack("playnite-library.root", shell)
                 .Classes("playnite-library-categories");
