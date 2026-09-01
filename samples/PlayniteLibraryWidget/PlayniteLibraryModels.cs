@@ -38,6 +38,10 @@ internal sealed record PlayniteLibraryFixedRows(
     internal IEnumerable<PlayniteLibraryItem> All => Recent.Concat(Manual).Concat(TitleMatches);
 }
 
+internal sealed record PlayniteLibraryBrowseReload(
+    long AttemptId,
+    WidgetCursorResourceSnapshot<PlayniteLibraryItem>? RetainedCollection);
+
 internal sealed record PlayniteLibraryRenderState
 {
     internal required PlayniteLibraryCollectionState Collection { get; init; }
@@ -53,6 +57,8 @@ internal sealed record PlayniteLibraryRenderState
     internal bool PreferLibraryContentFocus { get; init; }
     internal bool SearchExpanded { get; init; }
     internal bool AlternateBrowseViewport { get; init; }
+    internal string? BrowseInitialFocusId { get; init; }
+    internal PlayniteLibraryBrowseReload? ActiveBrowseReload { get; init; }
     internal string? HeroSavedId { get; init; }
     internal int HeroIndex { get; init; }
     internal bool OrganizationBusy { get; init; }

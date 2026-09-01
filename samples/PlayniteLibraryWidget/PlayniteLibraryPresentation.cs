@@ -24,6 +24,8 @@ internal sealed record PlayniteLibraryPresentationState(
     internal string? ActiveCategoryId { get; init; }
     internal bool SearchExpanded { get; init; }
     internal bool AlternateBrowseViewport { get; init; }
+    internal string? BrowseInitialFocusId { get; init; }
+    internal bool BrowseRetained { get; init; }
     internal IReadOnlyList<PlayniteLibraryCollectionOption> Collections { get; init; } = [];
     internal IReadOnlyDictionary<string, string?> CompletionStatuses { get; init; } =
         new Dictionary<string, string?>(StringComparer.Ordinal);
@@ -53,6 +55,15 @@ internal static class PlayniteLibraryPresentation
     {
         WidthMode = WidgetSurfaceAxisMode.FillAvailable,
         HeightMode = WidgetSurfaceAxisMode.FillAvailable,
+    };
+    private static readonly WidgetSurfaceHints CategoriesSurface = Surface with
+    {
+        WidthMode = WidgetSurfaceAxisMode.FillAvailable,
+        HeightMode = WidgetSurfaceAxisMode.FillAvailable,
+        PreferredWidth = 900,
+        PreferredHeight = 620,
+        MinimumWidth = 420,
+        MinimumHeight = 340,
     };
 
     internal static WidgetSurfaceHints SecondarySurface => Surface;
@@ -200,14 +211,16 @@ internal static class PlayniteLibraryPresentation
                     .Disabled(!renderActionsEnabled)
                     .AddClasses("playnite-library-control", "playnite-library-search"),
             };
-            queryChildren.Add(UI.HorizontalScroll(
+            var filters = UI.HorizontalScroll(
                     "playnite-library.filters", filterControls.ToArray())
-                .Classes("playnite-library-filters"));
+                .Classes("playnite-library-filters");
+            if (state.Route == PlayniteLibraryRoute.Browse)
+                filters = filters.RememberChildFocus(
+                    PlayniteLibraryActions.RecentlyPlayedFilter);
+            queryChildren.Add(filters);
             var queryGroup = UI.Stack("playnite-library.query", queryChildren.ToArray())
                 .Classes("playnite-library-query");
-            queryControls = state.Route == PlayniteLibraryRoute.Browse
-                ? queryGroup.RememberChildFocus("playnite-library.search")
-                : queryGroup;
+            queryControls = queryGroup;
         }
 
         WidgetElement content;
@@ -217,43 +230,49 @@ internal static class PlayniteLibraryPresentation
         string? pageAfterActionId = null;
         var pageShortcuts = false;
         BackgroundSurfaceArtwork? catalogBackgroundArtwork = null;
-        string? initialFocus = snapshot.RequestedFocusId;
+        string? initialFocus = state.Route == PlayniteLibraryRoute.Browse
+            ? state.BrowseInitialFocusId ?? snapshot.RequestedFocusId
+            : snapshot.RequestedFocusId;
         if (state.Route == PlayniteLibraryRoute.Categories)
         {
             var categoryRows = state.Organization.Categories.Select(category =>
                 UI.Card("playnite-library.category.card." + category.Id,
-                    UI.Text($"{category.Name} · {category.SavedIds.Count} games",
+                    UI.Text(category.Name,
                         "playnite-library.category.summary." + category.Id,
-                        $"{category.Name}, {category.SavedIds.Count} games"),
+                        $"{category.Name}, {category.SavedIds.Count} games")
+                        .Classes("playnite-library-category-summary"),
+                    UI.Text($"{category.SavedIds.Count} games",
+                        "playnite-library.category.count." + category.Id,
+                        $"{category.SavedIds.Count} games")
+                        .Classes("playnite-library-category-count"),
                     UI.Row("playnite-library.category.actions." + category.Id,
-                        UI.Button("Open", PlayniteLibraryActions.CategoryOpen(category.Id),
+                        (UI.Button("Open",
+                                PlayniteLibraryActions.CategoryOpen(category.Id),
                                 "playnite-library.category.open-button." + category.Id)
+                            with { AccessibilityLabel = "Open " + category.Name })
                             .Disabled(!state.Interactive)
-                            .AddClasses("playnite-library-control")))
-                    .Classes("playnite-library-category"))
+                            .AddClasses("playnite-library-control",
+                                "playnite-library-category-open"))
+                        .Classes("playnite-library-category-actions"))
+                    .AddClasses("playnite-library-category"))
                 .ToArray();
-            var management = new List<WidgetElement>
-            {
-                UI.TextEntry(string.Empty, "Create category",
+            var create = UI.TextEntry(string.Empty, "Create category",
                         "playnite-library.category.create", "playnite-library.category.create",
                         PlayniteLibraryPrivateState.MaximumCategoryNameLength)
                     .Disabled(!state.Interactive || state.OrganizationBusy ||
                         state.Organization.Categories.Count >=
                             PlayniteLibraryPrivateState.MaximumCategories)
-                    .AddClasses("playnite-library-control", "playnite-library-search"),
-                UI.Button("All Games", "playnite-library.categories.back",
-                    "playnite-library.categories.all-games")
-                    .Disabled(!state.Interactive)
-                    .AddClasses("playnite-library-control"),
-            };
-            management.AddRange(categoryRows);
+                    .AddClasses("playnite-library-control", "playnite-library-search",
+                        "playnite-library-category-create");
             content = UI.Stack("playnite-library.content",
                     UI.Text("Categories are read from Playnite. Creating or changing " +
                             "membership uses the exact current Playnite game identity.",
                         "playnite-library.categories.help", "Category help"),
+                    create,
                     UI.VerticalScroll("playnite-library.categories.list",
-                        management.ToArray()))
-                .Classes("playnite-library-content");
+                            categoryRows)
+                        .Classes("playnite-library-categories-list"))
+                .Classes("playnite-library-content", "playnite-library-categories-content");
             initialFocus = "playnite-library.category.create";
         }
         else if (state.Route == PlayniteLibraryRoute.Category)
@@ -393,7 +412,7 @@ internal static class PlayniteLibraryPresentation
                     LaunchStateFor(state.LaunchStates, row.Display.SavedId),
                     row.Current,
                     row.Favorite,
-                    renderActionsEnabled && !state.OrganizationBusy,
+                    renderActionsEnabled && !state.OrganizationBusy && !state.BrowseRetained,
                     row.Key,
                     rail.PageBumpers,
                     row.CollectionItem,
@@ -426,6 +445,7 @@ internal static class PlayniteLibraryPresentation
                 .RememberChildFocus(PlayniteLibraryActions.Refresh)
                 .VisibleWhen(ResponsiveVisibility.ExpandedOnly);
             var hasActionableGame = renderActionsEnabled && !state.OrganizationBusy &&
+                !state.BrowseRetained &&
                 state.LaunchingSavedId is null &&
                 rail.Items.Any(row => row.Current is not null);
             var hintItems = new List<WidgetElement>();
@@ -457,7 +477,7 @@ internal static class PlayniteLibraryPresentation
                 PlayniteLibraryRoute.Browse => BrowseGrid(
                     BrowseScrollId(state.AlternateBrowseViewport), snapshot,
                     catalogAnchorKey, pageBeforeActionId, pageAfterActionId,
-                    pageShortcuts, renderActionsEnabled, tiles),
+                    pageShortcuts, renderActionsEnabled && !state.BrowseRetained, tiles),
                 _ => GameGrid("playnite-library.library.grid", tiles),
             };
             var children = new List<WidgetElement>();
@@ -480,6 +500,7 @@ internal static class PlayniteLibraryPresentation
                 .Classes("playnite-library-content");
             initialFocus ??= rail.Selected?.FocusId;
             if (state.Route == PlayniteLibraryRoute.Browse &&
+                state.BrowseInitialFocusId is null &&
                 !rail.Items.Any(row => string.Equals(
                     row.FocusId, initialFocus, StringComparison.Ordinal)))
                 initialFocus = rail.Selected?.FocusId ?? "playnite-library.search";
@@ -654,6 +675,14 @@ internal static class PlayniteLibraryPresentation
                 .Classes("playnite-library-route-shell", "playnite-library-browse",
                     "playnite-library-browse-surface");
         }
+        else if (state.Route == PlayniteLibraryRoute.Categories)
+        {
+            var shell = UI.Stack("playnite-library.categories.shell",
+                    header, queryControls, content)
+                .Classes("playnite-library-categories-shell");
+            root = UI.Stack("playnite-library.root", shell)
+                .Classes("playnite-library-categories");
+        }
         else if (state.Route == PlayniteLibraryRoute.Hidden)
         {
             root = UI.Stack("playnite-library.root", header, queryControls, content)
@@ -678,12 +707,15 @@ internal static class PlayniteLibraryPresentation
                 .Classes("playnite-library-widget", "playnite-library-route-shell");
         }
         if (state.Route == PlayniteLibraryRoute.Browse &&
+            state.BrowseInitialFocusId is null &&
             (snapshot.Status is not WidgetPagedResourceStatus.Ready || !catalogPage))
             initialFocus = "playnite-library.search";
-        return new WidgetView(root, initialFocus, Surface: state.Route is
-            PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse
-            ? CinematicSurface
-            : Surface);
+        return new WidgetView(root, initialFocus, Surface: state.Route switch
+        {
+            PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse => CinematicSurface,
+            PlayniteLibraryRoute.Categories => CategoriesSurface,
+            _ => Surface,
+        });
     }
 
     private static bool HasActiveBrowseQuery(PlayniteLibraryPresentationState state) =>
@@ -951,7 +983,7 @@ internal static class PlayniteLibraryPresentation
                 PlayniteLibraryActions.Launch, id, subtitle: subtitle, artwork: artwork,
                 accessibilityLabel: $"{title}, {subtitle}, {state}")
             .Busy(launching || availability.Busy)
-            .Disabled(!availability.Launchable)
+            .Disabled(!interactive || !availability.Launchable)
             .AddClasses("playnite-library-tile");
         if (focusSummaryContext)
             tile = tile.AddClasses("playnite-library-fixed-tile");

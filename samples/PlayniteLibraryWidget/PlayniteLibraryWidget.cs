@@ -42,6 +42,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private readonly LinkedList<string> _launchStateRecency = [];
     private readonly PlayniteLibraryLaunchGenerationOwner _launchGeneration = new();
     private readonly object _pendingBackFocusGate = new();
+    private long _browseReloadAttempt;
     private readonly Dictionary<(long Sequence, string ScopeId), string>
         _pendingBackFocus = [];
 
@@ -154,7 +155,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         var view = PlayniteLibraryPresentation.Render(state);
         var root = _navigation.Scope(navigation, view.Root);
         var initialFocusId = navigation.Route is PlayniteLibraryRoute.Categories or
-                PlayniteLibraryRoute.Category
+                PlayniteLibraryRoute.Category ||
+            navigation.Route == PlayniteLibraryRoute.Browse &&
+            local.BrowseInitialFocusId is not null
             ? view.InitialFocusId
             : local.PreferLibraryContentFocus
             ? view.InitialFocusId
@@ -264,6 +267,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         var live = _library.Snapshot.Items;
         var fixedRows = local.FixedRows.All.ToArray();
         var retainedHome = local.RetainedHomeCollection?.Items ?? [];
+        var retainedBrowse = local.ActiveBrowseReload?.RetainedCollection?.Items ?? [];
         var hidden = _hiddenRows.Snapshot.Value ?? [];
         IEnumerable<PlayniteLibraryItem> rendered = route switch
         {
@@ -271,6 +275,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 retainedHome.Concat(fixedRows),
             PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Category =>
                 live.Concat(fixedRows),
+            PlayniteLibraryRoute.Browse when retainedBrowse.Count != 0 => retainedBrowse,
             PlayniteLibraryRoute.Browse => live,
             PlayniteLibraryRoute.SourcePicker or PlayniteLibraryRoute.SortPicker => live,
             PlayniteLibraryRoute.Hidden => hidden.Concat(live).Concat(fixedRows),
@@ -280,7 +285,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             PlayniteLibraryRoute.Library when local.RetainedHomeCollection is not null =>
                 live.Concat(hidden),
-            PlayniteLibraryRoute.Browse => retainedHome.Concat(fixedRows).Concat(hidden),
+            PlayniteLibraryRoute.Browse => live.Concat(retainedBrowse)
+                .Concat(retainedHome).Concat(fixedRows).Concat(hidden),
             PlayniteLibraryRoute.Hidden => retainedHome,
             _ => retainedHome.Concat(hidden),
         };
@@ -457,6 +463,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             LaunchingSavedId = null,
             PlayniteBusy = false,
+            ActiveBrowseReload = null,
         });
         return ValueTask.CompletedTask;
     }
@@ -682,7 +689,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     {
                         SearchText = NormalizeSearch(action.CommittedText),
                     }, resetBrowseViewport:
-                        _navigation.Value.Route == PlayniteLibraryRoute.Browse);
+                        _navigation.Value.Route == PlayniteLibraryRoute.Browse,
+                        browseFocusId: "playnite-library.search");
                 }
                 return;
             case PlayniteLibraryActions.QueryClear:
@@ -697,6 +705,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 }
                 var resetBrowseViewport = _navigation.Value.Route ==
                     PlayniteLibraryRoute.Browse;
+                var clearReload = resetBrowseViewport ? CreateBrowseReload() : null;
                 var cleared = _model.Update(state =>
                 {
                     var collection = _navigation.Value.Route ==
@@ -712,6 +721,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
                         AlternateBrowseViewport = resetBrowseViewport && semanticChange
                         ? !state.AlternateBrowseViewport
                         : state.AlternateBrowseViewport,
+                        BrowseInitialFocusId = resetBrowseViewport && semanticChange
+                            ? PlayniteLibraryActions.QueryClear
+                            : state.BrowseInitialFocusId,
+                        ActiveBrowseReload = resetBrowseViewport && semanticChange
+                            ? clearReload
+                            : state.ActiveBrowseReload,
                     }, semanticChange);
                 });
                 if (cleared.Result)
@@ -731,19 +746,25 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 return;
             case PlayniteLibraryActions.FavoritesFilter:
                 if (!TryOpenBrowse(action.SourceElementId)) return;
+                var favoriteReload = CreateBrowseReload();
                 _model.Update(state => state with
                 {
                     Collection = state.Collection.ToggleFavorites(InstalledGames),
                     AlternateBrowseViewport = !state.AlternateBrowseViewport,
+                    BrowseInitialFocusId = PlayniteLibraryActions.FavoritesFilter,
+                    ActiveBrowseReload = favoriteReload,
                 });
                 ReloadQuery(retainCurrentItems: false);
                 return;
             case PlayniteLibraryActions.RecentlyPlayedFilter:
                 if (!TryOpenBrowse(action.SourceElementId)) return;
+                var recentReload = CreateBrowseReload();
                 _model.Update(state => state with
                 {
                     Collection = state.Collection.ToggleRecentlyPlayed(InstalledGames),
                     AlternateBrowseViewport = !state.AlternateBrowseViewport,
+                    BrowseInitialFocusId = PlayniteLibraryActions.RecentlyPlayedFilter,
+                    ActiveBrowseReload = recentReload,
                 });
                 ReloadQuery(retainCurrentItems: false);
                 return;
@@ -975,6 +996,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
         string pickerFocusId,
         PlayniteLibraryRoute pickerRoute)
     {
+        var browseFocusId = pickerRoute == PlayniteLibraryRoute.SourcePicker
+            ? PlayniteLibraryActions.SourceFilter
+            : PlayniteLibraryActions.SortFilter;
+        var browseReload = CreateBrowseReload();
         var update = _model.Update(state => query == state.Collection.Query
             ? state
             : state with
@@ -982,6 +1007,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 Collection = state.Collection with { Query = query },
                 AlternateBrowseViewport = !state.AlternateBrowseViewport,
                 PreferLibraryContentFocus = false,
+                BrowseInitialFocusId = browseFocusId,
+                ActiveBrowseReload = browseReload,
             });
         if (!update.Changed)
         {
@@ -1055,9 +1082,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private void ReplaceQuery(
         WidgetAppLibraryQuery query,
         bool force = false,
-        bool resetBrowseViewport = false)
+        bool resetBrowseViewport = false,
+        string? browseFocusId = null)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        var browseReload = resetBrowseViewport ? CreateBrowseReload() : null;
         var update = _model.Update(state => !force && query == state.Collection.Query
             ? state
             : state with
@@ -1066,6 +1095,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 AlternateBrowseViewport = resetBrowseViewport
                     ? !state.AlternateBrowseViewport
                     : state.AlternateBrowseViewport,
+                BrowseInitialFocusId = resetBrowseViewport
+                    ? browseFocusId
+                    : state.BrowseInitialFocusId,
+                ActiveBrowseReload = resetBrowseViewport
+                    ? browseReload
+                    : state.ActiveBrowseReload,
             });
         if (!update.Changed) return;
         if (_navigation.Value.Route != PlayniteLibraryRoute.Hidden)
@@ -1098,7 +1133,44 @@ public sealed partial class PlayniteLibraryWidget : Widget
             _library.Reset(invalidate: false);
             operation = _library.EnsureLoaded();
         }
+        if (_model.Value.ActiveBrowseReload is { } browseReload)
+            _ = ClearBrowseReloadAfterTerminalAsync(operation, browseReload.AttemptId);
         return operation;
+    }
+
+    private PlayniteLibraryBrowseReload CreateBrowseReload()
+    {
+        var snapshot = _library.Snapshot;
+        var retained = snapshot.Status == WidgetPagedResourceStatus.Ready &&
+            snapshot.Items.Count != 0
+            ? snapshot with
+            {
+                Before = null,
+                After = null,
+                RequestedFocusId = null,
+                FirstItemIndex = null,
+                TotalItemCount = null,
+                WindowGeneration = 0,
+                WindowChange = default,
+            }
+            : null;
+        return new(Interlocked.Increment(ref _browseReloadAttempt), retained);
+    }
+
+    private async Task ClearBrowseReloadAfterTerminalAsync(
+        WidgetOperationHandle operation,
+        long attemptId)
+    {
+        try
+        {
+            await operation.Completion.ConfigureAwait(false);
+        }
+        finally
+        {
+            _model.Update(state => state.ActiveBrowseReload?.AttemptId == attemptId
+                ? state with { ActiveBrowseReload = null }
+                : state);
+        }
     }
 
     private async Task ReloadQueryAsync(
@@ -1119,6 +1191,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
             FixedRowsRevision = state.FixedRowsRevision + 1,
             ActiveCategoryId = null,
             PreferLibraryContentFocus = preferContentFocus,
+            BrowseInitialFocusId = null,
+            ActiveBrowseReload = null,
         });
         var replacement = ReloadQuery(preferContentFocus, retainCurrentItems: true);
         if (replacement is { } admitted)
@@ -2049,10 +2123,15 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         var organization = PlayniteLibraryTitlePolicy.Project(
             PresentationOrganizationLocked());
-        var sourceCollection = route == PlayniteLibraryRoute.Library &&
-            local.RetainedHomeCollection is { } retainedHome
-                ? retainedHome
-                : _library.Snapshot;
+        var sourceCollection = route switch
+        {
+            PlayniteLibraryRoute.Library when local.RetainedHomeCollection is { } retainedHome =>
+                retainedHome,
+            PlayniteLibraryRoute.Browse when
+                local.ActiveBrowseReload?.RetainedCollection is { } retainedBrowse =>
+                retainedBrowse,
+            _ => _library.Snapshot,
+        };
         var collection = sourceCollection with
         {
             Items = sourceCollection.Items.Select(item => item.WithProjectedValue(
@@ -2089,6 +2168,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         ActiveCategoryId = local.ActiveCategoryId,
         SearchExpanded = local.SearchExpanded,
         AlternateBrowseViewport = local.AlternateBrowseViewport,
+        BrowseInitialFocusId = local.BrowseInitialFocusId,
+        BrowseRetained = route == PlayniteLibraryRoute.Browse &&
+            local.ActiveBrowseReload?.RetainedCollection is not null,
         Collections = PlayniteLibraryCollectionPolicy.Options(
             organization, ProvenSourcesLocked(), local.Collection.Selection),
         CompletionStatuses = _presentationAuthority.CompletionStatuses,
@@ -2144,6 +2226,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             ActiveCategoryId = null,
             PreferLibraryContentFocus = false,
+            BrowseInitialFocusId = null,
+            ActiveBrowseReload = null,
         });
         _navigation.Push(PlayniteLibraryRoute.Categories, sourceElementId);
     }

@@ -97,4 +97,14 @@
 .playnite-library-playnite { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; align: center; justify: center; padding: 12px; background: rgba(0, 0, 0, 0); color: #f7f9fc; }
 .playnite-library-playnite-shell { width: 100%; height: 100%; max-width: 900px; max-height: 620px; min-width: 0px; min-height: 0px; gap: 14px; padding: 16px; background: rgba(10, 16, 24, 0.96); border-color: rgba(231, 239, 249, 0.20); border-width: 1px; corner-radius: 14px; overflow: clip; }
 .playnite-library-playnite-card { gap: 10px; padding: 14px; background: #18202a; border-color: rgba(231, 239, 249, 0.20); border-width: 1px; corner-radius: 12px; overflow: clip; }
+.playnite-library-categories { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; align: center; justify: center; padding: 12px; background: rgba(0, 0, 0, 0); color: #f7f9fc; }
+.playnite-library-categories-shell { width: 100%; height: 100%; max-width: 900px; max-height: 620px; min-width: 0px; min-height: 0px; gap: 14px; padding: 16px; background: rgba(10, 16, 24, 0.96); border-color: rgba(231, 239, 249, 0.20); border-width: 1px; corner-radius: 14px; overflow: clip; }
+.playnite-library-categories-content { min-height: 0px; flex-grow: 1; flex-basis: 0; gap: 10px; }
+.playnite-library-category-create { flex-grow: 0; flex-shrink: 0; }
+.playnite-library-categories-list { min-height: 0px; flex-grow: 1; flex-basis: 0; gap: 8px; }
+.playnite-library-category { min-width: 0px; flex-shrink: 0; gap: 5px; padding: 10px 12px; }
+.playnite-library-category-summary { min-width: 0px; flex-grow: 1; flex-shrink: 1; max-lines: 2; text-overflow: ellipsis; }
+.playnite-library-category-count { min-width: 0px; color: #bdc8d5; font-size: 12px; max-lines: 1; }
+.playnite-library-category-actions { width: 100%; min-width: 0px; align: center; justify: end; }
+.playnite-library-category-open { flex-grow: 0; flex-shrink: 0; }
 .playnite-library-playnite-token { min-height: 44px; }
