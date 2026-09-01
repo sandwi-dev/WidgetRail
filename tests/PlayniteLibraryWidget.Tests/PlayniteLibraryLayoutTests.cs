@@ -43,7 +43,6 @@ public sealed class PlayniteLibraryLayoutTests
         CollectionAssert.AreEqual(new[]
         {
             "playnite-library.refresh",
-            "playnite-library.recent.clear",
         }, topActions.Children[0].Children.Select(node => node.Id).ToArray());
         Assert.IsFalse(nodes.Any(node => node.Id is "playnite-library.eyebrow" or
             "playnite-library.title" or "playnite-library.status"));
@@ -53,7 +52,14 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.AreEqual("playnite-library.browse.open", library.ActionId);
         CollectionAssert.Contains(library.StyleClasses.ToArray(),
             "playnite-library-control");
-        CollectionAssert.AreEqual(new[] { "playnite-library.search.open", "playnite-library.browse.open", "playnite-library.filter.recent", "playnite-library.filter.favorites", "playnite-library.categories.open", "playnite-library.hidden.open", LauncherWidget.PlayniteOpenActionId, "playnite-library.management.open" }, library.ContextActions.Select(action => action.ActionId).ToArray());
+        CollectionAssert.AreEqual(new[]
+        {
+            "playnite-library.filter.recent",
+            "playnite-library.filter.favorites",
+            "playnite-library.categories.open",
+            "playnite-library.hidden.open",
+            LauncherWidget.PlayniteOpenActionId,
+        }, library.ContextActions.Select(action => action.ActionId).ToArray());
         StringAssert.Contains(library.AccessibilityLabel!, "Press Menu");
         Assert.IsTrue(nodes.Any(node =>
             node.Id == "playnite-library.library.menu.hint.key" && node.Text == "Menu"));
@@ -179,6 +185,14 @@ public sealed class PlayniteLibraryLayoutTests
         }
         Assert.IsFalse(browseNodes.Any(node =>
             node.ActionId == "playnite-library.browse.back"));
+        Assert.IsFalse(browseNodes.Any(node =>
+            node.Id.StartsWith("playnite-library.management", StringComparison.Ordinal) ||
+            node.ActionId?.StartsWith("playnite-library.management", StringComparison.Ordinal) == true));
+        var favorites = browseNodes.Single(node =>
+            node.Id == "playnite-library.filter.favorites");
+        Assert.AreEqual(ViewNodeKind.Button, favorites.Kind);
+        Assert.IsNull(favorites.IsSelected,
+            "Favorites is an ordinary On/Off command, not a selected-state toggle surface.");
     }
 
     [TestMethod, Timeout(30_000)]
@@ -275,12 +289,11 @@ public sealed class PlayniteLibraryLayoutTests
         StringAssert.Contains(styles,
             ".playnite-library-browse-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 16px 14px; padding: 4px; justify: center; }");
         StringAssert.Contains(styles,
-            ".playnite-library-browse-foreground { width: 100%; min-width: 0px; min-height: 0px; max-width: 1120px;");
+            ".playnite-library-browse-foreground { width: 100%; height: 100%; min-width: 0px; min-height: 0px; max-width: 1120px;");
         var theme = CompileStyles();
-        var browseStyle = theme.Resolve(new WrssElement("scroll", null,
+        var browseStyle = theme.Resolve(new WrssElement("stack", null,
             new HashSet<string>(
             [
-                "playnite-library-browse-scroll",
                 "playnite-library-browse-foreground",
                 "playnite-library-main",
             ], StringComparer.Ordinal)));
@@ -368,18 +381,29 @@ public sealed class PlayniteLibraryLayoutTests
             CollectionAssert.Contains(background.StyleClasses.ToArray(),
                 "playnite-library-browse-background", phase);
             var foreground = nodes.Single(node =>
-                node.Id == PlayniteLibraryPresentation.ScrollId);
+                node.Id == "playnite-library.browse.page");
             CollectionAssert.Contains(foreground.StyleClasses.ToArray(),
                 "playnite-library-browse-foreground", phase);
             Assert.IsTrue(nodes.Any(node => node.Id == "playnite-library.header"), phase);
             Assert.IsTrue(nodes.Any(node => node.Id == "playnite-library.query"), phase);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count,
                 phase + " must remain protocol-valid.");
-            if (phase == "ready")
-                Assert.AreEqual(item.Key.Value, foreground.CollectionAnchorKey);
+            if (phase is "ready" or "refreshing")
+            {
+                var catalogScroll = nodes.Single(node =>
+                    node.Id == PlayniteLibraryPresentation.ScrollId);
+                Assert.AreEqual(ViewNodeKind.Scroll, catalogScroll.Kind, phase);
+                CollectionAssert.Contains(catalogScroll.StyleClasses.ToArray(),
+                    "playnite-library-catalog-scroll", phase);
+                Assert.AreEqual(item.Key.Value, catalogScroll.CollectionAnchorKey);
+                Assert.IsTrue(nodes.Any(node => node.ActionId == "playnite-library.launch"),
+                    phase + " must retain the admitted catalog while refreshing.");
+            }
             else
             {
-                Assert.IsNull(foreground.CollectionAnchorKey, phase);
+                Assert.IsFalse(nodes.Any(node =>
+                    node.Id == PlayniteLibraryPresentation.ScrollId),
+                    phase + " must not publish an empty collection owner.");
                 Assert.IsFalse(nodes.Any(node =>
                         node.ActionId == "playnite-library.launch"),
                     phase + " must not retain stale actionable rows.");
@@ -608,8 +632,9 @@ public sealed class PlayniteLibraryLayoutTests
             collection, organization, "Ready", null,
             new Dictionary<string, PlayniteLibraryLaunchState>(StringComparer.Ordinal),
             OrganizationBusy: false, Interactive: true, new WidgetAppLibraryQuery(),
-            PlayniteLibraryRecentMode.Off, FavoriteFilter: false, route,
-            PlayniteLibraryFixedRows.Empty, sources, HeroSavedId: null, HeroIndex: 0)
+            RecentlyPlayed: false, FavoriteFilter: false, route,
+            PlayniteLibraryFixedRows.Empty, HiddenRows: [], sources,
+            HeroSavedId: null, HeroIndex: 0)
         {
             Collections = PlayniteLibraryCollectionPolicy.Options(
                 organization, organization.ProvenSources.ToArray(),

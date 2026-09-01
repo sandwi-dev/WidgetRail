@@ -96,21 +96,7 @@ internal static class PlayniteLibraryHeroRailPolicy
         var excluded = state.Organization.ExcludedSavedIds.ToHashSet(StringComparer.Ordinal);
         var used = new HashSet<string>(StringComparer.Ordinal);
 
-        var recent = state.RecentMode == PlayniteLibraryRecentMode.Off
-            ? []
-            : state.Organization.RecentSavedIds
-                .Where(savedId => !excluded.Contains(savedId))
-                .Select(savedId => RowFor(savedId, resolved, stored))
-                .Where(row => row is not null && Matches(
-                    row.Display, state.Query, state.FavoriteFilter, favorites))
-                .Select(row => row!)
-                .Take(PlayniteLibraryPrivateState.MaximumRecentItems)
-                .ToArray();
-        foreach (var row in recent) used.Add(row.Display.SavedId);
-
-        var manual = state.RecentMode == PlayniteLibraryRecentMode.RecentOnly
-            ? []
-            : state.Organization.ManualSavedIds
+        var manual = state.Organization.ManualSavedIds
                 .Where(savedId => !used.Contains(savedId) && !excluded.Contains(savedId))
                 .Select(savedId => RowFor(savedId, resolved, stored))
                 .Where(row => row is not null &&
@@ -150,8 +136,7 @@ internal static class PlayniteLibraryHeroRailPolicy
         var liveIds = state.FixedRows.All.Concat(snapshot.Items)
             .Select(item => item.Value.SavedId)
             .ToHashSet(StringComparer.Ordinal);
-        var fixedMembership = state.Organization.RecentSavedIds
-            .Concat(state.Organization.ManualSavedIds)
+        var fixedMembership = state.Organization.ManualSavedIds
             .ToHashSet(StringComparer.Ordinal);
         var unavailable = state.Organization.Items.Where(item =>
                 PlayniteLibraryOrganizationPolicy.ReferencedSavedIds(state.Organization)
@@ -164,8 +149,7 @@ internal static class PlayniteLibraryHeroRailPolicy
             .Take(WidgetAppLibraryService.MaximumSavedItems)
             .ToArray();
 
-        var rows = recent.Select(row => row with { CollectionItem = false })
-            .Concat(manual.Select(row => row with { CollectionItem = false }))
+        var rows = manual.Select(row => row with { CollectionItem = false })
             .Concat(titleMatches.Select(row => row with { CollectionItem = false }))
             .Concat(catalog)
             .Concat(unavailable)

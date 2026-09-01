@@ -7,7 +7,7 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 internal enum PlayniteLibraryCollectionKind
 {
     AllInstalled,
-    Recent,
+    RecentlyPlayed,
     Favorites,
     Manual,
     Source,
@@ -19,15 +19,15 @@ internal sealed record PlayniteLibraryCollectionSelection(
 
 internal sealed record PlayniteLibraryCollectionState(
     WidgetAppLibraryQuery Query,
-    PlayniteLibraryCollectionSelection? Selected = null)
+    PlayniteLibraryCollectionSelection? Selected = null,
+    bool FavoriteOnly = false,
+    bool RecentlyPlayedOnly = false)
 {
     internal PlayniteLibraryCollectionSelection Selection =>
         Selected ?? PlayniteLibraryCollectionPolicy.AllInstalled;
-    internal PlayniteLibraryRecentMode RecentMode => Selection.Kind ==
-        PlayniteLibraryCollectionKind.Recent
-            ? PlayniteLibraryRecentMode.RecentOnly
-            : PlayniteLibraryRecentMode.Off;
-    internal bool FavoriteFilter => Selection.Kind ==
+    internal bool RecentlyPlayed => RecentlyPlayedOnly || Selection.Kind ==
+        PlayniteLibraryCollectionKind.RecentlyPlayed;
+    internal bool FavoriteFilter => FavoriteOnly || Selection.Kind ==
         PlayniteLibraryCollectionKind.Favorites;
     internal bool ManualFilter => Selection.Kind ==
         PlayniteLibraryCollectionKind.Manual;
@@ -42,7 +42,9 @@ internal sealed record PlayniteLibraryCollectionState(
                 SourceAttribution = selection.Kind == PlayniteLibraryCollectionKind.Source
                     ? selection.SourceAttribution
                     : null,
-            }, selection);
+            }, selection,
+            selection.Kind == PlayniteLibraryCollectionKind.Favorites,
+            selection.Kind == PlayniteLibraryCollectionKind.RecentlyPlayed);
 
     internal PlayniteLibraryCollectionState Reset(WidgetAppLibraryQuery query) => new(query);
 
@@ -60,16 +62,24 @@ internal sealed record PlayniteLibraryCollectionState(
     }
 
     internal PlayniteLibraryCollectionState ToggleFavorites(
-        WidgetAppLibraryQuery installedGames) => Select(
-            Selection.Kind == PlayniteLibraryCollectionKind.Favorites
+        WidgetAppLibraryQuery installedGames) => this with
+        {
+            Query = Query with { },
+            Selected = Selection.Kind == PlayniteLibraryCollectionKind.Favorites
                 ? PlayniteLibraryCollectionPolicy.AllInstalled
-                : new(PlayniteLibraryCollectionKind.Favorites), installedGames);
+                : Selected,
+            FavoriteOnly = !FavoriteFilter,
+        };
 
-    internal PlayniteLibraryCollectionState CycleRecent(
-        WidgetAppLibraryQuery installedGames) => Select(
-            Selection.Kind == PlayniteLibraryCollectionKind.Recent
+    internal PlayniteLibraryCollectionState ToggleRecentlyPlayed(
+        WidgetAppLibraryQuery installedGames) => this with
+        {
+            Query = Query with { },
+            Selected = Selection.Kind == PlayniteLibraryCollectionKind.RecentlyPlayed
                 ? PlayniteLibraryCollectionPolicy.AllInstalled
-                : new(PlayniteLibraryCollectionKind.Recent), installedGames);
+                : Selected,
+            RecentlyPlayedOnly = !RecentlyPlayed,
+        };
 }
 
 internal sealed record PlayniteLibraryCollectionOption(
@@ -146,9 +156,8 @@ internal static class PlayniteLibraryCollectionPolicy
         {
             Option("all", "All installed", AllInstalled, current),
         };
-        if (organization.RecentSavedIds.Count != 0)
-            options.Add(Option("recent", $"Continue ({organization.RecentSavedIds.Count})",
-                new(PlayniteLibraryCollectionKind.Recent), current));
+        options.Add(Option("recent", "Recently played",
+            new(PlayniteLibraryCollectionKind.RecentlyPlayed), current));
         if (organization.FavoriteSavedIds.Count != 0)
             options.Add(Option("favorites",
                 $"Favorites ({organization.FavoriteSavedIds.Count})",

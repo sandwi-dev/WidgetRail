@@ -100,7 +100,9 @@ internal static class PlayniteLibraryConnectionPresentation
                     UI.Text("Checking the local connection…",
                         "playnite-library.playnite.busy.text"))
                 .Classes("playnite-library-playnite-card"));
-        var root = UI.Stack("playnite-library.playnite.root", children.ToArray())
+        var shell = UI.Stack("playnite-library.playnite.shell", children.ToArray())
+            .Classes("playnite-library-playnite-shell");
+        var root = UI.Stack("playnite-library.playnite.root", shell)
             .Classes("playnite-library-widget", "playnite-library-playnite");
         return new WidgetView(root,
             configured ? PlayniteLibraryWidget.PlayniteRefreshActionId :
@@ -127,64 +129,85 @@ public sealed partial class PlayniteLibraryWidget
     internal const string PlayniteDeleteActionId = "playnite-library.playnite.delete";
 
     private IPlayniteBridgeClient? _playniteClient;
-    private long _playniteGeneration;
 
     private IPlayniteBridgeClient PlayniteClient =>
         _playniteClient ??= PlayniteBridgeClient.CreateDefault();
 
     private PlayniteLibraryConnectionState CapturePlayniteConnection(
-        PlayniteLibraryRenderState state) =>
-        new(state.PlayniteKind, state.PlayniteBusy, state.PlayniteCode,
-            LifecycleState == WidgetLifecycleState.Interactive);
-
-    private async ValueTask RefreshPlayniteConnectionAsync(CancellationToken cancellationToken)
+        PlayniteLibraryRenderState state)
     {
-        if (!TryBeginPlayniteOperation(out var generation)) return;
+        var probe = _playniteConnection.Snapshot;
+        var observed = probe.Value;
+        return new(observed?.Kind ?? state.PlayniteKind,
+            state.PlayniteBusy || probe.Status is WidgetResourceStatus.Loading or
+                WidgetResourceStatus.Refreshing,
+            observed?.Code ?? state.PlayniteCode,
+            LifecycleState == WidgetLifecycleState.Interactive);
+    }
+
+    private async ValueTask<PlayniteBridgeConnectionResult> LoadPlayniteConnectionAsync(
+        CancellationToken activeCancellationToken)
+    {
+        var route = _navigation.Value;
+        if (route.Route != PlayniteLibraryRoute.PlayniteConnection)
+            throw new OperationCanceledException("The Playnite connection route is inactive.");
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            activeCancellationToken, route.RouteCancellationToken);
         try
         {
-            var result = await PlayniteClient.ProbeAsync(cancellationToken).ConfigureAwait(false);
-            CompletePlayniteOperation(generation, result);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            CancelPlayniteOperation(generation);
+            return await PlayniteClient.ProbeAsync(lifetime.Token).ConfigureAwait(false);
         }
         catch (PlayniteCredentialException)
         {
-            CompletePlayniteOperation(generation,
-                new(PlayniteBridgeConnectionKind.Unavailable, "secret_store_unavailable"));
+            return new(PlayniteBridgeConnectionKind.Unavailable,
+                "secret_store_unavailable");
         }
+    }
+
+    private async ValueTask RefreshPlayniteConnectionAsync(CancellationToken cancellationToken)
+    {
+        if (_navigation.Value.Route != PlayniteLibraryRoute.PlayniteConnection) return;
+        var operation = _playniteConnection.Refresh();
+        await operation.Completion.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask SavePlayniteCredentialAsync(
         string token, CancellationToken cancellationToken)
     {
-        if (!TryBeginPlayniteOperation(out var generation)) return;
+        if (!TryBeginPlayniteCommand()) return;
+        var routeToken = _navigation.Value.RouteCancellationToken;
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, routeToken);
         try
         {
-            try { await PlayniteClient.SaveCredentialAsync(token, cancellationToken)
+            try { await PlayniteClient.SaveCredentialAsync(token, lifetime.Token)
                     .ConfigureAwait(false); }
             catch (ArgumentException)
             {
-                CompletePlayniteOperation(generation,
-                    new(PlayniteBridgeConnectionKind.AuthenticationRequired,
-                        "credential_invalid"));
+                _model.Update(state => state with
+                {
+                    PlayniteKind = PlayniteBridgeConnectionKind.AuthenticationRequired,
+                    PlayniteCode = "credential_invalid",
+                    PlayniteBusy = false,
+                });
                 return;
             }
-            var result = await PlayniteClient.ProbeAsync(cancellationToken).ConfigureAwait(false);
-            CompletePlayniteOperation(generation, result);
+            _playniteConnection.Reset();
+            var probe = _playniteConnection.Refresh();
+            await probe.Completion.WaitAsync(lifetime.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            CancelPlayniteOperation(generation);
-        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (PlayniteCredentialException)
         {
-            CompletePlayniteOperation(generation,
-                new(PlayniteBridgeConnectionKind.Unavailable, "secret_store_unavailable"));
+            _model.Update(state => state with
+            {
+                PlayniteKind = PlayniteBridgeConnectionKind.Unavailable,
+                PlayniteCode = "secret_store_unavailable",
+            });
         }
         finally
         {
+            _model.Update(state => state with { PlayniteBusy = false });
             // CommittedText belongs to the action callback only. This widget never stores it.
             token = string.Empty;
         }
@@ -192,72 +215,43 @@ public sealed partial class PlayniteLibraryWidget
 
     private async ValueTask DeletePlayniteCredentialAsync(CancellationToken cancellationToken)
     {
-        if (!TryBeginPlayniteOperation(out var generation)) return;
+        if (!TryBeginPlayniteCommand()) return;
+        var routeToken = _navigation.Value.RouteCancellationToken;
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, routeToken);
         try
         {
-            await PlayniteClient.DeleteCredentialAsync(cancellationToken).ConfigureAwait(false);
-            CompletePlayniteOperation(generation,
-                new(PlayniteBridgeConnectionKind.NotConfigured, "credential_missing"));
+            await PlayniteClient.DeleteCredentialAsync(lifetime.Token).ConfigureAwait(false);
+            _playniteConnection.Reset();
+            _model.Update(state => state with
+            {
+                PlayniteKind = PlayniteBridgeConnectionKind.NotConfigured,
+                PlayniteCode = "credential_missing",
+            });
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            CancelPlayniteOperation(generation);
-        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (PlayniteCredentialException)
         {
-            CompletePlayniteOperation(generation,
-                new(PlayniteBridgeConnectionKind.Unavailable, "secret_store_unavailable"));
+            _model.Update(state => state with
+            {
+                PlayniteKind = PlayniteBridgeConnectionKind.Unavailable,
+                PlayniteCode = "secret_store_unavailable",
+            });
         }
+        finally { _model.Update(state => state with { PlayniteBusy = false }); }
     }
 
-    private bool TryBeginPlayniteOperation(out long generation)
+    private bool TryBeginPlayniteCommand()
     {
         var admitted = _model.Update(state => state.PlayniteBusy
             ? (state, false)
             : (state with { PlayniteBusy = true }, true));
-        if (!admitted.Result)
-        {
-            generation = 0;
-            return false;
-        }
-        lock (_gate)
-        {
-            generation = ++_playniteGeneration;
-        }
-        return true;
-    }
-
-    private void CompletePlayniteOperation(
-        long generation, PlayniteBridgeConnectionResult result)
-    {
-        lock (_gate)
-        {
-            if (generation != _playniteGeneration ||
-                _navigation.Value.Route != PlayniteLibraryRoute.PlayniteConnection) return;
-            _model.Update(state => state with
-            {
-                PlayniteKind = result.Kind,
-                PlayniteCode = result.Code,
-                PlayniteBusy = false,
-            });
-        }
-    }
-
-    private void CancelPlayniteOperation(long generation)
-    {
-        lock (_gate)
-        {
-            if (generation != _playniteGeneration) return;
-            _model.Update(state => state with { PlayniteBusy = false });
-        }
+        return admitted.Result;
     }
 
     private void RetirePlayniteConnection(bool clearPresentation = true)
     {
-        lock (_gate)
-        {
-            _playniteGeneration++;
-        }
+        _playniteConnection.Reset();
         if (clearPresentation)
             _model.Update(state => state with { PlayniteBusy = false });
     }

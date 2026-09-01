@@ -5,6 +5,7 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 internal enum PlayniteLibraryQueryScope
 {
     Library,
+    RecentlyPlayed,
     Hidden,
     Category,
 }

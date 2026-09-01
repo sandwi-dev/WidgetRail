@@ -102,11 +102,6 @@ internal static class PlayniteLibraryOrganizationPolicy
         if (favorites.Union(grouped, StringComparer.Ordinal).Count() >
             PlayniteLibraryPrivateState.MaximumOrganizedItems)
             return PlayniteLibraryPrivateState.Empty;
-        var recent = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var savedId in state.RecentSavedIds)
-            if (!ValidSavedId(savedId) || !display.ContainsKey(savedId) ||
-                !recent.Add(savedId))
-                return PlayniteLibraryPrivateState.Empty;
         var manual = new HashSet<string>(StringComparer.Ordinal);
         foreach (var savedId in state.ManualSavedIds)
             if (!ValidSavedId(savedId) || !display.ContainsKey(savedId) ||
@@ -130,7 +125,7 @@ internal static class PlayniteLibraryOrganizationPolicy
             {
                 SavedIds = group.SavedIds.ToArray(),
             }).ToArray(),
-            RecentSavedIds = state.RecentSavedIds.ToArray(),
+            RecentSavedIds = [],
             ManualSavedIds = state.ManualSavedIds.ToArray(),
             ExcludedSavedIds = state.ExcludedSavedIds.ToArray(),
             Categories = categories,
@@ -182,35 +177,6 @@ internal static class PlayniteLibraryOrganizationPolicy
         if (!favorite && contains) favorites.Remove(display.SavedId);
         var candidate = RetainDisplay(state, display) with { FavoriteSavedIds = favorites };
         return AcceptIfBounded(state, candidate);
-    }
-
-    internal static PlayniteLibraryStateMutation RecordRecent(
-        PlayniteLibraryPrivateState state,
-        PlayniteLibraryDisplayItem display)
-    {
-        state = RetainDisplay(Normalize(state), display);
-        var recent = state.RecentSavedIds.Where(savedId =>
-                !string.Equals(savedId, display.SavedId, StringComparison.Ordinal))
-            .Prepend(display.SavedId)
-            .Take(PlayniteLibraryPrivateState.MaximumRecentItems)
-            .ToArray();
-        return AcceptIfBounded(state, state with { RecentSavedIds = recent });
-    }
-
-    internal static PlayniteLibraryStateMutation ClearRecent(PlayniteLibraryPrivateState state) =>
-        PlayniteLibraryStateMutation.Apply(Normalize(state) with { RecentSavedIds = [] });
-
-    internal static PlayniteLibraryStateMutation RestoreRecent(
-        PlayniteLibraryPrivateState state,
-        IReadOnlyList<string> savedIds)
-    {
-        state = Normalize(state);
-        var retained = savedIds.Where(savedId => state.Items.Any(item =>
-                string.Equals(item.SavedId, savedId, StringComparison.Ordinal)))
-            .Distinct(StringComparer.Ordinal)
-            .Take(PlayniteLibraryPrivateState.MaximumRecentItems)
-            .ToArray();
-        return PlayniteLibraryStateMutation.Apply(state with { RecentSavedIds = retained });
     }
 
     internal static PlayniteLibraryStateMutation SetManual(
@@ -352,7 +318,6 @@ internal static class PlayniteLibraryOrganizationPolicy
 
     internal static IReadOnlyList<string> ReferencedSavedIds(PlayniteLibraryPrivateState state) =>
         state.FavoriteSavedIds.Concat(state.VariantGroups.SelectMany(group => group.SavedIds))
-            .Concat(state.RecentSavedIds)
             .Concat(state.ManualSavedIds)
             .Concat(state.ExcludedSavedIds)
             .Concat(state.Categories.SelectMany(category => category.SavedIds))
@@ -418,6 +383,27 @@ internal sealed record PlayniteLibraryStateSaveResult(
     bool Saved,
     PlayniteLibraryPrivateState State,
     long Revision);
+
+internal enum PlayniteLibraryPersistenceOutcome
+{
+    Saved,
+    PolicyRejected,
+    CapabilityFailure,
+    UnexpectedFailure,
+}
+
+internal sealed record PlayniteLibraryPersistenceResult(
+    PlayniteLibraryPersistenceOutcome Outcome,
+    string? Code = null)
+{
+    internal bool Saved => Outcome == PlayniteLibraryPersistenceOutcome.Saved;
+    internal static PlayniteLibraryPersistenceResult SavedResult { get; } =
+        new(PlayniteLibraryPersistenceOutcome.Saved);
+    internal static PlayniteLibraryPersistenceResult PolicyRejected { get; } =
+        new(PlayniteLibraryPersistenceOutcome.PolicyRejected);
+    internal static PlayniteLibraryPersistenceResult UnexpectedFailure { get; } =
+        new(PlayniteLibraryPersistenceOutcome.UnexpectedFailure);
+}
 
 internal static class PlayniteLibraryStateStore
 {

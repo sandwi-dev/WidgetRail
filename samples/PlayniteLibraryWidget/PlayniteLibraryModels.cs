@@ -11,8 +11,15 @@ internal sealed record PlayniteLibraryItem(
     internal static PlayniteLibraryItem From(WidgetAppLibraryItem item) =>
         new(item, PlayniteLibraryIdentity.Key(item.SavedId));
 
-    internal PlayniteLibraryItem WithValue(WidgetAppLibraryItem item) =>
-        From(item);
+    internal PlayniteLibraryItem WithProjectedValue(WidgetAppLibraryItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (!string.Equals(Value.SavedId, item.SavedId, StringComparison.Ordinal) ||
+            Key != PlayniteLibraryIdentity.Key(item.SavedId))
+            throw new InvalidOperationException(
+                "A projected Playnite item cannot change its exact saved identity or key.");
+        return new(item, Key);
+    }
 
     internal WidgetAppLibraryPresentation Presentation => Value.Presentation;
 }
@@ -31,53 +38,46 @@ internal sealed record PlayniteLibraryFixedRows(
     internal IEnumerable<PlayniteLibraryItem> All => Recent.Concat(Manual).Concat(TitleMatches);
 }
 
-internal sealed record PlayniteLibraryRenderState(
-    PlayniteLibraryCollectionState Collection,
-    PlayniteLibraryFixedRows FixedRows,
-    IReadOnlyList<WidgetAppLibrarySource> SourceObservations,
-    string? ActiveCategoryId,
-    long FixedRowsRevision,
-    string? PendingRestoredSavedId,
-    bool PreferLibraryContentFocus,
-    bool SearchExpanded,
-    string? HeroSavedId,
-    int HeroIndex,
-    bool OrganizationBusy,
-    string Status,
-    string? LaunchingSavedId,
-    PlayniteBridgeConnectionKind PlayniteKind,
-    string PlayniteCode,
-    bool PlayniteBusy)
+internal sealed record PlayniteLibraryRenderState
 {
-    internal static PlayniteLibraryRenderState Initial(WidgetAppLibraryQuery query) => new(
-        new(query),
-        PlayniteLibraryFixedRows.Empty,
-        [],
-        null,
-        0,
-        null,
-        false,
-        false,
-        null,
-        0,
-        false,
-        "Playnite Library loads when visible",
-        null,
-        PlayniteBridgeConnectionKind.NotConfigured,
-        "credential_missing",
-        false);
+    internal required PlayniteLibraryCollectionState Collection { get; init; }
+    internal required WidgetAppLibraryQuery HiddenQuery { get; init; }
+    internal WidgetCursorResourceSnapshot<PlayniteLibraryItem>? RetainedHomeCollection
+        { get; init; }
+    internal PlayniteLibraryFixedRows FixedRows { get; init; } =
+        PlayniteLibraryFixedRows.Empty;
+    internal IReadOnlyList<WidgetAppLibrarySource> SourceObservations { get; init; } = [];
+    internal string? ActiveCategoryId { get; init; }
+    internal long FixedRowsRevision { get; init; }
+    internal string? PendingRestoredSavedId { get; init; }
+    internal bool PreferLibraryContentFocus { get; init; }
+    internal bool SearchExpanded { get; init; }
+    internal string? HeroSavedId { get; init; }
+    internal int HeroIndex { get; init; }
+    internal bool OrganizationBusy { get; init; }
+    internal string Status { get; init; } = "Playnite Library loads when visible";
+    internal string? LaunchingSavedId { get; init; }
+    internal PlayniteBridgeConnectionKind PlayniteKind { get; init; } =
+        PlayniteBridgeConnectionKind.NotConfigured;
+    internal string PlayniteCode { get; init; } = "credential_missing";
+    internal bool PlayniteBusy { get; init; }
+
+    internal static PlayniteLibraryRenderState Initial(WidgetAppLibraryQuery query) => new()
+        {
+            Collection = new(query),
+            HiddenQuery = query,
+        };
 }
 
 internal enum PlayniteLibraryRoute
 {
-    // Library is cinematic Home. Browse owns query/filtering; Management owns
-    // secondary library and connection controls.
+    // Library is cinematic Home. Browse owns query/filtering; dedicated
+    // routes own Categories, Hidden games, and Playnite connection.
     Library,
     Browse,
     Hidden,
     Categories,
     Category,
-    Management,
     PlayniteConnection,
 }
 

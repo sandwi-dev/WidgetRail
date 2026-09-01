@@ -178,6 +178,69 @@ public sealed class PackageRuntimeTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task RecentlyPlayedIsPlayniteAuthoritativeFilteredDeterministicAndBounded()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(40);
+        for (var index = 0; index < client.Games.Count; index++)
+            client.Games[index] = client.Games[index] with
+            {
+                Source = "Steam",
+                LastActivityUnixMilliseconds = index == 0 ? null : 1_000L + index,
+            };
+        client.Games[1] = client.Games[1] with
+        {
+            Name = "bravo",
+            LastActivityUnixMilliseconds = 2_000,
+        };
+        client.Games[2] = client.Games[2] with
+        {
+            Name = "Alpha",
+            LastActivityUnixMilliseconds = 2_000,
+        };
+        client.Games[3] = client.Games[3] with
+        {
+            Name = "alpha",
+            LastActivityUnixMilliseconds = 2_000,
+        };
+        client.Games[39] = client.Games[39] with
+        {
+            Source = "GOG",
+            LastActivityUnixMilliseconds = 9_000,
+        };
+        client.Games[38] = client.Games[38] with
+        {
+            Hidden = true,
+            LastActivityUnixMilliseconds = 8_000,
+        };
+        await using var service = Service(directory.Path, client);
+
+        var result = await service.QueryWithAuthorityAsync(
+            AllGames with { SourceAttribution = "Steam" },
+            new(PlayniteLibraryQueryScope.RecentlyPlayed), null, null,
+            64, refresh: true, CancellationToken.None);
+        var expected = client.Games
+            .Where(game => !game.Hidden && game.Source == "Steam" &&
+                game.LastActivityUnixMilliseconds is not null)
+            .OrderByDescending(game => game.LastActivityUnixMilliseconds)
+            .ThenBy(game => game.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(game => game.Id, StringComparer.Ordinal)
+            .Take(PlayniteLibraryPrivateState.MaximumRecentItems)
+            .Select(game => game.Id)
+            .ToArray();
+
+        Assert.AreEqual(PlayniteLibraryPrivateState.MaximumRecentItems,
+            result.Page.Items.Count);
+        CollectionAssert.AreEqual(expected,
+            result.Page.Items.Select(item => item.SavedId).ToArray());
+        Assert.IsFalse(result.Page.Items.Any(item => item.SavedId == client.Games[0].Id),
+            "A game without Playnite LastActivity must not enter Recently played.");
+        Assert.IsFalse(result.Page.Items.Any(item => item.SavedId == client.Games[38].Id ||
+            item.SavedId == client.Games[39].Id),
+            "Hidden/source filters must apply before the Recently played cap and ordering.");
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task ArtworkMissingMalformedAndStaleLastGoodFailClosed()
     {
         using var directory = new TestDirectory();

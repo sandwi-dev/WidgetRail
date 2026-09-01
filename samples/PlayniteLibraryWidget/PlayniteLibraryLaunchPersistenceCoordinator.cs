@@ -2,7 +2,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.PlayniteLibrary;
 
-internal sealed class PlayniteLibraryLaunchPersistenceCoordinator
+internal sealed class PlayniteLibraryLaunchGenerationOwner
 {
     private long _generation;
 
@@ -12,7 +12,7 @@ internal sealed class PlayniteLibraryLaunchPersistenceCoordinator
         WidgetOperationHandle handle,
         TaskCompletionSource<long> generationReady)
     {
-        if (!handle.IsAccepted)
+        if (handle.Admission != WidgetOperationAdmission.Started)
         {
             generationReady.TrySetCanceled();
             return false;
@@ -24,34 +24,4 @@ internal sealed class PlayniteLibraryLaunchPersistenceCoordinator
     internal void Invalidate() => Interlocked.Increment(ref _generation);
 
     internal bool IsCurrent(long generation) => generation == CurrentGeneration;
-
-    internal async Task CommitRecentAsync(
-        long generation,
-        WidgetAppLaunchObservationState observation,
-        PlayniteLibraryDisplayItem display,
-        Func<Func<PlayniteLibraryPrivateState, PlayniteLibraryStateMutation>,
-            CancellationToken, Task<bool>> save,
-        Func<IReadOnlyList<string>> captureCurrentRecent,
-        CancellationToken cancellationToken)
-    {
-        if (observation == WidgetAppLaunchObservationState.RequestAccepted ||
-            !IsCurrent(generation)) return;
-        try
-        {
-            await save(
-                state => PlayniteLibraryOrganizationPolicy.RecordRecent(state, display),
-                cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            if (!IsCurrent(generation))
-            {
-                var desiredRecent = captureCurrentRecent();
-                await save(
-                    state => PlayniteLibraryOrganizationPolicy.RestoreRecent(
-                        state, desiredRecent),
-                    CancellationToken.None).ConfigureAwait(false);
-            }
-        }
-    }
 }

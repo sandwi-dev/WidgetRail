@@ -191,7 +191,7 @@ internal static class PlayniteLibraryCategoryPolicy
             ? PlayniteLibraryStateMutation.Apply(candidate)
             : PlayniteLibraryStateMutation.Reject(baseline);
 
-    private static bool ValidId(string? value) => value is { Length: 41 } &&
+    internal static bool ValidId(string? value) => value is { Length: 41 } &&
         value.StartsWith("category.", StringComparison.Ordinal) &&
         value.AsSpan(9).IndexOfAnyExcept("0123456789abcdef") < 0;
 }

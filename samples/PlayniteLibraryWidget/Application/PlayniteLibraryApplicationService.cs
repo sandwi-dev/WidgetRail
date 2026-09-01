@@ -385,6 +385,13 @@ internal sealed class PlayniteLibraryApplicationService(
         if (query.FavoriteSavedIds.Count != 0)
             values = values.Where(game => query.FavoriteSavedIds.Contains(
                 game.Id, StringComparer.Ordinal));
+        if (context.Scope == PlayniteLibraryQueryScope.RecentlyPlayed)
+            return values
+                .Where(game => game.LastActivityUnixMilliseconds is not null)
+                .OrderByDescending(game => game.LastActivityUnixMilliseconds)
+                .ThenBy(game => game.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(game => game.Id, StringComparer.Ordinal)
+                .Take(PlayniteLibraryPrivateState.MaximumRecentItems);
         return query.Sort switch
         {
             WidgetAppLibrarySortOrder.DisplayNameDescending => values
