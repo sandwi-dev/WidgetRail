@@ -42,7 +42,6 @@ internal sealed record PlayniteLibraryRenderState(
     bool SearchExpanded,
     string? HeroSavedId,
     int HeroIndex,
-    string? VariantSeedSavedId,
     bool OrganizationBusy,
     string Status,
     string? LaunchingSavedId,
@@ -61,7 +60,6 @@ internal sealed record PlayniteLibraryRenderState(
         false,
         null,
         0,
-        null,
         false,
         "Playnite Library loads when visible",
         null,
@@ -90,13 +88,6 @@ internal enum PlayniteLibraryLaunchState
     Running,
     Failed,
     Ended,
-}
-
-internal enum PlayniteLibraryVariantActionResult
-{
-    Rejected,
-    Started,
-    Completed,
 }
 
 internal static class PlayniteLibraryIdentity

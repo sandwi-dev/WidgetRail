@@ -24,6 +24,11 @@
 .playnite-library-browse-foreground { width: 100%; min-width: 0px; min-height: 0px; max-width: 1120px; flex-grow: 1; flex-basis: 0; padding: 18px; gap: 16px; }
 .playnite-library-header { min-width: 0px; gap: 3px; }
 .playnite-library-header-row { width: 100%; align: center; justify: space-between; gap: 16px; padding: 10px 14px; background: rgba(5, 9, 14, 0.78); border-color: rgba(231, 239, 249, 0.16); border-width: 1px; corner-radius: 12px; }
+.playnite-library-home-actions { width: 100%; min-width: 0px; flex-shrink: 0; align: center; justify: space-between; gap: 8px; padding: 10px 0px 0px; background: rgba(0, 0, 0, 0); }
+.playnite-library-home-utilities { min-width: 0px; flex-grow: 0; flex-shrink: 1; align: center; gap: 8px; }
+.playnite-library-control { min-height: 40px; flex-grow: 0; flex-shrink: 0; padding: 8px 12px; background: rgba(15, 24, 35, 0.90); color: #f7f9fc; border-color: rgba(231, 239, 249, 0.22); border-width: 1px; corner-radius: 10px; }
+.playnite-library-control:focused { background: rgba(31, 45, 61, 0.96); border-color: rgba(255, 255, 255, 0.74); }
+.playnite-library-control:disabled { background: rgba(13, 19, 28, 0.68); color: #8f9aa7; }
 .playnite-library-header-copy { min-width: 0px; flex-grow: 1; flex-shrink: 1; }
 .playnite-library-browse-header { width: 100%; padding: 10px 14px; background: rgba(5, 9, 14, 0.78); border-color: rgba(231, 239, 249, 0.16); border-width: 1px; corner-radius: 12px; }
 .playnite-library-header-expanded { min-width: 0px; gap: 3px; }
@@ -36,9 +41,10 @@
 .playnite-library-summary-title { color: #ffffff; font-size: 24px; font-weight: 700; line-height: 1.12; max-lines: 2; text-overflow: ellipsis; }
 .playnite-library-summary-meta { color: #d1dae5; font-size: 13px; line-height: 1.3; max-lines: 2; text-overflow: ellipsis; }
 .playnite-library-summary-state { color: #8bc7ff; font-size: 12px; font-weight: 600; max-lines: 1; }
-button { background: rgba(15, 24, 35, 0.88); color: #f7f9fc; border-color: rgba(231, 239, 249, 0.18); border-width: 1px; corner-radius: 9px; }
-button:focused { background: rgba(31, 45, 61, 0.96); }
-button:disabled { background: rgba(13, 19, 28, 0.68); color: #8f9aa7; }
+.playnite-library-summary-description { color: #d1dae5; font-size: 12px; line-height: 1.3; max-lines: 3; text-overflow: ellipsis; }
+.playnite-library-filter-control { background: rgba(15, 24, 35, 0.88); color: #f7f9fc; border-color: rgba(231, 239, 249, 0.18); border-width: 1px; corner-radius: 9px; }
+.playnite-library-filter-control:focused { background: rgba(31, 45, 61, 0.96); }
+.playnite-library-filter-control:disabled { background: rgba(13, 19, 28, 0.68); color: #8f9aa7; }
 .playnite-library-source-status { min-width: 0px; gap: 5px; }
 .playnite-library-source-rows { gap: 3px; }
 .playnite-library-source-row { color: #d6dee8; font-size: 13px; }
@@ -58,10 +64,10 @@ button:disabled { background: rgba(13, 19, 28, 0.68); color: #8f9aa7; }
 .playnite-library-hero-source { color: #d1dae5; }
 .playnite-library-hero-state { color: #8bc7ff; font-weight: 600; }
 .playnite-library-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; }
-.playnite-library-browse-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 18px 16px; padding: 4px; justify: center; }
+.playnite-library-browse-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 16px 14px; padding: 4px; justify: center; }
 .playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; padding: 4px 6px 10px; }
 .playnite-library-tile { aspect-ratio: 2/3; min-height: 0px; background: rgba(13, 19, 28, 0.96); border-color: rgba(231, 239, 249, 0.18); border-width: 1px; corner-radius: 12px; }
-.playnite-library-fixed-tile { width: 200px; min-width: 200px; flex-basis: 200px; flex-grow: 0; flex-shrink: 0; }
+.playnite-library-fixed-tile { width: 150px; min-width: 150px; flex-basis: 150px; flex-grow: 0; flex-shrink: 0; }
 .playnite-library-browse-tile { min-width: 0px; flex-grow: 0; flex-shrink: 1; }
 .playnite-library-tile:focused { background: rgba(21, 30, 42, 0.98); border-color: rgba(255, 255, 255, 0.74); }
 .playnite-library-tile:disabled { background: rgba(13, 19, 28, 0.90); color: #8f9aa7; }

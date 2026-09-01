@@ -156,7 +156,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _model.Update(state => state with
         {
             LaunchingSavedId = null,
-            VariantSeedSavedId = null,
             PlayniteBusy = false,
         });
         return ValueTask.CompletedTask;
@@ -251,23 +250,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     _navigation.Value.Route != PlayniteLibraryRoute.Hidden) return;
                 await SetHiddenAsync(action.SourceElementId, hidden: false, cancellationToken)
                     .ConfigureAwait(false);
-                return;
-            case "playnite-library.variant":
-                if (LifecycleState != WidgetLifecycleState.Interactive) return;
-                if (ResolveActionSource(action.SourceElementId) is { } variantSource)
-                    await ToggleVariantAsync(variantSource, cancellationToken)
-                        .ConfigureAwait(false);
-                return;
-            case "playnite-library.prefer":
-                if (LifecycleState != WidgetLifecycleState.Interactive) return;
-                if (ResolveActionSource(action.SourceElementId) is { } preferSource)
-                    await PreferVariantAsync(preferSource, cancellationToken)
-                        .ConfigureAwait(false);
-                return;
-            case "playnite-library.organization.reset":
-                if (LifecycleState != WidgetLifecycleState.Interactive) return;
-                await MutateOrganizationAsync(PlayniteLibraryOrganizationPolicy.Clear,
-                    "Organization cleared", cancellationToken).ConfigureAwait(false);
                 return;
             case PlayniteOpenActionId:
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
@@ -484,13 +466,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         WidgetActionEvent action,
         WidgetCursorDirection direction)
     {
-        var expectedButtonId = direction == WidgetCursorDirection.Before
-            ? "playnite-library.previous"
-            : "playnite-library.next";
         if (LifecycleState != WidgetLifecycleState.Interactive ||
             action.SourceElementId is not PlayniteLibraryPresentation.ScrollId &&
-            action.SourceElementId is not PlayniteLibraryPresentation.HomeRailId &&
-            action.SourceElementId != expectedButtonId)
+            action.SourceElementId is not PlayniteLibraryPresentation.HomeRailId)
             return;
         var snapshot = _library.Snapshot;
         if (snapshot.Status != WidgetPagedResourceStatus.Ready ||
@@ -1203,6 +1181,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
         bool hidden,
         CancellationToken cancellationToken)
     {
+        if (!hidden)
+        {
+            await _library.WhenIdleAsync(cancellationToken).ConfigureAwait(false);
+            if (LifecycleState != WidgetLifecycleState.Interactive ||
+                _navigation.Value.Route != PlayniteLibraryRoute.Hidden)
+                return false;
+        }
         PlayniteLibraryDisplayItem? display;
         if (hidden)
         {
@@ -1371,77 +1356,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
             state => PlayniteLibraryOrganizationPolicy.SetManual(state, display, !included),
             included ? $"Removed {display.DisplayName}" : $"Added {display.DisplayName}",
             cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task<PlayniteLibraryVariantActionResult> ToggleVariantAsync(
-        string sourceElementId,
-        CancellationToken cancellationToken)
-    {
-        var current = DisplayForSource(sourceElementId);
-        if (current is null) return PlayniteLibraryVariantActionResult.Rejected;
-        var transition = _model.Update(state => state.VariantSeedSavedId is null
-            ? (state with
-            {
-                VariantSeedSavedId = current.SavedId,
-                Status = $"Variant selection started with {current.DisplayName}",
-            }, (Started: true, Seed: (string?)null))
-            : (state with { VariantSeedSavedId = null },
-                (Started: false, Seed: state.VariantSeedSavedId)));
-        if (transition.Result.Started)
-            return PlayniteLibraryVariantActionResult.Started;
-
-        PlayniteLibraryDisplayItem? first;
-        PlayniteLibraryVariantGroup? existing;
-        lock (_gate)
-        {
-            first = DisplayForCurrentSavedLocked(transition.Result.Seed!);
-            existing = first is null ? null : _organization.VariantGroups.FirstOrDefault(group =>
-                group.SavedIds.Contains(first.SavedId, StringComparer.Ordinal) &&
-                group.SavedIds.Contains(current.SavedId, StringComparer.Ordinal));
-        }
-        if (first is null || first.SavedId == current.SavedId)
-        {
-            _model.Update(state => state with
-            {
-                Status = first is null
-                    ? "The first selected game is no longer available"
-                    : "Choose a different game for the second variant",
-            });
-            return PlayniteLibraryVariantActionResult.Rejected;
-        }
-        await MutateOrganizationAsync(
-            existing is null
-                ? state => PlayniteLibraryOrganizationPolicy.Pair(state, first, current)
-                : state => PlayniteLibraryOrganizationPolicy.Unmerge(
-                    state, existing.Id, current.SavedId),
-            existing is null
-                ? $"Grouped {first.DisplayName} with {current.DisplayName}"
-                : $"Removed {current.DisplayName} from its variant group",
-            cancellationToken).ConfigureAwait(false);
-        return PlayniteLibraryVariantActionResult.Completed;
-    }
-
-    private async Task PreferVariantAsync(
-        string sourceElementId,
-        CancellationToken cancellationToken)
-    {
-        var display = DisplayForSource(sourceElementId);
-        if (display is null) return;
-        PlayniteLibraryVariantGroup? group;
-        lock (_gate) group = PlayniteLibraryOrganizationPolicy.GroupFor(
-            _organization, display.SavedId);
-        if (group is null)
-        {
-            _model.Update(state => state with
-            {
-                Status = "Group variants before choosing a preferred launch",
-            });
-            return;
-        }
-        await MutateOrganizationAsync(
-            state => PlayniteLibraryOrganizationPolicy.Prefer(state, group.Id, display.SavedId),
-            $"Preferred variant: {display.DisplayName}", cancellationToken)
-            .ConfigureAwait(false);
     }
 
     private async Task<bool> PersistProjectionAsync(
