@@ -147,6 +147,11 @@ public static class PresentationUpdateValidator
                     Add($"{nodePath}.children", "required", "Node children cannot be null.");
                     return;
                 }
+                if (node.FocusPresentation is not null)
+                    Visit(node.FocusPresentation, $"{nodePath}.focusPresentation", depth + 1);
+                if (node.DefaultFocusPresentation is not null)
+                    Visit(node.DefaultFocusPresentation,
+                        $"{nodePath}.defaultFocusPresentation", depth + 1);
                 foreach (var (child, childIndex) in node.Children.Select((value, i) => (value, i)))
                 {
                     if (child is null)
@@ -229,6 +234,10 @@ public static class PresentationUpdateMaterializer
             if (node.Children is null)
                 throw Error("$.operations", "required",
                     "An intermediate presentation has null children.");
+            if (node.FocusPresentation is not null)
+                pending.Push((node.FocusPresentation, depth + 1));
+            if (node.DefaultFocusPresentation is not null)
+                pending.Push((node.DefaultFocusPresentation, depth + 1));
             for (var index = node.Children.Count - 1; index >= 0; index--)
             {
                 var child = node.Children[index] ?? throw Error(
@@ -264,6 +273,8 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ScrollPaginationThreshold => Read<int?>(change.Value),
                 PresentationProperty.VirtualCollectionWindow =>
                     Read<VirtualCollectionWindow?>(change.Value),
+                PresentationProperty.FocusPresentation or
+                PresentationProperty.DefaultFocusPresentation => Read<ViewNode?>(change.Value),
                 PresentationProperty.Value or PresentationProperty.Minimum or PresentationProperty.Maximum or
                 PresentationProperty.Step or PresentationProperty.GridMinimumColumnWidth => Read<double?>(change.Value),
                 PresentationProperty.SliderInteractionMode => Read<SliderInteractionMode?>(change.Value),
@@ -411,6 +422,8 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.InputScopeId => node with { InputScopeId = Read<string?>(change.Value) },
                 PresentationProperty.InitialChildFocusId => node with { InitialChildFocusId = Read<string?>(change.Value) },
                 PresentationProperty.UsesFocusedDescendantArtwork => node with { UsesFocusedDescendantArtwork = Read<bool?>(change.Value) },
+                PresentationProperty.FocusPresentation => node with { FocusPresentation = Read<ViewNode?>(change.Value) },
+                PresentationProperty.DefaultFocusPresentation => node with { DefaultFocusPresentation = Read<ViewNode?>(change.Value) },
                 PresentationProperty.ScrollAxis => node with { ScrollAxis = Read<ScrollAxis?>(change.Value) },
                 PresentationProperty.ScrollNearStartActionId => node with { ScrollNearStartActionId = Read<string?>(change.Value) },
                 PresentationProperty.ScrollNearEndActionId => node with { ScrollNearEndActionId = Read<string?>(change.Value) },

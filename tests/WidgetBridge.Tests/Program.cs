@@ -3952,7 +3952,32 @@ static Task ActionSurfaceRenderRole()
     Assert.True(backgroundStyles.ContainsKey("background") &&
                 backgroundStyles.ContainsKey("background.open"),
         "BackgroundSurface and its semantic foreground roles were omitted from bridge styles.");
+    var focusPresentationSnapshot = new WidgetView(
+        UI.FocusPresentationSurface(
+            UI.Button("Open", "open", "focus-presentation.open")
+                .PresentOnFocus(UI.Stack("focus-presentation.selected",
+                    UI.Text("Selected details", "focus-presentation.selected.text"))),
+            UI.Stack("focus-presentation.default",
+                UI.Text("Choose an item", "focus-presentation.default.text")),
+            "focus-presentation.surface"),
+        InitialFocusId: "focus-presentation.open")
+        .CreateSnapshot("bridge.focus-presentation", 1);
+    var focusPresentationStyles = BridgeRenderStyleResolver.Resolve(
+        focusPresentationSnapshot, theme: null);
+    foreach (var id in new[]
+    {
+        "focus-presentation.surface",
+        "focus-presentation.open",
+        "focus-presentation.selected",
+        "focus-presentation.selected.text",
+        "focus-presentation.default",
+        "focus-presentation.default.text",
+    })
+        Assert.True(focusPresentationStyles.ContainsKey(id),
+            $"Focus-associated presentation role '{id}' was omitted from bridge styles.");
     Assert.Equal(ProtocolConstants.BackgroundSurfaceVersion, backgroundSnapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.FocusAssociatedPresentationVersion,
+        focusPresentationSnapshot.ProtocolVersion);
     Assert.Equal(ProtocolConstants.PosterTileVersion, snapshot.ProtocolVersion);
     return Task.CompletedTask;
 }

@@ -305,6 +305,10 @@ struct WidgetNode final {
     // Protocol-v33 opt-in remembered-child focus group fallback.
     std::wstring initialChildFocusId;
     bool usesFocusedDescendantArtwork{};
+    // Protocol-v40 presentation-only subtrees. They are admitted with the
+    // snapshot but remain outside ordinary input/action/focus traversal.
+    std::vector<WidgetNode> focusPresentation;
+    std::vector<WidgetNode> defaultFocusPresentation;
     std::wstring scrollAxis;
     std::wstring scrollNearStartActionId;
     std::wstring scrollNearEndActionId;

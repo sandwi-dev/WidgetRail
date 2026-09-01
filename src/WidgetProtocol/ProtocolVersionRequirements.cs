@@ -282,7 +282,27 @@ internal sealed class ProtocolVersionRequirements
                         path,
                         $"BackgroundSurface requires protocol version {ProtocolConstants.BackgroundSurfaceVersion} or later.");
                     break;
+                case ViewNodeKind.FocusPresentationSurface:
+                    Add(
+                        "focus-associated-presentation",
+                        ProtocolConstants.FocusAssociatedPresentationVersion,
+                        path,
+                        $"Focus-associated presentation requires protocol version {ProtocolConstants.FocusAssociatedPresentationVersion} or later.");
+                    break;
             }
+
+            if (node.FocusPresentation is not null)
+                Add(
+                    "focus-associated-presentation",
+                    ProtocolConstants.FocusAssociatedPresentationVersion,
+                    $"{path}.focusPresentation",
+                    $"Focus-associated presentation requires protocol version {ProtocolConstants.FocusAssociatedPresentationVersion} or later.");
+            if (node.DefaultFocusPresentation is not null)
+                Add(
+                    "focus-associated-presentation",
+                    ProtocolConstants.FocusAssociatedPresentationVersion,
+                    $"{path}.defaultFocusPresentation",
+                    $"Focus-associated presentation requires protocol version {ProtocolConstants.FocusAssociatedPresentationVersion} or later.");
 
             if (node.CollectionItemKey is not null)
                 Add(
@@ -325,6 +345,10 @@ internal sealed class ProtocolVersionRequirements
                     $"Rewind and Fast Forward require protocol version {ProtocolConstants.SemanticSeekGlyphVersion} or later.");
 
             var children = node.Children ?? [];
+            if (node.FocusPresentation is not null)
+                Visit(node.FocusPresentation, $"{path}.focusPresentation", depth + 1);
+            if (node.DefaultFocusPresentation is not null)
+                Visit(node.DefaultFocusPresentation, $"{path}.defaultFocusPresentation", depth + 1);
             for (var index = 0; index < children.Count; index++)
                 Visit(children[index], $"{path}.children[{index}]", depth + 1);
         }

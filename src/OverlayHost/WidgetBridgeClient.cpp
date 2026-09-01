@@ -1030,6 +1030,20 @@ WidgetNode ParseNode(const JsonObject& source) {
             node.children.push_back(ParseNode(children.GetObjectAt(index)));
         }
     }
+    if (source.HasKey(L"focusPresentation")) {
+        if (source.GetNamedValue(L"focusPresentation").ValueType() !=
+            JsonValueType::Object)
+            throw winrt::hresult_invalid_argument();
+        node.focusPresentation.push_back(
+            ParseNode(source.GetNamedObject(L"focusPresentation")));
+    }
+    if (source.HasKey(L"defaultFocusPresentation")) {
+        if (source.GetNamedValue(L"defaultFocusPresentation").ValueType() !=
+            JsonValueType::Object)
+            throw winrt::hresult_invalid_argument();
+        node.defaultFocusPresentation.push_back(
+            ParseNode(source.GetNamedObject(L"defaultFocusPresentation")));
+    }
     if (node.virtualCollectionWindow) {
         if (node.kind != L"scroll" || node.collectionAnchorKey.empty() ||
             node.virtualCollectionWindow->hasBefore !=
@@ -1091,6 +1105,19 @@ WidgetNode ParseNode(const JsonObject& source) {
             throw winrt::hresult_invalid_argument(
                 L"BackgroundSurface image and foreground authority is invalid.");
     }
+    if (!node.focusPresentation.empty() &&
+        node.kind != L"button" && node.kind != L"slider" &&
+        node.kind != L"actionSurface")
+        throw winrt::hresult_invalid_argument(
+            L"Focus-associated presentation requires a focusable node.");
+    if (!node.defaultFocusPresentation.empty() &&
+        node.kind != L"focusPresentationSurface")
+        throw winrt::hresult_invalid_argument(
+            L"Default focus presentation requires its surface owner.");
+    if (node.kind == L"focusPresentationSurface" &&
+        (node.children.size() != 1U || node.defaultFocusPresentation.size() != 1U))
+        throw winrt::hresult_invalid_argument(
+            L"FocusPresentationSurface requires one default and one content child.");
     return node;
 }
 
@@ -1129,6 +1156,10 @@ void ApplyComputedStyles(
             node.pressedStyle = ParseComputedStyle(states.GetNamedObject(L"pressed"));
         }
     }
+    for (auto& fragment : node.focusPresentation)
+        ApplyComputedStyles(fragment, styles, prefix);
+    for (auto& fragment : node.defaultFocusPresentation)
+        ApplyComputedStyles(fragment, styles, prefix);
     for (auto& child : node.children) ApplyComputedStyles(child, styles, prefix);
 }
 
@@ -1161,6 +1192,10 @@ void ValidatePinnedProjectionCatalogBounds(const JsonObject& source) {
             if (++resources > kMaximumPinnedProjectionAggregateResources)
                 throw winrt::hresult_invalid_argument(
                     L"Pinned projection catalog exceeds its resource bound.");
+        }
+        for (const auto* property : {L"focusPresentation", L"defaultFocusPresentation"}) {
+            if (root.HasKey(property))
+                self(self, root.GetNamedObject(property), depth + 1, ids);
         }
         const auto children = root.GetNamedArray(L"children");
         for (std::uint32_t index = 0; index < children.Size(); ++index)
@@ -1287,6 +1322,66 @@ void ValidateBackgroundSurfaces(const WidgetNode& root, const int protocolVersio
         for (const auto& child : node.children) self(self, child);
     };
     visit(visit, root);
+}
+
+void ValidateFocusPresentations(const WidgetNode& root, const int protocolVersion) {
+    const auto validateFragment = [&](const auto& self, const WidgetNode& node,
+                                      const std::size_t depth,
+                                      std::size_t& count) -> void {
+        if (++count > static_cast<std::size_t>(
+                protocol_contract::MaximumFocusPresentationNodes) ||
+            depth > static_cast<std::size_t>(
+                protocol_contract::MaximumFocusPresentationDepth))
+            throw winrt::hresult_invalid_argument(
+                L"Focus-associated presentation exceeds its structural bound.");
+        const bool kindAllowed = node.kind == L"stack" || node.kind == L"row" ||
+            node.kind == L"grid" || node.kind == L"text" ||
+            node.kind == L"progress" || node.kind == L"spacer" ||
+            node.kind == L"image" || node.kind == L"icon" ||
+            node.kind == L"loadingIndicator";
+        if (!kindAllowed || !node.actionId.empty() || !node.contextActions.empty() ||
+            !node.valueChangedActionId.empty() || !node.sliderInteractionMode.empty() ||
+            !node.focusBackgroundArtworkHandle.empty() || !node.mediaSurfaceId.empty() ||
+            !node.actionSurfaceOrientation.empty() || !node.actionSurfacePresentation.empty() ||
+            node.isDisabled || node.isSelected || node.isBusy ||
+            !node.focusPersistenceId.empty() || !node.focusUp.empty() ||
+            !node.focusDown.empty() || !node.focusLeft.empty() ||
+            !node.focusRight.empty() || !node.inputScopeId.empty() ||
+            !node.initialChildFocusId.empty() || node.usesFocusedDescendantArtwork ||
+            !node.focusPresentation.empty() || !node.defaultFocusPresentation.empty() ||
+            !node.scrollAxis.empty() || !node.scrollNearStartActionId.empty() ||
+            !node.scrollNearEndActionId.empty() || node.scrollPaginationThreshold != 0 ||
+            node.virtualCollectionWindow || !node.collectionAnchorKey.empty() ||
+            !node.collectionItemKey.empty() || !node.shortcuts.empty())
+            throw winrt::hresult_invalid_argument(
+                L"Focus-associated presentation contains interactive authority.");
+        for (const auto& child : node.children) self(self, child, depth + 1, count);
+    };
+    const auto visit = [&](const auto& self, const WidgetNode& node,
+                           const std::size_t consumerDepth) -> void {
+        if ((!node.focusPresentation.empty() ||
+             !node.defaultFocusPresentation.empty() ||
+             node.kind == L"focusPresentationSurface") &&
+            protocolVersion < protocol_contract::FocusAssociatedPresentationVersion)
+            throw winrt::hresult_invalid_argument(
+                L"Focus-associated presentation requires protocol version 40.");
+        if (!node.focusPresentation.empty()) {
+            if (consumerDepth == 0U)
+                throw winrt::hresult_invalid_argument(
+                    L"Focus-associated presentation has no enclosing consumer.");
+            std::size_t count{};
+            validateFragment(validateFragment, node.focusPresentation.front(), 1U, count);
+        }
+        if (!node.defaultFocusPresentation.empty()) {
+            std::size_t count{};
+            validateFragment(
+                validateFragment, node.defaultFocusPresentation.front(), 1U, count);
+        }
+        const auto nextDepth = node.kind == L"focusPresentationSurface"
+            ? consumerDepth + 1U : consumerDepth;
+        for (const auto& child : node.children) self(self, child, nextDepth);
+    };
+    visit(visit, root, 0U);
 }
 
 WidgetSnapshot ParseSnapshot(const JsonObject& source) {
@@ -1646,6 +1741,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     snapshot.root = ParseNode(source.GetNamedObject(L"root"));
     ValidatePosterTiles(snapshot.root, snapshot.protocolVersion);
     ValidateBackgroundSurfaces(snapshot.root, snapshot.protocolVersion);
+    ValidateFocusPresentations(snapshot.root, snapshot.protocolVersion);
     ValidateRememberedChildFocusGroups(snapshot.root, snapshot.protocolVersion);
     const auto validateContextActions = [&](const auto& self,
                                             const WidgetNode& node) -> void {
@@ -1761,7 +1857,7 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 44> properties{
+    static constexpr std::array<std::wstring_view, 46> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextActions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
@@ -1771,7 +1867,8 @@ bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
         L"actionSurfaceOrientation", L"actionSurfacePresentation", L"gridMinimumColumnWidth",
         L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
         L"focusPersistenceId", L"focus", L"inputScopeId", L"initialChildFocusId",
-        L"usesFocusedDescendantArtwork", L"scrollAxis",
+        L"usesFocusedDescendantArtwork", L"focusPresentation",
+        L"defaultFocusPresentation", L"scrollAxis",
         L"scrollNearStartActionId", L"scrollNearEndActionId",
         L"scrollPaginationThreshold", L"virtualCollectionWindow",
         L"collectionAnchorKey",
@@ -1815,6 +1912,7 @@ bool ValidateWidgetDocumentStructure(
                  L"gridMinimumColumnWidth", L"gridMaximumColumns", L"isDisabled",
                  L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
                  L"inputScopeId", L"initialChildFocusId", L"usesFocusedDescendantArtwork",
+                 L"focusPresentation", L"defaultFocusPresentation",
                  L"scrollAxis", L"scrollNearStartActionId",
                  L"scrollNearEndActionId", L"scrollPaginationThreshold",
                  L"virtualCollectionWindow",
@@ -1834,6 +1932,14 @@ bool ValidateWidgetDocumentStructure(
             return false;
         }
         const auto children = node.GetNamedArray(L"children");
+        for (const auto* property : {L"focusPresentation", L"defaultFocusPresentation"}) {
+            if (!node.HasKey(property)) continue;
+            if (node.GetNamedValue(property).ValueType() != JsonValueType::Object) {
+                error = L"The materialized focus presentation is invalid.";
+                return false;
+            }
+            pending.emplace_back(node.GetNamedObject(property), depth + 1);
+        }
         for (std::uint32_t index = 0; index < children.Size(); ++index) {
             if (children.GetAt(index).ValueType() != JsonValueType::Object) {
                 error = L"The materialized widget tree contains an invalid child.";
@@ -2307,6 +2413,10 @@ WidgetPresentationEffect ImpactForPresentationProperty(
     if (property == L"focusBackgroundArtworkHandle" ||
         property == L"usesFocusedDescendantArtwork")
         return Effect::Resource | Effect::Paint;
+    if (property == L"focusPresentation" ||
+        property == L"defaultFocusPresentation")
+        return Effect::Resource | Effect::MeasureLayout |
+            Effect::Paint | Effect::Accessibility;
     if (property == L"mediaSurfaceId") {
         return Effect::Authority | Effect::SurfacePlacement |
             Effect::MeasureLayout | Effect::Paint | Effect::Accessibility;

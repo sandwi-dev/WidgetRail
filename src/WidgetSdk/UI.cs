@@ -45,6 +45,16 @@ public static partial class UI
         string id,
         BackgroundSurfaceArtwork? artwork = null) => new(id, content, artwork);
 
+    /// <summary>
+    /// Projects one admitted presentation-only fragment above its ordinary
+    /// content. Native focus selects the exact focused descendant's associated
+    /// fragment, otherwise the required default is shown.
+    /// </summary>
+    public static FocusPresentationSurfaceElement FocusPresentationSurface(
+        WidgetElement content,
+        WidgetElement defaultPresentation,
+        string id) => new(id, content, defaultPresentation);
+
     public static TextElement Text(string text, string id, string? accessibilityLabel = null) =>
         new(id, text, accessibilityLabel);
 

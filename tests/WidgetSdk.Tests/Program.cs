@@ -59,6 +59,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Tiles constrain artwork and keep state non-color-only", TileComponentTests.TilesConstrainArtworkAndState),
     ("Poster tiles compose fixed bounded artwork and copy in one action surface", TileComponentTests.PosterTilesAreBoundedAndVersioned),
     ("Background surfaces paint one bounded image behind one semantic foreground", BackgroundSurfaceTests.Run),
+    ("Focus-associated presentation is bounded versioned and input-inert", FocusPresentationTests.Run),
     ("Action surfaces expose bounded versioned context actions", TileComponentTests.ContextActionsAreBoundedAndVersioned),
     ("Action surfaces fail closed and route one activation", TileComponentTests.ActionSurfacesValidateAndRoute),
     ("Responsive grids round-trip typed column semantics", GridComponentTests.RoundTripsTypedSemantics),

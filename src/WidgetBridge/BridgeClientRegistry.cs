@@ -1157,6 +1157,11 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         if (string.Equals(node.ArtworkHandle, artworkHandle, StringComparison.Ordinal) ||
             string.Equals(node.FocusBackgroundArtworkHandle, artworkHandle, StringComparison.Ordinal))
             return true;
+        if (node.FocusPresentation is not null && Contains(node.FocusPresentation, artworkHandle))
+            return true;
+        if (node.DefaultFocusPresentation is not null &&
+            Contains(node.DefaultFocusPresentation, artworkHandle))
+            return true;
         foreach (var child in node.Children)
             if (Contains(child, artworkHandle)) return true;
         return false;

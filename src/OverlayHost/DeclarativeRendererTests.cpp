@@ -318,6 +318,102 @@ void PlanningMetadataAndKinds() {
         "planning is deterministic (y)");
 }
 
+void FocusAssociatedPresentationUsesNativeFocusAuthority() {
+    WidgetSnapshot snapshot;
+    snapshot.protocolVersion = 40;
+    snapshot.sequence = 1;
+    snapshot.instanceId = L"focus-presentation.instance";
+    snapshot.activeInputScopeId = L"focus-presentation.content";
+    snapshot.initialFocusId = L"focus-presentation.first";
+    snapshot.root = Node(L"focus-presentation.root", L"stack");
+
+    auto surface = Node(L"focus-presentation.surface", L"focusPresentationSurface");
+    auto defaultFragment = Node(L"focus-presentation.default", L"stack");
+    auto defaultText = Node(L"focus-presentation.default.text", L"text");
+    defaultText.text = L"Choose an item";
+    defaultFragment.children = {defaultText};
+    surface.defaultFocusPresentation = {defaultFragment};
+
+    auto content = Node(L"focus-presentation.content", L"row");
+    content.inputScopeId = snapshot.activeInputScopeId;
+    auto first = Node(L"focus-presentation.first", L"button");
+    first.text = L"First";
+    first.accessibilityLabel = first.text;
+    first.actionId = L"focus-presentation.activate-first";
+    auto firstFragment = Node(L"focus-presentation.first.fragment", L"stack");
+    auto firstText = Node(L"focus-presentation.first.text", L"text");
+    firstText.text = L"First details";
+    firstFragment.children = {firstText};
+    first.focusPresentation = {firstFragment};
+
+    auto nestedSurface = Node(
+        L"focus-presentation.nested.surface", L"focusPresentationSurface");
+    auto nestedDefault = Node(L"focus-presentation.nested.default", L"text");
+    nestedDefault.text = L"Nested default";
+    nestedSurface.defaultFocusPresentation = {nestedDefault};
+    auto nestedContent = Node(L"focus-presentation.nested.content", L"row");
+    auto second = Node(L"focus-presentation.second", L"button");
+    second.text = L"Second";
+    second.accessibilityLabel = second.text;
+    second.actionId = L"focus-presentation.activate-second";
+    auto secondFragment = Node(L"focus-presentation.second.fragment", L"stack");
+    auto secondText = Node(L"focus-presentation.second.text", L"text");
+    secondText.text = L"Second details";
+    secondFragment.children = {secondText};
+    second.focusPresentation = {secondFragment};
+    nestedContent.children = {second};
+    nestedSurface.children = {nestedContent};
+    content.children = {first, nestedSurface};
+    surface.children = {content};
+    snapshot.root.children = {surface};
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    widgetrail::DeclarativeRenderOptions options;
+    options.collectAccessibility = true;
+    const Rect viewport{0.0F, 0.0F, 800.0F, 480.0F};
+    const auto firstResult = renderer.Render(
+        nullptr, snapshot, first.id, viewport, options);
+    Check(firstResult.elementRects.contains(L"focus-presentation.first.fragment") &&
+          firstResult.elementRects.contains(L"focus-presentation.first.text") &&
+          !firstResult.elementRects.contains(L"focus-presentation.default") &&
+          firstResult.elementRects.contains(L"focus-presentation.nested.default") &&
+          !firstResult.elementRects.contains(L"focus-presentation.second.fragment"),
+        "exact focused descendant projects its admitted fragment while nested consumers keep an independent default boundary");
+    Check(firstResult.focusRects.size() == 2U &&
+          firstResult.focusRects.contains(first.id) &&
+          firstResult.focusRects.contains(second.id) &&
+          !firstResult.focusRects.contains(L"focus-presentation.first.fragment") &&
+          !firstResult.navigationRects.contains(L"focus-presentation.first.fragment"),
+        "presentation fragments add no focus or navigation authority");
+    Check(std::any_of(
+              firstResult.accessibilityRegions.begin(),
+              firstResult.accessibilityRegions.end(),
+              [](const auto& region) {
+                  return region.nodeId == L"focus-presentation.first.text";
+              }) &&
+          std::none_of(
+              firstResult.accessibilityRegions.begin(),
+              firstResult.accessibilityRegions.end(),
+              [](const auto& region) {
+                  return region.nodeId == L"focus-presentation.second.text";
+              }),
+        "accessibility projects only the exact currently selected fragment");
+
+    Check(!renderer.PlanFocusUpdate(
+               snapshot, first.id, second.id, viewport).has_value(),
+        "fragment-changing focus requests a complete native rerender from the admitted snapshot");
+    const auto secondResult = renderer.Render(
+        nullptr, snapshot, second.id, viewport, options);
+    Check(secondResult.elementRects.contains(L"focus-presentation.default") &&
+          !secondResult.elementRects.contains(L"focus-presentation.first.fragment") &&
+          secondResult.elementRects.contains(L"focus-presentation.second.fragment") &&
+          !secondResult.elementRects.contains(L"focus-presentation.nested.default"),
+        "nested consumers are hard boundaries and resolve their own focused descendant fragment");
+    Check(secondResult.focusRects.size() == 2U &&
+          secondResult.hitRegions.size() == 2U,
+        "native fragment projection leaves exact action and hit-test authority unchanged");
+}
+
 void ResponsiveVisibilityExcludesInactiveSubtrees() {
     WidgetSnapshot snapshot;
     snapshot.instanceId = L"responsive.instance";
@@ -4558,6 +4654,7 @@ int main() {
     AccessibleStatePresentation();
     PressedComputedStyleLayersOnFocusedState();
     PlanningMetadataAndKinds();
+    FocusAssociatedPresentationUsesNativeFocusAuthority();
     ResponsiveVisibilityExcludesInactiveSubtrees();
     ResponsiveNavigationShellFitsBoundedSurfaces();
     SliderPlanningAndAccessibilityTargets();

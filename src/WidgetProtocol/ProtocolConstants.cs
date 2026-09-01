@@ -4,7 +4,7 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 39;
+    public const int CurrentVersion = 40;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
@@ -43,6 +43,9 @@ public static class ProtocolConstants
     public const int PosterTileVersion = 37;
     public const int BackgroundSurfaceVersion = 38;
     public const int FocusedBackgroundArtworkVersion = 39;
+    public const int FocusAssociatedPresentationVersion = 40;
+    public const int MaximumFocusPresentationNodes = 64;
+    public const int MaximumFocusPresentationDepth = 8;
     public const double MinimumEmbeddedMediaPlaybackRate = 0.5;
     public const double MaximumEmbeddedMediaPlaybackRate = 2.0;
     public const double DefaultMediaSeekStepSeconds = 10;

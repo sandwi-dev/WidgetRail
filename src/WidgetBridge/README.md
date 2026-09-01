@@ -278,8 +278,9 @@ when both state maps are empty. `base` and `focused` are independently complete
 computed styles; native must select the appropriate map rather than implement a
 cascade or merge pseudo-state rules itself. Resolution uses the closed
 lower-camel node role (`stack`, `row`, `scroll`, `text`, `button`, `progress`,
-`spacer`, `image`, `icon`, `loadingIndicator`, `actionSurface`, `grid`, or
-`textEntry`) plus the node ID and style classes. Value `kind` is one of
+`spacer`, `image`, `icon`, `loadingIndicator`, `actionSurface`, `grid`,
+`textEntry`, `mediaViewport`, `backgroundSurface`, or
+`focusPresentationSurface`) plus the node ID and style classes. Value `kind` is one of
 `color`, `length`, `lengthList`, `number`, `integer`, `ratio`, `duration`,
 `keyword`, or `fontFamily`. `text`, `number`, and `unit` preserve the compiler's
 typed canonical value; numeric and unit fields are explicitly `null` when they

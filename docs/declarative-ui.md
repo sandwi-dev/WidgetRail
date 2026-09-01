@@ -154,6 +154,7 @@ primary accessibility contract.
 | `UI.ActionSurface(action, id, accessibilityLabel, orientation, children...)` | `actionSurface` | Protocol-v7 rich full-surface action whose bounded descendants are presentation only. |
 | `UI.Tile(...)` | `actionSurface` | Controller-first tile composition with optional artwork, multiline copy, visible state, and one full-tile target. |
 | `UI.PosterTile(...)` | `actionSurface` | Protocol-v37 fixed-aspect poster composition with optional full-background Cover artwork, bounded bottom copy, and one full-tile target. |
+| `UI.FocusPresentationSurface(content, defaultPresentation, id)` | `focusPresentationSurface` | Protocol-v40 non-interactive consumer that projects one bounded admitted fragment for the exact focused descendant without invoking the worker. |
 | `UI.Toast(title, message, tone, id, duration?, glyph?)` | baseline `row`, `stack`, `text`, `icon` | Nonfocusable lifecycle-owned notification with bounded copy, tone, and duration metadata. |
 | `UI.IconButton(glyph, action, id, accessibilityLabel, variant?, size?)` | `button` | Accessible icon-only action with controller-safe semantic classes. |
 | `UI.SettingsRow(label, action, id, ...)` | `stack`, `row`, `text`, `button` | Responsive setting summary whose `id.action` Button is its only focus stop. |
@@ -443,6 +444,40 @@ surface uses its authored default. While a newly focused resource is pending
 or fails, the host retains the last admitted image; a late result for an older
 focus cannot replace the current selection. Keep every referenced handle
 resolvable through the ordinary bounded `OnResolveArtworkAsync` contract.
+
+## Focus-associated presentation (protocol v40)
+
+`UI.FocusPresentationSurface(...)` reserves one ordinary content subtree and
+one required default presentation fragment. An actionable descendant may use
+`.PresentOnFocus(fragment)` to associate bounded display-only content with its
+exact stable focus ID:
+
+```csharp
+var rail = UI.FocusPresentationSurface(
+    UI.Row("library.rail",
+        firstTile.PresentOnFocus(
+            UI.Stack("library.first.details",
+                UI.Text(first.Title, "library.first.title"))),
+        secondTile.PresentOnFocus(
+            UI.Stack("library.second.details",
+                UI.Text(second.Title, "library.second.title")))),
+    UI.Text("Choose a title", "library.details.default"),
+    "library.details");
+```
+
+Focus changes select the fragment entirely inside the native host from the
+already admitted snapshot. They never invoke the worker, dispatch an action,
+or grant another focus, shortcut, input-scope, scroll, media, or pointer
+target. Fragments accept only bounded presentational layout, text, progress,
+image, icon, loading, and spacer nodes; their IDs remain globally unique and
+their active content participates in layout, paint, and accessibility. If the
+focused descendant has no declaration, the required default is shown.
+
+Nested consumers are hard boundaries. The nearest consumer resolves its own
+focused descendant, while an outer consumer uses its default rather than
+reading through the nested owner. This keeps projection deterministic across
+restored focus, responsive layout, pinned and ordinary surfaces, and retained
+presentations.
 
 `UI.Toast(...)` creates brief, non-interactive feedback without adding a focus
 stop or shortcut. Tones are Neutral, Info, Success, Warning, and Danger; text

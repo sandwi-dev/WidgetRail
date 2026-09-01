@@ -73,6 +73,10 @@ internal static class BridgeRenderStyleResolver
                 Focused = focusedStyle,
                 Pressed = pressedStyle,
             });
+            if (node.FocusPresentation is { } focusPresentation)
+                Visit(focusPresentation, prefix);
+            if (node.DefaultFocusPresentation is { } defaultFocusPresentation)
+                Visit(defaultFocusPresentation, prefix);
             foreach (var child in node.Children) Visit(child, prefix);
         }
 
@@ -135,6 +139,7 @@ internal static class BridgeRenderStyleResolver
         ViewNodeKind.TextEntry => "textEntry",
         ViewNodeKind.MediaViewport => "mediaViewport",
         ViewNodeKind.BackgroundSurface => "backgroundSurface",
+        ViewNodeKind.FocusPresentationSurface => "focusPresentationSurface",
         _ => throw new BridgeProtocolException($"Unsupported view node kind '{kind}'."),
     };
 }

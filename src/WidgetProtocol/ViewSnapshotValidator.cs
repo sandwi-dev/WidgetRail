@@ -123,6 +123,7 @@ public static class ViewSnapshotValidator
             Add("$.pinnedLayouts", "aggregate_resources_too_large",
                 $"The full widget and pinned projections may reference at most {ProtocolConstants.MaximumPinnedPresentationAggregateResourceCount} resources in total.");
         Visit(snapshot.Root, "$.root", 1, "$.root");
+        ValidateFocusPresentationOwnership(snapshot.Root, "$.root", consumerDepth: 0);
         if (mediaViewportCount != 0 && snapshot.EmbeddedMedia is null)
             Add("$.root", "media_viewport_without_surface",
                 "A MediaViewport requires one current embedded media surface declaration.");
@@ -579,6 +580,13 @@ public static class ViewSnapshotValidator
                 Add($"{path}.usesFocusedDescendantArtwork",
                     "focused_descendant_artwork_not_allowed",
                     "Only BackgroundSurface may consume focused-descendant artwork.");
+            if (node.FocusPresentation is not null && !node.IsFocusable)
+                Add($"{path}.focusPresentation", "focus_presentation_on_non_focusable_node",
+                    "Only focusable nodes may declare an associated presentation fragment.");
+            if (node.DefaultFocusPresentation is not null &&
+                node.Kind is not ViewNodeKind.FocusPresentationSurface)
+                Add($"{path}.defaultFocusPresentation", "focus_presentation_default_not_allowed",
+                    "Only FocusPresentationSurface may declare a default presentation fragment.");
             if (node.Kind is not (ViewNodeKind.Image or ViewNodeKind.Button) ||
                 node.ImageSource is null)
                 CheckString(node.ImageSource, $"{path}.imageSource");
@@ -1106,7 +1114,8 @@ public static class ViewSnapshotValidator
                 }
             }
             if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or
-                ViewNodeKind.ActionSurface or ViewNodeKind.Grid or ViewNodeKind.BackgroundSurface) &&
+                ViewNodeKind.ActionSurface or ViewNodeKind.Grid or ViewNodeKind.BackgroundSurface or
+                ViewNodeKind.FocusPresentationSurface) &&
                 children.Count != 0)
                 Add($"{path}.children", "children_not_allowed", $"{node.Kind} cannot contain children.");
             if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid or
@@ -1131,6 +1140,35 @@ public static class ViewSnapshotValidator
             if (node.Kind is ViewNodeKind.BackgroundSurface && children.Count != 1)
                 Add($"{path}.children", "background_surface_child_count",
                     "A background surface requires exactly one foreground child.");
+            if (node.Kind is ViewNodeKind.FocusPresentationSurface)
+            {
+                if (children.Count != 1)
+                    Add($"{path}.children", "focus_presentation_surface_child_count",
+                        "A focus-presentation surface requires exactly one ordinary content child.");
+                if (node.DefaultFocusPresentation is null)
+                    Add($"{path}.defaultFocusPresentation", "required",
+                        "A focus-presentation surface requires one default presentation fragment.");
+                if (node.Text is not null || node.AccessibilityLabel is not null ||
+                    node.AccessibilityValue is not null || node.ActionId is not null ||
+                    (node.ContextActions?.Count ?? 0) != 0 || node.Value is not null ||
+                    node.Minimum is not null || node.Maximum is not null || node.Step is not null ||
+                    node.ValueChangedActionId is not null || node.ImageSource is not null ||
+                    node.ArtworkHandle is not null || node.FocusBackgroundArtworkHandle is not null ||
+                    node.MediaSurfaceId is not null || node.ImageFit is not null || node.Glyph is not null ||
+                    node.IndicatorSize is not null || node.ActionSurfaceOrientation is not null ||
+                    node.ActionSurfacePresentation is not null || node.GridMinimumColumnWidth is not null ||
+                    node.GridMaximumColumns is not null || node.IsDisabled is not null ||
+                    node.IsSelected is not null || node.IsBusy is not null ||
+                    node.FocusPersistenceId is not null || node.Focus is not null ||
+                    node.InputScopeId is not null || node.InitialChildFocusId is not null ||
+                    node.UsesFocusedDescendantArtwork is not null || node.ScrollAxis is not null ||
+                    node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
+                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null ||
+                    node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
+                    (node.Shortcuts?.Count ?? 0) != 0)
+                    Add(path, "focus_presentation_surface_property_not_allowed",
+                        "FocusPresentationSurface accepts only its ID, visibility, styles, default fragment, and one ordinary content child.");
+            }
 
             var shortcutButtons = new HashSet<(ControllerButton, ControllerEventPhase)>();
             for (var index = 0; index < shortcuts.Count; index++)
@@ -1164,8 +1202,39 @@ public static class ViewSnapshotValidator
                         "This button remains edge-only because the host owns its navigation or shell behavior.");
             }
 
+            if (node.FocusPresentation is { } focusPresentation)
+            {
+                ValidateFocusPresentationContent(
+                    focusPresentation, $"{path}.focusPresentation");
+                Visit(focusPresentation, $"{path}.focusPresentation", depth + 1, scopeKey);
+            }
+            if (node.DefaultFocusPresentation is { } defaultFocusPresentation)
+            {
+                ValidateFocusPresentationContent(
+                    defaultFocusPresentation, $"{path}.defaultFocusPresentation");
+                Visit(defaultFocusPresentation,
+                    $"{path}.defaultFocusPresentation", depth + 1, scopeKey);
+            }
             for (var index = 0; index < children.Count; index++)
                 Visit(children[index], $"{path}.children[{index}]", depth + 1, scopeKey);
+        }
+
+        void ValidateFocusPresentationOwnership(
+            ViewNode? node,
+            string path,
+            int consumerDepth)
+        {
+            if (node is null) return;
+            var nextConsumerDepth = node.Kind is ViewNodeKind.FocusPresentationSurface
+                ? consumerDepth + 1
+                : consumerDepth;
+            if (node.FocusPresentation is not null && consumerDepth == 0)
+                Add($"{path}.focusPresentation", "focus_presentation_consumer_required",
+                    "An associated presentation requires an enclosing FocusPresentationSurface.");
+            var children = node.Children ?? [];
+            for (var index = 0; index < children.Count; index++)
+                ValidateFocusPresentationOwnership(
+                    children[index], $"{path}.children[{index}]", nextConsumerDepth);
         }
 
         void ValidateActionSurfaceContent(
@@ -1197,6 +1266,50 @@ public static class ViewSnapshotValidator
                 ValidateActionSurfaceContent(
                     descendant, $"{path}.children[{index}]", relativeDepth + 1,
                     ref descendantCount);
+        }
+
+        void ValidateFocusPresentationContent(ViewNode root, string path)
+        {
+            var fragmentNodes = 0;
+            VisitFragment(root, path, 1);
+
+            void VisitFragment(ViewNode? node, string nodePath, int relativeDepth)
+            {
+                if (node is null) return;
+                fragmentNodes++;
+                if (fragmentNodes == ProtocolConstants.MaximumFocusPresentationNodes + 1)
+                    Add(nodePath, "focus_presentation_too_large",
+                        $"A focus-associated presentation may contain at most {ProtocolConstants.MaximumFocusPresentationNodes} nodes.");
+                if (relativeDepth > ProtocolConstants.MaximumFocusPresentationDepth)
+                    Add(nodePath, "focus_presentation_too_deep",
+                        $"A focus-associated presentation may be at most {ProtocolConstants.MaximumFocusPresentationDepth} levels deep.");
+                if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or
+                    ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.Spacer or
+                    ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator) ||
+                    node.ActionId is not null || (node.ContextActions?.Count ?? 0) != 0 ||
+                    node.TextEntryValue is not null || node.TextEntryPlaceholder is not null ||
+                    node.TextEntryMaximumLength is not null || node.TextEntryInputKind is not null ||
+                    node.Minimum is not null || node.Step is not null ||
+                    node.ValueChangedActionId is not null || node.SliderInteractionMode is not null ||
+                    node.FocusBackgroundArtworkHandle is not null || node.MediaSurfaceId is not null ||
+                    node.ActionSurfaceOrientation is not null || node.ActionSurfacePresentation is not null ||
+                    node.IsDisabled is not null || node.IsSelected is not null || node.IsBusy is not null ||
+                    node.FocusPersistenceId is not null || node.Focus is not null ||
+                    node.InputScopeId is not null || node.InitialChildFocusId is not null ||
+                    node.UsesFocusedDescendantArtwork is not null || node.FocusPresentation is not null ||
+                    node.DefaultFocusPresentation is not null || node.ScrollAxis is not null ||
+                    node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
+                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null ||
+                    node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
+                    (node.Shortcuts?.Count ?? 0) != 0)
+                {
+                    Add(nodePath, "interactive_focus_presentation_fragment",
+                        "Focus-associated presentation fragments may contain only bounded presentational layout, text, progress, image, icon, loading, and spacer nodes.");
+                }
+                var children = node.Children ?? [];
+                for (var index = 0; index < children.Count; index++)
+                    VisitFragment(children[index], $"{nodePath}.children[{index}]", relativeDepth + 1);
+            }
         }
 
         void CheckIdentifier(string? value, string path, string label)
@@ -1239,6 +1352,9 @@ public static class ViewSnapshotValidator
                 if (node.Children is not null)
                     foreach (var child in node.Children)
                         if (child is not null) pending.Push(child);
+                if (node.FocusPresentation is not null) pending.Push(node.FocusPresentation);
+                if (node.DefaultFocusPresentation is not null)
+                    pending.Push(node.DefaultFocusPresentation);
             }
         }
 

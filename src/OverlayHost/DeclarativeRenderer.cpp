@@ -257,6 +257,37 @@ struct FocusBackgroundSelection final {
         left.artworkHandle == right.artworkHandle;
 }
 
+struct FocusPresentationSelection final {
+    const WidgetNode* surface{};
+    const WidgetNode* fragment{};
+};
+
+[[nodiscard]] FocusPresentationSelection ResolveFocusPresentationSelection(
+    const WidgetNode& root,
+    const std::wstring_view focusedElementId) {
+    if (focusedElementId.empty()) return {};
+    std::vector<const WidgetNode*> path;
+    if (!FindNodePath(root, focusedElementId, path) || path.empty()) return {};
+    const WidgetNode* nearestSurface{};
+    for (const auto* node : path) {
+        if (node->kind == L"focusPresentationSurface") nearestSurface = node;
+    }
+    if (!nearestSurface) return {};
+    const auto* focused = path.back();
+    const auto* fragment = !focused->focusPresentation.empty()
+        ? &focused->focusPresentation.front()
+        : !nearestSurface->defaultFocusPresentation.empty()
+            ? &nearestSurface->defaultFocusPresentation.front()
+            : nullptr;
+    return {nearestSurface, fragment};
+}
+
+[[nodiscard]] bool SameFocusPresentationSelection(
+    const FocusPresentationSelection& left,
+    const FocusPresentationSelection& right) noexcept {
+    return left.surface == right.surface && left.fragment == right.fragment;
+}
+
 [[nodiscard]] float PositionFactorX(const NativeObjectPosition position) noexcept {
     switch (position) {
     case NativeObjectPosition::Left:
@@ -789,6 +820,20 @@ struct DeclarativeRenderer::RenderPass final {
                 element.children.push_back(std::move(*leading));
             }
         }
+        if (node.kind == L"focusPresentationSurface") {
+            const auto selection = ResolveFocusPresentationSelection(
+                snapshot->root, focusedId);
+            const auto* fragment = selection.surface == &node
+                ? selection.fragment
+                : !node.defaultFocusPresentation.empty()
+                    ? &node.defaultFocusPresentation.front()
+                    : nullptr;
+            if (fragment && IsResponsiveVisible(*fragment)) {
+                element.children.push_back(PrepareNode(
+                    *fragment, narrowId, parentWidth, parentHeight,
+                    style.fontSizePx() / textScale, effectiveBackground));
+            }
+        }
         for (std::size_t childIndex = 0; childIndex < node.children.size(); ++childIndex) {
             const auto& child = node.children[childIndex];
             if (!IsResponsiveVisible(child)) continue;
@@ -890,6 +935,18 @@ struct DeclarativeRenderer::RenderPass final {
         const auto childClip = ClipsDescendants(node, preparedNode->second.baseStyle)
             ? Intersection(ancestorClip, contentBox)
             : ancestorClip;
+        if (node.kind == L"focusPresentationSurface") {
+            const auto selection = ResolveFocusPresentationSelection(
+                snapshot->root, focusedId);
+            const auto* fragment = selection.surface == &node
+                ? selection.fragment
+                : !node.defaultFocusPresentation.empty()
+                    ? &node.defaultFocusPresentation.front()
+                    : nullptr;
+            if (fragment)
+                ResolvePresentation(
+                    *fragment, translationX, translationY, childClip);
+        }
         for (const auto& child : node.children) {
             ResolvePresentation(
                 child, translationX, translationY, childClip);
@@ -3105,6 +3162,16 @@ struct DeclarativeRenderer::RenderPass final {
         }
 
         if (!target) {
+            if (node.kind == L"focusPresentationSurface") {
+                const auto selection = ResolveFocusPresentationSelection(
+                    snapshot->root, focusedId);
+                const auto* fragment = selection.surface == &node
+                    ? selection.fragment
+                    : !node.defaultFocusPresentation.empty()
+                        ? &node.defaultFocusPresentation.front()
+                        : nullptr;
+                if (fragment) DrawNode(*fragment, inputScope);
+            }
             for (const auto& child : node.children) DrawNode(child, inputScope);
             return;
         }
@@ -3210,6 +3277,7 @@ struct DeclarativeRenderer::RenderPass final {
         } else if (node.kind != L"stack" && node.kind != L"row" &&
                    node.kind != L"scroll" && node.kind != L"grid" &&
                    node.kind != L"backgroundSurface" &&
+                   node.kind != L"focusPresentationSurface" &&
                    node.kind != L"spacer") {
             if (node.kind != L"actionSurface")
             Add(node.id, L"unknown_kind", L"Unsupported declarative node kind: " + node.kind);
@@ -3220,6 +3288,16 @@ struct DeclarativeRenderer::RenderPass final {
         // do not accidentally become clipping ancestors merely because the
         // renderer recurses through them.
         target->PopAxisAlignedClip();
+        if (node.kind == L"focusPresentationSurface") {
+            const auto selection = ResolveFocusPresentationSelection(
+                snapshot->root, focusedId);
+            const auto* fragment = selection.surface == &node
+                ? selection.fragment
+                : !node.defaultFocusPresentation.empty()
+                    ? &node.defaultFocusPresentation.front()
+                    : nullptr;
+            if (fragment) DrawNode(*fragment, inputScope);
+        }
         for (const auto& child : node.children) DrawNode(child, inputScope);
         // Draw semantic state after descendants so it remains visible over a
         // composed tile while the entire surface stays the sole input target.
@@ -3500,6 +3578,17 @@ DeclarativeRenderer::PlanFocusUpdate(
             if (bounded.width > 0.0F && bounded.height > 0.0F)
                 damage = UnionRect(damage, bounded);
         }
+    }
+    const auto priorPresentation = ResolveFocusPresentationSelection(
+        snapshot.root, priorFocusedElementId);
+    const auto nextPresentation = ResolveFocusPresentationSelection(
+        snapshot.root, nextFocusedElementId);
+    if (!SameFocusPresentationSelection(priorPresentation, nextPresentation)) {
+        // The selected fragment participates in intrinsic layout and
+        // accessibility. A focus move therefore requires a complete native
+        // rerender from the already-admitted immutable snapshot, never a
+        // worker request or semantic/action-authority change.
+        return std::nullopt;
     }
     for (const auto& nodeId : additionalPaintNodeIds) {
         const auto found = cache->nodes.find(nodeId);
@@ -3933,6 +4022,17 @@ RenderResult DeclarativeRenderer::Render(
                 state.paintBounds = paintBounds;
             }
             cache.nodes.insert_or_assign(node.id, std::move(state));
+            if (node.kind == L"focusPresentationSurface") {
+                const auto selection = ResolveFocusPresentationSelection(
+                    snapshot.root, pass.focusedId);
+                const auto* fragment = selection.surface == &node
+                    ? selection.fragment
+                    : !node.defaultFocusPresentation.empty()
+                        ? &node.defaultFocusPresentation.front()
+                        : nullptr;
+                if (fragment)
+                    self(self, *fragment, node.id, descendantBoundary);
+            }
             for (const auto& child : node.children)
                 self(self, child, node.id, descendantBoundary);
         };

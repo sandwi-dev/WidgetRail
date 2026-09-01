@@ -39,6 +39,14 @@ public abstract record WidgetElement(string Id)
     public WidgetElement FocusBackground(WidgetArtworkHandle artwork) =>
         new FocusBackgroundElement(this, artwork);
 
+    /// <summary>
+    /// Associates one bounded presentation-only fragment with this exact
+    /// focusable element. Its nearest enclosing FocusPresentationSurface may
+    /// project the fragment while native host focus is on this element.
+    /// </summary>
+    public WidgetElement PresentOnFocus(WidgetElement presentation) =>
+        new FocusPresentationElement(this, presentation);
+
 }
 
 /// <summary>
@@ -151,6 +159,30 @@ public sealed record FocusBackgroundElement : WidgetElement
     internal override ViewNode ToProtocolNode() => Child.ToProtocolNode() with
     {
         FocusBackgroundArtworkHandle = Artwork.Value,
+        StyleClasses = StyleClasses,
+    };
+}
+
+/// <summary>
+/// A serialization-only focus-presentation modifier. It does not add layout,
+/// focus, input, action, or accessibility authority of its own.
+/// </summary>
+public sealed record FocusPresentationElement : WidgetElement
+{
+    internal FocusPresentationElement(WidgetElement child, WidgetElement presentation)
+        : base((child ?? throw new ArgumentNullException(nameof(child))).Id)
+    {
+        Child = child;
+        Presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
+        StyleClasses = child.StyleClasses;
+    }
+
+    public WidgetElement Child { get; init; }
+    public WidgetElement Presentation { get; init; }
+
+    internal override ViewNode ToProtocolNode() => Child.ToProtocolNode() with
+    {
+        FocusPresentation = Presentation.ToProtocolNode(),
         StyleClasses = StyleClasses,
     };
 }

@@ -502,6 +502,14 @@ method WidgetRail.WidgetSdk.FocusBackgroundElement.Equals(WidgetRail.WidgetSdk.W
 method WidgetRail.WidgetSdk.FocusBackgroundElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.FocusBackgroundElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.FocusBackgroundElement.ToString() -> string
+method WidgetRail.WidgetSdk.FocusPresentationElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.FocusPresentationElement.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.FocusPresentationElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.FocusPresentationElement.ToString() -> string
+method WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.ToString() -> string
 method WidgetRail.WidgetSdk.GridElement.Equals(WidgetRail.WidgetSdk.ContainerElement? other) -> bool
 method WidgetRail.WidgetSdk.GridElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.GridElement.GetHashCode() -> int
@@ -968,6 +976,7 @@ method WidgetRail.WidgetSdk.WidgetElement.Deconstruct(out string Id) -> void
 method WidgetRail.WidgetSdk.WidgetElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetElement.FocusBackground(WidgetRail.WidgetSdk.WidgetArtworkHandle artwork) -> WidgetRail.WidgetSdk.WidgetElement
 method WidgetRail.WidgetSdk.WidgetElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetElement.PresentOnFocus(WidgetRail.WidgetSdk.WidgetElement presentation) -> WidgetRail.WidgetSdk.WidgetElement
 method WidgetRail.WidgetSdk.WidgetElement.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetElement.VisibleWhen(WidgetRail.WidgetProtocol.ResponsiveVisibility visibility) -> WidgetRail.WidgetSdk.WidgetElement
 method WidgetRail.WidgetSdk.WidgetIdScope.Id(string name) -> string
@@ -1328,6 +1337,10 @@ method static WidgetRail.WidgetSdk.ControllerInputEvent.op_Equality(WidgetRail.W
 method static WidgetRail.WidgetSdk.ControllerInputEvent.op_Inequality(WidgetRail.WidgetSdk.ControllerInputEvent? left, WidgetRail.WidgetSdk.ControllerInputEvent? right) -> bool
 method static WidgetRail.WidgetSdk.FocusBackgroundElement.op_Equality(WidgetRail.WidgetSdk.FocusBackgroundElement? left, WidgetRail.WidgetSdk.FocusBackgroundElement? right) -> bool
 method static WidgetRail.WidgetSdk.FocusBackgroundElement.op_Inequality(WidgetRail.WidgetSdk.FocusBackgroundElement? left, WidgetRail.WidgetSdk.FocusBackgroundElement? right) -> bool
+method static WidgetRail.WidgetSdk.FocusPresentationElement.op_Equality(WidgetRail.WidgetSdk.FocusPresentationElement? left, WidgetRail.WidgetSdk.FocusPresentationElement? right) -> bool
+method static WidgetRail.WidgetSdk.FocusPresentationElement.op_Inequality(WidgetRail.WidgetSdk.FocusPresentationElement? left, WidgetRail.WidgetSdk.FocusPresentationElement? right) -> bool
+method static WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.op_Equality(WidgetRail.WidgetSdk.FocusPresentationSurfaceElement? left, WidgetRail.WidgetSdk.FocusPresentationSurfaceElement? right) -> bool
+method static WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.op_Inequality(WidgetRail.WidgetSdk.FocusPresentationSurfaceElement? left, WidgetRail.WidgetSdk.FocusPresentationSurfaceElement? right) -> bool
 method static WidgetRail.WidgetSdk.GridElement.op_Equality(WidgetRail.WidgetSdk.GridElement? left, WidgetRail.WidgetSdk.GridElement? right) -> bool
 method static WidgetRail.WidgetSdk.GridElement.op_Inequality(WidgetRail.WidgetSdk.GridElement? left, WidgetRail.WidgetSdk.GridElement? right) -> bool
 method static WidgetRail.WidgetSdk.IconElement.op_Equality(WidgetRail.WidgetSdk.IconElement? left, WidgetRail.WidgetSdk.IconElement? right) -> bool
@@ -1418,6 +1431,7 @@ method static WidgetRail.WidgetSdk.UI.CodeText(string text, string id, string? a
 method static WidgetRail.WidgetSdk.UI.ControllerHint(WidgetRail.WidgetProtocol.ControllerButton button, string label, string id) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.Divider(string id) -> WidgetRail.WidgetSdk.SpacerElement
 method static WidgetRail.WidgetSdk.UI.EmptyState(string title, string message, string id, WidgetRail.WidgetSdk.ComponentAction? action = null, WidgetRail.WidgetProtocol.WidgetGlyph glyph = WidgetRail.WidgetProtocol.WidgetGlyph.Connection) -> WidgetRail.WidgetSdk.StackElement
+method static WidgetRail.WidgetSdk.UI.FocusPresentationSurface(WidgetRail.WidgetSdk.WidgetElement content, WidgetRail.WidgetSdk.WidgetElement defaultPresentation, string id) -> WidgetRail.WidgetSdk.FocusPresentationSurfaceElement
 method static WidgetRail.WidgetSdk.UI.HorizontalScroll(string id, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.ScrollElement
 method static WidgetRail.WidgetSdk.UI.Icon(WidgetRail.WidgetProtocol.WidgetGlyph glyph, string id, string accessibilityLabel) -> WidgetRail.WidgetSdk.IconElement
 method static WidgetRail.WidgetSdk.UI.IconButton(WidgetRail.WidgetProtocol.WidgetGlyph glyph, string action, string id, string accessibilityLabel, WidgetRail.WidgetSdk.IconButtonVariant variant = WidgetRail.WidgetSdk.IconButtonVariant.Default, WidgetRail.WidgetSdk.IconButtonSize size = WidgetRail.WidgetSdk.IconButtonSize.Medium) -> WidgetRail.WidgetSdk.ButtonElement
@@ -1666,6 +1680,10 @@ method virtual WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.Equals(Widg
 method virtual WidgetRail.WidgetSdk.ControllerInputEvent.Equals(WidgetRail.WidgetSdk.ControllerInputEvent? other) -> bool
 method virtual WidgetRail.WidgetSdk.FocusBackgroundElement.<Clone>$() -> WidgetRail.WidgetSdk.FocusBackgroundElement
 method virtual WidgetRail.WidgetSdk.FocusBackgroundElement.Equals(WidgetRail.WidgetSdk.FocusBackgroundElement? other) -> bool
+method virtual WidgetRail.WidgetSdk.FocusPresentationElement.<Clone>$() -> WidgetRail.WidgetSdk.FocusPresentationElement
+method virtual WidgetRail.WidgetSdk.FocusPresentationElement.Equals(WidgetRail.WidgetSdk.FocusPresentationElement? other) -> bool
+method virtual WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.<Clone>$() -> WidgetRail.WidgetSdk.FocusPresentationSurfaceElement
+method virtual WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.Equals(WidgetRail.WidgetSdk.FocusPresentationSurfaceElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.GridElement.<Clone>$() -> WidgetRail.WidgetSdk.GridElement
 method virtual WidgetRail.WidgetSdk.GridElement.Equals(WidgetRail.WidgetSdk.GridElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.IWidgetCapabilityClient.SubscribeAsync<TPayload>(WidgetRail.WidgetSdk.WidgetCapabilityEvent<TPayload?> platformEvent, System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<TPayload?>
@@ -1993,6 +2011,10 @@ property WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> WidgetRail.Wid
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.BackgroundSurfaceElement.Content { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.CollectionItemElement.Child { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.FocusBackgroundElement.Child { get; set; }
+property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.FocusPresentationElement.Child { get; set; }
+property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.FocusPresentationElement.Presentation { get; set; }
+property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.Content { get; set; }
+property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.DefaultPresentation { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.ResponsiveBranchElement.Child { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetView.Root { get; set; }
 property WidgetRail.WidgetSdk.WidgetHostServices WidgetRail.WidgetSdk.WidgetScenarioDefinition.HostServices { get; }
@@ -2505,6 +2527,8 @@ type sealed class WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest 
 type sealed class WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest : System.IEquatable<WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest>
 type sealed class WidgetRail.WidgetSdk.ControllerInputEvent : System.IEquatable<WidgetRail.WidgetSdk.ControllerInputEvent>
 type sealed class WidgetRail.WidgetSdk.FocusBackgroundElement : System.IEquatable<WidgetRail.WidgetSdk.FocusBackgroundElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.FocusPresentationElement : System.IEquatable<WidgetRail.WidgetSdk.FocusPresentationElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.FocusPresentationSurfaceElement : System.IEquatable<WidgetRail.WidgetSdk.FocusPresentationSurfaceElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.GridElement : System.IEquatable<WidgetRail.WidgetSdk.ContainerElement>, System.IEquatable<WidgetRail.WidgetSdk.GridElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.ContainerElement
 type sealed class WidgetRail.WidgetSdk.IconElement : System.IEquatable<WidgetRail.WidgetSdk.IconElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.ImageElement : System.IEquatable<WidgetRail.WidgetSdk.ImageElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement

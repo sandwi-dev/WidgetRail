@@ -75,6 +75,7 @@ static async Task PageCoverage()
 
     await Act(widget, "gallery.tab.tiles");
     var tiles = Snapshot(widget, 3);
+    Assert.Equal(ProtocolConstants.FocusAssociatedPresentationVersion, tiles.ProtocolVersion);
     Assert.Equal(4, Nodes(tiles.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface));
     Assert.Equal(3, Nodes(tiles.Root).Count(node =>
         node.StyleClasses.SequenceEqual(["wrail-action-surface", "wrail-tile"])));
@@ -89,6 +90,14 @@ static async Task PageCoverage()
     Assert.True(poster.StyleClasses.SequenceEqual(
         ["wrail-action-surface", "wrail-poster-tile"]));
     Assert.Equal(ImageFit.Cover, Find(tiles, "gallery.poster.artwork").ImageFit);
+    var focusPresentation = Find(tiles, "gallery.tiles.presentation");
+    Assert.Equal(ViewNodeKind.FocusPresentationSurface, focusPresentation.Kind);
+    Assert.Equal("gallery.tiles.presentation.default",
+        focusPresentation.DefaultFocusPresentation?.Id);
+    Assert.Equal("gallery.media.presentation",
+        Find(tiles, "gallery.media").FocusPresentation?.Id);
+    Assert.Equal("gallery.app.presentation",
+        Find(tiles, "gallery.app").FocusPresentation?.Id);
 
     await Act(widget, "gallery.tab.utilities");
     var utilities = Snapshot(widget, 4);
@@ -186,7 +195,7 @@ static async Task TrustedArtwork()
     var snapshot = Snapshot(widget, 1);
     var artworkHandle = Find(snapshot, "gallery.app.artwork").ArtworkHandle;
     Assert.True(artworkHandle is not null);
-    Assert.Equal(ProtocolConstants.BackgroundSurfaceVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.FocusAssociatedPresentationVersion, snapshot.ProtocolVersion);
     Assert.Equal(ViewNodeKind.BackgroundSurface, snapshot.Root.Kind);
     Assert.Equal("gallery.root.content", snapshot.Root.Children.Single().Id);
     Assert.Equal(ViewNodeKind.BackgroundSurface, Find(snapshot, "gallery.tiles.surface").Kind);

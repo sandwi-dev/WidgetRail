@@ -589,6 +589,10 @@ public abstract partial class Widget
             if (string.Equals(node.ArtworkHandle, artworkHandle, StringComparison.Ordinal) ||
                 string.Equals(node.FocusBackgroundArtworkHandle, artworkHandle, StringComparison.Ordinal))
                 return true;
+            if (node.FocusPresentation is not null && Contains(node.FocusPresentation))
+                return true;
+            if (node.DefaultFocusPresentation is not null && Contains(node.DefaultFocusPresentation))
+                return true;
             foreach (var child in node.Children)
                 if (Contains(child)) return true;
             return false;

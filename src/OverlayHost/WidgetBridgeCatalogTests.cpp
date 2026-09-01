@@ -1116,6 +1116,74 @@ int main() {
           backgroundSnapshot->root.children.size() == 1U);
 
     error.clear();
+    const auto focusPresentationSnapshot =
+        widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":40,"sequence":1,
+            "widgetInstanceId":"focus-presentation.instance",
+            "activeInputScopeId":"focus-presentation.content",
+            "initialFocusId":"focus-presentation.first",
+            "root":{"id":"focus-presentation.surface","kind":"focusPresentationSurface",
+                "defaultFocusPresentation":{"id":"focus-presentation.default","kind":"text",
+                    "text":"Choose an item","children":[]},
+                "children":[{"id":"focus-presentation.content","kind":"row",
+                    "inputScopeId":"focus-presentation.content","children":[
+                        {"id":"focus-presentation.first","kind":"button","text":"First",
+                         "actionId":"first","focusPresentation":{
+                            "id":"focus-presentation.first.fragment","kind":"stack","children":[
+                                {"id":"focus-presentation.first.text","kind":"text",
+                                 "text":"First details","children":[]}
+                            ]},"children":[]},
+                        {"id":"focus-presentation.second","kind":"button","text":"Second",
+                         "actionId":"second","children":[]}
+                    ]}]
+            }
+        }
+    })json", error);
+    CHECK(focusPresentationSnapshot && error.empty());
+    CHECK(focusPresentationSnapshot->root.kind == L"focusPresentationSurface" &&
+          focusPresentationSnapshot->root.defaultFocusPresentation.size() == 1U &&
+          focusPresentationSnapshot->root.children.size() == 1U &&
+          focusPresentationSnapshot->root.children.front().children.front()
+              .focusPresentation.size() == 1U);
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":39,"sequence":1,
+            "widgetInstanceId":"focus-presentation.legacy",
+            "activeInputScopeId":"focus-presentation.content",
+            "initialFocusId":"focus-presentation.first",
+            "root":{"id":"focus-presentation.surface","kind":"focusPresentationSurface",
+                "defaultFocusPresentation":{"id":"focus-presentation.default","kind":"text",
+                    "text":"Choose an item","children":[]},
+                "children":[{"id":"focus-presentation.content","kind":"stack","children":[
+                    {"id":"focus-presentation.first","kind":"button","text":"First",
+                     "actionId":"first","children":[]}
+                ]}]
+            }
+        }
+    })json", error) && !error.empty());
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":40,"sequence":1,
+            "widgetInstanceId":"focus-presentation.interactive",
+            "activeInputScopeId":"focus-presentation.content",
+            "initialFocusId":"focus-presentation.first",
+            "root":{"id":"focus-presentation.surface","kind":"focusPresentationSurface",
+                "defaultFocusPresentation":{"id":"focus-presentation.unsafe","kind":"button",
+                    "text":"Unsafe","actionId":"unsafe","children":[]},
+                "children":[{"id":"focus-presentation.content","kind":"stack","children":[
+                    {"id":"focus-presentation.first","kind":"button","text":"First",
+                     "actionId":"first","children":[]}
+                ]}]
+            }
+        }
+    })json", error) && !error.empty());
+
+    error.clear();
     CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "protocolVersion":37,"sequence":1,

@@ -295,49 +295,63 @@ public sealed class SdkGalleryWidget : Widget
             "gallery.tiles.header",
             description: "Each complete tile is one focus target; its descendants stay presentational."),
         UI.BackgroundSurface(
-            UI.ResponsiveGrid("gallery.tiles.grid", 250, 2,
-            UI.Tile(
-                "Night Drive",
-                "Playing",
-                "gallery.media.open",
-                "gallery.media",
-                subtitle: "Example Artist",
-                metadata: "Controller UI Sessions",
-                artwork: TileArtwork.FromGlyph(WidgetGlyph.Music, "Music artwork"))
-                .ContextAction("gallery.media.queue", "Add to queue")
-                .ContextAction(
-                    "gallery.media.remove", "Remove from library",
-                    WidgetContextActionStyle.Danger),
-            UI.Tile(
-                "Sample Game",
-                "Ready",
-                "gallery.app.open",
-                "gallery.app",
-                subtitle: "Recently used",
-                metadata: "Community library",
-                artwork: TileArtwork.FromHandle(
-                    new WidgetArtworkHandle(SampleArtworkHandle),
-                    "Provider-neutral encoded PNG artwork")),
-            UI.Tile(
-                "WebP First Frame",
-                "Ready",
-                "gallery.app.open",
-                "gallery.webp",
-                subtitle: "Provider-neutral",
-                metadata: "Bounded encoded artwork",
-                artwork: TileArtwork.FromHandle(
-                    new WidgetArtworkHandle(SampleWebPArtworkHandle),
-                    "Provider-neutral encoded WebP artwork")),
-            UI.PosterTile(
-                "A deliberately longer poster title that demonstrates bounded two-line copy",
-                "Available",
-                "gallery.app.open",
-                "gallery.poster",
-                subtitle: "SDK Gallery",
-                metadata: "Provider-neutral poster",
-                artwork: TileArtwork.FromHandle(
-                    new WidgetArtworkHandle(SampleArtworkHandle),
-                    "Provider-neutral poster artwork"))),
+            UI.FocusPresentationSurface(
+                UI.ResponsiveGrid("gallery.tiles.grid", 250, 2,
+                UI.Tile(
+                    "Night Drive",
+                    "Playing",
+                    "gallery.media.open",
+                    "gallery.media",
+                    subtitle: "Example Artist",
+                    metadata: "Controller UI Sessions",
+                    artwork: TileArtwork.FromGlyph(WidgetGlyph.Music, "Music artwork"))
+                    .ContextAction("gallery.media.queue", "Add to queue")
+                    .ContextAction(
+                        "gallery.media.remove", "Remove from library",
+                        WidgetContextActionStyle.Danger)
+                    .PresentOnFocus(UI.Stack("gallery.media.presentation",
+                        UI.Text("Night Drive", "gallery.media.presentation.title"),
+                        UI.Text("Playing from Controller UI Sessions",
+                            "gallery.media.presentation.detail"))),
+                UI.Tile(
+                    "Sample Game",
+                    "Ready",
+                    "gallery.app.open",
+                    "gallery.app",
+                    subtitle: "Recently used",
+                    metadata: "Community library",
+                    artwork: TileArtwork.FromHandle(
+                        new WidgetArtworkHandle(SampleArtworkHandle),
+                        "Provider-neutral encoded PNG artwork"))
+                    .PresentOnFocus(UI.Stack("gallery.app.presentation",
+                        UI.Text("Sample Game", "gallery.app.presentation.title"),
+                        UI.Text("Ready from the community library",
+                            "gallery.app.presentation.detail"))),
+                UI.Tile(
+                    "WebP First Frame",
+                    "Ready",
+                    "gallery.app.open",
+                    "gallery.webp",
+                    subtitle: "Provider-neutral",
+                    metadata: "Bounded encoded artwork",
+                    artwork: TileArtwork.FromHandle(
+                        new WidgetArtworkHandle(SampleWebPArtworkHandle),
+                        "Provider-neutral encoded WebP artwork")),
+                UI.PosterTile(
+                    "A deliberately longer poster title that demonstrates bounded two-line copy",
+                    "Available",
+                    "gallery.app.open",
+                    "gallery.poster",
+                    subtitle: "SDK Gallery",
+                    metadata: "Provider-neutral poster",
+                    artwork: TileArtwork.FromHandle(
+                        new WidgetArtworkHandle(SampleArtworkHandle),
+                        "Provider-neutral poster artwork"))),
+                UI.Stack("gallery.tiles.presentation.default",
+                    UI.Text("Choose a tile", "gallery.tiles.presentation.default.title"),
+                    UI.Text("Focused details appear here without another widget render.",
+                        "gallery.tiles.presentation.default.detail")),
+                "gallery.tiles.presentation"),
             "gallery.tiles.surface")
             .Classes("gallery-nested-background"))
         .AddClasses("gallery-page");

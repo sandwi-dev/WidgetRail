@@ -21,6 +21,7 @@ public enum ViewNodeKind
     TextEntry,
     MediaViewport,
     BackgroundSurface,
+    FocusPresentationSurface,
 }
 
 /// <summary>
@@ -427,6 +428,19 @@ public sealed record ViewNode
     /// focused descendant's focus-background artwork declaration.
     /// </summary>
     public bool? UsesFocusedDescendantArtwork { get; init; }
+    /// <summary>
+    /// Protocol-v40 bounded presentation-only fragment selected when this
+    /// exact focusable node owns host focus inside its nearest enclosing
+    /// FocusPresentationSurface. It grants no action, focus, scope, shortcut,
+    /// scrolling, media, or alternate input authority.
+    /// </summary>
+    public ViewNode? FocusPresentation { get; init; }
+    /// <summary>
+    /// Protocol-v40 required fallback fragment for a FocusPresentationSurface.
+    /// The host projects it when the exact focused descendant has no associated
+    /// fragment or belongs to a nested consumer.
+    /// </summary>
+    public ViewNode? DefaultFocusPresentation { get; init; }
     /// <summary>
     /// Selects the bounded axis for a Scroll node. The host owns the offset,
     /// clips descendants, and reveals controller focus; widgets never publish pixels.

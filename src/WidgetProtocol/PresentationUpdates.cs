@@ -59,6 +59,8 @@ public enum PresentationProperty
     InputScopeId,
     InitialChildFocusId,
     UsesFocusedDescendantArtwork,
+    FocusPresentation,
+    DefaultFocusPresentation,
     ScrollAxis,
     ScrollNearStartActionId,
     ScrollNearEndActionId,
@@ -166,6 +168,12 @@ public static class PresentationPropertyMetadata
         PresentationProperty.UsesFocusedDescendantArtwork =>
             PresentationPropertyImpact.Resource |
             PresentationPropertyImpact.Paint,
+        PresentationProperty.FocusPresentation or
+        PresentationProperty.DefaultFocusPresentation =>
+            PresentationPropertyImpact.Resource |
+            PresentationPropertyImpact.MeasureLayout |
+            PresentationPropertyImpact.Paint |
+            PresentationPropertyImpact.Accessibility,
         PresentationProperty.MediaSurfaceId =>
             PresentationPropertyImpact.Authority |
             PresentationPropertyImpact.SurfacePlacement |

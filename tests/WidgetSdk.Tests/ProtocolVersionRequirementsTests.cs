@@ -224,6 +224,30 @@ internal static class ProtocolVersionRequirementsTests
                     UsesFocusedDescendantArtwork = true,
                     Children = [Button()],
                 }, "$.root.children[0].usesFocusedDescendantArtwork"),
+            NodeCase("focus presentation surface", "focus-associated-presentation",
+                ProtocolConstants.FocusAssociatedPresentationVersion,
+                new()
+                {
+                    Id = "focus-surface",
+                    Kind = ViewNodeKind.FocusPresentationSurface,
+                    DefaultFocusPresentation = Text("focus-default"),
+                    Children = [Button()],
+                }),
+            NodeCase("focus presentation source", "focus-associated-presentation",
+                ProtocolConstants.FocusAssociatedPresentationVersion,
+                new()
+                {
+                    Id = "focus-source-surface",
+                    Kind = ViewNodeKind.FocusPresentationSurface,
+                    DefaultFocusPresentation = Text("focus-source-default"),
+                    Children =
+                    [
+                        Button() with
+                        {
+                            FocusPresentation = Text("focus-source-fragment"),
+                        },
+                    ],
+                }, "$.root.children[0].children[0].focusPresentation"),
             NodeCase("responsive grid", "responsive-grid", ProtocolConstants.ResponsiveGridVersion,
                 new()
                 {
