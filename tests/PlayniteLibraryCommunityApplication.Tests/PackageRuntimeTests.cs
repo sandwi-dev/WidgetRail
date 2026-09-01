@@ -623,24 +623,38 @@ public sealed class PackageRuntimeTests
                 idat.Write(data);
             }
 
+            var expectedCrc = BinaryPrimitives.ReadUInt32BigEndian(
+                png.Slice(offset + 8 + length, 4));
+            var actualCrc = PngCrc32(png.Slice(offset + 4, length + 4));
+            if (actualCrc != expectedCrc)
+                throw new InvalidDataException($"PNG {type} CRC is invalid.");
+
             offset += length + 12;
         }
 
         if (width != 1 || height != 1 || bitDepth != 8 || colorType != 6)
             throw new InvalidDataException("Expected one 8-bit RGBA PNG pixel.");
 
-        var compressed = idat.ToArray();
-        if (compressed.Length <= 6)
-            throw new InvalidDataException("PNG zlib payload is truncated.");
-        using var deflatePayload = new MemoryStream(
-            compressed, 2, compressed.Length - 6, writable: false);
-        using var deflate = new DeflateStream(deflatePayload, CompressionMode.Decompress);
+        idat.Position = 0;
+        using var zlib = new ZLibStream(idat, CompressionMode.Decompress);
         using var decoded = new MemoryStream();
-        deflate.CopyTo(decoded);
+        zlib.CopyTo(decoded);
         var scanline = decoded.ToArray();
-        if (scanline.Length != 5 || scanline[0] is not (0 or 1))
-            throw new InvalidDataException("Expected one unfiltered or Sub-filtered RGBA scanline.");
+        if (scanline.Length != 5 || scanline[0] != 0)
+            throw new InvalidDataException("Expected one unfiltered RGBA scanline.");
         return (scanline[1], scanline[2], scanline[3], scanline[4]);
+    }
+
+    private static uint PngCrc32(ReadOnlySpan<byte> data)
+    {
+        var crc = uint.MaxValue;
+        foreach (var value in data)
+        {
+            crc ^= value;
+            for (var bit = 0; bit < 8; bit++)
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xedb88320u : crc >> 1;
+        }
+        return crc ^ uint.MaxValue;
     }
 
     private static async Task<IReadOnlyList<WidgetAppLibraryItem>> QueryEveryPage(

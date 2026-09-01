@@ -37,8 +37,8 @@ internal sealed class PlayniteLibraryApplicationService(
     private static readonly WidgetEncodedArtwork NeutralArtwork = new(
         WidgetArtworkContentType.Png,
         Convert.FromBase64String(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYGBgAAAABQAB" +
-            "pfZFQAAAAABJRU5ErkJggg=="));
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNgYGBgAAAABQAB" +
+            "eqhXUAAAAABJRU5ErkJggg=="));
 
     public bool OwnsArtworkContent => true;
 
