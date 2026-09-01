@@ -193,6 +193,42 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.AreEqual(ViewNodeKind.Button, favorites.Kind);
         Assert.IsNull(favorites.IsSelected,
             "Favorites is an ordinary On/Off command, not a selected-state toggle surface.");
+        Assert.IsFalse(favorites.StyleClasses.Contains(
+            "playnite-library-filter-active", StringComparer.Ordinal));
+        Assert.IsFalse(browseNodes.Any(node => node.IsSelected is not null ||
+            node.Glyph == WidgetGlyph.Check),
+            "Browse filters must remain ordinary commands without selected/check semantics.");
+
+        var activeBrowse = State(collection, organization, PlayniteLibraryRoute.Browse, [])
+            with { FavoriteFilter = true, RecentlyPlayed = true };
+        var activeNodes = Nodes(new PresentationWidget(
+                PlayniteLibraryPresentation.Render(activeBrowse)).RenderSnapshot(
+                "playnite-library.presentation.browse.active", 3).Root).ToArray();
+        foreach (var id in new[]
+                 {
+                     PlayniteLibraryActions.FavoritesFilter,
+                     PlayniteLibraryActions.RecentlyPlayedFilter,
+                 })
+            CollectionAssert.Contains(activeNodes.Single(node => node.Id == id)
+                .StyleClasses.ToArray(), "playnite-library-filter-active");
+        StringAssert.Contains(styles,
+            ".playnite-library-filter-active:focused { background:",
+            "The active hue must retain an independently visible focused state.");
+
+        var productionSources = Directory.GetFiles(RepositoryRoot(), "*.cs",
+                SearchOption.AllDirectories)
+            .Where(path => path.Contains(Path.Combine("samples", "PlayniteLibraryWidget"),
+                StringComparison.OrdinalIgnoreCase))
+            .Select(File.ReadAllText)
+            .ToArray();
+        Assert.IsFalse(productionSources.Any(source =>
+            source.Contains("SearchOpen", StringComparison.Ordinal) ||
+            source.Contains("playnite-library.search.open", StringComparison.Ordinal)),
+            "The retired Home-to-search action must have no declaration or dispatch path.");
+        Assert.IsFalse(productionSources.Any(source =>
+            source.Contains("PlayniteLibraryRoute.Management", StringComparison.Ordinal) ||
+            source.Contains("playnite-library.management", StringComparison.Ordinal)),
+            "Management must remain absent from the route and action surface.");
     }
 
     [TestMethod, Timeout(30_000)]
@@ -660,6 +696,19 @@ public sealed class PlayniteLibraryLayoutTests
         foreach (var child in root.Children)
         foreach (var node in Nodes(child))
             yield return node;
+    }
+
+    private static string RepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "global.json")) &&
+                Directory.Exists(Path.Combine(directory.FullName, "samples")))
+                return directory.FullName;
+            directory = directory.Parent;
+        }
+        throw new DirectoryNotFoundException("WidgetRail repository root was not found.");
     }
 
     private static WrssTheme CompileStyles()

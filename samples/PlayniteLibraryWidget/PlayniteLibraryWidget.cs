@@ -122,6 +122,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         var navigation = _navigation.Value;
         var local = _model.Value;
+        PinRenderedArtwork(navigation.Route, local);
         if (navigation.Route == PlayniteLibraryRoute.PlayniteConnection)
         {
             var connection = CapturePlayniteConnection(local);
@@ -158,6 +159,39 @@ public sealed partial class PlayniteLibraryWidget : Widget
         };
     }
 
+    private void PinRenderedArtwork(
+        PlayniteLibraryRoute route,
+        PlayniteLibraryRenderState local)
+    {
+        var live = _library.Snapshot.Items;
+        var fixedRows = local.FixedRows.All.ToArray();
+        var retainedHome = local.RetainedHomeCollection?.Items ?? [];
+        var hidden = _hiddenRows.Snapshot.Value ?? [];
+        IEnumerable<PlayniteLibraryItem> rendered = route switch
+        {
+            PlayniteLibraryRoute.Library when local.RetainedHomeCollection is not null =>
+                retainedHome.Concat(fixedRows),
+            PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Category =>
+                live.Concat(fixedRows),
+            PlayniteLibraryRoute.Browse => live,
+            PlayniteLibraryRoute.Hidden => hidden.Concat(live).Concat(fixedRows),
+            _ => [],
+        };
+        IEnumerable<PlayniteLibraryItem> retained = route switch
+        {
+            PlayniteLibraryRoute.Library when local.RetainedHomeCollection is not null =>
+                live.Concat(hidden),
+            PlayniteLibraryRoute.Browse => retainedHome.Concat(fixedRows).Concat(hidden),
+            PlayniteLibraryRoute.Hidden => retainedHome,
+            _ => retainedHome.Concat(hidden),
+        };
+        _application.PinArtworkHandles(rendered.Concat(retained)
+            .SelectMany(item => item.Presentation.Artwork.Items)
+            .Select(artwork => artwork.Handle)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray());
+    }
+
     private static bool IsFocusableTarget(WidgetElement element, string? id)
     {
         if (id is null) return false;
@@ -191,7 +225,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 if (_navigation.Value.Route == PlayniteLibraryRoute.Hidden)
                     _ = _hiddenRows.Refresh();
                 else
-                    _ = _library.Refresh();
+                {
+                    var route = _navigation.Value;
+                    var refresh = _library.Refresh();
+                    _ = ClearRetainedHomeAfterCommittedHomeAsync(
+                        refresh, route.Revision, context.CancellationToken);
+                }
             },
             WidgetOperationLifetime.Active);
         return ValueTask.CompletedTask;
@@ -453,16 +492,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                         : state.Collection.Reset(InstalledGames),
                 });
                 ReloadQuery();
-                return;
-            case PlayniteLibraryActions.SearchOpen:
-                if (LifecycleState != WidgetLifecycleState.Interactive ||
-                    _navigation.Value.Route is not (PlayniteLibraryRoute.Library or
-                        PlayniteLibraryRoute.Browse)) return;
-                if (_navigation.Value.Route == PlayniteLibraryRoute.Library &&
-                    RetainHomeCollectionForRouteTransition() &&
-                    _navigation.Push(PlayniteLibraryRoute.Browse, action.SourceElementId) !=
-                        WidgetNavigationResult.Changed) return;
-                _model.Update(state => state with { SearchExpanded = true });
                 return;
             case PlayniteLibraryActions.BrowseOpen:
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
@@ -757,11 +786,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
             PreferLibraryContentFocus = preferContentFocus,
         });
         var replacement = ReloadQuery(preferContentFocus, retainCurrentItems: true);
-        WidgetOperationResult? replacementResult = null;
         if (replacement is { } admitted)
-            replacementResult = await admitted.Completion.ConfigureAwait(false);
-        if (replacementResult?.Status == WidgetOperationStatus.Succeeded)
-            _model.Update(state => state with { RetainedHomeCollection = null });
+            await ClearRetainedHomeAfterCommittedHomeAsync(
+                admitted, _navigation.Value.Revision, ActiveCancellationToken)
+                .ConfigureAwait(false);
         var restored = _model.Update(state =>
             (state with { PendingRestoredSavedId = null }, state.PendingRestoredSavedId));
         var restoredSavedId = restored.Result;
@@ -774,6 +802,22 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             PreferLibraryContentFocus = preferContentFocus || restoredSavedId is not null,
         });
+    }
+
+    private async Task ClearRetainedHomeAfterCommittedHomeAsync(
+        WidgetOperationHandle operation,
+        long routeRevision,
+        CancellationToken cancellationToken)
+    {
+        var result = await operation.Completion.ConfigureAwait(false);
+        var route = _navigation.Value;
+        if (cancellationToken.IsCancellationRequested ||
+            result.Status != WidgetOperationStatus.Succeeded ||
+            route.Route != PlayniteLibraryRoute.Library ||
+            route.Revision != routeRevision ||
+            _library.Snapshot.Status != WidgetPagedResourceStatus.Ready)
+            return;
+        _model.Update(state => state with { RetainedHomeCollection = null });
     }
 
     private WidgetAppLibraryQuery EffectiveQueryLocked(
@@ -870,11 +914,17 @@ public sealed partial class PlayniteLibraryWidget : Widget
             if (stored.Exists && (ReferenceEquals(
                     normalized, PlayniteLibraryPrivateState.Empty) ||
                 PlayniteLibraryCategoryPolicy.RequiresReset(stored.Value) ||
-                PlayniteLibraryTitlePolicy.RequiresReset(stored.Value)))
+                PlayniteLibraryTitlePolicy.RequiresReset(stored.Value) ||
+                stored.Value?.RecentSavedIds is { Count: > 0 }))
             {
-                var reset = await _application.WriteStateAsync(
-                        normalized, stored.Revision, cancellationToken)
+                var reset = await PlayniteLibraryStateStore.SaveAsync(
+                        state => PlayniteLibraryStateMutation.Apply(state),
+                        (state, expected, token) => _application.WriteStateAsync(
+                            state, expected, token),
+                        token => _application.ReadStateAsync(token),
+                        stored.Value!, stored.Revision, cancellationToken)
                     .ConfigureAwait(false);
+                normalized = reset.State;
                 revision = reset.Revision;
             }
             lock (_gate)
@@ -945,6 +995,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 {
                     _ when collectionState.RecentlyPlayed =>
                         PlayniteLibraryQueryScope.RecentlyPlayed,
+                    PlayniteLibraryRoute.Library => PlayniteLibraryQueryScope.Home,
                     PlayniteLibraryRoute.Category => PlayniteLibraryQueryScope.Category,
                     _ => PlayniteLibraryQueryScope.Library,
                 }, categoryName),
@@ -1034,23 +1085,22 @@ public sealed partial class PlayniteLibraryWidget : Widget
         var projectionItems = rawItems.Concat(retainedForProjection.All)
             .DistinctBy(item => item.Value.SavedId, StringComparer.Ordinal)
             .ToArray();
-        string[]? provenSources = null;
+        var reconcileSources = false;
         if (route == _navigation.Value.Route)
-            provenSources = _model.Update(state =>
+            reconcileSources = _model.Update(state =>
             {
-                if (state.Collection != collectionState) return (state, (string[]?)null);
-                var reconciled = PlayniteLibrarySourceCatalog.Reconcile(
-                    organization.ProvenSources, collectionState, direction, rawItems,
-                    page.Sources, page.Before is null && page.After is null);
+                if (state.Collection != collectionState) return (state, false);
                 var observations = PlayniteLibrarySourceCatalog.RetainObservations(
                     state.SourceObservations, page.Sources);
                 return (ReferenceEquals(observations, state.SourceObservations)
                         ? state
                         : state with { SourceObservations = observations },
-                    (string[]?)reconciled);
+                    true);
             }).Result;
         var projectionSaved = await PersistProjectionAsync(
-                projectionItems, provenSources, cancellationToken)
+                projectionItems, reconcileSources, collectionState, direction,
+                rawItems, page.Sources, page.Before is null && page.After is null,
+                cancellationToken)
             .ConfigureAwait(false);
         EnsureQueryAuthorityCurrent(queryAuthorityGeneration, cancellationToken);
         _ = TryPublishQueryAuthority(queryAuthorityGeneration, authorityRevision,
@@ -1523,13 +1573,26 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     private async Task<bool> PersistProjectionAsync(
         IReadOnlyList<PlayniteLibraryItem> items,
-        IReadOnlyList<string>? provenSources,
+        bool reconcileSources,
+        PlayniteLibraryCollectionState collectionState,
+        WidgetCursorDirection? direction,
+        IReadOnlyList<PlayniteLibraryItem> sourceItems,
+        IReadOnlyList<WidgetAppLibrarySource> sourceObservations,
+        bool completeCatalog,
         CancellationToken cancellationToken) => (await SaveStateAsync(
-                state => PlayniteLibraryStateMutation.Apply(
-                    PlayniteLibraryOrganizationPolicy.ProjectPage(state, items) with
-                    {
-                        ProvenSources = provenSources ?? state.ProvenSources,
-                    }),
+                state =>
+                {
+                    var projected = PlayniteLibraryOrganizationPolicy.ProjectPage(
+                        state, items);
+                    if (reconcileSources)
+                        projected = projected with
+                        {
+                            ProvenSources = PlayniteLibrarySourceCatalog.Reconcile(
+                                state.ProvenSources, collectionState, direction,
+                                sourceItems, sourceObservations, completeCatalog),
+                        };
+                    return PlayniteLibraryStateMutation.Apply(projected);
+                },
                 cancellationToken).ConfigureAwait(false)).Saved;
 
     private async Task<bool> MutateOrganizationAsync(

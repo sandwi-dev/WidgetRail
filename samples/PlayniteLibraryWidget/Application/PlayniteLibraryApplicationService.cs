@@ -12,7 +12,11 @@ internal sealed class PlayniteLibraryApplicationService(
 {
     private const int RegisteredArtworkRolesPerGame = 2;
     private const int MaximumArtworkEntries =
-        (PlayniteLibraryWidget.MaximumRetainedItems + WidgetAppLibraryService.MaximumSavedItems) *
+        (PlayniteLibraryWidget.MaximumRetainedItems * 2 +
+         WidgetAppLibraryService.MaximumSavedItems) *
+        RegisteredArtworkRolesPerGame;
+    private const int MaximumArtworkTransitionEntries =
+        (PlayniteLibraryWidget.PageSize + WidgetAppLibraryService.MaximumSavedItems) *
         RegisteredArtworkRolesPerGame;
     private const int MaximumCategoryMemberships = PlayniteBridgeClient.MaximumGames;
     private readonly IPlayniteLibraryBridgeClient _client = client ??
@@ -25,11 +29,30 @@ internal sealed class PlayniteLibraryApplicationService(
     private readonly Dictionary<string, WidgetEncodedArtwork> _artworkContent =
         new(StringComparer.Ordinal);
     private readonly Queue<string> _artworkOrder = [];
+    private readonly object _artworkGate = new();
+    private HashSet<string> _pinnedArtwork = new(StringComparer.Ordinal);
     private Catalog? _lastGood;
     private readonly IPlayniteLibraryArtworkDiagnostics _artworkDiagnostics =
         artworkDiagnostics ?? PlayniteLibraryArtworkDiagnostics.None;
+    private static readonly WidgetEncodedArtwork NeutralArtwork = new(
+        WidgetArtworkContentType.Png,
+        Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEAQH/" +
+            "69p8GQAAAABJRU5ErkJggg=="));
 
     public bool OwnsArtworkContent => true;
+
+    public void PinArtworkHandles(IReadOnlyList<string> handles)
+    {
+        ArgumentNullException.ThrowIfNull(handles);
+        lock (_artworkGate)
+        {
+            _pinnedArtwork = handles.Where(_artwork.ContainsKey)
+                .Take(MaximumArtworkEntries)
+                .ToHashSet(StringComparer.Ordinal);
+            TrimArtworkLocked(MaximumArtworkEntries + MaximumArtworkTransitionEntries);
+        }
+    }
 
     public async ValueTask<WidgetAppLibraryPage> QueryAsync(
         WidgetAppLibraryQuery query,
@@ -178,32 +201,44 @@ internal sealed class PlayniteLibraryApplicationService(
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!_artwork.TryGetValue(handle.Value, out var registration))
+            ArtworkRegistration? registration;
+            lock (_artworkGate)
+                _artwork.TryGetValue(handle.Value, out registration);
+            if (registration is null)
             {
                 _artworkDiagnostics.Record("authority", "unknown-handle", 1, "unknown");
                 return null;
             }
-            if (_artworkContent.TryGetValue(handle.Value, out var cached)) return cached;
+            lock (_artworkGate)
+                if (_artworkContent.TryGetValue(handle.Value, out var cached)) return cached;
             var result = await _client.ResolveArtworkAsync(
                     registration.GameId, registration.Kind, cancellationToken)
                 .ConfigureAwait(false);
+            var backgroundNotFound = false;
             if (result.Artwork is null && registration.Kind == PlayniteBridgeArtworkKind.Background &&
                 result.Code == "not-found")
             {
                 // Playnite may not have a separate backdrop. Only that exact,
                 // same-game absence may fall back to its cover; malformed and
                 // unsupported payloads remain isolated failures.
+                backgroundNotFound = true;
                 result = await _client.ResolveArtworkAsync(
                         registration.GameId, PlayniteBridgeArtworkKind.Cover,
                         cancellationToken)
                     .ConfigureAwait(false);
+            }
+            if (backgroundNotFound && result.Artwork is null && result.Code == "not-found")
+            {
+                CacheArtworkIfCurrent(handle.Value, registration, NeutralArtwork);
+                _artworkDiagnostics.Record("resolve", "not-found-neutral", 1, "tiny");
+                return NeutralArtwork;
             }
             if (result.Artwork is null)
             {
                 _artworkDiagnostics.Record("resolve", result.Code, 1, result.SizeClass);
                 return null;
             }
-            _artworkContent[handle.Value] = result.Artwork;
+            CacheArtworkIfCurrent(handle.Value, registration, result.Artwork);
             return result.Artwork;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -367,7 +402,9 @@ internal sealed class PlayniteLibraryApplicationService(
         PlayniteLibraryQueryContext context)
     {
         IEnumerable<PlayniteBridgeGame> values = games;
-        if (query.InstalledOnly) values = values.Where(game => game.IsInstalled);
+        if (query.InstalledOnly || context.Scope is PlayniteLibraryQueryScope.Home or
+                PlayniteLibraryQueryScope.RecentlyPlayed)
+            values = values.Where(game => game.IsInstalled);
         if (context.Scope == PlayniteLibraryQueryScope.Hidden)
             values = values.Where(game => game.Hidden);
         else
@@ -392,6 +429,12 @@ internal sealed class PlayniteLibraryApplicationService(
                 .ThenBy(game => game.Name, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(game => game.Id, StringComparer.Ordinal)
                 .Take(PlayniteLibraryPrivateState.MaximumRecentItems);
+        if (context.Scope == PlayniteLibraryQueryScope.Home)
+            return values
+                .OrderBy(game => game.LastActivityUnixMilliseconds is null)
+                .ThenByDescending(game => game.LastActivityUnixMilliseconds)
+                .ThenBy(game => game.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(game => game.Id, StringComparer.Ordinal);
         return query.Sort switch
         {
             WidgetAppLibrarySortOrder.DisplayNameDescending => values
@@ -469,18 +512,45 @@ internal sealed class PlayniteLibraryApplicationService(
         PlayniteBridgeArtworkKind kind)
     {
         var handle = ContentId("artwork-handle", gameId, revision, kind.ToString());
-        if (!_artwork.ContainsKey(handle))
+        lock (_artworkGate)
         {
-            _artwork.Add(handle, new(gameId, revision, kind));
-            _artworkOrder.Enqueue(handle);
-            while (_artworkOrder.Count > MaximumArtworkEntries)
+            if (!_artwork.ContainsKey(handle))
             {
-                var retired = _artworkOrder.Dequeue();
-                _artwork.Remove(retired);
-                _artworkContent.Remove(retired);
+                _artwork.Add(handle, new(gameId, revision, kind));
+                _artworkOrder.Enqueue(handle);
             }
+            TrimArtworkLocked(MaximumArtworkEntries + MaximumArtworkTransitionEntries);
         }
         return handle;
+    }
+
+    private void TrimArtworkLocked(int maximumEntries)
+    {
+        var attempts = _artworkOrder.Count;
+        while (_artwork.Count > maximumEntries && attempts-- > 0)
+        {
+            var candidate = _artworkOrder.Dequeue();
+            if (_pinnedArtwork.Contains(candidate))
+            {
+                _artworkOrder.Enqueue(candidate);
+                continue;
+            }
+            _artwork.Remove(candidate);
+            _artworkContent.Remove(candidate);
+        }
+    }
+
+    private void CacheArtworkIfCurrent(
+        string handle,
+        ArtworkRegistration registration,
+        WidgetEncodedArtwork artwork)
+    {
+        lock (_artworkGate)
+        {
+            if (_artwork.TryGetValue(handle, out var current) &&
+                ReferenceEquals(current, registration))
+                _artworkContent[handle] = artwork;
+        }
     }
 
     private static PlayniteLibraryAuthorityProjection ProjectAuthority(

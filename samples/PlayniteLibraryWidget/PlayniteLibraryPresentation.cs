@@ -117,19 +117,25 @@ internal static class PlayniteLibraryPresentation
                 .AddClasses("playnite-library-control", "playnite-library-filter-control"));
         if (state.Route == PlayniteLibraryRoute.Browse)
         {
-            filterControls.Add(UI.Button(
+            var favorites = UI.Button(
                     state.FavoriteFilter ? "Favorites: On" : "Favorites: Off",
                     PlayniteLibraryActions.FavoritesFilter,
                     PlayniteLibraryActions.FavoritesFilter)
                 .Disabled(!renderActionsEnabled ||
                     state.Organization.FavoriteSavedIds.Count == 0)
-                .AddClasses("playnite-library-control", "playnite-library-filter-control"));
-            filterControls.Add(UI.Button(
+                .AddClasses("playnite-library-control", "playnite-library-filter-control");
+            if (state.FavoriteFilter)
+                favorites = favorites.AddClasses("playnite-library-filter-active");
+            filterControls.Add(favorites);
+            var recent = UI.Button(
                     state.RecentlyPlayed ? "Recently played: On" : "Recently played: Off",
                     PlayniteLibraryActions.RecentlyPlayedFilter,
                     PlayniteLibraryActions.RecentlyPlayedFilter)
                 .Disabled(!renderActionsEnabled)
-                .AddClasses("playnite-library-control", "playnite-library-filter-control"));
+                .AddClasses("playnite-library-control", "playnite-library-filter-control");
+            if (state.RecentlyPlayed)
+                recent = recent.AddClasses("playnite-library-filter-active");
+            filterControls.Add(recent);
         }
         if (state.Route == PlayniteLibraryRoute.Browse)
         {

@@ -30,6 +30,8 @@
 .playnite-library-control:focused { background: rgba(31, 45, 61, 0.98); border-color: #ffffff; outline-color: #ffffff; outline-width: 2px; outline-offset: -2px; }
 .playnite-library-control:pressed { background: rgba(48, 68, 91, 0.98); border-color: rgba(255, 255, 255, 0.88); }
 .playnite-library-control:selected { background: rgba(24, 74, 111, 0.98); color: #ffffff; border-color: #8bc7ff; }
+.playnite-library-filter-active { background: rgba(18, 72, 112, 0.98); color: #ffffff; border-color: #62b8ff; }
+.playnite-library-filter-active:focused { background: rgba(31, 96, 145, 0.99); border-color: #ffffff; outline-color: #ffffff; outline-width: 2px; }
 .playnite-library-control:disabled { background: rgba(13, 19, 28, 0.78); color: #8f9aa7; border-color: rgba(231, 239, 249, 0.14); }
 .playnite-library-header-copy { min-width: 0px; flex-grow: 1; flex-shrink: 1; }
 .playnite-library-browse-header { width: 100%; flex-grow: 0; flex-shrink: 0; padding: 10px 14px; background: rgba(5, 9, 14, 0.78); border-color: rgba(231, 239, 249, 0.16); border-width: 1px; corner-radius: 12px; }

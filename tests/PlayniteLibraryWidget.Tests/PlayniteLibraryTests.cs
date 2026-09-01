@@ -419,6 +419,12 @@ public sealed class PlayniteLibraryTests
         await Ready(widget, host);
 
         var home = Snapshot(widget, 40_001);
+        var homeNodes = Nodes(home.Root).ToArray();
+        var expectedPosterCount = homeNodes.Count(node =>
+            node.ActionId == PlayniteLibraryActions.Launch);
+        var expectedFocus = home.InitialFocusId;
+        var expectedAnchor = widget.Collection.Anchor ??
+            throw new AssertFailedException("Home must publish an initial collection anchor.");
         var libraryNavigation = Nodes(home.Root).Single(node =>
             node.Id == "playnite-library.library.menu");
         var libraryAction = libraryNavigation.ActionId;
@@ -463,29 +469,6 @@ public sealed class PlayniteLibraryTests
                 (node.Text ?? string.Empty).Contains(
                     "Checking installed games", StringComparison.OrdinalIgnoreCase)),
             "Browse Back must not flash the initial warm/loading page.");
-        returnRelease.TrySetResult(new(
-            [host.ItemFactory(0), host.ItemFactory(1), host.ItemFactory(2)],
-            null, null, "browse-return"));
-        await Bounded(browseBack, "browse return action");
-        Assert.IsTrue(browseBack.Result,
-            "The navigator-owned B shortcut must be handled on Browse.");
-        await Bounded(widget.WhenLibraryIdleAsync(), "browse return");
-        host.QueryHandler = null;
-        var expectedAnchor = widget.Collection.Anchor ?? widget.Collection.Items[0].Key;
-        var expectedFocus = PlayniteLibraryIdentity.FocusId("grid", expectedAnchor);
-        var expectedPosterCount = widget.Collection.Items.Count;
-        Assert.IsGreaterThan(0, expectedPosterCount);
-        var reconstructedHome = Snapshot(widget, 40_000);
-        var reconstructedHomeBackground = Nodes(reconstructedHome.Root).Single(node =>
-            node.Id == "playnite-library.cinematic");
-        Assert.AreEqual(reconstructedBackground,
-            reconstructedHomeBackground.ArtworkHandle,
-            "Browse Back must immediately expose the selected current game's default artwork.");
-        Assert.AreEqual(ImageFit.Cover, reconstructedHomeBackground.ImageFit);
-        Assert.AreEqual(true,
-            reconstructedHomeBackground.UsesFocusedDescendantArtwork);
-        var expectedStatus = widget.RenderState.Value.Status;
-
         void AssertRetainedHome(ViewSnapshot snapshot, string phase)
         {
             var nodes = Nodes(snapshot.Root).ToArray();
@@ -516,8 +499,6 @@ public sealed class PlayniteLibraryTests
                 phase + " must retain the exact collection anchor.");
             Assert.AreEqual(expectedFocus, snapshot.InitialFocusId,
                 phase + " must restore the exact retained current poster.");
-            Assert.AreEqual(expectedStatus, widget.RenderState.Value.Status,
-                phase + " must preserve the last-good status authority.");
             var favoritePoster = posters.Single(node =>
                 (node.AccessibilityLabel ?? string.Empty).StartsWith(
                     displays[0].DisplayName, StringComparison.Ordinal));
@@ -538,32 +519,22 @@ public sealed class PlayniteLibraryTests
                 action.ActionId == "playnite-library.hidden.open").IsDisabled);
         }
 
-        var staleStarted = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var staleRelease = new TaskCompletionSource<WidgetAppLibraryPage>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
         var currentStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var currentRelease = new TaskCompletionSource<WidgetAppLibraryPage>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var probe = 0;
         host.QueryHandler = (_, token) =>
         {
-            if (Interlocked.Increment(ref probe) == 1)
-            {
-                staleStarted.TrySetResult();
-                return new(staleRelease.Task);
-            }
             currentStarted.TrySetResult();
             return new(currentRelease.Task.WaitAsync(token));
         };
-        await widget.OnActionAsync(new("playnite-library.refresh",
-            "playnite-library.refresh"));
-        await Bounded(staleStarted.Task, "stale refresh admission");
         var backgroundTransition = WidgetTestHost.SetLifecycleStateAsync(
             widget, WidgetLifecycleState.Background).AsTask();
-        staleRelease.TrySetResult(new([Item(99)], null, null, "retired"));
-        await Bounded(backgroundTransition, "retired refresh drain");
+        await Bounded(backgroundTransition, "canceled Browse return drain");
+        await Bounded(browseBack, "canceled Browse return action");
+        Assert.IsTrue(browseBack.Result);
+        Assert.IsNotNull(widget.RenderState.Value.RetainedHomeCollection,
+            "Cancellation must not clear the retained Home page before a commit.");
         await Visible(widget);
         await Bounded(currentStarted.Task, "reactivation query admission");
         var visible = Snapshot(widget, 40_003);
@@ -575,11 +546,86 @@ public sealed class PlayniteLibraryTests
             "Reactivation must retain last-good posters instead of flashing a loading page.");
         AssertRetainedHome(retained, "Interactive reactivation");
 
-        currentRelease.TrySetResult(new([Item(0), Item(1), Item(2)], null, null,
+        currentRelease.TrySetResult(new(
+            [
+                WithPresentation(Item(10), artworkHandle: "current.background"),
+                WithPresentation(Item(11), artworkHandle: "current.background.11"),
+                WithPresentation(Item(12), artworkHandle: "current.background.12"),
+            ], null, null,
             "reactivated"));
         await Bounded(widget.WhenLibraryIdleAsync(), "reactivation query drain");
+        await WaitUntil(() => widget.RenderState.Value.RetainedHomeCollection is null);
         Assert.AreEqual(WidgetPagedResourceStatus.Ready, widget.Collection.Status);
-        AssertRetainedHome(Snapshot(widget, 40_005), "Settled reactivation");
+        var settled = Snapshot(widget, 40_005);
+        var settledPosters = Nodes(settled.Root).Where(node =>
+            node.ActionId == PlayniteLibraryActions.Launch).ToArray();
+        Assert.IsTrue(settledPosters.Any(node =>
+            (node.AccessibilityLabel ?? string.Empty).StartsWith(
+                "Game 00010", StringComparison.Ordinal)));
+        CollectionAssert.AreEqual(new[] { "saved-00010", "saved-00011", "saved-00012" },
+            widget.Collection.Items.Select(item => item.Value.SavedId).ToArray());
+        Assert.IsNull(widget.RenderState.Value.RetainedHomeCollection);
+        Assert.AreEqual("current.background", Nodes(settled.Root).Single(node =>
+            node.Id == "playnite-library.cinematic").ArtworkHandle);
+        Assert.IsFalse(Nodes(settled.Root).Any(node => node.Id == "playnite-library.loading"));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task RetainedRenderedArtworkPinsBeforeSameGameLiveBrowseRevision()
+    {
+        const string retainedHandle = "artwork.retained.revision";
+        const string liveHandle = "artwork.live.revision";
+        var host = new FakeHost(1)
+        {
+            ItemFactory = index => WithPresentation(
+                Item(index), artworkHandle: retainedHandle),
+        };
+        var widget = Create(host, out var application);
+        await Interactive(widget);
+        await Ready(widget, host);
+        _ = Snapshot(widget, 40_101);
+
+        host.ItemFactory = index => WithPresentation(
+            Item(index), artworkHandle: liveHandle);
+        await widget.OnActionAsync(new("playnite-library.browse.open",
+            "playnite-library.library.menu"));
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "playnite-library.search.commit", "playnite-library.search")
+            { CommittedText = "Game" });
+        await Bounded(widget.WhenLibraryIdleAsync(), "live Browse revision");
+        var browse = Snapshot(widget, 40_102);
+
+        var returnStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var returnRelease = new TaskCompletionSource<WidgetAppLibraryPage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        host.QueryHandler = (_, token) =>
+        {
+            returnStarted.TrySetResult();
+            return new(returnRelease.Task.WaitAsync(token));
+        };
+        var browseBack = Route(widget, browse, ControllerButton.B,
+            browse.InitialFocusId!).AsTask();
+        await Bounded(returnStarted.Task, "retained Home pin transition");
+        _ = Snapshot(widget, 40_103);
+
+        var retainedIndex = Array.IndexOf(application.LastPinnedArtworkHandles,
+            retainedHandle);
+        var liveIndex = Array.IndexOf(application.LastPinnedArtworkHandles, liveHandle);
+        Assert.IsGreaterThanOrEqualTo(0, retainedIndex,
+            "The rendered retained revision must remain admitted.");
+        Assert.IsGreaterThanOrEqualTo(0, liveIndex,
+            "The nonrendered live Browse revision for the same saved ID must not be deduplicated.");
+        Assert.IsTrue(retainedIndex < liveIndex,
+            "Rendered retained artwork must own pin priority over nonrendered live Browse state.");
+
+        returnRelease.TrySetResult(new([
+            WithPresentation(Item(0), artworkHandle: retainedHandle),
+        ], null, null, "returned"));
+        await Bounded(browseBack, "navigator-owned Browse return");
+        Assert.IsTrue(browseBack.Result);
+        await Bounded(widget.WhenLibraryIdleAsync(), "retained Home replacement");
         await Background(widget);
     }
 
@@ -1838,17 +1884,86 @@ public sealed class PlayniteLibraryTests
     {
         var persisted = new PlayniteLibraryPrivateState(
             PlayniteLibraryPrivateState.CurrentVersion,
-            [new("saved-00100", "Legacy launch", "Steam")])
+            [
+                new("saved-00100", "Legacy launch", "Steam"),
+                new("saved-00101", "Second game", "Steam"),
+            ])
         {
+            FavoriteSavedIds = ["saved-00100"],
             RecentSavedIds = ["saved-00100"],
+            ExcludedSavedIds = ["saved-00101"],
+            VariantGroups = [new(PlayniteLibraryIdentity.GroupId(
+                "saved-00100", "saved-00101"),
+                ["saved-00100", "saved-00101"], "saved-00100")],
+            Categories = [new(PlayniteLibraryCategoryPolicy.NewId(), "Keep",
+                ["saved-00100"])],
+            TitleOverrides = [new("saved-00100", "Renamed")],
+            ProvenSources = ["Steam"],
         };
-        var host = new FakeHost(130, new WidgetTestPrivateState(
+        var concurrentItem = new PlayniteLibraryDisplayItem(
+            "saved-00102", "Concurrent game", "GOG");
+        var concurrent = persisted with
+        {
+            Items = persisted.Items.Concat([concurrentItem]).ToArray(),
+            FavoriteSavedIds = ["saved-00100", concurrentItem.SavedId],
+            Categories = persisted.Categories.Concat([
+                new PlayniteLibraryCategory(PlayniteLibraryCategoryPolicy.NewId(),
+                    "Concurrent", [concurrentItem.SavedId]),
+            ]).ToArray(),
+            TitleOverrides = persisted.TitleOverrides.Concat([
+                new PlayniteLibraryTitleOverride(concurrentItem.SavedId,
+                    "Concurrent title"),
+            ]).ToArray(),
+            ProvenSources = ["Steam", "GOG"],
+        };
+        var host = new FakeHost(256, new WidgetTestPrivateState(
             JsonSerializer.Serialize(persisted), 1));
+        host.SourceObservations =
+        [
+            new("source-steam", "Steam", WidgetAppLibrarySourceHealth.Healthy,
+                1, "connected"),
+            new("source-gog", "GOG", WidgetAppLibrarySourceHealth.Healthy,
+                1, "connected"),
+            new("source-windows", "Windows", WidgetAppLibrarySourceHealth.Healthy,
+                1, "connected"),
+        ];
+        var migrationWrites = 0;
+        host.StateWriteHandler = (request, token) =>
+        {
+            if (migrationWrites++ == 0)
+            {
+                host.State.SimulateExternalWriteJson(JsonSerializer.Serialize(
+                    concurrent));
+                return ValueTask.FromException<WidgetPrivateStateTransportMutation>(
+                    new WidgetCapabilityException("state_conflict", "fixture"));
+            }
+            return host.WriteState(request, token);
+        };
         host.ItemFactory = index => WithLastPlayed(Item(index),
             index == 100 ? 10_000 : null);
         var widget = Create(host);
         await Interactive(widget);
         await Ready(widget, host);
+        var migrated = JsonSerializer.Deserialize<PlayniteLibraryPrivateState>(
+            host.State.Json!)!;
+        Assert.IsGreaterThanOrEqualTo(2, migrationWrites,
+            "Warm migration must re-read and retry one exact-revision conflict.");
+        Assert.AreEqual(0, migrated.RecentSavedIds.Count);
+        CollectionAssert.AreEqual(new[] { "saved-00100", concurrentItem.SavedId },
+            migrated.FavoriteSavedIds.ToArray());
+        Assert.AreEqual(0, migrated.ManualSavedIds.Count);
+        CollectionAssert.AreEqual(new[] { "saved-00101" },
+            migrated.ExcludedSavedIds.ToArray());
+        CollectionAssert.AreEquivalent(new[] { "Keep", "Concurrent" },
+            migrated.Categories.Select(category => category.Name).ToArray());
+        Assert.AreEqual("Concurrent title", migrated.TitleOverrides.Single(value =>
+            value.SavedId == concurrentItem.SavedId).Title);
+        Assert.IsTrue(migrated.Items.Any(item =>
+            item.SavedId == concurrentItem.SavedId &&
+            item.DisplayName == concurrentItem.DisplayName &&
+            item.SourceAttribution == concurrentItem.SourceAttribution));
+        CollectionAssert.Contains(migrated.ProvenSources.ToArray(), "Steam");
+        CollectionAssert.Contains(migrated.ProvenSources.ToArray(), "GOG");
         var laterId = PlayniteLibraryIdentity.FocusId(
             "grid", PlayniteLibraryIdentity.Key("saved-00100"));
         await widget.OnActionAsync(new(
@@ -2519,11 +2634,15 @@ public sealed class PlayniteLibraryTests
         Assert.AreEqual(WidgetPagedResourceStatus.NotLoaded, widget.Collection.Status);
     }
 
-    private static LauncherWidget Create(FakeHost host)
+    private static LauncherWidget Create(FakeHost host) => Create(host, out _);
+
+    private static LauncherWidget Create(
+        FakeHost host,
+        out TestApplicationService application)
     {
         var services = host.Services();
-        return WidgetTestHost.Attach(
-            new LauncherWidget(new TestApplicationService(services, host)), services);
+        application = new TestApplicationService(services, host);
+        return WidgetTestHost.Attach(new LauncherWidget(application), services);
     }
 
     private static Task Visible(LauncherWidget widget) => Bounded(
@@ -2758,6 +2877,10 @@ public sealed class PlayniteLibraryTests
         IPlayniteLibraryApplicationService
     {
         public bool OwnsArtworkContent => false;
+        internal string[] LastPinnedArtworkHandles { get; private set; } = [];
+
+        public void PinArtworkHandles(IReadOnlyList<string> handles) =>
+            LastPinnedArtworkHandles = handles.ToArray();
 
         public ValueTask<WidgetAppLibraryPage> QueryAsync(
             WidgetAppLibraryQuery query, WidgetCollectionCursor? cursor,
@@ -2869,6 +2992,9 @@ public sealed class PlayniteLibraryTests
         private readonly WidgetTestPrivateState _state;
         private readonly AuthorityBox _authority;
         internal WidgetTestPrivateState State => _state;
+        internal ValueTask<WidgetPrivateStateTransportMutation> WriteState(
+            WriteWidgetPrivateStateTransportRequest request,
+            CancellationToken cancellationToken) => _state.WriteAsync(request, cancellationToken);
         internal PlayniteLibraryAuthorityProjection Authority => _authority.Value;
         internal int MaximumObservedIndex { get; private set; } = -1;
         internal int MaximumRequestedLimit { get; private set; }
@@ -2883,6 +3009,7 @@ public sealed class PlayniteLibraryTests
         internal List<string> Launches { get; } = [];
         internal List<WidgetAppLibraryCursorRequest> Queries { get; } = [];
         internal List<PlayniteLibraryQueryContext> QueryContexts { get; } = [];
+        internal IReadOnlyList<WidgetAppLibrarySource> SourceObservations { get; set; } = [];
         internal Func<LaunchWidgetAppLibraryItemRequest, CancellationToken,
             ValueTask<WidgetAppLaunchObservation>>? LaunchHandler { get; set; }
         internal Func<WriteWidgetPrivateStateTransportRequest, CancellationToken,
@@ -2945,7 +3072,10 @@ public sealed class PlayniteLibraryTests
                 : null;
             var page = new WidgetAppLibraryPage(
                 pageValues.Select(value => value.Item).ToArray(),
-                before, after, "revision-1");
+                before, after, "revision-1")
+            {
+                Sources = SourceObservations,
+            };
             return new(page, authority);
         }
 

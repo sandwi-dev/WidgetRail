@@ -4,6 +4,7 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal enum PlayniteLibraryQueryScope
 {
+    Home,
     Library,
     RecentlyPlayed,
     Hidden,
@@ -72,6 +73,8 @@ internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
     ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(
         WidgetArtworkHandle handle,
         CancellationToken cancellationToken);
+
+    void PinArtworkHandles(IReadOnlyList<string> handles) { }
 
     ValueTask<WidgetAppLibraryItem?> SetFavoriteAsync(
         string gameId, bool favorite, CancellationToken cancellationToken) =>

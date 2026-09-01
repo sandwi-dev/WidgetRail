@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Reflection;
 using WidgetRail.Samples.PlayniteLibrary;
 using WidgetRail.WidgetSdk;
 
@@ -213,14 +215,19 @@ public sealed class PackageRuntimeTests
             Hidden = true,
             LastActivityUnixMilliseconds = 8_000,
         };
+        client.Games[37] = client.Games[37] with
+        {
+            IsInstalled = false,
+            LastActivityUnixMilliseconds = 10_000,
+        };
         await using var service = Service(directory.Path, client);
 
         var result = await service.QueryWithAuthorityAsync(
-            AllGames with { SourceAttribution = "Steam" },
+            AllGames with { InstalledOnly = true, SourceAttribution = "Steam" },
             new(PlayniteLibraryQueryScope.RecentlyPlayed), null, null,
             64, refresh: true, CancellationToken.None);
         var expected = client.Games
-            .Where(game => !game.Hidden && game.Source == "Steam" &&
+            .Where(game => game.IsInstalled && !game.Hidden && game.Source == "Steam" &&
                 game.LastActivityUnixMilliseconds is not null)
             .OrderByDescending(game => game.LastActivityUnixMilliseconds)
             .ThenBy(game => game.Name, StringComparer.OrdinalIgnoreCase)
@@ -236,8 +243,77 @@ public sealed class PackageRuntimeTests
         Assert.IsFalse(result.Page.Items.Any(item => item.SavedId == client.Games[0].Id),
             "A game without Playnite LastActivity must not enter Recently played.");
         Assert.IsFalse(result.Page.Items.Any(item => item.SavedId == client.Games[38].Id ||
-            item.SavedId == client.Games[39].Id),
-            "Hidden/source filters must apply before the Recently played cap and ordering.");
+            item.SavedId == client.Games[39].Id || item.SavedId == client.Games[37].Id),
+            "Installed/source/hidden filters must apply before the Recently played cap.");
+        CollectionAssert.AreEqual(new[]
+        {
+            client.Games[2].Id,
+            client.Games[3].Id,
+            client.Games[1].Id,
+        }, result.Page.Items.Where(item => item.Presentation.Metadata!
+                .LastPlayedAtUnixMilliseconds == 2_000)
+            .Select(item => item.SavedId).ToArray(),
+            "Equal timestamps must use name then exact ID tie ordering.");
+
+        var intersection = await service.QueryWithAuthorityAsync(
+            AllGames with
+            {
+                InstalledOnly = true,
+                SearchText = "Alpha",
+                SourceAttribution = "Steam",
+                FavoriteSavedIds = [client.Games[2].Id],
+            }, new(PlayniteLibraryQueryScope.RecentlyPlayed), null, null,
+            64, refresh: false, CancellationToken.None);
+        CollectionAssert.AreEqual(new[] { client.Games[2].Id },
+            intersection.Page.Items.Select(item => item.SavedId).ToArray(),
+            "Search, source, hidden and exact saved-ID filters must intersect before capping.");
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task HomeUsesGlobalPlayniteActivityOrderBeforePaging()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(7);
+        client.Games[0] = client.Games[0] with
+            { Name = "Middle", LastActivityUnixMilliseconds = 100 };
+        client.Games[1] = client.Games[1] with
+            { Name = "Zulu", LastActivityUnixMilliseconds = 300 };
+        client.Games[2] = client.Games[2] with
+            { Name = "alpha", LastActivityUnixMilliseconds = 300 };
+        client.Games[3] = client.Games[3] with
+            { Name = "Beta", LastActivityUnixMilliseconds = null };
+        client.Games[4] = client.Games[4] with
+            { Name = "alpha", LastActivityUnixMilliseconds = null };
+        client.Games[5] = client.Games[5] with
+            { Hidden = true, LastActivityUnixMilliseconds = 900 };
+        client.Games[6] = client.Games[6] with
+            { IsInstalled = false, LastActivityUnixMilliseconds = 1_000 };
+        await using var service = Service(directory.Path, client);
+
+        var page = await service.QueryWithAuthorityAsync(
+            AllGames with { InstalledOnly = true },
+            new(PlayniteLibraryQueryScope.Home), null, null, 64,
+            refresh: true, CancellationToken.None);
+        var expected = new[]
+        {
+            client.Games[2].Id,
+            client.Games[1].Id,
+            client.Games[0].Id,
+            client.Games[4].Id,
+            client.Games[3].Id,
+        };
+        CollectionAssert.AreEqual(expected,
+            page.Page.Items.Select(item => item.SavedId).ToArray());
+
+        await service.LaunchObservedAsync(client.Games[3].Id,
+            WidgetAppLaunchOverlayBehavior.KeepOpen, CancellationToken.None);
+        var afterLaunch = await service.QueryWithAuthorityAsync(
+            AllGames with { InstalledOnly = true },
+            new(PlayniteLibraryQueryScope.Home), null, null, 64,
+            refresh: false, CancellationToken.None);
+        CollectionAssert.AreEqual(expected,
+            afterLaunch.Page.Items.Select(item => item.SavedId).ToArray(),
+            "A package-local launch must not manufacture Playnite activity order.");
     }
 
     [TestMethod, Timeout(30_000)]
@@ -266,20 +342,26 @@ public sealed class PackageRuntimeTests
         Assert.IsNotNull(resolvedBackground);
         CollectionAssert.AreEqual(Convert.FromBase64String(FakeLibraryClient.TinyPng),
             resolvedBackground.Bytes.ToArray());
+        var gameABytes = resolvedBackground.Bytes.ToArray();
         CollectionAssert.AreEqual(new[]
         {
             PlayniteBridgeArtworkKind.Cover,
             PlayniteBridgeArtworkKind.Background,
         }, client.ArtworkKinds.Take(2).ToArray());
 
-        client.BackgroundArtwork = null;
+        const string distinctCover =
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=";
+        client.ArtworkResponses[(client.Games[1].Id,
+            PlayniteBridgeArtworkKind.Background)] = null;
+        client.ArtworkResponses[(client.Games[1].Id,
+            PlayniteBridgeArtworkKind.Cover)] = distinctCover;
         var fallbackHero = current.Items[1].Presentation.Artwork.Find(
             WidgetAppLibraryArtworkRole.Hero)!;
         var fallbackBackground = await service.ResolveArtworkAsync(
             new WidgetArtworkHandle(fallbackHero.Handle), CancellationToken.None);
         Assert.IsNotNull(fallbackBackground,
             "Only a same-game not-found background may fall back to its cover.");
-        CollectionAssert.AreEqual(Convert.FromBase64String(FakeLibraryClient.TinyPng),
+        CollectionAssert.AreEqual(Convert.FromBase64String(distinctCover),
             fallbackBackground.Bytes.ToArray());
         CollectionAssert.AreEqual(new[]
         {
@@ -287,10 +369,41 @@ public sealed class PackageRuntimeTests
             PlayniteBridgeArtworkKind.Cover,
         }, client.ArtworkKinds.Skip(2).Take(2).ToArray());
         client.Artwork = null;
+        client.ArtworkResponses[(client.Games[1].Id,
+            PlayniteBridgeArtworkKind.Cover)] = null;
         var otherArtwork = current.Items[1].Presentation.Artwork.Find(
             WidgetAppLibraryArtworkRole.Tile)!;
         Assert.IsNull(await service.ResolveArtworkAsync(
             new WidgetArtworkHandle(otherArtwork.Handle), CancellationToken.None));
+
+        using var neutralDirectory = new TestDirectory();
+        var missingClient = new FakeLibraryClient(1)
+        {
+            Artwork = null,
+            BackgroundArtwork = null,
+        };
+        await using var missingService = Service(neutralDirectory.Path, missingClient);
+        var missingPage = await missingService.QueryAsync(AllGames, null, null, 32,
+            refresh: true, CancellationToken.None);
+        var missingHero = missingPage.Items[0].Presentation.Artwork.Find(
+            WidgetAppLibraryArtworkRole.Hero)!;
+        var neutral = await missingService.ResolveArtworkAsync(
+            new WidgetArtworkHandle(missingHero.Handle), CancellationToken.None);
+        Assert.IsNotNull(neutral,
+            "A double not-found Hero must actively replace retained artwork.");
+        Assert.AreEqual(WidgetArtworkContentType.Png, neutral.ContentType);
+        CollectionAssert.AreEqual(new[]
+        {
+            PlayniteBridgeArtworkKind.Background,
+            PlayniteBridgeArtworkKind.Cover,
+        }, missingClient.ArtworkKinds.ToArray());
+        CollectionAssert.AreEqual(new[]
+        {
+            (missingClient.Games[0].Id, PlayniteBridgeArtworkKind.Background),
+            (missingClient.Games[0].Id, PlayniteBridgeArtworkKind.Cover),
+        }, missingClient.ArtworkRequests.ToArray());
+        CollectionAssert.AreNotEqual(gameABytes, neutral.Bytes.ToArray(),
+            "The neutral Hero must never inherit the previously resolved game's bytes.");
 
         client.FailQueries = true;
         var stale = await service.QueryAsync(AllGames, null, null, 32,
@@ -310,43 +423,128 @@ public sealed class PackageRuntimeTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task ArtworkRegistryRetainsBothRolesAcrossThreeMaximumPages()
+    public async Task ArtworkRegistryRetainsEveryOwnerThroughIncomingPageAndFixedRows()
     {
         using var directory = new TestDirectory();
-        var client = new FakeLibraryClient(192);
-        await using var service = Service(directory.Path, client);
+        var client = new FakeLibraryClient(576);
+        var incomingGames = client.Games.Skip(448).ToArray();
+        foreach (var index in Enumerable.Range(512, 64))
+            client.Games[index] = client.Games[index] with { Hidden = true };
+        client.Games.RemoveRange(448, incomingGames.Length);
+        var diagnostics = new RecordingArtworkDiagnostics();
+        await using var service = Service(directory.Path, client, diagnostics);
 
-        var first = await service.QueryAsync(AllGames, null, null, 64,
+        var activePages = await QueryEveryPage(service,
             refresh: true, CancellationToken.None);
-        var earliest = first.Items[0];
-        var cover = earliest.Presentation.Artwork.Find(
-            WidgetAppLibraryArtworkRole.Tile)!;
-        var background = earliest.Presentation.Artwork.Find(
-            WidgetAppLibraryArtworkRole.Hero)!;
-        var second = await service.QueryAsync(AllGames,
-            new WidgetCollectionCursor(first.After!), WidgetCursorDirection.After,
-            64, refresh: false, CancellationToken.None);
-        var third = await service.QueryAsync(AllGames,
-            new WidgetCollectionCursor(second.After!), WidgetCursorDirection.After,
-            64, refresh: false, CancellationToken.None);
+        Assert.AreEqual(448, activePages.Count);
+        var retainedHome = ArtworkHandles(activePages.Take(192));
+        var fixedRows = ArtworkHandles(activePages.Skip(192).Take(64));
+        var liveBrowse = ArtworkHandles(activePages.Skip(256).Take(192));
+        var activeHandles = retainedHome.Concat(fixedRows).Concat(liveBrowse).ToArray();
+        Assert.AreEqual(896, activeHandles.Length,
+            "Three simultaneous owners must retain two independently revisioned roles per game.");
+        service.PinArtworkHandles(activeHandles);
+        Assert.AreEqual(896, PrivateDictionary(service, "_artwork").Count);
 
-        Assert.AreEqual(64, first.Items.Count);
-        Assert.AreEqual(64, second.Items.Count);
-        Assert.AreEqual(64, third.Items.Count);
-        Assert.IsNull(third.After);
-        var coverBytes = await service.ResolveArtworkAsync(
-            new WidgetArtworkHandle(cover.Handle), CancellationToken.None);
-        var backgroundBytes = await service.ResolveArtworkAsync(
-            new WidgetArtworkHandle(background.Handle), CancellationToken.None);
-        Assert.IsNotNull(coverBytes,
-            "The earliest retained page's cover handle must survive two later pages.");
-        Assert.IsNotNull(backgroundBytes,
-            "The earliest retained page's distinct background handle must survive two later pages.");
-        Assert.AreNotEqual(cover.Handle, background.Handle);
-        CollectionAssert.AreEqual(Convert.FromBase64String(FakeLibraryClient.TinyPng),
-            coverBytes.Bytes.ToArray());
-        CollectionAssert.AreEqual(Convert.FromBase64String(FakeLibraryClient.TinyPng),
-            backgroundBytes.Bytes.ToArray());
+        client.Games.AddRange(incomingGames);
+        var allPages = await QueryEveryPage(service,
+            refresh: true, CancellationToken.None);
+        var incoming = ArtworkHandles(allPages.Skip(448).Take(64));
+        Assert.AreEqual(128, incoming.Length,
+            "One complete incoming page must fit beside every active owner before the pin swap.");
+        var resolvedFixedRows = await service.ResolveSavedAsync(
+            incomingGames.Skip(64).Select(game => game.Id).ToArray(),
+            CancellationToken.None);
+        var incomingFixed = ArtworkHandles(resolvedFixedRows);
+        Assert.AreEqual(128, incomingFixed.Length,
+            "One complete incoming fixed/title set must fit beside the cursor page.");
+        Assert.AreEqual(1_152, PrivateDictionary(service, "_artwork").Count,
+            "Registration must reserve a full two-role cursor page and fixed-row set for atomic handoff.");
+        Assert.IsTrue(incoming.Concat(incomingFixed).All(handle =>
+                PrivateDictionary(service, "_artwork").Contains(handle)),
+            "No newly admitted page or fixed-row handle may be evicted before the pin swap.");
+
+        var precommitOwners = retainedHome.Concat(incomingFixed).Concat(liveBrowse).ToArray();
+        Assert.AreEqual(896, precommitOwners.Length);
+        service.PinArtworkHandles(precommitOwners);
+        Assert.AreEqual(1_152, PrivateDictionary(service, "_artwork").Count,
+            "The synchronous fixed-row invalidation must preserve the pending cursor transition window.");
+        foreach (var handle in incoming)
+            Assert.IsNotNull(await service.ResolveArtworkAsync(
+                    new WidgetArtworkHandle(handle), CancellationToken.None),
+                $"Precommit pin publication evicted pending cursor handle {handle}.");
+
+        var requiredAfterSwap = retainedHome.Concat(incoming).Concat(incomingFixed).ToArray();
+        service.PinArtworkHandles(requiredAfterSwap);
+        foreach (var handle in requiredAfterSwap)
+            Assert.IsNotNull(await service.ResolveArtworkAsync(
+                    new WidgetArtworkHandle(handle), CancellationToken.None),
+                $"The retained rendered or newly admitted handle {handle} was stranded during swap.");
+        Assert.IsFalse(diagnostics.Records.Any(record => record.Code == "unknown-handle"));
+        Assert.AreEqual(1_152, PrivateDictionary(service, "_artwork").Count,
+            "Registration retention must remain bounded after the atomic owner swap.");
+    }
+
+    [TestMethod, Timeout(30_000)]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task RetiredArtworkResolutionCannotResurrectOrphanCache(bool neutralFallback)
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(512);
+        var incomingGames = client.Games.Skip(448).ToArray();
+        client.Games.RemoveRange(448, incomingGames.Length);
+        var diagnostics = new RecordingArtworkDiagnostics();
+        await using var service = Service(directory.Path, client, diagnostics);
+        var activePages = await QueryEveryPage(service,
+            refresh: true, CancellationToken.None);
+        var activeHandles = ArtworkHandles(activePages);
+        service.PinArtworkHandles(activeHandles);
+        client.Games.AddRange(incomingGames);
+        var allPages = await QueryEveryPage(service,
+            refresh: true, CancellationToken.None);
+        var allHandles = ArtworkHandles(allPages);
+        var target = activePages[0].Presentation.Artwork.Find(
+            WidgetAppLibraryArtworkRole.Hero)!.Handle;
+        var targetGameId = activePages[0].AppId;
+        var started = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        client.ArtworkResolveHandler = async (gameId, kind, cancellationToken) =>
+        {
+            if (neutralFallback && kind == PlayniteBridgeArtworkKind.Background)
+                return new(null, "not-found", "none");
+            if (string.Equals(gameId, targetGameId, StringComparison.Ordinal))
+            {
+                started.TrySetResult();
+                await release.Task.WaitAsync(cancellationToken);
+            }
+            if (neutralFallback)
+                return new(null, "not-found", "none");
+            var bytes = Convert.FromBase64String(FakeLibraryClient.TinyPng);
+            return new(new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes),
+                "resolved", PlayniteBridgeClient.ArtworkSizeClass(bytes.Length));
+        };
+
+        var resolving = service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(target), CancellationToken.None).AsTask();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        service.PinArtworkHandles(allHandles.Where(handle =>
+                !string.Equals(handle, target, StringComparison.Ordinal))
+            .Take(896).ToArray());
+        Assert.IsFalse(PrivateDictionary(service, "_artwork").Contains(target),
+            "The in-flight handle must be retired by the exact pin transition.");
+        release.TrySetResult();
+        Assert.IsNotNull(await resolving,
+            "The current caller may consume bytes that completed after retirement.");
+        Assert.IsFalse(PrivateDictionary(service, "_artwork").Contains(target));
+        Assert.IsFalse(PrivateDictionary(service, "_artworkContent").Contains(target),
+            "A late ordinary or neutral result must not create orphan cache content.");
+        Assert.IsNull(await service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(target), CancellationToken.None));
+        Assert.AreEqual(1, diagnostics.Records.Count(record =>
+            record.Code == "unknown-handle"));
     }
 
     [TestMethod, Timeout(30_000)]
@@ -369,11 +567,52 @@ public sealed class PackageRuntimeTests
     }
 
     private static PlayniteLibraryApplicationService Service(
-        string root, FakeLibraryClient client)
+        string root, FakeLibraryClient client,
+        IPlayniteLibraryArtworkDiagnostics? diagnostics = null)
     {
         Directory.CreateDirectory(root);
         return new(client, new PlayniteLibraryStateFileStore(
-            Path.Combine(root, "organization.json")));
+            Path.Combine(root, "organization.json")), diagnostics);
+    }
+
+    private static async Task<IReadOnlyList<WidgetAppLibraryItem>> QueryEveryPage(
+        PlayniteLibraryApplicationService service,
+        bool refresh,
+        CancellationToken cancellationToken)
+    {
+        var values = new List<WidgetAppLibraryItem>();
+        WidgetCollectionCursor? cursor = null;
+        var first = true;
+        do
+        {
+            var page = await service.QueryAsync(AllGames, cursor,
+                first ? null : WidgetCursorDirection.After, 64,
+                refresh && first, cancellationToken);
+            values.AddRange(page.Items);
+            cursor = page.After is null ? null : new WidgetCollectionCursor(page.After);
+            first = false;
+        } while (cursor is not null);
+        return values;
+    }
+
+    private static string[] ArtworkHandles(IEnumerable<WidgetAppLibraryItem> items) =>
+        items.SelectMany(item => item.Presentation.Artwork.Items)
+            .Select(artwork => artwork.Handle)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+    private static IDictionary PrivateDictionary(
+        PlayniteLibraryApplicationService service,
+        string name) => (IDictionary)(typeof(PlayniteLibraryApplicationService)
+        .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!
+        .GetValue(service) ?? throw new AssertFailedException(name + " was null."));
+
+    private sealed class RecordingArtworkDiagnostics : IPlayniteLibraryArtworkDiagnostics
+    {
+        internal List<(string Stage, string Code, int Count, string SizeClass)> Records
+            { get; } = [];
+        public void Record(string stage, string code, int count, string sizeClass) =>
+            Records.Add((stage, code, count, sizeClass));
     }
 
     private sealed class FakeLibraryClient : IPlayniteLibraryBridgeClient
@@ -398,6 +637,12 @@ public sealed class PackageRuntimeTests
         internal string? Artwork { get; set; } = TinyPng;
         internal string? BackgroundArtwork { get; set; } = TinyPng;
         internal List<PlayniteBridgeArtworkKind> ArtworkKinds { get; } = [];
+        internal List<(string GameId, PlayniteBridgeArtworkKind Kind)> ArtworkRequests
+            { get; } = [];
+        internal Dictionary<(string GameId, PlayniteBridgeArtworkKind Kind), string?>
+            ArtworkResponses { get; } = [];
+        internal Func<string, PlayniteBridgeArtworkKind, CancellationToken,
+            ValueTask<PlayniteBridgeArtworkResult>>? ArtworkResolveHandler { get; set; }
         internal string? LastResolvedId { get; private set; }
         internal string? LastMutatedId { get; private set; }
         internal string? LastLaunchedId { get; private set; }
@@ -431,9 +676,14 @@ public sealed class PackageRuntimeTests
             cancellationToken.ThrowIfCancellationRequested();
             Assert.IsTrue(Games.Any(game => game.Id == gameId));
             ArtworkKinds.Add(kind);
-            var encoded = kind == PlayniteBridgeArtworkKind.Background
-                ? BackgroundArtwork
-                : Artwork;
+            ArtworkRequests.Add((gameId, kind));
+            if (ArtworkResolveHandler is not null)
+                return ArtworkResolveHandler(gameId, kind, cancellationToken);
+            var encoded = ArtworkResponses.TryGetValue((gameId, kind), out var exact)
+                ? exact
+                : kind == PlayniteBridgeArtworkKind.Background
+                    ? BackgroundArtwork
+                    : Artwork;
             if (encoded is null)
                 return ValueTask.FromResult(new PlayniteBridgeArtworkResult(
                     null, "not-found", "none"));
