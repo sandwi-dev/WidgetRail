@@ -23,6 +23,7 @@ internal sealed record PlayniteLibraryPresentationState(
 {
     internal string? ActiveCategoryId { get; init; }
     internal bool SearchExpanded { get; init; }
+    internal bool AlternateBrowseViewport { get; init; }
     internal IReadOnlyList<PlayniteLibraryCollectionOption> Collections { get; init; } = [];
     internal IReadOnlyDictionary<string, string?> CompletionStatuses { get; init; } =
         new Dictionary<string, string?>(StringComparer.Ordinal);
@@ -33,6 +34,8 @@ internal static class PlayniteLibraryPresentation
     private const double CompactPosterWidth = 150;
     private const int CompactPosterMaximumColumns = 7;
     internal const string ScrollId = "playnite-library.library.scroll";
+    internal const string AlternateBrowseScrollId =
+        "playnite-library.library.scroll.alternate";
     internal const string HomeRailId = "playnite-library.library.grid";
     internal const string RetryId = PlayniteLibraryActions.Retry;
     private static readonly WidgetSurfaceHints Surface = new()
@@ -51,6 +54,11 @@ internal static class PlayniteLibraryPresentation
         WidthMode = WidgetSurfaceAxisMode.FillAvailable,
         HeightMode = WidgetSurfaceAxisMode.FillAvailable,
     };
+
+    internal static WidgetSurfaceHints SecondarySurface => Surface;
+
+    internal static string BrowseScrollId(bool alternate) =>
+        alternate ? AlternateBrowseScrollId : ScrollId;
 
     internal static WidgetView Render(PlayniteLibraryPresentationState state)
     {
@@ -195,8 +203,11 @@ internal static class PlayniteLibraryPresentation
             queryChildren.Add(UI.HorizontalScroll(
                     "playnite-library.filters", filterControls.ToArray())
                 .Classes("playnite-library-filters"));
-            queryControls = UI.Stack("playnite-library.query", queryChildren.ToArray())
+            var queryGroup = UI.Stack("playnite-library.query", queryChildren.ToArray())
                 .Classes("playnite-library-query");
+            queryControls = state.Route == PlayniteLibraryRoute.Browse
+                ? queryGroup.RememberChildFocus("playnite-library.search")
+                : queryGroup;
         }
 
         WidgetElement content;
@@ -408,9 +419,10 @@ internal static class PlayniteLibraryPresentation
             pageShortcuts = true;
             var controls = UI.HorizontalScroll("playnite-library.actions",
                     UI.Button("Refresh", "playnite-library.refresh", "playnite-library.refresh")
-                        .Disabled(!renderActionsEnabled)
+                .Disabled(!renderActionsEnabled)
                         .AddClasses("playnite-library-control"))
                 .Classes("playnite-library-actions")
+                .RememberChildFocus(PlayniteLibraryActions.Refresh)
                 .VisibleWhen(ResponsiveVisibility.ExpandedOnly);
             var hasActionableGame = renderActionsEnabled && !state.OrganizationBusy &&
                 state.LaunchingSavedId is null &&
@@ -442,8 +454,10 @@ internal static class PlayniteLibraryPresentation
                     snapshot, catalogAnchorKey, pageBeforeActionId, pageAfterActionId,
                     pageShortcuts, renderActionsEnabled, tiles),
                 PlayniteLibraryRoute.Browse => BrowseGrid(
-                    snapshot, catalogAnchorKey, pageBeforeActionId, pageAfterActionId,
-                    pageShortcuts, renderActionsEnabled, tiles),
+                    BrowseScrollId(state.AlternateBrowseViewport), snapshot,
+                    catalogAnchorKey, pageBeforeActionId, pageAfterActionId,
+                    pageShortcuts, renderActionsEnabled,
+                    rail.Selected?.FocusId ?? rail.Items[0].FocusId, tiles),
                 _ => GameGrid("playnite-library.library.grid", tiles),
             };
             var children = new List<WidgetElement>();
@@ -611,9 +625,12 @@ internal static class PlayniteLibraryPresentation
                         DefaultFocusedGameSummary(),
                         "playnite-library.home.focus-summary"))
                 .Classes("playnite-library-home-foreground");
+            var homeStage = CinematicStage(
+                "playnite-library.home.stage", homeForeground,
+                "playnite-library-home-stage");
             root = UI.Stack("playnite-library.root",
                     UI.BackgroundSurface(
-                            homeForeground,
+                            homeStage,
                             "playnite-library.cinematic", catalogBackgroundArtwork)
                         .UseFocusedDescendantArtwork()
                         .AddClasses("playnite-library-cinematic",
@@ -625,8 +642,11 @@ internal static class PlayniteLibraryPresentation
             var page = UI.Stack("playnite-library.browse.page",
                     header, queryControls, content)
                 .Classes("playnite-library-browse-foreground");
+            var browseStage = CinematicStage(
+                "playnite-library.browse.stage", page,
+                "playnite-library-browse-stage");
             root = UI.Stack("playnite-library.root",
-                    UI.BackgroundSurface(page, "playnite-library.browse.cinematic",
+                    UI.BackgroundSurface(browseStage, "playnite-library.browse.cinematic",
                             catalogBackgroundArtwork)
                         .UseFocusedDescendantArtwork()
                         .AddClasses("playnite-library-cinematic",
@@ -735,19 +755,22 @@ internal static class PlayniteLibraryPresentation
     }
 
     private static ScrollElement BrowseGrid(
+        string scrollId,
         WidgetCursorResourceSnapshot<PlayniteLibraryItem> snapshot,
         string? collectionAnchorKey,
         string? nearStartActionId,
         string? nearEndActionId,
         bool pageShortcuts,
         bool interactive,
+        string initialChildFocusId,
         params WidgetElement[] tiles)
     {
         var grid = UI.ResponsiveGrid(
                 "playnite-library.browse.grid", CompactPosterWidth,
                 maximumColumns: CompactPosterMaximumColumns, tiles)
-            .Classes("playnite-library-browse-grid");
-        var scroll = UI.VerticalScroll(ScrollId, grid)
+            .Classes("playnite-library-browse-grid")
+            .RememberChildFocus(initialChildFocusId);
+        var scroll = UI.VerticalScroll(scrollId, grid)
             .Classes("playnite-library-catalog-scroll",
                 "playnite-library-browse-scroll") with
             {
@@ -757,6 +780,13 @@ internal static class PlayniteLibraryPresentation
             scroll = scroll.Paginate(nearStartActionId, nearEndActionId, 2);
         return pageShortcuts ? PageShortcuts(scroll, snapshot, interactive) : scroll;
     }
+
+    private static StackElement CinematicStage(
+        string id,
+        WidgetElement foreground,
+        string routeClass) =>
+        UI.Stack(id, foreground)
+            .Classes("playnite-library-surface-stage", routeClass);
 
     private static ScrollElement HomeRail(
         WidgetCursorResourceSnapshot<PlayniteLibraryItem> snapshot,

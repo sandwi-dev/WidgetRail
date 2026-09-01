@@ -20,6 +20,14 @@ internal static class PlayniteLibraryActions
     internal const string RecentlyPlayedFilter = "playnite-library.filter.recent";
     internal const string SourceFilter = "playnite-library.filter.source";
     internal const string SortFilter = "playnite-library.filter.sort";
+    internal const string SourceOptionPrefix = "playnite-library.filter.source.option.";
+    internal const string SortOptionPrefix = "playnite-library.filter.sort.option.";
+    internal const string SourceAll = SourceOptionPrefix + "all";
+    internal const string SortDisplayName = SortOptionPrefix + "display-name";
+    internal const string SortDisplayNameDescending =
+        SortOptionPrefix + "display-name-descending";
+    internal const string SortSourceThenDisplayName =
+        SortOptionPrefix + "source-then-display-name";
     internal const string CategoriesOpen = "playnite-library.categories.open";
     internal const string CategoriesBack = "playnite-library.categories.back";
     internal const string CategoryBack = "playnite-library.category.back";
@@ -33,6 +41,9 @@ internal static class PlayniteLibraryActions
         CategoryMembershipPrefix + categoryId;
 
     internal static string CategoryOpen(string categoryId) => CategoryOpenPrefix + categoryId;
+
+    internal static string SourceOption(string source) =>
+        SourceOptionPrefix + PlayniteLibraryIdentity.SourceKey(source);
 
     internal static bool TryParseCategoryMembership(string actionId, out string categoryId)
     {

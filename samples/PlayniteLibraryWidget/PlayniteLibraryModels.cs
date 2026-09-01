@@ -52,6 +52,7 @@ internal sealed record PlayniteLibraryRenderState
     internal string? PendingRestoredSavedId { get; init; }
     internal bool PreferLibraryContentFocus { get; init; }
     internal bool SearchExpanded { get; init; }
+    internal bool AlternateBrowseViewport { get; init; }
     internal string? HeroSavedId { get; init; }
     internal int HeroIndex { get; init; }
     internal bool OrganizationBusy { get; init; }
@@ -75,6 +76,8 @@ internal enum PlayniteLibraryRoute
     // routes own Categories, Hidden games, and Playnite connection.
     Library,
     Browse,
+    SourcePicker,
+    SortPicker,
     Hidden,
     Categories,
     Category,
@@ -101,6 +104,8 @@ internal static class PlayniteLibraryIdentity
     internal static string GroupId(string first, string second) =>
         "variant." + Hash(string.CompareOrdinal(first, second) <= 0
             ? first + "\0" + second : second + "\0" + first);
+
+    internal static string SourceKey(string source) => "source." + Hash(source);
 
     private static string Hash(string value) => Convert.ToHexString(
         SHA256.HashData(Encoding.UTF8.GetBytes(value)).AsSpan(0, 10))

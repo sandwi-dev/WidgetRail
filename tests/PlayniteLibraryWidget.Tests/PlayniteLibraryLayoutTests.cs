@@ -36,6 +36,14 @@ public sealed class PlayniteLibraryLayoutTests
         var nodes = Nodes(snapshot.Root).ToArray();
         Assert.AreEqual(1, snapshot.Root.Children.Count);
         Assert.AreEqual(ViewNodeKind.BackgroundSurface, snapshot.Root.Children[0].Kind);
+        var homeStage = snapshot.Root.Children[0].Children.Single();
+        Assert.AreEqual("playnite-library.home.stage", homeStage.Id);
+        CollectionAssert.Contains(homeStage.StyleClasses.ToArray(),
+            "playnite-library-home-stage");
+        CollectionAssert.Contains(homeStage.StyleClasses.ToArray(),
+            "playnite-library-surface-stage");
+        Assert.AreEqual("playnite-library.home.foreground",
+            homeStage.Children.Single().Id);
         Assert.AreEqual(1, nodes.Count(node => node.Kind == ViewNodeKind.FocusPresentationSurface));
         var topActions = nodes.Single(node => node.Id == "playnite-library.home.actions");
         Assert.AreEqual("playnite-library.home.utilities", topActions.Children[0].Id);
@@ -117,6 +125,8 @@ public sealed class PlayniteLibraryLayoutTests
         StringAssert.Contains(styles,
             ".playnite-library-fixed-tile { width: 150px; min-width: 150px; flex-basis: 150px; flex-grow: 0; flex-shrink: 0; }");
         StringAssert.Contains(styles,
+            ".playnite-library-surface-stage { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; overflow: clip; }");
+        StringAssert.Contains(styles,
             ".playnite-library-home-foreground { width: 100%; min-width: 520px; max-width: 1180px;");
         StringAssert.Contains(styles,
             ".wrail-background-surface { background: rgba(0, 0, 0, 0); }");
@@ -134,6 +144,14 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.AreEqual("1180px", homeStyle.Get("max-width")?.Text);
         Assert.IsNull(homeStyle.Get("max-height"),
             "Home must not inherit the retired 680-DIP page-scroll cap.");
+        var stageStyle = theme.Resolve(new WrssElement("stack", null,
+            new HashSet<string>(["playnite-library-surface-stage",
+                "playnite-library-home-stage"],
+                StringComparer.Ordinal)));
+        Assert.AreEqual("100%", stageStyle.Get("width")?.Text);
+        Assert.AreEqual("100%", stageStyle.Get("height")?.Text);
+        Assert.IsNull(stageStyle.Get("max-width"),
+            "The BackgroundSurface content owner must not inherit the foreground cap.");
         var posterScrimStyle = theme.Resolve(new WrssElement("stack", null,
             new HashSet<string>(["wrail-poster-tile__scrim"],
                 StringComparer.Ordinal)));
@@ -309,6 +327,15 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.IsTrue(Nodes(browse.Root).Any(node =>
             node.Id == "playnite-library.browse.cinematic" &&
             node.Kind == ViewNodeKind.BackgroundSurface));
+        var browseBackground = browse.Root.Children.Single();
+        var browseStage = browseBackground.Children.Single();
+        Assert.AreEqual("playnite-library.browse.stage", browseStage.Id);
+        CollectionAssert.Contains(browseStage.StyleClasses.ToArray(),
+            "playnite-library-surface-stage");
+        CollectionAssert.Contains(browseStage.StyleClasses.ToArray(),
+            "playnite-library-browse-stage");
+        Assert.AreEqual("playnite-library.browse.page",
+            browseStage.Children.Single().Id);
         Assert.IsTrue(Nodes(browse.Root).Single(node =>
                 node.Id == "playnite-library.header").StyleClasses.Contains(
                 "playnite-library-browse-header", StringComparer.Ordinal));
@@ -349,6 +376,22 @@ public sealed class PlayniteLibraryLayoutTests
             "Browse must not emit the retired shared page-scroll class.");
         var browseGrid = Nodes(browse.Root).Single(node =>
             node.Id == "playnite-library.browse.grid");
+        Assert.AreEqual(PlayniteLibraryIdentity.FocusId("grid", first.Key),
+            browseGrid.InitialChildFocusId);
+        Assert.IsTrue(Nodes(browseGrid).Any(node =>
+            node.Id == browseGrid.InitialChildFocusId));
+        var browseQuery = Nodes(browse.Root).Single(node =>
+            node.Id == "playnite-library.query");
+        Assert.AreEqual("playnite-library.search",
+            browseQuery.InitialChildFocusId);
+        Assert.IsTrue(Nodes(browseQuery).Any(node =>
+            node.Id == browseQuery.InitialChildFocusId));
+        var browseActions = Nodes(browse.Root).Single(node =>
+            node.Id == "playnite-library.actions");
+        Assert.AreEqual(PlayniteLibraryActions.Refresh,
+            browseActions.InitialChildFocusId);
+        Assert.IsTrue(Nodes(browseActions).Any(node =>
+            node.Id == browseActions.InitialChildFocusId));
         Assert.AreEqual(150D, browseGrid.GridMinimumColumnWidth);
         Assert.AreEqual(7, browseGrid.GridMaximumColumns);
         var browseRootStyle = theme.Resolve(new WrssElement("stack", null,
@@ -536,12 +579,26 @@ public sealed class PlayniteLibraryLayoutTests
             Assert.AreEqual(ViewNodeKind.BackgroundSurface, background.Kind, phase);
             CollectionAssert.Contains(background.StyleClasses.ToArray(),
                 "playnite-library-browse-background", phase);
+            Assert.AreEqual(1, background.Children.Count, phase);
+            var stage = background.Children[0];
+            Assert.AreEqual("playnite-library.browse.stage", stage.Id, phase);
+            CollectionAssert.Contains(stage.StyleClasses.ToArray(),
+                "playnite-library-surface-stage", phase);
+            CollectionAssert.Contains(stage.StyleClasses.ToArray(),
+                "playnite-library-browse-stage", phase);
+            Assert.AreEqual(1, stage.Children.Count, phase);
+            Assert.AreEqual("playnite-library.browse.page",
+                stage.Children[0].Id, phase);
             var foreground = nodes.Single(node =>
                 node.Id == "playnite-library.browse.page");
             CollectionAssert.Contains(foreground.StyleClasses.ToArray(),
                 "playnite-library-browse-foreground", phase);
             Assert.IsTrue(nodes.Any(node => node.Id == "playnite-library.header"), phase);
-            Assert.IsTrue(nodes.Any(node => node.Id == "playnite-library.query"), phase);
+            var query = nodes.Single(node => node.Id == "playnite-library.query");
+            Assert.AreEqual("playnite-library.search", query.InitialChildFocusId,
+                phase);
+            Assert.IsTrue(Nodes(query).Any(node =>
+                node.Id == query.InitialChildFocusId), phase);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count,
                 phase + " must remain protocol-valid.");
             if (phase is "ready" or "refreshing")
@@ -552,6 +609,18 @@ public sealed class PlayniteLibraryLayoutTests
                 CollectionAssert.Contains(catalogScroll.StyleClasses.ToArray(),
                     "playnite-library-catalog-scroll", phase);
                 Assert.AreEqual(item.Key.Value, catalogScroll.CollectionAnchorKey);
+                var grid = nodes.Single(node =>
+                    node.Id == "playnite-library.browse.grid");
+                Assert.AreEqual(PlayniteLibraryIdentity.FocusId("grid", item.Key),
+                    grid.InitialChildFocusId, phase);
+                Assert.IsTrue(Nodes(grid).Any(node =>
+                    node.Id == grid.InitialChildFocusId), phase);
+                var actions = nodes.Single(node =>
+                    node.Id == "playnite-library.actions");
+                Assert.AreEqual(PlayniteLibraryActions.Refresh,
+                    actions.InitialChildFocusId, phase);
+                Assert.IsTrue(Nodes(actions).Any(node =>
+                    node.Id == actions.InitialChildFocusId), phase);
                 Assert.IsTrue(nodes.Any(node => node.ActionId == "playnite-library.launch"),
                     phase + " must retain the admitted catalog while refreshing.");
             }
