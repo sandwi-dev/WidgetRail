@@ -97,6 +97,21 @@ internal sealed class WidgetWorkerDiagnosticLog
             null));
     }
 
+    internal void RecordStartupFailure(string phase, Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        RecordRuntimeFailure($"startup-{phase}", StartupFailureCode(exception));
+    }
+
+    private static string StartupFailureCode(Exception exception) => exception switch
+    {
+        UnauthorizedAccessException => "access_denied",
+        IOException or EndOfStreamException => "io_unavailable",
+        JsonException => "invalid_data",
+        WidgetProtocolViolationException => "protocol_violation",
+        _ => "unexpected_failure",
+    };
+
     private void Write(WorkerFailureRecord failure)
     {
         var record = JsonSerializer.Serialize(failure, JsonOptions);

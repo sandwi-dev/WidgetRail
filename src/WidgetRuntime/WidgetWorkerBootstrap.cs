@@ -81,15 +81,19 @@ public static class WidgetWorkerBootstrap
         };
         Console.CancelKeyPress += cancelHandler;
         var diagnostics = WidgetWorkerDiagnosticLog.TryCreate(args);
+        var startupPhase = "arguments";
         try
         {
             var launch = WidgetWorkerLaunchArguments.Parse(args);
+            startupPhase = "capability";
             await using var capabilityConnection = await WorkerCapabilityConnection
                 .ConnectAsync(launch.Broker, shutdown.Token).ConfigureAwait(false);
+            startupPhase = "factory";
             var services = new WidgetHostServices(capabilityConnection.Client);
             var widget = widgetFactory(services)
                 ?? throw new WidgetWorkerBootstrapException(
                     "invalid_widget", "The widget factory returned no widget.");
+            startupPhase = "session";
             await new WidgetWorkerServer(
                     widget,
                     launch.WidgetInstanceId,
@@ -107,19 +111,19 @@ public static class WidgetWorkerBootstrap
         }
         catch (WidgetWorkerBootstrapException exception)
         {
-            diagnostics?.RecordRuntimeFailure("bootstrap", exception.Code);
+            diagnostics?.RecordRuntimeFailure($"startup-{startupPhase}", exception.Code);
             Console.Error.WriteLine($"Widget worker failed ({exception.Code}): {exception.SafeMessage}");
             return exception.ExitCode;
         }
         catch (ArgumentException)
         {
-            diagnostics?.RecordRuntimeFailure("bootstrap", "invalid_arguments");
+            diagnostics?.RecordRuntimeFailure($"startup-{startupPhase}", "invalid_arguments");
             Console.Error.WriteLine("Widget worker failed (invalid_arguments): Host launch arguments are invalid.");
             return 1;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            diagnostics?.RecordRuntimeFailure("runtime", "session_failed");
+            diagnostics?.RecordStartupFailure(startupPhase, exception);
             // Never print exception messages, paths, transport credentials, or
             // stack traces across this process boundary.
             Console.Error.WriteLine("Widget worker failed: The worker could not be started.");

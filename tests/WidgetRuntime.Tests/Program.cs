@@ -3129,21 +3129,47 @@ static async Task WorkerBootstrapFailuresPersist()
     Assert.Equal(1, await WidgetWorkerBootstrap.RunAsync(
         arguments, () => new TestWidget()));
 
+    var validArguments = new[]
+    {
+        "--widget-pipe", $"wrail-startup-diagnostic-{Guid.NewGuid():N}",
+        "--widget-instance", "startup-diagnostic",
+        "--widget-session-nonce", new string('a', 64),
+        "--max-message-bytes",
+        WidgetRuntimeProtocol.DefaultMaximumMessageBytes.ToString(CultureInfo.InvariantCulture),
+        "--worker-diagnostics-path", path,
+    };
+    Assert.Equal(1, await WidgetApplicationBootstrap.RunAsync(
+        validArguments,
+        () => throw new IOException("PRIVATE FACTORY PATH")));
+    Assert.Equal(1, await WidgetWorkerBootstrap.RunAsync(
+        validArguments,
+        () => throw new UnauthorizedAccessException("PRIVATE FACTORY PATH")));
+
     var records = File.ReadLines(path)
         .Select(line => JsonDocument.Parse(line))
         .ToArray();
     try
     {
-        Assert.Equal(2, records.Length);
-        Assert.True(records.All(record =>
-                record.RootElement.GetProperty("stage").GetString() == "bootstrap" &&
+        Assert.Equal(4, records.Length);
+        Assert.True(records.Take(2).All(record =>
+                record.RootElement.GetProperty("stage").GetString() == "startup-arguments" &&
                 record.RootElement.GetProperty("code").GetString() == "invalid_arguments" &&
                 record.RootElement.GetProperty("processId").GetInt32() == Environment.ProcessId &&
                 record.RootElement.GetProperty("requestId").GetInt64() == 0),
             "Bootstrap diagnostics lost their bounded runtime/process identity.");
+        Assert.Equal("startup-factory",
+            records[2].RootElement.GetProperty("stage").GetString());
+        Assert.Equal("io_unavailable",
+            records[2].RootElement.GetProperty("code").GetString());
+        Assert.Equal("startup-factory",
+            records[3].RootElement.GetProperty("stage").GetString());
+        Assert.Equal("access_denied",
+            records[3].RootElement.GetProperty("code").GetString());
         Assert.True(records.All(record =>
                 !record.RootElement.GetRawText().Contains(
-                    temporary.Path, StringComparison.OrdinalIgnoreCase)),
+                    temporary.Path, StringComparison.OrdinalIgnoreCase) &&
+                !record.RootElement.GetRawText().Contains(
+                    "PRIVATE FACTORY PATH", StringComparison.Ordinal)),
             "Bootstrap diagnostics exposed the host-owned diagnostic path.");
     }
     finally

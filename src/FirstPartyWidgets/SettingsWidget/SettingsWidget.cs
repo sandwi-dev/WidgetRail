@@ -339,7 +339,9 @@ public sealed class SettingsWidget : Widget
             PlatformDiagnosticsSnapshot diagnostics;
             try
             {
-                diagnostics = await _diagnosticsService.GetSnapshotAsync(cancellationToken)
+                diagnostics = await SettingsReadinessRetry.RegistryAsync(
+                        _diagnosticsService.GetSnapshotAsync,
+                        cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (PlatformDiagnosticsException exception)
@@ -758,7 +760,10 @@ public sealed class SettingsWidget : Widget
         var unknownDeclarations = new SettingsUnknownDeclarationAccumulator();
         try
         {
-            var catalog = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
+            var catalog = await SettingsReadinessRetry.CatalogAsync(
+                    _widgetCatalog.DiscoverAsync,
+                    cancellationToken)
+                .ConfigureAwait(false);
             var discovered = new Dictionary<string, SettingsPermissionPackage>(StringComparer.Ordinal);
             if (_bundledWidgetRoot is not null)
             {
@@ -1029,7 +1034,10 @@ public sealed class SettingsWidget : Widget
     {
         try
         {
-            var snapshot = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
+            var snapshot = await SettingsReadinessRetry.CatalogAsync(
+                    _widgetCatalog.DiscoverAsync,
+                    cancellationToken)
+                .ConfigureAwait(false);
             var builtIn = _bundledWidgetRoot is null
                 ? []
                 : DiscoverBundledManifests(_bundledWidgetRoot)

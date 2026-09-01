@@ -46,6 +46,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Authority recovery retry handles every closed typed result", AuthorityRecoveryResults),
     ("Authority recovery cancellation clears busy state without another request", AuthorityRecoveryCancellation),
     ("Activation reloads once per visible lifetime without polling", ActivationLifecycle),
+    ("Settings retries only transient catalog and registry readiness", ReadinessRetryIsBoundedAndClassified),
     ("Focus IDs remain stable at setting bounds", StableBoundFocus),
     ("Installed widgets use controller pages and explicit review", InstalledWidgetReview),
     ("Full-trust installed applications disclose authority before enabling", FullTrustInstalledWidgetReview),
@@ -109,6 +110,65 @@ static Task RootCategories()
         Buttons(snapshot.Root).Select(button => button.Id));
     Assert.Valid(snapshot);
     return Task.CompletedTask;
+}
+
+static async Task ReadinessRetryIsBoundedAndClassified()
+{
+    var catalogAttempts = 0;
+    var catalogDelays = 0;
+    var catalog = await SettingsReadinessRetry.CatalogAsync(
+        _ => ++catalogAttempts == 1
+            ? Task.FromException<int>(new IOException("private catalog path"))
+            : Task.FromResult(17),
+        CancellationToken.None,
+        (_, _) =>
+        {
+            catalogDelays++;
+            return Task.CompletedTask;
+        });
+    Assert.Equal(17, catalog);
+    Assert.Equal(SettingsReadinessRetry.MaximumAttempts, catalogAttempts);
+    Assert.Equal(1, catalogDelays);
+
+    var registryAttempts = 0;
+    var registry = await SettingsReadinessRetry.RegistryAsync(
+        _ => ++registryAttempts == 1
+            ? new ValueTask<int>(Task.FromException<int>(
+                new PlatformDiagnosticsException("diagnostics_unavailable")))
+            : ValueTask.FromResult(23),
+        CancellationToken.None,
+        (_, _) => Task.CompletedTask);
+    Assert.Equal(23, registry);
+    Assert.Equal(SettingsReadinessRetry.MaximumAttempts, registryAttempts);
+
+    var permanentAttempts = 0;
+    var permanent = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        SettingsReadinessRetry.CatalogAsync<int>(
+            _ =>
+            {
+                permanentAttempts++;
+                return Task.FromException<int>(new WidgetPackageException(
+                    "invalid_catalog_state", "PRIVATE CATALOG DETAIL"));
+            },
+            CancellationToken.None,
+            (_, _) => Task.CompletedTask));
+    Assert.Equal("invalid_catalog_state", permanent.Code);
+    Assert.Equal(1, permanentAttempts);
+
+    var authenticationAttempts = 0;
+    var authentication = await Assert.ThrowsAsync<PlatformDiagnosticsException>(() =>
+        SettingsReadinessRetry.RegistryAsync<int>(
+                _ =>
+                {
+                    authenticationAttempts++;
+                    return new ValueTask<int>(Task.FromException<int>(
+                        new PlatformDiagnosticsException("authentication_failed")));
+                },
+                CancellationToken.None,
+                (_, _) => Task.CompletedTask)
+            .AsTask());
+    Assert.Equal("authentication_failed", authentication.Code);
+    Assert.Equal(1, authenticationAttempts);
 }
 
 static async Task ControllerScrollSurface()

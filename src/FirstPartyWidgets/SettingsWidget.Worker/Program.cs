@@ -6,6 +6,11 @@ namespace WidgetRail.FirstPartyWidgets.Settings.Worker;
 
 internal static class Program
 {
+    // Two classified readiness attempts plus the shared retry delay must remain
+    // comfortably inside the host's two-second lifecycle request boundary.
+    private static readonly TimeSpan DiagnosticsReadinessAttemptTimeout =
+        TimeSpan.FromMilliseconds(500);
+
     public static async Task<int> Main(string[] args)
     {
         return await WidgetWorkerBootstrap.RunAsync(
@@ -34,7 +39,11 @@ internal static class Program
             !nonce.All(char.IsAsciiHexDigit))
             throw new WidgetWorkerBootstrapException(
                 "invalid_diagnostics_channel", "The diagnostics channel arguments are invalid.");
-        return new PlatformDiagnosticsPipeClient(pipe, nonce, serverProcessId.Value);
+        return new PlatformDiagnosticsPipeClient(
+            pipe,
+            nonce,
+            serverProcessId.Value,
+            DiagnosticsReadinessAttemptTimeout);
     }
 
     private static int? OptionalPositiveInt(string[] args, string name)
