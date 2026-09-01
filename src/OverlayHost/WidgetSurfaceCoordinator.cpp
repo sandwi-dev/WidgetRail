@@ -969,6 +969,7 @@ bool WidgetSurfaceCoordinator::CancelSetup() noexcept {
         focusedElementId_ = SelectedSnapshot().initialFocusId;
         focusGroupMemory_.Remember(
             admission_->widgetId, SelectedSnapshot(), focusedElementId_);
+        if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
         ApplyOpacity();
     }
     setupOriginalLayoutId_.clear();
@@ -1290,6 +1291,8 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     pointerActionNode_.clear();
     inputRequests_.clear();
     actionFeedback_.clear();
+    if (renderer_ && admission_)
+        renderer_->ForgetWidgetState(admission_->instanceId);
     if (GetCapture() == window_) ReleaseCapture();
     const HWND retiring = window_;
     tearingDown_ = true;
@@ -2352,6 +2355,7 @@ void WidgetSurfaceCoordinator::OnWindowDestroyed() noexcept {
     ReleaseGraphicsResources();
     ClearFreeScroll();
     if (!tearingDown_ && admission_) {
+        if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
         accessibilityProvider_.Detach();
         controllerFocused_ = false;
         inputRequests_.clear();

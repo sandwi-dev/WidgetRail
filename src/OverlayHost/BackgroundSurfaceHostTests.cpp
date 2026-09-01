@@ -74,6 +74,19 @@ int wmain() {
                             "actionId":"background-surface-test.second",
                             "focusBackgroundArtworkHandle":"background-surface-test.focus.second",
                             "children":[]
+                        },{
+                            "id":"background-surface-test.ordinary",
+                            "kind":"button",
+                            "text":"Ordinary action",
+                            "actionId":"background-surface-test.ordinary",
+                            "children":[]
+                        },{
+                            "id":"background-surface-test.replacement",
+                            "kind":"button",
+                            "text":"Replacement background",
+                            "actionId":"background-surface-test.replacement",
+                            "focusBackgroundArtworkHandle":"background-surface-test.focus.replacement",
+                            "children":[]
                         }]
                     }]
                 }
@@ -139,6 +152,15 @@ int wmain() {
             L"widgetrail.tests.background-surface",
             L"background-surface-test.root",
             L"background-surface-test.focus.second");
+        const auto replacementKey = widgetrail::RemoteImageCache::TrustedArtworkKey(
+            L"widgetrail.tests.background-surface",
+            L"background-surface-test.root",
+            L"background-surface-test.focus.replacement");
+        const auto failedReplacementKey =
+            widgetrail::RemoteImageCache::TrustedArtworkKey(
+                L"widgetrail.tests.background-surface",
+                L"background-surface-test.root",
+                L"background-surface-test.focus.failure");
         constexpr std::wstring_view png =
             L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
             L"AAAADUlEQVR42mNk+M/wHwAF/gL+Xh8ftQAAAABJRU5ErkJggg==";
@@ -209,8 +231,234 @@ int wmain() {
             L"background-surface-test.focus.second",
             "current focused artwork did not atomically replace the retained image");
 
+        const auto requestsBeforeOrdinary = requests.size();
+        const auto ordinaryFrame = render(L"background-surface-test.ordinary");
+        Require(requests.size() == requestsBeforeOrdinary,
+            "ordinary focus requested a replacement background");
+        Require(ordinaryFrame.backgroundArtworkHandles.at(L"background-surface-test.root") ==
+            L"background-surface-test.focus.second",
+            "ordinary focus did not retain the last ready focused artwork");
+
+        const auto replacementPending = render(L"background-surface-test.replacement");
+        Require(requests.size() == requestsBeforeOrdinary + 1U &&
+                requests.back() == replacementKey,
+            "subsequent focused background did not request its exact handle once");
+        Require(replacementPending.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.focus.second",
+            "pending subsequent artwork did not retain the prior focused image");
+        Require(cache.SupplyTrustedArtwork(
+            L"widgetrail.tests.background-surface",
+            L"background-surface-test.focus.replacement", L"image/png", std::wstring(png)),
+            "subsequent focused artwork completion was rejected");
+        WaitForState(cache, replacementKey, widgetrail::RemoteImageState::Ready,
+            "subsequent focused artwork did not become ready");
+        const auto replacementReady = render(L"background-surface-test.replacement");
+        Require(replacementReady.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.focus.replacement",
+            "subsequent ready artwork did not replace the retained image");
+
+        // A target-backed frame may paint a ready replacement and still fail
+        // on a later node. That rejected frame cannot publish its staged
+        // replacement into the renderer's committed presentation state.
+        (void)render(L"background-surface-test.second");
+        options.failAfterNodeDrawForTesting = true;
+        target->BeginDraw();
+        const auto rejectedReplacement = renderer.Render(
+            target.Get(), *parsed, L"background-surface-test.replacement",
+            viewport, options);
+        Require(SUCCEEDED(target->EndDraw()),
+            "post-draw replacement rejection did not complete target drawing");
+        Require(!rejectedReplacement.succeeded,
+            "post-draw replacement fixture did not reject the frame");
+        options.failAfterNodeDrawForTesting = false;
+        const auto afterRejectedReplacement =
+            render(L"background-surface-test.ordinary");
+        Require(afterRejectedReplacement.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.focus.second",
+            "rejected ready replacement mutated committed background state");
+
+        // Explicit clearing is transaction-owned too: a later render failure
+        // must leave the exact prior committed focused background available.
+        (void)render(L"background-surface-test.replacement");
+        parsed->root.usesFocusedDescendantArtwork = false;
+        options.failAfterNodeDrawForTesting = true;
+        target->BeginDraw();
+        const auto rejectedClear = renderer.Render(
+            target.Get(), *parsed, L"background-surface-test.ordinary",
+            viewport, options);
+        Require(SUCCEEDED(target->EndDraw()),
+            "post-draw clear rejection did not complete target drawing");
+        Require(!rejectedClear.succeeded,
+            "post-draw clear fixture did not reject the frame");
+        options.failAfterNodeDrawForTesting = false;
+        parsed->root.usesFocusedDescendantArtwork = true;
+        const auto afterRejectedClear = render(L"background-surface-test.ordinary");
+        Require(afterRejectedClear.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.focus.replacement",
+            "rejected explicit clear mutated committed background state");
+
+        parsed->root.children[0].children[0].focusBackgroundArtworkHandle =
+            L"background-surface-test.focus.failure";
+        const auto failedReplacementPending =
+            render(L"background-surface-test.first");
+        Require(requests.back() == failedReplacementKey,
+            "failed replacement did not request its exact handle");
+        Require(failedReplacementPending.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.focus.replacement",
+            "pending later override did not retain the prior focused image");
+        Require(cache.FailTrustedArtwork(
+            L"widgetrail.tests.background-surface",
+            L"background-surface-test.focus.failure"),
+            "later focused artwork failure was not admitted");
+        const auto failedReplacement = render(L"background-surface-test.first");
+        Require(failedReplacement.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.focus.replacement",
+            "failed later override replaced the prior focused image with default");
+        (void)render(L"background-surface-test.replacement");
+
+        const auto replacementPlan = renderer.PlanFocusUpdate(
+            *parsed, L"background-surface-test.replacement",
+            L"background-surface-test.ordinary", viewport);
+        Require(replacementPlan &&
+                replacementPlan->work == widgetrail::IncrementalPresentationWork::PaintOnly,
+            "sparse focused-background transition did not remain paint-only");
+        const auto replacementSurfaceBounds = replacementReady.elementRects.at(
+            L"background-surface-test.root");
+        Require(replacementPlan->damage.x <= replacementSurfaceBounds.x + 0.01F &&
+                replacementPlan->damage.y <= replacementSurfaceBounds.y + 0.01F &&
+                replacementPlan->damage.x + replacementPlan->damage.width >=
+                    replacementSurfaceBounds.x + replacementSurfaceBounds.width - 0.01F &&
+                replacementPlan->damage.y + replacementPlan->damage.height >=
+                    replacementSurfaceBounds.y + replacementSurfaceBounds.height - 0.01F &&
+                replacementPlan->damage.x >= viewport.x - 0.01F &&
+                replacementPlan->damage.y >= viewport.y - 0.01F &&
+                replacementPlan->damage.x + replacementPlan->damage.width <=
+                    viewport.x + viewport.width + 0.01F &&
+                replacementPlan->damage.y + replacementPlan->damage.height <=
+                    viewport.y + viewport.height + 0.01F,
+            "focused-background change did not contain exact full-surface damage");
+
+        parsed->root.artworkHandle = L"background-surface-test.artwork.changed";
+        const auto changedDefaultKey = widgetrail::RemoteImageCache::TrustedArtworkKey(
+            L"widgetrail.tests.background-surface",
+            L"background-surface-test.root",
+            L"background-surface-test.artwork.changed");
+        const auto changedDefaultPending = render(L"background-surface-test.ordinary");
+        Require(requests.back() == changedDefaultKey &&
+                !changedDefaultPending.backgroundArtworkHandles.contains(
+                    L"background-surface-test.root"),
+            "changed default did not reset the retained focused artwork");
+        Require(cache.SupplyTrustedArtwork(
+            L"widgetrail.tests.background-surface",
+            L"background-surface-test.artwork.changed", L"image/png", std::wstring(png)),
+            "changed default artwork completion was rejected");
+        WaitForState(cache, changedDefaultKey, widgetrail::RemoteImageState::Ready,
+            "changed default artwork did not become ready");
+        const auto changedDefaultReady = render(L"background-surface-test.ordinary");
+        Require(changedDefaultReady.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.artwork.changed",
+            "changed default did not initialize the reset surface");
+
+        (void)render(L"background-surface-test.replacement");
+        parsed->root.usesFocusedDescendantArtwork = false;
+        (void)render(L"background-surface-test.ordinary");
+        parsed->root.usesFocusedDescendantArtwork = true;
+        const auto afterExplicitReset = render(L"background-surface-test.ordinary");
+        Require(afterExplicitReset.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.artwork.changed",
+            "explicit reset retained the prior focused override");
+
+        (void)render(L"background-surface-test.replacement");
+        const auto afterFocusAuthorityLoss = render(L"");
+        Require(afterFocusAuthorityLoss.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.artwork.changed",
+            "focus leaving the surface retained a focused override");
+
+        (void)render(L"background-surface-test.replacement");
+        options.artworkAuthorityId =
+            L"widgetrail.tests.background-surface\x1fruntime\x1fpresentation.changed";
+        const auto changedAuthority = render(L"background-surface-test.ordinary");
+        Require(changedAuthority.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.artwork.changed",
+            "new presentation authority inherited a prior focused override");
+        options.artworkAuthorityId =
+            L"widgetrail.tests.background-surface\x1fruntime\x1fpresentation";
+        const auto priorAuthorityReentered =
+            render(L"background-surface-test.ordinary");
+        Require(priorAuthorityReentered.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.artwork.changed",
+            "returning to a retired presentation authority resurrected its old override");
+
+        (void)render(L"background-surface-test.replacement");
+        renderer.ForgetWidgetState(parsed->instanceId);
+        const auto afterRetirement = render(L"background-surface-test.ordinary");
+        Require(afterRetirement.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.artwork.changed",
+            "widget retirement retained a focused override");
+
+        (void)render(L"background-surface-test.replacement");
+        const auto retainedSurface = parsed->root;
+        parsed->root.kind = L"stack";
+        parsed->root.imageSource.clear();
+        parsed->root.artworkHandle.clear();
+        parsed->root.usesFocusedDescendantArtwork = false;
+        (void)render(L"background-surface-test.ordinary");
+        parsed->root = retainedSurface;
+        const auto afterSurfaceReadded = render(L"background-surface-test.ordinary");
+        Require(afterSurfaceReadded.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.artwork.changed",
+            "removed and re-added surface resurrected its old focused override");
+
+        auto responsiveSurface = parsed->root;
+        responsiveSurface.visibleWhen = L"expandedOnly";
+        auto compactAction = responsiveSurface.children[0].children[2];
+        compactAction.id = L"background-surface-test.compact";
+        compactAction.actionId = L"background-surface-test.compact";
+        compactAction.visibleWhen = L"compactOnly";
+        auto responsiveRoot = responsiveSurface;
+        responsiveRoot.id = L"background-surface-test.responsive-root";
+        responsiveRoot.kind = L"stack";
+        responsiveRoot.imageSource.clear();
+        responsiveRoot.artworkHandle.clear();
+        responsiveRoot.imageFit.clear();
+        responsiveRoot.usesFocusedDescendantArtwork = false;
+        responsiveRoot.visibleWhen.clear();
+        responsiveRoot.children = {responsiveSurface, compactAction};
+        parsed->root = responsiveRoot;
+        options.responsiveViewport = widgetrail::declarative::Size{960.0F, 540.0F};
+        const auto responsiveOverride =
+            render(L"background-surface-test.replacement");
+        Require(responsiveOverride.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.focus.replacement",
+            "expanded surface did not establish its ready focused override");
+        options.responsiveViewport = widgetrail::declarative::Size{959.0F, 540.0F};
+        (void)render(L"background-surface-test.compact");
+        options.responsiveViewport = widgetrail::declarative::Size{960.0F, 540.0F};
+        const auto responsiveReadded = render(L"background-surface-test.ordinary");
+        Require(responsiveReadded.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.artwork.changed",
+            "responsive mode away and back resurrected an absent surface override");
+        parsed->root = responsiveSurface;
+        parsed->root.visibleWhen.clear();
+        options.responsiveViewport.reset();
+
         std::wstring nestedError;
-        const auto nested = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        auto nested = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
             "snapshot":{"protocolVersion":39,"sequence":2,
             "widgetInstanceId":"background.nested","activeInputScopeId":"nested.outer",
             "initialFocusId":"nested.action","root":{"id":"nested.outer","kind":"backgroundSurface",
@@ -219,29 +467,95 @@ int wmain() {
             "children":[{"id":"nested.inner","kind":"backgroundSurface",
             "artworkHandle":"nested.inner.default","imageFit":"cover",
             "usesFocusedDescendantArtwork":true,
-            "children":[{"id":"nested.action","kind":"button","text":"Nested action",
+            "children":[{"id":"nested.content","kind":"stack","children":[
+            {"id":"nested.action","kind":"button","text":"Nested action",
             "actionId":"nested.action","focusBackgroundArtworkHandle":"nested.focus",
-            "children":[]}]}]}}
+            "children":[]},{"id":"nested.ordinary","kind":"button",
+            "text":"Nested ordinary","actionId":"nested.ordinary","children":[]}]}]}]}}
         })json", nestedError);
         Require(nested.has_value() && nestedError.empty(),
             "native parser rejected nested focused-background ownership");
+        const auto renderNested = [&](const std::wstring_view focusedId) {
+            target->BeginDraw();
+            auto result = renderer.Render(
+                target.Get(), *nested, focusedId, viewport, options);
+            Require(SUCCEEDED(target->EndDraw()), "nested focused-background draw failed");
+            Require(result.succeeded, "nested focused-background render failed");
+            return result;
+        };
         const auto requestCountBeforeNested = requests.size();
-        target->BeginDraw();
-        const auto nestedFrame = renderer.Render(
-            target.Get(), *nested, L"nested.action", viewport, options);
-        Require(SUCCEEDED(target->EndDraw()) && nestedFrame.succeeded,
-            "nested focused-background render failed");
+        const auto nestedFrame = renderNested(L"nested.action");
+        const auto expectedOuterKey =
+            widgetrail::RemoteImageCache::TrustedArtworkKey(
+                L"widgetrail.tests.background-surface", L"nested.outer",
+                L"nested.outer.default");
+        const auto expectedInnerKey =
+            widgetrail::RemoteImageCache::TrustedArtworkKey(
+                L"widgetrail.tests.background-surface", L"nested.inner",
+                L"nested.focus");
         Require(requests.size() == requestCountBeforeNested + 2U,
             "nested focus did not preserve two independent surface owners");
-        Require(requests[requestCountBeforeNested] ==
-                widgetrail::RemoteImageCache::TrustedArtworkKey(
-                    L"widgetrail.tests.background-surface", L"nested.outer",
-                    L"nested.outer.default") &&
-            requests[requestCountBeforeNested + 1U] ==
-                widgetrail::RemoteImageCache::TrustedArtworkKey(
-                    L"widgetrail.tests.background-surface", L"nested.inner",
-                    L"nested.focus"),
+        Require(requests[requestCountBeforeNested] == expectedOuterKey &&
+                requests[requestCountBeforeNested + 1U] == expectedInnerKey,
             "nested BackgroundSurface did not form a hard focus-artwork boundary");
+        Require(cache.SupplyTrustedArtwork(
+            L"widgetrail.tests.background-surface", L"nested.outer.default",
+            L"image/png", std::wstring(png)),
+            "nested outer artwork completion was rejected");
+        Require(cache.SupplyTrustedArtwork(
+            L"widgetrail.tests.background-surface", L"nested.focus",
+            L"image/png", std::wstring(png)),
+            "nested focused artwork completion was rejected");
+        WaitForState(cache, expectedOuterKey, widgetrail::RemoteImageState::Ready,
+            "nested outer artwork did not become ready");
+        WaitForState(cache, expectedInnerKey, widgetrail::RemoteImageState::Ready,
+            "nested focused artwork did not become ready");
+        const auto nestedReady = renderNested(L"nested.action");
+        Require(nestedReady.backgroundArtworkHandles.at(L"nested.outer") ==
+                    L"nested.outer.default" &&
+                nestedReady.backgroundArtworkHandles.at(L"nested.inner") ==
+                    L"nested.focus",
+            "nested surfaces did not retain independent exact ready handles");
+
+        const auto retainedInner = nested->root.children.front();
+        nested->root.children.clear();
+        const auto innerRemoved = renderNested(L"");
+        Require(innerRemoved.backgroundArtworkHandles.at(L"nested.outer") ==
+                L"nested.outer.default",
+            "removing the inner surface altered the outer surface handle");
+        nested->root.children.push_back(retainedInner);
+        const auto innerDefaultKey = widgetrail::RemoteImageCache::TrustedArtworkKey(
+            L"widgetrail.tests.background-surface", L"nested.inner",
+            L"nested.inner.default");
+        const auto innerReaddedPending = renderNested(L"nested.ordinary");
+        Require(requests.back() == innerDefaultKey &&
+                !innerReaddedPending.backgroundArtworkHandles.contains(L"nested.inner") &&
+                innerReaddedPending.backgroundArtworkHandles.at(L"nested.outer") ==
+                    L"nested.outer.default",
+            "re-added inner surface resurrected its old focused override");
+        Require(cache.SupplyTrustedArtwork(
+            L"widgetrail.tests.background-surface", L"nested.inner.default",
+            L"image/png", std::wstring(png)),
+            "nested inner default completion was rejected");
+        WaitForState(cache, innerDefaultKey, widgetrail::RemoteImageState::Ready,
+            "nested inner default did not become ready");
+        const auto innerReaddedReady = renderNested(L"nested.ordinary");
+        Require(innerReaddedReady.backgroundArtworkHandles.at(L"nested.outer") ==
+                    L"nested.outer.default" &&
+                innerReaddedReady.backgroundArtworkHandles.at(L"nested.inner") ==
+                    L"nested.inner.default",
+            "re-added inner surface did not initialize independently from default");
+
+        (void)renderNested(L"nested.action");
+        nested->root.children.front().usesFocusedDescendantArtwork = false;
+        (void)renderNested(L"nested.ordinary");
+        nested->root.children.front().usesFocusedDescendantArtwork = true;
+        const auto innerReset = renderNested(L"nested.ordinary");
+        Require(innerReset.backgroundArtworkHandles.at(L"nested.outer") ==
+                    L"nested.outer.default" &&
+                innerReset.backgroundArtworkHandles.at(L"nested.inner") ==
+                    L"nested.inner.default",
+            "resetting the inner surface altered the independent outer owner");
 
         std::wstring v38Error;
         const auto rejectedV38 = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({

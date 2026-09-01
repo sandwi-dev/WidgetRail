@@ -514,6 +514,81 @@ int main() {
               "non-supporting widget is rejected safely");
 
         {
+            widgetrail::pinned::WidgetSurfaceCoordinator lifetime;
+            const auto lifetimeRoot = placementRoot / L"renderer-lifetime";
+            Check(lifetime.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x413,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      lifetimeRoot / L"placement.ini"),
+                  "renderer-lifetime fixture initializes through the coordinator owner");
+            lifetime.OnOverlayShown();
+            widgetrail::testing::ResetRendererWidgetStateRetirementForTesting();
+            Check(lifetime.Pin(Admission(), error) && lifetime.CommitSetup(error),
+                  "renderer-lifetime fixture commits its first pin");
+            PumpPendingMessages();
+            SendMessageW(
+                lifetime.window(), WM_SIZE, SIZE_RESTORED, MAKELPARAM(640, 420));
+            Check(widgetrail::testing::RendererWidgetStateRetirementCountForTesting() == 0,
+                  "graphics resource recreation preserves live renderer widget state");
+            Check(lifetime.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin) &&
+                      widgetrail::testing::RendererWidgetStateRetirementCountForTesting() == 1 &&
+                      widgetrail::testing::LastRetiredRendererWidgetInstanceForTesting() ==
+                          L"gallery.instance",
+                  "unpin retires the exact renderer widget lifetime once");
+            Check(lifetime.Pin(Admission(), error) && lifetime.CommitSetup(error) &&
+                      widgetrail::testing::RendererWidgetStateRetirementCountForTesting() == 1,
+                  "same-authority repin starts after retirement without another reset");
+            const auto unexpectedWindow = lifetime.window();
+            Check(unexpectedWindow && DestroyWindow(unexpectedWindow) &&
+                      widgetrail::testing::RendererWidgetStateRetirementCountForTesting() == 2 &&
+                      widgetrail::testing::LastRetiredRendererWidgetInstanceForTesting() ==
+                          L"gallery.instance" &&
+                      !lifetime.pinned(),
+                  "unexpected pinned-window destruction retires renderer widget state");
+            lifetime.Dispose();
+        }
+
+        {
+            widgetrail::pinned::WidgetSurfaceCoordinator layoutCancellation;
+            const auto layoutCancellationRoot =
+                placementRoot / L"layout-cancellation-retirement";
+            Check(layoutCancellation.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x415,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      layoutCancellationRoot / L"placement.ini"),
+                  "layout-cancellation fixture initializes through the coordinator owner");
+            layoutCancellation.OnOverlayShown();
+            auto admission = Admission();
+            admission.pinnedLayouts = {
+                {L"compact", L"Compact", 360.0F, 240.0F},
+                {L"details", L"Details", 640.0F, 360.0F},
+            };
+            widgetrail::testing::ResetRendererWidgetStateRetirementForTesting();
+            Check(layoutCancellation.Pin(admission, error) &&
+                      layoutCancellation.CycleLayout(1) &&
+                      layoutCancellation.CommitSetup(error) &&
+                      widgetrail::testing::RendererWidgetStateRetirementCountForTesting() == 1,
+                  "initial layout selection retires exact renderer instance state once");
+            Check(layoutCancellation.BeginSetup(false) &&
+                      layoutCancellation.CycleLayout(1) &&
+                      widgetrail::testing::RendererWidgetStateRetirementCountForTesting() == 2,
+                  "layout preview retires renderer state for the successor layout once");
+            Check(layoutCancellation.CancelSetup() &&
+                      layoutCancellation.selectedLayoutName() == L"Compact" &&
+                      widgetrail::testing::RendererWidgetStateRetirementCountForTesting() == 3 &&
+                      widgetrail::testing::LastRetiredRendererWidgetInstanceForTesting() ==
+                          admission.instanceId,
+                  "reverse layout cancellation retires preview renderer state exactly once");
+            Check(layoutCancellation.Unpin(
+                      widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "layout-cancellation fixture retires its pinned authority");
+            layoutCancellation.Dispose();
+            std::error_code layoutCancellationCleanup;
+            std::filesystem::remove_all(
+                layoutCancellationRoot, layoutCancellationCleanup);
+        }
+
+        {
             widgetrail::pinned::WidgetSurfaceCoordinator slider;
             const auto sliderRoot = placementRoot / L"slider";
             Check(slider.Initialize(

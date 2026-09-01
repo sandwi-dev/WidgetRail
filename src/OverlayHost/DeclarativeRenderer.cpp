@@ -56,6 +56,11 @@ constexpr NativeColor kDefaultButton{0.122F, 0.133F, 0.169F, 0.96F};
 constexpr NativeColor kDefaultTrack{0.25F, 0.26F, 0.30F, 0.72F};
 constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
 
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+std::uint64_t gRendererWidgetStateRetirementCount{};
+std::wstring gLastRetiredRendererWidgetInstance;
+#endif
+
 [[nodiscard]] bool FiniteRect(const Rect& value) noexcept {
     return std::isfinite(value.x) && std::isfinite(value.y) &&
         std::isfinite(value.width) && std::isfinite(value.height);
@@ -241,12 +246,8 @@ struct FocusBackgroundSelection final {
     return {
         nearestSurface,
         focused,
-        focused->focusBackgroundArtworkHandle.empty()
-            ? std::wstring_view{nearestSurface->imageSource}
-            : std::wstring_view{},
-        focused->focusBackgroundArtworkHandle.empty()
-            ? std::wstring_view{nearestSurface->artworkHandle}
-            : std::wstring_view{focused->focusBackgroundArtworkHandle},
+        {},
+        focused->focusBackgroundArtworkHandle,
     };
 }
 
@@ -514,6 +515,8 @@ struct DeclarativeRenderer::RenderPass final {
     std::map<std::wstring, TextMeasurementProof, std::less<>> textMeasurements;
     std::map<std::wstring, CollectionReconciliationTrace, std::less<>>
         collectionReconciliationOffsets;
+    std::unordered_map<std::wstring, FocusBackgroundEntry> focusBackgrounds;
+    std::uint64_t focusBackgroundAccessClock{};
 
     [[nodiscard]] bool IsResponsiveVisible(const WidgetNode& node) const noexcept {
         return node.visibleWhen.empty() || node.visibleWhen == L"always" ||
@@ -2825,76 +2828,143 @@ struct DeclarativeRenderer::RenderPass final {
         const NativeRenderStyle& style,
         const Rect rect,
         const float opacity) {
-        std::wstring authority = options.artworkAuthorityId.empty()
+        const std::wstring authorityId = options.artworkAuthorityId.empty()
             ? options.artworkWidgetId
             : options.artworkAuthorityId;
-        authority.push_back(L'\x1f');
-        authority.append(snapshot->instanceId);
-        authority.push_back(L'\x1f');
+        std::wstring authorityPrefix = authorityId;
+        authorityPrefix.push_back(L'\x1f');
+        authorityPrefix.append(snapshot->instanceId);
+        authorityPrefix.push_back(L'\x1f');
+        std::wstring authority = authorityPrefix;
         authority.append(node.id);
 
         if (!node.usesFocusedDescendantArtwork) {
-            owner->focusBackgrounds_.erase(authority);
+            focusBackgrounds.erase(authority);
             if (!node.imageSource.empty() || !node.artworkHandle.empty())
                 (void)DrawImage(node, style, rect, opacity, false, false);
             return;
         }
 
-        const auto selection = ResolveFocusBackgroundSelection(
-            snapshot->root, focusedId);
-        WidgetNode desired = node;
-        if (selection.surface == &node && selection.focused &&
-            !selection.focused->focusBackgroundArtworkHandle.empty()) {
-            desired.imageSource.clear();
-            desired.artworkHandle = selection.focused->focusBackgroundArtworkHandle;
-            if (desired.imageFit.empty()) desired.imageFit = L"cover";
-        }
-        if (desired.imageSource.empty() && desired.artworkHandle.empty()) {
-            owner->focusBackgrounds_.erase(authority);
-            return;
+        auto retained = focusBackgrounds.find(authority);
+        if (retained != focusBackgrounds.end() &&
+            (retained->second.defaultImageSource != node.imageSource ||
+             retained->second.defaultArtworkHandle != node.artworkHandle ||
+             retained->second.defaultImageFit != node.imageFit)) {
+            focusBackgrounds.erase(retained);
+            retained = focusBackgrounds.end();
         }
 
-        if (DrawImage(desired, style, rect, opacity, false, false)) {
+        const auto remember = [&](const WidgetNode& desired) {
             constexpr std::size_t maximumRetainedSurfaces = 256;
-            if (!owner->focusBackgrounds_.contains(authority) &&
-                owner->focusBackgrounds_.size() >= maximumRetainedSurfaces) {
+            if (!focusBackgrounds.contains(authority) &&
+                focusBackgrounds.size() >= maximumRetainedSurfaces) {
                 const auto oldest = std::min_element(
-                    owner->focusBackgrounds_.begin(),
-                    owner->focusBackgrounds_.end(),
+                    focusBackgrounds.begin(),
+                    focusBackgrounds.end(),
                     [](const auto& left, const auto& right) {
                         return left.second.lastUse < right.second.lastUse;
                     });
-                if (oldest != owner->focusBackgrounds_.end())
-                    owner->focusBackgrounds_.erase(oldest);
+                if (oldest != focusBackgrounds.end())
+                    focusBackgrounds.erase(oldest);
             }
-            owner->focusBackgrounds_.insert_or_assign(
+            focusBackgrounds.insert_or_assign(
                 authority,
                 FocusBackgroundEntry{
+                    options.artworkWidgetId,
+                    snapshot->instanceId,
+                    authorityId,
+                    node.id,
                     desired.imageSource,
                     desired.artworkHandle,
                     desired.imageFit,
-                    ++owner->focusBackgroundAccessClock_,
+                    node.imageSource,
+                    node.artworkHandle,
+                    node.imageFit,
+                    ++focusBackgroundAccessClock,
                 });
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
             if (!desired.artworkHandle.empty())
                 result.backgroundArtworkHandles[node.id] = desired.artworkHandle;
 #endif
-            return;
-        }
-
-        const auto retained = owner->focusBackgrounds_.find(authority);
-        if (retained == owner->focusBackgrounds_.end()) return;
-        retained->second.lastUse = ++owner->focusBackgroundAccessClock_;
-        WidgetNode fallback = node;
-        fallback.imageSource = retained->second.imageSource;
-        fallback.artworkHandle = retained->second.artworkHandle;
-        fallback.imageFit = retained->second.imageFit;
-        if (DrawImage(fallback, style, rect, opacity, false, false)) {
+        };
+        const auto drawRetained = [&]() {
+            retained = focusBackgrounds.find(authority);
+            if (retained == focusBackgrounds.end()) return false;
+            retained->second.lastUse = ++focusBackgroundAccessClock;
+            WidgetNode fallback = node;
+            fallback.imageSource = retained->second.imageSource;
+            fallback.artworkHandle = retained->second.artworkHandle;
+            fallback.imageFit = retained->second.imageFit;
+            if (!DrawImage(fallback, style, rect, opacity, false, false)) return false;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
             if (!fallback.artworkHandle.empty())
                 result.backgroundArtworkHandles[node.id] = fallback.artworkHandle;
 #endif
+            return true;
+        };
+
+        const auto selection = ResolveFocusBackgroundSelection(
+            snapshot->root, focusedId);
+        if (selection.surface == &node && selection.focused) {
+            if (!selection.artworkHandle.empty()) {
+                WidgetNode desired = node;
+                desired.imageSource.clear();
+                desired.artworkHandle = selection.artworkHandle;
+                if (desired.imageFit.empty()) desired.imageFit = L"cover";
+                if (DrawImage(desired, style, rect, opacity, false, false)) {
+                    remember(desired);
+                    return;
+                }
+                if (drawRetained()) return;
+                return;
+            } else if (drawRetained()) {
+                return;
+            }
+        } else {
+            focusBackgrounds.erase(authority);
         }
+
+        if ((!node.imageSource.empty() || !node.artworkHandle.empty()) &&
+            DrawImage(node, style, rect, opacity, false, false)) {
+            remember(node);
+        }
+    }
+
+    void RetireAbsentFocusBackgroundSurfaces() {
+        const std::wstring authorityId = options.artworkAuthorityId.empty()
+            ? options.artworkWidgetId
+            : options.artworkAuthorityId;
+
+        std::set<std::wstring> present;
+        const auto collect = [&](const auto& self, const WidgetNode& node) -> void {
+            if (!IsResponsiveVisible(node)) return;
+            const auto narrowId = NarrowStableId(node.id);
+            if (!prepared.contains(narrowId) || !presentation.contains(narrowId))
+                return;
+            if (node.kind == L"backgroundSurface")
+                present.insert(node.id);
+            if (node.kind == L"focusPresentationSurface") {
+                const auto selection = ResolveFocusPresentationSelection(
+                    snapshot->root, focusedId);
+                const auto* fragment = selection.surface == &node
+                    ? selection.fragment
+                    : !node.defaultFocusPresentation.empty()
+                        ? &node.defaultFocusPresentation.front()
+                        : nullptr;
+                if (fragment) self(self, *fragment);
+            }
+            for (const auto& child : node.children) self(self, child);
+        };
+        collect(collect, snapshot->root);
+        std::erase_if(focusBackgrounds, [&](const auto& entry) {
+            const auto& retained = entry.second;
+            if (retained.widgetId != options.artworkWidgetId ||
+                retained.widgetInstanceId != snapshot->instanceId) {
+                return false;
+            }
+            return retained.authorityId != authorityId ||
+                !present.contains(retained.surfaceId);
+        });
     }
 
     void DrawProgress(
@@ -3800,6 +3870,8 @@ RenderResult DeclarativeRenderer::Render(
         Size{viewport.width, viewport.height});
     pass.compactMode = IsCompactResponsiveSurface(responsiveViewport);
     pass.options = options;
+    pass.focusBackgrounds = focusBackgrounds_;
+    pass.focusBackgroundAccessClock = focusBackgroundAccessClock_;
     const auto* previousCollectionCache = incrementalLayoutCache_ &&
             incrementalLayoutCache_->instanceId == snapshot.instanceId
         ? &*incrementalLayoutCache_
@@ -3937,6 +4009,13 @@ RenderResult DeclarativeRenderer::Render(
     }
     const auto clipSetupFinished = std::chrono::steady_clock::now();
     pass.DrawNode(snapshot.root);
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+    if (options.failAfterNodeDrawForTesting) {
+        pass.Add({}, L"forced_post_draw_failure",
+            L"The test fixture rejected the frame after target-backed drawing.",
+            RenderDiagnosticSeverity::Error);
+    }
+#endif
     const auto nodeDrawFinished = std::chrono::steady_clock::now();
     pass.DrawDeferredFocus();
     const auto deferredFocusFinished = std::chrono::steady_clock::now();
@@ -3952,6 +4031,9 @@ RenderResult DeclarativeRenderer::Render(
         });
     pass.result.succeeded = !hasErrors && pass.layout.valid() && renderTarget;
     if (pass.result.succeeded) {
+        pass.RetireAbsentFocusBackgroundSurfaces();
+        focusBackgrounds_ = std::move(pass.focusBackgrounds);
+        focusBackgroundAccessClock_ = pass.focusBackgroundAccessClock;
         pass.result.responsiveSurface = ResponsiveSurfacePresentation{
             responsiveViewport,
             pass.compactMode
@@ -4253,18 +4335,37 @@ bool DeclarativeRenderer::EnsureSurfaceClip(
 void DeclarativeRenderer::ForgetWidgetState(
     const std::wstring_view widgetInstanceId) noexcept {
     if (widgetInstanceId.empty()) return;
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+    ++gRendererWidgetStateRetirementCount;
+    gLastRetiredRendererWidgetInstance = widgetInstanceId;
+#endif
     std::wstring prefix(widgetInstanceId);
     prefix.push_back(L'\x1f');
     std::erase_if(scrollOffsets_, [&](const auto& entry) {
         return entry.first.starts_with(prefix);
     });
     motionTimeline_.ForgetPrefix(prefix);
-    const std::wstring authorityNeedle =
-        L"\x1f" + std::wstring(widgetInstanceId) + L"\x1f";
     std::erase_if(focusBackgrounds_, [&](const auto& entry) {
-        return entry.first.find(authorityNeedle) != std::wstring::npos;
+        return entry.second.widgetInstanceId == widgetInstanceId;
     });
 }
+
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+namespace testing {
+void ResetRendererWidgetStateRetirementForTesting() noexcept {
+    gRendererWidgetStateRetirementCount = 0;
+    gLastRetiredRendererWidgetInstance.clear();
+}
+
+std::uint64_t RendererWidgetStateRetirementCountForTesting() noexcept {
+    return gRendererWidgetStateRetirementCount;
+}
+
+std::wstring_view LastRetiredRendererWidgetInstanceForTesting() noexcept {
+    return gLastRetiredRendererWidgetInstance;
+}
+} // namespace testing
+#endif
 
 ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     ID2D1RenderTarget* renderTarget,

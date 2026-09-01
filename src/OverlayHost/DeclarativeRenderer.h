@@ -272,6 +272,11 @@ struct DeclarativeRenderOptions final {
     /// Right-stick free scroll deliberately retains semantic focus without
     /// allowing that descendant to pull the viewport back until re-entry.
     bool suppressFocusedDescendantFollow{};
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+    /// Injects a terminal diagnostic after target-backed drawing so tests can
+    /// prove rejected frames do not commit renderer-owned presentation state.
+    bool failAfterNodeDrawForTesting{};
+#endif
 };
 
 [[nodiscard]] constexpr bool IsCompactResponsiveSurface(
@@ -492,9 +497,16 @@ private:
         std::uint64_t lastUse{};
     };
     struct FocusBackgroundEntry final {
+        std::wstring widgetId;
+        std::wstring widgetInstanceId;
+        std::wstring authorityId;
+        std::wstring surfaceId;
         std::wstring imageSource;
         std::wstring artworkHandle;
         std::wstring imageFit;
+        std::wstring defaultImageSource;
+        std::wstring defaultArtworkHandle;
+        std::wstring defaultImageFit;
         std::uint64_t lastUse{};
     };
 
@@ -542,5 +554,13 @@ private:
     std::optional<IncrementalLayoutCache> incrementalLayoutCache_;
     std::optional<PendingIncrementalPlan> pendingIncrementalPlan_;
 };
+
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+namespace testing {
+void ResetRendererWidgetStateRetirementForTesting() noexcept;
+[[nodiscard]] std::uint64_t RendererWidgetStateRetirementCountForTesting() noexcept;
+[[nodiscard]] std::wstring_view LastRetiredRendererWidgetInstanceForTesting() noexcept;
+} // namespace testing
+#endif
 
 } // namespace widgetrail
