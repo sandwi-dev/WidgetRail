@@ -1383,10 +1383,8 @@ int main() {
             Check(scrolling.MoveControllerFocus(
                       widgetrail::input::NavigationDirection::Right) &&
                       !scrolling.FreeScrollBindingForTesting() &&
-                      scrolling.MoveControllerFocus(
-                          widgetrail::input::NavigationDirection::Right) &&
                       scrolling.focusedElementId() == L"pin.outside",
-                  "re-entry retires only its binding and focus can leave the list");
+                  "the first direction retires re-entry and leaves the visible list");
             UpdateWindow(scrolling.window());
 
             auto compatibleProjection = ScrollSnapshot(2);

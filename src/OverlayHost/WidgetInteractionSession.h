@@ -51,8 +51,19 @@ struct FreeScrollAuthorityDecision final {
     bool followSuppressed{};
 };
 
+enum class FreeScrollReentryDisposition {
+    None,
+    /// The exact focus remains visible and eligible. The binding is retired,
+    /// and the caller must route this same directional input normally.
+    ResumeDirectionalInput,
+    /// Focus recovery owns this input; target is the bounded replacement when
+    /// one exists, and no ordinary navigation may run for the same input.
+    RecoveryConsumed,
+};
+
 struct FreeScrollReentryRequest final {
-    bool consumed{};
+    FreeScrollReentryDisposition disposition{
+        FreeScrollReentryDisposition::None};
     std::optional<std::wstring> target;
     std::optional<FreeScrollBinding> retiredBinding;
 };

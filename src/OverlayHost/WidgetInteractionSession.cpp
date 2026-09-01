@@ -52,6 +52,30 @@ bool SameScrollPaginationRequest(
         left.demandGeneration == right.demandGeneration;
 }
 
+bool IsVisibleFreeScrollFocus(
+    const WidgetInteractionAuthority& authority,
+    const FreeScrollBinding& binding,
+    const std::wstring_view focusedElementId,
+    const RenderResult& renderResult) noexcept {
+    if (!authority.semantics || focusedElementId.empty()) return false;
+    const auto* focused = FindNodeInInputScope(
+        *authority.semantics, focusedElementId,
+        authority.semantics->activeInputScopeId);
+    if (!focused || !IsEnabledFocusTarget(focusedElementId, renderResult)) {
+        return false;
+    }
+    const auto owner = ResolveFocusedScrollOwner(
+        authority.semantics->root, focusedElementId, binding.axis,
+        authority.semantics->activeInputScopeId, renderResult);
+    if (owner.disposition != FocusedScrollResolutionDisposition::Resolved ||
+        owner.scrollId != binding.scrollId) {
+        return false;
+    }
+    const auto visible = renderResult.focusRects.find(focusedElementId);
+    return visible != renderResult.focusRects.end() &&
+        visible->second.width > 0.0F && visible->second.height > 0.0F;
+}
+
 } // namespace
 
 DirectionalFocusResolution SurfaceInteractionTransactions::ResolveDirectionalFocus(
@@ -447,11 +471,18 @@ FreeScrollReentryRequest FreeScrollInteractionState::ResolveReentry(
         !BindingMatches(*binding_, authority, focusedElementId)) {
         return request;
     }
-    request.consumed = true;
     request.retiredBinding = std::move(binding_);
     binding_.reset();
     refreshDeferred_ = false;
     kinetics_.Reset();
+    if (IsVisibleFreeScrollFocus(
+            authority, *request.retiredBinding, focusedElementId,
+            renderResult)) {
+        request.disposition =
+            FreeScrollReentryDisposition::ResumeDirectionalInput;
+        return request;
+    }
+    request.disposition = FreeScrollReentryDisposition::RecoveryConsumed;
     request.target = FindFreeScrollReentryTarget(
         authority.semantics->root,
         request.retiredBinding->scrollId,

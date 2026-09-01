@@ -8972,7 +8972,14 @@ private:
             ResolveFreeScrollReentry(
                 interactionSession_.freeScrollState(), authority,
                 interactionSession_.focusedElementId(), lastWidgetRenderResult_);
-        if (!request.consumed || !request.retiredBinding) return false;
+        switch (request.disposition) {
+        case widgetrail::input::FreeScrollReentryDisposition::None:
+        case widgetrail::input::FreeScrollReentryDisposition::ResumeDirectionalInput:
+            return false;
+        case widgetrail::input::FreeScrollReentryDisposition::RecoveryConsumed:
+            break;
+        }
+        if (!request.retiredBinding) return false;
         const auto& binding = *request.retiredBinding;
         if (!request.target) {
             AppendDiagnostic(

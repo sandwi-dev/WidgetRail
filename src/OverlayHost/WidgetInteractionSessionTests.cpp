@@ -53,7 +53,8 @@ widgetrail::WidgetNode Slider(
 widgetrail::WidgetSnapshot Snapshot(
     const long long sequence = 41,
     const wchar_t* instanceId = L"fixture.instance",
-    const wchar_t* scope = L"root") {
+    const wchar_t* scope = L"root",
+    const wchar_t* scrollAxis = L"vertical") {
     widgetrail::WidgetSnapshot snapshot;
     snapshot.sequence = sequence;
     snapshot.instanceId = instanceId;
@@ -68,7 +69,7 @@ widgetrail::WidgetSnapshot Snapshot(
     widgetrail::WidgetNode scroll;
     scroll.id = L"items.scroll";
     scroll.kind = L"scroll";
-    scroll.scrollAxis = L"vertical";
+    scroll.scrollAxis = scrollAxis;
     scroll.children.push_back(Button(L"row.partial"));
     scroll.children.push_back(Button(L"row.first"));
     scroll.children.push_back(Button(L"row.second"));
@@ -674,12 +675,205 @@ void FreeScrollAndRetainedRefreshLifecycle() {
     AddRenderTarget(render, L"row.first", {10.0F, 24.0F, 200.0F, 44.0F});
     AddRenderTarget(render, L"row.second", {10.0F, 72.0F, 200.0F, 44.0F});
     const auto reentry = session.ResolveFreeScrollReentry(current, render);
-    Check(reentry.consumed && reentry.target == L"row.first" &&
+    Check(reentry.disposition ==
+              FreeScrollReentryDisposition::ResumeDirectionalInput &&
+              !reentry.target &&
               reentry.retiredBinding &&
               reentry.retiredBinding->focusedElementId == L"row.second",
-          "one re-entry consumes the binding and chooses the topmost fully visible target");
-    Check(!session.ResolveFreeScrollReentry(current, render).consumed,
-          "ordinary navigation resumes after exactly one consumed re-entry");
+          "visible vertical focus retires free scroll without consuming directional input");
+    const auto verticalNavigation = session.ResolveDirectionalFocus(
+        L"fixture.widget", snapshot, NavigationDirection::Up, render);
+    Check(verticalNavigation.target == L"row.first",
+          "the same vertical press continues through ordinary focus navigation");
+    Check(session.ResolveFreeScrollReentry(current, render).disposition ==
+              FreeScrollReentryDisposition::None,
+          "free-scroll re-entry retires exactly once");
+
+    WidgetInteractionSession horizontalSession;
+    auto horizontalSnapshot = Snapshot(
+        41, L"fixture.instance", L"root", L"horizontal");
+    horizontalSession.SetFocus(
+        L"fixture.widget", horizontalSnapshot, L"row.partial");
+    const auto horizontalAuthority = Authority(horizontalSnapshot);
+    Check(horizontalSession.BindFreeScroll(
+              horizontalAuthority, L"items.scroll",
+              widgetrail::declarative::ScrollAxis::Horizontal),
+          "horizontal free scroll binds the exact focused descendant");
+    widgetrail::RenderResult horizontalRender;
+    horizontalRender.scrollViewports.emplace(
+        L"items.scroll",
+        widgetrail::RenderScrollViewport{
+            widgetrail::declarative::ScrollAxis::Horizontal,
+            {20.0F, 10.0F, 120.0F, 100.0F}, 60.0F, 240.0F});
+    AddRenderTarget(
+        horizontalRender, L"row.partial", {8.0F, 10.0F, 44.0F, 100.0F});
+    AddRenderTarget(
+        horizontalRender, L"row.first", {24.0F, 10.0F, 44.0F, 100.0F});
+    AddRenderTarget(
+        horizontalRender, L"row.second", {72.0F, 10.0F, 44.0F, 100.0F});
+    horizontalRender.focusRects[L"row.partial"] = {
+        20.0F, 10.0F, 32.0F, 100.0F};
+    const auto horizontalReentry = horizontalSession.ResolveFreeScrollReentry(
+        horizontalAuthority, horizontalRender);
+    Check(horizontalReentry.disposition ==
+              FreeScrollReentryDisposition::ResumeDirectionalInput &&
+              horizontalReentry.retiredBinding && !horizontalReentry.target,
+          "partially visible horizontal focus resumes the same directional input");
+    const auto horizontalNavigation = horizontalSession.ResolveDirectionalFocus(
+        L"fixture.widget", horizontalSnapshot, NavigationDirection::Right,
+        horizontalRender);
+    Check(horizontalNavigation.target == L"row.first",
+          "the same horizontal press continues through ordinary focus navigation");
+
+    WidgetInteractionSession recoverySession;
+    recoverySession.SetFocus(L"fixture.widget", snapshot, L"row.second");
+    Check(recoverySession.BindFreeScroll(
+              current, L"items.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical),
+          "out-of-view recovery binds exact free-scroll authority");
+    auto recoveryRender = render;
+    recoveryRender.focusRects.erase(L"row.second");
+    recoveryRender.navigationRects[L"row.second"] = {
+        10.0F, 164.0F, 200.0F, 44.0F};
+    for (auto& region : recoveryRender.hitRegions) {
+        if (region.nodeId == L"row.second")
+            region.rect = recoveryRender.navigationRects[L"row.second"];
+    }
+    const auto recovery = recoverySession.ResolveFreeScrollReentry(
+        current, recoveryRender);
+    Check(recovery.disposition ==
+              FreeScrollReentryDisposition::RecoveryConsumed &&
+              recovery.target == L"row.first" && recovery.retiredBinding,
+          "offscreen focus consumes one press for fully-visible-first recovery");
+
+    WidgetInteractionSession activationStateSession;
+    auto activationStateSnapshot = snapshot;
+    activationStateSnapshot.root.children[3].children[2].isDisabled = true;
+    activationStateSnapshot.root.children[3].children[2].isBusy = true;
+    activationStateSession.SetFocus(
+        L"fixture.widget", activationStateSnapshot, L"row.second");
+    const auto activationStateAuthority = Authority(activationStateSnapshot);
+    Check(activationStateSession.BindFreeScroll(
+              activationStateAuthority, L"items.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical),
+          "disabled and busy activation state retains exact scroll authority");
+    const auto activationState = activationStateSession.ResolveFreeScrollReentry(
+        activationStateAuthority, render);
+    Check(activationState.disposition ==
+              FreeScrollReentryDisposition::ResumeDirectionalInput,
+          "disabled and busy activation state does not remove navigable focus");
+    Check(activationStateSession.ResolveDirectionalFocus(
+              L"fixture.widget", activationStateSnapshot,
+              NavigationDirection::Up, render).target == L"row.first",
+          "the same directional input can move away from disabled or busy activation state");
+
+    WidgetInteractionSession ineligibleSession;
+    ineligibleSession.SetFocus(L"fixture.widget", snapshot, L"row.second");
+    Check(ineligibleSession.BindFreeScroll(
+              current, L"items.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical),
+          "navigation-ineligible recovery binds the prior exact scroll authority");
+    auto ineligibleRender = render;
+    ineligibleRender.navigationEnabled[L"row.second"] = false;
+    for (auto& region : ineligibleRender.hitRegions) {
+        if (region.nodeId == L"row.second") region.enabled = false;
+    }
+    const auto ineligible = ineligibleSession.ResolveFreeScrollReentry(
+        current, ineligibleRender);
+    Check(ineligible.disposition ==
+              FreeScrollReentryDisposition::RecoveryConsumed &&
+              ineligible.target == L"row.first",
+          "renderer-ineligible current focus uses deterministic recovery");
+
+    WidgetInteractionSession missingSession;
+    missingSession.SetFocus(L"fixture.widget", snapshot, L"row.missing");
+    Check(missingSession.BindFreeScroll(
+              current, L"items.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical),
+          "missing-focus recovery retains the exact prior scroll authority");
+    const auto missing = missingSession.ResolveFreeScrollReentry(current, render);
+    Check(missing.disposition ==
+              FreeScrollReentryDisposition::RecoveryConsumed &&
+              missing.target == L"row.first",
+          "missing current focus uses deterministic recovery");
+
+    auto nestedSnapshot = snapshot;
+    auto& outerScroll = nestedSnapshot.root.children[3];
+    widgetrail::WidgetNode innerScroll;
+    innerScroll.id = L"items.inner-scroll";
+    innerScroll.kind = L"scroll";
+    innerScroll.scrollAxis = L"vertical";
+    innerScroll.children.push_back(std::move(outerScroll.children.back()));
+    outerScroll.children.pop_back();
+    outerScroll.children.push_back(std::move(innerScroll));
+    auto nestedRender = render;
+    nestedRender.scrollViewports.emplace(
+        L"items.inner-scroll",
+        widgetrail::RenderScrollViewport{
+            widgetrail::declarative::ScrollAxis::Vertical,
+            {10.0F, 20.0F, 200.0F, 120.0F}, 80.0F, 300.0F});
+    WidgetInteractionSession outerOwnerSession;
+    outerOwnerSession.SetFocus(
+        L"fixture.widget", nestedSnapshot, L"row.second");
+    const auto nestedAuthority = Authority(nestedSnapshot);
+    Check(outerOwnerSession.BindFreeScroll(
+              nestedAuthority, L"items.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical),
+          "nested fixture can expose a stale outer-scroll binding");
+    const auto outerOwner = outerOwnerSession.ResolveFreeScrollReentry(
+        nestedAuthority, nestedRender);
+    Check(outerOwner.disposition ==
+              FreeScrollReentryDisposition::RecoveryConsumed,
+          "visible focus cannot resume through a different nested scroll owner");
+
+    WidgetInteractionSession innerOwnerSession;
+    innerOwnerSession.SetFocus(
+        L"fixture.widget", nestedSnapshot, L"row.second");
+    Check(innerOwnerSession.BindFreeScroll(
+              nestedAuthority, L"items.inner-scroll",
+              widgetrail::declarative::ScrollAxis::Vertical),
+          "nested fixture binds the deepest exact scroll owner");
+    const auto innerOwner = innerOwnerSession.ResolveFreeScrollReentry(
+        nestedAuthority, nestedRender);
+    Check(innerOwner.disposition ==
+              FreeScrollReentryDisposition::ResumeDirectionalInput &&
+              !innerOwner.target,
+          "visible focus resumes only through its deepest exact scroll owner");
+
+    WidgetInteractionSession scopeSession;
+    scopeSession.SetFocus(L"fixture.widget", snapshot, L"row.second");
+    Check(scopeSession.BindFreeScroll(
+              current, L"items.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical),
+          "scope replacement starts from exact bound authority");
+    auto changedScope = snapshot;
+    changedScope.activeInputScopeId = L"dialog";
+    const auto changedScopeReentry =
+        SurfaceInteractionTransactions::ResolveFreeScrollReentry(
+            scopeSession.freeScrollState(), Authority(changedScope),
+            scopeSession.focusedElementId(), render);
+    Check(changedScopeReentry.disposition ==
+              FreeScrollReentryDisposition::None &&
+              !changedScopeReentry.retiredBinding &&
+              !scopeSession.freeScrollBinding(),
+          "scope replacement clears stale free scroll without re-entry authority");
+
+    WidgetInteractionSession staleGeometrySession;
+    staleGeometrySession.SetFocus(L"fixture.widget", snapshot, L"row.second");
+    Check(staleGeometrySession.BindFreeScroll(
+              current, L"items.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical),
+          "stale-geometry recovery starts from exact bound authority");
+    auto staleGeometry = render;
+    staleGeometry.scrollViewports.clear();
+    const auto staleReentry =
+        SurfaceInteractionTransactions::ResolveFreeScrollReentry(
+            staleGeometrySession.freeScrollState(), current,
+            staleGeometrySession.focusedElementId(), staleGeometry);
+    Check(staleReentry.disposition == FreeScrollReentryDisposition::None &&
+              !staleReentry.retiredBinding &&
+              !staleGeometrySession.freeScrollBinding(),
+          "missing scroll geometry clears stale authority without consuming input");
 
     Check(session.BindFreeScroll(
               current, L"items.scroll", widgetrail::declarative::ScrollAxis::Vertical),

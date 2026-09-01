@@ -546,11 +546,16 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
     if (freeScroll_.binding()) {
         auto reentry = input::SurfaceInteractionTransactions::ResolveFreeScrollReentry(
             freeScroll_, authority, focusedElementId_, lastRenderResult_);
-        if (reentry.consumed) {
+        switch (reentry.disposition) {
+        case input::FreeScrollReentryDisposition::RecoveryConsumed:
             if (reentry.target) (void)applyFocus(*reentry.target);
             return true;
+        case input::FreeScrollReentryDisposition::ResumeDirectionalInput:
+            break;
+        case input::FreeScrollReentryDisposition::None:
+            ClearFreeScroll();
+            break;
         }
-        ClearFreeScroll();
     }
     auto resolution = input::SurfaceInteractionTransactions::ResolveDirectionalFocus(
         snapshot, focusedElementId_, direction, lastRenderResult_,
