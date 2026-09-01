@@ -723,7 +723,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 RetainHomeCollectionForRouteTransition();
                 if (_navigation.Push(PlayniteLibraryRoute.Browse, action.SourceElementId) ==
                     WidgetNavigationResult.Changed)
-                    _model.Update(state => state with { SearchExpanded = false });
+                    _model.Update(state => state with
+                    {
+                        SearchExpanded = false,
+                        AlternateBrowseViewport = !state.AlternateBrowseViewport,
+                    });
                 return;
             case PlayniteLibraryActions.FavoritesFilter:
                 if (!TryOpenBrowse(action.SourceElementId)) return;

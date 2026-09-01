@@ -305,6 +305,9 @@ public sealed class PlayniteLibraryTests
                 [Item(0), Item(1), Item(2)], null, null, actionId));
             await Bounded(terminal, actionId + " terminal");
             await Bounded(widget.WhenLibraryIdleAsync(), actionId + " drain");
+            if (actionId == PlayniteLibraryActions.FavoritesFilter)
+                Assert.IsTrue(widget.RenderState.Value.AlternateBrowseViewport,
+                    "Opening Browse through a semantic Home filter must replace the viewport exactly once.");
             AssertValidCollectionAnchor(Snapshot(widget, sequence++));
         }
 
@@ -757,6 +760,7 @@ public sealed class PlayniteLibraryTests
         await widget.OnActionAsync(new("playnite-library.browse.open",
             "playnite-library.library.menu"));
         var firstBrowse = AssertValidSnapshot(50_001, "initial Browse");
+        var firstBrowseScrollId = BrowseScrollId(firstBrowse);
         var restoredTile = Nodes(firstBrowse.Root).Where(node =>
             node.ActionId == "playnite-library.launch").Skip(1).First();
         var firstReturn = NextInvalidation(widget);
@@ -768,26 +772,29 @@ public sealed class PlayniteLibraryTests
 
         await widget.OnActionAsync(new("playnite-library.browse.open",
             "playnite-library.library.menu"));
+        var reopenedBrowse = AssertValidSnapshot(50_003, "directly reopened Browse");
+        Assert.AreNotEqual(firstBrowseScrollId, BrowseScrollId(reopenedBrowse),
+            "Direct Home-to-Browse reentry must replace the previously active viewport identity.");
         await CommitSearch("Game", "retain all Browse results");
-        var restoredBrowse = AssertValidSnapshot(50_003, "navigator-owned restored Browse");
+        var restoredBrowse = AssertValidSnapshot(50_004, "navigator-owned restored Browse");
         Assert.AreEqual(restoredTile.Id, restoredBrowse.InitialFocusId,
             "A distinct still-rendered tile inside the Browse background must retain navigator-owned return focus after presentation preference retires.");
 
         await CommitSearch("Game 00000", "matching search");
-        var matching = AssertValidSnapshot(50_004, "matching search");
+        var matching = AssertValidSnapshot(50_005, "matching search");
         Assert.AreNotEqual(restoredTile.Id, matching.InitialFocusId,
             "A filtered-out navigator target must not overwrite presentation focus.");
         Assert.AreEqual("Game 00000", Nodes(matching.Root).Single(node =>
             node.Id == matching.InitialFocusId).AccessibilityLabel?.Split(',')[0]);
 
         await CommitSearch("No matching game", "zero-result search");
-        var empty = AssertValidSnapshot(50_005, "zero-result search");
+        var empty = AssertValidSnapshot(50_006, "zero-result search");
         Assert.AreEqual("playnite-library.search", empty.InitialFocusId);
 
         await widget.OnActionAsync(new("playnite-library.query.clear",
             "playnite-library.query.clear"));
         await Bounded(widget.WhenLibraryIdleAsync(), "Browse query clear");
-        var cleared = AssertValidSnapshot(50_006, "cleared Browse");
+        var cleared = AssertValidSnapshot(50_007, "cleared Browse");
         Assert.IsTrue(Nodes(cleared.Root).Any(node =>
             node.Id == cleared.InitialFocusId && node.IsDisabled is not true));
 
@@ -797,7 +804,7 @@ public sealed class PlayniteLibraryTests
             "Browse return must remain navigator-owned after query transitions.");
         await Bounded(finalReturn, "final Browse return invalidation");
         await Bounded(widget.WhenLibraryIdleAsync(), "final Browse return");
-        _ = AssertValidSnapshot(50_007, "final Home return");
+        _ = AssertValidSnapshot(50_008, "final Home return");
         await Background(widget);
 
         async Task CommitSearch(string value, string phase)
@@ -822,6 +829,11 @@ public sealed class PlayniteLibraryTests
                 phase + " must publish a protocol-focusable initial target.");
             return snapshot;
         }
+
+        static string BrowseScrollId(ViewSnapshot snapshot) =>
+            Nodes(snapshot.Root).Single(node =>
+                node.Id is PlayniteLibraryPresentation.ScrollId or
+                    PlayniteLibraryPresentation.AlternateBrowseScrollId).Id;
     }
 
     [TestMethod, Timeout(30_000)]
@@ -902,7 +914,7 @@ public sealed class PlayniteLibraryTests
             shortcut.Button == ControllerButton.B &&
             shortcut.ActionId == "playnite-library.navigation.back"));
         var ascendingScrollId = Nodes(ascending.Root).Single(node =>
-            node.Id == PlayniteLibraryPresentation.ScrollId).Id;
+            node.Id == PlayniteLibraryPresentation.AlternateBrowseScrollId).Id;
 
         await Choose(
             PlayniteLibraryActions.SortFilter,
@@ -1076,8 +1088,9 @@ public sealed class PlayniteLibraryTests
 
         var initial = Snapshot(widget, 50_301);
         var initialScrollId = BrowseScroll(initial).Id;
-        Assert.AreEqual(PlayniteLibraryPresentation.ScrollId, initialScrollId);
-        AssertBrowseFocusGroups(initial, items[0]);
+        Assert.AreEqual(PlayniteLibraryPresentation.AlternateBrowseScrollId,
+            initialScrollId);
+        AssertBrowseFocusGroups(initial);
 
         var queriesBeforeNoOpClear = host.Queries.Count;
         await widget.OnActionAsync(new(
@@ -1085,7 +1098,7 @@ public sealed class PlayniteLibraryTests
             PlayniteLibraryActions.QueryClear));
         Assert.AreEqual(queriesBeforeNoOpClear, host.Queries.Count,
             "Clearing an already-default Browse query must not replace its viewport or reload.");
-        Assert.IsFalse(widget.RenderState.Value.AlternateBrowseViewport);
+        Assert.IsTrue(widget.RenderState.Value.AlternateBrowseViewport);
 
         await widget.OnActionAsync(new(
             PlayniteLibraryActions.Refresh,
@@ -1139,7 +1152,7 @@ public sealed class PlayniteLibraryTests
             "A semantic source change must replace the Browse viewport identity.");
         Assert.IsNull(host.Queries[^1].Cursor,
             "A semantic source change must restart on the first provider page.");
-        AssertBrowseFocusGroups(sourceResult, items[0]);
+        AssertBrowseFocusGroups(sourceResult);
 
         host.QueryHandler = (_, token) =>
         {
@@ -1190,7 +1203,7 @@ public sealed class PlayniteLibraryTests
             "A no-results query must restore the exact Sort opener.");
         Assert.AreEqual("No matching games", Nodes(empty.Root).Single(node =>
             node.Id == "playnite-library.browse.empty.title").Text);
-        Assert.IsFalse(widget.RenderState.Value.AlternateBrowseViewport,
+        Assert.IsTrue(widget.RenderState.Value.AlternateBrowseViewport,
             "Successive semantic queries must alternate between exactly two static viewport identities.");
         await Background(widget);
 
@@ -1199,9 +1212,7 @@ public sealed class PlayniteLibraryTests
                 node.Id is PlayniteLibraryPresentation.ScrollId or
                     PlayniteLibraryPresentation.AlternateBrowseScrollId);
 
-        static void AssertBrowseFocusGroups(
-            ViewSnapshot snapshot,
-            WidgetAppLibraryItem selected)
+        static void AssertBrowseFocusGroups(ViewSnapshot snapshot)
         {
             var query = Nodes(snapshot.Root).Single(node =>
                 node.Id == "playnite-library.query");
@@ -1211,11 +1222,8 @@ public sealed class PlayniteLibraryTests
 
             var grid = Nodes(snapshot.Root).Single(node =>
                 node.Id == "playnite-library.browse.grid");
-            Assert.AreEqual(PlayniteLibraryIdentity.FocusId(
-                "grid", PlayniteLibraryItem.From(selected).Key),
-                grid.InitialChildFocusId);
-            Assert.IsTrue(Nodes(grid).Any(node =>
-                node.Id == grid.InitialChildFocusId));
+            Assert.IsNull(grid.InitialChildFocusId,
+                "Mutable Browse results must not retain native remembered-child authority.");
 
             var actions = Nodes(snapshot.Root).Single(node =>
                 node.Id == "playnite-library.actions");

@@ -372,9 +372,10 @@ internal static class PlayniteLibraryPresentation
         else if (snapshot.Items.Any(item =>
                      !state.Organization.ExcludedSavedIds.Contains(
                          item.Value.SavedId, StringComparer.Ordinal)) ||
-                 state.FixedRows.All.Any(item =>
-                     !state.Organization.ExcludedSavedIds.Contains(
-                         item.Value.SavedId, StringComparer.Ordinal)))
+                 (state.Route != PlayniteLibraryRoute.Browse &&
+                  state.FixedRows.All.Any(item =>
+                      !state.Organization.ExcludedSavedIds.Contains(
+                          item.Value.SavedId, StringComparer.Ordinal))))
         {
             var rail = state.Route == PlayniteLibraryRoute.Browse
                 ? PlayniteLibraryHeroRailPolicy.ProjectBrowse(
@@ -456,8 +457,7 @@ internal static class PlayniteLibraryPresentation
                 PlayniteLibraryRoute.Browse => BrowseGrid(
                     BrowseScrollId(state.AlternateBrowseViewport), snapshot,
                     catalogAnchorKey, pageBeforeActionId, pageAfterActionId,
-                    pageShortcuts, renderActionsEnabled,
-                    rail.Selected?.FocusId ?? rail.Items[0].FocusId, tiles),
+                    pageShortcuts, renderActionsEnabled, tiles),
                 _ => GameGrid("playnite-library.library.grid", tiles),
             };
             var children = new List<WidgetElement>();
@@ -762,14 +762,12 @@ internal static class PlayniteLibraryPresentation
         string? nearEndActionId,
         bool pageShortcuts,
         bool interactive,
-        string initialChildFocusId,
         params WidgetElement[] tiles)
     {
         var grid = UI.ResponsiveGrid(
                 "playnite-library.browse.grid", CompactPosterWidth,
                 maximumColumns: CompactPosterMaximumColumns, tiles)
-            .Classes("playnite-library-browse-grid")
-            .RememberChildFocus(initialChildFocusId);
+            .Classes("playnite-library-browse-grid");
         var scroll = UI.VerticalScroll(scrollId, grid)
             .Classes("playnite-library-catalog-scroll",
                 "playnite-library-browse-scroll") with

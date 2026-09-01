@@ -376,10 +376,8 @@ public sealed class PlayniteLibraryLayoutTests
             "Browse must not emit the retired shared page-scroll class.");
         var browseGrid = Nodes(browse.Root).Single(node =>
             node.Id == "playnite-library.browse.grid");
-        Assert.AreEqual(PlayniteLibraryIdentity.FocusId("grid", first.Key),
-            browseGrid.InitialChildFocusId);
-        Assert.IsTrue(Nodes(browseGrid).Any(node =>
-            node.Id == browseGrid.InitialChildFocusId));
+        Assert.IsNull(browseGrid.InitialChildFocusId,
+            "Mutable Browse results must not retain native remembered-child authority.");
         var browseQuery = Nodes(browse.Root).Single(node =>
             node.Id == "playnite-library.query");
         Assert.AreEqual("playnite-library.search",
@@ -611,10 +609,8 @@ public sealed class PlayniteLibraryLayoutTests
                 Assert.AreEqual(item.Key.Value, catalogScroll.CollectionAnchorKey);
                 var grid = nodes.Single(node =>
                     node.Id == "playnite-library.browse.grid");
-                Assert.AreEqual(PlayniteLibraryIdentity.FocusId("grid", item.Key),
-                    grid.InitialChildFocusId, phase);
-                Assert.IsTrue(Nodes(grid).Any(node =>
-                    node.Id == grid.InitialChildFocusId), phase);
+                Assert.IsNull(grid.InitialChildFocusId,
+                    phase + " mutable Browse results must not retain remembered focus.");
                 var actions = nodes.Single(node =>
                     node.Id == "playnite-library.actions");
                 Assert.AreEqual(PlayniteLibraryActions.Refresh,
@@ -664,6 +660,25 @@ public sealed class PlayniteLibraryLayoutTests
             node.Id == "playnite-library.browse.empty.title").Text);
         Assert.AreEqual("playnite-library.refresh", emptyNodes.Single(node =>
             node.Id == "playnite-library.browse.empty.action").ActionId);
+
+        var fixedRowsOnly = State(Snapshot(WidgetPagedResourceStatus.Ready, []),
+            organization, PlayniteLibraryRoute.Browse, []) with
+        {
+            Query = new WidgetAppLibraryQuery { SearchText = "State" },
+            FixedRows = new([], [], [item]),
+        };
+        var fixedRowsOnlySnapshot = new PresentationWidget(
+                PlayniteLibraryPresentation.Render(fixedRowsOnly))
+            .RenderSnapshot("playnite-library.browse.fixed-rows-only", 13);
+        var fixedRowsOnlyNodes = Nodes(fixedRowsOnlySnapshot.Root).ToArray();
+        Assert.AreEqual("No matching games", fixedRowsOnlyNodes.Single(node =>
+            node.Id == "playnite-library.browse.empty.title").Text);
+        Assert.AreEqual("playnite-library.search",
+            fixedRowsOnlySnapshot.InitialFocusId);
+        Assert.IsFalse(fixedRowsOnlyNodes.Any(node =>
+            node.Id == "playnite-library.browse.grid"));
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(fixedRowsOnlySnapshot).Count,
+            "Browse fixed rows must not create an empty catalog or invalid focus target.");
 
         var theme = CompileStyles();
         var classes = new HashSet<string>(["playnite-library-control"],
