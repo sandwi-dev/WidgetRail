@@ -428,9 +428,38 @@ public sealed class PlayniteLibraryTests
             node.Id == "playnite-library.browse.grid"),
             "The Home library-navigation primary action must enter Browse.");
 
-        await widget.OnActionAsync(new("playnite-library.browse.back",
-            "playnite-library.browse.back"));
+        var returnStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var returnRelease = new TaskCompletionSource<WidgetAppLibraryPage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        host.QueryHandler = (_, token) =>
+        {
+            returnStarted.TrySetResult();
+            return new(returnRelease.Task.WaitAsync(token));
+        };
+        var browseBack = widget.OnActionAsync(new("playnite-library.browse.back",
+            "playnite-library.browse.back")).AsTask();
+        await Bounded(returnStarted.Task, "browse return refresh admission");
+        var refreshingHome = Snapshot(widget, 40_006);
+        var refreshingNodes = Nodes(refreshingHome.Root).ToArray();
+        Assert.AreEqual(WidgetPagedResourceStatus.Refreshing, widget.Collection.Status,
+            "Browse Back must refresh while retaining the admitted Home page.");
+        Assert.IsTrue(refreshingNodes.Any(node =>
+                node.ActionId == "playnite-library.launch"),
+            "Browse Back must retain current posters while the replacement query is pending.");
+        Assert.IsFalse(refreshingNodes.Any(node =>
+                node.Id == "playnite-library.loading" ||
+                (node.Text ?? string.Empty).Contains(
+                    "Checking current availability", StringComparison.OrdinalIgnoreCase) ||
+                (node.Text ?? string.Empty).Contains(
+                    "Checking installed games", StringComparison.OrdinalIgnoreCase)),
+            "Browse Back must not flash the initial warm/loading page.");
+        returnRelease.TrySetResult(new(
+            [host.ItemFactory(0), host.ItemFactory(1), host.ItemFactory(2)],
+            null, null, "browse-return"));
+        await Bounded(browseBack, "browse return action");
         await Bounded(widget.WhenLibraryIdleAsync(), "browse return");
+        host.QueryHandler = null;
         var expectedAnchor = widget.Collection.Anchor ?? widget.Collection.Items[0].Key;
         var expectedFocus = PlayniteLibraryIdentity.FocusId("grid", expectedAnchor);
         var expectedPosterCount = widget.Collection.Items.Count;

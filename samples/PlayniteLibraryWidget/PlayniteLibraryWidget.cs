@@ -550,7 +550,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         ReloadQuery();
     }
 
-    private WidgetOperationHandle? ReloadQuery(bool preserveContentFocus = false)
+    private WidgetOperationHandle? ReloadQuery(
+        bool preserveContentFocus = false,
+        bool retainCurrentItems = false)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return null;
         Operations.Cancel("playnite-library.launch-lifecycle");
@@ -564,14 +566,24 @@ public sealed partial class PlayniteLibraryWidget : Widget
             PreferLibraryContentFocus = preserveContentFocus &&
                 state.PreferLibraryContentFocus,
         });
-        _library.Reset(invalidate: false);
-        var operation = _library.EnsureLoaded();
+        WidgetOperationHandle operation;
+        if (retainCurrentItems)
+        {
+            operation = _library.Refresh();
+        }
+        else
+        {
+            _library.Reset(invalidate: false);
+            operation = _library.EnsureLoaded();
+        }
         return operation;
     }
 
-    private async Task ReloadQueryAsync(bool preserveContentFocus = false)
+    private async Task ReloadQueryAsync(
+        bool preserveContentFocus = false,
+        bool retainCurrentItems = false)
     {
-        var operation = ReloadQuery(preserveContentFocus);
+        var operation = ReloadQuery(preserveContentFocus, retainCurrentItems);
         if (operation is { } admitted)
             await admitted.Completion.ConfigureAwait(false);
     }
@@ -586,7 +598,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
             ActiveCategoryId = null,
             PreferLibraryContentFocus = preferContentFocus,
         });
-        await ReloadQueryAsync(preferContentFocus).ConfigureAwait(false);
+        await ReloadQueryAsync(preferContentFocus, retainCurrentItems: true)
+            .ConfigureAwait(false);
         var restored = _model.Update(state =>
             (state with { PendingRestoredSavedId = null }, state.PendingRestoredSavedId));
         var restoredSavedId = restored.Result;

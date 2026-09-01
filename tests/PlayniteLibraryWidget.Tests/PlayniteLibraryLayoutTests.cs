@@ -51,6 +51,8 @@ public sealed class PlayniteLibraryLayoutTests
             "playnite-library-header-row", StringComparer.Ordinal)));
         var library = nodes.Single(node => node.Id == "playnite-library.library.menu");
         Assert.AreEqual("playnite-library.browse.open", library.ActionId);
+        CollectionAssert.Contains(library.StyleClasses.ToArray(),
+            "playnite-library-control");
         CollectionAssert.AreEqual(new[] { "playnite-library.search.open", "playnite-library.browse.open", "playnite-library.filter.recent", "playnite-library.filter.favorites", "playnite-library.categories.open", "playnite-library.hidden.open", LauncherWidget.PlayniteOpenActionId, "playnite-library.management.open" }, library.ContextActions.Select(action => action.ActionId).ToArray());
         var rail = nodes.Single(node => node.Id == PlayniteLibraryPresentation.HomeRailId);
         Assert.AreEqual(ViewNodeKind.Scroll, rail.Kind);
@@ -112,7 +114,9 @@ public sealed class PlayniteLibraryLayoutTests
         StringAssert.Contains(styles,
             ".playnite-library-home-summary { width: 100%; min-width: 0px; max-width: 620px;");
         StringAssert.Contains(styles,
-            ".wrail-poster-tile__scrim { background: rgba(5, 9, 14, 0.70); corner-radius: 12px; overflow: clip; }");
+            ".wrail-poster-tile__scrim { width: 100%; height: 0px; min-height: 0px; padding: 0px; background: rgba(0, 0, 0, 0); corner-radius: 12px; overflow: clip; }");
+        StringAssert.Contains(styles,
+            ".wrail-poster-tile__content { height: 0px; min-height: 0px; gap: 0px; overflow: clip; }");
 
         var theme = CompileStyles();
         var homeStyle = theme.Resolve(new WrssElement("stack", null,
@@ -121,6 +125,14 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.AreEqual("1180px", homeStyle.Get("max-width")?.Text);
         Assert.IsNull(homeStyle.Get("max-height"),
             "Home must not inherit the retired 680-DIP page-scroll cap.");
+        var posterScrimStyle = theme.Resolve(new WrssElement("stack", null,
+            new HashSet<string>(["wrail-poster-tile__scrim"],
+                StringComparer.Ordinal)));
+        Assert.AreEqual("0px", posterScrimStyle.Get("height")?.Text,
+            "Playnite posters must not reserve a visible text/scrim overlay.");
+        Assert.AreEqual("rgba(0, 0, 0, 0)",
+            posterScrimStyle.Get("background")?.Text,
+            "Playnite posters must show their accepted artwork without a dark text scrim.");
         Assert.IsFalse(nodes.Any(node => node.StyleClasses.Contains(
                 "playnite-library-page-scroll", StringComparer.Ordinal)),
             "Home must not emit the retired shared page-scroll class.");
@@ -128,12 +140,41 @@ public sealed class PlayniteLibraryLayoutTests
             "focus-presentation-surface", null,
             new HashSet<string>(["wrail-focus-presentation-surface"],
                 StringComparer.Ordinal)));
-        Assert.AreEqual("center", focusSurfaceStyle.Get("align")?.Text,
-            "The immediate full-size FocusPresentationSurface must center Home foreground.");
+        Assert.AreEqual("start", focusSurfaceStyle.Get("align")?.Text,
+            "The selected-game details must align with the left edge of the poster rail.");
+        var homeContentStyle = theme.Resolve(new WrssElement("stack", null,
+            new HashSet<string>(["playnite-library-home-content"],
+                StringComparer.Ordinal)));
+        Assert.AreEqual("0", homeContentStyle.Get("flex-grow")?.Text,
+            "Home content must not grow a spacer between selected-game details and the rail.");
+        Assert.AreEqual("0", homeContentStyle.Get("flex-shrink")?.Text,
+            "Home details and the rail must remain one adjacent bottom composition.");
         var topActionsStyle = theme.Resolve(new WrssElement("row", null,
             new HashSet<string>(["playnite-library-home-actions"],
                 StringComparer.Ordinal)));
         Assert.AreEqual("rgba(0, 0, 0, 0)", topActionsStyle.Get("background")?.Text);
+
+        var browseView = PlayniteLibraryPresentation.Render(State(
+            collection, organization, PlayniteLibraryRoute.Browse, []));
+        var browseSnapshot = new PresentationWidget(browseView).RenderSnapshot(
+            "playnite-library.presentation.browse", 2);
+        var browseNodes = Nodes(browseSnapshot.Root).ToArray();
+        foreach (var id in new[]
+                 {
+                     "playnite-library.browse.back",
+                     "playnite-library.filter.favorites",
+                     "playnite-library.filter.recent",
+                     "playnite-library.filter.source",
+                     "playnite-library.filter.sort",
+                     "playnite-library.query.clear",
+                     "playnite-library.search",
+                 })
+        {
+            var control = browseNodes.Single(node => node.Id == id);
+            CollectionAssert.Contains(control.StyleClasses.ToArray(),
+                "playnite-library-control",
+                id + " must share the Library control styling contract.");
+        }
     }
 
     [TestMethod, Timeout(30_000)]

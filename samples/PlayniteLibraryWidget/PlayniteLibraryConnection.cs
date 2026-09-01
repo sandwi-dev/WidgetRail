@@ -54,20 +54,23 @@ internal static class PlayniteLibraryConnectionPresentation
                 "playnite-library.playnite.token",
                 ProtocolConstants.MaximumTextEntryLength)
             .Disabled(!enabled)
-            .Classes("playnite-library-playnite-token");
+            .AddClasses("playnite-library-control", "playnite-library-playnite-token");
         var actions = new List<WidgetElement>
         {
             UI.Button("Back", PlayniteLibraryWidget.PlayniteBackActionId,
                     PlayniteLibraryWidget.PlayniteBackActionId)
-                .Disabled(!state.Interactive),
+                .Disabled(!state.Interactive)
+                .AddClasses("playnite-library-control"),
             UI.Button("Test connection", PlayniteLibraryWidget.PlayniteRefreshActionId,
                     PlayniteLibraryWidget.PlayniteRefreshActionId)
-                .Disabled(!enabled || !configured),
+                .Disabled(!enabled || !configured)
+                .AddClasses("playnite-library-control"),
         };
         if (configured)
             actions.Add(UI.Button("Remove saved token", PlayniteLibraryWidget.PlayniteDeleteActionId,
                     PlayniteLibraryWidget.PlayniteDeleteActionId)
-                .Disabled(!enabled));
+                .Disabled(!enabled)
+                .AddClasses("playnite-library-control"));
         var children = new List<WidgetElement>
         {
             UI.Row("playnite-library.playnite.header",
