@@ -227,7 +227,10 @@ widgetrail::WidgetStyleValue Number(const double value) {
     return {L"number", std::to_wstring(value), value, {}};
 }
 
-widgetrail::WidgetSnapshot ScrollSnapshot(const long long sequence = 1) {
+widgetrail::WidgetSnapshot ScrollSnapshot(
+    const long long sequence = 1,
+    const bool paged = false,
+    const int itemCount = 8) {
     auto snapshot = Snapshot(sequence);
     snapshot.initialFocusId = L"pin.scroll.item.0";
     snapshot.root.children.clear();
@@ -237,11 +240,15 @@ widgetrail::WidgetSnapshot ScrollSnapshot(const long long sequence = 1) {
     scroll.kind = L"scroll";
     scroll.inputScopeId = L"root";
     scroll.scrollAxis = L"vertical";
+    if (paged) {
+        scroll.scrollNearEndActionId = L"pin.scroll.next";
+        scroll.scrollPaginationThreshold = 1;
+    }
     scroll.baseStyle = {
         {L"height", Length(140.0)},
         {L"flex-shrink", Number(0.0)},
     };
-    for (int index = 0; index < 8; ++index) {
+    for (int index = 0; index < itemCount; ++index) {
         widgetrail::WidgetNode item;
         item.id = L"pin.scroll.item." + std::to_wstring(index);
         item.kind = L"button";
@@ -482,6 +489,232 @@ widgetrail::WidgetDescriptor Descriptor(
     return descriptor;
 }
 
+widgetrail::WidgetNode FocusButton(const wchar_t* id) {
+    widgetrail::WidgetNode node;
+    node.id = id;
+    node.kind = L"button";
+    node.actionId = L"activate";
+    return node;
+}
+
+void AddDirectionalGeometry(
+    widgetrail::RenderResult& render,
+    std::wstring id,
+    const widgetrail::declarative::Rect rect,
+    const bool revealable = false) {
+    render.focusScopes[id] = L"root";
+    render.navigationRects[id] = rect;
+    render.navigationEnabled[id] = true;
+    if (revealable) {
+        render.revealableFocusIds.insert(std::move(id));
+    } else {
+        render.focusRects[id] = rect;
+        render.hitRegions.push_back({std::move(id), rect, true});
+    }
+}
+
+void DirectionalOwnerAndHostRoutingContract() {
+    using namespace widgetrail::input;
+    const auto crossAxis = [](const bool horizontal) {
+        widgetrail::WidgetSnapshot snapshot;
+        snapshot.sequence = 165;
+        snapshot.instanceId = L"cross-axis.instance";
+        snapshot.activeInputScopeId = L"root";
+        snapshot.root.id = L"root";
+        snapshot.root.kind = L"stack";
+        snapshot.root.inputScopeId = L"root";
+        widgetrail::WidgetNode scroll;
+        scroll.id = horizontal ? L"horizontal.rail" : L"vertical.list";
+        scroll.kind = L"scroll";
+        scroll.scrollAxis = horizontal ? L"horizontal" : L"vertical";
+        scroll.children.push_back(FocusButton(L"inside"));
+        snapshot.root.children.push_back(std::move(scroll));
+        snapshot.root.children.push_back(FocusButton(L"outside"));
+        widgetrail::RenderResult render;
+        AddDirectionalGeometry(
+            render, L"inside",
+            horizontal
+                ? widgetrail::declarative::Rect{100.0F, 100.0F, 40.0F, 40.0F}
+                : widgetrail::declarative::Rect{100.0F, 100.0F, 40.0F, 40.0F});
+        AddDirectionalGeometry(
+            render, L"outside",
+            horizontal
+                ? widgetrail::declarative::Rect{100.0F, 0.0F, 40.0F, 40.0F}
+                : widgetrail::declarative::Rect{220.0F, 100.0F, 40.0F, 40.0F});
+        render.scrollViewports.emplace(
+            snapshot.root.children.front().id,
+            widgetrail::RenderScrollViewport{
+                horizontal
+                    ? widgetrail::declarative::ScrollAxis::Horizontal
+                    : widgetrail::declarative::ScrollAxis::Vertical,
+                {80.0F, 80.0F, 100.0F, 100.0F}, 0.0F, 200.0F});
+        return std::pair{std::move(snapshot), std::move(render)};
+    };
+
+    for (const bool horizontal : {true, false}) {
+        auto [snapshot, render] = crossAxis(horizontal);
+        const auto direction = horizontal
+            ? NavigationDirection::Up
+            : NavigationDirection::Right;
+        const auto owner = ResolveFocusedScrollOwner(
+            snapshot.root, L"inside",
+            horizontal
+                ? widgetrail::declarative::ScrollAxis::Vertical
+                : widgetrail::declarative::ScrollAxis::Horizontal,
+            snapshot.activeInputScopeId, render);
+        const auto resolution =
+            SurfaceInteractionTransactions::ResolveDirectionalFocus(
+                snapshot, L"inside", direction, render);
+        Check(owner.disposition ==
+                  FocusedScrollResolutionDisposition::NoEligibleScroll &&
+                  resolution.target == L"outside" &&
+                  !resolution.requiresScrollBoundaryAdmission,
+              horizontal
+                  ? "Up/Down may leave a horizontal rail without stale authority"
+                  : "Left/Right may leave a vertical list without stale authority");
+    }
+
+    auto [staleSnapshot, staleRender] = crossAxis(false);
+    staleRender.scrollViewports.clear();
+    const auto stale = SurfaceInteractionTransactions::ResolveDirectionalFocus(
+        staleSnapshot, L"inside", NavigationDirection::Down, staleRender);
+    WidgetInteractionSession stalePagination;
+    const WidgetInteractionAuthority staleAuthority{
+        L"directional.widget", &staleSnapshot, L"runtime-1",
+        L"presentation-1", false};
+    const auto blocked = AdmitDirectionalFocusResolution(
+        stalePagination, staleAuthority, staleRender, L"inside",
+        NavigationDirection::Down, stale,
+        ScrollPaginationIntentSource::DirectionalNavigation, 1);
+    bool trayReceivedFocus{};
+    if (!blocked.retainFocus && !blocked.resolution.target)
+        trayReceivedFocus = true;
+    Check(stale.disposition == DirectionalFocusDisposition::BlockedAuthority &&
+              blocked.retainFocus && !trayReceivedFocus,
+          "a missing matching-axis viewport keeps widget focus and suppresses tray transfer");
+
+    widgetrail::WidgetSnapshot nested;
+    nested.sequence = 166;
+    nested.instanceId = L"nested-scroll.instance";
+    nested.activeInputScopeId = L"root";
+    nested.root.id = L"root";
+    nested.root.kind = L"stack";
+    nested.root.inputScopeId = L"root";
+    widgetrail::WidgetNode outer;
+    outer.id = L"outer.scroll";
+    outer.kind = L"scroll";
+    outer.scrollAxis = L"vertical";
+    outer.scrollNearEndActionId = L"outer.next";
+    outer.scrollPaginationThreshold = 2;
+    widgetrail::WidgetNode inner;
+    inner.id = L"inner.scroll";
+    inner.kind = L"scroll";
+    inner.scrollAxis = L"vertical";
+    inner.scrollNearEndActionId = L"inner.next";
+    inner.scrollPaginationThreshold = 1;
+    inner.children.push_back(FocusButton(L"inner.last"));
+    outer.children.push_back(std::move(inner));
+    outer.children.push_back(FocusButton(L"outer.row"));
+    nested.root.children.push_back(std::move(outer));
+    nested.root.children.push_back(FocusButton(L"surface.footer"));
+    widgetrail::RenderResult nestedRender;
+    AddDirectionalGeometry(
+        nestedRender, L"inner.last", {0.0F, 0.0F, 120.0F, 40.0F});
+    AddDirectionalGeometry(
+        nestedRender, L"outer.row", {0.0F, 80.0F, 120.0F, 40.0F}, true);
+    AddDirectionalGeometry(
+        nestedRender, L"surface.footer", {0.0F, 140.0F, 120.0F, 40.0F});
+    nestedRender.scrollViewports.emplace(
+        L"inner.scroll",
+        widgetrail::RenderScrollViewport{
+            widgetrail::declarative::ScrollAxis::Vertical,
+            {0.0F, 0.0F, 120.0F, 45.0F}, 0.0F, 60.0F});
+    nestedRender.scrollViewports.emplace(
+        L"outer.scroll",
+        widgetrail::RenderScrollViewport{
+            widgetrail::declarative::ScrollAxis::Vertical,
+            {0.0F, 0.0F, 120.0F, 100.0F}, 0.0F, 130.0F});
+    auto nestedResolution =
+        SurfaceInteractionTransactions::ResolveDirectionalFocus(
+            nested, L"inner.last", NavigationDirection::Down, nestedRender);
+    Check(nestedResolution.target == L"outer.row" &&
+              nestedResolution.requiresScrollBoundaryAdmission,
+          "an outer-scroll candidate cannot bypass the deepest matching-axis owner");
+    const WidgetInteractionAuthority nestedAuthority{
+        L"nested.widget", &nested, L"runtime-1", L"presentation-1", false};
+    WidgetInteractionSession mainOwner;
+    WidgetInteractionSession pinnedOwner;
+    auto mainDecision = AdmitDirectionalFocusResolution(
+        mainOwner, nestedAuthority, nestedRender, L"inner.last",
+        NavigationDirection::Down, nestedResolution,
+        ScrollPaginationIntentSource::DirectionalNavigation, 10);
+    auto pinnedDecision = AdmitDirectionalFocusResolution(
+        pinnedOwner, nestedAuthority, nestedRender, L"inner.last",
+        NavigationDirection::Down, nestedResolution,
+        ScrollPaginationIntentSource::DirectionalNavigation, 10);
+    auto [mainRequest, mainAcquire] = mainOwner.AcquireScrollPaginationDispatch(
+        nestedAuthority, nestedRender, 11);
+    auto [pinnedRequest, pinnedAcquire] =
+        pinnedOwner.AcquireScrollPaginationDispatch(
+            nestedAuthority, nestedRender, 11);
+    Check(mainDecision.retainFocus && pinnedDecision.retainFocus &&
+              mainRequest && pinnedRequest &&
+              mainAcquire.diagnostics.empty() &&
+              pinnedAcquire.diagnostics.empty() &&
+              mainRequest->action.scrollId == L"inner.scroll" &&
+              pinnedRequest->action.scrollId == mainRequest->action.scrollId &&
+              pinnedRequest->action.actionId == mainRequest->action.actionId,
+          "main and pinned decisions retain and dispatch the same deepest-owner page authority");
+
+    auto finiteNested = nested;
+    auto& finiteInner = finiteNested.root.children[0].children[0];
+    finiteInner.scrollNearEndActionId.clear();
+    finiteInner.scrollPaginationThreshold = 0;
+    auto finiteResolution =
+        SurfaceInteractionTransactions::ResolveDirectionalFocus(
+            finiteNested, L"inner.last", NavigationDirection::Down,
+            nestedRender);
+    WidgetInteractionSession finiteOwner;
+    const WidgetInteractionAuthority finiteAuthority{
+        L"nested.widget", &finiteNested, L"runtime-1", L"presentation-1", false};
+    const auto finiteDecision = AdmitDirectionalFocusResolution(
+        finiteOwner, finiteAuthority, nestedRender, L"inner.last",
+        NavigationDirection::Down, finiteResolution,
+        ScrollPaginationIntentSource::DirectionalNavigation, 12);
+    Check(finiteResolution.target == L"outer.row" &&
+              finiteResolution.requiresScrollBoundaryAdmission &&
+              !finiteDecision.retainFocus,
+          "a finite inner Scroll may enter its containing outer Scroll after bounded admission");
+
+    auto outerResolution =
+        SurfaceInteractionTransactions::ResolveDirectionalFocus(
+            nested, L"outer.row", NavigationDirection::Down, nestedRender);
+    WidgetInteractionSession outerOwner;
+    auto outerDecision = AdmitDirectionalFocusResolution(
+        outerOwner, nestedAuthority, nestedRender, L"outer.row",
+        NavigationDirection::Down, outerResolution,
+        ScrollPaginationIntentSource::DirectionalNavigation, 13);
+    auto [outerRequest, outerAcquire] =
+        outerOwner.AcquireScrollPaginationDispatch(
+            nestedAuthority, nestedRender, 14);
+    Check(outerResolution.target == L"surface.footer" &&
+              outerResolution.requiresScrollBoundaryAdmission &&
+              outerDecision.retainFocus && outerRequest &&
+              outerAcquire.diagnostics.empty() &&
+              outerRequest->action.scrollId == L"outer.scroll" &&
+              outerRequest->action.actionId == L"outer.next",
+          "after inner admission the containing Scroll owns its independent outer boundary");
+
+    nested.root.children[0].children[0].children[0].focusDown = L"outer.row";
+    const auto explicitExit =
+        SurfaceInteractionTransactions::ResolveDirectionalFocus(
+            nested, L"inner.last", NavigationDirection::Down, nestedRender);
+    Check(explicitExit.disposition == DirectionalFocusDisposition::Explicit &&
+              explicitExit.target == L"outer.row" &&
+              !explicitExit.requiresScrollBoundaryAdmission,
+          "explicit authored links keep their existing pagination bypass precedence");
+}
+
 } // namespace
 
 int main() {
@@ -499,6 +732,7 @@ int main() {
                   DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
                   reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
               "DWrite factory initializes");
+        DirectionalOwnerAndHostRoutingContract();
 
         widgetrail::pinned::WidgetSurfaceCoordinator coordinator;
         std::wstring error;
@@ -627,6 +861,7 @@ int main() {
                       admission.widgetId, admission.runtimeGeneration,
                       SliderSnapshot(3, 45.0)),
                   "authoritative successor acknowledges the pinned slider value");
+            UpdateWindow(slider.window());
             Check(slider.HandleFocusedSliderModeButton(L"a", 1'100),
                   "A exits active pinned slider adjustment");
             Check(slider.MoveControllerFocus(
@@ -1182,6 +1417,93 @@ int main() {
             scrolling.Dispose();
             std::error_code scrollCleanup;
             std::filesystem::remove_all(scrollRoot, scrollCleanup);
+        }
+
+        {
+            widgetrail::pinned::WidgetSurfaceCoordinator pagination;
+            const auto paginationRoot = placementRoot / L"scroll-pagination";
+            Check(pagination.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x414,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      paginationRoot / L"placement.ini"),
+                  "pinned pagination fixture initializes through the production coordinator");
+            pagination.OnOverlayShown();
+            auto initial = ScrollSnapshot(1, true, 8);
+            auto admission = Admission();
+            admission.snapshot = initial;
+            admission.pinnedLayouts = {{
+                L"paged-layout", L"Paged", 420.0F, 320.0F, initial,
+            }};
+            Check(pagination.Pin(admission, error) && pagination.CycleLayout(1) &&
+                      pagination.CommitSetup(error) &&
+                      pagination.ToggleInteractionMode(),
+                  "pinned pagination fixture admits one exact authored layout");
+            UpdateWindow(pagination.window());
+            Check(pagination.EnterControllerFocus(),
+                  "pinned pagination fixture owns controller focus");
+            UpdateWindow(pagination.window());
+            for (int index = 1; index < 8; ++index) {
+                Check(pagination.MoveControllerFocus(
+                          widgetrail::input::NavigationDirection::Down),
+                      "pinned focus advances through the current scroll page");
+                UpdateWindow(pagination.window());
+            }
+            Check(pagination.focusedElementId() == L"pin.scroll.item.7" &&
+                      pagination.MoveControllerFocus(
+                          widgetrail::input::NavigationDirection::Down) &&
+                      pagination.focusedElementId() == L"pin.scroll.item.7",
+                  "pinned focus retains the exact last row while pagination is admitted");
+            auto pending = pagination.TakePaginationRequests(1000);
+            Check(pending.requests.size() == 1 &&
+                      pending.requests.front().selectedLayoutId ==
+                          L"paged-layout" &&
+                      pending.requests.front().request.action.scrollId ==
+                          L"pin.scroll" &&
+                      pending.requests.front().request.action.actionId ==
+                          L"pin.scroll.next" &&
+                      pagination.IsCurrentPaginationRequest(
+                          pending.requests.front()),
+                  "pinned pagination surfaces one exact layout/runtime/action request");
+            pagination.CompletePaginationRequest({
+                pending.requests.front().request,
+                widgetrail::input::ScrollPaginationDispatchDisposition::Admitted,
+                {},
+                1001,
+            });
+
+            auto successor = ScrollSnapshot(2, true, 9);
+            Check(pagination.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      successor, {{
+                          L"paged-layout", L"Paged", 420.0F, 320.0F,
+                          successor,
+                      }}),
+                  "authoritative pinned successor admits the requested row");
+            UpdateWindow(pagination.window());
+            Check(pagination.MoveControllerFocus(
+                      widgetrail::input::NavigationDirection::Down) &&
+                      pagination.focusedElementId() == L"pin.scroll.item.8",
+                  "the next pinned direction enters the newly admitted row");
+
+            auto finite = ScrollSnapshot(3, false, 9);
+            Check(pagination.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      finite, {{
+                          L"paged-layout", L"Paged", 420.0F, 320.0F,
+                          finite,
+                      }}),
+                  "finite pinned successor removes only pagination authority");
+            UpdateWindow(pagination.window());
+            Check(pagination.MoveControllerFocus(
+                      widgetrail::input::NavigationDirection::Down) &&
+                      pagination.focusedElementId() == L"pin.outside",
+                  "a finite pinned boundary permits the external focus move");
+            Check(pagination.Unpin(
+                      widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "pinned pagination fixture performs exact teardown");
+            pagination.Dispose();
+            std::error_code paginationCleanup;
+            std::filesystem::remove_all(paginationRoot, paginationCleanup);
         }
 
         {

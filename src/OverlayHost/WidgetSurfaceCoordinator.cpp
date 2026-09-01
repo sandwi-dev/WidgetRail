@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iterator>
 #include <utility>
 
 namespace widgetrail::pinned {
@@ -215,6 +216,7 @@ bool WidgetSurfaceCoordinator::Pin(
         admission_->widgetId, SelectedSnapshot(), focusedElementId_);
     RetireSliderInteraction();
     inputRequests_.clear();
+    paginationDiagnostics_.clear();
     actionFeedback_.clear();
     actionFeedbackFailure_ = false;
     controllerFocused_ = false;
@@ -346,6 +348,11 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     }
     inputRequests_.swap(retainedInputRequests);
     if (selectedLayoutReplaced) {
+        if (RecordPaginationOutcome(
+                sliderInteraction_.RetireScrollPagination(
+                    admission_->widgetId, L"pinned-layout-replaced"))) {
+            NotifyOwner();
+        }
         if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
     }
     if (selectedLayoutReplaced || mediaContractReplaced)
@@ -435,6 +442,11 @@ bool WidgetSurfaceCoordinator::ExitControllerFocus() noexcept {
     controllerFocused_ = false;
     ClearFreeScroll();
     RetireSliderInteraction();
+    if (admission_) {
+        (void)RecordPaginationOutcome(
+            sliderInteraction_.RetireScrollPagination(
+                admission_->widgetId, L"pinned-focus-left"));
+    }
     if (overlayVisible_ && notificationWindow_ && IsWindow(notificationWindow_))
         (void)SetFocus(notificationWindow_);
     PublishAccessibility();
@@ -540,10 +552,20 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
         }
         ClearFreeScroll();
     }
-    const auto resolution = input::SurfaceInteractionTransactions::ResolveDirectionalFocus(
+    auto resolution = input::SurfaceInteractionTransactions::ResolveDirectionalFocus(
         snapshot, focusedElementId_, direction, lastRenderResult_,
         &focusGroupMemory_, admission_->widgetId);
-    return resolution.target ? applyFocus(*resolution.target) : false;
+    auto focusAdmission = input::AdmitDirectionalFocusResolution(
+        sliderInteraction_, authority, lastRenderResult_, focusedElementId_,
+        direction, std::move(resolution),
+        input::ScrollPaginationIntentSource::DirectionalNavigation,
+        GetTickCount64());
+    if (RecordPaginationOutcome(std::move(focusAdmission.pagination)))
+        NotifyOwner();
+    if (focusAdmission.retainFocus) return true;
+    return focusAdmission.resolution.target
+        ? applyFocus(*focusAdmission.resolution.target)
+        : false;
 }
 
 bool WidgetSurfaceCoordinator::HandleFocusedSliderModeButton(
@@ -665,6 +687,17 @@ void WidgetSurfaceCoordinator::RetireSliderInteraction() noexcept {
     (void)sliderInteraction_.RetirePresentations();
 }
 
+bool WidgetSurfaceCoordinator::RecordPaginationOutcome(
+    input::ScrollPaginationSessionOutcome outcome) {
+    const bool notify = outcome.dispatchReady || !outcome.diagnostics.empty();
+    for (auto& diagnostic : outcome.diagnostics) {
+        if (paginationDiagnostics_.size() >= kMaximumPendingInputRequests)
+            paginationDiagnostics_.erase(paginationDiagnostics_.begin());
+        paginationDiagnostics_.push_back(std::move(diagnostic));
+    }
+    return notify;
+}
+
 void WidgetSurfaceCoordinator::QueueResolvedInput(
     std::wstring nodeId,
     std::wstring protocolButton,
@@ -735,6 +768,67 @@ WidgetSurfaceCoordinator::TakeInputRequests() noexcept {
     std::vector<WidgetSurfaceInputRequest> result;
     result.swap(inputRequests_);
     return result;
+}
+
+WidgetSurfacePaginationBatch WidgetSurfaceCoordinator::TakePaginationRequests(
+    const std::uint64_t now) {
+    WidgetSurfacePaginationBatch batch;
+    batch.diagnostics.swap(paginationDiagnostics_);
+    if (!pinned()) return batch;
+    const auto& snapshot = SelectedSnapshot();
+    const input::WidgetInteractionAuthority authority{
+        admission_->widgetId,
+        &snapshot,
+        admission_->runtimeGeneration,
+        admission_->presentationGeneration,
+        false,
+    };
+    for (std::size_t index = 0;
+         index < kMaximumPendingInputRequests; ++index) {
+        auto [request, outcome] =
+            sliderInteraction_.AcquireScrollPaginationDispatch(
+                authority, lastRenderResult_, now);
+        batch.diagnostics.insert(
+            batch.diagnostics.end(),
+            std::make_move_iterator(outcome.diagnostics.begin()),
+            std::make_move_iterator(outcome.diagnostics.end()));
+        if (!request) break;
+        batch.requests.push_back({
+            std::wstring{SelectedLayoutId()}, std::move(*request)});
+    }
+    return batch;
+}
+
+bool WidgetSurfaceCoordinator::IsCurrentPaginationRequest(
+    const WidgetSurfacePaginationRequest& pending) const noexcept {
+    if (!pinned() || pending.selectedLayoutId != SelectedLayoutId())
+        return false;
+    const auto& request = pending.request;
+    const auto& snapshot = SelectedSnapshot();
+    if (request.widgetId != admission_->widgetId ||
+        request.widgetInstanceId != snapshot.instanceId ||
+        request.runtimeGeneration != admission_->runtimeGeneration ||
+        request.presentationGeneration != admission_->presentationGeneration ||
+        request.inputScopeId != snapshot.activeInputScopeId) {
+        return false;
+    }
+    const auto actions = input::FindScrollPaginationActions(
+        snapshot.root, snapshot.activeInputScopeId, lastRenderResult_);
+    return std::ranges::any_of(actions, [&](const auto& action) {
+        return action.scrollId == request.action.scrollId &&
+            action.actionId == request.action.actionId &&
+            action.sourceElementId == request.action.sourceElementId &&
+            action.edge == request.action.edge &&
+            action.edgeKey == request.action.edgeKey;
+    });
+}
+
+void WidgetSurfaceCoordinator::CompletePaginationRequest(
+    input::ScrollPaginationDispatchOutcome outcome) {
+    if (RecordPaginationOutcome(
+            sliderInteraction_.CompleteScrollPaginationDispatch(outcome))) {
+        NotifyOwner();
+    }
 }
 
 bool WidgetSurfaceCoordinator::IsCurrentInputRequest(
@@ -1290,6 +1384,10 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     pointerPlacementMode_ = PlacementMode::None;
     pointerActionNode_.clear();
     inputRequests_.clear();
+    (void)sliderInteraction_.RetireScrollPagination(
+        admission_ ? admission_->widgetId : std::wstring_view{},
+        L"pinned-surface-retired");
+    paginationDiagnostics_.clear();
     actionFeedback_.clear();
     if (renderer_ && admission_)
         renderer_->ForgetWidgetState(admission_->instanceId);
@@ -2108,9 +2206,12 @@ void WidgetSurfaceCoordinator::Paint() {
             ? kAdjustBorderDip : kPinnedBorderDip);
     const HRESULT result = renderTarget_->EndDraw();
     bool mediaViewportReconciled{};
+    input::ScrollPaginationSessionOutcome paginationOutcome;
     if (result == D2DERR_RECREATE_TARGET) ReleaseGraphicsResources();
     else if (SUCCEEDED(result)) {
         lastRenderResult_ = std::move(renderResult);
+        paginationOutcome = sliderInteraction_.ReconcileScrollPagination(
+            authority, lastRenderResult_, GetTickCount64());
         if (mediaViewportGeometryDirty_) {
             if (lastRenderResult_.succeeded &&
                 lastRenderResult_.mediaViewportRegions.size() == 1) {
@@ -2128,7 +2229,10 @@ void WidgetSurfaceCoordinator::Paint() {
         PublishAccessibility();
     }
     EndPaint(window_, &paint);
-    if (SUCCEEDED(result) && mediaViewportReconciled) NotifyOwner();
+    const bool paginationNotification =
+        RecordPaginationOutcome(std::move(paginationOutcome));
+    if (SUCCEEDED(result) &&
+        (mediaViewportReconciled || paginationNotification)) NotifyOwner();
 }
 
 void WidgetSurfaceCoordinator::PublishAccessibility() {
@@ -2359,6 +2463,9 @@ void WidgetSurfaceCoordinator::OnWindowDestroyed() noexcept {
         accessibilityProvider_.Detach();
         controllerFocused_ = false;
         inputRequests_.clear();
+        (void)sliderInteraction_.RetireScrollPagination(
+            admission_->widgetId, L"pinned-window-destroyed");
+        paginationDiagnostics_.clear();
         focusedElementId_.clear();
         admission_.reset();
         policy_.Stop(StopReason::Unpin);

@@ -111,13 +111,24 @@ DirectionalFocusResolution SurfaceInteractionTransactions::ResolveDirectionalFoc
         focusGroupCandidates);
     if (internal.target) {
         if (auto target = resolveGeometric(*internal.target)) {
-            return {DirectionalFocusDisposition::Geometric,
-                    std::move(target)};
+            const auto scrollExit = ClassifyDirectionalScrollExit(
+                snapshot.root, focusedElementId, *target, direction,
+                snapshot.activeInputScopeId, renderResult);
+            if (scrollExit ==
+                DirectionalScrollExitDisposition::StaleAuthority) {
+                return {
+                    DirectionalFocusDisposition::BlockedAuthority, {}};
+            }
+            return {
+                DirectionalFocusDisposition::Geometric,
+                std::move(target),
+                scrollExit == DirectionalScrollExitDisposition::OutsideOwner,
+            };
         }
         return {DirectionalFocusDisposition::Boundary, {}};
     }
     if (internal.staleAuthority) {
-        return {DirectionalFocusDisposition::Boundary, {}};
+        return {DirectionalFocusDisposition::BlockedAuthority, {}};
     }
     if (const auto geometric = FindGeometricFocusTarget(
             focusedElementId, direction, renderResult,
@@ -128,7 +139,7 @@ DirectionalFocusResolution SurfaceInteractionTransactions::ResolveDirectionalFoc
             snapshot.root, focusedElementId, *target, direction,
             snapshot.activeInputScopeId, renderResult);
         if (scrollExit == DirectionalScrollExitDisposition::StaleAuthority) {
-            return {DirectionalFocusDisposition::Boundary, {}};
+            return {DirectionalFocusDisposition::BlockedAuthority, {}};
         }
         return {
             DirectionalFocusDisposition::Geometric,
@@ -1019,6 +1030,35 @@ WidgetInteractionSession::ObserveScrollPaginationBoundaryIntent(
         result.pagination.diagnostics.end(),
         std::make_move_iterator(reconciled.diagnostics.begin()),
         std::make_move_iterator(reconciled.diagnostics.end()));
+    return result;
+}
+
+DirectionalFocusAdmission AdmitDirectionalFocusResolution(
+    WidgetInteractionSession& paginationOwner,
+    const WidgetInteractionAuthority& authority,
+    const RenderResult& renderResult,
+    const std::wstring_view focusedElementId,
+    const NavigationDirection direction,
+    DirectionalFocusResolution resolution,
+    const ScrollPaginationIntentSource source,
+    const std::uint64_t now) {
+    DirectionalFocusAdmission result;
+    result.resolution = std::move(resolution);
+    if (result.resolution.disposition ==
+        DirectionalFocusDisposition::BlockedAuthority) {
+        result.retainFocus = true;
+        return result;
+    }
+    const bool proposedScrollExit = result.resolution.target &&
+        result.resolution.requiresScrollBoundaryAdmission;
+    const bool unresolvedBoundary = !result.resolution.target &&
+        result.resolution.disposition == DirectionalFocusDisposition::Boundary;
+    if (!proposedScrollExit && !unresolvedBoundary) return result;
+
+    auto boundary = paginationOwner.ObserveScrollPaginationBoundaryIntent(
+        authority, renderResult, focusedElementId, direction, source, now);
+    result.pagination = std::move(boundary.pagination);
+    result.retainFocus = boundary.retainFocus;
     return result;
 }
 

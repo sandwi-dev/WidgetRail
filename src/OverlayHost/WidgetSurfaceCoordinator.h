@@ -65,6 +65,16 @@ struct WidgetSurfaceInputRequest final {
     ControllerInputOrigin origin{ControllerInputOrigin::PhysicalController};
 };
 
+struct WidgetSurfacePaginationRequest final {
+    std::wstring selectedLayoutId;
+    input::ScrollPaginationPrefetchRequest request;
+};
+
+struct WidgetSurfacePaginationBatch final {
+    std::vector<WidgetSurfacePaginationRequest> requests;
+    std::vector<input::ScrollPaginationDiagnostic> diagnostics;
+};
+
 struct PinnedLayoutOption final {
     std::wstring id;
     std::wstring name;
@@ -178,6 +188,12 @@ public:
         ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController,
         std::optional<double> requestedValue = std::nullopt);
     [[nodiscard]] std::vector<WidgetSurfaceInputRequest> TakeInputRequests() noexcept;
+    [[nodiscard]] WidgetSurfacePaginationBatch TakePaginationRequests(
+        std::uint64_t now);
+    [[nodiscard]] bool IsCurrentPaginationRequest(
+        const WidgetSurfacePaginationRequest& request) const noexcept;
+    void CompletePaginationRequest(
+        input::ScrollPaginationDispatchOutcome outcome);
     [[nodiscard]] bool IsCurrentInputRequest(
         const WidgetSurfaceInputRequest& request) const noexcept;
     void RejectInputRequest(
@@ -311,6 +327,8 @@ private:
     [[nodiscard]] std::wstring_view SelectedLayoutId() const noexcept;
     void ClearFreeScroll() noexcept;
     void RetireSliderInteraction() noexcept;
+    [[nodiscard]] bool RecordPaginationOutcome(
+        input::ScrollPaginationSessionOutcome outcome);
     void QueueLayoutSelection(std::wstring_view layoutId, bool selected);
 
     HINSTANCE instance_{};
@@ -356,6 +374,7 @@ private:
     input::FreeScrollInteractionState freeScroll_;
     input::WidgetInteractionSession sliderInteraction_;
     std::vector<WidgetSurfaceInputRequest> inputRequests_;
+    std::vector<input::ScrollPaginationDiagnostic> paginationDiagnostics_;
     std::vector<PinnedLayoutSelectionNotification> layoutSelectionNotifications_;
     std::wstring actionFeedback_;
     std::function<void(WidgetSurfaceStopReason)> beforeWindowRetirement_;

@@ -8090,6 +8090,52 @@ private:
             if (!delivered || !*delivered)
                 AppendDiagnostic(L"Pinned-layout selection notification failed");
         }
+        auto pagination = pinnedSurfaceCoordinator_.TakePaginationRequests(
+            GetTickCount64());
+        for (const auto& diagnostic : pagination.diagnostics) {
+            AppendDiagnostic(
+                widgetrail::input::FormatScrollPaginationDiagnostic(diagnostic));
+        }
+        for (const auto& pending : pagination.requests) {
+            const auto* descriptor =
+                sessions_.FindDescriptor(pending.request.widgetId);
+            widgetrail::input::ScrollPaginationDispatchOutcome dispatch;
+            dispatch.request = pending.request;
+            dispatch.now = GetTickCount64();
+            if (!descriptor ||
+                descriptor->runtimeGeneration !=
+                    pending.request.runtimeGeneration ||
+                state_.surface() == widgetrail::Surface::Hidden ||
+                pinnedSurfaceCoordinator_.interactionMode() !=
+                    widgetrail::pinned::InteractionMode::Focusable ||
+                !pinnedSurfaceCoordinator_.IsCurrentPaginationRequest(pending)) {
+                dispatch.disposition =
+                    widgetrail::input::ScrollPaginationDispatchDisposition::
+                        StaleAuthority;
+                dispatch.safeDiagnostic = L"stale-pinned-route";
+            } else {
+                const auto handled = bridge_.SendAction(
+                    pending.request.widgetId,
+                    pending.request.action.actionId,
+                    pending.request.action.sourceElementId,
+                    pending.request.inputScopeId);
+                dispatch.disposition = !handled
+                    ? widgetrail::input::ScrollPaginationDispatchDisposition::
+                        TransportFailure
+                    : *handled
+                        ? widgetrail::input::ScrollPaginationDispatchDisposition::
+                            Admitted
+                        : widgetrail::input::ScrollPaginationDispatchDisposition::
+                            NotHandled;
+                if (!handled) {
+                    dispatch.safeDiagnostic = bridge_.lastError();
+                } else if (!*handled) {
+                    dispatch.safeDiagnostic = L"action-not-handled";
+                }
+            }
+            pinnedSurfaceCoordinator_.CompletePaginationRequest(
+                std::move(dispatch));
+        }
         for (const auto& request : pinnedSurfaceCoordinator_.TakeInputRequests()) {
             const auto* descriptor = sessions_.FindDescriptor(request.widgetId);
             const auto* workerSnapshot = SnapshotFor(request.widgetId);
@@ -10980,7 +11026,7 @@ private:
         else if (direction == L"right") navigationDirection = widgetrail::input::NavigationDirection::Right;
         else if (direction == L"up") navigationDirection = widgetrail::input::NavigationDirection::Up;
         else if (direction == L"down") navigationDirection = widgetrail::input::NavigationDirection::Down;
-        const auto resolution = interactionSession_.ResolveDirectionalFocus(
+        auto resolution = interactionSession_.ResolveDirectionalFocus(
             widgetId, *snapshot, navigationDirection, lastWidgetRenderResult_);
         if (resolution.disposition ==
             widgetrail::input::DirectionalFocusDisposition::MissingVisibleFocus) {
@@ -10997,22 +11043,19 @@ private:
             }
             return;
         }
+        const auto authority = InteractionAuthority(widgetId, *snapshot);
+        if (!authority) return;
+        auto admission = widgetrail::input::AdmitDirectionalFocusResolution(
+            interactionSession_, *authority, lastWidgetRenderResult_,
+            interactionSession_.focusedElementId(), navigationDirection,
+            std::move(resolution),
+            widgetrail::input::ScrollPaginationIntentSource::
+                DirectionalNavigation,
+            GetTickCount64());
+        PublishScrollPaginationOutcome(admission.pagination);
+        if (admission.retainFocus) return;
+        resolution = std::move(admission.resolution);
         if (resolution.target) {
-            if (resolution.requiresScrollBoundaryAdmission) {
-                if (const auto authority =
-                        InteractionAuthority(widgetId, *snapshot)) {
-                    auto boundary =
-                        interactionSession_.ObserveScrollPaginationBoundaryIntent(
-                            *authority, lastWidgetRenderResult_,
-                            interactionSession_.focusedElementId(),
-                            navigationDirection,
-                            widgetrail::input::ScrollPaginationIntentSource::
-                                DirectionalNavigation,
-                            GetTickCount64());
-                    PublishScrollPaginationOutcome(boundary.pagination);
-                    if (boundary.retainFocus) return;
-                }
-            }
             ObserveScrollPaginationFocusIntent(
                 widgetId, *snapshot, interactionSession_.focusedElementId(),
                 *resolution.target,
@@ -11029,17 +11072,6 @@ private:
             InvalidateWidgetFocusChange(
                 focus.priorFocus, focus.sliderDamageNodeIds);
             return;
-        }
-        if (const auto authority = InteractionAuthority(widgetId, *snapshot)) {
-            auto boundary =
-                interactionSession_.ObserveScrollPaginationBoundaryIntent(
-                    *authority, lastWidgetRenderResult_,
-                    interactionSession_.focusedElementId(), navigationDirection,
-                    widgetrail::input::ScrollPaginationIntentSource::
-                        DirectionalNavigation,
-                    GetTickCount64());
-            PublishScrollPaginationOutcome(boundary.pagination);
-            if (boundary.retainFocus) return;
         }
         if (widgetrail::input::ShouldTransferFocusToTray(
                 navigationDirection,

@@ -110,6 +110,7 @@ enum class DirectionalFocusDisposition {
     VisibleRecovery,
     Explicit,
     Geometric,
+    BlockedAuthority,
     Boundary,
 };
 
@@ -521,5 +522,24 @@ private:
     std::uint64_t scrollPaginationVisibleCompletionCount_{};
     std::uint64_t scrollPaginationVisibleLatencyTotalMs_{};
 };
+
+/// One shared main/pinned decision around the already-resolved focus target.
+/// Stale authority and admitted pagination both retain the current focus;
+/// finite boundaries remain available to the owning surface policy.
+struct DirectionalFocusAdmission final {
+    DirectionalFocusResolution resolution;
+    ScrollPaginationSessionOutcome pagination;
+    bool retainFocus{};
+};
+
+[[nodiscard]] DirectionalFocusAdmission AdmitDirectionalFocusResolution(
+    WidgetInteractionSession& paginationOwner,
+    const WidgetInteractionAuthority& authority,
+    const RenderResult& renderResult,
+    std::wstring_view focusedElementId,
+    NavigationDirection direction,
+    DirectionalFocusResolution resolution,
+    ScrollPaginationIntentSource source,
+    std::uint64_t now);
 
 } // namespace widgetrail::input

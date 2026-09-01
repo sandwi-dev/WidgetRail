@@ -420,7 +420,7 @@ FocusedScrollResolution ResolveFocusedScrollOwner(
 
     bool foundSemanticScroll{};
     for (auto item = path.rbegin(); item != path.rend(); ++item) {
-        if ((*item)->kind != L"scroll") continue;
+        if (!ScrollMatchesAxis(**item, axis)) continue;
         foundSemanticScroll = true;
         const auto viewport = renderResult.scrollViewports.find((*item)->id);
         if (viewport == renderResult.scrollViewports.end() ||

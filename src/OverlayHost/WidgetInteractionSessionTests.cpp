@@ -597,7 +597,8 @@ void ResponsiveGridScrollOwnsDirectionalPriority() {
         L"directional.widget", snapshot, NavigationDirection::Down,
         staleRender);
     Check(!stale.target &&
-              stale.disposition == DirectionalFocusDisposition::Boundary,
+              stale.disposition ==
+                  DirectionalFocusDisposition::BlockedAuthority,
           "stale Scroll geometry fails closed instead of exposing an external focus target");
 }
 
