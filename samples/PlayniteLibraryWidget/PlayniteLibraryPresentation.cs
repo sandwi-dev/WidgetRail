@@ -67,8 +67,6 @@ internal static class PlayniteLibraryPresentation
         MinimumHeight = 340,
     };
 
-    internal static WidgetSurfaceHints SecondarySurface => Surface;
-
     internal static string BrowseScrollId(bool alternate) =>
         alternate ? AlternateBrowseScrollId : ScrollId;
 
@@ -180,18 +178,15 @@ internal static class PlayniteLibraryPresentation
         }
         if (state.Route == PlayniteLibraryRoute.Browse)
         {
-            filterControls.Add(UI.Button("Source: " + (state.Query.SourceAttribution ?? "All"),
+            var sourceOptions = SourceOptions(state);
+            filterControls.Add(UI.Select("Source", sourceOptions,
                     PlayniteLibraryActions.SourceFilter,
-                    PlayniteLibraryActions.SourceFilter)
+                    "Filter by library source")
                 .Disabled(!renderActionsEnabled)
                 .AddClasses("playnite-library-control", "playnite-library-filter-control"));
             if (!state.RecentlyPlayed)
-                filterControls.Add(UI.Button("Sort: " + (state.Query.Sort switch
-                    {
-                        WidgetAppLibrarySortOrder.DisplayNameDescending => "Z–A",
-                        WidgetAppLibrarySortOrder.SourceThenDisplayName => "Source",
-                        _ => "A–Z",
-                    }), PlayniteLibraryActions.SortFilter, PlayniteLibraryActions.SortFilter)
+                filterControls.Add(UI.Select("Sort", SortOptions(state.Query.Sort),
+                        PlayniteLibraryActions.SortFilter, "Sort installed games")
                     .Disabled(!renderActionsEnabled)
                     .AddClasses("playnite-library-control", "playnite-library-filter-control"));
             filterControls.Add(UI.Button("Clear", "playnite-library.query.clear",
@@ -617,7 +612,7 @@ internal static class PlayniteLibraryPresentation
                         .Classes("playnite-library-empty"))
                 .Classes("playnite-library-content");
             content = content.AddClasses("playnite-library-empty-content");
-            initialFocus = "playnite-library.browse.empty.action";
+            initialFocus ??= "playnite-library.browse.empty.action";
         }
         else
         {
@@ -745,6 +740,47 @@ internal static class PlayniteLibraryPresentation
         state.Query.SourceAttribution is not null ||
         state.Query.Sort != WidgetAppLibrarySortOrder.DisplayName ||
         state.FavoriteFilter || state.RecentlyPlayed;
+
+    private static IReadOnlyList<SelectOption> SourceOptions(
+        PlayniteLibraryPresentationState state)
+    {
+        var active = state.Query.SourceAttribution;
+        return
+        [
+            new SelectOption(PlayniteLibraryActions.SourceAll, "All",
+                PlayniteLibraryActions.SourceAll, IsSelected: active is null),
+            .. PlayniteLibrarySourceCatalog.SelectOptions(
+                    state.Organization.ProvenSources, state.Sources, active)
+                .Select(source =>
+                {
+                    var actionId = PlayniteLibraryActions.SourceOption(source);
+                    return new SelectOption(actionId, source, actionId,
+                        IsSelected: string.Equals(source, active,
+                            StringComparison.OrdinalIgnoreCase));
+                }),
+        ];
+    }
+
+    private static IReadOnlyList<SelectOption> SortOptions(
+        WidgetAppLibrarySortOrder sort)
+    {
+        var selected = sort is WidgetAppLibrarySortOrder.DisplayNameDescending or
+            WidgetAppLibrarySortOrder.SourceThenDisplayName
+            ? sort
+            : WidgetAppLibrarySortOrder.DisplayName;
+        return
+        [
+            new SelectOption(PlayniteLibraryActions.SortDisplayName, "A–Z",
+                PlayniteLibraryActions.SortDisplayName,
+                IsSelected: selected == WidgetAppLibrarySortOrder.DisplayName),
+            new SelectOption(PlayniteLibraryActions.SortDisplayNameDescending, "Z–A",
+                PlayniteLibraryActions.SortDisplayNameDescending,
+                IsSelected: selected == WidgetAppLibrarySortOrder.DisplayNameDescending),
+            new SelectOption(PlayniteLibraryActions.SortSourceThenDisplayName, "Source",
+                PlayniteLibraryActions.SortSourceThenDisplayName,
+                IsSelected: selected == WidgetAppLibrarySortOrder.SourceThenDisplayName),
+        ];
+    }
 
     private static WidgetElement SourceStatus(
         IReadOnlyList<WidgetAppLibrarySource> sources,

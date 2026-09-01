@@ -90,6 +90,25 @@ internal sealed record PlayniteLibraryCollectionOption(
 
 internal static class PlayniteLibrarySourceCatalog
 {
+    internal static string[] SelectOptions(
+        IReadOnlyList<string> persisted,
+        IReadOnlyList<WidgetAppLibrarySource> observations,
+        string? activeSource)
+    {
+        var sources = persisted
+            .Concat(observations.Select(source => source.DisplayName))
+            .Append(activeSource)
+            .Where(source => source is { Length: > 0 and <=
+                PlayniteLibraryPrivateState.MaximumSourceNameLength } &&
+                !string.IsNullOrWhiteSpace(source) && !source.Any(char.IsControl))
+            .Select(source => source!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(source => source, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(source => source, StringComparer.Ordinal)
+            .ToArray();
+        return sources;
+    }
+
     internal static IReadOnlyList<WidgetAppLibrarySource> RetainObservations(
         IReadOnlyList<WidgetAppLibrarySource> current,
         IReadOnlyList<WidgetAppLibrarySource> incoming) =>

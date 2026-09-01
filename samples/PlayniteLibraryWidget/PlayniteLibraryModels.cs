@@ -82,8 +82,6 @@ internal enum PlayniteLibraryRoute
     // routes own Categories, Hidden games, and Playnite connection.
     Library,
     Browse,
-    SourcePicker,
-    SortPicker,
     Hidden,
     Categories,
     Category,

@@ -128,9 +128,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
         var navigation = _navigation.Value;
         var local = _model.Value;
         PinRenderedArtwork(navigation.Route, local);
-        if (navigation.Route is PlayniteLibraryRoute.SourcePicker or
-            PlayniteLibraryRoute.SortPicker)
-            return RenderBrowsePicker(navigation, local);
         if (navigation.Route == PlayniteLibraryRoute.PlayniteConnection)
         {
             var connection = CapturePlayniteConnection(local);
@@ -173,93 +170,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
         };
     }
 
-    private WidgetView RenderBrowsePicker(
-        WidgetNavigationSnapshot<PlayniteLibraryRoute> navigation,
-        PlayniteLibraryRenderState local)
-    {
-        IReadOnlyList<PickerOption> options;
-        string title;
-        string id;
-        string description;
-        if (navigation.Route == PlayniteLibraryRoute.SourcePicker)
-        {
-            string[] sources;
-            lock (_gate) sources = ProvenSourcesLocked();
-            options =
-            [
-                new PickerOption(
-                    PlayniteLibraryActions.SourceAll,
-                    "All sources",
-                    PlayniteLibraryActions.SourceAll,
-                    IsSelected: local.Collection.Query.SourceAttribution is null),
-                .. sources.Select(source =>
-                {
-                    var optionId = PlayniteLibraryActions.SourceOption(source);
-                    return new PickerOption(
-                        optionId,
-                        source,
-                        optionId,
-                        IsSelected: string.Equals(
-                            local.Collection.Query.SourceAttribution,
-                            source,
-                            StringComparison.OrdinalIgnoreCase));
-                }),
-            ];
-            title = "Choose source";
-            id = "playnite-library.source-picker";
-            description = "Show installed games from one Playnite source or every source.";
-        }
-        else
-        {
-            options =
-            [
-                new PickerOption(
-                    PlayniteLibraryActions.SortDisplayName,
-                    "A–Z",
-                    PlayniteLibraryActions.SortDisplayName,
-                    IsSelected: local.Collection.Query.Sort ==
-                        WidgetAppLibrarySortOrder.DisplayName),
-                new PickerOption(
-                    PlayniteLibraryActions.SortDisplayNameDescending,
-                    "Z–A",
-                    PlayniteLibraryActions.SortDisplayNameDescending,
-                    IsSelected: local.Collection.Query.Sort ==
-                        WidgetAppLibrarySortOrder.DisplayNameDescending),
-                new PickerOption(
-                    PlayniteLibraryActions.SortSourceThenDisplayName,
-                    "Source",
-                    PlayniteLibraryActions.SortSourceThenDisplayName,
-                    IsSelected: local.Collection.Query.Sort ==
-                        WidgetAppLibrarySortOrder.SourceThenDisplayName),
-            ];
-            title = "Choose sort order";
-            id = "playnite-library.sort-picker";
-            description = "Choose how the current Browse result set is ordered.";
-        }
-
-        var picker = UI.Picker(
-            title,
-            id,
-            navigation.InputScopeId,
-            navigation.BackActionId ?? throw new InvalidOperationException(
-                "A Browse picker must be a nested navigation route."),
-            options,
-            description);
-        var root = _navigation.Scope(navigation, picker);
-        var fallback = options.FirstOrDefault(option => option.IsSelected)?.Id ??
-            options[0].Id;
-        return new WidgetView(
-            root,
-            ResolveInitialFocus(
-                root,
-                navigation.InitialFocusId ?? fallback,
-                fallback,
-                navigation.InputScopeId,
-                allowDisabledRequestedTarget: false),
-            ActiveInputScopeId: navigation.InputScopeId,
-            Surface: PlayniteLibraryPresentation.SecondarySurface);
-    }
-
     private void PinRenderedArtwork(
         PlayniteLibraryRoute route,
         PlayniteLibraryRenderState local)
@@ -277,7 +187,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 live.Concat(fixedRows),
             PlayniteLibraryRoute.Browse when retainedBrowse.Count != 0 => retainedBrowse,
             PlayniteLibraryRoute.Browse => live,
-            PlayniteLibraryRoute.SourcePicker or PlayniteLibraryRoute.SortPicker => live,
             PlayniteLibraryRoute.Hidden => hidden.Concat(live).Concat(fixedRows),
             _ => [],
         };
@@ -398,6 +307,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
             }
             case ButtonElement button:
                 yield return new(button.Id, button.IsDisabled == true);
+                yield break;
+            case SelectElement select:
+                yield return new(select.Id, select.IsDisabled == true);
                 yield break;
             case ActionSurfaceElement surface:
                 yield return new(surface.Id, surface.IsDisabled == true);
@@ -556,9 +468,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 });
                 return;
             }
-            if (routeBeforeBack is PlayniteLibraryRoute.SourcePicker or
-                PlayniteLibraryRoute.SortPicker)
-                return;
             await ReturnToLibraryAsync().ConfigureAwait(false);
             return;
         }
@@ -768,23 +677,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 });
                 ReloadQuery(retainCurrentItems: false);
                 return;
-            case PlayniteLibraryActions.SourceFilter:
-                if (LifecycleState != WidgetLifecycleState.Interactive ||
-                    _navigation.Value.Route != PlayniteLibraryRoute.Browse ||
-                    !string.Equals(action.SourceElementId,
-                        PlayniteLibraryActions.SourceFilter, StringComparison.Ordinal)) return;
-                _navigation.Push(
-                    PlayniteLibraryRoute.SourcePicker, action.SourceElementId);
-                return;
-            case PlayniteLibraryActions.SortFilter:
-                if (LifecycleState != WidgetLifecycleState.Interactive ||
-                    _navigation.Value.Route != PlayniteLibraryRoute.Browse ||
-                    _model.Value.Collection.RecentlyPlayed ||
-                    !string.Equals(action.SourceElementId,
-                        PlayniteLibraryActions.SortFilter, StringComparison.Ordinal)) return;
-                _navigation.Push(
-                    PlayniteLibraryRoute.SortPicker, action.SourceElementId);
-                return;
             case PlayniteLibraryActions.CategoriesOpen:
                 OpenCategories(action.SourceElementId);
                 return;
@@ -940,12 +832,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
         left.FavoriteFilter == right.FavoriteFilter &&
         left.RecentlyPlayed == right.RecentlyPlayed;
 
-    private async ValueTask SelectSourceOptionAsync(WidgetActionEvent action)
+    private ValueTask SelectSourceOptionAsync(WidgetActionEvent action)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive ||
-            _navigation.Value.Route != PlayniteLibraryRoute.SourcePicker ||
-            !string.Equals(action.SourceElementId, action.ActionId,
-                StringComparison.Ordinal)) return;
+            _navigation.Value.Route != PlayniteLibraryRoute.Browse ||
+            !string.Equals(action.SourceElementId,
+                PlayniteLibraryActions.SourceFilter, StringComparison.Ordinal))
+            return ValueTask.CompletedTask;
+        var local = _model.Value;
         string? source;
         if (string.Equals(action.ActionId,
                 PlayniteLibraryActions.SourceAll, StringComparison.Ordinal))
@@ -955,25 +849,31 @@ public sealed partial class PlayniteLibraryWidget : Widget
         else
         {
             string[] choices;
-            lock (_gate) choices = ProvenSourcesLocked();
+            lock (_gate)
+                choices = PlayniteLibrarySourceCatalog.SelectOptions(
+                    PresentationOrganizationLocked().ProvenSources,
+                    local.SourceObservations,
+                    local.Collection.Query.SourceAttribution);
             source = choices.FirstOrDefault(choice => string.Equals(
                 PlayniteLibraryActions.SourceOption(choice),
                 action.ActionId,
                 StringComparison.Ordinal));
-            if (source is null) return;
+            if (source is null) return ValueTask.CompletedTask;
         }
-        await CommitBrowsePickerQueryAsync(
-            _model.Value.Collection.Query with { SourceAttribution = source },
-            action.SourceElementId,
-            PlayniteLibraryRoute.SourcePicker).ConfigureAwait(false);
+        ReplaceQuery(local.Collection.Query with { SourceAttribution = source },
+            resetBrowseViewport: true,
+            browseFocusId: PlayniteLibraryActions.SourceFilter);
+        return ValueTask.CompletedTask;
     }
 
-    private async ValueTask SelectSortOptionAsync(WidgetActionEvent action)
+    private ValueTask SelectSortOptionAsync(WidgetActionEvent action)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive ||
-            _navigation.Value.Route != PlayniteLibraryRoute.SortPicker ||
-            !string.Equals(action.SourceElementId, action.ActionId,
-                StringComparison.Ordinal)) return;
+            _navigation.Value.Route != PlayniteLibraryRoute.Browse ||
+            _model.Value.Collection.RecentlyPlayed ||
+            !string.Equals(action.SourceElementId,
+                PlayniteLibraryActions.SortFilter, StringComparison.Ordinal))
+            return ValueTask.CompletedTask;
         var sort = action.ActionId switch
         {
             PlayniteLibraryActions.SortDisplayName =>
@@ -984,50 +884,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 WidgetAppLibrarySortOrder.SourceThenDisplayName,
             _ => null,
         };
-        if (sort is null) return;
-        await CommitBrowsePickerQueryAsync(
-            _model.Value.Collection.Query with { Sort = sort.Value },
-            action.SourceElementId,
-            PlayniteLibraryRoute.SortPicker).ConfigureAwait(false);
-    }
-
-    private async ValueTask CommitBrowsePickerQueryAsync(
-        WidgetAppLibraryQuery query,
-        string pickerFocusId,
-        PlayniteLibraryRoute pickerRoute)
-    {
-        var browseFocusId = pickerRoute == PlayniteLibraryRoute.SourcePicker
-            ? PlayniteLibraryActions.SourceFilter
-            : PlayniteLibraryActions.SortFilter;
-        var browseReload = CreateBrowseReload();
-        var update = _model.Update(state => query == state.Collection.Query
-            ? state
-            : state with
-            {
-                Collection = state.Collection with { Query = query },
-                AlternateBrowseViewport = !state.AlternateBrowseViewport,
-                PreferLibraryContentFocus = false,
-                BrowseInitialFocusId = browseFocusId,
-                ActiveBrowseReload = browseReload,
-            });
-        if (!update.Changed)
-        {
-            _navigation.Back(pickerFocusId);
-            return;
-        }
-
-        var navigationRevision = _navigation.Value.Revision;
-        var operation = ReloadQuery(
-            preserveContentFocus: false,
-            retainCurrentItems: false);
-        if (operation is not { } admitted) return;
-        var result = await admitted.Completion.ConfigureAwait(false);
-        var navigation = _navigation.Value;
-        if (navigation.Route != pickerRoute ||
-            navigation.Revision != navigationRevision ||
-            result.Status is not (WidgetOperationStatus.Succeeded or
-                WidgetOperationStatus.Failed)) return;
-        _navigation.Back(pickerFocusId);
+        if (sort is null) return ValueTask.CompletedTask;
+        ReplaceQuery(_model.Value.Collection.Query with { Sort = sort.Value },
+            resetBrowseViewport: true,
+            browseFocusId: PlayniteLibraryActions.SortFilter);
+        return ValueTask.CompletedTask;
     }
 
     private void SelectCollection(string actionId)
@@ -1140,9 +1001,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     private PlayniteLibraryBrowseReload CreateBrowseReload()
     {
+        var retainedFallback = _model.Value.ActiveBrowseReload?.RetainedCollection;
         var snapshot = _library.Snapshot;
-        var retained = snapshot.Status == WidgetPagedResourceStatus.Ready &&
-            snapshot.Items.Count != 0
+        var retained = snapshot.Status == WidgetPagedResourceStatus.Ready
             ? snapshot with
             {
                 Before = null,
@@ -1153,7 +1014,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 WindowGeneration = 0,
                 WindowChange = default,
             }
-            : null;
+            : retainedFallback;
         return new(Interlocked.Increment(ref _browseReloadAttempt), retained);
     }
 
