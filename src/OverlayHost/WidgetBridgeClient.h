@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -15,6 +16,34 @@
 #include <vector>
 
 namespace widgetrail {
+
+struct WidgetBridgeReadinessContract final {
+    static constexpr DWORD AcceptTimeoutMilliseconds = 10'000;
+    static constexpr DWORD PollIntervalMilliseconds = 20;
+};
+
+enum class WidgetBridgePipeReadinessStatus {
+    Connected,
+    ChildExited,
+    TimedOut,
+};
+
+struct WidgetBridgePipeConnectAttempt final {
+    HANDLE pipe{INVALID_HANDLE_VALUE};
+    DWORD error{ERROR_SUCCESS};
+};
+
+struct WidgetBridgePipeReadinessResult final {
+    WidgetBridgePipeReadinessStatus status{WidgetBridgePipeReadinessStatus::TimedOut};
+    HANDLE pipe{INVALID_HANDLE_VALUE};
+    DWORD error{ERROR_SUCCESS};
+};
+
+[[nodiscard]] WidgetBridgePipeReadinessResult WaitForWidgetBridgePipeReadiness(
+    const std::function<WidgetBridgePipeConnectAttempt()>& tryConnect,
+    const std::function<bool()>& childExited,
+    const std::function<ULONGLONG()>& currentTick,
+    const std::function<void(DWORD)>& wait);
 
 class ProtectedWifiSecretFrame final {
 public:

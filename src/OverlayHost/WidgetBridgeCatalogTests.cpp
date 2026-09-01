@@ -24,6 +24,62 @@ void Require(const bool condition, const char* message) {
 
 #define CHECK(condition) Require(static_cast<bool>(condition), #condition)
 
+void VerifyWidgetBridgePipeReadinessContract() {
+    ULONGLONG tick{};
+    std::size_t attempts{};
+    const auto delayedReady = widgetrail::WaitForWidgetBridgePipeReadiness(
+        [&]() {
+            ++attempts;
+            return widgetrail::WidgetBridgePipeConnectAttempt{
+                .pipe = tick > 5'000 ? reinterpret_cast<HANDLE>(1) : INVALID_HANDLE_VALUE,
+                .error = tick > 5'000 ? ERROR_SUCCESS :
+                    static_cast<DWORD>(ERROR_FILE_NOT_FOUND),
+            };
+        },
+        []() { return false; },
+        [&]() { return tick; },
+        [&](const DWORD milliseconds) { tick += milliseconds; });
+    CHECK(delayedReady.status == widgetrail::WidgetBridgePipeReadinessStatus::Connected);
+    CHECK(delayedReady.pipe == reinterpret_cast<HANDLE>(1));
+    CHECK(tick > 5'000);
+    CHECK(tick < widgetrail::WidgetBridgeReadinessContract::AcceptTimeoutMilliseconds);
+    CHECK(attempts > 250);
+
+    tick = 0;
+    attempts = 0;
+    const auto exited = widgetrail::WaitForWidgetBridgePipeReadiness(
+        [&]() {
+            ++attempts;
+            return widgetrail::WidgetBridgePipeConnectAttempt{
+                .error = static_cast<DWORD>(ERROR_FILE_NOT_FOUND),
+            };
+        },
+        []() { return true; },
+        [&]() { return tick; },
+        [&](const DWORD milliseconds) { tick += milliseconds; });
+    CHECK(exited.status == widgetrail::WidgetBridgePipeReadinessStatus::ChildExited);
+    CHECK(exited.error == ERROR_FILE_NOT_FOUND);
+    CHECK(attempts == 1);
+    CHECK(tick == 0);
+
+    tick = 0;
+    attempts = 0;
+    const auto neverReady = widgetrail::WaitForWidgetBridgePipeReadiness(
+        [&]() {
+            ++attempts;
+            return widgetrail::WidgetBridgePipeConnectAttempt{
+                .error = static_cast<DWORD>(ERROR_FILE_NOT_FOUND),
+            };
+        },
+        []() { return false; },
+        [&]() { return tick; },
+        [&](const DWORD milliseconds) { tick += milliseconds; });
+    CHECK(neverReady.status == widgetrail::WidgetBridgePipeReadinessStatus::TimedOut);
+    CHECK(neverReady.error == ERROR_FILE_NOT_FOUND);
+    CHECK(attempts == 500);
+    CHECK(tick == widgetrail::WidgetBridgeReadinessContract::AcceptTimeoutMilliseconds);
+}
+
 std::string Descriptor(const int index) {
     return "{\"id\":\"widget-" + std::to_string(index) +
         "\",\"name\":\"Widget\",\"instanceId\":\"instance-" +
@@ -853,6 +909,7 @@ void VerifyVirtualCollectionProtocol() {
 } // namespace
 
 int main() {
+    VerifyWidgetBridgePipeReadinessContract();
     const auto nowPlayingManifest = std::filesystem::path{__FILE__}.parent_path()
         .parent_path() / L"FirstPartyWidgets" / L"MediaSessionsWidget" /
         L"manifest.json";

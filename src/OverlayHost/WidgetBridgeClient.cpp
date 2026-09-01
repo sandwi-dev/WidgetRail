@@ -24,6 +24,38 @@
 
 namespace widgetrail {
 
+WidgetBridgePipeReadinessResult WaitForWidgetBridgePipeReadiness(
+    const std::function<WidgetBridgePipeConnectAttempt()>& tryConnect,
+    const std::function<bool()>& childExited,
+    const std::function<ULONGLONG()>& currentTick,
+    const std::function<void(DWORD)>& wait) {
+    const ULONGLONG startedAt = currentTick();
+    DWORD lastError = ERROR_SUCCESS;
+    while (currentTick() - startedAt <
+           WidgetBridgeReadinessContract::AcceptTimeoutMilliseconds) {
+        auto attempt = tryConnect();
+        if (attempt.pipe != INVALID_HANDLE_VALUE) {
+            return {
+                .status = WidgetBridgePipeReadinessStatus::Connected,
+                .pipe = attempt.pipe,
+                .error = ERROR_SUCCESS,
+            };
+        }
+        lastError = attempt.error;
+        if (childExited()) {
+            return {
+                .status = WidgetBridgePipeReadinessStatus::ChildExited,
+                .error = lastError,
+            };
+        }
+        wait(WidgetBridgeReadinessContract::PollIntervalMilliseconds);
+    }
+    return {
+        .status = WidgetBridgePipeReadinessStatus::TimedOut,
+        .error = lastError,
+    };
+}
+
 const WidgetDescriptorQuickAction* FindDescriptorQuickAction(
     const WidgetDescriptor& descriptor,
     const std::wstring_view quickActionId) noexcept {
@@ -3200,7 +3232,10 @@ bool WidgetBridgeClient::Launch(
     const auto bridgeSessionGeneration = ++bridgeSessionGeneration_;
     std::wstring command = Quote(executable) + L" --host-pipe " + pipeName_ +
                            L" --catalog " + Quote(catalog) +
-                           L" --accept-timeout-ms 10000 --bridge-session-generation " +
+                           L" --accept-timeout-ms " +
+                           std::to_wstring(
+                               WidgetBridgeReadinessContract::AcceptTimeoutMilliseconds) +
+                           L" --bridge-session-generation " +
                            std::to_wstring(bridgeSessionGeneration);
     if (!installedCatalogRoot.empty()) {
         command += L" --installed-catalog-root " + Quote(installedCatalogRoot);
@@ -3230,23 +3265,32 @@ bool WidgetBridgeClient::Launch(
 
 bool WidgetBridgeClient::Connect() {
     const std::wstring fullName = L"\\\\.\\pipe\\" + pipeName_;
-    const ULONGLONG deadline = GetTickCount64() + 5000;
-    while (GetTickCount64() < deadline) {
-        pipe_ = CreateFileW(fullName.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
-                            OPEN_EXISTING, 0, nullptr);
-        if (pipe_ != INVALID_HANDLE_VALUE) {
-            break;
-        }
-        if (process_ && WaitForSingleObject(process_, 0) == WAIT_OBJECT_0) {
-            Fail(L"WidgetBridge exited before accepting the host connection.");
-            return false;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    if (pipe_ == INVALID_HANDLE_VALUE) {
-        Fail(Win32Message(L"Connect to WidgetBridge", GetLastError()));
+    const auto readiness = WaitForWidgetBridgePipeReadiness(
+        [&]() {
+            const HANDLE pipe = CreateFileW(
+                fullName.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                OPEN_EXISTING, 0, nullptr);
+            return WidgetBridgePipeConnectAttempt{
+                .pipe = pipe,
+                .error = pipe == INVALID_HANDLE_VALUE ? GetLastError() : ERROR_SUCCESS,
+            };
+        },
+        [&]() {
+            return process_ && WaitForSingleObject(process_, 0) == WAIT_OBJECT_0;
+        },
+        []() { return GetTickCount64(); },
+        [](const DWORD milliseconds) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+        });
+    if (readiness.status == WidgetBridgePipeReadinessStatus::ChildExited) {
+        Fail(L"WidgetBridge exited before accepting the host connection.");
         return false;
     }
+    if (readiness.status == WidgetBridgePipeReadinessStatus::TimedOut) {
+        Fail(Win32Message(L"WidgetBridge pipe readiness timed out", readiness.error));
+        return false;
+    }
+    pipe_ = readiness.pipe;
 
     JsonObject payload;
     payload.Insert(L"clientName", JsonValue::CreateStringValue(L"OverlayHost"));
