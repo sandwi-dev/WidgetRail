@@ -100,7 +100,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Media Sessions diagnostics are bounded transition-only and sanitized", MediaSessionDiagnosticsAreBounded),
     ("Shared overlay diagnostics rotate with bounded retained generations", SharedOverlayDiagnosticsRotate),
     ("Worker request diagnostics are bounded developer-only records", WorkerRequestDiagnosticsAreBounded),
-    ("Worker validator diagnostics persist and correlate across the Bridge", WorkerValidatorDiagnosticsPersistAndCorrelate),
+    ("Current worker validator diagnostics persist and correlate across the Bridge", WorkerValidatorDiagnosticsPersistAndCorrelate),
     ("Diagnostics projection is bounded sanitized and read only", BridgeDiagnosticsScenarios.ProjectionIsBoundedSanitizedAndReadOnly),
     ("Diagnostics partial failures malformed input and deadline are closed", BridgeDiagnosticsScenarios.PartialFailureMalformedInputAndDeadlineAreClosed),
     ("Authority recovery projection is exact bounded and cancellation safe", BridgeDiagnosticsScenarios.RecoveryRetryIsExactBoundedAndCancellationSafe),
@@ -916,8 +916,9 @@ static async Task WorkerValidatorDiagnosticsPersistAndCorrelate()
         var state = record.GetProperty("validationState").GetString();
         var identifier = record.GetProperty("validationIdentifier").GetString();
         Assert.True(workerRequest > 0, "The worker-origin record lost request correlation.");
-        Assert.True(record.GetProperty("processId").GetInt32() > 0,
-            "The worker-origin record lost its process identity.");
+        var workerProcessId = record.GetProperty("processId").GetInt32();
+        Assert.True(workerProcessId > 0 && workerProcessId != Environment.ProcessId,
+            "The diagnostic fixture did not traverse a separate current worker process.");
         Assert.Equal(MessageTypes.Render, record.GetProperty("requestType").GetString());
         Assert.Equal(WorkerErrorCodes.ProtocolValidationFailed,
             record.GetProperty("code").GetString());
@@ -932,6 +933,37 @@ static async Task WorkerValidatorDiagnosticsPersistAndCorrelate()
     }
     Assert.Equal(7, Directory.EnumerateFiles(
         workerRoot, WidgetWorkerDiagnosticLog.FileName, SearchOption.AllDirectories).Count());
+    var initialFocusRecordPath = Directory.EnumerateFiles(
+            workerRoot, WidgetWorkerDiagnosticLog.FileName, SearchOption.AllDirectories)
+        .Single(path =>
+        {
+            using var candidateDocument = JsonDocument.Parse(File.ReadAllText(path).Trim());
+            var candidate = candidateDocument.RootElement;
+            return candidate.GetProperty("validationPath").GetString() == "$.initialFocusId" &&
+                   candidate.GetProperty("validationCode").GetString() ==
+                   "invalid_focus_target" &&
+                   candidate.GetProperty("validationField").GetString() == "initial_focus" &&
+                   candidate.GetProperty("validationState").GetString() == "missing" &&
+                   candidate.GetProperty("validationIdentifier").GetString() ==
+                   "validator.missing.focus";
+        });
+    using (var initialFocusDocument = JsonDocument.Parse(
+               File.ReadAllText(initialFocusRecordPath).Trim()))
+    {
+        var initialFocusWorkerRequest = initialFocusDocument.RootElement
+            .GetProperty("requestId").GetInt64();
+        Assert.True(bridgeLines.Any(line =>
+                line.Contains("bridge-request=", StringComparison.Ordinal) &&
+                line.Contains($"worker-request={initialFocusWorkerRequest}",
+                    StringComparison.Ordinal) &&
+                line.Contains("validation-path=$.initialFocusId", StringComparison.Ordinal) &&
+                line.Contains("validation-code=invalid_focus_target", StringComparison.Ordinal) &&
+                line.Contains("validation-field=initial_focus", StringComparison.Ordinal) &&
+                line.Contains("validation-state=missing", StringComparison.Ordinal) &&
+                line.Contains("validation-identifier=validator.missing.focus",
+                    StringComparison.Ordinal)),
+            "The exact stale InitialFocusId was not correlated from the current worker to the overlay diagnostic.");
+    }
     Assert.True(bridgeLines.All(line =>
             line.Contains("bridge-request=", StringComparison.Ordinal) &&
             !line.Contains("secret", StringComparison.OrdinalIgnoreCase) &&
