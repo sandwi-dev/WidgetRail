@@ -593,23 +593,24 @@ public sealed class PlayniteLibraryTests
         await widget.OnActionAsync(new("playnite-library.browse.open",
             "playnite-library.library.menu"));
         var firstBrowse = AssertValidSnapshot(50_001, "initial Browse");
-        var restoredTile = Nodes(firstBrowse.Root).First(node =>
-            node.ActionId == "playnite-library.launch");
+        var restoredTile = Nodes(firstBrowse.Root).Where(node =>
+            node.ActionId == "playnite-library.launch").Skip(1).First();
         await widget.OnActionAsync(new("playnite-library.browse.back", restoredTile.Id));
         await Bounded(widget.WhenLibraryIdleAsync(), "seed Browse return focus");
         _ = AssertValidSnapshot(50_002, "seeded Home return");
 
         await widget.OnActionAsync(new("playnite-library.browse.open",
             "playnite-library.library.menu"));
-        var restoredBrowse = AssertValidSnapshot(50_003, "restored Browse");
+        await CommitSearch("Game", "retain all Browse results");
+        var restoredBrowse = AssertValidSnapshot(50_003, "navigator-owned restored Browse");
         Assert.AreEqual(restoredTile.Id, restoredBrowse.InitialFocusId,
-            "A still-rendered Browse tile must retain navigator-owned return focus.");
+            "A distinct still-rendered tile inside the Browse background must retain navigator-owned return focus after presentation preference retires.");
 
-        await CommitSearch("Game 00001", "matching search");
+        await CommitSearch("Game 00000", "matching search");
         var matching = AssertValidSnapshot(50_004, "matching search");
         Assert.AreNotEqual(restoredTile.Id, matching.InitialFocusId,
             "A filtered-out navigator target must not overwrite presentation focus.");
-        Assert.AreEqual("Game 00001", Nodes(matching.Root).Single(node =>
+        Assert.AreEqual("Game 00000", Nodes(matching.Root).Single(node =>
             node.Id == matching.InitialFocusId).AccessibilityLabel?.Split(',')[0]);
 
         await CommitSearch("No matching game", "zero-result search");
@@ -647,10 +648,47 @@ public sealed class PlayniteLibraryTests
             Assert.IsNotNull(snapshot.InitialFocusId, phase + " must publish initial focus.");
             var focus = Nodes(snapshot.Root).Single(node =>
                 node.Id == snapshot.InitialFocusId);
-            Assert.IsTrue(focus.IsDisabled is not true,
-                phase + " must publish an enabled initial focus target.");
+            Assert.IsTrue(focus.IsFocusable,
+                phase + " must publish a protocol-focusable initial target.");
             return snapshot;
         }
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task BrowseFinalViewPreservesDisabledFocusableNavigationTarget()
+    {
+        var host = new FakeHost(3);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        await widget.OnActionAsync(new("playnite-library.browse.open",
+            "playnite-library.library.menu"));
+        const string disabledTarget = "playnite-library.filter.favorites";
+        var browse = Snapshot(widget, 50_101);
+        Assert.IsTrue(Nodes(browse.Root).Single(node => node.Id == disabledTarget).IsDisabled,
+            "The empty Favorites filter is the deterministic disabled-but-focusable target.");
+
+        await widget.OnActionAsync(new("playnite-library.browse.back", disabledTarget));
+        await Bounded(widget.WhenLibraryIdleAsync(), "seed disabled Browse return focus");
+        _ = Snapshot(widget, 50_102);
+        await widget.OnActionAsync(new("playnite-library.browse.open",
+            "playnite-library.library.menu"));
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "playnite-library.search.commit", "playnite-library.search")
+            { CommittedText = "Game" });
+        await Bounded(widget.WhenLibraryIdleAsync(), "retire Browse content preference");
+
+        var restored = Snapshot(widget, 50_103);
+        var errors = ViewSnapshotValidator.Validate(restored);
+        Assert.AreEqual(0, errors.Count, string.Join(Environment.NewLine,
+            errors.Select(error => $"{error.Path}: {error.Code}: {error.Message}")));
+        Assert.AreEqual(disabledTarget, restored.InitialFocusId,
+            "Disabled controls remain valid protocol focus targets and must retain navigation focus.");
+        var restoredTarget = Nodes(restored.Root).Single(node => node.Id == disabledTarget);
+        Assert.IsTrue(restoredTarget.IsFocusable);
+        Assert.IsTrue(restoredTarget.IsDisabled);
+        await Background(widget);
     }
 
     [TestMethod, Timeout(30_000)]
