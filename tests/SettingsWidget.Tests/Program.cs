@@ -114,6 +114,15 @@ static Task RootCategories()
 
 static async Task ReadinessRetryIsBoundedAndClassified()
 {
+    Assert.Equal(TimeSpan.FromMilliseconds(500),
+        SettingsDiagnosticsTimeoutPolicy.ReadinessAttempt);
+    Assert.Equal(TimeSpan.FromSeconds(2), SettingsDiagnosticsTimeoutPolicy.Operations);
+    Assert.True(
+        SettingsDiagnosticsTimeoutPolicy.ReadinessAttempt *
+            SettingsReadinessRetry.MaximumAttempts + SettingsReadinessRetry.RetryDelay <
+        SettingsDiagnosticsTimeoutPolicy.Operations,
+        "The readiness retry budget no longer fits inside one operational request budget.");
+
     var catalogAttempts = 0;
     var catalogDelays = 0;
     var catalog = await SettingsReadinessRetry.CatalogAsync(
@@ -1069,9 +1078,11 @@ static async Task InstalledWidgetLocalDataClear()
     WriteInstalledWidget(catalogRoot, "dev.test.local-b", "dev.publisher",
         "Local B", [], []);
     var service = new LocalDataDiagnosticsService("dev.test.local-a");
+    var readiness = new SequenceDiagnosticsService(PlatformDiagnosticsSnapshot.Unavailable());
     var widget = CreateWithPermissions(
         temp.Path, catalogRoot, new ConsentStore(Path.Combine(temp.Path, "consent")),
-        diagnostics: service);
+        diagnostics: service,
+        readinessDiagnostics: readiness);
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
     await Action(widget, "installed.select.0");
@@ -1092,6 +1103,7 @@ static async Task InstalledWidgetLocalDataClear()
     Assert.Equal(1, service.ClearCount);
     Assert.Equal("dev.test.local-a", service.ClearedWidgetId);
     Assert.True(service.NeighborExists, "Clearing the selected widget changed its neighbor.");
+    Assert.Equal(1, readiness.RequestCount);
 }
 
 static async Task InstalledWidgetPackageUninstall()
@@ -1109,9 +1121,11 @@ static async Task InstalledWidgetPackageUninstall()
     await File.WriteAllTextAsync(privateState, "retained");
     var catalog = new WidgetCatalog(catalogRoot);
     var service = new PackageUninstallDiagnosticsService(catalog, privateState);
+    var readiness = new SequenceDiagnosticsService(PlatformDiagnosticsSnapshot.Unavailable());
     var widget = CreateWithPermissions(
         temp.Path, catalogRoot, new ConsentStore(Path.Combine(temp.Path, "consent")),
-        diagnostics: service);
+        diagnostics: service,
+        readinessDiagnostics: readiness);
 
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
@@ -1161,6 +1175,8 @@ static async Task InstalledWidgetPackageUninstall()
     var list = Snapshot(widget);
     Assert.Equal(SettingsPage.InstalledWidgets, widget.CurrentPage);
     Assert.Equal(1, service.UninstallCount);
+    Assert.True(readiness.RequestCount >= 1,
+        "The bounded readiness client did not own Settings snapshot readiness.");
     Assert.True((await catalog.DiscoverAsync()).Widgets.All(item => item.Id != selectedId),
         "Confirmed uninstall retained the selected package.");
     Assert.True((await catalog.DiscoverAsync()).Widgets.Any(item => item.Id == "dev.test.neighbor"),
@@ -2337,7 +2353,8 @@ static SettingsWidget CreateWithPermissions(
     ConsentStore consentStore,
     string? bundledWidgetRoot = null,
     WidgetCatalogOptions? catalogOptions = null,
-    IPlatformDiagnosticsService? diagnostics = null)
+    IPlatformDiagnosticsService? diagnostics = null,
+    IPlatformDiagnosticsService? readinessDiagnostics = null)
 {
     var paths = new PlatformSettingsPaths(settingsRoot);
     return new SettingsWidget(
@@ -2346,7 +2363,8 @@ static SettingsWidget CreateWithPermissions(
         new WidgetCatalog(catalogRoot, catalogOptions),
         consentStore,
         diagnostics,
-        bundledWidgetRoot: bundledWidgetRoot);
+        bundledWidgetRoot: bundledWidgetRoot,
+        readinessDiagnostics: readinessDiagnostics);
 }
 
 static PlatformSettingsStore Store(string root) => new(new PlatformSettingsPaths(root));

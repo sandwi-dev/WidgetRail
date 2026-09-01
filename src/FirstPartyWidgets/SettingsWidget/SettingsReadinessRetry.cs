@@ -3,6 +3,17 @@ using WidgetRail.WidgetCatalog;
 
 namespace WidgetRail.FirstPartyWidgets.Settings;
 
+internal static class SettingsDiagnosticsTimeoutPolicy
+{
+    // Two classified readiness attempts plus the shared retry delay must remain
+    // comfortably inside the host's two-second lifecycle request boundary.
+    internal static readonly TimeSpan ReadinessAttempt = TimeSpan.FromMilliseconds(500);
+
+    // Inspect and mutation operations retain the established diagnostics
+    // transport budget and are never replayed by the readiness owner.
+    internal static readonly TimeSpan Operations = TimeSpan.FromSeconds(2);
+}
+
 /// <summary>
 /// Bounded readiness retry used by Settings while the Bridge registry or the
 /// installed catalog is completing an authoritative replacement. Permanent

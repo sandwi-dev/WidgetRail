@@ -50,6 +50,7 @@ public sealed class SettingsWidget : Widget
     private readonly CatalogService _widgetCatalog;
     private readonly ConsentStore _consentStore;
     private readonly IPlatformDiagnosticsService _diagnosticsService;
+    private readonly IPlatformDiagnosticsService _readinessDiagnosticsService;
     private readonly SettingsInstalledWidgetUninstallOperation _packageUninstall;
     private readonly string? _bundledWidgetRoot;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
@@ -75,7 +76,8 @@ public sealed class SettingsWidget : Widget
         CatalogService? widgetCatalog = null,
         ConsentStore? consentStore = null,
         IPlatformDiagnosticsService? diagnostics = null,
-        string? bundledWidgetRoot = null)
+        string? bundledWidgetRoot = null,
+        IPlatformDiagnosticsService? readinessDiagnostics = null)
     {
         var paths = store?.Paths ?? PlatformSettingsPaths.CreateDefault();
         _store = store ?? new PlatformSettingsStore(paths);
@@ -86,6 +88,7 @@ public sealed class SettingsWidget : Widget
         _consentStore = consentStore ?? new ConsentStore(
             Path.Combine(paths.RootDirectory, "consent"));
         _diagnosticsService = diagnostics ?? UnavailablePlatformDiagnosticsService.Instance;
+        _readinessDiagnosticsService = readinessDiagnostics ?? _diagnosticsService;
         _packageUninstall = new SettingsInstalledWidgetUninstallOperation(_diagnosticsService);
         _bundledWidgetRoot = string.IsNullOrWhiteSpace(bundledWidgetRoot)
             ? null
@@ -340,7 +343,7 @@ public sealed class SettingsWidget : Widget
             try
             {
                 diagnostics = await SettingsReadinessRetry.RegistryAsync(
-                        _diagnosticsService.GetSnapshotAsync,
+                        _readinessDiagnosticsService.GetSnapshotAsync,
                         cancellationToken)
                     .ConfigureAwait(false);
             }

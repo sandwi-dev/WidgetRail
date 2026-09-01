@@ -6,11 +6,6 @@ namespace WidgetRail.FirstPartyWidgets.Settings.Worker;
 
 internal static class Program
 {
-    // Two classified readiness attempts plus the shared retry delay must remain
-    // comfortably inside the host's two-second lifecycle request boundary.
-    private static readonly TimeSpan DiagnosticsReadinessAttemptTimeout =
-        TimeSpan.FromMilliseconds(500);
-
     public static async Task<int> Main(string[] args)
     {
         return await WidgetWorkerBootstrap.RunAsync(
@@ -18,33 +13,47 @@ internal static class Program
             () =>
             {
                 var installedCatalogRoot = OptionalPath(args, "--installed-widget-catalog-root");
+                var diagnostics = CreateDiagnostics(args);
                 return new SettingsWidget(
                     widgetCatalog: installedCatalogRoot is null
                         ? null
                         : new WidgetRail.WidgetCatalog.WidgetCatalog(installedCatalogRoot),
-                    diagnostics: CreateDiagnostics(args),
-                    bundledWidgetRoot: OptionalPath(args, "--bundled-widget-root"));
+                    diagnostics: diagnostics.Operations,
+                    bundledWidgetRoot: OptionalPath(args, "--bundled-widget-root"),
+                    readinessDiagnostics: diagnostics.Readiness);
             })
             .ConfigureAwait(false);
     }
 
-    private static IPlatformDiagnosticsService CreateDiagnostics(string[] args)
+    private static DiagnosticsClients CreateDiagnostics(string[] args)
     {
         var pipe = OptionalToken(args, "--diagnostics-pipe", 200);
         var nonce = OptionalToken(args, "--diagnostics-nonce", 64);
         var serverProcessId = OptionalPositiveInt(args, "--diagnostics-server-pid");
         if (pipe is null && nonce is null && serverProcessId is null)
-            return UnavailablePlatformDiagnosticsService.Instance;
+            return new(
+                UnavailablePlatformDiagnosticsService.Instance,
+                UnavailablePlatformDiagnosticsService.Instance);
         if (pipe is null || nonce is null || serverProcessId is null || nonce.Length != 64 ||
             !nonce.All(char.IsAsciiHexDigit))
             throw new WidgetWorkerBootstrapException(
                 "invalid_diagnostics_channel", "The diagnostics channel arguments are invalid.");
-        return new PlatformDiagnosticsPipeClient(
-            pipe,
-            nonce,
-            serverProcessId.Value,
-            DiagnosticsReadinessAttemptTimeout);
+        return new(
+            new PlatformDiagnosticsPipeClient(
+                pipe,
+                nonce,
+                serverProcessId.Value,
+                SettingsDiagnosticsTimeoutPolicy.Operations),
+            new PlatformDiagnosticsPipeClient(
+                pipe,
+                nonce,
+                serverProcessId.Value,
+                SettingsDiagnosticsTimeoutPolicy.ReadinessAttempt));
     }
+
+    private sealed record DiagnosticsClients(
+        IPlatformDiagnosticsService Operations,
+        IPlatformDiagnosticsService Readiness);
 
     private static int? OptionalPositiveInt(string[] args, string name)
     {
