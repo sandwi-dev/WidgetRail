@@ -439,11 +439,17 @@ var page = UI.BackgroundSurface(
 
 Focus remains entirely host-owned: the declaration adds no action, callback,
 input, layout, or accessibility node. A nested BackgroundSurface is a hard
-ownership boundary. If the exact focused descendant has no declaration, the
-surface uses its authored default. While a newly focused resource is pending
-or fails, the host retains the last admitted image; a late result for an older
-focus cannot replace the current selection. Keep every referenced handle
-resolvable through the ordinary bounded `OnResolveArtworkAsync` contract.
+ownership boundary. After a focused image commits, the exact surface retains
+it while the widget temporarily has no focused element because tray or host
+chrome owns input; this does not preserve or restore a stale focus ID. The same
+surface also retains its committed image when the current descendant has no
+declaration or while a newly selected resource is pending or fails. Selecting
+a different BackgroundSurface retires the prior surface override, and explicit
+opt-out, changed default identity or fit, surface removal, authority or instance
+replacement, and widget retirement reset it to the authored default. A late
+result for an older focus cannot replace the current selection. Keep every
+referenced handle resolvable through the ordinary bounded
+`OnResolveArtworkAsync` contract.
 
 ## Focus-associated presentation (protocol v40)
 

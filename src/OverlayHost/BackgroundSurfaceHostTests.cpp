@@ -380,8 +380,8 @@ int wmain() {
         const auto afterFocusAuthorityLoss = render(L"");
         Require(afterFocusAuthorityLoss.backgroundArtworkHandles.at(
                     L"background-surface-test.root") ==
-                L"background-surface-test.artwork.changed",
-            "focus leaving the surface retained a focused override");
+                L"background-surface-test.focus.replacement",
+            "host-owned focus loss discarded the exact committed focused background");
 
         (void)render(L"background-surface-test.replacement");
         options.artworkAuthorityId =
@@ -464,14 +464,18 @@ int wmain() {
             "initialFocusId":"nested.action","root":{"id":"nested.outer","kind":"backgroundSurface",
             "artworkHandle":"nested.outer.default","imageFit":"cover",
             "usesFocusedDescendantArtwork":true,
-            "children":[{"id":"nested.inner","kind":"backgroundSurface",
+            "children":[{"id":"nested.content","kind":"stack","children":[
+            {"id":"nested.inner","kind":"backgroundSurface",
             "artworkHandle":"nested.inner.default","imageFit":"cover",
             "usesFocusedDescendantArtwork":true,
-            "children":[{"id":"nested.content","kind":"stack","children":[
+            "children":[{"id":"nested.inner.content","kind":"stack","children":[
             {"id":"nested.action","kind":"button","text":"Nested action",
             "actionId":"nested.action","focusBackgroundArtworkHandle":"nested.focus",
             "children":[]},{"id":"nested.ordinary","kind":"button",
-            "text":"Nested ordinary","actionId":"nested.ordinary","children":[]}]}]}]}}
+            "text":"Nested ordinary","actionId":"nested.ordinary","children":[]}]}]},
+            {"id":"nested.outer.action","kind":"button","text":"Outer action",
+            "actionId":"nested.outer.action",
+            "focusBackgroundArtworkHandle":"nested.outer.focus","children":[]}]}]}}
         })json", nestedError);
         Require(nested.has_value() && nestedError.empty(),
             "native parser rejected nested focused-background ownership");
@@ -517,16 +521,47 @@ int wmain() {
                     L"nested.focus",
             "nested surfaces did not retain independent exact ready handles");
 
-        const auto retainedInner = nested->root.children.front();
-        nested->root.children.clear();
+        const auto outerFocusKey = widgetrail::RemoteImageCache::TrustedArtworkKey(
+            L"widgetrail.tests.background-surface", L"nested.outer",
+            L"nested.outer.focus");
+        const auto innerDefaultKey = widgetrail::RemoteImageCache::TrustedArtworkKey(
+            L"widgetrail.tests.background-surface", L"nested.inner",
+            L"nested.inner.default");
+        const auto requestsBeforeOuterFocus = requests.size();
+        const auto outerFocusPending = renderNested(L"nested.outer.action");
+        Require(requests.size() == requestsBeforeOuterFocus + 2U &&
+                requests[requestsBeforeOuterFocus] == outerFocusKey &&
+                requests[requestsBeforeOuterFocus + 1U] == innerDefaultKey &&
+                outerFocusPending.backgroundArtworkHandles.at(L"nested.outer") ==
+                    L"nested.outer.default" &&
+                !outerFocusPending.backgroundArtworkHandles.contains(L"nested.inner"),
+            "selecting a different surface did not retire the prior surface override");
+        Require(cache.SupplyTrustedArtwork(
+            L"widgetrail.tests.background-surface", L"nested.outer.focus",
+            L"image/png", std::wstring(png)),
+            "outer focused artwork completion was rejected");
+        WaitForState(cache, outerFocusKey, widgetrail::RemoteImageState::Ready,
+            "outer focused artwork did not become ready");
+        const auto outerFocusReady = renderNested(L"nested.outer.action");
+        Require(outerFocusReady.backgroundArtworkHandles.at(L"nested.outer") ==
+                    L"nested.outer.focus" &&
+                !outerFocusReady.backgroundArtworkHandles.contains(L"nested.inner"),
+            "different selected surface did not establish independent authority");
+        const auto innerFocusRestored = renderNested(L"nested.action");
+        Require(innerFocusRestored.backgroundArtworkHandles.at(L"nested.outer") ==
+                    L"nested.outer.default" &&
+                innerFocusRestored.backgroundArtworkHandles.at(L"nested.inner") ==
+                    L"nested.focus",
+            "selecting the inner surface retained the different outer override");
+
+        auto& outerContent = nested->root.children.front();
+        const auto retainedInner = outerContent.children.front();
+        outerContent.children.erase(outerContent.children.begin());
         const auto innerRemoved = renderNested(L"");
         Require(innerRemoved.backgroundArtworkHandles.at(L"nested.outer") ==
                 L"nested.outer.default",
             "removing the inner surface altered the outer surface handle");
-        nested->root.children.push_back(retainedInner);
-        const auto innerDefaultKey = widgetrail::RemoteImageCache::TrustedArtworkKey(
-            L"widgetrail.tests.background-surface", L"nested.inner",
-            L"nested.inner.default");
+        outerContent.children.insert(outerContent.children.begin(), retainedInner);
         const auto innerReaddedPending = renderNested(L"nested.ordinary");
         Require(requests.back() == innerDefaultKey &&
                 !innerReaddedPending.backgroundArtworkHandles.contains(L"nested.inner") &&
@@ -547,9 +582,9 @@ int wmain() {
             "re-added inner surface did not initialize independently from default");
 
         (void)renderNested(L"nested.action");
-        nested->root.children.front().usesFocusedDescendantArtwork = false;
+        outerContent.children.front().usesFocusedDescendantArtwork = false;
         (void)renderNested(L"nested.ordinary");
-        nested->root.children.front().usesFocusedDescendantArtwork = true;
+        outerContent.children.front().usesFocusedDescendantArtwork = true;
         const auto innerReset = renderNested(L"nested.ordinary");
         Require(innerReset.backgroundArtworkHandles.at(L"nested.outer") ==
                     L"nested.outer.default" &&

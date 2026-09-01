@@ -2920,8 +2920,10 @@ struct DeclarativeRenderer::RenderPass final {
             } else if (drawRetained()) {
                 return;
             }
-        } else {
+        } else if (selection.surface) {
             focusBackgrounds.erase(authority);
+        } else if (drawRetained()) {
+            return;
         }
 
         if ((!node.imageSource.empty() || !node.artworkHandle.empty()) &&
