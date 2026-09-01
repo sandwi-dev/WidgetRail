@@ -573,6 +573,87 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task BrowseSearchFinalWidgetViewRetiresFilteredNavigationFocus()
+    {
+        var host = new FakeHost(3);
+        host.QueryHandler = (request, token) =>
+        {
+            token.ThrowIfCancellationRequested();
+            var items = Enumerable.Range(0, 3).Select(host.ItemFactory);
+            if (request.Query.SearchText is { } search)
+                items = items.Where(item => item.Presentation.DisplayName.Contains(
+                    search, StringComparison.OrdinalIgnoreCase));
+            return ValueTask.FromResult(new WidgetAppLibraryPage(
+                items.ToArray(), null, null, "search-focus"));
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        await widget.OnActionAsync(new("playnite-library.browse.open",
+            "playnite-library.library.menu"));
+        var firstBrowse = AssertValidSnapshot(50_001, "initial Browse");
+        var restoredTile = Nodes(firstBrowse.Root).First(node =>
+            node.ActionId == "playnite-library.launch");
+        await widget.OnActionAsync(new("playnite-library.browse.back", restoredTile.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "seed Browse return focus");
+        _ = AssertValidSnapshot(50_002, "seeded Home return");
+
+        await widget.OnActionAsync(new("playnite-library.browse.open",
+            "playnite-library.library.menu"));
+        var restoredBrowse = AssertValidSnapshot(50_003, "restored Browse");
+        Assert.AreEqual(restoredTile.Id, restoredBrowse.InitialFocusId,
+            "A still-rendered Browse tile must retain navigator-owned return focus.");
+
+        await CommitSearch("Game 00001", "matching search");
+        var matching = AssertValidSnapshot(50_004, "matching search");
+        Assert.AreNotEqual(restoredTile.Id, matching.InitialFocusId,
+            "A filtered-out navigator target must not overwrite presentation focus.");
+        Assert.AreEqual("Game 00001", Nodes(matching.Root).Single(node =>
+            node.Id == matching.InitialFocusId).AccessibilityLabel?.Split(',')[0]);
+
+        await CommitSearch("No matching game", "zero-result search");
+        var empty = AssertValidSnapshot(50_005, "zero-result search");
+        Assert.AreEqual("playnite-library.search", empty.InitialFocusId);
+
+        await widget.OnActionAsync(new("playnite-library.query.clear",
+            "playnite-library.query.clear"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "Browse query clear");
+        var cleared = AssertValidSnapshot(50_006, "cleared Browse");
+        Assert.IsTrue(Nodes(cleared.Root).Any(node =>
+            node.Id == cleared.InitialFocusId && node.IsDisabled is not true));
+
+        await widget.OnActionAsync(new("playnite-library.browse.back",
+            cleared.InitialFocusId!));
+        await Bounded(widget.WhenLibraryIdleAsync(), "final Browse return");
+        _ = AssertValidSnapshot(50_007, "final Home return");
+        await Background(widget);
+
+        async Task CommitSearch(string value, string phase)
+        {
+            await widget.OnActionAsync(new WidgetActionEvent(
+                "playnite-library.search.commit", "playnite-library.search")
+                { CommittedText = value });
+            await Bounded(widget.WhenLibraryIdleAsync(), phase);
+        }
+
+        ViewSnapshot AssertValidSnapshot(long sequence, string phase)
+        {
+            var snapshot = Snapshot(widget, sequence);
+            var errors = ViewSnapshotValidator.Validate(snapshot);
+            Assert.AreEqual(0, errors.Count,
+                phase + Environment.NewLine + string.Join(Environment.NewLine,
+                    errors.Select(error => $"{error.Path}: {error.Code}: {error.Message}")));
+            Assert.IsNotNull(snapshot.InitialFocusId, phase + " must publish initial focus.");
+            var focus = Nodes(snapshot.Root).Single(node =>
+                node.Id == snapshot.InitialFocusId);
+            Assert.IsTrue(focus.IsDisabled is not true,
+                phase + " must publish an enabled initial focus target.");
+            return snapshot;
+        }
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task ScopedBrowseHiddenAndCategoryQueriesSurviveLifecycleReactivation()
     {
         var displays = Enumerable.Range(0, 3).Select(index =>

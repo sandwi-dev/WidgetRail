@@ -108,16 +108,47 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
         var view = PlayniteLibraryPresentation.Render(state);
         var root = _navigation.Scope(navigation, view.Root);
+        var initialFocusId = navigation.Route is PlayniteLibraryRoute.Categories or
+                PlayniteLibraryRoute.Category
+            ? view.InitialFocusId
+            : local.PreferLibraryContentFocus
+            ? view.InitialFocusId
+            : navigation.InitialFocusId ?? view.InitialFocusId;
+        if (navigation.Route == PlayniteLibraryRoute.Browse &&
+            !IsEnabledFocusTarget(root, initialFocusId))
+            initialFocusId = view.InitialFocusId;
         return view with
         {
             Root = root,
-            InitialFocusId = navigation.Route is PlayniteLibraryRoute.Categories or
-                    PlayniteLibraryRoute.Category
-                ? view.InitialFocusId
-                : local.PreferLibraryContentFocus
-                ? view.InitialFocusId
-                : navigation.InitialFocusId ?? view.InitialFocusId,
+            InitialFocusId = initialFocusId,
             ActiveInputScopeId = navigation.InputScopeId,
+        };
+    }
+
+    private static bool IsEnabledFocusTarget(WidgetElement element, string? id)
+    {
+        if (id is null) return false;
+        return element switch
+        {
+            CollectionItemElement wrapper => IsEnabledFocusTarget(wrapper.Child, id),
+            FocusBackgroundElement wrapper => IsEnabledFocusTarget(wrapper.Child, id),
+            FocusPresentationElement wrapper => IsEnabledFocusTarget(wrapper.Child, id),
+            ResponsiveBranchElement wrapper => IsEnabledFocusTarget(wrapper.Child, id),
+            ButtonElement button => string.Equals(button.Id, id, StringComparison.Ordinal) &&
+                button.IsDisabled is not true,
+            ActionSurfaceElement surface => string.Equals(
+                    surface.Id, id, StringComparison.Ordinal) &&
+                surface.IsDisabled is not true,
+            TextEntryElement entry => string.Equals(entry.Id, id, StringComparison.Ordinal) &&
+                !entry.IsDisabled,
+            SliderElement slider => string.Equals(slider.Id, id, StringComparison.Ordinal) &&
+                slider.IsDisabled is not true,
+            ScrubberElement scrubber => string.Equals(
+                    scrubber.SliderId, id, StringComparison.Ordinal) &&
+                scrubber.IsDisabled is not true,
+            ContainerElement container => container.Children.Any(child =>
+                IsEnabledFocusTarget(child, id)),
+            _ => false,
         };
     }
 
