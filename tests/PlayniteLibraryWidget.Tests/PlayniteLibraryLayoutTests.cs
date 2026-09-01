@@ -3,256 +3,13 @@ using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Text.Json;
+using LauncherWidget = WidgetRail.Samples.PlayniteLibrary.PlayniteLibraryWidget;
 
 namespace WidgetRail.Tests.PlayniteLibrary;
 
 [TestClass]
 public sealed class PlayniteLibraryLayoutTests
 {
-    [TestMethod, Timeout(30_000)]
-    public void EveryRouteHasOneFixedChromeAndOneBoundedCollectionViewport()
-    {
-        var items = Enumerable.Range(0, 64)
-            .Select(index => PlayniteLibraryItem.From(Item(
-                $"app-{index:D3}", $"saved-{index:D3}", $"Game {index:D3}",
-                index % 2 == 0 ? "Steam" : "Windows")))
-            .ToArray();
-        var display = items.Select(item => new PlayniteLibraryDisplayItem(
-            item.Value.SavedId,
-            item.Value.Presentation.DisplayName,
-            item.Value.Presentation.Source.DisplayName))
-            .ToArray();
-        var organized = new PlayniteLibraryPrivateState(
-            PlayniteLibraryPrivateState.CurrentVersion, display)
-        {
-            RecentSavedIds = [display[0].SavedId],
-            ManualSavedIds = [display[1].SavedId],
-            ExcludedSavedIds = [display[2].SavedId],
-        };
-        var sources = new WidgetAppLibrarySource[]
-        {
-            new("steam", "Steam", WidgetAppLibrarySourceHealth.Healthy, 7, "healthy"),
-            new("windows", "Windows", WidgetAppLibrarySourceHealth.Degraded, 4,
-                "source_degraded"),
-        };
-        var ready = Snapshot(WidgetPagedResourceStatus.Ready, items,
-            before: "cursor.before", after: "cursor.after");
-        var cases = new (string Name, PlayniteLibraryPresentationState State,
-            ScrollAxis? Axis)[]
-        {
-            ("library", State(ready, organized, PlayniteLibraryRoute.Library, sources),
-                ScrollAxis.Horizontal),
-            ("add", State(ready, organized, PlayniteLibraryRoute.AddGames, sources),
-                ScrollAxis.Vertical),
-            ("running", State(ready, organized, PlayniteLibraryRoute.Running, sources),
-                ScrollAxis.Vertical),
-            ("hidden", State(ready, organized, PlayniteLibraryRoute.Hidden, sources),
-                ScrollAxis.Vertical),
-            ("warm", State(Snapshot(WidgetPagedResourceStatus.Loading, []), organized,
-                PlayniteLibraryRoute.Library, sources), ScrollAxis.Horizontal),
-            ("loading", State(Snapshot(WidgetPagedResourceStatus.Loading, []),
-                PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, sources), null),
-            ("error", State(Snapshot(WidgetPagedResourceStatus.Error, [],
-                    error: new WidgetResourceError("platform_unavailable", "Try again.")),
-                PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, sources), null),
-            ("empty", State(Snapshot(WidgetPagedResourceStatus.Ready, []),
-                PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, sources), null),
-        };
-
-        foreach (var scenario in cases)
-        {
-            var view = PlayniteLibraryPresentation.Render(scenario.State);
-            ViewSnapshot snapshot;
-            try
-            {
-                snapshot = new PresentationWidget(view).RenderSnapshot(
-                    "playnite-library.layout", 1);
-            }
-            catch (ProtocolValidationException exception)
-            {
-                Assert.Fail($"{scenario.Name}: " + string.Join(Environment.NewLine,
-                    exception.Errors.Select(error =>
-                        $"{error.Path}: {error.Code}: {error.Message}")));
-                throw;
-            }
-            var nodes = Nodes(snapshot.Root).ToArray();
-            Assert.AreEqual(nodes.Length, nodes.Select(node => node.Id).Distinct(
-                StringComparer.Ordinal).Count(), $"{scenario.Name}: duplicate semantic ID");
-
-            var root = snapshot.Root;
-            Assert.AreEqual(4, root.Children.Count,
-                $"{scenario.Name}: fixed/main root ownership changed");
-            CollectionAssert.AreEqual(new[]
-            {
-                "playnite-library.header",
-                "playnite-library.sources",
-                "playnite-library.query",
-            }, root.Children.Take(3).Select(child => child.Id).ToArray(),
-                $"{scenario.Name}: fixed chrome order changed");
-            foreach (var fixedId in new[]
-                     {
-                         "playnite-library.header", "playnite-library.sources",
-                         "playnite-library.query",
-                     })
-                Assert.IsTrue(nodes.Single(node => node.Id == fixedId).StyleClasses.Contains(
-                    "playnite-library-fixed", StringComparer.Ordinal),
-                    $"{scenario.Name}: {fixedId} is not fixed chrome");
-            Assert.IsTrue(nodes.Single(node => node.Id == "playnite-library.content")
-                .StyleClasses.Contains("playnite-library-main", StringComparer.Ordinal),
-                $"{scenario.Name}: main region does not own remaining height");
-
-            if (scenario.Name == "library")
-            {
-                var favorites = nodes.Single(node =>
-                    node.Id == "playnite-library.filter.favorites");
-                CollectionAssert.AreEqual(
-                    new[] { "wrail-switch", "wrail-switch--off" },
-                    favorites.StyleClasses.ToArray());
-                Assert.AreEqual("playnite-library.filter.favorites", favorites.ActionId);
-                Assert.AreEqual("Favorites, Off", favorites.AccessibilityLabel);
-
-                var allInstalled = nodes.Single(node =>
-                    node.ActionId == "playnite-library.collection.select.all");
-                CollectionAssert.AreEqual(
-                    new[] { "wrail-switch", "wrail-switch--on" },
-                    allInstalled.StyleClasses.ToArray());
-                Assert.AreEqual("All installed, On", allInstalled.AccessibilityLabel);
-            }
-
-            Assert.AreEqual(ResponsiveVisibility.CompactOnly,
-                nodes.Single(node => node.Id == "playnite-library.compact.title").VisibleWhen,
-                $"{scenario.Name}: compact title branch missing");
-            Assert.AreEqual(ResponsiveVisibility.ExpandedOnly,
-                nodes.Single(node => node.Id == "playnite-library.header.expanded").VisibleWhen,
-                $"{scenario.Name}: expanded header branch missing");
-            Assert.AreEqual(ResponsiveVisibility.CompactOnly,
-                nodes.Single(node => node.Id == "playnite-library.sources.compact").VisibleWhen,
-                $"{scenario.Name}: compact source summary missing");
-            Assert.AreEqual(ResponsiveVisibility.ExpandedOnly,
-                nodes.Single(node => node.Id == "playnite-library.sources.expanded").VisibleWhen,
-                $"{scenario.Name}: expanded source detail missing");
-
-            var collection = nodes.Where(node => node.Kind == ViewNodeKind.Scroll &&
-                node.Id == PlayniteLibraryPresentation.ScrollId).ToArray();
-            Assert.AreEqual(scenario.Axis is null ? 0 : 1, collection.Length,
-                $"{scenario.Name}: collection scroll ownership changed");
-            if (scenario.Axis is { } axis)
-            {
-                Assert.AreEqual(axis, collection[0].ScrollAxis,
-                    $"{scenario.Name}: collection axis changed");
-                Assert.IsTrue(collection[0].StyleClasses.Contains(
-                    "playnite-library-scroll", StringComparer.Ordinal),
-                    $"{scenario.Name}: collection viewport does not own remaining height");
-                Assert.IsTrue(nodes.Any(node => node.Id == collection[0].Id),
-                    $"{scenario.Name}: collection viewport escaped the main region");
-            }
-            if (scenario.State.Route == PlayniteLibraryRoute.Library)
-                Assert.AreEqual(1, nodes.Count(node => node.Id == "playnite-library.hero"),
-                    $"{scenario.Name}: Library route omitted its single hero region");
-
-            var filters = nodes.SingleOrDefault(node => node.Id == "playnite-library.filters");
-            Assert.AreEqual(ScrollAxis.Horizontal,
-                (filters ?? nodes.Single(node => node.Id == "playnite-library.query")).ScrollAxis,
-                $"{scenario.Name}: filters are not predictably reachable at narrow widths");
-            var actions = nodes.SingleOrDefault(node => node.Id == "playnite-library.actions");
-            if (actions is not null)
-                Assert.AreEqual(ScrollAxis.Horizontal, actions.ScrollAxis,
-                    $"{scenario.Name}: footer actions are not predictably reachable");
-            var footer = nodes.SingleOrDefault(node =>
-                node.Id == "playnite-library.organization.hints");
-            if (footer is not null)
-                Assert.IsTrue(footer.StyleClasses.Contains(
-                    "playnite-library-footer", StringComparer.Ordinal),
-                    $"{scenario.Name}: guidance is not a fixed footer");
-        }
-
-        var libraryView = PlayniteLibraryPresentation.Render(cases[0].State);
-        var firstRender = new PresentationWidget(libraryView).RenderSnapshot(
-            "playnite-library.layout", 20);
-        var reopened = new PresentationWidget(libraryView).RenderSnapshot(
-            "playnite-library.layout", 21);
-        Assert.AreEqual(JsonSerializer.Serialize(firstRender.Root),
-            JsonSerializer.Serialize(reopened.Root),
-            "Reopening an unchanged presentation changed its semantic tree.");
-        foreach (var profile in new[]
-                 {
-                     (Name: "minimum-100", Width: 420, Height: 340, Scale: 1.0),
-                     (Name: "compact-100", Width: 520, Height: 420, Scale: 1.0),
-                     (Name: "compact-150", Width: 520, Height: 420, Scale: 1.5),
-                     (Name: "standard-100", Width: 960, Height: 600, Scale: 1.0),
-                     (Name: "standard-150", Width: 960, Height: 600, Scale: 1.5),
-                     (Name: "wide-100", Width: 1180, Height: 700, Scale: 1.0),
-                     (Name: "wide-150", Width: 1180, Height: 700, Scale: 1.5),
-                 })
-        {
-            var compact = profile.Width < 960 || profile.Height < 540;
-            var visible = VisibleNodes(firstRender.Root, compact).ToArray();
-            Assert.AreEqual(compact,
-                visible.Any(node => node.Id == "playnite-library.compact.title"),
-                $"{profile.Name}: wrong title branch at {profile.Scale:P0} scale");
-            Assert.AreEqual(!compact,
-                visible.Any(node => node.Id == "playnite-library.header.expanded"),
-                $"{profile.Name}: wrong expanded header at {profile.Scale:P0} scale");
-            Assert.AreEqual(compact,
-                visible.Any(node => node.Id == "playnite-library.compact.status" &&
-                    node.Text == cases[0].State.Status),
-                $"{profile.Name}: compact status is not truthful and visible");
-            var scroll = visible.Single(node =>
-                node.Id == PlayniteLibraryPresentation.ScrollId);
-            var scrollNodes = Nodes(scroll).ToArray();
-            foreach (var index in new[] { 0, items.Length / 2, items.Length - 1 })
-                Assert.IsTrue(scrollNodes.Any(node => node.Id ==
-                    PlayniteLibraryIdentity.FocusId("grid", items[index].Key)),
-                    $"{profile.Name}: item {index} is not reachable in the collection viewport");
-            Assert.IsFalse(string.IsNullOrWhiteSpace(scroll.CollectionAnchorKey),
-                $"{profile.Name}: collection viewport omitted its stable anchor");
-            var controllerHints = visible.Single(node =>
-                node.Id == "playnite-library.organization.hints");
-            Assert.AreEqual(ViewNodeKind.Row, controllerHints.Kind,
-                $"{profile.Name}: wrapping controller hints are not row-owned");
-            Assert.IsNull(controllerHints.ScrollAxis,
-                $"{profile.Name}: controller hints unexpectedly own a scroll viewport");
-            Assert.IsTrue(controllerHints.StyleClasses.Contains(
-                "playnite-library-footer", StringComparer.Ordinal),
-                $"{profile.Name}: controller hints lost their responsive footer style");
-            var focused = visible.Single(node => node.Id == firstRender.InitialFocusId);
-            Assert.AreEqual("playnite-library.launch", focused.ActionId,
-                $"{profile.Name}: focused game lost its primary action");
-            Assert.IsTrue(visible.Any(node => node.Id == "playnite-library.collections"),
-                $"{profile.Name}: collection navigation is not visible");
-            var search = visible.Single(node => node.Id == "playnite-library.search");
-            Assert.AreEqual(ViewNodeKind.TextEntry, search.Kind,
-                $"{profile.Name}: Search does not use the host-owned TextEntry");
-            Assert.AreEqual("playnite-library.search.commit", search.ActionId,
-                $"{profile.Name}: Search changed its exact commit action");
-            Assert.IsTrue(Nodes(controllerHints).Any(node =>
-                    node.Id.StartsWith("playnite-library.hint.", StringComparison.Ordinal)),
-                $"{profile.Name}: controller help is not visible");
-            foreach (var secondaryId in new[]
-                     {
-                         "playnite-library.hero", "playnite-library.filters",
-                         "playnite-library.actions",
-                     })
-                Assert.AreEqual(!compact, visible.Any(node => node.Id == secondaryId),
-                    $"{profile.Name}: {secondaryId} responsive ownership is wrong");
-        }
-
-        var stylePath = Path.Combine(AppContext.BaseDirectory, "styles", "default.wrss");
-        var styles = File.ReadAllText(stylePath);
-        StringAssert.Contains(styles,
-            ".playnite-library-fixed { flex-shrink: 0; }");
-        StringAssert.Contains(styles,
-            ".playnite-library-main { flex-grow: 1; min-height: 0; }");
-        StringAssert.Contains(styles,
-            ".playnite-library-scroll { flex-grow: 1; min-height: 0;");
-        StringAssert.Contains(styles,
-            ".playnite-library-hero { flex-shrink: 0; min-height: 150px;");
-        StringAssert.Contains(styles,
-            ".playnite-library-rail { flex-shrink: 0; min-height: 150px;");
-        StringAssert.Contains(styles,
-            ".playnite-library-footer { flex-shrink: 0; flex-wrap: wrap;");
-    }
-
     [TestMethod, Timeout(30_000)]
     public void CurrentDeclarativeLibraryPreservesExactGameAuthorityAndSemanticRegions()
     {
@@ -274,18 +31,29 @@ public sealed class PlayniteLibraryLayoutTests
         var snapshot = new PresentationWidget(view).RenderSnapshot(
             "playnite-library.presentation", 1);
         var nodes = Nodes(snapshot.Root).ToArray();
-        CollectionAssert.AreEqual(new[]
-        {
-            "playnite-library.header",
-            "playnite-library.sources.pending",
-            "playnite-library.query",
-            "playnite-library.content",
-        }, snapshot.Root.Children.Select(child => child.Id).ToArray());
+        Assert.AreEqual(1, snapshot.Root.Children.Count);
+        Assert.AreEqual(ViewNodeKind.BackgroundSurface, snapshot.Root.Children[0].Kind);
+        Assert.AreEqual(1, nodes.Count(node => node.Kind == ViewNodeKind.FocusPresentationSurface));
+        var library = nodes.Single(node => node.Id == "playnite-library.library.menu");
+        Assert.AreEqual("playnite-library.browse.open", library.ActionId);
+        CollectionAssert.AreEqual(new[] { "playnite-library.search.open", "playnite-library.browse.open", "playnite-library.filter.recent", "playnite-library.filter.favorites", "playnite-library.categories.open", "playnite-library.hidden.open", LauncherWidget.PlayniteOpenActionId, "playnite-library.management.open" }, library.ContextActions.Select(action => action.ActionId).ToArray());
+        var rail = nodes.Single(node => node.Id == PlayniteLibraryPresentation.HomeRailId);
+        Assert.AreEqual(ViewNodeKind.Scroll, rail.Kind);
+        Assert.AreEqual(ScrollAxis.Horizontal, rail.ScrollAxis);
+        Assert.AreEqual(items[0].Key.Value, rail.CollectionAnchorKey);
+        Assert.IsTrue(rail.Shortcuts.Any(shortcut => shortcut.Button ==
+            ControllerButton.RightBumper && shortcut.ActionId == "playnite-library.next"));
         var collectionItems = nodes.Where(node => node.CollectionItemKey is not null)
             .Select(node => node.CollectionItemKey!)
             .ToArray();
         CollectionAssert.AreEquivalent(items.Select(item => item.Key.Value).ToArray(),
             collectionItems);
+        Assert.IsTrue(nodes.Where(node => node.ActionId == "playnite-library.launch").All(node =>
+            node.FocusPresentation is not null && node.ContextActions.Count <= 8));
+        Assert.IsFalse(nodes.Any(node => node.Id.StartsWith("playnite-library.hero.",
+            StringComparison.Ordinal)),
+            "Home must use FocusPresentation as its sole selected-game summary.");
+        Assert.IsFalse(nodes.Any(node => node.ActionId is "playnite-library.details.open" or "playnite-library.add.open" or "playnite-library.running.open"));
         var hintRegion = nodes.Single(node =>
             node.Id == "playnite-library.organization.hints");
         Assert.AreEqual(ViewNodeKind.Row, hintRegion.Kind,
@@ -296,12 +64,14 @@ public sealed class PlayniteLibraryLayoutTests
             node.Id.StartsWith("playnite-library.hint.", StringComparison.Ordinal)));
         Assert.AreEqual(PlayniteLibraryIdentity.FocusId("grid", items[0].Key),
             snapshot.InitialFocusId);
-        Assert.AreEqual(new string('L', 96),
-            nodes.Single(node => node.Id == "playnite-library.hero.title").Text);
-        var heroArtwork = nodes.Single(node =>
-            node.Id == "playnite-library.hero.artwork");
-        Assert.IsNull(heroArtwork.ArtworkHandle);
-        Assert.IsNotNull(heroArtwork.Glyph);
+        var styles = File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
+            "styles", "default.wrss"));
+        StringAssert.Contains(styles,
+            ".playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; }");
+        StringAssert.Contains(styles,
+            ".playnite-library-tile { width: 200px; min-width: 200px; flex-basis: 200px; flex-grow: 0; flex-shrink: 0; aspect-ratio: 2/3; min-height: 0px; }");
+        StringAssert.Contains(styles,
+            ".wrail-poster-tile__scrim { corner-radius: 12px; overflow: clip; }");
     }
 
     [TestMethod, Timeout(30_000)]
@@ -355,85 +125,27 @@ public sealed class PlayniteLibraryLayoutTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public void DetailsProjectionIsBoundedDeterministicAndPreservesLongLabels()
+    public void HomeOwnsFocusSummariesAndBrowseDoesNot()
     {
-        var title = new string('T', 96);
-        var source = new string('S', 64);
-        var item = PlayniteLibraryItem.From(Item(
-            "app-details", "saved-details", title, source));
-        var selection = new PlayniteLibraryDetailsSelection(
-            item.Value.SavedId, item.Key,
-            PlayniteLibraryIdentity.FocusId("grid", item.Key),
-            item.Value.Presentation.DisplayName,
-            item.Value.Presentation.Source.DisplayName,
-            PageBumpers: false);
-        var organization = new PlayniteLibraryPrivateState(
-            PlayniteLibraryPrivateState.CurrentVersion,
-            [new(item.Value.SavedId,
-                item.Value.Presentation.DisplayName,
-                item.Value.Presentation.Source.DisplayName)])
-        {
-            FavoriteSavedIds = [item.Value.SavedId],
-            VariantGroups = [new("variant.details",
-                [item.Value.SavedId, "saved-other"], item.Value.SavedId)],
-        };
-        var collection = Snapshot(WidgetPagedResourceStatus.Ready, [item]);
-        var state = PlayniteLibraryDetailsPolicy.Project(selection, collection,
-            PlayniteLibraryFixedRows.Empty, organization, null,
-            new Dictionary<string, PlayniteLibraryLaunchState>(), "Ready", null,
-            false, true);
-        var view = PlayniteLibraryDetailsPresentation.Render(state);
-        var first = new PresentationWidget(view).RenderSnapshot("details.layout", 1);
-        var second = new PresentationWidget(view).RenderSnapshot("details.layout", 2);
+        var first = PlayniteLibraryItem.From(Item("app-a", "saved-a", "Alpha", "Steam"));
+        var second = PlayniteLibraryItem.From(Item("app-b", "saved-b", "Bravo", "Windows"));
+        var home = new PresentationWidget(PlayniteLibraryPresentation.Render(State(
+            Snapshot(WidgetPagedResourceStatus.Ready, [first, second]),
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, [])))
+            .RenderSnapshot("playnite-library.home.focus", 1);
+        var homeNodes = Nodes(home.Root).ToArray();
+        Assert.AreEqual(1, homeNodes.Count(node => node.Kind ==
+            ViewNodeKind.FocusPresentationSurface));
+        Assert.AreEqual(2, homeNodes.Count(node => node.ActionId ==
+            "playnite-library.launch" && node.FocusPresentation is not null));
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(home).Count);
 
-        Assert.AreEqual(JsonSerializer.Serialize(first.Root),
-            JsonSerializer.Serialize(second.Root));
-        Assert.AreEqual(title, Nodes(first.Root).Single(node =>
-            node.Id == "playnite-library.details.title").Text);
-        StringAssert.Contains(Nodes(first.Root).Single(node =>
-            node.Id == "playnite-library.details.source").Text!, source);
-        Assert.AreEqual(1, Nodes(first.Root).Count(node =>
-            node.Kind == ViewNodeKind.Scroll && node.ScrollAxis == ScrollAxis.Vertical));
-        Assert.IsLessThan(40, Nodes(first.Root).Count());
-        Assert.AreEqual(WidgetSurfaceMode.Wide, first.Surface?.Mode);
-        Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, first.Surface?.WidthMode);
-        Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, first.Surface?.HeightMode);
-        Assert.AreEqual(1600, first.Surface?.PreferredWidth);
-        Assert.AreEqual(1200, first.Surface?.PreferredHeight);
-        foreach (var profile in new[]
-                 {
-                     (Name: "compact", Width: 420, Height: 340, Scale: 1.0),
-                     (Name: "standard", Width: 640, Height: 480, Scale: 1.25),
-                     (Name: "wide-150", Width: 980, Height: 700, Scale: 1.5),
-                 })
-        {
-            var nodes = Nodes(first.Root).ToArray();
-            Assert.IsTrue(nodes.Any(node =>
-                node.Id == "playnite-library.details.launch" && node.IsDisabled is not true),
-                $"{profile.Name}: launch is not reachable at {profile.Scale:P0}.");
-            Assert.IsTrue(nodes.Any(node =>
-                node.Id == "playnite-library.details.variant" &&
-                node.Text == "Choose another variant"),
-                $"{profile.Name}: variant selection is not semantically reachable.");
-            Assert.AreEqual(1, nodes.Count(node => node.Id ==
-                "playnite-library.details.scroll"),
-                $"{profile.Name}: details scroll ownership changed.");
-        }
-
-        var busyState = PlayniteLibraryDetailsPolicy.Project(selection, collection,
-            PlayniteLibraryFixedRows.Empty, organization, item.Value.SavedId,
-            new Dictionary<string, PlayniteLibraryLaunchState>(), "Pending",
-            item.Value.SavedId, true, true);
-        var busy = new PresentationWidget(
-            PlayniteLibraryDetailsPresentation.Render(busyState))
-            .RenderSnapshot("details.busy", 3);
-        Assert.IsTrue(Nodes(busy.Root).Single(node =>
-            node.Id == "playnite-library.details.launch").IsBusy);
-        Assert.IsTrue(Nodes(busy.Root).Where(node => node.ActionId is
-                "playnite-library.launch" or "playnite-library.favorite" or
-                "playnite-library.hide" or "playnite-library.variant" or
-                "playnite-library.prefer")
-            .All(node => node.IsDisabled is true));
+        var browse = new PresentationWidget(PlayniteLibraryPresentation.Render(State(
+            Snapshot(WidgetPagedResourceStatus.Ready, [first, second]),
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, [])))
+            .RenderSnapshot("playnite-library.browse.focus", 1);
+        Assert.IsFalse(Nodes(browse.Root).Any(node => node.FocusPresentation is not null));
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(browse).Count);
     }
 
     [TestMethod, Timeout(30_000)]
@@ -473,16 +185,14 @@ public sealed class PlayniteLibraryLayoutTests
         var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(state))
             .RenderSnapshot("hero.layout", 30);
         var nodes = Nodes(snapshot.Root).ToArray();
-        Assert.AreEqual(longTitle, nodes.Single(node =>
-            node.Id == "playnite-library.hero.title").Text);
-        Assert.IsNull(nodes.Single(node =>
-            node.Id == "playnite-library.hero.artwork").ArtworkHandle,
-            "Missing selected artwork must use a semantic fallback.");
-        StringAssert.Contains(nodes.Single(node =>
-            node.Id == "playnite-library.hero.state").Text!, "Favorite");
-        StringAssert.Contains(nodes.Single(node =>
-            node.Id == "playnite-library.hero.state").Text!, "Preferred variant");
-        Assert.IsLessThanOrEqualTo(20 * 8 + 32, nodes.Length,
+        var selected = nodes.Single(node => node.Id == PlayniteLibraryIdentity.FocusId(
+            "grid", items[7].Key));
+        Assert.IsNotNull(selected.FocusPresentation,
+            "The selected Home poster must own the focused-game summary.");
+        Assert.IsFalse(nodes.Any(node => node.Id.StartsWith("playnite-library.hero.",
+            StringComparison.Ordinal)),
+            "The legacy hero must not duplicate the focused-game summary on Home.");
+        Assert.IsLessThanOrEqualTo(20 * 8 + 40, nodes.Length,
             "Hero-rail semantic nodes must remain linear in the bounded page.");
 
         var filtered = state with

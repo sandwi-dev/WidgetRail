@@ -35,14 +35,11 @@ internal sealed record PlayniteLibraryRenderState(
     PlayniteLibraryCollectionState Collection,
     PlayniteLibraryFixedRows FixedRows,
     IReadOnlyList<WidgetAppLibrarySource> SourceObservations,
-    PlayniteLibraryDetailsSelection? DetailsSelection,
-    PlayniteLibraryDetailsSelection? ActionSheetSelection,
-    PlayniteLibraryDetailsSelection? TitleEditorSelection,
     string? ActiveCategoryId,
-    string? RunningRevision,
     long FixedRowsRevision,
     string? PendingRestoredSavedId,
     bool PreferLibraryContentFocus,
+    bool SearchExpanded,
     string? HeroSavedId,
     int HeroIndex,
     string? VariantSeedSavedId,
@@ -58,12 +55,9 @@ internal sealed record PlayniteLibraryRenderState(
         PlayniteLibraryFixedRows.Empty,
         [],
         null,
-        null,
-        null,
-        null,
-        null,
         0,
         null,
+        false,
         false,
         null,
         0,
@@ -78,13 +72,14 @@ internal sealed record PlayniteLibraryRenderState(
 
 internal enum PlayniteLibraryRoute
 {
+    // Library is cinematic Home. Browse owns query/filtering; Management owns
+    // secondary library and connection controls.
     Library,
-    Details,
-    AddGames,
-    Running,
+    Browse,
     Hidden,
     Categories,
     Category,
+    Management,
     PlayniteConnection,
 }
 
