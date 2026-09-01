@@ -1,5 +1,8 @@
 using System.Collections;
+using System.Buffers.Binary;
+using System.IO.Compression;
 using System.Reflection;
+using System.Text;
 using WidgetRail.Samples.PlayniteLibrary;
 using WidgetRail.WidgetSdk;
 
@@ -392,6 +395,15 @@ public sealed class PackageRuntimeTests
         Assert.IsNotNull(neutral,
             "A double not-found Hero must actively replace retained artwork.");
         Assert.AreEqual(WidgetArtworkContentType.Png, neutral.ContentType);
+        var neutralPixel = DecodeSingleRgbaPng(neutral.Bytes.Span);
+        Assert.AreEqual((byte)0, neutralPixel.Red,
+            "The neutral Hero pixel must not contribute a red color channel.");
+        Assert.AreEqual((byte)0, neutralPixel.Green,
+            "The neutral Hero pixel must not contribute a green color channel.");
+        Assert.AreEqual((byte)0, neutralPixel.Blue,
+            "The neutral Hero pixel must not contribute a blue color channel.");
+        Assert.AreEqual((byte)0, neutralPixel.Alpha,
+            "The neutral Hero pixel must be fully transparent.");
         CollectionAssert.AreEqual(new[]
         {
             PlayniteBridgeArtworkKind.Background,
@@ -573,6 +585,62 @@ public sealed class PackageRuntimeTests
         Directory.CreateDirectory(root);
         return new(client, new PlayniteLibraryStateFileStore(
             Path.Combine(root, "organization.json")), diagnostics);
+    }
+
+    private static (byte Red, byte Green, byte Blue, byte Alpha) DecodeSingleRgbaPng(
+        ReadOnlySpan<byte> png)
+    {
+        ReadOnlySpan<byte> signature = [137, 80, 78, 71, 13, 10, 26, 10];
+        if (png.Length < signature.Length || !png[..signature.Length].SequenceEqual(signature))
+            throw new InvalidDataException("Expected a PNG signature.");
+
+        var width = 0;
+        var height = 0;
+        byte bitDepth = 0;
+        byte colorType = 0;
+        using var idat = new MemoryStream();
+        for (var offset = signature.Length; offset < png.Length;)
+        {
+            if (png.Length - offset < 12)
+                throw new InvalidDataException("PNG chunk header is truncated.");
+            var length = BinaryPrimitives.ReadInt32BigEndian(png.Slice(offset, 4));
+            if (length < 0 || png.Length - offset - 12 < length)
+                throw new InvalidDataException("PNG chunk payload is truncated.");
+
+            var type = Encoding.ASCII.GetString(png.Slice(offset + 4, 4));
+            var data = png.Slice(offset + 8, length);
+            if (type == "IHDR")
+            {
+                if (data.Length != 13)
+                    throw new InvalidDataException("PNG IHDR length is invalid.");
+                width = BinaryPrimitives.ReadInt32BigEndian(data[..4]);
+                height = BinaryPrimitives.ReadInt32BigEndian(data.Slice(4, 4));
+                bitDepth = data[8];
+                colorType = data[9];
+            }
+            else if (type == "IDAT")
+            {
+                idat.Write(data);
+            }
+
+            offset += length + 12;
+        }
+
+        if (width != 1 || height != 1 || bitDepth != 8 || colorType != 6)
+            throw new InvalidDataException("Expected one 8-bit RGBA PNG pixel.");
+
+        var compressed = idat.ToArray();
+        if (compressed.Length <= 6)
+            throw new InvalidDataException("PNG zlib payload is truncated.");
+        using var deflatePayload = new MemoryStream(
+            compressed, 2, compressed.Length - 6, writable: false);
+        using var deflate = new DeflateStream(deflatePayload, CompressionMode.Decompress);
+        using var decoded = new MemoryStream();
+        deflate.CopyTo(decoded);
+        var scanline = decoded.ToArray();
+        if (scanline.Length != 5 || scanline[0] is not (0 or 1))
+            throw new InvalidDataException("Expected one unfiltered or Sub-filtered RGBA scanline.");
+        return (scanline[1], scanline[2], scanline[3], scanline[4]);
     }
 
     private static async Task<IReadOnlyList<WidgetAppLibraryItem>> QueryEveryPage(
