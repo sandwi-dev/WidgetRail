@@ -11,6 +11,8 @@ internal static class WidgetRuntimeProtocol
     public const int CurrentVersion = 2;
     public const int DefaultMaximumMessageBytes = ProtocolConstants.MaximumEncodedArtworkFrameBytes;
     public const int AbsoluteMaximumMessageBytes = ProtocolConstants.MaximumEncodedArtworkFrameBytes;
+    internal const int MaximumWorkerDiagnosticMessageLength = 512;
+    internal const int MaximumProtocolValidationDiagnosticMessageLength = 640;
 }
 
 internal static class MessageTypes

@@ -852,10 +852,58 @@ static async Task WorkerValidatorDiagnosticsPersistAndCorrelate()
         "initial_focus",
         "missing",
         "validator.missing.focus");
+    await VerifyFailureAsync(
+        "validator-return.instance",
+        "validator.return.trigger",
+        "validator.return.trigger",
+        "$.root.initialChildFocusId",
+        "invalid_initial_child_focus",
+        "return_focus",
+        "missing",
+        "validator.missing.return");
+    await VerifyFailureAsync(
+        "validator-action.instance",
+        "validator.action.trigger",
+        "validator.action.trigger",
+        "$.root.children[0].actionId",
+        "action_not_allowed",
+        "action",
+        "unknown_action",
+        "validator.unknown.action");
+    await VerifyFailureAsync(
+        "validator-context.instance",
+        "validator.context.trigger",
+        "validator.context.trigger",
+        "$.root.children[0].contextActions[1].actionId",
+        "duplicate_context_action",
+        "context_action",
+        "duplicate",
+        "validator.context.more");
+    await VerifyFailureAsync(
+        "validator-disabled.instance",
+        "validator.disabled.trigger",
+        "validator.disabled.trigger",
+        "$.initialFocusId",
+        "invalid_focus_target",
+        "initial_focus",
+        "disabled",
+        "validator.disabled.focus");
+    var maximumPath = "$" + string.Concat(Enumerable.Repeat(".a", 126)) + ".aa";
+    var maximumCode = new string('a', 64);
+    var maximumIdentifier = new string('i', 128);
+    await VerifyFailureAsync(
+        "validator-maximum.instance",
+        "validator.maximum.trigger",
+        "validator.maximum.trigger",
+        maximumPath,
+        maximumCode,
+        "element_reference",
+        "outside_active_scope",
+        maximumIdentifier);
     await diagnostics.DisposeAsync();
 
     var bridgeLines = File.ReadAllLines(bridgeLog);
-    Assert.Equal(2, bridgeLines.Length);
+    Assert.Equal(7, bridgeLines.Length);
     foreach (var workerPath in Directory.EnumerateFiles(
                  workerRoot, WidgetWorkerDiagnosticLog.FileName, SearchOption.AllDirectories))
     {
@@ -882,7 +930,7 @@ static async Task WorkerValidatorDiagnosticsPersistAndCorrelate()
                 line.Contains($"validation-identifier={identifier}", StringComparison.Ordinal)),
             "Bridge diagnostics did not correlate the exact worker-origin failure.");
     }
-    Assert.Equal(2, Directory.EnumerateFiles(
+    Assert.Equal(7, Directory.EnumerateFiles(
         workerRoot, WidgetWorkerDiagnosticLog.FileName, SearchOption.AllDirectories).Count());
     Assert.True(bridgeLines.All(line =>
             line.Contains("bridge-request=", StringComparison.Ordinal) &&
@@ -920,10 +968,20 @@ static async Task WorkerValidatorDiagnosticsPersistAndCorrelate()
             BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
         Assert.Equal(BridgeMessageTypes.Error, failure.Type);
 
-        var currentWorker = Directory.EnumerateFiles(
+        var currentWorkerPath = Directory.EnumerateFiles(
                 workerRoot, WidgetWorkerDiagnosticLog.FileName, SearchOption.AllDirectories)
-            .Select(File.ReadAllText)
-            .Single(text => text.Contains(expectedPath, StringComparison.Ordinal));
+            .Single(path =>
+            {
+                using var candidateDocument = JsonDocument.Parse(File.ReadAllText(path).Trim());
+                var candidate = candidateDocument.RootElement;
+                return candidate.GetProperty("validationPath").GetString() == expectedPath &&
+                       candidate.GetProperty("validationCode").GetString() == expectedCode &&
+                       candidate.GetProperty("validationField").GetString() == expectedField &&
+                       candidate.GetProperty("validationState").GetString() == expectedState &&
+                       candidate.GetProperty("validationIdentifier").GetString() ==
+                       expectedIdentifier;
+            });
+        var currentWorker = File.ReadAllText(currentWorkerPath);
         Assert.True(currentWorker.Contains(expectedCode, StringComparison.Ordinal),
             "The worker-origin record lost the exact validation code.");
         using var workerDocument = JsonDocument.Parse(currentWorker.Trim());
@@ -4677,6 +4735,11 @@ file sealed class BridgeTestWidget : Widget
     private readonly bool _sensitiveTextEntryFixture;
     private readonly bool _validatorHomeFixture;
     private readonly bool _validatorHiddenFixture;
+    private readonly bool _validatorReturnFixture;
+    private readonly bool _validatorActionFixture;
+    private readonly bool _validatorContextFixture;
+    private readonly bool _validatorDisabledFixture;
+    private readonly bool _validatorMaximumFixture;
     private bool _validatorFailure;
     private bool _oversized;
     private WidgetAppLibraryItem? _artworkItem;
@@ -4693,6 +4756,16 @@ file sealed class BridgeTestWidget : Widget
             instanceId, "validator-home.instance", StringComparison.Ordinal);
         _validatorHiddenFixture = string.Equals(
             instanceId, "validator-hidden.instance", StringComparison.Ordinal);
+        _validatorReturnFixture = string.Equals(
+            instanceId, "validator-return.instance", StringComparison.Ordinal);
+        _validatorActionFixture = string.Equals(
+            instanceId, "validator-action.instance", StringComparison.Ordinal);
+        _validatorContextFixture = string.Equals(
+            instanceId, "validator-context.instance", StringComparison.Ordinal);
+        _validatorDisabledFixture = string.Equals(
+            instanceId, "validator-disabled.instance", StringComparison.Ordinal);
+        _validatorMaximumFixture = string.Equals(
+            instanceId, "validator-maximum.instance", StringComparison.Ordinal);
     }
 
     public override WidgetView Render()
@@ -4707,6 +4780,83 @@ file sealed class BridgeTestWidget : Widget
                 return new WidgetView(
                     UI.Stack("root"),
                     InitialFocusId: "validator.missing.focus");
+            if (_validatorReturnFixture)
+                return new WidgetView(new RawProtocolElement(new ViewNode
+                {
+                    Id = "root",
+                    Kind = ViewNodeKind.Stack,
+                    InitialChildFocusId = "validator.missing.return",
+                    Children =
+                    [
+                        new ViewNode
+                        {
+                            Id = "validator.return.available",
+                            Kind = ViewNodeKind.Button,
+                            Text = "Available",
+                            ActionId = "validator.return.available",
+                        },
+                    ],
+                }));
+            if (_validatorActionFixture)
+                return new WidgetView(new RawProtocolElement(new ViewNode
+                {
+                    Id = "root",
+                    Kind = ViewNodeKind.Stack,
+                    Children =
+                    [
+                        new ViewNode
+                        {
+                            Id = "validator.action.text",
+                            Kind = ViewNodeKind.Text,
+                            Text = "Text",
+                            ActionId = "validator.unknown.action",
+                        },
+                    ],
+                }));
+            if (_validatorContextFixture)
+                return new WidgetView(new RawProtocolElement(new ViewNode
+                {
+                    Id = "root",
+                    Kind = ViewNodeKind.Stack,
+                    Children =
+                    [
+                        new ViewNode
+                        {
+                            Id = "validator.context.surface",
+                            Kind = ViewNodeKind.ActionSurface,
+                            ActionId = "validator.context.open",
+                            AccessibilityLabel = "Context surface",
+                            ActionSurfaceOrientation = ActionSurfaceOrientation.Vertical,
+                            ContextActions =
+                            [
+                                new("validator.context.more", "More"),
+                                new("validator.context.more", "More again"),
+                            ],
+                            Children =
+                            [
+                                new ViewNode
+                                {
+                                    Id = "validator.context.text",
+                                    Kind = ViewNodeKind.Text,
+                                    Text = "Context",
+                                },
+                            ],
+                        },
+                    ],
+                }));
+            if (_validatorDisabledFixture)
+                throw SyntheticValidationFailure(
+                    "$.initialFocusId", "invalid_focus_target",
+                    ProtocolValidationIdentifierKind.InitialFocus,
+                    ProtocolValidationIdentifierState.Disabled,
+                    "validator.disabled.focus");
+            if (_validatorMaximumFixture)
+                throw SyntheticValidationFailure(
+                    "$" + string.Concat(Enumerable.Repeat(".a", 126)) + ".aa",
+                    new string('a', 64),
+                    ProtocolValidationIdentifierKind.ElementReference,
+                    ProtocolValidationIdentifierState.OutsideActiveScope,
+                    new string('i', 128));
         }
         var children = new List<WidgetElement>
         {
@@ -4727,6 +4877,21 @@ file sealed class BridgeTestWidget : Widget
         if (_validatorHiddenFixture)
             children.Add(UI.Button(
                 "Back", "validator.hidden.back", "validator.hidden.back"));
+        if (_validatorReturnFixture)
+            children.Add(UI.Button(
+                "Return", "validator.return.trigger", "validator.return.trigger"));
+        if (_validatorActionFixture)
+            children.Add(UI.Button(
+                "Action", "validator.action.trigger", "validator.action.trigger"));
+        if (_validatorContextFixture)
+            children.Add(UI.Button(
+                "Context", "validator.context.trigger", "validator.context.trigger"));
+        if (_validatorDisabledFixture)
+            children.Add(UI.Button(
+                "Disabled", "validator.disabled.trigger", "validator.disabled.trigger"));
+        if (_validatorMaximumFixture)
+            children.Add(UI.Button(
+                "Maximum", "validator.maximum.trigger", "validator.maximum.trigger"));
         if (_sensitiveTextEntryFixture)
             children.Add(UI.SensitiveTextEntry(
                 "Enter provider-neutral secret", "committed-text", "credential.entry", 64));
@@ -4844,7 +5009,17 @@ file sealed class BridgeTestWidget : Widget
         else if ((_validatorHomeFixture &&
                   action.ActionId == "validator.home.details") ||
                  (_validatorHiddenFixture &&
-                  action.ActionId == "validator.hidden.back"))
+                  action.ActionId == "validator.hidden.back") ||
+                 (_validatorReturnFixture &&
+                  action.ActionId == "validator.return.trigger") ||
+                 (_validatorActionFixture &&
+                  action.ActionId == "validator.action.trigger") ||
+                 (_validatorContextFixture &&
+                  action.ActionId == "validator.context.trigger") ||
+                 (_validatorDisabledFixture &&
+                  action.ActionId == "validator.disabled.trigger") ||
+                 (_validatorMaximumFixture &&
+                  action.ActionId == "validator.maximum.trigger"))
         {
             _validatorFailure = true;
             Invalidate();
@@ -4918,6 +5093,25 @@ file sealed class BridgeTestWidget : Widget
         else
             Interlocked.Exchange(ref _committedTextDiagnosticState, -1);
     }
+
+    private static ProtocolValidationException SyntheticValidationFailure(
+        string path,
+        string code,
+        ProtocolValidationIdentifierKind kind,
+        ProtocolValidationIdentifierState state,
+        string identifier) => new(
+        [
+            new ProtocolValidationError(path, code, "PRIVATE_VALIDATION_MESSAGE")
+            {
+                IdentifierContext = ProtocolValidationIdentifierContext.Create(
+                    kind, state, identifier),
+            },
+        ]);
+}
+
+file sealed record RawProtocolElement(ViewNode Node) : WidgetElement(Node.Id)
+{
+    internal override ViewNode ToProtocolNode() => Node;
 }
 
 file sealed record VirtualBridgeItem(int Index);

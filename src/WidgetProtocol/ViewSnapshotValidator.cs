@@ -193,7 +193,8 @@ public static class ViewSnapshotValidator
             Add("$.root", "media_viewport_surface_mismatch",
                 "MediaViewport must reference the current embedded media surface identity.");
         var activeInputScopeId = snapshot.ActiveInputScopeId ?? string.Empty;
-        CheckIdentifier(activeInputScopeId, "$.activeInputScopeId", "active input scope ID");
+        CheckIdentifier(activeInputScopeId, "$.activeInputScopeId", "active input scope ID",
+            ProtocolValidationIdentifierKind.ElementReference);
         var hasActiveScope = inputScopes.TryGetValue(activeInputScopeId, out var activeScopeKey);
         if (!hasActiveScope && !string.IsNullOrWhiteSpace(activeInputScopeId))
             AddIdentifier("$.activeInputScopeId", "invalid_active_input_scope",
@@ -643,7 +644,8 @@ public static class ViewSnapshotValidator
             if (node.FocusPersistenceId is not null)
             {
                 CheckIdentifier(node.FocusPersistenceId,
-                    $"{path}.focusPersistenceId", "focus persistence ID");
+                    $"{path}.focusPersistenceId", "focus persistence ID",
+                    ProtocolValidationIdentifierKind.ElementReference);
                 if (!node.IsFocusable)
                     Add($"{path}.focusPersistenceId", "focus_persistence_on_non_focusable_node",
                         "Only focusable nodes may declare focus persistence.");
@@ -942,7 +944,8 @@ public static class ViewSnapshotValidator
             }
             if (node.InputScopeId is not null)
             {
-                CheckIdentifier(node.InputScopeId, $"{path}.inputScopeId", "input scope ID");
+                CheckIdentifier(node.InputScopeId, $"{path}.inputScopeId", "input scope ID",
+                    ProtocolValidationIdentifierKind.ElementReference);
                 if (!isContainer)
                     Add($"{path}.inputScopeId", "input_scope_not_allowed",
                         "Only stack, row, scroll, and grid containers may start an input scope.");

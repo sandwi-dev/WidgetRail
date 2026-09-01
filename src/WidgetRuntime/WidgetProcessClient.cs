@@ -1343,7 +1343,8 @@ public sealed class WidgetProcessException : Exception
     {
         RequestType = ValidateToken(requestType, nameof(requestType));
         WorkerErrorCode = ValidateToken(workerErrorCode, nameof(workerErrorCode));
-        WorkerDiagnosticMessage = ValidateDiagnostic(workerDiagnosticMessage);
+        WorkerDiagnosticMessage = ValidateDiagnostic(
+            workerDiagnosticMessage, WorkerErrorCode);
     }
 
     internal WidgetProcessException(
@@ -1359,7 +1360,8 @@ public sealed class WidgetProcessException : Exception
                 "Worker error request ID is invalid.");
         RequestType = ValidateToken(requestType, nameof(requestType));
         WorkerErrorCode = ValidateToken(workerErrorCode, nameof(workerErrorCode));
-        WorkerDiagnosticMessage = ValidateDiagnostic(workerDiagnosticMessage);
+        WorkerDiagnosticMessage = ValidateDiagnostic(
+            workerDiagnosticMessage, WorkerErrorCode);
     }
 
     internal string? RequestType { get; }
@@ -1372,9 +1374,10 @@ public sealed class WidgetProcessException : Exception
         string workerErrorCode,
         string workerDiagnosticMessage)
     {
-        _ = ValidateDiagnostic(workerDiagnosticMessage);
+        var validatedCode = ValidateToken(workerErrorCode, nameof(workerErrorCode));
+        _ = ValidateDiagnostic(workerDiagnosticMessage, validatedCode);
         return $"Worker rejected request '{ValidateToken(requestType, nameof(requestType))}' " +
-            $"({ValidateToken(workerErrorCode, nameof(workerErrorCode))}).";
+            $"({validatedCode}).";
     }
 
     private static string ValidateToken(string value, string parameterName)
@@ -1387,9 +1390,14 @@ public sealed class WidgetProcessException : Exception
         return value;
     }
 
-    private static string ValidateDiagnostic(string value)
+    private static string ValidateDiagnostic(string value, string workerErrorCode)
     {
-        if (string.IsNullOrWhiteSpace(value) || value.Length > 512 ||
+        var maximumLength = string.Equals(
+            workerErrorCode, WorkerErrorCodes.ProtocolValidationFailed,
+            StringComparison.Ordinal)
+            ? WidgetRuntimeProtocol.MaximumProtocolValidationDiagnosticMessageLength
+            : WidgetRuntimeProtocol.MaximumWorkerDiagnosticMessageLength;
+        if (string.IsNullOrWhiteSpace(value) || value.Length > maximumLength ||
             value.Any(character => char.IsControl(character) && character is not '\t'))
             throw new WidgetProtocolViolationException(
                 "Worker error message is invalid.");

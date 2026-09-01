@@ -3011,6 +3011,28 @@ static async Task ProtocolValidationDiagnosticIsStructural()
         "The worker response exposed widget-controlled text from a later validation message.");
     Assert.True(!exception.Message.Contains("$.activeInputScopeId", StringComparison.Ordinal),
         "The public process exception exposed a developer-only structural diagnostic.");
+
+    var maximumPath = "$" + string.Concat(Enumerable.Repeat(".a", 126)) + ".aa";
+    var maximumCode = new string('a', 64);
+    var maximumIdentifier = new string('i', 128);
+    var maximumDiagnostic =
+        $"Widget protocol validation failed at {maximumPath} " +
+        $"({maximumCode}; field=element_reference; state=outside_active_scope; " +
+        $"identifier={maximumIdentifier}).";
+    Assert.True(maximumDiagnostic.Length >
+                WidgetRuntimeProtocol.MaximumWorkerDiagnosticMessageLength &&
+                maximumDiagnostic.Length <=
+                WidgetRuntimeProtocol.MaximumProtocolValidationDiagnosticMessageLength,
+        "The typed maximum diagnostic did not exercise the extended bounded envelope.");
+    var maximumException = new WidgetProcessException(
+        MessageTypes.Render,
+        WorkerErrorCodes.ProtocolValidationFailed,
+        maximumDiagnostic);
+    Assert.Equal(maximumDiagnostic, maximumException.WorkerDiagnosticMessage);
+    Assert.Throws<WidgetProtocolViolationException>(() => new WidgetProcessException(
+        MessageTypes.Render,
+        WorkerErrorCodes.RequestFailed,
+        maximumDiagnostic));
 }
 
 static async Task WorkerOriginDiagnosticsAreBounded()

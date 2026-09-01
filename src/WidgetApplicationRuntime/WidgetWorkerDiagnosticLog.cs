@@ -161,12 +161,12 @@ internal sealed class WidgetWorkerDiagnosticLog
         value.All(character => char.IsAsciiLetterOrDigit(character) ||
             character is '-' or '_' or '.');
 
-    private static bool IsSafeValidationCode(string value) =>
+    internal static bool IsSafeValidationCode(string value) =>
         value.Length is > 0 and <= 64 && value.All(character =>
             character is >= 'a' and <= 'z' || char.IsAsciiDigit(character) ||
             character == '_');
 
-    private static bool IsSafeValidationPath(string path)
+    internal static bool IsSafeValidationPath(string path)
     {
         if (path.Length is < 1 or > 256 || path[0] != '$') return false;
         for (var index = 1; index < path.Length;)

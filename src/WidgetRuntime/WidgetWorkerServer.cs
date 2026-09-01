@@ -686,6 +686,9 @@ internal sealed class WidgetWorkerServer
         {
             var firstError = validationException.Errors.FirstOrDefault();
             if (firstError is null) return "Widget protocol validation failed.";
+            if (!WidgetWorkerDiagnosticLog.IsSafeValidationPath(firstError.Path) ||
+                !WidgetWorkerDiagnosticLog.IsSafeValidationCode(firstError.Code))
+                return "Widget protocol validation failed.";
             var (field, state, identifier) =
                 WidgetWorkerDiagnosticLog.NormalizeIdentifierContext(
                     firstError.IdentifierContext);
@@ -693,12 +696,17 @@ internal sealed class WidgetWorkerServer
                 ? $"; field={field}; state={state}" +
                   (identifier is not null ? $"; identifier={identifier}" : string.Empty)
                 : string.Empty;
-            return $"Widget protocol validation failed at {firstError.Path} " +
+            var diagnostic = $"Widget protocol validation failed at {firstError.Path} " +
                 $"({firstError.Code}{context}).";
+            return diagnostic.Length <=
+                WidgetRuntimeProtocol.MaximumProtocolValidationDiagnosticMessageLength
+                ? diagnostic
+                : "Widget protocol validation failed.";
         }
 
         var message = exception.Message;
-        if (message.Length > 512) message = message[..512];
+        if (message.Length > WidgetRuntimeProtocol.MaximumWorkerDiagnosticMessageLength)
+            message = message[..WidgetRuntimeProtocol.MaximumWorkerDiagnosticMessageLength];
         return message.Replace(Environment.NewLine, " ", StringComparison.Ordinal);
     }
 
