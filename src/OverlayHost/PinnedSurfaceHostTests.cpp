@@ -137,6 +137,24 @@ void TestAcceptedCompactMediaHostContract() {
           "compact B exits to click-through, View uses the tray route, and A/navigation expose no scrub mapping");
 }
 
+void TestBoundedOverlayDiagnosticContract() {
+    const auto source = ReadSource(fs::path{__FILE__}.parent_path() / "main.cpp");
+    Check(source.find("maximumFileBytes = 4ULL * 1024ULL * 1024ULL") !=
+              std::string::npos &&
+              source.find("Local\\\\WidgetRail.OverlayDiagnosticLog.v1") !=
+              std::string::npos &&
+              source.find("crossProcessWaitMilliseconds = 50") !=
+              std::string::npos,
+          "overlay diagnostics share one bounded cross-process rotation owner");
+    Check(source.find("overlay.1.log") != std::string::npos &&
+              source.find("overlay.2.log") != std::string::npos &&
+              source.find("input.seekg(-static_cast<std::streamoff>(maximumFileBytes)") !=
+              std::string::npos &&
+              source.find("MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH") !=
+              std::string::npos,
+          "overlay diagnostics retain two bounded recent generations and trim legacy oversized logs");
+}
+
 void TestWidgetContextActionHostContract() {
     const auto source = ReadSource(
         fs::path{__FILE__}.parent_path() / "main.cpp");
@@ -1071,6 +1089,7 @@ int wmain(const int argc, wchar_t** argv) {
         Check(SUCCEEDED(apartment), "COM apartment initializes");
         (void)SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         TestAcceptedCompactMediaHostContract();
+        TestBoundedOverlayDiagnosticContract();
         TestWidgetContextActionHostContract();
         TestAcceptedOverlayFullscreenMediaHostContract();
         TestAcceptedWidgetOwnedFocusMemoryHostContract();

@@ -210,6 +210,21 @@ themes, and bridge watcher are connected. Check these boundaries:
   then verify the settings/theme diagnostic rather than restarting workers.
   The host log is `%LOCALAPPDATA%\WidgetRail\overlay.log`.
 
+The host and Bridge share one bounded writer for `overlay.log`. The current
+file and two retained generations (`overlay.1.log` and `overlay.2.log`) are each
+limited to 4 MiB, for a 12 MiB total ceiling. Rotation preserves the newest
+complete records; the first write after upgrading trims an oversized legacy
+log to its recent tail. Cross-process admission waits at most 50 ms. If the
+lock, directory, or rotation operation is unavailable, that diagnostic is
+dropped without retrying in a loop or affecting overlay/Bridge behavior.
+
+Worker-origin request, bootstrap, and runtime-session failures use the
+host-selected `%LOCALAPPDATA%\WidgetRail\worker-diagnostics` root. Identifiers
+and records are bounded and sanitized; each process retains a 128 KiB current
+file plus two generations, and each widget retains four recent process
+directories. Diagnostic write failure never changes worker lifecycle or IPC
+outcomes.
+
 If install fails, run `wrail theme inspect <file.wrtheme>` and compare the
 reported digest. Remote installs require `--sha256`, existing versions are not
 overwritten, and the installed catalog is capped at 128 user-theme versions.

@@ -16,6 +16,11 @@ internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
 {
     internal const int MaximumTrackedTransitions = 256;
     internal const int MaximumPendingLines = 32;
+    internal const long MaximumFileBytes = 4L * 1024L * 1024L;
+    internal const int RetainedGenerationCount = 2;
+    private const int CrossProcessWaitMilliseconds = 50;
+    private const string CrossProcessMutexName =
+        @"Local\WidgetRail.OverlayDiagnosticLog.v1";
 
     private readonly object _gate = new();
     private readonly string _path;
@@ -189,10 +194,83 @@ internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-                await File.AppendAllTextAsync(_path, line, Encoding.UTF8).ConfigureAwait(false);
+                AppendBounded(line);
             }
             catch (Exception exception) when (exception is IOException or
                 UnauthorizedAccessException or NotSupportedException) { }
+        }
+    }
+
+    internal void AppendBounded(string line)
+    {
+        using var processMutex = new Mutex(
+            initiallyOwned: false,
+            OperatingSystem.IsWindows() ? CrossProcessMutexName : null);
+        var acquired = false;
+        try
+        {
+            try { acquired = processMutex.WaitOne(CrossProcessWaitMilliseconds); }
+            catch (AbandonedMutexException) { acquired = true; }
+            if (!acquired) return;
+
+            var incomingBytes = Encoding.UTF8.GetByteCount(line);
+            var currentLength = File.Exists(_path) ? new FileInfo(_path).Length : 0;
+            if (currentLength + incomingBytes > MaximumFileBytes)
+            {
+                var oldest = GenerationPath(RetainedGenerationCount);
+                if (File.Exists(oldest)) File.Delete(oldest);
+                for (var generation = RetainedGenerationCount - 1;
+                     generation >= 0;
+                     generation--)
+                {
+                    var source = generation == 0 ? _path : GenerationPath(generation);
+                    if (!File.Exists(source)) continue;
+                    MoveBounded(source, GenerationPath(generation + 1));
+                }
+            }
+            File.AppendAllText(_path, line, Encoding.UTF8);
+        }
+        finally
+        {
+            if (acquired) processMutex.ReleaseMutex();
+        }
+    }
+
+    private string GenerationPath(int generation) =>
+        Path.Combine(
+            Path.GetDirectoryName(_path)!,
+            $"{Path.GetFileNameWithoutExtension(_path)}.{generation}{Path.GetExtension(_path)}");
+
+    private static void MoveBounded(string source, string destination)
+    {
+        if (new FileInfo(source).Length <= MaximumFileBytes)
+        {
+            File.Move(source, destination, overwrite: true);
+            return;
+        }
+
+        var temporary = destination + $".{Guid.NewGuid():N}.tmp";
+        try
+        {
+            using (var input = new FileStream(
+                       source, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var output = new FileStream(
+                       temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                input.Seek(-MaximumFileBytes, SeekOrigin.End);
+                while (input.Position < input.Length)
+                    if (input.ReadByte() == (byte)'\n') break;
+                input.CopyTo(output);
+                output.Flush(flushToDisk: true);
+            }
+            File.Move(temporary, destination, overwrite: true);
+            File.Delete(source);
+        }
+        finally
+        {
+            try { File.Delete(temporary); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
     }
 

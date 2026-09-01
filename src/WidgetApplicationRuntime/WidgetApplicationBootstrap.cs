@@ -25,10 +25,10 @@ public static class WidgetApplicationBootstrap
             shutdown.Cancel();
         };
         Console.CancelKeyPress += cancelHandler;
+        var diagnostics = WidgetWorkerDiagnosticLog.TryCreate(args);
         try
         {
             var launch = ApplicationLaunchArguments.Parse(args);
-            var diagnostics = WidgetWorkerDiagnosticLog.TryCreate(args);
             var widget = widgetFactory() ?? throw new InvalidOperationException(
                 "The widget factory returned no widget.");
             await new WidgetWorkerServer(
@@ -47,12 +47,14 @@ public static class WidgetApplicationBootstrap
         }
         catch (ArgumentException)
         {
+            diagnostics?.RecordRuntimeFailure("bootstrap", "invalid_arguments");
             Console.Error.WriteLine(
                 "Community application failed (invalid_arguments): Host launch arguments are invalid.");
             return 1;
         }
         catch (Exception)
         {
+            diagnostics?.RecordRuntimeFailure("runtime", "session_failed");
             Console.Error.WriteLine(
                 "Community application failed: The overlay session could not be started.");
             return 1;

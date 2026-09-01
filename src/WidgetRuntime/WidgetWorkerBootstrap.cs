@@ -80,10 +80,10 @@ public static class WidgetWorkerBootstrap
             shutdown.Cancel();
         };
         Console.CancelKeyPress += cancelHandler;
+        var diagnostics = WidgetWorkerDiagnosticLog.TryCreate(args);
         try
         {
             var launch = WidgetWorkerLaunchArguments.Parse(args);
-            var diagnostics = WidgetWorkerDiagnosticLog.TryCreate(args);
             await using var capabilityConnection = await WorkerCapabilityConnection
                 .ConnectAsync(launch.Broker, shutdown.Token).ConfigureAwait(false);
             var services = new WidgetHostServices(capabilityConnection.Client);
@@ -107,16 +107,19 @@ public static class WidgetWorkerBootstrap
         }
         catch (WidgetWorkerBootstrapException exception)
         {
+            diagnostics?.RecordRuntimeFailure("bootstrap", exception.Code);
             Console.Error.WriteLine($"Widget worker failed ({exception.Code}): {exception.SafeMessage}");
             return exception.ExitCode;
         }
         catch (ArgumentException)
         {
+            diagnostics?.RecordRuntimeFailure("bootstrap", "invalid_arguments");
             Console.Error.WriteLine("Widget worker failed (invalid_arguments): Host launch arguments are invalid.");
             return 1;
         }
         catch (Exception)
         {
+            diagnostics?.RecordRuntimeFailure("runtime", "session_failed");
             // Never print exception messages, paths, transport credentials, or
             // stack traces across this process boundary.
             Console.Error.WriteLine("Widget worker failed: The worker could not be started.");

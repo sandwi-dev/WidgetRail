@@ -170,6 +170,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Hung actions acknowledge promptly and cancel without restart", HungActionAdmissionIsPrompt),
     ("Worker protocol diagnostics expose only the first validation path and code", ProtocolValidationDiagnosticIsStructural),
     ("Worker-origin diagnostics are bounded rotating and IPC-independent", WorkerOriginDiagnosticsAreBounded),
+    ("Worker bootstrap failures persist through the host-owned diagnostic path", WorkerBootstrapFailuresPersist),
     ("Malformed worker snapshots are rejected by host", MalformedSnapshotIsRejected),
     ("Worker destruction is bounded when widget cleanup hangs", DestroyIsBounded),
 };
@@ -3115,6 +3116,40 @@ static async Task WorkerOriginDiagnosticsAreBounded()
     Assert.True(!generations.SelectMany(File.ReadLines).Any(line =>
             line.Contains("PRIVATE_MESSAGE", StringComparison.Ordinal)),
         "A validator message crossed the safe worker diagnostic boundary.");
+}
+
+static async Task WorkerBootstrapFailuresPersist()
+{
+    using var temporary = new TemporaryDirectory();
+    var path = Path.Combine(temporary.Path, WidgetWorkerDiagnosticLog.FileName);
+    var arguments = new[] { "--worker-diagnostics-path", path };
+
+    Assert.Equal(1, await WidgetApplicationBootstrap.RunAsync(
+        arguments, () => new TestWidget()));
+    Assert.Equal(1, await WidgetWorkerBootstrap.RunAsync(
+        arguments, () => new TestWidget()));
+
+    var records = File.ReadLines(path)
+        .Select(line => JsonDocument.Parse(line))
+        .ToArray();
+    try
+    {
+        Assert.Equal(2, records.Length);
+        Assert.True(records.All(record =>
+                record.RootElement.GetProperty("stage").GetString() == "bootstrap" &&
+                record.RootElement.GetProperty("code").GetString() == "invalid_arguments" &&
+                record.RootElement.GetProperty("processId").GetInt32() == Environment.ProcessId &&
+                record.RootElement.GetProperty("requestId").GetInt64() == 0),
+            "Bootstrap diagnostics lost their bounded runtime/process identity.");
+        Assert.True(records.All(record =>
+                !record.RootElement.GetRawText().Contains(
+                    temporary.Path, StringComparison.OrdinalIgnoreCase)),
+            "Bootstrap diagnostics exposed the host-owned diagnostic path.");
+    }
+    finally
+    {
+        foreach (var record in records) record.Dispose();
+    }
 }
 
 static async Task DestroyIsBounded()

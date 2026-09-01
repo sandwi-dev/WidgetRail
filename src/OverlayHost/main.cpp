@@ -55,6 +55,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -353,26 +354,119 @@ void ClearStartupError() {
 void AppendDiagnostic(const std::wstring_view message) {
     static std::mutex logMutex;
     std::lock_guard lock(logMutex);
+    constexpr std::uintmax_t maximumFileBytes = 4ULL * 1024ULL * 1024ULL;
+    constexpr std::size_t maximumMessageCharacters = 4096;
+    constexpr DWORD crossProcessWaitMilliseconds = 50;
+
+    const HANDLE processMutex = CreateMutexW(
+        nullptr, FALSE, L"Local\\WidgetRail.OverlayDiagnosticLog.v1");
+    if (!processMutex) return;
+    const DWORD wait = WaitForSingleObject(
+        processMutex, crossProcessWaitMilliseconds);
+    if (wait != WAIT_OBJECT_0 && wait != WAIT_ABANDONED) {
+        CloseHandle(processMutex);
+        return;
+    }
+    const auto releaseProcessMutex = [&] {
+        ReleaseMutex(processMutex);
+        CloseHandle(processMutex);
+    };
 
     wchar_t localAppData[MAX_PATH]{};
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0) {
+        releaseProcessMutex();
         return;
     }
     const auto directory = std::filesystem::path(localAppData) / L"WidgetRail";
     std::error_code error;
     std::filesystem::create_directories(directory, error);
     if (error) {
+        releaseProcessMutex();
         return;
     }
 
     SYSTEMTIME now{};
     GetLocalTime(&now);
-    std::wofstream output(directory / L"overlay.log", std::ios::app);
-    if (output) {
-        output << now.wYear << L'-' << now.wMonth << L'-' << now.wDay << L' '
-               << now.wHour << L':' << now.wMinute << L':' << now.wSecond << L'.'
-               << now.wMilliseconds << L' ' << message << L'\n';
+    std::wstring boundedMessage(message.substr(
+        0, std::min(message.size(), maximumMessageCharacters)));
+    std::wostringstream formatted;
+    formatted << now.wYear << L'-' << now.wMonth << L'-' << now.wDay << L' '
+              << now.wHour << L':' << now.wMinute << L':' << now.wSecond << L'.'
+              << now.wMilliseconds << L' ' << boundedMessage << L"\r\n";
+    const auto wideLine = formatted.str();
+    const int utf8Length = WideCharToMultiByte(
+        CP_UTF8, WC_ERR_INVALID_CHARS, wideLine.data(),
+        static_cast<int>(wideLine.size()), nullptr, 0, nullptr, nullptr);
+    if (utf8Length <= 0) {
+        releaseProcessMutex();
+        return;
     }
+    std::string line(static_cast<std::size_t>(utf8Length), '\0');
+    if (WideCharToMultiByte(
+            CP_UTF8, WC_ERR_INVALID_CHARS, wideLine.data(),
+            static_cast<int>(wideLine.size()), line.data(), utf8Length,
+            nullptr, nullptr) != utf8Length) {
+        releaseProcessMutex();
+        return;
+    }
+
+    const auto current = directory / L"overlay.log";
+    const auto prior = directory / L"overlay.1.log";
+    const auto oldest = directory / L"overlay.2.log";
+    const auto boundedMove = [&](const std::filesystem::path& source,
+                                 const std::filesystem::path& destination,
+                                 const std::filesystem::path& temporary) {
+        error.clear();
+        if (!std::filesystem::exists(source, error)) return !error;
+        const auto size = std::filesystem::file_size(source, error);
+        if (error) return false;
+        std::filesystem::remove(destination, error);
+        if (error && error != std::errc::no_such_file_or_directory) return false;
+        error.clear();
+        if (size <= maximumFileBytes) {
+            std::filesystem::rename(source, destination, error);
+            return !error;
+        }
+        std::filesystem::remove(temporary, error);
+        error.clear();
+        std::ifstream input(source, std::ios::binary);
+        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+        if (!input || !output) return false;
+        input.seekg(-static_cast<std::streamoff>(maximumFileBytes), std::ios::end);
+        std::string discarded;
+        std::getline(input, discarded);
+        output << input.rdbuf();
+        output.close();
+        if (!output || !MoveFileExW(
+                temporary.c_str(), destination.c_str(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return false;
+        std::filesystem::remove(source, error);
+        return !error;
+    };
+
+    error.clear();
+    const auto currentSize = std::filesystem::exists(current, error)
+        ? std::filesystem::file_size(current, error)
+        : 0;
+    if (error) {
+        releaseProcessMutex();
+        return;
+    }
+    if (currentSize + line.size() > maximumFileBytes) {
+        std::filesystem::remove(oldest, error);
+        if (error && error != std::errc::no_such_file_or_directory) {
+            releaseProcessMutex();
+            return;
+        }
+        if (!boundedMove(prior, oldest, directory / L"overlay.2.tmp") ||
+            !boundedMove(current, prior, directory / L"overlay.1.tmp")) {
+            releaseProcessMutex();
+            return;
+        }
+    }
+    std::ofstream output(current, std::ios::binary | std::ios::app);
+    if (output) output.write(line.data(), static_cast<std::streamsize>(line.size()));
+    releaseProcessMutex();
 }
 
 enum class DiagnosticSeverity { Debug, Information, Warning, Error };

@@ -98,6 +98,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
     ("Private diagnostics attach only to the exact trusted Settings identity", DiagnosticsAreSettingsOnly),
     ("Media Sessions diagnostics are bounded transition-only and sanitized", MediaSessionDiagnosticsAreBounded),
+    ("Shared overlay diagnostics rotate with bounded retained generations", SharedOverlayDiagnosticsRotate),
     ("Worker request diagnostics are bounded developer-only records", WorkerRequestDiagnosticsAreBounded),
     ("Worker validator diagnostics persist and correlate across the Bridge", WorkerValidatorDiagnosticsPersistAndCorrelate),
     ("Diagnostics projection is bounded sanitized and read only", BridgeDiagnosticsScenarios.ProjectionIsBoundedSanitizedAndReadOnly),
@@ -692,6 +693,35 @@ static async Task MediaSessionDiagnosticsAreBounded()
         !line.Contains("player.exe", StringComparison.OrdinalIgnoreCase) &&
         !line.Contains("secret", StringComparison.OrdinalIgnoreCase)),
         "Unsafe diagnostic content crossed the bounded log boundary.");
+}
+
+static async Task SharedOverlayDiagnosticsRotate()
+{
+    using var temporary = new TemporaryDirectory("wrail-overlay-rotation");
+    var path = System.IO.Path.Combine(temporary.Path, "overlay.log");
+    await File.WriteAllBytesAsync(
+        path, Enumerable.Repeat((byte)'x', checked((int)MediaSessionsDiagnosticLog.MaximumFileBytes + 2048)).ToArray());
+    await using var diagnostics = new MediaSessionsDiagnosticLog(path);
+    diagnostics.AppendBounded("legacy-tail-retained\n");
+    for (var index = 0; index < 220; index++)
+        diagnostics.AppendBounded($"rotation-{index:D3} {new string('x', 64 * 1024)}\n");
+
+    var generations = Enumerable.Range(0, MediaSessionsDiagnosticLog.RetainedGenerationCount + 1)
+        .Select(generation => generation == 0
+            ? path
+            : System.IO.Path.Combine(temporary.Path, $"overlay.{generation}.log"))
+        .Where(File.Exists)
+        .ToArray();
+    Assert.Equal(MediaSessionsDiagnosticLog.RetainedGenerationCount + 1, generations.Length);
+    Assert.True(generations.All(candidate =>
+            new FileInfo(candidate).Length <= MediaSessionsDiagnosticLog.MaximumFileBytes),
+        "A shared diagnostic generation exceeded its exact byte bound.");
+    Assert.True(generations.Sum(candidate => new FileInfo(candidate).Length) <=
+                (MediaSessionsDiagnosticLog.RetainedGenerationCount + 1) *
+                MediaSessionsDiagnosticLog.MaximumFileBytes,
+        "Shared diagnostic retention exceeded its documented total bound.");
+    Assert.True(File.ReadAllText(path).Contains("rotation-219", StringComparison.Ordinal),
+        "The current generation did not retain the newest diagnostic record.");
 }
 
 static async Task WorkerRequestDiagnosticsAreBounded()

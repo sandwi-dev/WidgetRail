@@ -72,14 +72,34 @@ internal sealed class WidgetWorkerDiagnosticLog
             }
         }
 
-        var record = JsonSerializer.Serialize(new WorkerFailureRecord(
+        Write(new WorkerFailureRecord(
             DateTimeOffset.UtcNow,
             Environment.ProcessId,
+            "request",
             requestId,
             requestType,
             code,
             validationPath,
-            validationCode), JsonOptions);
+            validationCode));
+    }
+
+    internal void RecordRuntimeFailure(string stage, string code)
+    {
+        if (!IsSafeToken(stage, 64) || !IsSafeToken(code, 64)) return;
+        Write(new WorkerFailureRecord(
+            DateTimeOffset.UtcNow,
+            Environment.ProcessId,
+            stage,
+            0,
+            "none",
+            code,
+            null,
+            null));
+    }
+
+    private void Write(WorkerFailureRecord failure)
+    {
+        var record = JsonSerializer.Serialize(failure, JsonOptions);
         lock (_gate)
         {
             try
@@ -152,6 +172,7 @@ internal sealed class WidgetWorkerDiagnosticLog
     private sealed record WorkerFailureRecord(
         DateTimeOffset Timestamp,
         int ProcessId,
+        string Stage,
         long RequestId,
         string RequestType,
         string Code,
