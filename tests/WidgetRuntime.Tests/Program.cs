@@ -2994,6 +2994,10 @@ static async Task ProtocolValidationDiagnosticIsStructural()
         "invalid_active_input_scope", StringComparison.Ordinal) == true,
         "The worker response omitted the first validation code.");
     Assert.True(exception.WorkerDiagnosticMessage?.Contains(
+        "field=element_reference; state=missing; identifier=missing.scope",
+        StringComparison.Ordinal) == true,
+        "The worker response omitted the typed privacy-safe identifier state.");
+    Assert.True(exception.WorkerDiagnosticMessage?.Contains(
         "FIRST_WIDGET_SECRET", StringComparison.Ordinal) != true,
         "The worker response exposed widget-controlled text from the first validation message.");
     Assert.True(exception.WorkerDiagnosticMessage?.Contains(
@@ -3082,6 +3086,12 @@ static async Task WorkerOriginDiagnosticsAreBounded()
             record.GetProperty("validationPath").GetString());
         Assert.Equal("invalid_active_input_scope",
             record.GetProperty("validationCode").GetString());
+        Assert.Equal("element_reference",
+            record.GetProperty("validationField").GetString());
+        Assert.Equal("missing",
+            record.GetProperty("validationState").GetString());
+        Assert.Equal("missing.scope",
+            record.GetProperty("validationIdentifier").GetString());
         Assert.True(!record.GetRawText().Contains(
                 "FIRST_WIDGET_SECRET", StringComparison.Ordinal) &&
             !record.GetRawText().Contains(
@@ -3096,10 +3106,28 @@ static async Task WorkerOriginDiagnosticsAreBounded()
     var validation = new ProtocolValidationException(
     [
         new ProtocolValidationError(
-            "$.activeInputScopeId", "invalid_active_input_scope", "PRIVATE_MESSAGE"),
+            "$.initialFocusId", "invalid_focus_target", "PRIVATE_MESSAGE")
+        {
+            IdentifierContext = ProtocolValidationIdentifierContext.Create(
+                ProtocolValidationIdentifierKind.InitialFocus,
+                ProtocolValidationIdentifierState.Disabled,
+                "settings.disabled.action"),
+        },
     ]);
     for (var index = 0; index < 4_000; index++)
         log.RecordRequestFailure(index + 1, MessageTypes.Render, validation);
+    log.RecordRequestFailure(4_001, MessageTypes.Render,
+        new ProtocolValidationException(
+        [
+            new ProtocolValidationError(
+                "$.initialFocusId", "invalid_focus_target", "PRIVATE_MESSAGE")
+            {
+                IdentifierContext = new(
+                    ProtocolValidationIdentifierKind.InitialFocus,
+                    ProtocolValidationIdentifierState.Missing,
+                    "https://example.invalid/search?q=PRIVATE_IDENTIFIER"),
+            },
+        ]));
 
     var generations = Enumerable.Range(0, WidgetWorkerDiagnosticLog.RetainedGenerationCount + 1)
         .Select(generation => generation == 0 ? path : $"{path}.{generation}")
@@ -3114,8 +3142,14 @@ static async Task WorkerOriginDiagnosticsAreBounded()
                 (WidgetWorkerDiagnosticLog.MaximumFileBytes + 1024),
         "Worker diagnostic retention exceeded its fixed total bound.");
     Assert.True(!generations.SelectMany(File.ReadLines).Any(line =>
-            line.Contains("PRIVATE_MESSAGE", StringComparison.Ordinal)),
+            line.Contains("PRIVATE_MESSAGE", StringComparison.Ordinal) ||
+            line.Contains("PRIVATE_IDENTIFIER", StringComparison.Ordinal) ||
+            line.Contains("example.invalid", StringComparison.Ordinal)),
         "A validator message crossed the safe worker diagnostic boundary.");
+    Assert.True(generations.SelectMany(File.ReadLines).Any(line =>
+            line.Contains("\"validationState\":\"unsafe_value\"", StringComparison.Ordinal) &&
+            line.Contains("\"validationIdentifier\":null", StringComparison.Ordinal)),
+        "Unsafe identifier context was not reduced to the closed privacy-safe state.");
 }
 
 static async Task WorkerBootstrapFailuresPersist()
@@ -3445,8 +3479,8 @@ file sealed class InvalidProtocolWidget : Widget
 {
     public override WidgetView Render() => new(
         UI.Stack("root"),
-        InitialFocusId: "SECOND_WIDGET_SECRET",
-        ActiveInputScopeId: "FIRST_WIDGET_SECRET");
+        InitialFocusId: "missing.focus",
+        ActiveInputScopeId: "missing.scope");
 }
 
 file sealed class GestureQueueWidget : Widget

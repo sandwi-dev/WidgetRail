@@ -125,6 +125,20 @@ internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
              BridgeWidgetRequestDiagnostic.IsSafeValidationCode(validationCode)
                 ? $" validation-path={validationPath} validation-code={validationCode}"
                 : string.Empty) +
+            (diagnostic.ValidationField is { } validationField &&
+             diagnostic.ValidationState is { } validationState &&
+             BridgeWidgetRequestDiagnostic.IsSafeValidationField(validationField) &&
+             BridgeWidgetRequestDiagnostic.IsSafeValidationState(validationState) &&
+             (diagnostic.ValidationIdentifier is null ||
+              ProtocolValidationIdentifierContext.IsSafeIdentifier(
+                  diagnostic.ValidationIdentifier)) &&
+             (diagnostic.ValidationIdentifier is not null ||
+              validationState is "missing" or "unsafe_value")
+                ? $" validation-field={validationField} validation-state={validationState}" +
+                  (diagnostic.ValidationIdentifier is { } validationIdentifier
+                      ? $" validation-identifier={validationIdentifier}"
+                      : string.Empty)
+                : string.Empty) +
             Environment.NewLine);
     }
 

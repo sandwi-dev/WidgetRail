@@ -60,6 +60,9 @@ internal sealed class WidgetWorkerDiagnosticLog
             : WorkerErrorCodes.RequestFailed;
         string? validationPath = null;
         string? validationCode = null;
+        string? validationField = null;
+        string? validationState = null;
+        string? validationIdentifier = null;
         if (exception is ProtocolValidationException validation)
         {
             var first = validation.Errors.FirstOrDefault();
@@ -69,6 +72,8 @@ internal sealed class WidgetWorkerDiagnosticLog
             {
                 validationPath = first.Path;
                 validationCode = first.Code;
+                (validationField, validationState, validationIdentifier) =
+                    NormalizeIdentifierContext(first.IdentifierContext);
             }
         }
 
@@ -80,7 +85,10 @@ internal sealed class WidgetWorkerDiagnosticLog
             requestType,
             code,
             validationPath,
-            validationCode));
+            validationCode,
+            validationField,
+            validationState,
+            validationIdentifier));
     }
 
     internal void RecordRuntimeFailure(string stage, string code)
@@ -93,6 +101,9 @@ internal sealed class WidgetWorkerDiagnosticLog
             0,
             "none",
             code,
+            null,
+            null,
+            null,
             null,
             null));
     }
@@ -184,6 +195,49 @@ internal sealed class WidgetWorkerDiagnosticLog
         return true;
     }
 
+    internal static (string? Field, string? State, string? Identifier)
+        NormalizeIdentifierContext(ProtocolValidationIdentifierContext? context)
+    {
+        if (context is null || !Enum.IsDefined(context.FieldKind) ||
+            !Enum.IsDefined(context.State))
+            return (null, null, null);
+
+        var field = context.FieldKind switch
+        {
+            ProtocolValidationIdentifierKind.InitialFocus => "initial_focus",
+            ProtocolValidationIdentifierKind.ReturnFocus => "return_focus",
+            ProtocolValidationIdentifierKind.ElementReference => "element_reference",
+            ProtocolValidationIdentifierKind.Action => "action",
+            ProtocolValidationIdentifierKind.ContextAction => "context_action",
+            _ => null,
+        };
+        if (field is null) return (null, null, null);
+
+        if (context.Identifier is { } identifier)
+        {
+            if (!ProtocolValidationIdentifierContext.IsSafeIdentifier(identifier))
+                return (field, "unsafe_value", null);
+            return (field, StateToken(context.State), identifier);
+        }
+
+        return context.State is ProtocolValidationIdentifierState.Missing or
+            ProtocolValidationIdentifierState.UnsafeValue
+            ? (field, StateToken(context.State), null)
+            : (null, null, null);
+    }
+
+    internal static string? StateToken(ProtocolValidationIdentifierState state) => state switch
+    {
+        ProtocolValidationIdentifierState.Missing => "missing",
+        ProtocolValidationIdentifierState.NotFocusable => "not_focusable",
+        ProtocolValidationIdentifierState.Disabled => "disabled",
+        ProtocolValidationIdentifierState.OutsideActiveScope => "outside_active_scope",
+        ProtocolValidationIdentifierState.Duplicate => "duplicate",
+        ProtocolValidationIdentifierState.UnknownAction => "unknown_action",
+        ProtocolValidationIdentifierState.UnsafeValue => "unsafe_value",
+        _ => null,
+    };
+
     private sealed record WorkerFailureRecord(
         DateTimeOffset Timestamp,
         int ProcessId,
@@ -192,5 +246,8 @@ internal sealed class WidgetWorkerDiagnosticLog
         string RequestType,
         string Code,
         string? ValidationPath,
-        string? ValidationCode);
+        string? ValidationCode,
+        string? ValidationField,
+        string? ValidationState,
+        string? ValidationIdentifier);
 }

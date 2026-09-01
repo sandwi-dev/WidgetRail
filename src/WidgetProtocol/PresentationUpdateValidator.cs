@@ -80,12 +80,15 @@ public static class PresentationUpdateValidator
                                 "Property value does not match the closed property schema.");
                     }
                 }
-                if (operation.TargetId is not null) CheckIdentifier(operation.TargetId, $"{path}.targetId");
+                if (operation.TargetId is not null)
+                    CheckIdentifier(operation.TargetId, $"{path}.targetId",
+                        ProtocolValidationIdentifierKind.ElementReference);
                 Reject(operation.ParentId is not null || operation.ChildId is not null ||
                     operation.Index is not null || operation.Subtree is not null, path);
                 break;
             case PresentationUpdateOperationKind.InsertChild:
-                CheckIdentifier(operation.ParentId, $"{path}.parentId");
+                CheckIdentifier(operation.ParentId, $"{path}.parentId",
+                    ProtocolValidationIdentifierKind.ElementReference);
                 if (operation.Index is null or < 0)
                     Add($"{path}.index", "invalid_index", "InsertChild requires a non-negative index.");
                 ValidateSubtree(operation.Subtree, $"{path}.subtree");
@@ -93,21 +96,26 @@ public static class PresentationUpdateValidator
                     operation.Properties is not null, path);
                 break;
             case PresentationUpdateOperationKind.RemoveChild:
-                CheckIdentifier(operation.ParentId, $"{path}.parentId");
-                CheckIdentifier(operation.ChildId, $"{path}.childId");
+                CheckIdentifier(operation.ParentId, $"{path}.parentId",
+                    ProtocolValidationIdentifierKind.ElementReference);
+                CheckIdentifier(operation.ChildId, $"{path}.childId",
+                    ProtocolValidationIdentifierKind.ElementReference);
                 Reject(operation.TargetId is not null || operation.Index is not null ||
                     operation.Properties is not null || operation.Subtree is not null, path);
                 break;
             case PresentationUpdateOperationKind.MoveChild:
-                CheckIdentifier(operation.ParentId, $"{path}.parentId");
-                CheckIdentifier(operation.ChildId, $"{path}.childId");
+                CheckIdentifier(operation.ParentId, $"{path}.parentId",
+                    ProtocolValidationIdentifierKind.ElementReference);
+                CheckIdentifier(operation.ChildId, $"{path}.childId",
+                    ProtocolValidationIdentifierKind.ElementReference);
                 if (operation.Index is null or < 0)
                     Add($"{path}.index", "invalid_index", "MoveChild requires a non-negative index.");
                 Reject(operation.TargetId is not null || operation.Properties is not null ||
                     operation.Subtree is not null, path);
                 break;
             case PresentationUpdateOperationKind.ReplaceSubtree:
-                CheckIdentifier(operation.TargetId, $"{path}.targetId");
+                CheckIdentifier(operation.TargetId, $"{path}.targetId",
+                    ProtocolValidationIdentifierKind.ElementReference);
                 ValidateSubtree(operation.Subtree, $"{path}.subtree");
                 Reject(operation.ParentId is not null || operation.ChildId is not null ||
                     operation.Index is not null || operation.Properties is not null, path);
@@ -139,9 +147,13 @@ public static class PresentationUpdateValidator
                     Add(path, "too_many_nodes", "Subtree exceeds the node limit.");
                 if (depth > ProtocolConstants.MaximumTreeDepth)
                     Add(nodePath, "too_deep", "Subtree exceeds the depth limit.");
-                CheckIdentifier(node.Id, $"{nodePath}.id");
+                CheckIdentifier(node.Id, $"{nodePath}.id",
+                    ProtocolValidationIdentifierKind.ElementReference);
                 if (!ids.Add(node.Id))
-                    Add($"{nodePath}.id", "duplicate_id", "Subtree IDs must be unique.");
+                    AddIdentifier($"{nodePath}.id", "duplicate_id",
+                        "Subtree IDs must be unique.",
+                        ProtocolValidationIdentifierKind.ElementReference,
+                        ProtocolValidationIdentifierState.Duplicate, node.Id);
                 if (node.Children is null)
                 {
                     Add($"{nodePath}.children", "required", "Node children cannot be null.");
@@ -162,15 +174,39 @@ public static class PresentationUpdateValidator
             }
         }
 
-        void CheckIdentifier(string? value, string path)
+        void CheckIdentifier(
+            string? value,
+            string path,
+            ProtocolValidationIdentifierKind? fieldKind = null)
         {
             if (string.IsNullOrWhiteSpace(value) || value.Length > 128 ||
                 !value.All(character => char.IsAsciiLetterOrDigit(character) ||
                     character is '-' or '_' or '.'))
-                Add(path, "invalid_identifier", "Identifier is missing or invalid.");
+            {
+                if (fieldKind is { } typedField)
+                    AddIdentifier(path, "invalid_identifier",
+                        "Identifier is missing or invalid.", typedField,
+                        string.IsNullOrWhiteSpace(value)
+                            ? ProtocolValidationIdentifierState.Missing
+                            : ProtocolValidationIdentifierState.UnsafeValue,
+                        value);
+                else
+                    Add(path, "invalid_identifier", "Identifier is missing or invalid.");
+            }
         }
 
-        void Add(string path, string code, string message) => errors.Add(new(path, code, message));
+        void Add(string path, string code, string message,
+            ProtocolValidationIdentifierContext? identifierContext = null) =>
+            errors.Add(new(path, code, message) { IdentifierContext = identifierContext });
+
+        void AddIdentifier(
+            string path,
+            string code,
+            string message,
+            ProtocolValidationIdentifierKind fieldKind,
+            ProtocolValidationIdentifierState state,
+            string? identifier) => Add(path, code, message,
+                ProtocolValidationIdentifierContext.Create(fieldKind, state, identifier));
     }
 }
 
@@ -328,7 +364,9 @@ public static class PresentationUpdateMaterializer
                     var children = parent.Children.ToList();
                     var index = children.FindIndex(child =>
                         string.Equals(child.Id, operation.ChildId, StringComparison.Ordinal));
-                    if (index < 0) throw Error("$.operations", "missing_child", "Remove target is not a direct child.");
+                    if (index < 0) throw IdentifierError("$.operations", "missing_child",
+                        "Remove target is not a direct child.", operation.ChildId,
+                        ProtocolValidationIdentifierState.Missing);
                     children.RemoveAt(index);
                     return parent with { Children = children };
                 }),
@@ -340,7 +378,9 @@ public static class PresentationUpdateMaterializer
                     var children = parent.Children.ToList();
                     var oldIndex = children.FindIndex(child =>
                         string.Equals(child.Id, operation.ChildId, StringComparison.Ordinal));
-                    if (oldIndex < 0) throw Error("$.operations", "missing_child", "Move target is not a direct child.");
+                    if (oldIndex < 0) throw IdentifierError("$.operations", "missing_child",
+                        "Move target is not a direct child.", operation.ChildId,
+                        ProtocolValidationIdentifierState.Missing);
                     var child = children[oldIndex];
                     children.RemoveAt(oldIndex);
                     if (operation.Index > children.Count)
@@ -448,7 +488,9 @@ public static class PresentationUpdateMaterializer
             children[index] = Transform(children[index], targetId, transform);
             return node with { Children = children };
         }
-        throw Error("$.operations", "missing_target", $"Update target '{targetId}' was not found.");
+        throw IdentifierError("$.operations", "missing_target",
+            $"Update target '{targetId}' was not found.", targetId,
+            ProtocolValidationIdentifierState.Missing);
     }
 
     private static bool Contains(ViewNode node, string targetId) =>
@@ -463,4 +505,18 @@ public static class PresentationUpdateMaterializer
 
     private static ProtocolValidationException Error(string path, string code, string message) =>
         new([new(path, code, message)]);
+
+    private static ProtocolValidationException IdentifierError(
+        string path,
+        string code,
+        string message,
+        string? identifier,
+        ProtocolValidationIdentifierState state) => new(
+        [
+            new ProtocolValidationError(path, code, message)
+            {
+                IdentifierContext = ProtocolValidationIdentifierContext.Create(
+                    ProtocolValidationIdentifierKind.ElementReference, state, identifier),
+            },
+        ]);
 }

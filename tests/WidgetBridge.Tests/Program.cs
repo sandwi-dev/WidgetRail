@@ -730,10 +730,15 @@ static async Task WorkerRequestDiagnosticsAreBounded()
     var path = System.IO.Path.Combine(temporary.Path, "overlay.log");
     const string structuralDiagnostic =
         "Widget protocol validation failed at $.root.children[3].contextActions " +
-        "(context_actions_not_allowed).";
+        "(context_actions_not_allowed; field=context_action; state=unknown_action; " +
+        "identifier=surface.more).";
     const string unsafeStructuralDiagnostic =
         "Widget protocol validation failed at $.root.children[3].text " +
         "credential=FORGED_STRUCTURAL_SECRET (too_long).";
+    const string unsafeIdentifierDiagnostic =
+        "Widget protocol validation failed at $.initialFocusId " +
+        "(invalid_focus_target; field=initial_focus; state=missing; " +
+        "identifier=https://example.invalid/search?q=FORGED_IDENTIFIER_SECRET).";
     await using (var diagnostics = new MediaSessionsDiagnosticLog(path, bridgeSessionGeneration: 7))
     {
         WidgetBridgeServer.ReportWidgetRequestFailure(
@@ -763,6 +768,15 @@ static async Task WorkerRequestDiagnosticsAreBounded()
                     MessageTypes.Render,
                     WorkerErrorCodes.ProtocolValidationFailed,
                     unsafeStructuralDiagnostic)));
+        WidgetBridgeServer.ReportWidgetRequestFailure(
+            diagnostics.RecordRequestFailure,
+            new BridgeWidgetRequestException(
+                "unsafe-identifier-widget",
+                "worker-protocol-failed",
+                new WidgetProcessException(
+                    MessageTypes.Render,
+                    WorkerErrorCodes.ProtocolValidationFailed,
+                    unsafeIdentifierDiagnostic)));
         diagnostics.RecordRequestFailure(new BridgeWidgetRequestDiagnostic(
             "unsafe widget/path",
             MessageTypes.Render,
@@ -770,7 +784,7 @@ static async Task WorkerRequestDiagnosticsAreBounded()
     }
 
     var lines = File.ReadAllLines(path);
-    Assert.Equal(3, lines.Length);
+    Assert.Equal(4, lines.Length);
     Assert.True(lines[0].Contains(
         "Widget request diagnostic bridge-session=7 widget=installed-widget " +
         "request=render worker-code=worker_request_failed",
@@ -781,7 +795,9 @@ static async Task WorkerRequestDiagnosticsAreBounded()
         "widget=protocol-widget request=render " +
         "worker-code=worker_protocol_validation_failed " +
         "validation-path=$.root.children[3].contextActions " +
-        "validation-code=context_actions_not_allowed",
+        "validation-code=context_actions_not_allowed " +
+        "validation-field=context_action validation-state=unknown_action " +
+        "validation-identifier=surface.more",
         StringComparison.Ordinal), "The bounded validator path and code were not retained.");
     Assert.True(!lines[0].Contains("validation-path=", StringComparison.Ordinal) &&
                 !lines[0].Contains("validation-code=", StringComparison.Ordinal),
@@ -793,11 +809,20 @@ static async Task WorkerRequestDiagnosticsAreBounded()
     Assert.True(!lines[2].Contains("validation-path=", StringComparison.Ordinal) &&
                 !lines[2].Contains("validation-code=", StringComparison.Ordinal),
         "An unsafe validator diagnostic crossed the bounded projection.");
+    Assert.True(lines[3].Contains(
+            "validation-path=$.initialFocusId validation-code=invalid_focus_target",
+            StringComparison.Ordinal) &&
+        !lines[3].Contains("validation-field=", StringComparison.Ordinal) &&
+        !lines[3].Contains("validation-state=", StringComparison.Ordinal) &&
+        !lines[3].Contains("validation-identifier=", StringComparison.Ordinal),
+        "Bridge projected an independently rejected identifier context.");
     Assert.True(lines.All(line =>
         !line.Contains("credential", StringComparison.OrdinalIgnoreCase) &&
         !line.Contains("provider response", StringComparison.OrdinalIgnoreCase) &&
         !line.Contains("C:\\", StringComparison.Ordinal) &&
-        !line.Contains("FORGED_STRUCTURAL_SECRET", StringComparison.Ordinal)),
+        !line.Contains("FORGED_STRUCTURAL_SECRET", StringComparison.Ordinal) &&
+        !line.Contains("FORGED_IDENTIFIER_SECRET", StringComparison.Ordinal) &&
+        !line.Contains("example.invalid", StringComparison.Ordinal)),
         "Sensitive or package-private detail crossed the persistent log boundary.");
 }
 
@@ -814,13 +839,19 @@ static async Task WorkerValidatorDiagnosticsPersistAndCorrelate()
         "validator.home.details",
         "validator.home.details",
         "$.activeInputScopeId",
-        "invalid_active_input_scope");
+        "invalid_active_input_scope",
+        "element_reference",
+        "missing",
+        "validator.missing.scope");
     await VerifyFailureAsync(
         "validator-hidden.instance",
         "validator.hidden.back",
         "validator.hidden.back",
         "$.initialFocusId",
-        "invalid_focus_target");
+        "invalid_focus_target",
+        "initial_focus",
+        "missing",
+        "validator.missing.focus");
     await diagnostics.DisposeAsync();
 
     var bridgeLines = File.ReadAllLines(bridgeLog);
@@ -833,6 +864,9 @@ static async Task WorkerValidatorDiagnosticsPersistAndCorrelate()
         var workerRequest = record.GetProperty("requestId").GetInt64();
         var path = record.GetProperty("validationPath").GetString();
         var code = record.GetProperty("validationCode").GetString();
+        var field = record.GetProperty("validationField").GetString();
+        var state = record.GetProperty("validationState").GetString();
+        var identifier = record.GetProperty("validationIdentifier").GetString();
         Assert.True(workerRequest > 0, "The worker-origin record lost request correlation.");
         Assert.True(record.GetProperty("processId").GetInt32() > 0,
             "The worker-origin record lost its process identity.");
@@ -842,7 +876,10 @@ static async Task WorkerValidatorDiagnosticsPersistAndCorrelate()
         Assert.True(bridgeLines.Any(line =>
                 line.Contains($"worker-request={workerRequest}", StringComparison.Ordinal) &&
                 line.Contains($"validation-path={path}", StringComparison.Ordinal) &&
-                line.Contains($"validation-code={code}", StringComparison.Ordinal)),
+                line.Contains($"validation-code={code}", StringComparison.Ordinal) &&
+                line.Contains($"validation-field={field}", StringComparison.Ordinal) &&
+                line.Contains($"validation-state={state}", StringComparison.Ordinal) &&
+                line.Contains($"validation-identifier={identifier}", StringComparison.Ordinal)),
             "Bridge diagnostics did not correlate the exact worker-origin failure.");
     }
     Assert.Equal(2, Directory.EnumerateFiles(
@@ -858,7 +895,10 @@ static async Task WorkerValidatorDiagnosticsPersistAndCorrelate()
         string actionId,
         string sourceElementId,
         string expectedPath,
-        string expectedCode)
+        string expectedCode,
+        string expectedField,
+        string expectedState,
+        string expectedIdentifier)
     {
         await using var harness = await BridgeHarness.StartAsync(
             instanceId: instanceId,
@@ -886,6 +926,14 @@ static async Task WorkerValidatorDiagnosticsPersistAndCorrelate()
             .Single(text => text.Contains(expectedPath, StringComparison.Ordinal));
         Assert.True(currentWorker.Contains(expectedCode, StringComparison.Ordinal),
             "The worker-origin record lost the exact validation code.");
+        using var workerDocument = JsonDocument.Parse(currentWorker.Trim());
+        var workerRecord = workerDocument.RootElement;
+        Assert.Equal(expectedField,
+            workerRecord.GetProperty("validationField").GetString());
+        Assert.Equal(expectedState,
+            workerRecord.GetProperty("validationState").GetString());
+        Assert.Equal(expectedIdentifier,
+            workerRecord.GetProperty("validationIdentifier").GetString());
     }
 }
 

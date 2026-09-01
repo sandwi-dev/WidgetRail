@@ -9,6 +9,8 @@ using WidgetRail.WidgetSdk;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Snapshot serialization is deterministic and round-trips", SnapshotRoundTrip),
+    ("Protocol validation diagnostics retain only typed safe structural identifiers",
+        ProtocolValidationDiagnosticTests.Run),
     ("SDK snapshots use the shared maximum protocol requirement",
         ProtocolVersionRequirementsTests.SdkSnapshotsUseSharedMaximum),
     ("Raw snapshots enforce the complete shared protocol requirement matrix",

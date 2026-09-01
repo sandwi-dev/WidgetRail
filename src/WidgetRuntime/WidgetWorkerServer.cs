@@ -685,9 +685,16 @@ internal sealed class WidgetWorkerServer
         if (exception is ProtocolValidationException validationException)
         {
             var firstError = validationException.Errors.FirstOrDefault();
-            return firstError is null
-                ? "Widget protocol validation failed."
-                : $"Widget protocol validation failed at {firstError.Path} ({firstError.Code}).";
+            if (firstError is null) return "Widget protocol validation failed.";
+            var (field, state, identifier) =
+                WidgetWorkerDiagnosticLog.NormalizeIdentifierContext(
+                    firstError.IdentifierContext);
+            var context = field is not null && state is not null
+                ? $"; field={field}; state={state}" +
+                  (identifier is not null ? $"; identifier={identifier}" : string.Empty)
+                : string.Empty;
+            return $"Widget protocol validation failed at {firstError.Path} " +
+                $"({firstError.Code}{context}).";
         }
 
         var message = exception.Message;

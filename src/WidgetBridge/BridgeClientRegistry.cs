@@ -49,7 +49,10 @@ internal sealed record BridgeWidgetRequestDiagnostic(
     long BridgeRequestId = 0,
     long WorkerRequestId = 0,
     string? ValidationPath = null,
-    string? ValidationCode = null)
+    string? ValidationCode = null,
+    string? ValidationField = null,
+    string? ValidationState = null,
+    string? ValidationIdentifier = null)
 {
     private const string ValidationPrefix = "Widget protocol validation failed at ";
     private const int MaximumValidationPathLength = 256;
@@ -60,10 +63,14 @@ internal sealed record BridgeWidgetRequestDiagnostic(
     {
         string? validationPath = null;
         string? validationCode = null;
+        string? validationField = null;
+        string? validationState = null;
+        string? validationIdentifier = null;
         if (string.Equals(exception.WorkerErrorCode,
                 WorkerErrorCodes.ProtocolValidationFailed, StringComparison.Ordinal))
             TryParseValidationDiagnostic(
-                exception.WorkerDiagnosticMessage, out validationPath, out validationCode);
+                exception.WorkerDiagnosticMessage, out validationPath, out validationCode,
+                out validationField, out validationState, out validationIdentifier);
         return new(
             exception.WidgetId,
             exception.RequestType!,
@@ -71,16 +78,25 @@ internal sealed record BridgeWidgetRequestDiagnostic(
             bridgeRequestId,
             exception.WorkerRequestId ?? 0,
             validationPath,
-            validationCode);
+            validationCode,
+            validationField,
+            validationState,
+            validationIdentifier);
     }
 
     private static bool TryParseValidationDiagnostic(
         string? diagnostic,
         out string? path,
-        out string? code)
+        out string? code,
+        out string? field,
+        out string? state,
+        out string? identifier)
     {
         path = null;
         code = null;
+        field = null;
+        state = null;
+        identifier = null;
         if (diagnostic is null ||
             !diagnostic.StartsWith(ValidationPrefix, StringComparison.Ordinal) ||
             !diagnostic.EndsWith(").", StringComparison.Ordinal))
@@ -89,14 +105,46 @@ internal sealed record BridgeWidgetRequestDiagnostic(
         var separator = diagnostic.LastIndexOf(" (", StringComparison.Ordinal);
         if (separator < ValidationPrefix.Length) return false;
         var candidatePath = diagnostic[ValidationPrefix.Length..separator];
-        var candidateCode = diagnostic[(separator + 2)..^2];
+        var components = diagnostic[(separator + 2)..^2].Split("; ",
+            StringSplitOptions.None);
+        var candidateCode = components[0];
         if (!IsSafeValidationPath(candidatePath) || !IsSafeValidationCode(candidateCode))
             return false;
 
         path = candidatePath;
         code = candidateCode;
+        if (components.Length == 1) return true;
+        if (components.Length is < 3 or > 4 ||
+            !components[1].StartsWith("field=", StringComparison.Ordinal) ||
+            !components[2].StartsWith("state=", StringComparison.Ordinal))
+            return true;
+
+        var candidateField = components[1]["field=".Length..];
+        var candidateState = components[2]["state=".Length..];
+        var candidateIdentifier = components.Length == 4 &&
+            components[3].StartsWith("identifier=", StringComparison.Ordinal)
+            ? components[3]["identifier=".Length..]
+            : null;
+        if (!IsSafeValidationField(candidateField) ||
+            !IsSafeValidationState(candidateState) ||
+            (candidateIdentifier is not null &&
+             !ProtocolValidationIdentifierContext.IsSafeIdentifier(candidateIdentifier)) ||
+            (candidateIdentifier is null && candidateState is not ("missing" or "unsafe_value")))
+            return true;
+
+        field = candidateField;
+        state = candidateState;
+        identifier = candidateIdentifier;
         return true;
     }
+
+    internal static bool IsSafeValidationField(string field) => field is
+        "initial_focus" or "return_focus" or "element_reference" or "action" or
+        "context_action";
+
+    internal static bool IsSafeValidationState(string state) => state is
+        "missing" or "not_focusable" or "disabled" or "outside_active_scope" or
+        "duplicate" or "unknown_action" or "unsafe_value";
 
     internal static bool IsSafeValidationCode(string code) =>
         code.Length is > 0 and <= 64 && code.All(character =>

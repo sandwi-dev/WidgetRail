@@ -3,7 +3,55 @@ using System.Buffers.Binary;
 
 namespace WidgetRail.WidgetProtocol;
 
-public sealed record ProtocolValidationError(string Path, string Code, string Message);
+public sealed record ProtocolValidationError(string Path, string Code, string Message)
+{
+    public ProtocolValidationIdentifierContext? IdentifierContext { get; init; }
+}
+
+public enum ProtocolValidationIdentifierKind
+{
+    InitialFocus,
+    ReturnFocus,
+    ElementReference,
+    Action,
+    ContextAction,
+}
+
+public enum ProtocolValidationIdentifierState
+{
+    Missing,
+    NotFocusable,
+    Disabled,
+    OutsideActiveScope,
+    Duplicate,
+    UnknownAction,
+    UnsafeValue,
+}
+
+public sealed record ProtocolValidationIdentifierContext(
+    ProtocolValidationIdentifierKind FieldKind,
+    ProtocolValidationIdentifierState State,
+    string? Identifier)
+{
+    public const int MaximumIdentifierLength = 128;
+
+    public static ProtocolValidationIdentifierContext Create(
+        ProtocolValidationIdentifierKind fieldKind,
+        ProtocolValidationIdentifierState state,
+        string? identifier)
+    {
+        if (identifier is null)
+            return new(fieldKind, state, null);
+        return IsSafeIdentifier(identifier)
+            ? new(fieldKind, state, identifier)
+            : new(fieldKind, ProtocolValidationIdentifierState.UnsafeValue, null);
+    }
+
+    public static bool IsSafeIdentifier(string value) =>
+        value.Length is > 0 and <= MaximumIdentifierLength &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) ||
+            character is '.' or '-' or '_');
+}
 
 public static class ViewSnapshotValidator
 {
@@ -106,7 +154,8 @@ public static class ViewSnapshotValidator
                     "$.initialFocusId" => $"{path}.initialFocusId",
                     _ => $"{path}.root",
                 };
-                Add(projectionPath, projectionError.Code, projectionError.Message);
+                Add(projectionPath, projectionError.Code, projectionError.Message,
+                    projectionError.IdentifierContext);
             }
             Measure(layout.Root);
         }
@@ -147,8 +196,10 @@ public static class ViewSnapshotValidator
         CheckIdentifier(activeInputScopeId, "$.activeInputScopeId", "active input scope ID");
         var hasActiveScope = inputScopes.TryGetValue(activeInputScopeId, out var activeScopeKey);
         if (!hasActiveScope && !string.IsNullOrWhiteSpace(activeInputScopeId))
-            Add("$.activeInputScopeId", "invalid_active_input_scope",
-                $"The active input scope '{activeInputScopeId}' does not exist.");
+            AddIdentifier("$.activeInputScopeId", "invalid_active_input_scope",
+                $"The active input scope '{activeInputScopeId}' does not exist.",
+                ProtocolValidationIdentifierKind.ElementReference,
+                ProtocolValidationIdentifierState.Missing, activeInputScopeId);
 
         var quickActions = snapshot.QuickActions ?? [];
         if (snapshot.QuickActions is null)
@@ -164,7 +215,8 @@ public static class ViewSnapshotValidator
                 Add($"$.quickActions[{index}]", "required", "A quick action cannot be null.");
                 continue;
             }
-            CheckIdentifier(quickAction.ActionId, $"$.quickActions[{index}].actionId", "quick action ID");
+            CheckIdentifier(quickAction.ActionId, $"$.quickActions[{index}].actionId",
+                "quick action ID", ProtocolValidationIdentifierKind.Action);
             CheckString(quickAction.Label, $"$.quickActions[{index}].label");
             if (string.IsNullOrWhiteSpace(quickAction.Label))
                 Add($"$.quickActions[{index}].label", "required", "A quick action requires a visible label.");
@@ -196,11 +248,21 @@ public static class ViewSnapshotValidator
 
         if (snapshot.InitialFocusId is { } initial)
         {
-            if (!ids.TryGetValue(initial, out var initialTarget) || !initialTarget.Node.IsFocusable)
-                Add("$.initialFocusId", "invalid_focus_target", "Initial focus must name a focusable node.");
+            if (!ids.TryGetValue(initial, out var initialTarget))
+                AddIdentifier("$.initialFocusId", "invalid_focus_target",
+                    "Initial focus must name a focusable node.",
+                    ProtocolValidationIdentifierKind.InitialFocus,
+                    ProtocolValidationIdentifierState.Missing, initial);
+            else if (!initialTarget.Node.IsFocusable)
+                AddIdentifier("$.initialFocusId", "invalid_focus_target",
+                    "Initial focus must name a focusable node.",
+                    ProtocolValidationIdentifierKind.InitialFocus,
+                    ProtocolValidationIdentifierState.NotFocusable, initial);
             else if (hasActiveScope && !string.Equals(initialTarget.ScopeKey, activeScopeKey, StringComparison.Ordinal))
-                Add("$.initialFocusId", "initial_focus_outside_active_scope",
-                    "Initial focus must belong to the active input scope.");
+                AddIdentifier("$.initialFocusId", "initial_focus_outside_active_scope",
+                    "Initial focus must belong to the active input scope.",
+                    ProtocolValidationIdentifierKind.InitialFocus,
+                    ProtocolValidationIdentifierState.OutsideActiveScope, initial);
         }
 
         foreach (var (_, entry) in ids)
@@ -208,19 +270,27 @@ public static class ViewSnapshotValidator
             if (entry.Node.InitialChildFocusId is { } initialChild)
             {
                 CheckIdentifier(initialChild, $"{entry.Path}.initialChildFocusId",
-                    "initial child focus ID");
+                    "initial child focus ID", ProtocolValidationIdentifierKind.ReturnFocus);
                 if (entry.Node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or
                     ViewNodeKind.Scroll or ViewNodeKind.Grid))
                     Add($"{entry.Path}.initialChildFocusId", "focus_group_on_non_container",
                         "Only Stack, Row, Scroll, and Grid containers may opt into remembered-child focus.");
-                else if (!ids.TryGetValue(initialChild, out var initialTarget) ||
-                    !initialTarget.Node.IsFocusable ||
-                    !IsAlwaysAvailableDescendant(entry.Node, initialChild))
-                    Add($"{entry.Path}.initialChildFocusId", "invalid_initial_child_focus",
-                        "Initial child focus must name an always-available focusable descendant.");
+                else if (!ids.TryGetValue(initialChild, out var initialTarget))
+                    AddIdentifier($"{entry.Path}.initialChildFocusId", "invalid_initial_child_focus",
+                        "Initial child focus must name an always-available focusable descendant.",
+                        ProtocolValidationIdentifierKind.ReturnFocus,
+                        ProtocolValidationIdentifierState.Missing, initialChild);
+                else if (!initialTarget.Node.IsFocusable ||
+                         !IsAlwaysAvailableDescendant(entry.Node, initialChild))
+                    AddIdentifier($"{entry.Path}.initialChildFocusId", "invalid_initial_child_focus",
+                        "Initial child focus must name an always-available focusable descendant.",
+                        ProtocolValidationIdentifierKind.ReturnFocus,
+                        ProtocolValidationIdentifierState.NotFocusable, initialChild);
                 else if (!string.Equals(entry.ScopeKey, initialTarget.ScopeKey, StringComparison.Ordinal))
-                    Add($"{entry.Path}.initialChildFocusId", "initial_child_focus_outside_scope",
-                        "Initial child focus must belong to the container's input scope.");
+                    AddIdentifier($"{entry.Path}.initialChildFocusId", "initial_child_focus_outside_scope",
+                        "Initial child focus must belong to the container's input scope.",
+                        ProtocolValidationIdentifierKind.ReturnFocus,
+                        ProtocolValidationIdentifierState.OutsideActiveScope, initialChild);
             }
 
             var focus = entry.Node.Focus;
@@ -233,12 +303,21 @@ public static class ViewSnapshotValidator
             void CheckFocus(string? targetId, string direction)
             {
                 if (targetId is null) return;
-                if (!ids.TryGetValue(targetId, out var target) ||
-                    (!target.Node.IsFocusable && target.Node.InitialChildFocusId is null))
-                    Add($"{entry.Path}.focus.{direction}", "invalid_focus_target", $"'{targetId}' is not a focusable node or remembered-child focus group.");
+                if (!ids.TryGetValue(targetId, out var target))
+                    AddIdentifier($"{entry.Path}.focus.{direction}", "invalid_focus_target",
+                        $"'{targetId}' is not a focusable node or remembered-child focus group.",
+                        ProtocolValidationIdentifierKind.ElementReference,
+                        ProtocolValidationIdentifierState.Missing, targetId);
+                else if (!target.Node.IsFocusable && target.Node.InitialChildFocusId is null)
+                    AddIdentifier($"{entry.Path}.focus.{direction}", "invalid_focus_target",
+                        $"'{targetId}' is not a focusable node or remembered-child focus group.",
+                        ProtocolValidationIdentifierKind.ElementReference,
+                        ProtocolValidationIdentifierState.NotFocusable, targetId);
                 else if (!string.Equals(entry.ScopeKey, target.ScopeKey, StringComparison.Ordinal))
-                    Add($"{entry.Path}.focus.{direction}", "cross_input_scope_focus",
-                        "Explicit focus neighbors cannot cross input-scope boundaries.");
+                    AddIdentifier($"{entry.Path}.focus.{direction}", "cross_input_scope_focus",
+                        "Explicit focus neighbors cannot cross input-scope boundaries.",
+                        ProtocolValidationIdentifierKind.ElementReference,
+                        ProtocolValidationIdentifierState.OutsideActiveScope, targetId);
                 else if (target.Node.InitialChildFocusId is not null &&
                          target.Node.VisibleWhen is not (null or ResponsiveVisibility.Always))
                     Add($"{entry.Path}.focus.{direction}", "hidden_focus_group_target",
@@ -540,7 +619,8 @@ public static class ViewSnapshotValidator
                 return;
             }
 
-            CheckIdentifier(node.Id, $"{path}.id", "node ID");
+            CheckIdentifier(node.Id, $"{path}.id", "node ID",
+                ProtocolValidationIdentifierKind.ElementReference);
             if (!Enum.IsDefined(node.Kind))
                 Add($"{path}.kind", "invalid_node_kind", "The node kind is not supported.");
             if (node.VisibleWhen is { } visibility)
@@ -556,8 +636,10 @@ public static class ViewSnapshotValidator
             CheckString(node.Text, $"{path}.text");
             CheckString(node.AccessibilityLabel, $"{path}.accessibilityLabel");
             CheckString(node.AccessibilityValue, $"{path}.accessibilityValue");
-            CheckString(node.ActionId, $"{path}.actionId");
-            CheckString(node.ValueChangedActionId, $"{path}.valueChangedActionId");
+            CheckString(node.ActionId, $"{path}.actionId",
+                ProtocolValidationIdentifierKind.Action);
+            CheckString(node.ValueChangedActionId, $"{path}.valueChangedActionId",
+                ProtocolValidationIdentifierKind.Action);
             if (node.FocusPersistenceId is not null)
             {
                 CheckIdentifier(node.FocusPersistenceId,
@@ -659,10 +741,12 @@ public static class ViewSnapshotValidator
                 {
                     if (node.ScrollNearStartActionId is not null)
                         CheckIdentifier(node.ScrollNearStartActionId,
-                            $"{path}.scrollNearStartActionId", "scroll near-start action ID");
+                            $"{path}.scrollNearStartActionId", "scroll near-start action ID",
+                            ProtocolValidationIdentifierKind.Action);
                     if (node.ScrollNearEndActionId is not null)
                         CheckIdentifier(node.ScrollNearEndActionId,
-                            $"{path}.scrollNearEndActionId", "scroll near-end action ID");
+                            $"{path}.scrollNearEndActionId", "scroll near-end action ID",
+                            ProtocolValidationIdentifierKind.Action);
                     if (node.ScrollNearStartActionId is null && node.ScrollNearEndActionId is null)
                         Add(path, "scroll_pagination_action_required",
                             "Scroll pagination requires at least one boundary action.");
@@ -833,7 +917,10 @@ public static class ViewSnapshotValidator
                             "A poster ActionSurface requires one bounded bottom Stack and may precede it with one Cover Image artwork child.");
                 }
                 if (string.IsNullOrWhiteSpace(node.ActionId))
-                    Add($"{path}.actionId", "required", "An action surface requires an action ID.");
+                    AddIdentifier($"{path}.actionId", "required",
+                        "An action surface requires an action ID.",
+                        ProtocolValidationIdentifierKind.Action,
+                        ProtocolValidationIdentifierState.Missing, null);
                 if (string.IsNullOrWhiteSpace(node.AccessibilityLabel))
                     Add($"{path}.accessibilityLabel", "required",
                         "An action surface requires an accessibility label independent of its visual content.");
@@ -869,15 +956,22 @@ public static class ViewSnapshotValidator
             {
                 var publicScopeId = node.InputScopeId ?? node.Id;
                 if (!string.IsNullOrWhiteSpace(publicScopeId) && !inputScopes.TryAdd(publicScopeId, scopeKey))
-                    Add($"{path}.inputScopeId", "duplicate_input_scope",
-                        $"The input scope ID '{publicScopeId}' is already used.");
+                    AddIdentifier($"{path}.inputScopeId", "duplicate_input_scope",
+                        $"The input scope ID '{publicScopeId}' is already used.",
+                        ProtocolValidationIdentifierKind.ElementReference,
+                        ProtocolValidationIdentifierState.Duplicate, publicScopeId);
             }
             if (!string.IsNullOrWhiteSpace(node.Id) && !ids.TryAdd(node.Id, (node, path, scopeKey)))
-                Add($"{path}.id", "duplicate_id", $"The ID '{node.Id}' is already used.");
+                AddIdentifier($"{path}.id", "duplicate_id", $"The ID '{node.Id}' is already used.",
+                    ProtocolValidationIdentifierKind.ElementReference,
+                    ProtocolValidationIdentifierState.Duplicate, node.Id);
 
             if (node.Kind is ViewNodeKind.Button or ViewNodeKind.TextEntry &&
                 string.IsNullOrWhiteSpace(node.ActionId))
-                Add($"{path}.actionId", "required", "An interactive text or button control requires an action ID.");
+                AddIdentifier($"{path}.actionId", "required",
+                    "An interactive text or button control requires an action ID.",
+                    ProtocolValidationIdentifierKind.Action,
+                    ProtocolValidationIdentifierState.Missing, null);
             if (node.Kind is ViewNodeKind.Button or ViewNodeKind.TextEntry &&
                 string.IsNullOrWhiteSpace(node.Text) && string.IsNullOrWhiteSpace(node.AccessibilityLabel))
                 Add(path, "missing_accessible_name", "An interactive text or button control requires visible text or an accessibility label.");
@@ -908,9 +1002,11 @@ public static class ViewSnapshotValidator
                     value < minimum || value > maximum || step <= 0 || step > range)
                     Add(path, "invalid_slider_range",
                         "Slider requires a finite positive range, an in-range value, and 0 < step <= range.");
-                CheckIdentifier(node.ValueChangedActionId, $"{path}.valueChangedActionId", "slider value-changed action ID");
+                CheckIdentifier(node.ValueChangedActionId, $"{path}.valueChangedActionId",
+                    "slider value-changed action ID", ProtocolValidationIdentifierKind.Action);
                 if (node.ActionId is not null)
-                    CheckIdentifier(node.ActionId, $"{path}.actionId", "slider activation action ID");
+                    CheckIdentifier(node.ActionId, $"{path}.actionId", "slider activation action ID",
+                        ProtocolValidationIdentifierKind.Action);
                 if (node.SliderInteractionMode is { } interactionMode)
                 {
                     if (!Enum.IsDefined(interactionMode))
@@ -972,8 +1068,10 @@ public static class ViewSnapshotValidator
                     "Text-entry properties apply only to text-entry nodes.");
             if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry) &&
                 node.ActionId is not null)
-                Add($"{path}.actionId", "action_not_allowed",
-                    "Action IDs apply only to buttons, sliders, action surfaces, and text entry.");
+                AddIdentifier($"{path}.actionId", "action_not_allowed",
+                    "Action IDs apply only to buttons, sliders, action surfaces, and text entry.",
+                    ProtocolValidationIdentifierKind.Action,
+                    ProtocolValidationIdentifierState.UnknownAction, node.ActionId);
             var contextActions = node.ContextActions ?? [];
             if (node.ContextActions is null)
                 Add($"{path}.contextActions", "required", "Context actions cannot be null.");
@@ -994,11 +1092,14 @@ public static class ViewSnapshotValidator
                     Add(actionPath, "required", "A context action cannot be null.");
                     continue;
                 }
-                CheckIdentifier(action.ActionId, $"{actionPath}.actionId", "context action ID");
+                CheckIdentifier(action.ActionId, $"{actionPath}.actionId", "context action ID",
+                    ProtocolValidationIdentifierKind.ContextAction);
                 if (!string.IsNullOrWhiteSpace(action.ActionId) &&
                     !contextActionIds.Add(action.ActionId))
-                    Add($"{actionPath}.actionId", "duplicate_context_action",
-                        $"The context action ID '{action.ActionId}' is repeated.");
+                    AddIdentifier($"{actionPath}.actionId", "duplicate_context_action",
+                        $"The context action ID '{action.ActionId}' is repeated.",
+                        ProtocolValidationIdentifierKind.ContextAction,
+                        ProtocolValidationIdentifierState.Duplicate, action.ActionId);
                 if (string.IsNullOrWhiteSpace(action.Label) ||
                     action.Label.Length > ProtocolConstants.MaximumStringLength ||
                     action.Label.Any(char.IsControl))
@@ -1174,7 +1275,8 @@ public static class ViewSnapshotValidator
             for (var index = 0; index < shortcuts.Count; index++)
             {
                 var shortcut = shortcuts[index];
-                CheckIdentifier(shortcut.ActionId, $"{path}.shortcuts[{index}].actionId", "shortcut action ID");
+                CheckIdentifier(shortcut.ActionId, $"{path}.shortcuts[{index}].actionId",
+                    "shortcut action ID", ProtocolValidationIdentifierKind.Action);
                 if (!Enum.IsDefined(shortcut.Phase))
                     Add($"{path}.shortcuts[{index}].phase", "invalid_controller_phase",
                         "The controller event phase is not supported.");
@@ -1312,14 +1414,23 @@ public static class ViewSnapshotValidator
             }
         }
 
-        void CheckIdentifier(string? value, string path, string label)
+        void CheckIdentifier(
+            string? value,
+            string path,
+            string label,
+            ProtocolValidationIdentifierKind? fieldKind = null)
         {
             if (string.IsNullOrWhiteSpace(value))
-                Add(path, "required", $"The {label} is required.");
+                AddIdentifierOrPlain(path, "required", $"The {label} is required.",
+                    fieldKind, ProtocolValidationIdentifierState.Missing, null);
             else if (value.Length > 128)
-                Add(path, "too_long", $"The {label} may not exceed 128 characters.");
+                AddIdentifierOrPlain(path, "too_long",
+                    $"The {label} may not exceed 128 characters.", fieldKind,
+                    ProtocolValidationIdentifierState.UnsafeValue, value);
             else if (!value.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.'))
-                Add(path, "invalid_identifier", $"The {label} may contain only ASCII letters, digits, '.', '-' and '_'.");
+                AddIdentifierOrPlain(path, "invalid_identifier",
+                    $"The {label} may contain only ASCII letters, digits, '.', '-' and '_'.",
+                    fieldKind, ProtocolValidationIdentifierState.UnsafeValue, value);
         }
 
         void Measure(ViewNode? root)
@@ -1386,13 +1497,43 @@ public static class ViewSnapshotValidator
                     $"The {label} must use the bounded manifest capability syntax.");
         }
 
-        void CheckString(string? value, string path)
+        void CheckString(
+            string? value,
+            string path,
+            ProtocolValidationIdentifierKind? fieldKind = null)
         {
             if (value?.Length > ProtocolConstants.MaximumStringLength)
-                Add(path, "too_long", $"Text may not exceed {ProtocolConstants.MaximumStringLength} characters.");
+                AddIdentifierOrPlain(path, "too_long",
+                    $"Text may not exceed {ProtocolConstants.MaximumStringLength} characters.",
+                    fieldKind, ProtocolValidationIdentifierState.UnsafeValue, value);
         }
 
-        void Add(string path, string code, string message) => errors.Add(new(path, code, message));
+        void Add(string path, string code, string message,
+            ProtocolValidationIdentifierContext? identifierContext = null) =>
+            errors.Add(new(path, code, message) { IdentifierContext = identifierContext });
+
+        void AddIdentifier(
+            string path,
+            string code,
+            string message,
+            ProtocolValidationIdentifierKind fieldKind,
+            ProtocolValidationIdentifierState state,
+            string? identifier) => Add(path, code, message,
+                ProtocolValidationIdentifierContext.Create(fieldKind, state, identifier));
+
+        void AddIdentifierOrPlain(
+            string path,
+            string code,
+            string message,
+            ProtocolValidationIdentifierKind? fieldKind,
+            ProtocolValidationIdentifierState state,
+            string? identifier)
+        {
+            if (fieldKind is { } typedField)
+                AddIdentifier(path, code, message, typedField, state, identifier);
+            else
+                Add(path, code, message);
+        }
     }
 
     private static bool IsNormalizedPackageAssetPath(string? value)
