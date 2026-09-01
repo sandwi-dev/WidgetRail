@@ -978,7 +978,10 @@ public static class ViewSnapshotValidator
             if (node.Kind is ViewNodeKind.Button or ViewNodeKind.TextEntry &&
                 string.IsNullOrWhiteSpace(node.Text) && string.IsNullOrWhiteSpace(node.AccessibilityLabel))
                 Add(path, "missing_accessible_name", "An interactive text or button control requires visible text or an accessibility label.");
-            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry) &&
+            if (node.Kind is ViewNodeKind.Select && string.IsNullOrWhiteSpace(node.Text))
+                Add($"{path}.text", "required",
+                    "A Select requires bounded non-whitespace visible text.");
+            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry or ViewNodeKind.Select) &&
                 (node.IsDisabled is not null || node.IsSelected is not null || node.IsBusy is not null))
                 Add(path, "interaction_state_not_allowed",
                     "Interaction states apply only to buttons, sliders, action surfaces, and text entry.");
@@ -1033,7 +1036,7 @@ public static class ViewSnapshotValidator
             {
                 if (node.Minimum is not null || node.Step is not null ||
                     node.ValueChangedActionId is not null ||
-                    (node.Kind is not ViewNodeKind.TextEntry && node.AccessibilityValue is not null) ||
+                    (node.Kind is not (ViewNodeKind.TextEntry or ViewNodeKind.Select) && node.AccessibilityValue is not null) ||
                     node.SliderInteractionMode is not null)
                     Add(path, "slider_property_not_allowed",
                         "Minimum, step, value-change action, accessible value, and interaction mode apply only to sliders.");
@@ -1111,6 +1114,72 @@ public static class ViewSnapshotValidator
                 if (!Enum.IsDefined(action.Style))
                     Add($"{actionPath}.style", "invalid_context_action_style",
                         "The context action style is not supported.");
+            }
+            var selectOptions = node.SelectOptions ?? [];
+            if (node.SelectOptions is null)
+                Add($"{path}.selectOptions", "required", "Select options cannot be null.");
+            else if (node.Kind is not ViewNodeKind.Select && selectOptions.Count != 0)
+                Add($"{path}.selectOptions", "select_options_not_allowed",
+                    "Only Select controls may declare options.");
+            else if (node.Kind is ViewNodeKind.Select &&
+                     selectOptions.Count is < 1 or > ProtocolConstants.MaximumSelectOptionCount)
+                Add($"{path}.selectOptions", "invalid_select_option_count",
+                    $"A Select requires 1-{ProtocolConstants.MaximumSelectOptionCount} options.");
+            var selectIds = new HashSet<string>(StringComparer.Ordinal);
+            var selectActions = new HashSet<string>(StringComparer.Ordinal);
+            var selectedOptions = 0;
+            WidgetSelectOption? selectedOption = null;
+            for (var index = 0; index < Math.Min(
+                     selectOptions.Count, ProtocolConstants.MaximumSelectOptionCount); index++)
+            {
+                var option = selectOptions[index];
+                var optionPath = $"{path}.selectOptions[{index}]";
+                if (option is null)
+                {
+                    Add(optionPath, "required", "A Select option cannot be null.");
+                    continue;
+                }
+                CheckIdentifier(option.Id, $"{optionPath}.id", "Select option ID");
+                if (!string.IsNullOrWhiteSpace(option.Id) && !selectIds.Add(option.Id))
+                    Add($"{optionPath}.id", "duplicate_select_option", "Select option IDs must be unique.");
+                CheckIdentifier(option.ActionId, $"{optionPath}.actionId", "Select option action ID",
+                    ProtocolValidationIdentifierKind.Action);
+                if (!string.IsNullOrWhiteSpace(option.ActionId) && !selectActions.Add(option.ActionId))
+                    Add($"{optionPath}.actionId", "duplicate_select_action", "Select option action IDs must be unique.");
+                if (string.IsNullOrWhiteSpace(option.Label) ||
+                    option.Label.Length > ProtocolConstants.MaximumStringLength ||
+                    option.Label.Any(char.IsControl))
+                    Add($"{optionPath}.label", "invalid_select_option_label",
+                        "A Select option requires bounded control-free visible text.");
+                if (option.AccessibilityLabel is { } accessible &&
+                    (string.IsNullOrWhiteSpace(accessible) ||
+                     accessible.Length > ProtocolConstants.MaximumStringLength ||
+                     accessible.Any(char.IsControl)))
+                    Add($"{optionPath}.accessibilityLabel", "invalid_select_option_accessibility_label",
+                        "A Select option accessibility label must be bounded and control-free.");
+                if (option.Glyph is { } glyph && !Enum.IsDefined(glyph))
+                    Add($"{optionPath}.glyph", "invalid_glyph", "The semantic glyph is not supported.");
+                if (option.IsSelected)
+                {
+                    selectedOptions++;
+                    selectedOption ??= option;
+                }
+            }
+            if (node.Kind is ViewNodeKind.Select)
+            {
+                if (!IsBoundedVisibleText(node.Text))
+                    Add($"{path}.text", "invalid_select_text",
+                        "A Select opener requires bounded control-free visible text.");
+                if (node.IsSelected is not null)
+                    Add($"{path}.isSelected", "interaction_state_not_allowed",
+                        "Selected state belongs to exactly one Select option, not the Select opener.");
+                if (selectedOptions != 1)
+                    Add($"{path}.selectOptions", "select_requires_one_selected_option",
+                        "A Select requires exactly one selected option.");
+                if (selectOptions.Count is >= 1 and <= ProtocolConstants.MaximumSelectOptionCount &&
+                    selectedOption is not null && node.AccessibilityValue != selectedOption.Label)
+                    Add($"{path}.accessibilityValue", "select_value_mismatch",
+                        "A Select accessible value must equal its selected option label.");
             }
             var supportsImageSource = node.Kind is ViewNodeKind.Image or ViewNodeKind.Button or
                 ViewNodeKind.BackgroundSurface;
@@ -1254,7 +1323,8 @@ public static class ViewSnapshotValidator
                         "A focus-presentation surface requires one default presentation fragment.");
                 if (node.Text is not null || node.AccessibilityLabel is not null ||
                     node.AccessibilityValue is not null || node.ActionId is not null ||
-                    (node.ContextActions?.Count ?? 0) != 0 || node.Value is not null ||
+                    (node.ContextActions?.Count ?? 0) != 0 ||
+                    (node.SelectOptions?.Count ?? 0) != 0 || node.Value is not null ||
                     node.Minimum is not null || node.Maximum is not null || node.Step is not null ||
                     node.ValueChangedActionId is not null || node.ImageSource is not null ||
                     node.ArtworkHandle is not null || node.FocusBackgroundArtworkHandle is not null ||
@@ -1392,6 +1462,7 @@ public static class ViewSnapshotValidator
                     ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.Spacer or
                     ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator) ||
                     node.ActionId is not null || (node.ContextActions?.Count ?? 0) != 0 ||
+                    (node.SelectOptions?.Count ?? 0) != 0 ||
                     node.TextEntryValue is not null || node.TextEntryPlaceholder is not null ||
                     node.TextEntryMaximumLength is not null || node.TextEntryInputKind is not null ||
                     node.Minimum is not null || node.Step is not null ||
@@ -1459,7 +1530,11 @@ public static class ViewSnapshotValidator
                     StringLength(node.Focus?.Up) + StringLength(node.Focus?.Down) +
                     StringLength(node.Focus?.Left) + StringLength(node.Focus?.Right) +
                     (node.StyleClasses?.Sum(StringLength) ?? 0) +
-                    (node.Shortcuts?.Sum(shortcut => StringLength(shortcut?.ActionId)) ?? 0);
+                    (node.Shortcuts?.Sum(shortcut => StringLength(shortcut?.ActionId)) ?? 0) +
+                    (node.SelectOptions?.Take(ProtocolConstants.MaximumSelectOptionCount).Sum(option =>
+                        option is null ? 0 :
+                            StringLength(option.Id) + StringLength(option.ActionId) +
+                            StringLength(option.Label) + StringLength(option.AccessibilityLabel)) ?? 0);
                 if (node.ImageSource is not null || node.ArtworkHandle is not null ||
                     node.FocusBackgroundArtworkHandle is not null)
                     aggregateResources++;
@@ -1473,6 +1548,11 @@ public static class ViewSnapshotValidator
         }
 
         static int StringLength(string? value) => value?.Length ?? 0;
+
+        static bool IsBoundedVisibleText(string? value) =>
+            !string.IsNullOrWhiteSpace(value) &&
+            value.Length <= ProtocolConstants.MaximumStringLength &&
+            !value.Any(char.IsControl);
 
         static bool IsAlwaysAvailableDescendant(ViewNode container, string targetId)
         {

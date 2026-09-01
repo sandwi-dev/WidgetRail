@@ -86,6 +86,44 @@ internal static class PinnedPresentationLayoutTests
             ],
         }, "$.pinnedLayouts", "aggregate_strings_too_large");
 
+        var selectOptions = Enumerable.Range(0, ProtocolConstants.MaximumSelectOptionCount)
+            .Select(index => new WidgetSelectOption(
+                $"option.{index}",
+                new string('L', ProtocolConstants.MaximumStringLength - 96),
+                $"option.{index}.choose",
+                index == 0,
+                AccessibilityLabel: new string('A', ProtocolConstants.MaximumStringLength)))
+            .ToArray();
+        AssertError(Baseline() with
+        {
+            ProtocolVersion = ProtocolConstants.AnchoredSelectVersion,
+            PinnedLayouts =
+            [
+                Layout("select", "Select", 360, 240) with
+                {
+                    Root = new ViewNode
+                    {
+                        Id = "select.root",
+                        Kind = ViewNodeKind.Stack,
+                        Children =
+                        [
+                            new ViewNode
+                            {
+                                Id = "select.output",
+                                Kind = ViewNodeKind.Select,
+                                Text = $"Output: {selectOptions[0].Label}",
+                                AccessibilityLabel = "Output",
+                                AccessibilityValue = selectOptions[0].Label,
+                                SelectOptions = selectOptions,
+                            },
+                        ],
+                    },
+                    ActiveInputScopeId = "select.root",
+                    InitialFocusId = "select.output",
+                },
+            ],
+        }, "$.pinnedLayouts", "aggregate_strings_too_large");
+
         AssertError(Baseline() with
         {
             ProtocolVersion = ProtocolConstants.PinnedPresentationProjectionsVersion,

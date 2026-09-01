@@ -2135,11 +2135,20 @@ private:
                 static_cast<UINT>(wParam),
                 (lParam & (1LL << 30)) != 0);
             return 0;
+        case WM_MOUSEWHEEL:
+            if (interactionSession_.selectPopup()) {
+                MoveSelectPopupByWheel(
+                    static_cast<short>(HIWORD(wParam)));
+                return 0;
+            }
+            if (RichMediaInputCurrent() &&
+                richMediaSurface_->ForwardMouse(message, wParam, lParam))
+                return 0;
+            return DefWindowProcW(window_, message, wParam, lParam);
         case WM_MOUSEMOVE:
         case WM_MOUSELEAVE:
         case WM_LBUTTONDOWN:
         case WM_RBUTTONDOWN:
-        case WM_MOUSEWHEEL:
             if (RichMediaInputCurrent() &&
                 richMediaSurface_->ForwardMouse(message, wParam, lParam))
                 return 0;
@@ -5121,12 +5130,22 @@ private:
             const bool newerRefreshRequested =
                 sessions_.RefreshState(event.widgetId) ==
                     widgetrail::WidgetRefreshState::RefreshRequested;
+            const bool selectPopupWasOpen = interactionSession_.selectPopup().has_value();
             const auto interactionReconciliation =
                 interactionSession_.ReconcileAdmission(*current, GetTickCount64());
             const auto& reconciledSliderNodes =
                 interactionReconciliation.sliderDamageNodeIds;
             pendingWidgetPresentationImpact_ =
                 std::move(event.presentationImpact);
+            if (pendingWidgetPresentationImpact_ &&
+                widgetrail::RequiresCompleteSelectPopupRaster(
+                    *pendingWidgetPresentationImpact_, selectPopupWasOpen,
+                    interactionSession_.selectPopup().has_value())) {
+                // The host-owned popup can extend beyond the authored opener's
+                // damage. A changed option collection must clear both the old
+                // and new popup pixels in one complete content raster.
+                pendingWidgetPresentationImpact_.reset();
+            }
             if (pendingWidgetPresentationImpact_ &&
                 !reconciledSliderNodes.empty()) {
                 pendingWidgetPresentationImpact_->effects |=
@@ -6536,13 +6555,16 @@ private:
                 policy.reducedTransparency,
             };
             if (widgetAccessibilityProjection_.ShouldCollect(*projectionKey)) {
+                const auto selectPopup = CurrentSelectPopupAccessibility(
+                    metrics->viewportWidthDip, metrics->viewportHeightDip);
                 semanticTree = widgetrail::accessibility::BuildWidgetTree(
                     std::wstring{widgetId}, descriptor->runtimeGeneration,
                     *snapshot, lastWidgetRenderResult_,
                     state_.focusRegion() == widgetrail::FocusRegion::Widget
                         ? std::wstring_view{interactionSession_.focusedElementId()}
                         : std::wstring_view{},
-                    interactionPresentation.sliderValueOverrides);
+                    interactionPresentation.sliderValueOverrides,
+                    selectPopup ? &*selectPopup : nullptr);
             }
         }
 
@@ -7180,6 +7202,128 @@ private:
         widgetrail::accessibility::TrayContextMenuSemantics semantics;
     };
 
+    [[nodiscard]] const widgetrail::WidgetNode* CurrentSelectPopupNode(
+        widgetrail::input::WidgetInteractionAuthority& authority) const {
+        if (!interactionSession_.selectPopup() ||
+            state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget)
+            return nullptr;
+        const auto& popup = *interactionSession_.selectPopup();
+        if (state_.activeWidget() != popup.widgetId) return nullptr;
+        const auto* snapshot = InteractionSnapshotFor(popup.widgetId);
+        const auto* descriptor = sessions_.FindDescriptor(popup.widgetId);
+        if (!snapshot || !descriptor) return nullptr;
+        authority = {
+            popup.widgetId, snapshot, descriptor->runtimeGeneration,
+            descriptor->presentationGeneration, false};
+        const auto* node = widgetrail::input::FindNodeInInputScope(
+            *snapshot, popup.openerElementId, snapshot->activeInputScopeId);
+        return node && interactionSession_.SelectPopupCurrent(authority, *node)
+            ? node : nullptr;
+    }
+
+    [[nodiscard]] std::optional<widgetrail::input::SelectPopupLayout>
+    CurrentSelectPopupLayout(const float width, const float height) const {
+        widgetrail::input::WidgetInteractionAuthority authority{};
+        const auto* node = CurrentSelectPopupNode(authority);
+        if (!node || !interactionSession_.selectPopup()) return std::nullopt;
+        const auto anchor = lastWidgetRenderResult_.focusRects.find(node->id);
+        if (anchor == lastWidgetRenderResult_.focusRects.end()) return std::nullopt;
+        const auto geometry = ComputeCurrentWidgetSurfaceGeometry(width, height);
+        if (!geometry) return std::nullopt;
+        return widgetrail::input::ComputeSelectPopupLayout(
+            anchor->second,
+            {geometry->widgetViewportX, geometry->widgetViewportY,
+             geometry->widgetViewportWidth, geometry->widgetViewportHeight},
+            *interactionSession_.selectPopup());
+    }
+
+    [[nodiscard]] std::optional<widgetrail::accessibility::SelectPopupAccessibility>
+    CurrentSelectPopupAccessibility(const float width, const float height) const {
+        const auto layout = CurrentSelectPopupLayout(width, height);
+        const auto& popup = interactionSession_.selectPopup();
+        if (!layout || !popup) return std::nullopt;
+        widgetrail::accessibility::SelectPopupAccessibility result;
+        result.openerElementId = popup->openerElementId;
+        result.options = popup->options;
+        result.highlightedOption = popup->highlightedOption;
+        result.items.reserve(layout->items.size());
+        for (const auto& item : layout->items)
+            result.items.push_back({item.optionIndex, item.bounds});
+        return result;
+    }
+
+    [[nodiscard]] widgetrail::input::SelectActivationResult
+    OpenFocusedSelectPopup() {
+        const std::wstring widget{state_.activeWidget()};
+        const auto* snapshot = InteractionSnapshotFor(widget);
+        const auto* descriptor = sessions_.FindDescriptor(widget);
+        if (!snapshot || !descriptor)
+            return widgetrail::input::SelectActivationResult::NotSelect;
+        const auto* node = widgetrail::input::FindNodeInInputScope(
+            *snapshot, interactionSession_.focusedElementId(),
+            snapshot->activeInputScopeId);
+        if (!node)
+            return widgetrail::input::SelectActivationResult::NotSelect;
+        const widgetrail::input::WidgetInteractionAuthority authority{
+            widget, snapshot, descriptor->runtimeGeneration,
+            descriptor->presentationGeneration, false};
+        const auto activation = interactionSession_.OpenSelectPopup(authority, *node);
+        if (activation == widgetrail::input::SelectActivationResult::Opened) {
+            widgetAccessibilityProjection_.Clear();
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+        return activation;
+    }
+
+    void CommitSelectPopup(
+        const widgetrail::ControllerInputOrigin origin) {
+        widgetrail::input::WidgetInteractionAuthority authority{};
+        const auto* node = CurrentSelectPopupNode(authority);
+        if (!node) {
+            (void)interactionSession_.CloseSelectPopup();
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        auto action = interactionSession_.CommitSelectPopup(authority, *node);
+        widgetAccessibilityProjection_.Clear();
+        InvalidateRect(window_, nullptr, FALSE);
+        if (!action) return;
+        const auto correlation = ++controllerSequence_;
+        const auto handled = bridge_.SendControllerInput(
+            action->request.widgetId, L"a", L"openWidget",
+            action->request.sourceElementId, action->request.inputScopeId,
+            action->request.snapshotSequence, correlation,
+            static_cast<long long>(GetTickCount64() * 1000), L"pressed",
+            std::nullopt, origin,
+            action->request.runtimeGeneration, {}, {}, {}, std::nullopt,
+            action->request.actionId);
+        if (handled && *handled)
+            RefreshAndApplyPresentation([&] {
+                RefreshWidgetSnapshot(action->request.widgetId);
+            });
+    }
+
+    void MoveSelectPopupByWheel(const short wheelDelta) {
+        if (wheelDelta == 0) return;
+        widgetrail::input::WidgetInteractionAuthority authority{};
+        const auto* node = CurrentSelectPopupNode(authority);
+        if (!node) return;
+        const auto direction = wheelDelta > 0
+            ? widgetrail::input::NavigationDirection::Up
+            : widgetrail::input::NavigationDirection::Down;
+        const auto steps = std::max(
+            1, std::abs(static_cast<int>(wheelDelta)) / WHEEL_DELTA);
+        bool changed{};
+        for (int step = 0; step < steps; ++step)
+            changed = interactionSession_.MoveSelectPopup(
+                authority, *node, direction) || changed;
+        if (changed) {
+            widgetAccessibilityProjection_.Clear();
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+    }
+
     static constexpr float kTrayContextMenuItemHeightDip = 48.0F;
     static constexpr float kTrayContextMenuGapDip = 8.0F;
     static constexpr std::size_t kTrayContextMenuMaximumItems = 3;
@@ -7593,6 +7737,31 @@ private:
                         surfaceGeometry->trayY + surfaceGeometry->trayHeight}}
                     : std::nullopt);
         }
+        if (interactionSession_.selectPopup()) {
+            widgetrail::input::WidgetInteractionAuthority authority{};
+            const auto* node = CurrentSelectPopupNode(authority);
+            const auto layout = CurrentSelectPopupLayout(
+                metrics->viewportWidthDip, metrics->viewportHeightDip);
+            if (openContext) {
+                (void)interactionSession_.CloseSelectPopup();
+                widgetAccessibilityProjection_.Clear();
+                InvalidateRect(window_, nullptr, FALSE);
+                return;
+            }
+            const auto option = layout
+                ? widgetrail::input::HitTestSelectPopup(*layout, x, y)
+                : std::nullopt;
+            if (node && option && interactionSession_.HighlightSelectPopupOption(
+                    authority, *node, *option)) {
+                CommitSelectPopup(
+                    widgetrail::ControllerInputOrigin::PhysicalController);
+                return;
+            }
+            (void)interactionSession_.CloseSelectPopup();
+            widgetAccessibilityProjection_.Clear();
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
         if (widgetContextMenu_) {
             const auto menu = CurrentWidgetContextMenuLayout(
                 metrics->viewportWidthDip, metrics->viewportHeightDip);
@@ -7756,6 +7925,11 @@ private:
                     surface->panelX, surface->panelY, surface->panelWidth,
                     surface->footerY - surface->panelY})) return true;
             if (transparentSurface) {
+                if (const auto popup = CurrentSelectPopupLayout(
+                        metrics->viewportWidthDip,
+                        metrics->viewportHeightDip);
+                    popup && contains(contentX, contentY, popup->bounds))
+                    return true;
                 const auto authoredContains = [&](const auto& region) {
                     return contains(contentX, contentY, region.rect);
                 };
@@ -8194,6 +8368,10 @@ private:
                 std::nullopt,
                 request.sliderActionRequest
                     ? std::wstring_view{request.sliderActionRequest->actionId}
+                    : std::wstring_view{},
+                std::nullopt,
+                request.selectActionRequest
+                    ? std::wstring_view{request.selectActionRequest->actionId}
                     : std::wstring_view{});
             const auto replyCode = bridge_.lastControllerInputResultCode();
             AppendActionCorrelation(
@@ -9185,6 +9363,37 @@ private:
             retainedTrayPaintState_.reset();
             InvalidateRect(window_, nullptr, FALSE);
         };
+        if (interactionSession_.selectPopup()) {
+            widgetrail::input::WidgetInteractionAuthority authority{};
+            const auto* node = CurrentSelectPopupNode(authority);
+            if (!node) {
+                (void)interactionSession_.CloseSelectPopup();
+                widgetAccessibilityProjection_.Clear();
+                InvalidateRect(window_, nullptr, FALSE);
+                return;
+            }
+            const auto moveSelect = [&](
+                const widgetrail::input::StickNavigationEvent& event) {
+                if (interactionSession_.MoveSelectPopup(
+                        authority, *node, event.direction)) {
+                    widgetAccessibilityProjection_.Clear();
+                    InvalidateRect(window_, nullptr, FALSE);
+                }
+            };
+            if (const auto direction = DecodeNavigation(frame.stickNavigation))
+                moveSelect(*direction);
+            if (const auto direction = DecodeNavigation(frame.dpadNavigation))
+                moveSelect(*direction);
+            if ((pressed & XINPUT_GAMEPAD_A) != 0)
+                CommitSelectPopup(
+                    widgetrail::ControllerInputOrigin::PhysicalController);
+            else if ((pressed & (XINPUT_GAMEPAD_B | XINPUT_GAMEPAD_START)) != 0) {
+                (void)interactionSession_.CloseSelectPopup();
+                widgetAccessibilityProjection_.Clear();
+                InvalidateRect(window_, nullptr, FALSE);
+            }
+            return;
+        }
         if (widgetContextMenu_) {
             if (!WidgetContextMenuAuthorityCurrent()) {
                 CloseWidgetContextMenu();
@@ -9477,6 +9686,30 @@ private:
                 InvalidateRect(window_, nullptr, FALSE);
                 return;
             }
+            if (pinnedSurfaceCoordinator_.selectPopupOpen()) {
+                const auto movePinnedSelect = [&] (
+                    const widgetrail::input::StickNavigationEvent& event) {
+                    (void)pinnedSurfaceCoordinator_.MoveControllerFocus(
+                        event.direction, false);
+                };
+                if (const auto direction = DecodeNavigation(frame.stickNavigation))
+                    movePinnedSelect(*direction);
+                if (const auto direction = DecodeNavigation(frame.dpadNavigation))
+                    movePinnedSelect(*direction);
+                if ((pressed & XINPUT_GAMEPAD_A) != 0 ||
+                    pinnedControllerCommand ==
+                        widgetrail::pinned::ControllerCommand::Activate) {
+                    (void)pinnedSurfaceCoordinator_.HandleFocusedSelectButton(
+                        L"a", widgetrail::ControllerInputOrigin::PhysicalController);
+                } else if ((pressed & (XINPUT_GAMEPAD_B | XINPUT_GAMEPAD_START)) != 0 ||
+                           pinnedControllerCommand ==
+                               widgetrail::pinned::ControllerCommand::Exit) {
+                    (void)pinnedSurfaceCoordinator_.HandleFocusedSelectButton(
+                        L"b", widgetrail::ControllerInputOrigin::PhysicalController);
+                }
+                InvalidateRect(window_, nullptr, FALSE);
+                return;
+            }
             (void)pinnedSurfaceCoordinator_.ScrollFocusedProjection(
                 frame.state.rightThumbX, frame.state.rightThumbY, now);
             // The left stick and the D-pad are one directional owner on the
@@ -9491,14 +9724,17 @@ private:
             if (const auto direction = DecodeNavigation(frame.dpadNavigation))
                 movePinnedFocus(*direction);
             if (pinnedControllerCommand == widgetrail::pinned::ControllerCommand::Activate) {
-                if (!pinnedSurfaceCoordinator_.HandleFocusedSliderModeButton(
+                if (!pinnedSurfaceCoordinator_.HandleFocusedSelectButton(L"a") &&
+                    !pinnedSurfaceCoordinator_.HandleFocusedSliderModeButton(
                         L"a", now) &&
                     !pinnedSurfaceCoordinator_.QueueFocusedInput(
                         L"a", widgetrail::ControllerInputOrigin::PhysicalController))
                     pinnedSurfaceCoordinator_.SetActionFeedback(
                         L"The focused pinned item is unavailable.", false);
             } else if (pinnedControllerCommand ==
-                       widgetrail::pinned::ControllerCommand::Exit) {
+                           widgetrail::pinned::ControllerCommand::Exit &&
+                       !pinnedSurfaceCoordinator_.HandleFocusedSelectButton(
+                           L"b", widgetrail::ControllerInputOrigin::PhysicalController)) {
                 (void)pinnedSurfaceCoordinator_.ExitControllerFocus();
                 (void)pinnedSurfaceCoordinator_.SetInteractionMode(
                     widgetrail::pinned::InteractionMode::ClickThrough);
@@ -9509,6 +9745,8 @@ private:
             const auto queuePinnedButton = [&](const bool pressedNow,
                                                const std::wstring_view protocolButton) {
                 if (!pressedNow) return;
+                if (pinnedSurfaceCoordinator_.HandleFocusedSelectButton(
+                        protocolButton)) return;
                 if (pinnedSurfaceCoordinator_.HandleFocusedSliderModeButton(
                         protocolButton, now)) return;
                 if (!pinnedSurfaceCoordinator_.QueueFocusedInput(
@@ -9823,6 +10061,61 @@ private:
                     if (!SelectTrayWidget(request.hostTargetId)) continue;
                     if (request.kind == widgetrail::accessibility::ActionKind::Invoke)
                         Dispatch(widgetrail::Command::Activate);
+                } else if (request.hostAction ==
+                               widgetrail::accessibility::HostAction::ExpandSelect) {
+                    if (request.kind != widgetrail::accessibility::ActionKind::Invoke ||
+                        request.hostTargetId != request.nodeId ||
+                        state_.surface() != widgetrail::Surface::Widget ||
+                        state_.focusRegion() != widgetrail::FocusRegion::Widget)
+                        continue;
+                    const auto* snapshot = InteractionSnapshotFor(request.widgetId);
+                    const auto* select = snapshot
+                        ? widgetrail::input::FindNodeInInputScope(
+                            *snapshot, request.nodeId, snapshot->activeInputScopeId)
+                        : nullptr;
+                    if (!select || !select->isSelect || select->isDisabled ||
+                        select->isBusy) continue;
+                    if (interactionSession_.focusedElementId() != select->id)
+                        (void)interactionSession_.MoveFocus(
+                            request.widgetId, *snapshot, select->id);
+                    (void)OpenFocusedSelectPopup();
+                } else if (request.hostAction ==
+                               widgetrail::accessibility::HostAction::CollapseSelect) {
+                    if (request.kind != widgetrail::accessibility::ActionKind::Invoke ||
+                        !interactionSession_.selectPopup() ||
+                        interactionSession_.selectPopup()->openerElementId !=
+                            request.hostTargetId)
+                        continue;
+                    (void)interactionSession_.CloseSelectPopup();
+                    widgetAccessibilityProjection_.Clear();
+                } else if (request.hostAction ==
+                               widgetrail::accessibility::HostAction::CommitSelectOption) {
+                    if ((request.kind != widgetrail::accessibility::ActionKind::Invoke &&
+                         request.kind != widgetrail::accessibility::ActionKind::Focus) ||
+                        !interactionSession_.selectPopup() ||
+                        interactionSession_.selectPopup()->openerElementId !=
+                            request.hostTargetId)
+                        continue;
+                    widgetrail::input::WidgetInteractionAuthority authority{};
+                    const auto* select = CurrentSelectPopupNode(authority);
+                    if (!select) continue;
+                    const auto option = std::find_if(
+                        select->selectOptions.begin(), select->selectOptions.end(),
+                        [&](const auto& candidate) {
+                            return candidate.actionId == request.actionId;
+                        });
+                    if (option == select->selectOptions.end()) continue;
+                    const auto index = static_cast<std::size_t>(
+                        std::distance(select->selectOptions.begin(), option));
+                    if (!interactionSession_.HighlightSelectPopupOption(
+                            authority, *select, index)) continue;
+                    if (request.kind == widgetrail::accessibility::ActionKind::Invoke)
+                        CommitSelectPopup(
+                            widgetrail::ControllerInputOrigin::AccessibilityAutomation);
+                    else {
+                        widgetAccessibilityProjection_.Clear();
+                        InvalidateRect(window_, nullptr, FALSE);
+                    }
                 } else if (request.hostAction ==
                                widgetrail::accessibility::HostAction::SelectTrayOverflow) {
                     if (request.kind != widgetrail::accessibility::ActionKind::Invoke ||
@@ -10877,6 +11170,18 @@ private:
             *snapshot, interactionSession_.focusedElementId(), snapshot->activeInputScopeId);
         if (!focused) return;
         const auto interactionAuthority = InteractionAuthority(widgetId, *snapshot);
+        if (interactionSession_.selectPopup()) {
+            if (!interactionAuthority || !focused->isSelect ||
+                !interactionSession_.SelectPopupCurrent(
+                    *interactionAuthority, *focused)) {
+                (void)interactionSession_.CloseSelectPopup();
+            } else if (interactionSession_.MoveSelectPopup(
+                           *interactionAuthority, *focused, direction)) {
+                widgetAccessibilityProjection_.Clear();
+                InvalidateRect(window_, nullptr, FALSE);
+            }
+            return;
+        }
         const bool activationRequired =
             focused->sliderInteractionMode == L"activateToAdjust";
         const bool adjustmentActive = activationRequired && interactionAuthority &&
@@ -11576,11 +11881,29 @@ private:
     void DispatchControllerAction(
         const std::wstring_view button,
         const bool physicalPress = false) {
+        if (interactionSession_.selectPopup()) {
+            if (button == L"A") CommitSelectPopup(
+                physicalPress
+                    ? widgetrail::ControllerInputOrigin::PhysicalController
+                    : widgetrail::ControllerInputOrigin::AccessibilityAutomation);
+            else if (button == L"B") {
+                (void)interactionSession_.CloseSelectPopup();
+                widgetAccessibilityProjection_.Clear();
+                InvalidateRect(window_, nullptr, FALSE);
+            }
+            return;
+        }
         if (textEntryModal_.active()) {
             textEntryModal_.HandleController(button);
             return;
         }
         if (HandleFocusedSliderModeButton(button)) return;
+        if (button == L"A") {
+            const auto selectActivation = OpenFocusedSelectPopup();
+            if (selectActivation !=
+                widgetrail::input::SelectActivationResult::NotSelect)
+                return;
+        }
         if (button == L"B" && NonCurrentHostRootBackAuthority()) {
             Dispatch(widgetrail::Command::SampleWidgetBack);
             return;
@@ -14349,6 +14672,68 @@ private:
         }
     }
 
+    void DrawSelectPopup(const float width, const float height) {
+        const auto layout = CurrentSelectPopupLayout(width, height);
+        const auto& popup = interactionSession_.selectPopup();
+        if (!layout || !popup || layout->items.empty()) return;
+        const D2D1_ROUNDED_RECT panel{
+            D2D1::RectF(
+                layout->bounds.x, layout->bounds.y,
+                layout->bounds.x + layout->bounds.width,
+                layout->bounds.y + layout->bounds.height),
+            trayItemCornerRadius_, trayItemCornerRadius_};
+        renderTarget_->FillRoundedRectangle(panel, backgroundBrush_.Get());
+        renderTarget_->DrawRoundedRectangle(
+            panel, focusBrush_.Get(), focusOutlineWidth_);
+        for (const auto& item : layout->items) {
+            if (item.optionIndex >= popup->options.size()) continue;
+            const auto& option = popup->options[item.optionIndex];
+            if (item.optionIndex == popup->highlightedOption) {
+                const D2D1_ROUNDED_RECT selected{
+                    D2D1::RectF(
+                        item.bounds.x + 3.0F, item.bounds.y + 3.0F,
+                        item.bounds.x + item.bounds.width - 3.0F,
+                        item.bounds.y + item.bounds.height - 3.0F),
+                    trayItemCornerRadius_ * 0.65F,
+                    trayItemCornerRadius_ * 0.65F};
+                renderTarget_->FillRoundedRectangle(selected, accentBrush_.Get());
+            }
+            float labelLeft = item.bounds.x + 12.0F;
+            if (option.isSelected) {
+                DrawTextLine(
+                    L"✓", hintFormat_.Get(),
+                    D2D1::RectF(
+                        labelLeft, item.bounds.y, labelLeft + 20.0F,
+                        item.bounds.y + item.bounds.height),
+                    option.isDisabled || option.isBusy
+                        ? secondaryBrush_.Get() : textBrush_.Get());
+                labelLeft += 22.0F;
+            }
+            widgetrail::icons::NativeIcon icon{};
+            if (!option.glyph.empty() &&
+                widgetrail::icons::TryParseNativeIcon(option.glyph, icon)) {
+                (void)widgetrail::icons::DrawNativeIcon(
+                    renderTarget_.Get(), icon,
+                    D2D1::RectF(
+                        labelLeft, item.bounds.y + 8.0F,
+                        labelLeft + 22.0F,
+                        item.bounds.y + item.bounds.height - 8.0F),
+                    option.isDisabled || option.isBusy
+                        ? secondaryBrush_.Get() : textBrush_.Get(),
+                    1.7F);
+                labelLeft += 28.0F;
+            }
+            DrawTextLine(
+                option.label, hintFormat_.Get(),
+                D2D1::RectF(
+                    labelLeft, item.bounds.y,
+                    item.bounds.x + item.bounds.width - 10.0F,
+                    item.bounds.y + item.bounds.height),
+                option.isDisabled || option.isBusy
+                    ? secondaryBrush_.Get() : textBrush_.Get());
+        }
+    }
+
     void DrawWidget(
         const float width,
         const float height,
@@ -14940,13 +15325,16 @@ private:
                         options.pixelScale, options.accessibility.textScale);
                 }
                 if (!inertRetainedSnapshot && collectAccessibility) {
+                    const auto selectPopup = CurrentSelectPopupAccessibility(
+                        width, height);
                     widgetAccessibilityTree_ = widgetrail::accessibility::BuildWidgetTree(
                         std::wstring{widget}, descriptor->runtimeGeneration,
                         semanticSnapshot, result,
                         state_.focusRegion() == widgetrail::FocusRegion::Widget
                             ? std::wstring_view{interactionSession_.focusedElementId()}
                             : std::wstring_view{},
-                        options.sliderValueOverrides);
+                        options.sliderValueOverrides,
+                        selectPopup ? &*selectPopup : nullptr);
                     ++widgetAccessibilityRevision_;
                     widgetAccessibilityProjection_.Published(projectionKey);
                 }
@@ -14979,6 +15367,8 @@ private:
             if (contentLayerPushed) renderTarget_->PopLayer();
             if (widgetContextMenu_)
                 DrawWidgetContextMenu(width, height);
+            if (interactionSession_.selectPopup())
+                DrawSelectPopup(width, height);
             if (drawGuide) DrawWidgetFooter(
                 *geometry, fixedGuideBounds ? &*fixedGuideBounds : nullptr);
             if (drawTray) {

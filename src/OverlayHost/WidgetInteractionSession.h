@@ -27,6 +27,24 @@ struct WidgetInteractionAuthority final {
     bool retainedRefresh{};
 };
 
+struct SelectPopupBinding final {
+    std::wstring widgetId;
+    std::wstring widgetInstanceId;
+    std::wstring runtimeGeneration;
+    std::wstring presentationGeneration;
+    std::wstring inputScopeId;
+    std::wstring openerElementId;
+    long long snapshotSequence{};
+    std::vector<WidgetSelectOption> options;
+    std::size_t highlightedOption{};
+};
+
+enum class SelectActivationResult {
+    NotSelect,
+    ConsumedClosed,
+    Opened,
+};
+
 struct FreeScrollBinding final {
     std::wstring widgetId;
     std::wstring widgetInstanceId;
@@ -194,6 +212,31 @@ struct WidgetInteractionActionRequest final {
     long long snapshotSequence{};
     std::optional<double> requestedValue;
 };
+
+struct SelectPopupAction final {
+    WidgetInteractionActionRequest request;
+    std::wstring optionId;
+};
+
+struct SelectPopupLayoutItem final {
+    std::size_t optionIndex{};
+    declarative::Rect bounds;
+};
+
+struct SelectPopupLayout final {
+    declarative::Rect bounds;
+    std::vector<SelectPopupLayoutItem> items;
+};
+
+[[nodiscard]] SelectPopupLayout ComputeSelectPopupLayout(
+    declarative::Rect anchor,
+    declarative::Rect viewport,
+    const SelectPopupBinding& popup);
+
+[[nodiscard]] std::optional<std::size_t> HitTestSelectPopup(
+    const SelectPopupLayout& layout,
+    float x,
+    float y) noexcept;
 
 struct SliderInputOutcome final {
     bool consumed{};
@@ -392,6 +435,27 @@ public:
         const WidgetInteractionAuthority& authority,
         const WidgetNode& node,
         std::uint64_t now);
+    [[nodiscard]] SelectActivationResult OpenSelectPopup(
+        const WidgetInteractionAuthority& authority,
+        const WidgetNode& node);
+    [[nodiscard]] bool SelectPopupCurrent(
+        const WidgetInteractionAuthority& authority,
+        const WidgetNode& node) const noexcept;
+    [[nodiscard]] bool MoveSelectPopup(
+        const WidgetInteractionAuthority& authority,
+        const WidgetNode& node,
+        NavigationDirection direction);
+    [[nodiscard]] bool HighlightSelectPopupOption(
+        const WidgetInteractionAuthority& authority,
+        const WidgetNode& node,
+        std::size_t optionIndex);
+    [[nodiscard]] std::optional<SelectPopupAction> CommitSelectPopup(
+        const WidgetInteractionAuthority& authority,
+        const WidgetNode& node);
+    [[nodiscard]] bool CloseSelectPopup() noexcept;
+    [[nodiscard]] const std::optional<SelectPopupBinding>& selectPopup() const noexcept {
+        return selectPopup_;
+    }
     [[nodiscard]] bool TransitionSliderAdjustmentMode(
         const WidgetInteractionAuthority& authority,
         const WidgetNode& node,
@@ -525,6 +589,7 @@ private:
     WidgetFocusGroupMemory focusGroupMemory_;
     SliderInteractionState sliders_;
     PressedInteractionState pressed_;
+    std::optional<SelectPopupBinding> selectPopup_;
     std::uint64_t sliderReconcileAt_{};
     std::vector<ScrollPaginationDemandLatch> scrollPaginationLatches_;
     bool scrollPaginationRouteObserved_{};

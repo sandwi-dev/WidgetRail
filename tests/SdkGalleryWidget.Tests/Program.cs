@@ -116,6 +116,14 @@ static async Task ControlState()
     var switched = Snapshot(widget, 1);
     Assert.Equal(null, Find(switched, "gallery.controls.switch").IsSelected);
     Assert.Equal("Off", Find(switched, "gallery.controls.compact.value").Text);
+    var density = Find(switched, "gallery.controls.density");
+    Assert.Equal(ViewNodeKind.Select, density.Kind);
+    Assert.Equal(3, density.SelectOptions.Count);
+    Assert.Equal("gallery.density.comfortable",
+        density.SelectOptions.Single(option => option.IsSelected).ActionId);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "gallery.density.spacious", density.Id));
+    Assert.Equal("Spacious", Find(Snapshot(widget, 2), density.Id).AccessibilityValue);
 
     await widget.OnActionAsync(new WidgetActionEvent(
         "gallery.scrub", "gallery.scrubber.slider", RequestedValue: 150_000));

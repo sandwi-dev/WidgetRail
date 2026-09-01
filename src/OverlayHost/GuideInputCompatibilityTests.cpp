@@ -1,8 +1,10 @@
 #include "GuideInputCompatibility.h"
+#include "ControllerGuide.h"
 
 #include <array>
 #include <cstdlib>
 #include <iostream>
+#include <utility>
 
 namespace {
 
@@ -57,6 +59,64 @@ int main() {
     activation.Reset();
     Check(!activation.active() && activation.deviceCount() == 0,
           "reset clears tracked devices");
+
+    widgetrail::WidgetSnapshot snapshot;
+    snapshot.activeInputScopeId = L"root";
+    snapshot.root.id = L"root";
+    snapshot.root.kind = L"stack";
+    snapshot.root.inputScopeId = L"root";
+    widgetrail::WidgetNode select;
+    select.id = L"density";
+    select.kind = L"button";
+    select.isSelect = true;
+    select.text = L"Density";
+    widgetrail::WidgetSelectOption compact;
+    compact.id = L"compact";
+    compact.label = L"Compact";
+    compact.actionId = L"density.compact";
+    compact.isSelected = true;
+    select.selectOptions.push_back(compact);
+    snapshot.root.children.push_back(std::move(select));
+    const auto selectAuthority =
+        widgetrail::guide::ResolveOpenWidgetAuthority(snapshot, L"density");
+    Check(selectAuthority.focusedActivation,
+          "focused Select publishes one exact activation guide authority");
+    const auto selectLine = widgetrail::guide::BuildOpenWidgetLine(
+        widgetrail::ControllerGuideDensity::Full, selectAuthority, true, 500.0F,
+        [](const std::wstring_view value) {
+            return std::optional<float>{static_cast<float>(value.size() * 7U)};
+        });
+    Check(selectLine.contextual == L"A Select" &&
+              selectLine.host == L"B Back   Guide Close" &&
+              selectLine.accessible == L"A Select   B Back   Guide Close",
+          "focused Select guide and accessibility text retain direct A activation");
+
+    snapshot.root.children[0].selectOptions[0].isDisabled = true;
+    const auto disabledSelectAuthority =
+        widgetrail::guide::ResolveOpenWidgetAuthority(snapshot, L"density");
+    const auto disabledSelectLine = widgetrail::guide::BuildOpenWidgetLine(
+        widgetrail::ControllerGuideDensity::Full, disabledSelectAuthority, true,
+        500.0F, [](const std::wstring_view value) {
+            return std::optional<float>{static_cast<float>(value.size() * 7U)};
+        });
+    Check(!disabledSelectAuthority.focusedActivation &&
+              disabledSelectLine.contextual.empty() &&
+              disabledSelectLine.accessible == L"B Back   Guide Close",
+          "all-disabled Select options publish no A Select guide authority");
+
+    snapshot.root.children[0].selectOptions[0].isDisabled = false;
+    snapshot.root.children[0].selectOptions[0].isBusy = true;
+    const auto busySelectAuthority =
+        widgetrail::guide::ResolveOpenWidgetAuthority(snapshot, L"density");
+    const auto busySelectLine = widgetrail::guide::BuildOpenWidgetLine(
+        widgetrail::ControllerGuideDensity::Full, busySelectAuthority, true,
+        500.0F, [](const std::wstring_view value) {
+            return std::optional<float>{static_cast<float>(value.size() * 7U)};
+        });
+    Check(!busySelectAuthority.focusedActivation &&
+              busySelectLine.contextual.empty() &&
+              busySelectLine.accessible == L"B Back   Guide Close",
+          "all-busy Select options publish no A Select guide authority");
 
     std::cout << "GuideInputCompatibilityTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

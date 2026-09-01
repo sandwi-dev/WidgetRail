@@ -43,6 +43,17 @@ public sealed record PickerOption(
     bool IsDisabled = false,
     bool IsBusy = false);
 
+/// <summary>A stable option in a host-owned anchored <see cref="UI.Select"/> popup.</summary>
+public sealed record SelectOption(
+    string Id,
+    string Label,
+    string ActionId,
+    bool IsSelected = false,
+    WidgetGlyph? Glyph = null,
+    string? AccessibilityLabel = null,
+    bool IsDisabled = false,
+    bool IsBusy = false);
+
 /// <summary>
 /// A controller-native media timeline composed from the public Slider and text
 /// primitives. Direct scrubbers seek with focused Left and Right. An opt-in

@@ -15,6 +15,7 @@ namespace widgetrail::accessibility {
 
 enum class Role {
     Button,
+    ComboBox,
     Slider,
     Text,
     Heading,
@@ -46,11 +47,15 @@ enum class HostAction {
     AdjustPinnedOpacity,
     UnpinSurface,
     InvokeWidgetContextAction,
+    ExpandSelect,
+    CollapseSelect,
+    CommitSelectOption,
     CloseOverlay,
 };
 
 enum class ElementDomain {
     Widget,
+    WidgetOption,
     HostShell,
     Tray,
 };
@@ -85,8 +90,10 @@ struct Node final {
     int sizeOfSet{};
     bool enabled{true};
     bool selected{};
+    bool expanded{};
     bool focused{};
     bool keyboardFocusable{true};
+    bool offscreen{};
 };
 
 struct Tree final {
@@ -104,6 +111,17 @@ struct WindowTreePartition final {
     Tree chrome;
 };
 
+struct SelectPopupAccessibility final {
+    std::wstring openerElementId;
+    std::vector<WidgetSelectOption> options;
+    std::size_t highlightedOption{};
+    struct Item final {
+        std::size_t optionIndex{};
+        declarative::Rect bounds;
+    };
+    std::vector<Item> items;
+};
+
 [[nodiscard]] inline ElementKey KeyFor(const Node& node) {
     return {node.domain, node.id};
 }
@@ -111,6 +129,7 @@ struct WindowTreePartition final {
     std::wstring result;
     switch (node.domain) {
     case ElementDomain::Widget: result = L"widget:"; break;
+    case ElementDomain::WidgetOption: result = L"widget-option:"; break;
     case ElementDomain::HostShell: result = L"host:"; break;
     case ElementDomain::Tray: result = L"tray:"; break;
     }
@@ -143,6 +162,7 @@ struct WindowTreePartition final {
     const WidgetSnapshot& snapshot,
     const RenderResult& render,
     std::wstring_view focusedElementId,
-    const std::map<std::wstring, double, std::less<>>& presentedSliderValues = {});
+    const std::map<std::wstring, double, std::less<>>& presentedSliderValues = {},
+    const SelectPopupAccessibility* selectPopup = nullptr);
 
 } // namespace widgetrail::accessibility

@@ -57,6 +57,8 @@ internal static class BridgeClientRegistryScenarios
     internal static async Task PinnedSurfaceInputRequiresExactAuthority()
     {
         var configured = Widget("pinned-input", worker: 'i', catalog: 'i');
+        var selectedActionId = "compact-quality.high";
+        var selectedOptionDisabled = false;
         await using var fixture = new RegistryFixture(
             Catalog(configured),
             configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
@@ -119,6 +121,22 @@ internal static class BridgeClientRegistryScenarios
                                     Value = 40,
                                     Step = 5,
                                     SliderInteractionMode = SliderInteractionMode.ActivateToAdjust,
+                                },
+                                new ViewNode
+                                {
+                                    Id = "compact.quality",
+                                    Kind = ViewNodeKind.Select,
+                                    Text = "Quality",
+                                    AccessibilityValue = "High",
+                                    SelectOptions =
+                                    [
+                                        new WidgetSelectOption(
+                                            "auto", "Automatic", "compact-quality.auto"),
+                                        new WidgetSelectOption(
+                                            "high", "High", selectedActionId,
+                                            IsSelected: true,
+                                            IsDisabled: selectedOptionDisabled),
+                                    ],
                                 },
                             ],
                         },
@@ -185,6 +203,40 @@ internal static class BridgeClientRegistryScenarios
                    expectedActionId: "compact-seek.changed"))
             RegistryAssert.True(publication.Value);
         RegistryAssert.Equal(3, client.ControllerInputs.Count);
+
+        var selectInput = new ControllerInputEvent(
+            ControllerButton.A,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.PinnedSurface,
+            FocusedElementId: "compact.quality",
+            Sequence: 3,
+            ActiveInputScopeId: "compact.root",
+            SnapshotSequence: successor.Sequence)
+        {
+            PinnedLayoutId = "compact",
+        };
+        var selectSuccessor = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        using (var publication = await fixture.Registry.SendControllerInputAsync(
+                   configured.Id, selectInput, generation,
+                   CancellationToken.None, CancellationToken.None,
+                   expectedSelectOptionActionId: selectedActionId))
+            RegistryAssert.True(publication.Value);
+        RegistryAssert.Equal(1, client.ActionEvents.Count);
+        RegistryAssert.Equal(selectedActionId, client.ActionEvents[0].ActionId);
+        RegistryAssert.Equal("compact.quality", client.ActionEvents[0].SourceElementId);
+        RegistryAssert.Equal(3L, client.ActionEvents[0].Sequence);
+
+        selectedOptionDisabled = true;
+        var disabledSuccessor = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        await RegistryAssert.ThrowsAsync<BridgeStalePinnedInputAuthorityException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, selectInput with
+                {
+                    SnapshotSequence = selectSuccessor.Sequence,
+                    Sequence = 4,
+                }, generation, CancellationToken.None, CancellationToken.None,
+                expectedSelectOptionActionId: selectedActionId));
+        RegistryAssert.Equal(1, client.ActionEvents.Count);
         RegistryAssert.Equal(ControllerButton.DPadRight, client.ControllerInputs[2].Button);
         RegistryAssert.Equal(45d, client.ControllerInputs[2].RequestedValue);
         RegistryAssert.Equal(successor.Sequence, client.ControllerInputs[2].SnapshotSequence);
@@ -209,7 +261,7 @@ internal static class BridgeClientRegistryScenarios
         }
         foreach (var staleAuthority in new ControllerInputEvent[]
         {
-            input with { SnapshotSequence = successor.Sequence + 1 },
+            input with { SnapshotSequence = disabledSuccessor.Sequence + 1 },
             input with { PinnedLayoutId = "retired" },
             input with { ActiveInputScopeId = "full.root" },
             input with { FocusedElementId = "full.play" },
@@ -1657,6 +1709,7 @@ internal sealed class RegistryTestClient(
     internal List<(WidgetPresentationTransactionKind TransactionKind,
         long BaseSequence, long RecoveryOriginSequence)> PresentationRequests { get; } = [];
     internal List<ControllerInputEvent> ControllerInputs { get; } = [];
+    internal List<WidgetActionEvent> ActionEvents { get; } = [];
     internal List<EmbeddedMediaPlaybackEvent> EmbeddedMediaPlaybackEvents { get; } = [];
     internal Func<long, ViewSnapshot>? SnapshotFactory { get; set; }
     internal bool RebaseRecoverySequence { get; set; }
@@ -1755,6 +1808,7 @@ internal sealed class RegistryTestClient(
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureStarted();
+        ActionEvents.Add(action);
         return Task.FromResult(WidgetOperationAdmission.Enqueued);
     }
 

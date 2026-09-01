@@ -30,6 +30,31 @@ internal static class ProtocolVersionRequirementsTests
             }).CreateSnapshot("requirements.maximum", 2);
         Equal(ProtocolConstants.SurfaceAxisSizingVersion, combined.ProtocolVersion);
 
+        var pinnedOnlySelect = new WidgetView(UI.Text("Ordinary", "ordinary"))
+        {
+            PinnedLayouts =
+            [
+                WidgetView.PinnedLayout(
+                    "select", "Select", new WidgetSurfaceHints
+                    {
+                        PreferredWidth = 320,
+                        PreferredHeight = 180,
+                        MinimumWidth = 240,
+                        MinimumHeight = ProtocolConstants.MinimumSurfaceHeight,
+                    },
+                    UI.Stack("select.root",
+                        UI.Select("Output",
+                            [new SelectOption("speakers", "Speakers", "output.speakers", true)],
+                            "select.output")),
+                    initialFocusId: "select.output"),
+            ],
+        };
+        var pinnedSnapshot = pinnedOnlySelect.CreateSnapshot(
+            "requirements.pinned-select", 3);
+        Equal(ProtocolConstants.AnchoredSelectVersion, pinnedSnapshot.ProtocolVersion);
+        Equal(0, ViewSnapshotValidator.Validate(pinnedSnapshot).Count,
+            "A pinned-only Select did not admit at its calculated outer protocol version.");
+
         return Task.CompletedTask;
     }
 
@@ -248,6 +273,20 @@ internal static class ProtocolVersionRequirementsTests
                         },
                     ],
                 }, "$.root.children[0].children[0].focusPresentation"),
+            NodeCase("anchored select", "anchored-select",
+                ProtocolConstants.AnchoredSelectVersion,
+                new()
+                {
+                    Id = "density",
+                    Kind = ViewNodeKind.Select,
+                    Text = "Density: Compact",
+                    AccessibilityValue = "Compact",
+                    SelectOptions =
+                    [
+                        new WidgetSelectOption(
+                            "compact", "Compact", "density.compact", true),
+                    ],
+                }),
             NodeCase("responsive grid", "responsive-grid", ProtocolConstants.ResponsiveGridVersion,
                 new()
                 {
@@ -362,6 +401,11 @@ internal static class ProtocolVersionRequirementsTests
                     requirement.Version == requirementCase.Version &&
                     requirement.Path == requirementCase.Path),
                 $"{requirementCase.Name} omitted exact requirement provenance.");
+            if (requirementCase.Feature == "anchored-select" &&
+                snapshot.Root.Children.Any(node => node.Kind is ViewNodeKind.Select))
+                Equal(1, requirements.Requirements.Count(requirement =>
+                    requirement.Feature == "anchored-select"),
+                    "valid Select emitted duplicate anchored-select requirements.");
 
             var tooOld = snapshot with { ProtocolVersion = requirementCase.Version - 1 };
             var oldErrors = ViewSnapshotValidator.Validate(tooOld);

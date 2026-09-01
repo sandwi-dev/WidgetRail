@@ -12,6 +12,8 @@ param(
     [switch]$DeclarativeRendererTestsOnly,
     [switch]$BackgroundSurfaceHostTestsOnly,
     [switch]$AccessibilityTreeTestsOnly,
+    [switch]$ControllerGuideTestsOnly,
+    [switch]$AccessibilityEventsTestsOnly,
     [switch]$PinnedSurfaceTestsOnly,
     [switch]$PinnedPlacementTestsOnly,
     [switch]$ProcessOwnerTestsOnly,
@@ -449,13 +451,7 @@ function Invoke-OverlayPlatformParityTests {
             (Join-Path $projectDirectory 'OverlayTargetingTests.cpp'),
             (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
             (Join-Path $platformDirectory 'OverlayPlatformTargeting.cpp'))
-    Invoke-OverlayPlatformParityTest `
-        -Name 'GuideInputCompatibilityTests' `
-        -ObjectDirectory $guideTestObjectDirectory `
-        -Sources @(
-            (Join-Path $projectDirectory 'GuideInputCompatibilityTests.cpp'),
-            (Join-Path $projectDirectory 'GuideInputCompatibility.cpp')) `
-        -Libraries @('user32.lib')
+    Invoke-ControllerGuideTests
     Invoke-OverlayPlatformParityTest `
         -Name 'ControllerInputOwnershipTests' `
         -ObjectDirectory $inputOwnershipTestObjectDirectory `
@@ -468,6 +464,35 @@ function Invoke-OverlayPlatformParityTests {
             (Join-Path $projectDirectory 'ControllerNavigationTests.cpp'),
             (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
             (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'))
+}
+
+function Invoke-ControllerGuideTests {
+    Invoke-OverlayPlatformParityTest `
+        -Name 'GuideInputCompatibilityTests' `
+        -ObjectDirectory $guideTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'GuideInputCompatibilityTests.cpp'),
+            (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
+            (Join-Path $projectDirectory 'ControllerGuide.cpp')) `
+        -Libraries @('user32.lib')
+}
+
+function Invoke-AccessibilityEventsTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'AccessibilityEventsTests.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
+        "/Fo:$accessibilityEventsTestObjectDirectory\",
+        "/Fe:$outputDirectory\AccessibilityEventsTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityEventsTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'AccessibilityEventsTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityEventsTests failed with exit code $LASTEXITCODE."
+    }
 }
 
 function Invoke-SemanticChurnPerformanceTests {
@@ -1449,6 +1474,22 @@ if ($AccessibilityTreeTestsOnly) {
     return
 }
 
+if ($ControllerGuideTestsOnly) {
+    if ($SkipTests) {
+        throw 'ControllerGuideTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-ControllerGuideTests
+    return
+}
+
+if ($AccessibilityEventsTestsOnly) {
+    if ($SkipTests) {
+        throw 'AccessibilityEventsTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-AccessibilityEventsTests
+    return
+}
+
 if ($WidgetInteractionTestsOnly) {
     if ($SkipTests) {
         throw 'WidgetInteractionTestsOnly cannot be combined with SkipTests.'
@@ -2187,6 +2228,7 @@ if (-not $SkipTests) {
     $guideTestArguments = $common + @(
         (Join-Path $projectDirectory 'GuideInputCompatibilityTests.cpp'),
         (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
+        (Join-Path $projectDirectory 'ControllerGuide.cpp'),
         "/Fo:$guideTestObjectDirectory\",
         "/Fe:$outputDirectory\GuideInputCompatibilityTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'

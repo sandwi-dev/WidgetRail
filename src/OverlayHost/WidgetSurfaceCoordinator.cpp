@@ -4,6 +4,7 @@
 
 #include "AccessibilityTree.h"
 #include "FocusNavigation.h"
+#include "NativeIcons.h"
 #include "WidgetSurfaceFocus.h"
 #include "WidgetSurfaceGeometry.h"
 
@@ -326,7 +327,8 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     // and the slider interaction state, exactly as the full widget does.
     if (selectedLayoutReplaced || priorFocus != focusedElementId_ ||
         priorInputScopeId != selectedSnapshot.activeInputScopeId ||
-        !retainedFocus || retainedFocus->kind != L"slider") {
+        !retainedFocus ||
+        (retainedFocus->kind != L"slider" && !retainedFocus->isSelect)) {
         RetireSliderInteraction();
     } else {
         (void)sliderInteraction_.ReconcileAdmission(
@@ -467,6 +469,17 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
         admission_->presentationGeneration, false};
     const auto* focused = input::FindNodeInInputScope(
         snapshot, focusedElementId_, snapshot.activeInputScopeId);
+    if (sliderInteraction_.selectPopup()) {
+        if (!focused || !focused->isSelect ||
+            !sliderInteraction_.SelectPopupCurrent(authority, *focused)) {
+            (void)sliderInteraction_.CloseSelectPopup();
+            RequestPaint();
+            return true;
+        }
+        if (sliderInteraction_.MoveSelectPopup(authority, *focused, direction))
+            RequestPaint();
+        return true;
+    }
     if (focused) {
         const bool activationRequired =
             focused->sliderInteractionMode == L"activateToAdjust";
@@ -611,6 +624,73 @@ bool WidgetSurfaceCoordinator::HandleFocusedSliderModeButton(
     return false;
 }
 
+bool WidgetSurfaceCoordinator::HandleFocusedSelectButton(
+    const std::wstring_view protocolButton,
+    const ControllerInputOrigin origin) {
+    if (!pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
+        (protocolButton != L"a" && protocolButton != L"b")) return false;
+    const auto& snapshot = SelectedSnapshot();
+    const auto* focused = input::FindNodeInInputScope(
+        snapshot, focusedElementId_, snapshot.activeInputScopeId);
+    if (!focused) return false;
+    const input::WidgetInteractionAuthority authority{
+        admission_->widgetId, &snapshot, admission_->runtimeGeneration,
+        admission_->presentationGeneration, false};
+    if (sliderInteraction_.selectPopup()) {
+        if (protocolButton == L"b") {
+            (void)sliderInteraction_.CloseSelectPopup();
+            PublishAccessibility();
+            RequestPaint();
+            return true;
+        }
+        auto action = sliderInteraction_.CommitSelectPopup(authority, *focused);
+        PublishAccessibility();
+        RequestPaint();
+        if (action) {
+            QueueResolvedInput(
+                focused->id, L"a", origin,
+                std::nullopt, std::nullopt, action->request);
+        }
+        return true;
+    }
+    if (protocolButton == L"a") {
+        const auto activation = sliderInteraction_.OpenSelectPopup(
+            authority, *focused);
+        if (activation == input::SelectActivationResult::Opened) {
+            PublishAccessibility();
+            RequestPaint();
+        }
+        if (activation != input::SelectActivationResult::NotSelect) return true;
+    }
+    return false;
+}
+
+bool WidgetSurfaceCoordinator::MoveSelectPopupWheel(const short wheelDelta) {
+    if (!pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
+        !sliderInteraction_.selectPopup() ||
+        wheelDelta == 0) return false;
+    const auto& snapshot = SelectedSnapshot();
+    const auto* focused = input::FindNodeInInputScope(
+        snapshot, focusedElementId_, snapshot.activeInputScopeId);
+    if (!focused || !focused->isSelect) return false;
+    const input::WidgetInteractionAuthority authority{
+        admission_->widgetId, &snapshot, admission_->runtimeGeneration,
+        admission_->presentationGeneration, false};
+    const auto direction = wheelDelta > 0
+        ? input::NavigationDirection::Up : input::NavigationDirection::Down;
+    const auto steps = std::max(
+        1, std::abs(static_cast<int>(wheelDelta)) / WHEEL_DELTA);
+    bool changed{};
+    for (int step = 0; step < steps; ++step)
+        changed = sliderInteraction_.MoveSelectPopup(
+            authority, *focused, direction) || changed;
+    if (changed) {
+        PublishAccessibility();
+        RequestPaint();
+    }
+    return true;
+}
+
 bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
     const short rightThumbX,
     const short rightThumbY,
@@ -692,6 +772,31 @@ void WidgetSurfaceCoordinator::RetireSliderInteraction() noexcept {
     (void)sliderInteraction_.RetirePresentations();
 }
 
+void WidgetSurfaceCoordinator::TransitionPinnedFocus(
+    const std::wstring_view target) {
+    ClearFreeScroll();
+    if (focusedElementId_ != target) RetireSliderInteraction();
+    focusedElementId_ = target;
+    if (admission_)
+        focusGroupMemory_.Remember(
+            admission_->widgetId, SelectedSnapshot(), focusedElementId_);
+}
+
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+bool WidgetSurfaceCoordinator::SliderAdjustmentActiveForTesting(
+    const std::wstring_view nodeId, const std::uint64_t now) {
+    if (!admission_) return false;
+    const auto& snapshot = SelectedSnapshot();
+    const auto* node = input::FindNodeInInputScope(
+        snapshot, nodeId, snapshot.activeInputScopeId);
+    if (!node) return false;
+    const input::WidgetInteractionAuthority authority{
+        admission_->widgetId, &snapshot, admission_->runtimeGeneration,
+        admission_->presentationGeneration, false};
+    return sliderInteraction_.SliderAdjustmentModeActive(authority, *node, now);
+}
+#endif
+
 bool WidgetSurfaceCoordinator::RecordPaginationOutcome(
     input::ScrollPaginationSessionOutcome outcome) {
     const bool notify = outcome.dispatchReady || !outcome.diagnostics.empty();
@@ -708,7 +813,8 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
     std::wstring protocolButton,
     const ControllerInputOrigin origin,
     const std::optional<double> requestedValue,
-    std::optional<input::WidgetInteractionActionRequest> sliderActionRequest) {
+    std::optional<input::WidgetInteractionActionRequest> sliderActionRequest,
+    std::optional<input::WidgetInteractionActionRequest> selectActionRequest) {
     if (!pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
         nodeId.empty() || protocolButton.empty()) return;
     if (inputRequests_.size() >= kMaximumPendingInputRequests) {
@@ -738,6 +844,20 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
         }
         return;
     }
+    if (selectActionRequest &&
+        (!node->isSelect || protocolButton != L"a" ||
+         selectActionRequest->widgetId != admission_->widgetId ||
+         selectActionRequest->widgetInstanceId != snapshot.instanceId ||
+         selectActionRequest->runtimeGeneration != admission_->runtimeGeneration ||
+         selectActionRequest->presentationGeneration != admission_->presentationGeneration ||
+         selectActionRequest->inputScopeId != snapshot.activeInputScopeId ||
+         selectActionRequest->sourceElementId != node->id ||
+         selectActionRequest->snapshotSequence != snapshot.sequence ||
+         std::none_of(node->selectOptions.begin(), node->selectOptions.end(),
+             [&](const WidgetSelectOption& option) {
+                 return option.actionId == selectActionRequest->actionId &&
+                     !option.isDisabled && !option.isBusy;
+             }))) return;
     inputRequests_.push_back({
         admission_->widgetId,
         admission_->runtimeGeneration,
@@ -749,6 +869,7 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
         protocolButton == L"a" ? node->actionId : std::wstring{},
         requestedValue,
         std::move(sliderActionRequest),
+        std::move(selectActionRequest),
         origin,
     });
     NotifyOwner();
@@ -859,7 +980,23 @@ bool WidgetSurfaceCoordinator::IsCurrentInputRequest(
          request.sliderActionRequest->requestedValue == request.requestedValue &&
          (request.protocolButton == L"dPadLeft" ||
           request.protocolButton == L"dPadRight"));
+    const bool selectActionCurrent = !request.selectActionRequest ||
+        (node && node->isSelect && request.protocolButton == L"a" &&
+         request.selectActionRequest->widgetId == admission_->widgetId &&
+         request.selectActionRequest->widgetInstanceId == snapshot.instanceId &&
+         request.selectActionRequest->runtimeGeneration == admission_->runtimeGeneration &&
+         request.selectActionRequest->presentationGeneration ==
+             admission_->presentationGeneration &&
+         request.selectActionRequest->inputScopeId == snapshot.activeInputScopeId &&
+         request.selectActionRequest->sourceElementId == node->id &&
+         request.selectActionRequest->snapshotSequence == request.snapshotSequence &&
+         std::any_of(node->selectOptions.begin(), node->selectOptions.end(),
+             [&](const WidgetSelectOption& option) {
+                 return option.actionId == request.selectActionRequest->actionId &&
+                     !option.isDisabled && !option.isBusy;
+             }));
     return node && !node->isDisabled && !node->isBusy && sliderActionCurrent &&
+        selectActionCurrent &&
         request.nodeId == focusedElementId_ &&
         request.snapshotSequence <= snapshot.sequence &&
         request.activeInputScopeId == snapshot.activeInputScopeId;
@@ -1637,6 +1774,17 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
             : MA_ACTIVATE;
     case WM_GETOBJECT:
         return accessibilityProvider_.HandleWmGetObject(wParam, lParam);
+    case WM_MOUSEWHEEL:
+        if (MoveSelectPopupWheel(static_cast<short>(HIWORD(wParam)))) return 0;
+        return DefWindowProcW(window_, message, wParam, lParam);
+    case WM_RBUTTONUP:
+        if (sliderInteraction_.selectPopup()) {
+            (void)sliderInteraction_.CloseSelectPopup();
+            PublishAccessibility();
+            RequestPaint();
+            return 0;
+        }
+        return DefWindowProcW(window_, message, wParam, lParam);
     case WM_SETFOCUS:
         accessibilityProvider_.SetWindowFocused(true);
         PublishAccessibility();
@@ -1667,6 +1815,39 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
             const int x = static_cast<short>(LOWORD(lParam));
             const int y = static_cast<short>(HIWORD(lParam));
             const int dpi = static_cast<int>(GetDpiForWindow(window_));
+            const float scale = static_cast<float>(std::max(1, dpi)) / 96.0F;
+            if (sliderInteraction_.selectPopup()) {
+                const auto& snapshot = SelectedSnapshot();
+                const auto* node = input::FindNodeInInputScope(
+                    snapshot, focusedElementId_, snapshot.activeInputScopeId);
+                const input::WidgetInteractionAuthority authority{
+                    admission_->widgetId, &snapshot, admission_->runtimeGeneration,
+                    admission_->presentationGeneration, false};
+                const auto anchor = lastRenderResult_.focusRects.find(focusedElementId_);
+                const declarative::Rect viewport{
+                    kSideInsetDip, kChromeHeightDip,
+                    std::max(1.0F, static_cast<float>(client.right) / scale -
+                        kSideInsetDip * 2.0F),
+                    std::max(1.0F, static_cast<float>(client.bottom) / scale -
+                        kChromeHeightDip - kBottomInsetDip)};
+                const auto layout = anchor == lastRenderResult_.focusRects.end()
+                    ? input::SelectPopupLayout{}
+                    : input::ComputeSelectPopupLayout(
+                        anchor->second, viewport, *sliderInteraction_.selectPopup());
+                const auto option = input::HitTestSelectPopup(
+                    layout, static_cast<float>(x) / scale,
+                    static_cast<float>(y) / scale);
+                if (node && option && sliderInteraction_.HighlightSelectPopupOption(
+                        authority, *node, *option)) {
+                    (void)HandleFocusedSelectButton(
+                        L"a", ControllerInputOrigin::PhysicalController);
+                } else {
+                    (void)sliderInteraction_.CloseSelectPopup();
+                    PublishAccessibility();
+                    RequestPaint();
+                }
+                return 0;
+            }
             const int chrome = MulDiv(
                 static_cast<int>(kChromeHeightDip), dpi, 96);
             const int fromRight = client.right - x;
@@ -1687,18 +1868,12 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
                 SetCapture(window_);
                 return 0;
             }
-            const float scale =
-                static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
             if (const auto hit = input::FindPointerHitTarget(
                     static_cast<float>(x) / scale,
                     static_cast<float>(y) / scale,
                     SelectedSnapshot().activeInputScopeId,
                     lastRenderResult_)) {
-                ClearFreeScroll();
-                if (focusedElementId_ != hit->id) RetireSliderInteraction();
-                focusedElementId_ = hit->id;
-                focusGroupMemory_.Remember(
-                    admission_->widgetId, SelectedSnapshot(), focusedElementId_);
+                TransitionPinnedFocus(hit->id);
                 pointerActionNode_ = hit->enabled ? hit->id : std::wstring{};
                 SetCapture(window_);
                 PublishAccessibility();
@@ -1756,9 +1931,11 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
                 SelectedSnapshot().activeInputScopeId,
                 lastRenderResult_);
             if (hit && hit->enabled && hit->id == pressed)
-                QueueResolvedInput(
-                    std::move(pressed), L"a",
-                    ControllerInputOrigin::PhysicalController, std::nullopt);
+                if (!HandleFocusedSelectButton(
+                        L"a", ControllerInputOrigin::PhysicalController))
+                    QueueResolvedInput(
+                        std::move(pressed), L"a",
+                        ControllerInputOrigin::PhysicalController, std::nullopt);
             return 0;
         }
         if (policy_.interactionMode() == InteractionMode::Focusable) {
@@ -1824,11 +2001,16 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
             else if (wParam == VK_DOWN) direction = input::NavigationDirection::Down;
             (void)MoveControllerFocus(direction);
         } else if (controllerFocused_ && wParam == VK_RETURN) {
-            (void)QueueFocusedInput(
-                L"a", ControllerInputOrigin::AccessibilityAutomation);
+            if (!HandleFocusedSelectButton(
+                    L"a", ControllerInputOrigin::AccessibilityAutomation))
+                (void)QueueFocusedInput(
+                    L"a", ControllerInputOrigin::AccessibilityAutomation);
         } else if (wParam == VK_ESCAPE && controllerFocused_) {
-            (void)ExitControllerFocus();
-            (void)SetInteractionMode(InteractionMode::ClickThrough);
+            if (!HandleFocusedSelectButton(
+                    L"b", ControllerInputOrigin::AccessibilityAutomation)) {
+                (void)ExitControllerFocus();
+                (void)SetInteractionMode(InteractionMode::ClickThrough);
+            }
         } else if (wParam == 'M') (void)BeginPlacement(PlacementMode::Move);
         else if (wParam == 'R') (void)BeginPlacement(PlacementMode::Resize);
         else if (wParam == 'P') {
@@ -1876,19 +2058,72 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
             request.snapshotSequence != snapshot.sequence ||
             request.activeInputScopeId != snapshot.activeInputScopeId)
             continue;
-        if (request.domain == accessibility::ElementDomain::Widget) {
+        if (request.domain == accessibility::ElementDomain::Widget ||
+            request.domain == accessibility::ElementDomain::WidgetOption) {
+            if (request.hostAction == accessibility::HostAction::ExpandSelect) {
+                if (request.kind != accessibility::ActionKind::Invoke ||
+                    request.hostTargetId != request.nodeId ||
+                    policy_.interactionMode() != InteractionMode::Focusable)
+                    continue;
+                TransitionPinnedFocus(request.nodeId);
+                (void)HandleFocusedSelectButton(
+                    L"a", ControllerInputOrigin::AccessibilityAutomation);
+                continue;
+            }
+            if (request.hostAction == accessibility::HostAction::CollapseSelect) {
+                if (request.kind != accessibility::ActionKind::Invoke ||
+                    !sliderInteraction_.selectPopup() ||
+                    sliderInteraction_.selectPopup()->openerElementId !=
+                        request.hostTargetId)
+                    continue;
+                (void)HandleFocusedSelectButton(
+                    L"b", ControllerInputOrigin::AccessibilityAutomation);
+                continue;
+            }
+            if (request.hostAction ==
+                accessibility::HostAction::CommitSelectOption) {
+                if ((request.kind != accessibility::ActionKind::Invoke &&
+                     request.kind != accessibility::ActionKind::Focus) ||
+                    !sliderInteraction_.selectPopup() ||
+                    sliderInteraction_.selectPopup()->openerElementId !=
+                        request.hostTargetId)
+                    continue;
+                const auto* select = input::FindNodeInInputScope(
+                    snapshot, request.hostTargetId, snapshot.activeInputScopeId);
+                if (!select || !select->isSelect) continue;
+                const auto option = std::find_if(
+                    select->selectOptions.begin(), select->selectOptions.end(),
+                    [&](const auto& candidate) {
+                        return candidate.actionId == request.actionId;
+                    });
+                if (option == select->selectOptions.end()) continue;
+                const input::WidgetInteractionAuthority authority{
+                    admission_->widgetId, &snapshot, admission_->runtimeGeneration,
+                    admission_->presentationGeneration, false};
+                const auto index = static_cast<std::size_t>(
+                    std::distance(select->selectOptions.begin(), option));
+                if (request.kind == accessibility::ActionKind::Focus) {
+                    if (!EnterControllerFocus() || GetFocus() != window_) continue;
+                }
+                if (!sliderInteraction_.HighlightSelectPopupOption(
+                        authority, *select, index)) continue;
+                if (request.kind == accessibility::ActionKind::Invoke)
+                    (void)HandleFocusedSelectButton(
+                        L"a", ControllerInputOrigin::AccessibilityAutomation);
+                else {
+                    PublishAccessibility();
+                    RequestPaint();
+                }
+                continue;
+            }
             const auto resolved = accessibility::ResolveActionRequest(
                 request, admission_->widgetId, admission_->runtimeGeneration,
                 snapshot);
             if (!resolved || policy_.interactionMode() != InteractionMode::Focusable)
                 continue;
             if (resolved->kind == accessibility::ActionKind::Focus) {
-                ClearFreeScroll();
-                if (focusedElementId_ != resolved->nodeId)
-                    RetireSliderInteraction();
-                focusedElementId_ = resolved->nodeId;
-                focusGroupMemory_.Remember(
-                    admission_->widgetId, snapshot, focusedElementId_);
+                if (!EnterControllerFocus() || GetFocus() != window_) continue;
+                TransitionPinnedFocus(resolved->nodeId);
                 PublishAccessibility();
                 RequestPaint();
             } else {
@@ -2197,6 +2432,80 @@ void WidgetSurfaceCoordinator::Paint() {
                 : std::wstring_view{},
             viewport, options);
     }
+    if (!compactMedia && sliderInteraction_.selectPopup()) {
+        const auto* node = input::FindNodeInInputScope(
+            selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId);
+        const auto anchor = renderResult.focusRects.find(focusedElementId_);
+        if (node && node->isSelect && anchor != renderResult.focusRects.end() &&
+            sliderInteraction_.SelectPopupCurrent(authority, *node)) {
+            const auto popup = input::ComputeSelectPopupLayout(
+                anchor->second, viewport, *sliderInteraction_.selectPopup());
+            const auto& binding = *sliderInteraction_.selectPopup();
+            const D2D1_ROUNDED_RECT panel{
+                D2D1::RectF(
+                    popup.bounds.x, popup.bounds.y,
+                    popup.bounds.x + popup.bounds.width,
+                    popup.bounds.y + popup.bounds.height),
+                8.0F, 8.0F};
+            renderTarget_->FillRoundedRectangle(panel, backgroundBrush_.Get());
+            renderTarget_->DrawRoundedRectangle(panel, textBrush_.Get(), 1.5F);
+            for (const auto& item : popup.items) {
+                if (item.optionIndex >= binding.options.size()) continue;
+                const auto& option = binding.options[item.optionIndex];
+                if (item.optionIndex == binding.highlightedOption) {
+                    renderTarget_->FillRoundedRectangle(
+                        D2D1::RoundedRect(
+                            D2D1::RectF(
+                                item.bounds.x + 3.0F, item.bounds.y + 3.0F,
+                                item.bounds.x + item.bounds.width - 3.0F,
+                                item.bounds.y + item.bounds.height - 3.0F),
+                            5.0F, 5.0F),
+                        chromeBrush_.Get());
+                }
+                float labelLeft = item.bounds.x + 10.0F;
+                if (option.isSelected) {
+                    const std::wstring check = L"✓";
+                    renderTarget_->DrawTextW(
+                        check.c_str(), static_cast<UINT32>(check.size()),
+                        chromeFormat_.Get(),
+                        D2D1::RectF(
+                            labelLeft, item.bounds.y, labelLeft + 20.0F,
+                            item.bounds.y + item.bounds.height),
+                        option.isDisabled || option.isBusy
+                            ? secondaryBrush_.Get() : textBrush_.Get(),
+                        D2D1_DRAW_TEXT_OPTIONS_CLIP);
+                    labelLeft += 22.0F;
+                }
+                widgetrail::icons::NativeIcon icon{};
+                if (!option.glyph.empty() &&
+                    widgetrail::icons::TryParseNativeIcon(option.glyph, icon)) {
+                    (void)widgetrail::icons::DrawNativeIcon(
+                        renderTarget_.Get(), icon,
+                        D2D1::RectF(
+                            labelLeft, item.bounds.y + 8.0F,
+                            labelLeft + 22.0F,
+                            item.bounds.y + item.bounds.height - 8.0F),
+                        option.isDisabled || option.isBusy
+                            ? secondaryBrush_.Get() : textBrush_.Get(),
+                        1.7F);
+                    labelLeft += 28.0F;
+                }
+                renderTarget_->DrawTextW(
+                    option.label.c_str(),
+                    static_cast<UINT32>(option.label.size()),
+                    chromeFormat_.Get(),
+                    D2D1::RectF(
+                        labelLeft, item.bounds.y,
+                        item.bounds.x + item.bounds.width - 8.0F,
+                        item.bounds.y + item.bounds.height),
+                    option.isDisabled || option.isBusy
+                        ? secondaryBrush_.Get() : textBrush_.Get(),
+                    D2D1_DRAW_TEXT_OPTIONS_CLIP);
+            }
+        } else {
+            (void)sliderInteraction_.CloseSelectPopup();
+        }
+    }
     if (!compactMedia && options.suppressFocusedDescendantFollow &&
         !input::SurfaceInteractionTransactions::EvaluateFreeScroll(
             freeScroll_, authority, focusedElementId_, renderResult)
@@ -2248,6 +2557,7 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
     const float scale =
         static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
     const float widthDip = static_cast<float>(client.right - client.left) / scale;
+    const float heightDip = static_cast<float>(client.bottom - client.top) / scale;
     accessibility::Tree tree{
         admission_->widgetId,
         admission_->runtimeGeneration,
@@ -2395,11 +2705,33 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
         if (controllerFocused_) tree.focusedNode = tree.nodes.size() - 1;
     } else if (policy_.interactionMode() == InteractionMode::Focusable &&
         lastRenderResult_.succeeded) {
+        std::optional<accessibility::SelectPopupAccessibility> selectPopup;
+        if (sliderInteraction_.selectPopup()) {
+            const auto& binding = *sliderInteraction_.selectPopup();
+            const auto anchor = lastRenderResult_.focusRects.find(
+                binding.openerElementId);
+            if (anchor != lastRenderResult_.focusRects.end()) {
+                const declarative::Rect viewport{
+                    kSideInsetDip, kChromeHeightDip,
+                    std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
+                    std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip)};
+                const auto layout = input::ComputeSelectPopupLayout(
+                    anchor->second, viewport, binding);
+                selectPopup.emplace();
+                selectPopup->openerElementId = binding.openerElementId;
+                selectPopup->options = binding.options;
+                selectPopup->highlightedOption = binding.highlightedOption;
+                selectPopup->items.reserve(layout.items.size());
+                for (const auto& item : layout.items)
+                    selectPopup->items.push_back({item.optionIndex, item.bounds});
+            }
+        }
         auto widgetTree = accessibility::BuildWidgetTree(
             admission_->widgetId, admission_->runtimeGeneration,
             snapshot, lastRenderResult_,
             controllerFocused_ ? std::wstring_view{focusedElementId_}
-                               : std::wstring_view{});
+                               : std::wstring_view{}, {},
+            selectPopup ? &*selectPopup : nullptr);
         const std::size_t offset = tree.nodes.size();
         for (auto& node : widgetTree.nodes) {
             if (node.parent) *node.parent += offset;

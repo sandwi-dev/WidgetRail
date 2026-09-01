@@ -140,8 +140,12 @@ OpenWidgetAuthority ResolveOpenWidgetAuthority(
     }
 
     const auto* focused = focusedElementId.empty() ? nullptr : path.back();
+    const bool selectOptionAvailable = focused && focused->isSelect &&
+        std::ranges::any_of(focused->selectOptions, [](const auto& option) {
+            return !option.isDisabled && !option.isBusy;
+        });
     result.focusedActivation = focused && !focused->isDisabled && !focused->isBusy &&
-        !focused->actionId.empty() &&
+        (!focused->actionId.empty() || selectOptionAvailable) &&
         (focused->kind == L"button" || focused->kind == L"slider" ||
          focused->kind == L"actionSurface");
 

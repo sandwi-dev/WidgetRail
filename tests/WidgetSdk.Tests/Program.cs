@@ -54,6 +54,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Settings rows and action sheets preserve responsive controller semantics", SettingsRowsAndActionSheetsAreSemantic),
     ("Action sheets route nested Back and suppress unavailable actions", ActionSheetRoutingIsScoped),
     ("Pickers preserve single-select controller and accessibility semantics", PickersAreSemantic),
+    ("Anchored Select is bounded versioned and preserves exact option authority", AnchoredSelectIsSemantic),
     ("Scrubbers compose stable controller seeking and responsive time semantics", ScrubbersAreSemantic),
     ("Scrubbers route absolute millisecond targets through the native Slider contract", ScrubberInputResolves),
     ("Toasts are bounded semantic notifications that never steal controller focus", ToastsAreNonInteractive),
@@ -2292,6 +2293,150 @@ static Task PickersAreSemantic()
             new PickerOption("picker.multiple.one", "One", "picker.one", IsSelected: true),
             new PickerOption("picker.multiple.two", "Two", "picker.two", IsSelected: true),
         ]));
+    return Task.CompletedTask;
+}
+
+static Task AnchoredSelectIsSemantic()
+{
+    foreach (var count in new[] { 1, 8, 9, 32, 128 })
+    {
+        var options = Enumerable.Range(0, count)
+            .Select(index => new SelectOption(
+                $"select.option.{index}",
+                $"Option {index}",
+                $"select.choose-{index}",
+                IsSelected: index == Math.Min(1, count - 1),
+                Glyph: index == 0 ? WidgetGlyph.Check : null,
+                AccessibilityLabel: $"Accessible option {index}"))
+            .ToArray();
+        var select = UI.Select("Output", options, "select.output", "Output device");
+        var snapshot = new WidgetView(select, InitialFocusId: select.Id)
+            .CreateSnapshot($"select.instance.{count}", count);
+        Assert.Equal(ProtocolConstants.AnchoredSelectVersion, snapshot.ProtocolVersion);
+        Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        var node = snapshot.Root;
+        Assert.Equal(ViewNodeKind.Select, node.Kind);
+        Assert.Equal(count, node.SelectOptions.Count);
+        Assert.Equal(1, node.SelectOptions.Count(option => option.IsSelected));
+        Assert.Equal(options.Single(option => option.IsSelected).Label,
+            node.AccessibilityValue);
+        Assert.Equal(WidgetGlyph.Check, node.SelectOptions[0].Glyph);
+    }
+
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.Select(
+        "Empty", [], "select.empty"));
+    Assert.Throws<ArgumentOutOfRangeException>(() => UI.Select(
+        "Too many",
+        Enumerable.Range(0, ProtocolConstants.MaximumSelectOptionCount + 1)
+            .Select(index => new SelectOption(
+                $"select.large.{index}", $"Option {index}",
+                $"select.large.choose-{index}", IsSelected: index == 0))
+            .ToArray(),
+        "select.large"));
+    Assert.Throws<ArgumentException>(() => UI.Select(
+        "No selection",
+        [new SelectOption("select.none", "None", "select.none.choose")],
+        "select.none.control"));
+    Assert.Throws<ArgumentException>(() => UI.Select(
+        "Duplicate action",
+        [
+            new SelectOption("select.duplicate.one", "One", "select.same", true),
+            new SelectOption("select.duplicate.two", "Two", "select.same"),
+        ],
+        "select.duplicate"));
+    Assert.Throws<ArgumentException>(() => UI.Select(
+        "Output\nDevice",
+        [new SelectOption("linebreak", "Speakers", "linebreak.choose", true)],
+        "select.linebreak"));
+    Assert.Throws<ArgumentException>(() => UI.Select(
+        "Output",
+        [new SelectOption("linebreak", "Speakers\rHeadset", "linebreak.choose", true)],
+        "select.option-linebreak"));
+    Assert.Throws<ArgumentException>(() => UI.Select(
+        "Output",
+        [new SelectOption("linebreak", "Speakers", "linebreak.choose", true,
+            AccessibilityLabel: "Speaker\u0001output")],
+        "select.accessibility-control"));
+    var raw = new WidgetView(UI.Select(
+            "Density",
+            [new SelectOption("compact", "Compact", "density.compact", true)],
+            "density"))
+        .CreateSnapshot("select.raw", 1);
+    var textOnly = raw with
+    {
+        Root = raw.Root with { AccessibilityLabel = null },
+    };
+    Assert.Equal(0, ViewSnapshotValidator.Validate(textOnly).Count);
+    var unnamed = textOnly with
+    {
+        Root = textOnly.Root with { Text = null },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(unnamed).Any(error =>
+        error.Path == "$.root.text" && error.Code == "required"),
+        "Select requires an authored visible label");
+    var labelOnly = raw with
+    {
+        Root = raw.Root with { Text = "   ", AccessibilityLabel = "Density" },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(labelOnly).Any(error =>
+        error.Path == "$.root.text" && error.Code == "required"),
+        "Select rejects a whitespace-only visible label");
+    var whitespaceOption = raw with
+    {
+        Root = raw.Root with
+        {
+            SelectOptions =
+            [
+                raw.Root.SelectOptions[0] with
+                {
+                    Label = "  ",
+                    AccessibilityLabel = "\t",
+                },
+            ],
+        },
+    };
+    var whitespaceErrors = ViewSnapshotValidator.Validate(whitespaceOption);
+    Assert.True(whitespaceErrors.Any(error =>
+        error.Code == "invalid_select_option_label"),
+        "Select rejects a whitespace-only option label");
+    Assert.True(whitespaceErrors.Any(error =>
+        error.Code == "invalid_select_option_accessibility_label"),
+        "Select rejects a whitespace-only option accessibility label");
+    var openerSelected = raw with
+    {
+        Root = raw.Root with { IsSelected = true },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(openerSelected).Any(error =>
+        error.Path == "$.root.isSelected" &&
+        error.Code == "interaction_state_not_allowed"),
+        "Select opener rejects authored selected interaction state");
+    var controlText = raw with
+    {
+        Root = raw.Root with { Text = "Density:\nCompact" },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(controlText).Any(error =>
+        error.Path == "$.root.text" && error.Code == "invalid_select_text"),
+        "Raw Select diagnostics reject control characters in opener text exactly.");
+    var oversizedOptions = Enumerable.Range(
+            0, ProtocolConstants.MaximumSelectOptionCount + 1)
+        .Select(index => new WidgetSelectOption(
+            $"oversized.{index}", $"Option {index}", $"oversized.{index}.choose",
+            index == ProtocolConstants.MaximumSelectOptionCount))
+        .ToArray();
+    var oversized = raw with
+    {
+        Root = raw.Root with
+        {
+            AccessibilityValue = "Compact",
+            SelectOptions = oversizedOptions,
+        },
+    };
+    var oversizedErrors = ViewSnapshotValidator.Validate(oversized);
+    Assert.True(oversizedErrors.Any(error =>
+        error.Path == "$.root.selectOptions" && error.Code == "invalid_select_option_count"),
+        "An oversized Select option list must fail its bounded count.");
+    Assert.True(!oversizedErrors.Any(error => error.Code == "select_value_mismatch"),
+        "Validation must not rescan an oversized invalid Select option suffix.");
     return Task.CompletedTask;
 }
 

@@ -76,6 +76,7 @@ void IntVariant(const int value, VARIANT* result) noexcept {
 int ControlType(const Role role) noexcept {
     switch (role) {
     case Role::Button: return UIA_ButtonControlTypeId;
+    case Role::ComboBox: return UIA_ComboBoxControlTypeId;
     case Role::Slider: return UIA_SliderControlTypeId;
     case Role::Text: return UIA_TextControlTypeId;
     case Role::Heading: return UIA_TextControlTypeId;
@@ -106,7 +107,8 @@ int LiveSettingValue(const LiveSetting setting) noexcept {
 
 bool KeyboardFocusable(const Node& node) noexcept {
     return node.keyboardFocusable &&
-        (node.role == Role::Button || node.role == Role::Slider ||
+        (node.role == Role::Button || node.role == Role::ComboBox ||
+         node.role == Role::Slider ||
          node.role == Role::ListItem);
 }
 
@@ -134,7 +136,8 @@ struct NodeScreenTransform final {
 NodeScreenTransform TransformFor(
     const ElementDomain domain,
     const ScreenTransform& transform) noexcept {
-    if (transform.independentChrome && domain != ElementDomain::Widget) {
+    if (transform.independentChrome && domain != ElementDomain::Widget &&
+        domain != ElementDomain::WidgetOption) {
         return {
             transform.originX + transform.chromeOffsetX,
             transform.originY + transform.chromeOffsetY,
@@ -266,6 +269,7 @@ class Provider final : public RuntimeClass<
     IRawElementProviderFragment,
     IRawElementProviderFragmentRoot,
     IInvokeProvider,
+    IExpandCollapseProvider,
     IRangeValueProvider,
     ISelectionItemProvider,
     ISelectionProvider> {
@@ -296,7 +300,8 @@ public:
                 std::any_of(
                     published->tree.nodes.begin(), published->tree.nodes.end(),
                     [](const Node& candidate) {
-                        return candidate.role == Role::ListItem;
+                        return candidate.domain == ElementDomain::Tray &&
+                            candidate.role == Role::ListItem;
                     }))
                 return QueryInterface(
                     __uuidof(ISelectionProvider), reinterpret_cast<void**>(result));
@@ -306,6 +311,16 @@ public:
             (node->role == Role::Button || node->role == Role::ListItem) &&
             (!node->actionId.empty() || node->hostAction != HostAction::None)) {
             return QueryInterface(__uuidof(IInvokeProvider), reinterpret_cast<void**>(result));
+        }
+        if (patternId == UIA_ExpandCollapsePatternId &&
+            node->role == Role::ComboBox) {
+            return QueryInterface(
+                __uuidof(IExpandCollapseProvider), reinterpret_cast<void**>(result));
+        }
+        if (patternId == UIA_SelectionPatternId &&
+            node->role == Role::ComboBox) {
+            return QueryInterface(
+                __uuidof(ISelectionProvider), reinterpret_cast<void**>(result));
         }
         if (patternId == UIA_RangeValuePatternId &&
             ((node->role == Role::Slider && !node->valueChangedActionId.empty()) ||
@@ -357,13 +372,16 @@ public:
         case UIA_HelpTextPropertyId:
             if (!node->value.empty()) return StringVariant(node->value, result);
             break;
+        case UIA_ValueValuePropertyId:
+            if (!node->value.empty()) return StringVariant(node->value, result);
+            break;
         case UIA_IsControlElementPropertyId:
         case UIA_IsContentElementPropertyId: BoolVariant(true, result); break;
         case UIA_IsEnabledPropertyId: BoolVariant(node->enabled, result); break;
         case UIA_HasKeyboardFocusPropertyId: BoolVariant(node->focused, result); break;
         case UIA_IsKeyboardFocusablePropertyId:
             BoolVariant(KeyboardFocusable(*node), result); break;
-        case UIA_IsOffscreenPropertyId: BoolVariant(false, result); break;
+        case UIA_IsOffscreenPropertyId: BoolVariant(node->offscreen, result); break;
         case UIA_SelectionItemIsSelectedPropertyId:
             BoolVariant(node->selected, result); break;
         case UIA_PositionInSetPropertyId:
@@ -510,9 +528,22 @@ public:
         const auto published = state_->Snapshot(bindingGeneration_);
         const auto* node = ResolveNode(published);
         if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (!node->enabled) return UIA_E_ELEMENTNOTENABLED;
         if (!KeyboardFocusable(*node)) return UIA_E_NOTSUPPORTED;
-        return state_->Enqueue(
-            RequestFor(*published, *node, ActionKind::Focus), bindingGeneration_);
+        if (node->role == Role::ComboBox && node->expanded) {
+            auto request = RequestFor(*published, *node, ActionKind::Invoke);
+            request.hostAction = HostAction::CollapseSelect;
+            const auto collapsed = state_->Enqueue(
+                std::move(request), bindingGeneration_);
+            if (FAILED(collapsed)) return collapsed;
+        }
+        auto focus = RequestFor(*published, *node, ActionKind::Focus);
+        if (node->domain != ElementDomain::WidgetOption ||
+            node->role != Role::ListItem) {
+            focus.hostAction = HostAction::None;
+            focus.hostTargetId.clear();
+        }
+        return state_->Enqueue(std::move(focus), bindingGeneration_);
     }
 
     IFACEMETHODIMP get_FragmentRoot(
@@ -537,6 +568,12 @@ public:
         if (!published) return S_OK;
         const Node* best{};
         double bestArea = std::numeric_limits<double>::max();
+        for (const auto& node : published->tree.nodes) {
+            if (node.domain != ElementDomain::WidgetOption || node.offscreen) continue;
+            const auto bounds = ScreenBounds(node, published->transform);
+            if (Contains(bounds, x, y))
+                return CreateFragment(IdentityFor(*published, node), result);
+        }
         for (const auto& node : published->tree.nodes) {
             const auto bounds = ScreenBounds(node, published->transform);
             const double area = bounds.width * bounds.height;
@@ -628,13 +665,53 @@ public:
         return RangeNumber(result, [](const Node& node) { return node.rangeStep; });
     }
 
+    IFACEMETHODIMP Expand() noexcept override {
+        const auto published = state_->Snapshot(bindingGeneration_);
+        const auto* node = ResolveNode(published);
+        if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (node->role != Role::ComboBox) return UIA_E_NOTSUPPORTED;
+        if (!node->enabled) return UIA_E_ELEMENTNOTENABLED;
+        if (node->expanded) return S_OK;
+        return state_->Enqueue(
+            RequestFor(*published, *node, ActionKind::Invoke), bindingGeneration_);
+    }
+
+    IFACEMETHODIMP Collapse() noexcept override {
+        const auto published = state_->Snapshot(bindingGeneration_);
+        const auto* node = ResolveNode(published);
+        if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (node->role != Role::ComboBox) return UIA_E_NOTSUPPORTED;
+        if (!node->enabled) return UIA_E_ELEMENTNOTENABLED;
+        if (!node->expanded) return S_OK;
+        return state_->Enqueue(
+            RequestFor(*published, *node, ActionKind::Invoke), bindingGeneration_);
+    }
+
+    IFACEMETHODIMP get_ExpandCollapseState(
+        ExpandCollapseState* result) noexcept override {
+        if (!result) return E_INVALIDARG;
+        const auto published = state_->Snapshot(bindingGeneration_);
+        const auto* node = ResolveNode(published);
+        if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (node->role != Role::ComboBox) return UIA_E_NOTSUPPORTED;
+        *result = node->expanded
+            ? ExpandCollapseState_Expanded : ExpandCollapseState_Collapsed;
+        return S_OK;
+    }
+
     IFACEMETHODIMP Select() noexcept override {
         const auto published = state_->Snapshot(bindingGeneration_);
         const auto* node = ResolveNode(published);
         if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
         if (node->role != Role::ListItem) return UIA_E_NOTSUPPORTED;
+        if (!node->enabled) return UIA_E_ELEMENTNOTENABLED;
+        if (node->hostAction == HostAction::None && node->selected)
+            return S_OK;
+        const auto kind = node->hostAction == HostAction::CommitSelectOption
+            ? ActionKind::Invoke
+            : ActionKind::Focus;
         return state_->Enqueue(
-            RequestFor(*published, *node, ActionKind::Focus), bindingGeneration_);
+            RequestFor(*published, *node, kind), bindingGeneration_);
     }
 
     IFACEMETHODIMP AddToSelection() noexcept override {
@@ -663,22 +740,34 @@ public:
         *result = nullptr;
         if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
         if (!identity_) return UIA_E_NOTSUPPORTED;
-        ComPtr<Provider> root = Make<Provider>(
-            state_, std::nullopt, bindingGeneration_);
-        return root ? root->QueryInterface(IID_PPV_ARGS(result)) : E_OUTOFMEMORY;
+        const auto published = state_->Snapshot(bindingGeneration_);
+        const auto index = published ? ResolveIndex(*published) : std::nullopt;
+        if (!published || !index || !published->tree.nodes[*index].parent)
+            return UIA_E_NOTSUPPORTED;
+        const auto& parent = published->tree.nodes[
+            *published->tree.nodes[*index].parent];
+        ComPtr<Provider> container = Make<Provider>(
+            state_, IdentityFor(*published, parent), bindingGeneration_);
+        return container
+            ? container->QueryInterface(IID_PPV_ARGS(result)) : E_OUTOFMEMORY;
     }
 
     IFACEMETHODIMP GetSelection(SAFEARRAY** result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = nullptr;
         if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
-        if (identity_) return UIA_E_NOTSUPPORTED;
         const auto published = state_->Snapshot(bindingGeneration_);
         if (!published) return S_OK;
+        const auto container = identity_ ? ResolveIndex(*published) : std::nullopt;
+        if (identity_ && (!container ||
+            published->tree.nodes[*container].role != Role::ComboBox))
+            return UIA_E_NOTSUPPORTED;
         const auto selected = std::find_if(
             published->tree.nodes.begin(), published->tree.nodes.end(),
-            [](const Node& node) {
-                return node.role == Role::ListItem && node.selected;
+            [&](const Node& node) {
+                return node.role == Role::ListItem && node.selected &&
+                    (container ? node.parent == container
+                               : node.domain == ElementDomain::Tray);
             });
         if (selected == published->tree.nodes.end()) {
             *result = SafeArrayCreateVector(VT_UNKNOWN, 0, 0);
@@ -707,14 +796,20 @@ public:
         if (!result) return E_INVALIDARG;
         *result = FALSE;
         if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
-        return identity_ ? UIA_E_NOTSUPPORTED : S_OK;
+        if (!identity_) return S_OK;
+        const auto published = state_->Snapshot(bindingGeneration_);
+        const auto* node = ResolveNode(published);
+        return node && node->role == Role::ComboBox ? S_OK : UIA_E_NOTSUPPORTED;
     }
 
     IFACEMETHODIMP get_IsSelectionRequired(BOOL* result) noexcept override {
         if (!result) return E_INVALIDARG;
         *result = TRUE;
         if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
-        return identity_ ? UIA_E_NOTSUPPORTED : S_OK;
+        if (!identity_) return S_OK;
+        const auto published = state_->Snapshot(bindingGeneration_);
+        const auto* node = ResolveNode(published);
+        return node && node->role == Role::ComboBox ? S_OK : UIA_E_NOTSUPPORTED;
     }
 
 private:
@@ -725,7 +820,8 @@ private:
     [[nodiscard]] const Node* ResolveNode(
         const std::shared_ptr<const PublishedTree>& published) const noexcept {
         if (!identity_ || !published) return nullptr;
-        if (identity_->domain == ElementDomain::Widget &&
+        if ((identity_->domain == ElementDomain::Widget ||
+             identity_->domain == ElementDomain::WidgetOption) &&
             (published->tree.widgetId != identity_->widgetId ||
              published->tree.runtimeGeneration != identity_->runtimeGeneration))
             return nullptr;
@@ -740,7 +836,8 @@ private:
     [[nodiscard]] std::optional<std::size_t> ResolveIndex(
         const PublishedTree& published) const noexcept {
         if (!identity_) return std::nullopt;
-        if (identity_->domain == ElementDomain::Widget &&
+        if ((identity_->domain == ElementDomain::Widget ||
+             identity_->domain == ElementDomain::WidgetOption) &&
             (published.tree.widgetId != identity_->widgetId ||
              published.tree.runtimeGeneration != identity_->runtimeGeneration))
             return std::nullopt;
@@ -757,7 +854,8 @@ private:
 
     static ElementIdentity IdentityFor(
         const PublishedTree& published, const Node& node) {
-        if (node.domain != ElementDomain::Widget) {
+        if (node.domain != ElementDomain::Widget &&
+            node.domain != ElementDomain::WidgetOption) {
             return {
                 L"host", L"host", node.domain, node.id,
             };
@@ -1035,8 +1133,12 @@ void ProviderHost::RaisePendingEvents() noexcept {
         switch (kind) {
         case PropertyKind::Name: return UIA_NamePropertyId;
         case PropertyKind::HelpText: return UIA_HelpTextPropertyId;
+        case PropertyKind::Value: return UIA_ValueValuePropertyId;
         case PropertyKind::Enabled: return UIA_IsEnabledPropertyId;
         case PropertyKind::Selected: return UIA_SelectionItemIsSelectedPropertyId;
+        case PropertyKind::Offscreen: return UIA_IsOffscreenPropertyId;
+        case PropertyKind::Expanded:
+            return UIA_ExpandCollapseExpandCollapseStatePropertyId;
         case PropertyKind::RangeValue: return UIA_RangeValueValuePropertyId;
         case PropertyKind::RangeMinimum: return UIA_RangeValueMinimumPropertyId;
         case PropertyKind::RangeMaximum: return UIA_RangeValueMaximumPropertyId;
@@ -1117,6 +1219,12 @@ void ProviderHost::RaisePendingEvents() noexcept {
         if (liveRegion)
             (void)UiaRaiseAutomationEvent(
                 liveRegion.Get(), UIA_LiveRegionChangedEventId);
+    }
+    for (const auto& element : plan.selectedElements) {
+        auto selected = providerFor(element);
+        if (selected)
+            (void)UiaRaiseAutomationEvent(
+                selected.Get(), UIA_SelectionItem_ElementSelectedEventId);
     }
 }
 

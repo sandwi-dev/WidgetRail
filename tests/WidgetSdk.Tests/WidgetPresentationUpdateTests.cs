@@ -10,6 +10,7 @@ internal static class WidgetPresentationUpdateTests
     internal static Task Run()
     {
         PropertyNoOpAndRoundTrip();
+        SelectOptionsUpdateAtomically();
         VirtualCollectionWindowUpdatesAtomically();
         PublicationProtocolAndVirtualReentryMatrix();
         TransactionKindsRetainExactAuthority();
@@ -261,6 +262,77 @@ internal static class WidgetPresentationUpdateTests
         Throws<ProtocolValidationException>(() =>
             PresentationUpdateMaterializer.Apply(
                 identical, roundTrip, new string('b', 32)));
+    }
+
+    private static void SelectOptionsUpdateAtomically()
+    {
+        static ViewNode Select(IReadOnlyList<WidgetSelectOption> options, string value) => new()
+        {
+            Id = "select.output",
+            Kind = ViewNodeKind.Select,
+            Text = $"Output: {value}",
+            AccessibilityLabel = "Output",
+            AccessibilityValue = value,
+            SelectOptions = options,
+        };
+
+        var priorOptions = new WidgetSelectOption[]
+        {
+            new("speakers", "Speakers", "output.speakers", true),
+            new("headset", "Headset", "output.headset"),
+        };
+        var currentOptions = new WidgetSelectOption[]
+        {
+            new("speakers", "Speakers", "output.speakers.retired", false,
+                IsDisabled: true),
+            new("headset", "Headset", "output.headset.current", true,
+                IsBusy: true),
+        };
+        var stable = Enumerable.Range(0, 24)
+            .Select(index => Text($"stable.{index}", $"stable-{index}"))
+            .ToArray();
+        var previous = SnapshotWithChildren(1,
+            [Select(priorOptions, "Speakers"), .. stable]) with
+        {
+            ProtocolVersion = ProtocolConstants.AnchoredSelectVersion,
+        };
+        var current = SnapshotWithChildren(2,
+            [Select(currentOptions, "Headset"), .. stable]) with
+        {
+            ProtocolVersion = ProtocolConstants.AnchoredSelectVersion,
+        };
+
+        var publication = WidgetPresentationDiff.Create(
+            previous, current, Generation, previous.Sequence,
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
+        True(publication.IsUpdate,
+            "A bounded Select authority change must remain one atomic update.");
+        var operation = publication.Update!.Operations.Single(item =>
+            item.TargetId == "select.output");
+        True(operation.Properties!.Any(change =>
+                change.Property == PresentationProperty.SelectOptions),
+            "The exact Select option authority was omitted from the update.");
+        Equal(
+            PresentationPropertyImpact.Authority |
+            PresentationPropertyImpact.Interaction |
+            PresentationPropertyImpact.Paint |
+            PresentationPropertyImpact.Accessibility,
+            PresentationPropertyMetadata.Impact(PresentationProperty.SelectOptions));
+
+        var bytes = PresentationUpdateJson.Serialize(publication.Update);
+        var roundTrip = PresentationUpdateJson.Deserialize(bytes);
+        var materialized = PresentationUpdateMaterializer.Apply(
+            previous, roundTrip, Generation);
+        var admitted = Find(materialized.Root, "select.output");
+        Equal(0, ViewSnapshotValidator.Validate(materialized).Count);
+        Equal("Headset", admitted.AccessibilityValue);
+        Equal(currentOptions.Length, admitted.SelectOptions.Count);
+        for (var index = 0; index < currentOptions.Length; index++)
+            Equal(currentOptions[index], admitted.SelectOptions[index]);
+        True(admitted.SelectOptions.All(option =>
+                option.ActionId is not "output.speakers" and not "output.headset"),
+            "Stale Select option action authority survived materialization.");
     }
 
     private static void KeyedStructureAndSubtreeReplacement()

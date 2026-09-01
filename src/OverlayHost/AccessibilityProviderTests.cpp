@@ -297,6 +297,71 @@ widgetrail::accessibility::Tree HostTree(const bool includeDashboard = false) {
     return tree;
 }
 
+widgetrail::accessibility::Tree SelectTree(const bool expanded) {
+    widgetrail::accessibility::Tree tree;
+    tree.widgetId = L"settings";
+    tree.runtimeGeneration = L"generation-select";
+    tree.snapshotSequence = expanded ? 42 : 41;
+    tree.activeInputScopeId = L"settings.root";
+
+    widgetrail::accessibility::Node select;
+    select.id = L"settings.density";
+    select.name = L"Density";
+    select.value = L"Wide";
+    select.bounds = {20, 20, 240, 44};
+    select.role = widgetrail::accessibility::Role::ComboBox;
+    select.hostAction = expanded
+        ? widgetrail::accessibility::HostAction::CollapseSelect
+        : widgetrail::accessibility::HostAction::ExpandSelect;
+    select.hostTargetId = select.id;
+    select.expanded = expanded;
+    select.focused = !expanded;
+    tree.nodes.push_back(select);
+    if (!expanded) tree.focusedNode = 0;
+
+    for (std::size_t index = 0; index < 4; ++index) {
+        if (!expanded && index != 3) continue;
+        widgetrail::accessibility::Node option;
+        option.id = L"settings.density.option.option-" + std::to_wstring(index);
+        option.name = L"Option " + std::to_wstring(index);
+        option.value = option.name;
+        option.actionId = expanded
+            ? L"settings.density.select-" + std::to_wstring(index)
+            : L"";
+        option.hostTargetId = select.id;
+        option.bounds = expanded && index < 2
+            ? widgetrail::declarative::Rect{20, 68.0F + 36.0F * index, 240, 32}
+            : widgetrail::declarative::Rect{};
+        option.role = widgetrail::accessibility::Role::ListItem;
+        option.domain = widgetrail::accessibility::ElementDomain::WidgetOption;
+        option.hostAction = expanded
+            ? widgetrail::accessibility::HostAction::CommitSelectOption
+            : widgetrail::accessibility::HostAction::None;
+        option.parent = 0;
+        option.selected = index == 3;
+        option.focused = expanded && index == 1;
+        option.keyboardFocusable = expanded;
+        option.offscreen = !expanded || index >= 2;
+        option.positionInSet = static_cast<int>(index + 1);
+        option.sizeOfSet = 4;
+        tree.nodes.push_back(std::move(option));
+        tree.nodes[0].children.push_back(tree.nodes.size() - 1);
+    }
+    if (expanded) tree.focusedNode = 2;
+
+    widgetrail::accessibility::Node tray;
+    tray.id = L"tray.settings";
+    tray.domain = widgetrail::accessibility::ElementDomain::Tray;
+    tray.name = L"Settings";
+    tray.hostTargetId = L"settings";
+    tray.bounds = {280, 220, 64, 64};
+    tray.role = widgetrail::accessibility::Role::ListItem;
+    tray.hostAction = widgetrail::accessibility::HostAction::ActivateTrayItem;
+    tray.selected = true;
+    tree.nodes.push_back(std::move(tray));
+    return tree;
+}
+
 widgetrail::accessibility::Tree OpenHostTree() {
     widgetrail::accessibility::Tree tree;
     tree.widgetId = L"music";
@@ -565,7 +630,10 @@ int main() {
     actions = host.TakeActions();
     Check(actions.size() == 1 && actions[0].kind == widgetrail::accessibility::ActionKind::Focus &&
           actions[0].domain == widgetrail::accessibility::ElementDomain::Widget &&
-          actions[0].nodeId == L"next", "focus request retains node identity");
+          actions[0].nodeId == L"next" &&
+          actions[0].hostAction == widgetrail::accessibility::HostAction::None &&
+          actions[0].hostTargetId.empty(),
+          "ordinary focus request retains node identity without typed host authority");
 
     ComPtr<IRawElementProviderFragmentRoot> fragmentRoot;
     Check(SUCCEEDED(root.As(&fragmentRoot)), "root fragment interface is queryable");
@@ -689,6 +757,271 @@ int main() {
           actions[0].domain == widgetrail::accessibility::ElementDomain::Tray &&
           actions[0].hostTargetId == L"music",
           "tray Invoke retains the selected widget target");
+
+    host.Publish(SelectTree(false), {100, 200, 2, 800, 600});
+    ComPtr<IRawElementProviderFragment> selectFragment;
+    Check(SUCCEEDED(rootFragment->Navigate(
+              NavigateDirection_FirstChild, selectFragment.GetAddressOf())) && selectFragment,
+          "collapsed Select is the first semantic child");
+    ComPtr<IRawElementProviderSimple> selectProvider;
+    Check(SUCCEEDED(selectFragment.As(&selectProvider)) &&
+          StringProperty(selectProvider.Get(), UIA_NamePropertyId) == L"Density" &&
+          StringProperty(selectProvider.Get(), UIA_ValueValuePropertyId) == L"Wide",
+          "Select exposes its complete accessible name and current value");
+    VARIANT selectControlType{};
+    Check(SUCCEEDED(selectProvider->GetPropertyValue(
+              UIA_ControlTypePropertyId, &selectControlType)) &&
+          V_VT(&selectControlType) == VT_I4 &&
+          V_I4(&selectControlType) == UIA_ComboBoxControlTypeId,
+          "Select exposes the ComboBox control type");
+    VariantClear(&selectControlType);
+    ComPtr<IUnknown> expandUnknown;
+    ComPtr<IUnknown> selectSelectionUnknown;
+    Check(SUCCEEDED(selectProvider->GetPatternProvider(
+              UIA_ExpandCollapsePatternId, expandUnknown.GetAddressOf())) && expandUnknown &&
+          SUCCEEDED(selectProvider->GetPatternProvider(
+              UIA_SelectionPatternId, selectSelectionUnknown.GetAddressOf())) &&
+          selectSelectionUnknown,
+          "Select exposes ExpandCollapse and Selection patterns");
+    ComPtr<IExpandCollapseProvider> expandCollapse;
+    ComPtr<ISelectionProvider> selectSelection;
+    Check(SUCCEEDED(expandUnknown.As(&expandCollapse)) &&
+          SUCCEEDED(selectSelectionUnknown.As(&selectSelection)),
+          "Select accessibility patterns are queryable");
+    ExpandCollapseState expandState{};
+    Check(SUCCEEDED(expandCollapse->get_ExpandCollapseState(&expandState)) &&
+          expandState == ExpandCollapseState_Collapsed,
+          "collapsed Select reports its exact expansion state");
+    SAFEARRAY* selectedOptions{};
+    Check(SUCCEEDED(selectSelection->GetSelection(&selectedOptions)) && selectedOptions,
+          "collapsed Select exposes its selected option");
+    LONG selectedLower{};
+    LONG selectedUpper{};
+    Check(SUCCEEDED(SafeArrayGetLBound(selectedOptions, 1, &selectedLower)) &&
+          SUCCEEDED(SafeArrayGetUBound(selectedOptions, 1, &selectedUpper)) &&
+          selectedLower == 0 && selectedUpper == 0,
+          "collapsed Select has exactly one selected option");
+    IUnknown* selectedUnknown{};
+    Check(SUCCEEDED(SafeArrayGetElement(
+              selectedOptions, &selectedLower, &selectedUnknown)) && selectedUnknown,
+          "collapsed selected option provider is retrievable");
+    ComPtr<IRawElementProviderSimple> collapsedSelected;
+    Check(SUCCEEDED(selectedUnknown->QueryInterface(
+              IID_PPV_ARGS(collapsedSelected.GetAddressOf()))) && collapsedSelected,
+          "collapsed selected option exposes provider properties");
+    selectedUnknown->Release();
+    VARIANT collapsedOffscreen{};
+    Check(SUCCEEDED(collapsedSelected->GetPropertyValue(
+              UIA_IsOffscreenPropertyId, &collapsedOffscreen)) &&
+          V_VT(&collapsedOffscreen) == VT_BOOL &&
+          V_BOOL(&collapsedOffscreen) == VARIANT_TRUE,
+          "collapsed selected option remains offscreen");
+    VariantClear(&collapsedOffscreen);
+    ComPtr<IUnknown> collapsedSelectionItemUnknown;
+    ComPtr<ISelectionItemProvider> collapsedSelectionItem;
+    Check(SUCCEEDED(collapsedSelected->GetPatternProvider(
+              UIA_SelectionItemPatternId,
+              collapsedSelectionItemUnknown.GetAddressOf())) &&
+          collapsedSelectionItemUnknown &&
+          SUCCEEDED(collapsedSelectionItemUnknown.As(&collapsedSelectionItem)) &&
+          SUCCEEDED(collapsedSelectionItem->Select()) && host.TakeActions().empty(),
+          "collapsed selected option selection is an idempotent no-op");
+    SafeArrayDestroy(selectedOptions);
+    Check(SUCCEEDED(expandCollapse->Expand()), "Expand posts asynchronously");
+    actions = host.TakeActions();
+    Check(actions.size() == 1 &&
+          actions[0].kind == widgetrail::accessibility::ActionKind::Invoke &&
+          actions[0].hostAction == widgetrail::accessibility::HostAction::ExpandSelect &&
+          actions[0].hostTargetId == L"settings.density",
+          "Expand retains exact Select opener authority");
+
+    host.Publish(SelectTree(true), {100, 200, 2, 800, 600});
+    Check(SUCCEEDED(expandCollapse->get_ExpandCollapseState(&expandState)) &&
+          expandState == ExpandCollapseState_Expanded,
+          "expanded Select reports its exact expansion state");
+    Check(SUCCEEDED(selectFragment->SetFocus()),
+          "focusing an expanded Select requests bounded collapse and opener focus");
+    actions = host.TakeActions();
+    Check(actions.size() == 2 &&
+              actions[0].kind == widgetrail::accessibility::ActionKind::Invoke &&
+              actions[0].hostAction ==
+                  widgetrail::accessibility::HostAction::CollapseSelect &&
+              actions[1].kind == widgetrail::accessibility::ActionKind::Focus &&
+              actions[1].nodeId == L"settings.density" &&
+              actions[1].hostAction ==
+                  widgetrail::accessibility::HostAction::None &&
+              actions[1].hostTargetId.empty(),
+          "expanded opener focus collapses before returning focus to the exact opener");
+    VARIANT openerFocus{};
+    Check(SUCCEEDED(selectProvider->GetPropertyValue(
+              UIA_HasKeyboardFocusPropertyId, &openerFocus)) &&
+          V_VT(&openerFocus) == VT_BOOL && V_BOOL(&openerFocus) == VARIANT_FALSE,
+          "expanded Select opener does not retain UIA focus");
+    VariantClear(&openerFocus);
+    ComPtr<IRawElementProviderFragment> option0;
+    ComPtr<IRawElementProviderFragment> option1;
+    ComPtr<IRawElementProviderFragment> option2;
+    ComPtr<IRawElementProviderFragment> option3;
+    Check(SUCCEEDED(selectFragment->Navigate(
+              NavigateDirection_FirstChild, option0.GetAddressOf())) && option0 &&
+          SUCCEEDED(option0->Navigate(
+              NavigateDirection_NextSibling, option1.GetAddressOf())) && option1 &&
+          SUCCEEDED(option1->Navigate(
+              NavigateDirection_NextSibling, option2.GetAddressOf())) && option2 &&
+          SUCCEEDED(option2->Navigate(
+              NavigateDirection_NextSibling, option3.GetAddressOf())) && option3,
+          "expanded Select exposes its complete bounded option set");
+    ComPtr<IRawElementProviderSimple> option1Provider;
+    ComPtr<IRawElementProviderSimple> option3Provider;
+    Check(SUCCEEDED(option1.As(&option1Provider)) &&
+          SUCCEEDED(option3.As(&option3Provider)),
+          "visible and off-page Select options expose providers");
+    auto overlapTree = SelectTree(true);
+    widgetrail::accessibility::Node overlappingAuthored;
+    overlappingAuthored.id = L"settings.overlap";
+    overlappingAuthored.name = L"Overlapping authored content";
+    overlappingAuthored.actionId = L"settings.overlap";
+    overlappingAuthored.bounds = overlapTree.nodes[2].bounds;
+    overlappingAuthored.role = widgetrail::accessibility::Role::Button;
+    overlapTree.nodes.push_back(std::move(overlappingAuthored));
+    host.Publish(overlapTree, {100, 200, 2, 800, 600});
+    ComPtr<IRawElementProviderFragment> popupHit;
+    Check(SUCCEEDED(fragmentRoot->ElementProviderFromPoint(
+              150.0, 420.0, popupHit.GetAddressOf())) && popupHit,
+          "popup overlap point resolves one provider");
+    ComPtr<IRawElementProviderSimple> popupHitProvider;
+    Check(SUCCEEDED(popupHit.As(&popupHitProvider)) &&
+              StringProperty(popupHitProvider.Get(), UIA_AutomationIdPropertyId) ==
+                  L"widget-option:settings.density.option.option-1",
+          "visible Select option hit testing outranks overlapping authored content");
+    host.Publish(SelectTree(true), {100, 200, 2, 800, 600});
+    VARIANT highlightedFocus{};
+    VARIANT offPage{};
+    Check(SUCCEEDED(option1Provider->GetPropertyValue(
+              UIA_HasKeyboardFocusPropertyId, &highlightedFocus)) &&
+          V_VT(&highlightedFocus) == VT_BOOL &&
+          V_BOOL(&highlightedFocus) == VARIANT_TRUE &&
+          SUCCEEDED(option3Provider->GetPropertyValue(
+              UIA_IsOffscreenPropertyId, &offPage)) &&
+          V_VT(&offPage) == VT_BOOL && V_BOOL(&offPage) == VARIANT_TRUE,
+          "expanded Select has one highlighted focus owner and retains off-page options");
+    VariantClear(&highlightedFocus);
+    VariantClear(&offPage);
+    ComPtr<IRawElementProviderFragment> selectFocused;
+    Check(SUCCEEDED(fragmentRoot->GetFocus(selectFocused.GetAddressOf())) && selectFocused &&
+          RuntimeId(selectFocused.Get()) == RuntimeId(option1.Get()),
+          "fragment root exposes only the highlighted Select option as focused");
+    Check(SUCCEEDED(option1->SetFocus()),
+          "setting option focus posts a highlight request asynchronously");
+    actions = host.TakeActions();
+    Check(actions.size() == 1 &&
+          actions[0].kind == widgetrail::accessibility::ActionKind::Focus &&
+          actions[0].domain ==
+              widgetrail::accessibility::ElementDomain::WidgetOption &&
+          actions[0].nodeId == L"settings.density.option.option-1" &&
+          actions[0].actionId == L"settings.density.select-1" &&
+          actions[0].hostAction ==
+              widgetrail::accessibility::HostAction::CommitSelectOption &&
+          actions[0].hostTargetId == L"settings.density",
+          "SetFocus retains exact option and opener authority without committing it");
+    ComPtr<IUnknown> optionSelectionUnknown;
+    ComPtr<ISelectionItemProvider> optionSelection;
+    Check(SUCCEEDED(option1Provider->GetPatternProvider(
+              UIA_SelectionItemPatternId, optionSelectionUnknown.GetAddressOf())) &&
+          optionSelectionUnknown && SUCCEEDED(optionSelectionUnknown.As(&optionSelection)) &&
+          SUCCEEDED(optionSelection->Select()),
+          "Select option SelectionItem commits asynchronously");
+    actions = host.TakeActions();
+    Check(actions.size() == 1 &&
+          actions[0].kind == widgetrail::accessibility::ActionKind::Invoke &&
+          actions[0].hostAction ==
+              widgetrail::accessibility::HostAction::CommitSelectOption &&
+          actions[0].nodeId == L"settings.density.option.option-1" &&
+          actions[0].actionId == L"settings.density.select-1" &&
+          actions[0].hostTargetId == L"settings.density",
+          "SelectionItem.Select retains exact option and opener authority");
+    ComPtr<IRawElementProviderSimple> selectionContainer;
+    Check(SUCCEEDED(optionSelection->get_SelectionContainer(
+              selectionContainer.GetAddressOf())) && selectionContainer,
+          "Select option exposes its ComboBox selection container");
+    ComPtr<IRawElementProviderFragment> selectionContainerFragment;
+    Check(SUCCEEDED(selectionContainer.As(&selectionContainerFragment)) &&
+          RuntimeId(selectionContainerFragment.Get()) == RuntimeId(selectFragment.Get()),
+          "SelectionContainer resolves to the exact Select opener");
+    selectedOptions = nullptr;
+    Check(SUCCEEDED(selectSelection->GetSelection(&selectedOptions)) && selectedOptions &&
+          SUCCEEDED(SafeArrayGetLBound(selectedOptions, 1, &selectedLower)) &&
+          SUCCEEDED(SafeArrayGetUBound(selectedOptions, 1, &selectedUpper)) &&
+          selectedLower == 0 && selectedUpper == 0,
+          "expanded Select returns its selected off-page option");
+    SafeArrayDestroy(selectedOptions);
+    ComPtr<IUnknown> rootSelectionUnknown;
+    ComPtr<ISelectionProvider> rootSelection;
+    Check(SUCCEEDED(root->GetPatternProvider(
+              UIA_SelectionPatternId, rootSelectionUnknown.GetAddressOf())) &&
+          rootSelectionUnknown && SUCCEEDED(rootSelectionUnknown.As(&rootSelection)),
+          "root retains tray Selection independently of Select options");
+    SAFEARRAY* rootSelected{};
+    Check(SUCCEEDED(rootSelection->GetSelection(&rootSelected)) && rootSelected &&
+          SUCCEEDED(SafeArrayGetLBound(rootSelected, 1, &selectedLower)) &&
+          SUCCEEDED(SafeArrayGetUBound(rootSelected, 1, &selectedUpper)) &&
+          selectedLower == 0 && selectedUpper == 0,
+          "root Selection returns only the selected tray item");
+    IUnknown* rootSelectedUnknown{};
+    Check(SUCCEEDED(SafeArrayGetElement(
+              rootSelected, &selectedLower, &rootSelectedUnknown)) && rootSelectedUnknown,
+          "root selected tray provider is retrievable");
+    ComPtr<IRawElementProviderSimple> rootSelectedProvider;
+    Check(SUCCEEDED(rootSelectedUnknown->QueryInterface(
+              IID_PPV_ARGS(rootSelectedProvider.GetAddressOf()))) &&
+          StringProperty(rootSelectedProvider.Get(), UIA_AutomationIdPropertyId) ==
+              L"tray:tray.settings",
+          "root Selection remains isolated to the tray domain");
+    rootSelectedUnknown->Release();
+    SafeArrayDestroy(rootSelected);
+    auto disabledOptionTree = SelectTree(true);
+    disabledOptionTree.nodes[2].enabled = false;
+    disabledOptionTree.nodes[2].keyboardFocusable = false;
+    host.Publish(disabledOptionTree, {100, 200, 2, 800, 600});
+    Check(optionSelection->Select() == UIA_E_ELEMENTNOTENABLED &&
+          option1->SetFocus() == UIA_E_ELEMENTNOTENABLED &&
+          host.TakeActions().empty(),
+          "disabled Select option cannot select or take keyboard focus");
+    auto unavailableSelectTree = SelectTree(false);
+    unavailableSelectTree.nodes[0].enabled = false;
+    unavailableSelectTree.nodes[0].hostAction =
+        widgetrail::accessibility::HostAction::None;
+    host.Publish(unavailableSelectTree, {100, 200, 2, 800, 600});
+    Check(expandCollapse->Expand() == UIA_E_ELEMENTNOTENABLED &&
+          host.TakeActions().empty(),
+          "Select with no available options cannot expand through UIA");
+    auto disabledSelectTree = SelectTree(true);
+    disabledSelectTree.nodes[0].enabled = false;
+    host.Publish(disabledSelectTree, {100, 200, 2, 800, 600});
+    Check(expandCollapse->Collapse() == UIA_E_ELEMENTNOTENABLED &&
+          host.TakeActions().empty(),
+          "disabled Select opener fails Collapse synchronously without queueing work");
+    host.Publish(SelectTree(true), {100, 200, 2, 800, 600});
+    Check(SUCCEEDED(expandCollapse->Collapse()), "Collapse posts asynchronously");
+    actions = host.TakeActions();
+    Check(actions.size() == 1 &&
+          actions[0].kind == widgetrail::accessibility::ActionKind::Invoke &&
+          actions[0].hostAction == widgetrail::accessibility::HostAction::CollapseSelect,
+          "Collapse retains exact Select opener authority");
+    host.Publish(SelectTree(false), {100, 200, 2, 800, 600});
+    selectFocused.Reset();
+    Check(SUCCEEDED(fragmentRoot->GetFocus(selectFocused.GetAddressOf())) &&
+          selectFocused && RuntimeId(selectFocused.Get()) == RuntimeId(selectFragment.Get()),
+          "popup dismissal returns UIA focus to the Select opener");
+
+    auto selectOnlyTree = SelectTree(true);
+    selectOnlyTree.nodes.pop_back();
+    host.Publish(selectOnlyTree, {100, 200, 2, 800, 600});
+    rootSelectionUnknown.Reset();
+    Check(SUCCEEDED(root->GetPatternProvider(
+              UIA_SelectionPatternId, rootSelectionUnknown.GetAddressOf())) &&
+              !rootSelectionUnknown,
+          "root Selection pattern is never inferred from synthetic Select options");
 
     auto replacementRuntimeTree = HostTree();
     replacementRuntimeTree.widgetId = L"network-controls";

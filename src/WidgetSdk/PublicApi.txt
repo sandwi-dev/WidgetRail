@@ -16,6 +16,7 @@ ctor WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest(System.Collec
 ctor WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryItem> Items)
 ctor WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest(string Slot, string Secret)
 ctor WidgetRail.WidgetSdk.SegmentedTab(string Id, string Label, string ActionId, string? AccessibilityLabel = null, bool IsDisabled = false)
+ctor WidgetRail.WidgetSdk.SelectOption(string Id, string Label, string ActionId, bool IsSelected = false, WidgetRail.WidgetProtocol.WidgetGlyph? Glyph = null, string? AccessibilityLabel = null, bool IsDisabled = false, bool IsBusy = false)
 ctor WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest(bool IsMuted)
 ctor WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest(double Volume)
 ctor WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest(bool IsMuted)
@@ -616,6 +617,21 @@ method WidgetRail.WidgetSdk.SegmentedTab.Deconstruct(out string Id, out string L
 method WidgetRail.WidgetSdk.SegmentedTab.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.SegmentedTab.GetHashCode() -> int
 method WidgetRail.WidgetSdk.SegmentedTab.ToString() -> string
+method WidgetRail.WidgetSdk.SelectElement.Busy(bool busy = true) -> WidgetRail.WidgetSdk.SelectElement
+method WidgetRail.WidgetSdk.SelectElement.Disabled(bool disabled = true) -> WidgetRail.WidgetSdk.SelectElement
+method WidgetRail.WidgetSdk.SelectElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.SelectElement.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.SelectElement.FocusDown(string id) -> WidgetRail.WidgetSdk.SelectElement
+method WidgetRail.WidgetSdk.SelectElement.FocusLeft(string id) -> WidgetRail.WidgetSdk.SelectElement
+method WidgetRail.WidgetSdk.SelectElement.FocusRight(string id) -> WidgetRail.WidgetSdk.SelectElement
+method WidgetRail.WidgetSdk.SelectElement.FocusUp(string id) -> WidgetRail.WidgetSdk.SelectElement
+method WidgetRail.WidgetSdk.SelectElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.SelectElement.ToString() -> string
+method WidgetRail.WidgetSdk.SelectOption.<Clone>$() -> WidgetRail.WidgetSdk.SelectOption
+method WidgetRail.WidgetSdk.SelectOption.Deconstruct(out string Id, out string Label, out string ActionId, out bool IsSelected, out WidgetRail.WidgetProtocol.WidgetGlyph? Glyph, out string? AccessibilityLabel, out bool IsDisabled, out bool IsBusy) -> void
+method WidgetRail.WidgetSdk.SelectOption.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.SelectOption.GetHashCode() -> int
+method WidgetRail.WidgetSdk.SelectOption.ToString() -> string
 method WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.<Clone>$() -> WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest
 method WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.Deconstruct(out bool IsMuted) -> void
 method WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.Equals(object? obj) -> bool
@@ -1379,6 +1395,10 @@ method static WidgetRail.WidgetSdk.ScrubberElement.op_Equality(WidgetRail.Widget
 method static WidgetRail.WidgetSdk.ScrubberElement.op_Inequality(WidgetRail.WidgetSdk.ScrubberElement? left, WidgetRail.WidgetSdk.ScrubberElement? right) -> bool
 method static WidgetRail.WidgetSdk.SegmentedTab.op_Equality(WidgetRail.WidgetSdk.SegmentedTab? left, WidgetRail.WidgetSdk.SegmentedTab? right) -> bool
 method static WidgetRail.WidgetSdk.SegmentedTab.op_Inequality(WidgetRail.WidgetSdk.SegmentedTab? left, WidgetRail.WidgetSdk.SegmentedTab? right) -> bool
+method static WidgetRail.WidgetSdk.SelectElement.op_Equality(WidgetRail.WidgetSdk.SelectElement? left, WidgetRail.WidgetSdk.SelectElement? right) -> bool
+method static WidgetRail.WidgetSdk.SelectElement.op_Inequality(WidgetRail.WidgetSdk.SelectElement? left, WidgetRail.WidgetSdk.SelectElement? right) -> bool
+method static WidgetRail.WidgetSdk.SelectOption.op_Equality(WidgetRail.WidgetSdk.SelectOption? left, WidgetRail.WidgetSdk.SelectOption? right) -> bool
+method static WidgetRail.WidgetSdk.SelectOption.op_Inequality(WidgetRail.WidgetSdk.SelectOption? left, WidgetRail.WidgetSdk.SelectOption? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.op_Equality(WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest? left, WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.op_Inequality(WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest? left, WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest.op_Equality(WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest? left, WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest? right) -> bool
@@ -1451,6 +1471,7 @@ method static WidgetRail.WidgetSdk.UI.Scroll(string id, WidgetRail.WidgetProtoco
 method static WidgetRail.WidgetSdk.UI.Scrubber(System.TimeSpan position, System.TimeSpan duration, System.TimeSpan step, string valueChangedAction, string id, string accessibilityLabel = "Playback position", string? elapsedLabel = null, string? durationLabel = null, string? activationAction = null) -> WidgetRail.WidgetSdk.ScrubberElement
 method static WidgetRail.WidgetSdk.UI.SectionHeader(string title, string id, string? eyebrow = null, string? description = null, WidgetRail.WidgetSdk.WidgetElement? trailing = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.SegmentedTabs(string id, string selectedTabId, params WidgetRail.WidgetSdk.SegmentedTab[] tabs) -> WidgetRail.WidgetSdk.RowElement
+method static WidgetRail.WidgetSdk.UI.Select(string label, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.SelectOption> options, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.SelectElement
 method static WidgetRail.WidgetSdk.UI.SensitiveTextEntry(string placeholder, string action, string id, int maximumLength = 96) -> WidgetRail.WidgetSdk.TextEntryElement
 method static WidgetRail.WidgetSdk.UI.SettingsRow(string label, WidgetRail.WidgetSdk.ComponentAction action, string id, string? description = null, string? value = null, string? status = null, WidgetRail.WidgetSdk.StatusTone statusTone = WidgetRail.WidgetSdk.StatusTone.Neutral, bool isDisabled = false, bool isBusy = false, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Slider(double value, double minimum, double maximum, double step, string valueChangedAction, string id, string accessibilityLabel, string? accessibilityValue = null, string? activationAction = null) -> WidgetRail.WidgetSdk.SliderElement
@@ -1714,6 +1735,9 @@ method virtual WidgetRail.WidgetSdk.ScrollElement.Equals(WidgetRail.WidgetSdk.Sc
 method virtual WidgetRail.WidgetSdk.ScrubberElement.<Clone>$() -> WidgetRail.WidgetSdk.ScrubberElement
 method virtual WidgetRail.WidgetSdk.ScrubberElement.Equals(WidgetRail.WidgetSdk.ScrubberElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.SegmentedTab.Equals(WidgetRail.WidgetSdk.SegmentedTab? other) -> bool
+method virtual WidgetRail.WidgetSdk.SelectElement.<Clone>$() -> WidgetRail.WidgetSdk.SelectElement
+method virtual WidgetRail.WidgetSdk.SelectElement.Equals(WidgetRail.WidgetSdk.SelectElement? other) -> bool
+method virtual WidgetRail.WidgetSdk.SelectOption.Equals(WidgetRail.WidgetSdk.SelectOption? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.Equals(WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest.Equals(WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest.Equals(WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest? other) -> bool
@@ -1847,6 +1871,7 @@ property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.Cont
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.PinnedPresentationLayout>? WidgetRail.WidgetSdk.WidgetView.PinnedLayouts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetContextAction> WidgetRail.WidgetSdk.ActionSurfaceElement.ContextActions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? WidgetRail.WidgetSdk.WidgetView.QuickActions { get; set; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.SelectOption> WidgetRail.WidgetSdk.SelectElement.Options { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryAction> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilitySet.Actions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryArtwork> WidgetRail.WidgetSdk.WidgetAppLibraryArtworkSet.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryItem> WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse.Items { get; set; }
@@ -1933,6 +1958,7 @@ property WidgetRail.WidgetProtocol.EmbeddedMediaSurface? WidgetRail.WidgetSdk.Wi
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ActionSurfaceElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ButtonElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ScrubberElement.FocusNeighbors { get; set; }
+property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.SelectElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.SliderElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.TextEntryElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.ImageFit WidgetRail.WidgetSdk.ImageElement.Fit { get; set; }
@@ -1953,6 +1979,7 @@ property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ActionSheet
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ButtonElement.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ComponentAction.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.PickerOption.Glyph { get; set; }
+property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.SelectOption.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ToastElement.Glyph { get; }
 property WidgetRail.WidgetProtocol.WidgetSurfaceHints WidgetRail.WidgetSdk.PinnedLayoutHandle.Surface { get; }
 property WidgetRail.WidgetProtocol.WidgetSurfaceHints? WidgetRail.WidgetSdk.WidgetView.Surface { get; set; }
@@ -2071,6 +2098,9 @@ property bool WidgetRail.WidgetSdk.PickerOption.IsDisabled { get; set; }
 property bool WidgetRail.WidgetSdk.PickerOption.IsSelected { get; set; }
 property bool WidgetRail.WidgetSdk.PinnedLayoutHandle.IsSelected { get; }
 property bool WidgetRail.WidgetSdk.SegmentedTab.IsDisabled { get; set; }
+property bool WidgetRail.WidgetSdk.SelectOption.IsBusy { get; set; }
+property bool WidgetRail.WidgetSdk.SelectOption.IsDisabled { get; set; }
+property bool WidgetRail.WidgetSdk.SelectOption.IsSelected { get; set; }
 property bool WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.IsMuted { get; set; }
 property bool WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest.IsMuted { get; set; }
 property bool WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest.IsMuted { get; set; }
@@ -2147,6 +2177,8 @@ property bool? WidgetRail.WidgetSdk.ControllerInputEvent.IsOverlayFullscreenActi
 property bool? WidgetRail.WidgetSdk.ControllerInputEvent.IsPinnedLayoutSelected { get; set; }
 property bool? WidgetRail.WidgetSdk.ScrubberElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.ScrubberElement.IsDisabled { get; set; }
+property bool? WidgetRail.WidgetSdk.SelectElement.IsBusy { get; set; }
+property bool? WidgetRail.WidgetSdk.SelectElement.IsDisabled { get; set; }
 property bool? WidgetRail.WidgetSdk.SliderElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.SliderElement.IsDisabled { get; set; }
 property double WidgetRail.WidgetSdk.GridElement.MinimumColumnWidth { get; set; }
@@ -2315,6 +2347,10 @@ property string WidgetRail.WidgetSdk.ScrubberElement.ValueChangedActionId { get;
 property string WidgetRail.WidgetSdk.SegmentedTab.ActionId { get; set; }
 property string WidgetRail.WidgetSdk.SegmentedTab.Id { get; set; }
 property string WidgetRail.WidgetSdk.SegmentedTab.Label { get; set; }
+property string WidgetRail.WidgetSdk.SelectElement.Label { get; set; }
+property string WidgetRail.WidgetSdk.SelectOption.ActionId { get; set; }
+property string WidgetRail.WidgetSdk.SelectOption.Id { get; set; }
+property string WidgetRail.WidgetSdk.SelectOption.Label { get; set; }
 property string WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest.SessionId { get; set; }
 property string WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest.SessionId { get; set; }
 property string WidgetRail.WidgetSdk.SliderElement.AccessibilityLabel { get; set; }
@@ -2425,6 +2461,8 @@ property string? WidgetRail.WidgetSdk.ScrubberElement.DurationLabel { get; set; 
 property string? WidgetRail.WidgetSdk.ScrubberElement.ElapsedLabel { get; set; }
 property string? WidgetRail.WidgetSdk.ScrubberElement.FocusPersistenceId { get; set; }
 property string? WidgetRail.WidgetSdk.SegmentedTab.AccessibilityLabel { get; set; }
+property string? WidgetRail.WidgetSdk.SelectElement.AccessibilityLabel { get; set; }
+property string? WidgetRail.WidgetSdk.SelectOption.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.SliderElement.ActivationActionId { get; set; }
 property string? WidgetRail.WidgetSdk.SliderElement.FocusPersistenceId { get; set; }
 property string? WidgetRail.WidgetSdk.TextElement.AccessibilityLabel { get; set; }
@@ -2549,6 +2587,8 @@ type sealed class WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest : System.I
 type sealed class WidgetRail.WidgetSdk.ScrollElement : System.IEquatable<WidgetRail.WidgetSdk.ContainerElement>, System.IEquatable<WidgetRail.WidgetSdk.ScrollElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.ContainerElement
 type sealed class WidgetRail.WidgetSdk.ScrubberElement : System.IEquatable<WidgetRail.WidgetSdk.ScrubberElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.SegmentedTab : System.IEquatable<WidgetRail.WidgetSdk.SegmentedTab>
+type sealed class WidgetRail.WidgetSdk.SelectElement : System.IEquatable<WidgetRail.WidgetSdk.SelectElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.SelectOption : System.IEquatable<WidgetRail.WidgetSdk.SelectOption>
 type sealed class WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest>
 type sealed class WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest>
 type sealed class WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest>

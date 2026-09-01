@@ -115,6 +115,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Force reload rejects unknown widget IDs", ForceReloadRejectsUnknownWidget),
     ("Bridge rejects runtime-owned lifecycle states", RuntimeOwnedLifecycleStatesAreRejected),
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
+    ("Select option authority crosses the managed server wire exactly", SelectAuthorityCrossesServerWire),
     ("Exact-base divergence converges through one full checkpoint", ExactBaseDivergenceConvergesThroughCheckpoint),
     ("Committed text crosses bridge and worker action execution", CommittedTextCrossesBridgeAndWorker),
     ("Managed presentation session preserves sandboxed authority lifecycle and last-good state", ManagedPresentationSessionPreservesSandboxedAuthority),
@@ -124,6 +125,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Admitted registry invalidation reaches the client event queue", AdmittedRegistryInvalidationReachesClientEventQueue),
     ("Protocol-v37 poster and ordinary action surfaces resolve bridge render roles", ActionSurfaceRenderRole),
     ("Protocol-v15 text entries resolve one closed bridge render role", TextEntryRenderRole),
+    ("Protocol-v41 Select nodes resolve bridge render roles", SelectRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
     ("Late action failures retain worker generation", ActionFailureIsGenerationOwned),
     ("Worker failures surface without killing bridge", WorkerFailureIsSurfaced),
@@ -3395,6 +3397,87 @@ static async Task SnapshotAndQuickAction()
         malformedRecovery.Payload.GetProperty("code").GetString());
 }
 
+static async Task SelectAuthorityCrossesServerWire()
+{
+    await using var harness = await BridgeHarness.StartAsync(
+        instanceId: "select.instance");
+    var lifecycle = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest(
+            "test-widget", WidgetLifecycleState.Interactive));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
+    var response = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var responseErrorCode = response.Type == BridgeMessageTypes.Error &&
+        response.Payload.TryGetProperty("code", out var errorCode)
+            ? errorCode.GetString()
+            : null;
+    var responseErrorMessage = response.Type == BridgeMessageTypes.Error &&
+        response.Payload.TryGetProperty("message", out var errorMessage)
+            ? errorMessage.GetString()
+            : null;
+    Assert.True(response.Type == BridgeMessageTypes.Snapshot,
+        $"Expected '{BridgeMessageTypes.Snapshot}', got '{response.Type}'; " +
+        $"BridgeError code='{responseErrorCode ?? "<missing>"}', " +
+        $"message='{responseErrorMessage ?? "<missing>"}'.");
+    var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        response.Payload.GetProperty("snapshot").GetRawText()));
+    var select = FindNode(snapshot.Root, "wire.select");
+    Assert.Equal(ViewNodeKind.Select, select.Kind);
+
+    var valid = await harness.Client.RequestAsync(
+        BridgeMessageTypes.ControllerInput,
+        new BridgeControllerInputRequest(
+            "test-widget",
+            new ControllerInputEvent(
+                ControllerButton.A,
+                ControllerEventPhase.Pressed,
+                ControllerInputContext.OpenWidget,
+                FocusedElementId: select.Id,
+                ActiveInputScopeId: snapshot.ActiveInputScopeId,
+                SnapshotSequence: snapshot.Sequence,
+                Sequence: 1),
+            ExpectedSelectOptionActionId: "wire.select.spacious"));
+    Assert.Equal(BridgeMessageTypes.ControllerInputResult, valid.Type);
+    Assert.True(valid.Payload.GetProperty("handled").GetBoolean(),
+        "Exact Select option authority was not admitted across the server wire.");
+    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+    var changedResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var changed = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        changedResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal("Spacious", FindNode(changed.Root, select.Id).AccessibilityValue);
+
+    var wrongPhase = await harness.Client.RequestAsync(
+        BridgeMessageTypes.ControllerInput,
+        new BridgeControllerInputRequest(
+            "test-widget",
+            new ControllerInputEvent(
+                ControllerButton.A,
+                ControllerEventPhase.Repeated,
+                ControllerInputContext.OpenWidget,
+                FocusedElementId: select.Id,
+                ActiveInputScopeId: changed.ActiveInputScopeId,
+                SnapshotSequence: changed.Sequence,
+                Sequence: 2),
+            ExpectedSelectOptionActionId: "wire.select.compact"));
+    Assert.Equal(BridgeMessageTypes.Error, wrongPhase.Type);
+    var staleBinding = await harness.Client.RequestAsync(
+        BridgeMessageTypes.ControllerInput,
+        new BridgeControllerInputRequest(
+            "test-widget",
+            new ControllerInputEvent(
+                ControllerButton.A,
+                ControllerEventPhase.Pressed,
+                ControllerInputContext.OpenWidget,
+                FocusedElementId: select.Id,
+                ActiveInputScopeId: changed.ActiveInputScopeId,
+                SnapshotSequence: changed.Sequence,
+                Sequence: 3),
+            ExpectedSelectOptionActionId: "wire.select.missing"));
+    Assert.Equal(BridgeMessageTypes.Error, staleBinding.Type);
+}
+
 static async Task ExactBaseDivergenceConvergesThroughCheckpoint()
 {
     await using var harness = await BridgeHarness.StartAsync();
@@ -4151,6 +4234,66 @@ static Task TextEntryRenderRole()
     return Task.CompletedTask;
 }
 
+static Task SelectRenderRole()
+{
+    var snapshot = new WidgetView(
+        UI.Stack("settings.root",
+            UI.Select(
+                "Density",
+                [new SelectOption("compact", "Compact", "density.compact", IsSelected: true)],
+                "settings.density"),
+            UI.Button("Apply", "settings.apply", "settings.apply")),
+        InitialFocusId: "settings.density")
+        .CreateSnapshot("bridge.select", 1);
+
+    var unthemed = BridgeRenderStyleResolver.Resolve(snapshot, theme: null);
+    Assert.True(unthemed.ContainsKey("settings.density"),
+        "Select node ID was omitted from the unthemed bridge style map.");
+    Assert.Equal(0, unthemed["settings.density"].Base.Count);
+
+    var repositoryRoot = FindRepositoryRoot();
+    var builtInPath = Path.Combine(
+        repositoryRoot, "src", "PlatformSettings", "Themes", "builtin-default.wrss");
+    var builtInParsed = WrssParser.Parse(File.ReadAllText(builtInPath), builtInPath);
+    Assert.Equal(0, builtInParsed.Diagnostics.Count(diagnostic =>
+        diagnostic.Severity == WrssDiagnosticSeverity.Error));
+    var builtInCompiled = WrssThemeCompiler.Compile([builtInParsed.Document]);
+    Assert.True(builtInCompiled.IsValid, "Built-in default Select WRSS did not compile.");
+    var builtIn = BridgeRenderStyleResolver.Resolve(snapshot, builtInCompiled.Theme);
+    AssertSameStyles(
+        builtIn["settings.apply"].Base,
+        builtIn["settings.density"].Base,
+        "base");
+    AssertSameStyles(
+        builtIn["settings.apply"].Focused,
+        builtIn["settings.density"].Focused,
+        "focused");
+
+    var parsed = WrssParser.Parse("select { color: #2468ac; }", "select.wrss");
+    Assert.Equal(0, parsed.Diagnostics.Count(diagnostic =>
+        diagnostic.Severity == WrssDiagnosticSeverity.Error));
+    var compiled = WrssThemeCompiler.Compile([parsed.Document]);
+    Assert.True(compiled.IsValid, "Select WRSS fixture did not compile.");
+    var themed = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
+    Assert.Equal("#2468ac", themed["settings.density"].Base["color"].Text);
+    Assert.Equal(ProtocolConstants.AnchoredSelectVersion, snapshot.ProtocolVersion);
+    return Task.CompletedTask;
+
+    static void AssertSameStyles(
+        IReadOnlyDictionary<string, BridgeComputedStyleValue> expected,
+        IReadOnlyDictionary<string, BridgeComputedStyleValue> actual,
+        string state)
+    {
+        Assert.Equal(expected.Count, actual.Count);
+        foreach (var (property, value) in expected)
+        {
+            Assert.True(actual.TryGetValue(property, out var candidate),
+                $"Built-in Select {state} style omitted '{property}'.");
+            Assert.Equal(value, candidate);
+        }
+    }
+}
+
 static async Task WorkerFailureIsSurfaced()
 {
     await using var harness = await BridgeHarness.StartAsync();
@@ -4772,8 +4915,10 @@ file sealed class BridgeTestWidget : Widget
     private readonly bool _validatorContextFixture;
     private readonly bool _validatorDisabledFixture;
     private readonly bool _validatorMaximumFixture;
+    private readonly bool _selectFixture;
     private bool _validatorFailure;
     private bool _oversized;
+    private string _selectedDensity = "wire.select.compact";
     private WidgetAppLibraryItem? _artworkItem;
 
     internal BridgeTestWidget(string instanceId)
@@ -4798,10 +4943,27 @@ file sealed class BridgeTestWidget : Widget
             instanceId, "validator-disabled.instance", StringComparison.Ordinal);
         _validatorMaximumFixture = string.Equals(
             instanceId, "validator-maximum.instance", StringComparison.Ordinal);
+        _selectFixture = string.Equals(
+            instanceId, "select.instance", StringComparison.Ordinal);
     }
 
     public override WidgetView Render()
     {
+        if (_selectFixture)
+        {
+            var options = new[]
+            {
+                new SelectOption(
+                    "compact", "Compact", "wire.select.compact",
+                    IsSelected: _selectedDensity == "wire.select.compact"),
+                new SelectOption(
+                    "spacious", "Spacious", "wire.select.spacious",
+                    IsSelected: _selectedDensity == "wire.select.spacious"),
+            };
+            return new WidgetView(
+                UI.Select("Density", options, "wire.select", "Density"),
+                InitialFocusId: "wire.select");
+        }
         if (_validatorFailure)
         {
             if (_validatorHomeFixture)
@@ -5073,6 +5235,12 @@ file sealed class BridgeTestWidget : Widget
         else if (action is { ActionId: "volume.changed", RequestedValue: { } requested })
         {
             _volume = requested;
+            Invalidate();
+        }
+        else if (_selectFixture && action.ActionId is
+            ("wire.select.compact" or "wire.select.spacious"))
+        {
+            _selectedDensity = action.ActionId;
             Invalidate();
         }
         else if (action.ActionId == "committed-text")

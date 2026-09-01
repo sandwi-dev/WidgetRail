@@ -1,5 +1,7 @@
 #include "AccessibilityEvents.h"
 
+#include <UIAutomation.h>
+
 #include <algorithm>
 
 namespace widgetrail::accessibility {
@@ -81,15 +83,35 @@ EventPlan PlanEvents(const Tree* previous, const Tree* current) {
             previous->nodes.begin(), previous->nodes.end(),
             [&](const Node& candidate) { return KeyFor(candidate) == KeyFor(after); });
         if (before == previous->nodes.end()) {
+            if (after.role == Role::ListItem && after.selected)
+                plan.selectedElements.push_back(KeyFor(after));
             if (after.liveSetting != LiveSetting::Off && !after.name.empty())
                 plan.liveRegionChangedElements.push_back(KeyFor(after));
             continue;
         }
         if (before->role != after.role) continue;
         AddIfChanged(plan, after, PropertyKind::Name, before->name, after.name);
-        AddIfChanged(plan, after, PropertyKind::HelpText, before->value, after.value);
+        AddIfChanged(
+            plan, after,
+            after.role == Role::ComboBox
+                ? PropertyKind::Value : PropertyKind::HelpText,
+            before->value, after.value);
         AddIfChanged(plan, after, PropertyKind::Enabled, before->enabled, after.enabled);
         AddIfChanged(plan, after, PropertyKind::Selected, before->selected, after.selected);
+        AddIfChanged(
+            plan, after, PropertyKind::Offscreen,
+            before->offscreen, after.offscreen);
+        if (after.role == Role::ListItem && after.selected && !before->selected)
+            plan.selectedElements.push_back(KeyFor(after));
+        if (after.role == Role::ComboBox)
+            AddIfChanged(
+                plan, after, PropertyKind::Expanded,
+                before->expanded
+                    ? static_cast<int>(ExpandCollapseState_Expanded)
+                    : static_cast<int>(ExpandCollapseState_Collapsed),
+                after.expanded
+                    ? static_cast<int>(ExpandCollapseState_Expanded)
+                    : static_cast<int>(ExpandCollapseState_Collapsed));
         AddIfChanged(
             plan, after, PropertyKind::HeadingLevel,
             static_cast<int>(before->headingLevel), static_cast<int>(after.headingLevel));

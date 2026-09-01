@@ -22,7 +22,19 @@ public enum ViewNodeKind
     MediaViewport,
     BackgroundSurface,
     FocusPresentationSurface,
+    Select,
 }
+
+/// <summary>One bounded option in a host-owned anchored Select popup.</summary>
+public sealed record WidgetSelectOption(
+    string Id,
+    string Label,
+    string ActionId,
+    bool IsSelected = false,
+    WidgetGlyph? Glyph = null,
+    string? AccessibilityLabel = null,
+    bool IsDisabled = false,
+    bool IsBusy = false);
 
 /// <summary>
 /// Selects the bounded primary layout direction for an ActionSurface. The
@@ -345,6 +357,7 @@ public sealed record ViewNode
     public string? AccessibilityValue { get; init; }
     public string? ActionId { get; init; }
     public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
+    public IReadOnlyList<WidgetSelectOption> SelectOptions { get; init; } = [];
     /// <summary>Current bounded value for a host-owned text-entry modal.</summary>
     public string? TextEntryValue { get; init; }
     public string? TextEntryPlaceholder { get; init; }
@@ -477,7 +490,7 @@ public sealed record ViewNode
     [JsonIgnore]
     public bool IsFocusable => Kind is
         ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or
-        ViewNodeKind.TextEntry;
+        ViewNodeKind.TextEntry or ViewNodeKind.Select;
 }
 
 public sealed record ViewSnapshot

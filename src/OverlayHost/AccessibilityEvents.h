@@ -12,8 +12,11 @@ namespace widgetrail::accessibility {
 enum class PropertyKind {
     Name,
     HelpText,
+    Value,
     Enabled,
     Selected,
+    Offscreen,
+    Expanded,
     RangeValue,
     RangeMinimum,
     RangeMaximum,
@@ -39,6 +42,7 @@ struct EventPlan final {
     bool structureChanged{};
     bool focusChanged{};
     std::optional<ElementKey> focusedElement;
+    std::vector<ElementKey> selectedElements;
     std::vector<ElementKey> liveRegionChangedElements;
     std::vector<PropertyChange> properties;
 };

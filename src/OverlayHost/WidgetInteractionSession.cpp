@@ -6,6 +6,59 @@
 #include <utility>
 
 namespace widgetrail::input {
+
+SelectPopupLayout ComputeSelectPopupLayout(
+    const declarative::Rect anchor,
+    const declarative::Rect viewport,
+    const SelectPopupBinding& popup) {
+    constexpr float kRowHeight = 38.0F;
+    constexpr float kMinimumWidth = 220.0F;
+    constexpr float kGap = 4.0F;
+    constexpr std::size_t kMaximumVisibleRows = 8;
+    SelectPopupLayout result;
+    if (popup.options.empty() || viewport.width <= 1.0F || viewport.height <= 1.0F)
+        return result;
+    const auto rowsThatFit = std::max<std::size_t>(
+        1U, static_cast<std::size_t>(std::floor(viewport.height / kRowHeight)));
+    const auto visibleCount = std::min(
+        {kMaximumVisibleRows, popup.options.size(), rowsThatFit});
+    const float rowHeight = std::min(
+        kRowHeight, viewport.height / static_cast<float>(visibleCount));
+    const float width = std::min(viewport.width, std::max(anchor.width, kMinimumWidth));
+    const float height = rowHeight * static_cast<float>(visibleCount);
+    float x = std::clamp(anchor.x, viewport.x, viewport.x + viewport.width - width);
+    float y = anchor.y + anchor.height + kGap;
+    if (y + height > viewport.y + viewport.height)
+        y = anchor.y - kGap - height;
+    y = std::clamp(y, viewport.y, viewport.y + viewport.height - height);
+    result.bounds = {x, y, width, height};
+    std::size_t first{};
+    if (popup.highlightedOption >= visibleCount)
+        first = std::min(
+            popup.highlightedOption - visibleCount + 1,
+            popup.options.size() - visibleCount);
+    result.items.reserve(visibleCount);
+    for (std::size_t row = 0; row < visibleCount; ++row) {
+        result.items.push_back({
+            first + row,
+            {x, y + static_cast<float>(row) * rowHeight, width, rowHeight},
+        });
+    }
+    return result;
+}
+
+std::optional<std::size_t> HitTestSelectPopup(
+    const SelectPopupLayout& layout,
+    const float x,
+    const float y) noexcept {
+    for (const auto& item : layout.items) {
+        if (x >= item.bounds.x && y >= item.bounds.y &&
+            x < item.bounds.x + item.bounds.width &&
+            y < item.bounds.y + item.bounds.height)
+            return item.optionIndex;
+    }
+    return std::nullopt;
+}
 namespace {
 
 std::wstring_view ScrollPaginationEdgeName(
@@ -597,12 +650,15 @@ InteractionVisualRetirement WidgetInteractionSession::RetirePresentations() {
         pressed_.Clear(),
     };
     RefreshSliderDeadline();
+    selectPopup_.reset();
     return result;
 }
 
 void WidgetInteractionSession::ForgetRuntime(
     const std::wstring_view widgetInstanceId) noexcept {
     sliders_.ForgetWidget(widgetInstanceId);
+    if (selectPopup_ && selectPopup_->widgetInstanceId == widgetInstanceId)
+        selectPopup_.reset();
     RefreshSliderDeadline();
 }
 
@@ -618,6 +674,50 @@ InteractionReconciliation WidgetInteractionSession::ReconcileAdmission(
         for (const auto& child : node.children) self(self, child);
     };
     visit(visit, snapshot.root);
+    if (selectPopup_) {
+        const auto* node = FindNodeInInputScope(
+            snapshot, selectPopup_->openerElementId, snapshot.activeInputScopeId);
+        const auto sameOptions = node && node->isSelect &&
+            node->selectOptions.size() == selectPopup_->options.size() &&
+            std::equal(
+                node->selectOptions.begin(), node->selectOptions.end(),
+                selectPopup_->options.begin(),
+                [](const WidgetSelectOption& left, const WidgetSelectOption& right) {
+                    return left.id == right.id && left.actionId == right.actionId &&
+                        left.label == right.label && left.glyph == right.glyph &&
+                        left.accessibilityLabel == right.accessibilityLabel &&
+                        left.isDisabled == right.isDisabled && left.isBusy == right.isBusy;
+                });
+        if (snapshot.instanceId != selectPopup_->widgetInstanceId ||
+            snapshot.activeInputScopeId != selectPopup_->inputScopeId ||
+            !sameOptions || !node || node->isDisabled || node->isBusy) {
+            selectPopup_.reset();
+        } else {
+            selectPopup_->snapshotSequence = snapshot.sequence;
+            selectPopup_->options = node->selectOptions;
+            const auto available = [](const WidgetSelectOption& option) {
+                return !option.isDisabled && !option.isBusy;
+            };
+            if (selectPopup_->highlightedOption >= selectPopup_->options.size() ||
+                !available(selectPopup_->options[selectPopup_->highlightedOption])) {
+                auto replacement = std::find_if(
+                    selectPopup_->options.begin(), selectPopup_->options.end(),
+                    [&](const WidgetSelectOption& option) {
+                        return option.isSelected && available(option);
+                    });
+                if (replacement == selectPopup_->options.end())
+                    replacement = std::find_if(
+                        selectPopup_->options.begin(), selectPopup_->options.end(),
+                        available);
+                if (replacement == selectPopup_->options.end()) {
+                    selectPopup_.reset();
+                } else {
+                    selectPopup_->highlightedOption = static_cast<std::size_t>(
+                        replacement - selectPopup_->options.begin());
+                }
+            }
+        }
+    }
     RefreshSliderDeadline();
     result.nextDeadline = sliderReconcileAt_;
     return result;
@@ -781,6 +881,139 @@ bool WidgetInteractionSession::TransitionSliderAdjustmentMode(
     (void)pressed_.Clear();
     RefreshSliderDeadline();
     return changed;
+}
+
+SelectActivationResult WidgetInteractionSession::OpenSelectPopup(
+    const WidgetInteractionAuthority& authority,
+    const WidgetNode& node) {
+    if (!node.isSelect) return SelectActivationResult::NotSelect;
+    if (!authority.semantics || authority.retainedRefresh || node.isDisabled ||
+        node.isBusy || node.selectOptions.empty())
+        return SelectActivationResult::ConsumedClosed;
+    const auto* exact = FindNodeInInputScope(
+        *authority.semantics, node.id, authority.semantics->activeInputScopeId);
+    if (exact != &node || !exact->isSelect)
+        return SelectActivationResult::ConsumedClosed;
+    const auto available = [](const WidgetSelectOption& option) {
+        return !option.isDisabled && !option.isBusy;
+    };
+    auto selected = std::find_if(
+        node.selectOptions.begin(), node.selectOptions.end(),
+        [&](const WidgetSelectOption& option) {
+            return option.isSelected && available(option);
+        });
+    if (selected == node.selectOptions.end())
+        selected = std::find_if(
+            node.selectOptions.begin(), node.selectOptions.end(), available);
+    if (selected == node.selectOptions.end())
+        return SelectActivationResult::ConsumedClosed;
+    selectPopup_ = SelectPopupBinding{
+        std::wstring{authority.widgetId},
+        authority.semantics->instanceId,
+        std::wstring{authority.runtimeGeneration},
+        std::wstring{authority.presentationGeneration},
+        authority.semantics->activeInputScopeId,
+        node.id,
+        authority.semantics->sequence,
+        node.selectOptions,
+        static_cast<std::size_t>(selected - node.selectOptions.begin()),
+    };
+    (void)pressed_.Clear();
+    return SelectActivationResult::Opened;
+}
+
+bool WidgetInteractionSession::SelectPopupCurrent(
+    const WidgetInteractionAuthority& authority,
+    const WidgetNode& node) const noexcept {
+    if (!selectPopup_ || !authority.semantics || authority.retainedRefresh ||
+        !node.isSelect || node.isDisabled || node.isBusy) return false;
+    const auto& popup = *selectPopup_;
+    if (popup.widgetId != authority.widgetId ||
+        popup.widgetInstanceId != authority.semantics->instanceId ||
+        popup.runtimeGeneration != authority.runtimeGeneration ||
+        popup.presentationGeneration != authority.presentationGeneration ||
+        popup.inputScopeId != authority.semantics->activeInputScopeId ||
+        popup.openerElementId != node.id ||
+        popup.options.size() != node.selectOptions.size()) return false;
+    return std::equal(
+        popup.options.begin(), popup.options.end(), node.selectOptions.begin(),
+        [](const WidgetSelectOption& left, const WidgetSelectOption& right) {
+            return left.id == right.id && left.actionId == right.actionId &&
+                left.label == right.label && left.glyph == right.glyph &&
+                left.accessibilityLabel == right.accessibilityLabel &&
+                left.isDisabled == right.isDisabled && left.isBusy == right.isBusy;
+        });
+}
+
+bool WidgetInteractionSession::MoveSelectPopup(
+    const WidgetInteractionAuthority& authority,
+    const WidgetNode& node,
+    const NavigationDirection direction) {
+    if (!SelectPopupCurrent(authority, node) ||
+        (direction != NavigationDirection::Up &&
+         direction != NavigationDirection::Down)) return false;
+    auto& popup = *selectPopup_;
+    const auto count = popup.options.size();
+    for (std::size_t offset = 1; offset <= count; ++offset) {
+        const auto candidate = direction == NavigationDirection::Up
+            ? (popup.highlightedOption + count - (offset % count)) % count
+            : (popup.highlightedOption + offset) % count;
+        if (!popup.options[candidate].isDisabled &&
+            !popup.options[candidate].isBusy) {
+            popup.highlightedOption = candidate;
+            return true;
+        }
+    }
+    return true;
+}
+
+bool WidgetInteractionSession::HighlightSelectPopupOption(
+    const WidgetInteractionAuthority& authority,
+    const WidgetNode& node,
+    const std::size_t optionIndex) {
+    if (!SelectPopupCurrent(authority, node) ||
+        optionIndex >= selectPopup_->options.size() ||
+        selectPopup_->options[optionIndex].isDisabled ||
+        selectPopup_->options[optionIndex].isBusy) return false;
+    selectPopup_->highlightedOption = optionIndex;
+    return true;
+}
+
+std::optional<SelectPopupAction> WidgetInteractionSession::CommitSelectPopup(
+    const WidgetInteractionAuthority& authority,
+    const WidgetNode& node) {
+    if (!SelectPopupCurrent(authority, node)) {
+        selectPopup_.reset();
+        return std::nullopt;
+    }
+    const auto popup = *selectPopup_;
+    if (popup.highlightedOption >= popup.options.size()) {
+        selectPopup_.reset();
+        return std::nullopt;
+    }
+    const auto option = popup.options[popup.highlightedOption];
+    selectPopup_.reset();
+    if (option.isDisabled || option.isBusy) return std::nullopt;
+    return SelectPopupAction{
+        WidgetInteractionActionRequest{
+            std::wstring{authority.widgetId},
+            authority.semantics->instanceId,
+            std::wstring{authority.runtimeGeneration},
+            std::wstring{authority.presentationGeneration},
+            authority.semantics->activeInputScopeId,
+            node.id,
+            option.actionId,
+            authority.semantics->sequence,
+            std::nullopt,
+        },
+        option.id,
+    };
+}
+
+bool WidgetInteractionSession::CloseSelectPopup() noexcept {
+    if (!selectPopup_) return false;
+    selectPopup_.reset();
+    return true;
 }
 
 bool WidgetInteractionSession::TransitionPressedPresentation(

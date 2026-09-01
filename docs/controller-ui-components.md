@@ -53,6 +53,7 @@ WRSS design constrained by controller navigation and overlay performance.
 | Full-row choice | `ChoiceRow` | One stable 44-DIP-or-larger focus target with selected, Disabled, and Busy semantics. |
 | Actionable setting | `SettingsRow` | Responsive label/description/value/status flow plus exactly one stable 44-DIP action target. |
 | Contextual action list | `ActionSheet` | Bounded vertical Scroll in a nested input scope; focus-independent B and stable author item IDs. |
+| Anchored single select | `Select` | One focus stop; A opens a bounded host-owned popup, Up/Down moves, A commits, and B dismisses without changing page extent. |
 | Single-select list | `Picker` | Bounded vertical Scroll with explicit selected semantics, stable Up/Down neighbors, and scope-owned B. |
 | Controller help | `ControllerHint` | Nonfocusable semantic key/label pair; documents but never implicitly binds input. |
 

@@ -50,6 +50,40 @@ widgetrail::WidgetNode Slider(
     return node;
 }
 
+widgetrail::WidgetNode Select(const wchar_t* id) {
+    const auto option = [](
+        const wchar_t* optionId,
+        const wchar_t* label,
+        const wchar_t* actionId,
+        const wchar_t* glyph,
+        const wchar_t* accessibilityLabel,
+        const bool selected) {
+        widgetrail::WidgetSelectOption result;
+        result.id = optionId;
+        result.label = label;
+        result.actionId = actionId;
+        result.glyph = glyph;
+        result.accessibilityLabel = accessibilityLabel;
+        result.isSelected = selected;
+        result.isDisabled = false;
+        result.isBusy = false;
+        return result;
+    };
+    widgetrail::WidgetNode node;
+    node.id = id;
+    node.kind = L"button";
+    node.isSelect = true;
+    node.selectOptions = {
+        option(L"compact", L"Compact", L"density.compact", L"settings",
+               L"Compact density", true),
+        option(L"comfortable", L"Comfortable", L"density.comfortable",
+               L"connection", L"Comfortable density", false),
+        option(L"spacious", L"Spacious", L"density.spacious", L"warning",
+               L"Spacious density", false),
+    };
+    return node;
+}
+
 widgetrail::WidgetSnapshot Snapshot(
     const long long sequence = 41,
     const wchar_t* instanceId = L"fixture.instance",
@@ -1234,6 +1268,120 @@ void PaginationPrefetchLifecycle() {
                  "input-to-visible-page-ms=45\n";
 }
 
+void AnchoredSelectPopupIsExactAndBounded() {
+    using widgetrail::input::ComputeSelectPopupLayout;
+    using widgetrail::input::NavigationDirection;
+    using widgetrail::input::SelectActivationResult;
+    using widgetrail::input::WidgetInteractionSession;
+
+    auto snapshot = Snapshot(71);
+    snapshot.root.children.push_back(Select(L"density"));
+    auto& select = snapshot.root.children.back();
+    const auto authority = Authority(snapshot);
+    WidgetInteractionSession session;
+    Check(session.OpenSelectPopup(authority, select) ==
+              SelectActivationResult::Opened,
+          "A opens one exact-current Select popup");
+    Check(session.selectPopup() && session.selectPopup()->highlightedOption == 0,
+          "opening highlights the authored selected option");
+    Check(session.MoveSelectPopup(authority, select, NavigationDirection::Down) &&
+              session.selectPopup()->highlightedOption == 1,
+          "Down moves to the next available option");
+    const auto action = session.CommitSelectPopup(authority, select);
+    Check(action && action->request.actionId == L"density.comfortable" &&
+              action->request.sourceElementId == L"density" &&
+              action->optionId == L"comfortable" && !session.selectPopup(),
+          "A commits one exact option action with opener authority");
+
+    Check(session.OpenSelectPopup(authority, select) ==
+              SelectActivationResult::Opened &&
+              session.CloseSelectPopup() && !session.selectPopup(),
+          "B dismissal closes without an action");
+    Check(session.OpenSelectPopup(authority, select) ==
+              SelectActivationResult::Opened,
+          "the same exact Select can reopen");
+    auto compatible = snapshot;
+    compatible.sequence = 72;
+    compatible.root.children.back().selectOptions[0].isSelected = false;
+    compatible.root.children.back().selectOptions[1].isSelected = true;
+    auto reconciliation = session.ReconcileAdmission(compatible, 100);
+    Check(session.selectPopup() &&
+              session.selectPopup()->snapshotSequence == 72 &&
+              session.selectPopup()->options[1].isSelected &&
+              reconciliation.sliderDamageNodeIds.empty(),
+          "compatible Select publication preserves popup authority and reconciles state");
+    Check(session.CloseSelectPopup(), "reconciled popup closes normally");
+
+    auto selectedDisabled = snapshot;
+    auto& disabledSelect = selectedDisabled.root.children.back();
+    disabledSelect.selectOptions[0].isDisabled = true;
+    Check(session.OpenSelectPopup(Authority(selectedDisabled), disabledSelect) ==
+              SelectActivationResult::Opened &&
+              session.selectPopup()->highlightedOption == 1,
+          "disabled selected option falls back to the first available option");
+    Check(session.CloseSelectPopup(), "disabled-selected fallback popup closes");
+    for (auto& option : disabledSelect.selectOptions) option.isBusy = true;
+    Check(session.OpenSelectPopup(Authority(selectedDisabled), disabledSelect) ==
+              SelectActivationResult::ConsumedClosed &&
+              !session.selectPopup(),
+          "Select with no available option consumes activation while remaining closed");
+    Check(session.OpenSelectPopup(authority, snapshot.root) ==
+              SelectActivationResult::NotSelect,
+          "only a non-Select returns the generic activation fallback result");
+
+    Check(session.OpenSelectPopup(authority, select) ==
+              SelectActivationResult::Opened,
+          "the exact Select reopens before authority replacement");
+    auto successor = snapshot;
+    successor.sequence = 73;
+    successor.root.children.back().kind = L"slider";
+    successor.root.children.back().isSelect = false;
+    const auto& changed = successor.root.children.back();
+    Check(!session.SelectPopupCurrent(Authority(successor), changed),
+          "opener kind replacement retires stale Select authority");
+
+    const auto compact = ComputeSelectPopupLayout(
+        {12.0F, 10.0F, 240.0F, 44.0F},
+        {0.0F, 0.0F, 260.0F, 24.0F},
+        *session.selectPopup());
+    Check(compact.bounds.height <= 24.0F && compact.items.size() == 1 &&
+              compact.items.front().bounds.height <= 24.0F,
+          "small high-scale-equivalent viewports bound row count and height");
+
+    auto longSnapshot = Snapshot(80);
+    longSnapshot.root.children.push_back(Select(L"long-select"));
+    auto& longSelect = longSnapshot.root.children.back();
+    for (std::size_t index = longSelect.selectOptions.size(); index < 12; ++index) {
+        auto option = longSelect.selectOptions.back();
+        option.id = L"option-" + std::to_wstring(index);
+        option.label = L"Option " + std::to_wstring(index);
+        option.actionId = L"long-select.option-" + std::to_wstring(index);
+        option.accessibilityLabel = option.label;
+        option.isSelected = false;
+        longSelect.selectOptions.push_back(std::move(option));
+    }
+    WidgetInteractionSession longSession;
+    Check(longSession.OpenSelectPopup(Authority(longSnapshot), longSelect) ==
+              SelectActivationResult::Opened,
+          "long Select opens with bounded popup ownership");
+    for (int step = 0; step < 9; ++step)
+        Check(longSession.MoveSelectPopup(
+                  Authority(longSnapshot), longSelect,
+                  NavigationDirection::Down),
+              "wheel-equivalent navigation advances the long Select");
+    const auto scrolled = ComputeSelectPopupLayout(
+        {40.0F, 120.0F, 180.0F, 44.0F},
+        {32.0F, 80.0F, 260.0F, 304.0F},
+        *longSession.selectPopup());
+    Check(scrolled.items.size() == 8 &&
+              scrolled.items.front().optionIndex == 2 &&
+              scrolled.items.back().optionIndex == 9 &&
+              scrolled.bounds.x >= 32.0F && scrolled.bounds.y >= 80.0F &&
+              scrolled.bounds.x + scrolled.bounds.width <= 292.0F &&
+              scrolled.bounds.y + scrolled.bounds.height <= 384.0F,
+          "wheel-reachable rows scroll beyond eight while staying inside content bounds");
+}
+
 } // namespace
 
 int main() {
@@ -1245,6 +1393,7 @@ int main() {
     ExactSliderRequestAuthorityAndRollback();
     PressedAndAdmissionReconciliation();
     PaginationPrefetchLifecycle();
+    AnchoredSelectPopupIsExactAndBounded();
     std::cout << "WidgetInteractionSessionTests passed (" << checks
               << " checks)\n";
     return EXIT_SUCCESS;

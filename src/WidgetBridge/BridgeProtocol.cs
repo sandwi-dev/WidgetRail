@@ -122,7 +122,8 @@ internal sealed record BridgeControllerInputRequest(
     string WidgetId,
     WidgetRail.WidgetSdk.ControllerInputEvent Input,
     string? RuntimeGeneration = null,
-    string? ExpectedActionId = null);
+    string? ExpectedActionId = null,
+    string? ExpectedSelectOptionActionId = null);
 internal sealed record BridgeProtectedWifiRequest(
     string WidgetId,
     string RuntimeGeneration,

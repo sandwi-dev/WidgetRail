@@ -204,6 +204,127 @@ int main() {
           mediaTree.nodes[0].actionId.empty() && !mediaTree.focusedNode,
           "MediaViewport exposes one named native non-interactive media semantic");
 
+    widgetrail::WidgetSnapshot selectSnapshot;
+    selectSnapshot.sequence = 41;
+    selectSnapshot.instanceId = L"select.instance";
+    selectSnapshot.activeInputScopeId = L"select.root";
+    selectSnapshot.root.id = L"select.root";
+    selectSnapshot.root.kind = L"stack";
+    widgetrail::WidgetNode select;
+    select.id = L"select.output";
+    select.kind = L"button";
+    select.isSelect = true;
+    select.accessibilityLabel = L"Output device";
+    select.accessibilityValue = L"Option 0";
+    for (int index = 0; index < 12; ++index) {
+        widgetrail::WidgetSelectOption option;
+        option.id = L"option." + std::to_wstring(index);
+        option.label = L"Option " + std::to_wstring(index);
+        option.actionId = L"select.option-" + std::to_wstring(index);
+        option.accessibilityLabel = L"Accessible option " + std::to_wstring(index);
+        option.isSelected = index == 0;
+        select.selectOptions.push_back(std::move(option));
+    }
+    selectSnapshot.root.children.push_back(select);
+    widgetrail::RenderResult selectRender;
+    selectRender.accessibilityRegions = {Region(L"select.output", 20)};
+    widgetrail::accessibility::SelectPopupAccessibility popup;
+    popup.openerElementId = L"select.output";
+    popup.options = select.selectOptions;
+    popup.highlightedOption = 9;
+    for (std::size_t index = 8; index < 12; ++index)
+    popup.items.push_back({
+            index, {20.0F, 80.0F + 38.0F * static_cast<float>(index - 8),
+                    220.0F, 38.0F}});
+    const auto collapsedSelectTree = widgetrail::accessibility::BuildWidgetTree(
+        L"select", L"generation-select", selectSnapshot, selectRender,
+        L"select.output");
+    Check(collapsedSelectTree.nodes.size() == 2 &&
+              collapsedSelectTree.nodes.front().role ==
+                  widgetrail::accessibility::Role::ComboBox &&
+              !collapsedSelectTree.nodes.front().expanded &&
+              collapsedSelectTree.nodes[1].selected &&
+              collapsedSelectTree.nodes[1].offscreen &&
+              collapsedSelectTree.nodes[1].domain ==
+                  widgetrail::accessibility::ElementDomain::WidgetOption &&
+              collapsedSelectTree.nodes[1].hostAction ==
+                  widgetrail::accessibility::HostAction::None,
+          "collapsed Select projects only its selected offscreen provider without an action");
+    const auto selectTree = widgetrail::accessibility::BuildWidgetTree(
+        L"select", L"generation-select", selectSnapshot, selectRender,
+        L"select.output", {}, &popup);
+    Check(selectTree.nodes.size() == 13 &&
+              selectTree.nodes.front().role ==
+                  widgetrail::accessibility::Role::ComboBox &&
+              selectTree.nodes.front().expanded &&
+              selectTree.nodes.front().children.size() == 12,
+          "expanded Select exposes one ComboBox and the complete bounded option set");
+    Check(selectTree.nodes[1].selected && selectTree.nodes[1].offscreen &&
+              selectTree.nodes[1].positionInSet == 1 &&
+              selectTree.nodes[1].sizeOfSet == 12,
+          "selected off-page option remains available to SelectionProvider");
+    Check(std::count_if(
+              selectTree.nodes.begin(), selectTree.nodes.end(),
+              [](const auto& node) { return node.focused; }) == 1 &&
+              selectTree.focusedNode &&
+              selectTree.nodes[*selectTree.focusedNode].id ==
+                  L"select-option:13:select.output8:option.9",
+          "expanded Select exposes exactly one highlighted UIA focus owner");
+    auto collisionSnapshot = selectSnapshot;
+    widgetrail::WidgetNode authoredCollision;
+    authoredCollision.id = L"select.output.option.option.0";
+    authoredCollision.kind = L"button";
+    authoredCollision.text = L"Authored collision";
+    authoredCollision.actionId = L"authored.collision";
+    collisionSnapshot.root.children.push_back(authoredCollision);
+    auto collisionRender = selectRender;
+    collisionRender.accessibilityRegions.push_back(
+        Region(L"select.output.option.option.0", 260));
+    const auto collisionSelectTree = widgetrail::accessibility::BuildWidgetTree(
+        L"select", L"generation-select", collisionSnapshot, collisionRender,
+        L"select.output", {}, &popup);
+    Check(widgetrail::accessibility::HasUniqueElementKeys(collisionSelectTree) &&
+          std::count_if(
+              collisionSelectTree.nodes.begin(), collisionSelectTree.nodes.end(),
+              [](const auto& node) {
+                  return node.id == L"select.output.option.option.0";
+              }) == 1,
+          "synthetic option identity cannot collide with an authored same-domain node ID");
+
+    auto syntheticCollisionSnapshot = selectSnapshot;
+    syntheticCollisionSnapshot.root.children.clear();
+    widgetrail::WidgetNode firstSelect = select;
+    firstSelect.id = L"alpha.option.beta";
+    firstSelect.selectOptions.front().id = L"gamma";
+    firstSelect.selectOptions.resize(1);
+    widgetrail::WidgetNode secondSelect = select;
+    secondSelect.id = L"alpha";
+    secondSelect.selectOptions.front().id = L"beta.option.gamma";
+    secondSelect.selectOptions.resize(1);
+    syntheticCollisionSnapshot.root.children = {firstSelect, secondSelect};
+    widgetrail::RenderResult syntheticCollisionRender;
+    syntheticCollisionRender.accessibilityRegions = {
+        Region(firstSelect.id.c_str(), 20),
+        Region(secondSelect.id.c_str(), 80)};
+    const auto syntheticCollisionTree = widgetrail::accessibility::BuildWidgetTree(
+        L"select", L"generation-select", syntheticCollisionSnapshot,
+        syntheticCollisionRender, L"");
+    Check(widgetrail::accessibility::HasUniqueElementKeys(syntheticCollisionTree) &&
+          syntheticCollisionTree.nodes.size() == 4 &&
+          syntheticCollisionTree.nodes[1].id != syntheticCollisionTree.nodes[3].id,
+          "length-prefixed synthetic option identities remain injective across two Select owners");
+
+    auto unavailableSnapshot = selectSnapshot;
+    for (auto& option : unavailableSnapshot.root.children[0].selectOptions)
+        option.isDisabled = true;
+    const auto unavailableTree = widgetrail::accessibility::BuildWidgetTree(
+        L"select", L"generation-select", unavailableSnapshot, selectRender,
+        L"select.output");
+    Check(!unavailableTree.nodes.front().enabled &&
+              unavailableTree.nodes.front().hostAction ==
+                  widgetrail::accessibility::HostAction::None,
+          "a Select with no available options is exposed as unavailable and unexpandable");
+
     render.accessibilityRegions.clear();
     tree = widgetrail::accessibility::BuildWidgetTree(
         L"music", L"generation-1", snapshot, render, L"modal-text");

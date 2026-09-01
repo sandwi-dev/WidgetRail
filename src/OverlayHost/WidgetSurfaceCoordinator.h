@@ -62,6 +62,7 @@ struct WidgetSurfaceInputRequest final {
     std::wstring activationActionId;
     std::optional<double> requestedValue;
     std::optional<input::WidgetInteractionActionRequest> sliderActionRequest;
+    std::optional<input::WidgetInteractionActionRequest> selectActionRequest;
     ControllerInputOrigin origin{ControllerInputOrigin::PhysicalController};
 };
 
@@ -138,6 +139,7 @@ struct WidgetSurfacePaintTrace final {
     ContentPresentation contentPresentation{ContentPresentation::AdmittedWidget};
     bool declarativeRenderSucceeded{}, admittedContentPresented{};
     std::size_t navigationNodeCount{};
+    std::optional<RenderDiagnostic> currentFirstRenderDiagnostic;
 };
 #endif
 
@@ -179,6 +181,13 @@ public:
     [[nodiscard]] bool HandleFocusedSliderModeButton(
         std::wstring_view protocolButton,
         std::uint64_t now);
+    [[nodiscard]] bool HandleFocusedSelectButton(
+        std::wstring_view protocolButton,
+        ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController);
+    [[nodiscard]] bool selectPopupOpen() const noexcept {
+        return sliderInteraction_.selectPopup().has_value();
+    }
+    [[nodiscard]] bool MoveSelectPopupWheel(short wheelDelta);
     [[nodiscard]] bool ScrollFocusedProjection(
         short rightThumbX,
         short rightThumbY,
@@ -229,11 +238,15 @@ public:
         const std::vector<MonitorWorkArea>& monitors) noexcept;
     [[nodiscard]] std::optional<POINT> PointerPointForTesting(
         std::wstring_view nodeId) const noexcept;
-    [[nodiscard]] WidgetSurfacePaintTrace PaintTraceForTesting() const noexcept {
+    [[nodiscard]] WidgetSurfacePaintTrace PaintTraceForTesting() const {
         return {admission_ ? admission_->snapshot.sequence : 0,
                 ResolveSurfacePresentationPolicy(policy_.interactionMode()).content,
                 lastRenderResult_.succeeded, pinned() && lastRenderResult_.succeeded,
-                lastRenderResult_.navigationRects.size()};
+                lastRenderResult_.navigationRects.size(),
+                lastRenderResult_.diagnostics.empty()
+                    ? std::nullopt
+                    : std::optional<RenderDiagnostic>{
+                          lastRenderResult_.diagnostics.front()}};
     }
     [[nodiscard]] std::optional<float> ScrollOffsetForTesting(
         const std::wstring_view scrollId) const noexcept {
@@ -244,6 +257,8 @@ public:
     [[nodiscard]] bool FreeScrollBindingForTesting() const noexcept {
         return freeScroll_.binding().has_value();
     }
+    [[nodiscard]] bool SliderAdjustmentActiveForTesting(
+        std::wstring_view nodeId, std::uint64_t now);
 #endif
     [[nodiscard]] bool Unpin(WidgetSurfaceStopReason reason) noexcept;
     void OnOverlayHidden() noexcept;
@@ -322,11 +337,14 @@ private:
         ControllerInputOrigin origin,
         std::optional<double> requestedValue,
         std::optional<input::WidgetInteractionActionRequest> sliderActionRequest =
+            std::nullopt,
+        std::optional<input::WidgetInteractionActionRequest> selectActionRequest =
             std::nullopt);
     [[nodiscard]] const WidgetSnapshot& SelectedSnapshot() const noexcept;
     [[nodiscard]] std::wstring_view SelectedLayoutId() const noexcept;
     void ClearFreeScroll() noexcept;
     void RetireSliderInteraction() noexcept;
+    void TransitionPinnedFocus(std::wstring_view target);
     [[nodiscard]] bool RecordPaginationOutcome(
         input::ScrollPaginationSessionOutcome outcome);
     void QueueLayoutSelection(std::wstring_view layoutId, bool selected);

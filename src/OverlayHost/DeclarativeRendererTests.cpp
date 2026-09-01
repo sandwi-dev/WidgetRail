@@ -3915,14 +3915,16 @@ void RealDirect2DSmoke() {
         busy.isBusy = true;
         auto disabled = matrixButton(L"matrix.disabled", L"Unavailable action");
         disabled.isDisabled = true;
+        auto select = matrixButton(L"matrix.select", L"Quality");
+        select.isSelect = true;
         auto wrapped = matrixButton(
             L"matrix.wrapped",
             L"Refresh the selected collection after checking every available source");
-        for (auto* candidate : {&plain, &selected, &busy, &disabled, &wrapped})
+        for (auto* candidate : {&plain, &selected, &busy, &disabled, &select, &wrapped})
             candidate->baseStyle.insert_or_assign(L"width", Length(surfaceWidth - 20.0F));
         matrix.root.children = {
             std::move(plain), std::move(selected), std::move(busy),
-            std::move(disabled), std::move(wrapped),
+            std::move(disabled), std::move(select), std::move(wrapped),
         };
 
         widgetrail::DeclarativeRenderOptions matrixOptions;
@@ -3935,7 +3937,7 @@ void RealDirect2DSmoke() {
             {0.0F, 0.0F, surfaceWidth, 360.0F}, matrixOptions);
         Check(SUCCEEDED(target->EndDraw()),
             "button geometry profile completes a real Direct2D frame");
-        Check(matrixResult.succeeded && matrixResult.buttonContentPlacements.size() == 5,
+        Check(matrixResult.succeeded && matrixResult.buttonContentPlacements.size() == 6,
             "button geometry profile records every shared content placement");
 
         for (const auto* id : {L"matrix.plain", L"matrix.busy", L"matrix.disabled",
@@ -3968,6 +3970,13 @@ void RealDirect2DSmoke() {
         Check(disabledPlacement.trailingStateCue.width == 0.0F &&
               disabledPlacement.trailingStateCue.height == 0.0F,
               "disabled button reserves no diagonal state-cue lane");
+        const auto& selectPlacement =
+            matrixResult.buttonContentPlacements.at(L"matrix.select");
+        Check(selectPlacement.trailingStateCue.width > 0.0F &&
+              selectPlacement.trailingStateCue.height > 0.0F &&
+              selectPlacement.text.x + selectPlacement.text.width + 7.5F <=
+                  selectPlacement.trailingStateCue.x,
+              "Select reserves a bounded host-owned trailing chevron lane");
         if (textScale == 1.5F) {
             Check(matrixResult.elementRects.at(L"matrix.wrapped").height > 44.0F,
                 "150-percent wrapped label contributes its measured intrinsic height");

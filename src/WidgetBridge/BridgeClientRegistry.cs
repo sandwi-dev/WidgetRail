@@ -821,12 +821,16 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         string? expectedRuntimeGeneration,
         CancellationToken sessionCancellation,
         CancellationToken cancellationToken,
-        string? expectedActionId = null)
+        string? expectedActionId = null,
+        string? expectedSelectOptionActionId = null)
     {
         var registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (expectedActionId is not null && expectedSelectOptionActionId is not null)
+                throw new BridgeProtocolException(
+                    "Controller input cannot combine exact action authority kinds.");
             DemandCurrent(registration);
             if (input.Context is (ControllerInputContext.PinnedSurface or
                     ControllerInputContext.OverlayFullscreenPresentation) &&
@@ -843,6 +847,23 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             if (input.Context is not (ControllerInputContext.PinnedLayoutSelection or
                 ControllerInputContext.OverlayFullscreenPresentation))
                 DemandInteractionAllowed(registration);
+            var selectAction = DemandSelectActionAuthority(
+                registration, input, expectedSelectOptionActionId);
+            if (selectAction is not null)
+            {
+                registration.CancelIdleUnload();
+                var admission = await ExecuteClientOperationAsync(
+                        registration,
+                        (client, token) => client.AdmitActionAsync(selectAction, token),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                DemandCurrent(registration);
+                ScheduleIdleUnload(registration, sessionCancellation);
+                return AdmitPublication(
+                    registration,
+                    admission is not (WidgetOperationAdmission.RejectedInactive or
+                        WidgetOperationAdmission.RejectedCapacity));
+            }
             var admitted = DemandPinnedSurfaceAuthority(
                 registration, input, expectedActionId);
             // A pinned button that binds to nothing here is an ordinary
@@ -2006,6 +2027,101 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         if (originBinding is null) return null;
         return input with { SnapshotSequence = snapshot.Sequence };
     }
+
+    private static WidgetActionEvent? DemandSelectActionAuthority(
+        ClientRegistration registration,
+        ControllerInputEvent input,
+        string? expectedActionId)
+    {
+        if (expectedActionId is null || input.Button != ControllerButton.A ||
+            input.Phase != ControllerEventPhase.Pressed ||
+            input.Context is not (ControllerInputContext.OpenWidget or
+                ControllerInputContext.PinnedSurface)) return null;
+        var current = registration.CachedSnapshot ?? throw new BridgeProtocolException(
+            "Select input has no cached rendered snapshot.");
+        var currentBinding = ResolveSelectBinding(current, input, expectedActionId, "current");
+        if (input.Context == ControllerInputContext.PinnedSurface)
+        {
+            var origin = registration.FindPinnedInputOriginSnapshot(input.SnapshotSequence) ??
+                throw new BridgeStalePinnedInputAuthorityException(
+                    "Pinned Select origin authority is no longer available.");
+            var originBinding = ResolveSelectBinding(origin, input, expectedActionId, "origin");
+            if (originBinding != currentBinding)
+                throw new BridgeStalePinnedInputAuthorityException(
+                    "Pinned Select option authority changed after admission.");
+        }
+        else if (input.SnapshotSequence != current.Sequence)
+        {
+            throw new BridgeProtocolException("Open Select snapshot authority is stale.");
+        }
+        return new WidgetActionEvent(
+            currentBinding.ActionId,
+            currentBinding.SourceElementId,
+            ControllerButton.A,
+            ControllerEventPhase.Pressed,
+            input.Sequence,
+            input.MonotonicTimestampMicroseconds,
+            InputScopeId: input.ActiveInputScopeId);
+    }
+
+    private static SelectActionBinding ResolveSelectBinding(
+        ViewSnapshot snapshot,
+        ControllerInputEvent input,
+        string expectedActionId,
+        string authority)
+    {
+        ViewNode root;
+        string scope;
+        if (input.Context == ControllerInputContext.PinnedSurface &&
+            !string.Equals(input.PinnedLayoutId, "host.full-widget", StringComparison.Ordinal))
+        {
+            var layout = snapshot.PinnedLayouts.SingleOrDefault(candidate =>
+                string.Equals(candidate.Id, input.PinnedLayoutId, StringComparison.Ordinal));
+            if (layout?.Root is null || string.IsNullOrWhiteSpace(layout.ActiveInputScopeId))
+                throw SelectAuthorityException(
+                    input, $"Select targets an unavailable {authority} layout.");
+            root = layout.Root;
+            scope = layout.ActiveInputScopeId;
+        }
+        else
+        {
+            root = snapshot.Root;
+            scope = snapshot.ActiveInputScopeId;
+        }
+        if (!string.Equals(input.ActiveInputScopeId, scope, StringComparison.Ordinal))
+            throw SelectAuthorityException(input,
+                $"Select targets a stale {authority} input scope.");
+        var scopeRoot = FindInputScope(root, scope, isRoot: true);
+        var node = scopeRoot is null || input.FocusedElementId is null ? null :
+            FindNodeInScope(scopeRoot, input.FocusedElementId, isScopeRoot: true);
+        if (node is null || node.Kind != ViewNodeKind.Select ||
+            node.IsDisabled is true || node.IsBusy is true)
+            throw SelectAuthorityException(input,
+                $"Select targets an unavailable {authority} opener.");
+        var option = node.SelectOptions.SingleOrDefault(candidate =>
+            string.Equals(candidate.ActionId, expectedActionId, StringComparison.Ordinal));
+        if (option is null || option.IsDisabled || option.IsBusy)
+            throw SelectAuthorityException(input,
+                $"Select targets an unavailable {authority} option.");
+        return new(node.Id, option.Id, option.ActionId, option.Label,
+            option.Glyph, option.AccessibilityLabel, option.IsDisabled, option.IsBusy);
+    }
+
+    private static Exception SelectAuthorityException(
+        ControllerInputEvent input,
+        string message) => input.Context == ControllerInputContext.PinnedSurface
+            ? new BridgeStalePinnedInputAuthorityException(message)
+            : new BridgeProtocolException(message);
+
+    private sealed record SelectActionBinding(
+        string SourceElementId,
+        string OptionId,
+        string ActionId,
+        string Label,
+        WidgetGlyph? Glyph,
+        string? AccessibilityLabel,
+        bool IsDisabled,
+        bool IsBusy);
 
     /// Returns the exact action this button reaches in one admitted pinned
     /// projection, or null when the projection binds nothing to it. Stale or

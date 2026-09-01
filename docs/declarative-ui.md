@@ -140,6 +140,7 @@ primary accessibility contract.
 | `UI.MediaViewport(surface, id)` | `mediaViewport` | Protocol-v23 non-interactive native layout leaf for the one current `WidgetView.EmbeddedMedia` surface. The declarative renderer owns its responsive geometry, clip, theme placeholder, and Image semantics; WebView2 contributes only the bounded media pixels. |
 | `UI.CodeText(text, id, accessibilityLabel?)` | `text` | Bounded non-interactive diagnostics/command text with the semantic monospace class. |
 | `UI.Button(label, action, id)` | `button` | Focusable action control; may include one semantic glyph or bounded leading PNG inside the same focus target. |
+| `UI.Select(label, options, id, accessibilityLabel?)` | `select` | Protocol-v41 single focus stop with a host-owned anchored 1–128 option popup. A opens/commits, Up/Down moves, and B dismisses without changing layout extent. |
 | `UI.TextEntry(value, placeholder, action, id, maximumLength)` | `textEntry` | Protocol-v15 bounded host-owned ordinary text entry. Worker snapshots carry the current non-sensitive value; the bridge emits a distinct computed-style role keyed by stable node ID. |
 | `UI.SensitiveTextEntry(placeholder, action, id, maximumLength)` | `textEntry` | Protocol-v28 protected entry. The authored snapshot value is always empty; only one final bounded commit reaches the exact widget action. |
 | `UI.Stepper(label, value, decrementAction, incrementAction, id, canDecrement?, canIncrement?)` | `row`, `text`, `button` | Label/value row with separate bounded decrement and increment actions. |

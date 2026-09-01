@@ -140,6 +140,7 @@ internal static class BridgeRenderStyleResolver
         ViewNodeKind.MediaViewport => "mediaViewport",
         ViewNodeKind.BackgroundSurface => "backgroundSurface",
         ViewNodeKind.FocusPresentationSurface => "focusPresentationSurface",
+        ViewNodeKind.Select => "select",
         _ => throw new BridgeProtocolException($"Unsupported view node kind '{kind}'."),
     };
 }

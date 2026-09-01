@@ -271,6 +271,24 @@ public sealed class SdkGalleryWidget : Widget
             statusTone: StatusTone.Info,
             glyph: WidgetGlyph.Settings),
         UI.Switch("Compact controls", _compactMode, "gallery.compact.toggle", "gallery.controls.switch"),
+        UI.Select(
+            "Density",
+            [
+                new SelectOption(
+                    "gallery.density.compact.option", "Compact",
+                    "gallery.density.compact", _density == "Compact",
+                    WidgetGlyph.Settings),
+                new SelectOption(
+                    "gallery.density.comfortable.option", "Comfortable",
+                    "gallery.density.comfortable", _density == "Comfortable",
+                    WidgetGlyph.Connection),
+                new SelectOption(
+                    "gallery.density.spacious.option", "Spacious",
+                    "gallery.density.spacious", _density == "Spacious",
+                    WidgetGlyph.Warning),
+            ],
+            "gallery.controls.density",
+            "Presentation density"),
         UI.Row("gallery.controls.openers",
             UI.Button("Choose density", "gallery.picker.open", "gallery.picker.open")
                 .Icon(WidgetGlyph.Settings).Classes("gallery-wide-action"),

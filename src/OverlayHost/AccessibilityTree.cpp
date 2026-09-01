@@ -19,6 +19,7 @@ Tree TreeMetadata(const Tree& source) {
 }
 
 std::optional<Role> ResolveRole(const WidgetNode& node) noexcept {
+    if (node.isSelect) return Role::ComboBox;
     if (node.kind == L"button" || node.kind == L"actionSurface" ||
         node.kind == L"textEntry") return Role::Button;
     if (node.kind == L"slider") return Role::Slider;
@@ -93,7 +94,8 @@ Tree BuildWidgetTree(
     const WidgetSnapshot& snapshot,
     const RenderResult& render,
     const std::wstring_view focusedElementId,
-    const std::map<std::wstring, double, std::less<>>& presentedSliderValues) {
+    const std::map<std::wstring, double, std::less<>>& presentedSliderValues,
+    const SelectPopupAccessibility* selectPopup) {
     Tree tree{
         std::move(widgetId),
         std::move(runtimeGeneration),
@@ -181,7 +183,22 @@ Tree BuildWidgetTree(
             node.rangeStep = source.step;
             node.enabled = !source.isDisabled && !source.isBusy;
             node.selected = source.isSelected;
-            node.focused = source.id == focusedElementId;
+            if (source.isSelect) {
+                const bool hasAvailableOption = std::any_of(
+                    source.selectOptions.begin(), source.selectOptions.end(),
+                    [](const WidgetSelectOption& option) {
+                        return !option.isDisabled && !option.isBusy;
+                    });
+                node.enabled = node.enabled && hasAvailableOption;
+                const bool expanded = selectPopup &&
+                    selectPopup->openerElementId == source.id;
+                node.expanded = expanded && node.enabled;
+                node.hostAction = !node.enabled ? HostAction::None
+                    : node.expanded ? HostAction::CollapseSelect
+                                    : HostAction::ExpandSelect;
+                node.hostTargetId = source.id;
+            }
+            node.focused = source.id == focusedElementId && !node.expanded;
             if (setPosition) {
                 node.positionInSet = setPosition->position;
                 node.sizeOfSet = setPosition->size;
@@ -191,6 +208,60 @@ Tree BuildWidgetTree(
             if (accessibleParent) tree.nodes[*accessibleParent].children.push_back(index);
             if (tree.nodes[index].focused) tree.focusedNode = index;
             parent = index;
+
+            if (source.isSelect) {
+                const bool popupCurrent = tree.nodes[index].expanded && selectPopup &&
+                    selectPopup->openerElementId == source.id;
+                const auto& projectedOptions = popupCurrent
+                    ? selectPopup->options : source.selectOptions;
+                for (std::size_t optionIndexValue = 0;
+                     optionIndexValue < projectedOptions.size();
+                     ++optionIndexValue) {
+                    const auto& option = projectedOptions[optionIndexValue];
+                    if (!popupCurrent && !option.isSelected) continue;
+                    std::optional<declarative::Rect> visibleBounds;
+                    if (popupCurrent) {
+                        const auto visible = std::find_if(
+                            selectPopup->items.begin(), selectPopup->items.end(),
+                            [&](const SelectPopupAccessibility::Item& item) {
+                                return item.optionIndex == optionIndexValue;
+                            });
+                        if (visible != selectPopup->items.end())
+                            visibleBounds = visible->bounds;
+                    }
+                    Node optionNode;
+                    optionNode.id = L"select-option:" +
+                        std::to_wstring(source.id.size()) + L":" + source.id +
+                        std::to_wstring(option.id.size()) + L":" + option.id;
+                    optionNode.name = option.accessibilityLabel.empty()
+                        ? option.label : option.accessibilityLabel;
+                    optionNode.value = option.label;
+                    if (popupCurrent) optionNode.actionId = option.actionId;
+                    optionNode.hostTargetId = source.id;
+                    optionNode.bounds = visibleBounds.value_or(declarative::Rect{});
+                    optionNode.role = Role::ListItem;
+                    optionNode.domain = ElementDomain::WidgetOption;
+                    optionNode.hostAction = popupCurrent
+                        ? HostAction::CommitSelectOption : HostAction::None;
+                    optionNode.parent = index;
+                    optionNode.enabled = !option.isDisabled && !option.isBusy;
+                    optionNode.selected = option.isSelected;
+                    optionNode.focused = popupCurrent &&
+                        source.id == focusedElementId &&
+                        optionIndexValue == selectPopup->highlightedOption;
+                    optionNode.offscreen = !visibleBounds.has_value();
+                    optionNode.keyboardFocusable = popupCurrent && optionNode.enabled;
+                    optionNode.positionInSet =
+                        static_cast<int>(optionIndexValue + 1U);
+                    optionNode.sizeOfSet =
+                        static_cast<int>(projectedOptions.size());
+                    const auto optionIndex = tree.nodes.size();
+                    tree.nodes.push_back(std::move(optionNode));
+                    tree.nodes[index].children.push_back(optionIndex);
+                    if (tree.nodes[optionIndex].focused)
+                        tree.focusedNode = optionIndex;
+                }
+            }
         }
 
         // An action surface is one semantic control. Its validated descendants

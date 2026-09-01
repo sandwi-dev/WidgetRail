@@ -543,21 +543,37 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             var controllerRequest = BridgeJson.FromElement<BridgeControllerInputRequest>(request.Payload);
             ValidateControllerInput(controllerRequest.Input);
             if (controllerRequest.ExpectedActionId is not null &&
-                (controllerRequest.Input.Context != ControllerInputContext.PinnedSurface ||
-                 controllerRequest.Input.Button is not
-                     (ControllerButton.DPadLeft or ControllerButton.DPadRight) ||
-                 controllerRequest.Input.RequestedValue is null ||
+                (!(controllerRequest.Input.Context == ControllerInputContext.PinnedSurface &&
+                   controllerRequest.Input.Button is
+                       (ControllerButton.DPadLeft or ControllerButton.DPadRight) &&
+                   controllerRequest.Input.RequestedValue is not null) ||
                  !BridgeRequestKey.IsBoundedIdentifier(
                      controllerRequest.ExpectedActionId)))
                 throw new BridgeProtocolException(
                     "Expected controller action authority is invalid.");
+            if (controllerRequest.ExpectedActionId is not null &&
+                controllerRequest.ExpectedSelectOptionActionId is not null)
+                throw new BridgeProtocolException(
+                    "Controller input cannot combine exact action authority kinds.");
+            if (controllerRequest.ExpectedSelectOptionActionId is not null &&
+                (!(controllerRequest.Input.Context is
+                       (ControllerInputContext.OpenWidget or
+                        ControllerInputContext.PinnedSurface) &&
+                   controllerRequest.Input.Button == ControllerButton.A &&
+                   controllerRequest.Input.Phase == ControllerEventPhase.Pressed &&
+                   controllerRequest.Input.RequestedValue is null) ||
+                 !BridgeRequestKey.IsBoundedIdentifier(
+                     controllerRequest.ExpectedSelectOptionActionId)))
+                throw new BridgeProtocolException(
+                    "Expected Select option action authority is invalid.");
             using var controllerPublication = await _registry.SendControllerInputAsync(
                     controllerRequest.WidgetId,
                     controllerRequest.Input,
                     controllerRequest.RuntimeGeneration,
                     _sessionCancellation,
                     cancellationToken,
-                    controllerRequest.ExpectedActionId)
+                    controllerRequest.ExpectedActionId,
+                    controllerRequest.ExpectedSelectOptionActionId)
                 .ConfigureAwait(false);
             var handled = controllerPublication.Value;
             await ReplyAsync(BridgeMessageTypes.ControllerInputResult, request.RequestId,

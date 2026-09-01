@@ -387,6 +387,18 @@ bool IsLabel(const std::wstring_view value) {
            });
 }
 
+bool IsBoundedVisibleText(
+    const std::wstring_view value,
+    const std::size_t maximumLength = protocol_contract::MaximumStringLength) {
+    return !value.empty() && value.size() <= maximumLength &&
+        !std::all_of(value.begin(), value.end(), [](const wchar_t character) {
+            return std::iswspace(character) != 0;
+        }) &&
+        std::none_of(value.begin(), value.end(), [](const wchar_t character) {
+            return std::iswcntrl(character) != 0;
+        });
+}
+
 bool ReadDescriptorString(
     const JsonObject& source,
     const wchar_t* property,
@@ -771,6 +783,7 @@ WidgetNode ParseNode(const JsonObject& source) {
     WidgetNode node;
     node.id = std::wstring(std::wstring_view(source.GetNamedString(L"id")));
     node.kind = std::wstring(std::wstring_view(source.GetNamedString(L"kind")));
+    const bool declaredSelect = node.kind == L"select";
     if (node.kind == L"mediaViewport" &&
         !HasNoUnknownProperties(source,
             {L"id", L"kind", L"mediaSurfaceId", L"accessibilityLabel",
@@ -812,6 +825,49 @@ WidgetNode ParseNode(const JsonObject& source) {
             node.contextActions.push_back(std::move(action));
         }
     }
+    if (source.HasKey(L"selectOptions")) {
+        const auto options = source.GetNamedArray(L"selectOptions");
+        if ((node.kind != L"select" && options.Size() != 0) ||
+            (node.kind == L"select" &&
+             (options.Size() < 1 ||
+              options.Size() > protocol_contract::MaximumSelectOptionCount)))
+            throw winrt::hresult_invalid_argument();
+        std::unordered_set<std::wstring> ids;
+        std::unordered_set<std::wstring> actionIds;
+        std::size_t selected{};
+        node.selectOptions.reserve(options.Size());
+        for (std::uint32_t index = 0; index < options.Size(); ++index) {
+            const auto encoded = options.GetObjectAt(index);
+            if (!HasNoUnknownProperties(encoded,
+                    {L"id", L"label", L"actionId", L"isSelected", L"glyph",
+                     L"accessibilityLabel", L"isDisabled", L"isBusy"}))
+                throw winrt::hresult_invalid_argument();
+            WidgetSelectOption option{
+                std::wstring(std::wstring_view(encoded.GetNamedString(L"id"))),
+                std::wstring(std::wstring_view(encoded.GetNamedString(L"label"))),
+                std::wstring(std::wstring_view(encoded.GetNamedString(L"actionId"))),
+                OptionalString(encoded, L"glyph"),
+                OptionalString(encoded, L"accessibilityLabel"),
+                encoded.GetNamedBoolean(L"isSelected", false),
+                encoded.GetNamedBoolean(L"isDisabled", false),
+                encoded.GetNamedBoolean(L"isBusy", false),
+            };
+            if (!IsIdentifier(option.id) || !IsIdentifier(option.actionId) ||
+                !IsBoundedVisibleText(option.label) ||
+                (!option.accessibilityLabel.empty() &&
+                 !IsBoundedVisibleText(option.accessibilityLabel)) ||
+                (!option.glyph.empty() && !IsWidgetGlyph(option.glyph)) ||
+                !ids.insert(option.id).second ||
+                !actionIds.insert(option.actionId).second)
+                throw winrt::hresult_invalid_argument();
+            if (option.isSelected) ++selected;
+            node.selectOptions.push_back(std::move(option));
+        }
+        if (declaredSelect && selected != 1)
+            throw winrt::hresult_invalid_argument();
+    } else if (node.kind == L"select") {
+        throw winrt::hresult_invalid_argument();
+    }
     node.textEntryValue = OptionalString(source, L"textEntryValue");
     node.textEntryPlaceholder = OptionalString(source, L"textEntryPlaceholder");
     node.textEntryInputKind = OptionalString(source, L"textEntryInputKind");
@@ -848,6 +904,10 @@ WidgetNode ParseNode(const JsonObject& source) {
         // The trigger participates in the existing button layout/focus/UIA
         // contract. Activation opens a native host-owned edit modal.
         node.isTextEntry = true;
+        node.kind = L"button";
+    }
+    if (declaredSelect) {
+        node.isSelect = true;
         node.kind = L"button";
     }
     node.valueChangedActionId = OptionalString(source, L"valueChangedActionId");
@@ -1053,6 +1113,8 @@ WidgetNode ParseNode(const JsonObject& source) {
         node.hasSliderRange = true;
     }
     if (source.HasKey(L"isDisabled")) node.isDisabled = source.GetNamedBoolean(L"isDisabled");
+    if (declaredSelect && source.HasKey(L"isSelected"))
+        throw winrt::hresult_invalid_argument();
     if (source.HasKey(L"isSelected")) node.isSelected = source.GetNamedBoolean(L"isSelected");
     if (source.HasKey(L"isBusy")) node.isBusy = source.GetNamedBoolean(L"isBusy");
     if (source.HasKey(L"children")) {
@@ -1372,6 +1434,7 @@ void ValidateFocusPresentations(const WidgetNode& root, const int protocolVersio
             node.kind == L"image" || node.kind == L"icon" ||
             node.kind == L"loadingIndicator";
         if (!kindAllowed || !node.actionId.empty() || !node.contextActions.empty() ||
+            !node.selectOptions.empty() || node.isSelect ||
             !node.valueChangedActionId.empty() || !node.sliderInteractionMode.empty() ||
             !node.focusBackgroundArtworkHandle.empty() || !node.mediaSurfaceId.empty() ||
             !node.actionSurfaceOrientation.empty() || !node.actionSurfacePresentation.empty() ||
@@ -1784,6 +1847,26 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         for (const auto& child : node.children) self(self, child);
     };
     validateContextActions(validateContextActions, snapshot.root);
+    const auto validateSelects = [&](const auto& self,
+                                     const WidgetNode& node) -> void {
+        if (node.isSelect) {
+            if (snapshot.protocolVersion < protocol_contract::AnchoredSelectVersion)
+                throw winrt::hresult_invalid_argument(
+                    L"Anchored Select requires protocol version 41.");
+            const auto selected = std::find_if(
+                node.selectOptions.begin(), node.selectOptions.end(),
+                [](const WidgetSelectOption& option) { return option.isSelected; });
+            if (!node.actionId.empty() || !IsBoundedVisibleText(node.text) ||
+                selected == node.selectOptions.end() ||
+                node.accessibilityValue != selected->label)
+                throw winrt::hresult_invalid_argument(
+                    L"Anchored Select authority is invalid.");
+        } else if (!node.selectOptions.empty()) {
+            throw winrt::hresult_invalid_argument();
+        }
+        for (const auto& child : node.children) self(self, child);
+    };
+    validateSelects(validateSelects, snapshot.root);
     std::size_t mediaViewportCount{};
     std::wstring mediaViewportSurfaceId;
     std::wstring mediaViewportAccessibleName;
@@ -1889,9 +1972,9 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 46> properties{
+    static constexpr std::array<std::wstring_view, 47> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
-        L"actionId", L"contextActions", L"textEntryValue", L"textEntryPlaceholder",
+        L"actionId", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
         L"valueChangedActionId", L"sliderInteractionMode", L"imageSource",
         L"artworkHandle", L"focusBackgroundArtworkHandle", L"mediaSurfaceId",
@@ -1934,7 +2017,7 @@ bool ValidateWidgetDocumentStructure(
         }
         if (!HasNoUnknownProperties(node,
                 {L"id", L"kind", L"visibleWhen", L"text",
-                 L"accessibilityLabel", L"accessibilityValue", L"actionId", L"contextActions",
+                 L"accessibilityLabel", L"accessibilityValue", L"actionId", L"contextActions", L"selectOptions",
                  L"textEntryValue", L"textEntryPlaceholder",
                  L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum",
                  L"step", L"valueChangedActionId", L"sliderInteractionMode",
@@ -2467,6 +2550,10 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         return Effect::Paint | Effect::Authority |
             Effect::Interaction | Effect::Accessibility;
     }
+    if (property == L"selectOptions") {
+        return Effect::Authority | Effect::Interaction |
+            Effect::Paint | Effect::Accessibility;
+    }
     if (property == L"actionId" || property == L"contextActions" ||
         property == L"valueChangedActionId" ||
         property == L"focus" || property == L"focusPersistenceId" ||
@@ -2503,7 +2590,7 @@ WidgetPresentationImpact ClassifyPresentationImpact(
     const WidgetPresentationUpdate& update) {
     using Effect = WidgetPresentationEffect;
     WidgetPresentationImpact impact{
-        update.baseSequence, update.sequence, Effect::None, {}, {}, false};
+        update.baseSequence, update.sequence, Effect::None, {}, {}, false, false};
     const auto addTarget = [&](const std::wstring_view id) {
         if (id.empty() ||
             std::find(impact.affectedNodeIds.begin(),
@@ -2518,6 +2605,8 @@ WidgetPresentationImpact ClassifyPresentationImpact(
             WidgetPresentationUpdateOperationKind::SetProperties) {
             auto operationEffects = Effect::None;
             for (const auto& change : operation.properties) {
+                if (change.property == L"selectOptions")
+                    impact.selectOptionsChanged = true;
                 const auto propertyEffects =
                     ImpactForPresentationProperty(change.property);
                 operationEffects |= propertyEffects;
@@ -4068,6 +4157,84 @@ std::optional<bool> WidgetBridgeClient::PublishEmbeddedMediaPlaybackEvent(
     return std::nullopt;
 }
 
+namespace {
+
+JsonObject BuildControllerInputRequestEnvelope(
+    const long long requestId,
+    const std::wstring_view widgetId,
+    const std::wstring_view button,
+    const std::wstring_view context,
+    const std::wstring_view focusedElementId,
+    const std::wstring_view activeInputScopeId,
+    const long long snapshotSequence,
+    const long long sequence,
+    const long long monotonicTimestampMicroseconds,
+    const std::wstring_view phase,
+    const std::optional<double> requestedValue,
+    const ControllerInputOrigin origin,
+    const std::wstring_view runtimeGeneration,
+    const std::wstring_view pinnedLayoutId,
+    const std::optional<bool> pinnedLayoutSelected,
+    const std::wstring_view expectedActionId,
+    const std::optional<bool> overlayFullscreenActive,
+    const std::wstring_view expectedSelectOptionActionId) {
+    JsonObject input;
+    input.Insert(L"button", JsonValue::CreateStringValue(winrt::hstring(button)));
+    input.Insert(L"phase", JsonValue::CreateStringValue(winrt::hstring(phase)));
+    input.Insert(L"context", JsonValue::CreateStringValue(winrt::hstring(context)));
+    if (origin == ControllerInputOrigin::AccessibilityAutomation) {
+        input.Insert(
+            L"origin", JsonValue::CreateStringValue(L"accessibilityAutomation"));
+    }
+    if (!focusedElementId.empty())
+        input.Insert(L"focusedElementId",
+                     JsonValue::CreateStringValue(winrt::hstring(focusedElementId)));
+    if (!activeInputScopeId.empty())
+        input.Insert(L"activeInputScopeId",
+                     JsonValue::CreateStringValue(winrt::hstring(activeInputScopeId)));
+    input.Insert(L"snapshotSequence",
+                 JsonValue::CreateNumberValue(static_cast<double>(snapshotSequence)));
+    input.Insert(L"sequence", JsonValue::CreateNumberValue(static_cast<double>(sequence)));
+    input.Insert(L"monotonicTimestampMicroseconds",
+                 JsonValue::CreateNumberValue(
+                     static_cast<double>(monotonicTimestampMicroseconds)));
+    if (requestedValue && std::isfinite(*requestedValue))
+        input.Insert(L"requestedValue", JsonValue::CreateNumberValue(*requestedValue));
+    if (!pinnedLayoutId.empty())
+        input.Insert(L"pinnedLayoutId",
+                     JsonValue::CreateStringValue(winrt::hstring(pinnedLayoutId)));
+    if (pinnedLayoutSelected)
+        input.Insert(L"isPinnedLayoutSelected",
+                     JsonValue::CreateBooleanValue(*pinnedLayoutSelected));
+    if (overlayFullscreenActive)
+        input.Insert(L"isOverlayFullscreenActive",
+                     JsonValue::CreateBooleanValue(*overlayFullscreenActive));
+
+    JsonObject payload;
+    payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
+    if (!runtimeGeneration.empty())
+        payload.Insert(L"runtimeGeneration",
+                       JsonValue::CreateStringValue(winrt::hstring(runtimeGeneration)));
+    if (!expectedActionId.empty())
+        payload.Insert(L"expectedActionId",
+                       JsonValue::CreateStringValue(winrt::hstring(expectedActionId)));
+    if (!expectedSelectOptionActionId.empty())
+        payload.Insert(
+            L"expectedSelectOptionActionId",
+            JsonValue::CreateStringValue(winrt::hstring(expectedSelectOptionActionId)));
+    payload.Insert(L"input", input);
+
+    JsonObject envelope;
+    envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+    envelope.Insert(L"type", JsonValue::CreateStringValue(L"controller-input"));
+    envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
+        static_cast<double>(requestId)));
+    envelope.Insert(L"payload", payload);
+    return envelope;
+}
+
+} // namespace
+
 std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const std::wstring_view widgetId,
     const std::wstring_view button,
@@ -4084,7 +4251,8 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const std::wstring_view pinnedLayoutId,
     const std::optional<bool> pinnedLayoutSelected,
     const std::wstring_view expectedActionId,
-    const std::optional<bool> overlayFullscreenActive) {
+    const std::optional<bool> overlayFullscreenActive,
+    const std::wstring_view expectedSelectOptionActionId) {
     std::scoped_lock lock(requestMutex_);
     lastControllerInputResultCode_.clear();
     if (pipe_ == INVALID_HANDLE_VALUE) {
@@ -4092,63 +4260,24 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
         return std::nullopt;
     }
     try {
-        JsonObject input;
-        input.Insert(L"button", JsonValue::CreateStringValue(winrt::hstring(button)));
-        input.Insert(L"phase", JsonValue::CreateStringValue(winrt::hstring(phase)));
-        input.Insert(L"context", JsonValue::CreateStringValue(winrt::hstring(context)));
         switch (origin) {
         case ControllerInputOrigin::PhysicalController:
             break;
         case ControllerInputOrigin::AccessibilityAutomation:
-            input.Insert(L"origin", JsonValue::CreateStringValue(L"accessibilityAutomation"));
             break;
         default:
             lastControllerInputResultCode_ = L"invalid-origin";
             Fail(L"Invalid controller input origin.");
             return std::nullopt;
         }
-        if (!focusedElementId.empty()) {
-            input.Insert(L"focusedElementId",
-                         JsonValue::CreateStringValue(winrt::hstring(focusedElementId)));
-        }
-        if (!activeInputScopeId.empty()) {
-            input.Insert(L"activeInputScopeId",
-                         JsonValue::CreateStringValue(winrt::hstring(activeInputScopeId)));
-        }
-        input.Insert(L"snapshotSequence",
-                     JsonValue::CreateNumberValue(static_cast<double>(snapshotSequence)));
-        input.Insert(L"sequence", JsonValue::CreateNumberValue(static_cast<double>(sequence)));
-        input.Insert(L"monotonicTimestampMicroseconds",
-                     JsonValue::CreateNumberValue(static_cast<double>(monotonicTimestampMicroseconds)));
-        if (requestedValue && std::isfinite(*requestedValue)) {
-            input.Insert(L"requestedValue", JsonValue::CreateNumberValue(*requestedValue));
-        }
-        if (!pinnedLayoutId.empty())
-            input.Insert(L"pinnedLayoutId",
-                         JsonValue::CreateStringValue(winrt::hstring(pinnedLayoutId)));
-        if (pinnedLayoutSelected) {
-            input.Insert(L"isPinnedLayoutSelected",
-                         JsonValue::CreateBooleanValue(*pinnedLayoutSelected));
-        }
-        if (overlayFullscreenActive) {
-            input.Insert(L"isOverlayFullscreenActive",
-                         JsonValue::CreateBooleanValue(*overlayFullscreenActive));
-        }
-        JsonObject payload;
-        payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
-        if (!runtimeGeneration.empty())
-            payload.Insert(L"runtimeGeneration",
-                           JsonValue::CreateStringValue(winrt::hstring(runtimeGeneration)));
-        if (!expectedActionId.empty())
-            payload.Insert(L"expectedActionId",
-                           JsonValue::CreateStringValue(winrt::hstring(expectedActionId)));
-        payload.Insert(L"input", input);
         const long long requestId = ++nextRequestId_;
-        JsonObject envelope;
-        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
-        envelope.Insert(L"type", JsonValue::CreateStringValue(L"controller-input"));
-        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(static_cast<double>(requestId)));
-        envelope.Insert(L"payload", payload);
+        const auto envelope = BuildControllerInputRequestEnvelope(
+            requestId, widgetId, button, context, focusedElementId,
+            activeInputScopeId, snapshotSequence, sequence,
+            monotonicTimestampMicroseconds, phase, requestedValue, origin,
+            runtimeGeneration, pinnedLayoutId, pinnedLayoutSelected,
+            expectedActionId, overlayFullscreenActive,
+            expectedSelectOptionActionId);
         if (!WriteFrame(winrt::to_string(envelope.Stringify()))) {
             lastControllerInputResultCode_ = L"transport-write-failed";
             return std::nullopt;
@@ -4677,6 +4806,16 @@ namespace widgetrail::testing {
 BridgeFrameReadResult ReadBridgeFrame(const HANDLE pipe) {
     auto result = ReadFrameFromPipe(pipe);
     return {std::move(result.frame), result.transportTainted, result.error};
+}
+
+std::string SerializeControllerInputRequest(
+    const std::wstring_view expectedSelectOptionActionId) {
+    const auto envelope = BuildControllerInputRequestEnvelope(
+        41, L"widget.test", L"a", L"pinnedWidget", L"select.control",
+        L"root", 7, 11, 123456, L"pressed", std::nullopt,
+        ControllerInputOrigin::AccessibilityAutomation, L"runtime-1",
+        L"compact", true, {}, false, expectedSelectOptionActionId);
+    return winrt::to_string(envelope.Stringify());
 }
 
 std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(

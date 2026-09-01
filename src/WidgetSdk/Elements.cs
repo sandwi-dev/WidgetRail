@@ -454,6 +454,108 @@ public sealed record ButtonElement : WidgetElement
 }
 
 /// <summary>
+/// A semantic single-select control whose popup, focus capture, and dismissal
+/// are owned by the host. The immutable option list remains widget authority.
+/// </summary>
+public sealed record SelectElement : WidgetElement
+{
+    internal SelectElement(
+        string id,
+        string label,
+        IReadOnlyList<SelectOption> options,
+        string? accessibilityLabel) : base(RequireId(id))
+    {
+        ValidateSelectText(label, nameof(label));
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.Count is < 1 or > ProtocolConstants.MaximumSelectOptionCount)
+            throw new ArgumentOutOfRangeException(nameof(options));
+        if (options.Any(option => option is null))
+            throw new ArgumentException("Select options cannot contain null values.", nameof(options));
+        if (options.Select(option => option.Id).Distinct(StringComparer.Ordinal).Count() != options.Count)
+            throw new ArgumentException("Select option IDs must be unique.", nameof(options));
+        if (options.Select(option => option.ActionId).Distinct(StringComparer.Ordinal).Count() != options.Count)
+            throw new ArgumentException("Select option action IDs must be unique.", nameof(options));
+        if (options.Count(option => option.IsSelected) != 1)
+            throw new ArgumentException("A Select requires exactly one selected option.", nameof(options));
+        foreach (var option in options)
+        {
+            StableIdentifier.Validate(option.Id, nameof(options));
+            StableIdentifier.Validate(option.ActionId, nameof(options));
+            ValidateSelectText(option.Label, nameof(options));
+            if (option.AccessibilityLabel is not null)
+                ValidateSelectText(option.AccessibilityLabel, nameof(options));
+            if (option.Glyph is { } glyph && !Enum.IsDefined(glyph))
+                throw new ArgumentOutOfRangeException(nameof(options));
+        }
+        ValidateSelectText(
+            $"{label}: {options.Single(option => option.IsSelected).Label}",
+            nameof(options));
+        Label = label;
+        Options = options.ToArray();
+        if (accessibilityLabel is not null)
+            ValidateSelectText(accessibilityLabel, nameof(accessibilityLabel));
+        AccessibilityLabel = accessibilityLabel;
+        StyleClasses = ["wrail-select"];
+    }
+
+    public string Label { get; init; }
+    public IReadOnlyList<SelectOption> Options { get; init; }
+    public string? AccessibilityLabel { get; init; }
+    public bool? IsDisabled { get; init; }
+    public bool? IsBusy { get; init; }
+    public FocusNeighbors? FocusNeighbors { get; init; }
+
+    public SelectElement Disabled(bool disabled = true) => this with
+        { IsDisabled = disabled ? true : null };
+    public SelectElement Busy(bool busy = true) => this with
+        { IsBusy = busy ? true : null };
+    public SelectElement FocusUp(string id) => this with
+        { FocusNeighbors = (FocusNeighbors ?? new()) with { Up = RequireId(id) } };
+    public SelectElement FocusDown(string id) => this with
+        { FocusNeighbors = (FocusNeighbors ?? new()) with { Down = RequireId(id) } };
+    public SelectElement FocusLeft(string id) => this with
+        { FocusNeighbors = (FocusNeighbors ?? new()) with { Left = RequireId(id) } };
+    public SelectElement FocusRight(string id) => this with
+        { FocusNeighbors = (FocusNeighbors ?? new()) with { Right = RequireId(id) } };
+
+    internal override ViewNode ToProtocolNode()
+    {
+        var selected = Options.Single(option => option.IsSelected);
+        return new()
+        {
+            Id = Id,
+            Kind = ViewNodeKind.Select,
+            Text = $"{Label}: {selected.Label}",
+            AccessibilityLabel = AccessibilityLabel ?? Label,
+            AccessibilityValue = selected.Label,
+            SelectOptions = Options.Select(option => new WidgetSelectOption(
+                option.Id,
+                option.Label,
+                option.ActionId,
+                option.IsSelected,
+                option.Glyph,
+                option.AccessibilityLabel,
+                option.IsDisabled,
+                option.IsBusy)).ToArray(),
+            IsDisabled = IsDisabled,
+            IsBusy = IsBusy,
+            Focus = FocusNeighbors,
+            StyleClasses = StyleClasses,
+        };
+    }
+
+    private static void ValidateSelectText(string value, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            value.Length > ProtocolConstants.MaximumStringLength ||
+            value.Any(char.IsControl))
+            throw new ArgumentException(
+                "Select text must be bounded, non-whitespace, and control-free.",
+                parameterName);
+    }
+}
+
+/// <summary>
 /// Opens a host-owned bounded text-entry modal. Widgets receive only the final
 /// committed value in <see cref="WidgetActionEvent.CommittedText"/>; raw keys,
 /// native handles, and intermediate edits never cross the host boundary.

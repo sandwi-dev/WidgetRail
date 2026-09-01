@@ -120,6 +120,13 @@ internal sealed class ProtocolVersionRequirements
                 $"Overlay fullscreen media presentation requires protocol version {ProtocolConstants.OverlayFullscreenMediaPresentationVersion} or later.");
 
         Visit(snapshot.Root, "$.root", 1);
+        var pinnedLayouts = snapshot.PinnedLayouts ?? [];
+        for (var index = 0; index < Math.Min(
+                 pinnedLayouts.Count, ProtocolConstants.MaximumPinnedPresentationLayoutCount); index++)
+        {
+            if (pinnedLayouts[index]?.Root is { } pinnedRoot)
+                Visit(pinnedRoot, $"$.pinnedLayouts[{index}].root", 1);
+        }
 
         var quickActions = snapshot.QuickActions ?? [];
         for (var index = 0; index < quickActions.Count; index++)
@@ -172,6 +179,13 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.ContextActionsVersion,
                     $"{path}.contextActions",
                     $"Context actions require protocol version {ProtocolConstants.ContextActionsVersion} or later.");
+            if (node.Kind is not ViewNodeKind.Select &&
+                (node.SelectOptions?.Count ?? 0) != 0)
+                Add(
+                    "anchored-select",
+                    ProtocolConstants.AnchoredSelectVersion,
+                    path,
+                    $"Anchored Select requires protocol version {ProtocolConstants.AnchoredSelectVersion} or later.");
             if (node.ActionSurfacePresentation is not null)
                 Add(
                     "poster-tile",
@@ -288,6 +302,13 @@ internal sealed class ProtocolVersionRequirements
                         ProtocolConstants.FocusAssociatedPresentationVersion,
                         path,
                         $"Focus-associated presentation requires protocol version {ProtocolConstants.FocusAssociatedPresentationVersion} or later.");
+                    break;
+                case ViewNodeKind.Select:
+                    Add(
+                        "anchored-select",
+                        ProtocolConstants.AnchoredSelectVersion,
+                        path,
+                        $"Select requires protocol version {ProtocolConstants.AnchoredSelectVersion} or later.");
                     break;
             }
 

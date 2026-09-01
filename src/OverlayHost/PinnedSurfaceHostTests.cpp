@@ -442,6 +442,99 @@ void TestAcceptedHiddenBridgeControlPlaneContract() {
           "visible overlay retires the hidden Bridge timer before controller sampling");
 }
 
+void TestSelectActivationRoutingContract() {
+    const auto directory = fs::path{__FILE__}.parent_path();
+    const auto host = ReadSource(directory / "main.cpp");
+    const auto pinned = ReadSource(directory / "WidgetSurfaceCoordinator.cpp");
+
+    const auto openBegin = host.find("OpenFocusedSelectPopup() {");
+    const auto openEnd = host.find("void CommitSelectPopup(", openBegin);
+    Check(openBegin != std::string::npos && openEnd != std::string::npos &&
+              openBegin < openEnd,
+          "full-widget Select activation has one bounded shared owner");
+    const auto open = host.substr(openBegin, openEnd - openBegin);
+    Check(open.find("interactionSession_.OpenSelectPopup(authority, *node)") !=
+              std::string::npos &&
+              open.find("SelectActivationResult::NotSelect") !=
+                  std::string::npos &&
+              open.find("SelectActivationResult::Opened") !=
+                  std::string::npos,
+          "full-widget Select owner preserves not-Select consumed-closed and opened outcomes");
+
+    const auto dispatchBegin = host.find("void DispatchControllerAction(");
+    const auto dispatchEnd = host.find(
+        "[[nodiscard]] bool TryDispatchNativeMediaAction(", dispatchBegin);
+    Check(dispatchBegin != std::string::npos &&
+              dispatchEnd != std::string::npos && dispatchBegin < dispatchEnd,
+          "full-widget controller dispatch has one bounded source section");
+    const auto dispatch = host.substr(
+        dispatchBegin, dispatchEnd - dispatchBegin);
+    const auto selectActivation = dispatch.find(
+        "const auto selectActivation = OpenFocusedSelectPopup();");
+    const auto consumed = dispatch.find(
+        "if (selectActivation !=\n"
+        "                widgetrail::input::SelectActivationResult::NotSelect)\n"
+        "                return;",
+        selectActivation);
+    const auto widgetDispatch = dispatch.find(
+        "DispatchWidgetAction(", consumed);
+    Check(selectActivation != std::string::npos &&
+              consumed != std::string::npos &&
+              widgetDispatch != std::string::npos &&
+              selectActivation < consumed && consumed < widgetDispatch,
+          "full-widget A consumes every Select result before generic widget or Bridge dispatch");
+
+    const auto pinnedControllerBegin = host.find(
+        "if (pinnedControllerCommand == widgetrail::pinned::ControllerCommand::Activate)");
+    const auto pinnedControllerEnd = host.find(
+        "} else if (pinnedControllerCommand ==", pinnedControllerBegin);
+    Check(pinnedControllerBegin != std::string::npos &&
+              pinnedControllerEnd != std::string::npos &&
+              pinnedControllerBegin < pinnedControllerEnd,
+          "pinned controller activation has one bounded fallback chain");
+    const auto pinnedController = host.substr(
+        pinnedControllerBegin, pinnedControllerEnd - pinnedControllerBegin);
+    const auto pinnedSelect = pinnedController.find(
+        "HandleFocusedSelectButton(L\"a\")");
+    const auto pinnedSlider = pinnedController.find(
+        "HandleFocusedSliderModeButton(");
+    const auto pinnedGeneric = pinnedController.find("QueueFocusedInput(");
+    Check(pinnedSelect != std::string::npos &&
+              pinnedSlider != std::string::npos &&
+              pinnedGeneric != std::string::npos &&
+              pinnedSelect < pinnedSlider && pinnedSlider < pinnedGeneric,
+          "pinned controller A consumes Select before slider and generic input fallback");
+
+    const auto pointerBegin = pinned.find("case WM_LBUTTONUP:");
+    const auto pointerEnd = pinned.find("case WM_CAPTURECHANGED:", pointerBegin);
+    Check(pointerBegin != std::string::npos &&
+              pointerEnd != std::string::npos && pointerBegin < pointerEnd,
+          "pinned pointer activation has one bounded fallback chain");
+    const auto pointer = pinned.substr(pointerBegin, pointerEnd - pointerBegin);
+    const auto pointerSelect = pointer.find("HandleFocusedSelectButton(");
+    const auto pointerGeneric = pointer.find("QueueResolvedInput(");
+    Check(pointerSelect != std::string::npos &&
+              pointerGeneric != std::string::npos &&
+              pointerSelect < pointerGeneric,
+          "pinned pointer consumes Select before generic input fallback");
+
+    const auto keyboardBegin = pinned.find(
+        "controllerFocused_ && wParam == VK_RETURN");
+    const auto keyboardEnd = pinned.find(
+        "wParam == VK_ESCAPE && controllerFocused_", keyboardBegin);
+    Check(keyboardBegin != std::string::npos &&
+              keyboardEnd != std::string::npos && keyboardBegin < keyboardEnd,
+          "pinned keyboard activation has one bounded fallback chain");
+    const auto keyboard = pinned.substr(
+        keyboardBegin, keyboardEnd - keyboardBegin);
+    const auto keyboardSelect = keyboard.find("HandleFocusedSelectButton(");
+    const auto keyboardGeneric = keyboard.find("QueueFocusedInput(");
+    Check(keyboardSelect != std::string::npos &&
+              keyboardGeneric != std::string::npos &&
+              keyboardSelect < keyboardGeneric,
+          "pinned Enter consumes Select before generic input fallback");
+}
+
 void TestAcceptedMediaBackOwnershipHostContract() {
     const auto source = ReadSource(
         fs::path{__FILE__}.parent_path() / "main.cpp");
@@ -1094,6 +1187,7 @@ int wmain(const int argc, wchar_t** argv) {
         TestAcceptedOverlayFullscreenMediaHostContract();
         TestAcceptedWidgetOwnedFocusMemoryHostContract();
         TestAcceptedHiddenBridgeControlPlaneContract();
+        TestSelectActivationRoutingContract();
         TestAcceptedMediaBackOwnershipHostContract();
         TestPolicyAndPlacement();
         const auto result = TestRealHostWindow(ParseEvidencePath(argc, argv));

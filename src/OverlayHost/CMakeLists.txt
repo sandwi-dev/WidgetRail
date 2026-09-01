@@ -277,7 +277,8 @@ if(WRAIL_BUILD_TESTS)
     add_test(NAME OverlayChromeTests COMMAND OverlayChromeTests)
 
     add_executable(GuideInputCompatibilityTests
-        GuideInputCompatibilityTests.cpp GuideInputCompatibility.cpp)
+        GuideInputCompatibilityTests.cpp GuideInputCompatibility.cpp
+        ControllerGuide.cpp)
     target_compile_features(GuideInputCompatibilityTests PRIVATE cxx_std_20)
     target_compile_options(GuideInputCompatibilityTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(GuideInputCompatibilityTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)

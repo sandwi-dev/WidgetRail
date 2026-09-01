@@ -61,6 +61,14 @@ public static partial class UI
     public static ButtonElement Button(string label, string action, string id) =>
         new(id, label, action);
 
+    /// <summary>Creates an A-activated host-owned anchored single-select control.</summary>
+    public static SelectElement Select(
+        string label,
+        IReadOnlyList<SelectOption> options,
+        string id,
+        string? accessibilityLabel = null) =>
+        new(id, label, options, accessibilityLabel);
+
     /// <summary>Creates a host-owned bounded text-entry trigger.</summary>
     public static TextEntryElement TextEntry(
         string value,

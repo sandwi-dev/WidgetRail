@@ -107,6 +107,50 @@ int main() {
               widgetrail::accessibility::ElementDomain::Widget, L"dashboard-status"},
           "polite status-name changes request one live-region event");
 
+    auto collapsedSelect = before;
+    collapsedSelect.nodes[0].role = widgetrail::accessibility::Role::ComboBox;
+    collapsedSelect.nodes[0].expanded = false;
+    auto expandedSelect = collapsedSelect;
+    expandedSelect.nodes[0].expanded = true;
+    plan = widgetrail::accessibility::PlanEvents(
+        &collapsedSelect, &expandedSelect);
+    Check(!plan.structureChanged &&
+              Has(plan, widgetrail::accessibility::PropertyKind::Expanded),
+          "Select expansion emits the exact ExpandCollapse state property change");
+    auto selectedOptionBefore = expandedSelect;
+    selectedOptionBefore.nodes[0].value = L"Compact";
+    widgetrail::accessibility::Node selectOption;
+    selectOption.id = L"play.option.compact";
+    selectOption.domain =
+        widgetrail::accessibility::ElementDomain::WidgetOption;
+    selectOption.role = widgetrail::accessibility::Role::ListItem;
+    selectOption.parent = 0;
+    selectOption.selected = true;
+    selectOption.offscreen = true;
+    selectedOptionBefore.nodes.push_back(selectOption);
+    selectedOptionBefore.nodes[0].children.push_back(3);
+    auto selectedOptionAfter = selectedOptionBefore;
+    selectedOptionAfter.nodes[0].value = L"Wide";
+    selectedOptionAfter.nodes[3].selected = false;
+    selectedOptionAfter.nodes[3].offscreen = false;
+    auto replacementOption = selectedOptionAfter.nodes[3];
+    replacementOption.id = L"play.option.wide";
+    replacementOption.selected = true;
+    replacementOption.offscreen = true;
+    selectedOptionAfter.nodes.push_back(replacementOption);
+    selectedOptionAfter.nodes[0].children.push_back(4);
+    plan = widgetrail::accessibility::PlanEvents(
+        &selectedOptionBefore, &selectedOptionAfter);
+    Check(plan.structureChanged &&
+              Has(plan, widgetrail::accessibility::PropertyKind::Value) &&
+              Has(plan, widgetrail::accessibility::PropertyKind::Offscreen) &&
+              plan.selectedElements.size() == 1 &&
+              plan.selectedElements.front() ==
+                  widgetrail::accessibility::ElementKey{
+                      widgetrail::accessibility::ElementDomain::WidgetOption,
+                      L"play.option.wide"},
+          "Select value, option scrolling, and selected-option events are exact");
+
     auto staticHelp = before;
     staticHelp.nodes[2].id = L"dashboard-help";
     staticHelp.nodes[2].role = widgetrail::accessibility::Role::Text;

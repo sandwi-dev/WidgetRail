@@ -25,9 +25,28 @@ namespace {
 using Microsoft::WRL::ComPtr;
 int checks{};
 
+ComPtr<IUIAutomationElement> FindAutomationId(
+    HWND window, const wchar_t* automationId);
+
 void Check(const bool condition, const std::string_view message) {
     ++checks;
     if (!condition) throw std::runtime_error(std::string(message));
+}
+
+void CheckRenderSucceeded(
+    const widgetrail::pinned::WidgetSurfacePaintTrace& trace,
+    const std::string_view message) {
+    ++checks;
+    if (trace.declarativeRenderSucceeded) return;
+    std::string failure{message};
+    if (trace.currentFirstRenderDiagnostic) {
+        failure += " [render-diagnostic=";
+        for (const wchar_t value : trace.currentFirstRenderDiagnostic->code)
+            failure.push_back(value >= 0 && value <= 0x7f
+                ? static_cast<char>(value) : '?');
+        failure += ']';
+    }
+    throw std::runtime_error(std::move(failure));
 }
 
 bool InvokeAutomationId(const HWND window, const wchar_t* automationId) {
@@ -55,6 +74,23 @@ bool InvokeAutomationId(const HWND window, const wchar_t* automationId) {
             UIA_InvokePatternId, IID_PPV_ARGS(invoke.ReleaseAndGetAddressOf()))) || !invoke)
         return false;
     if (FAILED(invoke->Invoke())) return false;
+    MSG message{};
+    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+    }
+    return true;
+}
+
+bool ExpandAutomationId(const HWND window, const wchar_t* automationId) {
+    const auto element = FindAutomationId(window, automationId);
+    if (!element) return false;
+    ComPtr<IUIAutomationExpandCollapsePattern> expand;
+    if (FAILED(element->GetCurrentPatternAs(
+            UIA_ExpandCollapsePatternId,
+            IID_PPV_ARGS(expand.ReleaseAndGetAddressOf()))) || !expand)
+        return false;
+    if (FAILED(expand->Expand())) return false;
     MSG message{};
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
         TranslateMessage(&message);
@@ -275,6 +311,28 @@ widgetrail::WidgetSnapshot ScrollSnapshot(
     return snapshot;
 }
 
+widgetrail::WidgetSnapshot FreeScrollSelectSnapshot(
+    const long long sequence = 1) {
+    auto snapshot = ScrollSnapshot(sequence);
+    auto& select = snapshot.root.children[1];
+    select.actionId.clear();
+    select.isSelect = true;
+    select.text = L"Density";
+    select.accessibilityLabel = select.text;
+    select.accessibilityValue = L"Compact";
+    widgetrail::WidgetSelectOption compact;
+    compact.id = L"compact";
+    compact.label = L"Compact";
+    compact.actionId = L"density.compact";
+    compact.isSelected = true;
+    widgetrail::WidgetSelectOption comfortable;
+    comfortable.id = L"comfortable";
+    comfortable.label = L"Comfortable";
+    comfortable.actionId = L"density.comfortable";
+    select.selectOptions = {std::move(compact), std::move(comfortable)};
+    return snapshot;
+}
+
 widgetrail::WidgetSnapshot CompactMediaSnapshot(const long long sequence = 1) {
     auto snapshot = Snapshot(sequence);
     widgetrail::EmbeddedMediaSurfaceDeclaration media;
@@ -318,6 +376,106 @@ widgetrail::WidgetSnapshot SliderSnapshot(
     after.inputScopeId = L"root";
     after.focusLeft = slider.id;
     snapshot.root.children = {std::move(slider), std::move(after)};
+    return snapshot;
+}
+
+widgetrail::WidgetSnapshot SelectSnapshot(
+    const long long sequence = 1,
+    const bool disableAll = false,
+    const bool changeComfortableAction = false) {
+    auto snapshot = Snapshot(sequence);
+    snapshot.initialFocusId = L"pin.fixture.select";
+    snapshot.root.children.clear();
+    widgetrail::WidgetNode select;
+    select.id = L"pin.fixture.select";
+    select.kind = L"button";
+    select.isSelect = true;
+    select.text = L"Density";
+    select.accessibilityLabel = L"Density";
+    select.accessibilityValue = L"Compact";
+    select.inputScopeId = L"root";
+    widgetrail::WidgetSelectOption compact;
+    compact.id = L"compact";
+    compact.label = L"Compact";
+    compact.actionId = L"density.compact";
+    compact.isSelected = true;
+    compact.isDisabled = disableAll;
+    widgetrail::WidgetSelectOption comfortable;
+    comfortable.id = L"comfortable";
+    comfortable.label = L"Comfortable";
+    comfortable.actionId = changeComfortableAction
+        ? L"density.comfortable.changed" : L"density.comfortable";
+    comfortable.isDisabled = disableAll;
+    widgetrail::WidgetSelectOption spacious;
+    spacious.id = L"spacious";
+    spacious.label = L"Spacious";
+    spacious.actionId = L"density.spacious";
+    spacious.isDisabled = disableAll;
+    select.selectOptions = {
+        std::move(compact), std::move(comfortable), std::move(spacious)};
+    snapshot.root.children = {std::move(select)};
+    return snapshot;
+}
+
+widgetrail::WidgetSnapshot SelectFocusTransitionSnapshot() {
+    auto snapshot = Snapshot();
+    snapshot.initialFocusId = L"pin.transition.outside";
+    snapshot.root.children.clear();
+
+    widgetrail::WidgetNode outside;
+    outside.id = L"pin.transition.outside";
+    outside.kind = L"button";
+    outside.text = L"Outside group";
+    outside.accessibilityLabel = outside.text;
+    outside.actionId = L"outside";
+    outside.inputScopeId = L"root";
+    outside.focusDown = L"pin.transition.group";
+
+    widgetrail::WidgetNode slider;
+    slider.id = L"pin.transition.slider";
+    slider.kind = L"slider";
+    slider.accessibilityLabel = L"Transition slider";
+    slider.valueChangedActionId = L"transition-slider.changed";
+    slider.hasProgress = true;
+    slider.hasSliderRange = true;
+    slider.minimum = 0.0;
+    slider.maximum = 100.0;
+    slider.value = 40.0;
+    slider.step = 5.0;
+    slider.sliderInteractionMode = L"activateToAdjust";
+    slider.inputScopeId = L"root";
+    slider.focusRight = L"pin.transition.select";
+    slider.focusUp = outside.id;
+
+    widgetrail::WidgetNode select;
+    select.id = L"pin.transition.select";
+    select.kind = L"button";
+    select.isSelect = true;
+    select.text = L"Density";
+    select.accessibilityLabel = select.text;
+    select.accessibilityValue = L"Compact";
+    select.inputScopeId = L"root";
+    select.focusLeft = slider.id;
+    select.focusUp = outside.id;
+    widgetrail::WidgetSelectOption compact;
+    compact.id = L"compact";
+    compact.label = L"Compact";
+    compact.actionId = L"density.compact";
+    compact.isSelected = true;
+    widgetrail::WidgetSelectOption comfortable;
+    comfortable.id = L"comfortable";
+    comfortable.label = L"Comfortable";
+    comfortable.actionId = L"density.comfortable";
+    select.selectOptions = {std::move(compact), std::move(comfortable)};
+
+    widgetrail::WidgetNode group;
+    group.id = L"pin.transition.group";
+    group.kind = L"row";
+    group.inputScopeId = L"root";
+    group.initialChildFocusId = slider.id;
+    group.children = {std::move(slider), std::move(select)};
+
+    snapshot.root.children = {std::move(outside), std::move(group)};
     return snapshot;
 }
 
@@ -873,6 +1031,288 @@ int main() {
             slider.Dispose();
             std::error_code sliderCleanup;
             std::filesystem::remove_all(sliderRoot, sliderCleanup);
+        }
+
+        {
+            const HWND focusSink = CreateWindowExW(
+                0, L"STATIC", L"Pinned Select UIA focus sink", 0,
+                0, 0, 0, 0, HWND_MESSAGE, nullptr,
+                GetModuleHandleW(nullptr), nullptr);
+            Check(focusSink != nullptr,
+                  "pinned Select UIA focus fixture owns a real focus sink");
+            widgetrail::pinned::WidgetSurfaceCoordinator selectFocus;
+            const auto selectFocusRoot = placementRoot / L"select-uia-focus";
+            Check(selectFocus.Initialize(
+                      GetModuleHandleW(nullptr), focusSink, WM_APP + 0x41D,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      selectFocusRoot / L"placement.ini"),
+                  "pinned Select UIA focus fixture initializes through the production owner");
+            selectFocus.OnOverlayShown();
+            auto admission = Admission();
+            admission.snapshot = SelectSnapshot();
+            Check(selectFocus.Pin(admission, error) &&
+                      selectFocus.CommitSetup(error) &&
+                      selectFocus.SetInteractionMode(
+                          widgetrail::pinned::InteractionMode::Focusable),
+                  "collapsed pinned Select enters Focusable UIA mode");
+            UpdateWindow(selectFocus.window());
+            PumpPendingMessages();
+            (void)SetFocus(focusSink);
+            Check(GetFocus() == focusSink &&
+                      !selectFocus.controllerFocused() &&
+                      !selectFocus.selectPopupOpen(),
+                  "pinned Select UIA focus begins collapsed without controller or window focus");
+            const auto opener = FindAutomationId(
+                selectFocus.window(), L"widget:pin.fixture.select");
+            Check(opener && SUCCEEDED(opener->SetFocus()),
+                  "UIA SetFocus admits the visible collapsed Select opener");
+            PumpPendingMessages();
+            const auto focusedOpener = FindAutomationId(
+                selectFocus.window(), L"widget:pin.fixture.select");
+            BOOL providerFocused{};
+            Check(selectFocus.controllerFocused() &&
+                      GetFocus() == selectFocus.window() &&
+                      selectFocus.focusedElementId() == L"pin.fixture.select" &&
+                      !selectFocus.selectPopupOpen() && focusedOpener &&
+                      SUCCEEDED(focusedOpener->get_CurrentHasKeyboardFocus(
+                          &providerFocused)) &&
+                      providerFocused == TRUE,
+                  "collapsed Select UIA focus publishes matching controller window and provider focus");
+            Check(selectFocus.Unpin(
+                      widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "pinned Select UIA focus fixture retires exact authority");
+            selectFocus.Dispose();
+            DestroyWindow(focusSink);
+            std::error_code selectFocusCleanup;
+            std::filesystem::remove_all(selectFocusRoot, selectFocusCleanup);
+        }
+
+        {
+            widgetrail::pinned::WidgetSurfaceCoordinator select;
+            const auto selectRoot = placementRoot / L"select";
+            Check(select.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x41A,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      selectRoot / L"placement.ini"),
+                  "pinned Select fixture initializes through the production owner");
+            select.OnOverlayShown();
+            auto admission = Admission();
+            admission.snapshot = SelectSnapshot();
+            Check(select.Pin(admission, error) && select.CommitSetup(error) &&
+                      select.SetInteractionMode(
+                          widgetrail::pinned::InteractionMode::Focusable),
+                  "provider-neutral Select enters pinned pointer/UIA mode");
+            UpdateWindow(select.window());
+            PumpPendingMessages();
+            Check(!select.controllerFocused(),
+                  "pinned Select begins without controller focus ownership");
+
+            const auto openerPoint =
+                select.PointerPointForTesting(L"pin.fixture.select");
+            Check(openerPoint.has_value(),
+                  "pinned Select exposes one production pointer hit region");
+            SendMessageW(select.window(), WM_LBUTTONDOWN, MK_LBUTTON,
+                         MAKELPARAM(openerPoint->x, openerPoint->y));
+            SendMessageW(select.window(), WM_LBUTTONUP, 0,
+                         MAKELPARAM(openerPoint->x, openerPoint->y));
+            PumpPendingMessages();
+            Check(select.selectPopupOpen(),
+                  "pointer activation opens a Focusable pinned Select without controller focus");
+            Check(select.MoveSelectPopupWheel(-WHEEL_DELTA),
+                  "pinned wheel movement advances the open Select highlight");
+            Check(select.HandleFocusedSelectButton(
+                      L"a", widgetrail::ControllerInputOrigin::AccessibilityAutomation),
+                  "shared Select activation commits the wheel-highlighted option");
+            auto pointerRequests = select.TakeInputRequests();
+            Check(pointerRequests.size() == 1 &&
+                      pointerRequests[0].selectActionRequest &&
+                      pointerRequests[0].selectActionRequest->actionId ==
+                          L"density.comfortable" &&
+                      pointerRequests[0].origin ==
+                          widgetrail::ControllerInputOrigin::AccessibilityAutomation,
+                  "pinned pointer/wheel path queues one exact selected option authority");
+            Check(select.IsCurrentInputRequest(pointerRequests[0]) &&
+                      select.UpdateSnapshot(
+                          admission.widgetId, admission.runtimeGeneration,
+                          SelectSnapshot(2, false, true)) &&
+                      !select.IsCurrentInputRequest(pointerRequests[0]),
+                  "changed Select action binding rejects retained pinned input authority");
+
+            Check(ExpandAutomationId(
+                      select.window(), L"widget:pin.fixture.select") &&
+                      select.selectPopupOpen(),
+                  "UI Automation expands the same Focusable pinned Select");
+            const std::wstring optionAutomationId =
+                L"widget-option:select-option:" +
+                std::to_wstring(std::wstring_view(L"pin.fixture.select").size()) +
+                L":pin.fixture.select" +
+                std::to_wstring(std::wstring_view(L"comfortable").size()) +
+                L":comfortable";
+            const auto option = FindAutomationId(
+                select.window(), optionAutomationId.c_str());
+            Check(option && SUCCEEDED(option->SetFocus()),
+                  "enabled pinned Select option accepts UIA focus");
+            PumpPendingMessages();
+            Check(select.controllerFocused(),
+                  "pinned option UIA focus acquires controller ownership before highlight");
+            Check(GetFocus() == select.window(),
+                  "pinned option UIA focus acquires exact window focus before highlight");
+            Check(select.selectPopupOpen(),
+                  "pinned option UIA focus retains its popup while highlighting");
+            Check(select.HandleFocusedSelectButton(L"b") &&
+                      !select.selectPopupOpen(),
+                  "B closes the pinned Select popup without leaving the surface");
+
+            Check(select.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      SelectSnapshot(3, true)),
+                  "pinned Select admits an all-unavailable successor");
+            UpdateWindow(select.window());
+            PumpPendingMessages();
+            const auto unavailablePoint =
+                select.PointerPointForTesting(L"pin.fixture.select");
+            Check(unavailablePoint.has_value(),
+                  "all-unavailable pinned Select retains its visible pointer opener");
+            SendMessageW(select.window(), WM_LBUTTONDOWN, MK_LBUTTON,
+                         MAKELPARAM(unavailablePoint->x, unavailablePoint->y));
+            SendMessageW(select.window(), WM_LBUTTONUP, 0,
+                         MAKELPARAM(unavailablePoint->x, unavailablePoint->y));
+            PumpPendingMessages();
+            Check(!select.selectPopupOpen() && select.TakeInputRequests().empty(),
+                  "pinned pointer consumes all-unavailable Select activation without dispatch");
+            SendMessageW(select.window(), WM_KEYDOWN, VK_RETURN, 0);
+            PumpPendingMessages();
+            Check(!select.selectPopupOpen() && select.TakeInputRequests().empty(),
+                  "pinned keyboard fallback consumes all-unavailable Select Enter without dispatch");
+            Check(select.HandleFocusedSelectButton(
+                      L"a", widgetrail::ControllerInputOrigin::PhysicalController) &&
+                      !select.selectPopupOpen() && select.TakeInputRequests().empty(),
+                  "pinned controller Select owner consumes A before slider and generic dispatch");
+            Check(select.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "pinned Select teardown retires popup and input authority");
+            select.Dispose();
+            std::error_code selectCleanup;
+            std::filesystem::remove_all(selectRoot, selectCleanup);
+        }
+
+        {
+            widgetrail::pinned::WidgetSurfaceCoordinator freeScrollSelect;
+            const auto fixtureRoot = placementRoot / L"select-free-scroll-transition";
+            Check(freeScrollSelect.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x41C,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      fixtureRoot / L"placement.ini"),
+                  "pinned Select free-scroll fixture initializes through the production owner");
+            freeScrollSelect.OnOverlayShown();
+            auto admission = Admission();
+            admission.snapshot = FreeScrollSelectSnapshot();
+            admission.pinnedLayouts = {{
+                L"scroll-select-layout", L"Scrollable Select", 420.0F, 320.0F,
+                FreeScrollSelectSnapshot(),
+            }};
+            Check(freeScrollSelect.Pin(admission, error) &&
+                      freeScrollSelect.CycleLayout(1) &&
+                      freeScrollSelect.CommitSetup(error) &&
+                      freeScrollSelect.SetInteractionMode(
+                          widgetrail::pinned::InteractionMode::Focusable),
+                  "pinned Select free-scroll fixture commits known-good scroll geometry");
+            UpdateWindow(freeScrollSelect.window());
+            Check(freeScrollSelect.EnterControllerFocus(),
+                  "pinned Select free-scroll fixture enters its in-scroll item");
+            UpdateWindow(freeScrollSelect.window());
+            Check(freeScrollSelect.ScrollFocusedProjection(0, -32'768, 1'000),
+                  "known-good pinned geometry establishes renderer-owned free scroll");
+            UpdateWindow(freeScrollSelect.window());
+            Check(freeScrollSelect.FreeScrollBindingForTesting(),
+                  "pinned Select fixture retains free scroll before UIA expansion");
+            Check(ExpandAutomationId(
+                      freeScrollSelect.window(), L"widget:pin.outside") &&
+                      freeScrollSelect.focusedElementId() == L"pin.outside" &&
+                      freeScrollSelect.selectPopupOpen() &&
+                      !freeScrollSelect.FreeScrollBindingForTesting(),
+                  "UIA expansion focuses the outside Select, opens it, and retires free scroll");
+            Check(freeScrollSelect.HandleFocusedSelectButton(L"b") &&
+                      freeScrollSelect.Unpin(
+                          widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "pinned Select free-scroll fixture closes and retires exact authority");
+            freeScrollSelect.Dispose();
+            std::error_code fixtureCleanup;
+            std::filesystem::remove_all(fixtureRoot, fixtureCleanup);
+        }
+
+        {
+            widgetrail::pinned::WidgetSurfaceCoordinator transition;
+            const auto transitionRoot = placementRoot / L"select-focus-transition";
+            Check(transition.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x41B,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      transitionRoot / L"placement.ini"),
+                  "pinned Select focus-transition fixture initializes through the production owner");
+            transition.OnOverlayShown();
+            auto admission = Admission();
+            admission.snapshot = SelectFocusTransitionSnapshot();
+            Check(transition.Pin(admission, error) && transition.CommitSetup(error) &&
+                      transition.SetInteractionMode(
+                          widgetrail::pinned::InteractionMode::Focusable),
+                  "pinned Select focus-transition fixture establishes its lean interactive surface");
+            UpdateWindow(transition.window());
+            Check(transition.EnterControllerFocus(),
+                  "pinned Select focus-transition fixture enters controller focus");
+            UpdateWindow(transition.window());
+            Check(transition.focusedElementId() == L"pin.transition.outside" &&
+                      transition.MoveControllerFocus(
+                          widgetrail::input::NavigationDirection::Down) &&
+                      transition.focusedElementId() == L"pin.transition.slider",
+                  "pinned focus enters the lean group through its authored initial slider");
+            UpdateWindow(transition.window());
+            const auto transitionPaint = transition.PaintTraceForTesting();
+            const auto sliderPoint = transition.PointerPointForTesting(
+                L"pin.transition.slider");
+            const auto selectPoint = transition.PointerPointForTesting(
+                L"pin.transition.select");
+            const auto selectAutomation = FindAutomationId(
+                transition.window(), L"widget:pin.transition.select");
+            CheckRenderSucceeded(
+                transitionPaint,
+                "lean Select-in-Row declarative render succeeds");
+            Check(transitionPaint.navigationNodeCount == 3,
+                  "lean Select-in-Row exposes all three navigation nodes");
+            Check(sliderPoint.has_value(),
+                  "lean Slider owns a visible pointer production region");
+            Check(selectPoint.has_value(),
+                  "lean Select owns a visible pointer production region");
+            Check(static_cast<bool>(selectAutomation),
+                  "lean Select owns a visible UIA production region");
+            Check(transition.HandleFocusedSliderModeButton(L"a", 1'010) &&
+                      transition.SliderAdjustmentActiveForTesting(
+                          L"pin.transition.slider", 1'011),
+                  "lean pinned fixture establishes prior activation-first slider state");
+            UpdateWindow(transition.window());
+            PumpPendingMessages();
+            Check(ExpandAutomationId(
+                      transition.window(), L"widget:pin.transition.select"),
+                  "UIA invokes Expand on the lean nonfocused Select");
+            Check(transition.focusedElementId() == L"pin.transition.select",
+                  "UIA Select expansion transfers exact pinned focus");
+            Check(transition.selectPopupOpen(),
+                  "UIA Select expansion opens the pinned popup");
+            Check(!transition.SliderAdjustmentActiveForTesting(
+                      L"pin.transition.slider", 1'012),
+                  "UIA Select focus transition retires prior slider interaction state");
+            Check(transition.HandleFocusedSelectButton(L"b") &&
+                      transition.MoveControllerFocus(
+                          widgetrail::input::NavigationDirection::Up) &&
+                      transition.focusedElementId() == L"pin.transition.outside" &&
+                      transition.MoveControllerFocus(
+                          widgetrail::input::NavigationDirection::Down) &&
+                      transition.focusedElementId() == L"pin.transition.select",
+                  "pinned group memory restores the Select focused through UIA expansion");
+            Check(transition.Unpin(
+                      widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "pinned Select focus-transition fixture retires exact authority");
+            transition.Dispose();
+            std::error_code transitionCleanup;
+            std::filesystem::remove_all(transitionRoot, transitionCleanup);
         }
 
         {

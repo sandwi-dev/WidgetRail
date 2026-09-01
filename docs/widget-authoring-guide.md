@@ -801,6 +801,7 @@ or `ResponsiveGrid` when only placement, not hierarchy, changes.
 | `UI.Text(text, id, accessibilityLabel?)` | text | Non-interactive. |
 | `UI.CodeText(text, id, accessibilityLabel?)` | semantic monospace text | Nonfocusable, whitespace-preserving, and bounded to 4,096 characters. |
 | `UI.Button(label, action, id)` | focusable button | `A` invokes its action. |
+| `UI.Select(label, options, id, accessibilityLabel?)` | anchored single-select | Protocol 41; one focus stop, 1–128 stable options, host-owned A/Up/Down/B popup interaction, and exact option actions without page reflow. |
 | `focusable.PersistFocusAs(id)` | explicit cross-presentation focus identity | Protocol 13; use only on mutually exclusive controls representing one logical destination. Omission preserves legacy behavior. |
 | `UI.Switch(label, isOn, action, id)` | composed button | Emits On/Off text and selected semantics. |
 | `UI.Stepper(...)` | composed row | Stable `.label`, `.decrement`, `.value`, `.increment` children. |

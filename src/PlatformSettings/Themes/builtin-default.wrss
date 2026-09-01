@@ -97,6 +97,28 @@ button:focused {
   outline-offset: -2px;
   scale: 1;
 }
+select {
+  min-height: 44px;
+  padding: 10px 14px;
+  background: var(--surface-raised);
+  color: var(--text);
+  border-color: var(--border);
+  border-width: 1px;
+  corner-radius: 10px;
+  font-family: var(--font-text);
+  font-size: 15px;
+  font-weight: 400;
+  scale: 1;
+  transition-duration: 90ms;
+  transition-easing: ease-out;
+}
+select:focused {
+  background: var(--surface-active);
+  outline-color: var(--focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+  scale: 1;
+}
 progress {
   min-height: 4px;
   background: var(--surface-active);

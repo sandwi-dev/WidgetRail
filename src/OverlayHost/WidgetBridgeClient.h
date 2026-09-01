@@ -274,6 +274,17 @@ struct WidgetContextAction final {
     bool isBusy{};
 };
 
+struct WidgetSelectOption final {
+    std::wstring id;
+    std::wstring label;
+    std::wstring actionId;
+    std::wstring glyph;
+    std::wstring accessibilityLabel;
+    bool isSelected{};
+    bool isDisabled{};
+    bool isBusy{};
+};
+
 struct WidgetStyleValue final {
     std::wstring kind;
     std::wstring text;
@@ -355,6 +366,7 @@ struct WidgetNode final {
     std::vector<std::wstring> styleClasses;
     std::vector<WidgetShortcut> shortcuts;
     std::vector<WidgetContextAction> contextActions;
+    std::vector<WidgetSelectOption> selectOptions;
     std::wstring focusUp;
     std::wstring focusDown;
     std::wstring focusLeft;
@@ -372,6 +384,7 @@ struct WidgetNode final {
     bool isSelected{};
     bool isBusy{};
     bool isTextEntry{};
+    bool isSelect{};
     std::vector<WidgetNode> children;
 };
 
@@ -559,7 +572,18 @@ struct WidgetPresentationImpact final {
     /// A non-text property also requested layout work, so text equivalence
     /// alone can never justify reusing committed geometry.
     bool hasNonTextMeasureLayout{};
+    /// One Select option collection changed. When its host popup is or was
+    /// visible, main.cpp promotes the update to a full content raster so the
+    /// old host-owned popup pixels cannot survive outside opener damage.
+    bool selectOptionsChanged{};
 };
+
+[[nodiscard]] constexpr bool RequiresCompleteSelectPopupRaster(
+    const WidgetPresentationImpact& impact,
+    const bool popupWasOpen,
+    const bool popupIsOpen) noexcept {
+    return impact.selectOptionsChanged && (popupWasOpen || popupIsOpen);
+}
 
 struct WidgetPresentationMaterialization final {
     WidgetSnapshot snapshot;
@@ -736,7 +760,8 @@ public:
         std::wstring_view pinnedLayoutId = {},
         std::optional<bool> pinnedLayoutSelected = std::nullopt,
         std::wstring_view expectedActionId = {},
-        std::optional<bool> overlayFullscreenActive = std::nullopt);
+        std::optional<bool> overlayFullscreenActive = std::nullopt,
+        std::wstring_view expectedSelectOptionActionId = {});
     [[nodiscard]] std::optional<bool> SendAction(
         std::wstring_view widgetId,
         std::wstring_view actionId,
@@ -818,6 +843,8 @@ struct BridgeFrameReadResult final {
 };
 
 [[nodiscard]] BridgeFrameReadResult ReadBridgeFrame(HANDLE pipe);
+[[nodiscard]] std::string SerializeControllerInputRequest(
+    std::wstring_view expectedSelectOptionActionId);
 [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
     std::string_view payloadUtf8,
     std::wstring& error);

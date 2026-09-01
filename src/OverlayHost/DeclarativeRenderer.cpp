@@ -2273,7 +2273,7 @@ struct DeclarativeRenderer::RenderPass final {
                 !node.artworkHandle.empty() || !node.glyph.empty();
             const bool hasText = !node.text.empty();
             const bool reserveStateCue = hasText &&
-                (node.isBusy || node.isSelected);
+                (node.isSelect || node.isBusy || node.isSelected);
             const auto lineHeight = style.fontSizePx() * style.lineHeight();
             const auto maximumLeadingSize =
                 node.imageSource.empty() && node.artworkHandle.empty() ? 32.0F : 44.0F;
@@ -3118,7 +3118,23 @@ struct DeclarativeRenderer::RenderPass final {
         const auto cue = assignedCue && assignedCue->width > 0.0F && assignedCue->height > 0.0F
             ? *assignedCue
             : fallbackCue;
-        if (node.isBusy) {
+        if (node.isSelect) {
+            auto brush = Brush(target, WithOpacity(
+                style.foreground().value_or(kDefaultAccent), opacity));
+            if (!brush) return;
+            const float centerX = cue.x + cue.width * 0.5F;
+            const float centerY = cue.y + cue.height * 0.5F;
+            const float half = std::clamp(cue.width * 0.22F, 3.0F, 5.0F);
+            const float drop = half * 0.7F;
+            target->DrawLine(
+                D2D1::Point2F(centerX - half, centerY - drop * 0.5F),
+                D2D1::Point2F(centerX, centerY + drop * 0.5F),
+                brush.Get(), 1.8F);
+            target->DrawLine(
+                D2D1::Point2F(centerX, centerY + drop * 0.5F),
+                D2D1::Point2F(centerX + half, centerY - drop * 0.5F),
+                brush.Get(), 1.8F);
+        } else if (node.isBusy) {
             DrawSemanticIcon(node, style, cue, opacity, L"refresh");
         } else if (node.isSelected) {
             DrawSemanticIcon(node, style, cue, opacity, L"check");
@@ -3291,7 +3307,7 @@ struct DeclarativeRenderer::RenderPass final {
                 !node.artworkHandle.empty() || !node.glyph.empty();
             const bool hasText = !node.text.empty();
             const bool reserveStateCue = hasText &&
-                (node.isBusy || node.isSelected);
+                (node.isSelect || node.isBusy || node.isSelected);
             const auto maximumLeadingSize =
                 node.imageSource.empty() && node.artworkHandle.empty() ? 32.0F : 44.0F;
             const auto iconSize = hasLeading

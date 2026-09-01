@@ -70,6 +70,7 @@ public enum PresentationProperty
     CollectionItemKey,
     StyleClasses,
     Shortcuts,
+    SelectOptions,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -156,6 +157,11 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.AccessibilityLabel or
         PresentationProperty.AccessibilityValue =>
+            PresentationPropertyImpact.Accessibility,
+        PresentationProperty.SelectOptions =>
+            PresentationPropertyImpact.Authority |
+            PresentationPropertyImpact.Interaction |
+            PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.Value =>
             PresentationPropertyImpact.Paint |

@@ -455,6 +455,67 @@ void VerifyAtomicPresentationUpdateMaterialization() {
             "Unknown presentation payload fields did not fail closed");
 }
 
+void VerifySelectControllerInputSerializationAndPopupRaster() {
+    const auto withoutSelect =
+        widgetrail::testing::SerializeControllerInputRequest({});
+    const auto withSelect = widgetrail::testing::SerializeControllerInputRequest(
+        L"density.comfortable");
+    Require(withoutSelect.find("expectedSelectOptionActionId") ==
+                std::string::npos &&
+            withSelect.find(
+                R"json("expectedSelectOptionActionId":"density.comfortable")json") !=
+                std::string::npos &&
+            withSelect.find(R"json("focusedElementId":"select.control")json") !=
+                std::string::npos,
+            "Native controller-input serialization did not preserve exact Select option authority");
+
+    widgetrail::WidgetPresentationImpact unchanged;
+    Require(!widgetrail::RequiresCompleteSelectPopupRaster(
+                unchanged, true, true),
+            "An unchanged Select option collection forced a complete raster");
+    widgetrail::WidgetPresentationImpact changed;
+    changed.selectOptionsChanged = true;
+    Require(!widgetrail::RequiresCompleteSelectPopupRaster(
+                changed, false, false) &&
+            widgetrail::RequiresCompleteSelectPopupRaster(
+                changed, true, false) &&
+            widgetrail::RequiresCompleteSelectPopupRaster(
+                changed, false, true),
+            "Open or previously-open Select option changes did not force one complete raster");
+
+    std::wstring error;
+    const auto checkpoint = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot":{"protocolVersion":41,"sequence":1,
+        "widgetInstanceId":"select.update","activeInputScopeId":"density",
+        "initialFocusId":"density","root":{"id":"density","kind":"select",
+        "text":"Density","accessibilityValue":"Compact","selectOptions":[
+            {"id":"compact","label":"Compact","actionId":"density.compact",
+             "isSelected":true}],"children":[]}},"renderStyles":{}})json", error);
+    Require(checkpoint && error.empty(),
+            "Could not parse the Select partial-update checkpoint");
+    const auto update = widgetrail::testing::ParseWidgetPresentationUpdateResponse(R"json({
+        "widgetId":"select","update":{"protocolVersion":18,
+        "widgetInstanceId":"select.update",
+        "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "baseSequence":1,"sequence":2,"operations":[
+            {"kind":"setProperties","targetId":"density","properties":[
+                {"property":"selectOptions","value":[
+                    {"id":"spacious","label":"Spacious",
+                     "actionId":"density.spacious","isSelected":true}]},
+                {"property":"accessibilityValue","value":"Spacious"}]}]},
+        "renderStyles":{}})json", error);
+    Require(update && error.empty(),
+            "Could not parse the Select option partial update");
+    const auto materialized = widgetrail::MaterializeWidgetPresentationUpdate(
+        *checkpoint, *update, L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error);
+    Require(materialized && error.empty() &&
+                materialized->impact.selectOptionsChanged &&
+                materialized->snapshot.root.selectOptions.size() == 1 &&
+                materialized->snapshot.root.selectOptions[0].actionId ==
+                    L"density.spacious",
+            "Select option partial update did not retain full-raster impact authority");
+}
+
 void VerifyEmbeddedMediaSnapshotContract() {
     std::wstring error;
     const auto valid = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
@@ -926,6 +987,7 @@ int main() {
 
     VerifyFrameSafeCancellationRecovery();
     VerifyAtomicPresentationUpdateMaterialization();
+    VerifySelectControllerInputSerializationAndPopupRaster();
     VerifyEmbeddedMediaSnapshotContract();
     VerifyEmbeddedMediaBundleBoundary();
     VerifyVirtualCollectionProtocol();
@@ -1221,6 +1283,95 @@ int main() {
             }
         }
     })json", error) && !error.empty());
+
+    error.clear();
+    const auto selectSnapshot = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":41,"sequence":13,
+            "widgetInstanceId":"select.valid","activeInputScopeId":"density",
+            "initialFocusId":"density",
+            "root":{"id":"density","kind":"select","text":"Density: Compact",
+                "accessibilityValue":"Compact","selectOptions":[
+                    {"id":"compact","label":"Compact","actionId":"density.compact",
+                     "isSelected":true,"glyph":"check"},
+                    {"id":"wide","label":"Wide","actionId":"density.wide",
+                     "accessibilityLabel":"Wide layout"}
+                ],"children":[]}
+        }
+    })json", error);
+    CHECK(selectSnapshot && error.empty() && selectSnapshot->root.isSelect &&
+          selectSnapshot->root.accessibilityLabel.empty() &&
+          selectSnapshot->root.selectOptions.size() == 2);
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot":{"protocolVersion":40,"sequence":1,
+        "widgetInstanceId":"select.old","activeInputScopeId":"density",
+        "root":{"id":"density","kind":"select","text":"Density: Compact",
+        "accessibilityValue":"Compact","selectOptions":[
+            {"id":"compact","label":"Compact","actionId":"density.compact",
+             "isSelected":true}],"children":[]}}
+    })json", error));
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot":{"protocolVersion":41,"sequence":1,
+        "widgetInstanceId":"select.whitespace","activeInputScopeId":"density",
+        "root":{"id":"density","kind":"select","text":"   ",
+        "accessibilityLabel":"Density","accessibilityValue":"Compact","selectOptions":[
+            {"id":"compact","label":"Compact","actionId":"density.compact",
+             "isSelected":true}],"children":[]}}
+    })json", error));
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot":{"protocolVersion":41,"sequence":1,
+        "widgetInstanceId":"select.whitespace-option","activeInputScopeId":"density",
+        "root":{"id":"density","kind":"select","text":"Density: Compact",
+        "accessibilityValue":"  ","selectOptions":[
+            {"id":"compact","label":"  ","actionId":"density.compact",
+             "isSelected":true,"accessibilityLabel":"  "}],"children":[]}}
+    })json", error));
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot":{"protocolVersion":41,"sequence":1,
+        "widgetInstanceId":"select.unnamed","activeInputScopeId":"density",
+        "root":{"id":"density","kind":"select","accessibilityLabel":"Density",
+        "accessibilityValue":"Compact","selectOptions":[
+            {"id":"compact","label":"Compact","actionId":"density.compact",
+             "isSelected":true}],"children":[]}}
+    })json", error));
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot":{"protocolVersion":41,"sequence":1,
+        "widgetInstanceId":"select.bad-option","activeInputScopeId":"density",
+        "root":{"id":"density","kind":"select","text":"Density: Compact",
+        "accessibilityValue":"Compact","selectOptions":[
+            {"id":"compact","label":"Compact","actionId":"density.compact",
+             "isSelected":true,"glyph":"not-a-glyph",
+             "accessibilityLabel":"Bad\nlabel"}],"children":[]}}
+    })json", error));
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot":{"protocolVersion":41,"sequence":1,
+        "widgetInstanceId":"select.root-selected","activeInputScopeId":"density",
+        "root":{"id":"density","kind":"select","text":"Density: Compact",
+        "accessibilityValue":"Compact","isSelected":false,"selectOptions":[
+            {"id":"compact","label":"Compact","actionId":"density.compact",
+             "isSelected":true}],"children":[]}}
+    })json", error));
+
+    error.clear();
+    const auto ordinaryEmptyOptions =
+        widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot":{"protocolVersion":41,"sequence":1,
+        "widgetInstanceId":"ordinary.empty-options","activeInputScopeId":"root",
+        "root":{"id":"root","kind":"stack","selectOptions":[],"children":[]}}
+    })json", error);
+    CHECK(ordinaryEmptyOptions && error.empty());
 
     error.clear();
     CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
