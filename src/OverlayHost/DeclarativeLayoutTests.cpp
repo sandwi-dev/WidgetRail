@@ -392,6 +392,82 @@ void ResponsiveGridUsesAvailableDipWidth() {
          "fourth child begins the next stable row");
 }
 
+void PlayniteHomeCentersAndBrowseTilesFillResponsiveTracks() {
+    auto foreground = Element("playnite-home-foreground");
+    foreground.width = 1180.0F;
+    foreground.maxWidth = 1180.0F;
+    foreground.height = 680.0F;
+
+    auto focusSurface = Element("playnite-home-focus-surface");
+    focusSurface.width = 1600.0F;
+    focusSurface.height = 760.0F;
+    focusSurface.crossAxisAlignment = CrossAxisAlignment::Center;
+    focusSurface.children = {foreground};
+    const auto home = ComputeLayout(
+        focusSurface, {0.0F, 0.0F, 1600.0F, 760.0F});
+    Check(home.valid(), "Playnite Home focus surface resolves");
+    Near(home.Find("playnite-home-foreground")->borderBox.x, 210.0F,
+         "Playnite Home centers its bounded 1180-DIP foreground");
+
+    const auto verifyGrid = [](const float width, const std::size_t columns) {
+        auto grid = Element("playnite-browse-grid");
+        grid.layoutMode = LayoutMode::ResponsiveGrid;
+        grid.gridMinimumColumnWidth = 200.0F;
+        grid.gridMaximumColumns = 6;
+        grid.gap = 16.0F;
+        grid.crossGap = 18.0F;
+        grid.padding = BoxSpacing::One(4.0F);
+        for (std::size_t index = 0; index < columns + 1; ++index) {
+            auto tile = Element("playnite-browse-tile-" + std::to_string(index));
+            tile.aspectRatio = 2.0F / 3.0F;
+            tile.minWidth = 0.0F;
+            tile.flexGrow = 0.0F;
+            tile.flexShrink = 1.0F;
+            grid.children.push_back(std::move(tile));
+        }
+        const auto result = ComputeLayout(grid, {0.0F, 0.0F, width, 1400.0F});
+        Check(result.valid(), "Playnite Browse responsive grid resolves");
+        const auto trackWidth =
+            (width - 8.0F - static_cast<float>(columns - 1) * 16.0F) /
+            static_cast<float>(columns);
+        const auto expectedHeight = std::round(trackWidth * 1.5F);
+        const auto* first = result.Find("playnite-browse-tile-0");
+        Near(first->borderBox.x, 4.0F,
+             "Playnite Browse keeps an even leading grid gutter");
+        Near(first->borderBox.height, expectedHeight,
+             "Playnite Browse tile retains exact 2:3 geometry");
+        for (std::size_t index = 1; index < columns; ++index) {
+            const auto* previous = result.Find(
+                "playnite-browse-tile-" + std::to_string(index - 1));
+            const auto* current = result.Find(
+                "playnite-browse-tile-" + std::to_string(index));
+            Near(current->borderBox.x -
+                     (previous->borderBox.x + previous->borderBox.width),
+                 16.0F, "Playnite Browse retains an exact 16-DIP tile gap");
+            Near(current->borderBox.y, first->borderBox.y,
+                 "Playnite Browse threshold keeps the expected first-row columns");
+            Near(current->borderBox.height, expectedHeight,
+                 "every Playnite Browse tile retains 2:3 geometry");
+        }
+        const auto* last = result.Find(
+            "playnite-browse-tile-" + std::to_string(columns - 1));
+        Near(last->borderBox.x + last->borderBox.width, width - 4.0F,
+             "Playnite Browse fills tracks with an even trailing grid gutter");
+        const auto* wrapped = result.Find(
+            "playnite-browse-tile-" + std::to_string(columns));
+        Check(wrapped->borderBox.y > first->borderBox.y + first->borderBox.height,
+              "the next Playnite Browse tile wraps after the exact column threshold");
+    };
+
+    // Widths include the package-authored four-DIP grid padding on both sides.
+    verifyGrid(408.0F, 1);
+    verifyGrid(424.0F, 2);
+    verifyGrid(640.0F, 3);
+    verifyGrid(856.0F, 4);
+    verifyGrid(1072.0F, 5);
+    verifyGrid(1120.0F, 5);
+}
+
 void ResponsiveGridMeasuresMixedIntrinsicRows() {
     auto grid = Element("intrinsic-grid");
     grid.layoutMode = LayoutMode::ResponsiveGrid;
@@ -920,6 +996,7 @@ int main() {
     ResponsiveViewports();
     ResponsiveRowsWrapAtStableItemBoundaries();
     ResponsiveGridUsesAvailableDipWidth();
+    PlayniteHomeCentersAndBrowseTilesFillResponsiveTracks();
     ResponsiveGridMeasuresMixedIntrinsicRows();
     ResponsiveGridHandlesEmptyLargeAndScaledSurfaces();
     ResponsiveGridInsideHorizontalScrollUsesViewportWidth();

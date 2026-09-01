@@ -256,7 +256,7 @@ public sealed class PlayniteBridgeTests
         var value = manifest.RootElement;
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, value.GetProperty("optionalPermissions").GetArrayLength());
-        Assert.AreEqual("0.2.11", value.GetProperty("version").GetString());
+        Assert.AreEqual("0.2.36", value.GetProperty("version").GetString());
         var manifestText = File.ReadAllText(manifestPath);
         Assert.IsFalse(manifestText.Contains("Bearer", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(manifestText.Contains("token", StringComparison.OrdinalIgnoreCase));
@@ -280,9 +280,25 @@ public sealed class PlayniteBridgeTests
                 Path.GetRelativePath(root, sourcePath));
 
         var packagePath = Path.Combine(root, "artifacts", "community-addons",
-            "playnite-library", "widgetrail.samples.playnite-library-0.2.11.wrwidget");
+            "playnite-library", $"{value.GetProperty("id").GetString()}-" +
+                                $"{value.GetProperty("version").GetString()}.wrwidget");
         Assert.IsTrue(File.Exists(packagePath), "The validated package artifact is missing.");
         using var archive = ZipFile.OpenRead(packagePath);
+        var stylePath = Path.Combine(root, "samples", "PlayniteLibraryWidget",
+            "styles", "default.wrss");
+        CollectionAssert.AreEqual(File.ReadAllBytes(manifestPath),
+            ReadEntry(archive, "manifest.json"));
+        CollectionAssert.AreEqual(File.ReadAllBytes(manifestPath),
+            ReadEntry(archive, "payload/manifest.json"));
+        CollectionAssert.AreEqual(File.ReadAllBytes(stylePath),
+            ReadEntry(archive, "styles/default.wrss"));
+        CollectionAssert.AreEqual(File.ReadAllBytes(stylePath),
+            ReadEntry(archive, "payload/styles/default.wrss"));
+        CollectionAssert.AreEqual(File.ReadAllBytes(Path.Combine(root, "artifacts",
+                "community-addons", "playnite-library", "application-publish",
+                "PlayniteLibraryWidget.dll")),
+            ReadEntry(archive, "payload/PlayniteLibraryWidget.dll"),
+            "The sealed managed widget payload must be the exact corrected build output.");
         foreach (var entry in archive.Entries.Where(item => item.Length != 0))
         {
             using var stream = entry.Open();
@@ -296,6 +312,16 @@ public sealed class PlayniteBridgeTests
             Assert.IsFalse(content.Contains("/api/auth/rotate", StringComparison.OrdinalIgnoreCase),
                 entry.FullName);
         }
+    }
+
+    private static byte[] ReadEntry(ZipArchive archive, string path)
+    {
+        var entry = archive.GetEntry(path);
+        Assert.IsNotNull(entry, $"Package entry {path} is missing.");
+        using var stream = entry.Open();
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return buffer.ToArray();
     }
 
     private static string RepositoryRoot()

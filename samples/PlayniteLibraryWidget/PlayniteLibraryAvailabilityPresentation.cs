@@ -12,9 +12,7 @@ internal sealed record PlayniteLibraryTileAvailability(
 
 internal static class PlayniteLibraryAvailabilityPresentation
 {
-    internal static PlayniteLibraryTileAvailability Tile(
-        PlayniteLibraryItem? item,
-        bool interactive)
+    internal static PlayniteLibraryTileAvailability Tile(PlayniteLibraryItem? item)
     {
         if (item is null) return new("Play unavailable · Current provider data is missing", false, false);
         var presentation = item.Value.Presentation;
@@ -35,7 +33,10 @@ internal static class PlayniteLibraryAvailabilityPresentation
         if (!presentation.Availability.IsLaunchable ||
             !presentation.Capabilities.Supports(WidgetAppLibraryAction.Launch))
             return new(DisabledReason(presentation.Availability.StatusCode), false, false);
-        return new(interactive ? "Ready" : "Paused", interactive, false);
+        // Overlay lifecycle controls input admission at the host boundary. It is
+        // not a per-game availability observation, so it must not dim or relabel
+        // an otherwise current, launchable game during a tray/reactivation probe.
+        return new("Play", true, false);
     }
 
     private static PlayniteLibraryTileAvailability OwnedUnavailable(

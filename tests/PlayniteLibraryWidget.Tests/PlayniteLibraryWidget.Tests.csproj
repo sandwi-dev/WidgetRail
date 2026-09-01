@@ -9,6 +9,7 @@
     <ProjectReference Include="..\..\samples\PlayniteLibraryWidget\PlayniteLibraryWidget.csproj" />
     <ProjectReference Include="..\..\src\WidgetSdk\WidgetSdk.csproj" />
     <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
+    <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\samples\PlayniteLibraryWidget\styles\default.wrss"

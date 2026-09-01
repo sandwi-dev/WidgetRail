@@ -10,8 +10,10 @@ internal sealed class PlayniteLibraryApplicationService(
     IPlayniteLibraryArtworkDiagnostics? artworkDiagnostics = null)
     : IPlayniteLibraryApplicationService
 {
+    private const int RegisteredArtworkRolesPerGame = 2;
     private const int MaximumArtworkEntries =
-        PlayniteLibraryWidget.MaximumRetainedItems + WidgetAppLibraryService.MaximumSavedItems;
+        (PlayniteLibraryWidget.MaximumRetainedItems + WidgetAppLibraryService.MaximumSavedItems) *
+        RegisteredArtworkRolesPerGame;
     private const int MaximumCategoryMemberships = PlayniteBridgeClient.MaximumGames;
     private readonly IPlayniteLibraryBridgeClient _client = client ??
         throw new ArgumentNullException(nameof(client));
@@ -185,6 +187,17 @@ internal sealed class PlayniteLibraryApplicationService(
             var result = await _client.ResolveArtworkAsync(
                     registration.GameId, registration.Kind, cancellationToken)
                 .ConfigureAwait(false);
+            if (result.Artwork is null && registration.Kind == PlayniteBridgeArtworkKind.Background &&
+                result.Code == "not-found")
+            {
+                // Playnite may not have a separate backdrop. Only that exact,
+                // same-game absence may fall back to its cover; malformed and
+                // unsupported payloads remain isolated failures.
+                result = await _client.ResolveArtworkAsync(
+                        registration.GameId, PlayniteBridgeArtworkKind.Cover,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
             if (result.Artwork is null)
             {
                 _artworkDiagnostics.Record("resolve", result.Code, 1, result.SizeClass);
@@ -431,10 +444,27 @@ internal sealed class PlayniteLibraryApplicationService(
         string gameRevision)
     {
         var revision = ContentId("artwork-revision", game.Id, gameRevision);
-        var handle = ContentId("artwork-handle", game.Id, revision);
+        var cover = RegisterArtwork(game.Id, revision, PlayniteBridgeArtworkKind.Cover);
+        var background = RegisterArtwork(game.Id, revision, PlayniteBridgeArtworkKind.Background);
+        return new([
+            new(WidgetAppLibraryArtworkRole.Tile, cover, revision,
+                WidgetAppLibraryArtworkFallback.Game),
+            new(WidgetAppLibraryArtworkRole.Cover, cover, revision,
+                WidgetAppLibraryArtworkFallback.Game),
+            new(WidgetAppLibraryArtworkRole.Hero, background, revision,
+                WidgetAppLibraryArtworkFallback.Game),
+        ]);
+    }
+
+    private string RegisterArtwork(
+        string gameId,
+        string revision,
+        PlayniteBridgeArtworkKind kind)
+    {
+        var handle = ContentId("artwork-handle", gameId, revision, kind.ToString());
         if (!_artwork.ContainsKey(handle))
         {
-            _artwork.Add(handle, new(game.Id, revision, PlayniteBridgeArtworkKind.Cover));
+            _artwork.Add(handle, new(gameId, revision, kind));
             _artworkOrder.Enqueue(handle);
             while (_artworkOrder.Count > MaximumArtworkEntries)
             {
@@ -443,14 +473,7 @@ internal sealed class PlayniteLibraryApplicationService(
                 _artworkContent.Remove(retired);
             }
         }
-        return new([
-            new(WidgetAppLibraryArtworkRole.Tile, handle, revision,
-                WidgetAppLibraryArtworkFallback.Game),
-            new(WidgetAppLibraryArtworkRole.Cover, handle, revision,
-                WidgetAppLibraryArtworkFallback.Game),
-            new(WidgetAppLibraryArtworkRole.Hero, handle, revision,
-                WidgetAppLibraryArtworkFallback.Game),
-        ]);
+        return handle;
     }
 
     private static PlayniteLibraryAuthorityProjection ProjectAuthority(

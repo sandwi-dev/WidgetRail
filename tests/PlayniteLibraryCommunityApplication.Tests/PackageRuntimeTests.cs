@@ -126,6 +126,35 @@ public sealed class PackageRuntimeTests
         CollectionAssert.AreEqual(
             Convert.FromBase64String(FakeLibraryClient.TinyPng),
             resolvedArtwork.Bytes.ToArray());
+        var hero = current.Items[0].Presentation.Artwork.Find(
+            WidgetAppLibraryArtworkRole.Hero)!;
+        Assert.AreNotEqual(artwork.Handle, hero.Handle,
+            "Cover and background must retain distinct same-game resource handles.");
+        var resolvedBackground = await service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(hero.Handle), CancellationToken.None);
+        Assert.IsNotNull(resolvedBackground);
+        CollectionAssert.AreEqual(Convert.FromBase64String(FakeLibraryClient.TinyPng),
+            resolvedBackground.Bytes.ToArray());
+        CollectionAssert.AreEqual(new[]
+        {
+            PlayniteBridgeArtworkKind.Cover,
+            PlayniteBridgeArtworkKind.Background,
+        }, client.ArtworkKinds.Take(2).ToArray());
+
+        client.BackgroundArtwork = null;
+        var fallbackHero = current.Items[1].Presentation.Artwork.Find(
+            WidgetAppLibraryArtworkRole.Hero)!;
+        var fallbackBackground = await service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(fallbackHero.Handle), CancellationToken.None);
+        Assert.IsNotNull(fallbackBackground,
+            "Only a same-game not-found background may fall back to its cover.");
+        CollectionAssert.AreEqual(Convert.FromBase64String(FakeLibraryClient.TinyPng),
+            fallbackBackground.Bytes.ToArray());
+        CollectionAssert.AreEqual(new[]
+        {
+            PlayniteBridgeArtworkKind.Background,
+            PlayniteBridgeArtworkKind.Cover,
+        }, client.ArtworkKinds.Skip(2).Take(2).ToArray());
         client.Artwork = null;
         var otherArtwork = current.Items[1].Presentation.Artwork.Find(
             WidgetAppLibraryArtworkRole.Tile)!;
@@ -147,6 +176,46 @@ public sealed class PackageRuntimeTests
             await service.LaunchObservedAsync(client.Games[0].Id,
                 WidgetAppLaunchOverlayBehavior.KeepOpen, CancellationToken.None));
         Assert.AreEqual("platform_unavailable", failure.ErrorCode);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task ArtworkRegistryRetainsBothRolesAcrossThreeMaximumPages()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(192);
+        await using var service = Service(directory.Path, client);
+
+        var first = await service.QueryAsync(AllGames, null, null, 64,
+            refresh: true, CancellationToken.None);
+        var earliest = first.Items[0];
+        var cover = earliest.Presentation.Artwork.Find(
+            WidgetAppLibraryArtworkRole.Tile)!;
+        var background = earliest.Presentation.Artwork.Find(
+            WidgetAppLibraryArtworkRole.Hero)!;
+        var second = await service.QueryAsync(AllGames,
+            new WidgetCollectionCursor(first.After!), WidgetCursorDirection.After,
+            64, refresh: false, CancellationToken.None);
+        var third = await service.QueryAsync(AllGames,
+            new WidgetCollectionCursor(second.After!), WidgetCursorDirection.After,
+            64, refresh: false, CancellationToken.None);
+
+        Assert.AreEqual(64, first.Items.Count);
+        Assert.AreEqual(64, second.Items.Count);
+        Assert.AreEqual(64, third.Items.Count);
+        Assert.IsNull(third.After);
+        var coverBytes = await service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(cover.Handle), CancellationToken.None);
+        var backgroundBytes = await service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(background.Handle), CancellationToken.None);
+        Assert.IsNotNull(coverBytes,
+            "The earliest retained page's cover handle must survive two later pages.");
+        Assert.IsNotNull(backgroundBytes,
+            "The earliest retained page's distinct background handle must survive two later pages.");
+        Assert.AreNotEqual(cover.Handle, background.Handle);
+        CollectionAssert.AreEqual(Convert.FromBase64String(FakeLibraryClient.TinyPng),
+            coverBytes.Bytes.ToArray());
+        CollectionAssert.AreEqual(Convert.FromBase64String(FakeLibraryClient.TinyPng),
+            backgroundBytes.Bytes.ToArray());
     }
 
     [TestMethod, Timeout(30_000)]
@@ -196,6 +265,8 @@ public sealed class PackageRuntimeTests
         internal bool FailResolve { get; set; }
         internal bool MalformedSecondPage { get; set; }
         internal string? Artwork { get; set; } = TinyPng;
+        internal string? BackgroundArtwork { get; set; } = TinyPng;
+        internal List<PlayniteBridgeArtworkKind> ArtworkKinds { get; } = [];
         internal string? LastResolvedId { get; private set; }
         internal string? LastMutatedId { get; private set; }
         internal string? LastLaunchedId { get; private set; }
@@ -227,12 +298,15 @@ public sealed class PackageRuntimeTests
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Assert.AreEqual(PlayniteBridgeArtworkKind.Cover, kind);
             Assert.IsTrue(Games.Any(game => game.Id == gameId));
-            if (Artwork is null)
+            ArtworkKinds.Add(kind);
+            var encoded = kind == PlayniteBridgeArtworkKind.Background
+                ? BackgroundArtwork
+                : Artwork;
+            if (encoded is null)
                 return ValueTask.FromResult(new PlayniteBridgeArtworkResult(
                     null, "not-found", "none"));
-            var bytes = Convert.FromBase64String(Artwork);
+            var bytes = Convert.FromBase64String(encoded);
             return ValueTask.FromResult(new PlayniteBridgeArtworkResult(
                 new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes),
                 "resolved",

@@ -27,8 +27,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private readonly WidgetNavigator<PlayniteLibraryRoute> _navigation;
     private readonly WidgetModel<PlayniteLibraryRenderState> _model;
     private PlayniteLibraryPrivateState _organization = PlayniteLibraryPrivateState.Empty;
-    private PlayniteLibraryAuthorityProjection _playniteAuthority =
+    private PlayniteLibraryAuthorityProjection _livePlayniteAuthority =
         PlayniteLibraryAuthorityProjection.Empty;
+    private PlayniteLibraryAuthorityProjection _presentationAuthority =
+        PlayniteLibraryAuthorityProjection.Empty;
+    private long _queryAuthorityGeneration;
+    private long _authorityRevision;
+    private bool _hasLivePlayniteAuthority;
     private long _stateRevision;
     private readonly Dictionary<string, PlayniteLibraryLaunchState> _launchStates =
         new(StringComparer.Ordinal);
@@ -146,15 +151,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
         lock (_gate)
         {
             _launchPersistence.Invalidate();
-            _playniteAuthority = PlayniteLibraryAuthorityProjection.Empty;
+            RetireLiveQueryAuthorityLocked();
         }
         _model.Update(state => state with
         {
             LaunchingSavedId = null,
             VariantSeedSavedId = null,
-            OrganizationBusy = true,
             PlayniteBusy = false,
-            Status = "Revalidating installed games…",
         });
         return ValueTask.CompletedTask;
     }
@@ -647,6 +650,66 @@ public sealed partial class PlayniteLibraryWidget : Widget
         };
     }
 
+    private void RetireLiveQueryAuthorityLocked()
+    {
+        _queryAuthorityGeneration++;
+        _authorityRevision++;
+        _livePlayniteAuthority = PlayniteLibraryAuthorityProjection.Empty;
+        _hasLivePlayniteAuthority = false;
+    }
+
+    private void EnsureQueryAuthorityCurrent(
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            if (generation == _queryAuthorityGeneration) return;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        throw new OperationCanceledException("The Playnite query authority was retired.",
+            cancellationToken);
+    }
+
+    private bool TryGetLivePlayniteAuthorityLocked(
+        out PlayniteLibraryAuthorityProjection authority)
+    {
+        authority = _livePlayniteAuthority;
+        return _hasLivePlayniteAuthority;
+    }
+
+    private bool TryPublishQueryAuthority(
+        long generation,
+        long authorityRevision,
+        PlayniteLibraryAuthorityProjection authority,
+        CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            if (generation == _queryAuthorityGeneration &&
+                authorityRevision == _authorityRevision)
+            {
+                _livePlayniteAuthority = authority;
+                _presentationAuthority = authority;
+                _hasLivePlayniteAuthority = true;
+                _authorityRevision++;
+                return true;
+            }
+            if (generation == _queryAuthorityGeneration) return false;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        throw new OperationCanceledException("The Playnite query authority was retired.",
+            cancellationToken);
+    }
+
+    private void PublishAuthorityMutationLocked(
+        PlayniteLibraryAuthorityProjection authority)
+    {
+        _livePlayniteAuthority = authority;
+        _presentationAuthority = authority;
+        _authorityRevision++;
+    }
+
     private async ValueTask LoadWarmStateAsync(CancellationToken cancellationToken)
     {
         await _stateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -672,12 +735,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 _organization = normalized;
                 _stateRevision = revision;
             }
-            _model.Update(state => state with
-            {
-                Status = normalized.Items.Count == 0
-                    ? "Loading installed games…"
-                    : $"Checking {normalized.Items.Count} saved display rows…",
-            });
+            if (_library.Snapshot.Items.Count == 0)
+                _model.Update(state => state with
+                {
+                    Status = normalized.Items.Count == 0
+                        ? "Loading installed games…"
+                        : $"Checking {normalized.Items.Count} saved display rows…",
+                });
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -685,7 +749,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
         catch (Exception)
         {
-            lock (_gate) _organization = PlayniteLibraryPrivateState.Empty;
+            // A readiness probe cannot erase the retained non-authorizing
+            // presentation projection. The current provider query remains the
+            // only path that can replace it.
         }
         finally
         {
@@ -703,10 +769,15 @@ public sealed partial class PlayniteLibraryWidget : Widget
         WidgetAppLibraryQuery query;
         PlayniteLibraryCollectionState collectionState;
         PlayniteLibraryPrivateState organization;
+        long queryAuthorityGeneration;
+        long authorityRevision;
         var route = _navigation.Value.Route;
         var local = _model.Value;
         lock (_gate)
         {
+            if (direction is null) RetireLiveQueryAuthorityLocked();
+            queryAuthorityGeneration = _queryAuthorityGeneration;
+            authorityRevision = _authorityRevision;
             collectionState = local.Collection;
             query = EffectiveQueryLocked(route, local);
             organization = PresentationOrganizationLocked();
@@ -741,12 +812,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 cancellationToken)
             .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
+        EnsureQueryAuthorityCurrent(queryAuthorityGeneration, cancellationToken);
         var page = result.Page;
-        lock (_gate)
-        {
-            _playniteAuthority = result.Authority;
-            organization = PresentationOrganizationLocked();
-        }
+        lock (_gate) organization = PresentationOrganizationLocked(result.Authority);
         var rawItems = page.Items.Select(PlayniteLibraryItem.From).ToArray();
         var fixedRows = PlayniteLibraryFixedRows.Empty;
         var rawFixedRows = PlayniteLibraryFixedRows.Empty;
@@ -768,6 +836,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 : await _application.ResolveSavedAsync(
                     fixedSavedIds, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
+            EnsureQueryAuthorityCurrent(queryAuthorityGeneration, cancellationToken);
             var resolvedBySavedId = resolved.ToDictionary(
                 item => item.SavedId, StringComparer.Ordinal);
             var automaticManualGames = route == PlayniteLibraryRoute.Library
@@ -781,7 +850,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 await SaveStateAsync(
                     state => PlayniteLibraryOrganizationPolicy.RemoveAutomaticManualGames(
                         state, automaticManualGames), cancellationToken).ConfigureAwait(false);
-                lock (_gate) organization = _organization;
+                EnsureQueryAuthorityCurrent(queryAuthorityGeneration, cancellationToken);
+                lock (_gate) organization = PresentationOrganizationLocked(result.Authority);
             }
             PlayniteLibraryItem[] recent = route != PlayniteLibraryRoute.Library ||
                 collectionState.ManualFilter ||
@@ -849,6 +919,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         var projectionSaved = await PersistProjectionAsync(
                 projectionItems, provenSources, cancellationToken)
             .ConfigureAwait(false);
+        EnsureQueryAuthorityCurrent(queryAuthorityGeneration, cancellationToken);
+        _ = TryPublishQueryAuthority(queryAuthorityGeneration, authorityRevision,
+            result.Authority, cancellationToken);
         var items = rawItems.Select(item => item.WithValue(
                 PlayniteLibraryTitlePolicy.Project(organization, item.Value)))
             .Where(item => MatchesFixedQuery(item.Value, query))
@@ -1081,7 +1154,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         bool favorite;
         lock (_gate)
         {
-            favorite = !_playniteAuthority.FavoriteGameIds.Contains(
+            if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return;
+            favorite = !authority.FavoriteGameIds.Contains(
                 display.SavedId, StringComparer.Ordinal);
         }
         var admitted = _model.Update(state =>
@@ -1096,13 +1170,18 @@ public sealed partial class PlayniteLibraryWidget : Widget
             if (applied)
                 lock (_gate)
                 {
-                    var values = _playniteAuthority.FavoriteGameIds
+                    if (!TryGetLivePlayniteAuthorityLocked(out var authority))
+                    {
+                        applied = false;
+                        return;
+                    }
+                    var values = authority.FavoriteGameIds
                         .Where(value => value != display.SavedId).ToList();
                     if (favorite) values.Add(display.SavedId);
-                    _playniteAuthority = _playniteAuthority with
+                    PublishAuthorityMutationLocked(authority with
                     {
                         FavoriteGameIds = values,
-                    };
+                    });
                     status = favorite
                         ? $"Favorited {display.DisplayName}"
                         : $"Removed {display.DisplayName} from favorites";
@@ -1133,7 +1212,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             lock (_gate)
             {
-                var savedId = _playniteAuthority.HiddenGameIds.FirstOrDefault(candidate =>
+                if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return false;
+                var savedId = authority.HiddenGameIds.FirstOrDefault(candidate =>
                     string.Equals(PlayniteLibraryIdentity.FocusId(
                             "hidden", PlayniteLibraryIdentity.Key(candidate)), sourceElementId,
                         StringComparison.Ordinal));
@@ -1151,10 +1231,15 @@ public sealed partial class PlayniteLibraryWidget : Widget
             if (applied)
                 lock (_gate)
                 {
-                    var values = _playniteAuthority.HiddenGameIds
+                    if (!TryGetLivePlayniteAuthorityLocked(out var authority))
+                    {
+                        applied = false;
+                        return false;
+                    }
+                    var values = authority.HiddenGameIds
                         .Where(value => value != display.SavedId).ToList();
                     if (hidden) values.Add(display.SavedId);
-                    _playniteAuthority = _playniteAuthority with { HiddenGameIds = values };
+                    PublishAuthorityMutationLocked(authority with { HiddenGameIds = values });
                     status = hidden
                         ? $"Hidden {display.DisplayName}"
                         : $"Restored {display.DisplayName}";
@@ -1198,8 +1283,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 return;
             }
             string? current;
-            lock (_gate) current = _playniteAuthority.CompletionStatuses
-                .GetValueOrDefault(display.SavedId);
+            lock (_gate)
+            {
+                if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return;
+                current = authority.CompletionStatuses.GetValueOrDefault(display.SavedId);
+            }
             var index = current is null ? -1 : statuses.ToList().FindIndex(value =>
                 string.Equals(value, current, StringComparison.OrdinalIgnoreCase));
             var next = statuses[(index + 1) % statuses.Count];
@@ -1208,15 +1296,16 @@ public sealed partial class PlayniteLibraryWidget : Widget
             if (changed is null) return;
             lock (_gate)
             {
+                if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return;
                 var values = new Dictionary<string, string?>(
-                    _playniteAuthority.CompletionStatuses, StringComparer.Ordinal)
+                    authority.CompletionStatuses, StringComparer.Ordinal)
                 {
                     [display.SavedId] = next,
                 };
-                _playniteAuthority = _playniteAuthority with
+                PublishAuthorityMutationLocked(authority with
                 {
                     CompletionStatuses = values,
-                };
+                });
                 status = $"Completion · {next}";
             }
         }
@@ -1496,17 +1585,22 @@ public sealed partial class PlayniteLibraryWidget : Widget
         SearchExpanded = local.SearchExpanded,
         Collections = PlayniteLibraryCollectionPolicy.Options(
             organization, ProvenSourcesLocked(), local.Collection.Selection),
-        CompletionStatuses = _playniteAuthority.CompletionStatuses,
+        CompletionStatuses = _presentationAuthority.CompletionStatuses,
     };
     }
 
-    private PlayniteLibraryPrivateState PresentationOrganizationLocked() =>
+    private PlayniteLibraryPrivateState PresentationOrganizationLocked(
+        PlayniteLibraryAuthorityProjection? authority = null)
+    {
+        authority ??= _presentationAuthority;
+        return
         _organization with
         {
-            FavoriteSavedIds = _playniteAuthority.FavoriteGameIds,
-            ExcludedSavedIds = _playniteAuthority.HiddenGameIds,
-            Categories = _playniteAuthority.Categories,
+            FavoriteSavedIds = authority.FavoriteGameIds,
+            ExcludedSavedIds = authority.HiddenGameIds,
+            Categories = authority.Categories,
         };
+    }
 
     private string? ResolveActionSource(string sourceElementId)
     {
@@ -1582,6 +1676,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
             });
             return;
         }
+        lock (_gate)
+        {
+            if (!_hasLivePlayniteAuthority) return;
+        }
         _model.Update(state => state with { OrganizationBusy = true });
         string? status = null;
         try
@@ -1590,13 +1688,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     normalized, cancellationToken).ConfigureAwait(false);
             lock (_gate)
             {
-                if (created is not null && !_playniteAuthority.Categories.Any(category =>
+                if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return;
+                if (created is not null && !authority.Categories.Any(category =>
                         string.Equals(category.Name, created.Name,
                             StringComparison.OrdinalIgnoreCase)))
-                    _playniteAuthority = _playniteAuthority with
+                    PublishAuthorityMutationLocked(authority with
                     {
-                        Categories = _playniteAuthority.Categories.Append(created).ToArray(),
-                    };
+                        Categories = authority.Categories.Append(created).ToArray(),
+                    });
                 status = created is null
                     ? "Category was not created"
                     : $"Created category {normalized}";
@@ -1622,22 +1721,24 @@ public sealed partial class PlayniteLibraryWidget : Widget
             DisplayForSource(exactSource) is not { } display) return;
         bool included;
         string? categoryName;
+        List<string> names;
         lock (_gate)
         {
+            if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return;
             var category = PlayniteLibraryCategoryPolicy.Find(
-                PresentationOrganizationLocked(), categoryId);
+                PresentationOrganizationLocked(authority), categoryId);
             categoryName = category?.Name;
             included = category is not null &&
                 PlayniteLibraryCategoryPolicy.Contains(category, display.SavedId);
+            names = authority.Categories
+                .Where(candidate => candidate.SavedIds.Contains(
+                    display.SavedId, StringComparer.Ordinal))
+                .Select(candidate => candidate.Name)
+                .Where(name => !string.Equals(name, categoryName,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
         if (categoryName is null) return;
-        var names = _playniteAuthority.Categories
-            .Where(category => category.SavedIds.Contains(
-                display.SavedId, StringComparer.Ordinal))
-            .Select(category => category.Name)
-            .Where(name => !string.Equals(name, categoryName,
-                StringComparison.OrdinalIgnoreCase))
-            .ToList();
         if (!included) names.Add(categoryName);
         _model.Update(state => state with { OrganizationBusy = true });
         string? status = null;
@@ -1649,9 +1750,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
             {
                 lock (_gate)
                 {
-                    _playniteAuthority = _playniteAuthority with
+                    if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return;
+                    PublishAuthorityMutationLocked(authority with
                     {
-                        Categories = _playniteAuthority.Categories.Select(category =>
+                        Categories = authority.Categories.Select(category =>
                             category.Id != categoryId ? category : category with
                             {
                                 SavedIds = included
@@ -1659,7 +1761,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                                         value != display.SavedId).ToArray()
                                     : category.SavedIds.Append(display.SavedId).ToArray(),
                             }).ToArray(),
-                    };
+                    });
                     status = included
                         ? $"Removed {display.DisplayName} from {categoryName}"
                         : $"Added {display.DisplayName} to {categoryName}";
@@ -1781,7 +1883,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             WidgetPagedResourceStatus.Loading when _organization.Items.Count == 0 =>
                 "Loading installed games…",
-            WidgetPagedResourceStatus.Refreshing => "Refreshing installed games…",
+            WidgetPagedResourceStatus.Refreshing when snapshot.Items.Count == 0 =>
+                "Refreshing installed games…",
             WidgetPagedResourceStatus.LoadingAdjacent => "Loading more games…",
             WidgetPagedResourceStatus.Error when snapshot.Items.Count != 0 =>
                 $"{snapshot.Items.Count} games · some sources unavailable",

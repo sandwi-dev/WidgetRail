@@ -250,13 +250,16 @@ internal static class PlayniteLibraryHeroRailPresentation
             PlayniteLibraryLaunchState.Running => "Running",
             PlayniteLibraryLaunchState.Failed => "Failed",
             PlayniteLibraryLaunchState.Ended => "Ended",
-            _ => available ? "Ready" : "Unavailable",
+            _ => available ? "Play" : "Unavailable",
         };
         var traits = new List<string>(3);
         if (selected.Favorite) traits.Add("Favorite");
         if (selected.Preferred) traits.Add("Preferred variant");
         if (selected.GroupSize > 1) traits.Add($"{selected.GroupSize} grouped variants");
-        var metadata = traits.Count == 0 ? state : state + " · " + string.Join(" · ", traits);
+        var metadata = traits.Count == 0
+            ? (state == "Play" ? selected.Display.SourceAttribution : state)
+            : (state == "Play" ? string.Join(" · ", traits) : state + " · " +
+                string.Join(" · ", traits));
         WidgetElement artwork = selected.Current?.Presentation.Artwork.Find(
                 WidgetAppLibraryArtworkRole.Hero) is { } hero
             ? UI.Artwork(new WidgetArtworkHandle(hero.Handle), "playnite-library.hero.artwork",

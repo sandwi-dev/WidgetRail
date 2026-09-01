@@ -9,41 +9,67 @@
   align: center;
   justify: center;
   overflow: clip;
-  background: #11151b;
-  color: #f4f7fa;
+  background: #090d13;
+  color: #f7f9fc;
 }
 .playnite-library-canvas { flex-grow: 1; flex-basis: 0; }
-.playnite-library-home-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; overflow: clip; background: rgba(0, 0, 0, 0); }
+.wrail-background-surface { background: rgba(0, 0, 0, 0); }
+.wrail-focus-presentation-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; gap: 14px; align: center; justify: end; }
+.playnite-library-home-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; overflow: clip; background: #080b10; }
 .playnite-library-home-background { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; overflow: clip; background: rgba(0, 0, 0, 0); }
-.playnite-library-home-foreground { width: 60%; min-width: 520px; max-width: 980px; height: 100%; min-height: 0px; flex-grow: 0; flex-shrink: 1; flex-basis: 60%; overflow: clip; }
-.playnite-library-home-content { flex-grow: 1; flex-basis: 0; justify: end; gap: 12px; }
+.playnite-library-home-foreground { width: 100%; min-width: 520px; max-width: 1180px; height: 100%; min-height: 0px; flex-grow: 1; flex-shrink: 1; flex-basis: 0; overflow: clip; padding: 18px 20px 16px; }
+.playnite-library-home-content { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; justify: end; gap: 14px; }
+.playnite-library-browse-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; padding: 0px; background: #080b10; overflow: clip; }
+.playnite-library-browse-background { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; background: rgba(0, 0, 0, 0); overflow: clip; }
+.playnite-library-browse-foreground { width: 100%; min-width: 0px; min-height: 0px; max-width: 1120px; flex-grow: 1; flex-basis: 0; padding: 18px; gap: 16px; }
 .playnite-library-header { min-width: 0px; gap: 3px; }
+.playnite-library-header-row { width: 100%; align: center; justify: space-between; gap: 16px; padding: 10px 14px; background: rgba(5, 9, 14, 0.78); border-color: rgba(231, 239, 249, 0.16); border-width: 1px; corner-radius: 12px; }
+.playnite-library-header-copy { min-width: 0px; flex-grow: 1; flex-shrink: 1; }
+.playnite-library-browse-header { width: 100%; padding: 10px 14px; background: rgba(5, 9, 14, 0.78); border-color: rgba(231, 239, 249, 0.16); border-width: 1px; corner-radius: 12px; }
 .playnite-library-header-expanded { min-width: 0px; gap: 3px; }
-.playnite-library-eyebrow { color: #75b9ff; font-size: 12px; }
-.playnite-library-title { color: #f4f7fa; font-size: 25px; font-weight: 700; line-height: 1.15; max-lines: 2; }
-.playnite-library-status { color: #aeb9c6; font-size: 13px; max-lines: 2; }
+.playnite-library-eyebrow { color: #8bc7ff; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; max-lines: 1; }
+.playnite-library-title { color: #f7f9fc; font-size: 26px; font-weight: 700; line-height: 1.12; max-lines: 2; }
+.playnite-library-status { color: #bdc8d5; font-size: 12px; max-lines: 2; }
+.playnite-library-library-menu { min-width: 148px; min-height: 40px; padding: 8px 12px; gap: 6px; flex-grow: 0; flex-shrink: 0; background: rgba(15, 24, 35, 0.90); border-color: rgba(231, 239, 249, 0.22); border-width: 1px; corner-radius: 10px; }
+.playnite-library-menu-label { color: #f7f9fc; font-size: 13px; font-weight: 600; max-lines: 1; }
+.playnite-library-home-summary { width: 100%; min-width: 0px; max-width: 620px; gap: 5px; padding: 14px 16px; background: rgba(5, 9, 14, 0.78); border-color: rgba(231, 239, 249, 0.16); border-width: 1px; corner-radius: 12px; }
+.playnite-library-summary-title { color: #ffffff; font-size: 24px; font-weight: 700; line-height: 1.12; max-lines: 2; text-overflow: ellipsis; }
+.playnite-library-summary-meta { color: #d1dae5; font-size: 13px; line-height: 1.3; max-lines: 2; text-overflow: ellipsis; }
+.playnite-library-summary-state { color: #8bc7ff; font-size: 12px; font-weight: 600; max-lines: 1; }
+button { background: rgba(15, 24, 35, 0.88); color: #f7f9fc; border-color: rgba(231, 239, 249, 0.18); border-width: 1px; corner-radius: 9px; }
+button:focused { background: rgba(31, 45, 61, 0.96); }
+button:disabled { background: rgba(13, 19, 28, 0.68); color: #8f9aa7; }
 .playnite-library-source-status { min-width: 0px; gap: 5px; }
 .playnite-library-source-rows { gap: 3px; }
 .playnite-library-source-row { color: #d6dee8; font-size: 13px; }
 .playnite-library-source-summary { color: #aeb9c6; font-size: 13px; }
-.playnite-library-query { min-width: 0px; gap: 8px; }
-.playnite-library-search { min-width: 0px; flex-shrink: 0; }
+.playnite-library-query { min-width: 0px; gap: 9px; padding: 10px; background: rgba(5, 9, 14, 0.82); border-color: rgba(231, 239, 249, 0.14); border-width: 1px; corner-radius: 12px; }
+.playnite-library-search { min-width: 0px; min-height: 42px; flex-shrink: 0; background: rgba(17, 25, 36, 0.94); border-color: rgba(231, 239, 249, 0.20); border-width: 1px; corner-radius: 9px; }
 .playnite-library-collections,
 .playnite-library-filters { min-width: 0px; flex-shrink: 0; gap: 8px; }
 .playnite-library-main { width: 100%; min-width: 0px; min-height: 0; }
 .playnite-library-content { width: 100%; min-width: 0px; min-height: 0; gap: 10px; }
 .playnite-library-page-scroll { width: 100%; height: 100%; min-width: 0px; min-height: 0; max-width: 980px; max-height: 680px; flex-grow: 1; flex-basis: 0; gap: 12px; overflow: clip; }
 .playnite-library-scroll { width: 100%; min-width: 0px; flex-grow: 1; flex-basis: 0; min-height: 0; gap: 10px; overflow: clip; }
-.playnite-library-hero { min-width: 0px; flex-shrink: 0; min-height: 132px; gap: 12px; }
-.playnite-library-hero-artwork { min-width: 180px; min-height: 112px; }
+.playnite-library-hero { min-width: 0px; flex-shrink: 0; min-height: 126px; gap: 14px; padding: 12px; background: rgba(5, 9, 14, 0.78); border-color: rgba(231, 239, 249, 0.16); border-width: 1px; corner-radius: 12px; }
+.playnite-library-hero-artwork { width: 172px; min-width: 172px; height: 102px; min-height: 102px; corner-radius: 9px; overflow: clip; }
 .playnite-library-hero-content { min-width: 0px; gap: 5px; }
-.playnite-library-hero-title { color: #f4f7fa; font-size: 22px; font-weight: 700; line-height: 1.15; max-lines: 2; }
-.playnite-library-hero-source { color: #d6dee8; }
-.playnite-library-hero-state { color: #aeb9c6; }
+.playnite-library-hero-title { color: #ffffff; font-size: 22px; font-weight: 700; line-height: 1.15; max-lines: 2; }
+.playnite-library-hero-source { color: #d1dae5; }
+.playnite-library-hero-state { color: #8bc7ff; font-weight: 600; }
 .playnite-library-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; }
-.playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; }
-.playnite-library-tile { width: 200px; min-width: 200px; flex-basis: 200px; flex-grow: 0; flex-shrink: 0; aspect-ratio: 2/3; min-height: 0px; }
-.wrail-poster-tile__scrim { corner-radius: 12px; overflow: clip; }
+.playnite-library-browse-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 18px 16px; padding: 4px; justify: center; }
+.playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; padding: 4px 6px 10px; }
+.playnite-library-tile { aspect-ratio: 2/3; min-height: 0px; background: rgba(13, 19, 28, 0.96); border-color: rgba(231, 239, 249, 0.18); border-width: 1px; corner-radius: 12px; }
+.playnite-library-fixed-tile { width: 200px; min-width: 200px; flex-basis: 200px; flex-grow: 0; flex-shrink: 0; }
+.playnite-library-browse-tile { min-width: 0px; flex-grow: 0; flex-shrink: 1; }
+.playnite-library-tile:focused { background: rgba(21, 30, 42, 0.98); border-color: rgba(255, 255, 255, 0.74); }
+.playnite-library-tile:disabled { background: rgba(13, 19, 28, 0.90); color: #8f9aa7; }
+.wrail-poster-tile__scrim { background: rgba(5, 9, 14, 0.70); corner-radius: 12px; overflow: clip; }
+.wrail-poster-tile__title { color: #ffffff; }
+.wrail-poster-tile__subtitle,
+.wrail-poster-tile__metadata { color: #d1dae5; }
+.wrail-poster-tile__state { color: #8bc7ff; }
 .playnite-library-actions,
 .playnite-library-details-actions { min-width: 0px; flex-shrink: 0; gap: 8px; }
 .playnite-library-footer { flex-shrink: 0; flex-wrap: wrap; gap: 6px; }
