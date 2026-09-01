@@ -166,6 +166,112 @@ void AddRenderTarget(
     result.hitRegions.push_back({std::move(id), rect, enabled});
 }
 
+void AddNavigationTarget(
+    widgetrail::RenderResult& result,
+    std::wstring id,
+    const widgetrail::declarative::Rect rect,
+    const bool visible,
+    const bool enabled = true) {
+    result.focusScopes[id] = L"root";
+    result.navigationRects[id] = rect;
+    result.navigationEnabled[id] = enabled;
+    if (visible) {
+        result.focusRects[id] = rect;
+        result.hitRegions.push_back({std::move(id), rect, enabled});
+    } else {
+        result.revealableFocusIds.insert(std::move(id));
+    }
+}
+
+struct ResponsiveGridScrollFixture final {
+    widgetrail::WidgetSnapshot snapshot;
+    widgetrail::RenderResult render;
+};
+
+ResponsiveGridScrollFixture ResponsiveGridScroll(
+    const std::size_t columns,
+    const float pixelScale) {
+    ResponsiveGridScrollFixture fixture;
+    auto& snapshot = fixture.snapshot;
+    snapshot.sequence = 165;
+    snapshot.instanceId = L"directional-grid.instance";
+    snapshot.activeInputScopeId = L"root";
+    snapshot.initialFocusId = L"tile.0";
+    snapshot.root.id = L"root";
+    snapshot.root.kind = L"stack";
+    snapshot.root.inputScopeId = L"root";
+    snapshot.root.children.push_back(Button(L"search"));
+    snapshot.root.children.push_back(Button(L"filter"));
+
+    widgetrail::WidgetNode scroll;
+    scroll.id = L"results.scroll";
+    scroll.kind = L"scroll";
+    scroll.scrollAxis = L"vertical";
+    scroll.scrollNearEndActionId = L"results.next";
+    scroll.scrollPaginationThreshold = 2;
+
+    widgetrail::WidgetNode grid;
+    grid.id = L"results.grid";
+    grid.kind = L"grid";
+    grid.gridMinimumColumnWidth = 80.0;
+    grid.gridMaximumColumns = columns;
+    for (std::size_t index = 0; index < 12; ++index) {
+        const auto id = L"tile." + std::to_wstring(index);
+        grid.children.push_back(Button(id.c_str()));
+    }
+    scroll.children.push_back(std::move(grid));
+    scroll.children.push_back(Button(L"scroll.action"));
+    snapshot.root.children.push_back(std::move(scroll));
+    snapshot.root.children.push_back(Button(L"back"));
+    snapshot.root.children.push_back(Button(L"refresh"));
+    snapshot.root.children.push_back(Button(L"footer"));
+
+    const float cellWidth = 80.0F * pixelScale;
+    const float cellHeight = 40.0F * pixelScale;
+    const float rowPitch = 50.0F * pixelScale;
+    const float gridTop = 40.0F * pixelScale;
+    const float gridWidth = static_cast<float>(columns) * cellWidth;
+    auto& render = fixture.render;
+    AddNavigationTarget(
+        render, L"search", {0.0F, 0.0F, gridWidth, 24.0F * pixelScale}, true);
+    AddNavigationTarget(
+        render, L"filter", {0.0F, 28.0F * pixelScale, gridWidth,
+                             8.0F * pixelScale}, true);
+    for (std::size_t index = 0; index < 12; ++index) {
+        const auto row = index / columns;
+        const auto column = index % columns;
+        const widgetrail::declarative::Rect rect{
+            static_cast<float>(column) * cellWidth,
+            gridTop + static_cast<float>(row) * rowPitch,
+            cellWidth - 8.0F * pixelScale,
+            cellHeight,
+        };
+        AddNavigationTarget(
+            render, L"tile." + std::to_wstring(index), rect, row < 2);
+    }
+    AddNavigationTarget(
+        render, L"scroll.action",
+        {0.0F, 220.0F * pixelScale, gridWidth, cellHeight}, false);
+    AddNavigationTarget(
+        render, L"back",
+        {0.0F, 132.0F * pixelScale, gridWidth, 30.0F * pixelScale}, true);
+    AddNavigationTarget(
+        render, L"refresh",
+        {0.0F, 180.0F * pixelScale, gridWidth, 30.0F * pixelScale}, true);
+    AddNavigationTarget(
+        render, L"footer",
+        {0.0F, 300.0F * pixelScale, gridWidth, 30.0F * pixelScale}, true);
+    render.scrollViewports.emplace(
+        L"results.scroll",
+        widgetrail::RenderScrollViewport{
+            widgetrail::declarative::ScrollAxis::Vertical,
+            {0.0F, gridTop, gridWidth, 75.0F * pixelScale},
+            0.0F,
+            260.0F * pixelScale,
+        });
+    return fixture;
+}
+
 void FocusAndSurfaceLifecycle() {
     using widgetrail::input::WidgetInteractionSession;
     auto snapshot = Snapshot();
@@ -389,6 +495,110 @@ void RememberedGroupsUseExplicitAndGeometricEntryOwners() {
               L"groups.widget", successor, NavigationDirection::Down, render).target ==
               L"groups.play",
           "runtime or package retirement clears ordinary group memory");
+}
+
+void ResponsiveGridScrollOwnsDirectionalPriority() {
+    using namespace widgetrail::input;
+    for (const float pixelScale : {1.0F, 1.5F}) {
+        for (const std::size_t columns : {1U, 2U, 4U, 5U}) {
+            auto fixture = ResponsiveGridScroll(columns, pixelScale);
+            auto& snapshot = fixture.snapshot;
+            auto& render = fixture.render;
+            WidgetInteractionSession session;
+            const std::size_t currentIndex = columns * 2 - 1;
+            const std::size_t nextRowIndex = std::min(
+                columns * 3 - 1, std::size_t{11});
+            const auto currentId = L"tile." + std::to_wstring(currentIndex);
+            const auto nextRowId = L"tile." + std::to_wstring(nextRowIndex);
+            session.SetFocus(L"directional.widget", snapshot, currentId);
+            const auto down = session.ResolveDirectionalFocus(
+                L"directional.widget", snapshot,
+                NavigationDirection::Down, render);
+            Check(down.disposition == DirectionalFocusDisposition::Geometric &&
+                      down.target == nextRowId &&
+                      !down.requiresScrollBoundaryAdmission &&
+                      render.revealableFocusIds.contains(nextRowId),
+                  "the nearest responsive grid wins over closer external geometry and reveals its offscreen row");
+
+            session.SetFocus(L"directional.widget", snapshot, nextRowId);
+            const std::size_t nextRowColumn = nextRowIndex % columns;
+            const auto priorRowId = L"tile." + std::to_wstring(
+                columns + nextRowColumn);
+            const auto up = session.ResolveDirectionalFocus(
+                L"directional.widget", snapshot,
+                NavigationDirection::Up, render);
+            Check(up.disposition == DirectionalFocusDisposition::Geometric &&
+                      up.target == priorRowId &&
+                      !up.requiresScrollBoundaryAdmission,
+                  "upward movement mirrors the same grid-owned geometry at every supported width and scale");
+        }
+    }
+
+    auto fixture = ResponsiveGridScroll(4, 1.0F);
+    auto& snapshot = fixture.snapshot;
+    auto& render = fixture.render;
+    WidgetInteractionSession session;
+    auto& grid = snapshot.root.children[2].children[0];
+    grid.children[7].focusDown = L"back";
+    session.SetFocus(L"directional.widget", snapshot, L"tile.7");
+    auto resolution = session.ResolveDirectionalFocus(
+        L"directional.widget", snapshot, NavigationDirection::Down, render);
+    Check(resolution.disposition == DirectionalFocusDisposition::Explicit &&
+              resolution.target == L"back" &&
+              !resolution.requiresScrollBoundaryAdmission,
+          "an explicit authored target remains ahead of grid, scroll, and pagination ownership");
+    grid.children[7].focusDown.clear();
+
+    session.SetFocus(L"directional.widget", snapshot, L"tile.11");
+    resolution = session.ResolveDirectionalFocus(
+        L"directional.widget", snapshot, NavigationDirection::Down, render);
+    Check(resolution.disposition == DirectionalFocusDisposition::Geometric &&
+              resolution.target == L"scroll.action" &&
+              !resolution.requiresScrollBoundaryAdmission,
+          "after the nearest grid is exhausted the containing Scroll still wins over closer external geometry");
+
+    session.SetFocus(L"directional.widget", snapshot, L"scroll.action");
+    resolution = session.ResolveDirectionalFocus(
+        L"directional.widget", snapshot, NavigationDirection::Down, render);
+    Check(resolution.disposition == DirectionalFocusDisposition::Geometric &&
+              resolution.target == L"footer" &&
+              resolution.requiresScrollBoundaryAdmission,
+          "a surface-wide target outside the owning Scroll requires boundary admission before focus can leave");
+    const auto authority = Authority(snapshot, L"directional.widget");
+    const auto paged = session.ObserveScrollPaginationBoundaryIntent(
+        authority, render, L"scroll.action", NavigationDirection::Down,
+        ScrollPaginationIntentSource::DirectionalNavigation, 1650);
+    Check(paged.retainFocus && paged.pagination.dispatchReady &&
+              session.focusedElementId() == L"scroll.action",
+          "an unloaded Scroll edge retains focus and dispatches pagination before the proposed external target");
+
+    auto finite = snapshot;
+    auto& finiteScroll = finite.root.children[2];
+    finiteScroll.scrollNearEndActionId.clear();
+    finiteScroll.scrollPaginationThreshold = 0;
+    WidgetInteractionSession finiteSession;
+    finiteSession.SetFocus(L"directional.widget", finite, L"scroll.action");
+    const auto finiteExit = finiteSession.ResolveDirectionalFocus(
+        L"directional.widget", finite, NavigationDirection::Down, render);
+    const auto unpaged = finiteSession.ObserveScrollPaginationBoundaryIntent(
+        Authority(finite, L"directional.widget"), render, L"scroll.action",
+        NavigationDirection::Down,
+        ScrollPaginationIntentSource::DirectionalNavigation, 1660);
+    Check(finiteExit.target == L"footer" &&
+              finiteExit.requiresScrollBoundaryAdmission &&
+              !unpaged.retainFocus && !unpaged.pagination.dispatchReady,
+          "a true logical boundary without page authority may leave the Scroll after bounded admission");
+
+    auto staleRender = render;
+    staleRender.scrollViewports.clear();
+    WidgetInteractionSession staleSession;
+    staleSession.SetFocus(L"directional.widget", snapshot, L"scroll.action");
+    const auto stale = staleSession.ResolveDirectionalFocus(
+        L"directional.widget", snapshot, NavigationDirection::Down,
+        staleRender);
+    Check(!stale.target &&
+              stale.disposition == DirectionalFocusDisposition::Boundary,
+          "stale Scroll geometry fails closed instead of exposing an external focus target");
 }
 
 void FreeScrollAndRetainedRefreshLifecycle() {
@@ -835,6 +1045,7 @@ int main() {
     FocusAndSurfaceLifecycle();
     ResponsiveFocusHandoffUsesInteractionOwner();
     RememberedGroupsUseExplicitAndGeometricEntryOwners();
+    ResponsiveGridScrollOwnsDirectionalPriority();
     FreeScrollAndRetainedRefreshLifecycle();
     ExactSliderRequestAuthorityAndRollback();
     PressedAndAdmissionReconciliation();

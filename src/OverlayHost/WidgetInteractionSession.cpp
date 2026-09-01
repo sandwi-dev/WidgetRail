@@ -94,22 +94,47 @@ DirectionalFocusResolution SurfaceInteractionTransactions::ResolveDirectionalFoc
         ? FindExternalFocusGroupCandidates(
               snapshot, focusedElementId, renderResult)
         : std::vector<GeometricFocusGroupCandidate>{};
+    const auto resolveGeometric = [&](const std::wstring_view geometric)
+        -> std::optional<std::wstring> {
+        const auto group = std::ranges::find_if(
+            focusGroupCandidates, [&](const auto& candidate) {
+                return candidate.groupId == geometric;
+            });
+        if (group != focusGroupCandidates.end()) {
+            return focusGroups->Resolve(
+                widgetId, snapshot, group->groupId, renderResult);
+        }
+        return std::wstring{geometric};
+    };
+    const auto internal = FindDirectionalFocusTargetInOwningSubtrees(
+        snapshot.root, focusedElementId, direction, renderResult,
+        focusGroupCandidates);
+    if (internal.target) {
+        if (auto target = resolveGeometric(*internal.target)) {
+            return {DirectionalFocusDisposition::Geometric,
+                    std::move(target)};
+        }
+        return {DirectionalFocusDisposition::Boundary, {}};
+    }
+    if (internal.staleAuthority) {
+        return {DirectionalFocusDisposition::Boundary, {}};
+    }
     if (const auto geometric = FindGeometricFocusTarget(
             focusedElementId, direction, renderResult,
             focusGroupCandidates)) {
-        const auto group = std::ranges::find_if(
-            focusGroupCandidates, [&](const auto& candidate) {
-                return candidate.groupId == *geometric;
-            });
-        if (group != focusGroupCandidates.end()) {
-            if (auto target = focusGroups->Resolve(
-                    widgetId, snapshot, group->groupId, renderResult)) {
-                return {DirectionalFocusDisposition::Geometric,
-                        std::move(target)};
-            }
+        auto target = resolveGeometric(*geometric);
+        if (!target) return {DirectionalFocusDisposition::Boundary, {}};
+        const auto scrollExit = ClassifyDirectionalScrollExit(
+            snapshot.root, focusedElementId, *target, direction,
+            snapshot.activeInputScopeId, renderResult);
+        if (scrollExit == DirectionalScrollExitDisposition::StaleAuthority) {
             return {DirectionalFocusDisposition::Boundary, {}};
         }
-        return {DirectionalFocusDisposition::Geometric, *geometric};
+        return {
+            DirectionalFocusDisposition::Geometric,
+            std::move(target),
+            scrollExit == DirectionalScrollExitDisposition::OutsideOwner,
+        };
     }
     return {DirectionalFocusDisposition::Boundary, {}};
 }

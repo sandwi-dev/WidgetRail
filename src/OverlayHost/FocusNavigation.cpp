@@ -239,6 +239,95 @@ GeometricFocusScore ScoreGeometricCandidate(
     return {inDirection, {!inBeam, primary, perpendicular, std::move(id)}};
 }
 
+declarative::ScrollAxis DirectionAxis(
+    const NavigationDirection direction) noexcept {
+    switch (direction) {
+    case NavigationDirection::Left:
+    case NavigationDirection::Right:
+        return declarative::ScrollAxis::Horizontal;
+    case NavigationDirection::Up:
+    case NavigationDirection::Down:
+        return declarative::ScrollAxis::Vertical;
+    case NavigationDirection::None:
+        return declarative::ScrollAxis::None;
+    }
+    return declarative::ScrollAxis::None;
+}
+
+bool ScrollMatchesAxis(
+    const WidgetNode& node,
+    const declarative::ScrollAxis axis) noexcept {
+    return node.kind == L"scroll" &&
+        ((axis == declarative::ScrollAxis::Horizontal &&
+          node.scrollAxis == L"horizontal") ||
+         (axis == declarative::ScrollAxis::Vertical &&
+          node.scrollAxis == L"vertical"));
+}
+
+bool IsResponsiveGrid(const WidgetNode& node) noexcept {
+    return node.kind == L"grid" && node.gridMinimumColumnWidth.has_value();
+}
+
+template <typename IncludeCandidate>
+std::optional<std::wstring> FindGeometricFocusTargetImpl(
+    const std::wstring_view currentId,
+    const NavigationDirection direction,
+    const RenderResult& renderResult,
+    const std::vector<GeometricFocusGroupCandidate>& groups,
+    IncludeCandidate&& includeCandidate) {
+    if (direction == NavigationDirection::None) return std::nullopt;
+    const auto& geometry = renderResult.navigationRects.empty()
+        ? renderResult.focusRects
+        : renderResult.navigationRects;
+    const auto currentEntry = geometry.find(currentId);
+    if (currentEntry == geometry.end()) return std::nullopt;
+    const auto& current = currentEntry->second;
+    const auto currentScopeEntry = renderResult.focusScopes.find(currentId);
+    const std::wstring_view currentScope =
+        currentScopeEntry == renderResult.focusScopes.end()
+        ? std::wstring_view{}
+        : std::wstring_view(currentScopeEntry->second);
+
+    std::optional<std::wstring> best;
+    auto bestScore = std::tuple{
+        true,
+        std::numeric_limits<float>::infinity(),
+        std::numeric_limits<float>::infinity(),
+        std::wstring{}};
+    for (const auto& [id, candidate] : geometry) {
+        if (id == currentId || !includeCandidate(id) ||
+            !IsEnabledFocusTarget(id, renderResult) ||
+            std::ranges::any_of(groups, [&](const auto& group) {
+                return ContainsFocusId(group, id);
+            })) {
+            continue;
+        }
+        const auto candidateScopeEntry = renderResult.focusScopes.find(id);
+        const std::wstring_view candidateScope =
+            candidateScopeEntry == renderResult.focusScopes.end()
+            ? std::wstring_view{}
+            : std::wstring_view(candidateScopeEntry->second);
+        if (candidateScope != currentScope) continue;
+        const auto score = ScoreGeometricCandidate(
+            current, candidate, direction, id);
+        if (!score.inDirection) continue;
+        if (score.value < bestScore) {
+            bestScore = score.value;
+            best = id;
+        }
+    }
+    for (const auto& group : groups) {
+        if (!group.bounds || !includeCandidate(group.groupId)) continue;
+        const auto score = ScoreGeometricCandidate(
+            current, *group.bounds, direction, group.groupId);
+        if (score.inDirection && score.value < bestScore) {
+            bestScore = score.value;
+            best = group.groupId;
+        }
+    }
+    return best;
+}
+
 void CollectScrollPaginationActions(
     const WidgetNode& node,
     const std::wstring_view activeScopeId,
@@ -513,55 +602,74 @@ std::optional<std::wstring> FindGeometricFocusTarget(
     const NavigationDirection direction,
     const RenderResult& renderResult,
     const std::vector<GeometricFocusGroupCandidate>& groups) {
-    if (direction == NavigationDirection::None) return std::nullopt;
-    const auto& geometry = renderResult.navigationRects.empty()
-        ? renderResult.focusRects
-        : renderResult.navigationRects;
-    const auto currentEntry = geometry.find(currentId);
-    if (currentEntry == geometry.end()) return std::nullopt;
-    const auto& current = currentEntry->second;
-    const auto currentScopeEntry = renderResult.focusScopes.find(currentId);
-    const std::wstring_view currentScope = currentScopeEntry == renderResult.focusScopes.end()
-        ? std::wstring_view{}
-        : std::wstring_view(currentScopeEntry->second);
+    return FindGeometricFocusTargetImpl(
+        currentId, direction, renderResult, groups,
+        [](const std::wstring_view) { return true; });
+}
 
-    std::optional<std::wstring> best;
-    auto bestScore = std::tuple{true,
-        std::numeric_limits<float>::infinity(),
-        std::numeric_limits<float>::infinity(),
-        std::wstring{}};
-    for (const auto& [id, candidate] : geometry) {
-        if (id == currentId || !IsEnabledFocusTarget(id, renderResult) ||
-            std::ranges::any_of(groups, [&](const auto& group) {
-                return ContainsFocusId(group, id);
-            })) continue;
-        const auto candidateScopeEntry = renderResult.focusScopes.find(id);
-        const std::wstring_view candidateScope =
-            candidateScopeEntry == renderResult.focusScopes.end()
-                ? std::wstring_view{}
-                : std::wstring_view(candidateScopeEntry->second);
-        if (candidateScope != currentScope) continue;
-        const auto score = ScoreGeometricCandidate(
-            current, candidate, direction, id);
-        if (!score.inDirection) continue;
-        // Lexicographic scoring makes behavior deterministic: controls in the
-        // same row/column win, then nearest forward distance, then lateral
-        // distance, then stable ID for exact geometric ties.
-        if (score.value < bestScore) {
-            bestScore = score.value;
-            best = id;
+DirectionalSubtreeFocusResolution FindDirectionalFocusTargetInOwningSubtrees(
+    const WidgetNode& root,
+    const std::wstring_view currentId,
+    const NavigationDirection direction,
+    const RenderResult& renderResult,
+    const std::vector<GeometricFocusGroupCandidate>& groups) {
+    const auto axis = DirectionAxis(direction);
+    if (currentId.empty() || axis == declarative::ScrollAxis::None) return {};
+    std::vector<const WidgetNode*> path;
+    if (!FindNodePath(root, currentId, path)) return {{}, true};
+
+    for (auto item = path.rbegin(); item != path.rend(); ++item) {
+        const auto* owner = *item;
+        const bool responsiveGrid = IsResponsiveGrid(*owner);
+        const bool matchingScroll = ScrollMatchesAxis(*owner, axis);
+        if (!responsiveGrid && !matchingScroll) continue;
+        if (matchingScroll) {
+            const auto viewport = renderResult.scrollViewports.find(owner->id);
+            if (viewport == renderResult.scrollViewports.end() ||
+                viewport->second.axis != axis ||
+                viewport->second.rect.width <= 0.0F ||
+                viewport->second.rect.height <= 0.0F) {
+                return {{}, true};
+            }
         }
+        const auto target = FindGeometricFocusTargetImpl(
+            currentId, direction, renderResult, groups,
+            [owner](const std::wstring_view candidateId) {
+                return FindNode(*owner, candidateId) != nullptr;
+            });
+        if (target) return {target, false};
     }
-    for (const auto& group : groups) {
-        if (!group.bounds) continue;
-        const auto score = ScoreGeometricCandidate(
-            current, *group.bounds, direction, group.groupId);
-        if (score.inDirection && score.value < bestScore) {
-            bestScore = score.value;
-            best = group.groupId;
-        }
+    return {};
+}
+
+DirectionalScrollExitDisposition ClassifyDirectionalScrollExit(
+    const WidgetNode& root,
+    const std::wstring_view currentId,
+    const std::wstring_view targetId,
+    const NavigationDirection direction,
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult) {
+    const auto axis = DirectionAxis(direction);
+    if (axis == declarative::ScrollAxis::None) {
+        return DirectionalScrollExitDisposition::NoOwner;
     }
-    return best;
+    const auto owner = ResolveFocusedScrollOwner(
+        root, currentId, axis, activeScopeId, renderResult);
+    switch (owner.disposition) {
+    case FocusedScrollResolutionDisposition::NoEligibleScroll:
+        return DirectionalScrollExitDisposition::NoOwner;
+    case FocusedScrollResolutionDisposition::Resolved:
+        break;
+    case FocusedScrollResolutionDisposition::MissingFocus:
+    case FocusedScrollResolutionDisposition::ScopeMismatch:
+    case FocusedScrollResolutionDisposition::StaleGeometry:
+        return DirectionalScrollExitDisposition::StaleAuthority;
+    }
+    const auto* scroll = FindNode(root, owner.scrollId);
+    if (!scroll) return DirectionalScrollExitDisposition::StaleAuthority;
+    return FindNode(*scroll, targetId)
+        ? DirectionalScrollExitDisposition::InsideOwner
+        : DirectionalScrollExitDisposition::OutsideOwner;
 }
 
 std::vector<GeometricFocusGroupCandidate> FindExternalFocusGroupCandidates(

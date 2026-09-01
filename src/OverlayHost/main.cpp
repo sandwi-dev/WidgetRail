@@ -10998,6 +10998,21 @@ private:
             return;
         }
         if (resolution.target) {
+            if (resolution.requiresScrollBoundaryAdmission) {
+                if (const auto authority =
+                        InteractionAuthority(widgetId, *snapshot)) {
+                    auto boundary =
+                        interactionSession_.ObserveScrollPaginationBoundaryIntent(
+                            *authority, lastWidgetRenderResult_,
+                            interactionSession_.focusedElementId(),
+                            navigationDirection,
+                            widgetrail::input::ScrollPaginationIntentSource::
+                                DirectionalNavigation,
+                            GetTickCount64());
+                    PublishScrollPaginationOutcome(boundary.pagination);
+                    if (boundary.retainFocus) return;
+                }
+            }
             ObserveScrollPaginationFocusIntent(
                 widgetId, *snapshot, interactionSession_.focusedElementId(),
                 *resolution.target,

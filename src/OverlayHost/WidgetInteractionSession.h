@@ -117,6 +117,7 @@ struct DirectionalFocusResolution final {
     DirectionalFocusDisposition disposition{
         DirectionalFocusDisposition::Boundary};
     std::optional<std::wstring> target;
+    bool requiresScrollBoundaryAdmission{};
 };
 
 /// Shared transaction policy for the main and pinned widget surfaces. The

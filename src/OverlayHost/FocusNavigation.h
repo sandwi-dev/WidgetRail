@@ -30,6 +30,22 @@ struct GeometricFocusGroupCandidate final {
     std::vector<std::wstring> descendantFocusIds;
 };
 
+/// One ordered geometric lookup inside the focused node's semantic layout
+/// ancestry. ResponsiveGrid and matching-axis Scroll owners are considered
+/// from nearest to outermost before ordinary surface-wide geometry. A stale
+/// rendered Scroll owner fails closed instead of exposing controls outside it.
+struct DirectionalSubtreeFocusResolution final {
+    std::optional<std::wstring> target;
+    bool staleAuthority{};
+};
+
+enum class DirectionalScrollExitDisposition {
+    NoOwner,
+    InsideOwner,
+    OutsideOwner,
+    StaleAuthority,
+};
+
 enum class ScrollPaginationEdge {
     Before,
     After,
@@ -116,6 +132,28 @@ struct FocusedScrollResolution final {
     NavigationDirection direction,
     const RenderResult& renderResult,
     const std::vector<GeometricFocusGroupCandidate>& groups);
+
+/// Searches the focused node's nearest ResponsiveGrid or matching-axis Scroll
+/// subtree first, then each containing owner in order. Offscreen descendants
+/// remain eligible only through the renderer's existing revealable authority.
+[[nodiscard]] DirectionalSubtreeFocusResolution
+FindDirectionalFocusTargetInOwningSubtrees(
+    const WidgetNode& root,
+    std::wstring_view currentId,
+    NavigationDirection direction,
+    const RenderResult& renderResult,
+    const std::vector<GeometricFocusGroupCandidate>& groups);
+
+/// Classifies whether a resolved surface-wide target would leave the focused
+/// node's deepest matching-axis Scroll. Callers use OutsideOwner to admit the
+/// existing pagination boundary before committing the external focus move.
+[[nodiscard]] DirectionalScrollExitDisposition ClassifyDirectionalScrollExit(
+    const WidgetNode& root,
+    std::wstring_view currentId,
+    std::wstring_view targetId,
+    NavigationDirection direction,
+    std::wstring_view activeScopeId,
+    const RenderResult& renderResult);
 
 /// Collects deterministic outermost remembered-child groups in the active
 /// input scope. A group is represented by the union of its currently visible,
