@@ -121,6 +121,10 @@ planner and implementation turns do not spend context on closed evidence.
 - [Playnite Library product and engineering requirements](playnite-library-requirements.md)
   — proposed console-home expansion informed by Heroic and One Game Launcher,
   including trusted multi-source adapters and optional content operations.
+- [Playnite Library artwork-memory investigation](playnite-library-artwork-memory-investigation.md)
+  — active evidence for encoded/decoded/Direct2D retention, fast-traversal
+  cache churn, `WidgetCursorResource` limits, and the deferred post-WIDGE-124
+  performance-ticket decomposition.
 - [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the
   first real public-package/AppContainer local-companion integration, including
   pairing, optimistic media UX, dashboard actions, and local pack/install.
