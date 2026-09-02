@@ -155,6 +155,36 @@ void TestBoundedOverlayDiagnosticContract() {
           "overlay diagnostics retain two bounded recent generations and trim legacy oversized logs");
 }
 
+void TestPinnedBackgroundCrossfadeDiagnosticWakeContract() {
+    const auto coordinator = ReadSource(
+        fs::path{__FILE__}.parent_path() / "WidgetSurfaceCoordinator.cpp");
+    const auto diagnosticQueue = coordinator.find(
+        "backgroundSurfaceDiagnosticsQueued = true;");
+    const auto diagnosticWake = coordinator.find(
+        "NotifyOwner(kBackgroundSurfaceDiagnosticNotification);",
+        diagnosticQueue);
+    Check(diagnosticQueue != std::string::npos &&
+              diagnosticWake != std::string::npos,
+          "pinned crossfade diagnostics wake the host after bounded queue admission");
+
+    const auto host = ReadSource(fs::path{__FILE__}.parent_path() / "main.cpp");
+    const auto handler = host.find("case kPinnedSurfaceChangedMessage:");
+    const auto normalDrain = host.find("DrainPinnedSurfaceInputs();", handler);
+    Check(handler != std::string::npos && normalDrain != std::string::npos,
+          "pinned owner-message handler and ordinary drain are present");
+    const auto diagnosticOnly = host.substr(handler, normalDrain - handler);
+    Check(diagnosticOnly.find(
+              "kBackgroundSurfaceDiagnosticNotification") !=
+                  std::string::npos &&
+              diagnosticOnly.find("DrainPinnedSurfaceDiagnostics();") !=
+                  std::string::npos &&
+              diagnosticOnly.find("return 0;") != std::string::npos &&
+              diagnosticOnly.find("InvalidateRect") == std::string::npos &&
+              diagnosticOnly.find("ReconcileEmbeddedMediaProjection") ==
+                  std::string::npos,
+          "diagnostic-only wake drains to overlay.log without presentation reconciliation or repaint");
+}
+
 void TestWidgetContextActionHostContract() {
     const auto source = ReadSource(
         fs::path{__FILE__}.parent_path() / "main.cpp");
@@ -1183,6 +1213,7 @@ int wmain(const int argc, wchar_t** argv) {
         (void)SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         TestAcceptedCompactMediaHostContract();
         TestBoundedOverlayDiagnosticContract();
+        TestPinnedBackgroundCrossfadeDiagnosticWakeContract();
         TestWidgetContextActionHostContract();
         TestAcceptedOverlayFullscreenMediaHostContract();
         TestAcceptedWidgetOwnedFocusMemoryHostContract();

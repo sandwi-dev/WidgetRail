@@ -1997,6 +1997,11 @@ private:
             HandleAccessibilityActions();
             return 0;
         case kPinnedSurfaceChangedMessage:
+            if (wParam ==
+                widgetrail::pinned::kBackgroundSurfaceDiagnosticNotification) {
+                DrainPinnedSurfaceDiagnostics();
+                return 0;
+            }
             DrainPinnedSurfaceInputs();
             ReconcileEmbeddedMediaProjection(L"pinned-surface-changed");
             if (!pinnedSurfaceCoordinator_.pinned() ||
@@ -8223,11 +8228,15 @@ private:
         PinCurrentSurface();
     }
 
-    void DrainPinnedSurfaceInputs() {
+    void DrainPinnedSurfaceDiagnostics() {
         for (const auto& diagnostic :
                  pinnedSurfaceCoordinator_.TakeBackgroundSurfaceDiagnostics()) {
             AppendDiagnostic(L"Renderer pinned " + diagnostic);
         }
+    }
+
+    void DrainPinnedSurfaceInputs() {
+        DrainPinnedSurfaceDiagnostics();
         if (pinnedSurfaceCoordinator_.pinned())
             (void)BindEmbeddedMediaSessionForWidget(
                 pinnedSurfaceCoordinator_.widgetId(),

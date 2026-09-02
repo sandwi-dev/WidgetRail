@@ -3080,7 +3080,24 @@ struct DeclarativeRenderer::RenderPass final {
                 desiredBitmap = owner->GetImageBitmap(
                     target, desired, *this, options.artworkWidgetId, desiredState);
                 if (!desiredBitmap) {
-                    (void)drawRetained();
+                    if (drawRetained()) return;
+                    const bool trustedDefault =
+                        !node.artworkHandle.empty() && node.imageSource.empty();
+                    const std::wstring defaultKey = trustedDefault
+                        ? RemoteImageCache::TrustedArtworkKey(
+                            options.artworkWidgetId, node.id,
+                            node.artworkHandle)
+                        : node.imageSource;
+                    if (owner->imageCache_ && !defaultKey.empty() &&
+                        owner->imageCache_->GetState(defaultKey) ==
+                            RemoteImageState::Ready) {
+                        ComPtr<ID2D1Bitmap> defaultBitmap;
+                        if (DrawImage(
+                                node, style, rect, opacity, false, false,
+                                &defaultBitmap)) {
+                            remember(node, std::move(defaultBitmap));
+                        }
+                    }
                     return;
                 }
 
@@ -3134,8 +3151,13 @@ struct DeclarativeRenderer::RenderPass final {
             // This node still paints its authored fallback, but it is not the
             // effective focus-artwork surface and therefore must not recreate
             // retained transition authority on every frame.
-            if (!node.imageSource.empty() || !node.artworkHandle.empty())
-                (void)DrawImage(node, style, rect, opacity, false, false);
+            if ((!node.imageSource.empty() || !node.artworkHandle.empty()) &&
+                DrawImage(node, style, rect, opacity, false, false)) {
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+                if (!node.artworkHandle.empty())
+                    result.backgroundArtworkHandles[node.id] = node.artworkHandle;
+#endif
+            }
             return;
         } else if (drawRetained()) {
             return;
@@ -4153,8 +4175,6 @@ RenderResult DeclarativeRenderer::Render(
         Size{viewport.width, viewport.height});
     pass.compactMode = IsCompactResponsiveSurface(responsiveViewport);
     pass.options = options;
-    pass.focusBackgrounds = focusBackgrounds_;
-    pass.focusBackgroundAccessClock = focusBackgroundAccessClock_;
     const auto* previousCollectionCache = incrementalLayoutCache_ &&
             incrementalLayoutCache_->instanceId == snapshot.instanceId
         ? &*incrementalLayoutCache_
@@ -4180,6 +4200,12 @@ RenderResult DeclarativeRenderer::Render(
         pass.Add({}, L"image_resource_domain",
             L"Image bitmap cache could not identify the Direct2D resource domain.");
     }
+    // BindBitmapResourceDomain retires target-domain bitmap state when the
+    // Direct2D owner changes. Copy transition state only after that boundary,
+    // so a pass can never draw or re-adopt committed/incoming COM references
+    // from the prior render target.
+    pass.focusBackgrounds = focusBackgrounds_;
+    pass.focusBackgroundAccessClock = focusBackgroundAccessClock_;
     const bool pendingMatches = pendingIncrementalPlan_ &&
         pendingIncrementalPlan_->work != IncrementalPresentationWork::NoRaster &&
         incrementalLayoutCache_ &&

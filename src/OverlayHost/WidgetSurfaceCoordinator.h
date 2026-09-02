@@ -26,6 +26,8 @@
 
 namespace widgetrail::pinned {
 
+inline constexpr WPARAM kBackgroundSurfaceDiagnosticNotification = 1;
+
 [[nodiscard]] std::optional<double> ResolveBoundedMediaSeekTarget(
     double currentPositionSeconds,
     double durationSeconds,
@@ -322,7 +324,7 @@ private:
     void RequestPaint(const RECT* update = nullptr) noexcept;
     void PublishAccessibility();
     void ApplyWindowPolicy();
-    void NotifyOwner() const noexcept;
+    void NotifyOwner(WPARAM notification = 0) const noexcept;
     void ReleaseGraphicsResources() noexcept;
     void OnWindowDestroyed() noexcept;
     [[nodiscard]] std::optional<MonitorWorkArea> CurrentWindowMonitor() const noexcept;

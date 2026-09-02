@@ -2568,6 +2568,7 @@ void WidgetSurfaceCoordinator::Paint() {
             ? kAdjustBorderDip : kPinnedBorderDip);
     const HRESULT result = renderTarget_->EndDraw();
     bool mediaViewportReconciled{};
+    bool backgroundSurfaceDiagnosticsQueued{};
     input::ScrollPaginationSessionOutcome paginationOutcome;
     if (result == D2DERR_RECREATE_TARGET) ReleaseGraphicsResources();
     else if (SUCCEEDED(result)) {
@@ -2580,6 +2581,7 @@ void WidgetSurfaceCoordinator::Paint() {
             backgroundSurfaceDiagnostics_.push_back(
                 diagnostic.code + L" [" + diagnostic.nodeId + L"] " +
                 diagnostic.message);
+            backgroundSurfaceDiagnosticsQueued = true;
         }
         if (renderResult.backgroundSurfaceAnimationDamage) {
             SetTimer(
@@ -2612,6 +2614,8 @@ void WidgetSurfaceCoordinator::Paint() {
         RecordPaginationOutcome(std::move(paginationOutcome));
     if (SUCCEEDED(result) &&
         (mediaViewportReconciled || paginationNotification)) NotifyOwner();
+    if (SUCCEEDED(result) && backgroundSurfaceDiagnosticsQueued)
+        NotifyOwner(kBackgroundSurfaceDiagnosticNotification);
 }
 
 void WidgetSurfaceCoordinator::PublishAccessibility() {
@@ -2830,10 +2834,11 @@ void WidgetSurfaceCoordinator::ApplyWindowPolicy() {
     ApplyOpacity();
 }
 
-void WidgetSurfaceCoordinator::NotifyOwner() const noexcept {
+void WidgetSurfaceCoordinator::NotifyOwner(const WPARAM notification) const noexcept {
     if (notificationWindow_ && IsWindow(notificationWindow_)) {
         ++workCounters_.ownerNotifications;
-        (void)PostMessageW(notificationWindow_, notificationMessage_, 0, 0);
+        (void)PostMessageW(
+            notificationWindow_, notificationMessage_, notification, 0);
     }
 }
 

@@ -7,6 +7,7 @@
 #include <wincodec.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <iostream>
 #include <chrono>
 #include <stdexcept>
@@ -31,6 +32,25 @@ void WaitForState(
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     Require(false, message);
+}
+
+const std::wstring& RequireBackgroundHandle(
+    const widgetrail::RenderResult& result,
+    const std::wstring_view surfaceId,
+    const char* const message) {
+    const auto found = result.backgroundArtworkHandles.find(
+        std::wstring{surfaceId});
+    Require(found != result.backgroundArtworkHandles.end(), message);
+    return found->second;
+}
+
+const widgetrail::declarative::Rect& RequireElementRect(
+    const widgetrail::RenderResult& result,
+    const std::wstring_view elementId,
+    const char* const message) {
+    const auto found = result.elementRects.find(std::wstring{elementId});
+    Require(found != result.elementRects.end(), message);
+    return found->second;
 }
 
 } // namespace
@@ -79,6 +99,13 @@ int wmain() {
                             "kind":"button",
                             "text":"Ordinary action",
                             "actionId":"background-surface-test.ordinary",
+                            "children":[]
+                        },{
+                            "id":"background-surface-test.supersession",
+                            "kind":"button",
+                            "text":"Superseding background",
+                            "actionId":"background-surface-test.supersession",
+                            "focusBackgroundArtworkHandle":"background-surface-test.focus.supersession",
                             "children":[]
                         },{
                             "id":"background-surface-test.replacement",
@@ -132,6 +159,8 @@ int wmain() {
         options.artworkWidgetId = L"widgetrail.tests.background-surface";
         options.artworkAuthorityId = L"widgetrail.tests.background-surface\x1fruntime\x1fpresentation";
         options.surfaceBackground = {0.0F, 0.0F, 0.0F, 0.0F};
+        std::uint64_t frameTime = 1000;
+        options.animationTimestampMilliseconds = frameTime;
         const widgetrail::declarative::Rect viewport{0.0F, 0.0F, 640.0F, 420.0F};
         const auto render = [&](const std::wstring_view focusedId) {
             target->BeginDraw();
@@ -156,6 +185,10 @@ int wmain() {
             L"widgetrail.tests.background-surface",
             L"background-surface-test.root",
             L"background-surface-test.focus.replacement");
+        const auto supersessionKey = widgetrail::RemoteImageCache::TrustedArtworkKey(
+            L"widgetrail.tests.background-surface",
+            L"background-surface-test.root",
+            L"background-surface-test.focus.supersession");
         const auto failedReplacementKey =
             widgetrail::RemoteImageCache::TrustedArtworkKey(
                 L"widgetrail.tests.background-surface",
@@ -180,6 +213,33 @@ int wmain() {
         Require(defaultFrame.backgroundArtworkHandles.at(L"background-surface-test.root") ==
             L"background-surface-test.artwork",
             "default background did not become the committed image");
+
+        // A replacement target owns a different Direct2D resource domain.
+        // The renderer must retire the committed target-local bitmap before
+        // the render pass copies transition state, then recreate it from the
+        // bounded decoded cache for the exact current proposal.
+        ComPtr<IWICBitmap> replacementCanvas;
+        Require(SUCCEEDED(wic->CreateBitmap(
+            640, 420, GUID_WICPixelFormat32bppPBGRA,
+            WICBitmapCacheOnLoad,
+            replacementCanvas.ReleaseAndGetAddressOf())),
+            "replacement WIC canvas creation failed");
+        ComPtr<ID2D1RenderTarget> replacementTarget;
+        Require(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+            replacementCanvas.Get(), D2D1::RenderTargetProperties(),
+            replacementTarget.ReleaseAndGetAddressOf())),
+            "replacement render-target creation failed");
+        replacementTarget->BeginDraw();
+        const auto replacementDomainFrame = renderer.Render(
+            replacementTarget.Get(), *parsed,
+            L"background-surface-test.first", viewport, options);
+        Require(SUCCEEDED(replacementTarget->EndDraw()),
+            "resource-domain replacement reused a prior-target background bitmap");
+        Require(replacementDomainFrame.succeeded &&
+                replacementDomainFrame.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                    L"background-surface-test.artwork",
+            "resource-domain replacement did not recreate the exact committed background");
 
         parsed->root.children[0].children[0].focusBackgroundArtworkHandle =
             L"background-surface-test.focus.first";
@@ -229,7 +289,36 @@ int wmain() {
         const auto secondReady = render(L"background-surface-test.second");
         Require(secondReady.backgroundArtworkHandles.at(L"background-surface-test.root") ==
             L"background-surface-test.focus.second",
-            "current focused artwork did not atomically replace the retained image");
+            "current focused artwork did not begin the bounded replacement");
+
+        const auto supersessionPending =
+            render(L"background-surface-test.supersession");
+        Require(requests.size() == 4U && requests.back() == supersessionKey,
+            "latest focus did not request its exact superseding proposal");
+        Require(supersessionPending.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                L"background-surface-test.artwork" &&
+                std::any_of(
+                    supersessionPending.diagnostics.begin(),
+                    supersessionPending.diagnostics.end(),
+                    [](const auto& diagnostic) {
+                        return diagnostic.code ==
+                            L"background_crossfade_supersession";
+                    }),
+            "A-to-B-to-pending-C did not retire B and retain committed A");
+
+        // Re-enter B from the decoded cache, then deterministically cross the
+        // complete transition interval before exercising the older
+        // B-to-pending-C retention oracle below.
+        (void)render(L"background-surface-test.second");
+        frameTime += 200;
+        options.animationTimestampMilliseconds = frameTime;
+        const auto secondSettled = render(L"background-surface-test.second");
+        Require(secondSettled.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                    L"background-surface-test.focus.second" &&
+                !secondSettled.backgroundSurfaceAnimationDamage,
+            "focused B did not become the exact committed image after 200 ms");
 
         const auto requestsBeforeOrdinary = requests.size();
         const auto ordinaryFrame = render(L"background-surface-test.ordinary");
@@ -301,14 +390,26 @@ int wmain() {
                 L"background-surface-test.focus.replacement",
             "rejected explicit clear mutated committed background state");
 
+        frameTime += 200;
+        options.animationTimestampMilliseconds = frameTime;
+        const auto replacementSettled =
+            render(L"background-surface-test.replacement");
+        Require(replacementSettled.backgroundArtworkHandles.at(
+                    L"background-surface-test.root") ==
+                    L"background-surface-test.focus.replacement" &&
+                !replacementSettled.backgroundSurfaceAnimationDamage,
+            "replacement C did not become committed after the full transition");
+
         parsed->root.children[0].children[0].focusBackgroundArtworkHandle =
             L"background-surface-test.focus.failure";
         const auto failedReplacementPending =
             render(L"background-surface-test.first");
         Require(requests.back() == failedReplacementKey,
             "failed replacement did not request its exact handle");
-        Require(failedReplacementPending.backgroundArtworkHandles.at(
-                    L"background-surface-test.root") ==
+        Require(RequireBackgroundHandle(
+                    failedReplacementPending,
+                    L"background-surface-test.root",
+                    "pending later override omitted the committed focused image") ==
                 L"background-surface-test.focus.replacement",
             "pending later override did not retain the prior focused image");
         Require(cache.FailTrustedArtwork(
@@ -316,8 +417,10 @@ int wmain() {
             L"background-surface-test.focus.failure"),
             "later focused artwork failure was not admitted");
         const auto failedReplacement = render(L"background-surface-test.first");
-        Require(failedReplacement.backgroundArtworkHandles.at(
-                    L"background-surface-test.root") ==
+        Require(RequireBackgroundHandle(
+                    failedReplacement,
+                    L"background-surface-test.root",
+                    "failed later override omitted the committed focused image") ==
                 L"background-surface-test.focus.replacement",
             "failed later override replaced the prior focused image with default");
         (void)render(L"background-surface-test.replacement");
@@ -328,8 +431,9 @@ int wmain() {
         Require(replacementPlan &&
                 replacementPlan->work == widgetrail::IncrementalPresentationWork::PaintOnly,
             "sparse focused-background transition did not remain paint-only");
-        const auto replacementSurfaceBounds = replacementReady.elementRects.at(
-            L"background-surface-test.root");
+        const auto replacementSurfaceBounds = RequireElementRect(
+            replacementReady, L"background-surface-test.root",
+            "ready replacement omitted BackgroundSurface geometry");
         Require(replacementPlan->damage.x <= replacementSurfaceBounds.x + 0.01F &&
                 replacementPlan->damage.y <= replacementSurfaceBounds.y + 0.01F &&
                 replacementPlan->damage.x + replacementPlan->damage.width >=
@@ -361,8 +465,10 @@ int wmain() {
         WaitForState(cache, changedDefaultKey, widgetrail::RemoteImageState::Ready,
             "changed default artwork did not become ready");
         const auto changedDefaultReady = render(L"background-surface-test.ordinary");
-        Require(changedDefaultReady.backgroundArtworkHandles.at(
-                    L"background-surface-test.root") ==
+        Require(RequireBackgroundHandle(
+                    changedDefaultReady,
+                    L"background-surface-test.root",
+                    "changed default omitted the reset surface artwork") ==
                 L"background-surface-test.artwork.changed",
             "changed default did not initialize the reset surface");
 
@@ -371,15 +477,19 @@ int wmain() {
         (void)render(L"background-surface-test.ordinary");
         parsed->root.usesFocusedDescendantArtwork = true;
         const auto afterExplicitReset = render(L"background-surface-test.ordinary");
-        Require(afterExplicitReset.backgroundArtworkHandles.at(
-                    L"background-surface-test.root") ==
+        Require(RequireBackgroundHandle(
+                    afterExplicitReset,
+                    L"background-surface-test.root",
+                    "explicit reset omitted the authored default artwork") ==
                 L"background-surface-test.artwork.changed",
             "explicit reset retained the prior focused override");
 
         (void)render(L"background-surface-test.replacement");
         const auto afterFocusAuthorityLoss = render(L"");
-        Require(afterFocusAuthorityLoss.backgroundArtworkHandles.at(
-                    L"background-surface-test.root") ==
+        Require(RequireBackgroundHandle(
+                    afterFocusAuthorityLoss,
+                    L"background-surface-test.root",
+                    "focus loss omitted the committed focused background") ==
                 L"background-surface-test.focus.replacement",
             "host-owned focus loss discarded the exact committed focused background");
 
@@ -387,24 +497,30 @@ int wmain() {
         options.artworkAuthorityId =
             L"widgetrail.tests.background-surface\x1fruntime\x1fpresentation.changed";
         const auto changedAuthority = render(L"background-surface-test.ordinary");
-        Require(changedAuthority.backgroundArtworkHandles.at(
-                    L"background-surface-test.root") ==
+        Require(RequireBackgroundHandle(
+                    changedAuthority,
+                    L"background-surface-test.root",
+                    "new presentation authority omitted its default artwork") ==
                 L"background-surface-test.artwork.changed",
             "new presentation authority inherited a prior focused override");
         options.artworkAuthorityId =
             L"widgetrail.tests.background-surface\x1fruntime\x1fpresentation";
         const auto priorAuthorityReentered =
             render(L"background-surface-test.ordinary");
-        Require(priorAuthorityReentered.backgroundArtworkHandles.at(
-                    L"background-surface-test.root") ==
+        Require(RequireBackgroundHandle(
+                    priorAuthorityReentered,
+                    L"background-surface-test.root",
+                    "retired presentation re-entry omitted default artwork") ==
                 L"background-surface-test.artwork.changed",
             "returning to a retired presentation authority resurrected its old override");
 
         (void)render(L"background-surface-test.replacement");
         renderer.ForgetWidgetState(parsed->instanceId);
         const auto afterRetirement = render(L"background-surface-test.ordinary");
-        Require(afterRetirement.backgroundArtworkHandles.at(
-                    L"background-surface-test.root") ==
+        Require(RequireBackgroundHandle(
+                    afterRetirement,
+                    L"background-surface-test.root",
+                    "widget retirement omitted default artwork") ==
                 L"background-surface-test.artwork.changed",
             "widget retirement retained a focused override");
 
@@ -417,8 +533,10 @@ int wmain() {
         (void)render(L"background-surface-test.ordinary");
         parsed->root = retainedSurface;
         const auto afterSurfaceReadded = render(L"background-surface-test.ordinary");
-        Require(afterSurfaceReadded.backgroundArtworkHandles.at(
-                    L"background-surface-test.root") ==
+        Require(RequireBackgroundHandle(
+                    afterSurfaceReadded,
+                    L"background-surface-test.root",
+                    "re-added surface omitted default artwork") ==
                 L"background-surface-test.artwork.changed",
             "removed and re-added surface resurrected its old focused override");
 
@@ -441,16 +559,20 @@ int wmain() {
         options.responsiveViewport = widgetrail::declarative::Size{960.0F, 540.0F};
         const auto responsiveOverride =
             render(L"background-surface-test.replacement");
-        Require(responsiveOverride.backgroundArtworkHandles.at(
-                    L"background-surface-test.root") ==
+        Require(RequireBackgroundHandle(
+                    responsiveOverride,
+                    L"background-surface-test.root",
+                    "expanded surface omitted focused artwork") ==
                 L"background-surface-test.focus.replacement",
             "expanded surface did not establish its ready focused override");
         options.responsiveViewport = widgetrail::declarative::Size{959.0F, 540.0F};
         (void)render(L"background-surface-test.compact");
         options.responsiveViewport = widgetrail::declarative::Size{960.0F, 540.0F};
         const auto responsiveReadded = render(L"background-surface-test.ordinary");
-        Require(responsiveReadded.backgroundArtworkHandles.at(
-                    L"background-surface-test.root") ==
+        Require(RequireBackgroundHandle(
+                    responsiveReadded,
+                    L"background-surface-test.root",
+                    "responsive re-entry omitted default artwork") ==
                 L"background-surface-test.artwork.changed",
             "responsive mode away and back resurrected an absent surface override");
         parsed->root = responsiveSurface;
@@ -515,9 +637,13 @@ int wmain() {
         WaitForState(cache, expectedInnerKey, widgetrail::RemoteImageState::Ready,
             "nested focused artwork did not become ready");
         const auto nestedReady = renderNested(L"nested.action");
-        Require(nestedReady.backgroundArtworkHandles.at(L"nested.outer") ==
+        Require(RequireBackgroundHandle(
+                    nestedReady, L"nested.outer",
+                    "nested ready frame omitted outer artwork") ==
                     L"nested.outer.default" &&
-                nestedReady.backgroundArtworkHandles.at(L"nested.inner") ==
+                RequireBackgroundHandle(
+                    nestedReady, L"nested.inner",
+                    "nested ready frame omitted inner artwork") ==
                     L"nested.focus",
             "nested surfaces did not retain independent exact ready handles");
 
@@ -532,7 +658,9 @@ int wmain() {
         Require(requests.size() == requestsBeforeOuterFocus + 2U &&
                 requests[requestsBeforeOuterFocus] == outerFocusKey &&
                 requests[requestsBeforeOuterFocus + 1U] == innerDefaultKey &&
-                outerFocusPending.backgroundArtworkHandles.at(L"nested.outer") ==
+                RequireBackgroundHandle(
+                    outerFocusPending, L"nested.outer",
+                    "outer-focus pending frame omitted outer artwork") ==
                     L"nested.outer.default" &&
                 !outerFocusPending.backgroundArtworkHandles.contains(L"nested.inner"),
             "selecting a different surface did not retire the prior surface override");
@@ -543,14 +671,20 @@ int wmain() {
         WaitForState(cache, outerFocusKey, widgetrail::RemoteImageState::Ready,
             "outer focused artwork did not become ready");
         const auto outerFocusReady = renderNested(L"nested.outer.action");
-        Require(outerFocusReady.backgroundArtworkHandles.at(L"nested.outer") ==
+        Require(RequireBackgroundHandle(
+                    outerFocusReady, L"nested.outer",
+                    "outer-focus ready frame omitted outer artwork") ==
                     L"nested.outer.focus" &&
                 !outerFocusReady.backgroundArtworkHandles.contains(L"nested.inner"),
             "different selected surface did not establish independent authority");
         const auto innerFocusRestored = renderNested(L"nested.action");
-        Require(innerFocusRestored.backgroundArtworkHandles.at(L"nested.outer") ==
+        Require(RequireBackgroundHandle(
+                    innerFocusRestored, L"nested.outer",
+                    "inner-focus frame omitted outer artwork") ==
                     L"nested.outer.default" &&
-                innerFocusRestored.backgroundArtworkHandles.at(L"nested.inner") ==
+                RequireBackgroundHandle(
+                    innerFocusRestored, L"nested.inner",
+                    "inner-focus frame omitted inner artwork") ==
                     L"nested.focus",
             "selecting the inner surface retained the different outer override");
 
@@ -558,14 +692,18 @@ int wmain() {
         const auto retainedInner = outerContent.children.front();
         outerContent.children.erase(outerContent.children.begin());
         const auto innerRemoved = renderNested(L"");
-        Require(innerRemoved.backgroundArtworkHandles.at(L"nested.outer") ==
+        Require(RequireBackgroundHandle(
+                    innerRemoved, L"nested.outer",
+                    "inner-removal frame omitted outer artwork") ==
                 L"nested.outer.default",
             "removing the inner surface altered the outer surface handle");
         outerContent.children.insert(outerContent.children.begin(), retainedInner);
         const auto innerReaddedPending = renderNested(L"nested.ordinary");
         Require(requests.back() == innerDefaultKey &&
                 !innerReaddedPending.backgroundArtworkHandles.contains(L"nested.inner") &&
-                innerReaddedPending.backgroundArtworkHandles.at(L"nested.outer") ==
+                RequireBackgroundHandle(
+                    innerReaddedPending, L"nested.outer",
+                    "inner-readded pending frame omitted outer artwork") ==
                     L"nested.outer.default",
             "re-added inner surface resurrected its old focused override");
         Require(cache.SupplyTrustedArtwork(
@@ -575,31 +713,47 @@ int wmain() {
         WaitForState(cache, innerDefaultKey, widgetrail::RemoteImageState::Ready,
             "nested inner default did not become ready");
         const auto innerReaddedReady = renderNested(L"nested.ordinary");
-        Require(innerReaddedReady.backgroundArtworkHandles.at(L"nested.outer") ==
+        Require(RequireBackgroundHandle(
+                    innerReaddedReady, L"nested.outer",
+                    "inner-readded ready frame omitted outer artwork") ==
                     L"nested.outer.default" &&
-                innerReaddedReady.backgroundArtworkHandles.at(L"nested.inner") ==
+                RequireBackgroundHandle(
+                    innerReaddedReady, L"nested.inner",
+                    "inner-readded ready frame omitted inner artwork") ==
                     L"nested.inner.default",
             "re-added inner surface did not initialize independently from default");
 
         const auto outerOverrideBeforeNonOpt =
             renderNested(L"nested.outer.action");
-        Require(outerOverrideBeforeNonOpt.backgroundArtworkHandles.at(
-                    L"nested.outer") == L"nested.outer.focus" &&
-                outerOverrideBeforeNonOpt.backgroundArtworkHandles.at(
-                    L"nested.inner") == L"nested.inner.default",
+        Require(RequireBackgroundHandle(
+                    outerOverrideBeforeNonOpt, L"nested.outer",
+                    "non-opt-in fixture omitted outer artwork") ==
+                    L"nested.outer.focus" &&
+                RequireBackgroundHandle(
+                    outerOverrideBeforeNonOpt, L"nested.inner",
+                    "non-opt-in fixture omitted inner artwork") ==
+                    L"nested.inner.default",
             "non-opt-in boundary fixture did not establish the outer override");
         outerContent.children.front().usesFocusedDescendantArtwork = false;
         const auto nestedNonOpt = renderNested(L"nested.action");
-        Require(nestedNonOpt.backgroundArtworkHandles.at(L"nested.outer") ==
+        Require(RequireBackgroundHandle(
+                    nestedNonOpt, L"nested.outer",
+                    "nested non-opt-in frame omitted outer artwork") ==
                     L"nested.outer.default" &&
-                nestedNonOpt.backgroundArtworkHandles.at(L"nested.inner") ==
+                RequireBackgroundHandle(
+                    nestedNonOpt, L"nested.inner",
+                    "nested non-opt-in frame omitted inner artwork") ==
                     L"nested.inner.default",
             "focus inside a nested non-opt-in surface retained the outer override");
         outerContent.children.front().usesFocusedDescendantArtwork = true;
         const auto innerReset = renderNested(L"nested.ordinary");
-        Require(innerReset.backgroundArtworkHandles.at(L"nested.outer") ==
+        Require(RequireBackgroundHandle(
+                    innerReset, L"nested.outer",
+                    "inner-reset frame omitted outer artwork") ==
                     L"nested.outer.default" &&
-                innerReset.backgroundArtworkHandles.at(L"nested.inner") ==
+                RequireBackgroundHandle(
+                    innerReset, L"nested.inner",
+                    "inner-reset frame omitted inner artwork") ==
                     L"nested.inner.default",
             "resetting the inner surface altered the independent outer owner");
 
