@@ -205,12 +205,38 @@ public sealed class PlayniteLibraryLayoutTests
         var browseSnapshot = new PresentationWidget(browseView).RenderSnapshot(
             "playnite-library.presentation.browse", 2);
         var browseNodes = Nodes(browseSnapshot.Root).ToArray();
-        Assert.IsTrue(browseNodes.Any(node => node.Shortcuts.Any(shortcut =>
-                shortcut.Button == ControllerButton.LeftTrigger &&
-                shortcut.ActionId == PlayniteLibraryActions.CollectionPrevious)));
-        Assert.IsTrue(browseNodes.Any(node => node.Shortcuts.Any(shortcut =>
-                shortcut.Button == ControllerButton.RightTrigger &&
-                shortcut.ActionId == PlayniteLibraryActions.CollectionNext)));
+        var browsePage = browseNodes.Single(node =>
+            node.Id == "playnite-library.browse.page");
+        var browsePageNodes = Nodes(browsePage).ToArray();
+        foreach (var id in new[]
+                 {
+                     "playnite-library.search",
+                     "playnite-library.filter.source",
+                     "playnite-library.filter.sort",
+                     "playnite-library.filter.recent",
+                     "playnite-library.filter.favorites",
+                     "playnite-library.query.clear",
+                     "playnite-library.refresh",
+                 })
+            Assert.IsTrue(browsePageNodes.Any(node => node.Id == id),
+                id + " must remain inside the page-wide Browse shortcut owner.");
+        Assert.IsTrue(browsePageNodes.Any(node =>
+            node.ActionId == PlayniteLibraryActions.Launch));
+        Assert.AreEqual(1, browseNodes.Count(node => node.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.LeftTrigger)));
+        Assert.AreEqual(1, browseNodes.Count(node => node.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.RightTrigger)));
+        Assert.IsTrue(browsePage.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.LeftTrigger &&
+            shortcut.ActionId == PlayniteLibraryActions.CollectionPrevious));
+        Assert.IsTrue(browsePage.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.RightTrigger &&
+            shortcut.ActionId == PlayniteLibraryActions.CollectionNext));
+        Assert.IsFalse(browseNodes.Where(node =>
+                node.ActionId == PlayniteLibraryActions.Launch).Any(node =>
+                node.Shortcuts.Any(shortcut => shortcut.Button is
+                    ControllerButton.LeftTrigger or ControllerButton.RightTrigger)),
+            "Browse posters must inherit one page-wide collection shortcut owner.");
         var previousCollectionHint = browseNodes.Single(node =>
             node.Id == "playnite-library.collection.hint.previous");
         Assert.IsTrue(Nodes(previousCollectionHint).Any(node =>
@@ -219,6 +245,18 @@ public sealed class PlayniteLibraryLayoutTests
             node.Id == "playnite-library.collection.hint.next");
         Assert.IsTrue(Nodes(nextCollectionHint).Any(node =>
             node.Text == "Next collection"));
+        var emptyBrowse = new PresentationWidget(PlayniteLibraryPresentation.Render(State(
+                Snapshot(WidgetPagedResourceStatus.Ready, []), organization,
+                PlayniteLibraryRoute.Browse, [])))
+            .RenderSnapshot("playnite-library.presentation.browse.empty", 3);
+        var emptyBrowsePage = Nodes(emptyBrowse.Root).Single(node =>
+            node.Id == "playnite-library.browse.page");
+        Assert.IsTrue(emptyBrowsePage.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.LeftTrigger));
+        Assert.IsTrue(emptyBrowsePage.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.RightTrigger));
+        Assert.IsTrue(Nodes(emptyBrowsePage).Any(node =>
+            node.Id == "playnite-library.browse.empty.action"));
         foreach (var id in new[]
                  {
                      "playnite-library.filter.favorites",
@@ -512,6 +550,17 @@ public sealed class PlayniteLibraryLayoutTests
             "playnite-library-widget");
         CollectionAssert.Contains(connection.Root.StyleClasses.ToArray(),
             "playnite-library-playnite");
+        Assert.AreEqual(WidgetSurfaceAppearance.Transparent,
+            connection.Surface!.Appearance);
+        Assert.AreEqual(PlayniteLibraryPresentation.Render(hiddenState).Surface!.Appearance,
+            connection.Surface.Appearance,
+            "Connection and Hidden must share the transparent secondary-page treatment.");
+        var categoriesState = State(
+            Snapshot(WidgetPagedResourceStatus.Ready, [item]),
+            hiddenOrganization, PlayniteLibraryRoute.Categories, []);
+        Assert.AreEqual(PlayniteLibraryPresentation.Render(categoriesState).Surface!.Appearance,
+            connection.Surface.Appearance,
+            "Connection and Categories must share the transparent secondary-page treatment.");
         var connectionRootStyle = theme.Resolve(new WrssElement("stack", null,
             connection.Root.StyleClasses.ToHashSet(StringComparer.Ordinal)));
         Assert.AreEqual("100%", connectionRootStyle.Get("width")?.Text);

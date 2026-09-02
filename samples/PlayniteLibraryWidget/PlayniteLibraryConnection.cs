@@ -127,6 +127,7 @@ internal static class PlayniteLibraryConnectionPresentation
                 PreferredHeight = 620,
                 MinimumWidth = 420,
                 MinimumHeight = 340,
+                Appearance = WidgetSurfaceAppearance.Transparent,
             });
     }
 }

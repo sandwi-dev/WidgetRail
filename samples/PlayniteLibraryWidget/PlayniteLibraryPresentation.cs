@@ -387,8 +387,6 @@ internal static class PlayniteLibraryPresentation
                     row.Key,
                     rail.PageBumpers,
                     row.CollectionItem,
-                    collectionSwitch: state.Route == PlayniteLibraryRoute.Browse &&
-                        state.Organization.Categories.Count != 0,
                     categories: state.Route is PlayniteLibraryRoute.Library or
                         PlayniteLibraryRoute.Browse
                         ? state.Organization.Categories : null,
@@ -600,10 +598,6 @@ internal static class PlayniteLibraryPresentation
                             "Next collection",
                             "playnite-library.collection.hint.next"))
                         .Classes("playnite-library-footer"))
-                .Shortcut(ControllerButton.LeftTrigger,
-                    actionId: "playnite-library.collection.previous")
-                .Shortcut(ControllerButton.RightTrigger,
-                    actionId: "playnite-library.collection.next")
                 .Classes("playnite-library-content");
         }
         content = content.AddClasses("playnite-library-main");
@@ -649,6 +643,13 @@ internal static class PlayniteLibraryPresentation
             var page = UI.Stack("playnite-library.browse.page",
                     header, queryControls, content)
                 .Classes("playnite-library-browse-foreground");
+            if (state.Organization.Categories.Count != 0 && renderActionsEnabled &&
+                !state.OrganizationBusy)
+                page = page
+                    .Shortcut(ControllerButton.LeftTrigger,
+                        actionId: PlayniteLibraryActions.CollectionPrevious)
+                    .Shortcut(ControllerButton.RightTrigger,
+                        actionId: PlayniteLibraryActions.CollectionNext);
             var browseStage = CinematicStage(
                 "playnite-library.browse.stage", page,
                 "playnite-library-browse-stage");
@@ -999,7 +1000,6 @@ internal static class PlayniteLibraryPresentation
         WidgetCollectionItemKey key,
         bool pageBumpers,
         bool collectionItem = true,
-        bool collectionSwitch = false,
         IReadOnlyList<PlayniteLibraryCategory>? categories = null,
         string? completionStatus = null,
         bool focusSummaryContext = false,
@@ -1051,12 +1051,6 @@ internal static class PlayniteLibraryPresentation
                     disabled: !actionEnabled);
             }
         }
-        if (interactive && current is not null && !launching && collectionSwitch)
-            tile = tile
-                .Shortcut(ControllerButton.LeftTrigger,
-                    actionId: "playnite-library.collection.previous")
-                .Shortcut(ControllerButton.RightTrigger,
-                    actionId: "playnite-library.collection.next");
         WidgetElement result = tile;
         if (current is not null)
         {
