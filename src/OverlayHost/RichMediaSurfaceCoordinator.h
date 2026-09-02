@@ -253,6 +253,8 @@ public:
     [[nodiscard]] HRESULT UpdateGeometry(const RECT& bounds, double rasterScale) noexcept;
     [[nodiscard]] HRESULT BeginPresentationTransfer(
         PresentationTransferFailureStage* failureStage = nullptr) noexcept;
+    [[nodiscard]] HRESULT BeginPresentationRetarget(
+        PresentationTransferFailureStage* failureStage = nullptr) noexcept;
     [[nodiscard]] HRESULT CompletePresentationTransfer(
         PresentationTarget target,
         PresentationTransferFailureStage* failureStage = nullptr) noexcept;
@@ -289,6 +291,9 @@ public:
         std::function<void()> invalidate,
         bool initiallyVisible = false,
         bool requireRootBeforeParent = false);
+    [[nodiscard]] HRESULT CompletePresentationTransferForTest(
+        PresentationTarget target, bool rootFirst,
+        PresentationTransferFailureStage* failureStage = nullptr) noexcept;
 #endif
 
 private:
@@ -340,6 +345,12 @@ private:
         ICoreWebView2FrameCreatedEventArgs* args) noexcept;
     [[nodiscard]] HRESULT OnFrameNavigationStarting(
         ICoreWebView2NavigationStartingEventArgs* args) noexcept;
+    [[nodiscard]] HRESULT BeginPresentationTransfer(
+        bool detachRoot,
+        PresentationTransferFailureStage* failureStage) noexcept;
+    [[nodiscard]] HRESULT CompletePresentationTransfer(
+        PresentationTarget target, bool rootFirst,
+        PresentationTransferFailureStage* failureStage) noexcept;
     [[nodiscard]] static bool IsAllowedNavigation(std::wstring_view uri) noexcept;
     [[nodiscard]] static bool IsAllowedNavigation(
         std::wstring_view uri, std::wstring_view exactPageUri) noexcept;
@@ -455,6 +466,7 @@ private:
     std::uint64_t retrySurfaceGeneration_{};
     bool teardownBegun_{};
     bool presentationTransferPending_{};
+    bool presentationTransferDetached_{};
     bool transferDesiredVisible_{};
     bool controllerGeometryApplied_{};
 #if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
@@ -462,6 +474,7 @@ private:
         presentationTransferFailureForTest_;
     bool presentationTransferRequireRootBeforeParentForTest_{};
     bool presentationTransferRootAttachedForTest_{};
+    bool presentationTransferDetachedForTest_{};
 #endif
     HRESULT browserEventRegistrationResult_{E_UNEXPECTED};
     std::wstring pageUri_;
