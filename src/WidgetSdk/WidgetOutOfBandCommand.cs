@@ -44,6 +44,7 @@ public enum WidgetOutOfBandObservationAdmission
 public sealed class WidgetOutOfBandObservationTicket
 {
     private readonly object _owner;
+    private int _consumed;
 
     internal WidgetOutOfBandObservationTicket(object owner, long sequence)
     {
@@ -54,6 +55,7 @@ public sealed class WidgetOutOfBandObservationTicket
     public long Sequence { get; }
 
     internal bool IsOwnedBy(object owner) => ReferenceEquals(_owner, owner);
+    internal bool TryConsume() => Interlocked.Exchange(ref _consumed, 1) == 0;
 }
 
 /// <summary>
@@ -247,6 +249,8 @@ public sealed class WidgetOutOfBandCommand<
             throw new ArgumentException(
                 "The observation ticket belongs to another command facility.",
                 nameof(ticket));
+        if (!ticket.TryConsume())
+            return WidgetOutOfBandObservationAdmission.RejectedStale;
         return ObserveCore(observation, ticket.Sequence, ticketed: true);
     }
 
@@ -265,9 +269,6 @@ public sealed class WidgetOutOfBandCommand<
                 : _lastDirectObservationSequence;
             if (observationSequence <= lastObservationSequence)
                 return WidgetOutOfBandObservationAdmission.RejectedStale;
-            if (ticketed)
-                _lastObservationTicket = observationSequence;
-
             var correlationSequence = _options.CorrelationSequence(observation);
             if (correlationSequence < 0)
                 throw new ArgumentOutOfRangeException(nameof(observation),
@@ -297,7 +298,8 @@ public sealed class WidgetOutOfBandCommand<
                 committed =>
                 {
                     if (!committed.Result.Matched) return;
-                    if (!ticketed) _lastDirectObservationSequence = observationSequence;
+                    if (ticketed) _lastObservationTicket = observationSequence;
+                    else _lastDirectObservationSequence = observationSequence;
                     if (!committed.Result.Confirmed) return;
                     _current = null;
                     _expiry.Cancel();

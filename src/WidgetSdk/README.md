@@ -454,6 +454,8 @@ projection may update unrelated authoritative fields without erasing the owned
 projection, while a matching or successor observation can confirm it through
 `ConfirmsProjection`. A ticket is consumed by its first owned `Observe` attempt,
 including an authority or correlation rejection; retry with a fresh ticket.
+Rejected payloads do not advance the accepted-observation watermark, so they
+cannot make a different valid read that was already in flight appear stale.
 While a projection is pending, every correlated or
 uncorrelated observation must also pass `MatchesProjectionAuthority`; a matching
 command number can never substitute for the projected entity authority.

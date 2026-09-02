@@ -97,11 +97,15 @@ internal static class WidgetOutOfBandCommandTests
             widget.Observe(matchingPoll, new(0, 0, "media-a", 50, 10)));
         False(widget.IsPending, "A matching poll did not confirm the projection.");
 
-        var rejectedTicket = widget.BeginObservation();
+        var validEarlierTicket = widget.BeginObservation();
+        var rejectedLaterTicket = widget.BeginObservation();
         Equal(WidgetOutOfBandObservationAdmission.RejectedAuthority,
-            widget.Observe(rejectedTicket, new(0, 0, "media-b", 1, 11)));
+            widget.Observe(rejectedLaterTicket, new(0, 0, "media-b", 1, 11)));
         Equal(WidgetOutOfBandObservationAdmission.RejectedStale,
-            widget.Observe(rejectedTicket, new(0, 0, "media-a", 1, 12)));
+            widget.Observe(rejectedLaterTicket, new(0, 0, "media-a", 1, 12)));
+        Equal(WidgetOutOfBandObservationAdmission.Accepted,
+            widget.Observe(validEarlierTicket, new(0, 0, "media-a", 51, 13)));
+        Equal(51, widget.State.Value);
 
         await WidgetTestHost.DestroyAsync(widget);
     }
