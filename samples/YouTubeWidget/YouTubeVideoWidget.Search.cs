@@ -466,7 +466,8 @@ public sealed partial class YouTubeVideoWidget
         if (query.Length == 0) return;
         // Each owner publishes its own change: the model commits the active query,
         // and the cursor resource publishes when its load starts. Adding an
-        // Invalidate() here would request a second render for one transition.
+        // Invalidate() here would add a third redundant invalidation request;
+        // the runtime may still coalesce those requests into fewer renders.
         _searchResults.Reset(invalidate: false);
         _model.Update(state => state.WithActiveQuery(query));
         _searchResults.EnsureLoaded();

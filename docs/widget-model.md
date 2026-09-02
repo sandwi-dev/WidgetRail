@@ -217,9 +217,11 @@ background work.
 For a widget with query, selected item, modal state, and status fields:
 
 1. Inventory every mutable field and identify its real owner.
-2. Keep provider pages in `WidgetResource`/`WidgetCursorResource`, routes in
-   `WidgetNavigator`, tasks in `WidgetOperations`, and persistence/provider
-   authority in their existing owners.
+2. Keep provider pages in `WidgetResource`/`WidgetCursorResource`, nested or
+   stacked routes in `WidgetNavigator`, tasks in `WidgetOperations`, and
+   persistence/provider authority in their existing owners. A flat lateral
+   route machine remains widget-owned when adopting generated scopes or stack
+   semantics would change its established public contract.
 3. Define one immutable record for only widget-owned render state.
 4. Construct one model in the widget constructor.
 5. Change each related field cluster in one `Update`; return the current state
