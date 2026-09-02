@@ -98,6 +98,9 @@ ctor WidgetRail.WidgetSdk.WidgetOperationFailedEventArgs(string key, WidgetRail.
 ctor WidgetRail.WidgetSdk.WidgetOperationHandle(WidgetRail.WidgetSdk.WidgetOperationAdmission Admission, System.Threading.Tasks.Task<WidgetRail.WidgetSdk.WidgetOperationResult> Completion)
 ctor WidgetRail.WidgetSdk.WidgetOperationResult(WidgetRail.WidgetSdk.WidgetOperationStatus Status, System.Exception? Exception = null)
 ctor WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>()
+ctor WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>()
+ctor WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>(TState State, TAuthority Authority, bool ShouldStart = true, System.TimeSpan? ExpiresAfter = null)
+ctor WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun(WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission Admission, long Sequence)
 ctor WidgetRail.WidgetSdk.WidgetPage<TItem>(System.Collections.Generic.IReadOnlyList<TItem> Items, int Offset, int Limit, int Total)
 ctor WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>()
 ctor WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>(WidgetRail.WidgetSdk.WidgetPagedResourceStatus Status, WidgetRail.WidgetSdk.WidgetPage<TItem>? Page, WidgetRail.WidgetSdk.WidgetResourceError? Error, string? RequestedFocusId, long Revision)
@@ -326,6 +329,14 @@ enum WidgetRail.WidgetSdk.WidgetOperationStatus.Failed = WidgetRail.WidgetSdk.Wi
 enum WidgetRail.WidgetSdk.WidgetOperationStatus.Rejected = WidgetRail.WidgetSdk.WidgetOperationStatus.Rejected
 enum WidgetRail.WidgetSdk.WidgetOperationStatus.Succeeded = WidgetRail.WidgetSdk.WidgetOperationStatus.Succeeded
 enum WidgetRail.WidgetSdk.WidgetOperationStatus.Superseded = WidgetRail.WidgetSdk.WidgetOperationStatus.Superseded
+enum WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission.RejectedPending = WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission.RejectedPending
+enum WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission.RejectedProjection = WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission.RejectedProjection
+enum WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission.Replaced = WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission.Replaced
+enum WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission.Started = WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission.Started
+enum WidgetRail.WidgetSdk.WidgetOutOfBandObservationAdmission.Accepted = WidgetRail.WidgetSdk.WidgetOutOfBandObservationAdmission.Accepted
+enum WidgetRail.WidgetSdk.WidgetOutOfBandObservationAdmission.RejectedAuthority = WidgetRail.WidgetSdk.WidgetOutOfBandObservationAdmission.RejectedAuthority
+enum WidgetRail.WidgetSdk.WidgetOutOfBandObservationAdmission.RejectedCorrelation = WidgetRail.WidgetSdk.WidgetOutOfBandObservationAdmission.RejectedCorrelation
+enum WidgetRail.WidgetSdk.WidgetOutOfBandObservationAdmission.RejectedStale = WidgetRail.WidgetSdk.WidgetOutOfBandObservationAdmission.RejectedStale
 enum WidgetRail.WidgetSdk.WidgetPageDirection.Next = WidgetRail.WidgetSdk.WidgetPageDirection.Next
 enum WidgetRail.WidgetSdk.WidgetPageDirection.Previous = WidgetRail.WidgetSdk.WidgetPageDirection.Previous
 enum WidgetRail.WidgetSdk.WidgetPagedResourceStatus.Error = WidgetRail.WidgetSdk.WidgetPagedResourceStatus.Error
@@ -1141,6 +1152,23 @@ method WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExec
 method WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommand<TState,TRequest,TObservation,TAuthority>.BeginObservation() -> WidgetRail.WidgetSdk.WidgetOutOfBandObservationTicket
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommand<TState,TRequest,TObservation,TAuthority>.Observe(TObservation observation) -> WidgetRail.WidgetSdk.WidgetOutOfBandObservationAdmission
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommand<TState,TRequest,TObservation,TAuthority>.Observe(WidgetRail.WidgetSdk.WidgetOutOfBandObservationTicket ticket, TObservation observation) -> WidgetRail.WidgetSdk.WidgetOutOfBandObservationAdmission
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommand<TState,TRequest,TObservation,TAuthority>.Run(TRequest request) -> WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommand<TState,TRequest,TObservation,TAuthority>.RunLatest(TRequest request) -> WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.Deconstruct(out TState State, out TAuthority Authority, out bool ShouldStart, out System.TimeSpan? ExpiresAfter) -> void
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.Equals(object obj) -> bool
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun.Deconstruct(out WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission Admission, out long Sequence) -> void
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun.Equals(object obj) -> bool
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetPage<TItem>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetPage<TItem>
 method WidgetRail.WidgetSdk.WidgetPage<TItem>.Deconstruct(out System.Collections.Generic.IReadOnlyList<TItem> Items, out int Offset, out int Limit, out int Total) -> void
 method WidgetRail.WidgetSdk.WidgetPage<TItem>.Equals(object? obj) -> bool
@@ -1629,6 +1657,12 @@ method static WidgetRail.WidgetSdk.WidgetOperationResult.op_Equality(WidgetRail.
 method static WidgetRail.WidgetSdk.WidgetOperationResult.op_Inequality(WidgetRail.WidgetSdk.WidgetOperationResult left, WidgetRail.WidgetSdk.WidgetOperationResult right) -> bool
 method static WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.op_Equality(WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>? left, WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.op_Inequality(WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>? left, WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.op_Equality(WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>? left, WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.op_Inequality(WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>? left, WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.op_Equality(WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority> left, WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority> right) -> bool
+method static WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.op_Inequality(WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority> left, WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority> right) -> bool
+method static WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun.op_Equality(WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun left, WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun right) -> bool
+method static WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun.op_Inequality(WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun left, WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun right) -> bool
 method static WidgetRail.WidgetSdk.WidgetPage<TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetPage<TItem>? left, WidgetRail.WidgetSdk.WidgetPage<TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetPage<TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetPage<TItem>? left, WidgetRail.WidgetSdk.WidgetPage<TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>? left, WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>? right) -> bool
@@ -1840,6 +1874,9 @@ method virtual WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.Equals(WidgetRail
 method virtual WidgetRail.WidgetSdk.WidgetOperationHandle.Equals(WidgetRail.WidgetSdk.WidgetOperationHandle other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetOperationResult.Equals(WidgetRail.WidgetSdk.WidgetOperationResult other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Equals(WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.Equals(WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.Equals(WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority> other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun.Equals(WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetPage<TItem>.Equals(WidgetRail.WidgetSdk.WidgetPage<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.Equals(WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.Equals(WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>? other) -> bool
@@ -1918,8 +1955,14 @@ property System.Func<TExecution,System.Threading.CancellationToken,System.Thread
 property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ItemKey { get; set; }
 property System.Func<TItem,int,string> WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.ItemFocusId { get; set; }
 property System.Func<TItem,string> WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ItemFocusId { get; set; }
+property System.Func<TObservation,long> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.CorrelationSequence { get; set; }
+property System.Func<TObservation,long>? WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.ObservationSequence { get; set; }
+property System.Func<TState,TAuthority,TObservation,bool,bool> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.ConfirmsProjection { get; set; }
 property System.Func<TState,TExecution,TResult?,TState> WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Reconcile { get; set; }
+property System.Func<TState,TObservation,bool,TState> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.Reconcile { get; set; }
+property System.Func<TState,TObservation,bool> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.MatchesAuthority { get; set; }
 property System.Func<TState,TRequest,WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>> WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Apply { get; set; }
+property System.Func<TState,TRequest,long,WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.Apply { get; set; }
 property System.Func<TState,TState,TExecution,TState> WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Rollback { get; set; }
 property System.Func<TState,TState,TExecution,WidgetRail.WidgetSdk.WidgetCommandError,TState>? WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Fail { get; set; }
 property System.Func<WidgetRail.WidgetSdk.WidgetCollectionCursor?,WidgetRail.WidgetSdk.WidgetCursorDirection?,int,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetCursorPage<TItem>>> WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.LoadPage { get; set; }
@@ -1931,6 +1974,7 @@ property System.Threading.CancellationToken WidgetRail.WidgetSdk.WidgetOperation
 property System.Threading.Tasks.Task WidgetRail.WidgetSdk.WidgetScenarioOperationInvocation<TRequest,TResponse>.CancellationObserved { get; }
 property System.Threading.Tasks.Task WidgetRail.WidgetSdk.WidgetScenarioOperationInvocation<TRequest,TResponse>.HandlerCompleted { get; }
 property System.Threading.Tasks.Task<WidgetRail.WidgetSdk.WidgetOperationResult> WidgetRail.WidgetSdk.WidgetOperationHandle.Completion { get; set; }
+property System.TimeProvider? WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.TimeProvider { get; set; }
 property System.TimeProvider? WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.TimeProvider { get; set; }
 property System.TimeProvider? WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.TimeProvider { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.ScrubberElement.Duration { get; set; }
@@ -1940,7 +1984,9 @@ property System.TimeSpan WidgetRail.WidgetSdk.ToastElement.Duration { get; }
 property System.TimeSpan WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.Timeout { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.CacheDuration { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.CacheDuration { get; set; }
+property System.TimeSpan? WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.ExpiresAfter { get; set; }
 property T? WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.Value { get; set; }
+property TAuthority WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.Authority { get; set; }
 property TExecution WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>.Execution { get; set; }
 property TRequest? WidgetRail.WidgetSdk.WidgetScenarioOperationInvocation<TRequest,TResponse>.Request { get; }
 property TResult? WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>.Result { get; set; }
@@ -1953,6 +1999,7 @@ property TState WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>.Current {
 property TState WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>.Previous { get; set; }
 property TState WidgetRail.WidgetSdk.WidgetModelUpdate<TState>.Current { get; set; }
 property TState WidgetRail.WidgetSdk.WidgetModelUpdate<TState>.Previous { get; set; }
+property TState WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.State { get; set; }
 property TValue? WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Value { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfaceOrientation WidgetRail.WidgetSdk.ActionSurfaceElement.Orientation { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfacePresentation? WidgetRail.WidgetSdk.ActionSurfaceElement.Presentation { get; set; }
@@ -2074,9 +2121,11 @@ property WidgetRail.WidgetSdk.WidgetOperationAdmission WidgetRail.WidgetSdk.Widg
 property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.Lifetime { get; set; }
 property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetOperationFailedEventArgs.Lifetime { get; }
 property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Lifetime { get; set; }
+property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.ExpiryLifetime { get; set; }
 property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.Lifetime { get; set; }
 property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.Lifetime { get; set; }
 property WidgetRail.WidgetSdk.WidgetOperationStatus WidgetRail.WidgetSdk.WidgetOperationResult.Status { get; set; }
+property WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun.Admission { get; set; }
 property WidgetRail.WidgetSdk.WidgetPage<TItem>? WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.Page { get; set; }
 property WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem> WidgetRail.WidgetSdk.WidgetPagedResource<TItem>.Snapshot { get; }
 property WidgetRail.WidgetSdk.WidgetPagedResourceStatus WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Status { get; set; }
@@ -2156,6 +2205,9 @@ property bool WidgetRail.WidgetSdk.WidgetOperationBusyChangedEventArgs.IsBusy { 
 property bool WidgetRail.WidgetSdk.WidgetOperationContext.IsCurrent { get; }
 property bool WidgetRail.WidgetSdk.WidgetOperationHandle.IsAccepted { get; }
 property bool WidgetRail.WidgetSdk.WidgetOptimisticCommand<TState,TRequest,TExecution,TResult>.IsBusy { get; }
+property bool WidgetRail.WidgetSdk.WidgetOutOfBandCommand<TState,TRequest,TObservation,TAuthority>.IsPending { get; }
+property bool WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.ShouldStart { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun.IsAccepted { get; }
 property bool WidgetRail.WidgetSdk.WidgetPagedResource<TItem>.IsBusy { get; }
 property bool WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.RetainLastGoodPage { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.HasNext { get; }
@@ -2255,6 +2307,9 @@ property long WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.Revision { g
 property long WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsChanged.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetOperationContext.Generation { get; }
+property long WidgetRail.WidgetSdk.WidgetOutOfBandCommand<TState,TRequest,TObservation,TAuthority>.PendingSequence { get; }
+property long WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun.Sequence { get; set; }
+property long WidgetRail.WidgetSdk.WidgetOutOfBandObservationTicket.Sequence { get; }
 property long WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetPrivateStateMutation.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot.Revision { get; set; }
@@ -2554,6 +2609,8 @@ type enum WidgetRail.WidgetSdk.WidgetNetworkWirelessAvailability : System.ICompa
 type enum WidgetRail.WidgetSdk.WidgetOperationAdmission : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetOperationLifetime : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetOperationStatus : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum WidgetRail.WidgetSdk.WidgetOutOfBandObservationAdmission : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetPageDirection : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetPagedResourceStatus : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetRecentActivityKind : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -2689,6 +2746,9 @@ type sealed class WidgetRail.WidgetSdk.WidgetOperationFailedEventArgs : System.E
 type sealed class WidgetRail.WidgetSdk.WidgetOperations
 type sealed class WidgetRail.WidgetSdk.WidgetOptimisticCommand<TState,TRequest,TExecution,TResult>
 type sealed class WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult> : System.IEquatable<WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>>
+type sealed class WidgetRail.WidgetSdk.WidgetOutOfBandCommand<TState,TRequest,TObservation,TAuthority>
+type sealed class WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority> : System.IEquatable<WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>>
+type sealed class WidgetRail.WidgetSdk.WidgetOutOfBandObservationTicket
 type sealed class WidgetRail.WidgetSdk.WidgetPage<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetPage<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetPagedResource<TItem>
 type sealed class WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>>
@@ -2751,3 +2811,5 @@ type struct WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult> : System.IEqu
 type struct WidgetRail.WidgetSdk.WidgetModelUpdate<TState> : System.IEquatable<WidgetRail.WidgetSdk.WidgetModelUpdate<TState>>
 type struct WidgetRail.WidgetSdk.WidgetOperationHandle : System.IEquatable<WidgetRail.WidgetSdk.WidgetOperationHandle>
 type struct WidgetRail.WidgetSdk.WidgetOperationResult : System.IEquatable<WidgetRail.WidgetSdk.WidgetOperationResult>
+type struct WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority> : System.IEquatable<WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>>
+type struct WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun : System.IEquatable<WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun>

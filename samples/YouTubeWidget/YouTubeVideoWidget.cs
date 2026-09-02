@@ -276,54 +276,31 @@ public sealed partial class YouTubeVideoWidget : Widget
         if (TryHandleApplicationAction(action)) return ValueTask.CompletedTask;
         if (action.ActionId == LinkActionId && action.CommittedText is { } committed)
         {
-            CommitPlayback(state => state.WithCommittedLink(committed));
+            RunPlaybackLatest(new(
+                YouTubePlaybackIntent.CommitLink,
+                Text: committed));
             return ValueTask.CompletedTask;
         }
 
         var isActive = IsActive;
         var seekStep = CurrentMediaSeekStepSeconds;
-        CommitPlayback(state =>
+        var request = action.ActionId switch
         {
-            if (state.Playback.VideoId is not { } videoId ||
-                !state.CanDispatchTransportAction(isActive))
-                return state;
-            var playback = state.Playback;
-            return action.ActionId switch
-            {
-                ToggleActionId => state.WithPlayback(current => current.WithQueuedCommand(
-                    playback.PlaybackSemantic == EmbeddedMediaPlaybackState.Playing
-                        ? EmbeddedMediaPlaybackCommandKind.Pause
-                        : EmbeddedMediaPlaybackCommandKind.Play,
-                    videoId,
-                    PendingMediaControl.TogglePlayback)),
-                SeekBackwardActionId => state.WithPlayback(current => current.WithQueuedCommand(
-                    EmbeddedMediaPlaybackCommandKind.Seek,
-                    videoId,
-                    PendingMediaControl.SeekBackward,
-                    position: Math.Max(0, playback.Position - seekStep))),
-                SeekForwardActionId => state.WithPlayback(current => current.WithQueuedCommand(
-                    EmbeddedMediaPlaybackCommandKind.Seek,
-                    videoId,
-                    PendingMediaControl.SeekForward,
-                    position: Math.Min(
-                        Math.Max(0, playback.Duration), playback.Position + seekStep))),
-                SeekActionId when action.RequestedValue is { } requested &&
-                    double.IsFinite(requested) => state.WithPlayback(current =>
-                        current.WithQueuedCommand(
-                            EmbeddedMediaPlaybackCommandKind.Seek,
-                            videoId,
-                            PendingMediaControl.Timeline,
-                            position: Math.Clamp(requested, 0, Math.Max(0, playback.Duration)))),
-                VolumeActionId when action.RequestedValue is { } requested &&
-                    double.IsFinite(requested) => state.WithPlayback(current =>
-                        current.WithQueuedCommand(
-                            EmbeddedMediaPlaybackCommandKind.SetVolume,
-                            videoId,
-                            PendingMediaControl.Volume,
-                            volume: Math.Clamp(requested, 0, 1))),
-                _ => state,
-            };
-        });
+            ToggleActionId => new YouTubePlaybackRequest(
+                YouTubePlaybackIntent.TogglePlayback, isActive),
+            SeekBackwardActionId => new YouTubePlaybackRequest(
+                YouTubePlaybackIntent.SeekBackward, isActive, seekStep),
+            SeekForwardActionId => new YouTubePlaybackRequest(
+                YouTubePlaybackIntent.SeekForward, isActive, seekStep),
+            SeekActionId => new YouTubePlaybackRequest(
+                YouTubePlaybackIntent.SeekAbsolute, isActive, seekStep,
+                action.RequestedValue),
+            VolumeActionId => new YouTubePlaybackRequest(
+                YouTubePlaybackIntent.SetVolume, isActive, seekStep,
+                action.RequestedValue),
+            _ => null,
+        };
+        if (request is not null) RunPlayback(request);
         return ValueTask.CompletedTask;
     }
 
@@ -334,30 +311,99 @@ public sealed partial class YouTubeVideoWidget : Widget
         cancellationToken.ThrowIfCancellationRequested();
         if (!string.Equals(playbackEvent.SurfaceId, SurfaceId, StringComparison.Ordinal))
             return ValueTask.CompletedTask;
-        // A completing report retires its own command and the busy projection with
-        // it; the feedback timer for that sequence can no longer commit anything.
-        _model.Update(state => state.WithPlayback(
-            playback => playback.WithPlaybackEvent(playbackEvent)));
+        // The SDK-owned correlation owner rejects stale, foreign, and unknown
+        // command reports before the pure playback transition sees them.
+        _playbackCommand.Observe(playbackEvent);
         return ValueTask.CompletedTask;
     }
 
     /// <summary>
-    /// Commits one playback transition and starts pending feedback for a command
-    /// the same committed revision produced, so the timer never races a reread.
+    /// Projects one single-flight transport intent. The declaration stays visible
+    /// while this returns RejectedPending, preserving held-controller bindings.
     /// </summary>
-    private void CommitPlayback(Func<YouTubeWidgetState, YouTubeWidgetState> transition)
+    private void RunPlayback(YouTubePlaybackRequest request)
     {
-        var update = _model.Update<long?>(state =>
+        var run = _playbackCommand.Run(request);
+        if (run.IsAccepted) SchedulePendingFeedback(run.Sequence);
+    }
+
+    /// <summary>Replaces an older load intent with the newest link or result.</summary>
+    private void RunPlaybackLatest(YouTubePlaybackRequest request) =>
+        _playbackCommand.RunLatest(request);
+
+    private static WidgetOutOfBandCommandProjection<YouTubeWidgetState, string>
+        ApplyPlaybackRequest(
+            YouTubeWidgetState state,
+            YouTubePlaybackRequest request,
+            long sequence)
+    {
+        YouTubeWidgetState next;
+        switch (request.Intent)
         {
-            var next = transition(state);
-            var queued = next.Playback.PendingCommand is { } pending &&
-                pending.Sequence != state.Playback.PendingCommand?.Sequence &&
-                next.Playback.PendingControl != PendingMediaControl.None
-                    ? pending.Sequence
-                    : (long?)null;
-            return (next, queued);
-        });
-        if (update.Result is { } sequence) SchedulePendingFeedback(sequence);
+            case YouTubePlaybackIntent.CommitLink:
+                next = state.WithCommittedLink(request.Text ?? string.Empty, sequence);
+                break;
+            case YouTubePlaybackIntent.SelectResult when
+                request.ReturnFocusId is { } returnFocusId &&
+                request.VideoId is { } selectedVideoId:
+                next = state.WithSelectedResult(returnFocusId, selectedVideoId, sequence);
+                break;
+            default:
+                if (state.Playback.VideoId is not { } videoId ||
+                    !state.CanDispatchTransportAction(request.IsActive))
+                    return new(state, state.Playback.VideoId ?? "youtube.none",
+                        ShouldStart: false);
+                var playback = state.Playback;
+                next = request.Intent switch
+                {
+                    YouTubePlaybackIntent.TogglePlayback => state.WithPlayback(current =>
+                        current.WithQueuedCommand(
+                            sequence,
+                            playback.PlaybackSemantic == EmbeddedMediaPlaybackState.Playing
+                                ? EmbeddedMediaPlaybackCommandKind.Pause
+                                : EmbeddedMediaPlaybackCommandKind.Play,
+                            videoId,
+                            PendingMediaControl.TogglePlayback)),
+                    YouTubePlaybackIntent.SeekBackward => state.WithPlayback(current =>
+                        current.WithQueuedCommand(
+                            sequence,
+                            EmbeddedMediaPlaybackCommandKind.Seek,
+                            videoId,
+                            PendingMediaControl.SeekBackward,
+                            position: Math.Max(0, playback.Position - request.SeekStep))),
+                    YouTubePlaybackIntent.SeekForward => state.WithPlayback(current =>
+                        current.WithQueuedCommand(
+                            sequence,
+                            EmbeddedMediaPlaybackCommandKind.Seek,
+                            videoId,
+                            PendingMediaControl.SeekForward,
+                            position: Math.Min(Math.Max(0, playback.Duration),
+                                playback.Position + request.SeekStep))),
+                    YouTubePlaybackIntent.SeekAbsolute when
+                        request.RequestedValue is { } requested && double.IsFinite(requested) =>
+                        state.WithPlayback(current => current.WithQueuedCommand(
+                            sequence,
+                            EmbeddedMediaPlaybackCommandKind.Seek,
+                            videoId,
+                            PendingMediaControl.Timeline,
+                            position: Math.Clamp(requested, 0,
+                                Math.Max(0, playback.Duration)))),
+                    YouTubePlaybackIntent.SetVolume when
+                        request.RequestedValue is { } requested && double.IsFinite(requested) =>
+                        state.WithPlayback(current => current.WithQueuedCommand(
+                            sequence,
+                            EmbeddedMediaPlaybackCommandKind.SetVolume,
+                            videoId,
+                            PendingMediaControl.Volume,
+                            volume: Math.Clamp(requested, 0, 1))),
+                    _ => state,
+                };
+                break;
+        }
+
+        var pending = next.Playback.PendingCommand;
+        return new(next, pending?.MediaKey ?? next.Playback.VideoId ?? "youtube.none",
+            ShouldStart: pending?.Sequence == sequence);
     }
 
     /// <summary>

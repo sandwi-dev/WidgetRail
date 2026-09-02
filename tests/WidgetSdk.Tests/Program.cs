@@ -91,6 +91,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Runtime-owned operations coordinate concurrency and lifecycle cleanup", WidgetOperationTests.Run),
     ("Immutable widget models serialize state and suppress redundant invalidation", WidgetModelTests.Run),
     ("Optimistic commands coordinate projection rollback and lifecycle", WidgetOptimisticCommandTests.Run),
+    ("Out-of-band optimistic commands own external confirmation authority",
+        WidgetOutOfBandCommandTests.Run),
     ("Non-paged resources coordinate cache events retry and lifecycle", WidgetResourceTests.Run),
     ("Paged resources coordinate bounded automatic collection loading", WidgetPagedResourceTests.Run),
     ("Cursor resources append bounded keyed collection windows", WidgetCursorResourceTests.Run),

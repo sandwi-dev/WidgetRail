@@ -417,6 +417,50 @@ reference: it uses SingleFlight transport coordination, immediately projects
 Play/Pause, and restores only the affected playback projection on failure or
 cancellation.
 
+When confirmation does not come from the mutation call itself, use one
+`WidgetOutOfBandCommand<TState,TRequest,TObservation,TAuthority>`. It owns the
+command sequence, observation watermark, one pending projection, and the
+authority needed to correlate an inbound event. `Run` is single-flight;
+`RunLatest` replaces an older intent such as a superseded media load.
+
+```csharp
+_playback = CreateOutOfBandCommand(_model,
+    new WidgetOutOfBandCommandOptions<State, Request, PlaybackEvent, string>
+    {
+        Apply = (state, request, sequence) => new(
+            state.Project(request, sequence),
+            request.MediaKey),
+        ObservationSequence = report => report.Sequence,
+        CorrelationSequence = report => report.CommandSequence,
+        MatchesAuthority = (state, report) =>
+            state.MediaKey == report.MediaKey,
+        Reconcile = (state, report, confirms) =>
+            state.Merge(report, confirms),
+    });
+
+var admission = _playback.Run(request);
+// Later, from the independent event callback:
+_playback.Observe(report);
+```
+
+An independent poll or subscription read calls `BeginObservation` before it
+starts and completes through `Observe(ticket, value)`. This preserves the true
+start boundary when reads finish out of order: an observation begun before the
+projection may update unrelated authoritative fields without erasing the owned
+projection, while a matching or successor observation can confirm it through
+`ConfirmsProjection`. A projection may supply `ExpiresAfter`; expiry retires
+only its correlation authority, so the next admitted observation is ordinary
+authoritative state. The optional expiry data is absent from event-only
+projections rather than represented by an unused callback or mode.
+
+Keep `Apply`, authority matching, confirmation, and reconciliation quick and
+side-effect free. The facility stores no task completion source or other mutable
+signal in model state. Correlated reports for an unknown command, foreign
+authorities, and observations at or behind the admitted sequence are rejected.
+Presentation-only delayed feedback remains a separate `WidgetTimedMutation`
+when it has a different lifecycle—for example, a Busy threshold may retire on
+deactivation while the actual media command remains pending for its adapter.
+
 For a bounded offset/limit collection, create one
 `WidgetPagedResource<TItem>` with `CreatePagedResource` instead of maintaining
 page tasks, generations, caches, and focus calculations independently. Supply

@@ -669,10 +669,15 @@ public sealed partial class YouTubeWidgetTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
         CollectionAssert.AreEqual(
-            new[] { "_application", "_model", "_searchResults", "_setupCommand", "_timeProvider" },
+            new[]
+            {
+                "_application", "_model", "_playbackCommand", "_searchResults",
+                "_setupCommand", "_timeProvider",
+            },
             fields,
-            "WidgetModel, the search cursor, setup command, provider, and clock are the only " +
-            "package owners; no pre-WidgetModel route, lifecycle, playback, task, or gate field may remain.");
+            "WidgetModel, SDK command facilities, the search cursor, provider, and clock are " +
+            "the only package owners; no pre-WidgetModel route, lifecycle, playback, task, " +
+            "sequence, or gate field may remain.");
 
         var (widget, _, _) = await CreateTransportWidgetAsync(
             EmbeddedMediaPlaybackState.Playing, seekBuffering: false);

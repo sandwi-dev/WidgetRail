@@ -20,7 +20,7 @@ public sealed class YouTubeWidgetStateTests
     public void CommittedLinkLoadsSupportedLinksAndRejectsForeignOnesInPlace()
     {
         var loaded = YouTubeWidgetState.Initial.WithCommittedLink(
-            $"  https://youtu.be/{VideoId}  ");
+            $"  https://youtu.be/{VideoId}  ", sequence: 1);
         Assert.AreEqual(YouTubeRoute.Player, loaded.Route);
         Assert.AreEqual(VideoId, loaded.Playback.VideoId);
         Assert.IsNull(loaded.Playback.ValidationError);
@@ -31,7 +31,7 @@ public sealed class YouTubeWidgetStateTests
         Assert.AreEqual(PendingMediaControl.None, loaded.Playback.PendingControl,
             "A load is not attributable to a transport control, so it never reports busy.");
 
-        var rejected = loaded.WithCommittedLink("https://vimeo.com/1234");
+        var rejected = loaded.WithCommittedLink("https://vimeo.com/1234", sequence: 2);
         Assert.AreEqual(YouTubeRoute.Player, rejected.Route,
             "A rejected link must not move the route.");
         Assert.IsNotNull(rejected.Playback.ValidationError);
@@ -42,16 +42,18 @@ public sealed class YouTubeWidgetStateTests
     [TestMethod]
     public void QueuedCommandsAdvanceOneSequenceAndRetireTheBusyProjection()
     {
-        var state = YouTubeWidgetState.Initial.WithCommittedLink($"https://youtu.be/{VideoId}");
+        var state = YouTubeWidgetState.Initial.WithCommittedLink(
+            $"https://youtu.be/{VideoId}", sequence: 1);
         var first = state.Playback.PendingCommand!;
         var busy = state.WithPlayback(playback =>
             playback.WithPendingFeedback(first.Sequence));
-        Assert.AreEqual(first.Sequence, busy.Playback.BusyCommandSequence);
+        Assert.IsTrue(busy.Playback.PendingFeedbackVisible);
 
         var next = busy.WithPlayback(playback => playback.WithQueuedCommand(
-            EmbeddedMediaPlaybackCommandKind.Play, VideoId, PendingMediaControl.TogglePlayback));
+            sequence: 2, EmbeddedMediaPlaybackCommandKind.Play, VideoId,
+            PendingMediaControl.TogglePlayback));
         Assert.AreEqual(first.Sequence + 1, next.Playback.PendingCommand!.Sequence);
-        Assert.IsNull(next.Playback.BusyCommandSequence,
+        Assert.IsFalse(next.Playback.PendingFeedbackVisible,
             "A newly queued command restarts the feedback threshold from nothing.");
         Assert.AreEqual(PendingMediaControl.None, next.Playback.BusyControl);
     }
@@ -60,9 +62,9 @@ public sealed class YouTubeWidgetStateTests
     public void PendingFeedbackOnlyCommitsForTheCommandStillInFlight()
     {
         var state = YouTubeWidgetState.Initial
-            .WithCommittedLink($"https://youtu.be/{VideoId}")
+            .WithCommittedLink($"https://youtu.be/{VideoId}", sequence: 1)
             .WithPlayback(playback => playback.WithQueuedCommand(
-                EmbeddedMediaPlaybackCommandKind.Play, VideoId,
+                sequence: 2, EmbeddedMediaPlaybackCommandKind.Play, VideoId,
                 PendingMediaControl.TogglePlayback));
         var stale = state.Playback.PendingCommand!.Sequence - 1;
 
@@ -73,35 +75,30 @@ public sealed class YouTubeWidgetStateTests
     }
 
     [TestMethod]
-    public void PlaybackEventsRejectStaleSequencesForeignKeysAndUncorrelatedCommands()
+    public void PlaybackEventsApplyOnlyTheAdmissionDecisionSuppliedByTheFacility()
     {
         var state = YouTubeWidgetState.Initial
-            .WithCommittedLink($"https://youtu.be/{VideoId}").Playback;
+            .WithCommittedLink($"https://youtu.be/{VideoId}", sequence: 1).Playback;
         var pending = state.PendingCommand!;
         var settled = state.WithPlaybackEvent(
-            Event(EmbeddedMediaPlaybackState.Ready, sequence: 4, commandSequence: pending.Sequence));
-        Assert.AreEqual(4, settled.EventSequence);
+            Event(EmbeddedMediaPlaybackState.Ready, sequence: 4,
+                commandSequence: pending.Sequence), completesPending: true);
+        Assert.IsTrue(settled.HasPlaybackObservation);
         Assert.IsNull(settled.PendingCommand, "The correlated report retires its own command.");
-
-        Assert.AreSame(settled, settled.WithPlaybackEvent(
-            Event(EmbeddedMediaPlaybackState.Playing, sequence: 4, commandSequence: 0)),
-            "A sequence at or behind the last admitted one is stale.");
-        Assert.AreSame(settled, settled.WithPlaybackEvent(
-            Event(EmbeddedMediaPlaybackState.Playing, sequence: 9, commandSequence: 0,
-                mediaKey: OtherVideoId)),
-            "A report for another video is not this widget's.");
-        Assert.AreSame(settled, settled.WithPlaybackEvent(
-            Event(EmbeddedMediaPlaybackState.Playing, sequence: 9, commandSequence: 77)),
-            "A report correlated to a command this state never issued is not admitted.");
+        var observed = settled.WithPlaybackEvent(
+            Event(EmbeddedMediaPlaybackState.Playing, sequence: 5, commandSequence: 0),
+            completesPending: false);
+        Assert.AreEqual(EmbeddedMediaPlaybackState.Playing, observed.State);
     }
 
     [TestMethod]
     public void PlaybackEventsClampReportedPositionDurationAndVolume()
     {
         var settled = YouTubeWidgetState.Initial
-            .WithCommittedLink($"https://youtu.be/{VideoId}").Playback
+            .WithCommittedLink($"https://youtu.be/{VideoId}", sequence: 1).Playback
             .WithPlaybackEvent(Event(EmbeddedMediaPlaybackState.Playing, sequence: 1,
-                commandSequence: 1, position: -12, duration: -3, volume: 4.5));
+                commandSequence: 1, position: -12, duration: -3, volume: 4.5),
+                completesPending: true);
         Assert.AreEqual(0d, settled.Position);
         Assert.AreEqual(0d, settled.Duration);
         Assert.AreEqual(1d, settled.Volume);
@@ -111,14 +108,16 @@ public sealed class YouTubeWidgetStateTests
     public void SeekBufferingRetainsTheSettledSemanticAcrossAHeldRunOfSeeks()
     {
         var playing = YouTubeWidgetState.Initial
-            .WithCommittedLink($"https://youtu.be/{VideoId}").Playback
+            .WithCommittedLink($"https://youtu.be/{VideoId}", sequence: 1).Playback
             .WithPlaybackEvent(Event(EmbeddedMediaPlaybackState.Playing, sequence: 1,
-                commandSequence: 1, position: 30, duration: 120));
+                commandSequence: 1, position: 30, duration: 120),
+                completesPending: true);
 
-        var firstSeek = playing.WithQueuedCommand(EmbeddedMediaPlaybackCommandKind.Seek,
+        var firstSeek = playing.WithQueuedCommand(2, EmbeddedMediaPlaybackCommandKind.Seek,
             VideoId, PendingMediaControl.SeekForward, position: 40);
         var buffering = firstSeek.WithPlaybackEvent(Event(EmbeddedMediaPlaybackState.Loading,
-            sequence: 2, commandSequence: firstSeek.PendingCommand!.Sequence, position: 40));
+            sequence: 2, commandSequence: firstSeek.PendingCommand!.Sequence, position: 40),
+            completesPending: true);
         Assert.AreEqual(EmbeddedMediaPlaybackState.Playing, buffering.SeekBufferingSemantic);
         Assert.AreEqual(EmbeddedMediaPlaybackState.Playing, buffering.PlaybackSemantic,
             "The transport keeps presenting Pause while the seek buffers.");
@@ -126,15 +125,17 @@ public sealed class YouTubeWidgetStateTests
         Assert.IsFalse(buffering.IsMediaLoading,
             "A buffering seek is not the media itself loading.");
 
-        var secondSeek = buffering.WithQueuedCommand(EmbeddedMediaPlaybackCommandKind.Seek,
+        var secondSeek = buffering.WithQueuedCommand(3, EmbeddedMediaPlaybackCommandKind.Seek,
             VideoId, PendingMediaControl.SeekForward, position: 50);
         var stillBuffering = secondSeek.WithPlaybackEvent(Event(EmbeddedMediaPlaybackState.Loading,
-            sequence: 3, commandSequence: secondSeek.PendingCommand!.Sequence, position: 50));
+            sequence: 3, commandSequence: secondSeek.PendingCommand!.Sequence, position: 50),
+            completesPending: true);
         Assert.AreEqual(EmbeddedMediaPlaybackState.Playing, stillBuffering.SeekBufferingSemantic,
             "A later seek in the run inherits the semantic rather than erasing it.");
 
         var resumed = stillBuffering.WithPlaybackEvent(Event(EmbeddedMediaPlaybackState.Playing,
-            sequence: 4, commandSequence: 0, position: 50, duration: 120));
+            sequence: 4, commandSequence: 0, position: 50, duration: 120),
+            completesPending: false);
         Assert.IsNull(resumed.SeekBufferingSemantic,
             "Settling out of Loading retires the retained semantic.");
     }
@@ -143,16 +144,18 @@ public sealed class YouTubeWidgetStateTests
     public void AnyNonSeekCommandSettlesTheRetainedSeekSemantic()
     {
         var buffering = YouTubeWidgetState.Initial
-            .WithCommittedLink($"https://youtu.be/{VideoId}").Playback
+            .WithCommittedLink($"https://youtu.be/{VideoId}", sequence: 1).Playback
             .WithPlaybackEvent(Event(EmbeddedMediaPlaybackState.Playing, sequence: 1,
-                commandSequence: 1, position: 30, duration: 120));
-        buffering = buffering.WithQueuedCommand(EmbeddedMediaPlaybackCommandKind.Seek,
+                commandSequence: 1, position: 30, duration: 120),
+                completesPending: true);
+        buffering = buffering.WithQueuedCommand(2, EmbeddedMediaPlaybackCommandKind.Seek,
             VideoId, PendingMediaControl.SeekForward, position: 40);
         buffering = buffering.WithPlaybackEvent(Event(EmbeddedMediaPlaybackState.Loading,
-            sequence: 2, commandSequence: buffering.PendingCommand!.Sequence, position: 40));
+            sequence: 2, commandSequence: buffering.PendingCommand!.Sequence, position: 40),
+            completesPending: true);
         Assert.IsNotNull(buffering.SeekBufferingSemantic);
 
-        var paused = buffering.WithQueuedCommand(EmbeddedMediaPlaybackCommandKind.Pause,
+        var paused = buffering.WithQueuedCommand(3, EmbeddedMediaPlaybackCommandKind.Pause,
             VideoId, PendingMediaControl.TogglePlayback);
         Assert.IsNull(paused.SeekBufferingSemantic);
     }
@@ -161,15 +164,15 @@ public sealed class YouTubeWidgetStateTests
     public void TransportDeclarationOutlivesItsOwnPendingCommandButDispatchDoesNot()
     {
         var playing = YouTubeWidgetState.Initial
-            .WithCommittedLink($"https://youtu.be/{VideoId}")
+            .WithCommittedLink($"https://youtu.be/{VideoId}", sequence: 1)
             .WithPlayback(playback => playback.WithPlaybackEvent(
                 Event(EmbeddedMediaPlaybackState.Playing, sequence: 1, commandSequence: 1,
-                    position: 30, duration: 120)));
+                    position: 30, duration: 120), completesPending: true));
         Assert.IsTrue(playing.CanDeclareTransportAction(isActive: true));
         Assert.IsTrue(playing.CanDispatchTransportAction(isActive: true));
 
         var seeking = playing.WithPlayback(playback => playback.WithQueuedCommand(
-            EmbeddedMediaPlaybackCommandKind.Seek, VideoId,
+            sequence: 2, EmbeddedMediaPlaybackCommandKind.Seek, VideoId,
             PendingMediaControl.SeekForward, position: 40));
         Assert.IsTrue(seeking.CanDeclareTransportAction(isActive: true),
             "Withdrawing the declaration would retract a held binding between repeats.");
@@ -181,10 +184,10 @@ public sealed class YouTubeWidgetStateTests
     public void TransportIncludesTheLiveLinkPlayerAndFailsClosedElsewhere()
     {
         var playing = YouTubeWidgetState.Initial
-            .WithCommittedLink($"https://youtu.be/{VideoId}")
+            .WithCommittedLink($"https://youtu.be/{VideoId}", sequence: 1)
             .WithPlayback(playback => playback.WithPlaybackEvent(
                 Event(EmbeddedMediaPlaybackState.Playing, sequence: 1, commandSequence: 1,
-                    position: 30, duration: 120)));
+                    position: 30, duration: 120), completesPending: true));
 
         Assert.IsFalse(playing.CanDeclareTransportAction(isActive: false));
         Assert.IsFalse(playing.WithRoute(YouTubeRoute.Search)
@@ -195,19 +198,20 @@ public sealed class YouTubeWidgetStateTests
         Assert.IsFalse(playing.WithRoute(YouTubeRoute.Setup)
             .CanDeclareTransportAction(isActive: true));
 
-        var loading = YouTubeWidgetState.Initial.WithCommittedLink($"https://youtu.be/{VideoId}");
+        var loading = YouTubeWidgetState.Initial.WithCommittedLink(
+            $"https://youtu.be/{VideoId}", sequence: 1);
         Assert.IsFalse(loading.CanDeclareTransportAction(isActive: true),
             "An initial load is not a state the transport may act on.");
 
         var cuePending = playing.WithPlayback(playback => playback.WithQueuedCommand(
-            EmbeddedMediaPlaybackCommandKind.Cue, VideoId,
+            sequence: 2, EmbeddedMediaPlaybackCommandKind.Cue, VideoId,
             PendingMediaControl.TogglePlayback));
         Assert.IsFalse(cuePending.CanDeclareTransportAction(isActive: true),
             "A pending Cue must keep transport declarations fail-closed.");
 
         var failed = playing.WithPlayback(playback => playback.WithPlaybackEvent(
             Event(EmbeddedMediaPlaybackState.Error, sequence: 2, commandSequence: 0,
-                errorCode: "embedding-disabled")));
+                errorCode: "embedding-disabled"), completesPending: false));
         Assert.IsFalse(failed.CanDeclareTransportAction(isActive: true));
         Assert.AreEqual("The video owner does not allow embedded playback.",
             failed.Playback.Error);
@@ -245,8 +249,7 @@ public sealed class YouTubeWidgetStateTests
                 State = playbackState,
                 PlaybackError = hasError ? "Playback failed." : null,
                 SeekBufferingSemantic = semantic,
-                CommandSequence = pendingKind is null ? 1 : 2,
-                EventSequence = 1,
+                HasPlaybackObservation = true,
                 PendingCommand = pendingKind is null ? null : new EmbeddedMediaPlaybackCommand
                 {
                     Sequence = 2,
@@ -287,12 +290,12 @@ public sealed class YouTubeWidgetStateTests
     public void DeactivationRetiresOnlyTransientPresentationState()
     {
         var buffering = YouTubeWidgetState.Initial
-            .WithCommittedLink($"https://youtu.be/{VideoId}")
+            .WithCommittedLink($"https://youtu.be/{VideoId}", sequence: 1)
             .WithPlayback(playback => playback.WithPlaybackEvent(
                 Event(EmbeddedMediaPlaybackState.Playing, sequence: 1, commandSequence: 1,
-                    position: 30, duration: 120)))
+                    position: 30, duration: 120), completesPending: true))
             .WithPlayback(playback => playback.WithQueuedCommand(
-                EmbeddedMediaPlaybackCommandKind.Seek, VideoId,
+                sequence: 2, EmbeddedMediaPlaybackCommandKind.Seek, VideoId,
                 PendingMediaControl.SeekForward, position: 40));
         var reported = buffering.Playback.PendingCommand!.Sequence;
         // The correlated Loading report retires the seek that caused it while the
@@ -300,9 +303,9 @@ public sealed class YouTubeWidgetStateTests
         buffering = buffering
             .WithPlayback(playback => playback.WithPlaybackEvent(Event(
                 EmbeddedMediaPlaybackState.Loading, sequence: 2,
-                commandSequence: reported, position: 40)))
+                commandSequence: reported, position: 40), completesPending: true))
             .WithPlayback(playback => playback.WithQueuedCommand(
-                EmbeddedMediaPlaybackCommandKind.Seek, VideoId,
+                sequence: 3, EmbeddedMediaPlaybackCommandKind.Seek, VideoId,
                 PendingMediaControl.SeekForward, position: 50));
         var inFlight = buffering.Playback.PendingCommand!;
         buffering = buffering.WithPlayback(
@@ -312,7 +315,7 @@ public sealed class YouTubeWidgetStateTests
 
         var hidden = buffering.WithPlayback(playback => playback.WithTransientStateCleared());
         Assert.IsNull(hidden.Playback.SeekBufferingSemantic);
-        Assert.IsNull(hidden.Playback.BusyCommandSequence);
+        Assert.IsFalse(hidden.Playback.PendingFeedbackVisible);
         Assert.AreEqual(inFlight, hidden.Playback.PendingCommand,
             "The command itself survives hiding; the adapter still owes a report.");
         Assert.AreEqual(40d, hidden.Playback.Position);
@@ -393,7 +396,8 @@ public sealed class YouTubeWidgetStateTests
             .WithQueryDraft("   synthwave   ");
         Assert.AreEqual("synthwave", searching.Search.QueryDraft);
 
-        var opened = searching.WithSelectedResult("youtube.result." + VideoId, VideoId);
+        var opened = searching.WithSelectedResult(
+            "youtube.result." + VideoId, VideoId, sequence: 1);
         Assert.AreEqual(YouTubeRoute.Player, opened.Route);
         Assert.AreEqual("youtube.result." + VideoId, opened.Search.ReturnFocusId);
         Assert.AreEqual(VideoId, opened.Playback.VideoId);

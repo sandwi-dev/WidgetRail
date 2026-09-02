@@ -28,6 +28,11 @@ public sealed partial class YouTubeVideoWidget
         YouTubeSetupRequest,
         YouTubeSetupRequest,
         YouTubeSetupOperation> _setupCommand;
+    private readonly WidgetOutOfBandCommand<
+        YouTubeWidgetState,
+        YouTubePlaybackRequest,
+        EmbeddedMediaPlaybackEvent,
+        string> _playbackCommand;
 
     public YouTubeVideoWidget() : this(
         new UnavailableYouTubeApplicationService(), TimeProvider.System) { }
@@ -42,6 +47,24 @@ public sealed partial class YouTubeVideoWidget
         _application = application ?? throw new ArgumentNullException(nameof(application));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _model = CreateModel(YouTubeWidgetState.Initial);
+        _playbackCommand = CreateOutOfBandCommand(_model,
+            new WidgetOutOfBandCommandOptions<
+                YouTubeWidgetState,
+                YouTubePlaybackRequest,
+                EmbeddedMediaPlaybackEvent,
+                string>
+            {
+                Apply = ApplyPlaybackRequest,
+                ObservationSequence = playbackEvent => playbackEvent.Sequence,
+                CorrelationSequence = playbackEvent => playbackEvent.CommandSequence,
+                MatchesAuthority = static (state, playbackEvent) =>
+                    state.Playback.VideoId is { } videoId &&
+                    string.Equals(videoId, playbackEvent.MediaKey,
+                        StringComparison.Ordinal),
+                Reconcile = static (state, playbackEvent, confirmsProjection) =>
+                    state.WithPlayback(playback => playback.WithPlaybackEvent(
+                        playbackEvent, confirmsProjection)),
+            });
         _searchResults = CreateCursorResource<YouTubeSearchItem>("youtube.search", new()
         {
             PageSize = SearchPageSize,
@@ -362,7 +385,7 @@ public sealed partial class YouTubeVideoWidget
     private static EmbeddedMediaSurface? RetainedHiddenMediaSurface(
         YouTubePlaybackState playback)
     {
-        return playback.EventSequence > 0 && playback.VideoId is { } videoId
+        return playback.HasPlaybackObservation && playback.VideoId is { } videoId
             ? CreateMediaSurface(videoId, playback.PendingCommand, retainSessionWhenHidden: true)
             : null;
     }
@@ -452,7 +475,10 @@ public sealed partial class YouTubeVideoWidget
             string.Equals(candidate.VideoId, id, StringComparison.Ordinal));
         if (item is null) return true;
         _searchResults.SelectAnchor(new("youtube-video-" + item.VideoId), invalidate: false);
-        CommitPlayback(state => state.WithSelectedResult(sourceId, item.VideoId));
+        RunPlaybackLatest(new(
+            YouTubePlaybackIntent.SelectResult,
+            ReturnFocusId: sourceId,
+            VideoId: item.VideoId));
         return true;
     }
 

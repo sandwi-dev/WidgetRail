@@ -19,6 +19,27 @@ internal enum PendingMediaControl
 /// <summary>Which provider mutation one setup request performs.</summary>
 internal enum YouTubeSetupOperation { Configure, Delete }
 
+/// <summary>One typed intent projected into the embedded-media command surface.</summary>
+internal enum YouTubePlaybackIntent
+{
+    CommitLink,
+    SelectResult,
+    TogglePlayback,
+    SeekBackward,
+    SeekForward,
+    SeekAbsolute,
+    SetVolume,
+}
+
+internal sealed record YouTubePlaybackRequest(
+    YouTubePlaybackIntent Intent,
+    bool IsActive = true,
+    double SeekStep = 0,
+    double? RequestedValue = null,
+    string? Text = null,
+    string? ReturnFocusId = null,
+    string? VideoId = null);
+
 /// <summary>
 /// One admitted setup mutation. The secret travels with the request and its
 /// execution only; it is never projected into rendered state.
@@ -64,8 +85,7 @@ internal sealed record YouTubePlaybackState
     public double Position { get; init; }
     public double Duration { get; init; }
     public double Volume { get; init; } = 0.8;
-    public long CommandSequence { get; init; }
-    public long EventSequence { get; init; }
+    public bool HasPlaybackObservation { get; init; }
     public EmbeddedMediaPlaybackCommand? PendingCommand { get; init; }
     public PendingMediaControl PendingControl { get; init; }
 
@@ -76,8 +96,8 @@ internal sealed record YouTubePlaybackState
     /// </summary>
     public EmbeddedMediaPlaybackState? SeekBufferingSemantic { get; init; }
 
-    /// <summary>The command whose pending feedback threshold has elapsed.</summary>
-    public long? BusyCommandSequence { get; init; }
+    /// <summary>Whether the current command's pending feedback threshold elapsed.</summary>
+    public bool PendingFeedbackVisible { get; init; }
 
     public string? Error => ValidationError ?? PlaybackError;
 
@@ -86,7 +106,7 @@ internal sealed record YouTubePlaybackState
 
     /// <summary>The control that may render busy, scoped to the command that initiated it.</summary>
     public PendingMediaControl BusyControl =>
-        PendingCommand is { } pending && BusyCommandSequence == pending.Sequence
+        PendingCommand is not null && PendingFeedbackVisible
             ? PendingControl
             : PendingMediaControl.None;
 
@@ -108,20 +128,20 @@ internal sealed record YouTubePlaybackState
     /// semantic survives only a seek: any other command settles the transport.
     /// </summary>
     public YouTubePlaybackState WithQueuedCommand(
+        long sequence,
         EmbeddedMediaPlaybackCommandKind kind,
         string videoId,
         PendingMediaControl control = PendingMediaControl.None,
         double? position = null,
         double? volume = null)
     {
-        var sequence = CommandSequence + 1;
+        if (sequence <= 0) throw new ArgumentOutOfRangeException(nameof(sequence));
         return this with
         {
             PlaybackError = null,
             SeekBufferingSemantic = kind == EmbeddedMediaPlaybackCommandKind.Seek
                 ? SeekBufferingSemantic
                 : null,
-            CommandSequence = sequence,
             PendingCommand = new EmbeddedMediaPlaybackCommand
             {
                 Sequence = sequence,
@@ -131,12 +151,12 @@ internal sealed record YouTubePlaybackState
                 Volume = volume,
             },
             PendingControl = control,
-            BusyCommandSequence = null,
+            PendingFeedbackVisible = false,
         };
     }
 
     /// <summary>Accepts a committed link, loading it when the strict parser admits it.</summary>
-    public YouTubePlaybackState WithCommittedLink(string committedText)
+    public YouTubePlaybackState WithCommittedLink(string committedText, long sequence)
     {
         var link = committedText.Trim();
         var accepted = this with
@@ -156,11 +176,11 @@ internal sealed record YouTubePlaybackState
             VideoId = videoId,
             Position = 0,
             Duration = 0,
-        }).WithQueuedCommand(EmbeddedMediaPlaybackCommandKind.Load, videoId);
+        }).WithQueuedCommand(sequence, EmbeddedMediaPlaybackCommandKind.Load, videoId);
     }
 
     /// <summary>Loads a chosen search result without going through the link entry.</summary>
-    public YouTubePlaybackState WithSelectedVideo(string videoId) =>
+    public YouTubePlaybackState WithSelectedVideo(string videoId, long sequence) =>
         (this with
         {
             Link = "https://www.youtube.com/watch?v=" + videoId,
@@ -170,24 +190,15 @@ internal sealed record YouTubePlaybackState
             SeekBufferingSemantic = null,
             Position = 0,
             Duration = 0,
-        }).WithQueuedCommand(EmbeddedMediaPlaybackCommandKind.Load, videoId);
+        }).WithQueuedCommand(sequence, EmbeddedMediaPlaybackCommandKind.Load, videoId);
 
     /// <summary>
-    /// Admits one adapter report. Stale sequences, foreign media keys, and
-    /// reports correlated to a command this state never issued are ignored.
+    /// Applies one adapter report already admitted by WidgetOutOfBandCommand.
     /// </summary>
-    public YouTubePlaybackState WithPlaybackEvent(EmbeddedMediaPlaybackEvent playbackEvent)
+    public YouTubePlaybackState WithPlaybackEvent(
+        EmbeddedMediaPlaybackEvent playbackEvent,
+        bool completesPending)
     {
-        if (playbackEvent.Sequence <= EventSequence ||
-            VideoId is not { } videoId ||
-            !string.Equals(playbackEvent.MediaKey, videoId, StringComparison.Ordinal))
-            return this;
-        if (playbackEvent.CommandSequence > 0 &&
-            (PendingCommand is not { } correlated ||
-             correlated.Sequence != playbackEvent.CommandSequence ||
-             !string.Equals(correlated.MediaKey, videoId, StringComparison.Ordinal)))
-            return this;
-
         var matchingSeekLoading =
             playbackEvent.State == EmbeddedMediaPlaybackState.Loading &&
             PendingCommand is { Kind: EmbeddedMediaPlaybackCommandKind.Seek } currentSeek &&
@@ -199,13 +210,10 @@ internal sealed record YouTubePlaybackState
             : playbackEvent.State == EmbeddedMediaPlaybackState.Loading
                 ? SeekBufferingSemantic
                 : null;
-        var completesPending = PendingCommand is { } current &&
-            playbackEvent.CommandSequence == current.Sequence;
-
         return this with
         {
             SeekBufferingSemantic = seekBuffering,
-            EventSequence = playbackEvent.Sequence,
+            HasPlaybackObservation = true,
             State = playbackEvent.State,
             Position = Math.Max(0, playbackEvent.PositionSeconds),
             Duration = Math.Max(0, playbackEvent.DurationSeconds),
@@ -215,19 +223,19 @@ internal sealed record YouTubePlaybackState
                 : null,
             PendingCommand = completesPending ? null : PendingCommand,
             PendingControl = completesPending ? PendingMediaControl.None : PendingControl,
-            BusyCommandSequence = completesPending ? null : BusyCommandSequence,
+            PendingFeedbackVisible = completesPending ? false : PendingFeedbackVisible,
         };
     }
 
     /// <summary>Marks the initiating control busy once its feedback threshold elapses.</summary>
     public YouTubePlaybackState WithPendingFeedback(long commandSequence) =>
         PendingCommand?.Sequence == commandSequence
-            ? this with { BusyCommandSequence = commandSequence }
+            ? this with { PendingFeedbackVisible = true }
             : this;
 
     /// <summary>Retires transient presentation state that must not outlive visibility.</summary>
     public YouTubePlaybackState WithTransientStateCleared() =>
-        this with { SeekBufferingSemantic = null, BusyCommandSequence = null };
+        this with { SeekBufferingSemantic = null, PendingFeedbackVisible = false };
 
     public static string PlaybackErrorText(string? errorCode) => errorCode switch
     {
@@ -369,9 +377,9 @@ internal sealed record YouTubeWidgetState
         Search = Search with { ActiveQuery = query },
     };
 
-    public YouTubeWidgetState WithCommittedLink(string committedText)
+    public YouTubeWidgetState WithCommittedLink(string committedText, long sequence)
     {
-        var playback = Playback.WithCommittedLink(committedText);
+        var playback = Playback.WithCommittedLink(committedText, sequence);
         return this with
         {
             Playback = playback,
@@ -379,11 +387,14 @@ internal sealed record YouTubeWidgetState
         };
     }
 
-    public YouTubeWidgetState WithSelectedResult(string returnFocusId, string videoId) => this with
+    public YouTubeWidgetState WithSelectedResult(
+        string returnFocusId,
+        string videoId,
+        long sequence) => this with
     {
         Search = Search with { ReturnFocusId = returnFocusId },
         Route = YouTubeRoute.Player,
-        Playback = Playback.WithSelectedVideo(videoId),
+        Playback = Playback.WithSelectedVideo(videoId, sequence),
     };
 
     public YouTubeWidgetState WithPlayback(
