@@ -467,6 +467,25 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
 
 void RunContractCases() {
     using namespace widgetrail::richmedia;
+    {
+        RichMediaSurfaceCoordinator unbound;
+        PresentationTransferFailureStage beginStage{};
+        PresentationTransferFailureStage completeStage{};
+        PresentationTarget invalidTarget;
+        Require(unbound.BeginPresentationTransfer(&beginStage) == E_UNEXPECTED &&
+                    beginStage == PresentationTransferFailureStage::Admission &&
+                    unbound.CompletePresentationTransfer(
+                        std::move(invalidTarget), &completeStage) == E_INVALIDARG &&
+                    completeStage == PresentationTransferFailureStage::Admission,
+                "presentation-transfer failure result did not remain caller-owned after fail-closed admission");
+        Require(PresentationTransferFailureStageValue(
+                    PresentationTransferFailureStage::VisibilityDetach) ==
+                    L"controller-visibility-detach" &&
+                    PresentationTransferFailureStageValue(
+                    PresentationTransferFailureStage::RootTargetDetach) ==
+                    L"controller-root-target-detach",
+                "presentation-transfer detach stages lost their exact diagnostic classification");
+    }
     const auto coordinatorSourcePath =
         std::filesystem::path{__FILE__}.parent_path() /
         "RichMediaSurfaceCoordinator.cpp";
@@ -503,8 +522,13 @@ void RunContractCases() {
     initialSurface.id = L"neutral.primary";
     initialSurface.accessibleName = L"Neutral media";
     initialSurface.entryAsset = L"media/index.html";
-    initialSurface.surface = {L"responsive", L"bounded", L"bounded",
-        760, 425, 320, 180};
+    initialSurface.surface.mode = L"responsive";
+    initialSurface.surface.widthMode = L"bounded";
+    initialSurface.surface.heightMode = L"bounded";
+    initialSurface.surface.preferredWidth = 760;
+    initialSurface.surface.preferredHeight = 425;
+    initialSurface.surface.minimumWidth = 320;
+    initialSurface.surface.minimumHeight = 180;
     initialSurface.aspectRatio = 16.0 / 9.0;
     initialSurface.resources = {{L"media/index.html", L"text/html"}};
     initialSurface.commands = {L"activate", L"togglePlayback"};

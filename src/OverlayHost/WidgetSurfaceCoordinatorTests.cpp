@@ -940,6 +940,67 @@ int main() {
             lifetime.Dispose();
         }
 
+        const auto verifyMediaRetirement = [&] (const bool overlayViewportAvailable) {
+            widgetrail::pinned::WidgetSurfaceCoordinator retirement;
+            const auto retirementRoot = placementRoot /
+                (overlayViewportAvailable
+                    ? L"media-retirement-visible"
+                    : L"media-retirement-retained-hidden");
+            Check(retirement.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x414,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      retirementRoot / L"placement.ini"),
+                  "media-retirement fixture initializes through the coordinator owner");
+            retirement.OnOverlayShown();
+            Check(retirement.Pin(Admission(), error) && retirement.CommitSetup(error),
+                  "media-retirement fixture commits its pinned authority");
+            enum class Projection { Overlay, Pinned };
+            Projection projection = Projection::Pinned;
+            bool callbackObserved = false;
+            bool retiringWindowStillAlive = false;
+            bool reentrantUnpinRejected = false;
+            bool transferPending = false;
+            const std::wstring exactResidentSession{
+                L"gallery|gallery.instance|runtime-1|presentation-1|media.surface"};
+            std::wstring residentSession = exactResidentSession;
+            retirement.SetBeforeWindowRetirement([&](const auto) {
+                callbackObserved = true;
+                retiringWindowStillAlive = retirement.window() &&
+                    IsWindow(retirement.window());
+                Check(!retirement.pinned(),
+                      "retirement callback observed stale pinned authority");
+                reentrantUnpinRejected = !retirement.Unpin(
+                    widgetrail::pinned::WidgetSurfaceStopReason::Unpin);
+                projection = Projection::Overlay;
+                transferPending = !overlayViewportAvailable;
+                const auto reconcileCommittedAndLifecycle = [&] {
+                    if (retirement.pinned()) projection = Projection::Pinned;
+                };
+                reconcileCommittedAndLifecycle();
+                reconcileCommittedAndLifecycle();
+            });
+            Check(retirement.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin) &&
+                      callbackObserved && retiringWindowStillAlive &&
+                      reentrantUnpinRejected && !retirement.pinned() &&
+                      projection == Projection::Overlay &&
+                      transferPending == !overlayViewportAvailable &&
+                      residentSession == exactResidentSession,
+                  overlayViewportAvailable
+                      ? "visible-player unpin completes one Overlay handoff without stale pinned authority"
+                      : "retained-hidden unpin stays detached without stale pinned retarget or exact-session retirement");
+            if (!overlayViewportAvailable) {
+                transferPending = false;
+                Check(projection == Projection::Overlay &&
+                          residentSession == exactResidentSession,
+                      "later visible-player return completes the pending same-session Overlay reattach");
+            }
+            retirement.Dispose();
+            std::error_code retirementCleanup;
+            std::filesystem::remove_all(retirementRoot, retirementCleanup);
+        };
+        verifyMediaRetirement(false);
+        verifyMediaRetirement(true);
+
         {
             widgetrail::pinned::WidgetSurfaceCoordinator layoutCancellation;
             const auto layoutCancellationRoot =

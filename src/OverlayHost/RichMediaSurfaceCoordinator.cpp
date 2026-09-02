@@ -1486,18 +1486,32 @@ HRESULT RichMediaSurfaceCoordinator::UpdateGeometry(
     return result;
 }
 
-HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer() noexcept {
+HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer(
+    PresentationTransferFailureStage* const failureStage) noexcept {
+    if (failureStage) *failureStage = PresentationTransferFailureStage::None;
     if (presentationTransferPending_ || !controller_ || !controllerBase_ ||
         (state_.lifecycle != Lifecycle::ReadyHidden &&
-         state_.lifecycle != Lifecycle::Visible)) return E_UNEXPECTED;
+         state_.lifecycle != Lifecycle::Visible)) {
+        if (failureStage)
+            *failureStage = PresentationTransferFailureStage::Admission;
+        return E_UNEXPECTED;
+    }
     transferDesiredVisible_ = desiredVisible_;
     state_.inputEnabled = false;
     if (configuration_.setPresentationVisible)
         configuration_.setPresentationVisible(false);
     HRESULT result = controllerBase_->put_IsVisible(FALSE);
-    if (SUCCEEDED(result)) result = controller_->put_RootVisualTarget(nullptr);
     if (FAILED(result)) {
-        Fault(L"presentation-transfer-detach", result);
+        if (failureStage)
+            *failureStage = PresentationTransferFailureStage::VisibilityDetach;
+        Fault(L"presentation-transfer-visibility", result);
+        return result;
+    }
+    result = controller_->put_RootVisualTarget(nullptr);
+    if (FAILED(result)) {
+        if (failureStage)
+            *failureStage = PresentationTransferFailureStage::RootTargetDetach;
+        Fault(L"presentation-transfer-root-target-detach", result);
         return result;
     }
     configuration_.ownerWindow = nullptr;
@@ -1512,26 +1526,41 @@ HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer() noexcept {
 }
 
 HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransfer(
-    PresentationTarget target) noexcept {
+    PresentationTarget target,
+    PresentationTransferFailureStage* const failureStage) noexcept {
+    if (failureStage) *failureStage = PresentationTransferFailureStage::None;
     if (!presentationTransferPending_ || !controller_ || !controllerBase_ ||
         !target.ownerWindow || !target.compositionTarget ||
         target.bounds.right <= target.bounds.left ||
         target.bounds.bottom <= target.bounds.top ||
         target.rasterScale < 0.5 || target.rasterScale > 8.0 ||
-        !target.setPresentationVisible) return E_INVALIDARG;
+        !target.setPresentationVisible) {
+        if (failureStage)
+            *failureStage = PresentationTransferFailureStage::Admission;
+        return E_INVALIDARG;
+    }
     configuration_.ownerWindow = target.ownerWindow;
     configuration_.compositionTarget = std::move(target.compositionTarget);
     configuration_.bounds = target.bounds;
     configuration_.rasterScale = target.rasterScale;
     configuration_.setPresentationVisible = std::move(target.setPresentationVisible);
     HRESULT result = controllerBase_->put_ParentWindow(target.ownerWindow);
-    if (SUCCEEDED(result))
+    auto failedStage = PresentationTransferFailureStage::ParentWindowAttach;
+    if (SUCCEEDED(result)) {
+        failedStage = PresentationTransferFailureStage::RootTargetAttach;
         result = controller_->put_RootVisualTarget(configuration_.compositionTarget.Get());
-    if (SUCCEEDED(result)) result = UpdateGeometry(target.bounds, target.rasterScale);
+    }
+    if (SUCCEEDED(result)) {
+        failedStage = PresentationTransferFailureStage::GeometryAttach;
+        result = UpdateGeometry(target.bounds, target.rasterScale);
+    }
     const bool visible = transferDesiredVisible_ && pageReady_;
-    if (SUCCEEDED(result))
+    if (SUCCEEDED(result)) {
+        failedStage = PresentationTransferFailureStage::VisibilityAttach;
         result = controllerBase_->put_IsVisible(visible ? TRUE : FALSE);
+    }
     if (FAILED(result)) {
+        if (failureStage) *failureStage = failedStage;
         presentationTransferPending_ = false;
         transferDesiredVisible_ = false;
         Fault(L"presentation-transfer-attach", result);

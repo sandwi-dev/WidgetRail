@@ -99,8 +99,52 @@ void TestAcceptedCompactMediaHostContract() {
     Check(transfer.find("presentationTransferPending()") != std::string::npos &&
               deferred != std::string::npos &&
               transfer.find("return true;", deferred) != std::string::npos &&
-              transfer.find("CompletePresentationTransfer") > deferred,
+              transfer.find("CompletePresentationTransfer") > deferred &&
+              transfer.find("richMediaSurface_->state().failureCode") ==
+                  std::string::npos &&
+              transfer.find("PresentationTransferFailureStageValue(failureStage)") !=
+                  std::string::npos,
           "cycling defers exact geometry reattachment without retiring the retained controller and completes it only after geometry resolves");
+    const auto pinnedCoordinator = ReadSource(
+        fs::path{__FILE__}.parent_path() / "WidgetSurfaceCoordinator.cpp");
+    const auto unpinBegin = pinnedCoordinator.find(
+        "bool WidgetSurfaceCoordinator::Unpin(");
+    const auto callback = pinnedCoordinator.find(
+        "if (beforeWindowRetirement_) beforeWindowRetirement_(reason);", unpinBegin);
+    const auto retirementAuthority = pinnedCoordinator.find(
+        "tearingDown_ = true;", unpinBegin);
+    const auto pinnedOwner = pinnedCoordinator.find(
+        "bool WidgetSurfaceCoordinator::pinned() const noexcept");
+    Check(unpinBegin != std::string::npos && callback != std::string::npos &&
+              retirementAuthority != std::string::npos &&
+              retirementAuthority < callback && pinnedOwner != std::string::npos &&
+              pinnedCoordinator.find("return !tearingDown_", pinnedOwner) !=
+                  std::string::npos,
+          "pinned retirement revokes presentation authority before its reentrant media callback");
+    const auto retirementCallback = section(
+        "pinnedSurfaceCoordinator_.SetBeforeWindowRetirement(",
+        "if (!developmentProbeOnly_)");
+    const auto transferCall = retirementCallback.find(
+        "TransferEmbeddedMediaSurface(");
+    Check(transferCall != std::string::npos &&
+              retirementCallback.find("retiringWidgetId", transferCall) !=
+                  std::string::npos &&
+              retirementCallback.find("transferPending", transferCall) !=
+                  std::string::npos &&
+              retirementCallback.find("embeddedMediaAuthority_", transferCall) ==
+                  std::string::npos &&
+              retirementCallback.find("richMediaSurface_", transferCall) ==
+                  std::string::npos,
+          "retirement diagnostics retain caller-owned identity and terminal outcome across reentrant transfer failure");
+    const auto coordinatorTransfer = ReadSource(
+        fs::path{__FILE__}.parent_path() / "RichMediaSurfaceCoordinator.cpp");
+    Check(coordinatorTransfer.find(
+              "Fault(L\"presentation-transfer-visibility\", result)") !=
+                  std::string::npos &&
+              coordinatorTransfer.find(
+              "Fault(L\"presentation-transfer-root-target-detach\", result)") !=
+                  std::string::npos,
+          "controller detach failures retain distinct visibility and root-target terminal stages");
     const auto residency = section(
         "void SyncWidgetActivity(",
         "void RetireBridgeSessionPresentationAuthority(");

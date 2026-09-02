@@ -202,6 +202,38 @@ struct PresentationTarget final {
     std::function<void(bool)> setPresentationVisible;
 };
 
+enum class PresentationTransferFailureStage {
+    None,
+    Admission,
+    VisibilityDetach,
+    RootTargetDetach,
+    ParentWindowAttach,
+    RootTargetAttach,
+    GeometryAttach,
+    VisibilityAttach,
+};
+
+[[nodiscard]] constexpr std::wstring_view PresentationTransferFailureStageValue(
+    const PresentationTransferFailureStage stage) noexcept {
+    switch (stage) {
+    case PresentationTransferFailureStage::None: return L"none";
+    case PresentationTransferFailureStage::Admission: return L"admission";
+    case PresentationTransferFailureStage::VisibilityDetach:
+        return L"controller-visibility-detach";
+    case PresentationTransferFailureStage::RootTargetDetach:
+        return L"controller-root-target-detach";
+    case PresentationTransferFailureStage::ParentWindowAttach:
+        return L"controller-parent-window-attach";
+    case PresentationTransferFailureStage::RootTargetAttach:
+        return L"controller-root-target-attach";
+    case PresentationTransferFailureStage::GeometryAttach:
+        return L"controller-geometry-attach";
+    case PresentationTransferFailureStage::VisibilityAttach:
+        return L"controller-visibility-attach";
+    }
+    return L"unknown";
+}
+
 // Owns the bounded rich-media session only. The OverlayApp remains the sole
 // HWND/input/focus/UIA/geometry/presentation/teardown authority and explicitly
 // forwards admitted operations to this coordinator.
@@ -219,9 +251,11 @@ public:
     [[nodiscard]] HRESULT Retry(Configuration configuration) noexcept;
     [[nodiscard]] HRESULT SetVisible(bool visible) noexcept;
     [[nodiscard]] HRESULT UpdateGeometry(const RECT& bounds, double rasterScale) noexcept;
-    [[nodiscard]] HRESULT BeginPresentationTransfer() noexcept;
+    [[nodiscard]] HRESULT BeginPresentationTransfer(
+        PresentationTransferFailureStage* failureStage = nullptr) noexcept;
     [[nodiscard]] HRESULT CompletePresentationTransfer(
-        PresentationTarget target) noexcept;
+        PresentationTarget target,
+        PresentationTransferFailureStage* failureStage = nullptr) noexcept;
     [[nodiscard]] bool SendCommand(Command command) noexcept;
     [[nodiscard]] bool SendSeekPosition(double positionSeconds) noexcept;
     [[nodiscard]] PlaybackCommandDispatchResult DispatchPlaybackCommand(

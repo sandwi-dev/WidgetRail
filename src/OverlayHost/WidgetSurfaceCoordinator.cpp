@@ -1509,7 +1509,13 @@ std::optional<POINT> WidgetSurfaceCoordinator::PointerPointForTesting(
 #endif
 
 bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexcept {
+    if (tearingDown_) return false;
     if (!pinned() && !window_) return false;
+    // Window retirement owns pinned presentation authority from this point
+    // forward. Callbacks may detach or retarget external content, so every
+    // reentrant reconciliation must observe pinned() == false before that work
+    // begins rather than rediscovering the retiring HWND as a valid endpoint.
+    tearingDown_ = true;
     lastStopReason_ = reason;
     if (beforeWindowRetirement_) beforeWindowRetirement_(reason);
     if (selectedLayoutIndex_ < layoutOptions_.size())
@@ -1544,12 +1550,10 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
         renderer_->ForgetWidgetState(admission_->instanceId);
     if (GetCapture() == window_) ReleaseCapture();
     const HWND retiring = window_;
-    tearingDown_ = true;
     accessibilityProvider_.Clear();
     accessibilityProvider_.Detach();
     if (retiring && IsWindow(retiring)) DestroyWindow(retiring);
     window_ = nullptr;
-    tearingDown_ = false;
     ReleaseGraphicsResources();
     admission_.reset();
     layoutOptions_.clear();
@@ -1564,6 +1568,7 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
                      ? StopReason::HostExit
                      : StopReason::Unpin);
     ++teardownCount_;
+    tearingDown_ = false;
     NotifyOwner();
     return true;
 }
@@ -1621,7 +1626,8 @@ void WidgetSurfaceCoordinator::Dispose() noexcept {
 }
 
 bool WidgetSurfaceCoordinator::pinned() const noexcept {
-    return admission_.has_value() && policy_.state() == LifecycleState::Pinned &&
+    return !tearingDown_ && admission_.has_value() &&
+        policy_.state() == LifecycleState::Pinned &&
         window_ && IsWindow(window_);
 }
 
