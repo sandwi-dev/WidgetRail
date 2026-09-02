@@ -518,7 +518,7 @@ void VerifySelectControllerInputSerializationAndPopupRaster() {
 
 void VerifyEmbeddedMediaSnapshotContract() {
     std::wstring error;
-    constexpr std::string_view productionSerializedMediaViewport = R"json({
+    constexpr std::string_view productionShapedMediaViewportNode = R"json({
         "snapshot": {
             "protocolVersion":41,"sequence":7,
             "widgetInstanceId":"production.media-viewport","activeInputScopeId":"root",
@@ -543,12 +543,12 @@ void VerifyEmbeddedMediaSnapshotContract() {
     })json";
     const auto productionCheckpoint =
         widgetrail::testing::ParseWidgetSnapshotResponse(
-            productionSerializedMediaViewport, error);
+            productionShapedMediaViewportNode, error);
     Require(productionCheckpoint && error.empty() &&
                 productionCheckpoint->root.children.size() == 2 &&
                 productionCheckpoint->root.children[1].kind == L"mediaViewport" &&
                 productionCheckpoint->root.children[1].selectOptions.empty(),
-            "production-serialized empty MediaViewport collections were rejected");
+            "ordinary/recovery checkpoint admission rejected the affected production-shaped MediaViewport node defaults");
 
     error.clear();
     const auto productionUpdate =
@@ -565,7 +565,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
         },"renderStyles":{}
     })json", error);
     Require(productionUpdate && error.empty(),
-            "production-shaped MediaViewport update could not be parsed");
+            "incremental MediaViewport presentation update could not be parsed");
     const auto productionMaterialization =
         widgetrail::MaterializeWidgetPresentationUpdate(
             *productionCheckpoint, *productionUpdate,
@@ -575,7 +575,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
                 productionMaterialization->snapshot.root.children[0].text == L"After" &&
                 productionMaterialization->snapshot.root.children[1].kind == L"mediaViewport" &&
                 productionMaterialization->snapshot.root.children[1].selectOptions.empty(),
-            "presentation materialization rejected production-serialized empty MediaViewport collections");
+            "incremental presentation-update materialization rejected the affected production-shaped MediaViewport node defaults");
 
     const auto mutate = [](std::string source, const std::string_view from,
                            const std::string_view to) {
@@ -587,7 +587,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
     };
     error.clear();
     Require(!widgetrail::testing::ParseWidgetSnapshotResponse(
-                mutate(std::string{productionSerializedMediaViewport},
+                mutate(std::string{productionShapedMediaViewportNode},
                     R"json("mediaSurfaceId":"production-media",
                  "contextActions":[],"selectOptions":[])json",
                     R"json("mediaSurfaceId":"production-media",

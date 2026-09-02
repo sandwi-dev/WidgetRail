@@ -142,15 +142,20 @@ forbidden when non-empty must still fail closed when a caller attempts to use
 it on the wrong kind. Add explicit tests for absent, empty, non-empty-valid,
 and non-empty-wrong-kind forms.
 
-This also applies when an older widget payload omitted the property: Bridge
-deserialization followed by production serialization materializes every
-non-null default collection. Update every strict native per-kind property
-allowlist before its generic semantic validator can run. For example,
-`MediaViewport` admits `selectOptions` as a recognized property only so the
-shared rule can accept `[]` and reject a non-empty collection. Exercise the
-actual current managed shape, including default empty collections, through
-both full snapshot/checkpoint admission and incremental or action-result
-materialization; retain unknown-property and non-empty-wrong-kind negatives.
+This also applies to any payload that omits an optional property initialized to
+a declared non-null default. Host-side managed deserialization in
+WidgetRuntime/WidgetProcessClient followed by Bridge serialization through
+`SnapshotJson` materializes every such default collection; current workers may
+also emit it directly. Update every strict native per-kind property allowlist
+before its generic semantic validator can run. For example, `MediaViewport`
+admits `selectOptions` as a recognized property only so the shared rule can
+accept `[]` and reject a non-empty collection. Exercise the exact affected
+`ViewNode` default-array shape through ordinary/recovery checkpoint admission
+and incremental presentation-update materialization (or the action-result path
+when applicable), while retaining unknown-property and non-empty-wrong-kind
+negatives. Do not describe a hand-authored affected-node fixture as complete
+byte-for-byte `SnapshotJson` parity unless the test generates or compares the
+complete current document.
 
 ### Managed validation
 
@@ -610,9 +615,10 @@ contract.
 
 - [ ] Bridge style mapping uses the intended WRSS selector.
 - [ ] Native unknown-property allowlists match managed serializer output.
-- [ ] Full checkpoints and materialized incremental/action results admit the
-      current default-collection shape while wrong-kind non-empty collections
-      and unknown properties still fail closed.
+- [ ] Ordinary/recovery checkpoints and materialized incremental/action results
+      admit the exact affected `ViewNode` default-collection shape while
+      wrong-kind non-empty collections and unknown properties still fail
+      closed; complete-document parity claims use generated/current bytes.
 - [ ] Native parsing duplicates all managed invariants and bounds.
 - [ ] Native focus/container/presentation classifiers are exhaustive.
 - [ ] Exact-current widget/runtime/presentation/layout/scope/node/action
