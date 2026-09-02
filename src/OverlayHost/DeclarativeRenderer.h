@@ -24,6 +24,7 @@ namespace widgetrail {
 class RemoteImageCache;
 
 enum class RenderDiagnosticSeverity {
+    Information,
     Warning,
     Error,
 };
@@ -107,6 +108,10 @@ struct RenderResult final {
     /// True only while at least one paint-only node transition requires a
     /// future frame. The renderer never owns a timer or animation thread.
     bool animationActive{};
+    /// Exact logical damage for a BackgroundSurface-only animation. Empty
+    /// means another declarative animation also needs a frame and the host
+    /// must use its conservative full-content wakeup.
+    std::optional<declarative::Rect> backgroundSurfaceAnimationDamage;
     /// Captured on every call but emitted only by the existing host diagnostic
     /// when the containing composition frame exceeds its slow threshold.
     DeclarativeRenderTiming timing;
@@ -362,6 +367,11 @@ public:
         std::wstring_view exactScrollId = {},
         FocusedFreeScrollPlanDiagnostic* diagnostic = nullptr);
 
+    /// Reuses the exact committed layout for a renderer-owned paint-only
+    /// animation frame. The caller remains responsible for the bounded wakeup.
+    [[nodiscard]] std::optional<IncrementalPresentationPlan>
+    PlanBackgroundSurfaceAnimationFrame(declarative::Rect damage);
+
     void CancelPresentationUpdatePlan() noexcept;
 
     /// Advances the existing complete renderer checkpoint after a typed
@@ -507,6 +517,12 @@ private:
         std::wstring defaultImageSource;
         std::wstring defaultArtworkHandle;
         std::wstring defaultImageFit;
+        Microsoft::WRL::ComPtr<ID2D1Bitmap> committedBitmap;
+        std::wstring incomingImageSource;
+        std::wstring incomingArtworkHandle;
+        std::wstring incomingImageFit;
+        Microsoft::WRL::ComPtr<ID2D1Bitmap> incomingBitmap;
+        std::uint64_t transitionStartedAt{};
         std::uint64_t lastUse{};
     };
 

@@ -6393,6 +6393,27 @@ private:
         return true;
     }
 
+    [[nodiscard]] bool SubmitBackgroundSurfaceAnimationDamage() {
+        if (!window_ || !declarativeRenderer_ ||
+            state_.surface() != widgetrail::Surface::Widget ||
+            !lastWidgetRenderResult_.backgroundSurfaceAnimationDamage)
+            return false;
+        const auto plan = declarativeRenderer_->PlanBackgroundSurfaceAnimationFrame(
+            *lastWidgetRenderResult_.backgroundSurfaceAnimationDamage);
+        RECT client{};
+        if (!plan || !GetClientRect(window_, &client)) return false;
+        const UINT dpi = std::max(1U, GetDpiForWindow(window_));
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
+            client.right - client.left, client.bottom - client.top,
+            dpi, interfaceScale);
+        return metrics && metrics->physicalPixelsPerDip > 0.0F &&
+            SubmitWidgetContentDamage(
+                *plan, metrics->physicalPixelsPerDip, client);
+    }
+
     void InvalidateWidgetFocusChange(
         const std::wstring_view priorFocusedElementId,
         const std::vector<std::wstring>& sliderDamageNodeIds = {}) {
@@ -8203,6 +8224,10 @@ private:
     }
 
     void DrainPinnedSurfaceInputs() {
+        for (const auto& diagnostic :
+                 pinnedSurfaceCoordinator_.TakeBackgroundSurfaceDiagnostics()) {
+            AppendDiagnostic(L"Renderer pinned " + diagnostic);
+        }
         if (pinnedSurfaceCoordinator_.pinned())
             (void)BindEmbeddedMediaSessionForWidget(
                 pinnedSurfaceCoordinator_.widgetId(),
@@ -9928,7 +9953,8 @@ private:
         // declarative content performs no paint invalidations, and this timer
         // is stopped altogether while the overlay is hidden.
         if (declarativeMotionActive_ &&
-            !HasExactRefreshRetainedVisualCheckpoint())
+            !HasExactRefreshRetainedVisualCheckpoint() &&
+            !SubmitBackgroundSurfaceAnimationDamage())
             InvalidateRect(window_, nullptr, FALSE);
     }
 
@@ -15011,6 +15037,14 @@ private:
                     (!inertRetainedSnapshot || retainedRefreshFreeScroll);
                 auto result = declarativeRenderer_->Render(
                     renderTarget_.Get(), *snapshot, renderedFocusId, viewport, options);
+                for (const auto& diagnostic : result.diagnostics) {
+                    if (diagnostic.code.starts_with(L"background_crossfade_")) {
+                        AppendDiagnostic(
+                            L"Renderer " + std::wstring{renderedWidget} + L" " +
+                            diagnostic.code + L" [" + diagnostic.nodeId + L"] " +
+                            diagnostic.message);
+                    }
+                }
                 currentCompositionRenderTiming_ = result.timing;
                 if (options.suppressFocusedDescendantFollow &&
                     interactionSession_.freeScrollBinding()) {
@@ -15354,6 +15388,8 @@ private:
                     (lastSequence == renderedSnapshotSequences_.end() ||
                      lastSequence->second != snapshot->sequence)) {
                     for (const auto& diagnostic : result.diagnostics) {
+                        if (diagnostic.code.starts_with(L"background_crossfade_"))
+                            continue;
                         AppendDiagnostic(
                             L"Renderer " + std::wstring(widget) + L" " + diagnostic.code + L" [" + diagnostic.nodeId +
                             L"] " + diagnostic.message);

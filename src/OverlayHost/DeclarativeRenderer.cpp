@@ -27,6 +27,7 @@ constexpr std::size_t kMaximumDiagnostics = 256;
 constexpr std::size_t kMaximumBitmapEntries = 256;
 constexpr std::size_t kMaximumBitmapEntryBytes = 32U * 1024U * 1024U;
 constexpr std::size_t kMaximumBitmapBytes = 96U * 1024U * 1024U;
+constexpr std::uint64_t kBackgroundSurfaceCrossfadeMilliseconds = 200;
 constexpr float kMinimumControlSize = 44.0F;
 constexpr float kButtonIconLabelGap = 8.0F;
 constexpr float kButtonStateCueGap = 8.0F;
@@ -518,6 +519,8 @@ struct DeclarativeRenderer::RenderPass final {
         collectionReconciliationOffsets;
     std::unordered_map<std::wstring, FocusBackgroundEntry> focusBackgrounds;
     std::uint64_t focusBackgroundAccessClock{};
+    bool backgroundSurfaceAnimationActive{};
+    std::optional<Rect> backgroundSurfaceAnimationDamage;
 
     [[nodiscard]] bool IsResponsiveVisible(const WidgetNode& node) const noexcept {
         return node.visibleWhen.empty() || node.visibleWhen == L"always" ||
@@ -543,6 +546,28 @@ struct DeclarativeRenderer::RenderPass final {
             std::wstring{code},
             std::wstring{message},
         });
+    }
+
+    void AddBackgroundSurfaceTransitionDiagnostic(
+        const WidgetNode& node,
+        const std::wstring_view event,
+        const std::wstring_view reason = {}) {
+        std::wstring message = L"event=" + std::wstring{event} +
+            L" widget=" + options.artworkWidgetId +
+            L" instance=" + snapshot->instanceId +
+            L" surface=" + node.id;
+        if (!reason.empty()) message += L" reason=" + std::wstring{reason};
+        Add(node.id, L"background_crossfade_" + std::wstring{event}, message,
+            RenderDiagnosticSeverity::Information);
+    }
+
+    void MarkBackgroundSurfaceAnimation(const Rect damage) {
+        const auto bounded = Intersection(damage, viewport);
+        if (bounded.width <= 0.0F || bounded.height <= 0.0F) return;
+        backgroundSurfaceAnimationActive = true;
+        backgroundSurfaceAnimationDamage = backgroundSurfaceAnimationDamage
+            ? std::optional{UnionRect(*backgroundSurfaceAnimationDamage, bounded)}
+            : std::optional{bounded};
     }
 
     [[nodiscard]] NativeStyleResult Adapt(
@@ -2745,43 +2770,17 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
-    bool DrawImage(
-        const WidgetNode& node,
+    bool DrawResolvedImageLayers(
+        const WidgetNode& committedNode,
+        ID2D1Bitmap* const committedBitmap,
+        const WidgetNode* const incomingNode,
+        ID2D1Bitmap* const incomingBitmap,
+        const float incomingOpacity,
         const NativeRenderStyle& style,
         const Rect rect,
         const float opacity,
-        const bool focused,
-        const bool drawFailureFallback = true) {
-        if (!target) return false;
-        auto presentationState = ImagePresentationState::Pending;
-        auto bitmap = owner->GetImageBitmap(
-            target, node, *this, options.artworkWidgetId, presentationState);
-        if (!bitmap) {
-            if (drawFailureFallback &&
-                presentationState == ImagePresentationState::TrustedArtworkUnavailable) {
-                // Tile's no-artwork presentation uses this same closed
-                // semantic glyph. A terminal host resolution failure must not
-                // leave the authored image box blank or change tile geometry.
-                DrawSemanticIcon(
-                    node, style,
-                    Inset(rect, std::min(rect.width, rect.height) * 0.32F),
-                    opacity * 0.75F, L"play");
-            } else if (drawFailureFallback &&
-                       presentationState == ImagePresentationState::Failed) {
-                DrawSemanticIcon(
-                    node, style,
-                    Inset(rect, std::min(rect.width, rect.height) * 0.32F),
-                    opacity * 0.65F, L"warning");
-            }
-            return false;
-        }
-        auto fit = style.imageFit();
-        if (!HasComputedProperty(node, L"object-fit", focused, node.id == pressedId)) {
-            if (const auto explicitFit = ExplicitImageFit(node)) fit = *explicitFit;
-        }
-        const auto imageSize = bitmap->GetSize();
-        const auto placement = DeclarativeRenderer::ComputeImagePlacement(
-            {imageSize.width, imageSize.height}, rect, fit, style.objectPosition());
+        const bool focused) {
+        if (!target || !committedBitmap) return false;
         const auto radius = RadiusFor(style, rect);
 
         ComPtr<ID2D1Layer> layer;
@@ -2802,12 +2801,34 @@ struct DeclarativeRenderer::RenderPass final {
         } else {
             target->PushAxisAlignedClip(D2DRect(rect), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         }
-        target->DrawBitmap(
-            bitmap.Get(),
-            D2DRect(placement.destination),
-            opacity,
-            D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
-            D2DRect(placement.source));
+
+        const auto drawBitmap = [&](const WidgetNode& imageNode,
+                                    ID2D1Bitmap* const bitmap,
+                                    const float layerOpacity) {
+            auto fit = style.imageFit();
+            if (!HasComputedProperty(
+                    imageNode, L"object-fit", focused,
+                    imageNode.id == pressedId)) {
+                if (const auto explicitFit = ExplicitImageFit(imageNode))
+                    fit = *explicitFit;
+            }
+            const auto imageSize = bitmap->GetSize();
+            const auto placement = DeclarativeRenderer::ComputeImagePlacement(
+                {imageSize.width, imageSize.height}, rect, fit,
+                style.objectPosition());
+            target->DrawBitmap(
+                bitmap, D2DRect(placement.destination),
+                opacity * std::clamp(layerOpacity, 0.0F, 1.0F),
+                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                D2DRect(placement.source));
+        };
+        drawBitmap(committedNode, committedBitmap, 1.0F);
+        if (incomingNode && incomingBitmap && incomingOpacity > 0.0F)
+            drawBitmap(*incomingNode, incomingBitmap, incomingOpacity);
+
+        // Tint and scrim are surface styling, not texture content. Apply them
+        // once after the two image layers so their authored opacity remains
+        // stable throughout the blend.
         if (style.imageTint()) {
             auto tint = Brush(target, WithOpacity(*style.imageTint(), opacity));
             if (tint) target->FillRectangle(D2DRect(rect), tint.Get());
@@ -2815,13 +2836,55 @@ struct DeclarativeRenderer::RenderPass final {
         if (style.scrimColor()) {
             auto scrim = Brush(target, WithOpacity(*style.scrimColor(), opacity));
             if (scrim) {
-                const Rect bottom{rect.x, rect.y + rect.height * 0.55F, rect.width, rect.height * 0.45F};
+                const Rect bottom{
+                    rect.x, rect.y + rect.height * 0.55F,
+                    rect.width, rect.height * 0.45F};
                 target->FillRectangle(D2DRect(bottom), scrim.Get());
             }
         }
         if (pushed) target->PopLayer();
         else target->PopAxisAlignedClip();
         return true;
+    }
+
+    bool DrawImage(
+        const WidgetNode& node,
+        const NativeRenderStyle& style,
+        const Rect rect,
+        const float opacity,
+        const bool focused,
+        const bool drawFailureFallback = true,
+        ComPtr<ID2D1Bitmap>* const resolvedBitmap = nullptr,
+        ImagePresentationState* const resolvedState = nullptr) {
+        if (!target) return false;
+        auto presentationState = ImagePresentationState::Pending;
+        auto bitmap = owner->GetImageBitmap(
+            target, node, *this, options.artworkWidgetId, presentationState);
+        if (resolvedState) *resolvedState = presentationState;
+        if (!bitmap) {
+            if (resolvedBitmap) resolvedBitmap->Reset();
+            if (drawFailureFallback &&
+                presentationState == ImagePresentationState::TrustedArtworkUnavailable) {
+                // Tile's no-artwork presentation uses this same closed
+                // semantic glyph. A terminal host resolution failure must not
+                // leave the authored image box blank or change tile geometry.
+                DrawSemanticIcon(
+                    node, style,
+                    Inset(rect, std::min(rect.width, rect.height) * 0.32F),
+                    opacity * 0.75F, L"play");
+            } else if (drawFailureFallback &&
+                       presentationState == ImagePresentationState::Failed) {
+                DrawSemanticIcon(
+                    node, style,
+                    Inset(rect, std::min(rect.width, rect.height) * 0.32F),
+                    opacity * 0.65F, L"warning");
+            }
+            return false;
+        }
+        if (resolvedBitmap) *resolvedBitmap = bitmap;
+        return DrawResolvedImageLayers(
+            node, bitmap.Get(), nullptr, nullptr, 0.0F,
+            style, rect, opacity, focused);
     }
 
     void DrawBackgroundSurfaceImage(
@@ -2840,6 +2903,9 @@ struct DeclarativeRenderer::RenderPass final {
         authority.append(node.id);
 
         if (!node.usesFocusedDescendantArtwork) {
+            if (focusBackgrounds.contains(authority))
+                AddBackgroundSurfaceTransitionDiagnostic(
+                    node, L"retirement", L"focus-artwork-opt-out");
             focusBackgrounds.erase(authority);
             if ((!node.imageSource.empty() || !node.artworkHandle.empty()) &&
                 DrawImage(node, style, rect, opacity, false, false)) {
@@ -2856,11 +2922,48 @@ struct DeclarativeRenderer::RenderPass final {
             (retained->second.defaultImageSource != node.imageSource ||
              retained->second.defaultArtworkHandle != node.artworkHandle ||
              retained->second.defaultImageFit != node.imageFit)) {
+            AddBackgroundSurfaceTransitionDiagnostic(
+                node, L"retirement", L"default-artwork-changed");
             focusBackgrounds.erase(retained);
             retained = focusBackgrounds.end();
         }
 
-        const auto remember = [&](const WidgetNode& desired) {
+        const auto sameCommittedProposal = [](
+            const FocusBackgroundEntry& entry,
+            const WidgetNode& desired) {
+            return entry.imageSource == desired.imageSource &&
+                entry.artworkHandle == desired.artworkHandle &&
+                entry.imageFit == desired.imageFit;
+        };
+        const auto sameIncomingProposal = [](
+            const FocusBackgroundEntry& entry,
+            const WidgetNode& desired) {
+            return entry.incomingBitmap &&
+                entry.incomingImageSource == desired.imageSource &&
+                entry.incomingArtworkHandle == desired.artworkHandle &&
+                entry.incomingImageFit == desired.imageFit;
+        };
+        const auto proposalNode = [&](const FocusBackgroundEntry& entry,
+                                      const bool incoming) {
+            WidgetNode proposal = node;
+            proposal.imageSource = incoming
+                ? entry.incomingImageSource : entry.imageSource;
+            proposal.artworkHandle = incoming
+                ? entry.incomingArtworkHandle : entry.artworkHandle;
+            proposal.imageFit = incoming
+                ? entry.incomingImageFit : entry.imageFit;
+            return proposal;
+        };
+        const auto clearIncoming = [](FocusBackgroundEntry& entry) {
+            entry.incomingImageSource.clear();
+            entry.incomingArtworkHandle.clear();
+            entry.incomingImageFit.clear();
+            entry.incomingBitmap.Reset();
+            entry.transitionStartedAt = 0;
+        };
+        const auto remember = [&] (
+            const WidgetNode& desired,
+            ComPtr<ID2D1Bitmap> bitmap) {
             constexpr std::size_t maximumRetainedSurfaces = 256;
             if (!focusBackgrounds.contains(authority) &&
                 focusBackgrounds.size() >= maximumRetainedSurfaces) {
@@ -2873,21 +2976,20 @@ struct DeclarativeRenderer::RenderPass final {
                 if (oldest != focusBackgrounds.end())
                     focusBackgrounds.erase(oldest);
             }
-            focusBackgrounds.insert_or_assign(
-                authority,
-                FocusBackgroundEntry{
-                    options.artworkWidgetId,
-                    snapshot->instanceId,
-                    authorityId,
-                    node.id,
-                    desired.imageSource,
-                    desired.artworkHandle,
-                    desired.imageFit,
-                    node.imageSource,
-                    node.artworkHandle,
-                    node.imageFit,
-                    ++focusBackgroundAccessClock,
-                });
+            FocusBackgroundEntry entry;
+            entry.widgetId = options.artworkWidgetId;
+            entry.widgetInstanceId = snapshot->instanceId;
+            entry.authorityId = authorityId;
+            entry.surfaceId = node.id;
+            entry.imageSource = desired.imageSource;
+            entry.artworkHandle = desired.artworkHandle;
+            entry.imageFit = desired.imageFit;
+            entry.defaultImageSource = node.imageSource;
+            entry.defaultArtworkHandle = node.artworkHandle;
+            entry.defaultImageFit = node.imageFit;
+            entry.committedBitmap = std::move(bitmap);
+            entry.lastUse = ++focusBackgroundAccessClock;
+            focusBackgrounds.insert_or_assign(authority, std::move(entry));
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
             if (!desired.artworkHandle.empty())
                 result.backgroundArtworkHandles[node.id] = desired.artworkHandle;
@@ -2896,12 +2998,53 @@ struct DeclarativeRenderer::RenderPass final {
         const auto drawRetained = [&]() {
             retained = focusBackgrounds.find(authority);
             if (retained == focusBackgrounds.end()) return false;
-            retained->second.lastUse = ++focusBackgroundAccessClock;
-            WidgetNode fallback = node;
-            fallback.imageSource = retained->second.imageSource;
-            fallback.artworkHandle = retained->second.artworkHandle;
-            fallback.imageFit = retained->second.imageFit;
-            if (!DrawImage(fallback, style, rect, opacity, false, false)) return false;
+            auto& entry = retained->second;
+            entry.lastUse = ++focusBackgroundAccessClock;
+            WidgetNode fallback = proposalNode(entry, false);
+            if (!entry.committedBitmap) {
+                auto state = ImagePresentationState::Pending;
+                entry.committedBitmap = owner->GetImageBitmap(
+                    target, fallback, *this, options.artworkWidgetId, state);
+            }
+            if (!entry.committedBitmap) return false;
+
+            if (entry.incomingBitmap) {
+                const auto now = options.animationTimestampMilliseconds.value_or(0);
+                const auto elapsed = now >= entry.transitionStartedAt
+                    ? now - entry.transitionStartedAt
+                    : std::uint64_t{0};
+                if (elapsed >= kBackgroundSurfaceCrossfadeMilliseconds) {
+                    entry.imageSource = entry.incomingImageSource;
+                    entry.artworkHandle = entry.incomingArtworkHandle;
+                    entry.imageFit = entry.incomingImageFit;
+                    entry.committedBitmap = entry.incomingBitmap;
+                    clearIncoming(entry);
+                    fallback = proposalNode(entry, false);
+                    AddBackgroundSurfaceTransitionDiagnostic(
+                        node, L"completion", L"settled");
+                } else {
+                    const float linear = static_cast<float>(elapsed) /
+                        static_cast<float>(kBackgroundSurfaceCrossfadeMilliseconds);
+                    const float inverse = 1.0F - std::clamp(linear, 0.0F, 1.0F);
+                    const float progress = 1.0F - inverse * inverse * inverse;
+                    const auto incoming = proposalNode(entry, true);
+                    if (!DrawResolvedImageLayers(
+                            fallback, entry.committedBitmap.Get(),
+                            &incoming, entry.incomingBitmap.Get(), progress,
+                            style, rect, opacity, false)) return false;
+                    MarkBackgroundSurfaceAnimation(rect);
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+                    if (!entry.incomingArtworkHandle.empty())
+                        result.backgroundArtworkHandles[node.id] =
+                            entry.incomingArtworkHandle;
+#endif
+                    return true;
+                }
+            }
+            if (!DrawResolvedImageLayers(
+                    fallback, entry.committedBitmap.Get(),
+                    nullptr, nullptr, 0.0F,
+                    style, rect, opacity, false)) return false;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
             if (!fallback.artworkHandle.empty())
                 result.backgroundArtworkHandles[node.id] = fallback.artworkHandle;
@@ -2917,24 +3060,94 @@ struct DeclarativeRenderer::RenderPass final {
                 desired.imageSource.clear();
                 desired.artworkHandle = selection.artworkHandle;
                 if (desired.imageFit.empty()) desired.imageFit = L"cover";
-                if (DrawImage(desired, style, rect, opacity, false, false)) {
-                    remember(desired);
+
+                retained = focusBackgrounds.find(authority);
+                if (retained != focusBackgrounds.end() &&
+                    retained->second.incomingBitmap &&
+                    !sameIncomingProposal(retained->second, desired)) {
+                    AddBackgroundSurfaceTransitionDiagnostic(
+                        node, L"supersession", L"new-proposal");
+                    clearIncoming(retained->second);
+                }
+                if (retained != focusBackgrounds.end() &&
+                    (sameCommittedProposal(retained->second, desired) ||
+                     sameIncomingProposal(retained->second, desired))) {
+                    if (drawRetained()) return;
+                }
+
+                ComPtr<ID2D1Bitmap> desiredBitmap;
+                auto desiredState = ImagePresentationState::Pending;
+                desiredBitmap = owner->GetImageBitmap(
+                    target, desired, *this, options.artworkWidgetId, desiredState);
+                if (!desiredBitmap) {
+                    (void)drawRetained();
                     return;
                 }
-                if (drawRetained()) return;
+
+                retained = focusBackgrounds.find(authority);
+                if (retained == focusBackgrounds.end()) {
+                    if (DrawResolvedImageLayers(
+                            desired, desiredBitmap.Get(), nullptr, nullptr, 0.0F,
+                            style, rect, opacity, false)) {
+                        remember(desired, std::move(desiredBitmap));
+                    }
+                    return;
+                }
+
+                auto& entry = retained->second;
+                if (!entry.committedBitmap) {
+                    const auto committed = proposalNode(entry, false);
+                    auto committedState = ImagePresentationState::Pending;
+                    entry.committedBitmap = owner->GetImageBitmap(
+                        target, committed, *this,
+                        options.artworkWidgetId, committedState);
+                }
+                if (!entry.committedBitmap) {
+                    entry.imageSource = desired.imageSource;
+                    entry.artworkHandle = desired.artworkHandle;
+                    entry.imageFit = desired.imageFit;
+                    entry.committedBitmap = desiredBitmap;
+                    clearIncoming(entry);
+                    AddBackgroundSurfaceTransitionDiagnostic(
+                        node, L"completion", L"committed-texture-unavailable");
+                    (void)drawRetained();
+                    return;
+                }
+
+                entry.incomingImageSource = desired.imageSource;
+                entry.incomingArtworkHandle = desired.artworkHandle;
+                entry.incomingImageFit = desired.imageFit;
+                entry.incomingBitmap = std::move(desiredBitmap);
+                entry.transitionStartedAt =
+                    options.animationTimestampMilliseconds.value_or(0);
+                AddBackgroundSurfaceTransitionDiagnostic(node, L"start");
+                (void)drawRetained();
                 return;
             } else if (drawRetained()) {
                 return;
             }
         } else if (selection.surface) {
+            if (focusBackgrounds.contains(authority))
+                AddBackgroundSurfaceTransitionDiagnostic(
+                    node, L"retirement", L"different-effective-surface");
             focusBackgrounds.erase(authority);
+            // This node still paints its authored fallback, but it is not the
+            // effective focus-artwork surface and therefore must not recreate
+            // retained transition authority on every frame.
+            if (!node.imageSource.empty() || !node.artworkHandle.empty())
+                (void)DrawImage(node, style, rect, opacity, false, false);
+            return;
         } else if (drawRetained()) {
             return;
         }
 
-        if ((!node.imageSource.empty() || !node.artworkHandle.empty()) &&
-            DrawImage(node, style, rect, opacity, false, false)) {
-            remember(node);
+        if (!node.imageSource.empty() || !node.artworkHandle.empty()) {
+            ComPtr<ID2D1Bitmap> bitmap;
+            if (DrawImage(
+                    node, style, rect, opacity, false, false,
+                    &bitmap)) {
+                remember(node, std::move(bitmap));
+            }
         }
     }
 
@@ -2964,14 +3177,41 @@ struct DeclarativeRenderer::RenderPass final {
             for (const auto& child : node.children) self(self, child);
         };
         collect(collect, snapshot->root);
+        for (auto& [_, retained] : focusBackgrounds) {
+            if (retained.widgetId == options.artworkWidgetId &&
+                retained.widgetInstanceId == snapshot->instanceId &&
+                retained.authorityId == authorityId) continue;
+            // A renderer can retain last-valid metadata for another widget,
+            // but transition textures never outlive the currently rendered
+            // exact authority. They can be recreated from the bounded decoded
+            // cache when that widget becomes current again.
+            retained.committedBitmap.Reset();
+            retained.incomingImageSource.clear();
+            retained.incomingArtworkHandle.clear();
+            retained.incomingImageFit.clear();
+            retained.incomingBitmap.Reset();
+            retained.transitionStartedAt = 0;
+        }
         std::erase_if(focusBackgrounds, [&](const auto& entry) {
             const auto& retained = entry.second;
             if (retained.widgetId != options.artworkWidgetId ||
                 retained.widgetInstanceId != snapshot->instanceId) {
                 return false;
             }
-            return retained.authorityId != authorityId ||
+            const bool retire = retained.authorityId != authorityId ||
                 !present.contains(retained.surfaceId);
+            if (retire) {
+                Add(
+                    retained.surfaceId, L"background_crossfade_retirement",
+                    L"event=retirement widget=" + retained.widgetId +
+                        L" instance=" + retained.widgetInstanceId +
+                        L" surface=" + retained.surfaceId +
+                        (retained.authorityId != authorityId
+                            ? L" reason=authority-changed"
+                            : L" reason=surface-removed"),
+                    RenderDiagnosticSeverity::Information);
+            }
+            return retire;
         });
     }
 
@@ -3835,6 +4075,25 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
     return std::nullopt;
 }
 
+std::optional<IncrementalPresentationPlan>
+DeclarativeRenderer::PlanBackgroundSurfaceAnimationFrame(Rect damage) {
+    pendingIncrementalPlan_.reset();
+    const auto& cache = incrementalLayoutCache_;
+    if (!cache || !FiniteRect(damage)) return std::nullopt;
+    damage = Intersection(damage, cache->viewport);
+    if (damage.width <= 0.0F || damage.height <= 0.0F) return std::nullopt;
+    pendingIncrementalPlan_ = PendingIncrementalPlan{
+        cache->instanceId,
+        cache->sequence,
+        cache->sequence,
+        IncrementalPresentationWork::PaintOnly,
+        damage,
+        {},
+    };
+    return IncrementalPresentationPlan{
+        IncrementalPresentationWork::PaintOnly, damage};
+}
+
 void DeclarativeRenderer::CancelPresentationUpdatePlan() noexcept {
     pendingIncrementalPlan_.reset();
 }
@@ -4043,8 +4302,13 @@ RenderResult DeclarativeRenderer::Render(
     const auto nodeDrawFinished = std::chrono::steady_clock::now();
     pass.DrawDeferredFocus();
     const auto deferredFocusFinished = std::chrono::steady_clock::now();
-    pass.result.animationActive =
+    const bool otherAnimationActive =
         pass.result.animationActive || motionTimeline_.EndFrame();
+    pass.result.animationActive =
+        otherAnimationActive || pass.backgroundSurfaceAnimationActive;
+    if (pass.backgroundSurfaceAnimationActive && !otherAnimationActive)
+        pass.result.backgroundSurfaceAnimationDamage =
+            pass.backgroundSurfaceAnimationDamage;
     if (roundedClip) renderTarget->PopLayer();
     else if (cornerRadius > 0.0F && renderTarget) renderTarget->PopAxisAlignedClip();
     const auto hasErrors = std::any_of(
@@ -4298,7 +4562,13 @@ void DeclarativeRenderer::ClearBitmapCache(
     const bool resourceInvalidation) noexcept {
     bitmaps_.clear();
     bitmapBytes_ = 0;
-    if (resourceInvalidation) ++bitmapResourceInvalidations_;
+    if (resourceInvalidation) {
+        // Transition bitmaps belong to the same Direct2D resource domain.
+        // Device/target replacement retires both sides atomically; the exact
+        // current proposal can be resolved again on the replacement target.
+        focusBackgrounds_.clear();
+        ++bitmapResourceInvalidations_;
+    }
 }
 
 void DeclarativeRenderer::TrimBitmapCache(

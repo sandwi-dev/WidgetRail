@@ -22,6 +22,8 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"WidgetRail.PinnedSurface";
 constexpr wchar_t kWindowTitle[] = L"WidgetRail pinned surface";
 constexpr UINT kAccessibilityActionMessage = WM_APP + 0x316;
+constexpr UINT_PTR kBackgroundSurfaceAnimationTimer = 1;
+constexpr UINT kBackgroundSurfaceAnimationTimerMilliseconds = 15;
 constexpr float kChromeHeightDip = surface_geometry::kPinnedChromeHeightDip;
 constexpr float kSideInsetDip = surface_geometry::kPinnedSideInsetDip;
 constexpr float kBottomInsetDip = surface_geometry::kPinnedBottomInsetDip;
@@ -1034,6 +1036,13 @@ WidgetSurfaceCoordinator::TakeLayoutSelectionNotifications() noexcept {
     return result;
 }
 
+std::vector<std::wstring>
+WidgetSurfaceCoordinator::TakeBackgroundSurfaceDiagnostics() noexcept {
+    std::vector<std::wstring> result;
+    result.swap(backgroundSurfaceDiagnostics_);
+    return result;
+}
+
 const WidgetSnapshot& WidgetSurfaceCoordinator::SelectedSnapshot() const noexcept {
     if (selectedLayoutIndex_ < layoutOptions_.size() &&
         layoutOptions_[selectedLayoutIndex_].projection)
@@ -2038,6 +2047,33 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
         return 0;
     case WM_ERASEBKGND:
         return 1;
+    case WM_TIMER:
+        if (wParam == kBackgroundSurfaceAnimationTimer) {
+            if (!renderer_ ||
+                !lastRenderResult_.backgroundSurfaceAnimationDamage) {
+                KillTimer(window_, kBackgroundSurfaceAnimationTimer);
+                return 0;
+            }
+            const auto plan = renderer_->PlanBackgroundSurfaceAnimationFrame(
+                *lastRenderResult_.backgroundSurfaceAnimationDamage);
+            if (!plan) {
+                KillTimer(window_, kBackgroundSurfaceAnimationTimer);
+                return 0;
+            }
+            const float scale = static_cast<float>(
+                std::max(1U, GetDpiForWindow(window_))) / 96.0F;
+            RECT update{
+                static_cast<LONG>(std::floor(plan->damage.x * scale)),
+                static_cast<LONG>(std::floor(plan->damage.y * scale)),
+                static_cast<LONG>(std::ceil(
+                    (plan->damage.x + plan->damage.width) * scale)),
+                static_cast<LONG>(std::ceil(
+                    (plan->damage.y + plan->damage.height) * scale)),
+            };
+            RequestPaint(&update);
+            return 0;
+        }
+        return DefWindowProcW(window_, message, wParam, lParam);
     case WM_PAINT:
         Paint();
         return 0;
@@ -2364,6 +2400,7 @@ void WidgetSurfaceCoordinator::Paint() {
     options.responsiveViewport = {widthDip, heightDip};
     options.surfaceBackground = NativeColor{22.0F / 255.0F, 33.0F / 255.0F, 46.0F / 255.0F, 1.0F};
     options.accessibility.reducedMotion = true;
+    options.animationTimestampMilliseconds = GetTickCount64();
     const auto& selectedSnapshot = SelectedSnapshot();
     auto sliderPresentation = sliderInteraction_.PrepareRenderPresentation(
         selectedSnapshot,
@@ -2534,6 +2571,23 @@ void WidgetSurfaceCoordinator::Paint() {
     input::ScrollPaginationSessionOutcome paginationOutcome;
     if (result == D2DERR_RECREATE_TARGET) ReleaseGraphicsResources();
     else if (SUCCEEDED(result)) {
+        constexpr std::size_t maximumPendingDiagnostics = 16;
+        for (const auto& diagnostic : renderResult.diagnostics) {
+            if (!diagnostic.code.starts_with(L"background_crossfade_")) continue;
+            if (backgroundSurfaceDiagnostics_.size() >= maximumPendingDiagnostics)
+                backgroundSurfaceDiagnostics_.erase(
+                    backgroundSurfaceDiagnostics_.begin());
+            backgroundSurfaceDiagnostics_.push_back(
+                diagnostic.code + L" [" + diagnostic.nodeId + L"] " +
+                diagnostic.message);
+        }
+        if (renderResult.backgroundSurfaceAnimationDamage) {
+            SetTimer(
+                window_, kBackgroundSurfaceAnimationTimer,
+                kBackgroundSurfaceAnimationTimerMilliseconds, nullptr);
+        } else {
+            KillTimer(window_, kBackgroundSurfaceAnimationTimer);
+        }
         lastRenderResult_ = std::move(renderResult);
         paginationOutcome = sliderInteraction_.ReconcileScrollPagination(
             authority, lastRenderResult_, GetTickCount64());
@@ -2793,6 +2847,7 @@ void WidgetSurfaceCoordinator::RequestPaint(const RECT* update) noexcept {
 }
 
 void WidgetSurfaceCoordinator::ReleaseGraphicsResources() noexcept {
+    if (window_) KillTimer(window_, kBackgroundSurfaceAnimationTimer);
     if (renderer_) renderer_->DiscardTargetResources();
     chromeFormat_.Reset();
     titleFormat_.Reset();

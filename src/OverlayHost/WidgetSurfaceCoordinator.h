@@ -210,6 +210,8 @@ public:
         std::uint64_t now) noexcept;
     [[nodiscard]] std::vector<PinnedLayoutSelectionNotification>
         TakeLayoutSelectionNotifications() noexcept;
+    [[nodiscard]] std::vector<std::wstring>
+        TakeBackgroundSurfaceDiagnostics() noexcept;
     void SetActionFeedback(std::wstring message, bool failure);
     void SetBeforeWindowRetirement(
         std::function<void(WidgetSurfaceStopReason)> callback);
@@ -394,6 +396,7 @@ private:
     std::vector<WidgetSurfaceInputRequest> inputRequests_;
     std::vector<input::ScrollPaginationDiagnostic> paginationDiagnostics_;
     std::vector<PinnedLayoutSelectionNotification> layoutSelectionNotifications_;
+    std::vector<std::wstring> backgroundSurfaceDiagnostics_;
     std::wstring actionFeedback_;
     std::function<void(WidgetSurfaceStopReason)> beforeWindowRetirement_;
     bool actionFeedbackFailure_{};
