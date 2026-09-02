@@ -390,6 +390,9 @@ public abstract partial class Widget
             endingLifetimes.Add(_widgetLifetime.Token);
             await _operations.DrainLifetimesAsync(endingLifetimes, shutdownToken)
                 .ConfigureAwait(false);
+            await DrainTimedMutationsAsync(endingLifetimes, shutdownToken)
+                .ConfigureAwait(false);
+            DisposeTimedMutations();
             if (activeLifetime is not null)
                 await DrainActionQueueAsync(activeLifetime.Token, shutdownToken)
                     .ConfigureAwait(false);
@@ -467,6 +470,8 @@ public abstract partial class Widget
             if (endedActiveLifetime is not null)
                 endingLifetimes.Add(endedActiveLifetime.Token);
             await _operations.DrainLifetimesAsync(endingLifetimes, transitionToken)
+                .ConfigureAwait(false);
+            await DrainTimedMutationsAsync(endingLifetimes, transitionToken)
                 .ConfigureAwait(false);
             if (endedActiveLifetime is not null)
                 await DrainActionQueueAsync(endedActiveLifetime.Token, transitionToken)

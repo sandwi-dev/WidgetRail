@@ -125,6 +125,7 @@ ctor WidgetRail.WidgetSdk.WidgetScenarioRunResult(string CaseId, bool Passed, Sy
 ctor WidgetRail.WidgetSdk.WidgetScenarioStepResult(string StepId, bool Passed, string Code, string? Message)
 ctor WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder()
 ctor WidgetRail.WidgetSdk.WidgetTestPrivateState(string? initialJson = null, long initialRevision = 0)
+ctor WidgetRail.WidgetSdk.WidgetTimedMutationFailedEventArgs(System.Exception exception)
 ctor WidgetRail.WidgetSdk.WidgetView(WidgetRail.WidgetSdk.WidgetElement Root, string? InitialFocusId = null, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? QuickActions = null, string? ActiveInputScopeId = null, WidgetRail.WidgetProtocol.WidgetSurfaceHints? Surface = null)
 ctor WidgetRail.WidgetSdk.WidgetWifiRadio(WidgetRail.WidgetSdk.WidgetWifiRadioState State, bool CanControl)
 ctor WidgetRail.WidgetSdk.WidgetWifiRadioChanged(WidgetRail.WidgetSdk.WidgetWifiRadio Radio)
@@ -361,6 +362,7 @@ event System.EventHandler<WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs>? Widg
 event System.EventHandler<WidgetRail.WidgetSdk.WidgetModelChangedEventArgs<TState>>? WidgetRail.WidgetSdk.WidgetModel<TState>.Changed
 event System.EventHandler<WidgetRail.WidgetSdk.WidgetOperationBusyChangedEventArgs>? WidgetRail.WidgetSdk.WidgetOperations.BusyChanged
 event System.EventHandler<WidgetRail.WidgetSdk.WidgetOperationFailedEventArgs>? WidgetRail.WidgetSdk.WidgetOperations.OperationFailed
+event System.EventHandler<WidgetRail.WidgetSdk.WidgetTimedMutationFailedEventArgs>? WidgetRail.WidgetSdk.WidgetTimedMutation.Failed
 field const int WidgetRail.WidgetSdk.UI.MaximumActionSheetItems = 32
 field const int WidgetRail.WidgetSdk.UI.MaximumCodeTextCharacters = 4096
 field const int WidgetRail.WidgetSdk.UI.MaximumNavigationShellDestinations = 8
@@ -1302,6 +1304,9 @@ method WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder.WithPrivateState(Widge
 method WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder.WithResponse<TRequest,TResponse>(WidgetRail.WidgetSdk.WidgetCapabilityOperation<TRequest?,TResponse?> operation, TResponse? response) -> WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder
 method WidgetRail.WidgetSdk.WidgetTestPrivateState.SimulateExternalClear() -> void
 method WidgetRail.WidgetSdk.WidgetTestPrivateState.SimulateExternalWriteJson(string json) -> void
+method WidgetRail.WidgetSdk.WidgetTimedMutation.Cancel() -> bool
+method WidgetRail.WidgetSdk.WidgetTimedMutation.ScheduleLatest(System.TimeSpan delay, System.Action callback, System.Threading.CancellationToken ownerCancellationToken = null) -> WidgetRail.WidgetSdk.WidgetOperationHandle
+method WidgetRail.WidgetSdk.WidgetTimedMutation.WhenIdleAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.Task
 method WidgetRail.WidgetSdk.WidgetView.<Clone>$() -> WidgetRail.WidgetSdk.WidgetView
 method WidgetRail.WidgetSdk.WidgetView.CreateSnapshot(string widgetInstanceId, long sequence) -> WidgetRail.WidgetProtocol.ViewSnapshot
 method WidgetRail.WidgetSdk.WidgetView.Deconstruct(out WidgetRail.WidgetSdk.WidgetElement Root, out string? InitialFocusId, out System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? QuickActions, out string? ActiveInputScopeId, out WidgetRail.WidgetProtocol.WidgetSurfaceHints? Surface) -> void
@@ -1858,6 +1863,7 @@ method virtual WidgetRail.WidgetSdk.WidgetScenarioDiagnostic.Equals(WidgetRail.W
 method virtual WidgetRail.WidgetSdk.WidgetScenarioResult.Equals(WidgetRail.WidgetSdk.WidgetScenarioResult? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetScenarioRunResult.Equals(WidgetRail.WidgetSdk.WidgetScenarioRunResult? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetScenarioStepResult.Equals(WidgetRail.WidgetSdk.WidgetScenarioStepResult? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetTimedMutation.Dispose() -> void
 method virtual WidgetRail.WidgetSdk.WidgetView.Equals(WidgetRail.WidgetSdk.WidgetView? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetWifiRadio.Equals(WidgetRail.WidgetSdk.WidgetWifiRadio? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetWifiRadioChanged.Equals(WidgetRail.WidgetSdk.WidgetWifiRadioChanged? other) -> bool
@@ -1901,6 +1907,7 @@ property System.Collections.Generic.IReadOnlyList<string> WidgetRail.WidgetSdk.W
 property System.Collections.Generic.IReadOnlyList<string> WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.IpAddresses { get; set; }
 property System.Exception WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.Exception { get; set; }
 property System.Exception WidgetRail.WidgetSdk.WidgetOperationFailedEventArgs.Exception { get; }
+property System.Exception WidgetRail.WidgetSdk.WidgetTimedMutationFailedEventArgs.Exception { get; }
 property System.Exception? WidgetRail.WidgetSdk.WidgetOperationResult.Exception { get; set; }
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetCommandError> WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.MapError { get; set; }
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.MapError { get; set; }
@@ -2166,6 +2173,7 @@ property bool WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.HasValue { get
 property bool WidgetRail.WidgetSdk.WidgetSavedNetworkProfile.IsConnected { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetScenarioRunResult.Passed { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetScenarioStepResult.Passed { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetTimedMutation.IsScheduled { get; }
 property bool WidgetRail.WidgetSdk.WidgetWifiRadio.CanControl { get; set; }
 property bool? WidgetRail.WidgetSdk.ActionSurfaceElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.ActionSurfaceElement.IsDisabled { get; set; }
@@ -2261,6 +2269,7 @@ property long? WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.TotalItemCount { get
 property long? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.FirstItemIndex { get; set; }
 property long? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.TotalItemCount { get; set; }
 property long? WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata.LastWrittenUnixMilliseconds { get; set; }
+property static System.TimeSpan WidgetRail.WidgetSdk.WidgetTimedMutation.MaximumDelay { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioDevicesChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.DevicesChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioInputChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.InputChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioOutputChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.OutputChanged { get; }
@@ -2714,6 +2723,8 @@ type sealed class WidgetRail.WidgetSdk.WidgetScenarioRunResult : System.IEquatab
 type sealed class WidgetRail.WidgetSdk.WidgetScenarioStepResult : System.IEquatable<WidgetRail.WidgetSdk.WidgetScenarioStepResult>
 type sealed class WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder
 type sealed class WidgetRail.WidgetSdk.WidgetTestPrivateState
+type sealed class WidgetRail.WidgetSdk.WidgetTimedMutation : System.IDisposable
+type sealed class WidgetRail.WidgetSdk.WidgetTimedMutationFailedEventArgs : System.EventArgs
 type sealed class WidgetRail.WidgetSdk.WidgetView : System.IEquatable<WidgetRail.WidgetSdk.WidgetView>
 type sealed class WidgetRail.WidgetSdk.WidgetWifiRadio : System.IEquatable<WidgetRail.WidgetSdk.WidgetWifiRadio>
 type sealed class WidgetRail.WidgetSdk.WidgetWifiRadioChanged : System.IEquatable<WidgetRail.WidgetSdk.WidgetWifiRadioChanged>

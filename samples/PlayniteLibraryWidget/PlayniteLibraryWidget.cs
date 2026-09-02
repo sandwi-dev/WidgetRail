@@ -23,6 +23,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private readonly object _gate = new();
     private readonly SemaphoreSlim _stateGate = new(1, 1);
     private readonly IPlayniteLibraryApplicationService _application;
+    private readonly WidgetTimedMutation _categoryFeedbackExpiry;
+    private readonly WidgetTimedMutation _playniteFeedbackExpiry;
     private readonly WidgetCursorResource<PlayniteLibraryItem> _library;
     private readonly WidgetResource<IReadOnlyList<PlayniteLibraryItem>> _hiddenRows;
     private readonly WidgetResource<PlayniteBridgeConnectionResult> _playniteConnection;
@@ -50,10 +52,16 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     internal PlayniteLibraryWidget(
         IPlayniteLibraryApplicationService application,
-        IPlayniteBridgeClient? playniteClient = null)
+        IPlayniteBridgeClient? playniteClient = null,
+        TimeProvider? timeProvider = null)
     {
         _application = application ?? throw new ArgumentNullException(nameof(application));
         _playniteClient = playniteClient;
+        var clock = timeProvider ?? TimeProvider.System;
+        _categoryFeedbackExpiry = CreateTimedMutation(
+            WidgetOperationLifetime.Active, clock);
+        _playniteFeedbackExpiry = CreateTimedMutation(
+            WidgetOperationLifetime.Active, clock);
         _model = CreateModel(PlayniteLibraryRenderState.Initial(InstalledGames));
         _navigation = CreateNavigator("playnite-library.navigation", PlayniteLibraryRoute.Library,
             maximumDepth: 2, maximumRoutes: 8);
@@ -124,6 +132,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
         Operations.WhenIdleAsync("playnite-library.warm-state", cancellationToken);
     internal Task WhenHiddenRowsIdleAsync(CancellationToken cancellationToken = default) =>
         _hiddenRows.WhenIdleAsync(cancellationToken);
+    internal Task WhenCategoryFeedbackIdleAsync(
+        CancellationToken cancellationToken = default) =>
+        _categoryFeedbackExpiry.WhenIdleAsync(cancellationToken);
+    internal Task WhenPlayniteFeedbackIdleAsync(
+        CancellationToken cancellationToken = default) =>
+        _playniteFeedbackExpiry.WhenIdleAsync(cancellationToken);
 
     public override WidgetView Render()
     {
@@ -366,6 +380,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         ClearPendingBackFocus();
         RetirePlayniteConnection(clearPresentation: false);
+        _categoryFeedbackExpiry.Cancel();
         lock (_gate)
         {
             _launchGeneration.Invalidate();
@@ -375,6 +390,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             LaunchingSavedId = null,
             PlayniteBusy = false,
+            PlayniteFeedback = null,
+            CategoryFeedback = null,
             ActiveBrowseReload = null,
         });
         return ValueTask.CompletedTask;
@@ -421,6 +438,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        var feedbackBeforeAction = _model.Value.CategoryFeedback;
+        try
+        {
         if (action.ActionId.StartsWith(
                 PlayniteLibraryCollectionPolicy.ActionPrefix, StringComparison.Ordinal))
         {
@@ -720,6 +740,20 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 await CreateCategoryAsync(action.CommittedText, cancellationToken)
                     .ConfigureAwait(false);
                 return;
+        }
+        }
+        finally
+        {
+            if (feedbackBeforeAction is not null &&
+                !string.Equals(feedbackBeforeAction.ScopeId,
+                    _navigation.Value.InputScopeId, StringComparison.Ordinal))
+            {
+                _categoryFeedbackExpiry.Cancel();
+                _model.Update(state => ReferenceEquals(
+                        state.CategoryFeedback, feedbackBeforeAction)
+                    ? state with { CategoryFeedback = null }
+                    : state);
+            }
         }
     }
 
@@ -2061,6 +2095,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 PlayniteLibraryTitlePolicy.Project(_organization, item.Value))).ToArray(),
             local.FixedRows.TitleMatches.Select(item => item.WithProjectedValue(
                 PlayniteLibraryTitlePolicy.Project(_organization, item.Value))).ToArray());
+        var categoryFeedback = local.CategoryFeedback;
+        var ownedCategoryFeedback = categoryFeedback is { } candidate &&
+            string.Equals(candidate.ScopeId, _navigation.Value.InputScopeId,
+                StringComparison.Ordinal)
+            ? candidate
+            : null;
         return new(
         collection,
         organization,
@@ -2091,8 +2131,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         Collections = PlayniteLibraryCollectionPolicy.Options(
             organization, ProvenSourcesLocked(), local.Collection.Selection),
         CompletionStatuses = _presentationAuthority.CompletionStatuses,
-        CategoryFeedback = local.CategoryFeedback,
-        CategoryFeedbackSucceeded = local.CategoryFeedbackSucceeded,
+        CategoryFeedback = ownedCategoryFeedback?.Message,
+        CategoryFeedbackSucceeded = ownedCategoryFeedback?.Succeeded == true,
     };
     }
 
@@ -2196,13 +2236,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
         var normalized = PlayniteLibraryCategoryPolicy.NormalizeName(name);
         if (normalized is null)
         {
-            _model.Update(state => state with
-            {
-                Status = $"Category name must be 1–{PlayniteLibraryPrivateState.MaximumCategoryNameLength} characters",
-                CategoryFeedback =
-                    $"Category name must be 1–{PlayniteLibraryPrivateState.MaximumCategoryNameLength} characters",
-                CategoryFeedbackSucceeded = false,
-            });
+            var message =
+                $"Category name must be 1–{PlayniteLibraryPrivateState.MaximumCategoryNameLength} characters";
+            _model.Update(state => state with { Status = message });
+            ShowCategoryFeedback(message, succeeded: false);
             return;
         }
         lock (_gate)
@@ -2235,10 +2272,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
             {
                 OrganizationBusy = false,
                 Status = status ?? state.Status,
-                CategoryFeedback = status,
-                CategoryFeedbackSucceeded = status?.StartsWith(
-                    "Created category ", StringComparison.Ordinal) == true,
             });
+            if (status is not null)
+                ShowCategoryFeedback(status, status.StartsWith(
+                    "Created category ", StringComparison.Ordinal));
         }
     }
 
@@ -2306,12 +2343,28 @@ public sealed partial class PlayniteLibraryWidget : Widget
             {
                 OrganizationBusy = false,
                 Status = status ?? state.Status,
-                CategoryFeedback = status,
-                CategoryFeedbackSucceeded = status?.StartsWith(
-                    "Added ", StringComparison.Ordinal) == true ||
-                    status?.StartsWith("Removed ", StringComparison.Ordinal) == true,
             });
+            if (status is not null)
+                ShowCategoryFeedback(status,
+                    status.StartsWith("Added ", StringComparison.Ordinal) ||
+                    status.StartsWith("Removed ", StringComparison.Ordinal));
         }
+    }
+
+    private void ShowCategoryFeedback(string message, bool succeeded)
+    {
+        var route = _navigation.Value;
+        var scopeId = route.InputScopeId;
+        var feedback = new PlayniteLibraryCategoryFeedback(
+            message, succeeded, scopeId);
+        _model.Update(state => state with { CategoryFeedback = feedback });
+        _ = _categoryFeedbackExpiry.ScheduleLatest(
+            UI.DefaultToastDuration,
+            () => _model.Update(state =>
+                ReferenceEquals(state.CategoryFeedback, feedback)
+                    ? state with { CategoryFeedback = null }
+                    : state),
+            route.RouteCancellationToken);
     }
 
     private ValueTask SwitchCollectionAsync(

@@ -42,6 +42,16 @@ internal sealed record PlayniteLibraryBrowseReload(
     long AttemptId,
     WidgetCursorResourceSnapshot<PlayniteLibraryItem>? RetainedCollection);
 
+internal sealed class PlayniteLibraryCategoryFeedback(
+    string message,
+    bool succeeded,
+    string scopeId)
+{
+    internal string Message { get; } = message;
+    internal bool Succeeded { get; } = succeeded;
+    internal string ScopeId { get; } = scopeId;
+}
+
 internal sealed record PlayniteLibraryRenderState
 {
     internal required PlayniteLibraryCollectionState Collection { get; init; }
@@ -62,8 +72,7 @@ internal sealed record PlayniteLibraryRenderState
     internal string? HeroSavedId { get; init; }
     internal int HeroIndex { get; init; }
     internal bool OrganizationBusy { get; init; }
-    internal string? CategoryFeedback { get; init; }
-    internal bool CategoryFeedbackSucceeded { get; init; }
+    internal PlayniteLibraryCategoryFeedback? CategoryFeedback { get; init; }
     internal string Status { get; init; } = "Playnite Library loads when visible";
     internal string? LaunchingSavedId { get; init; }
     internal PlayniteBridgeConnectionKind PlayniteKind { get; init; } =

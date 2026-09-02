@@ -44,6 +44,7 @@ public sealed class GamesAppsWidget : Widget
     private sealed record LibraryPersistenceResult(bool Saved, bool Rejected);
 
     private readonly object _gate = new();
+    private readonly WidgetTimedMutation _toastExpiry;
     private readonly SemaphoreSlim _commandGate = new(1, 1);
     private IReadOnlyList<WidgetAppLibraryItem> _items = [];
     private IReadOnlyList<WidgetAppLibraryItem> _libraryItems = [];
@@ -59,12 +60,17 @@ public sealed class GamesAppsWidget : Widget
     private bool _hasLibrarySnapshot;
     private GamesAppsCatalogState _catalog = GamesAppsCatalogState.Empty;
     private string? _runningRevision;
-    private CancellationTokenSource? _toastLifetime;
     private GamesAppsToastNotice? _toast;
     private long _generation;
-    private long _toastGeneration;
     private long _stateRevision;
     private GamesAppsLibraryState _persistedLibraryState = new(3, [], null);
+
+    public GamesAppsWidget() : this(TimeProvider.System) { }
+
+    internal GamesAppsWidget(TimeProvider timeProvider) =>
+        _toastExpiry = CreateTimedMutation(
+            WidgetOperationLifetime.Active,
+            timeProvider ?? throw new ArgumentNullException(nameof(timeProvider)));
 
     public GamesAppsViewState ViewState { get { lock (_gate) return _viewState; } }
     public IReadOnlyList<WidgetAppLibraryItem> Items
@@ -615,10 +621,11 @@ public sealed class GamesAppsWidget : Widget
     private void StopActiveRun()
     {
         Interlocked.Increment(ref _generation);
-        ClearToast(invalidate: false);
         Operations.Cancel(LibraryLoadOperationKey);
+        _toastExpiry.Cancel();
         lock (_gate)
         {
+            _toast = null;
             _launchingAppId = null;
             _loadingMore = false;
             _libraryMutationBusy = false;
@@ -1358,73 +1365,25 @@ public sealed class GamesAppsWidget : Widget
     private void ShowToast(string title, string message, ToastTone tone)
     {
         var duration = UI.DefaultToastDuration;
-        var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ActiveCancellationToken);
-        var generation = Interlocked.Increment(ref _toastGeneration);
+        var notice = new GamesAppsToastNotice(title, message, tone, duration);
         lock (_gate)
-        {
-            var previous = _toastLifetime;
-            _toastLifetime = lifetime;
-            _toast = new GamesAppsToastNotice(title, message, tone, duration);
-            // The expiry task owns disposal. Cancel while holding the state
-            // lock so it cannot dispose the prior source between capture and
-            // cancellation.
-            previous?.Cancel();
-        }
+            _toast = notice;
         Invalidate();
-        _ = ExpireToastAsync(generation, duration, lifetime);
-    }
-
-    private async Task ExpireToastAsync(
-        long generation,
-        TimeSpan duration,
-        CancellationTokenSource lifetime)
-    {
-        try
-        {
-            await Task.Delay(duration, lifetime.Token).ConfigureAwait(false);
-            lock (_gate)
+        _ = _toastExpiry.ScheduleLatest(
+            duration,
+            () =>
             {
-                if (Interlocked.Read(ref _toastGeneration) != generation ||
-                    !ReferenceEquals(_toastLifetime, lifetime))
-                    return;
-                _toast = null;
-                _toastLifetime = null;
-            }
-            Invalidate();
-        }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
-        {
-        }
-        finally
-        {
-            // Active-lifecycle cancellation can reach this task before
-            // StopActiveRun calls ClearToast. Drop the shared reference while
-            // holding the state lock before disposal so cleanup can never try
-            // to cancel an already-disposed source.
-            lock (_gate)
-            {
-                if (ReferenceEquals(_toastLifetime, lifetime))
-                    _toastLifetime = null;
-            }
-            lifetime.Dispose();
-        }
-    }
-
-    private void ClearToast(bool invalidate)
-    {
-        Interlocked.Increment(ref _toastGeneration);
-        bool changed;
-        lock (_gate)
-        {
-            var lifetime = _toastLifetime;
-            _toastLifetime = null;
-            changed = _toast is not null;
-            _toast = null;
-            // ExpireToastAsync is the sole disposer. Cancellation stays under
-            // the lock to prevent a completion/disposal race.
-            lifetime?.Cancel();
-        }
-        if (changed && invalidate) Invalidate();
+                var changed = false;
+                lock (_gate)
+                {
+                    if (ReferenceEquals(_toast, notice))
+                    {
+                        _toast = null;
+                        changed = true;
+                    }
+                }
+                if (changed) Invalidate();
+            });
     }
 
     private static (GamesAppsViewState State, string Status) ErrorState(Exception exception)

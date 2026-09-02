@@ -1500,6 +1500,224 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task CategoryFeedbackIsLatestWinsAndExactRouteOwned()
+    {
+        var clock = new ManualTimerTimeProvider();
+        var host = new FakeHost(1);
+        var widget = Create(host, clock);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoriesOpen,
+            "playnite-library.library.menu"));
+
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryCreate,
+            "playnite-library.category.create") { CommittedText = "" });
+        Assert.IsNotNull(Nodes(Snapshot(widget, 40_110).Root).SingleOrDefault(node =>
+            node.Id == "playnite-library.category.feedback"));
+
+        clock.Advance(TimeSpan.FromSeconds(4));
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryCreate,
+            "playnite-library.category.create") { CommittedText = " " });
+        var modelGate = ModelGate(widget);
+        var expiry = PrivateField<WidgetTimedMutation>(
+            widget, "_categoryFeedbackExpiry");
+        Monitor.Enter(modelGate);
+        try
+        {
+            clock.Advance(TimeSpan.FromSeconds(5));
+            Assert.IsTrue(SpinWait.SpinUntil(() => !expiry.IsScheduled, 1_000),
+                "The due category expiry did not reach its author callback.");
+            InvokePrivate(widget, "ShowCategoryFeedback",
+                "Concurrent replacement", true);
+        }
+        finally
+        {
+            Monitor.Exit(modelGate);
+        }
+        await Task.Yield();
+        Assert.IsNotNull(Nodes(Snapshot(widget, 40_111).Root).SingleOrDefault(node =>
+            node.Id == "playnite-library.category.feedback"),
+            "A due category expiry cleared a concurrently published replacement.");
+
+        clock.Advance(TimeSpan.FromSeconds(5));
+        await Bounded(widget.WhenCategoryFeedbackIdleAsync(), "category feedback expiry");
+        Assert.IsFalse(Nodes(Snapshot(widget, 40_112).Root).Any(node =>
+            node.Id == "playnite-library.category.feedback"));
+
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryCreate,
+            "playnite-library.category.create") { CommittedText = "" });
+        clock.Advance(TimeSpan.FromSeconds(4));
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryCreate,
+            "playnite-library.category.create") { CommittedText = "" });
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await Task.Yield();
+        Assert.IsNotNull(Nodes(Snapshot(widget, 40_112_1).Root).SingleOrDefault(node =>
+            node.Id == "playnite-library.category.feedback"),
+            "Identical category feedback did not receive a fresh full duration.");
+        clock.Advance(TimeSpan.FromSeconds(4));
+        await Bounded(widget.WhenCategoryFeedbackIdleAsync(),
+            "identical category feedback expiry");
+        Assert.IsFalse(Nodes(Snapshot(widget, 40_112_2).Root).Any(node =>
+            node.Id == "playnite-library.category.feedback"),
+            "Identical repeated category feedback remained after its expiry.");
+
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryCreate,
+            "playnite-library.category.create") { CommittedText = "" });
+        var categories = Snapshot(widget, 40_113);
+        await widget.OnActionAsync(new(
+            "playnite-library.navigation.back",
+            categories.InitialFocusId ?? "playnite-library.category.create")
+        {
+            InputScopeId = categories.ActiveInputScopeId,
+        });
+        Assert.IsFalse(Nodes(Snapshot(widget, 40_114).Root).Any(node =>
+            node.Id == "playnite-library.category.feedback"),
+            "Route exit did not retire its feedback presentation.");
+        clock.Advance(TimeSpan.FromSeconds(10));
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoriesOpen,
+            "playnite-library.library.menu"));
+        Assert.IsFalse(Nodes(Snapshot(widget, 40_115).Root).Any(node =>
+            node.Id == "playnite-library.category.feedback"),
+            "Returning to Categories resurrected stale route feedback.");
+
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryCreate,
+            "playnite-library.category.create") { CommittedText = "" });
+        await Background(widget);
+        Assert.IsNull(widget.RenderState.Value.CategoryFeedback,
+            "Deactivation retained canceled category feedback in the model.");
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task PlayniteFeedbackExpiresLatestAndRetiresWithItsRoute()
+    {
+        var clock = new ManualTimerTimeProvider();
+        var connection = new FakeConnectionClient();
+        var host = new FakeHost(1);
+        var widget = Create(host, clock, connection);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await widget.OnActionAsync(new(
+            LauncherWidget.PlayniteOpenActionId,
+            "playnite-library.library.menu"));
+
+        await widget.OnActionAsync(new(
+            LauncherWidget.PlayniteRefreshActionId,
+            "playnite-library.playnite.refresh"));
+        Assert.IsNotNull(Nodes(Snapshot(widget, 40_116).Root).SingleOrDefault(node =>
+            node.Id == "playnite-library.playnite.feedback"));
+
+        var modelGate = ModelGate(widget);
+        var expiry = PrivateField<WidgetTimedMutation>(
+            widget, "_playniteFeedbackExpiry");
+        Monitor.Enter(modelGate);
+        try
+        {
+            clock.Advance(TimeSpan.FromSeconds(5));
+            Assert.IsTrue(SpinWait.SpinUntil(() => !expiry.IsScheduled, 1_000),
+                "The due connection expiry did not reach its author callback.");
+            InvokePrivate(widget, "ShowPlayniteFeedback",
+                new PlayniteLibraryConnectionFeedback(
+                    "Replacement", "Concurrent replacement", ToastTone.Success));
+        }
+        finally
+        {
+            Monitor.Exit(modelGate);
+        }
+        await Task.Yield();
+        Assert.IsNotNull(Nodes(Snapshot(widget, 40_117).Root).SingleOrDefault(node =>
+            node.Id == "playnite-library.playnite.feedback"),
+            "A due connection expiry cleared a concurrently published replacement.");
+
+        clock.Advance(TimeSpan.FromSeconds(4));
+        connection.Result = new(
+            PlayniteBridgeConnectionKind.Connected, "connected");
+        await widget.OnActionAsync(new(
+            LauncherWidget.PlayniteRefreshActionId,
+            "playnite-library.playnite.refresh"));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await Task.Yield();
+        Assert.IsNotNull(Nodes(Snapshot(widget, 40_117).Root).SingleOrDefault(node =>
+            node.Id == "playnite-library.playnite.feedback"),
+            "A stale connection-feedback expiry cleared its replacement.");
+
+        clock.Advance(TimeSpan.FromSeconds(4));
+        await Bounded(widget.WhenPlayniteFeedbackIdleAsync(),
+            "Playnite feedback expiry");
+        var expired = Snapshot(widget, 40_118);
+        Assert.IsFalse(Nodes(expired.Root).Any(node =>
+            node.Id == "playnite-library.playnite.feedback"));
+        Assert.IsNotNull(Nodes(expired.Root).SingleOrDefault(node =>
+            node.Id == "playnite-library.playnite.status"),
+            "Transient expiry removed the authoritative connection status alert.");
+
+        await widget.OnActionAsync(new(
+            LauncherWidget.PlayniteRefreshActionId,
+            "playnite-library.playnite.refresh"));
+        clock.Advance(TimeSpan.FromSeconds(4));
+        await widget.OnActionAsync(new(
+            LauncherWidget.PlayniteRefreshActionId,
+            "playnite-library.playnite.refresh"));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await Task.Yield();
+        Assert.IsNotNull(Nodes(Snapshot(widget, 40_118_1).Root).SingleOrDefault(node =>
+            node.Id == "playnite-library.playnite.feedback"),
+            "Identical connection feedback did not receive a fresh full duration.");
+        clock.Advance(TimeSpan.FromSeconds(4));
+        await Bounded(widget.WhenPlayniteFeedbackIdleAsync(),
+            "identical Playnite feedback expiry");
+        Assert.IsFalse(Nodes(Snapshot(widget, 40_118_2).Root).Any(node =>
+            node.Id == "playnite-library.playnite.feedback"),
+            "Identical repeated connection feedback remained after its expiry.");
+
+        await widget.OnActionAsync(new(
+            LauncherWidget.PlayniteRefreshActionId,
+            "playnite-library.playnite.refresh"));
+        await widget.OnActionAsync(new(
+            LauncherWidget.PlayniteBackActionId,
+            "playnite-library.playnite.back"));
+        Assert.IsFalse(Nodes(Snapshot(widget, 40_119).Root).Any(node =>
+            node.Id == "playnite-library.playnite.feedback"),
+            "Connection feedback escaped onto the catalog route.");
+        clock.Advance(TimeSpan.FromSeconds(10));
+        await widget.OnActionAsync(new(
+            LauncherWidget.PlayniteOpenActionId,
+            "playnite-library.library.menu"));
+        Assert.IsFalse(Nodes(Snapshot(widget, 40_120).Root).Any(node =>
+            node.Id == "playnite-library.playnite.feedback"),
+            "Returning to the Connection route resurrected stale feedback.");
+
+        await widget.OnActionAsync(new(
+            LauncherWidget.PlayniteRefreshActionId,
+            "playnite-library.playnite.refresh"));
+        connection.AllowCredentialMutation = true;
+        await widget.OnActionAsync(new(
+            LauncherWidget.PlayniteSaveActionId,
+            "playnite-library.playnite.token") { CommittedText = "fixture-token" });
+        Assert.AreEqual(1, connection.SaveCalls);
+        Assert.IsNull(widget.RenderState.Value.PlayniteFeedback,
+            "Successful credential save retained pre-reset transient feedback.");
+        clock.Advance(TimeSpan.FromSeconds(10));
+        await Task.Yield();
+        Assert.IsNull(widget.RenderState.Value.PlayniteFeedback,
+            "Retired pre-save feedback resurrected after connection reset.");
+
+        await widget.OnActionAsync(new(
+            LauncherWidget.PlayniteRefreshActionId,
+            "playnite-library.playnite.refresh"));
+        await Background(widget);
+        Assert.IsNull(widget.RenderState.Value.PlayniteFeedback,
+            "Deactivation retained canceled connection feedback in the model.");
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task CategoryReplacementUsesExactGameMembershipNotBoundedProjection()
     {
         const string targetId = "category.11111111111111111111111111111111";
@@ -1705,6 +1923,8 @@ public sealed class PlayniteLibraryTests
         {
             "_application", "_gate", "_launchGeneration", "_launchStateRecency",
             "_launchStates", "_library", "_hiddenRows", "_model", "_navigation", "_organization",
+            "_categoryFeedbackExpiry", "_playniteFeedbackExpiry",
+            "_createdCategoriesPendingReconciliation", "_browseReloadAttempt",
             "_livePlayniteAuthority", "_presentationAuthority", "_queryAuthorityGeneration",
             "_authorityRevision", "_hasLivePlayniteAuthority", "_playniteClient",
             "_pendingBackFocus", "_pendingBackFocusGate",
@@ -3179,6 +3399,44 @@ public sealed class PlayniteLibraryTests
 
     private static LauncherWidget Create(FakeHost host) => Create(host, out _);
 
+    private static LauncherWidget Create(FakeHost host, TimeProvider timeProvider)
+    {
+        var services = host.Services();
+        var application = new TestApplicationService(services, host);
+        return WidgetTestHost.Attach(
+            new LauncherWidget(application, timeProvider: timeProvider), services);
+    }
+
+    private static LauncherWidget Create(
+        FakeHost host,
+        TimeProvider timeProvider,
+        IPlayniteBridgeClient playniteClient)
+    {
+        var services = host.Services();
+        var application = new TestApplicationService(services, host);
+        return WidgetTestHost.Attach(new LauncherWidget(
+            application, playniteClient, timeProvider), services);
+    }
+
+    private static T PrivateField<T>(object owner, string name) where T : class =>
+        (T)owner.GetType().GetField(name,
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)!.GetValue(owner)!;
+
+    private static object ModelGate(LauncherWidget widget)
+    {
+        var model = PrivateField<WidgetModel<PlayniteLibraryRenderState>>(
+            widget, "_model");
+        return typeof(WidgetModel<PlayniteLibraryRenderState>).GetField("_gate",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)!.GetValue(model)!;
+    }
+
+    private static void InvokePrivate(object owner, string name, params object[] arguments) =>
+        owner.GetType().GetMethod(name,
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)!.Invoke(owner, arguments);
+
     private static LauncherWidget Create(
         FakeHost host,
         out TestApplicationService application)
@@ -3347,19 +3605,29 @@ public sealed class PlayniteLibraryTests
     private sealed class FakeConnectionClient : IPlayniteBridgeClient
     {
         internal int ProbeCalls { get; private set; }
+        internal int SaveCalls { get; private set; }
+        internal bool AllowCredentialMutation { get; set; }
+        internal PlayniteBridgeConnectionResult Result { get; set; } = new(
+            PlayniteBridgeConnectionKind.NotConfigured, "credential_missing");
 
         public ValueTask<PlayniteBridgeConnectionResult> ProbeAsync(
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ProbeCalls++;
-            return ValueTask.FromResult(new PlayniteBridgeConnectionResult(
-                PlayniteBridgeConnectionKind.NotConfigured, "credential_missing"));
+            return ValueTask.FromResult(Result);
         }
 
         public ValueTask SaveCredentialAsync(
-            string token, CancellationToken cancellationToken) =>
-            throw new InvalidOperationException("Credential mutation is outside this fixture.");
+            string token, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!AllowCredentialMutation)
+                throw new InvalidOperationException(
+                    "Credential mutation is outside this fixture.");
+            SaveCalls++;
+            return ValueTask.CompletedTask;
+        }
 
         public ValueTask DeleteCredentialAsync(CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Credential mutation is outside this fixture.");
@@ -3911,6 +4179,81 @@ public sealed class PlayniteLibraryTests
             return LaunchHandler?.Invoke(request, token) ??
                 ValueTask.FromResult(new WidgetAppLaunchObservation(
                     WidgetAppLaunchObservationState.RequestAccepted, false, false));
+        }
+    }
+}
+
+file sealed class ManualTimerTimeProvider : TimeProvider
+{
+    private readonly List<Timer> _timers = [];
+    private DateTimeOffset _now = DateTimeOffset.UnixEpoch;
+    public override DateTimeOffset GetUtcNow() => _now;
+    public override long GetTimestamp() => _now.Ticks;
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+    public override ITimer CreateTimer(
+        TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        var timer = new Timer(this, callback, state, dueTime, period);
+        lock (_timers) _timers.Add(timer);
+        return timer;
+    }
+
+    internal void Advance(TimeSpan duration)
+    {
+        List<(TimerCallback Callback, object? State)> callbacks = [];
+        lock (_timers)
+        {
+            _now += duration;
+            foreach (var timer in _timers.ToArray())
+                if (timer.TryFire(_now, out var callback)) callbacks.Add(callback);
+        }
+        foreach (var callback in callbacks) callback.Callback(callback.State);
+    }
+
+    private sealed class Timer : ITimer
+    {
+        private readonly ManualTimerTimeProvider _owner;
+        private readonly TimerCallback _callback;
+        private readonly object? _state;
+        private DateTimeOffset? _dueAt;
+        private TimeSpan _period;
+        private bool _disposed;
+
+        internal Timer(ManualTimerTimeProvider owner, TimerCallback callback,
+            object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            _owner = owner;
+            _callback = callback;
+            _state = state;
+            Change(dueTime, period);
+        }
+
+        public bool Change(TimeSpan dueTime, TimeSpan period)
+        {
+            if (_disposed) return false;
+            _period = period;
+            _dueAt = dueTime == Timeout.InfiniteTimeSpan
+                ? null
+                : _owner.GetUtcNow() + dueTime;
+            return true;
+        }
+
+        internal bool TryFire(DateTimeOffset now,
+            out (TimerCallback Callback, object? State) callback)
+        {
+            callback = default;
+            if (_disposed || _dueAt is null || _dueAt > now) return false;
+            callback = (_callback, _state);
+            _dueAt = _period == Timeout.InfiniteTimeSpan ? null : now + _period;
+            return true;
+        }
+
+        public void Dispose() => _disposed = true;
+        public ValueTask DisposeAsync()
+        {
+            Dispose();
+            return ValueTask.CompletedTask;
         }
     }
 }

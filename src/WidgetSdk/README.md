@@ -265,8 +265,10 @@ the stable `wrail-poster-tile__*` classes rather than adding nested controls.
 Use `UI.Toast` for brief feedback that must not steal focus. Tone is paired
 with visible text, duration is bounded to 2–30 seconds (five by default), and
 the widget—not the host or component—owns removal through normal lifecycle-
-aware state. Do not create a timer or hidden worker solely for Toast animation;
-themes must suppress or shorten motion when reduced motion is active.
+aware state. Schedule removal through a `WidgetTimedMutation` slot so replacement,
+lifecycle retirement, and test time remain under the SDK operation owner. The
+host does not create a timer or hidden worker for Toast animation; themes must
+suppress or shorten motion when reduced motion is active.
 
 Use the protected `Operations` coordinator for bounded asynchronous work:
 
@@ -279,7 +281,30 @@ Operations.RunLatest("page",
 Operations.RunSerial("save",
     async context => await SaveAsync(context.CancellationToken),
     WidgetOperationLifetime.Widget);
+private readonly WidgetTimedMutation _filterConfirmationExpiry;
+
+public FilterWidget()
+{
+    _filterConfirmationExpiry = CreateTimedMutation(
+        WidgetOperationLifetime.Active, TimeProvider.System);
+}
+
+_filterConfirmationExpiry.ScheduleLatest(TimeSpan.FromSeconds(4), () =>
+{
+    _filterConfirmation = null;
+    Invalidate();
+}, route.RouteCancellationToken);
 ```
+
+Each `WidgetTimedMutation` is one independent replaceable state slot. Its delay
+must be positive and no longer than `WidgetTimedMutation.MaximumDelay` (one
+day). It publishes no Busy edge and performs no automatic invalidation; the
+quick synchronous callback updates the widget's authoritative state and makes
+the ordinary semantic invalidation outside SDK locks. When replacement can race
+a due callback, capture a unique immutable notice identity and clear only if that
+exact notice still owns the widget state. `Cancel`, lifecycle/owner-token retirement,
+and disposal prevent stale callbacks, while the returned completion,
+`WhenIdleAsync`, and `Failed` support deterministic observation.
 
 `RunSingleFlight` joins duplicate work, `RunLatest` cancels/supersedes stale
 work while keeping delegates non-overlapping, and `RunSerial` preserves FIFO.

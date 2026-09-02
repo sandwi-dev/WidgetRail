@@ -10,10 +10,15 @@ internal sealed record PlayniteLibraryConnectionState(
     bool Interactive,
     PlayniteLibraryConnectionFeedback? Feedback);
 
-internal sealed record PlayniteLibraryConnectionFeedback(
-    string Title,
-    string Message,
-    ToastTone Tone);
+internal sealed class PlayniteLibraryConnectionFeedback(
+    string title,
+    string message,
+    ToastTone tone)
+{
+    internal string Title { get; } = title;
+    internal string Message { get; } = message;
+    internal ToastTone Tone { get; } = tone;
+}
 
 internal static class PlayniteLibraryConnectionPresentation
 {
@@ -191,6 +196,7 @@ public sealed partial class PlayniteLibraryWidget
     private async ValueTask RefreshPlayniteConnectionAsync(CancellationToken cancellationToken)
     {
         if (_navigation.Value.Route != PlayniteLibraryRoute.PlayniteConnection) return;
+        _playniteFeedbackExpiry.Cancel();
         _model.Update(state => state with { PlayniteFeedback = null });
         var operation = _playniteConnection.Refresh();
         var completion = await operation.Completion.WaitAsync(cancellationToken)
@@ -198,24 +204,18 @@ public sealed partial class PlayniteLibraryWidget
         if (_navigation.Value.Route != PlayniteLibraryRoute.PlayniteConnection) return;
         if (completion.Status != WidgetOperationStatus.Succeeded)
         {
-            _model.Update(state => state with
-            {
-                PlayniteFeedback = new("Connection test failed",
-                    "Playnite Bridge could not be checked.", ToastTone.Danger),
-            });
+            ShowPlayniteFeedback(new("Connection test failed",
+                "Playnite Bridge could not be checked.", ToastTone.Danger));
             return;
         }
         var result = _playniteConnection.Snapshot.Value;
         if (result is null) return;
-        _model.Update(state => state with
-        {
-            PlayniteFeedback = result.Kind == PlayniteBridgeConnectionKind.Connected
-                ? new("Connection confirmed", "Playnite Bridge is ready.", ToastTone.Success)
-                : new("Connection test failed", ConnectionFeedbackMessage(result),
-                    result.Kind == PlayniteBridgeConnectionKind.AuthenticationRequired
-                        ? ToastTone.Warning
-                        : ToastTone.Danger),
-        });
+        ShowPlayniteFeedback(result.Kind == PlayniteBridgeConnectionKind.Connected
+            ? new("Connection confirmed", "Playnite Bridge is ready.", ToastTone.Success)
+            : new("Connection test failed", ConnectionFeedbackMessage(result),
+                result.Kind == PlayniteBridgeConnectionKind.AuthenticationRequired
+                    ? ToastTone.Warning
+                    : ToastTone.Danger));
     }
 
     private async ValueTask SavePlayniteCredentialAsync(
@@ -236,11 +236,13 @@ public sealed partial class PlayniteLibraryWidget
                     PlayniteKind = PlayniteBridgeConnectionKind.AuthenticationRequired,
                     PlayniteCode = "credential_invalid",
                     PlayniteBusy = false,
-                    PlayniteFeedback = new("Token was not saved",
-                        "Enter a valid Playnite Bridge token.", ToastTone.Warning),
                 });
+                ShowPlayniteFeedback(new("Token was not saved",
+                    "Enter a valid Playnite Bridge token.", ToastTone.Warning));
                 return;
             }
+            _playniteFeedbackExpiry.Cancel();
+            _model.Update(state => state with { PlayniteFeedback = null });
             _playniteConnection.Reset();
             var probe = _playniteConnection.Refresh();
             await probe.Completion.WaitAsync(lifetime.Token).ConfigureAwait(false);
@@ -252,9 +254,9 @@ public sealed partial class PlayniteLibraryWidget
             {
                 PlayniteKind = PlayniteBridgeConnectionKind.Unavailable,
                 PlayniteCode = "secret_store_unavailable",
-                PlayniteFeedback = new("Token was not saved",
-                    "Windows Credential Manager is unavailable.", ToastTone.Danger),
             });
+            ShowPlayniteFeedback(new("Token was not saved",
+                "Windows Credential Manager is unavailable.", ToastTone.Danger));
         }
         finally
         {
@@ -278,9 +280,9 @@ public sealed partial class PlayniteLibraryWidget
             {
                 PlayniteKind = PlayniteBridgeConnectionKind.NotConfigured,
                 PlayniteCode = "credential_missing",
-                PlayniteFeedback = new("Saved token removed",
-                    "Playnite Library now requires setup.", ToastTone.Success),
             });
+            ShowPlayniteFeedback(new("Saved token removed",
+                "Playnite Library now requires setup.", ToastTone.Success));
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (PlayniteCredentialException)
@@ -289,9 +291,9 @@ public sealed partial class PlayniteLibraryWidget
             {
                 PlayniteKind = PlayniteBridgeConnectionKind.Unavailable,
                 PlayniteCode = "secret_store_unavailable",
-                PlayniteFeedback = new("Token was not removed",
-                    "Windows Credential Manager is unavailable.", ToastTone.Danger),
             });
+            ShowPlayniteFeedback(new("Token was not removed",
+                "Windows Credential Manager is unavailable.", ToastTone.Danger));
         }
         finally { _model.Update(state => state with { PlayniteBusy = false }); }
     }
@@ -307,12 +309,27 @@ public sealed partial class PlayniteLibraryWidget
     private void RetirePlayniteConnection(bool clearPresentation = true)
     {
         _playniteConnection.Reset();
+        _playniteFeedbackExpiry.Cancel();
         if (clearPresentation)
             _model.Update(state => state with
             {
                 PlayniteBusy = false,
                 PlayniteFeedback = null,
             });
+    }
+
+    private void ShowPlayniteFeedback(PlayniteLibraryConnectionFeedback feedback)
+    {
+        var route = _navigation.Value;
+        if (route.Route != PlayniteLibraryRoute.PlayniteConnection) return;
+        _model.Update(state => state with { PlayniteFeedback = feedback });
+        _ = _playniteFeedbackExpiry.ScheduleLatest(
+            UI.DefaultToastDuration,
+            () => _model.Update(state => ReferenceEquals(
+                    state.PlayniteFeedback, feedback)
+                ? state with { PlayniteFeedback = null }
+                : state),
+            route.RouteCancellationToken);
     }
 
     private static string ConnectionFeedbackMessage(PlayniteBridgeConnectionResult result) =>

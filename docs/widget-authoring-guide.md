@@ -815,7 +815,7 @@ or `ResponsiveGrid` when only placement, not hierarchy, changes.
 | `UI.Tile(...)` | rich tile ActionSurface | Optional `TileArtwork`, multiline copy, visible state, one full-tile action, and protocol-v34 bounded contextual actions. |
 | `UI.PosterTile(...)` | fixed-aspect poster ActionSurface | Protocol 37; optional bounded Cover artwork fills the card behind a themeable bottom scrim and fixed copy rows while the whole poster remains one action/accessibility target. |
 | `UI.FocusPresentationSurface(content, defaultPresentation, id)` | focus-associated presentation consumer | Protocol 40; native focus selects one bounded admitted display-only fragment without worker or input authority. |
-| `UI.Toast(title, message, tone, id, duration?, glyph?)` | transient feedback | No focus or timer; remove through lifecycle-owned widget state. |
+| `UI.Toast(title, message, tone, id, duration?, glyph?)` | transient feedback | No focus or host timer; remove widget-owned state with `WidgetTimedMutation`. |
 | `UI.IconButton(...)` | icon-only button | Required accessible name plus stable size/variant classes. |
 | `UI.Card(...)`, `UI.SectionHeader(...)`, `UI.Divider(...)` | nonfocusable hierarchy | Theme-respecting grouping, heading, and separator compositions. |
 | `UI.StatusBadge(...)`, `UI.Alert(...)`, `UI.EmptyState(...)` | status and recovery | Visible non-color semantics; Alert/EmptyState permit at most one recovery action. |
@@ -1077,6 +1077,23 @@ var save = Operations.RunSerial(
     "library.save",
     async context => await SaveAsync(context.CancellationToken),
     WidgetOperationLifetime.Widget);
+
+private readonly WidgetTimedMutation _filterConfirmationExpiry;
+
+public LibraryWidget()
+{
+    _filterConfirmationExpiry = CreateTimedMutation(
+        WidgetOperationLifetime.Active, TimeProvider.System);
+}
+
+var clearConfirmation = _filterConfirmationExpiry.ScheduleLatest(
+    TimeSpan.FromSeconds(4),
+    () =>
+    {
+        _filterConfirmation = null;
+        Invalidate();
+    },
+    navigation.RouteCancellationToken);
 ```
 
 Each stable key is one lane with one policy and lifetime while it is busy:
@@ -1089,6 +1106,20 @@ Each stable key is one lane with one policy and lifetime while it is busy:
   after the active delegate exits. Delegates never overlap for that key.
 - `RunSerial` preserves FIFO order with one active delegate and at most 16
   pending calls per key.
+- `WidgetTimedMutation.ScheduleLatest` is a quiet one-shot latest-wins mutation.
+  Create one slot for each independently replaceable piece of timed state. Delays
+  must be positive and no longer than `WidgetTimedMutation.MaximumDelay` (one
+  day). A replacement gets its full delay and immediately makes the older callback stale. The optional
+  owner token binds route/session work in addition to the selected widget
+  lifetime; cancellation, route exit, lifecycle retirement, and disposal
+  prevent the callback from running. Inject a `TimeProvider` in deterministic
+  tests and update ordinary widget state plus invalidation inside the callback.
+  The slot does not publish operation Busy state or invalidate on scheduling or
+  completion, and invokes author callbacks outside SDK locks. If another thread
+  can publish a replacement before a due callback updates state, capture a unique
+  immutable notice identity and clear only when that exact notice still owns the
+  state slot. Use `Cancel` and `WhenIdleAsync` for explicit retirement and tests;
+  callback failures are contained in the returned completion and `Failed` event.
 
 Choose the shortest `WidgetOperationLifetime`: `Active` spans Visible and
 Interactive, `State` belongs only to the exact current Background/Visible/
