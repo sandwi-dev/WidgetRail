@@ -1275,6 +1275,73 @@ public:
                 !testEmbeddedMediaHandoffRetirementObserved_ &&
                 !pinnedSurfaceCoordinator_.pinned() && sessionRetired();
         };
+        const auto seedOverlayGeometry = [this, surfaceId] {
+            lastWidgetRenderResult_ = {};
+            lastWidgetRenderResult_.succeeded = true;
+            lastWidgetRenderResult_.mediaViewportRegions.push_back({
+                L"handoff-test-media-node", std::wstring{surfaceId},
+                {0.0F, 0.0F, 320.0F, 180.0F},
+                {0.0F, 0.0F, 320.0F, 180.0F}});
+        };
+        const auto retainedUnpinReattaches = [
+            this, widgetId, runtimeGeneration, presentationGeneration,
+            snapshotSequence, &makeDescriptor, &makeSnapshot,
+            &preparePinnedCase, &seedOverlayGeometry, &sessionRetired](
+            const std::wstring_view key,
+            const widgetrail::EmbeddedMediaSurfaceDeclaration& boundDeclaration,
+            const widgetrail::EmbeddedMediaSurfaceDeclaration& currentDeclaration) {
+            if (!preparePinnedCase(
+                    key, boundDeclaration,
+                    makeDescriptor(runtimeGeneration, presentationGeneration),
+                    makeSnapshot(currentDeclaration, snapshotSequence))) return false;
+            const auto sameCoordinator =
+                residentEmbeddedMediaSessions_.at(std::wstring{key}).coordinator;
+            if (!pinnedSurfaceCoordinator_.Unpin(
+                    widgetrail::pinned::WidgetSurfaceStopReason::Unpin) ||
+                testEmbeddedMediaHandoffRetirementObserved_ ||
+                pinnedSurfaceCoordinator_.pinned() || !richMediaSurface_ ||
+                richMediaSurface_.get() != sameCoordinator.get() ||
+                !richMediaSurface_->presentationTransferPending() ||
+                richMediaSurface_->state().lifecycle !=
+                    widgetrail::richmedia::Lifecycle::ReadyHidden ||
+                !embeddedMediaAuthority_ ||
+                embeddedMediaAuthority_->projection !=
+                    EmbeddedMediaProjection::Overlay ||
+                !richMediaSurface_->state().failureCode.empty()) return false;
+
+            SyncWidgetActivity();
+            if (!richMediaSurface_ ||
+                richMediaSurface_.get() != sameCoordinator.get() ||
+                !richMediaSurface_->presentationTransferPending() ||
+                !embeddedMediaAuthority_ ||
+                embeddedMediaAuthority_->projection !=
+                    EmbeddedMediaProjection::Overlay ||
+                !richMediaSurface_->state().failureCode.empty()) return false;
+
+            seedOverlayGeometry();
+            if (!state_.OpenWidgetWithTrayFocus(widgetId)) return false;
+            sessions_.SeedLifecycleForEmbeddedMediaHandoffTest(
+                std::wstring{widgetId}, widgetrail::WidgetLifecycleState::Visible);
+            ShowWindow(window_, SW_SHOWNOACTIVATE);
+            SyncWidgetActivity();
+            const bool reattached = richMediaSurface_ &&
+                richMediaSurface_.get() == sameCoordinator.get() &&
+                !richMediaSurface_->presentationTransferPending() &&
+                richMediaSurface_->state().lifecycle ==
+                    widgetrail::richmedia::Lifecycle::Visible &&
+                richMediaSurface_->state().failureCode.empty() &&
+                embeddedMediaAuthority_ &&
+                embeddedMediaAuthority_->projection ==
+                    EmbeddedMediaProjection::Overlay &&
+                boundEmbeddedMediaSessionKey_ == key;
+            if (embeddedMediaAuthority_)
+                StopEmbeddedMediaSurface(L"handoff-test-complete");
+            state_ = widgetrail::OverlayState(
+                {}, std::vector<std::wstring>{std::wstring{widgetId}});
+            ShowWindow(window_, SW_HIDE);
+            lastWidgetRenderResult_ = {};
+            return reattached && sessionRetired();
+        };
 
         if (!preparePinnedCase(
                 L"stale-sequence", mediaDeclaration,
@@ -1305,50 +1372,53 @@ public:
             !unpinRetires(widgetrail::pinned::WidgetSurfaceStopReason::Close))
             return fail(13);
 
-        constexpr std::wstring_view retainedSessionKey{L"retained-session"};
         if (!preparePinnedCase(
-                retainedSessionKey, mediaDeclaration,
+                L"current-policy-disabled", mediaDeclaration,
                 makeDescriptor(runtimeGeneration, presentationGeneration),
-                makeSnapshot(mediaDeclaration, snapshotSequence))) return fail(14);
-        const auto sameCoordinator =
-            residentEmbeddedMediaSessions_.at(std::wstring{retainedSessionKey})
-                .coordinator;
-        if (!pinnedSurfaceCoordinator_.Unpin(
-                widgetrail::pinned::WidgetSurfaceStopReason::Unpin))
-            return fail(15);
-        if (testEmbeddedMediaHandoffRetirementObserved_ ||
-            pinnedSurfaceCoordinator_.pinned() || !richMediaSurface_ ||
-            richMediaSurface_.get() != sameCoordinator.get() ||
-            !richMediaSurface_->presentationTransferPending() ||
-            richMediaSurface_->state().lifecycle !=
-                widgetrail::richmedia::Lifecycle::ReadyHidden ||
-            !embeddedMediaAuthority_ ||
-            embeddedMediaAuthority_->projection !=
-                EmbeddedMediaProjection::Overlay ||
-            !richMediaSurface_->state().failureCode.empty()) return fail(16);
+                makeSnapshot(nonRetainedDeclaration, snapshotSequence)) ||
+            !unpinRetires(widgetrail::pinned::WidgetSurfaceStopReason::Unpin))
+            return fail(14);
 
-        SyncWidgetActivity();
-        if (!richMediaSurface_ ||
-            richMediaSurface_.get() != sameCoordinator.get() ||
-            !richMediaSurface_->presentationTransferPending() ||
-            !embeddedMediaAuthority_ ||
-            embeddedMediaAuthority_->projection !=
-                EmbeddedMediaProjection::Overlay ||
-            !richMediaSurface_->state().failureCode.empty()) return fail(17);
+        if (!preparePinnedCase(
+                L"refresh-retained", mediaDeclaration,
+                makeDescriptor(runtimeGeneration, presentationGeneration),
+                makeSnapshot(mediaDeclaration, snapshotSequence))) return fail(15);
+        sessions_.MarkRefreshRequested(widgetId);
+        if (!unpinRetires(widgetrail::pinned::WidgetSurfaceStopReason::Unpin))
+            return fail(16);
 
-        lastWidgetRenderResult_ = {};
-        lastWidgetRenderResult_.succeeded = true;
-        lastWidgetRenderResult_.mediaViewportRegions.push_back({
-            L"handoff-test-media-node", std::wstring{surfaceId},
-            {0.0F, 0.0F, 320.0F, 180.0F},
-            {0.0F, 0.0F, 320.0F, 180.0F}});
-        if (!state_.OpenWidgetWithTrayFocus(widgetId)) return fail(18);
+        auto incompatibleDeclaration = mediaDeclaration;
+        incompatibleDeclaration.aspectRatio = 4.0 / 3.0;
+        if (!preparePinnedCase(
+                L"incompatible-contract", mediaDeclaration,
+                makeDescriptor(runtimeGeneration, presentationGeneration),
+                makeSnapshot(incompatibleDeclaration, snapshotSequence)) ||
+            !unpinRetires(widgetrail::pinned::WidgetSurfaceStopReason::Unpin))
+            return fail(17);
+
+        if (!retainedUnpinReattaches(
+                L"retained-session", mediaDeclaration, mediaDeclaration))
+            return fail(18);
+
+        if (!retainedUnpinReattaches(
+                L"current-policy-enabled", nonRetainedDeclaration,
+                mediaDeclaration)) return fail(19);
+
+        if (!preparePinnedCase(
+                L"active-close", mediaDeclaration,
+                makeDescriptor(runtimeGeneration, presentationGeneration),
+                makeSnapshot(mediaDeclaration, snapshotSequence))) return fail(20);
+        const auto activeCloseCoordinator = residentEmbeddedMediaSessions_.at(
+            std::wstring{L"active-close"}).coordinator;
+        seedOverlayGeometry();
+        if (!state_.OpenWidgetWithTrayFocus(widgetId)) return fail(21);
         sessions_.SeedLifecycleForEmbeddedMediaHandoffTest(
             std::wstring{widgetId}, widgetrail::WidgetLifecycleState::Visible);
         ShowWindow(window_, SW_SHOWNOACTIVATE);
-        SyncWidgetActivity();
-        const bool reattached = richMediaSurface_ &&
-            richMediaSurface_.get() == sameCoordinator.get() &&
+        if (!pinnedSurfaceCoordinator_.Unpin(
+                widgetrail::pinned::WidgetSurfaceStopReason::Close)) return fail(22);
+        const bool activeCloseTransferred = richMediaSurface_ &&
+            richMediaSurface_.get() == activeCloseCoordinator.get() &&
             !richMediaSurface_->presentationTransferPending() &&
             richMediaSurface_->state().lifecycle ==
                 widgetrail::richmedia::Lifecycle::Visible &&
@@ -1356,9 +1426,11 @@ public:
             embeddedMediaAuthority_ &&
             embeddedMediaAuthority_->projection ==
                 EmbeddedMediaProjection::Overlay &&
-            boundEmbeddedMediaSessionKey_ == retainedSessionKey;
+            boundEmbeddedMediaSessionKey_ == L"active-close";
+        if (embeddedMediaAuthority_)
+            StopEmbeddedMediaSurface(L"handoff-test-complete");
         cleanup();
-        return reattached ? 0 : 19;
+        return activeCloseTransferred ? 0 : 23;
     }
 #endif
 
@@ -4013,7 +4085,7 @@ private:
         return false;
     }
 
-    [[nodiscard]] bool HiddenPinnedEmbeddedMediaAuthorityCurrent() const noexcept {
+    [[nodiscard]] bool HiddenPinnedEmbeddedMediaRetentionCurrent() const noexcept {
         if (!embeddedMediaAuthority_ ||
             embeddedMediaAuthority_->projection != EmbeddedMediaProjection::Pinned)
             return false;
@@ -4037,7 +4109,8 @@ private:
             snapshot->embeddedMedia->id == embeddedMediaAuthority_->surfaceId &&
             widgetrail::SameEmbeddedMediaResourceContract(
                 embeddedMediaAuthority_->resourceContract,
-                *snapshot->embeddedMedia);
+                *snapshot->embeddedMedia) &&
+            snapshot->embeddedMedia->retainSessionWhenHidden;
     }
 
     void HandlePinnedSurfaceWindowRetirement(
@@ -4062,8 +4135,7 @@ private:
         const bool retainHidden =
             reason == widgetrail::pinned::WidgetSurfaceStopReason::Unpin &&
             !returnToOverlay &&
-            embeddedMediaAuthority_->resourceContract.retainSessionWhenHidden &&
-            HiddenPinnedEmbeddedMediaAuthorityCurrent();
+            HiddenPinnedEmbeddedMediaRetentionCurrent();
         bool transferPending = false;
         if ((!returnToOverlay && !retainHidden) ||
             !TransferEmbeddedMediaSurface(
