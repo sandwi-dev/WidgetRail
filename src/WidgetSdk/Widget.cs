@@ -795,29 +795,13 @@ public abstract partial class Widget
             // component shortcut elsewhere in the surface.
             if (input.Button == ControllerButton.A) return ValueTask.FromResult(false);
 
-            var focusedShortcut = focusedNode?.Shortcuts.FirstOrDefault(candidate =>
-                ShortcutMatchesInput(candidate, input.Button, input.Phase));
-            if (focusedShortcut is not null)
-            {
-                if (!focusedActionable) return ValueTask.FromResult(false);
-                return ValueTask.FromResult(TryQueueControllerAction(new WidgetActionEvent(
-                    focusedShortcut.ActionId,
-                    focusedNode!.Id,
-                    input.Button,
-                    input.Phase,
-                    input.Sequence,
-                    input.MonotonicTimestampMicroseconds,
-                    InputScopeId: inputScopeId)));
-            }
-
-            var scopedShortcut = input.FocusedElementId is { } activeFocus
-                ? FindNearestAncestorShortcutInScope(
-                    scopeRoot, activeFocus, input.Button, input.Phase)
-                : FindScopeRootShortcut(scopeRoot, input.Button, input.Phase);
-            if (scopedShortcut is null) return ValueTask.FromResult(false);
+            var shortcutResolution = ControllerShortcutResolver.Resolve(
+                scopeRoot, input.FocusedElementId, input.Button, input.Phase);
+            if (shortcutResolution.Status != ControllerShortcutResolutionStatus.Resolved)
+                return ValueTask.FromResult(false);
             return ValueTask.FromResult(TryQueueControllerAction(new WidgetActionEvent(
-                scopedShortcut.Value.Shortcut.ActionId,
-                scopedShortcut.Value.Node.Id,
+                shortcutResolution.Shortcut!.ActionId,
+                shortcutResolution.Owner!.Id,
                 input.Button,
                 input.Phase,
                 input.Sequence,
@@ -987,60 +971,4 @@ public abstract partial class Widget
         return null;
     }
 
-    private static (ViewNode Node, ControllerShortcut Shortcut)? FindScopeRootShortcut(
-        ViewNode scopeRoot,
-        ControllerButton button,
-        ControllerEventPhase phase)
-    {
-        if (scopeRoot.IsDisabled is true || scopeRoot.IsBusy is true) return null;
-        var shortcut = scopeRoot.Shortcuts.FirstOrDefault(candidate =>
-            ShortcutMatchesInput(candidate, button, phase));
-        return shortcut is null ? null : (scopeRoot, shortcut);
-    }
-
-    private static (ViewNode Node, ControllerShortcut Shortcut)?
-        FindNearestAncestorShortcutInScope(
-            ViewNode scopeRoot,
-            string focusedElementId,
-            ControllerButton button,
-            ControllerEventPhase phase)
-    {
-        var path = new List<ViewNode>();
-        if (!FindPath(scopeRoot, focusedElementId, isScopeRoot: true, path)) return null;
-        for (var index = path.Count - 2; index >= 0; index--)
-        {
-            var ancestor = path[index];
-            var shortcut = ancestor.Shortcuts.FirstOrDefault(candidate =>
-                ShortcutMatchesInput(candidate, button, phase));
-            if (shortcut is not null) return (ancestor, shortcut);
-        }
-        return null;
-
-        static bool FindPath(
-            ViewNode node,
-            string targetId,
-            bool isScopeRoot,
-            List<ViewNode> path)
-        {
-            if (!isScopeRoot && node.InputScopeId is not null) return false;
-            path.Add(node);
-            if (string.Equals(node.Id, targetId, StringComparison.Ordinal)) return true;
-            foreach (var child in node.Children)
-            {
-                if (FindPath(child, targetId, isScopeRoot: false, path)) return true;
-            }
-            path.RemoveAt(path.Count - 1);
-            return false;
-        }
-    }
-
-    private static bool ShortcutMatchesInput(
-        ControllerShortcut shortcut,
-        ControllerButton button,
-        ControllerEventPhase phase) =>
-        shortcut.Button == button &&
-        (shortcut.Phase == phase ||
-         (phase == ControllerEventPhase.Repeated &&
-          shortcut.Phase == ControllerEventPhase.Pressed &&
-          shortcut.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld));
 }

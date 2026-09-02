@@ -296,6 +296,16 @@ int main() {
               nested, L"sheet.action"),
           "a disabled focus without its own B still resolves the ancestor shortcut");
     nested.root.children[0].children[0].isDisabled = false;
+    nested.root.children[0].isDisabled = true;
+    Check(!widgetrail::accessibility::HasActiveScopeBackShortcut(
+              nested, L"sheet.action"),
+          "a disabled ancestor B owner is not published to accessibility");
+    nested.root.children[0].isDisabled = false;
+    nested.root.children[0].isBusy = true;
+    Check(!widgetrail::accessibility::HasActiveScopeBackShortcut(
+              nested, L"sheet.action"),
+          "a busy ancestor B owner is not published to accessibility");
+    nested.root.children[0].isBusy = false;
     Check(!widgetrail::accessibility::HasActiveScopeBackShortcut(
               nested, L"sheet.missing"),
           "stale focused identity suppresses nested Back publication");

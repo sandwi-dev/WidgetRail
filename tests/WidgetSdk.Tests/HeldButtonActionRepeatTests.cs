@@ -15,6 +15,7 @@ internal static class HeldButtonActionRepeatTests
         ReservedButtonsStayEdgeOnly();
         OptingInRequiresTheHeldRepeatProtocolVersion();
         TheWireCarriesTheExactHostToken();
+        ShortcutResolutionUsesTheDeclaringOwner();
         await HeldRepeatsCoalesceBehindTheirOwnAction();
     }
 
@@ -156,6 +157,148 @@ internal static class HeldButtonActionRepeatTests
                 .GetProperty("repeatPolicy").GetString());
     }
 
+    private static void ShortcutResolutionUsesTheDeclaringOwner()
+    {
+        foreach (var phase in new[]
+        {
+            ControllerEventPhase.Pressed,
+            ControllerEventPhase.Repeated,
+        })
+        {
+            foreach (var ownerId in new[] { "focused", "ancestor", "root" })
+            {
+                foreach (var focusedState in Enum.GetValues<NodeAvailability>())
+                {
+                    foreach (var ownerState in Enum.GetValues<NodeAvailability>())
+                    {
+                        if (ownerId == "focused" && focusedState != ownerState) continue;
+                        var root = ShortcutTree(ownerId, focusedState, ownerState);
+                        var resolution = ControllerShortcutResolver.Resolve(
+                            root, "focused", ControllerButton.X, phase);
+                        Equal(
+                            ownerState == NodeAvailability.Available
+                                ? ControllerShortcutResolutionStatus.Resolved
+                                : ControllerShortcutResolutionStatus.OwnerUnavailable,
+                            resolution.Status);
+                        Equal(ownerId, resolution.Owner!.Id);
+                        Equal("fixture.action", resolution.Shortcut!.ActionId);
+                    }
+                }
+            }
+        }
+
+        var rootOnly = ShortcutTree("root", NodeAvailability.Available,
+            NodeAvailability.Available);
+        Equal(
+            ControllerShortcutResolutionStatus.Resolved,
+            ControllerShortcutResolver.Resolve(
+                rootOnly, null, ControllerButton.X, ControllerEventPhase.Pressed).Status);
+
+        var nested = ShortcutTree("root", NodeAvailability.Available,
+            NodeAvailability.Available) with
+        {
+            Children =
+            [
+                new ViewNode
+                {
+                    Id = "nested",
+                    Kind = ViewNodeKind.Stack,
+                    InputScopeId = "nested",
+                    Children =
+                    [
+                        new ViewNode { Id = "focused", Kind = ViewNodeKind.Button },
+                    ],
+                },
+            ],
+        };
+        Equal(
+            ControllerShortcutResolutionStatus.FocusNotFound,
+            ControllerShortcutResolver.Resolve(
+                nested, "focused", ControllerButton.X, ControllerEventPhase.Pressed).Status);
+
+        // The nearest declaration owns the button even while unavailable; an
+        // ancestor declaration must not silently borrow the same input.
+        var nearestUnavailable = ShortcutTree(
+            "ancestor", NodeAvailability.Available, NodeAvailability.Disabled) with
+        {
+            Shortcuts = [HeldShortcut("root.action")],
+        };
+        var blocked = ControllerShortcutResolver.Resolve(
+            nearestUnavailable, "focused", ControllerButton.X,
+            ControllerEventPhase.Pressed);
+        Equal(ControllerShortcutResolutionStatus.OwnerUnavailable, blocked.Status);
+        Equal("ancestor", blocked.Owner!.Id);
+
+        foreach (var inputPhase in Enum.GetValues<ControllerEventPhase>())
+        foreach (var shortcutPhase in Enum.GetValues<ControllerEventPhase>())
+        foreach (var repeatPolicy in Enum.GetValues<ControllerActionRepeatPolicy>())
+        {
+            var shortcut = new ControllerShortcut(
+                ControllerButton.X, "matrix", shortcutPhase, repeatPolicy);
+            var expected = shortcutPhase == inputPhase ||
+                inputPhase == ControllerEventPhase.Repeated &&
+                shortcutPhase == ControllerEventPhase.Pressed &&
+                repeatPolicy == ControllerActionRepeatPolicy.WhileHeld;
+            Equal(
+                expected,
+                ControllerShortcutResolutionContract.Matches(
+                    shortcut, ControllerButton.X, inputPhase));
+            False(
+                ControllerShortcutResolutionContract.Matches(
+                    shortcut, ControllerButton.Y, inputPhase),
+                "A shortcut must never match a different physical button.");
+        }
+    }
+
+    private static ViewNode ShortcutTree(
+        string ownerId,
+        NodeAvailability focusedState,
+        NodeAvailability ownerState)
+    {
+        var focused = ApplyState(new ViewNode
+        {
+            Id = "focused",
+            Kind = ViewNodeKind.Button,
+            Shortcuts = ownerId == "focused" ? [HeldShortcut()] : [],
+        }, focusedState);
+        var ancestor = ApplyState(new ViewNode
+        {
+            Id = "ancestor",
+            Kind = ViewNodeKind.Stack,
+            Shortcuts = ownerId == "ancestor" ? [HeldShortcut()] : [],
+            Children = [focused],
+        }, ownerId == "ancestor" ? ownerState : NodeAvailability.Available);
+        return ApplyState(new ViewNode
+        {
+            Id = "root",
+            Kind = ViewNodeKind.Stack,
+            InputScopeId = "root",
+            Shortcuts = ownerId == "root" ? [HeldShortcut()] : [],
+            Children = [ancestor],
+        }, ownerId == "root" ? ownerState : NodeAvailability.Available);
+    }
+
+    private static ControllerShortcut HeldShortcut(string actionId = "fixture.action") => new(
+        ControllerButton.X,
+        actionId,
+        ControllerEventPhase.Pressed,
+        ControllerActionRepeatPolicy.WhileHeld);
+
+    private static ViewNode ApplyState(ViewNode node, NodeAvailability state) => state switch
+    {
+        NodeAvailability.Available => node,
+        NodeAvailability.Disabled => node with { IsDisabled = true },
+        NodeAvailability.Busy => node with { IsBusy = true },
+        _ => throw new ArgumentOutOfRangeException(nameof(state)),
+    };
+
+    private enum NodeAvailability
+    {
+        Available,
+        Disabled,
+        Busy,
+    }
+
     // Backpressure: while a held action is still owned, due ticks coalesce.
     // Unrelated actions can interleave, so the whole queue has to be consulted
     // -- checking only the tail lets a hold fill the bounded FIFO.
@@ -241,6 +384,8 @@ internal static class HeldButtonActionRepeatTests
     {
         if (!condition) throw new InvalidOperationException(message);
     }
+
+    private static void False(bool condition, string message) => True(!condition, message);
 
     private static void Equal<T>(T expected, T actual)
     {

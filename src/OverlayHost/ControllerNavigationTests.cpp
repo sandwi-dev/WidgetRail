@@ -1,11 +1,14 @@
 #include "ControllerNavigation.h"
+#include "ControllerShortcutResolver.h"
 
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -18,9 +21,198 @@ void Check(const bool condition, const char* message) {
     }
 }
 
+struct ShortcutFixture final {
+    std::wstring button;
+    std::wstring actionId;
+    std::wstring phase;
+    std::wstring repeatPolicy;
+};
+
+struct ShortcutNodeFixture final {
+    std::wstring id;
+    std::wstring inputScopeId;
+    bool isDisabled{};
+    bool isBusy{};
+    std::vector<ShortcutFixture> shortcuts;
+    std::vector<ShortcutNodeFixture> children;
+};
+
+enum class Availability { Available, Disabled, Busy };
+
+void SetAvailability(ShortcutNodeFixture& node, const Availability state) {
+    node.isDisabled = state == Availability::Disabled;
+    node.isBusy = state == Availability::Busy;
+}
+
+ShortcutFixture HeldShortcut(const std::wstring_view actionId = L"fixture.action") {
+    return {L"x", std::wstring{actionId}, L"pressed", L"whileHeld"};
+}
+
+ShortcutNodeFixture ShortcutTree(
+    const std::wstring_view ownerId,
+    const Availability focusedState,
+    const Availability ownerState) {
+    ShortcutNodeFixture focused{L"focused"};
+    SetAvailability(focused, focusedState);
+    if (ownerId == L"focused") focused.shortcuts.push_back(HeldShortcut());
+
+    ShortcutNodeFixture ancestor{L"ancestor"};
+    if (ownerId == L"ancestor") {
+        SetAvailability(ancestor, ownerState);
+        ancestor.shortcuts.push_back(HeldShortcut());
+    }
+    ancestor.children.push_back(std::move(focused));
+
+    ShortcutNodeFixture root{L"root", L"root"};
+    if (ownerId == L"root") {
+        SetAvailability(root, ownerState);
+        root.shortcuts.push_back(HeldShortcut());
+    }
+    root.children.push_back(std::move(ancestor));
+    return root;
+}
+
+void CheckShortcutResolutionContract() {
+    using widgetrail::input::ControllerShortcutResolutionStatus;
+    constexpr std::array levels{L"focused", L"ancestor", L"root"};
+    constexpr std::array states{
+        Availability::Available, Availability::Disabled, Availability::Busy};
+    constexpr std::array phases{L"pressed", L"repeated"};
+    for (const auto* phase : phases) {
+        for (const auto* level : levels) {
+            for (const auto focusedState : states) {
+                for (const auto ownerState : states) {
+                    if (std::wstring_view{level} == L"focused" &&
+                        focusedState != ownerState) continue;
+                    const auto root = ShortcutTree(level, focusedState, ownerState);
+                    const auto resolved = widgetrail::input::ResolveControllerShortcut(
+                        root, std::wstring_view{L"focused"}, L"x", phase);
+                    Check(
+                        resolved.status ==
+                            (ownerState == Availability::Available
+                                ? ControllerShortcutResolutionStatus::Resolved
+                                : ControllerShortcutResolutionStatus::OwnerUnavailable),
+                        "declaring owner availability governs every focus level and phase");
+                    Check(resolved.owner && resolved.owner->id == level,
+                          "shortcut resolution returns the exact declaring owner");
+                    Check(resolved.actionId == L"fixture.action",
+                          "shortcut resolution returns the exact action binding");
+                }
+            }
+        }
+    }
+
+    const auto rootOnly = ShortcutTree(
+        L"root", Availability::Available, Availability::Available);
+    Check(widgetrail::input::ResolveControllerShortcut(
+              rootOnly, std::nullopt, L"x", L"pressed").status ==
+              ControllerShortcutResolutionStatus::Resolved,
+          "no-focus resolution consults the scope root");
+
+    auto nested = rootOnly;
+    nested.children.clear();
+    ShortcutNodeFixture nestedScope{L"nested", L"nested"};
+    nestedScope.children.push_back(ShortcutNodeFixture{L"focused"});
+    nested.children.push_back(std::move(nestedScope));
+    Check(widgetrail::input::ResolveControllerShortcut(
+              nested, std::wstring_view{L"focused"}, L"x", L"pressed").status ==
+              ControllerShortcutResolutionStatus::FocusNotFound,
+          "nested input scopes fail closed");
+
+    auto nearestUnavailable = ShortcutTree(
+        L"ancestor", Availability::Available, Availability::Disabled);
+    nearestUnavailable.shortcuts.push_back(HeldShortcut(L"root.action"));
+    const auto blocked = widgetrail::input::ResolveControllerShortcut(
+        nearestUnavailable, std::wstring_view{L"focused"}, L"x", L"pressed");
+    Check(blocked.status == ControllerShortcutResolutionStatus::OwnerUnavailable &&
+              blocked.owner && blocked.owner->id == L"ancestor",
+          "an unavailable nearest owner blocks ancestor fallback");
+
+    auto focuslessDispatch = ShortcutTree(
+        L"root", Availability::Available, Availability::Available);
+    focuslessDispatch.children[0].children[0].shortcuts.push_back(
+        HeldShortcut(L"alternative.action"));
+    for (const auto* phase : phases) {
+        const auto exact = widgetrail::input::ResolveHostControllerShortcut(
+            focuslessDispatch, std::nullopt,
+            std::optional<std::wstring_view>{L"focused"}, L"x", phase);
+        Check(exact.status == ControllerShortcutResolutionStatus::Resolved &&
+                  exact.owner && exact.owner->id == L"root" &&
+                  exact.actionId == L"fixture.action",
+              "legitimate empty focus keeps pressed and repeated dispatch on the scope-root binding");
+    }
+
+    for (const auto* phase : phases) {
+        const auto stale = widgetrail::input::ResolveHostControllerShortcut(
+            focuslessDispatch, std::optional<std::wstring_view>{L"missing"},
+            std::optional<std::wstring_view>{L"focused"}, L"x", phase);
+        Check(stale.status == ControllerShortcutResolutionStatus::FocusNotFound,
+              "a stale raw focus cannot rebind pressed or repeated dispatch to an alternative visible target");
+    }
+
+    using widgetrail::input::AuthoredHeldActionBindingView;
+    using widgetrail::input::AuthoredHeldActionDecisionPhase;
+    using widgetrail::input::AuthoredHeldActionDisposition;
+    const AuthoredHeldActionBindingView captured{
+        {}, L"root", L"fixture.action"};
+    const auto arm = widgetrail::input::DecideAuthoredHeldAction(
+        AuthoredHeldActionDecisionPhase::Arm, false, captured);
+    const auto initial = widgetrail::input::DecideAuthoredHeldAction(
+        AuthoredHeldActionDecisionPhase::InitialDispatch, false, captured);
+    const auto repeated = widgetrail::input::DecideAuthoredHeldAction(
+        AuthoredHeldActionDecisionPhase::Repeat, false, captured, captured);
+    Check(arm.disposition == AuthoredHeldActionDisposition::Dispatch &&
+              initial.disposition == AuthoredHeldActionDisposition::Dispatch &&
+              repeated.disposition == AuthoredHeldActionDisposition::Dispatch &&
+              !initial.transportFocus && !initial.focusedNodeHandling &&
+              !repeated.transportFocus && !repeated.focusedNodeHandling,
+          "focusless arm, initial dispatch, and repeat retain empty transport focus without focused-node handling");
+    Check(widgetrail::input::DecideAuthoredHeldAction(
+              AuthoredHeldActionDecisionPhase::Repeat, false, captured,
+              AuthoredHeldActionBindingView{L"focused", L"root", L"fixture.action"})
+              .disposition == AuthoredHeldActionDisposition::Retire &&
+          widgetrail::input::DecideAuthoredHeldAction(
+              AuthoredHeldActionDecisionPhase::Repeat, false, captured,
+              AuthoredHeldActionBindingView{{}, L"other", L"fixture.action"})
+              .disposition == AuthoredHeldActionDisposition::Retire &&
+          widgetrail::input::DecideAuthoredHeldAction(
+              AuthoredHeldActionDecisionPhase::Repeat, false, captured,
+              AuthoredHeldActionBindingView{{}, L"root", L"other.action"})
+              .disposition == AuthoredHeldActionDisposition::Retire,
+          "repeat retires when captured focus, source, or action authority changes");
+    Check(widgetrail::input::DecideAuthoredHeldAction(
+              AuthoredHeldActionDecisionPhase::Arm, true, captured).disposition ==
+              AuthoredHeldActionDisposition::Retire &&
+          widgetrail::input::DecideAuthoredHeldAction(
+              AuthoredHeldActionDecisionPhase::Repeat, true, captured, captured)
+              .disposition == AuthoredHeldActionDisposition::Retire,
+          "an open Select popup blocks new arms and retires an existing hold");
+
+    constexpr std::array inputPhases{L"pressed", L"released", L"repeated"};
+    constexpr std::array shortcutPhases{L"pressed", L"released", L"repeated"};
+    constexpr std::array policies{L"none", L"whileHeld"};
+    for (const auto* inputPhase : inputPhases) {
+        for (const auto* shortcutPhase : shortcutPhases) {
+            for (const auto* policy : policies) {
+                const bool expected = std::wstring_view{shortcutPhase} == inputPhase ||
+                    (std::wstring_view{inputPhase} == L"repeated" &&
+                     std::wstring_view{shortcutPhase} == L"pressed" &&
+                     std::wstring_view{policy} == L"whileHeld");
+                Check(widgetrail::protocol_contract::ControllerShortcutMatches(
+                          L"x", shortcutPhase, policy, L"x", inputPhase) == expected,
+                      "generated native match matrix equals the managed contract");
+                Check(!widgetrail::protocol_contract::ControllerShortcutMatches(
+                          L"x", shortcutPhase, policy, L"y", inputPhase),
+                      "generated native match matrix requires the exact button");
+            }
+        }
+    }
+}
+
 } // namespace
 
 int main() {
+    CheckShortcutResolutionContract();
     using widgetrail::input::NavigationDirection;
 
     using widgetrail::input::TrayYGesture;

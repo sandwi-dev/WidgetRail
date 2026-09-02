@@ -4,7 +4,9 @@
 // </auto-generated>
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <string_view>
 
 namespace widgetrail::protocol_contract {
 
@@ -117,5 +119,53 @@ inline constexpr std::int32_t SurfaceHintsVersion = 2;
 inline constexpr std::int32_t TextEntryVersion = 15;
 inline constexpr std::int32_t TrustedEncodedArtworkVersion = 36;
 inline constexpr std::int32_t VirtualCollectionWindowVersion = 19;
+
+struct ControllerShortcutRepeatMatchRule final {
+    std::wstring_view inputPhase;
+    std::wstring_view shortcutPhase;
+    std::wstring_view repeatPolicy;
+};
+
+inline constexpr std::array<ControllerShortcutRepeatMatchRule, 1> ControllerShortcutRepeatMatchRules{{
+    {L"repeated", L"pressed", L"whileHeld"},
+}};
+
+[[nodiscard]] inline constexpr bool ControllerShortcutMatches(
+    const std::wstring_view shortcutButton,
+    const std::wstring_view shortcutPhase,
+    const std::wstring_view repeatPolicy,
+    const std::wstring_view inputButton,
+    const std::wstring_view inputPhase) noexcept {
+    if (shortcutButton != inputButton) return false;
+    if (shortcutPhase == inputPhase) return true;
+    for (const auto& rule : ControllerShortcutRepeatMatchRules) {
+        if (rule.inputPhase == inputPhase &&
+            rule.shortcutPhase == shortcutPhase &&
+            rule.repeatPolicy == repeatPolicy) return true;
+    }
+    return false;
+}
+
+struct ControllerShortcutOwnerAvailabilityRule final {
+    bool disabled;
+    bool busy;
+    bool available;
+};
+
+inline constexpr std::array<ControllerShortcutOwnerAvailabilityRule, 4> ControllerShortcutOwnerAvailabilityRules{{
+    {false, false, true},
+    {false, true, false},
+    {true, false, false},
+    {true, true, false},
+}};
+
+[[nodiscard]] inline constexpr bool ControllerShortcutOwnerAvailable(
+    const bool disabled, const bool busy) noexcept {
+    for (const auto& rule : ControllerShortcutOwnerAvailabilityRules) {
+        if (rule.disabled == disabled && rule.busy == busy)
+            return rule.available;
+    }
+    return false;
+}
 
 } // namespace widgetrail::protocol_contract

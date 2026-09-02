@@ -6,6 +6,7 @@
 #include "DeclarativeRenderer.h"
 #include "EmbeddedMediaResourceContract.h"
 #include "ControllerNavigation.h"
+#include "ControllerShortcutResolver.h"
 #include "ControllerInputOwnership.h"
 #include "ControllerGuide.h"
 #include "FocusNavigation.h"
@@ -11484,6 +11485,7 @@ private:
         std::wstring runtimeGeneration;
         std::wstring presentationGeneration;
         std::wstring inputScopeId;
+        std::wstring focusElementId;
         std::wstring sourceElementId;
         std::wstring protocolButton;
         std::wstring actionId;
@@ -11491,47 +11493,25 @@ private:
         bool pinned{};
     };
 
-    [[nodiscard]] static bool RepeatShortcutMatches(
-        const widgetrail::WidgetShortcut& shortcut,
-        const std::wstring_view button) noexcept {
-        return shortcut.button == button && shortcut.phase == L"pressed" &&
-            shortcut.repeatPolicy == L"whileHeld";
-    }
-
-    [[nodiscard]] static bool FindNodePathInScope(
-        const widgetrail::WidgetNode& node,
-        const std::wstring_view target,
-        const bool scopeRoot,
-        std::vector<const widgetrail::WidgetNode*>& path) {
-        if (!scopeRoot && !node.inputScopeId.empty()) return false;
-        path.push_back(&node);
-        if (node.id == target) return true;
-        for (const auto& child : node.children) {
-            if (FindNodePathInScope(child, target, false, path)) return true;
-        }
-        path.pop_back();
-        return false;
-    }
-
-    [[nodiscard]] static const widgetrail::WidgetNode* FindScopeRoot(
-        const widgetrail::WidgetNode& node,
-        const std::wstring_view scopeId,
-        const bool root = true) noexcept {
-        if ((root || !node.inputScopeId.empty()) &&
-            (node.inputScopeId.empty() ? std::wstring_view{node.id}
-                                       : std::wstring_view{node.inputScopeId}) == scopeId)
-            return &node;
-        for (const auto& child : node.children) {
-            if (const auto* found = FindScopeRoot(child, scopeId, false)) return found;
-        }
-        return nullptr;
+    [[nodiscard]] static widgetrail::input::AuthoredHeldActionBindingView
+    HeldActionBinding(const HeldActionAuthority& authority) noexcept {
+        return {
+            authority.focusElementId,
+            authority.sourceElementId,
+            authority.actionId,
+        };
     }
 
     /// The shell conditions that admit an authored held action. None of them
     /// read the widget's interaction snapshot, so they remain answerable while
     /// a refresh is holding presentation authority.
     [[nodiscard]] bool AuthoredHeldActionAdmissible() const {
-        return state_.surface() != widgetrail::Surface::Hidden &&
+        const auto modalDecision = widgetrail::input::DecideAuthoredHeldAction(
+            widgetrail::input::AuthoredHeldActionDecisionPhase::Arm,
+            interactionSession_.selectPopup().has_value(), {});
+        return modalDecision.disposition ==
+                widgetrail::input::AuthoredHeldActionDisposition::Dispatch &&
+            state_.surface() != widgetrail::Surface::Hidden &&
             !textEntryModal_.active() && !trayContextMenu_ &&
             !widgetContextMenu_ &&
             !OverlayFullscreenMediaRequested() &&
@@ -11575,7 +11555,7 @@ private:
         HeldActionAuthority authority{
             HeldActionKind::Authored, std::wstring{widgetId}, snapshot->instanceId,
             descriptor->runtimeGeneration, descriptor->presentationGeneration,
-            snapshot->activeInputScopeId, {}, std::wstring{protocolButton}, {},
+            snapshot->activeInputScopeId, {}, {}, std::wstring{protocolButton}, {},
             dashboard, pinnedSurfaceCoordinator_.pinned()};
         if (dashboard) {
             const auto action = std::find_if(
@@ -11593,47 +11573,55 @@ private:
             return authority;
         }
 
-        const auto visible = widgetrail::input::ResolveVisibleFocusTarget(
-            interactionSession_.focusedElementId(), snapshot->activeInputScopeId,
-            lastWidgetRenderResult_);
-        if (!visible) {
-            bail(L"no-visible-focus");
-            return std::nullopt;
-        }
-        const auto* scopeRoot = FindScopeRoot(
+        const auto* scopeRoot = widgetrail::input::FindControllerShortcutScopeRoot(
             snapshot->root, snapshot->activeInputScopeId);
         if (!scopeRoot) {
             bail(L"no-scope-root");
             return std::nullopt;
         }
-        std::vector<const widgetrail::WidgetNode*> path;
-        if (!FindNodePathInScope(*scopeRoot, *visible, true, path) || path.empty()) {
-            bail(L"no-node-path");
+        const auto focusedElementId = interactionSession_.focusedElementId();
+        const std::optional<std::wstring_view> shortcutFocus =
+            focusedElementId.empty()
+                ? std::nullopt
+                : std::optional<std::wstring_view>{focusedElementId};
+        const auto visible = focusedElementId.empty()
+            ? std::optional<std::wstring>{}
+            : widgetrail::input::ResolveVisibleFocusTarget(
+                focusedElementId, snapshot->activeInputScopeId,
+                lastWidgetRenderResult_);
+        const auto shortcut = widgetrail::input::ResolveHostControllerShortcut(
+            *scopeRoot, shortcutFocus,
+            visible ? std::optional<std::wstring_view>{*visible} : std::nullopt,
+            protocolButton, L"pressed");
+        if (shortcut.status ==
+            widgetrail::input::ControllerShortcutResolutionStatus::FocusNotFound) {
+            bail(L"stale-or-hidden-focus");
             return std::nullopt;
         }
-        for (auto cursor = path.rbegin(); cursor != path.rend(); ++cursor) {
-            const auto shortcut = std::find_if(
-                (*cursor)->shortcuts.begin(), (*cursor)->shortcuts.end(),
-                [&](const auto& candidate) {
-                    return RepeatShortcutMatches(candidate, protocolButton);
-                });
-            if (shortcut == (*cursor)->shortcuts.end()) continue;
-            // Only the node that declares the binding gates it. A sibling
-            // control that goes busy or disabled while its own command settles
-            // is not this binding's owner, and a momentary owner outage defers
-            // the next emission rather than ending the hold.
-            if ((*cursor)->isDisabled || (*cursor)->isBusy) {
-                bail((*cursor)->isDisabled ? L"owner-disabled" : L"owner-busy",
-                     HeldActionResolve::Deferred);
-                return std::nullopt;
-            }
-            authority.sourceElementId = (*cursor)->id;
-            authority.actionId = shortcut->actionId;
-            if (outcome) *outcome = HeldActionResolve::Resolved;
-            return authority;
+        if ((shortcut.status ==
+                 widgetrail::input::ControllerShortcutResolutionStatus::Resolved ||
+             shortcut.status ==
+                 widgetrail::input::ControllerShortcutResolutionStatus::OwnerUnavailable) &&
+            shortcut.repeatPolicy != L"whileHeld") {
+            bail(L"no-repeat-shortcut");
+            return std::nullopt;
         }
-        bail(L"no-repeat-shortcut");
-        return std::nullopt;
+        if (shortcut.status ==
+            widgetrail::input::ControllerShortcutResolutionStatus::OwnerUnavailable) {
+            bail(shortcut.owner->isDisabled ? L"owner-disabled" : L"owner-busy",
+                 HeldActionResolve::Deferred);
+            return std::nullopt;
+        }
+        if (shortcut.status !=
+            widgetrail::input::ControllerShortcutResolutionStatus::Resolved) {
+            bail(L"no-repeat-shortcut");
+            return std::nullopt;
+        }
+        authority.focusElementId = focusedElementId;
+        authority.sourceElementId = shortcut.owner->id;
+        authority.actionId = shortcut.actionId;
+        if (outcome) *outcome = HeldActionResolve::Resolved;
+        return authority;
     }
 
     [[nodiscard]] bool MediaHeldActionAuthorityCurrent(
@@ -11711,6 +11699,15 @@ private:
                 ? HeldButtonAuthorityState::Deferred
                 : HeldButtonAuthorityState::Retired;
         }
+        const auto bindingDecision = widgetrail::input::DecideAuthoredHeldAction(
+            widgetrail::input::AuthoredHeldActionDecisionPhase::Repeat,
+            interactionSession_.selectPopup().has_value(),
+            HeldActionBinding(captured), HeldActionBinding(*current));
+        if (bindingDecision.disposition !=
+            widgetrail::input::AuthoredHeldActionDisposition::Dispatch) {
+            if (reason) *reason = L"binding-authority";
+            return HeldButtonAuthorityState::Retired;
+        }
         std::wstring mismatch;
         const auto compare = [&](const wchar_t* name,
                                  const std::wstring& a, const std::wstring& b) {
@@ -11723,8 +11720,6 @@ private:
         compare(L"presentationGen",
             current->presentationGeneration, captured.presentationGeneration);
         compare(L"inputScope", current->inputScopeId, captured.inputScopeId);
-        compare(L"source", current->sourceElementId, captured.sourceElementId);
-        compare(L"actionId", current->actionId, captured.actionId);
         if (current->kind != captured.kind) mismatch += L"kind ";
         if (current->dashboard != captured.dashboard) mismatch += L"dashboard ";
         if (current->pinned != captured.pinned) mismatch += L"pinned ";
@@ -11776,7 +11771,7 @@ private:
             embeddedMediaAuthority_->instanceId,
             embeddedMediaAuthority_->runtimeGeneration,
             embeddedMediaAuthority_->presentationGeneration,
-            {}, {}, std::wstring{protocolButton}, {}, false,
+            {}, {}, {}, std::wstring{protocolButton}, {}, false,
             pinnedSurfaceCoordinator_.pinned(),
         }, now);
     }
@@ -11803,7 +11798,13 @@ private:
                 L" source=" + (authority ? authority->sourceElementId : L"none") +
                 L" scope=" + (authority ? authority->inputScopeId : L"none"),
                 DiagnosticSeverity::Debug);
-            if (authority) BeginHeldActionRepeat(*authority, now);
+            if (authority) {
+                BeginHeldActionRepeat(*authority, now);
+                DispatchWidgetAction(
+                    button, widgetrail::input::NavigationEventPhase::Pressed,
+                    std::nullopt, true, &*authority);
+                return;
+            }
         }
         DispatchControllerAction(button, true);
     }
@@ -11845,18 +11846,18 @@ private:
         }
         // Dispatching can retire the hold, so nothing below reads the captured
         // authority through a reference the dispatch itself may destroy.
-        const auto kind = heldActionAuthority_->kind;
-        const std::wstring protocolButton = heldActionAuthority_->protocolButton;
-        if (kind == HeldActionKind::Authored) {
+        const auto authority = *heldActionAuthority_;
+        if (authority.kind == HeldActionKind::Authored) {
             DispatchWidgetAction(
-                DisplayButton(protocolButton),
-                widgetrail::input::NavigationEventPhase::Repeated);
+                DisplayButton(authority.protocolButton),
+                widgetrail::input::NavigationEventPhase::Repeated,
+                std::nullopt, false, &authority);
             return;
         }
-        const auto direction = protocolButton == L"leftTrigger"
+        const auto direction = authority.protocolButton == L"leftTrigger"
             ? widgetrail::input::NavigationDirection::Left
             : widgetrail::input::NavigationDirection::Right;
-        const auto target = kind == HeldActionKind::CompactMedia
+        const auto target = authority.kind == HeldActionKind::CompactMedia
             ? pinnedSurfaceCoordinator_.CompactMediaSeekTarget(direction)
             : OverlayFullscreenMediaSeekTarget(direction);
         if (target && richMediaSurface_)
@@ -12042,7 +12043,8 @@ private:
             widgetrail::input::NavigationEventPhase::Pressed,
         const std::optional<widgetrail::input::WidgetInteractionActionRequest>&
             exactActionRequest = std::nullopt,
-        const bool physicalPress = false) {
+        const bool physicalPress = false,
+        const HeldActionAuthority* exactHeldAction = nullptr) {
         if (state_.surface() == widgetrail::Surface::Hidden) {
             if (exactActionRequest) {
                 RejectWidgetActionRequest(
@@ -12056,6 +12058,22 @@ private:
         const std::wstring_view widget = interactiveWidget
             ? state_.activeWidget()
             : state_.selectedWidget();
+        if (exactHeldAction &&
+            (exactHeldAction->kind != HeldActionKind::Authored ||
+             exactHeldAction->widgetId != widget ||
+             exactHeldAction->dashboard == interactiveWidget))
+            return;
+        const auto exactHeldDecision = exactHeldAction
+            ? std::optional<widgetrail::input::AuthoredHeldActionDecision>{
+                widgetrail::input::DecideAuthoredHeldAction(
+                    widgetrail::input::AuthoredHeldActionDecisionPhase::
+                        InitialDispatch,
+                    interactionSession_.selectPopup().has_value(),
+                    HeldActionBinding(*exactHeldAction))}
+            : std::nullopt;
+        if (exactHeldDecision && exactHeldDecision->disposition !=
+                widgetrail::input::AuthoredHeldActionDisposition::Dispatch)
+            return;
         if (exactActionRequest &&
             (!interactiveWidget || widget != exactActionRequest->widgetId)) {
             RejectWidgetActionRequest(
@@ -12106,21 +12124,28 @@ private:
                     *exactActionRequest, L"stale admitted authority");
                 return;
             }
-            const auto visibleFocus = exactActionRequest
-                ? std::optional<std::wstring>{exactActionRequest->sourceElementId}
-                : isOpen
-                    ? widgetrail::input::ResolveVisibleFocusTarget(
-                        interactionSession_.focusedElementId(),
-                        snapshot->activeInputScopeId, lastWidgetRenderResult_)
-                    : std::optional<std::wstring>{};
+            std::optional<std::wstring> visibleFocus;
+            if (exactActionRequest) {
+                visibleFocus = exactActionRequest->sourceElementId;
+            } else if (exactHeldDecision) {
+                if (exactHeldDecision->transportFocus)
+                    visibleFocus = *exactHeldDecision->transportFocus;
+            } else if (isOpen) {
+                visibleFocus = widgetrail::input::ResolveVisibleFocusTarget(
+                    interactionSession_.focusedElementId(),
+                    snapshot->activeInputScopeId, lastWidgetRenderResult_);
+            }
+            const bool focusedNodeHandling = !exactHeldDecision ||
+                exactHeldDecision->focusedNodeHandling;
             const bool requestedSliderAction = exactActionRequest.has_value();
-            if (isOpen && visibleFocus && *visibleFocus != interactionSession_.focusedElementId()) {
+            if (!exactHeldAction && isOpen && visibleFocus &&
+                *visibleFocus != interactionSession_.focusedElementId()) {
                 const auto focus = interactionSession_.MoveFocus(
                     widget, *snapshot, *visibleFocus);
                 InvalidateWidgetFocusChange(
                     focus.priorFocus, focus.sliderDamageNodeIds);
             }
-            if (physicalPress && isOpen && visibleFocus &&
+            if (physicalPress && focusedNodeHandling && isOpen && visibleFocus &&
                 phase == widgetrail::input::NavigationEventPhase::Pressed &&
                 interactionSession_.TransitionPressedPresentation(
                     widgetrail::input::PressedInputTransition::Begin,
@@ -12128,10 +12153,11 @@ private:
                 InvalidateRect(window_, nullptr, FALSE);
                 UpdateWindow(window_);
             }
-            if (isOpen && visibleFocus && protocolButton == L"a" &&
+            if (focusedNodeHandling && isOpen && visibleFocus &&
+                protocolButton == L"a" &&
                 phase == widgetrail::input::NavigationEventPhase::Pressed &&
                 OpenTextEntryModal(widget, *snapshot, *visibleFocus)) return;
-            if (isOpen && visibleFocus) {
+            if (focusedNodeHandling && isOpen && visibleFocus) {
                 const auto* focusedNode = widgetrail::input::FindNodeInInputScope(
                     *snapshot, *visibleFocus, snapshot->activeInputScopeId);
                 if (focusedNode && TryDispatchNativeMediaAction(
@@ -12148,6 +12174,9 @@ private:
             const auto correlationSequence = ++controllerSequence_;
             const std::wstring_view correlationFocus = exactActionRequest
                 ? std::wstring_view{exactActionRequest->sourceElementId}
+                : exactHeldDecision
+                    ? exactHeldDecision->transportFocus.value_or(
+                        std::wstring_view{})
                 : isOpen && visibleFocus
                     ? std::wstring_view(*visibleFocus)
                     : std::wstring_view{};
@@ -12175,6 +12204,9 @@ private:
                 isOpen ? L"openWidget" : L"dashboardQuickAction",
                 exactActionRequest
                     ? std::wstring_view{exactActionRequest->sourceElementId}
+                    : exactHeldDecision
+                    ? exactHeldDecision->transportFocus.value_or(
+                        std::wstring_view{})
                     : isOpen && visibleFocus
                     ? std::wstring_view(*visibleFocus)
                     : std::wstring_view{},

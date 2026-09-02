@@ -1,39 +1,11 @@
 #include "ControllerGuide.h"
+#include "ControllerShortcutResolver.h"
 
 #include <algorithm>
 #include <cmath>
 
 namespace widgetrail::guide {
 namespace {
-
-const WidgetNode* FindScopeRoot(
-    const WidgetNode& node,
-    const std::wstring_view scopeId,
-    const bool documentRoot = true) noexcept {
-    if ((documentRoot || !node.inputScopeId.empty()) &&
-        (node.inputScopeId.empty() ? std::wstring_view{node.id}
-                                   : std::wstring_view{node.inputScopeId}) == scopeId)
-        return &node;
-    for (const auto& child : node.children) {
-        if (const auto* found = FindScopeRoot(child, scopeId, false)) return found;
-    }
-    return nullptr;
-}
-
-bool FindPathInScope(
-    const WidgetNode& node,
-    const std::wstring_view targetId,
-    const bool scopeRoot,
-    std::vector<const WidgetNode*>& path) {
-    if (!scopeRoot && !node.inputScopeId.empty()) return false;
-    path.push_back(&node);
-    if (node.id == targetId) return true;
-    for (const auto& child : node.children) {
-        if (FindPathInScope(child, targetId, false, path)) return true;
-    }
-    path.pop_back();
-    return false;
-}
 
 std::wstring_view QuickActionLabel(
     const WidgetSnapshot& snapshot,
@@ -128,14 +100,17 @@ OpenWidgetAuthority ResolveOpenWidgetAuthority(
     const std::wstring_view focusedElementId) {
     OpenWidgetAuthority result;
     if (snapshot.activeInputScopeId.empty()) return result;
-    const auto* scopeRoot = FindScopeRoot(
+    const auto* scopeRoot = widgetrail::input::FindControllerShortcutScopeRoot(
         snapshot.root, snapshot.activeInputScopeId);
     if (!scopeRoot) return result;
 
     std::vector<const WidgetNode*> path;
-    if (focusedElementId.empty()) {
-        path.push_back(scopeRoot);
-    } else if (!FindPathInScope(*scopeRoot, focusedElementId, true, path)) {
+    const std::optional<std::wstring_view> shortcutFocus =
+        focusedElementId.empty()
+            ? std::nullopt
+            : std::optional<std::wstring_view>{focusedElementId};
+    if (!widgetrail::input::FindControllerShortcutPath(
+            *scopeRoot, shortcutFocus, path)) {
         return result;
     }
 
@@ -151,10 +126,7 @@ OpenWidgetAuthority ResolveOpenWidgetAuthority(
 
     std::vector<std::wstring> consumedButtons;
     for (auto cursor = path.rbegin(); cursor != path.rend(); ++cursor) {
-        const auto& owner = **cursor;
-        const bool availabilityGatesOwner =
-            cursor == path.rbegin() || focusedElementId.empty();
-        for (const auto& shortcut : owner.shortcuts) {
+        for (const auto& shortcut : (*cursor)->shortcuts) {
             if (shortcut.phase != L"pressed" || shortcut.actionId.empty() ||
                 shortcut.button == L"a" || shortcut.button == L"b" ||
                 shortcut.button == L"dPadLeft" || shortcut.button == L"dPadRight")
@@ -167,8 +139,13 @@ OpenWidgetAuthority ResolveOpenWidgetAuthority(
             // even when unavailable or unlabeled; never advertise an ancestor's
             // different action as a fallback.
             consumedButtons.push_back(shortcut.button);
-            if (availabilityGatesOwner && (owner.isDisabled || owner.isBusy))
+            const auto resolved = widgetrail::input::ResolveControllerShortcut(
+                *scopeRoot, shortcutFocus, shortcut.button, L"pressed");
+            if (resolved.status != widgetrail::input::
+                    ControllerShortcutResolutionStatus::Resolved ||
+                !resolved.owner)
                 continue;
+            const auto& owner = *resolved.owner;
             const std::wstring_view label = !owner.text.empty()
                 ? std::wstring_view{owner.text}
                 : !owner.accessibilityLabel.empty()

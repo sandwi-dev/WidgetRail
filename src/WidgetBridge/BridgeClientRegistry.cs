@@ -2155,12 +2155,15 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         var scopeRoot = FindInputScope(root, inputScopeId, isRoot: true);
         var focusedNode = scopeRoot is null ? null :
             FindNodeInScope(scopeRoot, input.FocusedElementId!, isScopeRoot: true);
-        if (focusedNode is null || focusedNode.IsDisabled is true || focusedNode.IsBusy is true)
+        if (focusedNode is null)
             throw new BridgeStalePinnedInputAuthorityException(
-                $"Pinned-surface input targets an unavailable {authority} focused element.");
+                $"Pinned-surface input targets a missing {authority} focused element.");
 
         if (input.Button == ControllerButton.A)
         {
+            if (!ControllerShortcutResolutionContract.OwnerAvailable(focusedNode))
+                throw new BridgeStalePinnedInputAuthorityException(
+                    $"Pinned-surface input targets an unavailable {authority} focused element.");
             if (input.Phase == ControllerEventPhase.Pressed &&
                 focusedNode.Kind is ViewNodeKind.Button or ViewNodeKind.Slider or
                     ViewNodeKind.ActionSurface &&
@@ -2171,36 +2174,30 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         if (focusedNode.Kind == ViewNodeKind.Slider &&
             input.Button is ControllerButton.DPadLeft or ControllerButton.DPadRight &&
             !string.IsNullOrWhiteSpace(focusedNode.ValueChangedActionId))
+        {
+            if (!ControllerShortcutResolutionContract.OwnerAvailable(focusedNode))
+                throw new BridgeStalePinnedInputAuthorityException(
+                    $"Pinned-surface input targets an unavailable {authority} focused element.");
             return new(
                 focusedNode.ValueChangedActionId, focusedNode.Id, focusedNode.Kind,
                 focusedNode.Minimum, focusedNode.Maximum, focusedNode.Step);
+        }
 
-        var shortcut = focusedNode.Shortcuts.FirstOrDefault(candidate =>
-            ShortcutMatchesInput(candidate, input));
-        if (shortcut is not null)
-            return new(shortcut.ActionId, focusedNode.Id, focusedNode.Kind);
-        var path = new List<ViewNode>();
-        if (!FindPathInScope(scopeRoot!, focusedNode.Id, isScopeRoot: true, path))
+        var shortcutResolution = ControllerShortcutResolver.Resolve(
+            scopeRoot!, focusedNode.Id, input.Button, input.Phase);
+        if (shortcutResolution.Status == ControllerShortcutResolutionStatus.FocusNotFound)
             throw new BridgeStalePinnedInputAuthorityException(
                 $"Pinned-surface input lost its {authority} focused-element path.");
-        for (var index = path.Count - 2; index >= 0; index--)
-        {
-            shortcut = path[index].Shortcuts.FirstOrDefault(candidate =>
-                ShortcutMatchesInput(candidate, input));
-            if (shortcut is not null)
-                return new(shortcut.ActionId, path[index].Id, path[index].Kind);
-        }
-        return null;
+        if (shortcutResolution.Status == ControllerShortcutResolutionStatus.OwnerUnavailable)
+            throw new BridgeStalePinnedInputAuthorityException(
+                $"Pinned-surface input targets an unavailable {authority} shortcut owner.");
+        return shortcutResolution.Status == ControllerShortcutResolutionStatus.Resolved
+            ? new(
+                shortcutResolution.Shortcut!.ActionId,
+                shortcutResolution.Owner!.Id,
+                shortcutResolution.Owner.Kind)
+            : null;
     }
-
-    private static bool ShortcutMatchesInput(
-        ControllerShortcut shortcut,
-        ControllerInputEvent input) =>
-        shortcut.Button == input.Button &&
-        (shortcut.Phase == input.Phase ||
-         (input.Phase == ControllerEventPhase.Repeated &&
-          shortcut.Phase == ControllerEventPhase.Pressed &&
-          shortcut.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld));
 
     private sealed record PinnedSurfaceInputBinding(
         string ActionId,
@@ -2209,18 +2206,6 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         double? Minimum = null,
         double? Maximum = null,
         double? Step = null);
-
-    private static bool FindPathInScope(
-        ViewNode node, string id, bool isScopeRoot, List<ViewNode> path)
-    {
-        if (!isScopeRoot && node.InputScopeId is not null) return false;
-        path.Add(node);
-        if (string.Equals(node.Id, id, StringComparison.Ordinal)) return true;
-        foreach (var child in node.Children)
-            if (FindPathInScope(child, id, isScopeRoot: false, path)) return true;
-        path.RemoveAt(path.Count - 1);
-        return false;
-    }
 
     private static ViewNode? FindInputScope(ViewNode node, string scopeId, bool isRoot)
     {

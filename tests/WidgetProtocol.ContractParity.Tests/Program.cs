@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using WidgetRail.WidgetProtocol;
 
 const string artifactRelativePath = "src/OverlayHost/WidgetProtocolPresentationContract.generated.h";
@@ -38,7 +39,7 @@ if (!string.Equals(actual, expected, StringComparison.Ordinal))
 
 VerifyDriftDetection(expected);
 Console.WriteLine(
-    $"Widget protocol presentation contract parity passed: {ContractFields().Length} managed constants match the native Release artifact exactly; missing, added, renamed, and changed-value drift fail closed.");
+    $"Widget protocol presentation contract parity passed: {ContractFields().Length} managed constants, {ControllerShortcutResolutionContract.RepeatMatchRules.Count} shortcut-repeat rules, and {ControllerShortcutResolutionContract.OwnerAvailabilityRules.Length} owner-availability rules match the native Release artifact exactly; missing, added, renamed, and changed-value drift fail closed.");
 return 0;
 
 static string FindRepositoryRoot(string start)
@@ -66,7 +67,9 @@ static string GenerateArtifact()
     output.AppendLine("// </auto-generated>");
     output.AppendLine("#pragma once");
     output.AppendLine();
+    output.AppendLine("#include <array>");
     output.AppendLine("#include <cstdint>");
+    output.AppendLine("#include <string_view>");
     output.AppendLine();
     output.AppendLine("namespace widgetrail::protocol_contract {");
     output.AppendLine();
@@ -88,9 +91,83 @@ static string GenerateArtifact()
     }
 
     output.AppendLine();
+    output.AppendLine("struct ControllerShortcutRepeatMatchRule final {");
+    output.AppendLine("    std::wstring_view inputPhase;");
+    output.AppendLine("    std::wstring_view shortcutPhase;");
+    output.AppendLine("    std::wstring_view repeatPolicy;");
+    output.AppendLine("};");
+    output.AppendLine();
+    output.Append("inline constexpr std::array<ControllerShortcutRepeatMatchRule, ")
+        .Append(ControllerShortcutResolutionContract.RepeatMatchRules.Count)
+        .AppendLine("> ControllerShortcutRepeatMatchRules{{");
+    foreach (var rule in ControllerShortcutResolutionContract.RepeatMatchRules)
+    {
+        output.Append("    {")
+            .Append(RenderWideString(WireToken(rule.InputPhase))).Append(", ")
+            .Append(RenderWideString(WireToken(rule.ShortcutPhase))).Append(", ")
+            .Append(RenderWideString(WireToken(rule.RepeatPolicy))).AppendLine("},");
+    }
+    output.AppendLine("}};");
+    output.AppendLine();
+    output.AppendLine("[[nodiscard]] inline constexpr bool ControllerShortcutMatches(");
+    output.AppendLine("    const std::wstring_view shortcutButton,");
+    output.AppendLine("    const std::wstring_view shortcutPhase,");
+    output.AppendLine("    const std::wstring_view repeatPolicy,");
+    output.AppendLine("    const std::wstring_view inputButton,");
+    output.AppendLine("    const std::wstring_view inputPhase) noexcept {");
+    output.AppendLine("    if (shortcutButton != inputButton) return false;");
+    output.AppendLine("    if (shortcutPhase == inputPhase) return true;");
+    output.AppendLine("    for (const auto& rule : ControllerShortcutRepeatMatchRules) {");
+    output.AppendLine("        if (rule.inputPhase == inputPhase &&");
+    output.AppendLine("            rule.shortcutPhase == shortcutPhase &&");
+    output.AppendLine("            rule.repeatPolicy == repeatPolicy) return true;");
+    output.AppendLine("    }");
+    output.AppendLine("    return false;");
+    output.AppendLine("}");
+    output.AppendLine();
+    output.AppendLine("struct ControllerShortcutOwnerAvailabilityRule final {");
+    output.AppendLine("    bool disabled;");
+    output.AppendLine("    bool busy;");
+    output.AppendLine("    bool available;");
+    output.AppendLine("};");
+    output.AppendLine();
+    output.Append("inline constexpr std::array<ControllerShortcutOwnerAvailabilityRule, ")
+        .Append(ControllerShortcutResolutionContract.OwnerAvailabilityRules.Length)
+        .AppendLine("> ControllerShortcutOwnerAvailabilityRules{{");
+    foreach (var rule in ControllerShortcutResolutionContract.OwnerAvailabilityRules)
+    {
+        output.Append("    {")
+            .Append(RenderBool(rule.IsDisabled)).Append(", ")
+            .Append(RenderBool(rule.IsBusy)).Append(", ")
+            .Append(RenderBool(rule.IsAvailable)).AppendLine("},");
+    }
+    output.AppendLine("}};");
+    output.AppendLine();
+    output.AppendLine("[[nodiscard]] inline constexpr bool ControllerShortcutOwnerAvailable(");
+    output.AppendLine("    const bool disabled, const bool busy) noexcept {");
+    output.AppendLine("    for (const auto& rule : ControllerShortcutOwnerAvailabilityRules) {");
+    output.AppendLine("        if (rule.disabled == disabled && rule.busy == busy)");
+    output.AppendLine("            return rule.available;");
+    output.AppendLine("    }");
+    output.AppendLine("    return false;");
+    output.AppendLine("}");
+
+    output.AppendLine();
     output.AppendLine("} // namespace widgetrail::protocol_contract");
     return output.ToString().Replace("\r\n", "\n", StringComparison.Ordinal);
 }
+
+static string WireToken<T>(T value) where T : struct, Enum =>
+    JsonNamingPolicy.CamelCase.ConvertName(value.ToString());
+
+static string RenderWideString(string value)
+{
+    if (value.Any(character => character is '"' or '\\' or '\r' or '\n'))
+        throw new InvalidOperationException("Shortcut contract wire tokens must be simple literals.");
+    return $"L\"{value}\"";
+}
+
+static string RenderBool(bool value) => value ? "true" : "false";
 
 static string RenderDouble(double value)
 {
@@ -108,6 +185,8 @@ static void VerifyDriftDetection(string artifact)
     var firstField = ContractFields()[0];
     var firstLine = artifact.Split('\n', StringSplitOptions.RemoveEmptyEntries)
         .Single(line => line.Contains($" {firstField.Name} = ", StringComparison.Ordinal)) + "\n";
+    var availabilityLine = artifact.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+        .Single(line => line.Contains("{false, false, true}", StringComparison.Ordinal)) + "\n";
 
     var vectors = new[]
     {
@@ -117,6 +196,10 @@ static void VerifyDriftDetection(string artifact)
             StringComparison.Ordinal),
         artifact.Replace(firstLine, firstLine.Replace(" = ", " = -1 + ",
             StringComparison.Ordinal), StringComparison.Ordinal),
+        artifact.Replace(
+            availabilityLine,
+            availabilityLine.Replace("true", "false", StringComparison.Ordinal),
+            StringComparison.Ordinal),
     };
     if (vectors.Any(candidate => string.Equals(candidate, artifact, StringComparison.Ordinal)))
         throw new InvalidOperationException("A deterministic presentation-contract drift vector was not rejected.");

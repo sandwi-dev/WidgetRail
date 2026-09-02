@@ -304,6 +304,138 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(3, client.ControllerInputs.Count);
     }
 
+    internal static async Task PinnedShortcutAvailabilityBelongsToDeclaringOwner()
+    {
+        var configured = Widget("pinned-shortcut-owner", worker: 'h', catalog: 'h');
+        var ownerDisabled = false;
+        var ownerBusy = false;
+        await using var fixture = new RegistryFixture(
+            Catalog(configured),
+            configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
+            {
+                ProtocolVersion = ProtocolConstants.HeldButtonActionRepeatVersion,
+                Sequence = sequence,
+                WidgetInstanceId = configured.InstanceId,
+                ActiveInputScopeId = "root",
+                InitialFocusId = "initial",
+                Root = ShortcutRoot(),
+                PinnedLayouts =
+                [
+                    new PinnedPresentationLayout
+                    {
+                        Id = "compact",
+                        Name = "Compact",
+                        Surface = new WidgetSurfaceHints
+                        {
+                            PreferredWidth = 360,
+                            PreferredHeight = 240,
+                            MinimumWidth = 240,
+                            MinimumHeight = 180,
+                        },
+                        Root = ShortcutRoot(),
+                        ActiveInputScopeId = "root",
+                        InitialFocusId = "initial",
+                    },
+                ],
+            });
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Interactive);
+        var generation = configured.PublicDescriptor().RuntimeGeneration;
+        var snapshot = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        var input = new ControllerInputEvent(
+            ControllerButton.X,
+            ControllerEventPhase.Repeated,
+            ControllerInputContext.PinnedSurface,
+            FocusedElementId: "focused",
+            Sequence: 1,
+            ActiveInputScopeId: "root",
+            SnapshotSequence: snapshot.Sequence)
+        {
+            PinnedLayoutId = "compact",
+        };
+
+        using (var publication = await fixture.Registry.SendControllerInputAsync(
+                   configured.Id, input, generation,
+                   CancellationToken.None, CancellationToken.None,
+                   expectedActionId: "owner.action"))
+            RegistryAssert.True(publication.Value);
+        var client = fixture.Clients.Single();
+        RegistryAssert.Equal(1, client.ControllerInputs.Count);
+
+        ownerDisabled = true;
+        var disabled = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        await RegistryAssert.ThrowsAsync<BridgeStalePinnedInputAuthorityException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, input with
+                {
+                    SnapshotSequence = disabled.Sequence,
+                    Sequence = 2,
+                }, generation, CancellationToken.None, CancellationToken.None,
+                expectedActionId: "owner.action"));
+
+        ownerDisabled = false;
+        ownerBusy = true;
+        var busy = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        await RegistryAssert.ThrowsAsync<BridgeStalePinnedInputAuthorityException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, input with
+                {
+                    SnapshotSequence = busy.Sequence,
+                    Sequence = 3,
+                }, generation, CancellationToken.None, CancellationToken.None,
+                expectedActionId: "owner.action"));
+        RegistryAssert.Equal(1, client.ControllerInputs.Count);
+
+        ViewNode ShortcutRoot() => new()
+        {
+            Id = "root",
+            Kind = ViewNodeKind.Stack,
+            InputScopeId = "root",
+            // A root fallback proves the nearer unavailable declaration blocks
+            // fallback instead of lending the same button to another owner.
+            Shortcuts =
+            [
+                new ControllerShortcut(
+                    ControllerButton.X, "root.action",
+                    ControllerEventPhase.Pressed,
+                    ControllerActionRepeatPolicy.WhileHeld),
+            ],
+            Children =
+            [
+                new ViewNode
+                {
+                    Id = "initial",
+                    Kind = ViewNodeKind.Button,
+                    ActionId = "initial.action",
+                },
+                new ViewNode
+                {
+                    Id = "owner",
+                    Kind = ViewNodeKind.Stack,
+                    IsDisabled = ownerDisabled,
+                    IsBusy = ownerBusy,
+                    Shortcuts =
+                    [
+                        new ControllerShortcut(
+                            ControllerButton.X, "owner.action",
+                            ControllerEventPhase.Pressed,
+                            ControllerActionRepeatPolicy.WhileHeld),
+                    ],
+                    Children =
+                    [
+                        // Focused availability is deliberately unrelated to
+                        // the ancestor-owned shortcut.
+                        new ViewNode
+                        {
+                            Id = "focused",
+                            Kind = ViewNodeKind.Button,
+                            IsDisabled = true,
+                        },
+                    ],
+                },
+            ],
+        };
+    }
+
     internal static async Task EmbeddedMediaRequiresExactPublicationAuthority()
     {
         var configured = Widget("embedded-media-authority", worker: 'm', catalog: 'm');
