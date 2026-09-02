@@ -62,12 +62,15 @@ internal sealed record PlayniteLibraryRenderState
     internal string? HeroSavedId { get; init; }
     internal int HeroIndex { get; init; }
     internal bool OrganizationBusy { get; init; }
+    internal string? CategoryFeedback { get; init; }
+    internal bool CategoryFeedbackSucceeded { get; init; }
     internal string Status { get; init; } = "Playnite Library loads when visible";
     internal string? LaunchingSavedId { get; init; }
     internal PlayniteBridgeConnectionKind PlayniteKind { get; init; } =
         PlayniteBridgeConnectionKind.NotConfigured;
     internal string PlayniteCode { get; init; } = "credential_missing";
     internal bool PlayniteBusy { get; init; }
+    internal PlayniteLibraryConnectionFeedback? PlayniteFeedback { get; init; }
 
     internal static PlayniteLibraryRenderState Initial(WidgetAppLibraryQuery query) => new()
         {
@@ -84,7 +87,6 @@ internal enum PlayniteLibraryRoute
     Browse,
     Hidden,
     Categories,
-    Category,
     PlayniteConnection,
 }
 

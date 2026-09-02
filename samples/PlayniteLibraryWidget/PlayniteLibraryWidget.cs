@@ -151,8 +151,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
         var view = PlayniteLibraryPresentation.Render(state);
         var root = _navigation.Scope(navigation, view.Root);
-        var initialFocusId = navigation.Route is PlayniteLibraryRoute.Categories or
-                PlayniteLibraryRoute.Category ||
+        var initialFocusId = navigation.Route == PlayniteLibraryRoute.Categories ||
             navigation.Route == PlayniteLibraryRoute.Browse &&
             local.BrowseInitialFocusId is not null
             ? view.InitialFocusId
@@ -183,8 +182,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             PlayniteLibraryRoute.Library when local.RetainedHomeCollection is not null =>
                 retainedHome.Concat(fixedRows),
-            PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Category =>
-                live.Concat(fixedRows),
+            PlayniteLibraryRoute.Library => live.Concat(fixedRows),
             PlayniteLibraryRoute.Browse when retainedBrowse.Count != 0 => retainedBrowse,
             PlayniteLibraryRoute.Browse => live,
             PlayniteLibraryRoute.Hidden => hidden.Concat(live).Concat(fixedRows),
@@ -446,6 +444,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 .ConfigureAwait(false);
             return;
         }
+        if (string.Equals(action.ActionId, PlayniteLibraryActions.CategoryAll,
+                StringComparison.Ordinal))
+        {
+            SelectBrowseCategory(null, action.SourceElementId);
+            return;
+        }
         if (PlayniteLibraryActions.TryParseCategoryOpen(
                 action.ActionId, out var openCategoryId))
         {
@@ -511,7 +515,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             case PlayniteLibraryActions.Hide:
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
                     _navigation.Value.Route is not (PlayniteLibraryRoute.Library or
-                        PlayniteLibraryRoute.Category) ||
+                        PlayniteLibraryRoute.Browse) ||
                     ResolveActionSource(action.SourceElementId) is not { } hideSource) return;
                 if (await SetHiddenAsync(hideSource, hidden: true, cancellationToken)
                         .ConfigureAwait(false))
@@ -530,8 +534,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 RetainHomeCollectionForRouteTransition();
                 if (_navigation.Push(PlayniteLibraryRoute.PlayniteConnection,
                         action.SourceElementId) == WidgetNavigationResult.Changed)
-                    await RefreshPlayniteConnectionAsync(cancellationToken)
+                {
+                    _model.Update(state => state with { PlayniteFeedback = null });
+                    var probe = _playniteConnection.Refresh();
+                    await probe.Completion.WaitAsync(cancellationToken)
                         .ConfigureAwait(false);
+                }
                 return;
             case PlayniteBackActionId:
                 if (_navigation.Value.Route != PlayniteLibraryRoute.PlayniteConnection) return;
@@ -622,11 +630,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
                         ? state.Collection.ClearQuery(InstalledGames)
                         : state.Collection.Reset(InstalledGames);
                     var semanticChange = !SameCollectionQuery(
-                        state.Collection, collection);
+                        state.Collection, collection) ||
+                        resetBrowseViewport && state.ActiveCategoryId is not null;
                     return (state with
                     {
                         SearchExpanded = false,
                         Collection = collection,
+                        ActiveCategoryId = resetBrowseViewport ? null : state.ActiveCategoryId,
                         AlternateBrowseViewport = resetBrowseViewport && semanticChange
                         ? !state.AlternateBrowseViewport
                         : state.AlternateBrowseViewport,
@@ -695,19 +705,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
             case PlayniteLibraryActions.CategoriesBack:
                 if (_navigation.Value.Route != PlayniteLibraryRoute.Categories) return;
                 _model.Update(state => state with { PreferLibraryContentFocus = true });
-                if (_navigation.Back(action.SourceElementId) == WidgetNavigationResult.Changed)
-                {
-                    await ReturnToLibraryAsync(preferContentFocus: true)
-                        .ConfigureAwait(false);
-                }
-                return;
-            case PlayniteLibraryActions.CategoryBack:
-                if (_navigation.Value.Route != PlayniteLibraryRoute.Category) return;
-                _model.Update(state => state with
-                {
-                    ActiveCategoryId = null,
-                    PreferLibraryContentFocus = true,
-                });
                 if (_navigation.Back(action.SourceElementId) == WidgetNavigationResult.Changed)
                 {
                     await ReturnToLibraryAsync(preferContentFocus: true)
@@ -1096,10 +1093,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         var organization = PresentationOrganizationLocked();
         IEnumerable<string>? savedIds = null;
-        if (route == PlayniteLibraryRoute.Category)
+        if (route == PlayniteLibraryRoute.Browse && local.ActiveCategoryId is not null)
             savedIds = PlayniteLibraryCategoryPolicy.Find(
                 organization, local.ActiveCategoryId)?.SavedIds ?? [];
-        if (local.Collection.FavoriteFilter) savedIds = organization.FavoriteSavedIds;
+        if (local.Collection.FavoriteFilter)
+            savedIds = savedIds is null
+                ? organization.FavoriteSavedIds
+                : savedIds.Intersect(organization.FavoriteSavedIds,
+                    StringComparer.Ordinal);
         if (local.Collection.ManualFilter)
             savedIds = savedIds is null
                 ? _organization.ManualSavedIds
@@ -1249,14 +1250,15 @@ public sealed partial class PlayniteLibraryWidget : Widget
             query = EffectiveQueryLocked(route, local);
             organization = PresentationOrganizationLocked();
         }
-        if (route == PlayniteLibraryRoute.Category &&
+        if (route == PlayniteLibraryRoute.Browse && local.ActiveCategoryId is not null &&
             PlayniteLibraryCategoryPolicy.Find(organization, local.ActiveCategoryId) is not
                 { SavedIds.Count: > 0 })
         {
             _model.Update(state => state with { Status = "Category is empty" });
             return new([], null, null);
         }
-        var categoryName = route == PlayniteLibraryRoute.Category
+        var categoryName = route == PlayniteLibraryRoute.Browse &&
+            local.ActiveCategoryId is not null
             ? PlayniteLibraryCategoryPolicy.Find(organization, local.ActiveCategoryId)?.Name
             : null;
         var result = await _application.QueryWithAuthorityAsync(
@@ -1266,7 +1268,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     _ when collectionState.RecentlyPlayed =>
                         PlayniteLibraryQueryScope.RecentlyPlayed,
                     PlayniteLibraryRoute.Library => PlayniteLibraryQueryScope.Home,
-                    PlayniteLibraryRoute.Category => PlayniteLibraryQueryScope.Category,
+                    PlayniteLibraryRoute.Browse when local.ActiveCategoryId is not null =>
+                        PlayniteLibraryQueryScope.Category,
                     _ => PlayniteLibraryQueryScope.Library,
                 }, categoryName),
                 requestCursor,
@@ -1419,7 +1422,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 hiddenSavedIds, cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         return resolved
-            .Where(item => requested.Contains(item.SavedId))
+            .Where(item => requested.Contains(item.SavedId) &&
+                item.Presentation.Kind == WidgetAppLibraryKind.Game &&
+                item.Presentation.Availability.State ==
+                    WidgetAppLibraryAvailabilityState.Installed)
             .DistinctBy(item => item.SavedId, StringComparer.Ordinal)
             .Select(PlayniteLibraryItem.From)
             .ToArray();
@@ -2035,6 +2041,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         Collections = PlayniteLibraryCollectionPolicy.Options(
             organization, ProvenSourcesLocked(), local.Collection.Selection),
         CompletionStatuses = _presentationAuthority.CompletionStatuses,
+        CategoryFeedback = local.CategoryFeedback,
+        CategoryFeedbackSucceeded = local.CategoryFeedbackSucceeded,
     };
     }
 
@@ -2079,13 +2087,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         if (LifecycleState != WidgetLifecycleState.Interactive ||
             _navigation.Value.Route is not (PlayniteLibraryRoute.Library or
-                PlayniteLibraryRoute.Browse or PlayniteLibraryRoute.Category)) return;
+                PlayniteLibraryRoute.Browse)) return;
         RetainHomeCollectionForRouteTransition();
         if (_navigation.Value.Route != PlayniteLibraryRoute.Library)
             _navigation.Back(sourceElementId);
         _model.Update(state => state with
         {
-            ActiveCategoryId = null,
             PreferLibraryContentFocus = false,
             BrowseInitialFocusId = null,
             ActiveBrowseReload = null,
@@ -2095,12 +2102,29 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     private void OpenCategory(string categoryId, string sourceElementId)
     {
+        if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        if (_navigation.Value.Route == PlayniteLibraryRoute.Browse)
+        {
+            SelectBrowseCategory(categoryId, sourceElementId);
+            return;
+        }
+        if (_navigation.Value.Route != PlayniteLibraryRoute.Categories) return;
+        if (_navigation.Back(sourceElementId) != WidgetNavigationResult.Changed) return;
+        if (_navigation.Push(PlayniteLibraryRoute.Browse, sourceElementId) !=
+            WidgetNavigationResult.Changed) return;
+        SelectBrowseCategory(categoryId, sourceElementId);
+    }
+
+    private void SelectBrowseCategory(string? categoryId, string sourceElementId)
+    {
         if (LifecycleState != WidgetLifecycleState.Interactive ||
-            _navigation.Value.Route != PlayniteLibraryRoute.Categories) return;
+            _navigation.Value.Route != PlayniteLibraryRoute.Browse) return;
         lock (_gate)
-            if (PlayniteLibraryCategoryPolicy.Find(
+            if (categoryId is not null && PlayniteLibraryCategoryPolicy.Find(
                     PresentationOrganizationLocked(), categoryId) is null) return;
-        _navigation.Back(sourceElementId);
+        var local = _model.Value;
+        if (string.Equals(local.ActiveCategoryId, categoryId, StringComparison.Ordinal)) return;
+        var reload = CreateBrowseReload();
         _model.Update(state => state with
         {
             ActiveCategoryId = categoryId,
@@ -2108,10 +2132,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
             FixedRows = PlayniteLibraryFixedRows.Empty,
             FixedRowsRevision = state.FixedRowsRevision + 1,
             PreferLibraryContentFocus = false,
+            AlternateBrowseViewport = !state.AlternateBrowseViewport,
+            BrowseInitialFocusId = PlayniteLibraryActions.CategoryFilter,
+            ActiveBrowseReload = reload,
         });
-        if (_navigation.Push(PlayniteLibraryRoute.Category, sourceElementId) ==
-            WidgetNavigationResult.Changed)
-            ReloadQuery();
+        ReloadQuery(retainCurrentItems: false);
     }
 
     private async Task CreateCategoryAsync(
@@ -2124,6 +2149,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
             _model.Update(state => state with
             {
                 Status = $"Category name must be 1–{PlayniteLibraryPrivateState.MaximumCategoryNameLength} characters",
+                CategoryFeedback =
+                    $"Category name must be 1–{PlayniteLibraryPrivateState.MaximumCategoryNameLength} characters",
+                CategoryFeedbackSucceeded = false,
             });
             return;
         }
@@ -2131,23 +2159,26 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             if (!_hasLivePlayniteAuthority) return;
         }
-        _model.Update(state => state with { OrganizationBusy = true });
+        _model.Update(state => state with
+        {
+            OrganizationBusy = true,
+            CategoryFeedback = null,
+        });
         string? status = null;
         try
         {
             var created = await _application.CreateCategoryAsync(
                     normalized, cancellationToken).ConfigureAwait(false);
+            if (created is not null)
+                await _library.Refresh().Completion.ConfigureAwait(false);
             lock (_gate)
             {
-                if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return;
-                if (created is not null && !authority.Categories.Any(category =>
+                var confirmed = created is not null &&
+                    PresentationOrganizationLocked().Categories.Any(category =>
+                        string.Equals(category.Id, created.Id, StringComparison.Ordinal) ||
                         string.Equals(category.Name, created.Name,
-                            StringComparison.OrdinalIgnoreCase)))
-                    PublishAuthorityMutationLocked(authority with
-                    {
-                        Categories = authority.Categories.Append(created).ToArray(),
-                    });
-                status = created is null
+                            StringComparison.OrdinalIgnoreCase));
+                status = !confirmed
                     ? "Category was not created"
                     : $"Created category {normalized}";
             }
@@ -2158,6 +2189,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
             {
                 OrganizationBusy = false,
                 Status = status ?? state.Status,
+                CategoryFeedback = status,
+                CategoryFeedbackSucceeded = status?.StartsWith(
+                    "Created category ", StringComparison.Ordinal) == true,
             });
         }
     }
@@ -2191,31 +2225,35 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
         if (categoryName is null) return;
         if (!included) names.Add(categoryName);
-        _model.Update(state => state with { OrganizationBusy = true });
+        _model.Update(state => state with
+        {
+            OrganizationBusy = true,
+            CategoryFeedback = null,
+        });
         string? status = null;
         try
         {
             var changed = await _application.SetCategoriesAsync(
                     display.SavedId, names, cancellationToken).ConfigureAwait(false);
-            if (changed is not null)
+            if (changed is null)
             {
+                status = "Playnite did not accept the category change";
+            }
+            else
+            {
+                await _library.Refresh().Completion.ConfigureAwait(false);
                 lock (_gate)
                 {
-                    if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return;
-                    PublishAuthorityMutationLocked(authority with
-                    {
-                        Categories = authority.Categories.Select(category =>
-                            category.Id != categoryId ? category : category with
-                            {
-                                SavedIds = included
-                                    ? category.SavedIds.Where(value =>
-                                        value != display.SavedId).ToArray()
-                                    : category.SavedIds.Append(display.SavedId).ToArray(),
-                            }).ToArray(),
-                    });
-                    status = included
+                    var confirmedCategory = PlayniteLibraryCategoryPolicy.Find(
+                        PresentationOrganizationLocked(), categoryId);
+                    var confirmedIncluded = confirmedCategory is not null &&
+                        PlayniteLibraryCategoryPolicy.Contains(
+                            confirmedCategory, display.SavedId);
+                    status = confirmedIncluded == !included
+                        ? included
                         ? $"Removed {display.DisplayName} from {categoryName}"
-                        : $"Added {display.DisplayName} to {categoryName}";
+                        : $"Added {display.DisplayName} to {categoryName}"
+                        : "Playnite did not confirm the category change";
                 }
             }
         }
@@ -2225,70 +2263,57 @@ public sealed partial class PlayniteLibraryWidget : Widget
             {
                 OrganizationBusy = false,
                 Status = status ?? state.Status,
+                CategoryFeedback = status,
+                CategoryFeedbackSucceeded = status?.StartsWith(
+                    "Added ", StringComparison.Ordinal) == true ||
+                    status?.StartsWith("Removed ", StringComparison.Ordinal) == true,
             });
         }
     }
 
-    private async Task SwitchCollectionAsync(
+    private ValueTask SwitchCollectionAsync(
         PlayniteLibraryCollectionDirection direction,
         string sourceElementId)
     {
         var route = _navigation.Value.Route;
         if (LifecycleState != WidgetLifecycleState.Interactive ||
-            route is not (PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Category)) return;
-
-        string? focusedSavedId = null;
-        if (ResolveActionSource(sourceElementId) is { } exactSource)
-            focusedSavedId = DisplayForSource(exactSource)?.SavedId;
+            route is not (PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse))
+            return ValueTask.CompletedTask;
 
         PlayniteLibraryPrivateState organization;
         string? currentCategoryId;
         var local = _model.Value;
         lock (_gate)
         {
-            if (local.OrganizationBusy) return;
+            if (local.OrganizationBusy) return ValueTask.CompletedTask;
             organization = PresentationOrganizationLocked();
-            currentCategoryId = route == PlayniteLibraryRoute.Category
+            currentCategoryId = route == PlayniteLibraryRoute.Browse
                 ? local.ActiveCategoryId
                 : null;
-            focusedSavedId ??= local.HeroSavedId;
         }
-        if (organization.Categories.Count == 0) return;
+        if (organization.Categories.Count == 0) return ValueTask.CompletedTask;
         var targetCategoryId = PlayniteLibraryCategoryPolicy.Cycle(
             organization.Categories, currentCategoryId, direction);
 
         Operations.Cancel("playnite-library.launch-lifecycle");
         if (targetCategoryId is null)
         {
-            if (route != PlayniteLibraryRoute.Category) return;
-            _model.Update(state => state with
-            {
-                ActiveCategoryId = null,
-                HeroSavedId = focusedSavedId,
-                PreferLibraryContentFocus = true,
-            });
-            if (_navigation.Back(sourceElementId) == WidgetNavigationResult.Changed)
-                await ReturnToLibraryAsync(preferContentFocus: true).ConfigureAwait(false);
-            return;
+            if (route != PlayniteLibraryRoute.Browse) return ValueTask.CompletedTask;
+            SelectBrowseCategory(null, sourceElementId);
+            return ValueTask.CompletedTask;
         }
 
-        lock (_gate)
-            if (PlayniteLibraryCategoryPolicy.Find(_organization, targetCategoryId) is null)
-                return;
-        _model.Update(state => state with
+        if (PlayniteLibraryCategoryPolicy.Find(organization, targetCategoryId) is null)
+                return ValueTask.CompletedTask;
+        if (route == PlayniteLibraryRoute.Library)
         {
-            ActiveCategoryId = targetCategoryId,
-            HeroSavedId = focusedSavedId,
-            Collection = state.Collection.Reset(InstalledGames),
-            FixedRows = PlayniteLibraryFixedRows.Empty,
-            FixedRowsRevision = state.FixedRowsRevision + 1,
-            PreferLibraryContentFocus = false,
-        });
-        if (route == PlayniteLibraryRoute.Library &&
-            _navigation.Push(PlayniteLibraryRoute.Category, sourceElementId) !=
-                WidgetNavigationResult.Changed)
-            return;
-        ReloadQuery();
+            RetainHomeCollectionForRouteTransition();
+            if (_navigation.Push(PlayniteLibraryRoute.Browse, sourceElementId) !=
+                    WidgetNavigationResult.Changed)
+                return ValueTask.CompletedTask;
+        }
+        SelectBrowseCategory(targetCategoryId, sourceElementId);
+        return ValueTask.CompletedTask;
     }
 
     private PlayniteLibraryDisplayItem? DisplayForSavedLocked(string savedId) =>

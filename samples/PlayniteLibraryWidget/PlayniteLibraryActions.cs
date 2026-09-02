@@ -20,6 +20,8 @@ internal static class PlayniteLibraryActions
     internal const string RecentlyPlayedFilter = "playnite-library.filter.recent";
     internal const string SourceFilter = "playnite-library.filter.source";
     internal const string SortFilter = "playnite-library.filter.sort";
+    internal const string CategoryFilter = "playnite-library.filter.category";
+    internal const string CategoryAll = "playnite-library.filter.category.option.all";
     internal const string SourceOptionPrefix = "playnite-library.filter.source.option.";
     internal const string SortOptionPrefix = "playnite-library.filter.sort.option.";
     internal const string SourceAll = SourceOptionPrefix + "all";
@@ -30,7 +32,6 @@ internal static class PlayniteLibraryActions
         SortOptionPrefix + "source-then-display-name";
     internal const string CategoriesOpen = "playnite-library.categories.open";
     internal const string CategoriesBack = "playnite-library.categories.back";
-    internal const string CategoryBack = "playnite-library.category.back";
     internal const string CategoryCreate = "playnite-library.category.create";
     internal const string CollectionPrevious = "playnite-library.collection.previous";
     internal const string CollectionNext = "playnite-library.collection.next";

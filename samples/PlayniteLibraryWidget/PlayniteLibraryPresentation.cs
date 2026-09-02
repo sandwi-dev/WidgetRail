@@ -29,6 +29,8 @@ internal sealed record PlayniteLibraryPresentationState(
     internal IReadOnlyList<PlayniteLibraryCollectionOption> Collections { get; init; } = [];
     internal IReadOnlyDictionary<string, string?> CompletionStatuses { get; init; } =
         new Dictionary<string, string?>(StringComparer.Ordinal);
+    internal string? CategoryFeedback { get; init; }
+    internal bool CategoryFeedbackSucceeded { get; init; }
 }
 
 internal static class PlayniteLibraryPresentation
@@ -83,8 +85,6 @@ internal static class PlayniteLibraryPresentation
             PlayniteLibraryRoute.Browse => "Browse games",
             PlayniteLibraryRoute.Hidden => "Hidden games",
             PlayniteLibraryRoute.Categories => "Categories",
-            PlayniteLibraryRoute.Category => PlayniteLibraryCategoryPolicy.Find(
-                state.Organization, state.ActiveCategoryId)?.Name ?? "Category",
             PlayniteLibraryRoute.PlayniteConnection => "Playnite connection",
             _ => "Playnite Library",
         };
@@ -125,10 +125,7 @@ internal static class PlayniteLibraryPresentation
                                 .Classes("playnite-library-eyebrow"),
                             UI.Text("Categories", "playnite-library.categories.title",
                                     "Categories")
-                                .Classes("playnite-library-title"),
-                            UI.Text(state.Status, "playnite-library.categories.status",
-                                    state.Status)
-                                .Classes("playnite-library-status"))
+                                .Classes("playnite-library-title"))
                         .Classes("playnite-library-categories-heading"),
                     UI.Button("Back", PlayniteLibraryActions.CategoriesBack,
                             PlayniteLibraryActions.CategoriesBack)
@@ -136,20 +133,35 @@ internal static class PlayniteLibraryPresentation
                         .AddClasses("playnite-library-control",
                             "playnite-library-categories-back"))
                 .Classes("playnite-library-categories-header");
+        if (state.Route == PlayniteLibraryRoute.Hidden)
+            header = UI.Row("playnite-library.hidden.header",
+                    UI.Stack("playnite-library.hidden.heading",
+                            UI.Text("PLAYNITE LIBRARY", "playnite-library.hidden.eyebrow",
+                                    "Playnite Library")
+                                .Classes("playnite-library-eyebrow"),
+                            UI.Text("Hidden games", "playnite-library.hidden.title",
+                                    "Hidden games")
+                                .Classes("playnite-library-title"))
+                        .Classes("playnite-library-hidden-heading"),
+                    UI.Button("Back", PlayniteLibraryActions.HiddenBack,
+                            PlayniteLibraryActions.HiddenBack)
+                        .Disabled(!renderActionsEnabled)
+                        .AddClasses("playnite-library-control",
+                            "playnite-library-hidden-back"))
+                .Classes("playnite-library-hidden-header");
         var filterControls = new List<WidgetElement>();
         if (state.Route is not (PlayniteLibraryRoute.Library or
-            PlayniteLibraryRoute.Browse or PlayniteLibraryRoute.Categories))
+            PlayniteLibraryRoute.Browse or PlayniteLibraryRoute.Categories or
+            PlayniteLibraryRoute.Hidden))
             filterControls.Add(UI.Button("Back",
                 state.Route switch
                 {
                     PlayniteLibraryRoute.Categories => "playnite-library.categories.back",
-                    PlayniteLibraryRoute.Category => "playnite-library.category.back",
                     _ => "playnite-library.hidden.back",
                 },
                 state.Route switch
                 {
                     PlayniteLibraryRoute.Categories => "playnite-library.categories.back",
-                    PlayniteLibraryRoute.Category => "playnite-library.category.back",
                     _ => "playnite-library.hidden.back",
                 })
                 .Disabled(!renderActionsEnabled)
@@ -178,6 +190,10 @@ internal static class PlayniteLibraryPresentation
         }
         if (state.Route == PlayniteLibraryRoute.Browse)
         {
+            filterControls.Add(UI.Select("Category", CategoryOptions(state),
+                    PlayniteLibraryActions.CategoryFilter, "Filter by category")
+                .Disabled(!renderActionsEnabled)
+                .AddClasses("playnite-library-control", "playnite-library-filter-control"));
             var sourceOptions = SourceOptions(state);
             filterControls.Add(UI.Select("Source", sourceOptions,
                     PlayniteLibraryActions.SourceFilter,
@@ -197,6 +213,7 @@ internal static class PlayniteLibraryPresentation
                     (state.Route == PlayniteLibraryRoute.Library ||
                      !state.FavoriteFilter &&
                      !state.RecentlyPlayed &&
+                     state.ActiveCategoryId is null &&
                      state.Query.SourceAttribution is null))
                 .AddClasses("playnite-library-control", "playnite-library-filter-control"));
         }
@@ -292,72 +309,9 @@ internal static class PlayniteLibraryPresentation
                 .Classes("playnite-library-content", "playnite-library-categories-content");
             initialFocus = "playnite-library.category.create";
         }
-        else if (state.Route == PlayniteLibraryRoute.Category)
-        {
-            var category = PlayniteLibraryCategoryPolicy.Find(
-                state.Organization, state.ActiveCategoryId);
-            var resolved = snapshot.Items.Concat(state.FixedRows.All)
-                .DistinctBy(item => item.Value.SavedId, StringComparer.Ordinal)
-                .ToDictionary(
-                item => item.Value.SavedId, StringComparer.Ordinal);
-            var stored = state.Organization.Items.ToDictionary(
-                item => item.SavedId, StringComparer.Ordinal);
-            var rows = category?.SavedIds
-                .Where(savedId => !state.Organization.ExcludedSavedIds.Contains(
-                    savedId, StringComparer.Ordinal))
-                .Select(savedId => PresentedRowFor(savedId, resolved, stored))
-                .Where(row => row is not null && MatchesFixedQuery(
-                    row.Display, state.Query, favoriteFilter: false,
-                    new Dictionary<string, int>(StringComparer.Ordinal)))
-                .Select(row => row!)
-                .ToArray() ?? [];
-            if (rows.Length == 0)
-            {
-                content = UI.EmptyState(category is null ? "Category unavailable" :
-                        $"{category.Name} is empty",
-                    "Use Menu on a current game and choose this category.",
-                    "playnite-library.category.empty",
-                    new ComponentAction("Back to All Games", "playnite-library.category.back",
-                        WidgetGlyph.Play), WidgetGlyph.Play);
-                initialFocus = "playnite-library.category.empty.action";
-            }
-            else
-            {
-                var tiles = rows.Select(row =>
-                {
-                    var current = row.Current;
-                    return Tile(
-                        row.Display.DisplayName, row.Display.SourceAttribution,
-                        row.Display.SavedId,
-                        current?.Presentation.Artwork.Find(
-                            WidgetAppLibraryArtworkRole.Tile)?.Handle,
-                        state.LaunchingSavedId,
-                        LaunchStateFor(state.LaunchStates, row.Display.SavedId),
-                        current,
-                        state.Organization.FavoriteSavedIds.Contains(
-                            row.Display.SavedId, StringComparer.Ordinal),
-                        renderActionsEnabled && !state.OrganizationBusy,
-                        PlayniteLibraryIdentity.Key(row.Display.SavedId),
-                        pageBumpers: false,
-                        collectionSwitch: state.Organization.Categories.Count != 0);
-                }).ToArray();
-                catalogPage = true;
-                catalogAnchorKey = PlayniteLibraryIdentity.Key(
-                    rows[0].Display.SavedId).Value;
-                content = UI.Stack("playnite-library.content",
-                        GameGrid("playnite-library.category.grid", tiles),
-                        UI.ControllerHint(ControllerButton.Menu, "Game options",
-                            "playnite-library.category.hint.options"))
-                    .Classes("playnite-library-content");
-                var focused = rows.FirstOrDefault(row => string.Equals(
-                    row.Display.SavedId, state.HeroSavedId, StringComparison.Ordinal)) ?? rows[0];
-                initialFocus ??= PlayniteLibraryIdentity.FocusId(
-                    "grid", PlayniteLibraryIdentity.Key(focused.Display.SavedId));
-            }
-        }
         else if (state.Route == PlayniteLibraryRoute.Hidden)
         {
-            var resolved = state.HiddenRows.Concat(snapshot.Items).Concat(state.FixedRows.All)
+            var resolved = state.HiddenRows
                 .DistinctBy(item => item.Value.SavedId, StringComparer.Ordinal)
                 .ToDictionary(
                 item => item.Value.SavedId, StringComparer.Ordinal);
@@ -366,7 +320,7 @@ internal static class PlayniteLibraryPresentation
             var favorites = new Dictionary<string, int>(StringComparer.Ordinal);
             var rows = state.Organization.ExcludedSavedIds
                 .Select(savedId => PresentedRowFor(savedId, resolved, stored))
-                .Where(row => row is not null && MatchesFixedQuery(
+                .Where(row => row?.Current is not null && MatchesFixedQuery(
                     row.Display, state.Query, favoriteFilter: false, favorites))
                 .Select(row => row!)
                 .OrderBy(row => row, PresentedRowComparer(state.Query.Sort))
@@ -376,8 +330,8 @@ internal static class PlayniteLibraryPresentation
             {
                 content = UI.EmptyState("No hidden games",
                     state.Organization.ExcludedSavedIds.Count == 0
-                        ? "Hidden games will appear here until you restore them."
-                        : "No hidden games match the current filters.",
+                        ? "Installed hidden games will appear here until you restore them."
+                        : "No installed hidden games match the current filters.",
                     "playnite-library.hidden.empty",
                     new ComponentAction("Back", "playnite-library.hidden.back",
                         WidgetGlyph.Play),
@@ -434,7 +388,8 @@ internal static class PlayniteLibraryPresentation
                     rail.PageBumpers,
                     row.CollectionItem,
                     collectionSwitch: state.Organization.Categories.Count != 0,
-                    categories: state.Route == PlayniteLibraryRoute.Library
+                    categories: state.Route is PlayniteLibraryRoute.Library or
+                        PlayniteLibraryRoute.Browse
                         ? state.Organization.Categories : null,
                     completionStatus: state.CompletionStatuses.GetValueOrDefault(
                         row.Display.SavedId),
@@ -630,7 +585,7 @@ internal static class PlayniteLibraryPresentation
             initialFocus = "playnite-library.empty.action";
         }
 
-        if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Category &&
+        if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse &&
             state.Organization.Categories.Count != 0 && renderActionsEnabled &&
             !state.OrganizationBusy)
         {
@@ -651,6 +606,19 @@ internal static class PlayniteLibraryPresentation
                 .Classes("playnite-library-content");
         }
         content = content.AddClasses("playnite-library-main");
+        if (state.CategoryFeedback is { } categoryFeedback)
+            content = UI.Stack("playnite-library.category.feedback.scope",
+                    content,
+                    UI.Toast(
+                        state.CategoryFeedbackSucceeded
+                            ? "Categories updated"
+                            : "Category update failed",
+                        categoryFeedback,
+                        state.CategoryFeedbackSucceeded
+                            ? ToastTone.Success
+                            : ToastTone.Warning,
+                        "playnite-library.category.feedback"))
+                .Classes("playnite-library-main");
         WidgetElement root;
         if (catalogPage && state.Route == PlayniteLibraryRoute.Library)
         {
@@ -702,9 +670,11 @@ internal static class PlayniteLibraryPresentation
         }
         else if (state.Route == PlayniteLibraryRoute.Hidden)
         {
-            root = UI.Stack("playnite-library.root", header, queryControls, content)
-                .Classes("playnite-library-widget", "playnite-library-route-shell",
-                    "playnite-library-hidden-surface");
+            var shell = UI.Stack("playnite-library.hidden.shell",
+                    header, queryControls, content)
+                .Classes("playnite-library-hidden-shell");
+            root = UI.Stack("playnite-library.root", shell)
+                .Classes("playnite-library-hidden-surface");
         }
         else if (catalogPage)
         {
@@ -730,7 +700,7 @@ internal static class PlayniteLibraryPresentation
         return new WidgetView(root, initialFocus, Surface: state.Route switch
         {
             PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse => CinematicSurface,
-            PlayniteLibraryRoute.Categories => CategoriesSurface,
+            PlayniteLibraryRoute.Categories or PlayniteLibraryRoute.Hidden => CategoriesSurface,
             _ => Surface,
         });
     }
@@ -739,7 +709,22 @@ internal static class PlayniteLibraryPresentation
         state.Query.SearchText is not null ||
         state.Query.SourceAttribution is not null ||
         state.Query.Sort != WidgetAppLibrarySortOrder.DisplayName ||
-        state.FavoriteFilter || state.RecentlyPlayed;
+        state.FavoriteFilter || state.RecentlyPlayed || state.ActiveCategoryId is not null;
+
+    private static IReadOnlyList<SelectOption> CategoryOptions(
+        PlayniteLibraryPresentationState state) =>
+    [
+        new SelectOption(PlayniteLibraryActions.CategoryAll, "All",
+            PlayniteLibraryActions.CategoryAll,
+            IsSelected: state.ActiveCategoryId is null),
+        .. state.Organization.Categories.Select(category =>
+        {
+            var actionId = PlayniteLibraryActions.CategoryOpen(category.Id);
+            return new SelectOption(actionId, category.Name, actionId,
+                IsSelected: string.Equals(category.Id, state.ActiveCategoryId,
+                    StringComparison.Ordinal));
+        }),
+    ];
 
     private static IReadOnlyList<SelectOption> SourceOptions(
         PlayniteLibraryPresentationState state)
