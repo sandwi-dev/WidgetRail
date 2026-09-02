@@ -84,8 +84,8 @@ internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
         string gameId, bool hidden, CancellationToken cancellationToken) =>
         ValueTask.FromResult<WidgetAppLibraryItem?>(null);
 
-    ValueTask<WidgetAppLibraryItem?> SetCategoriesAsync(
-        string gameId, IReadOnlyList<string> categories,
+    ValueTask<WidgetAppLibraryItem?> SetCategoryMembershipAsync(
+        string gameId, string categoryName, bool included,
         CancellationToken cancellationToken) =>
         ValueTask.FromResult<WidgetAppLibraryItem?>(null);
 

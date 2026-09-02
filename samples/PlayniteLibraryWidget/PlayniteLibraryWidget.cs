@@ -1250,13 +1250,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
             query = EffectiveQueryLocked(route, local);
             organization = PresentationOrganizationLocked();
         }
-        if (route == PlayniteLibraryRoute.Browse && local.ActiveCategoryId is not null &&
-            PlayniteLibraryCategoryPolicy.Find(organization, local.ActiveCategoryId) is not
-                { SavedIds.Count: > 0 })
-        {
-            _model.Update(state => state with { Status = "Category is empty" });
-            return new([], null, null);
-        }
         var categoryName = route == PlayniteLibraryRoute.Browse &&
             local.ActiveCategoryId is not null
             ? PlayniteLibraryCategoryPolicy.Find(organization, local.ActiveCategoryId)?.Name
@@ -2204,27 +2197,23 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (LifecycleState != WidgetLifecycleState.Interactive ||
             ResolveActionSource(sourceElementId) is not { } exactSource ||
             DisplayForSource(exactSource) is not { } display) return;
-        bool included;
         string? categoryName;
-        List<string> names;
         lock (_gate)
         {
             if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return;
             var category = PlayniteLibraryCategoryPolicy.Find(
                 PresentationOrganizationLocked(authority), categoryId);
             categoryName = category?.Name;
-            included = category is not null &&
-                PlayniteLibraryCategoryPolicy.Contains(category, display.SavedId);
-            names = authority.Categories
-                .Where(candidate => candidate.SavedIds.Contains(
-                    display.SavedId, StringComparer.Ordinal))
-                .Select(candidate => candidate.Name)
-                .Where(name => !string.Equals(name, categoryName,
-                    StringComparison.OrdinalIgnoreCase))
-                .ToList();
         }
         if (categoryName is null) return;
-        if (!included) names.Add(categoryName);
+        var included = false;
+        lock (_gate)
+        {
+            if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return;
+            included = PlayniteLibraryCategoryPolicy.Find(
+                    PresentationOrganizationLocked(authority), categoryId) is { } category &&
+                PlayniteLibraryCategoryPolicy.Contains(category, display.SavedId);
+        }
         _model.Update(state => state with
         {
             OrganizationBusy = true,
@@ -2233,8 +2222,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         string? status = null;
         try
         {
-            var changed = await _application.SetCategoriesAsync(
-                    display.SavedId, names, cancellationToken).ConfigureAwait(false);
+            var changed = await _application.SetCategoryMembershipAsync(
+                    display.SavedId, categoryName, !included, cancellationToken)
+                .ConfigureAwait(false);
             if (changed is null)
             {
                 status = "Playnite did not accept the category change";

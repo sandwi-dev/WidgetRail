@@ -446,22 +446,6 @@ public sealed class PlayniteLibraryLayoutTests
         var hidden = new PresentationWidget(
                 PlayniteLibraryPresentation.Render(hiddenState))
             .RenderSnapshot("playnite-library.layout.hidden", 2);
-        var category = new PlayniteLibraryCategory(
-            "category.layout", "Layout", [display.SavedId]);
-        var categoryState = State(
-            Snapshot(WidgetPagedResourceStatus.Ready, [item]),
-            new PlayniteLibraryPrivateState(
-                PlayniteLibraryPrivateState.CurrentVersion, [display])
-            {
-                Categories = [category],
-            }, PlayniteLibraryRoute.Category, []) with
-        {
-            ActiveCategoryId = category.Id,
-        };
-        var categorySnapshot = new PresentationWidget(
-                PlayniteLibraryPresentation.Render(categoryState))
-            .RenderSnapshot("playnite-library.layout.category", 3);
-
         var homeTile = Nodes(home.Root).Single(node =>
             node.ActionId == PlayniteLibraryActions.Launch);
         var hiddenTile = Nodes(hidden.Root).Single(node =>
@@ -476,11 +460,6 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.AreEqual(7, hiddenGrid.GridMaximumColumns);
         CollectionAssert.Contains(hiddenGrid.StyleClasses.ToArray(),
             "playnite-library-hidden-grid");
-        var categoryGrid = Nodes(categorySnapshot.Root).Single(node =>
-            node.Id == "playnite-library.category.grid");
-        Assert.AreEqual(220D, categoryGrid.GridMinimumColumnWidth);
-        Assert.AreEqual(4, categoryGrid.GridMaximumColumns);
-
         var theme = CompileStyles();
         var homeStyle = theme.Resolve(new WrssElement("action-surface", null,
             homeTile.StyleClasses.ToHashSet(StringComparer.Ordinal)));
@@ -495,7 +474,7 @@ public sealed class PlayniteLibraryLayoutTests
 
         var connection = PlayniteLibraryConnectionPresentation.Render(new(
             PlayniteBridgeConnectionKind.NotConfigured, Busy: false,
-            "credential_missing", Interactive: true));
+            "credential_missing", Interactive: true, Feedback: null));
         CollectionAssert.DoesNotContain(connection.Root.StyleClasses.ToArray(),
             "playnite-library-widget");
         CollectionAssert.Contains(connection.Root.StyleClasses.ToArray(),

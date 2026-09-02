@@ -32,6 +32,8 @@ internal sealed class PlayniteLibraryApplicationService(
     private readonly object _artworkGate = new();
     private HashSet<string> _pinnedArtwork = new(StringComparer.Ordinal);
     private Catalog? _lastGood;
+    private long _catalogMutationRevision;
+    private long _lastGoodMutationRevision;
     private readonly IPlayniteLibraryArtworkDiagnostics _artworkDiagnostics =
         artworkDiagnostics ?? PlayniteLibraryArtworkDiagnostics.None;
     private static readonly WidgetEncodedArtwork NeutralArtwork = new(
@@ -84,10 +86,19 @@ internal sealed class PlayniteLibraryApplicationService(
             Catalog catalog;
             try
             {
-                catalog = refresh || _lastGood is null
-                    ? await FetchCatalogAsync(cancellationToken).ConfigureAwait(false)
-                    : _lastGood;
-                _lastGood = catalog;
+                var mutationRevision = Interlocked.Read(ref _catalogMutationRevision);
+                var lastGood = _lastGood;
+                if (refresh || lastGood is null ||
+                    Interlocked.Read(ref _lastGoodMutationRevision) != mutationRevision)
+                {
+                    catalog = await FetchCatalogAsync(cancellationToken).ConfigureAwait(false);
+                    _lastGood = catalog;
+                    Interlocked.Exchange(ref _lastGoodMutationRevision, mutationRevision);
+                }
+                else
+                {
+                    catalog = lastGood;
+                }
             }
             catch (Exception exception) when (CanRetain(exception, cancellationToken) &&
                                                _lastGood is not null)
@@ -120,7 +131,7 @@ internal sealed class PlayniteLibraryApplicationService(
                 }).ToArray();
             var page = new WidgetAppLibraryPage(
                 pageItems, before, after, catalog.Revision) { Sources = sources };
-            return new(page, ProjectAuthority(catalog.Games));
+            return new(page, ProjectAuthority(catalog.Games, catalog.Categories));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -287,12 +298,41 @@ internal sealed class PlayniteLibraryApplicationService(
             (id, token) => _client.SetHiddenAsync(id, hidden, token),
             cancellationToken);
 
-    public ValueTask<WidgetAppLibraryItem?> SetCategoriesAsync(
+    public async ValueTask<WidgetAppLibraryItem?> SetCategoryMembershipAsync(
         string gameId,
-        IReadOnlyList<string> categories,
-        CancellationToken cancellationToken) => MutateAsync(gameId,
-        (id, token) => _client.SetCategoriesAsync(id, categories, token),
-        cancellationToken);
+        string categoryName,
+        bool included,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var normalizedName = NormalizeProviderCategoryName(categoryName) ??
+                throw new ArgumentException("Category is invalid.", nameof(categoryName));
+            var current = await _client.ResolveGameAsync(gameId, cancellationToken)
+                .ConfigureAwait(false);
+            if (current is null) return null;
+            var categories = current.Categories
+                .Where(name => !string.Equals(
+                    name, normalizedName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (included)
+            {
+                if (categories.Count >= PlayniteBridgeClient.MaximumCategoriesPerGame)
+                    return null;
+                categories.Add(normalizedName);
+            }
+            var changed = await _client.SetCategoriesAsync(
+                    current.Id, categories, cancellationToken).ConfigureAwait(false);
+            if (changed is null || !string.Equals(
+                    changed.Id, current.Id, StringComparison.Ordinal) ||
+                changed.Categories.Contains(
+                    normalizedName, StringComparer.OrdinalIgnoreCase) != included)
+                return null;
+            InvalidateCatalog();
+            return Project(changed, stale: false);
+        }
+        catch (Exception exception) { throw Safe(exception); }
+    }
 
     public ValueTask<WidgetAppLibraryItem?> SetCompletionStatusAsync(
         string gameId,
@@ -307,11 +347,17 @@ internal sealed class PlayniteLibraryApplicationService(
     {
         try
         {
-            var value = await _client.CreateCategoryAsync(name, cancellationToken)
+            var requestedName = NormalizeProviderCategoryName(name) ??
+                throw new ArgumentException("Category is invalid.", nameof(name));
+            var value = await _client.CreateCategoryAsync(requestedName, cancellationToken)
                 .ConfigureAwait(false);
-            return value is null || !Guid.TryParse(value.Id, out var id)
-                ? null
-                : new("category." + id.ToString("N"), value.Name, []);
+            if (value is null || !Guid.TryParse(value.Id, out var id) ||
+                NormalizeProviderCategoryName(value.Name) is not { } normalizedName ||
+                !string.Equals(normalizedName, value.Name, StringComparison.Ordinal) ||
+                !string.Equals(normalizedName, requestedName, StringComparison.Ordinal))
+                return null;
+            InvalidateCatalog();
+            return new(CategoryId(id), normalizedName, []);
         }
         catch (Exception exception) { throw Safe(exception); }
     }
@@ -359,7 +405,7 @@ internal sealed class PlayniteLibraryApplicationService(
             var changed = await mutation(current.Id, cancellationToken).ConfigureAwait(false);
             if (changed is null || !string.Equals(changed.Id, current.Id, StringComparison.Ordinal))
                 return null;
-            _lastGood = null;
+            InvalidateCatalog();
             return Project(changed, stale: false);
         }
         catch (Exception exception) { throw Safe(exception); }
@@ -389,10 +435,12 @@ internal sealed class PlayniteLibraryApplicationService(
         }
         if (games.Select(game => game.Id).Distinct(StringComparer.Ordinal).Count() != games.Count)
             throw new PlayniteBridgeDataException("invalid_playnite_data");
-        var revision = Revision(games);
+        var categories = ProjectCategories(games,
+            await _client.ListCategoriesAsync(cancellationToken).ConfigureAwait(false));
+        var revision = Revision(games, categories);
         var sequence = _lastGood is null ? 1 : _lastGood.Sequence +
             (string.Equals(_lastGood.Revision, revision, StringComparison.Ordinal) ? 0 : 1);
-        return new(games, revision, sequence,
+        return new(games, categories, revision, sequence,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
     }
 
@@ -554,33 +602,73 @@ internal sealed class PlayniteLibraryApplicationService(
     }
 
     private static PlayniteLibraryAuthorityProjection ProjectAuthority(
-        IReadOnlyList<PlayniteBridgeGame> games)
+        IReadOnlyList<PlayniteBridgeGame> games,
+        IReadOnlyList<PlayniteLibraryCategory> categories)
     {
         var favorite = games.Where(game => game.Favorite).Select(game => game.Id).ToArray();
         var hidden = games.Where(game => game.Hidden).Select(game => game.Id).ToArray();
-        var categoryMembers = new Dictionary<string, List<string>>(
+        var completion = games.ToDictionary(
+            game => game.Id, game => game.CompletionStatus, StringComparer.Ordinal);
+        return new(favorite, hidden, categories, completion);
+    }
+
+    private static IReadOnlyList<PlayniteLibraryCategory> ProjectCategories(
+        IReadOnlyList<PlayniteBridgeGame> games,
+        IReadOnlyList<PlayniteBridgeNamedItem> catalog)
+    {
+        if (catalog.Count > PlayniteLibraryPrivateState.MaximumCategories)
+            throw new PlayniteBridgeDataException("invalid_playnite_data");
+
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var projected = new List<PlayniteLibraryCategory>(catalog.Count);
+        foreach (var value in catalog)
+        {
+            if (!Guid.TryParse(value.Id, out var providerId) ||
+                NormalizeProviderCategoryName(value.Name) is not { } name ||
+                !string.Equals(name, value.Name, StringComparison.Ordinal) ||
+                !ids.Add(CategoryId(providerId)) || !names.Add(name))
+                throw new PlayniteBridgeDataException("invalid_playnite_data");
+            projected.Add(new(CategoryId(providerId), name, []));
+        }
+
+        var byName = projected.ToDictionary(
+            category => category.Name,
+            category => new List<string>(),
             StringComparer.OrdinalIgnoreCase);
         var memberships = 0;
         foreach (var game in games)
         foreach (var name in game.Categories)
         {
             if (memberships >= MaximumCategoryMemberships) break;
-            if (!categoryMembers.TryGetValue(name, out var members))
-            {
-                if (categoryMembers.Count >= PlayniteLibraryPrivateState.MaximumCategories)
-                    continue;
-                categoryMembers.Add(name, members = []);
-            }
+            if (!byName.TryGetValue(name, out var members)) continue;
             members.Add(game.Id);
             memberships++;
         }
-        var categories = categoryMembers.OrderBy(pair => pair.Key,
-                StringComparer.OrdinalIgnoreCase)
-            .Select(pair => new PlayniteLibraryCategory(
-                CategoryId(pair.Key), pair.Key, pair.Value)).ToArray();
-        var completion = games.ToDictionary(
-            game => game.Id, game => game.CompletionStatus, StringComparer.Ordinal);
-        return new(favorite, hidden, categories, completion);
+
+        return projected
+            .OrderBy(category => category.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(category => category.Id, StringComparer.Ordinal)
+            .Select(category => category with
+            {
+                SavedIds = byName[category.Name]
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(value => value, StringComparer.Ordinal)
+                    .ToArray(),
+            })
+            .ToArray();
+    }
+
+    private void InvalidateCatalog() =>
+        Interlocked.Increment(ref _catalogMutationRevision);
+
+    private static string? NormalizeProviderCategoryName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var normalized = string.Join(' ', value.Normalize(NormalizationForm.FormKC)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return normalized.Length is > 0 and <= PlayniteBridgeClient.MaximumFilterCharacters &&
+            !normalized.Any(char.IsControl) ? normalized : null;
     }
 
     private static int CursorOffset(
@@ -603,9 +691,16 @@ internal sealed class PlayniteLibraryApplicationService(
             PlayniteBridgeDataException or PlayniteBridgeTransportException or
             PlayniteCredentialException;
 
-    private static string Revision(IReadOnlyList<PlayniteBridgeGame> games) => ContentId(
+    private static string Revision(
+        IReadOnlyList<PlayniteBridgeGame> games,
+        IReadOnlyList<PlayniteLibraryCategory> categories) => ContentId(
         "catalog", games.OrderBy(game => game.Id, StringComparer.Ordinal)
-            .Select(GameRevision).ToArray());
+            .Select(GameRevision)
+            .Concat(categories.OrderBy(category => category.Id, StringComparer.Ordinal)
+                .Select(category => ContentId(
+                    "category", category.Id, category.Name,
+                    string.Join('\u001f', category.SavedIds))))
+            .ToArray());
 
     private static string GameRevision(PlayniteBridgeGame game) => ContentId(
         "game", game.Id, game.Name, game.Source, game.IsInstalled.ToString(),
@@ -617,8 +712,7 @@ internal sealed class PlayniteLibraryApplicationService(
     private static string SourceId(string value) => "source-" + Convert.ToHexString(
         SHA256.HashData(Encoding.UTF8.GetBytes(value)).AsSpan(0, 12)).ToLowerInvariant();
 
-    private static string CategoryId(string value) => "category." + Convert.ToHexString(
-        SHA256.HashData(Encoding.UTF8.GetBytes(value)).AsSpan(0, 16)).ToLowerInvariant();
+    private static string CategoryId(Guid value) => "category." + value.ToString("N");
 
     private static string ContentId(string kind, params string[] values) =>
         "pl-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
@@ -649,6 +743,7 @@ internal sealed class PlayniteLibraryApplicationService(
 
     private sealed record Catalog(
         IReadOnlyList<PlayniteBridgeGame> Games,
+        IReadOnlyList<PlayniteLibraryCategory> Categories,
         string Revision,
         long Sequence,
         long RetrievedAt);

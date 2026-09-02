@@ -61,6 +61,7 @@ public sealed class PackageRuntimeTests
             Categories = ["Controllers"],
             CompletionStatus = "Completed",
         };
+        client.Categories.Add(new(FakeLibraryClient.GuidFrom(30_001), "Controllers"));
         client.Games[1] = client.Games[1] with
         {
             IsInstalled = false,
@@ -112,6 +113,135 @@ public sealed class PackageRuntimeTests
         Assert.IsFalse(launch.SupportsRunning);
         Assert.IsFalse(launch.SupportsEnded);
         Assert.AreEqual(client.Games[0].Id, client.LastLaunchedId);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task PackageServiceUsesAuthoritativeCategoriesAndStableProviderIdentity()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(2);
+        var existingProviderId = FakeLibraryClient.GuidFrom(30_001);
+        client.Categories.Add(new(existingProviderId, "Controllers"));
+        client.Games[0] = client.Games[0] with { Categories = ["controllers"] };
+        await using var service = Service(directory.Path, client);
+
+        var initial = await service.QueryWithAuthorityAsync(
+            AllGames, new(PlayniteLibraryQueryScope.Library), null, null,
+            32, refresh: true, CancellationToken.None);
+        var existing = initial.Authority.Categories.Single();
+        Assert.AreEqual("category." + Guid.Parse(existingProviderId).ToString("N"),
+            existing.Id);
+        Assert.AreEqual("Controllers", existing.Name);
+        CollectionAssert.AreEqual(new[] { client.Games[0].Id },
+            existing.SavedIds.ToArray(),
+            "Membership names must join case-insensitively to the authoritative category.");
+
+        var created = await service.CreateCategoryAsync("Strategy", CancellationToken.None);
+        Assert.IsNotNull(created);
+        var listed = client.Categories.Single(category => category.Name == "Strategy");
+        Assert.AreEqual("category." + Guid.Parse(listed.Id).ToString("N"), created.Id);
+
+        var refreshed = await service.QueryWithAuthorityAsync(
+            AllGames, new(PlayniteLibraryQueryScope.Library), null, null,
+            32, refresh: true, CancellationToken.None);
+        var empty = refreshed.Authority.Categories.Single(category =>
+            category.Name == "Strategy");
+        Assert.AreEqual(created.Id, empty.Id,
+            "Create and authoritative-list projection must use the same provider GUID.");
+        Assert.IsEmpty(empty.SavedIds,
+            "An authoritative empty category must publish before any game membership exists.");
+
+        client.Categories.Add(new(FakeLibraryClient.GuidFrom(30_002), "Keep"));
+        client.Games[1] = client.Games[1] with { Categories = ["Keep"] };
+        var changed = await service.SetCategoryMembershipAsync(
+            client.Games[1].Id, "Strategy", included: true, CancellationToken.None);
+        Assert.IsNotNull(changed);
+        Assert.AreEqual(1, client.ResolveCalls,
+            "A category membership mutation must use one provider game snapshot.");
+        Assert.AreEqual(1, client.SetCategoryCalls);
+        CollectionAssert.AreEquivalent(new[] { "Keep", "Strategy" },
+            client.Games[1].Categories.ToArray(),
+            "The semantic mutation must preserve every unrelated provider category.");
+
+        var assigned = await service.QueryWithAuthorityAsync(
+            AllGames, new(PlayniteLibraryQueryScope.Library), null, null,
+            32, refresh: true, CancellationToken.None);
+        CollectionAssert.AreEqual(new[] { client.Games[1].Id },
+            assigned.Authority.Categories.Single(category => category.Id == created.Id)
+                .SavedIds.ToArray());
+
+        var filtered = await service.QueryWithAuthorityAsync(
+            AllGames, new PlayniteLibraryQueryContext(
+                PlayniteLibraryQueryScope.Category, "Strategy"), null, null,
+            32, refresh: false, CancellationToken.None);
+        Assert.AreEqual(client.Games[1].Id, filtered.Page.Items.Single().SavedId,
+            "Browse category filtering must use the same authoritative category name.");
+
+        client.CategoryMutationResponseCategories = [];
+        var unconfirmed = await service.SetCategoryMembershipAsync(
+            client.Games[1].Id, "Strategy", included: true, CancellationToken.None);
+        Assert.IsNull(unconfirmed,
+            "A same-game response that omits the requested membership is not success.");
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task CategoryResponsesUseProviderBoundsAndExactRequestedIdentity()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(1);
+        var longName = new string('C', 64);
+        client.Categories.Add(new(FakeLibraryClient.GuidFrom(30_500), longName));
+        await using var service = Service(directory.Path, client);
+
+        var listed = await service.QueryWithAuthorityAsync(
+            AllGames, new(PlayniteLibraryQueryScope.Library), null, null,
+            32, refresh: true, CancellationToken.None);
+        Assert.AreEqual(longName, listed.Authority.Categories.Single().Name,
+            "Provider category names through the Bridge bound must not use the 32-character UI bound.");
+        var uiCategoryNameLimit = (int?)typeof(PlayniteLibraryPrivateState)
+            .GetField(nameof(PlayniteLibraryPrivateState.MaximumCategoryNameLength),
+                BindingFlags.Static | BindingFlags.NonPublic)?.GetRawConstantValue();
+        Assert.AreEqual(32, uiCategoryNameLimit,
+            "The widget's create-entry bound remains intentionally narrower.");
+
+        client.CreatedCategoryResponseName = "Different";
+        var mismatched = await service.CreateCategoryAsync(
+            "Requested", CancellationToken.None);
+        Assert.IsNull(mismatched,
+            "A create response must identify the exact normalized requested category.");
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task FailedCategoryRefreshRetainsSequenceAndRemainsRetryable()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(1);
+        await using var service = Service(directory.Path, client);
+
+        var initial = await service.QueryWithAuthorityAsync(
+            AllGames, new(PlayniteLibraryQueryScope.Library), null, null,
+            32, refresh: true, CancellationToken.None);
+        var initialSequence = initial.Page.Sources.Single().Revision;
+        var created = await service.CreateCategoryAsync("Strategy", CancellationToken.None);
+        Assert.IsNotNull(created);
+
+        client.FailCategoryLists = true;
+        var retained = await service.QueryWithAuthorityAsync(
+            AllGames, new(PlayniteLibraryQueryScope.Library), null, null,
+            32, refresh: false, CancellationToken.None);
+        Assert.AreEqual(initialSequence, retained.Page.Sources.Single().Revision,
+            "A failed post-create refresh must retain the monotonic last-good sequence.");
+        Assert.AreEqual(WidgetAppLibrarySourceHealth.Degraded,
+            retained.Page.Sources.Single().Health);
+
+        client.FailCategoryLists = false;
+        var retried = await service.QueryWithAuthorityAsync(
+            AllGames, new(PlayniteLibraryQueryScope.Library), null, null,
+            32, refresh: false, CancellationToken.None);
+        Assert.AreEqual(initialSequence + 1, retried.Page.Sources.Single().Revision,
+            "The dirty catalog must retry without an explicit refresh and advance from last-good.");
+        Assert.AreEqual(created.Id,
+            retried.Authority.Categories.Single(category => category.Name == "Strategy").Id);
     }
 
     [TestMethod, Timeout(30_000)]
@@ -711,10 +841,14 @@ public sealed class PackageRuntimeTests
         }
 
         internal List<PlayniteBridgeGame> Games { get; }
+        internal List<PlayniteBridgeNamedItem> Categories { get; } = [];
         internal List<PlayniteBridgeGameQuery> Queries { get; } = [];
         internal int QueryCalls { get; private set; }
         internal bool FailQueries { get; set; }
         internal bool FailResolve { get; set; }
+        internal bool FailCategoryLists { get; set; }
+        internal string? CreatedCategoryResponseName { get; set; }
+        internal IReadOnlyList<string>? CategoryMutationResponseCategories { get; set; }
         internal bool MalformedSecondPage { get; set; }
         internal string? Artwork { get; set; } = TinyPng;
         internal string? BackgroundArtwork { get; set; } = TinyPng;
@@ -728,6 +862,8 @@ public sealed class PackageRuntimeTests
         internal string? LastResolvedId { get; private set; }
         internal string? LastMutatedId { get; private set; }
         internal string? LastLaunchedId { get; private set; }
+        internal int ResolveCalls { get; private set; }
+        internal int SetCategoryCalls { get; private set; }
 
         public ValueTask<PlayniteBridgeGamePage> QueryGamesAsync(
             PlayniteBridgeGameQuery query, CancellationToken cancellationToken)
@@ -746,6 +882,7 @@ public sealed class PackageRuntimeTests
             string gameId, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ResolveCalls++;
             LastResolvedId = gameId;
             if (FailResolve) throw new PlayniteBridgeTransportException(false);
             return ValueTask.FromResult(Games.SingleOrDefault(game => game.Id == gameId));
@@ -793,8 +930,14 @@ public sealed class PackageRuntimeTests
 
         public ValueTask<PlayniteBridgeGame?> SetCategoriesAsync(
             string gameId, IReadOnlyList<string> categories,
-            CancellationToken cancellationToken) => Mutate(
-            gameId, game => game with { Categories = categories }, cancellationToken);
+            CancellationToken cancellationToken)
+        {
+            SetCategoryCalls++;
+            return Mutate(gameId, game => game with
+            {
+                Categories = CategoryMutationResponseCategories ?? categories,
+            }, cancellationToken);
+        }
 
         public ValueTask<PlayniteBridgeGame?> SetCompletionStatusAsync(
             string gameId, string completionStatus, CancellationToken cancellationToken) =>
@@ -802,12 +945,29 @@ public sealed class PackageRuntimeTests
                 cancellationToken);
 
         public ValueTask<IReadOnlyList<PlayniteBridgeNamedItem>> ListCategoriesAsync(
-            CancellationToken cancellationToken) =>
-            ValueTask.FromResult<IReadOnlyList<PlayniteBridgeNamedItem>>([]);
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (FailCategoryLists) throw new PlayniteBridgeTransportException(false);
+            return ValueTask.FromResult<IReadOnlyList<PlayniteBridgeNamedItem>>(
+                Categories.ToArray());
+        }
 
         public ValueTask<PlayniteBridgeNamedItem?> CreateCategoryAsync(
-            string name, CancellationToken cancellationToken) =>
-            ValueTask.FromResult<PlayniteBridgeNamedItem?>(new(GuidFrom(20_001), name));
+            string name, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Categories.Any(category => string.Equals(
+                    category.Name, name, StringComparison.OrdinalIgnoreCase)))
+                return ValueTask.FromResult<PlayniteBridgeNamedItem?>(null);
+            var created = new PlayniteBridgeNamedItem(
+                GuidFrom(30_100 + Categories.Count), name);
+            Categories.Add(created);
+            return ValueTask.FromResult<PlayniteBridgeNamedItem?>(created with
+            {
+                Name = CreatedCategoryResponseName ?? created.Name,
+            });
+        }
 
         public ValueTask<IReadOnlyList<PlayniteBridgeNamedItem>> ListCompletionStatusesAsync(
             CancellationToken cancellationToken) =>
@@ -828,7 +988,7 @@ public sealed class PackageRuntimeTests
             return ValueTask.FromResult<PlayniteBridgeGame?>(Games[index]);
         }
 
-        private static string GuidFrom(int value) =>
+        internal static string GuidFrom(int value) =>
             $"00000000-0000-0000-0000-{value:D12}";
     }
 

@@ -1366,6 +1366,116 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task CreatedEmptyCategoryPublishesBeforeMembershipAndKeepsItsIdentity()
+    {
+        var host = new FakeHost(2);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoriesOpen,
+            "playnite-library.library.menu"));
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryCreate,
+            "playnite-library.category.create")
+        {
+            CommittedText = "Strategy",
+        });
+        await Bounded(widget.WhenLibraryIdleAsync(), "created category refresh");
+
+        var category = host.Authority.Categories.Single();
+        Assert.AreEqual("Strategy", category.Name);
+        Assert.IsEmpty(category.SavedIds,
+            "The fresh provider catalog must publish an empty category before membership.");
+        var categories = Snapshot(widget, 40_099);
+        Assert.AreEqual("playnite-library.category.create", categories.InitialFocusId,
+            "The refresh must retain category-entry focus.");
+        Assert.AreEqual("Created category Strategy", Nodes(categories.Root).Single(node =>
+            node.Id == "playnite-library.category.feedback.message").Text);
+        Assert.IsTrue(Nodes(categories.Root).Any(node =>
+            node.ActionId == PlayniteLibraryActions.CategoryOpen(category.Id)));
+
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryOpen(category.Id),
+            "playnite-library.category.open-button." + category.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "empty category Browse filter");
+        Assert.AreEqual(PlayniteLibraryQueryScope.Category,
+            host.QueryContexts[^1].Scope);
+        Assert.AreEqual("Strategy", host.QueryContexts[^1].CategoryName);
+        var emptyBrowse = Snapshot(widget, 40_100);
+        Assert.IsFalse(Nodes(emptyBrowse.Root).Any(node =>
+            node.ActionId == PlayniteLibraryActions.Launch),
+            "An authoritative empty category must publish a valid empty Browse page.");
+
+        var emptyBrowseFocus = emptyBrowse.InitialFocusId ??
+            throw new AssertFailedException("Empty Browse must retain a current focus owner.");
+        await widget.OnActionAsync(new(
+            "playnite-library.navigation.back", emptyBrowseFocus)
+        {
+            InputScopeId = emptyBrowse.ActiveInputScopeId,
+        });
+        await Bounded(widget.WhenLibraryIdleAsync(), "empty category return");
+        var home = Snapshot(widget, 40_101);
+        var tile = Nodes(home.Root).First(node =>
+            node.ActionId == PlayniteLibraryActions.Launch);
+        Assert.IsTrue(tile.ContextActions.Any(action =>
+            action.ActionId == PlayniteLibraryActions.CategoryMembership(category.Id) &&
+            action.Label == "Add to Strategy"),
+            "The empty category query must retain live authority for later membership.");
+
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryMembership(category.Id), tile.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "category membership refresh");
+        var assigned = host.Authority.Categories.Single();
+        Assert.AreEqual(category.Id, assigned.Id,
+            "Membership refresh must preserve the provider-derived category identity.");
+        CollectionAssert.AreEqual(new[] { "saved-00000" }, assigned.SavedIds.ToArray());
+
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.BrowseOpen, "playnite-library.library.menu"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "Browse publication");
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryOpen(category.Id),
+            PlayniteLibraryActions.CategoryFilter));
+        await Bounded(widget.WhenLibraryIdleAsync(), "assigned category Browse filter");
+        Assert.IsTrue(Nodes(Snapshot(widget, 40_102).Root).Any(node =>
+            node.ActionId == PlayniteLibraryActions.Launch && node.Id == tile.Id));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task CategoryReplacementUsesExactGameMembershipNotBoundedProjection()
+    {
+        const string targetId = "category.11111111111111111111111111111111";
+        const string keepId = "category.22222222222222222222222222222222";
+        var host = new FakeHost(1);
+        host.AddProviderCategory(new(targetId, "Target", []));
+        host.AddProviderCategory(new(keepId, "Keep", ["saved-00000"]));
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        host.OmitPublishedMembership(keepId, "saved-00000");
+
+        var home = Snapshot(widget, 40_103);
+        var tile = Nodes(home.Root).Single(node =>
+            node.ActionId == PlayniteLibraryActions.Launch);
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryMembership(targetId), tile.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "lossless category replacement");
+
+        CollectionAssert.AreEqual(
+            new[] { ("saved-00000", "Target", true) },
+            host.MembershipRequests.ToArray(),
+            "The widget must emit one semantic desired-state membership command.");
+        Assert.IsTrue(host.Authority.Categories.Single(category =>
+                category.Id == targetId).SavedIds.Contains(
+                "saved-00000", StringComparer.Ordinal),
+            "The post-mutation refresh must publish the requested membership.");
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task LifecycleRetirementBarrierDrainsStaleQueryBeforeCurrentAdmission()
     {
         var host = new FakeHost(2);
@@ -3345,11 +3455,11 @@ public sealed class PlayniteLibraryTests
             return (await ResolveSavedAsync([gameId], cancellationToken)).SingleOrDefault();
         }
 
-        public async ValueTask<WidgetAppLibraryItem?> SetCategoriesAsync(
-            string gameId, IReadOnlyList<string> categories,
+        public async ValueTask<WidgetAppLibraryItem?> SetCategoryMembershipAsync(
+            string gameId, string categoryName, bool included,
             CancellationToken cancellationToken)
         {
-            host.SetCategories(gameId, categories);
+            host.SetCategoryMembership(gameId, categoryName, included);
             return (await ResolveSavedAsync([gameId], cancellationToken)).SingleOrDefault();
         }
 
@@ -3395,6 +3505,7 @@ public sealed class PlayniteLibraryTests
         private readonly int _count;
         private readonly WidgetTestPrivateState _state;
         private readonly AuthorityBox _authority;
+        private readonly List<PlayniteLibraryCategory> _providerCategories;
         internal WidgetTestPrivateState State => _state;
         internal ValueTask<WidgetPrivateStateTransportMutation> WriteState(
             WriteWidgetPrivateStateTransportRequest request,
@@ -3413,6 +3524,8 @@ public sealed class PlayniteLibraryTests
         internal List<string> Launches { get; } = [];
         internal List<WidgetAppLibraryCursorRequest> Queries { get; } = [];
         internal List<PlayniteLibraryQueryContext> QueryContexts { get; } = [];
+        internal List<(string GameId, string CategoryName, bool Included)>
+            MembershipRequests { get; } = [];
         internal IReadOnlyList<WidgetAppLibrarySource> SourceObservations { get; set; } = [];
         internal Func<LaunchWidgetAppLibraryItemRequest, CancellationToken,
             ValueTask<WidgetAppLaunchObservation>>? LaunchHandler { get; set; }
@@ -3431,6 +3544,8 @@ public sealed class PlayniteLibraryTests
             _count = count;
             _state = state ?? new WidgetTestPrivateState();
             _authority = Authorities.GetValue(_state, CreateAuthority);
+            _providerCategories = _authority.Value.Categories.Select(category =>
+                category with { SavedIds = category.SavedIds.ToArray() }).ToList();
         }
 
         internal async ValueTask<PlayniteLibraryQueryResult> QueryWithCurrentAuthorityAsync(
@@ -3443,6 +3558,7 @@ public sealed class PlayniteLibraryTests
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            PublishProviderCategories();
             var request = new WidgetAppLibraryCursorRequest(
                 query, cursor?.Value, direction, limit, refresh);
             QueryContexts.Add(context);
@@ -3550,17 +3666,51 @@ public sealed class PlayniteLibraryTests
             _authority.Value = _authority.Value with { HiddenGameIds = values };
         }
 
-        internal void SetCategories(string gameId, IReadOnlyList<string> names)
+        internal void SetCategoryMembership(
+            string gameId, string categoryName, bool included)
+        {
+            MembershipRequests.Add((gameId, categoryName, included));
+            for (var index = 0; index < _providerCategories.Count; index++)
+            {
+                var category = _providerCategories[index];
+                if (!string.Equals(category.Name, categoryName,
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+                _providerCategories[index] = _providerCategories[index] with
+                {
+                    SavedIds = included
+                        ? category.SavedIds.Append(gameId)
+                            .Distinct(StringComparer.Ordinal).ToArray()
+                        : category.SavedIds
+                            .Where(value => value != gameId).ToArray(),
+                };
+            }
+        }
+
+        internal IEnumerable<string> ProviderCategoryNames(string gameId) =>
+            _providerCategories
+                .Where(category => category.SavedIds.Contains(
+                    gameId, StringComparer.Ordinal))
+                .Select(category => category.Name);
+
+        internal void AddProviderCategory(PlayniteLibraryCategory category) =>
+            _providerCategories.Add(category with
+            {
+                SavedIds = category.SavedIds.ToArray(),
+            });
+
+        internal void OmitPublishedMembership(string categoryId, string gameId)
         {
             _authority.Value = _authority.Value with
             {
-                Categories = _authority.Value.Categories.Select(category => category with
-                {
-                    SavedIds = names.Contains(category.Name,
-                            StringComparer.OrdinalIgnoreCase)
-                        ? category.SavedIds.Append(gameId).Distinct(StringComparer.Ordinal).ToArray()
-                        : category.SavedIds.Where(value => value != gameId).ToArray(),
-                }).ToArray(),
+                Categories = _authority.Value.Categories.Select(category =>
+                    string.Equals(category.Id, categoryId, StringComparison.Ordinal)
+                        ? category with
+                        {
+                            SavedIds = category.SavedIds.Where(value =>
+                                !string.Equals(value, gameId, StringComparison.Ordinal)).ToArray(),
+                        }
+                        : category).ToArray(),
             };
         }
 
@@ -3576,17 +3726,21 @@ public sealed class PlayniteLibraryTests
 
         internal PlayniteLibraryCategory? CreateCategory(string name)
         {
-            if (_authority.Value.Categories.Any(category => string.Equals(
+            if (_providerCategories.Any(category => string.Equals(
                     category.Name, name, StringComparison.OrdinalIgnoreCase))) return null;
             var created = new PlayniteLibraryCategory(
-                "category." + (_authority.Value.Categories.Count + 1).ToString("x32"),
+                "category." + (_providerCategories.Count + 1).ToString("x32"),
                 name, []);
-            _authority.Value = _authority.Value with
-            {
-                Categories = _authority.Value.Categories.Append(created).ToArray(),
-            };
+            _providerCategories.Add(created);
             return created;
         }
+
+        private void PublishProviderCategories() =>
+            _authority.Value = _authority.Value with
+            {
+                Categories = _providerCategories.Select(category => category with
+                    { SavedIds = category.SavedIds.ToArray() }).ToArray(),
+            };
 
         private static AuthorityBox CreateAuthority(WidgetTestPrivateState state)
         {
