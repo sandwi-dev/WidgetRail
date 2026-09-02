@@ -26,7 +26,11 @@ public sealed class PlayniteLibraryLayoutTests
         var collection = Snapshot(WidgetPagedResourceStatus.Ready, items,
             after: "cursor.after");
         var organization = new PlayniteLibraryPrivateState(
-            PlayniteLibraryPrivateState.CurrentVersion, display);
+            PlayniteLibraryPrivateState.CurrentVersion, display)
+        {
+            Categories = [new(
+                "category.11111111111111111111111111111111", "Strategy", [])],
+        };
         var view = PlayniteLibraryPresentation.Render(State(
             collection, organization, PlayniteLibraryRoute.Library, []));
         Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, view.Surface!.WidthMode);
@@ -85,6 +89,21 @@ public sealed class PlayniteLibraryLayoutTests
         var launchTiles = nodes.Where(node => node.ActionId == "playnite-library.launch").ToArray();
         Assert.IsTrue(launchTiles.All(node =>
             node.FocusPresentation is not null && node.ContextActions.Count <= 8));
+        Assert.IsFalse(nodes.Any(node => node.Shortcuts.Any(shortcut =>
+                (shortcut.Button is ControllerButton.LeftTrigger or
+                    ControllerButton.RightTrigger) &&
+                (shortcut.ActionId is PlayniteLibraryActions.CollectionPrevious or
+                    PlayniteLibraryActions.CollectionNext))),
+            "Home scope and posters must not bind LT/RT collection switching.");
+        Assert.IsFalse(nodes.Any(node =>
+                node.Id is "playnite-library.collection.hint.previous" or
+                    "playnite-library.collection.hint.next" ||
+                node.Text is "Previous collection" or "Next collection"),
+            "Home must not advertise previous/next collection trigger hints.");
+        Assert.IsTrue(launchTiles.All(node => node.Shortcuts.Any(shortcut =>
+                shortcut.Button == ControllerButton.X &&
+                shortcut.ActionId == PlayniteLibraryActions.Favorite)),
+            "Removing Home collection triggers must preserve the Favorite shortcut.");
         var focusedSummary = launchTiles[0].FocusPresentation!;
         CollectionAssert.Contains(focusedSummary.StyleClasses.ToArray(),
             "playnite-library-home-summary");
@@ -186,6 +205,20 @@ public sealed class PlayniteLibraryLayoutTests
         var browseSnapshot = new PresentationWidget(browseView).RenderSnapshot(
             "playnite-library.presentation.browse", 2);
         var browseNodes = Nodes(browseSnapshot.Root).ToArray();
+        Assert.IsTrue(browseNodes.Any(node => node.Shortcuts.Any(shortcut =>
+                shortcut.Button == ControllerButton.LeftTrigger &&
+                shortcut.ActionId == PlayniteLibraryActions.CollectionPrevious)));
+        Assert.IsTrue(browseNodes.Any(node => node.Shortcuts.Any(shortcut =>
+                shortcut.Button == ControllerButton.RightTrigger &&
+                shortcut.ActionId == PlayniteLibraryActions.CollectionNext)));
+        var previousCollectionHint = browseNodes.Single(node =>
+            node.Id == "playnite-library.collection.hint.previous");
+        Assert.IsTrue(Nodes(previousCollectionHint).Any(node =>
+            node.Text == "Previous collection"));
+        var nextCollectionHint = browseNodes.Single(node =>
+            node.Id == "playnite-library.collection.hint.next");
+        Assert.IsTrue(Nodes(nextCollectionHint).Any(node =>
+            node.Text == "Next collection"));
         foreach (var id in new[]
                  {
                      "playnite-library.filter.favorites",

@@ -387,7 +387,8 @@ internal static class PlayniteLibraryPresentation
                     row.Key,
                     rail.PageBumpers,
                     row.CollectionItem,
-                    collectionSwitch: state.Organization.Categories.Count != 0,
+                    collectionSwitch: state.Route == PlayniteLibraryRoute.Browse &&
+                        state.Organization.Categories.Count != 0,
                     categories: state.Route is PlayniteLibraryRoute.Library or
                         PlayniteLibraryRoute.Browse
                         ? state.Organization.Categories : null,
@@ -585,7 +586,7 @@ internal static class PlayniteLibraryPresentation
             initialFocus = "playnite-library.empty.action";
         }
 
-        if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse &&
+        if (state.Route == PlayniteLibraryRoute.Browse &&
             state.Organization.Categories.Count != 0 && renderActionsEnabled &&
             !state.OrganizationBusy)
         {
