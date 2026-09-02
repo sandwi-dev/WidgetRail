@@ -7,6 +7,7 @@ internal static class EmbeddedMediaSurfaceTests
 {
     internal static async Task Run()
     {
+        await PlaybackEventPublicationComposesWithStateOwnersAsync();
         var media = Valid("primary-media");
         var view = new WidgetView(
             UI.Stack(
@@ -459,6 +460,41 @@ internal static class EmbeddedMediaSurfaceTests
             "embedded-media-sample.instance", 5).Root, "media-shell.loop").Text);
     }
 
+    private static async Task PlaybackEventPublicationComposesWithStateOwnersAsync()
+    {
+        var fieldBacked = new PlaybackPublicationWidget(useModel: false);
+        await WidgetTestHost.InitializeAsync(fieldBacked);
+        var fieldInvalidations = 0;
+        fieldBacked.Invalidated += (_, _) => fieldInvalidations++;
+        await fieldBacked.ApplyEmbeddedMediaPlaybackEventAsync(
+            PublicationEvent(), CancellationToken.None);
+        Equal(1, fieldBacked.Value);
+        Equal(1, fieldInvalidations);
+        await WidgetTestHost.DestroyAsync(fieldBacked);
+
+        var modelBacked = new PlaybackPublicationWidget(useModel: true);
+        await WidgetTestHost.InitializeAsync(modelBacked);
+        var modelInvalidations = 0;
+        modelBacked.Invalidated += (_, _) => modelInvalidations++;
+        await modelBacked.ApplyEmbeddedMediaPlaybackEventAsync(
+            PublicationEvent(), CancellationToken.None);
+        Equal(1, modelBacked.Value);
+        Equal(2, modelInvalidations);
+        await WidgetTestHost.DestroyAsync(modelBacked);
+    }
+
+    private static EmbeddedMediaPlaybackEvent PublicationEvent() => new()
+    {
+        SurfaceId = "publication.primary",
+        Sequence = 1,
+        CommandSequence = 0,
+        MediaKey = "publication-media",
+        State = EmbeddedMediaPlaybackState.Playing,
+        PositionSeconds = 1,
+        DurationSeconds = 10,
+        Volume = 1,
+    };
+
     private static EmbeddedMediaSurface Valid(string id) => new()
     {
         Id = id,
@@ -499,6 +535,34 @@ internal static class EmbeddedMediaSurfaceTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Changes.Add(isActive);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class PlaybackPublicationWidget : Widget
+    {
+        private readonly WidgetModel<int>? _model;
+        private int _value;
+
+        internal PlaybackPublicationWidget(bool useModel)
+        {
+            if (useModel) _model = CreateModel(0);
+        }
+
+        internal int Value => _model?.Value ?? _value;
+
+        public override WidgetView Render() => new(
+            UI.Text(Value.ToString(System.Globalization.CultureInfo.InvariantCulture), "root"));
+
+        public override ValueTask OnEmbeddedMediaPlaybackEventAsync(
+            EmbeddedMediaPlaybackEvent playbackEvent,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_model is null)
+                _value++;
+            else
+                _model.Update(value => value + 1);
             return ValueTask.CompletedTask;
         }
     }

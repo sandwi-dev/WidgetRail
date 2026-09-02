@@ -600,6 +600,13 @@ because only a container can own an input scope and Back shortcut. The default
 maximum depth is eight (16 hard maximum) and the route-identity table is bounded
 at 32.
 
+Those generated scopes and stack semantics are part of the navigator contract.
+For a flat lateral route machine that must retain existing author-supplied scope
+IDs and has no nested Back stack, keep the route in widget-owned state and
+publish the exact active scope directly. Do not move it into `WidgetNavigator`
+if generated scopes or stack Back would change observable focus/action
+authority, and never mirror a navigator snapshot into `WidgetModel`.
+
 All open-widget actions produced by the standard router carry the current
 `WidgetActionEvent.InputScopeId`, including A activation, focused/root
 shortcuts, and Slider changes. Validate it for nested manual routing; never
@@ -629,6 +636,12 @@ no trailing slash, userinfo, wildcard, or explicit port, and are exact origins
 for subframes only; the
 top-level document remains the sealed package entry asset. This contract does
 not expose URLs, DOM, script, browsing, or provider identity.
+
+The SDK requests a compatibility invalidation after each playback callback so
+widgets backed by ordinary fields still publish the observation. If the callback
+updates a `WidgetModel`, resource, or command facility, that owner also publishes
+its own semantic change; adjacent requests are coalesced by the runtime. Do not
+add a manual `Invalidate()` to batch or compensate for either owner.
 
 Protocol v27 adds the closed `SetPlaybackRate`, `SetMuted`, and `SetLoop`
 playback commands. Playback rate is finite and bounded from 0.5 through 2.0;

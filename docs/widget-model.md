@@ -27,6 +27,22 @@ copy the resource or navigator snapshot into the model merely to make one large
 object. Their lifecycle, cancellation, revision, and authority remain with the
 SDK owner that already implements them.
 
+Each owner also publishes its own semantic changes. One logical action can
+therefore request adjacent invalidations from more than one owner—for example,
+a model can commit an active search query immediately before a cursor resource
+enters Loading. The runtime coalesces adjacent requests before rendering; this
+is not an atomic cross-owner transaction or a guarantee that intermediate owner
+states are unobservable. Do not add a widget-level `Invalidate()` to batch or
+compensate for those publications. Use a single model update only when the
+values genuinely share one widget-owned atomic invariant.
+
+The embedded-media callback is a deliberate compatibility example. After
+`OnEmbeddedMediaPlaybackEventAsync` returns, the SDK requests an invalidation so
+a widget that stores playback in an ordinary field still republishes. A model,
+resource, or command facility updated inside that callback publishes its own
+change as usual. The SDK cannot conditionally suppress the callback publication
+without losing renders for valid field-backed widgets.
+
 Remote authority, provider clients, tasks, cancellation tokens, mutable caches,
 and mutable dictionaries or lists do not belong in a model. The model may hold
 an immutable, presentation-safe projection of provider data when the widget—not
@@ -244,6 +260,8 @@ examples of the generic contract, not package-specific API behavior.
 - Using `Changed` to run domain behavior or maintain a mirrored state store.
 - Calling `Invalidate()` after a changed model update, which requests a second
   invalidation for the same local transition.
+- Treating adjacent invalidations from independent SDK owners as a defect and
+  copying their state into one model merely to force one publication.
 
 See the [Widget authoring guide](widget-authoring-guide.md) for the broader
 lifecycle, operation, resource, navigation, and packaging workflow, and the

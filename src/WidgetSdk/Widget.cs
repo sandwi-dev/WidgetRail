@@ -607,7 +607,10 @@ public abstract partial class Widget
     /// <summary>
     /// Receives one validated playback observation from the exact current
     /// host-owned embedded-media session. The runtime republishes the widget
-    /// after this callback completes.
+    /// after this callback completes, including for widgets that store the
+    /// observation in an ordinary field. SDK state owners updated by this
+    /// callback may request their own publication; do not add a manual
+    /// <see cref="Invalidate"/> to compensate or batch those owner changes.
     /// </summary>
     public virtual ValueTask OnEmbeddedMediaPlaybackEventAsync(
         EmbeddedMediaPlaybackEvent playbackEvent,
@@ -624,6 +627,9 @@ public abstract partial class Widget
     {
         await OnEmbeddedMediaPlaybackEventAsync(playbackEvent, cancellationToken)
             .ConfigureAwait(false);
+        // Compatibility publication for field-backed widgets. An SDK state
+        // owner used by the callback publishes independently; the runtime
+        // coalesces adjacent invalidation requests before rendering.
         Invalidate();
     }
 

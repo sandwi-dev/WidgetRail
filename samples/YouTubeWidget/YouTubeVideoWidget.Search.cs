@@ -155,6 +155,9 @@ public sealed partial class YouTubeVideoWidget
         catch (OperationCanceledException) when (shutdownToken.IsCancellationRequested) { }
     }
 
+    // These are flat lateral routes with established public scope IDs, not a
+    // nested Back stack. Keeping route state in the model preserves exact
+    // action/scope authority; WidgetNavigator would generate different scopes.
     private WidgetView RenderApplication(YouTubeWidgetState state)
     {
         if (!state.Setup.ConfigurationKnown)

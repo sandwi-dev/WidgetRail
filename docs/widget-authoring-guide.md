@@ -471,6 +471,15 @@ future container roots preserve their concrete immutable type. Do not cast a
 page root to a particular layout type; a leaf control is rejected immediately
 because it cannot own the navigator input scope or its Back shortcut.
 
+Use this navigator when the generated per-route input scopes and bounded stack
+are the desired public behavior. It is not a requirement for a flat, lateral
+route machine that already has stable author-supplied scope IDs and no nested
+Back stack. Such a widget may keep its route in its widget-owned model, render
+the exact stable scope for that route, publish it as `ActiveInputScopeId`, and
+validate scoped actions against that same value. Do not adopt the navigator if
+changing to generated scopes or stack Back would change observable action,
+focus, or stale-Back authority. Do not mirror a navigator value into a model.
+
 Use `WidgetIds` for large stable hierarchies:
 
 ```csharp
@@ -1312,6 +1321,14 @@ cache, and error state. Both own invalidation, with a non-invalidating overload
 only for an owner that immediately publishes one composed update.
 `WhenIdleAsync` supports deterministic tests. The resource starts no polling,
 subscription, or retry by itself and never infers domain merge policy.
+
+SDK owners publish independently. A model update followed by
+`resource.EnsureLoaded()` can request two adjacent invalidations, which the
+runtime coalesces before rendering. That is not a reason to copy the resource
+snapshot into the model or add a manual `Invalidate()`. Likewise, the SDK
+always republishes after `OnEmbeddedMediaPlaybackEventAsync` so field-backed
+widgets remain valid; a model or command updated by that callback still owns
+and publishes its own transition.
 
 ### Bounded offset-paged resources
 
