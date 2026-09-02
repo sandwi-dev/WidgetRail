@@ -1057,24 +1057,26 @@ public:
         constexpr std::wstring_view presentationGeneration{L"presentation-1"};
         constexpr std::wstring_view surfaceId{L"handoff-test-media"};
         constexpr long long snapshotSequence = 1;
-        const auto mediaDeclaration = [surfaceId] {
+        const auto makeMediaDeclaration = [surfaceId](const bool retain) {
             widgetrail::EmbeddedMediaSurfaceDeclaration media;
             media.id = surfaceId;
             media.accessibleName = L"Provider-neutral retained media";
             media.entryAsset = L"index.html";
             media.aspectRatio = 16.0 / 9.0;
             media.compactPinnedPresentation = true;
-            media.retainSessionWhenHidden = true;
+            media.retainSessionWhenHidden = retain;
             media.commands = {L"togglePlayback", L"seekBackward", L"seekForward"};
             return media;
-        }();
+        };
+        const auto mediaDeclaration = makeMediaDeclaration(true);
         const auto seedSession = [
             this, widgetId, instanceId, runtimeGeneration,
-            presentationGeneration, surfaceId, &mediaDeclaration](
+            presentationGeneration, surfaceId](
             const std::wstring_view key,
             const EmbeddedMediaProjection projection,
             const widgetrail::richmedia::PresentationTransferFailureStage
                 failureStage,
+            const widgetrail::EmbeddedMediaSurfaceDeclaration& declaration,
             const bool initiallyVisible = false) {
             residentEmbeddedMediaSessions_.clear();
             boundEmbeddedMediaSessionKey_.clear();
@@ -1102,7 +1104,8 @@ public:
             authority.presentationGeneration = presentationGeneration;
             authority.surfaceId = surfaceId;
             authority.sequence = snapshotSequence;
-            authority.resourceContract = mediaDeclaration;
+            authority.resourceContract = declaration;
+            authority.commands = declaration.commands;
             authority.projection = projection;
             session.authority = std::move(authority);
             residentEmbeddedMediaSessions_.emplace(
@@ -1118,7 +1121,8 @@ public:
         seedSession(
             L"suspend-session", EmbeddedMediaProjection::Overlay,
             widgetrail::richmedia::PresentationTransferFailureStage::
-                VisibilityDetach);
+                VisibilityDetach,
+            mediaDeclaration);
         testEmbeddedMediaHandoffRetirementObserved_ = false;
         SyncWidgetActivity();
         if (!testEmbeddedMediaHandoffRetirementObserved_ || !sessionRetired())
@@ -1134,7 +1138,8 @@ public:
         seedSession(
             L"transfer-session", EmbeddedMediaProjection::Pinned,
             widgetrail::richmedia::PresentationTransferFailureStage::
-                RootTargetDetach);
+                RootTargetDetach,
+            mediaDeclaration);
         testEmbeddedMediaHandoffRetirementObserved_ = false;
         SyncWidgetActivity();
         const bool transferRetired =
@@ -1157,7 +1162,7 @@ public:
             embeddedMediaAuthority_.reset();
             embeddedMediaClientBounds_.reset();
             embeddedMediaClientClip_.reset();
-            testEmbeddedMediaPresentationAuthority_.reset();
+            lastWidgetRenderResult_ = {};
             if (window_ && IsWindow(window_)) DestroyWindow(window_);
             window_ = nullptr;
             std::error_code ignored;
@@ -1194,54 +1199,123 @@ public:
                 HandlePinnedSurfaceWindowRetirement(reason);
             });
         pinnedSurfaceCoordinator_.OnOverlayShown();
-        widgetrail::WidgetSnapshot snapshot;
-        snapshot.sequence = snapshotSequence;
-        snapshot.instanceId = instanceId;
-        snapshot.activeInputScopeId = L"root";
-        snapshot.root.id = L"root";
-        snapshot.root.kind = L"stack";
-        snapshot.root.inputScopeId = L"root";
-        snapshot.embeddedMedia = mediaDeclaration;
-        widgetrail::pinned::WidgetSurfaceAdmission admission;
-        admission.widgetId = widgetId;
-        admission.instanceId = instanceId;
-        admission.runtimeGeneration = runtimeGeneration;
-        admission.presentationGeneration = presentationGeneration;
-        admission.name = L"Retained media handoff fixture";
-        admission.pinningSupported = true;
-        admission.snapshot = snapshot;
-        admission.initialContentWidthDip = 480.0F;
-        admission.initialContentHeightDip = 270.0F;
-        if (!pinnedSurfaceCoordinator_.Pin(std::move(admission), error) ||
-            !pinnedSurfaceCoordinator_.CommitSetup(error)) return fail(10);
-        UpdateWindow(pinnedSurfaceCoordinator_.window());
-        if (!pinnedSurfaceCoordinator_.CurrentMediaViewport(surfaceId))
+        const auto makeSnapshot = [instanceId](
+            const widgetrail::EmbeddedMediaSurfaceDeclaration& declaration,
+            const long long sequence) {
+            widgetrail::WidgetSnapshot snapshot;
+            snapshot.sequence = sequence;
+            snapshot.instanceId = instanceId;
+            snapshot.activeInputScopeId = L"root";
+            snapshot.root.id = L"root";
+            snapshot.root.kind = L"stack";
+            snapshot.root.inputScopeId = L"root";
+            snapshot.embeddedMedia = declaration;
+            return snapshot;
+        };
+        const auto makeDescriptor = [widgetId, instanceId](
+            const std::wstring_view runtime,
+            const std::wstring_view presentation) {
+            widgetrail::WidgetDescriptor descriptor;
+            descriptor.id = widgetId;
+            descriptor.name = L"Retained media handoff fixture";
+            descriptor.instanceId = instanceId;
+            descriptor.runtimeGeneration = runtime;
+            descriptor.presentationGeneration = presentation;
+            descriptor.pinningSupported = true;
+            return descriptor;
+        };
+        const auto preparePinnedCase = [
+            this, widgetId, instanceId, runtimeGeneration,
+            presentationGeneration, surfaceId, snapshotSequence,
+            &seedSession, &error](
+            const std::wstring_view key,
+            const widgetrail::EmbeddedMediaSurfaceDeclaration& declaration,
+            widgetrail::WidgetDescriptor currentDescriptor,
+            widgetrail::WidgetSnapshot currentSnapshot) {
+            const auto pinnedSnapshot = [&] {
+                auto value = currentSnapshot;
+                value.sequence = snapshotSequence;
+                value.instanceId = instanceId;
+                value.embeddedMedia = declaration;
+                return value;
+            }();
+            widgetrail::pinned::WidgetSurfaceAdmission admission;
+            admission.widgetId = widgetId;
+            admission.instanceId = instanceId;
+            admission.runtimeGeneration = runtimeGeneration;
+            admission.presentationGeneration = presentationGeneration;
+            admission.name = L"Retained media handoff fixture";
+            admission.pinningSupported = true;
+            admission.snapshot = pinnedSnapshot;
+            admission.initialContentWidthDip = 480.0F;
+            admission.initialContentHeightDip = 270.0F;
+            if (!pinnedSurfaceCoordinator_.Pin(std::move(admission), error) ||
+                !pinnedSurfaceCoordinator_.CommitSetup(error)) return false;
+            UpdateWindow(pinnedSurfaceCoordinator_.window());
+            if (!pinnedSurfaceCoordinator_.CurrentMediaViewport(surfaceId) ||
+                !compositionSurface_.InitializePinnedExternalContentEndpoint(
+                    pinnedSurfaceCoordinator_.window(), error)) return false;
+            sessions_.SeedCurrentPresentationForEmbeddedMediaHandoffTest(
+                std::move(currentDescriptor), std::move(currentSnapshot));
+            sessions_.SeedLifecycleForEmbeddedMediaHandoffTest(
+                std::wstring{widgetId}, widgetrail::WidgetLifecycleState::Background);
+            seedSession(
+                key, EmbeddedMediaProjection::Pinned,
+                widgetrail::richmedia::PresentationTransferFailureStage::None,
+                declaration, true);
+            state_ = widgetrail::OverlayState(
+                {}, std::vector<std::wstring>{std::wstring{widgetId}});
+            ShowWindow(window_, SW_HIDE);
+            testEmbeddedMediaHandoffRetirementObserved_ = false;
+            return true;
+        };
+        const auto unpinRetires = [this, &sessionRetired](
+            const widgetrail::pinned::WidgetSurfaceStopReason reason) {
+            return pinnedSurfaceCoordinator_.Unpin(reason) &&
+                !testEmbeddedMediaHandoffRetirementObserved_ &&
+                !pinnedSurfaceCoordinator_.pinned() && sessionRetired();
+        };
+
+        if (!preparePinnedCase(
+                L"stale-sequence", mediaDeclaration,
+                makeDescriptor(runtimeGeneration, presentationGeneration),
+                makeSnapshot(mediaDeclaration, snapshotSequence + 1)) ||
+            !unpinRetires(widgetrail::pinned::WidgetSurfaceStopReason::Unpin))
+            return fail(10);
+
+        if (!preparePinnedCase(
+                L"replaced-runtime", mediaDeclaration,
+                makeDescriptor(L"runtime-2", presentationGeneration),
+                makeSnapshot(mediaDeclaration, snapshotSequence)) ||
+            !unpinRetires(widgetrail::pinned::WidgetSurfaceStopReason::Unpin))
             return fail(11);
-        if (!compositionSurface_.InitializePinnedExternalContentEndpoint(
-                pinnedSurfaceCoordinator_.window(), error)) return fail(12);
+
+        const auto nonRetainedDeclaration = makeMediaDeclaration(false);
+        if (!preparePinnedCase(
+                L"non-retained", nonRetainedDeclaration,
+                makeDescriptor(runtimeGeneration, presentationGeneration),
+                makeSnapshot(nonRetainedDeclaration, snapshotSequence)) ||
+            !unpinRetires(widgetrail::pinned::WidgetSurfaceStopReason::Unpin))
+            return fail(12);
+
+        if (!preparePinnedCase(
+                L"hidden-close", mediaDeclaration,
+                makeDescriptor(runtimeGeneration, presentationGeneration),
+                makeSnapshot(mediaDeclaration, snapshotSequence)) ||
+            !unpinRetires(widgetrail::pinned::WidgetSurfaceStopReason::Close))
+            return fail(13);
 
         constexpr std::wstring_view retainedSessionKey{L"retained-session"};
-        seedSession(
-            retainedSessionKey, EmbeddedMediaProjection::Pinned,
-            widgetrail::richmedia::PresentationTransferFailureStage::None,
-            true);
+        if (!preparePinnedCase(
+                retainedSessionKey, mediaDeclaration,
+                makeDescriptor(runtimeGeneration, presentationGeneration),
+                makeSnapshot(mediaDeclaration, snapshotSequence))) return fail(14);
         const auto sameCoordinator =
             residentEmbeddedMediaSessions_.at(std::wstring{retainedSessionKey})
                 .coordinator;
-        testEmbeddedMediaPresentationAuthority_ =
-            TestEmbeddedMediaPresentationAuthority{
-                std::wstring{retainedSessionKey}, std::wstring{widgetId},
-                std::wstring{instanceId}, std::wstring{runtimeGeneration},
-                std::wstring{presentationGeneration}, std::wstring{surfaceId},
-                snapshotSequence, EmbeddedMediaProjection::Overlay,
-                mediaDeclaration, std::nullopt};
-        state_ = widgetrail::OverlayState(
-            {}, std::vector<std::wstring>{std::wstring{widgetId}});
-        ShowWindow(window_, SW_HIDE);
-        testEmbeddedMediaHandoffRetirementObserved_ = false;
         if (!pinnedSurfaceCoordinator_.Unpin(
                 widgetrail::pinned::WidgetSurfaceStopReason::Unpin))
-            return fail(13);
+            return fail(15);
         if (testEmbeddedMediaHandoffRetirementObserved_ ||
             pinnedSurfaceCoordinator_.pinned() || !richMediaSurface_ ||
             richMediaSurface_.get() != sameCoordinator.get() ||
@@ -1251,7 +1325,7 @@ public:
             !embeddedMediaAuthority_ ||
             embeddedMediaAuthority_->projection !=
                 EmbeddedMediaProjection::Overlay ||
-            !richMediaSurface_->state().failureCode.empty()) return fail(14);
+            !richMediaSurface_->state().failureCode.empty()) return fail(16);
 
         SyncWidgetActivity();
         if (!richMediaSurface_ ||
@@ -1260,12 +1334,17 @@ public:
             !embeddedMediaAuthority_ ||
             embeddedMediaAuthority_->projection !=
                 EmbeddedMediaProjection::Overlay ||
-            !richMediaSurface_->state().failureCode.empty()) return fail(15);
+            !richMediaSurface_->state().failureCode.empty()) return fail(17);
 
-        testEmbeddedMediaPresentationAuthority_->geometry =
-            widgetrail::MediaViewportPresentationGeometry{
-                {0, 0, 320, 180}, {0, 0, 320, 180}, {0, 0, 320, 180}};
-        if (!state_.OpenWidgetWithTrayFocus(widgetId)) return fail(16);
+        lastWidgetRenderResult_ = {};
+        lastWidgetRenderResult_.succeeded = true;
+        lastWidgetRenderResult_.mediaViewportRegions.push_back({
+            L"handoff-test-media-node", std::wstring{surfaceId},
+            {0.0F, 0.0F, 320.0F, 180.0F},
+            {0.0F, 0.0F, 320.0F, 180.0F}});
+        if (!state_.OpenWidgetWithTrayFocus(widgetId)) return fail(18);
+        sessions_.SeedLifecycleForEmbeddedMediaHandoffTest(
+            std::wstring{widgetId}, widgetrail::WidgetLifecycleState::Visible);
         ShowWindow(window_, SW_SHOWNOACTIVATE);
         SyncWidgetActivity();
         const bool reattached = richMediaSurface_ &&
@@ -1279,7 +1358,7 @@ public:
                 EmbeddedMediaProjection::Overlay &&
             boundEmbeddedMediaSessionKey_ == retainedSessionKey;
         cleanup();
-        return reattached ? 0 : 17;
+        return reattached ? 0 : 19;
     }
 #endif
 
@@ -2881,21 +2960,6 @@ private:
         std::optional<RECT> clientClip;
     };
 
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    struct TestEmbeddedMediaPresentationAuthority final {
-        std::wstring sessionKey;
-        std::wstring widgetId;
-        std::wstring instanceId;
-        std::wstring runtimeGeneration;
-        std::wstring presentationGeneration;
-        std::wstring surfaceId;
-        long long sequence{};
-        EmbeddedMediaProjection projection{EmbeddedMediaProjection::Overlay};
-        widgetrail::EmbeddedMediaSurfaceDeclaration resourceContract;
-        std::optional<widgetrail::MediaViewportPresentationGeometry> geometry;
-    };
-#endif
-
     struct CommittedOverlayFullscreenMediaPresentation final {
         std::wstring widgetId;
         std::wstring instanceId;
@@ -3023,38 +3087,10 @@ private:
             96.0F * interfaceScale;
     }
 
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    [[nodiscard]] bool TestEmbeddedMediaPresentationAuthorityCurrent(
-        const long long expectedSequence) const noexcept {
-        const auto& test = testEmbeddedMediaPresentationAuthority_;
-        return test && embeddedMediaAuthority_ &&
-            boundEmbeddedMediaSessionKey_ == test->sessionKey &&
-            embeddedMediaAuthority_->widgetId == test->widgetId &&
-            embeddedMediaAuthority_->instanceId == test->instanceId &&
-            embeddedMediaAuthority_->runtimeGeneration ==
-                test->runtimeGeneration &&
-            embeddedMediaAuthority_->presentationGeneration ==
-                test->presentationGeneration &&
-            embeddedMediaAuthority_->surfaceId == test->surfaceId &&
-            embeddedMediaAuthority_->sequence == test->sequence &&
-            embeddedMediaAuthority_->projection == test->projection &&
-            widgetrail::SameEmbeddedMediaResourceContract(
-                embeddedMediaAuthority_->resourceContract,
-                test->resourceContract) &&
-            expectedSequence == test->sequence;
-    }
-#endif
-
     [[nodiscard]] std::optional<widgetrail::MediaViewportPresentationGeometry>
     ResolveEmbeddedMediaPresentationGeometry(
         const long long expectedSequence) const {
         if (!embeddedMediaAuthority_) return std::nullopt;
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        if (TestEmbeddedMediaPresentationAuthorityCurrent(expectedSequence) &&
-            testEmbeddedMediaPresentationAuthority_->geometry) {
-            return testEmbeddedMediaPresentationAuthority_->geometry;
-        }
-#endif
         const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
         if (!snapshot || !snapshot->embeddedMedia ||
             snapshot->embeddedMedia->id != embeddedMediaAuthority_->surfaceId ||
@@ -3125,10 +3161,6 @@ private:
 
     [[nodiscard]] bool EmbeddedMediaAuthorityCurrent() const noexcept {
         if (!embeddedMediaAuthority_) return false;
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        if (TestEmbeddedMediaPresentationAuthorityCurrent(
-                embeddedMediaAuthority_->sequence)) return true;
-#endif
         const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
         return snapshot && EmbeddedMediaAuthorityMatches(*snapshot);
     }
@@ -3981,6 +4013,33 @@ private:
         return false;
     }
 
+    [[nodiscard]] bool HiddenPinnedEmbeddedMediaAuthorityCurrent() const noexcept {
+        if (!embeddedMediaAuthority_ ||
+            embeddedMediaAuthority_->projection != EmbeddedMediaProjection::Pinned)
+            return false;
+        const auto* descriptor = sessions_.FindDescriptor(
+            embeddedMediaAuthority_->widgetId);
+        const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
+        const auto presentation = sessions_.Presentation(
+            embeddedMediaAuthority_->widgetId);
+        return descriptor && snapshot && snapshot->embeddedMedia &&
+            presentation.authority ==
+                widgetrail::WidgetPresentationAuthority::Current &&
+            presentation.snapshot == snapshot &&
+            descriptor->id == embeddedMediaAuthority_->widgetId &&
+            descriptor->instanceId == embeddedMediaAuthority_->instanceId &&
+            snapshot->instanceId == embeddedMediaAuthority_->instanceId &&
+            descriptor->runtimeGeneration ==
+                embeddedMediaAuthority_->runtimeGeneration &&
+            descriptor->presentationGeneration ==
+                embeddedMediaAuthority_->presentationGeneration &&
+            snapshot->sequence == embeddedMediaAuthority_->sequence &&
+            snapshot->embeddedMedia->id == embeddedMediaAuthority_->surfaceId &&
+            widgetrail::SameEmbeddedMediaResourceContract(
+                embeddedMediaAuthority_->resourceContract,
+                *snapshot->embeddedMedia);
+    }
+
     void HandlePinnedSurfaceWindowRetirement(
         const widgetrail::pinned::WidgetSurfaceStopReason reason) {
         if (!BindEmbeddedMediaSessionForWidget(
@@ -4000,8 +4059,11 @@ private:
         const bool returnToOverlay = userRetirement &&
             state_.surface() == widgetrail::Surface::Widget &&
             state_.activeWidget() == retiringWidgetId;
-        const bool retainHidden = userRetirement &&
-            embeddedMediaAuthority_->resourceContract.retainSessionWhenHidden;
+        const bool retainHidden =
+            reason == widgetrail::pinned::WidgetSurfaceStopReason::Unpin &&
+            !returnToOverlay &&
+            embeddedMediaAuthority_->resourceContract.retainSessionWhenHidden &&
+            HiddenPinnedEmbeddedMediaAuthorityCurrent();
         bool transferPending = false;
         if ((!returnToOverlay && !retainHidden) ||
             !TransferEmbeddedMediaSurface(
@@ -15914,8 +15976,6 @@ private:
 #endif
 #if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
     bool testEmbeddedMediaHandoffRetirementObserved_{};
-    std::optional<TestEmbeddedMediaPresentationAuthority>
-        testEmbeddedMediaPresentationAuthority_;
 #endif
     widgetrail::PlacementRefreshGate placementRefreshGate_;
     widgetrail::DisplayRefreshAccumulator displayRefresh_;
