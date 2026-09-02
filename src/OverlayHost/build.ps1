@@ -20,6 +20,7 @@ param(
     [switch]$CompositionTestsOnly,
     [switch]$WidgetSwitchTestsOnly,
     [switch]$PinnedSliderRouteTestsOnly,
+    [switch]$EmbeddedMediaHandoffTestsOnly,
     [switch]$WidgetSwitchFallbackAuthorityTestsOnly,
     [string]$WidgetSwitchFallbackAuthorityReplayLog,
     [Int64]$WidgetSwitchFallbackAuthorityReplayMarker,
@@ -1717,6 +1718,9 @@ $hostCompileArguments = $common
 if ($PinnedSliderRouteTestsOnly) {
     $hostCompileArguments += '/DWRAIL_PINNED_SLIDER_ROUTE_TESTING'
 }
+if ($EmbeddedMediaHandoffTestsOnly) {
+    $hostCompileArguments += '/DWRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING'
+}
 $hostArguments = $hostCompileArguments + @(
     '/DWRAIL_OVERLAY_PLATFORM_IMPORTS',
     (Join-Path $projectDirectory 'main.cpp'),
@@ -1779,6 +1783,19 @@ $hostArguments = $hostCompileArguments + @(
 & $cl $hostArguments
 if ($LASTEXITCODE -ne 0) {
     throw "OverlayHost build failed with exit code $LASTEXITCODE."
+}
+
+if ($EmbeddedMediaHandoffTestsOnly) {
+    if ($SkipTests) {
+        throw 'EmbeddedMediaHandoffTestsOnly cannot be combined with SkipTests.'
+    }
+    & (Join-Path $outputDirectory 'OverlayHost.exe') `
+        --embedded-media-handoff-owner-tests
+    if ($LASTEXITCODE -ne 0) {
+        throw "Embedded media handoff owner tests failed with exit code $LASTEXITCODE."
+    }
+    Write-Host 'Embedded media handoff owner tests passed: 2.'
+    return
 }
 
 $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'

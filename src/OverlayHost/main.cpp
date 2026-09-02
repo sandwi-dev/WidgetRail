@@ -101,6 +101,13 @@ constexpr UINT kScrollPaginationPrefetchMessage = WM_APP + 15;
 #if defined(WRAIL_PINNED_SLIDER_ROUTE_TESTING)
 constexpr ULONG_PTR kPinnedSliderControllerFrameCopyData = 0x5752534cU;
 #endif
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+enum class EmbeddedMediaHandoffTestRetirementPoint {
+    None,
+    Suspend,
+    Transfer,
+};
+#endif
 
 constexpr BYTE kBackdropOpacity = 164;
 constexpr std::uint64_t kSlowCompositionFrameMicroseconds = 100000;
@@ -1080,6 +1087,62 @@ public:
     void BindProcessActivation(widgetrail::process::OverlayProcessOwner& owner) noexcept {
         owner.BindNotificationWindow(window_, kProcessActivationMessage);
     }
+
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    [[nodiscard]] int RunEmbeddedMediaHandoffOwnerTests() {
+        constexpr std::wstring_view widgetId{L"handoff-test-widget"};
+        const auto seedSession = [this, widgetId](
+            const std::wstring_view key,
+            const EmbeddedMediaProjection projection) {
+            residentEmbeddedMediaSessions_.clear();
+            boundEmbeddedMediaSessionKey_.clear();
+            richMediaSurface_.reset();
+            embeddedMediaAuthority_.reset();
+            embeddedMediaClientBounds_.reset();
+            embeddedMediaClientClip_.reset();
+
+            EmbeddedMediaSession session;
+            session.coordinator =
+                std::make_shared<widgetrail::richmedia::RichMediaSurfaceCoordinator>(
+                    richMediaEnvironment_);
+            EmbeddedMediaAuthority authority;
+            authority.widgetId = widgetId;
+            authority.projection = projection;
+            session.authority = std::move(authority);
+            residentEmbeddedMediaSessions_.emplace(
+                std::wstring{key}, std::move(session));
+        };
+        const auto sessionRetired = [this] {
+            return residentEmbeddedMediaSessions_.empty() &&
+                boundEmbeddedMediaSessionKey_.empty() && !richMediaSurface_ &&
+                !embeddedMediaAuthority_;
+        };
+
+        state_ = widgetrail::OverlayState({}, {});
+        seedSession(L"suspend-session", EmbeddedMediaProjection::Overlay);
+        testEmbeddedMediaHandoffRetirementPoint_ =
+            EmbeddedMediaHandoffTestRetirementPoint::Suspend;
+        testEmbeddedMediaHandoffRetirementObserved_ = false;
+        SyncWidgetActivity();
+        if (!testEmbeddedMediaHandoffRetirementObserved_ || !sessionRetired())
+            return 1;
+
+        state_ = widgetrail::OverlayState(
+            {}, std::vector<std::wstring>{std::wstring{widgetId}});
+        if (!state_.OpenWidgetWithTrayFocus(widgetId)) return 2;
+        seedSession(L"transfer-session", EmbeddedMediaProjection::Pinned);
+        testEmbeddedMediaHandoffRetirementPoint_ =
+            EmbeddedMediaHandoffTestRetirementPoint::Transfer;
+        testEmbeddedMediaHandoffRetirementObserved_ = false;
+        SyncWidgetActivity();
+        if (!testEmbeddedMediaHandoffRetirementObserved_ || !sessionRetired())
+            return 3;
+
+        testEmbeddedMediaHandoffRetirementPoint_ =
+            EmbeddedMediaHandoffTestRetirementPoint::None;
+        return 0;
+    }
+#endif
 
 private:
     enum class ResidentShowAction {
@@ -3446,6 +3509,14 @@ private:
         if (!embeddedMediaAuthority_) return false;
         const std::wstring widgetId{embeddedMediaAuthority_->widgetId};
         const std::wstring transferReason{reason};
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+        if (testEmbeddedMediaHandoffRetirementPoint_ ==
+            EmbeddedMediaHandoffTestRetirementPoint::Transfer) {
+            testEmbeddedMediaHandoffRetirementObserved_ = true;
+            StopEmbeddedMediaSurface(L"test-synchronous-transfer-retirement");
+            return false;
+        }
+#endif
         const bool resumeDetached = richMediaSurface_->presentationTransferPending();
         if (embeddedMediaAuthority_->projection == destination &&
             !resumeDetached) return true;
@@ -3733,6 +3804,14 @@ private:
     [[nodiscard]] bool SuspendBoundEmbeddedMediaPresentation(
         const std::wstring_view reason) {
         if (!embeddedMediaAuthority_) return false;
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+        if (testEmbeddedMediaHandoffRetirementPoint_ ==
+            EmbeddedMediaHandoffTestRetirementPoint::Suspend) {
+            testEmbeddedMediaHandoffRetirementObserved_ = true;
+            StopEmbeddedMediaSurface(L"test-synchronous-suspend-retirement");
+            return false;
+        }
+#endif
         if (richMediaSurface_->presentationTransferPending()) return true;
         if (FAILED(richMediaSurface_->SetVisible(false)) ||
             FAILED(richMediaSurface_->BeginPresentationTransfer())) return false;
@@ -5051,15 +5130,16 @@ private:
             mediaKeys.push_back(key);
         for (const auto& key : mediaKeys) {
             if (!BindEmbeddedMediaSession(key) || !embeddedMediaAuthority_) continue;
+            const std::wstring mediaWidgetId{embeddedMediaAuthority_->widgetId};
             const bool pinnedOwns = pinnedSurfaceCoordinator_.pinned() &&
-                pinnedSurfaceCoordinator_.widgetId() == embeddedMediaAuthority_->widgetId;
+                pinnedSurfaceCoordinator_.widgetId() == mediaWidgetId;
             const bool overlayOwns = state_.surface() == widgetrail::Surface::Widget &&
-                state_.activeWidget() == embeddedMediaAuthority_->widgetId;
+                state_.activeWidget() == mediaWidgetId;
             if (!pinnedOwns && !overlayOwns) {
                 if (!SuspendBoundEmbeddedMediaPresentation(L"active-widget-changed"))
                     AppendDiagnostic(
                         L"Embedded media presentation suspend failed widget=" +
-                        embeddedMediaAuthority_->widgetId);
+                        mediaWidgetId);
                 continue;
             }
             const auto destination = pinnedOwns
@@ -5069,7 +5149,7 @@ private:
                     destination, L"lifecycle-reconciliation")) {
                 AppendDiagnostic(
                     L"Embedded media presentation resume failed widget=" +
-                    embeddedMediaAuthority_->widgetId);
+                    mediaWidgetId);
                 continue;
             }
             if (richMediaSurface_->presentationTransferPending()) continue;
@@ -15620,6 +15700,11 @@ private:
 #if defined(WRAIL_PINNED_SLIDER_ROUTE_TESTING)
     std::optional<WidgetRailOverlayPlatformControllerFrame> testControllerFrame_;
 #endif
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    EmbeddedMediaHandoffTestRetirementPoint testEmbeddedMediaHandoffRetirementPoint_{
+        EmbeddedMediaHandoffTestRetirementPoint::None};
+    bool testEmbeddedMediaHandoffRetirementObserved_{};
+#endif
     widgetrail::PlacementRefreshGate placementRefreshGate_;
     widgetrail::DisplayRefreshAccumulator displayRefresh_;
     HWND backdropWindow_{};
@@ -15808,14 +15893,29 @@ private:
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     std::wstring processProfile = L"production";
     bool processOwnerProbe = false;
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    bool embeddedMediaHandoffOwnerTests = false;
+#endif
     for (int index = 1; index < __argc; ++index) {
         if (_wcsicmp(__wargv[index], L"--process-profile") == 0 &&
             index + 1 < __argc) {
             processProfile = __wargv[++index];
         } else if (_wcsicmp(__wargv[index], L"--process-owner-probe") == 0) {
             processOwnerProbe = true;
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+        } else if (_wcsicmp(
+                       __wargv[index],
+                       L"--embedded-media-handoff-owner-tests") == 0) {
+            embeddedMediaHandoffOwnerTests = true;
+#endif
         }
     }
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    if (embeddedMediaHandoffOwnerTests) {
+        OverlayApp app;
+        return app.RunEmbeddedMediaHandoffOwnerTests();
+    }
+#endif
     widgetrail::process::OverlayProcessOwner processOwner;
     std::wstring ownershipError;
     const auto ownership = processOwner.Begin(
