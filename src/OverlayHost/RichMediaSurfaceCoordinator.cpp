@@ -1489,7 +1489,14 @@ HRESULT RichMediaSurfaceCoordinator::UpdateGeometry(
 HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer(
     PresentationTransferFailureStage* const failureStage) noexcept {
     if (failureStage) *failureStage = PresentationTransferFailureStage::None;
-    if (presentationTransferPending_ || !controller_ || !controllerBase_ ||
+    const bool testTransferOwner =
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+        presentationTransferFailureForTest_.has_value();
+#else
+        false;
+#endif
+    if (presentationTransferPending_ ||
+        ((!controller_ || !controllerBase_) && !testTransferOwner) ||
         (state_.lifecycle != Lifecycle::ReadyHidden &&
          state_.lifecycle != Lifecycle::Visible)) {
         if (failureStage)
@@ -1500,14 +1507,32 @@ HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer(
     state_.inputEnabled = false;
     if (configuration_.setPresentationVisible)
         configuration_.setPresentationVisible(false);
-    HRESULT result = controllerBase_->put_IsVisible(FALSE);
+    HRESULT result =
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+        testTransferOwner
+            ? (*presentationTransferFailureForTest_ ==
+                       PresentationTransferFailureStage::VisibilityDetach
+                   ? E_FAIL
+                   : S_OK)
+            :
+#endif
+        controllerBase_->put_IsVisible(FALSE);
     if (FAILED(result)) {
         if (failureStage)
             *failureStage = PresentationTransferFailureStage::VisibilityDetach;
         Fault(L"presentation-transfer-visibility", result);
         return result;
     }
-    result = controller_->put_RootVisualTarget(nullptr);
+    result =
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+        testTransferOwner
+            ? (*presentationTransferFailureForTest_ ==
+                       PresentationTransferFailureStage::RootTargetDetach
+                   ? E_FAIL
+                   : S_OK)
+            :
+#endif
+        controller_->put_RootVisualTarget(nullptr);
     if (FAILED(result)) {
         if (failureStage)
             *failureStage = PresentationTransferFailureStage::RootTargetDetach;
@@ -1524,6 +1549,18 @@ HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer(
     Emit(L"Rich media presentation transfer=detached");
     return S_OK;
 }
+
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+void RichMediaSurfaceCoordinator::ConfigurePresentationTransferFailureForTest(
+    const PresentationTransferFailureStage stage,
+    std::function<void()> invalidate) {
+    presentationTransferFailureForTest_ = stage;
+    state_.lifecycle = Lifecycle::ReadyHidden;
+    state_.inputEnabled = false;
+    desiredVisible_ = false;
+    configuration_.invalidate = std::move(invalidate);
+}
+#endif
 
 HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransfer(
     PresentationTarget target,

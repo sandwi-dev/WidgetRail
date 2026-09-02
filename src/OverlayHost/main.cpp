@@ -101,14 +101,6 @@ constexpr UINT kScrollPaginationPrefetchMessage = WM_APP + 15;
 #if defined(WRAIL_PINNED_SLIDER_ROUTE_TESTING)
 constexpr ULONG_PTR kPinnedSliderControllerFrameCopyData = 0x5752534cU;
 #endif
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-enum class EmbeddedMediaHandoffTestRetirementPoint {
-    None,
-    Suspend,
-    Transfer,
-};
-#endif
-
 constexpr BYTE kBackdropOpacity = 164;
 constexpr std::uint64_t kSlowCompositionFrameMicroseconds = 100000;
 constexpr std::size_t kMaximumResidentMediaSessions = 4;
@@ -1093,7 +1085,9 @@ public:
         constexpr std::wstring_view widgetId{L"handoff-test-widget"};
         const auto seedSession = [this, widgetId](
             const std::wstring_view key,
-            const EmbeddedMediaProjection projection) {
+            const EmbeddedMediaProjection projection,
+            const widgetrail::richmedia::PresentationTransferFailureStage
+                failureStage) {
             residentEmbeddedMediaSessions_.clear();
             boundEmbeddedMediaSessionKey_.clear();
             richMediaSurface_.reset();
@@ -1105,6 +1099,14 @@ public:
             session.coordinator =
                 std::make_shared<widgetrail::richmedia::RichMediaSurfaceCoordinator>(
                     richMediaEnvironment_);
+            const std::wstring sessionKey{key};
+            session.coordinator->ConfigurePresentationTransferFailureForTest(
+                failureStage,
+                [this, sessionKey] {
+                    if (!BindEmbeddedMediaSession(sessionKey)) return;
+                    testEmbeddedMediaHandoffRetirementObserved_ = true;
+                    OnRichMediaStateChanged();
+                });
             EmbeddedMediaAuthority authority;
             authority.widgetId = widgetId;
             authority.projection = projection;
@@ -1119,9 +1121,10 @@ public:
         };
 
         state_ = widgetrail::OverlayState({}, {});
-        seedSession(L"suspend-session", EmbeddedMediaProjection::Overlay);
-        testEmbeddedMediaHandoffRetirementPoint_ =
-            EmbeddedMediaHandoffTestRetirementPoint::Suspend;
+        seedSession(
+            L"suspend-session", EmbeddedMediaProjection::Overlay,
+            widgetrail::richmedia::PresentationTransferFailureStage::
+                VisibilityDetach);
         testEmbeddedMediaHandoffRetirementObserved_ = false;
         SyncWidgetActivity();
         if (!testEmbeddedMediaHandoffRetirementObserved_ || !sessionRetired())
@@ -1130,17 +1133,21 @@ public:
         state_ = widgetrail::OverlayState(
             {}, std::vector<std::wstring>{std::wstring{widgetId}});
         if (!state_.OpenWidgetWithTrayFocus(widgetId)) return 2;
-        seedSession(L"transfer-session", EmbeddedMediaProjection::Pinned);
-        testEmbeddedMediaHandoffRetirementPoint_ =
-            EmbeddedMediaHandoffTestRetirementPoint::Transfer;
+        window_ = CreateWindowExW(
+            WS_EX_TOOLWINDOW, L"STATIC", L"", WS_POPUP,
+            0, 0, 1, 1, HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), nullptr);
+        if (!window_) return 3;
+        seedSession(
+            L"transfer-session", EmbeddedMediaProjection::Pinned,
+            widgetrail::richmedia::PresentationTransferFailureStage::
+                RootTargetDetach);
         testEmbeddedMediaHandoffRetirementObserved_ = false;
         SyncWidgetActivity();
-        if (!testEmbeddedMediaHandoffRetirementObserved_ || !sessionRetired())
-            return 3;
-
-        testEmbeddedMediaHandoffRetirementPoint_ =
-            EmbeddedMediaHandoffTestRetirementPoint::None;
-        return 0;
+        const bool transferRetired =
+            testEmbeddedMediaHandoffRetirementObserved_ && sessionRetired();
+        DestroyWindow(window_);
+        window_ = nullptr;
+        return transferRetired ? 0 : 4;
     }
 #endif
 
@@ -3507,17 +3514,11 @@ private:
         bool* const transferPending = nullptr) {
         if (transferPending) *transferPending = false;
         if (!embeddedMediaAuthority_) return false;
+        const auto mediaSurface = richMediaSurface_;
+        if (!mediaSurface) return false;
         const std::wstring widgetId{embeddedMediaAuthority_->widgetId};
         const std::wstring transferReason{reason};
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        if (testEmbeddedMediaHandoffRetirementPoint_ ==
-            EmbeddedMediaHandoffTestRetirementPoint::Transfer) {
-            testEmbeddedMediaHandoffRetirementObserved_ = true;
-            StopEmbeddedMediaSurface(L"test-synchronous-transfer-retirement");
-            return false;
-        }
-#endif
-        const bool resumeDetached = richMediaSurface_->presentationTransferPending();
+        const bool resumeDetached = mediaSurface->presentationTransferPending();
         if (embeddedMediaAuthority_->projection == destination &&
             !resumeDetached) return true;
         const HWND owner = EmbeddedMediaOwnerWindow(destination);
@@ -3543,7 +3544,7 @@ private:
         HRESULT result = S_OK;
         if (!resumeDetached) {
             widgetrail::richmedia::PresentationTransferFailureStage failureStage{};
-            result = richMediaSurface_->BeginPresentationTransfer(&failureStage);
+            result = mediaSurface->BeginPresentationTransfer(&failureStage);
             if (FAILED(result)) {
                 AppendActionCorrelation(
                     L"stage=embedded-media-transfer-fault widget=" +
@@ -3645,7 +3646,7 @@ private:
             RecordEmbeddedMediaPresentation(endpoint, timing, L"transfer-visibility");
         };
         widgetrail::richmedia::PresentationTransferFailureStage failureStage{};
-        result = richMediaSurface_->CompletePresentationTransfer(
+        result = mediaSurface->CompletePresentationTransfer(
             std::move(presentation), &failureStage);
         if (FAILED(result)) {
             AppendActionCorrelation(
@@ -3668,7 +3669,7 @@ private:
                 : 0;
         if (destination == EmbeddedMediaProjection::Pinned)
             ReconcileCompactPinnedMediaChrome();
-        const HRESULT visibilityResult = richMediaSurface_->SetVisible(
+        const HRESULT visibilityResult = mediaSurface->SetVisible(
             presentationVisible);
         if (FAILED(visibilityResult)) {
             AppendActionCorrelation(
@@ -3804,17 +3805,11 @@ private:
     [[nodiscard]] bool SuspendBoundEmbeddedMediaPresentation(
         const std::wstring_view reason) {
         if (!embeddedMediaAuthority_) return false;
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        if (testEmbeddedMediaHandoffRetirementPoint_ ==
-            EmbeddedMediaHandoffTestRetirementPoint::Suspend) {
-            testEmbeddedMediaHandoffRetirementObserved_ = true;
-            StopEmbeddedMediaSurface(L"test-synchronous-suspend-retirement");
-            return false;
-        }
-#endif
-        if (richMediaSurface_->presentationTransferPending()) return true;
-        if (FAILED(richMediaSurface_->SetVisible(false)) ||
-            FAILED(richMediaSurface_->BeginPresentationTransfer())) return false;
+        const auto mediaSurface = richMediaSurface_;
+        if (!mediaSurface) return false;
+        if (mediaSurface->presentationTransferPending()) return true;
+        if (FAILED(mediaSurface->SetVisible(false)) ||
+            FAILED(mediaSurface->BeginPresentationTransfer())) return false;
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
         const auto endpoint = CompositionEndpoint(embeddedMediaAuthority_->projection);
         const HRESULT detach = compositionSurface_.DetachExternalContentTarget(
@@ -15701,8 +15696,6 @@ private:
     std::optional<WidgetRailOverlayPlatformControllerFrame> testControllerFrame_;
 #endif
 #if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    EmbeddedMediaHandoffTestRetirementPoint testEmbeddedMediaHandoffRetirementPoint_{
-        EmbeddedMediaHandoffTestRetirementPoint::None};
     bool testEmbeddedMediaHandoffRetirementObserved_{};
 #endif
     widgetrail::PlacementRefreshGate placementRefreshGate_;

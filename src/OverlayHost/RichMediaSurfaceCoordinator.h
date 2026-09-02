@@ -283,6 +283,11 @@ public:
         State& next) noexcept;
     [[nodiscard]] static std::wstring CommandJson(
         Command command, const Authority& authority, std::uint64_t commandId);
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    void ConfigurePresentationTransferFailureForTest(
+        PresentationTransferFailureStage stage,
+        std::function<void()> invalidate);
+#endif
 
 private:
     enum class InstalledAppRefererResult {
@@ -450,6 +455,10 @@ private:
     bool presentationTransferPending_{};
     bool transferDesiredVisible_{};
     bool controllerGeometryApplied_{};
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    std::optional<PresentationTransferFailureStage>
+        presentationTransferFailureForTest_;
+#endif
     HRESULT browserEventRegistrationResult_{E_UNEXPECTED};
     std::wstring pageUri_;
     std::wstring installedAppReferer_;
