@@ -27,7 +27,8 @@ internal sealed record PlayniteLibraryAuthorityProjection(
 
 internal sealed record PlayniteLibraryQueryResult(
     WidgetAppLibraryPage Page,
-    PlayniteLibraryAuthorityProjection Authority);
+    PlayniteLibraryAuthorityProjection Authority,
+    bool RetainedLastGood = false);
 
 internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
 {

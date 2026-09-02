@@ -1372,6 +1372,7 @@ public sealed class PlayniteLibraryTests
         var widget = Create(host);
         await Interactive(widget);
         await Ready(widget, host);
+        host.RetainPublishedCategoriesOnNextQuery = true;
 
         await widget.OnActionAsync(new(
             PlayniteLibraryActions.CategoriesOpen,
@@ -1384,10 +1385,12 @@ public sealed class PlayniteLibraryTests
         });
         await Bounded(widget.WhenLibraryIdleAsync(), "created category refresh");
 
-        var category = host.Authority.Categories.Single();
+        var category = host.ProviderCategories.Single();
         Assert.AreEqual("Strategy", category.Name);
         Assert.IsEmpty(category.SavedIds,
             "The fresh provider catalog must publish an empty category before membership.");
+        Assert.IsEmpty(host.Authority.Categories,
+            "The first post-create query deliberately retains stale last-good authority.");
         var categories = Snapshot(widget, 40_099);
         Assert.AreEqual("playnite-library.category.create", categories.InitialFocusId,
             "The refresh must retain category-entry focus.");
@@ -1396,14 +1399,65 @@ public sealed class PlayniteLibraryTests
         Assert.IsTrue(Nodes(categories.Root).Any(node =>
             node.ActionId == PlayniteLibraryActions.CategoryOpen(category.Id)));
 
+        host.RetainPublishedCategoriesOnNextQuery = true;
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryCreate,
+            "playnite-library.category.create")
+        {
+            CommittedText = "Adventure",
+        });
+        await Bounded(widget.WhenLibraryIdleAsync(), "second created category refresh");
+        var adventure = host.ProviderCategories.Single(value =>
+            value.Name == "Adventure");
+        var categoriesAfterSecondCreate = Snapshot(widget, 40_100);
+        Assert.IsTrue(Nodes(categoriesAfterSecondCreate.Root).Any(node =>
+            node.ActionId == PlayniteLibraryActions.CategoryOpen(category.Id)));
+        Assert.IsTrue(Nodes(categoriesAfterSecondCreate.Root).Any(node =>
+            node.ActionId == PlayniteLibraryActions.CategoryOpen(adventure.Id)),
+            "Two exact successful creates must survive one transient category-list outage.");
+
+        var queryCountBeforeReturn = host.Queries.Count;
+        host.RetainPublishedCategoriesOnNextQuery = true;
+        await widget.OnActionAsync(new(
+            "playnite-library.navigation.back",
+            categoriesAfterSecondCreate.InitialFocusId ?? "playnite-library.category.create")
+        {
+            InputScopeId = categoriesAfterSecondCreate.ActiveInputScopeId,
+        });
+        await Bounded(widget.WhenLibraryIdleAsync(), "created category Home return");
+        var homeAfterCreate = Snapshot(widget, 40_101);
+        Assert.AreEqual(queryCountBeforeReturn + 1, host.Queries.Count,
+            "Returning from Categories may reload Home through the ordinary query owner.");
+        Assert.IsEmpty(host.Authority.Categories,
+            "A repeated stale last-good refresh must not be mistaken for provider reconciliation.");
+        Assert.IsTrue(Nodes(homeAfterCreate.Root).Where(node =>
+                node.ActionId == PlayniteLibraryActions.Launch).Any(node =>
+                node.ContextActions.Any(action => action.ActionId ==
+                    PlayniteLibraryActions.CategoryMembership(category.Id))),
+            "The exact successful create must immediately reach current tile actions.");
+        Assert.IsTrue(Nodes(homeAfterCreate.Root).Where(node =>
+                node.ActionId == PlayniteLibraryActions.Launch).Any(node =>
+                node.ContextActions.Any(action => action.ActionId ==
+                    PlayniteLibraryActions.CategoryMembership(adventure.Id))),
+            "Every bounded pending create must reach current tile actions.");
+
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoriesOpen,
+            "playnite-library.library.menu"));
+
         await widget.OnActionAsync(new(
             PlayniteLibraryActions.CategoryOpen(category.Id),
             "playnite-library.category.open-button." + category.Id));
         await Bounded(widget.WhenLibraryIdleAsync(), "empty category Browse filter");
+        Assert.AreEqual(2, host.Authority.Categories.Count,
+            "The later provider observation must reconcile both created categories.");
+        Assert.AreEqual(category.Id, host.Authority.Categories.Single(value =>
+                value.Name == "Strategy").Id,
+            "A later ordinary query must retry and reconcile provider authority.");
         Assert.AreEqual(PlayniteLibraryQueryScope.Category,
             host.QueryContexts[^1].Scope);
         Assert.AreEqual("Strategy", host.QueryContexts[^1].CategoryName);
-        var emptyBrowse = Snapshot(widget, 40_100);
+        var emptyBrowse = Snapshot(widget, 40_102);
         Assert.IsFalse(Nodes(emptyBrowse.Root).Any(node =>
             node.ActionId == PlayniteLibraryActions.Launch),
             "An authoritative empty category must publish a valid empty Browse page.");
@@ -1416,7 +1470,7 @@ public sealed class PlayniteLibraryTests
             InputScopeId = emptyBrowse.ActiveInputScopeId,
         });
         await Bounded(widget.WhenLibraryIdleAsync(), "empty category return");
-        var home = Snapshot(widget, 40_101);
+        var home = Snapshot(widget, 40_103);
         var tile = Nodes(home.Root).First(node =>
             node.ActionId == PlayniteLibraryActions.Launch);
         Assert.IsTrue(tile.ContextActions.Any(action =>
@@ -1427,7 +1481,8 @@ public sealed class PlayniteLibraryTests
         await widget.OnActionAsync(new(
             PlayniteLibraryActions.CategoryMembership(category.Id), tile.Id));
         await Bounded(widget.WhenLibraryIdleAsync(), "category membership refresh");
-        var assigned = host.Authority.Categories.Single();
+        var assigned = host.Authority.Categories.Single(value =>
+            value.Id == category.Id);
         Assert.AreEqual(category.Id, assigned.Id,
             "Membership refresh must preserve the provider-derived category identity.");
         CollectionAssert.AreEqual(new[] { "saved-00000" }, assigned.SavedIds.ToArray());
@@ -1439,7 +1494,7 @@ public sealed class PlayniteLibraryTests
             PlayniteLibraryActions.CategoryOpen(category.Id),
             PlayniteLibraryActions.CategoryFilter));
         await Bounded(widget.WhenLibraryIdleAsync(), "assigned category Browse filter");
-        Assert.IsTrue(Nodes(Snapshot(widget, 40_102).Root).Any(node =>
+        Assert.IsTrue(Nodes(Snapshot(widget, 40_104).Root).Any(node =>
             node.ActionId == PlayniteLibraryActions.Launch && node.Id == tile.Id));
         await Background(widget);
     }
@@ -3515,6 +3570,9 @@ public sealed class PlayniteLibraryTests
         internal int MaximumRequestedLimit { get; private set; }
         internal int RunningObservationCount { get; private set; }
         internal int? FailAfterOffset { get; set; }
+        internal bool RetainPublishedCategoriesOnNextQuery { get; set; }
+        internal IReadOnlyList<PlayniteLibraryCategory> ProviderCategories =>
+            _providerCategories;
         internal Func<int, WidgetAppLibraryItem> ItemFactory { get; set; } = Item;
         internal Func<WidgetAppLibraryCursorRequest, CancellationToken,
             ValueTask<WidgetAppLibraryPage>>? QueryHandler { get; set; }
@@ -3558,14 +3616,19 @@ public sealed class PlayniteLibraryTests
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            PublishProviderCategories();
+            var retainedLastGood = RetainPublishedCategoriesOnNextQuery;
+            if (RetainPublishedCategoriesOnNextQuery)
+                RetainPublishedCategoriesOnNextQuery = false;
+            else
+                PublishProviderCategories();
             var request = new WidgetAppLibraryCursorRequest(
                 query, cursor?.Value, direction, limit, refresh);
             QueryContexts.Add(context);
             if (QueryHandler is not null)
             {
                 var custom = await Query(request, cancellationToken);
-                return new(FilterPage(custom, query, context), _authority.Value);
+                return new(FilterPage(custom, query, context), _authority.Value,
+                    retainedLastGood);
             }
 
             FirstQueryStarted.TrySetResult();
@@ -3596,7 +3659,7 @@ public sealed class PlayniteLibraryTests
             {
                 Sources = SourceObservations,
             };
-            return new(page, authority);
+            return new(page, authority, retainedLastGood);
         }
 
         private WidgetAppLibraryPage FilterPage(

@@ -178,10 +178,19 @@ public sealed class PackageRuntimeTests
             "Browse category filtering must use the same authoritative category name.");
 
         client.CategoryMutationResponseCategories = [];
+        var queryCallsBeforeUnconfirmedMutation = client.QueryCalls;
         var unconfirmed = await service.SetCategoryMembershipAsync(
             client.Games[1].Id, "Strategy", included: true, CancellationToken.None);
         Assert.IsNull(unconfirmed,
             "A same-game response that omits the requested membership is not success.");
+        var currentAfterUnconfirmedMutation = await service.QueryWithAuthorityAsync(
+            AllGames, new(PlayniteLibraryQueryScope.Library), null, null,
+            32, refresh: false, CancellationToken.None);
+        Assert.IsGreaterThan(queryCallsBeforeUnconfirmedMutation, client.QueryCalls,
+            "An unconfirmed category mutation must dirty the catalog before its remote write.");
+        Assert.IsEmpty(currentAfterUnconfirmedMutation.Authority.Categories.Single(category =>
+            category.Id == created.Id).SavedIds,
+            "A refresh:false query must observe current provider state after an unconfirmed write.");
     }
 
     [TestMethod, Timeout(30_000)]
@@ -205,10 +214,19 @@ public sealed class PackageRuntimeTests
             "The widget's create-entry bound remains intentionally narrower.");
 
         client.CreatedCategoryResponseName = "Different";
+        var queryCallsBeforeMismatchedCreate = client.QueryCalls;
         var mismatched = await service.CreateCategoryAsync(
             "Requested", CancellationToken.None);
         Assert.IsNull(mismatched,
             "A create response must identify the exact normalized requested category.");
+        var currentAfterMismatchedCreate = await service.QueryWithAuthorityAsync(
+            AllGames, new(PlayniteLibraryQueryScope.Library), null, null,
+            32, refresh: false, CancellationToken.None);
+        Assert.IsGreaterThan(queryCallsBeforeMismatchedCreate, client.QueryCalls,
+            "A mismatched create response must leave the catalog dirty.");
+        Assert.AreEqual("Requested", currentAfterMismatchedCreate.Authority.Categories
+            .Single(category => category.Name == "Requested").Name,
+            "A refresh:false query must fetch provider state instead of retaining the cache.");
     }
 
     [TestMethod, Timeout(30_000)]

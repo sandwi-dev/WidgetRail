@@ -131,7 +131,7 @@ internal sealed class PlayniteLibraryApplicationService(
                 }).ToArray();
             var page = new WidgetAppLibraryPage(
                 pageItems, before, after, catalog.Revision) { Sources = sources };
-            return new(page, ProjectAuthority(catalog.Games, catalog.Categories));
+            return new(page, ProjectAuthority(catalog.Games, catalog.Categories), stale);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -321,6 +321,7 @@ internal sealed class PlayniteLibraryApplicationService(
                     return null;
                 categories.Add(normalizedName);
             }
+            InvalidateCatalog();
             var changed = await _client.SetCategoriesAsync(
                     current.Id, categories, cancellationToken).ConfigureAwait(false);
             if (changed is null || !string.Equals(
@@ -328,7 +329,6 @@ internal sealed class PlayniteLibraryApplicationService(
                 changed.Categories.Contains(
                     normalizedName, StringComparer.OrdinalIgnoreCase) != included)
                 return null;
-            InvalidateCatalog();
             return Project(changed, stale: false);
         }
         catch (Exception exception) { throw Safe(exception); }
@@ -349,6 +349,7 @@ internal sealed class PlayniteLibraryApplicationService(
         {
             var requestedName = NormalizeProviderCategoryName(name) ??
                 throw new ArgumentException("Category is invalid.", nameof(name));
+            InvalidateCatalog();
             var value = await _client.CreateCategoryAsync(requestedName, cancellationToken)
                 .ConfigureAwait(false);
             if (value is null || !Guid.TryParse(value.Id, out var id) ||
@@ -356,7 +357,6 @@ internal sealed class PlayniteLibraryApplicationService(
                 !string.Equals(normalizedName, value.Name, StringComparison.Ordinal) ||
                 !string.Equals(normalizedName, requestedName, StringComparison.Ordinal))
                 return null;
-            InvalidateCatalog();
             return new(CategoryId(id), normalizedName, []);
         }
         catch (Exception exception) { throw Safe(exception); }

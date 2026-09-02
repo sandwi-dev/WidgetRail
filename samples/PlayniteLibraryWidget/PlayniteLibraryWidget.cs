@@ -36,6 +36,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private long _queryAuthorityGeneration;
     private long _authorityRevision;
     private bool _hasLivePlayniteAuthority;
+    private readonly List<PlayniteLibraryCategory>
+        _createdCategoriesPendingReconciliation = [];
     private long _stateRevision;
     private readonly Dictionary<string, PlayniteLibraryLaunchState> _launchStates =
         new(StringComparer.Ordinal);
@@ -1112,12 +1114,18 @@ public sealed partial class PlayniteLibraryWidget : Widget
         };
     }
 
-    private void RetireLiveQueryAuthorityLocked()
+    private void RetireCurrentQueryAuthorityLocked()
     {
         _queryAuthorityGeneration++;
         _authorityRevision++;
         _livePlayniteAuthority = PlayniteLibraryAuthorityProjection.Empty;
         _hasLivePlayniteAuthority = false;
+    }
+
+    private void RetireLiveQueryAuthorityLocked()
+    {
+        RetireCurrentQueryAuthorityLocked();
+        _createdCategoriesPendingReconciliation.Clear();
     }
 
     private void EnsureQueryAuthorityCurrent(
@@ -1144,6 +1152,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         long generation,
         long authorityRevision,
         PlayniteLibraryAuthorityProjection authority,
+        bool retainedLastGood,
         CancellationToken cancellationToken)
     {
         lock (_gate)
@@ -1151,6 +1160,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             if (generation == _queryAuthorityGeneration &&
                 authorityRevision == _authorityRevision)
             {
+                authority = ReconcileCreatedCategoryLocked(authority, retainedLastGood);
                 _livePlayniteAuthority = authority;
                 _presentationAuthority = authority;
                 _hasLivePlayniteAuthority = true;
@@ -1170,6 +1180,53 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _livePlayniteAuthority = authority;
         _presentationAuthority = authority;
         _authorityRevision++;
+    }
+
+    private void AdmitCreatedCategoryLocked(PlayniteLibraryCategory created)
+    {
+        if (!_hasLivePlayniteAuthority || _livePlayniteAuthority.Categories.Any(category =>
+                string.Equals(category.Id, created.Id, StringComparison.Ordinal) ||
+                string.Equals(category.Name, created.Name,
+                    StringComparison.OrdinalIgnoreCase))) return;
+        if (_livePlayniteAuthority.Categories.Count >=
+            PlayniteLibraryPrivateState.MaximumCategories) return;
+        _createdCategoriesPendingReconciliation.Add(created);
+        PublishAuthorityMutationLocked(_livePlayniteAuthority with
+        {
+            Categories = _livePlayniteAuthority.Categories.Append(created)
+                .OrderBy(category => category.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(category => category.Id, StringComparer.Ordinal)
+                .ToArray(),
+        });
+    }
+
+    private PlayniteLibraryAuthorityProjection ReconcileCreatedCategoryLocked(
+        PlayniteLibraryAuthorityProjection authority,
+        bool retainedLastGood)
+    {
+        if (_createdCategoriesPendingReconciliation.Count == 0) return authority;
+        if (!retainedLastGood)
+        {
+            _createdCategoriesPendingReconciliation.Clear();
+            return authority;
+        }
+        var categories = authority.Categories.ToList();
+        foreach (var created in _createdCategoriesPendingReconciliation)
+        {
+            if (categories.Count >= PlayniteLibraryPrivateState.MaximumCategories) break;
+            if (categories.Any(category =>
+                    string.Equals(category.Id, created.Id, StringComparison.Ordinal) ||
+                    string.Equals(category.Name, created.Name,
+                        StringComparison.OrdinalIgnoreCase))) continue;
+            categories.Add(created);
+        }
+        return authority with
+        {
+            Categories = categories
+                .OrderBy(category => category.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(category => category.Id, StringComparer.Ordinal)
+                .ToArray(),
+        };
     }
 
     private async ValueTask LoadWarmStateAsync(CancellationToken cancellationToken)
@@ -1243,7 +1300,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         var local = _model.Value;
         lock (_gate)
         {
-            if (direction is null) RetireLiveQueryAuthorityLocked();
+            if (direction is null) RetireCurrentQueryAuthorityLocked();
             queryAuthorityGeneration = _queryAuthorityGeneration;
             authorityRevision = _authorityRevision;
             collectionState = local.Collection;
@@ -1370,7 +1427,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             .ConfigureAwait(false);
         EnsureQueryAuthorityCurrent(queryAuthorityGeneration, cancellationToken);
         _ = TryPublishQueryAuthority(queryAuthorityGeneration, authorityRevision,
-            result.Authority, cancellationToken);
+            result.Authority, result.RetainedLastGood, cancellationToken);
         var items = rawItems.Select(item => item.WithProjectedValue(
                 PlayniteLibraryTitlePolicy.Project(organization, item.Value)))
             .Where(item => MatchesFixedQuery(item.Value, query))
@@ -2166,12 +2223,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 await _library.Refresh().Completion.ConfigureAwait(false);
             lock (_gate)
             {
-                var confirmed = created is not null &&
-                    PresentationOrganizationLocked().Categories.Any(category =>
-                        string.Equals(category.Id, created.Id, StringComparison.Ordinal) ||
-                        string.Equals(category.Name, created.Name,
-                            StringComparison.OrdinalIgnoreCase));
-                status = !confirmed
+                if (created is not null) AdmitCreatedCategoryLocked(created);
+                status = created is null
                     ? "Category was not created"
                     : $"Created category {normalized}";
             }
