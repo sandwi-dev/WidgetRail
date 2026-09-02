@@ -284,9 +284,10 @@ public:
     [[nodiscard]] static std::wstring CommandJson(
         Command command, const Authority& authority, std::uint64_t commandId);
 #if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    void ConfigurePresentationTransferFailureForTest(
+    void ConfigurePresentationTransferForTest(
         PresentationTransferFailureStage stage,
-        std::function<void()> invalidate);
+        std::function<void()> invalidate,
+        bool initiallyVisible = false);
 #endif
 
 private:

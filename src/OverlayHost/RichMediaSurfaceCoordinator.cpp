@@ -1551,13 +1551,15 @@ HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer(
 }
 
 #if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-void RichMediaSurfaceCoordinator::ConfigurePresentationTransferFailureForTest(
+void RichMediaSurfaceCoordinator::ConfigurePresentationTransferForTest(
     const PresentationTransferFailureStage stage,
-    std::function<void()> invalidate) {
+    std::function<void()> invalidate,
+    const bool initiallyVisible) {
     presentationTransferFailureForTest_ = stage;
-    state_.lifecycle = Lifecycle::ReadyHidden;
-    state_.inputEnabled = false;
-    desiredVisible_ = false;
+    pageReady_ = initiallyVisible;
+    state_.lifecycle = initiallyVisible ? Lifecycle::Visible : Lifecycle::ReadyHidden;
+    state_.inputEnabled = initiallyVisible;
+    desiredVisible_ = initiallyVisible;
     configuration_.invalidate = std::move(invalidate);
 }
 #endif
@@ -1566,7 +1568,14 @@ HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransfer(
     PresentationTarget target,
     PresentationTransferFailureStage* const failureStage) noexcept {
     if (failureStage) *failureStage = PresentationTransferFailureStage::None;
-    if (!presentationTransferPending_ || !controller_ || !controllerBase_ ||
+    const bool testTransferOwner =
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+        presentationTransferFailureForTest_.has_value();
+#else
+        false;
+#endif
+    if (!presentationTransferPending_ ||
+        ((!controller_ || !controllerBase_) && !testTransferOwner) ||
         !target.ownerWindow || !target.compositionTarget ||
         target.bounds.right <= target.bounds.left ||
         target.bounds.bottom <= target.bounds.top ||
@@ -1581,20 +1590,41 @@ HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransfer(
     configuration_.bounds = target.bounds;
     configuration_.rasterScale = target.rasterScale;
     configuration_.setPresentationVisible = std::move(target.setPresentationVisible);
-    HRESULT result = controllerBase_->put_ParentWindow(target.ownerWindow);
+    const auto testResult = [this, testTransferOwner](
+                                const PresentationTransferFailureStage stage) {
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+        return testTransferOwner && *presentationTransferFailureForTest_ == stage
+            ? E_FAIL : S_OK;
+#else
+        (void)stage;
+        return S_OK;
+#endif
+    };
+    HRESULT result = testTransferOwner
+        ? testResult(PresentationTransferFailureStage::ParentWindowAttach)
+        : controllerBase_->put_ParentWindow(target.ownerWindow);
     auto failedStage = PresentationTransferFailureStage::ParentWindowAttach;
     if (SUCCEEDED(result)) {
         failedStage = PresentationTransferFailureStage::RootTargetAttach;
-        result = controller_->put_RootVisualTarget(configuration_.compositionTarget.Get());
+        result = testTransferOwner
+            ? testResult(PresentationTransferFailureStage::RootTargetAttach)
+            : controller_->put_RootVisualTarget(configuration_.compositionTarget.Get());
     }
     if (SUCCEEDED(result)) {
         failedStage = PresentationTransferFailureStage::GeometryAttach;
-        result = UpdateGeometry(target.bounds, target.rasterScale);
+        if (testTransferOwner) {
+            result = testResult(PresentationTransferFailureStage::GeometryAttach);
+            if (SUCCEEDED(result)) controllerGeometryApplied_ = true;
+        } else {
+            result = UpdateGeometry(target.bounds, target.rasterScale);
+        }
     }
     const bool visible = transferDesiredVisible_ && pageReady_;
     if (SUCCEEDED(result)) {
         failedStage = PresentationTransferFailureStage::VisibilityAttach;
-        result = controllerBase_->put_IsVisible(visible ? TRUE : FALSE);
+        result = testTransferOwner
+            ? testResult(PresentationTransferFailureStage::VisibilityAttach)
+            : controllerBase_->put_IsVisible(visible ? TRUE : FALSE);
     }
     if (FAILED(result)) {
         if (failureStage) *failureStage = failedStage;
