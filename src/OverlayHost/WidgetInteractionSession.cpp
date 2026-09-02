@@ -47,6 +47,45 @@ SelectPopupLayout ComputeSelectPopupLayout(
     return result;
 }
 
+SelectPopupContentLayout ComputeSelectPopupContentLayout(
+    const declarative::Rect rowBounds,
+    const bool showCheckmark,
+    const bool showGlyph,
+    const float leftInset,
+    const float rightInset) noexcept {
+    constexpr float kCheckmarkWidth = 20.0F;
+    constexpr float kCheckmarkAdvance = 22.0F;
+    constexpr float kGlyphSize = 22.0F;
+    constexpr float kGlyphAdvance = 28.0F;
+    SelectPopupContentLayout result;
+    float contentLeft = rowBounds.x + std::max(0.0F, leftInset);
+    const float contentRight = std::max(
+        contentLeft,
+        rowBounds.x + rowBounds.width - std::max(0.0F, rightInset));
+    if (showCheckmark) {
+        result.checkmarkBounds = {
+            contentLeft, rowBounds.y, kCheckmarkWidth, rowBounds.height};
+        contentLeft += kCheckmarkAdvance;
+    }
+    if (showGlyph) {
+        const float glyphSize = std::min(kGlyphSize, std::max(0.0F, rowBounds.height));
+        result.glyphBounds = {
+            contentLeft,
+            rowBounds.y + (rowBounds.height - glyphSize) * 0.5F,
+            glyphSize,
+            glyphSize,
+        };
+        contentLeft += kGlyphAdvance;
+    }
+    result.labelBounds = {
+        contentLeft,
+        rowBounds.y,
+        std::max(0.0F, contentRight - contentLeft),
+        rowBounds.height,
+    };
+    return result;
+}
+
 std::optional<std::size_t> HitTestSelectPopup(
     const SelectPopupLayout& layout,
     const float x,

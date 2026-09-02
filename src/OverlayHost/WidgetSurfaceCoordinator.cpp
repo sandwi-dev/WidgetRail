@@ -2449,6 +2449,11 @@ void WidgetSurfaceCoordinator::Paint() {
                 8.0F, 8.0F};
             renderTarget_->FillRoundedRectangle(panel, backgroundBrush_.Get());
             renderTarget_->DrawRoundedRectangle(panel, textBrush_.Get(), 1.5F);
+            const auto priorParagraphAlignment =
+                chromeFormat_->GetParagraphAlignment();
+            const bool popupTextCentered = SUCCEEDED(
+                chromeFormat_->SetParagraphAlignment(
+                    DWRITE_PARAGRAPH_ALIGNMENT_CENTER));
             for (const auto& item : popup.items) {
                 if (item.optionIndex >= binding.options.size()) continue;
                 const auto& option = binding.options[item.optionIndex];
@@ -2462,45 +2467,51 @@ void WidgetSurfaceCoordinator::Paint() {
                             5.0F, 5.0F),
                         chromeBrush_.Get());
                 }
-                float labelLeft = item.bounds.x + 10.0F;
-                if (option.isSelected) {
+                widgetrail::icons::NativeIcon icon{};
+                const bool hasIcon = !option.glyph.empty() &&
+                    widgetrail::icons::TryParseNativeIcon(option.glyph, icon);
+                const auto content = input::ComputeSelectPopupContentLayout(
+                    item.bounds, option.isSelected, hasIcon, 10.0F, 8.0F);
+                if (content.checkmarkBounds) {
                     const std::wstring check = L"✓";
+                    const auto& bounds = *content.checkmarkBounds;
                     renderTarget_->DrawTextW(
                         check.c_str(), static_cast<UINT32>(check.size()),
                         chromeFormat_.Get(),
                         D2D1::RectF(
-                            labelLeft, item.bounds.y, labelLeft + 20.0F,
-                            item.bounds.y + item.bounds.height),
+                            bounds.x, bounds.y,
+                            bounds.x + bounds.width, bounds.y + bounds.height),
                         option.isDisabled || option.isBusy
                             ? secondaryBrush_.Get() : textBrush_.Get(),
                         D2D1_DRAW_TEXT_OPTIONS_CLIP);
-                    labelLeft += 22.0F;
                 }
-                widgetrail::icons::NativeIcon icon{};
-                if (!option.glyph.empty() &&
-                    widgetrail::icons::TryParseNativeIcon(option.glyph, icon)) {
+                if (content.glyphBounds) {
+                    const auto& bounds = *content.glyphBounds;
                     (void)widgetrail::icons::DrawNativeIcon(
                         renderTarget_.Get(), icon,
                         D2D1::RectF(
-                            labelLeft, item.bounds.y + 8.0F,
-                            labelLeft + 22.0F,
-                            item.bounds.y + item.bounds.height - 8.0F),
+                            bounds.x, bounds.y,
+                            bounds.x + bounds.width, bounds.y + bounds.height),
                         option.isDisabled || option.isBusy
                             ? secondaryBrush_.Get() : textBrush_.Get(),
                         1.7F);
-                    labelLeft += 28.0F;
                 }
+                const auto& labelBounds = content.labelBounds;
                 renderTarget_->DrawTextW(
                     option.label.c_str(),
                     static_cast<UINT32>(option.label.size()),
                     chromeFormat_.Get(),
                     D2D1::RectF(
-                        labelLeft, item.bounds.y,
-                        item.bounds.x + item.bounds.width - 8.0F,
-                        item.bounds.y + item.bounds.height),
+                        labelBounds.x, labelBounds.y,
+                        labelBounds.x + labelBounds.width,
+                        labelBounds.y + labelBounds.height),
                     option.isDisabled || option.isBusy
                         ? secondaryBrush_.Get() : textBrush_.Get(),
                     D2D1_DRAW_TEXT_OPTIONS_CLIP);
+            }
+            if (popupTextCentered) {
+                (void)chromeFormat_->SetParagraphAlignment(
+                    priorParagraphAlignment);
             }
         } else {
             (void)sliderInteraction_.CloseSelectPopup();

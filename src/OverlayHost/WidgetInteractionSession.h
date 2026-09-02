@@ -228,10 +228,23 @@ struct SelectPopupLayout final {
     std::vector<SelectPopupLayoutItem> items;
 };
 
+struct SelectPopupContentLayout final {
+    std::optional<declarative::Rect> checkmarkBounds;
+    std::optional<declarative::Rect> glyphBounds;
+    declarative::Rect labelBounds;
+};
+
 [[nodiscard]] SelectPopupLayout ComputeSelectPopupLayout(
     declarative::Rect anchor,
     declarative::Rect viewport,
     const SelectPopupBinding& popup);
+
+[[nodiscard]] SelectPopupContentLayout ComputeSelectPopupContentLayout(
+    declarative::Rect rowBounds,
+    bool showCheckmark,
+    bool showGlyph,
+    float leftInset,
+    float rightInset) noexcept;
 
 [[nodiscard]] std::optional<std::size_t> HitTestSelectPopup(
     const SelectPopupLayout& layout,

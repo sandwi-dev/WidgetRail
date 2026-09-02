@@ -14685,6 +14685,9 @@ private:
         renderTarget_->FillRoundedRectangle(panel, backgroundBrush_.Get());
         renderTarget_->DrawRoundedRectangle(
             panel, focusBrush_.Get(), focusOutlineWidth_);
+        const auto priorParagraphAlignment = hintFormat_->GetParagraphAlignment();
+        const bool popupTextCentered = SUCCEEDED(hintFormat_->SetParagraphAlignment(
+            DWRITE_PARAGRAPH_ALIGNMENT_CENTER));
         for (const auto& item : layout->items) {
             if (item.optionIndex >= popup->options.size()) continue;
             const auto& option = popup->options[item.optionIndex];
@@ -14698,39 +14701,44 @@ private:
                     trayItemCornerRadius_ * 0.65F};
                 renderTarget_->FillRoundedRectangle(selected, accentBrush_.Get());
             }
-            float labelLeft = item.bounds.x + 12.0F;
-            if (option.isSelected) {
+            widgetrail::icons::NativeIcon icon{};
+            const bool hasIcon = !option.glyph.empty() &&
+                widgetrail::icons::TryParseNativeIcon(option.glyph, icon);
+            const auto content = widgetrail::input::ComputeSelectPopupContentLayout(
+                item.bounds, option.isSelected, hasIcon, 12.0F, 10.0F);
+            if (content.checkmarkBounds) {
+                const auto& bounds = *content.checkmarkBounds;
                 DrawTextLine(
                     L"✓", hintFormat_.Get(),
                     D2D1::RectF(
-                        labelLeft, item.bounds.y, labelLeft + 20.0F,
-                        item.bounds.y + item.bounds.height),
+                        bounds.x, bounds.y,
+                        bounds.x + bounds.width, bounds.y + bounds.height),
                     option.isDisabled || option.isBusy
                         ? secondaryBrush_.Get() : textBrush_.Get());
-                labelLeft += 22.0F;
             }
-            widgetrail::icons::NativeIcon icon{};
-            if (!option.glyph.empty() &&
-                widgetrail::icons::TryParseNativeIcon(option.glyph, icon)) {
+            if (content.glyphBounds) {
+                const auto& bounds = *content.glyphBounds;
                 (void)widgetrail::icons::DrawNativeIcon(
                     renderTarget_.Get(), icon,
                     D2D1::RectF(
-                        labelLeft, item.bounds.y + 8.0F,
-                        labelLeft + 22.0F,
-                        item.bounds.y + item.bounds.height - 8.0F),
+                        bounds.x, bounds.y,
+                        bounds.x + bounds.width, bounds.y + bounds.height),
                     option.isDisabled || option.isBusy
                         ? secondaryBrush_.Get() : textBrush_.Get(),
                     1.7F);
-                labelLeft += 28.0F;
             }
+            const auto& labelBounds = content.labelBounds;
             DrawTextLine(
                 option.label, hintFormat_.Get(),
                 D2D1::RectF(
-                    labelLeft, item.bounds.y,
-                    item.bounds.x + item.bounds.width - 10.0F,
-                    item.bounds.y + item.bounds.height),
+                    labelBounds.x, labelBounds.y,
+                    labelBounds.x + labelBounds.width,
+                    labelBounds.y + labelBounds.height),
                 option.isDisabled || option.isBusy
                     ? secondaryBrush_.Get() : textBrush_.Get());
+        }
+        if (popupTextCentered) {
+            (void)hintFormat_->SetParagraphAlignment(priorParagraphAlignment);
         }
     }
 
