@@ -166,22 +166,39 @@ The review and planning agent may send lane identity, assignment
 clarifications, bounded integration instructions, corrections, or stop
 instructions directly to this task.
 
-A first-red stop pauses only the current assignment's ordered verification.
-Preserve the exact worktree and evidence, do not rerun or repair beyond the
-current authority, and report the stop directly to the reviewer immediately;
-do not wait for a scheduled heartbeat. Phrase the report as requiring
-`reviewer disposition`, not user approval. Include the exact first failure,
-what executed, what did not execute, the retained diff/commit state, the
-source-supported cause if known, and the smallest bounded next action that
-would distinguish or correct it.
+A first genuine red pauses only the affected ordered gate. Preserve the exact
+worktree and evidence and report the red directly to the reviewer immediately;
+do not wait for a scheduled heartbeat. When the cause and correction are
+concrete, bounded, within the current assignment and owning layer, and preserve
+the accepted product and architecture, continue without waiting: make the
+smallest such correction and rerun that exact failed gate once. Do not weaken
+an oracle, extend a deadline, repeat an unchanged command, or include adjacent
+cleanup merely to get green. If the replacement gate is green, continue the
+remaining independent gates and include the original failure, diagnosis,
+correction, and replacement result in the terminal report.
 
-After the report, do not infer that the planner goal or other lane is paused.
-If task-specific edits are retained, wait only for the reviewer's bounded
-follow-up for this assignment. When that follow-up arrives, continue directly
-under its exact edit and gate authority and report the next terminal result
-back to the reviewer. The reviewer, not the implementation agent, decides
-whether the evidence permits automatic correction, reclassification, another
-eligible item, or a user-owned escalation.
+Stop and request `reviewer disposition` when the same underlying issue produces
+a second genuine red. Include both failures, what executed, what did not, the
+retained diff/commit state, the source-supported cause if known, and the
+smallest bounded next action. A genuinely independent failure starts its own
+first-red allowance only when continuing cannot mask, overwrite, or invalidate
+the earlier evidence.
+
+Stop on the first red, without using the self-correction allowance, when a
+correction would expand the subsystem, public contract, assignment, trust, or
+file boundary; require a destructive/install/launch/merge/push action,
+credentials or private live data, a material product decision, a substantial
+conflict, or unsafe diagnostic expansion. An environmental or harness-owned
+setup failure permits only one source-proven safe-state or invocation
+correction before the same-issue second-red stop.
+
+After a second-red or immediate-stop report, do not infer that the planner goal
+or other lane is paused. If task-specific edits are retained, wait only for the
+reviewer's bounded follow-up for this assignment. When that follow-up arrives,
+continue directly under its exact edit and gate authority and report the next
+terminal result back to the reviewer. The reviewer, not the implementation
+agent, decides whether the evidence permits another bounded correction,
+reclassification, another eligible item, or a user-owned escalation.
 
 An ordinary review correction applies at the next clean assignment boundary;
 it does not cancel a different milestone already in progress. Finish that
@@ -602,7 +619,8 @@ When a test fails:
 
 - Retain and report the failing evidence.
 - Determine whether the failure is caused by the assignment.
-- Fix the root cause when it is in scope.
+- Follow the bounded first-correction/second-red protocol in Planner
+  communication; fix the root cause once when it is concrete and in scope.
 - Do not treat an unchanged rerun as a fix.
 - Record an unrelated or timing-sensitive failure honestly.
 - If the command fails before any test executes because of an environmental or
@@ -659,7 +677,8 @@ Before writing the implementation task's own final answer, explicitly call
 `send_message_to_thread` for the reviewer task that assigned the work. When the
 assignment arrived through `codex_delegation`, use its `source_thread_id` as the
 reviewer target. Send the same concise terminal report directly for every
-outcome: completed or committed work, first-red stop, blocker, rejection,
+outcome: completed or committed work, first-red correction, second-red stop,
+immediate-stop boundary, blocker, rejection,
 no-commit result, and diagnosis-only or no-change result. The direct report must
 include the assignment, baseline/worktree/branch, exact scope, commit/tree or
 retained diff and cleanliness, verification results, launch/install/integration/

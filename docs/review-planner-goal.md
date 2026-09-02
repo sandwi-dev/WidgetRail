@@ -154,9 +154,10 @@ Implementation tasks read their assigned Plane item, work in an isolated clean w
 unrelated changes, and commit one coherent local milestone. They stage exact paths, inspect the
 staged diff, run `git diff --cached --check`, and never push or mutate reviewer-owned documents.
 
-A task reports every completion, first red, blocker, or no-change result directly to the reviewer
-before ending its turn. The reviewer—not the implementation task—sets Plane disposition and
-integrates work.
+A task reports every first red directly to the reviewer while continuing under the bounded
+self-correction rule below. It reports every completion, second red on the same underlying issue,
+immediate-stop boundary, blocker, or no-change result before ending its turn. The reviewer—not the
+implementation task—sets Plane disposition and integrates work.
 
 Do not cross lane ownership, combine WIDGE items, select work from comments or reviews, or invent
 cleanup to stay busy. Shared protocol or architecture work is serialized through one explicit Plane
@@ -220,25 +221,31 @@ engineering. The user owns live visual verdicts.
 Accept only when documented criteria are met. Otherwise preserve the rejected commit and artifact,
 record the concrete gap, and dispatch one bounded correction through the owning lane.
 
-### Automatic disposition after a first red
+### Automatic disposition after a red
 
-A first-red stop pauses only that ordered gate, not the planner goal or the other lane.
+A first genuine red pauses only the affected ordered gate while the implementation lane retains the
+evidence and reports it to the reviewer. The lane does not end its turn or wait for reviewer
+disposition when the cause and correction are concrete, bounded, in scope, and preserve the accepted
+product and architecture. It makes the smallest such correction, reruns that exact gate once, and
+records both the original failure and correction in its terminal report. An unchanged rerun, weaker
+oracle, longer deadline, or unrelated cleanup is not a correction.
 
-In the same review pass:
+If that replacement gate is green, the lane continues the remaining independent gates. If the same
+underlying issue produces a second genuine red, the lane stops with the full retained evidence and
+requests reviewer disposition. A genuinely independent failure starts its own first-red allowance
+only when continuing cannot mask, overwrite, or invalidate the earlier evidence.
 
-1. Inspect the retained diff, failure, logs, and relevant current source.
-2. If cause and correction are concrete, bounded, in scope, and preserve the accepted product and
-   architecture, immediately authorize that exact correction and one proportional replacement gate.
-3. If the failure is environmental or harness-owned, authorize only a source-proven safe-state or
-   invocation correction. Never weaken an oracle, extend a deadline, or repeat an unchanged command
-   merely to get green.
-4. If cause is not concrete, perform bounded read-only diagnosis, then issue a precise correction,
-   record an exact blocker, or re-own/reclassify the item.
-5. Escalate only for a user-owned decision, credentials, full-trust consent, destructive action,
-   substantial conflict, trust/scope expansion, or new authority.
+The lane stops immediately on the first red when any correction would require a subsystem, public
+contract, assignment, trust, or file-boundary expansion; a destructive/install/launch/merge/push
+action; credentials or private live data; a material product choice; a substantial conflict; or an
+unsafe diagnostic expansion. Environmental or harness-owned setup failures permit only one
+source-proven safe-state or invocation correction before the same-issue second-red stop.
 
-Do not leave an implementation task waiting for reviewer disposition when a safe bounded disposition
-is available.
+For every second-red or immediate-stop report, the reviewer inspects the retained diff, failure,
+logs, and relevant current source in the same review pass, then issues one precise bounded
+correction, records an exact blocker, re-owns/reclassifies the item, or escalates a genuinely
+user-owned decision. Do not leave an implementation task waiting when a safe bounded disposition is
+available.
 
 ### Integrate accepted work
 
@@ -334,8 +341,9 @@ timestamps, result artifacts, exit state, and resource use. Waiting and diagnosi
 invocation is not a rerun.
 
 A setup failure is not validation. Confirm a compiler/test actually ran and inspect machine-readable
-failure fields. Stop at the first genuine red in the ordered gate. Continue independent focused
-gates only when they cannot mask or overwrite that failure.
+failure fields. A reviewer-run verification stops at its first genuine red and returns the evidence
+to the implementation lane. An implementation lane follows the bounded first-correction/second-red
+rule above. Continue independent focused gates only when they cannot mask or overwrite that failure.
 
 User physical testing outranks synthetic captures. A user-reproduced regression remains open until
 the corrected packaged path has proportional evidence.
