@@ -2049,15 +2049,56 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
         return 1;
     case WM_TIMER:
         if (wParam == kBackgroundSurfaceAnimationTimer) {
-            if (!renderer_ ||
-                !lastRenderResult_.backgroundSurfaceAnimationDamage) {
+            if (!renderer_ || !lastRenderResult_.succeeded) {
                 KillTimer(window_, kBackgroundSurfaceAnimationTimer);
                 return 0;
             }
-            const auto plan = renderer_->PlanBackgroundSurfaceAnimationFrame(
-                *lastRenderResult_.backgroundSurfaceAnimationDamage);
-            if (!plan) {
+            std::optional<declarative::Rect> damage =
+                lastRenderResult_.backgroundSurfaceAnimationDamage;
+            if (!damage && lastRenderResult_.backgroundSurfaceSettleWake) {
+                const auto now = GetTickCount64();
+                const auto deadline = lastRenderResult_
+                    .backgroundSurfaceSettleWake->deadlineMilliseconds;
+                if (now < deadline) {
+                    const auto remaining = std::min<std::uint64_t>(
+                        deadline - now,
+                        std::numeric_limits<UINT>::max());
+                    if (SetTimer(
+                            window_, kBackgroundSurfaceAnimationTimer,
+                            std::max<UINT>(
+                                1U, static_cast<UINT>(remaining)), nullptr) == 0) {
+                        // Retain the one-shot wake for the next externally
+                        // caused paint; an immediate fallback would spin while
+                        // the proposal is intentionally static.
+                        KillTimer(window_, kBackgroundSurfaceAnimationTimer);
+                    }
+                    return 0;
+                }
                 KillTimer(window_, kBackgroundSurfaceAnimationTimer);
+                renderer_->CancelPresentationUpdatePlan();
+                RequestPaint();
+                return 0;
+            }
+            if (!damage) {
+                if (lastRenderResult_.animationActive) {
+                    renderer_->CancelPresentationUpdatePlan();
+                    RequestPaint();
+                    return 0;
+                }
+                KillTimer(window_, kBackgroundSurfaceAnimationTimer);
+                return 0;
+            }
+            RECT pendingPaint{};
+            if (GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE) {
+                renderer_->CancelPresentationUpdatePlan();
+                RequestPaint();
+                return 0;
+            }
+            const auto plan = renderer_->PlanBackgroundSurfaceAnimationFrame(
+                *damage);
+            if (!plan) {
+                renderer_->CancelPresentationUpdatePlan();
+                RequestPaint();
                 return 0;
             }
             const float scale = static_cast<float>(
@@ -2583,10 +2624,38 @@ void WidgetSurfaceCoordinator::Paint() {
                 diagnostic.message);
             backgroundSurfaceDiagnosticsQueued = true;
         }
-        if (renderResult.backgroundSurfaceAnimationDamage) {
-            SetTimer(
-                window_, kBackgroundSurfaceAnimationTimer,
-                kBackgroundSurfaceAnimationTimerMilliseconds, nullptr);
+        if (!renderResult.succeeded) {
+            KillTimer(window_, kBackgroundSurfaceAnimationTimer);
+        } else if (renderResult.backgroundSurfaceAnimationDamage) {
+            if (SetTimer(
+                    window_, kBackgroundSurfaceAnimationTimer,
+                    kBackgroundSurfaceAnimationTimerMilliseconds, nullptr) == 0) {
+                renderer_->CancelPresentationUpdatePlan();
+                RequestPaint();
+            }
+        } else if (renderResult.backgroundSurfaceSettleWake) {
+            const auto now = GetTickCount64();
+            const auto deadline =
+                renderResult.backgroundSurfaceSettleWake->deadlineMilliseconds;
+            const auto remaining = deadline > now
+                ? std::min<std::uint64_t>(
+                    deadline - now, std::numeric_limits<UINT>::max())
+                : std::uint64_t{1};
+            if (SetTimer(
+                    window_, kBackgroundSurfaceAnimationTimer,
+                    std::max<UINT>(
+                        1U, static_cast<UINT>(remaining)), nullptr) == 0) {
+                // A later input/image-ready paint can republish or consume the
+                // retained wake without a tight pre-deadline repaint loop.
+                KillTimer(window_, kBackgroundSurfaceAnimationTimer);
+            }
+        } else if (renderResult.animationActive) {
+            if (SetTimer(
+                    window_, kBackgroundSurfaceAnimationTimer,
+                    kBackgroundSurfaceAnimationTimerMilliseconds, nullptr) == 0) {
+                renderer_->CancelPresentationUpdatePlan();
+                RequestPaint();
+            }
         } else {
             KillTimer(window_, kBackgroundSurfaceAnimationTimer);
         }
@@ -2608,6 +2677,8 @@ void WidgetSurfaceCoordinator::Paint() {
             ++workCounters_.mediaViewportReconciliations;
         }
         PublishAccessibility();
+    } else {
+        KillTimer(window_, kBackgroundSurfaceAnimationTimer);
     }
     EndPaint(window_, &paint);
     const bool paginationNotification =

@@ -103,6 +103,11 @@ struct RenderMediaViewportRegion final {
     declarative::Rect clip;
 };
 
+struct BackgroundSurfaceSettleWake final {
+    declarative::Rect damage;
+    std::uint64_t deadlineMilliseconds{};
+};
+
 struct RenderResult final {
     bool succeeded{};
     /// True only while at least one paint-only node transition requires a
@@ -112,6 +117,10 @@ struct RenderResult final {
     /// means another declarative animation also needs a frame and the host
     /// must use its conservative full-content wakeup.
     std::optional<declarative::Rect> backgroundSurfaceAnimationDamage;
+    /// One exact non-animating wake for a latest focused-background proposal.
+    /// Hosts invalidate this damage once at or after the absolute deadline;
+    /// static settle time never becomes animation work.
+    std::optional<BackgroundSurfaceSettleWake> backgroundSurfaceSettleWake;
     /// Captured on every call but emitted only by the existing host diagnostic
     /// when the containing composition frame exceeds its slow threshold.
     DeclarativeRenderTiming timing;
@@ -518,11 +527,18 @@ private:
         std::wstring defaultArtworkHandle;
         std::wstring defaultImageFit;
         Microsoft::WRL::ComPtr<ID2D1Bitmap> committedBitmap;
+        bool committedBitmapIsSurfaceComposite{};
+        std::size_t committedSurfaceCompositeBytes{};
         std::wstring incomingImageSource;
         std::wstring incomingArtworkHandle;
         std::wstring incomingImageFit;
         Microsoft::WRL::ComPtr<ID2D1Bitmap> incomingBitmap;
         std::uint64_t transitionStartedAt{};
+        std::wstring candidateImageSource;
+        std::wstring candidateArtworkHandle;
+        std::wstring candidateImageFit;
+        std::uint64_t candidateObservedAt{};
+        bool candidatePresent{};
         std::uint64_t lastUse{};
     };
 
@@ -540,6 +556,7 @@ private:
         ID2D1RenderTarget* renderTarget) noexcept;
     void ClearBitmapCache(bool resourceInvalidation) noexcept;
     void TrimBitmapCache(std::size_t incomingBytes) noexcept;
+    void RecalculateFocusBackgroundCompositeBytes() noexcept;
 
     ID2D1Factory* d2dFactory_{};
     IDWriteFactory* writeFactory_{};
@@ -563,6 +580,7 @@ private:
     std::uint64_t bitmapResourceInvalidations_{};
     std::uint64_t bitmapResourceGeneration_{};
     std::unordered_map<std::wstring, FocusBackgroundEntry> focusBackgrounds_;
+    std::size_t focusBackgroundCompositeBytes_{};
     std::uint64_t focusBackgroundAccessClock_{};
     std::unordered_map<std::wstring, ScrollStateEntry> scrollOffsets_;
     std::uint64_t scrollStateAccessClock_{};

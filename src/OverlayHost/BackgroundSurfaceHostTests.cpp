@@ -8,6 +8,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <iostream>
 #include <chrono>
 #include <stdexcept>
@@ -51,6 +52,34 @@ const widgetrail::declarative::Rect& RequireElementRect(
     const auto found = result.elementRects.find(std::wstring{elementId});
     Require(found != result.elementRects.end(), message);
     return found->second;
+}
+
+std::array<BYTE, 4> ReadPixel(
+    IWICBitmap* const bitmap,
+    const UINT x,
+    const UINT y) {
+    Require(bitmap != nullptr, "pixel fixture omitted its WIC bitmap");
+    WICRect region{
+        static_cast<INT>(x), static_cast<INT>(y), 1, 1};
+    Microsoft::WRL::ComPtr<IWICBitmapLock> lock;
+    Require(SUCCEEDED(bitmap->Lock(
+                &region, WICBitmapLockRead, lock.ReleaseAndGetAddressOf())) &&
+            lock,
+        "pixel fixture could not lock the rendered background");
+    UINT byteCount{};
+    BYTE* bytes{};
+    Require(SUCCEEDED(lock->GetDataPointer(&byteCount, &bytes)) &&
+            bytes && byteCount >= 4U,
+        "pixel fixture could not read the rendered background");
+    return {bytes[0], bytes[1], bytes[2], bytes[3]};
+}
+
+bool HasDiagnostic(
+    const widgetrail::RenderResult& result,
+    const std::wstring_view code) {
+    return std::ranges::any_of(
+        result.diagnostics,
+        [&](const auto& diagnostic) { return diagnostic.code == code; });
 }
 
 } // namespace
@@ -198,6 +227,229 @@ int wmain() {
             L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
             L"AAAADUlEQVR42mNk+M/wHwAF/gL+Xh8ftQAAAABJRU5ErkJggg==";
 
+        // Exercise the final transition policy independently from the legacy
+        // focused-artwork lifecycle matrix below. Distinct one-pixel sources
+        // make a mid-transition flatten observable without exposing renderer
+        // state through a test-only production API.
+        {
+            std::wstring retargetError;
+            auto retargetSnapshot = widgetrail::testing::ParseWidgetSnapshotResponse(
+                R"json({"snapshot":{"protocolVersion":39,"sequence":1,
+                "widgetInstanceId":"background.retarget.instance",
+                "activeInputScopeId":"background.retarget.root",
+                "initialFocusId":"background.retarget.red",
+                "root":{"id":"background.retarget.root","kind":"backgroundSurface",
+                "artworkHandle":"background.retarget.red","imageFit":"cover",
+                "usesFocusedDescendantArtwork":true,"children":[{
+                "id":"background.retarget.content","kind":"stack","children":[{
+                "id":"background.retarget.red","kind":"button","text":"Red",
+                "actionId":"background.retarget.red",
+                "focusBackgroundArtworkHandle":"background.retarget.red","children":[]},{
+                "id":"background.retarget.green","kind":"button","text":"Green",
+                "actionId":"background.retarget.green",
+                "focusBackgroundArtworkHandle":"background.retarget.green","children":[]},{
+                "id":"background.retarget.blue","kind":"button","text":"Blue",
+                "actionId":"background.retarget.blue",
+                "focusBackgroundArtworkHandle":"background.retarget.blue","children":[]},{
+                "id":"background.retarget.ordinary","kind":"button","text":"Ordinary",
+                "actionId":"background.retarget.ordinary","children":[]}]}]}}})json",
+                retargetError);
+            Require(retargetSnapshot.has_value() && retargetError.empty(),
+                "native parser rejected the retarget fixture");
+
+            constexpr std::wstring_view redPng =
+                L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARn"
+                L"QU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY/jPwPAfAAUA"
+                L"Af+mXJtdAAAAAElFTkSuQmCC";
+            constexpr std::wstring_view greenPng =
+                L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARn"
+                L"QU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY2D4z/AfAAQB"
+                L"Af9eLuGlAAAAAElFTkSuQmCC";
+            constexpr std::wstring_view bluePng =
+                L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARn"
+                L"QU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY2Bg+P8fAAMC"
+                L"Af/Jsq3uAAAAAElFTkSuQmCC";
+            constexpr std::wstring_view retargetWidget =
+                L"widgetrail.tests.background-retarget";
+            constexpr std::wstring_view retargetSurface =
+                L"background.retarget.root";
+
+            widgetrail::RemoteImageCache retargetCache(
+                {}, {}, {}, [](const std::wstring_view) { return true; });
+            const auto admitArtwork = [&](const std::wstring_view handle,
+                                          const std::wstring_view content) {
+                const auto key = widgetrail::RemoteImageCache::TrustedArtworkKey(
+                    retargetWidget, retargetSurface, handle);
+                Require(retargetCache.RequestTrustedArtwork(key) ==
+                            widgetrail::RemoteImageRequestResult::Queued,
+                    "retarget fixture did not queue exact artwork authority");
+                Require(retargetCache.SupplyTrustedArtwork(
+                            retargetWidget, handle, L"image/png",
+                            std::wstring{content}),
+                    "retarget fixture rejected exact artwork completion");
+                WaitForState(
+                    retargetCache, key, widgetrail::RemoteImageState::Ready,
+                    "retarget fixture artwork did not become ready");
+            };
+            admitArtwork(L"background.retarget.red", redPng);
+            admitArtwork(L"background.retarget.green", greenPng);
+            admitArtwork(L"background.retarget.blue", bluePng);
+
+            widgetrail::DeclarativeRenderer retargetRenderer{
+                d2d.Get(), write.Get(), &retargetCache};
+            widgetrail::DeclarativeRenderOptions retargetOptions;
+            retargetOptions.artworkWidgetId = std::wstring{retargetWidget};
+            retargetOptions.artworkAuthorityId =
+                L"widgetrail.tests.background-retarget\x1fruntime\x1fpresentation";
+            retargetOptions.surfaceBackground = {0.0F, 0.0F, 0.0F, 0.0F};
+            std::uint64_t retargetTime = 1000;
+            const auto renderRetarget = [&](const std::wstring_view focusedId) {
+                retargetOptions.animationTimestampMilliseconds = retargetTime;
+                target->BeginDraw();
+                auto result = retargetRenderer.Render(
+                    target.Get(), *retargetSnapshot, focusedId, viewport,
+                    retargetOptions);
+                Require(SUCCEEDED(target->EndDraw()),
+                    "retarget background draw failed");
+                Require(result.succeeded, "retarget background render failed");
+                return result;
+            };
+
+            const auto initial = renderRetarget(L"background.retarget.ordinary");
+            Require(RequireBackgroundHandle(
+                        initial, retargetSurface,
+                        "retarget fixture omitted initial committed artwork") ==
+                    L"background.retarget.red" &&
+                    !initial.animationActive,
+                "first ready background did not commit without animation");
+
+            const auto greenStart = renderRetarget(L"background.retarget.green");
+            const auto greenStartPixel = ReadPixel(canvas.Get(), 620, 400);
+            Require(greenStart.animationActive &&
+                    greenStart.backgroundSurfaceAnimationDamage &&
+                    HasDiagnostic(greenStart, L"background_crossfade_start") &&
+                    greenStartPixel[2] > 240U && greenStartPixel[1] < 15U,
+                "first idle replacement did not start from the committed red frame");
+
+            retargetTime = 1100;
+            const auto greenProgress = renderRetarget(L"background.retarget.green");
+            const auto greenProgressPixel = ReadPixel(canvas.Get(), 620, 400);
+            Require(greenProgress.animationActive &&
+                    greenProgressPixel[1] > greenProgressPixel[2],
+                "400 ms crossfade did not advance toward the green target");
+
+            const auto blueCandidate = renderRetarget(L"background.retarget.blue");
+            Require(blueCandidate.animationActive &&
+                    HasDiagnostic(
+                        blueCandidate, L"background_crossfade_candidate") &&
+                    !HasDiagnostic(
+                        blueCandidate, L"background_crossfade_retarget"),
+                "active transition did not retain blue as metadata-only latest candidate");
+
+            // Returning to the committed red source is itself a valid latest
+            // target. Replacing blue with red resets the 150 ms stability clock.
+            retargetTime = 1149;
+            const auto redCandidate = renderRetarget(L"background.retarget.red");
+            Require(HasDiagnostic(
+                        redCandidate, L"background_crossfade_candidate") &&
+                    !HasDiagnostic(
+                        redCandidate, L"background_crossfade_retarget"),
+                "return-to-committed did not replace the prior latest candidate");
+            retargetTime = 1298;
+            const auto beforeStable = renderRetarget(L"background.retarget.red");
+            Require(beforeStable.animationActive &&
+                    !HasDiagnostic(
+                        beforeStable, L"background_crossfade_retarget"),
+                "latest candidate retargeted before remaining unchanged for 150 ms");
+
+            // A half-pixel target cannot preserve exact surface-space geometry.
+            // The failed rebase must retain the latest candidate, not snap or
+            // cancel the active transition. Restoring exact geometry at the
+            // same timestamp then permits the one bounded flatten-and-retarget.
+            retargetTime = 1299;
+            target->SetTransform(D2D1::Matrix3x2F::Translation(0.5F, 0.0F));
+            const auto rejectedRebase = renderRetarget(L"background.retarget.red");
+            target->SetTransform(D2D1::Matrix3x2F::Identity());
+            Require(rejectedRebase.animationActive &&
+                    HasDiagnostic(
+                        rejectedRebase, L"background_crossfade_rebase-failed") &&
+                    !HasDiagnostic(
+                        rejectedRebase, L"background_crossfade_retarget"),
+                "inexact geometry did not fail closed while retaining transition work");
+            const auto redRetarget = renderRetarget(L"background.retarget.red");
+            const auto redRetargetPixel = ReadPixel(canvas.Get(), 620, 400);
+            Require(redRetarget.animationActive &&
+                    HasDiagnostic(
+                        redRetarget, L"background_crossfade_retarget") &&
+                    redRetargetPixel[1] > redRetargetPixel[2],
+                "stable return target did not begin from the flattened current blend");
+
+            retargetTime = 1400;
+            const auto noProposal =
+                renderRetarget(L"background.retarget.ordinary");
+            Require(noProposal.animationActive &&
+                    RequireBackgroundHandle(
+                        noProposal, retargetSurface,
+                        "no-proposal frame omitted active artwork") ==
+                        L"background.retarget.red",
+                "no-proposal focus cancelled or blanked the active transition");
+            retargetTime = 1499;
+            const auto redMidpoint = renderRetarget(L"background.retarget.red");
+            const auto redMidpointPixel = ReadPixel(canvas.Get(), 620, 400);
+            Require(redMidpoint.animationActive &&
+                    redMidpointPixel[2] > redMidpointPixel[1] &&
+                    redMidpointPixel[1] > 0U,
+                "retarget snapped instead of blending over the full duration");
+            retargetTime = 1698;
+            Require(renderRetarget(L"background.retarget.red").animationActive,
+                "400 ms crossfade settled one millisecond early");
+            retargetTime = 1699;
+            const auto redSettled = renderRetarget(L"background.retarget.red");
+            Require(!redSettled.animationActive &&
+                    RequireBackgroundHandle(
+                        redSettled, retargetSurface,
+                        "settled retarget omitted committed red artwork") ==
+                        L"background.retarget.red",
+                "400 ms crossfade did not settle at its exact boundary");
+
+            // Queue blue immediately before green settles. The active timer
+            // ends at 2400, leaving one static absolute wake for the remaining
+            // candidate stability interval instead of pretending it is motion.
+            retargetTime = 2000;
+            Require(renderRetarget(L"background.retarget.green").animationActive,
+                "settle fixture did not start its first transition");
+            retargetTime = 2390;
+            Require(HasDiagnostic(
+                        renderRetarget(L"background.retarget.blue"),
+                        L"background_crossfade_candidate"),
+                "settle fixture did not queue its latest candidate");
+            retargetTime = 2400;
+            const auto settleWake = renderRetarget(L"background.retarget.blue");
+            Require(!settleWake.animationActive &&
+                    !settleWake.backgroundSurfaceAnimationDamage &&
+                    settleWake.backgroundSurfaceSettleWake &&
+                    settleWake.backgroundSurfaceSettleWake->deadlineMilliseconds == 2540,
+                "settled transition did not publish one non-animating 150 ms wake");
+            retargetTime = 2539;
+            const auto beforeWake = renderRetarget(L"background.retarget.blue");
+            Require(!beforeWake.animationActive &&
+                    beforeWake.backgroundSurfaceSettleWake &&
+                    beforeWake.backgroundSurfaceSettleWake->deadlineMilliseconds == 2540,
+                "static candidate was consumed before its exact settle deadline");
+            retargetTime = 2540;
+            const auto afterWake = renderRetarget(L"background.retarget.blue");
+            Require(afterWake.animationActive &&
+                    !afterWake.backgroundSurfaceSettleWake &&
+                    HasDiagnostic(afterWake, L"background_crossfade_start"),
+                "settle wake did not start the stable latest candidate exactly once");
+
+            const auto bitmapStats = retargetRenderer.GetImageBitmapCacheStats();
+            Require(bitmapStats.entries <= bitmapStats.maximumEntries &&
+                    bitmapStats.bytes <= bitmapStats.maximumBytes,
+                "retarget fixture exceeded bounded renderer bitmap ownership");
+            retargetCache.Shutdown();
+        }
+
         // First establish the authored default as the last committed image.
         parsed->root.children[0].children[0].focusBackgroundArtworkHandle.clear();
         (void)render(L"background-surface-test.first");
@@ -293,32 +545,33 @@ int wmain() {
 
         const auto supersessionPending =
             render(L"background-surface-test.supersession");
-        Require(requests.size() == 4U && requests.back() == supersessionKey,
-            "latest focus did not request its exact superseding proposal");
+        Require(requests.size() == 3U &&
+                std::ranges::find(requests, supersessionKey) == requests.end(),
+            "unstable latest focus started decode work before its settle deadline");
         Require(supersessionPending.backgroundArtworkHandles.at(
                     L"background-surface-test.root") ==
-                L"background-surface-test.artwork" &&
+                L"background-surface-test.focus.second" &&
                 std::any_of(
                     supersessionPending.diagnostics.begin(),
                     supersessionPending.diagnostics.end(),
                     [](const auto& diagnostic) {
                         return diagnostic.code ==
-                            L"background_crossfade_supersession";
+                            L"background_crossfade_candidate";
                     }),
-            "A-to-B-to-pending-C did not retire B and retain committed A");
+            "A-to-B-to-unstable-C did not retain one metadata-only latest candidate and active B transition");
 
         // Re-enter B from the decoded cache, then deterministically cross the
         // complete transition interval before exercising the older
         // B-to-pending-C retention oracle below.
         (void)render(L"background-surface-test.second");
-        frameTime += 200;
+        frameTime += 400;
         options.animationTimestampMilliseconds = frameTime;
         const auto secondSettled = render(L"background-surface-test.second");
         Require(secondSettled.backgroundArtworkHandles.at(
                     L"background-surface-test.root") ==
                     L"background-surface-test.focus.second" &&
                 !secondSettled.backgroundSurfaceAnimationDamage,
-            "focused B did not become the exact committed image after 200 ms");
+            "focused B did not become the exact committed image after 400 ms");
 
         const auto requestsBeforeOrdinary = requests.size();
         const auto ordinaryFrame = render(L"background-surface-test.ordinary");
@@ -351,7 +604,11 @@ int wmain() {
         // A target-backed frame may paint a ready replacement and still fail
         // on a later node. That rejected frame cannot publish its staged
         // replacement into the renderer's committed presentation state.
-        (void)render(L"background-surface-test.second");
+        const auto acceptedCandidate =
+            render(L"background-surface-test.second");
+        Require(HasDiagnostic(
+                    acceptedCandidate, L"background_crossfade_candidate"),
+            "transaction fixture did not publish its accepted B candidate");
         options.failAfterNodeDrawForTesting = true;
         target->BeginDraw();
         const auto rejectedReplacement = renderer.Render(
@@ -362,12 +619,25 @@ int wmain() {
         Require(!rejectedReplacement.succeeded,
             "post-draw replacement fixture did not reject the frame");
         options.failAfterNodeDrawForTesting = false;
+
+        frameTime += 150;
+        options.animationTimestampMilliseconds = frameTime;
         const auto afterRejectedReplacement =
-            render(L"background-surface-test.ordinary");
-        Require(afterRejectedReplacement.backgroundArtworkHandles.at(
-                    L"background-surface-test.root") ==
-                L"background-surface-test.focus.second",
-            "rejected ready replacement mutated committed background state");
+            render(L"background-surface-test.second");
+        Require(afterRejectedReplacement.animationActive &&
+                afterRejectedReplacement.backgroundSurfaceAnimationDamage &&
+                RequireBackgroundHandle(
+                    afterRejectedReplacement,
+                    L"background-surface-test.root",
+                    "preserved transaction candidate omitted B") ==
+                    L"background-surface-test.focus.second" &&
+                HasDiagnostic(
+                    afterRejectedReplacement,
+                    L"background_crossfade_retarget"),
+            "rejected frame cleared the previously accepted B candidate");
+
+        frameTime += 400;
+        options.animationTimestampMilliseconds = frameTime;
 
         // Explicit clearing is transaction-owned too: a later render failure
         // must leave the exact prior committed focused background available.
@@ -390,7 +660,7 @@ int wmain() {
                 L"background-surface-test.focus.replacement",
             "rejected explicit clear mutated committed background state");
 
-        frameTime += 200;
+        frameTime += 400;
         options.animationTimestampMilliseconds = frameTime;
         const auto replacementSettled =
             render(L"background-surface-test.replacement");
@@ -787,7 +1057,7 @@ int wmain() {
         })json", wrongOwnerError),
             "native parser admitted focused-background ownership on a non-surface");
         cache.Shutdown();
-        std::cout << "BackgroundSurface host tests: 10/10 passed.\n";
+        std::cout << "BackgroundSurface host tests: 11/11 passed.\n";
         }
         if (SUCCEEDED(initialized)) CoUninitialize();
         return 0;

@@ -183,6 +183,114 @@ void TestPinnedBackgroundCrossfadeDiagnosticWakeContract() {
               diagnosticOnly.find("ReconcileEmbeddedMediaProjection") ==
                   std::string::npos,
           "diagnostic-only wake drains to overlay.log without presentation reconciliation or repaint");
+
+    const auto controllerTimer = host.find(
+        "if (wParam == kControllerTimer || wParam == kPinnedSurfaceTimer)");
+    const auto bridgePump = host.find(
+        "PumpBridgeEvents(controllerTick);", controllerTimer);
+    Check(controllerTimer != std::string::npos &&
+              bridgePump != std::string::npos,
+          "ordinary controller timer and Bridge pump are present");
+    const auto ordinaryWake = host.substr(
+        controllerTimer, bridgePump - controllerTimer);
+    const auto settleAdmission = ordinaryWake.find(
+        "lastWidgetRenderResult_.backgroundSurfaceSettleWake");
+    const auto fullInvalidation = ordinaryWake.find(
+        "InvalidateRect(window_, nullptr, FALSE) != FALSE", settleAdmission);
+    const auto planReset = ordinaryWake.find(
+        "pendingContentRenderPlan_.reset();", fullInvalidation);
+    Check(settleAdmission != std::string::npos &&
+              ordinaryWake.find("lastWidgetRenderResult_.succeeded") <
+                  settleAdmission &&
+              ordinaryWake.find(
+                  "state_.surface() == widgetrail::Surface::Widget") <
+                  settleAdmission &&
+              ordinaryWake.find("HasExactRefreshRetainedVisualCheckpoint()") !=
+                  std::string::npos &&
+              fullInvalidation != std::string::npos &&
+              planReset != std::string::npos &&
+              fullInvalidation < planReset &&
+              ordinaryWake.find(
+                  "lastWidgetRenderResult_.backgroundSurfaceSettleWake.reset();",
+                  planReset) != std::string::npos,
+          "ordinary settle wake invalidates a full successful frame before consuming its one-shot authority");
+
+    const auto ordinaryDamageBegin = host.find(
+        "[[nodiscard]] bool SubmitBackgroundSurfaceDamage(");
+    const auto ordinaryDamageEnd = host.find(
+        "void InvalidateWidgetFocusChange(", ordinaryDamageBegin);
+    Check(ordinaryDamageBegin != std::string::npos &&
+              ordinaryDamageEnd != std::string::npos,
+          "ordinary background damage owner is present");
+    const auto ordinaryDamage = host.substr(
+        ordinaryDamageBegin, ordinaryDamageEnd - ordinaryDamageBegin);
+    Check(ordinaryDamage.find("pendingContentRenderPlan_") !=
+                  std::string::npos &&
+              ordinaryDamage.find("GetUpdateRect(") != std::string::npos &&
+              ordinaryDamage.find("return false;") != std::string::npos,
+          "ordinary narrow background damage fails closed on a pending plan or paint collision");
+    const auto ordinaryPumpBegin = host.find(
+        "if (declarativeMotionActive_ &&");
+    const auto ordinaryPumpEnd = host.find(
+        "const widgetrail::WidgetSnapshot* SnapshotFor", ordinaryPumpBegin);
+    Check(ordinaryPumpBegin != std::string::npos &&
+              ordinaryPumpEnd != std::string::npos,
+          "ordinary declarative animation pump is present");
+    const auto ordinaryPump = host.substr(
+        ordinaryPumpBegin, ordinaryPumpEnd - ordinaryPumpBegin);
+    Check(ordinaryPump.find("SubmitBackgroundSurfaceDamage(") !=
+                  std::string::npos &&
+              ordinaryPump.find("pendingContentRenderPlan_.reset();") !=
+                  std::string::npos &&
+              ordinaryPump.find("CancelPresentationUpdatePlan();") !=
+                  std::string::npos &&
+              ordinaryPump.find("InvalidateRect(window_, nullptr, FALSE);") !=
+                  std::string::npos,
+          "ordinary animation collisions cancel narrow work and request a conservative full frame");
+
+    const auto pinnedTimer = coordinator.find(
+        "if (wParam == kBackgroundSurfaceAnimationTimer)");
+    const auto pinnedTimerEnd = coordinator.find(
+        "return DefWindowProcW(window_, message, wParam, lParam);", pinnedTimer);
+    Check(pinnedTimer != std::string::npos &&
+              pinnedTimerEnd != std::string::npos,
+          "pinned background timer owner is present");
+    const auto pinnedWake = coordinator.substr(
+        pinnedTimer, pinnedTimerEnd - pinnedTimer);
+    Check(pinnedWake.find("!renderer_ || !lastRenderResult_.succeeded") !=
+                  std::string::npos &&
+              pinnedWake.find("backgroundSurfaceSettleWake") !=
+                  std::string::npos &&
+              pinnedWake.find("renderer_->CancelPresentationUpdatePlan();") !=
+                  std::string::npos &&
+              pinnedWake.find("GetUpdateRect(") != std::string::npos &&
+              pinnedWake.find("if (!plan)") != std::string::npos &&
+              std::count(
+                  pinnedWake.begin(), pinnedWake.end(), '\n') > 20,
+          "pinned timer retains settle authority and promotes damage collisions to a full repaint");
+
+    const auto pinnedPaint = coordinator.find(
+        "const HRESULT result = renderTarget_->EndDraw();");
+    const auto pinnedPaintEnd = coordinator.find(
+        "void WidgetSurfaceCoordinator::PublishAccessibility()", pinnedPaint);
+    Check(pinnedPaint != std::string::npos &&
+              pinnedPaintEnd != std::string::npos,
+          "pinned paint completion owner is present");
+    const auto pinnedSchedule = coordinator.substr(
+        pinnedPaint, pinnedPaintEnd - pinnedPaint);
+    Check(pinnedSchedule.find("else if (SUCCEEDED(result))") !=
+                  std::string::npos &&
+              pinnedSchedule.find("if (!renderResult.succeeded)") !=
+                  std::string::npos &&
+              pinnedSchedule.find("backgroundSurfaceAnimationDamage") !=
+                  std::string::npos &&
+              pinnedSchedule.find("backgroundSurfaceSettleWake") !=
+                  std::string::npos &&
+              pinnedSchedule.find("else if (renderResult.animationActive)") !=
+                  std::string::npos &&
+              pinnedSchedule.find("SetTimer(") != std::string::npos &&
+              pinnedSchedule.find("RequestPaint();") != std::string::npos,
+          "pinned scheduling publishes only successful frames and falls back safely when timers cannot arm");
 }
 
 void TestWidgetContextActionHostContract() {

@@ -2220,6 +2220,19 @@ private:
                 // surface consume navigation or advance its worker meanwhile;
                 // Guide/F1 continue to arrive through their dedicated paths.
                 if (awaitingSuccessfulOpenPaint_) return 0;
+                if (controllerTick &&
+                    lastWidgetRenderResult_.succeeded &&
+                    state_.surface() == widgetrail::Surface::Widget &&
+                    lastWidgetRenderResult_.backgroundSurfaceSettleWake &&
+                    now >= lastWidgetRenderResult_
+                        .backgroundSurfaceSettleWake->deadlineMilliseconds &&
+                    !HasExactRefreshRetainedVisualCheckpoint() &&
+                    InvalidateRect(window_, nullptr, FALSE) != FALSE) {
+                    pendingContentRenderPlan_.reset();
+                    if (declarativeRenderer_)
+                        declarativeRenderer_->CancelPresentationUpdatePlan();
+                    lastWidgetRenderResult_.backgroundSurfaceSettleWake.reset();
+                }
                 PumpBridgeEvents(controllerTick);
             } else if (wParam == kGuideCompatibilityTimer) {
                 WidgetRailOverlayPlatformEvent event;
@@ -6398,13 +6411,17 @@ private:
         return true;
     }
 
-    [[nodiscard]] bool SubmitBackgroundSurfaceAnimationDamage() {
+    [[nodiscard]] bool SubmitBackgroundSurfaceDamage(
+        const widgetrail::declarative::Rect damage) {
         if (!window_ || !declarativeRenderer_ ||
-            state_.surface() != widgetrail::Surface::Widget ||
-            !lastWidgetRenderResult_.backgroundSurfaceAnimationDamage)
+            state_.surface() != widgetrail::Surface::Widget)
+            return false;
+        RECT pendingPaint{};
+        if (pendingContentRenderPlan_ ||
+            GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE)
             return false;
         const auto plan = declarativeRenderer_->PlanBackgroundSurfaceAnimationFrame(
-            *lastWidgetRenderResult_.backgroundSurfaceAnimationDamage);
+            damage);
         RECT client{};
         if (!plan || !GetClientRect(window_, &client)) return false;
         const UINT dpi = std::max(1U, GetDpiForWindow(window_));
@@ -9963,8 +9980,15 @@ private:
         // is stopped altogether while the overlay is hidden.
         if (declarativeMotionActive_ &&
             !HasExactRefreshRetainedVisualCheckpoint() &&
-            !SubmitBackgroundSurfaceAnimationDamage())
+            (!lastWidgetRenderResult_.backgroundSurfaceAnimationDamage ||
+             !SubmitBackgroundSurfaceDamage(
+                 *lastWidgetRenderResult_
+                     .backgroundSurfaceAnimationDamage))) {
+            pendingContentRenderPlan_.reset();
+            if (declarativeRenderer_)
+                declarativeRenderer_->CancelPresentationUpdatePlan();
             InvalidateRect(window_, nullptr, FALSE);
+        }
     }
 
     const widgetrail::WidgetSnapshot* SnapshotFor(const std::wstring_view widgetId) const noexcept {
