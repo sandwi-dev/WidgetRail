@@ -518,6 +518,83 @@ void VerifySelectControllerInputSerializationAndPopupRaster() {
 
 void VerifyEmbeddedMediaSnapshotContract() {
     std::wstring error;
+    constexpr std::string_view productionSerializedMediaViewport = R"json({
+        "snapshot": {
+            "protocolVersion":41,"sequence":7,
+            "widgetInstanceId":"production.media-viewport","activeInputScopeId":"root",
+            "quickActions":[],"pinnedLayouts":[],
+            "embeddedMedia":{"id":"production-media","accessibleName":"Production media",
+                "entryAsset":"media/index.html","aspectRatio":1.7777777778,
+                "surface":{"mode":"standard","preferredWidth":640,"preferredHeight":360,
+                           "minimumWidth":240,"minimumHeight":180},
+                "resources":[{"path":"media/index.html","contentType":"text/html"}],
+                "commands":["activate"]},
+            "root":{"id":"root","kind":"stack","contextActions":[],"selectOptions":[],
+                "styleClasses":[],"shortcuts":[],"children":[
+                {"id":"production.title","kind":"text","text":"Before",
+                 "contextActions":[],"selectOptions":[],"styleClasses":[],"shortcuts":[],
+                 "children":[]},
+                {"id":"production.viewport","kind":"mediaViewport",
+                 "accessibilityLabel":"Production media","mediaSurfaceId":"production-media",
+                 "contextActions":[],"selectOptions":[],"styleClasses":[],"shortcuts":[],
+                 "children":[]}
+            ]}
+        }
+    })json";
+    const auto productionCheckpoint =
+        widgetrail::testing::ParseWidgetSnapshotResponse(
+            productionSerializedMediaViewport, error);
+    Require(productionCheckpoint && error.empty() &&
+                productionCheckpoint->root.children.size() == 2 &&
+                productionCheckpoint->root.children[1].kind == L"mediaViewport" &&
+                productionCheckpoint->root.children[1].selectOptions.empty(),
+            "production-serialized empty MediaViewport collections were rejected");
+
+    error.clear();
+    const auto productionUpdate =
+        widgetrail::testing::ParseWidgetPresentationUpdateResponse(R"json({
+        "widgetId":"production-media","update":{
+            "protocolVersion":18,
+            "widgetInstanceId":"production.media-viewport",
+            "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "baseSequence":7,"sequence":8,"operations":[
+                {"kind":"setProperties","targetId":"production.title","properties":[
+                    {"property":"text","value":"After"}
+                ]}
+            ]
+        },"renderStyles":{}
+    })json", error);
+    Require(productionUpdate && error.empty(),
+            "production-shaped MediaViewport update could not be parsed");
+    const auto productionMaterialization =
+        widgetrail::MaterializeWidgetPresentationUpdate(
+            *productionCheckpoint, *productionUpdate,
+            L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error);
+    Require(productionMaterialization && error.empty() &&
+                productionMaterialization->snapshot.sequence == 8 &&
+                productionMaterialization->snapshot.root.children[0].text == L"After" &&
+                productionMaterialization->snapshot.root.children[1].kind == L"mediaViewport" &&
+                productionMaterialization->snapshot.root.children[1].selectOptions.empty(),
+            "presentation materialization rejected production-serialized empty MediaViewport collections");
+
+    const auto mutate = [](std::string source, const std::string_view from,
+                           const std::string_view to) {
+        const auto offset = source.find(from);
+        Require(offset != std::string::npos,
+            "MediaViewport mutation source was absent");
+        source.replace(offset, from.size(), to);
+        return source;
+    };
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(
+                mutate(std::string{productionSerializedMediaViewport},
+                    R"json("mediaSurfaceId":"production-media",
+                 "contextActions":[],"selectOptions":[])json",
+                    R"json("mediaSurfaceId":"production-media",
+                 "contextActions":[],"selectOptions":[{"id":"invalid","label":"Invalid","actionId":"invalid","isSelected":true}])json"),
+                error),
+            "MediaViewport admitted a non-empty Select option collection");
+
     const auto valid = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "protocolVersion":27,"sequence":7,
@@ -560,14 +637,6 @@ void VerifyEmbeddedMediaSnapshotContract() {
                 valid->root.children[1].mediaSurfaceId == L"media",
             "valid protocol-v24 MediaViewport snapshot was rejected");
 
-    const auto mutate = [](std::string source, const std::string_view from,
-                           const std::string_view to) {
-        const auto offset = source.find(from);
-        Require(offset != std::string::npos,
-            "MediaViewport mutation source was absent");
-        source.replace(offset, from.size(), to);
-        return source;
-    };
     constexpr std::string_view validJson = R"json({
         "snapshot": {
             "protocolVersion":24,"sequence":7,

@@ -788,7 +788,7 @@ WidgetNode ParseNode(const JsonObject& source) {
         !HasNoUnknownProperties(source,
             {L"id", L"kind", L"mediaSurfaceId", L"accessibilityLabel",
              L"visibleWhen", L"styleClasses", L"shortcuts", L"contextActions",
-             L"children"}))
+             L"selectOptions", L"children"}))
         throw winrt::hresult_invalid_argument(
             L"MediaViewport contains unsupported properties.");
     node.text = OptionalString(source, L"text");
