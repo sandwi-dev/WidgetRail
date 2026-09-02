@@ -1545,6 +1545,9 @@ HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer(
     state_.lifecycle = Lifecycle::ReadyHidden;
     state_.focusedActionBoundsCurrent = false;
     controllerGeometryApplied_ = false;
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    presentationTransferRootAttachedForTest_ = false;
+#endif
     presentationTransferPending_ = true;
     Emit(L"Rich media presentation transfer=detached");
     return S_OK;
@@ -1554,8 +1557,11 @@ HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer(
 void RichMediaSurfaceCoordinator::ConfigurePresentationTransferForTest(
     const PresentationTransferFailureStage stage,
     std::function<void()> invalidate,
-    const bool initiallyVisible) {
+    const bool initiallyVisible,
+    const bool requireRootBeforeParent) {
     presentationTransferFailureForTest_ = stage;
+    presentationTransferRequireRootBeforeParentForTest_ = requireRootBeforeParent;
+    presentationTransferRootAttachedForTest_ = initiallyVisible;
     pageReady_ = initiallyVisible;
     state_.lifecycle = initiallyVisible ? Lifecycle::Visible : Lifecycle::ReadyHidden;
     state_.inputEnabled = initiallyVisible;
@@ -1593,22 +1599,30 @@ HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransfer(
     const auto testResult = [this, testTransferOwner](
                                 const PresentationTransferFailureStage stage) {
 #if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        return testTransferOwner && *presentationTransferFailureForTest_ == stage
-            ? E_FAIL : S_OK;
+        if (!testTransferOwner) return S_OK;
+        if (*presentationTransferFailureForTest_ == stage) return E_FAIL;
+        if (stage == PresentationTransferFailureStage::ParentWindowAttach &&
+            presentationTransferRequireRootBeforeParentForTest_ &&
+            !presentationTransferRootAttachedForTest_) {
+            return HRESULT_FROM_WIN32(ERROR_INVALID_STATE);
+        }
+        if (stage == PresentationTransferFailureStage::RootTargetAttach)
+            presentationTransferRootAttachedForTest_ = true;
+        return S_OK;
 #else
         (void)stage;
         return S_OK;
 #endif
     };
     HRESULT result = testTransferOwner
-        ? testResult(PresentationTransferFailureStage::ParentWindowAttach)
-        : controllerBase_->put_ParentWindow(target.ownerWindow);
-    auto failedStage = PresentationTransferFailureStage::ParentWindowAttach;
+        ? testResult(PresentationTransferFailureStage::RootTargetAttach)
+        : controller_->put_RootVisualTarget(configuration_.compositionTarget.Get());
+    auto failedStage = PresentationTransferFailureStage::RootTargetAttach;
     if (SUCCEEDED(result)) {
-        failedStage = PresentationTransferFailureStage::RootTargetAttach;
+        failedStage = PresentationTransferFailureStage::ParentWindowAttach;
         result = testTransferOwner
-            ? testResult(PresentationTransferFailureStage::RootTargetAttach)
-            : controller_->put_RootVisualTarget(configuration_.compositionTarget.Get());
+            ? testResult(PresentationTransferFailureStage::ParentWindowAttach)
+            : controllerBase_->put_ParentWindow(target.ownerWindow);
     }
     if (SUCCEEDED(result)) {
         failedStage = PresentationTransferFailureStage::GeometryAttach;

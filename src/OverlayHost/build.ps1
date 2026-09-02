@@ -1794,7 +1794,7 @@ if ($EmbeddedMediaHandoffTestsOnly) {
     if ($LASTEXITCODE -ne 0) {
         throw "Embedded media handoff owner tests failed with exit code $LASTEXITCODE."
     }
-    Write-Host 'Embedded media handoff owner tests passed: 12.'
+    Write-Host 'Embedded media handoff owner tests passed: 14.'
     return
 }
 

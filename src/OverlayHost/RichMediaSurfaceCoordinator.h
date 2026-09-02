@@ -287,7 +287,8 @@ public:
     void ConfigurePresentationTransferForTest(
         PresentationTransferFailureStage stage,
         std::function<void()> invalidate,
-        bool initiallyVisible = false);
+        bool initiallyVisible = false,
+        bool requireRootBeforeParent = false);
 #endif
 
 private:
@@ -459,6 +460,8 @@ private:
 #if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
     std::optional<PresentationTransferFailureStage>
         presentationTransferFailureForTest_;
+    bool presentationTransferRequireRootBeforeParentForTest_{};
+    bool presentationTransferRootAttachedForTest_{};
 #endif
     HRESULT browserEventRegistrationResult_{E_UNEXPECTED};
     std::wstring pageUri_;
