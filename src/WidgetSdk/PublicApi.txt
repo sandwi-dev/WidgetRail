@@ -1951,6 +1951,7 @@ property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> 
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.MapError { get; set; }
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.MapError { get; set; }
 property System.Func<System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<TValue>> WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.Load { get; set; }
+property System.Func<TAuthority,TObservation,bool> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.MatchesProjectionAuthority { get; set; }
 property System.Func<TExecution,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<TResult?>> WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Execute { get; set; }
 property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ItemKey { get; set; }
 property System.Func<TItem,int,string> WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.ItemFocusId { get; set; }

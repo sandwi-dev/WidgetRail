@@ -1,3 +1,4 @@
+using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
 internal static class WidgetOutOfBandCommandTests
@@ -6,7 +7,9 @@ internal static class WidgetOutOfBandCommandTests
     {
         await CorrelatedEventsEnforceEveryAuthorityGuardAsync();
         await IndependentObservationsRetainThenSettleProjectedStateAsync();
-        await ExpiryRetiresOnlyCorrelationAuthorityAsync();
+        await ExpiryHasDeterministicLifecycleAndReplacementTerminalsAsync();
+        await PublicationIsCoherentUnderSynchronousReentrancyAsync();
+        await RejectedProjectionStillPublishesAuthoredStateAsync();
     }
 
     private static async Task CorrelatedEventsEnforceEveryAuthorityGuardAsync()
@@ -23,6 +26,14 @@ internal static class WidgetOutOfBandCommandTests
         var duplicate = widget.Run(new("media-a", 20));
         Equal(WidgetOutOfBandCommandAdmission.RejectedPending, duplicate.Admission);
         Equal(10, widget.State.Value);
+
+        widget.ChangeEntity("media-b");
+        Equal(WidgetOutOfBandObservationAdmission.RejectedAuthority,
+            widget.Observe(new(1, first.Sequence, "media-b", 10, 1)));
+        True(widget.IsPending,
+            "A matching sequence for a foreign projected authority retired command A.");
+        Equal(first.Sequence, widget.PendingSequence);
+        widget.ChangeEntity("media-a");
 
         Equal(WidgetOutOfBandObservationAdmission.RejectedAuthority,
             widget.Observe(new(1, 0, "media-b", 1, 1)));
@@ -86,17 +97,27 @@ internal static class WidgetOutOfBandCommandTests
             widget.Observe(matchingPoll, new(0, 0, "media-a", 50, 10)));
         False(widget.IsPending, "A matching poll did not confirm the projection.");
 
+        var rejectedTicket = widget.BeginObservation();
+        Equal(WidgetOutOfBandObservationAdmission.RejectedAuthority,
+            widget.Observe(rejectedTicket, new(0, 0, "media-b", 1, 11)));
+        Equal(WidgetOutOfBandObservationAdmission.RejectedStale,
+            widget.Observe(rejectedTicket, new(0, 0, "media-a", 1, 12)));
+
         await WidgetTestHost.DestroyAsync(widget);
     }
 
-    private static async Task ExpiryRetiresOnlyCorrelationAuthorityAsync()
+    private static async Task ExpiryHasDeterministicLifecycleAndReplacementTerminalsAsync()
     {
         var clock = new ManualTimeProvider();
         var widget = new CommandWidget(clock);
         await WidgetTestHost.InitializeAsync(widget);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
 
         var run = widget.Run(new("media-a", 60, TimeSpan.FromSeconds(5)));
         Equal(60, widget.State.Value);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+        True(widget.IsPending,
+            "The default widget-lifetime expiry did not survive Visible to Interactive.");
         clock.Advance(TimeSpan.FromSeconds(5));
         await WaitUntil(() => !widget.IsPending);
 
@@ -107,6 +128,111 @@ internal static class WidgetOutOfBandCommandTests
         Equal(WidgetOutOfBandObservationAdmission.Accepted,
             widget.Observe(observation, new(0, 0, "media-a", 55, 12)));
         Equal(55, widget.State.Value);
+
+        var replaced = widget.RunLatest(new("media-a", 70, TimeSpan.FromSeconds(5)));
+        var successor = widget.RunLatest(new("media-a", 80, TimeSpan.FromSeconds(10)));
+        await Task.Yield();
+        Equal(successor.Sequence, widget.PendingSequence);
+        True(replaced.Sequence != successor.Sequence,
+            "RunLatest did not assign distinct SDK correlation authority.");
+        clock.Advance(TimeSpan.FromSeconds(5));
+        await Task.Yield();
+        Equal(successor.Sequence, widget.PendingSequence);
+        clock.Advance(TimeSpan.FromSeconds(5));
+        await WaitUntil(() => !widget.IsPending);
+
+        await WidgetTestHost.DestroyAsync(widget);
+
+        var stateClock = new ManualTimeProvider();
+        var stateOwned = new CommandWidget(
+            stateClock, WidgetOperationLifetime.State);
+        await WidgetTestHost.InitializeAsync(stateOwned);
+        await WidgetTestHost.SetLifecycleStateAsync(
+            stateOwned, WidgetLifecycleState.Visible);
+        stateOwned.Run(new("media-a", 90, TimeSpan.FromSeconds(5)));
+        await WidgetTestHost.SetLifecycleStateAsync(
+            stateOwned, WidgetLifecycleState.Interactive);
+        await WaitUntil(() => !stateOwned.IsPending);
+        True(stateOwned.Run(new("media-a", 91)).IsAccepted,
+            "Lifecycle cancellation stranded the single-flight projection.");
+        await WidgetTestHost.DestroyAsync(stateOwned);
+
+        var unavailable = new CommandWidget(new ManualTimeProvider());
+        unavailable.Run(new("media-a", 100, TimeSpan.FromSeconds(5)));
+        await WaitUntil(() => !unavailable.IsPending);
+        True(unavailable.Run(new("media-a", 101)).IsAccepted,
+            "Rejected expiry scheduling stranded the single-flight projection.");
+        await WidgetTestHost.InitializeAsync(unavailable);
+        await WidgetTestHost.DestroyAsync(unavailable);
+
+        var failing = new CommandWidget(new ThrowingTimeProvider());
+        await WidgetTestHost.InitializeAsync(failing);
+        failing.Run(new("media-a", 110, TimeSpan.FromSeconds(5)));
+        await WaitUntil(() => !failing.IsPending);
+        True(failing.Run(new("media-a", 111)).IsAccepted,
+            "Timer failure stranded the single-flight projection.");
+        await WidgetTestHost.DestroyAsync(failing);
+    }
+
+    private static async Task RejectedProjectionStillPublishesAuthoredStateAsync()
+    {
+        var widget = new CommandWidget();
+        await WidgetTestHost.InitializeAsync(widget);
+
+        var rejected = widget.Run(new("media-a", 120, ShouldStart: false));
+        Equal(WidgetOutOfBandCommandAdmission.RejectedProjection, rejected.Admission);
+        Equal(120, widget.State.Value);
+        False(widget.IsPending,
+            "A rejected projection unexpectedly retained command authority.");
+
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    private static async Task PublicationIsCoherentUnderSynchronousReentrancyAsync()
+    {
+        var widget = new CommandWidget();
+        await WidgetTestHost.InitializeAsync(widget);
+
+        long invalidatedStateSequence = 0;
+        long invalidatedFacilitySequence = 0;
+        widget.OnInvalidated(() =>
+        {
+            invalidatedStateSequence = widget.State.ProjectedSequence ?? 0;
+            invalidatedFacilitySequence = widget.PendingSequence;
+        });
+
+        WidgetOutOfBandCommandRun nested = default;
+        var reenteredRun = false;
+        widget.OnChanged(() =>
+        {
+            if (reenteredRun) return;
+            reenteredRun = true;
+            nested = widget.RunLatest(new("media-a", 20));
+        });
+        var outer = widget.Run(new("media-a", 10));
+        Equal(1L, outer.Sequence);
+        Equal(2L, nested.Sequence);
+        Equal(20, widget.State.Value);
+        Equal(nested.Sequence, widget.PendingSequence);
+        Equal(nested.Sequence, widget.State.ProjectedSequence);
+        True(invalidatedStateSequence == invalidatedFacilitySequence,
+            "Invalidation observed projected model state with old facility ownership.");
+
+        widget.ClearChangedHandlers();
+        var reenteredObservation = false;
+        widget.OnChanged(() =>
+        {
+            if (reenteredObservation) return;
+            reenteredObservation = true;
+            Equal(WidgetOutOfBandObservationAdmission.Accepted,
+                widget.Observe(new(2, nested.Sequence, "media-a", 20, 2)));
+        });
+        Equal(WidgetOutOfBandObservationAdmission.Accepted,
+            widget.Observe(new(1, 0, "media-a", 19, 1)));
+        False(widget.IsPending,
+            "A reentrant correlated successor did not retire the projection.");
+        Equal(WidgetOutOfBandObservationAdmission.RejectedStale,
+            widget.Observe(new(1, 0, "media-a", 20, 3)));
 
         await WidgetTestHost.DestroyAsync(widget);
     }
@@ -120,7 +246,11 @@ internal static class WidgetOutOfBandCommandTests
         internal static State Initial { get; } = new("media-a", 0, null, 0);
     }
 
-    private sealed record Request(string Entity, int Value, TimeSpan? ExpiresAfter = null);
+    private sealed record Request(
+        string Entity,
+        int Value,
+        TimeSpan? ExpiresAfter = null,
+        bool ShouldStart = true);
     private sealed record Observation(
         long Sequence,
         long Correlation,
@@ -134,13 +264,16 @@ internal static class WidgetOutOfBandCommandTests
         private readonly WidgetModel<State> _model;
         private readonly WidgetOutOfBandCommand<State, Request, Observation, Authority> _command;
 
-        internal CommandWidget(TimeProvider? timeProvider = null)
+        internal CommandWidget(
+            TimeProvider? timeProvider = null,
+            WidgetOperationLifetime expiryLifetime = WidgetOperationLifetime.Widget)
         {
             _model = CreateModel(State.Initial);
             _command = CreateOutOfBandCommand(_model,
                 new WidgetOutOfBandCommandOptions<State, Request, Observation, Authority>
                 {
                     TimeProvider = timeProvider,
+                    ExpiryLifetime = expiryLifetime,
                     Apply = (state, request, sequence) => new(
                         state with
                         {
@@ -149,11 +282,15 @@ internal static class WidgetOutOfBandCommandTests
                             ProjectedSequence = sequence,
                         },
                         new(request.Entity, request.Value),
+                        ShouldStart: request.ShouldStart,
                         ExpiresAfter: request.ExpiresAfter),
                     ObservationSequence = observation => observation.Sequence,
                     CorrelationSequence = observation => observation.Correlation,
                     MatchesAuthority = (state, observation) =>
                         string.Equals(state.Entity, observation.Entity,
+                            StringComparison.Ordinal),
+                    MatchesProjectionAuthority = (authority, observation) =>
+                        string.Equals(authority.Entity, observation.Entity,
                             StringComparison.Ordinal),
                     ConfirmsProjection = (_, authority, observation, beganAfterProjection) =>
                         beganAfterProjection || observation.Value == authority.Value,
@@ -170,6 +307,9 @@ internal static class WidgetOutOfBandCommandTests
 
         internal State State => _model.Value;
         internal bool IsPending => _command.IsPending;
+        internal long PendingSequence => _command.PendingSequence;
+        internal void ChangeEntity(string entity) =>
+            _model.Update(state => state with { Entity = entity });
         internal WidgetOutOfBandCommandRun Run(Request request) => _command.Run(request);
         internal WidgetOutOfBandCommandRun RunLatest(Request request) =>
             _command.RunLatest(request);
@@ -180,9 +320,38 @@ internal static class WidgetOutOfBandCommandTests
         internal WidgetOutOfBandObservationAdmission Observe(
             WidgetOutOfBandObservationTicket ticket,
             Observation observation) => _command.Observe(ticket, observation);
+        internal void OnChanged(Action callback)
+        {
+            _changed = callback;
+            _model.Changed += Changed;
+        }
+        internal void ClearChangedHandlers()
+        {
+            _model.Changed -= Changed;
+            _changed = null;
+        }
+        internal void OnInvalidated(Action callback)
+        {
+            _invalidated = callback;
+            Invalidated += Handler;
+        }
+
+        private Action? _changed;
+        private Action? _invalidated;
+        private void Changed(object? sender, WidgetModelChangedEventArgs<State> args) =>
+            _changed?.Invoke();
+        private void Handler(object? sender, WidgetInvalidatedEventArgs args) =>
+            _invalidated?.Invoke();
 
         public override WidgetView Render() => new(
             UI.Text(State.Value.ToString(), "out-of-band.value"));
+    }
+
+    private sealed class ThrowingTimeProvider : TimeProvider
+    {
+        public override ITimer CreateTimer(
+            TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
+            throw new InvalidOperationException("clock failed");
     }
 
     private sealed class ManualTimeProvider : TimeProvider

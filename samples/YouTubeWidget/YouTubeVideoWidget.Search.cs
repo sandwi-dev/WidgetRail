@@ -61,6 +61,9 @@ public sealed partial class YouTubeVideoWidget
                     state.Playback.VideoId is { } videoId &&
                     string.Equals(videoId, playbackEvent.MediaKey,
                         StringComparison.Ordinal),
+                MatchesProjectionAuthority = static (mediaKey, playbackEvent) =>
+                    string.Equals(mediaKey, playbackEvent.MediaKey,
+                        StringComparison.Ordinal),
                 Reconcile = static (state, playbackEvent, confirmsProjection) =>
                     state.WithPlayback(playback => playback.WithPlaybackEvent(
                         playbackEvent, confirmsProjection)),

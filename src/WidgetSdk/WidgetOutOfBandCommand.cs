@@ -58,7 +58,9 @@ public sealed class WidgetOutOfBandObservationTicket
 
 /// <summary>
 /// One immutable optimistic state projection and the authority descriptor used
-/// to match its eventual external confirmation.
+/// to match its eventual external confirmation. State is always committed;
+/// ShouldStart controls only whether command authority is admitted, so authors
+/// may publish validation state while returning RejectedProjection.
 /// </summary>
 public readonly record struct WidgetOutOfBandCommandProjection<TState, TAuthority>(
     TState State,
@@ -102,6 +104,17 @@ public sealed record WidgetOutOfBandCommandOptions<
     public required Func<TState, TObservation, bool> MatchesAuthority { get; init; }
 
     /// <summary>
+    /// Confirms that an observation belongs to the immutable authority captured
+    /// by the current projection. The SDK applies this guard to correlated and
+    /// uncorrelated observations whenever a projection is pending.
+    /// </summary>
+    public required Func<TAuthority, TObservation, bool> MatchesProjectionAuthority
+    {
+        get;
+        init;
+    }
+
+    /// <summary>
     /// For uncorrelated poll or subscription observations, confirms that the
     /// current projection has become authoritative. Correlated observations are
     /// confirmed by their SDK-owned command sequence and do not call this hook.
@@ -114,13 +127,14 @@ public sealed record WidgetOutOfBandCommandOptions<
 
     /// <summary>
     /// Merges an admitted observation into current immutable state. The final
-    /// argument identifies whether it confirms the current projection.
+    /// argument is true when the observation may replace projection-owned fields:
+    /// it confirmed the current projection, or no current projection remains.
     /// </summary>
     public required Func<TState, TObservation, bool, TState> Reconcile { get; init; }
 
     /// <summary>Lifecycle used only by projections that request bounded expiry.</summary>
     public WidgetOperationLifetime ExpiryLifetime { get; init; } =
-        WidgetOperationLifetime.State;
+        WidgetOperationLifetime.Widget;
 
     /// <summary>Clock used only by projections that request bounded expiry.</summary>
     public TimeProvider? TimeProvider { get; init; }
@@ -169,6 +183,7 @@ public sealed class WidgetOutOfBandCommand<
         ArgumentNullException.ThrowIfNull(options.Apply);
         ArgumentNullException.ThrowIfNull(options.CorrelationSequence);
         ArgumentNullException.ThrowIfNull(options.MatchesAuthority);
+        ArgumentNullException.ThrowIfNull(options.MatchesProjectionAuthority);
         ArgumentNullException.ThrowIfNull(options.ConfirmsProjection);
         ArgumentNullException.ThrowIfNull(options.Reconcile);
         ArgumentNullException.ThrowIfNull(expiry);
@@ -250,6 +265,8 @@ public sealed class WidgetOutOfBandCommand<
                 : _lastDirectObservationSequence;
             if (observationSequence <= lastObservationSequence)
                 return WidgetOutOfBandObservationAdmission.RejectedStale;
+            if (ticketed)
+                _lastObservationTicket = observationSequence;
 
             var correlationSequence = _options.CorrelationSequence(observation);
             if (correlationSequence < 0)
@@ -261,29 +278,32 @@ public sealed class WidgetOutOfBandCommand<
                 return WidgetOutOfBandObservationAdmission.RejectedCorrelation;
 
             var current = _current;
+            if (current is not null &&
+                !_options.MatchesProjectionAuthority(current.Authority, observation))
+                return WidgetOutOfBandObservationAdmission.RejectedAuthority;
             var confirmed = correlationSequence > 0;
-            var update = _model.Update(state =>
-            {
-                if (!_options.MatchesAuthority(state, observation))
-                    return (state, (Matched: false, Confirmed: false));
-                var beganAfterProjection = ticketed && current is not null &&
-                    observationSequence > current.ObservationBoundary;
-                var confirms = current is null || confirmed ||
-                    _options.ConfirmsProjection(
-                        state, current.Authority, observation, beganAfterProjection);
-                return (_options.Reconcile(state, observation, confirms),
-                    (Matched: true, Confirmed: confirms));
-            });
+            var update = _model.UpdateBeforePublication(state =>
+                {
+                    if (!_options.MatchesAuthority(state, observation))
+                        return (state, (Matched: false, Confirmed: false));
+                    var beganAfterProjection = ticketed && current is not null &&
+                        observationSequence > current.ObservationBoundary;
+                    var confirms = current is null || confirmed ||
+                        _options.ConfirmsProjection(
+                            state, current.Authority, observation, beganAfterProjection);
+                    return (_options.Reconcile(state, observation, confirms),
+                        (Matched: true, Confirmed: confirms));
+                },
+                committed =>
+                {
+                    if (!committed.Result.Matched) return;
+                    if (!ticketed) _lastDirectObservationSequence = observationSequence;
+                    if (!committed.Result.Confirmed) return;
+                    _current = null;
+                    _expiry.Cancel();
+                });
             if (!update.Result.Matched)
                 return WidgetOutOfBandObservationAdmission.RejectedAuthority;
-
-            if (ticketed) _lastObservationTicket = observationSequence;
-            else _lastDirectObservationSequence = observationSequence;
-            if (update.Result.Confirmed)
-            {
-                _current = null;
-                _expiry.Cancel();
-            }
             return WidgetOutOfBandObservationAdmission.Accepted;
         }
     }
@@ -291,34 +311,72 @@ public sealed class WidgetOutOfBandCommand<
     private WidgetOutOfBandCommandRun RunCore(TRequest request, bool replace)
     {
         ArgumentNullException.ThrowIfNull(request);
+        Task<WidgetOperationResult>? expiryCompletion = null;
+        WidgetOutOfBandCommandRun result = default;
+        long sequence;
         lock (_gate)
         {
             if (!replace && _current is not null)
                 return new(WidgetOutOfBandCommandAdmission.RejectedPending, 0);
 
-            var sequence = checked(_nextCommandSequence + 1);
-            WidgetOutOfBandCommandProjection<TState, TAuthority> projection = default;
-            var update = _model.Update(state =>
-            {
-                projection = _options.Apply(state, request, sequence);
-                ArgumentNullException.ThrowIfNull(projection.State);
-                ArgumentNullException.ThrowIfNull(projection.Authority);
-                ValidateExpiry(projection.ExpiresAfter);
-                return projection.State;
-            });
-            _nextCommandSequence = sequence;
-            if (!projection.ShouldStart)
-                return new(WidgetOutOfBandCommandAdmission.RejectedProjection, 0);
+            sequence = checked(_nextCommandSequence + 1);
+            _model.UpdateBeforePublication(state =>
+                {
+                    var projection = _options.Apply(state, request, sequence);
+                    ArgumentNullException.ThrowIfNull(projection.State);
+                    ArgumentNullException.ThrowIfNull(projection.Authority);
+                    ValidateExpiry(projection.ExpiresAfter);
+                    return (projection.State, projection);
+                },
+                committed =>
+                {
+                    var projection = committed.Result;
+                    _nextCommandSequence = sequence;
+                    if (!projection.ShouldStart)
+                    {
+                        result = new(
+                            WidgetOutOfBandCommandAdmission.RejectedProjection, 0);
+                        return;
+                    }
 
-            var admission = _current is null
-                ? WidgetOutOfBandCommandAdmission.Started
-                : WidgetOutOfBandCommandAdmission.Replaced;
-            _current = new(sequence, _nextObservationTicket, projection.Authority);
-            _expiry.Cancel();
-            if (projection.ExpiresAfter is { } delay)
-                _expiry.ScheduleLatest(delay, () => Expire(sequence));
-            return new(admission, sequence);
+                    var admission = _current is null
+                        ? WidgetOutOfBandCommandAdmission.Started
+                        : WidgetOutOfBandCommandAdmission.Replaced;
+                    _current = new(
+                        sequence, _nextObservationTicket, projection.Authority);
+                    _expiry.Cancel();
+                    if (projection.ExpiresAfter is { } delay)
+                    {
+                        try
+                        {
+                            expiryCompletion = _expiry.ScheduleLatest(
+                                delay, () => Expire(sequence)).Completion;
+                        }
+                        catch
+                        {
+                            // The projection is already committed. Fail closed by
+                            // retiring only its correlation authority; publication
+                            // still observes one coherent state/facility revision.
+                            _current = null;
+                        }
+                    }
+                    result = new(admission, sequence);
+                });
         }
+        if (expiryCompletion is not null)
+            _ = ObserveExpiryTerminalAsync(sequence, expiryCompletion);
+        return result;
+    }
+
+    private async Task ObserveExpiryTerminalAsync(
+        long sequence,
+        Task<WidgetOperationResult> completion)
+    {
+        // Successful callbacks already retire the exact sequence. Cancellation,
+        // rejection, and failure must do the same or single-flight would strand.
+        // The sequence guard makes an old timer terminal harmless after RunLatest.
+        await completion.ConfigureAwait(false);
+        Expire(sequence);
     }
 
     private void Expire(long sequence)

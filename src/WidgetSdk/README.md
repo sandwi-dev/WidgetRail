@@ -422,6 +422,8 @@ When confirmation does not come from the mutation call itself, use one
 command sequence, observation watermark, one pending projection, and the
 authority needed to correlate an inbound event. `Run` is single-flight;
 `RunLatest` replaces an older intent such as a superseded media load.
+`ShouldStart: false` rejects command authority but deliberately still publishes
+the projection's `State`, allowing one atomic transition to expose validation.
 
 ```csharp
 _playback = CreateOutOfBandCommand(_model,
@@ -434,6 +436,8 @@ _playback = CreateOutOfBandCommand(_model,
         CorrelationSequence = report => report.CommandSequence,
         MatchesAuthority = (state, report) =>
             state.MediaKey == report.MediaKey,
+        MatchesProjectionAuthority = (mediaKey, report) =>
+            mediaKey == report.MediaKey,
         Reconcile = (state, report, confirms) =>
             state.Merge(report, confirms),
     });
@@ -448,15 +452,29 @@ starts and completes through `Observe(ticket, value)`. This preserves the true
 start boundary when reads finish out of order: an observation begun before the
 projection may update unrelated authoritative fields without erasing the owned
 projection, while a matching or successor observation can confirm it through
-`ConfirmsProjection`. A projection may supply `ExpiresAfter`; expiry retires
-only its correlation authority, so the next admitted observation is ordinary
-authoritative state. The optional expiry data is absent from event-only
+`ConfirmsProjection`. A ticket is consumed by its first owned `Observe` attempt,
+including an authority or correlation rejection; retry with a fresh ticket.
+While a projection is pending, every correlated or
+uncorrelated observation must also pass `MatchesProjectionAuthority`; a matching
+command number can never substitute for the projected entity authority.
+
+A projection may supply `ExpiresAfter`; expiry uses the complete widget lifetime
+by default so Visible/Interactive transitions cannot strand reconciliation.
+Successful expiry, lifecycle cancellation, scheduler rejection, and timer
+failure all retire only that exact projection's correlation authority. A stale
+timer terminal cannot clear a `RunLatest` successor. The projected model value
+is not rolled back by expiry; the next admitted observation is ordinary
+authoritative state, and `Reconcile` receives `true` for that no-projection case
+so it can replace any projection-shaped fields. The optional expiry data is absent from event-only
 projections rather than represented by an unused callback or mode.
 
 Keep `Apply`, authority matching, confirmation, and reconciliation quick and
 side-effect free. The facility stores no task completion source or other mutable
 signal in model state. Correlated reports for an unknown command, foreign
 authorities, and observations at or behind the admitted sequence are rejected.
+Model value and facility ownership commit before synchronous invalidation or
+`WidgetModel.Changed` observers run, so a render or reentrant callback cannot
+observe projected state paired with an older pending sequence or watermark.
 Presentation-only delayed feedback remains a separate `WidgetTimedMutation`
 when it has a different lifecycle—for example, a Busy threshold may retire on
 deactivation while the actual media command remains pending for its adapter.

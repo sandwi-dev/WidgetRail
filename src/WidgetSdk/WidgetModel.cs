@@ -104,6 +104,25 @@ public sealed class WidgetModel<TState> where TState : notnull
     /// </summary>
     public WidgetModelUpdate<TState, TResult> Update<TResult>(
         Func<TState, (TState State, TResult Result)> updater)
+        => UpdateCore(updater, beforePublication: null);
+
+    /// <summary>
+    /// Commits facility metadata after the model value but before synchronous
+    /// invalidation and change observers can see that value. This is internal:
+    /// widget authors still compose independent owners through public models.
+    /// </summary>
+    internal WidgetModelUpdate<TState, TResult> UpdateBeforePublication<TResult>(
+        Func<TState, (TState State, TResult Result)> updater,
+        Action<WidgetModelUpdate<TState, TResult>> beforePublication)
+    {
+        ArgumentNullException.ThrowIfNull(updater);
+        ArgumentNullException.ThrowIfNull(beforePublication);
+        return UpdateCore(updater, beforePublication);
+    }
+
+    private WidgetModelUpdate<TState, TResult> UpdateCore<TResult>(
+        Func<TState, (TState State, TResult Result)> updater,
+        Action<WidgetModelUpdate<TState, TResult>>? beforePublication)
     {
         ArgumentNullException.ThrowIfNull(updater);
 
@@ -124,6 +143,7 @@ public sealed class WidgetModel<TState> where TState : notnull
                     new(_value, _revision));
             }
             result = new(previous, _value, mutation.Result, _revision, didChange);
+            beforePublication?.Invoke(result);
         }
 
         Publish(changed);
