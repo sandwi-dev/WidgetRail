@@ -54,8 +54,10 @@ and fullscreen paths disabled. Pinning remains host-owned.
    entry. The widget validates the URL and cues the video without autoplay.
 3. Focus **Play** and press A. WidgetRail correlates that visible user action
    with the embedded player before playback starts.
-4. Use the native seek-back/seek-forward icons, timeline, and volume controls.
-   The web player remains inside its unobscured, minimum 200-by-200 media viewport.
+4. Use LT/RT for bounded 10-second seek steps, or use the timeline and volume
+   controls. The two compact transport slots beside Play/Pause open host-owned
+   Fullscreen and native Captions/player settings. The web player remains inside
+   its unobscured, minimum 200-by-200 media viewport.
 5. With a current video ready on **Now playing**, choose **Fullscreen** to show
    only the aspect-fitted video plane. X toggles playback, LT/RT seek by ten
    seconds, and B exits back to the same focused native control. The tray and
@@ -70,6 +72,13 @@ and fullscreen paths disabled. Pinning remains host-owned.
    pin remains the host-owned video-only presentation. In compact pinned focus,
    X pauses or resumes the current video in place and LT/RT retain their bounded
    seek behavior.
+8. In Player settings, choose one of the bounded 0.5× through 2× speed options,
+   mute without changing the authored volume, or loop the current video. Speed
+   availability depends on the current video; YouTube can reject an unavailable
+   choice without changing the last applied speed. Quality remains provider-owned
+   Auto. Caption preferences are construction-time YouTube options, so the widget
+   offers Open in YouTube instead of recreating the active player and losing the
+   session.
 
 Private, removed, unavailable, malformed, or embedding-disabled videos report
 a bounded error in the native widget. Physical playback still depends on the

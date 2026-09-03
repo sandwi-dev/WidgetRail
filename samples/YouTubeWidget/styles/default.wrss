@@ -73,3 +73,4 @@
 .youtube-result-action { min-width: 72px; min-height: 34px; padding: 5px 10px; background: var(--surface); border-color: var(--text-subdued); border-width: 1px; corner-radius: 7px; }
 .youtube-result-action:focused, .youtube-now-playing:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 .youtube-now-playing { width: 100%; min-height: 42px; padding: 8px 12px; color: var(--text); background: var(--surface-muted); border-color: var(--accent); border-width: 1px; corner-radius: 9px; }
+.youtube-player-settings { width: 100%; min-width: 0px; max-height: 620px; gap: 10px; padding: 14px 16px; background: var(--surface); color: var(--text); }

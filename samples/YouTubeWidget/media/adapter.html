@@ -15,6 +15,7 @@ let adapter = null;
 let apiFailure = null;
 let mediaKey = "";
 let playbackState = "ready";
+let loopCurrentVideo = false;
 let lastProgressSecond = -1;
 let pendingProviderOperation = null;
 let resolveApi;
@@ -70,6 +71,15 @@ function volume() {
     : 0.8;
 }
 
+function playbackRate() {
+  const value = Number(player?.getPlaybackRate?.());
+  return Number.isFinite(value) ? Math.max(0.5, Math.min(2, value)) : 1;
+}
+
+function muted() {
+  return player?.isMuted?.() === true;
+}
+
 function snapshot() {
   return {
     mediaKey,
@@ -77,6 +87,9 @@ function snapshot() {
     positionSeconds: position(),
     durationSeconds: duration(),
     volume: volume(),
+    playbackRate: playbackRate(),
+    muted: muted(),
+    loop: loopCurrentVideo,
   };
 }
 
@@ -198,6 +211,13 @@ function onStateChange(event) {
     pending.resolve({ playbackState });
     return;
   }
+  if (event.data === 0 && loopCurrentVideo && mediaKey) {
+    playbackState = "loading";
+    player.seekTo(0, true);
+    player.playVideo();
+    adapter?.observe();
+    return;
+  }
   adapter?.observe();
 }
 
@@ -316,6 +336,33 @@ adapter = WidgetRailEmbeddedMediaAdapter.create({
     async setVolume(command) {
       await readyFor(command);
       player.setVolume(Math.round(command.volume * 100));
+      return { playbackState: stateName(player.getPlayerState()) };
+    },
+    async setPlaybackRate(command) {
+      await readyFor(command);
+      const available = player.getAvailablePlaybackRates()
+        .map(Number)
+        .filter(Number.isFinite);
+      if (!available.some(rate => Math.abs(rate - command.playbackRate) < 0.001)) {
+        throw WidgetRailEmbeddedMediaAdapter.error("command-unsupported");
+      }
+      const result = await completeAfterDelay(
+        () => player.setPlaybackRate(command.playbackRate), command.signal);
+      if (Math.abs(playbackRate() - command.playbackRate) >= 0.001) {
+        throw WidgetRailEmbeddedMediaAdapter.error("command-unsupported");
+      }
+      return result;
+    },
+    async setMuted(command) {
+      await readyFor(command);
+      if (command.muted) player.mute();
+      else player.unMute();
+      return { playbackState: stateName(player.getPlayerState()) };
+    },
+    async setLoop(command) {
+      await readyFor(command);
+      loopCurrentVideo = command.loop === true;
+      player.setLoop(loopCurrentVideo);
       return { playbackState: stateName(player.getPlayerState()) };
     },
   },
