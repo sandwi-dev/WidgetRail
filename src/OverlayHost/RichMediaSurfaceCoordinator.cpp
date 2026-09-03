@@ -1586,11 +1586,6 @@ void RichMediaSurfaceCoordinator::ConfigurePresentationTransferForTest(
     desiredVisible_ = initiallyVisible;
     configuration_.invalidate = std::move(invalidate);
 }
-
-void RichMediaSurfaceCoordinator::ConfigurePlaybackCommandDispatchForTest(
-    std::function<void(const PlaybackCommand&)> dispatch) {
-    playbackCommandDispatchForTest_ = std::move(dispatch);
-}
 #endif
 
 HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransfer(
@@ -1811,12 +1806,6 @@ bool RichMediaSurfaceCoordinator::SendSeekPosition(
 
 PlaybackCommandDispatchResult RichMediaSurfaceCoordinator::DispatchPlaybackCommand(
     const PlaybackCommand& command) noexcept {
-    const bool testDispatchOwner =
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        static_cast<bool>(playbackCommandDispatchForTest_);
-#else
-        false;
-#endif
     const bool typedCommandLifecycle =
         state_.lifecycle == Lifecycle::Visible ||
         state_.lifecycle == Lifecycle::ReadyHidden;
@@ -1825,7 +1814,7 @@ PlaybackCommandDispatchResult RichMediaSurfaceCoordinator::DispatchPlaybackComma
         state_.lifecycle == Lifecycle::Faulted ||
         state_.lifecycle == Lifecycle::Closing)
         return PlaybackCommandDispatchResult::Rejected;
-    if ((!core_ && !testDispatchOwner) || !pageReady_ || !typedCommandLifecycle ||
+    if (!core_ || !pageReady_ || !typedCommandLifecycle ||
         (state_.lifecycle == Lifecycle::Visible && !state_.inputEnabled) ||
         pendingCommand_)
         return PlaybackCommandDispatchResult::Deferred;
@@ -1844,16 +1833,6 @@ PlaybackCommandDispatchResult RichMediaSurfaceCoordinator::DispatchPlaybackComma
     }
     if (transport == Command::Activate && !state_.focusedActionBoundsCurrent)
         return PlaybackCommandDispatchResult::Rejected;
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    if (testDispatchOwner) {
-        playbackCommandDispatchForTest_(command);
-        pendingCommand_ = PendingCommand{
-            ++nextCommandId_, transport, command.sequence, command.mediaKey,
-            PendingPhase::AwaitingEvent, command.kind, command.playbackRate,
-            command.muted, command.loop};
-        return PlaybackCommandDispatchResult::Sent;
-    }
-#endif
     const auto commandId = ++nextCommandId_;
     std::wstring json = std::format(
         L"{{\"command\":\"{}\",\"environmentGeneration\":{},\"surfaceGeneration\":{},\"sessionGeneration\":{},\"controllerGeneration\":{},\"documentGeneration\":{},\"commandId\":{},\"commandSequence\":{},\"mediaKey\":\"{}\"",

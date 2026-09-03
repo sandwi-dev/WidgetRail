@@ -1158,6 +1158,7 @@ public:
             testCaptureOverlayFullscreenNotifications_ = false;
             testOverlayFullscreenNotifications_.clear();
             lastWidgetRenderResult_ = {};
+            committedWidgetVisualState_.reset();
             if (window_ && IsWindow(window_)) DestroyWindow(window_);
             window_ = nullptr;
             std::error_code ignored;
@@ -1322,13 +1323,26 @@ public:
                 !testEmbeddedMediaHandoffRetirementObserved_ &&
                 !pinnedSurfaceCoordinator_.pinned() && sessionRetired();
         };
-        const auto seedOverlayGeometry = [this, surfaceId] {
+        const auto seedOverlayGeometry = [
+            this, widgetId, instanceId, runtimeGeneration,
+            presentationGeneration, surfaceId](
+            const widgetrail::declarative::Rect bounds =
+                {0.0F, 0.0F, 320.0F, 180.0F},
+            const widgetrail::declarative::Rect clip =
+                {0.0F, 0.0F, 320.0F, 180.0F}) {
             lastWidgetRenderResult_ = {};
             lastWidgetRenderResult_.succeeded = true;
             lastWidgetRenderResult_.mediaViewportRegions.push_back({
                 L"handoff-test-media-node", std::wstring{surfaceId},
-                {0.0F, 0.0F, 320.0F, 180.0F},
-                {0.0F, 0.0F, 320.0F, 180.0F}});
+                bounds, clip});
+            const auto* snapshot = SnapshotFor(widgetId);
+            committedWidgetVisualState_ = CommittedWidgetVisualState{
+                std::wstring{widgetId}, std::wstring{instanceId},
+                std::wstring{runtimeGeneration},
+                std::wstring{presentationGeneration}, {}, {},
+                snapshot ? snapshot->sequence : 0, 0, 0, {},
+                state_.focusRegion(), false,
+                widgetrail::OverlayPlacement{0, 0, 640, 360}};
         };
         const auto attachCompositionEndpoint = [this](
             const EmbeddedMediaProjection projection) {
@@ -1660,6 +1674,7 @@ public:
         StopEmbeddedMediaSurface(L"handoff-test-complete");
         state_ = widgetrail::OverlayState({}, {});
         lastWidgetRenderResult_ = {};
+        committedWidgetVisualState_.reset();
         const auto retainedUnpinReattaches = [
             this, widgetId, runtimeGeneration, presentationGeneration,
             snapshotSequence, &makeDescriptor, &makeSnapshot,
@@ -1866,98 +1881,146 @@ public:
         ShowWindow(window_, SW_HIDE);
         lastWidgetRenderResult_ = {};
 
-        // A command-free observation may advance while the ordinary projection
-        // is parked. Returning to the widget must rebase that exact compatible
-        // authority before geometry is resolved, keep the controller hidden
-        // while the current viewport is unavailable, and attach that same
-        // controller once current geometry arrives.
-        if (!preparePinnedCase(
-                L"parked-successor-geometry", mediaDeclaration,
+        // Begin on the ordinary visible overlay, cycle through a differently
+        // sized widget via the real activity owner, and return while a
+        // command-free compatible successor is current but has no committed
+        // render yet. The committed-presentation owner must advance authority
+        // while remaining parked, then attach only after exact current geometry.
+        const auto prepareOrdinaryParkedSuccessor = [
+            this, widgetId, runtimeGeneration, presentationGeneration,
+            snapshotSequence, &makeDescriptor, &makeSnapshot, &seedSession,
+            &seedOverlayGeometry](
+            const std::wstring_view key,
+            const widgetrail::EmbeddedMediaSurfaceDeclaration& declaration)
+            -> std::shared_ptr<widgetrail::richmedia::RichMediaSurfaceCoordinator> {
+            sessions_.SeedCurrentPresentationForEmbeddedMediaHandoffTest(
                 makeDescriptor(runtimeGeneration, presentationGeneration),
-                makeSnapshot(mediaDeclaration, snapshotSequence))) return fail(300);
-        const auto parkedSuccessorCoordinator = residentEmbeddedMediaSessions_.at(
-            std::wstring{L"parked-successor-geometry"}).coordinator;
-        if (!pinnedSurfaceCoordinator_.Unpin(
-                widgetrail::pinned::WidgetSurfaceStopReason::Unpin) ||
-            !embeddedMediaAuthority_ || !embeddedMediaAuthority_->parked)
-            return fail(301);
+                makeSnapshot(declaration, snapshotSequence));
+            sessions_.SeedLifecycleForEmbeddedMediaHandoffTest(
+                std::wstring{widgetId}, widgetrail::WidgetLifecycleState::Visible);
+            seedSession(
+                key, EmbeddedMediaProjection::Overlay,
+                widgetrail::richmedia::PresentationTransferFailureStage::None,
+                declaration, true);
+            state_ = widgetrail::OverlayState(
+                {}, std::vector<std::wstring>{
+                    std::wstring{widgetId}, L"different-sized-widget"});
+            if (!state_.OpenWidgetWithTrayFocus(widgetId)) return {};
+            seedOverlayGeometry();
+            ShowWindow(window_, SW_SHOWNOACTIVATE);
+            SyncWidgetActivity();
+            if (!embeddedMediaAuthority_ || embeddedMediaAuthority_->parked ||
+                embeddedMediaAuthority_->projection !=
+                    EmbeddedMediaProjection::Overlay)
+                return {};
+
+            if (!state_.TrySelectTrayWidget(L"different-sized-widget")) return {};
+            lastWidgetRenderResult_ = {};
+            lastWidgetRenderResult_.succeeded = true;
+            committedWidgetVisualState_ = CommittedWidgetVisualState{
+                L"different-sized-widget", L"other-instance", L"other-runtime",
+                L"other-presentation", {}, {}, 9, 0, 0, {},
+                state_.focusRegion(), false,
+                widgetrail::OverlayPlacement{0, 0, 820, 480}};
+            SyncWidgetActivity();
+            if (!embeddedMediaAuthority_ || !embeddedMediaAuthority_->parked)
+                return {};
+
+            sessions_.SeedCurrentPresentationForEmbeddedMediaHandoffTest(
+                makeDescriptor(runtimeGeneration, presentationGeneration),
+                makeSnapshot(declaration, snapshotSequence + 1));
+            sessions_.MarkRefreshRequested(widgetId);
+            sessions_.SeedLifecycleForEmbeddedMediaHandoffTest(
+                std::wstring{widgetId}, widgetrail::WidgetLifecycleState::Visible);
+            if (!state_.TrySelectTrayWidget(widgetId)) return {};
+            lastWidgetRenderResult_ = {};
+            committedWidgetVisualState_.reset();
+            SyncWidgetActivity();
+            ReconcileEmbeddedMediaProjection(L"committed-presentation");
+            if (!embeddedMediaAuthority_ || !embeddedMediaAuthority_->parked ||
+                embeddedMediaAuthority_->sequence != snapshotSequence + 1 ||
+                !embeddedMediaAuthority_->projectionDeferralRecorded ||
+                richMediaSurface_->state().lifecycle !=
+                    widgetrail::richmedia::Lifecycle::ReadyHidden)
+                return {};
+            return richMediaSurface_;
+        };
+
+        const auto parkedSuccessorCoordinator = prepareOrdinaryParkedSuccessor(
+            L"parked-successor-geometry", mediaDeclaration);
+        if (!parkedSuccessorCoordinator) return fail(300);
         auto* const parkedSuccessorTarget = residentEmbeddedMediaSessions_.at(
             L"parked-successor-geometry").parkingTarget.Get();
-        const auto commandFreeSuccessor = makeSnapshot(
-            mediaDeclaration, snapshotSequence + 1);
-        sessions_.SeedCurrentPresentationForEmbeddedMediaHandoffTest(
-            makeDescriptor(runtimeGeneration, presentationGeneration),
-            commandFreeSuccessor);
-        sessions_.MarkRefreshRequested(widgetId);
-        lastWidgetRenderResult_ = {};
-        if (TransferEmbeddedMediaSurface(
-                EmbeddedMediaProjection::Overlay,
-                L"parked-successor-geometry") !=
-                EmbeddedMediaTransferResult::Deferred ||
-            !richMediaSurface_ ||
-            richMediaSurface_.get() != parkedSuccessorCoordinator.get() ||
-            !embeddedMediaAuthority_ || !embeddedMediaAuthority_->parked ||
-            embeddedMediaAuthority_->sequence != snapshotSequence + 1 ||
-            !embeddedMediaAuthority_->projectionDeferralRecorded ||
-            residentEmbeddedMediaSessions_.at(
-                L"parked-successor-geometry").parkingTarget.Get() !=
-                    parkedSuccessorTarget ||
-            richMediaSurface_->state().lifecycle !=
-                widgetrail::richmedia::Lifecycle::ReadyHidden)
-            return fail(302);
-
-        std::vector<widgetrail::richmedia::PlaybackCommand> deliveredCommands;
-        richMediaSurface_->ConfigurePlaybackCommandDispatchForTest(
-            [&deliveredCommands](const auto& command) {
-                deliveredCommands.push_back(command);
-            });
         seedOverlayGeometry();
-        sessions_.SeedLifecycleForEmbeddedMediaHandoffTest(
-            std::wstring{widgetId}, widgetrail::WidgetLifecycleState::Visible);
-        ShowWindow(window_, SW_SHOWNOACTIVATE);
-        if (TransferEmbeddedMediaSurface(
-                EmbeddedMediaProjection::Overlay,
-                L"parked-successor-geometry") !=
-                EmbeddedMediaTransferResult::Completed ||
-            !richMediaSurface_ ||
+        ReconcileEmbeddedMediaProjection(L"committed-presentation");
+        if (!richMediaSurface_ ||
             richMediaSurface_.get() != parkedSuccessorCoordinator.get() ||
             !embeddedMediaAuthority_ || embeddedMediaAuthority_->parked ||
             embeddedMediaAuthority_->projectionDeferralRecorded ||
             embeddedMediaAuthority_->sequence != snapshotSequence + 1 ||
+            residentEmbeddedMediaSessions_.at(
+                L"parked-successor-geometry").parkingTarget.Get() !=
+                    parkedSuccessorTarget ||
             richMediaSurface_->state().lifecycle !=
-                widgetrail::richmedia::Lifecycle::Visible ||
-            !deliveredCommands.empty())
-            return fail(303);
+                widgetrail::richmedia::Lifecycle::Visible)
+            return fail(301);
 
+        // The host owner retains the exact N+2 command origin while the real
+        // coordinator defers because this WebView-free owner fixture has no
+        // transport. The paired adapter conformance gate observes the current
+        // page media key and proves exact-key acceptance plus mismatched-key
+        // rejection at the production correlation seam; no test dispatch hook
+        // substitutes for that route.
         auto pauseDeclaration = mediaDeclaration;
         pauseDeclaration.pendingCommand = widgetrail::EmbeddedMediaPlaybackCommand{
             71, L"pause", L"provider-neutral-media", std::nullopt, std::nullopt,
             std::nullopt, std::nullopt, std::nullopt};
         const auto pauseSnapshot = makeSnapshot(
-            pauseDeclaration, snapshotSequence + 1);
+            pauseDeclaration, snapshotSequence + 2);
         sessions_.SeedCurrentPresentationForEmbeddedMediaHandoffTest(
             makeDescriptor(runtimeGeneration, presentationGeneration), pauseSnapshot);
         const auto* exactPauseSnapshot = SnapshotFor(widgetId);
         const auto* exactPauseDescriptor = sessions_.FindDescriptor(widgetId);
-        if (!exactPauseSnapshot || !exactPauseDescriptor) return fail(304);
+        if (!exactPauseSnapshot || !exactPauseDescriptor) return fail(302);
         ReconcileEmbeddedMediaSurface(
             widgetId, *exactPauseSnapshot, exactPauseDescriptor);
-        ReconcileEmbeddedMediaSurface(
-            widgetId, *exactPauseSnapshot, exactPauseDescriptor);
-        if (deliveredCommands.size() != 1 ||
-            deliveredCommands.front().sequence != 71 ||
-            deliveredCommands.front().kind !=
-                widgetrail::richmedia::PlaybackCommandKind::Pause ||
-            deliveredCommands.front().mediaKey != L"provider-neutral-media" ||
-            !embeddedMediaAuthority_ ||
-            embeddedMediaAuthority_->lastDispatchedPlaybackCommand != 71)
-            return fail(305);
+        if (!embeddedMediaAuthority_ ||
+            embeddedMediaAuthority_->sequence != snapshotSequence + 2 ||
+            embeddedMediaAuthority_->lastDispatchedPlaybackCommand != 0 ||
+            !embeddedMediaAuthority_->commandOrigin ||
+            embeddedMediaAuthority_->commandOrigin->snapshotSequence !=
+                snapshotSequence + 2 ||
+            embeddedMediaAuthority_->commandOrigin->commandSequence != 71 ||
+            embeddedMediaAuthority_->commandOrigin->mediaKey !=
+                L"provider-neutral-media" ||
+            embeddedMediaAuthority_->commandOrigin->stage !=
+                widgetrail::richmedia::PlaybackCommandStage::Accepted)
+            return fail(303);
         StopEmbeddedMediaSurface(L"handoff-test-complete");
-        if (!sessionRetired()) return fail(306);
+        if (!sessionRetired()) return fail(304);
         state_ = widgetrail::OverlayState(
             {}, std::vector<std::wstring>{std::wstring{widgetId}});
         ShowWindow(window_, SW_HIDE);
         lastWidgetRenderResult_ = {};
+        committedWidgetVisualState_.reset();
+
+        const auto invalidViewportCoordinator = prepareOrdinaryParkedSuccessor(
+            L"parked-successor-invalid-viewport", mediaDeclaration);
+        if (!invalidViewportCoordinator) return fail(305);
+        seedOverlayGeometry();
+        lastWidgetRenderResult_.mediaViewportRegions.front().mediaSurfaceId =
+            L"different-surface";
+        ReconcileEmbeddedMediaProjection(L"committed-presentation");
+        if (!sessionRetired()) return fail(306);
+
+        const auto outOfBoundsCoordinator = prepareOrdinaryParkedSuccessor(
+            L"parked-successor-out-of-bounds", mediaDeclaration);
+        if (!outOfBoundsCoordinator) return fail(307);
+        seedOverlayGeometry(
+            {3.0e9F, 0.0F, 320.0F, 180.0F},
+            {3.0e9F, 0.0F, 320.0F, 180.0F});
+        ReconcileEmbeddedMediaProjection(L"committed-presentation");
+        if (!sessionRetired()) return fail(308);
 
         enum class ParkedSuccessorRejectionCase {
             InactiveWidget,
@@ -1969,6 +2032,8 @@ public:
             MissingDeclaration,
             RegressiveSequence,
             FailureRetained,
+            RetentionDisabled,
+            PendingCommand,
         };
         int parkedSuccessorCase{};
         for (const auto rejection : {
@@ -1980,7 +2045,9 @@ public:
                  ParkedSuccessorRejectionCase::ResourceContract,
                  ParkedSuccessorRejectionCase::MissingDeclaration,
                  ParkedSuccessorRejectionCase::RegressiveSequence,
-                 ParkedSuccessorRejectionCase::FailureRetained}) {
+                 ParkedSuccessorRejectionCase::FailureRetained,
+                 ParkedSuccessorRejectionCase::RetentionDisabled,
+                 ParkedSuccessorRejectionCase::PendingCommand}) {
             const auto key = L"parked-successor-rejected-" +
                 std::to_wstring(parkedSuccessorCase);
             if (!preparePinnedCase(
@@ -2029,6 +2096,15 @@ public:
                 break;
             case ParkedSuccessorRejectionCase::FailureRetained:
                 break;
+            case ParkedSuccessorRejectionCase::RetentionDisabled:
+                successor.embeddedMedia->retainSessionWhenHidden = false;
+                break;
+            case ParkedSuccessorRejectionCase::PendingCommand:
+                successor.embeddedMedia->pendingCommand =
+                    widgetrail::EmbeddedMediaPlaybackCommand{
+                        72, L"pause", L"provider-neutral-media", std::nullopt,
+                        std::nullopt, std::nullopt, std::nullopt, std::nullopt};
+                break;
             }
             sessions_.SeedCurrentPresentationForEmbeddedMediaHandoffTest(
                 std::move(descriptor), std::move(successor));
@@ -2039,7 +2115,9 @@ public:
             } else {
                 sessions_.MarkRefreshRequested(widgetId);
             }
-            if (TransferEmbeddedMediaSurface(
+            if (!embeddedMediaAuthority_ ||
+                embeddedMediaAuthority_->lastDispatchedPlaybackCommand != 0 ||
+                TransferEmbeddedMediaSurface(
                     EmbeddedMediaProjection::Overlay,
                     L"parked-successor-rejection") !=
                     EmbeddedMediaTransferResult::Failed || !sessionRetired())
@@ -3728,7 +3806,7 @@ private:
             embeddedMediaAuthority_->projection != EmbeddedMediaProjection::Overlay ||
             !EmbeddedMediaPresentationAuthorityCurrent() ||
             !ResolveOrdinaryOverlayEmbeddedMediaPresentationGeometry(
-                embeddedMediaAuthority_->sequence))
+                embeddedMediaAuthority_->sequence).geometry)
             return false;
         const auto& activation = *overlayFullscreenMediaActivation_;
         const auto* snapshot = SnapshotFor(state_.activeWidget());
@@ -3765,7 +3843,7 @@ private:
             embeddedMediaAuthority_->widgetId != state_.activeWidget() ||
             embeddedMediaAuthority_->sequence != snapshot->sequence ||
             !ResolveOrdinaryOverlayEmbeddedMediaPresentationGeometry(
-                snapshot->sequence) ||
+                snapshot->sequence).geometry ||
             !snapshot->embeddedMedia->overlayFullscreenCapable)
             return false;
         if (pinnedSurfaceCoordinator_.pinned() &&
@@ -4025,26 +4103,64 @@ private:
             96.0F * interfaceScale;
     }
 
-    [[nodiscard]] std::optional<widgetrail::MediaViewportPresentationGeometry>
+    enum class OrdinaryEmbeddedMediaGeometryStatus {
+        Valid,
+        Unavailable,
+        Invalid,
+    };
+
+    struct OrdinaryEmbeddedMediaGeometryResolution final {
+        OrdinaryEmbeddedMediaGeometryStatus status{
+            OrdinaryEmbeddedMediaGeometryStatus::Unavailable};
+        std::optional<widgetrail::MediaViewportPresentationGeometry> geometry;
+    };
+
+    [[nodiscard]] OrdinaryEmbeddedMediaGeometryResolution
     ResolveOrdinaryOverlayEmbeddedMediaPresentationGeometry(
         const long long expectedSequence) const {
-        if (!embeddedMediaAuthority_) return std::nullopt;
+        if (!embeddedMediaAuthority_) return {};
         const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
+        const auto* descriptor = sessions_.FindDescriptor(
+            embeddedMediaAuthority_->widgetId);
         if (!snapshot || !snapshot->embeddedMedia ||
             snapshot->embeddedMedia->id != embeddedMediaAuthority_->surfaceId ||
-            snapshot->sequence != expectedSequence ||
-            !lastWidgetRenderResult_.succeeded ||
-            lastWidgetRenderResult_.mediaViewportRegions.size() != 1 || !window_)
-            return std::nullopt;
+            snapshot->sequence != expectedSequence || !descriptor ||
+            descriptor->instanceId != embeddedMediaAuthority_->instanceId ||
+            descriptor->runtimeGeneration !=
+                embeddedMediaAuthority_->runtimeGeneration ||
+            descriptor->presentationGeneration !=
+                embeddedMediaAuthority_->presentationGeneration ||
+            !window_) {
+            return {OrdinaryEmbeddedMediaGeometryStatus::Invalid, std::nullopt};
+        }
+        const bool committedCurrent = committedWidgetVisualState_ &&
+            committedWidgetVisualState_->widgetId ==
+                embeddedMediaAuthority_->widgetId &&
+            committedWidgetVisualState_->instanceId ==
+                embeddedMediaAuthority_->instanceId &&
+            committedWidgetVisualState_->runtimeGeneration ==
+                embeddedMediaAuthority_->runtimeGeneration &&
+            committedWidgetVisualState_->presentationGeneration ==
+                embeddedMediaAuthority_->presentationGeneration &&
+            committedWidgetVisualState_->snapshotSequence == expectedSequence &&
+            lastWidgetRenderResult_.succeeded;
+        if (!committedCurrent) return {};
+        if (lastWidgetRenderResult_.mediaViewportRegions.size() != 1) {
+            return {OrdinaryEmbeddedMediaGeometryStatus::Invalid, std::nullopt};
+        }
         const auto& viewport = lastWidgetRenderResult_.mediaViewportRegions.front();
         if (viewport.mediaSurfaceId != embeddedMediaAuthority_->surfaceId)
-            return std::nullopt;
-        return widgetrail::ResolveMediaViewportPresentationGeometry(
+            return {OrdinaryEmbeddedMediaGeometryStatus::Invalid, std::nullopt};
+        auto geometry = widgetrail::ResolveMediaViewportPresentationGeometry(
             {viewport.bounds.x, viewport.bounds.y,
              viewport.bounds.width, viewport.bounds.height},
             {viewport.clip.x, viewport.clip.y,
              viewport.clip.width, viewport.clip.height},
             MediaPixelsPerDip(window_));
+        if (!geometry) {
+            return {OrdinaryEmbeddedMediaGeometryStatus::Invalid, std::nullopt};
+        }
+        return {OrdinaryEmbeddedMediaGeometryStatus::Valid, std::move(geometry)};
     }
 
     [[nodiscard]] std::optional<widgetrail::MediaViewportPresentationGeometry>
@@ -4091,7 +4207,7 @@ private:
             }
             return committed->geometry;
         } else return ResolveOrdinaryOverlayEmbeddedMediaPresentationGeometry(
-            expectedSequence);
+            expectedSequence).geometry;
         if (!owner || viewport.mediaSurfaceId != embeddedMediaAuthority_->surfaceId)
             return std::nullopt;
         return widgetrail::ResolveMediaViewportPresentationGeometry(
@@ -4916,9 +5032,22 @@ private:
             }
             destinationEndpointInitialized = true;
         }
-        const auto resolvedGeometry =
-            ResolveEmbeddedMediaPresentationGeometryForProjection(
+        OrdinaryEmbeddedMediaGeometryStatus ordinaryGeometryStatus =
+            OrdinaryEmbeddedMediaGeometryStatus::Invalid;
+        std::optional<widgetrail::MediaViewportPresentationGeometry>
+            resolvedGeometry;
+        if (destination == EmbeddedMediaProjection::Overlay &&
+            !(overlayFullscreenMediaActivation_ &&
+              OverlayFullscreenMediaRequested())) {
+            auto ordinary =
+                ResolveOrdinaryOverlayEmbeddedMediaPresentationGeometry(
+                    embeddedMediaAuthority_->sequence);
+            ordinaryGeometryStatus = ordinary.status;
+            resolvedGeometry = std::move(ordinary.geometry);
+        } else {
+            resolvedGeometry = ResolveEmbeddedMediaPresentationGeometryForProjection(
                 destination, embeddedMediaAuthority_->sequence);
+        }
         RECT hostBounds{};
         RECT hostClip{};
         RECT controllerBounds{};
@@ -4952,6 +5081,8 @@ private:
         } else {
             if (sourceParked &&
                 destination == EmbeddedMediaProjection::Overlay &&
+                ordinaryGeometryStatus ==
+                    OrdinaryEmbeddedMediaGeometryStatus::Unavailable &&
                 RetainedHiddenEmbeddedMediaAuthorityCurrent()) {
                 if (!embeddedMediaAuthority_->projectionDeferralRecorded) {
                     AppendDiagnostic(
@@ -4966,14 +5097,24 @@ private:
                 }
                 return EmbeddedMediaTransferResult::Deferred;
             }
+            const bool invalidOrdinaryGeometry =
+                destination == EmbeddedMediaProjection::Overlay &&
+                ordinaryGeometryStatus ==
+                    OrdinaryEmbeddedMediaGeometryStatus::Invalid;
             AppendDiagnostic(
                 L"Embedded media presentation transfer rejected widget=" +
                 widgetId + L" projection=" +
                 (destination == EmbeddedMediaProjection::Pinned
                     ? L"pinned" : L"overlay") +
                 L" reason=" + transferReason +
-                L" geometry=unavailable");
-            return failTransfer(L"geometry-unavailable", E_INVALIDARG);
+                (invalidOrdinaryGeometry
+                    ? L" geometry=invalid"
+                    : L" geometry=unavailable"));
+            return failTransfer(
+                invalidOrdinaryGeometry
+                    ? L"geometry-invalid"
+                    : L"geometry-unavailable",
+                E_INVALIDARG);
         }
         if (hostBounds.right <= hostBounds.left ||
             hostBounds.bottom <= hostBounds.top ||
@@ -5089,12 +5230,6 @@ private:
             : std::nullopt;
         if (destination == EmbeddedMediaProjection::Pinned && !pinnedPresentation)
             return;
-        if (destination == EmbeddedMediaProjection::Overlay &&
-            embeddedMediaAuthority_->parked &&
-            !OverlayOwnsBoundEmbeddedMediaViewport() &&
-            RetainedHiddenEmbeddedMediaAuthorityCurrent()) {
-            return;
-        }
         if (destination == EmbeddedMediaProjection::Pinned &&
             embeddedMediaAuthority_->projection == destination &&
             embeddedMediaAuthority_->pinnedFrameGeneration ==
