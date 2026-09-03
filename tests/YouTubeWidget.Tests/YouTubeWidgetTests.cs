@@ -350,6 +350,10 @@ public sealed partial class YouTubeWidgetTests
         var settingsStyles = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "styles", "default.wrss"));
         StringAssert.Contains(settingsStyles,
+            ".youtube-player-settings { width: 100%; min-width: 0px; min-height: 0px;");
+        Assert.DoesNotContain(".youtube-player-settings { width: 100%; height: 100%;",
+            settingsStyles);
+        StringAssert.Contains(settingsStyles,
             ".youtube-player-settings-scroll { width: 100%; min-width: 0px; min-height: 0px; flex-basis: 0px; flex-grow: 1; flex-shrink: 1;");
 
         await widget.OnActionAsync(new WidgetActionEvent(
