@@ -93,17 +93,41 @@ class FakeMedia {
 const pageEvents = [];
 let messageListener = null;
 let stateCallback = null;
+let playbackRateCallback = null;
+let playbackRateTimeout = null;
+let suppressPlaybackRateEvent = false;
 const media = new FakeMedia();
 const player = {
   state: 5,
   currentTime: 0,
   duration: 120,
   volume: 80,
-  cueVideoById() { this.state = 5; stateCallback?.({data:5}); },
+  playbackRate: 1,
+  muted: false,
+  loop: false,
+  videoId: '',
+  availablePlaybackRates: [.5, .75, 1, 1.25, 1.5, 2],
+  cueVideoById(options) {
+    this.videoId = options.videoId;
+    this.state = 5;
+    stateCallback?.({data:5});
+  },
   playVideo() { this.state = 1; stateCallback?.({data:1}); },
   pauseVideo() { this.state = 2; stateCallback?.({data:2}); },
   seekTo(value) { this.currentTime = value; },
   setVolume(value) { this.volume = value; },
+  setPlaybackRate(value) {
+    this.playbackRate = value;
+    if (!suppressPlaybackRateEvent)
+      queueMicrotask(() => playbackRateCallback?.({data:value}));
+  },
+  getPlaybackRate() { return this.playbackRate; },
+  getAvailablePlaybackRates() { return [...this.availablePlaybackRates]; },
+  mute() { this.muted = true; },
+  unMute() { this.muted = false; },
+  isMuted() { return this.muted; },
+  setLoop(value) { this.loop = value; },
+  getVideoData() { return {video_id:this.videoId}; },
   getPlayerState() { return this.state; },
   getCurrentTime() { return this.currentTime; },
   getDuration() { return this.duration; },
@@ -134,9 +158,10 @@ const context = vm.createContext({
   clearInterval() {},
   setTimeout(callback, delay) {
     if (delay < 1_000) queueMicrotask(callback);
+    else if (delay === 1_500) playbackRateTimeout = callback;
     return 1;
   },
-  clearTimeout() {},
+  clearTimeout() { playbackRateTimeout = null; },
   chrome:{webview:{
     addEventListener(name, callback) {
       if (name === 'message') messageListener = callback;
@@ -147,6 +172,7 @@ const context = vm.createContext({
 context.window = context;
 context.YT = {Player: function Player(_id, options) {
   stateCallback = options.events.onStateChange;
+  playbackRateCallback = options.events.onPlaybackRateChange;
   queueMicrotask(() => options.events.onReady());
   return player;
 }};
@@ -185,6 +211,8 @@ if (profile === 'state-callback' && readyPlaybackKeys.length !== 0)
 
 await exercise({source:'bootstrap:load', command:'load'});
 for (const requirement of requirements) await exercise(requirement);
+if (request.playbackCommands.includes('SetPlaybackRate'))
+  await exercisePlaybackRateContract();
 await exercise(
   {source:'expected-error:media-key-mismatch', command:'volume'},
   {mediaKey:`${currentMediaKey}-mismatch`, expectedErrorCode:'media-key-mismatch'});
@@ -204,11 +232,21 @@ async function exercise(requirement, options = {}) {
     mediaKey:options.mediaKey ?? currentMediaKey,
     positionSeconds:12,
     volume:.65,
-    playbackRate:1.25,
+    playbackRate:options.playbackRate ?? 1.25,
     muted:true,
     loop:false,
   };
   await send(message);
+  if (options.emitSuppressedRate) {
+    playbackRateCallback?.({data:message.playbackRate});
+    await flush();
+  }
+  if (options.triggerRateTimeout) {
+    if (!playbackRateTimeout)
+      fail('rate-timeout-missing', `${requirement.source} did not arm its timeout`);
+    playbackRateTimeout();
+    await flush();
+  }
   const armed = pageEvents.slice(before).find(event =>
     event.type === 'armed' && event.commandId === id && event.commandSequence === sequence);
   if (requirement.command === 'arm-activate' && armed) {
@@ -232,6 +270,10 @@ async function exercise(requirement, options = {}) {
       `${requirement.source} requires adapter message '${requirement.command}'`);
   if (expectedErrorCode === null && terminal.errorCode)
     fail('unexpected-terminal-error', `${requirement.source} produced ${terminal.errorCode}`);
+  if (options.expectedPlaybackState &&
+      terminal.playbackState !== options.expectedPlaybackState)
+    fail('terminal-playback-state',
+      `${requirement.source} expected ${options.expectedPlaybackState}; got ${terminal.playbackState}`);
   if (!terminal.errorCode && terminal.mediaKey) currentMediaKey = terminal.mediaKey;
 
   const observationsBefore = pageEvents.length;
@@ -256,6 +298,43 @@ async function exercise(requirement, options = {}) {
   if (probe[0].type !== 'media' || probe[0].errorCode)
     fail('in-flight-probe-failed',
       `${requirement.source} release probe produced ${probe[0].errorCode ?? probe[0].type}`);
+  return terminal;
+}
+
+async function exercisePlaybackRateContract() {
+  player.state = 2;
+  const paused = await exercise(
+    {source:'rate:paused-late-success', command:'playback-rate'},
+    {playbackRate:1.5, expectedPlaybackState:'paused'});
+  if (paused.playbackRate !== 1.5)
+    fail('rate-paused-value', `expected 1.5; got ${paused.playbackRate}`);
+
+  player.state = 5;
+  const cued = await exercise(
+    {source:'rate:cued-late-success', command:'playback-rate'},
+    {playbackRate:.75, expectedPlaybackState:'ready'});
+  if (cued.playbackRate !== .75)
+    fail('rate-cued-value', `expected .75; got ${cued.playbackRate}`);
+
+  player.availablePlaybackRates = [.5, 1, 1.5, 2];
+  await exercise(
+    {source:'rate:unavailable', command:'playback-rate'},
+    {playbackRate:1.25, expectedErrorCode:'command-unsupported'});
+  player.availablePlaybackRates = [.5, .75, 1, 1.25, 1.5, 2];
+
+  suppressPlaybackRateEvent = true;
+  await exercise(
+    {source:'rate:timeout', command:'playback-rate'},
+    {playbackRate:1.25, expectedErrorCode:'player-operation-timeout',
+      triggerRateTimeout:true});
+
+  player.videoId = `${currentMediaKey}-stale`;
+  await exercise(
+    {source:'rate:stale-video', command:'playback-rate'},
+    {playbackRate:1.5, expectedErrorCode:'player-operation-timeout',
+      emitSuppressedRate:true, triggerRateTimeout:true});
+  player.videoId = currentMediaKey;
+  suppressPlaybackRateEvent = false;
 }
 
 async function send(data) {

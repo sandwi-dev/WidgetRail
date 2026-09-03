@@ -80,6 +80,11 @@ function muted() {
   return player?.isMuted?.() === true;
 }
 
+function currentPlayerVideoId() {
+  const value = player?.getVideoData?.()?.video_id;
+  return typeof value === "string" ? value : "";
+}
+
 function snapshot() {
   return {
     mediaKey,
@@ -197,6 +202,54 @@ function completeAfterDelay(start, signal) {
   });
 }
 
+function waitForPlaybackRate(command) {
+  if (pendingProviderOperation) {
+    return Promise.reject(
+      WidgetRailEmbeddedMediaAdapter.error("player-operation-overlap"));
+  }
+  return new Promise((resolve, reject) => {
+    let timeout = 0;
+    const cancel = () => {
+      if (pendingProviderOperation !== pending) return;
+      pendingProviderOperation = null;
+      pending.cleanup();
+      reject(WidgetRailEmbeddedMediaAdapter.error("authority-replaced"));
+    };
+    const expire = () => {
+      if (pendingProviderOperation !== pending) return;
+      pendingProviderOperation = null;
+      pending.cleanup();
+      reject(WidgetRailEmbeddedMediaAdapter.error("player-operation-timeout"));
+    };
+    const pending = {
+      expectedStates: null,
+      expectedPlaybackRate: command.playbackRate,
+      mediaKey: command.mediaKey,
+      commandSequence: command.sequence,
+      resolve,
+      reject,
+      cleanup: () => {
+        clearTimeout(timeout);
+        command.signal.removeEventListener("abort", cancel);
+      },
+    };
+    pendingProviderOperation = pending;
+    command.signal.addEventListener("abort", cancel, { once: true });
+    if (command.signal.aborted) {
+      cancel();
+      return;
+    }
+    try {
+      timeout = setTimeout(expire, 1500);
+      player.setPlaybackRate(command.playbackRate);
+    } catch (error) {
+      if (pendingProviderOperation === pending) pendingProviderOperation = null;
+      pending.cleanup();
+      reject(error);
+    }
+  });
+}
+
 function onReady() {
   clearTimeout(apiTimer);
   resolveApi(player);
@@ -219,6 +272,24 @@ function onStateChange(event) {
     return;
   }
   adapter?.observe();
+}
+
+function onPlaybackRateChange(event) {
+  const pending = pendingProviderOperation;
+  const reportedRate = Number(event.data);
+  if (!pending || !Number.isFinite(pending.expectedPlaybackRate)) {
+    adapter?.observe();
+    return;
+  }
+  if (pending.commandSequence <= 0 || pending.mediaKey !== mediaKey) return;
+  const playerVideoId = currentPlayerVideoId();
+  if (playerVideoId && playerVideoId !== pending.mediaKey) return;
+  if (!Number.isFinite(reportedRate) ||
+      Math.abs(reportedRate - pending.expectedPlaybackRate) >= 0.001 ||
+      Math.abs(playbackRate() - pending.expectedPlaybackRate) >= 0.001) return;
+  pendingProviderOperation = null;
+  pending.cleanup();
+  pending.resolve({ playbackState: stateName(player.getPlayerState()) });
 }
 
 function onError(event) {
@@ -250,7 +321,7 @@ window.onYouTubeIframeAPIReady = () => {
         origin: location.origin,
         rel: 0,
       },
-      events: { onReady, onStateChange, onError },
+      events: { onReady, onStateChange, onPlaybackRateChange, onError },
     });
   } catch {
     failApi("player-api-load-failed");
@@ -346,12 +417,7 @@ adapter = WidgetRailEmbeddedMediaAdapter.create({
       if (!available.some(rate => Math.abs(rate - command.playbackRate) < 0.001)) {
         throw WidgetRailEmbeddedMediaAdapter.error("command-unsupported");
       }
-      const result = await completeAfterDelay(
-        () => player.setPlaybackRate(command.playbackRate), command.signal);
-      if (Math.abs(playbackRate() - command.playbackRate) >= 0.001) {
-        throw WidgetRailEmbeddedMediaAdapter.error("command-unsupported");
-      }
-      return result;
+      return waitForPlaybackRate(command);
     },
     async setMuted(command) {
       await readyFor(command);

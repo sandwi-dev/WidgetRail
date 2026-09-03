@@ -170,7 +170,7 @@ public sealed partial class YouTubeWidgetTests
         var ready = widget.RenderSnapshot("youtube-test", 2);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(ready));
         Assert.IsTrue(Find(ready.Root, "youtube.player.fullscreen").IsDisabled is not true);
-        Assert.AreEqual("youtube.player.fullscreen", Find(ready.Root, "youtube.link").Focus!.Up);
+        Assert.AreEqual("youtube.player.back", Find(ready.Root, "youtube.link").Focus!.Up);
 
         // Fullscreen is host-owned: the player route declares only the capability
         // and offers the reserved entry action. The widget holds no fullscreen
@@ -254,21 +254,21 @@ public sealed partial class YouTubeWidgetTests
         Assert.AreEqual(WidgetGlyph.Play, toggle.Glyph);
         Assert.AreEqual(YouTubeVideoWidget.ToggleActionId, toggle.ActionId);
         Assert.AreEqual("Play", toggle.AccessibilityLabel);
-        var rewind = Find(ready.Root, "youtube.playback.seek-backward");
-        Assert.AreEqual(WidgetGlyph.Rewind, rewind.Glyph);
-        Assert.AreEqual(YouTubeVideoWidget.SeekBackwardActionId, rewind.ActionId);
-        Assert.AreEqual("Seek backward 10 seconds", rewind.AccessibilityLabel);
-        var fastForward = Find(ready.Root, "youtube.playback.seek-forward");
-        Assert.AreEqual(WidgetGlyph.FastForward, fastForward.Glyph);
-        Assert.AreEqual(YouTubeVideoWidget.SeekForwardActionId, fastForward.ActionId);
-        Assert.AreEqual("Seek forward 10 seconds", fastForward.AccessibilityLabel);
+        Assert.IsNull(TryFind(ready.Root, "youtube.playback.seek-backward"));
+        Assert.IsNull(TryFind(ready.Root, "youtube.playback.seek-forward"));
+        var fullscreen = Find(ready.Root, "youtube.player.fullscreen");
+        Assert.AreEqual(YouTubeVideoWidget.EnterFullscreenActionId, fullscreen.ActionId);
+        Assert.AreEqual("Fullscreen", fullscreen.AccessibilityLabel);
+        var captions = Find(ready.Root, YouTubeVideoWidget.CaptionsActionId);
+        Assert.AreEqual(YouTubeVideoWidget.CaptionsActionId, captions.ActionId);
+        Assert.AreEqual("Captions and player settings", captions.AccessibilityLabel);
 
         CollectionAssert.AreEqual(
             new[]
             {
                 "youtube.playback.toggle",
-                "youtube.playback.seek-backward",
-                "youtube.playback.seek-forward",
+                "youtube.player.fullscreen",
+                "youtube.player.captions",
                 "youtube.timeline-group",
                 "youtube.volume",
             },
@@ -304,6 +304,81 @@ public sealed partial class YouTubeWidgetTests
             ".youtube-timeline-group { min-width: 156px; max-width: 360px;");
         StringAssert.Contains(styles,
             ".youtube-volume { width: 72px; min-width: 56px; height: 32px;");
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    [TestMethod]
+    public async Task PlayerSettingsPublishBoundedPreferencesAndRetainLastObservationOnRejection()
+    {
+        var widget = await CreateConfiguredLinkWidgetAsync();
+        await CommitAsync(widget, $"https://youtu.be/{VideoId}");
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Paused, 1,
+            duration: 120, playbackRate: 1);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.CaptionsActionId, YouTubeVideoWidget.CaptionsActionId));
+        var settings = widget.RenderSnapshot("youtube-test", 2);
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(settings));
+        Assert.IsNotNull(TryFind(settings.Root, "youtube.player.settings.rate-row"));
+        Assert.IsNotNull(TryFind(settings.Root, "youtube.player.settings.muted"));
+        Assert.IsNotNull(TryFind(settings.Root, "youtube.player.settings.loop"));
+        Assert.AreEqual("Auto · managed by YouTube",
+            Find(settings.Root, "youtube.player.settings.quality.value").Text);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.PlaybackRateActionId,
+            "youtube.player.settings.rate-row.action"));
+        var picker = widget.RenderSnapshot("youtube-test", 3);
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(picker));
+        foreach (var rate in new[] { "0.5", "0.75", "1", "1.25", "1.5", "2" })
+            Assert.IsNotNull(TryFind(picker.Root, $"youtube.player.settings.rate.{rate}"));
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "youtube.player.settings.rate.1.5", "youtube.player.settings.rate.1.5"));
+        var setRate = widget.RenderSnapshot("youtube-test", 4).EmbeddedMedia!.PendingCommand!;
+        Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.SetPlaybackRate, setRate.Kind);
+        Assert.AreEqual(1.5, setRate.PlaybackRate);
+        await ObserveAsync(widget, setRate, EmbeddedMediaPlaybackState.Paused, 2,
+            duration: 120, playbackRate: 1.5);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.PlaybackRateBackActionId,
+            "youtube.player.settings.rate-picker"));
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.MutedActionId, "youtube.player.settings.muted"));
+        var setMuted = widget.RenderSnapshot("youtube-test", 5).EmbeddedMedia!.PendingCommand!;
+        Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.SetMuted, setMuted.Kind);
+        Assert.AreEqual(true, setMuted.Muted);
+        await ObserveAsync(widget, setMuted, EmbeddedMediaPlaybackState.Paused, 3,
+            duration: 120, playbackRate: 1.5, muted: true);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.LoopActionId, "youtube.player.settings.loop"));
+        var setLoop = widget.RenderSnapshot("youtube-test", 6).EmbeddedMedia!.PendingCommand!;
+        Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.SetLoop, setLoop.Kind);
+        Assert.AreEqual(true, setLoop.Loop);
+        await ObserveAsync(widget, setLoop, EmbeddedMediaPlaybackState.Paused, 4,
+            duration: 120, playbackRate: 1.5, muted: true, loop: true);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.PlaybackRateActionId,
+            "youtube.player.settings.rate-row.action"));
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "youtube.player.settings.rate.1.25", "youtube.player.settings.rate.1.25"));
+        var rejected = widget.RenderSnapshot("youtube-test", 7).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, rejected, EmbeddedMediaPlaybackState.Error, 5,
+            duration: 120, playbackRate: 1.5, muted: true, loop: true,
+            errorCode: "command-unsupported");
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.PlaybackRateBackActionId,
+            "youtube.player.settings.rate-picker"));
+        var afterRejection = widget.RenderSnapshot("youtube-test", 8);
+        Assert.IsNull(afterRejection.EmbeddedMedia!.PendingCommand);
+        Assert.AreEqual("That setting is unavailable for the current YouTube video.",
+            Find(afterRejection.Root, "youtube.player.settings.error").Text);
+        Assert.AreEqual("1.5×",
+            Find(afterRejection.Root, "youtube.player.settings.rate-row.value").Text);
         await WidgetTestHost.DestroyAsync(widget);
     }
 
@@ -433,7 +508,7 @@ public sealed partial class YouTubeWidgetTests
             position: 14, duration: 120, volume: 0.65);
 
         await widget.OnActionAsync(new WidgetActionEvent(
-            YouTubeVideoWidget.SeekForwardActionId, "youtube.playback.seek-forward"));
+            YouTubeVideoWidget.SeekForwardActionId, "youtube.root"));
         var seek = widget.RenderSnapshot("youtube-test", 3).EmbeddedMedia!.PendingCommand!;
         await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 3,
             position: 24, duration: 120, volume: 0.65);
@@ -445,8 +520,9 @@ public sealed partial class YouTubeWidgetTests
         Assert.AreEqual(WidgetGlyph.Pause, bufferingToggle.Glyph);
         Assert.AreEqual("Pause", bufferingToggle.AccessibilityLabel);
         Assert.IsTrue(bufferingToggle.IsDisabled is not true);
-        Assert.IsTrue(Find(buffering.Root, "youtube.playback.seek-backward").IsDisabled is not true);
-        Assert.IsTrue(Find(buffering.Root, "youtube.playback.seek-forward").IsDisabled is not true);
+        Assert.IsNull(TryFind(buffering.Root, "youtube.playback.seek-backward"));
+        Assert.IsNull(TryFind(buffering.Root, "youtube.playback.seek-forward"));
+        AssertHeldSeekDeclared(buffering, "while buffering");
         Assert.IsTrue(Find(buffering.Root, "youtube.timeline").IsDisabled is not true);
         Assert.IsTrue(Find(buffering.Root, "youtube.volume").IsDisabled is not true);
 
@@ -496,7 +572,7 @@ public sealed partial class YouTubeWidgetTests
         });
 
         await widget.OnActionAsync(new WidgetActionEvent(
-            YouTubeVideoWidget.SeekForwardActionId, "youtube.playback.seek-forward"));
+            YouTubeVideoWidget.SeekForwardActionId, "youtube.root"));
         var seek = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
         await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 3,
             position: 24, duration: 120, volume: 0.65);
@@ -852,8 +928,6 @@ public sealed partial class YouTubeWidgetTests
         foreach (var id in new[]
                  {
                      "youtube.playback.toggle",
-                     "youtube.playback.seek-backward",
-                     "youtube.playback.seek-forward",
                      "youtube.timeline",
                  })
             Assert.IsTrue(Find(link.Root, id).IsDisabled is not true,
@@ -894,10 +968,10 @@ public sealed partial class YouTubeWidgetTests
         var paused = widget.RenderSnapshot("youtube-test", 42);
         var seekInvalidated = NextInvalidation(widget);
         Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
-            ControllerButton.A,
+            ControllerButton.RightTrigger,
             ControllerEventPhase.Pressed,
             ControllerInputContext.OpenWidget,
-            FocusedElementId: "youtube.playback.seek-forward",
+            FocusedElementId: "youtube.playback.toggle",
             Sequence: 102,
             ActiveInputScopeId: paused.ActiveInputScopeId,
             SnapshotSequence: paused.Sequence)));
@@ -1045,6 +1119,10 @@ public sealed partial class YouTubeWidgetTests
         StringAssert.Contains(adapter, "async load(command)");
         StringAssert.Contains(adapter, "async cue(command)");
         StringAssert.Contains(adapter, "async toggle(command)");
+        StringAssert.Contains(adapter, "onPlaybackRateChange");
+        StringAssert.Contains(adapter, "getAvailablePlaybackRates()");
+        StringAssert.Contains(adapter, "waitForPlaybackRate(command)");
+        StringAssert.Contains(adapter, "player-operation-timeout");
         StringAssert.Contains(adapter, "client-identity-rejected");
         StringAssert.Contains(adapter, "embedding-disabled");
         Assert.DoesNotContain("fetch(", adapter);
@@ -1070,6 +1148,9 @@ public sealed partial class YouTubeWidgetTests
                 EmbeddedMediaPlaybackCommandKind.Pause,
                 EmbeddedMediaPlaybackCommandKind.Seek,
                 EmbeddedMediaPlaybackCommandKind.SetVolume,
+                EmbeddedMediaPlaybackCommandKind.SetPlaybackRate,
+                EmbeddedMediaPlaybackCommandKind.SetMuted,
+                EmbeddedMediaPlaybackCommandKind.SetLoop,
             ]);
 
         var missingToggleRoot = Path.Combine(
@@ -1100,6 +1181,9 @@ public sealed partial class YouTubeWidgetTests
                         EmbeddedMediaPlaybackCommandKind.Pause,
                         EmbeddedMediaPlaybackCommandKind.Seek,
                         EmbeddedMediaPlaybackCommandKind.SetVolume,
+                        EmbeddedMediaPlaybackCommandKind.SetPlaybackRate,
+                        EmbeddedMediaPlaybackCommandKind.SetMuted,
+                        EmbeddedMediaPlaybackCommandKind.SetLoop,
                     ]));
             StringAssert.Contains(failure.Message,
                 "command-unsupported: declared:togglePlayback requires adapter message 'toggle'");
@@ -1170,6 +1254,10 @@ public sealed partial class YouTubeWidgetTests
         public ValueTask OpenGoogleCloudConsoleAsync(CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
 
+        public ValueTask OpenVideoInYouTubeAsync(
+            string videoId, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
         public ValueTask<YouTubeSearchPage> SearchAsync(
             string query,
             string? pageToken,
@@ -1221,6 +1309,9 @@ public sealed partial class YouTubeWidgetTests
         double position = 0,
         double duration = 0,
         double volume = 0.8,
+        double playbackRate = 1,
+        bool muted = false,
+        bool loop = false,
         string? errorCode = null) =>
         await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
@@ -1232,6 +1323,9 @@ public sealed partial class YouTubeWidgetTests
             PositionSeconds = position,
             DurationSeconds = duration,
             Volume = volume,
+            PlaybackRate = playbackRate,
+            Muted = muted,
+            Loop = loop,
             ErrorCode = errorCode,
         });
 
@@ -1260,7 +1354,7 @@ public sealed partial class YouTubeWidgetTests
         if (seekBuffering)
         {
             await widget.OnActionAsync(new WidgetActionEvent(
-                YouTubeVideoWidget.SeekForwardActionId, "youtube.playback.seek-forward"));
+                YouTubeVideoWidget.SeekForwardActionId, "youtube.root"));
             var seek = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
             await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 3,
                 position: 60, duration: 120, volume: 0.65);
@@ -1322,7 +1416,7 @@ public sealed partial class YouTubeWidgetTests
 
         // First repeat: a seek is queued and still in flight.
         await widget.OnActionAsync(new WidgetActionEvent(
-            YouTubeVideoWidget.SeekForwardActionId, "youtube.playback.seek-forward"));
+            YouTubeVideoWidget.SeekForwardActionId, "youtube.root"));
         var pendingSnapshot = widget.RenderSnapshot("youtube-test", 3);
         Assert.IsNotNull(pendingSnapshot.EmbeddedMedia!.PendingCommand,
             "The seek must actually be in flight for this to prove anything.");
@@ -1338,7 +1432,7 @@ public sealed partial class YouTubeWidgetTests
         // Second repeat while already Loading: the widget records no buffering
         // sentinel on this path, which is exactly where the hold used to die.
         await widget.OnActionAsync(new WidgetActionEvent(
-            YouTubeVideoWidget.SeekForwardActionId, "youtube.playback.seek-forward"));
+            YouTubeVideoWidget.SeekForwardActionId, "youtube.root"));
         var second = widget.RenderSnapshot("youtube-test", 5);
         AssertHeldSeekDeclared(second, "on a second seek while still loading");
         if (second.EmbeddedMedia!.PendingCommand is { } queued)
@@ -1362,7 +1456,7 @@ public sealed partial class YouTubeWidgetTests
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Playing, 1,
             position: 50, duration: 600, volume: 0.65);
         await widget.OnActionAsync(new WidgetActionEvent(
-            YouTubeVideoWidget.SeekForwardActionId, "youtube.playback.seek-forward"));
+            YouTubeVideoWidget.SeekForwardActionId, "youtube.root"));
         var seek = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
         await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 2,
             position: 60, duration: 600, volume: 0.65);
@@ -1377,15 +1471,10 @@ public sealed partial class YouTubeWidgetTests
         Assert.IsFalse(owner.IsDisabled is true, "The binding owner must stay actionable.");
         Assert.IsFalse(owner.IsBusy is true, "The binding owner must stay actionable.");
 
-        // The seek controls themselves no longer churn through busy/disabled
-        // while a command settles.
-        foreach (var id in new[]
-                 { "youtube.playback.seek-backward", "youtube.playback.seek-forward" })
-        {
-            var control = Find(snapshot.Root, id);
-            Assert.IsFalse(control.IsBusy is true, $"{id} must not report busy mid-seek.");
-            Assert.IsFalse(control.IsDisabled is true, $"{id} must stay enabled mid-seek.");
-        }
+        Assert.IsNull(TryFind(snapshot.Root, "youtube.playback.seek-backward"));
+        Assert.IsNull(TryFind(snapshot.Root, "youtube.playback.seek-forward"));
+        Assert.IsFalse(Find(snapshot.Root, "youtube.timeline").IsDisabled is true,
+            "The visible timeline must stay enabled while a relative seek settles.");
     }
 
     private static void AssertHeldSeekDeclared(ViewSnapshot snapshot, string stage)

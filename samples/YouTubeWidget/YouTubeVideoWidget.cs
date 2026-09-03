@@ -71,7 +71,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             .Disabled(controlsUnavailable)
             .Busy(busyControl == PendingMediaControl.TogglePlayback)
             .FocusUp("youtube.link")
-            .FocusRight(FullscreenFocusId)
+            .FocusRight(showFullscreenAction ? FullscreenFocusId : "youtube.timeline")
             .Classes("youtube-primary", "youtube-transport-button", "youtube-play-toggle");
         var fullscreen = UI.Button("", EnterFullscreenActionId, FullscreenFocusId)
             .Icon(WidgetGlyph.Connection, "Fullscreen")
@@ -100,7 +100,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             .Disabled(controlsUnavailable)
             .Busy(busyControl == PendingMediaControl.Timeline)
             .FocusUp("youtube.link")
-            .FocusLeft(CaptionsActionId)
+            .FocusLeft(showFullscreenAction ? CaptionsActionId : "youtube.playback.toggle")
             .FocusRight("youtube.volume")
             .Classes("youtube-slider");
         var volumeControl = UI.Slider(
@@ -145,6 +145,21 @@ public sealed partial class YouTubeVideoWidget : Widget
             UI.Text(status, "youtube.status")
                 .Classes("youtube-status", "youtube-status-pill", statusClass),
         };
+        var transportControls = new List<WidgetElement> { toggle };
+        if (showFullscreenAction)
+        {
+            transportControls.Add(fullscreen);
+            transportControls.Add(captions);
+        }
+        transportControls.Add(UI.Row(
+                "youtube.timeline-group",
+                UI.Text(FormatTime(playback.Position), "youtube.position")
+                    .Classes("youtube-time"),
+                timeline,
+                UI.Text(FormatTime(playback.Duration), "youtube.duration")
+                    .Classes("youtube-time", "is-end"))
+            .Classes("youtube-timeline-group"));
+        transportControls.Add(volumeControl);
         var root = UI.Stack(
                 "youtube.root",
                 UI.Row(
@@ -162,19 +177,7 @@ public sealed partial class YouTubeVideoWidget : Widget
                 UI.Stack("youtube.player-shell",
                         UI.MediaViewport(media, "youtube.viewport").Classes("youtube-viewport"),
                         UI.Stack("youtube.control-deck",
-                                UI.Row("youtube.controls",
-                                        toggle,
-                                        fullscreen,
-                                        captions,
-                                        UI.Row(
-                                                "youtube.timeline-group",
-                                                UI.Text(FormatTime(playback.Position), "youtube.position")
-                                                    .Classes("youtube-time"),
-                                                timeline,
-                                                UI.Text(FormatTime(playback.Duration), "youtube.duration")
-                                                    .Classes("youtube-time", "is-end"))
-                                            .Classes("youtube-timeline-group"),
-                                        volumeControl)
+                                UI.Row("youtube.controls", transportControls.ToArray())
                                     .RememberChildFocus("youtube.playback.toggle")
                                     .Classes("youtube-controls"))
                             .Classes("youtube-control-deck", videoId is null ? "is-unavailable" : "is-ready"))
