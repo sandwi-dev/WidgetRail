@@ -1388,7 +1388,8 @@ public:
             const auto recoveryCountBefore =
                 compositionSurface_.externalContentRecoveryCountForTest();
             testEmbeddedMediaHandoffRetirementObserved_ = false;
-            if (TransferEmbeddedMediaSurface(destination, L"failure-matrix") ||
+            if (TransferEmbeddedMediaSurface(destination, L"failure-matrix") !=
+                    EmbeddedMediaTransferResult::Failed ||
                 !sessionRetired() ||
                 compositionSurface_.externalContentRecoveryCountForTest() !=
                     recoveryCountBefore + (expectCompositionRecovery ? 1U : 0U) ||
@@ -1794,6 +1795,16 @@ public:
         auto* const repinParkingTarget = residentEmbeddedMediaSessions_.at(
             L"repin-retained").parkingTarget.Get();
         ReconcileEmbeddedMediaProjection(L"pinned-surface-changed");
+        if (TransferEmbeddedMediaSurface(
+                EmbeddedMediaProjection::Overlay,
+                L"committed-presentation") !=
+                EmbeddedMediaTransferResult::Deferred ||
+            !embeddedMediaAuthority_ ||
+            !embeddedMediaAuthority_->projectionDeferralRecorded ||
+            TransferEmbeddedMediaSurface(
+                EmbeddedMediaProjection::Overlay,
+                L"committed-presentation") !=
+                EmbeddedMediaTransferResult::Deferred) return fail(44);
         if (!richMediaSurface_ ||
             richMediaSurface_.get() != repinCoordinator.get() ||
             richMediaSurface_->presentationTransferPending() ||
@@ -3416,6 +3427,7 @@ private:
     }
 
     enum class EmbeddedMediaProjection { Overlay, Pinned };
+    enum class EmbeddedMediaTransferResult { Completed, Deferred, Failed };
 
     // Host-owned activation of the fullscreen media presentation. The package
     // only declares that its surface may be presented fullscreen; whether it
@@ -3577,6 +3589,7 @@ private:
         long long lastDispatchedPlaybackCommand{};
         EmbeddedMediaProjection projection{EmbeddedMediaProjection::Overlay};
         bool parked{};
+        bool projectionDeferralRecorded{};
         std::uint64_t pinnedFrameGeneration{};
         std::optional<EmbeddedMediaCommandOriginAuthority> commandOrigin;
     };
@@ -4442,14 +4455,14 @@ private:
         return true;
     }
 
-    [[nodiscard]] bool TransferEmbeddedMediaSurface(
+    [[nodiscard]] EmbeddedMediaTransferResult TransferEmbeddedMediaSurface(
         const EmbeddedMediaProjection destination,
         const std::wstring_view reason,
         bool* const transferPending = nullptr) {
         if (transferPending) *transferPending = false;
-        if (!embeddedMediaAuthority_) return false;
+        if (!embeddedMediaAuthority_) return EmbeddedMediaTransferResult::Failed;
         const auto mediaSurface = richMediaSurface_;
-        if (!mediaSurface) return false;
+        if (!mediaSurface) return EmbeddedMediaTransferResult::Failed;
         const auto sourceAuthority = *embeddedMediaAuthority_;
         const auto sourceBounds = embeddedMediaClientBounds_;
         const auto sourceClip = embeddedMediaClientClip_;
@@ -4460,7 +4473,8 @@ private:
         const std::wstring transferReason{reason};
         const bool resumeDetached = mediaSurface->presentationTransferPending();
         if (embeddedMediaAuthority_->projection == destination &&
-            !embeddedMediaAuthority_->parked && !resumeDetached) return true;
+            !embeddedMediaAuthority_->parked && !resumeDetached)
+            return EmbeddedMediaTransferResult::Completed;
         bool destinationEndpointInitialized = false;
         bool destinationVisualCreated = false;
         const auto failTransfer = [
@@ -4501,7 +4515,7 @@ private:
                 mediaSurface->CompleteSessionTeardown();
                 residentEmbeddedMediaSessions_.erase(sessionKey);
             }
-            return false;
+            return EmbeddedMediaTransferResult::Failed;
         };
         // A composition controller whose RootVisualTarget was cleared is not a
         // reusable presentation owner. Only the live-retarget path below may
@@ -4563,6 +4577,22 @@ private:
                 std::clamp(priorClip.bottom - priorBounds.top, 0L, height)};
             controllerBounds = hostBounds;
         } else {
+            if (sourceParked &&
+                destination == EmbeddedMediaProjection::Overlay &&
+                RetainedHiddenEmbeddedMediaAuthorityCurrent()) {
+                if (!embeddedMediaAuthority_->projectionDeferralRecorded) {
+                    AppendDiagnostic(
+                        L"Embedded media presentation transfer deferred widget=" +
+                        widgetId + L" projection=overlay reason=" + transferReason +
+                        L" geometry=unavailable owner=parking");
+                    AppendActionCorrelation(
+                        L"stage=embedded-media-transfer-deferred widget=" + widgetId +
+                        L" destination=overlay reason=" + transferReason +
+                        L" geometry=unavailable owner=parking");
+                    embeddedMediaAuthority_->projectionDeferralRecorded = true;
+                }
+                return EmbeddedMediaTransferResult::Deferred;
+            }
             AppendDiagnostic(
                 L"Embedded media presentation transfer rejected widget=" +
                 widgetId + L" projection=" +
@@ -4640,6 +4670,7 @@ private:
             return failTransfer(L"source-endpoint-retire", result);
         embeddedMediaAuthority_->projection = destination;
         embeddedMediaAuthority_->parked = false;
+        embeddedMediaAuthority_->projectionDeferralRecorded = false;
         embeddedMediaClientBounds_ = hostBounds;
         embeddedMediaClientClip_ = hostClip;
         const bool presentationVisible = EmbeddedMediaPresentationVisible();
@@ -4670,7 +4701,7 @@ private:
             widgetId + L" destination=" +
             std::wstring{projectionName(destination)} + L" reason=" +
             transferReason);
-        return true;
+        return EmbeddedMediaTransferResult::Completed;
     }
 
     void ReconcileEmbeddedMediaProjection(const std::wstring_view reason) {
@@ -4699,10 +4730,12 @@ private:
                 destination, L"visibility-reconcile");
             return;
         }
-        if (!TransferEmbeddedMediaSurface(destination, reason)) {
+        const auto transfer = TransferEmbeddedMediaSurface(destination, reason);
+        if (transfer == EmbeddedMediaTransferResult::Failed) {
             StopEmbeddedMediaSurface(L"projection-transfer-failed");
             return;
         }
+        if (transfer == EmbeddedMediaTransferResult::Deferred) return;
         if (richMediaSurface_->presentationTransferPending()) return;
         if (destination == EmbeddedMediaProjection::Pinned &&
             embeddedMediaAuthority_->pinnedFrameGeneration ==
@@ -4849,7 +4882,8 @@ private:
             ? SuspendBoundEmbeddedMediaPresentation(L"pinned-window-retirement")
             : returnToOverlay && TransferEmbeddedMediaSurface(
                   EmbeddedMediaProjection::Overlay,
-                  L"pinned-window-retirement", &transferPending);
+                  L"pinned-window-retirement", &transferPending) ==
+                  EmbeddedMediaTransferResult::Completed;
         if (!retained) {
             AppendActionCorrelation(
                 L"stage=embedded-media-retirement-terminal widget=" +
@@ -4915,6 +4949,7 @@ private:
         if (FAILED(result) || retirement.surfaceInvalidated) return false;
         embeddedMediaAuthority_->projection = EmbeddedMediaProjection::Overlay;
         embeddedMediaAuthority_->parked = true;
+        embeddedMediaAuthority_->projectionDeferralRecorded = false;
         embeddedMediaAuthority_->pinnedFrameGeneration = 0;
         AppendDiagnostic(
             L"Embedded media retained hidden widget=" +
@@ -5101,9 +5136,14 @@ private:
                 (void)richMediaSurface_->SetVisible(false);
                 return;
             }
-            if (!TransferEmbeddedMediaSurface(
-                    desiredProjection, L"snapshot-reconciliation")) {
+            const auto transfer = TransferEmbeddedMediaSurface(
+                desiredProjection, L"snapshot-reconciliation");
+            if (transfer == EmbeddedMediaTransferResult::Failed) {
                 StopEmbeddedMediaSurface(L"projection-transfer-failed");
+                return;
+            }
+            if (transfer == EmbeddedMediaTransferResult::Deferred) {
+                DispatchPendingEmbeddedMediaCommand(snapshot);
                 return;
             }
             if (richMediaSurface_->presentationTransferPending()) {
@@ -6233,13 +6273,15 @@ private:
             const auto destination = pinnedOwns
                 ? EmbeddedMediaProjection::Pinned
                 : EmbeddedMediaProjection::Overlay;
-            if (!TransferEmbeddedMediaSurface(
-                    destination, L"lifecycle-reconciliation")) {
+            const auto transfer = TransferEmbeddedMediaSurface(
+                destination, L"lifecycle-reconciliation");
+            if (transfer == EmbeddedMediaTransferResult::Failed) {
                 AppendDiagnostic(
                     L"Embedded media presentation resume failed widget=" +
                     mediaWidgetId);
                 continue;
             }
+            if (transfer == EmbeddedMediaTransferResult::Deferred) continue;
             if (richMediaSurface_->presentationTransferPending()) continue;
             ReconcileEmbeddedMediaProjection(L"lifecycle-reconciliation");
         }
