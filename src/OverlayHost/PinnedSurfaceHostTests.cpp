@@ -438,7 +438,7 @@ void TestAcceptedOverlayFullscreenMediaHostContract() {
 
     const auto fullscreenEntryExit = section(
         "[[nodiscard]] bool EnterOverlayFullscreenMedia()",
-        "void ClearStaleOverlayFullscreenMediaActivation()",
+        "void ClearStaleOverlayFullscreenMediaActivation(",
         "fullscreen entry and exit owners exist");
     Check(fullscreenEntryExit.find(
               "EmbeddedMediaPresentationState::OverlayViewport") !=
@@ -530,6 +530,72 @@ void TestAcceptedOverlayFullscreenMediaHostContract() {
                   "ReconcileEmbeddedMediaPresentation(\n                fullscreen.sessionKey,\n                EmbeddedMediaPresentationState::OverlayFullscreen") !=
                   std::string::npos,
           "fullscreen uses one exact session-keyed aspect-fit geometry and manager presentation owner");
+
+    const auto fullscreenCheckpoint = section(
+        "struct CommittedFullscreenPresentationCheckpoint final {",
+        "[[nodiscard]] bool OverlayFullscreenMediaRequested() const noexcept {",
+        "fullscreen committed checkpoint owner exists");
+    Check(fullscreenCheckpoint.find("EmbeddedMediaSessionKey sessionKey") !=
+                  std::string::npos &&
+              fullscreenCheckpoint.find("documentIdentity") != std::string::npos &&
+              fullscreenCheckpoint.find("presentationGeneration") !=
+                  std::string::npos &&
+              fullscreenCheckpoint.find("snapshotSequence") != std::string::npos &&
+              fullscreenCheckpoint.find("EndpointGeometry geometry") !=
+                  std::string::npos,
+          "fullscreen checkpoint retains exact session, document, generation, sequence, and endpoint geometry authority");
+    const auto checkpointAuthority = section(
+        "[[nodiscard]] bool CommittedFullscreenPresentationCurrent(",
+        "void PublishCommittedFullscreenPresentation(",
+        "fullscreen checkpoint current predicate exists");
+    Check(checkpointAuthority.find("*currentKey == sessionKey") !=
+                  std::string::npos &&
+              checkpointAuthority.find("checkpoint->snapshotSequence <= currentSequence") !=
+                  std::string::npos &&
+              checkpointAuthority.find("checkpoint->presentationGeneration == descriptor->presentationGeneration") !=
+                  std::string::npos &&
+              checkpointAuthority.find("SameEndpointGeometry") != std::string::npos,
+          "fullscreen checkpoint accepts only compatible successor authority for the exact committed session");
+    const auto checkpointPublish = section(
+        "void PublishCommittedFullscreenPresentation(",
+        "[[nodiscard]] EmbeddedMediaSession* CurrentEmbeddedMediaSession(",
+        "fullscreen checkpoint publication owner exists");
+    Check(checkpointPublish.find("session->authority->sequence != snapshot->sequence") !=
+                  std::string::npos &&
+              checkpointPublish.find("session->committedGeometry") !=
+                  std::string::npos &&
+              checkpointPublish.find("committedFullscreenPresentation_ =") !=
+                  std::string::npos,
+          "fullscreen checkpoint publishes only after exact current manager geometry is committed");
+    const auto fullscreenRepaint = section(
+        "bool CommitCompositionRepaint(",
+        "void Paint() {",
+        "fullscreen repaint owner exists");
+    Check(fullscreenRepaint.find("if (frames.frames.empty()) {") !=
+                  std::string::npos &&
+              fullscreenRepaint.find("fullscreen-empty-frame-repaint") !=
+                  std::string::npos &&
+              fullscreenRepaint.find("fullscreen-frame-repaint") !=
+                  std::string::npos &&
+              fullscreenRepaint.find("PublishCommittedFullscreenPresentation(") !=
+                  std::string::npos,
+          "fullscreen repaint reconciles staged geometry before an empty-frame return and publishes only after success");
+    const auto fullscreenLayout = section(
+        "const bool overlayLayoutCurrent = committedWidgetVisualState_",
+        "if (!layoutCurrent) {",
+        "fullscreen generic layout owner exists");
+    Check(fullscreenLayout.find("fullscreenLayoutCurrent") != std::string::npos &&
+              fullscreenLayout.find("sessionOwnsOverlayFullscreen") !=
+                  std::string::npos &&
+              fullscreenLayout.find("CommittedFullscreenPresentationCurrent(sessionKey, snapshot.sequence)") !=
+                  std::string::npos,
+          "ordinary non-fullscreen layout cannot reuse the fullscreen checkpoint");
+    Check(source.find("!compositionPlacementInProgress_") != std::string::npos &&
+              source.find("committedFullscreenPresentation_->sessionKey == sessionKey") !=
+                  std::string::npos &&
+              source.find("ClearStaleOverlayFullscreenMediaActivation(sessionKey)") !=
+                  std::string::npos,
+          "transaction-owned resize preserves fullscreen visibility while exact stale or stopped sessions retire their checkpoint");
 
     Check(managerSource.find(
               "case PresentationState::OverlayFullscreen:\n        return Endpoint::Overlay;") !=

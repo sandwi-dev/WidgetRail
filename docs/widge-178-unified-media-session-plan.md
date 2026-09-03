@@ -15,10 +15,10 @@ For this item only, this file is implementation-owned after assignment. The plat
 | Implementation owner | Standing platform implementation task |
 | Branch | `codex/widge-178-unified-media-session` |
 | Worktree | `C:\Users\dwive\.codex\visualizations\2026\08\11\019fef3b-7e94-70f0-b329-3551f8dd805b\widge178` |
-| Current phase | `[x]` Phase 5 implementation and automated closure complete in one clean local WIDGE-178 commit |
-| Last completed checkpoint | Reviewer source review of the committed baseline; three ownership/lifetime defects found, fixed, and covered by two new manager regression cases |
-| Next checkpoint | Reviewer integration followed by the documented multi-session and presentation physical acceptance |
-| Last updated | 2026-09-03 by reviewer source review of the committed WIDGE-178 baseline |
+| Current phase | `[~]` Exact three-path fullscreen follow-up is staged and cached-diff-check green; local commit pending |
+| Last completed checkpoint | `PinnedSurfaceTestsOnly` passed 465 checks. Final staged scope is only `main.cpp`, `PinnedSurfaceHostTests.cpp`, and this plan; staged diff-check is green. The accepted OverlayHost PID 25636 was not rebuilt or replaced |
+| Next checkpoint | Create the local `[WIDGE-178]` fullscreen follow-up commit, verify clean status/tree, and report the separate shared-environment recovery residual for reviewer triage |
+| Last updated | 2026-09-03 by implementation agent immediately before local follow-up commit |
 
 Progress marks used throughout this file:
 
@@ -27,6 +27,13 @@ Progress marks used throughout this file:
 - `[x]` completed with evidence recorded
 - `[!]` blocked or stopped; record the exact red and owner
 - `[-]` deliberately removed, superseded, or out of scope; record why
+
+## Fullscreen follow-up checkpoint
+
+- `[~]` Fullscreen source correction is in progress on top of clean checkpoint `e3a638acc3dc3d2d23282ca55cf5fbfd553e5cbc`. It adds a host-owned exact committed fullscreen checkpoint with durable session/document identity, runtime identity through the session key, presentation generation, snapshot sequence, and committed endpoint geometry. The checkpoint is staged from the fullscreen frame and published only after successful composition commit, HWND placement, and media reconciliation; repaint uses the same rule.
+- `[~]` Generic reconciliation now treats only that exact checkpoint as fullscreen overlay layout. It must not use ordinary `committedWidgetVisualState_`, which fullscreen intentionally does not publish. The coordinator-only hide is suppressed only while the exact fullscreen request remains current, and transaction-owned `WM_SIZE` does not revoke the controller after fullscreen placement.
+- `[!]` Separate physical red, out of this fullscreen correction: at 12:47:47.448 a new YouTube Play-a-link session faulted in `RichMediaSurfaceCoordinator::Initialize -> RecoverExitedSharedEnvironment` with `shared-environment-exited-with-live-controller`, HRESULT `0x800700AA` (`ERROR_BUSY`). Browser-process-exited was set while shared live controller owners remained nonzero. Existing WebView2 processes and the Windows Application log supplied no browser-exit cause. The shared generation cannot presently broadcast-retire its live sessions and recreate. This is the plan's existing unchecked shared-environment recovery risk; do not alter it in this fullscreen slice.
+- `[ ]` Before build: review the exact `main.cpp` follow-up diff for session-key, generation, geometry, endpoint, and non-fullscreen regression boundaries. No new tests are authorized before physical fullscreen acceptance.
 
 ## Compaction recovery procedure
 

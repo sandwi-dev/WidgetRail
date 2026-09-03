@@ -2369,18 +2369,20 @@ private:
                 widgetrail::OverlayCompositionSurface::CommitTiming timing;
                 (void)compositionSurface_.CommitExternalContentPresentation(
                     clientBounds, true, timing);
-            } else if (auto* session = EmbeddedMediaEndpointOwner(
-                           widgetrail::media::Endpoint::Overlay);
-                       session && session->coordinator && session->authority) {
-                // A viewport resize revokes the old layout-owned geometry.
-                // The next successful native render republishes one exact box.
-                if (session->committedGeometry)
-                    session->committedGeometry->visible = false;
-                // A failing hide faults the controller, which retires this
-                // session and releases the registry reference from inside the
-                // coordinator's own callback.
-                const auto coordinator = session->coordinator;
-                (void)coordinator->SetVisible(false);
+            } else if (!compositionPlacementInProgress_) {
+                if (auto* session = EmbeddedMediaEndpointOwner(
+                        widgetrail::media::Endpoint::Overlay);
+                    session && session->coordinator && session->authority) {
+                    // A viewport resize revokes the old layout-owned geometry.
+                    // The next successful native render republishes one exact box.
+                    if (session->committedGeometry)
+                        session->committedGeometry->visible = false;
+                    // A failing hide faults the controller, which retires this
+                    // session and releases the registry reference from inside the
+                    // coordinator's own callback.
+                    const auto coordinator = session->coordinator;
+                    (void)coordinator->SetVisible(false);
+                }
             }
             return 0;
         }
@@ -2592,6 +2594,14 @@ private:
             ReconcileCommittedEmbeddedMediaSurface(sessionKey);
     }
 
+    struct CommittedFullscreenPresentationCheckpoint final {
+        EmbeddedMediaSessionKey sessionKey;
+        widgetrail::EmbeddedMediaDocumentIdentity documentIdentity;
+        std::wstring presentationGeneration;
+        long long snapshotSequence{};
+        widgetrail::media::EndpointGeometry geometry;
+    };
+
     [[nodiscard]] bool OverlayFullscreenMediaRequested() const noexcept {
         const auto key = CurrentEmbeddedMediaSessionKey(state_.activeWidget());
         const auto* session = key ? mediaSessions_.Find(*key) : nullptr;
@@ -2674,9 +2684,9 @@ private:
 
     // Drops an activation the predicate has already stopped honouring so the
     // retained identity cannot survive the declaration that admitted it.
-    void ClearStaleOverlayFullscreenMediaActivation() {
-        const auto key = CurrentEmbeddedMediaSessionKey(state_.activeWidget());
-        auto* session = key ? mediaSessions_.Find(*key) : nullptr;
+    void ClearStaleOverlayFullscreenMediaActivation(
+        const EmbeddedMediaSessionKey& sessionKey) {
+        auto* session = mediaSessions_.Find(sessionKey);
         if (!session || !session->authority || !session->presentationRequest ||
             session->presentationRequest->target !=
                 EmbeddedMediaPresentationState::OverlayFullscreen)
@@ -2684,8 +2694,11 @@ private:
         const auto* snapshot = SnapshotFor(session->authority->widgetId);
         const auto* descriptor = sessions_.FindDescriptor(
             session->authority->widgetId);
+        const auto currentKey = CurrentEmbeddedMediaSessionKey(
+            session->authority->widgetId);
         const bool current = snapshot && descriptor &&
             snapshot->embeddedMediaSession &&
+            currentKey && *currentKey == sessionKey &&
             snapshot->instanceId == session->authority->instanceId &&
             descriptor->runtimeGeneration ==
                 session->authority->runtimeGeneration &&
@@ -2702,7 +2715,13 @@ private:
             !(pinnedSurfaceCoordinator_.pinned() &&
               pinnedSurfaceCoordinator_.widgetId() ==
                   session->authority->widgetId);
-        if (!current) mediaSessions_.ClearPresentationRequest(*key);
+        if (!current) {
+            mediaSessions_.ClearPresentationRequest(sessionKey);
+            if (committedFullscreenPresentation_ &&
+                committedFullscreenPresentation_->sessionKey == sessionKey) {
+                committedFullscreenPresentation_.reset();
+            }
+        }
     }
 
     [[nodiscard]] widgetrail::OverlayPresentationExtent
@@ -2727,33 +2746,14 @@ private:
         const std::wstring_view widgetId) const noexcept {
         const auto presentation = sessions_.Presentation(widgetId);
         const auto* snapshot = presentation.snapshot;
-        const auto* descriptor = sessions_.FindDescriptor(widgetId);
         const auto sessionKey = CurrentEmbeddedMediaSessionKey(widgetId);
-        const auto* session = sessionKey ? mediaSessions_.Find(*sessionKey) : nullptr;
-        const auto* authority = session && session->authority
-            ? &*session->authority : nullptr;
-        const auto owner =
-            mediaSessions_.EndpointOwner(widgetrail::media::Endpoint::Overlay);
         return state_.surface() == widgetrail::Surface::Widget &&
-            state_.activeWidget() == widgetId && snapshot &&
-            snapshot->embeddedMediaSession && descriptor && authority &&
-            owner && sessionKey && *owner == *sessionKey &&
-            session->committedGeometry &&
-            authority->presentation ==
-                EmbeddedMediaPresentationState::OverlayFullscreen &&
+            state_.activeWidget() == widgetId && snapshot && sessionKey &&
             (presentation.authority ==
                  widgetrail::WidgetPresentationAuthority::Current ||
              presentation.authority ==
                  widgetrail::WidgetPresentationAuthority::RefreshRetained) &&
-            authority->widgetId == widgetId &&
-            authority->instanceId == snapshot->instanceId &&
-            authority->runtimeGeneration == descriptor->runtimeGeneration &&
-            authority->presentationGeneration == descriptor->presentationGeneration &&
-            authority->sessionId == snapshot->embeddedMediaSession->id &&
-            widgetrail::SameEmbeddedMediaDocumentIdentity(
-                authority->documentIdentity,
-                widgetrail::MakeEmbeddedMediaDocumentIdentity(
-                    *snapshot->embeddedMediaSession));
+            CommittedFullscreenPresentationCurrent(*sessionKey, snapshot->sequence);
     }
 
     [[nodiscard]] static EmbeddedMediaSessionKey MakeEmbeddedMediaSessionKey(
@@ -2778,6 +2778,66 @@ private:
             return std::nullopt;
         return MakeEmbeddedMediaSessionKey(
             widgetId, *snapshot, *descriptor, *snapshot->embeddedMediaSession);
+    }
+
+    [[nodiscard]] bool CommittedFullscreenPresentationCurrent(
+        const EmbeddedMediaSessionKey& sessionKey,
+        const long long currentSequence) const noexcept {
+        const auto* session = mediaSessions_.Find(sessionKey);
+        const auto* snapshot = session ? SnapshotFor(session->key.widgetId) : nullptr;
+        const auto* descriptor = session
+            ? sessions_.FindDescriptor(session->key.widgetId) : nullptr;
+        const auto currentKey = session
+            ? CurrentEmbeddedMediaSessionKey(session->key.widgetId) : std::nullopt;
+        const auto owner = mediaSessions_.EndpointOwner(
+            widgetrail::media::Endpoint::Overlay);
+        const auto& checkpoint = committedFullscreenPresentation_;
+        return checkpoint && session && session->authority && snapshot && descriptor &&
+            snapshot->embeddedMediaSession && currentKey &&
+            *currentKey == sessionKey && checkpoint->sessionKey == sessionKey &&
+            checkpoint->snapshotSequence <= currentSequence &&
+            snapshot->sequence == currentSequence &&
+            checkpoint->presentationGeneration == descriptor->presentationGeneration &&
+            widgetrail::SameEmbeddedMediaDocumentIdentity(
+                checkpoint->documentIdentity,
+                widgetrail::MakeEmbeddedMediaDocumentIdentity(
+                    *snapshot->embeddedMediaSession)) &&
+            owner && *owner == sessionKey &&
+            session->authority->presentation ==
+                EmbeddedMediaPresentationState::OverlayFullscreen &&
+            session->committedGeometry &&
+            widgetrail::media::SameEndpointGeometry(
+                checkpoint->geometry, *session->committedGeometry);
+    }
+
+    void PublishCommittedFullscreenPresentation(
+        const EmbeddedMediaSessionKey& sessionKey,
+        const widgetrail::media::EndpointGeometry& geometry) {
+        auto* session = mediaSessions_.Find(sessionKey);
+        if (!session || !session->authority) return;
+        const auto* snapshot = SnapshotFor(session->key.widgetId);
+        const auto* descriptor = sessions_.FindDescriptor(session->key.widgetId);
+        const auto currentKey = CurrentEmbeddedMediaSessionKey(session->key.widgetId);
+        if (!snapshot || !descriptor || !snapshot->embeddedMediaSession ||
+            !currentKey || *currentKey != sessionKey ||
+            session->authority->presentation !=
+                EmbeddedMediaPresentationState::OverlayFullscreen ||
+            session->authority->sequence != snapshot->sequence ||
+            session->authority->presentationGeneration !=
+                descriptor->presentationGeneration ||
+            !session->committedGeometry ||
+            !widgetrail::media::SameEndpointGeometry(
+                *session->committedGeometry, geometry)) {
+            return;
+        }
+        committedFullscreenPresentation_ = CommittedFullscreenPresentationCheckpoint{
+            sessionKey,
+            widgetrail::MakeEmbeddedMediaDocumentIdentity(
+                *snapshot->embeddedMediaSession),
+            descriptor->presentationGeneration,
+            snapshot->sequence,
+            geometry,
+        };
     }
 
     [[nodiscard]] EmbeddedMediaSession* CurrentEmbeddedMediaSession(
@@ -2951,14 +3011,11 @@ private:
             owner = pinnedSurfaceCoordinator_.window();
         } else if (presentation ==
                    EmbeddedMediaPresentationState::OverlayFullscreen) {
-            const auto ownerKey = mediaSessions_.EndpointOwner(
-                widgetrail::media::Endpoint::Overlay);
-            if (!ownerKey || *ownerKey != sessionKey ||
-                authority.presentation != presentation ||
-                !session->committedGeometry) {
+            if (!CommittedFullscreenPresentationCurrent(
+                    sessionKey, expectedSequence)) {
                 return std::nullopt;
             }
-            const auto& committed = *session->committedGeometry;
+            const auto& committed = committedFullscreenPresentation_->geometry;
             return widgetrail::MediaViewportPresentationGeometry{
                 {committed.bounds.left, committed.bounds.top,
                  committed.bounds.right, committed.bounds.bottom},
@@ -4369,6 +4426,10 @@ private:
     void StopEmbeddedMediaSession(
         const EmbeddedMediaSessionKey& sessionKey,
         const std::wstring_view reason) {
+        if (committedFullscreenPresentation_ &&
+            committedFullscreenPresentation_->sessionKey == sessionKey) {
+            committedFullscreenPresentation_.reset();
+        }
         auto operations = EmbeddedMediaTransitionOperations(reason);
         const widgetrail::media::TransitionInput input{
             false, false, false, false,
@@ -4801,7 +4862,10 @@ private:
             committedWidgetVisualState_->instanceId == snapshot.instanceId &&
             committedWidgetVisualState_->snapshotSequence == snapshot.sequence &&
             lastWidgetRenderResult_.succeeded;
-        const bool layoutCurrent = pinnedLayoutCurrent || overlayLayoutCurrent;
+        const bool fullscreenLayoutCurrent = sessionOwnsOverlayFullscreen &&
+            CommittedFullscreenPresentationCurrent(sessionKey, snapshot.sequence);
+        const bool layoutCurrent = pinnedLayoutCurrent || overlayLayoutCurrent ||
+            fullscreenLayoutCurrent;
         if (!layoutCurrent) {
             const bool documentIdentityCurrent = session->authority &&
                 widgetrail::SameEmbeddedMediaDocumentIdentity(
@@ -4870,7 +4934,7 @@ private:
                     L" successor-sequence=" + std::to_wstring(snapshot.sequence));
                 return;
             }
-            if (retainedIdentityCurrent)
+            if (retainedIdentityCurrent && !sessionOwnsOverlayFullscreen)
                 (void)session->coordinator->SetVisible(false);
             // Keep the last committed client geometry. The session is still
             // recorded as presenting, and parking it later retargets away from
@@ -5170,7 +5234,7 @@ private:
 
     void ReconcileCommittedEmbeddedMediaPresentation(
         const EmbeddedMediaSessionKey& sessionKey) {
-        ClearStaleOverlayFullscreenMediaActivation();
+        ClearStaleOverlayFullscreenMediaActivation(sessionKey);
         const auto* session = mediaSessions_.Find(sessionKey);
         if (!session || !session->authority) return;
         const std::wstring widgetId{session->authority->widgetId};
@@ -6822,6 +6886,9 @@ private:
                 fullscreen.geometry);
             if (FAILED(mediaResult) && mediaResult != E_PENDING)
                 return false;
+            if (SUCCEEDED(mediaResult))
+                PublishCommittedFullscreenPresentation(
+                    fullscreen.sessionKey, fullscreen.geometry);
         }
         if (accessibilityActive_ && !accessibilityTree_.widgetId.empty()) {
             const float pixelScale = static_cast<float>(placement.width) /
@@ -8349,7 +8416,10 @@ private:
         // it. Without this the mode would merely go dormant while the overlay is
         // hidden and resurrect on the next open, because the predicate would
         // find the same widget, snapshot, and surface still admitted.
-        ClearStaleOverlayFullscreenMediaActivation();
+        if (const auto overlayOwner = mediaSessions_.EndpointOwner(
+                widgetrail::media::Endpoint::Overlay)) {
+            ClearStaleOverlayFullscreenMediaActivation(*overlayOwner);
+        }
     }
 
     struct TrayPointerTarget final {
@@ -13934,6 +14004,7 @@ private:
         // retained across a resize, DPI migration, or appearance rebuild.
         lastWidgetRenderResult_ = {};
         committedWidgetVisualState_.reset();
+        committedFullscreenPresentation_.reset();
         iconFormat_.Reset();
         hintFormat_.Reset();
         bodyFormat_.Reset();
@@ -15333,6 +15404,20 @@ private:
             return false;
         }
         if (frames.frames.empty()) {
+            if (frames.overlayFullscreenGeometry) {
+                const auto& fullscreen = *frames.overlayFullscreenGeometry;
+                const HRESULT mediaResult = ReconcileEmbeddedMediaPresentation(
+                    fullscreen.sessionKey,
+                    EmbeddedMediaPresentationState::OverlayFullscreen,
+                    L"fullscreen-empty-frame-repaint", nullptr,
+                    widgetrail::media::ParkingReason::EndpointUnavailable,
+                    fullscreen.geometry);
+                if (FAILED(mediaResult) && mediaResult != E_PENDING)
+                    return false;
+                if (SUCCEEDED(mediaResult))
+                    PublishCommittedFullscreenPresentation(
+                        fullscreen.sessionKey, fullscreen.geometry);
+            }
             pendingWidgetPresentationImpact_.reset();
             pendingContentRenderPlan_.reset();
             activeContentRenderPlan_.reset();
@@ -15368,6 +15453,9 @@ private:
                 fullscreen.geometry);
             if (FAILED(mediaResult) && mediaResult != E_PENDING)
                 return false;
+            if (SUCCEEDED(mediaResult))
+                PublishCommittedFullscreenPresentation(
+                    fullscreen.sessionKey, fullscreen.geometry);
         }
         AppendCompositionCoordinateSample(0);
         const bool presentationChanged =
@@ -16868,6 +16956,8 @@ private:
     std::optional<widgetrail::DeclarativeRenderTiming>
         currentCompositionRenderTiming_;
     std::optional<CommittedWidgetVisualState> committedWidgetVisualState_;
+    std::optional<CommittedFullscreenPresentationCheckpoint>
+        committedFullscreenPresentation_;
     std::optional<widgetrail::WidgetPresentationImpact>
         pendingWidgetPresentationImpact_;
     std::optional<widgetrail::IncrementalPresentationPlan>
