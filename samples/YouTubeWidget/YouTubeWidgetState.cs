@@ -231,7 +231,8 @@ internal sealed record YouTubePlaybackState
             playbackEvent.State == EmbeddedMediaPlaybackState.Error &&
             PendingCommand?.Kind is EmbeddedMediaPlaybackCommandKind.SetPlaybackRate or
                 EmbeddedMediaPlaybackCommandKind.SetMuted or
-                EmbeddedMediaPlaybackCommandKind.SetLoop;
+                EmbeddedMediaPlaybackCommandKind.SetLoop &&
+            IsPreferenceCommandFailure(playbackEvent.ErrorCode);
         if (preferenceFailure)
         {
             return this with
@@ -299,6 +300,13 @@ internal sealed record YouTubePlaybackState
         "command-unsupported" => "This YouTube player control is unavailable.",
         _ => "YouTube playback failed. Try another public embeddable video.",
     };
+
+    private static bool IsPreferenceCommandFailure(string? errorCode) => errorCode is
+        "command-unsupported" or
+        "player-operation-timeout" or
+        "authority-replaced" or
+        "player-operation-overlap" or
+        "media-key-mismatch";
 }
 
 /// <summary>

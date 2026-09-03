@@ -250,6 +250,47 @@ function waitForPlaybackRate(command) {
   });
 }
 
+function completePreference(start, signal) {
+  if (pendingProviderOperation) {
+    return Promise.reject(
+      WidgetRailEmbeddedMediaAdapter.error("player-operation-overlap"));
+  }
+  return new Promise((resolve, reject) => {
+    const cancel = () => {
+      if (pendingProviderOperation !== pending) return;
+      pendingProviderOperation = null;
+      pending.cleanup();
+      reject(WidgetRailEmbeddedMediaAdapter.error("authority-replaced"));
+    };
+    const pending = {
+      expectedStates: null,
+      expectedPlaybackRate: null,
+      resolve,
+      reject,
+      cleanup: () => signal.removeEventListener("abort", cancel),
+    };
+    pendingProviderOperation = pending;
+    signal.addEventListener("abort", cancel, { once: true });
+    if (signal.aborted) {
+      cancel();
+      return;
+    }
+    try {
+      start();
+      Promise.resolve().then(() => {
+        if (pendingProviderOperation !== pending) return;
+        pendingProviderOperation = null;
+        pending.cleanup();
+        resolve({ playbackState: stateName(player.getPlayerState()) });
+      });
+    } catch (error) {
+      if (pendingProviderOperation === pending) pendingProviderOperation = null;
+      pending.cleanup();
+      reject(error);
+    }
+  });
+}
+
 function onReady() {
   clearTimeout(apiTimer);
   resolveApi(player);
@@ -421,15 +462,17 @@ adapter = WidgetRailEmbeddedMediaAdapter.create({
     },
     async setMuted(command) {
       await readyFor(command);
-      if (command.muted) player.mute();
-      else player.unMute();
-      return { playbackState: stateName(player.getPlayerState()) };
+      return completePreference(() => {
+        if (command.muted) player.mute();
+        else player.unMute();
+      }, command.signal);
     },
     async setLoop(command) {
       await readyFor(command);
-      loopCurrentVideo = command.loop === true;
-      player.setLoop(loopCurrentVideo);
-      return { playbackState: stateName(player.getPlayerState()) };
+      return completePreference(() => {
+        loopCurrentVideo = command.loop === true;
+        player.setLoop(loopCurrentVideo);
+      }, command.signal);
     },
   },
 });

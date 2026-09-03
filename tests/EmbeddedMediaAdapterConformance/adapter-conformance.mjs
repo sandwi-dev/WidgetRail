@@ -94,8 +94,17 @@ const pageEvents = [];
 let messageListener = null;
 let stateCallback = null;
 let playbackRateCallback = null;
+let playerErrorCallback = null;
 let playbackRateTimeout = null;
 let suppressPlaybackRateEvent = false;
+let providerErrorCode = null;
+function emitProviderError() {
+  if (providerErrorCode === null) return false;
+  const code = providerErrorCode;
+  providerErrorCode = null;
+  playerErrorCallback?.({data:code});
+  return true;
+}
 const media = new FakeMedia();
 const player = {
   state: 5,
@@ -118,15 +127,16 @@ const player = {
   setVolume(value) { this.volume = value; },
   setPlaybackRate(value) {
     this.playbackRate = value;
+    if (emitProviderError()) return;
     if (!suppressPlaybackRateEvent)
       queueMicrotask(() => playbackRateCallback?.({data:value}));
   },
   getPlaybackRate() { return this.playbackRate; },
   getAvailablePlaybackRates() { return [...this.availablePlaybackRates]; },
-  mute() { this.muted = true; },
-  unMute() { this.muted = false; },
+  mute() { this.muted = true; emitProviderError(); },
+  unMute() { this.muted = false; emitProviderError(); },
   isMuted() { return this.muted; },
-  setLoop(value) { this.loop = value; },
+  setLoop(value) { this.loop = value; emitProviderError(); },
   getVideoData() { return {video_id:this.videoId}; },
   getPlayerState() { return this.state; },
   getCurrentTime() { return this.currentTime; },
@@ -173,6 +183,7 @@ context.window = context;
 context.YT = {Player: function Player(_id, options) {
   stateCallback = options.events.onStateChange;
   playbackRateCallback = options.events.onPlaybackRateChange;
+  playerErrorCallback = options.events.onError;
   queueMicrotask(() => options.events.onReady());
   return player;
 }};
@@ -213,6 +224,9 @@ await exercise({source:'bootstrap:load', command:'load'});
 for (const requirement of requirements) await exercise(requirement);
 if (request.playbackCommands.includes('SetPlaybackRate'))
   await exercisePlaybackRateContract();
+if (request.playbackCommands.some(command =>
+  ['SetPlaybackRate', 'SetMuted', 'SetLoop'].includes(command)))
+  await exercisePreferenceProviderErrors();
 await exercise(
   {source:'expected-error:media-key-mismatch', command:'volume'},
   {mediaKey:`${currentMediaKey}-mismatch`, expectedErrorCode:'media-key-mismatch'});
@@ -236,7 +250,9 @@ async function exercise(requirement, options = {}) {
     muted:true,
     loop:false,
   };
+  providerErrorCode = options.providerErrorCode ?? null;
   await send(message);
+  providerErrorCode = null;
   if (options.emitSuppressedRate) {
     playbackRateCallback?.({data:message.playbackRate});
     await flush();
@@ -335,6 +351,23 @@ async function exercisePlaybackRateContract() {
       emitSuppressedRate:true, triggerRateTimeout:true});
   player.videoId = currentMediaKey;
   suppressPlaybackRateEvent = false;
+}
+
+async function exercisePreferenceProviderErrors() {
+  player.state = 2;
+  for (const [source, command, playbackRate] of [
+    ['rate', 'playback-rate', 1.5],
+    ['mute', 'muted', 1],
+    ['loop', 'loop', 1],
+  ]) {
+    const terminal = await exercise(
+      {source:`preference-provider-error:${source}`, command},
+      {playbackRate, providerErrorCode:101,
+        expectedErrorCode:'embedding-disabled', expectedPlaybackState:'error'});
+    if (terminal.mediaKey !== currentMediaKey)
+      fail('preference-provider-error-media-key',
+        `${source} terminal lost current media authority`);
+  }
 }
 
 async function send(data) {
