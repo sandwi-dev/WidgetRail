@@ -2573,8 +2573,12 @@ private:
             L"Rich media shared environment exited generation=" +
             std::to_wstring(exit.generation) + L" event-tick=" +
             std::to_wstring(exit.observedTick) + L" browser-pid=" +
-            std::to_wstring(exit.browserProcessId) + L" exit-kind=" +
-            std::to_wstring(exit.browserProcessExitKind) + L" owners=" +
+            (exit.browserProcessIdAvailable
+                ? std::to_wstring(exit.browserProcessId) : L"unavailable") +
+            L" exit-kind=" +
+            (exit.browserProcessExitKindAvailable
+                ? std::to_wstring(exit.browserProcessExitKind) : L"unavailable") +
+            L" owners=" +
             std::to_wstring(exit.liveControllerOwners) + L" waiters=" +
             std::to_wstring(exit.waiterCount));
         for (const auto& key : mediaSessions_.Keys()) {

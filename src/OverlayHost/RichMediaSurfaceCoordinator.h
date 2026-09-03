@@ -172,7 +172,9 @@ struct EnvironmentExit final {
     std::uint64_t generation{};
     ULONGLONG observedTick{};
     DWORD browserProcessId{};
+    bool browserProcessIdAvailable{};
     std::uint32_t browserProcessExitKind{};
+    bool browserProcessExitKindAvailable{};
     std::size_t liveControllerOwners{};
     std::size_t waiterCount{};
 };
@@ -313,7 +315,8 @@ private:
     struct EnvironmentSignal;
     static void RecordBrowserProcessExit(
         const RichMediaEnvironmentHandle& sharedEnvironment,
-        DWORD processId, std::uint32_t exitKind) noexcept;
+        DWORD processId, bool processIdAvailable,
+        std::uint32_t exitKind, bool exitKindAvailable) noexcept;
     [[nodiscard]] bool BrowserProcessExitObserved() const noexcept;
     [[nodiscard]] bool BrowserProcessExitObserverActive() const noexcept;
     [[nodiscard]] std::shared_ptr<CallbackLease> CreateCallbackLease() noexcept;

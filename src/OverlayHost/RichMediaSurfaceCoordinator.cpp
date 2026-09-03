@@ -264,13 +264,15 @@ struct RichMediaSurfaceCoordinator::FrameSubscription final {
 
 void RichMediaSurfaceCoordinator::RecordBrowserProcessExit(
     const RichMediaEnvironmentHandle& sharedEnvironment,
-    const DWORD processId, const std::uint32_t exitKind) noexcept {
+    const DWORD processId, const bool processIdAvailable,
+    const std::uint32_t exitKind, const bool exitKindAvailable) noexcept {
     if (!sharedEnvironment || !sharedEnvironment->signal) return;
     const auto& signal = sharedEnvironment->signal;
-    if (processId != 0 &&
+    if (processIdAvailable && processId != 0 &&
         signal->browserProcessId.load(std::memory_order_acquire) == 0)
         signal->browserProcessId.store(processId, std::memory_order_release);
-    signal->browserProcessExitKind.store(exitKind, std::memory_order_release);
+    if (exitKindAvailable)
+        signal->browserProcessExitKind.store(exitKind, std::memory_order_release);
     if (signal->browserProcessExited.exchange(true, std::memory_order_acq_rel)) return;
     if (!sharedEnvironment->browserExitNotified &&
         sharedEnvironment->browserExitNotification) {
@@ -279,7 +281,9 @@ void RichMediaSurfaceCoordinator::RecordBrowserProcessExit(
             sharedEnvironment->generation,
             GetTickCount64(),
             signal->browserProcessId.load(std::memory_order_acquire),
+            processIdAvailable,
             exitKind,
+            exitKindAvailable,
             sharedEnvironment->liveControllerOwners,
             sharedEnvironment->waiters.size(),
         });
@@ -638,17 +642,22 @@ HRESULT RichMediaSurfaceCoordinator::CompleteSharedEnvironmentCreation(
     sharedEnvironment->signal = std::make_shared<EnvironmentSignal>();
     if (SUCCEEDED(sharedEnvironment->environment.As(
             &sharedEnvironment->environment5))) {
-        const auto environmentHandle = sharedEnvironment;
+        const std::weak_ptr<RichMediaEnvironment> weakEnvironment = sharedEnvironment;
         (void)sharedEnvironment->environment5->add_BrowserProcessExited(
             Callback<ICoreWebView2BrowserProcessExitedEventHandler>(
-                [environmentHandle](ICoreWebView2Environment*, ICoreWebView2BrowserProcessExitedEventArgs* args) {
+                [weakEnvironment](ICoreWebView2Environment*, ICoreWebView2BrowserProcessExitedEventArgs* args) {
+                    const auto environmentHandle = weakEnvironment.lock();
+                    if (!environmentHandle) return S_OK;
                     UINT32 browserProcessId{};
-                    if (args) (void)args->get_BrowserProcessId(&browserProcessId);
+                    const bool browserProcessIdAvailable = args &&
+                        SUCCEEDED(args->get_BrowserProcessId(&browserProcessId));
                     COREWEBVIEW2_BROWSER_PROCESS_EXIT_KIND exitKind{};
-                    if (args) (void)args->get_BrowserProcessExitKind(&exitKind);
+                    const bool exitKindAvailable = args &&
+                        SUCCEEDED(args->get_BrowserProcessExitKind(&exitKind));
                     RecordBrowserProcessExit(
                         environmentHandle, browserProcessId,
-                        static_cast<std::uint32_t>(exitKind));
+                        browserProcessIdAvailable,
+                        static_cast<std::uint32_t>(exitKind), exitKindAvailable);
                     return S_OK;
                 }).Get(), &sharedEnvironment->browserProcessExitedToken);
     }

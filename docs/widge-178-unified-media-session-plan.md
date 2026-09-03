@@ -15,10 +15,10 @@ For this item only, this file is implementation-owned after assignment. The plat
 | Implementation owner | Standing platform implementation task |
 | Branch | `codex/widge-178-unified-media-session` |
 | Worktree | `C:\Users\dwive\.codex\visualizations\2026\08\11\019fef3b-7e94-70f0-b329-3551f8dd805b\widge178` |
-| Current phase | `[~]` Exact shared-recovery four-path candidate is staged and cached-diff-check green; local commit pending |
-| Last completed checkpoint | Replacement `Release -SkipTests` is green and the staged scope is exactly `RichMediaSurfaceCoordinator.h/.cpp`, `main.cpp`, and this plan; staged diff-check is green; no tests ran under physical-first ordering |
-| Next checkpoint | Create the local `[WIDGE-178]` shared-environment recovery candidate commit, verify clean status/tree, and stop for reviewer/user physical recovery validation |
-| Last updated | 2026-09-03 by implementation agent immediately before local shared-recovery candidate commit |
+| Current phase | `[~]` Callback lifetime/diagnostic-availability four-path follow-up is staged and cached-diff-check green; separate local commit pending |
+| Last completed checkpoint | Replacement `Release -SkipTests` is green and the staged scope is exactly `RichMediaSurfaceCoordinator.h/.cpp`, `main.cpp`, and this plan; no tests ran under physical-first ordering |
+| Next checkpoint | Create the local `[WIDGE-178]` callback lifetime correction commit, verify clean status/tree, and report corrected artifact identity for reviewer launch |
+| Last updated | 2026-09-03 by implementation agent immediately before local callback-correction commit |
 
 Progress marks used throughout this file:
 
