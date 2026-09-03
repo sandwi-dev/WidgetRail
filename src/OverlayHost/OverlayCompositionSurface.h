@@ -107,6 +107,16 @@ public:
         std::uint64_t committed{};
     };
 
+    struct ExternalContentRetirement final {
+        HRESULT cleanupResult{S_OK};
+        bool surfaceInvalidated{};
+        bool surfaceRecovered{};
+
+        [[nodiscard]] bool terminal() const noexcept {
+            return SUCCEEDED(cleanupResult) || surfaceInvalidated;
+        }
+    };
+
     struct PinnedMediaChromePresentation final {
         RECT bounds{};
         bool visible{};
@@ -213,10 +223,32 @@ public:
         DetachOverlay,
         DetachPinned,
         ReleasePinnedEndpoint,
+        DetachOverlayPersistent,
+        DetachPinnedPersistent,
+        ReleasePinnedEndpointPersistent,
+        DetachOverlayCommit,
+        DetachPinnedCommit,
+        ReleasePinnedEndpointCommit,
+        DetachOverlayWait,
+        DetachPinnedWait,
+        ReleasePinnedEndpointWait,
     };
     void FailNextExternalContentOperationForTest(
         ExternalContentFailureOperation operation) noexcept {
         externalContentFailureForTest_ = operation;
+    }
+    [[nodiscard]] std::uint64_t externalContentRecoveryCountForTest() const noexcept {
+        return externalContentRecoveryCountForTest_;
+    }
+    [[nodiscard]] bool hasPinnedExternalContentEndpointForTest() const noexcept {
+        return pinnedExternalTarget_ || pinnedExternalRootVisual_ ||
+            pinnedExternalContentVisual_;
+    }
+    [[nodiscard]] bool hasExternalContentVisualForTest(
+        const ExternalContentEndpoint endpoint) const noexcept {
+        return endpoint == ExternalContentEndpoint::Overlay
+            ? externalContentVisual_ != nullptr
+            : pinnedExternalContentVisual_ != nullptr;
     }
 #endif
     HRESULT CommitExternalContentPresentation(
@@ -234,6 +266,13 @@ public:
     HRESULT DetachExternalContentTarget(
         ExternalContentEndpoint endpoint, CommitTiming& timing) noexcept;
     HRESULT ReleasePinnedExternalContentEndpoint(CommitTiming& timing) noexcept;
+    // A successful narrow cleanup conclusively retires the selected endpoint.
+    // Any uncertain mutation/commit/wait failure invalidates the entire target
+    // graph and rebuilds the content/chrome pair before callers may create a
+    // later endpoint. Releasing COM target/device ownership is the fail-closed
+    // boundary; stale visuals are never made reusable by bookkeeping alone.
+    [[nodiscard]] ExternalContentRetirement RetireExternalContentEndpoint(
+        ExternalContentEndpoint endpoint, bool releasePinnedEndpoint) noexcept;
     HRESULT CommitPinnedMediaChrome(
         const PinnedMediaChromePresentation& presentation,
         CommitTiming& timing) noexcept;
@@ -247,6 +286,9 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionTarget> target_;
     Microsoft::WRL::ComPtr<IDCompositionTarget> chromeTarget_;
     Microsoft::WRL::ComPtr<IDCompositionTarget> pinnedExternalTarget_;
+    HWND contentWindow_{};
+    HWND chromeWindow_{};
+    Microsoft::WRL::ComPtr<ID2D1Factory1> initializationFactory_;
     struct LayerState final {
         Microsoft::WRL::ComPtr<IDCompositionVisual2> visual;
         Microsoft::WRL::ComPtr<IDCompositionSurface> surface;
@@ -270,6 +312,7 @@ private:
 #if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
     ExternalContentFailureOperation externalContentFailureForTest_{
         ExternalContentFailureOperation::None};
+    std::uint64_t externalContentRecoveryCountForTest_{};
 #endif
     struct ExternalContentPresentationState final {
         bool current{};

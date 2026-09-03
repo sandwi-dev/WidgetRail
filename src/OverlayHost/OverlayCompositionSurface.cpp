@@ -83,6 +83,8 @@ bool OverlayCompositionSurface::Initialize(
         Reset();
         return false;
     }
+    contentWindow_ = window;
+    initializationFactory_ = factory;
     return true;
 }
 
@@ -114,6 +116,7 @@ bool OverlayCompositionSurface::InitializeChromeTarget(
         chromeTarget_.Reset();
         return false;
     }
+    chromeWindow_ = window;
     return true;
 }
 
@@ -179,6 +182,9 @@ void OverlayCompositionSurface::Reset() noexcept {
     desktopDevice_.Reset();
     d2dDevice_.Reset();
     d3dDevice_.Reset();
+    contentWindow_ = nullptr;
+    chromeWindow_ = nullptr;
+    initializationFactory_.Reset();
     paintCounters_ = {};
 #if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
     externalContentFailureForTest_ = ExternalContentFailureOperation::None;
@@ -333,22 +339,44 @@ HRESULT OverlayCompositionSurface::DetachExternalContentTarget(
     const auto coordinates = ExternalContentCoordinates(endpoint);
     auto* parent = coordinates == ExternalContentCoordinateSpace::ContentLocal
         ? content_.visual.Get() : pinnedExternalRootVisual_.Get();
-    if (!device_ || !parent) return E_UNEXPECTED;
     if (!visual) return S_FALSE;
+    if (!device_ || !parent) return E_UNEXPECTED;
 #if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
     const auto detachFailure = endpoint == ExternalContentEndpoint::Overlay
         ? ExternalContentFailureOperation::DetachOverlay
         : ExternalContentFailureOperation::DetachPinned;
+    const auto persistentDetachFailure = endpoint == ExternalContentEndpoint::Overlay
+        ? ExternalContentFailureOperation::DetachOverlayPersistent
+        : ExternalContentFailureOperation::DetachPinnedPersistent;
     if (externalContentFailureForTest_ == detachFailure) {
         externalContentFailureForTest_ = ExternalContentFailureOperation::None;
         return E_FAIL;
     }
+    if (externalContentFailureForTest_ == persistentDetachFailure) return E_FAIL;
 #endif
     const auto started = std::chrono::steady_clock::now();
     HRESULT result = S_OK;
     if (attached) result = parent->RemoveVisual(visual.Get());
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    const auto commitFailure = endpoint == ExternalContentEndpoint::Overlay
+        ? ExternalContentFailureOperation::DetachOverlayCommit
+        : ExternalContentFailureOperation::DetachPinnedCommit;
+    if (SUCCEEDED(result) && externalContentFailureForTest_ == commitFailure) {
+        externalContentFailureForTest_ = ExternalContentFailureOperation::None;
+        result = E_FAIL;
+    }
+#endif
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result)) {
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+        const auto waitFailure = endpoint == ExternalContentEndpoint::Overlay
+            ? ExternalContentFailureOperation::DetachOverlayWait
+            : ExternalContentFailureOperation::DetachPinnedWait;
+        if (externalContentFailureForTest_ == waitFailure) {
+            externalContentFailureForTest_ = ExternalContentFailureOperation::None;
+            result = E_FAIL;
+        } else
+#endif
         result = device_->WaitForCommitCompletion();
         timing.waitedForCompletion = true;
     }
@@ -375,11 +403,28 @@ HRESULT OverlayCompositionSurface::ReleasePinnedExternalContentEndpoint(
         externalContentFailureForTest_ = ExternalContentFailureOperation::None;
         return E_FAIL;
     }
+    if (externalContentFailureForTest_ ==
+            ExternalContentFailureOperation::ReleasePinnedEndpointPersistent)
+        return E_FAIL;
 #endif
     const auto started = std::chrono::steady_clock::now();
     HRESULT result = pinnedExternalTarget_->SetRoot(nullptr);
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    if (SUCCEEDED(result) && externalContentFailureForTest_ ==
+            ExternalContentFailureOperation::ReleasePinnedEndpointCommit) {
+        externalContentFailureForTest_ = ExternalContentFailureOperation::None;
+        result = E_FAIL;
+    }
+#endif
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result)) {
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+        if (externalContentFailureForTest_ ==
+                ExternalContentFailureOperation::ReleasePinnedEndpointWait) {
+            externalContentFailureForTest_ = ExternalContentFailureOperation::None;
+            result = E_FAIL;
+        } else
+#endif
         result = device_->WaitForCommitCompletion();
         timing.waitedForCompletion = true;
     }
@@ -399,6 +444,38 @@ HRESULT OverlayCompositionSurface::ReleasePinnedExternalContentEndpoint(
         pinnedExternalContentPresentation_.current = false;
     }
     return result;
+}
+
+OverlayCompositionSurface::ExternalContentRetirement
+OverlayCompositionSurface::RetireExternalContentEndpoint(
+    const ExternalContentEndpoint endpoint,
+    const bool releasePinnedEndpoint) noexcept {
+    CommitTiming timing;
+    HRESULT result = DetachExternalContentTarget(endpoint, timing);
+    if (SUCCEEDED(result) && releasePinnedEndpoint) {
+        CommitTiming releaseTiming;
+        result = ReleasePinnedExternalContentEndpoint(releaseTiming);
+    }
+    if (SUCCEEDED(result)) return {result, false, false};
+
+    // RemoveVisual/SetRoot may already have mutated the pending graph even when
+    // Commit or WaitForCommitCompletion fails. Retrying or clearing flags cannot
+    // prove what is visible, so destroy the complete device/target graph and
+    // rebuild the established content/chrome pair from its captured owners.
+    const HWND contentWindow = contentWindow_;
+    const HWND chromeWindow = chromeWindow_;
+    ComPtr<ID2D1Factory1> factory = initializationFactory_;
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    ++externalContentRecoveryCountForTest_;
+#endif
+    Reset();
+    std::wstring error;
+    bool recovered = contentWindow && factory &&
+        Initialize(contentWindow, factory.Get(), error);
+    if (recovered && chromeWindow)
+        recovered = InitializeChromeTarget(chromeWindow, error);
+    if (!recovered) Reset();
+    return {result, true, recovered};
 }
 
 HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
