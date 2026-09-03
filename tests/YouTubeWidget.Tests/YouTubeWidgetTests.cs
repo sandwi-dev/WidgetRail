@@ -323,9 +323,12 @@ public sealed partial class YouTubeWidgetTests
         Assert.AreEqual(WidgetSurfaceAxisMode.Preferred, settings.Surface!.HeightMode);
         var settingsRoot = Find(settings.Root, "youtube.player.settings");
         var settingsTitle = Find(settings.Root, "youtube.player.settings.title");
+        var settingsContent = Find(settings.Root, "youtube.player.settings.content");
         var settingsScroll = Find(settings.Root, "youtube.player.settings.scroll");
         Assert.AreSame(settingsTitle, settingsRoot.Children[0]);
-        Assert.AreSame(settingsScroll, settingsRoot.Children[1]);
+        Assert.AreSame(settingsContent, settingsRoot.Children[1]);
+        Assert.Contains("wrail-dialog__content", settingsContent.StyleClasses);
+        Assert.AreSame(settingsScroll, settingsContent.Children.Single());
         Assert.AreEqual(ViewNodeKind.Scroll, settingsScroll.Kind);
         Assert.AreEqual(ScrollAxis.Vertical, settingsScroll.ScrollAxis);
         Assert.Contains("youtube-player-settings-scroll", settingsScroll.StyleClasses);
@@ -353,6 +356,8 @@ public sealed partial class YouTubeWidgetTests
             ".youtube-player-settings { width: 100%; min-width: 0px; min-height: 0px;");
         Assert.DoesNotContain(".youtube-player-settings { width: 100%; height: 100%;",
             settingsStyles);
+        StringAssert.Contains(settingsStyles,
+            ".wrail-dialog__content { min-height: 0px; flex-grow: 1; flex-shrink: 1; }");
         StringAssert.Contains(settingsStyles,
             ".youtube-player-settings-scroll { width: 100%; min-width: 0px; min-height: 0px; flex-basis: 0px; flex-grow: 1; flex-shrink: 1;");
 

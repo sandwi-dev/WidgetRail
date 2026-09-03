@@ -376,12 +376,9 @@ public sealed partial class YouTubeVideoWidget
         var settingsUnavailable = !state.CanDispatchPlayerSetting(IsActive);
         var busyControl = playback.BusyControl;
         var rate = FormatPlaybackRate(playback.PlaybackRate);
-        var content = UI.ScopedDialog(
-                "Player settings",
-                "youtube.player.settings",
-                "youtube.player.settings",
-                PlayerSettingsBackActionId,
-                UI.SettingsRow(
+        var body = new List<WidgetElement>
+        {
+            UI.SettingsRow(
                     "Playback speed",
                     new ComponentAction("Choose speed", PlaybackRateActionId,
                         WidgetGlyph.Settings),
@@ -412,27 +409,18 @@ public sealed partial class YouTubeVideoWidget
                         WidgetGlyph.Connection),
                     "youtube.player.settings.open-row",
                     description: "Use YouTube for provider-owned controls and preferences.",
-                    isDisabled: playback.VideoId is null));
-        var body = (StackElement)content.Children[1];
-        if (playback.PreferenceError is { } error)
-            body = body with
-            {
-                Children =
-                [
-                    .. body.Children,
-                    UI.Text(error, "youtube.player.settings.error")
-                        .Classes("youtube-status", "is-error"),
-                ],
-            };
-        content = content with
-        {
-            Children =
-            [
-                content.Children[0],
-                UI.VerticalScroll("youtube.player.settings.scroll", body)
-                    .Classes("youtube-player-settings-scroll"),
-            ],
+                    isDisabled: playback.VideoId is null),
         };
+        if (playback.PreferenceError is { } error)
+            body.Add(UI.Text(error, "youtube.player.settings.error")
+                .Classes("youtube-status", "is-error"));
+        var content = UI.ScopedDialog(
+            "Player settings",
+            "youtube.player.settings",
+            "youtube.player.settings",
+            PlayerSettingsBackActionId,
+            UI.VerticalScroll("youtube.player.settings.scroll", body.ToArray())
+                .Classes("youtube-player-settings-scroll"));
         return PlayerModalView(state, content, "youtube.player.settings.rate-row.action",
             "youtube.player.settings", WidgetSurfaceAxisMode.Preferred);
     }
