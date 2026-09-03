@@ -3,7 +3,16 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.YouTubeWidget;
 
-internal enum YouTubeRoute { Setup, Search, Link, Player }
+internal enum YouTubeRoute
+{
+    Setup,
+    Search,
+    Link,
+    Player,
+    PlayerSettings,
+    PlaybackRatePicker,
+    Captions,
+}
 
 /// <summary>The control that initiated the in-flight playback command.</summary>
 internal enum PendingMediaControl
@@ -14,6 +23,9 @@ internal enum PendingMediaControl
     SeekForward,
     Timeline,
     Volume,
+    PlaybackRate,
+    Muted,
+    Loop,
 }
 
 /// <summary>Which provider mutation one setup request performs.</summary>
@@ -29,6 +41,9 @@ internal enum YouTubePlaybackIntent
     SeekForward,
     SeekAbsolute,
     SetVolume,
+    SetPlaybackRate,
+    SetMuted,
+    SetLoop,
 }
 
 internal sealed record YouTubePlaybackRequest(
@@ -85,6 +100,9 @@ internal sealed record YouTubePlaybackState
     public double Position { get; init; }
     public double Duration { get; init; }
     public double Volume { get; init; } = 0.8;
+    public double PlaybackRate { get; init; } = 1.0;
+    public bool Muted { get; init; }
+    public bool Loop { get; init; }
     public bool HasPlaybackObservation { get; init; }
     public EmbeddedMediaPlaybackCommand? PendingCommand { get; init; }
     public PendingMediaControl PendingControl { get; init; }
@@ -98,6 +116,9 @@ internal sealed record YouTubePlaybackState
 
     /// <summary>Whether the current command's pending feedback threshold elapsed.</summary>
     public bool PendingFeedbackVisible { get; init; }
+
+    /// <summary>A bounded preference rejection that does not poison playback.</summary>
+    public string? PreferenceError { get; init; }
 
     public string? Error => ValidationError ?? PlaybackError;
 
@@ -133,12 +154,16 @@ internal sealed record YouTubePlaybackState
         string videoId,
         PendingMediaControl control = PendingMediaControl.None,
         double? position = null,
-        double? volume = null)
+        double? volume = null,
+        double? playbackRate = null,
+        bool? muted = null,
+        bool? loop = null)
     {
         if (sequence <= 0) throw new ArgumentOutOfRangeException(nameof(sequence));
         return this with
         {
             PlaybackError = null,
+            PreferenceError = null,
             SeekBufferingSemantic = kind == EmbeddedMediaPlaybackCommandKind.Seek
                 ? SeekBufferingSemantic
                 : null,
@@ -149,6 +174,9 @@ internal sealed record YouTubePlaybackState
                 MediaKey = videoId,
                 PositionSeconds = position,
                 Volume = volume,
+                PlaybackRate = playbackRate,
+                Muted = muted,
+                Loop = loop,
             },
             PendingControl = control,
             PendingFeedbackVisible = false,
@@ -199,6 +227,24 @@ internal sealed record YouTubePlaybackState
         EmbeddedMediaPlaybackEvent playbackEvent,
         bool completesPending)
     {
+        var preferenceFailure = completesPending &&
+            playbackEvent.State == EmbeddedMediaPlaybackState.Error &&
+            PendingCommand?.Kind is EmbeddedMediaPlaybackCommandKind.SetPlaybackRate or
+                EmbeddedMediaPlaybackCommandKind.SetMuted or
+                EmbeddedMediaPlaybackCommandKind.SetLoop &&
+            IsPreferenceCommandFailure(playbackEvent.ErrorCode);
+        if (preferenceFailure)
+        {
+            return this with
+            {
+                PreferenceError = playbackEvent.ErrorCode == "command-unsupported"
+                    ? "That setting is unavailable for the current YouTube video."
+                    : "YouTube could not apply that player setting.",
+                PendingCommand = null,
+                PendingControl = PendingMediaControl.None,
+                PendingFeedbackVisible = false,
+            };
+        }
         var matchingSeekLoading =
             playbackEvent.State == EmbeddedMediaPlaybackState.Loading &&
             PendingCommand is { Kind: EmbeddedMediaPlaybackCommandKind.Seek } currentSeek &&
@@ -218,6 +264,12 @@ internal sealed record YouTubePlaybackState
             Position = Math.Max(0, playbackEvent.PositionSeconds),
             Duration = Math.Max(0, playbackEvent.DurationSeconds),
             Volume = Math.Clamp(playbackEvent.Volume, 0, 1),
+            PlaybackRate = Math.Clamp(playbackEvent.PlaybackRate,
+                ProtocolConstants.MinimumEmbeddedMediaPlaybackRate,
+                ProtocolConstants.MaximumEmbeddedMediaPlaybackRate),
+            Muted = playbackEvent.Muted,
+            Loop = playbackEvent.Loop,
+            PreferenceError = null,
             PlaybackError = playbackEvent.State == EmbeddedMediaPlaybackState.Error
                 ? PlaybackErrorText(playbackEvent.ErrorCode)
                 : null,
@@ -246,8 +298,17 @@ internal sealed record YouTubePlaybackState
         "player-api-load-failed" => "The YouTube player could not be loaded. Check the network and retry.",
         "playback-unavailable" => "YouTube could not play this video in the embedded player.",
         "command-unsupported" => "This YouTube player control is unavailable.",
+        "media-key-mismatch" =>
+            "The playback session changed before this control completed. Return to the player and retry.",
         _ => "YouTube playback failed. Try another public embeddable video.",
     };
+
+    private static bool IsPreferenceCommandFailure(string? errorCode) => errorCode is
+        "command-unsupported" or
+        "player-operation-timeout" or
+        "authority-replaced" or
+        "player-operation-overlap" or
+        "media-key-mismatch";
 }
 
 /// <summary>
@@ -293,6 +354,16 @@ internal sealed record YouTubeWidgetState
     /// </summary>
     public bool CanDispatchTransportAction(bool isActive) =>
         Playback.PendingCommand is null && CanDeclareTransportAction(isActive);
+
+    /// <summary>Whether the retained player may admit a settings mutation.</summary>
+    public bool CanDispatchPlayerSetting(bool isActive) =>
+        (Route is YouTubeRoute.PlayerSettings or YouTubeRoute.PlaybackRatePicker) &&
+        isActive &&
+        Playback.VideoId is not null &&
+        Playback.Error is null &&
+        Playback.State != EmbeddedMediaPlaybackState.Error &&
+        !Playback.IsMediaLoading &&
+        Playback.PendingCommand is null;
 
     // Leaving the Player route no longer has to retire a fullscreen flag: the
     // host drops its own activation as soon as the admitted snapshot stops

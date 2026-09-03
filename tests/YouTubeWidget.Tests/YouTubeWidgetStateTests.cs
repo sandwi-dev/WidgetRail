@@ -105,6 +105,58 @@ public sealed class YouTubeWidgetStateTests
     }
 
     [TestMethod]
+    public void PreferenceTerminalsSeparateCommandFailuresFromProviderPlaybackErrors()
+    {
+        var observed = YouTubeWidgetState.Initial
+            .WithCommittedLink($"https://youtu.be/{VideoId}", sequence: 1).Playback
+            .WithPlaybackEvent(Event(EmbeddedMediaPlaybackState.Playing, sequence: 1,
+                commandSequence: 1, position: 30, duration: 120),
+                completesPending: true);
+        foreach (var kind in new[]
+                 {
+                     EmbeddedMediaPlaybackCommandKind.SetPlaybackRate,
+                     EmbeddedMediaPlaybackCommandKind.SetMuted,
+                     EmbeddedMediaPlaybackCommandKind.SetLoop,
+                 })
+        {
+            var pending = observed.WithQueuedCommand(2, kind, VideoId,
+                PendingMediaControl.PlaybackRate);
+            foreach (var code in new[]
+                     {
+                         "command-unsupported",
+                         "player-operation-timeout",
+                         "authority-replaced",
+                         "player-operation-overlap",
+                         "media-key-mismatch",
+                     })
+            {
+                var rejected = pending.WithPlaybackEvent(
+                    Event(EmbeddedMediaPlaybackState.Error, sequence: 2,
+                        commandSequence: 2, position: 30, duration: 120,
+                        errorCode: code), completesPending: true);
+                Assert.IsNull(rejected.PendingCommand, $"{kind}/{code} left its command pending.");
+                Assert.AreEqual(EmbeddedMediaPlaybackState.Playing, rejected.State,
+                    $"{kind}/{code} must not poison established playback.");
+                Assert.IsNull(rejected.PlaybackError);
+                Assert.IsNotNull(rejected.PreferenceError);
+            }
+
+            var providerFailure = pending.WithPlaybackEvent(
+                Event(EmbeddedMediaPlaybackState.Error, sequence: 2,
+                    commandSequence: 2, position: 30, duration: 120,
+                    errorCode: "embedding-disabled"), completesPending: true);
+            Assert.IsNull(providerFailure.PendingCommand,
+                $"{kind} provider failure did not retire its exact command.");
+            Assert.AreEqual(EmbeddedMediaPlaybackState.Error, providerFailure.State);
+            Assert.AreEqual("The video owner does not allow embedded playback.",
+                providerFailure.PlaybackError);
+            Assert.IsNull(providerFailure.PreferenceError,
+                $"{kind} provider failure was misclassified as a setting rejection.");
+            Assert.AreEqual(VideoId, providerFailure.VideoId);
+        }
+    }
+
+    [TestMethod]
     public void SeekBufferingRetainsTheSettledSemanticAcrossAHeldRunOfSeeks()
     {
         var playing = YouTubeWidgetState.Initial
@@ -512,6 +564,10 @@ public sealed class YouTubeWidgetLifecycleTests
             ValueTask.CompletedTask;
 
         public ValueTask OpenGoogleCloudConsoleAsync(CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask OpenVideoInYouTubeAsync(
+            string videoId, CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
 
         public ValueTask<YouTubeSearchPage> SearchAsync(

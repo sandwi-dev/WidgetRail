@@ -13,6 +13,15 @@ public sealed partial class YouTubeVideoWidget : Widget
     internal const string SeekForwardActionId = "youtube.playback.seek-forward";
     internal const string SeekActionId = "youtube.playback.seek";
     internal const string VolumeActionId = "youtube.playback.volume";
+    internal const string CaptionsActionId = "youtube.player.captions";
+    internal const string PlaybackRateActionId = "youtube.player.settings.playback-rate";
+    internal const string MutedActionId = "youtube.player.settings.muted";
+    internal const string LoopActionId = "youtube.player.settings.loop";
+    internal const string OpenInYouTubeActionId = "youtube.player.settings.open-youtube";
+    internal const string PlayerSettingsBackActionId = "youtube.player.settings.back";
+    internal const string PlaybackRateBackActionId = "youtube.player.settings.playback-rate.back";
+    internal const string CaptionsBackActionId = "youtube.player.captions.back";
+    private const string PlaybackRateOptionPrefix = "youtube.player.settings.rate.";
     // Fullscreen is a host-owned mode. The package declares the surface may be
     // presented that way and offers this reserved entry action; the host owns
     // the state and returns to this layout on B.
@@ -40,7 +49,8 @@ public sealed partial class YouTubeVideoWidget : Widget
         var transportActionsAvailable = state.CanDeclareTransportAction(IsActive);
         var controlsUnavailable = !transportActionsAvailable;
         var showFullscreenAction = state.Route == YouTubeRoute.Player && videoId is not null;
-        var fullscreenActionEnabled = error is null && !mediaLoading;
+        var fullscreenActionEnabled = showFullscreenAction && error is null && !mediaLoading;
+        var captionsActionEnabled = showFullscreenAction && transportActionsAvailable;
         // Declared only on the route that also offers the reserved entry action,
         // so the capability never outlives a way to reach it.
         var media = CreateMediaSurface(videoId, playback.PendingCommand,
@@ -52,8 +62,7 @@ public sealed partial class YouTubeVideoWidget : Widget
                 LinkActionId,
                 "youtube.link",
                 ProtocolConstants.MaximumTextEntryLength)
-            .FocusUp(showFullscreenAction && fullscreenActionEnabled
-                ? FullscreenFocusId : "youtube.player.back")
+            .FocusUp("youtube.player.back")
             .FocusDown("youtube.controls")
             .Classes("youtube-link", playback.Link.Length == 0 ? "is-empty" : "has-value");
         var playing = playback.PlaybackSemantic == EmbeddedMediaPlaybackState.Playing;
@@ -62,20 +71,20 @@ public sealed partial class YouTubeVideoWidget : Widget
             .Disabled(controlsUnavailable)
             .Busy(busyControl == PendingMediaControl.TogglePlayback)
             .FocusUp("youtube.link")
-            .FocusRight("youtube.playback.seek-backward")
+            .FocusRight(showFullscreenAction ? FullscreenFocusId : "youtube.timeline")
             .Classes("youtube-primary", "youtube-transport-button", "youtube-play-toggle");
-        var seekBack = UI.Button("", SeekBackwardActionId, "youtube.playback.seek-backward")
-            .Icon(WidgetGlyph.Rewind, "Seek backward 10 seconds")
-            .Disabled(controlsUnavailable)
+        var fullscreen = UI.Button("", EnterFullscreenActionId, FullscreenFocusId)
+            .Icon(WidgetGlyph.Connection, "Fullscreen")
+            .Disabled(!fullscreenActionEnabled)
             .FocusUp("youtube.link")
             .FocusLeft("youtube.playback.toggle")
-            .FocusRight("youtube.playback.seek-forward")
+            .FocusRight(CaptionsActionId)
             .Classes("youtube-secondary", "youtube-transport-button");
-        var seekForward = UI.Button("", SeekForwardActionId, "youtube.playback.seek-forward")
-            .Icon(WidgetGlyph.FastForward, "Seek forward 10 seconds")
-            .Disabled(controlsUnavailable)
+        var captions = UI.Button("", CaptionsActionId, CaptionsActionId)
+            .Icon(WidgetGlyph.Settings, "Captions and player settings")
+            .Disabled(!captionsActionEnabled)
             .FocusUp("youtube.link")
-            .FocusLeft("youtube.playback.seek-backward")
+            .FocusLeft(FullscreenFocusId)
             .FocusRight("youtube.timeline")
             .Classes("youtube-secondary", "youtube-transport-button");
         var timeline = UI.Slider(
@@ -91,7 +100,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             .Disabled(controlsUnavailable)
             .Busy(busyControl == PendingMediaControl.Timeline)
             .FocusUp("youtube.link")
-            .FocusLeft("youtube.playback.seek-forward")
+            .FocusLeft(showFullscreenAction ? CaptionsActionId : "youtube.playback.toggle")
             .FocusRight("youtube.volume")
             .Classes("youtube-slider");
         var volumeControl = UI.Slider(
@@ -131,19 +140,26 @@ public sealed partial class YouTubeVideoWidget : Widget
         var back = UI.Button("Back", BackActionId, "youtube.player.back")
             .FocusDown("youtube.link")
             .Classes("youtube-route-button", "youtube-player-back");
-        var headerActions = new List<WidgetElement>();
+        var headerActions = new List<WidgetElement>
+        {
+            UI.Text(status, "youtube.status")
+                .Classes("youtube-status", "youtube-status-pill", statusClass),
+        };
+        var transportControls = new List<WidgetElement> { toggle };
         if (showFullscreenAction)
         {
-            if (fullscreenActionEnabled) back = back.FocusRight(FullscreenFocusId);
-            headerActions.Add(UI.Button(
-                    "Fullscreen", EnterFullscreenActionId, FullscreenFocusId)
-                .Disabled(!fullscreenActionEnabled)
-                .FocusLeft("youtube.player.back")
-                .FocusDown("youtube.link")
-                .Classes("youtube-route-button"));
+            transportControls.Add(fullscreen);
+            transportControls.Add(captions);
         }
-        headerActions.Add(UI.Text(status, "youtube.status")
-            .Classes("youtube-status", "youtube-status-pill", statusClass));
+        transportControls.Add(UI.Row(
+                "youtube.timeline-group",
+                UI.Text(FormatTime(playback.Position), "youtube.position")
+                    .Classes("youtube-time"),
+                timeline,
+                UI.Text(FormatTime(playback.Duration), "youtube.duration")
+                    .Classes("youtube-time", "is-end"))
+            .Classes("youtube-timeline-group"));
+        transportControls.Add(volumeControl);
         var root = UI.Stack(
                 "youtube.root",
                 UI.Row(
@@ -161,19 +177,7 @@ public sealed partial class YouTubeVideoWidget : Widget
                 UI.Stack("youtube.player-shell",
                         UI.MediaViewport(media, "youtube.viewport").Classes("youtube-viewport"),
                         UI.Stack("youtube.control-deck",
-                                UI.Row("youtube.controls",
-                                        toggle,
-                                        seekBack,
-                                        seekForward,
-                                        UI.Row(
-                                                "youtube.timeline-group",
-                                                UI.Text(FormatTime(playback.Position), "youtube.position")
-                                                    .Classes("youtube-time"),
-                                                timeline,
-                                                UI.Text(FormatTime(playback.Duration), "youtube.duration")
-                                                    .Classes("youtube-time", "is-end"))
-                                            .Classes("youtube-timeline-group"),
-                                        volumeControl)
+                                UI.Row("youtube.controls", transportControls.ToArray())
                                     .RememberChildFocus("youtube.playback.toggle")
                                     .Classes("youtube-controls"))
                             .Classes("youtube-control-deck", videoId is null ? "is-unavailable" : "is-ready"))
@@ -298,6 +302,14 @@ public sealed partial class YouTubeVideoWidget : Widget
             VolumeActionId => new YouTubePlaybackRequest(
                 YouTubePlaybackIntent.SetVolume, isActive, seekStep,
                 action.RequestedValue),
+            MutedActionId => new YouTubePlaybackRequest(
+                YouTubePlaybackIntent.SetMuted, isActive),
+            LoopActionId => new YouTubePlaybackRequest(
+                YouTubePlaybackIntent.SetLoop, isActive),
+            _ when TryParsePlaybackRateAction(action.ActionId, out var playbackRate) =>
+                new YouTubePlaybackRequest(
+                    YouTubePlaybackIntent.SetPlaybackRate, isActive,
+                    RequestedValue: playbackRate),
             _ => null,
         };
         if (request is not null) RunPlayback(request);
@@ -349,8 +361,14 @@ public sealed partial class YouTubeVideoWidget : Widget
                 next = state.WithSelectedResult(returnFocusId, selectedVideoId, sequence);
                 break;
             default:
+                var preferenceIntent = request.Intent is
+                    YouTubePlaybackIntent.SetPlaybackRate or
+                    YouTubePlaybackIntent.SetMuted or
+                    YouTubePlaybackIntent.SetLoop;
                 if (state.Playback.VideoId is not { } videoId ||
-                    !state.CanDispatchTransportAction(request.IsActive))
+                    !(preferenceIntent
+                        ? state.CanDispatchPlayerSetting(request.IsActive)
+                        : state.CanDispatchTransportAction(request.IsActive)))
                     return new(state, state.Playback.VideoId ?? "youtube.none",
                         ShouldStart: false);
                 var playback = state.Playback;
@@ -396,6 +414,29 @@ public sealed partial class YouTubeVideoWidget : Widget
                             videoId,
                             PendingMediaControl.Volume,
                             volume: Math.Clamp(requested, 0, 1))),
+                    YouTubePlaybackIntent.SetPlaybackRate when
+                        request.RequestedValue is { } requested &&
+                        IsCanonicalPlaybackRate(requested) =>
+                        state.WithPlayback(current => current.WithQueuedCommand(
+                            sequence,
+                            EmbeddedMediaPlaybackCommandKind.SetPlaybackRate,
+                            videoId,
+                            PendingMediaControl.PlaybackRate,
+                            playbackRate: requested)),
+                    YouTubePlaybackIntent.SetMuted => state.WithPlayback(current =>
+                        current.WithQueuedCommand(
+                            sequence,
+                            EmbeddedMediaPlaybackCommandKind.SetMuted,
+                            videoId,
+                            PendingMediaControl.Muted,
+                            muted: !playback.Muted)),
+                    YouTubePlaybackIntent.SetLoop => state.WithPlayback(current =>
+                        current.WithQueuedCommand(
+                            sequence,
+                            EmbeddedMediaPlaybackCommandKind.SetLoop,
+                            videoId,
+                            PendingMediaControl.Loop,
+                            loop: !playback.Loop)),
                     _ => state,
                 };
                 break;
@@ -442,4 +483,21 @@ public sealed partial class YouTubeVideoWidget : Widget
         var value = Math.Max(0, (int)Math.Round(seconds));
         return $"{value / 60}:{value % 60:00}";
     }
+
+    private static bool IsCanonicalPlaybackRate(double value) =>
+        CanonicalPlaybackRates.Contains(value);
+
+    private static bool TryParsePlaybackRateAction(string actionId, out double playbackRate)
+    {
+        playbackRate = 0;
+        if (!actionId.StartsWith(PlaybackRateOptionPrefix, StringComparison.Ordinal))
+            return false;
+        return double.TryParse(actionId[PlaybackRateOptionPrefix.Length..],
+                   System.Globalization.NumberStyles.AllowDecimalPoint,
+                   System.Globalization.CultureInfo.InvariantCulture,
+                   out playbackRate) &&
+               IsCanonicalPlaybackRate(playbackRate);
+    }
+
+    private static readonly double[] CanonicalPlaybackRates = [0.5, 0.75, 1, 1.25, 1.5, 2];
 }

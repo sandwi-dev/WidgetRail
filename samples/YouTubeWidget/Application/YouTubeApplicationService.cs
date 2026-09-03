@@ -16,6 +16,7 @@ internal sealed class YouTubeApplicationService : IYouTubeApplicationService
     private const int MaximumCachedPages = 12;
     private static readonly Uri ApiBase = new("https://www.googleapis.com/youtube/v3/");
     private static readonly Uri ConsoleUri = new("https://console.cloud.google.com/apis/library/youtube.googleapis.com");
+    private static readonly Uri WatchBase = new("https://www.youtube.com/watch");
     private readonly HttpClient _http;
     private readonly WindowsCredentialYouTubeApiKeyStore _keyStore;
     private readonly object _cacheGate = new();
@@ -74,6 +75,27 @@ internal sealed class YouTubeApplicationService : IYouTubeApplicationService
         {
             throw new YouTubeApplicationException(
                 "console_unavailable", "Google Cloud Console could not be opened.", exception);
+        }
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OpenVideoInYouTubeAsync(
+        string videoId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsVideoId(videoId))
+            throw new YouTubeApplicationException(
+                "video_invalid", "The current YouTube video ID is invalid.");
+        try
+        {
+            var target = new UriBuilder(WatchBase) { Query = "v=" + videoId }.Uri;
+            Process.Start(new ProcessStartInfo(target.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or
+                                               System.ComponentModel.Win32Exception)
+        {
+            throw new YouTubeApplicationException(
+                "youtube_unavailable", "YouTube could not be opened.", exception);
         }
         return ValueTask.CompletedTask;
     }

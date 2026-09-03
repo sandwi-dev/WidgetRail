@@ -15,6 +15,7 @@ let adapter = null;
 let apiFailure = null;
 let mediaKey = "";
 let playbackState = "ready";
+let loopCurrentVideo = false;
 let lastProgressSecond = -1;
 let pendingProviderOperation = null;
 let resolveApi;
@@ -70,6 +71,20 @@ function volume() {
     : 0.8;
 }
 
+function playbackRate() {
+  const value = Number(player?.getPlaybackRate?.());
+  return Number.isFinite(value) ? Math.max(0.5, Math.min(2, value)) : 1;
+}
+
+function muted() {
+  return player?.isMuted?.() === true;
+}
+
+function currentPlayerVideoId() {
+  const value = player?.getVideoData?.()?.video_id;
+  return typeof value === "string" ? value : "";
+}
+
 function snapshot() {
   return {
     mediaKey,
@@ -77,6 +92,9 @@ function snapshot() {
     positionSeconds: position(),
     durationSeconds: duration(),
     volume: volume(),
+    playbackRate: playbackRate(),
+    muted: muted(),
+    loop: loopCurrentVideo,
   };
 }
 
@@ -184,6 +202,158 @@ function completeAfterDelay(start, signal) {
   });
 }
 
+function waitForPlaybackRate(command) {
+  if (pendingProviderOperation) {
+    return Promise.reject(
+      WidgetRailEmbeddedMediaAdapter.error("player-operation-overlap"));
+  }
+  return new Promise((resolve, reject) => {
+    let timeout = 0;
+    const cancel = () => {
+      if (pendingProviderOperation !== pending) return;
+      pendingProviderOperation = null;
+      pending.cleanup();
+      reject(WidgetRailEmbeddedMediaAdapter.error("authority-replaced"));
+    };
+    const expire = () => {
+      if (pendingProviderOperation !== pending) return;
+      pendingProviderOperation = null;
+      pending.cleanup();
+      reject(WidgetRailEmbeddedMediaAdapter.error("player-operation-timeout"));
+    };
+    const pending = {
+      expectedStates: null,
+      expectedPlaybackRate: command.playbackRate,
+      mediaKey: command.mediaKey,
+      commandSequence: command.sequence,
+      resolve,
+      reject,
+      cleanup: () => {
+        clearTimeout(timeout);
+        command.signal.removeEventListener("abort", cancel);
+      },
+    };
+    pendingProviderOperation = pending;
+    command.signal.addEventListener("abort", cancel, { once: true });
+    if (command.signal.aborted) {
+      cancel();
+      return;
+    }
+    try {
+      timeout = setTimeout(expire, 1500);
+      player.setPlaybackRate(command.playbackRate);
+    } catch (error) {
+      if (pendingProviderOperation === pending) pendingProviderOperation = null;
+      pending.cleanup();
+      reject(error);
+    }
+  });
+}
+
+function completePreference(start, signal) {
+  if (pendingProviderOperation) {
+    return Promise.reject(
+      WidgetRailEmbeddedMediaAdapter.error("player-operation-overlap"));
+  }
+  return new Promise((resolve, reject) => {
+    const cancel = () => {
+      if (pendingProviderOperation !== pending) return;
+      pendingProviderOperation = null;
+      pending.cleanup();
+      reject(WidgetRailEmbeddedMediaAdapter.error("authority-replaced"));
+    };
+    const pending = {
+      expectedStates: null,
+      expectedPlaybackRate: null,
+      resolve,
+      reject,
+      cleanup: () => signal.removeEventListener("abort", cancel),
+    };
+    pendingProviderOperation = pending;
+    signal.addEventListener("abort", cancel, { once: true });
+    if (signal.aborted) {
+      cancel();
+      return;
+    }
+    try {
+      start();
+      Promise.resolve().then(() => {
+        if (pendingProviderOperation !== pending) return;
+        pendingProviderOperation = null;
+        pending.cleanup();
+        resolve({ playbackState: stateName(player.getPlayerState()) });
+      });
+    } catch (error) {
+      if (pendingProviderOperation === pending) pendingProviderOperation = null;
+      pending.cleanup();
+      reject(error);
+    }
+  });
+}
+
+function waitForMuted(command) {
+  if (pendingProviderOperation) {
+    return Promise.reject(
+      WidgetRailEmbeddedMediaAdapter.error("player-operation-overlap"));
+  }
+  return new Promise((resolve, reject) => {
+    let pollTimer = 0;
+    let remainingPolls = 60;
+    const finish = (error = null) => {
+      if (pendingProviderOperation !== pending) return;
+      pendingProviderOperation = null;
+      pending.cleanup();
+      if (error) reject(error);
+      else resolve({ playbackState: stateName(player.getPlayerState()) });
+    };
+    const cancel = () => finish(
+      WidgetRailEmbeddedMediaAdapter.error("authority-replaced"));
+    const poll = () => {
+      if (pendingProviderOperation !== pending) return;
+      const playerVideoId = currentPlayerVideoId();
+      if (command.sequence <= 0 || command.mediaKey !== mediaKey ||
+          (playerVideoId && playerVideoId !== command.mediaKey)) {
+        finish(WidgetRailEmbeddedMediaAdapter.error("media-key-mismatch"));
+        return;
+      }
+      if (player.isMuted() === command.muted) {
+        finish();
+        return;
+      }
+      if (--remainingPolls <= 0) {
+        finish(WidgetRailEmbeddedMediaAdapter.error("player-operation-timeout"));
+        return;
+      }
+      pollTimer = setTimeout(poll, 25);
+    };
+    const pending = {
+      expectedStates: null,
+      expectedPlaybackRate: null,
+      mediaKey: command.mediaKey,
+      commandSequence: command.sequence,
+      resolve,
+      reject,
+      cleanup: () => {
+        clearTimeout(pollTimer);
+        command.signal.removeEventListener("abort", cancel);
+      },
+    };
+    pendingProviderOperation = pending;
+    command.signal.addEventListener("abort", cancel, { once: true });
+    if (command.signal.aborted) {
+      cancel();
+      return;
+    }
+    try {
+      if (command.muted) player.mute();
+      else player.unMute();
+      poll();
+    } catch (error) {
+      finish(error);
+    }
+  });
+}
+
 function onReady() {
   clearTimeout(apiTimer);
   resolveApi(player);
@@ -198,7 +368,32 @@ function onStateChange(event) {
     pending.resolve({ playbackState });
     return;
   }
+  if (event.data === 0 && loopCurrentVideo && mediaKey) {
+    playbackState = "loading";
+    player.seekTo(0, true);
+    player.playVideo();
+    adapter?.observe();
+    return;
+  }
   adapter?.observe();
+}
+
+function onPlaybackRateChange(event) {
+  const pending = pendingProviderOperation;
+  const reportedRate = Number(event.data);
+  if (!pending || !Number.isFinite(pending.expectedPlaybackRate)) {
+    adapter?.observe();
+    return;
+  }
+  if (pending.commandSequence <= 0 || pending.mediaKey !== mediaKey) return;
+  const playerVideoId = currentPlayerVideoId();
+  if (playerVideoId && playerVideoId !== pending.mediaKey) return;
+  if (!Number.isFinite(reportedRate) ||
+      Math.abs(reportedRate - pending.expectedPlaybackRate) >= 0.001 ||
+      Math.abs(playbackRate() - pending.expectedPlaybackRate) >= 0.001) return;
+  pendingProviderOperation = null;
+  pending.cleanup();
+  pending.resolve({ playbackState: stateName(player.getPlayerState()) });
 }
 
 function onError(event) {
@@ -230,7 +425,7 @@ window.onYouTubeIframeAPIReady = () => {
         origin: location.origin,
         rel: 0,
       },
-      events: { onReady, onStateChange, onError },
+      events: { onReady, onStateChange, onPlaybackRateChange, onError },
     });
   } catch {
     failApi("player-api-load-failed");
@@ -317,6 +512,27 @@ adapter = WidgetRailEmbeddedMediaAdapter.create({
       await readyFor(command);
       player.setVolume(Math.round(command.volume * 100));
       return { playbackState: stateName(player.getPlayerState()) };
+    },
+    async setPlaybackRate(command) {
+      await readyFor(command);
+      const available = player.getAvailablePlaybackRates()
+        .map(Number)
+        .filter(Number.isFinite);
+      if (!available.some(rate => Math.abs(rate - command.playbackRate) < 0.001)) {
+        throw WidgetRailEmbeddedMediaAdapter.error("command-unsupported");
+      }
+      return waitForPlaybackRate(command);
+    },
+    async setMuted(command) {
+      await readyFor(command);
+      return waitForMuted(command);
+    },
+    async setLoop(command) {
+      await readyFor(command);
+      return completePreference(() => {
+        loopCurrentVideo = command.loop === true;
+        player.setLoop(loopCurrentVideo);
+      }, command.signal);
     },
   },
 });

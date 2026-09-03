@@ -173,6 +173,9 @@ public sealed partial class YouTubeVideoWidget
             YouTubeRoute.Setup => RenderSetup(state),
             YouTubeRoute.Search => RenderSearch(state),
             YouTubeRoute.Link => RenderLinkPlayer(state),
+            YouTubeRoute.PlayerSettings => RenderPlayerSettings(state),
+            YouTubeRoute.PlaybackRatePicker => RenderPlaybackRatePicker(state),
+            YouTubeRoute.Captions => RenderCaptions(state),
             _ => RenderPlayer(state),
         };
     }
@@ -367,6 +370,128 @@ public sealed partial class YouTubeVideoWidget
         return view with { InitialFocusId = "youtube.link" };
     }
 
+    private WidgetView RenderPlayerSettings(YouTubeWidgetState state)
+    {
+        var playback = state.Playback;
+        var settingsUnavailable = !state.CanDispatchPlayerSetting(IsActive);
+        var busyControl = playback.BusyControl;
+        var rate = FormatPlaybackRate(playback.PlaybackRate);
+        var body = new List<WidgetElement>
+        {
+            UI.SettingsRow(
+                    "Playback speed",
+                    new ComponentAction("Choose speed", PlaybackRateActionId,
+                        WidgetGlyph.Settings),
+                    "youtube.player.settings.rate-row",
+                    description: "Available speeds depend on the current video.",
+                    value: rate,
+                    isDisabled: settingsUnavailable,
+                    isBusy: busyControl == PendingMediaControl.PlaybackRate),
+                UI.Switch("Mute", playback.Muted, MutedActionId,
+                        "youtube.player.settings.muted", settingsUnavailable)
+                    .Busy(busyControl == PendingMediaControl.Muted),
+                UI.Switch("Loop current video", playback.Loop, LoopActionId,
+                        "youtube.player.settings.loop", settingsUnavailable)
+                    .Busy(busyControl == PendingMediaControl.Loop),
+                UI.ValueRow("Quality", "Auto · managed by YouTube",
+                    "youtube.player.settings.quality",
+                    "YouTube adapts stream quality to playback conditions."),
+                UI.SettingsRow(
+                    "Captions",
+                    new ComponentAction("Caption options", CaptionsActionId,
+                        WidgetGlyph.Settings),
+                    "youtube.player.settings.captions-row",
+                    description: "Open the supported caption path for this video.",
+                    isDisabled: playback.VideoId is null),
+                UI.SettingsRow(
+                    "Open in YouTube",
+                    new ComponentAction("Open video", OpenInYouTubeActionId,
+                        WidgetGlyph.Connection),
+                    "youtube.player.settings.open-row",
+                    description: "Use YouTube for provider-owned controls and preferences.",
+                    isDisabled: playback.VideoId is null),
+        };
+        if (playback.PreferenceError is { } error)
+            body.Add(UI.Text(error, "youtube.player.settings.error")
+                .Classes("youtube-status", "is-error"));
+        var content = UI.ScopedDialog(
+            "Player settings",
+            "youtube.player.settings",
+            "youtube.player.settings",
+            PlayerSettingsBackActionId,
+            UI.VerticalScroll("youtube.player.settings.scroll", body.ToArray())
+                .Classes("youtube-player-settings-scroll"));
+        return PlayerModalView(state, content, "youtube.player.settings.rate-row.action",
+            "youtube.player.settings", WidgetSurfaceAxisMode.Preferred);
+    }
+
+    private WidgetView RenderPlaybackRatePicker(YouTubeWidgetState state)
+    {
+        var playback = state.Playback;
+        var settingsUnavailable = !state.CanDispatchPlayerSetting(IsActive);
+        var options = CanonicalPlaybackRates.Select(rate =>
+            new PickerOption(
+                PlaybackRateOptionId(rate),
+                FormatPlaybackRate(rate),
+                PlaybackRateOptionId(rate),
+                IsSelected: Math.Abs(playback.PlaybackRate - rate) < 0.001,
+                IsDisabled: settingsUnavailable,
+                IsBusy: playback.BusyControl == PendingMediaControl.PlaybackRate &&
+                        playback.PendingCommand?.PlaybackRate == rate)).ToArray();
+        var picker = UI.Picker(
+            "Playback speed",
+            "youtube.player.settings.rate-picker",
+            "youtube.player.settings.rate-picker",
+            PlaybackRateBackActionId,
+            options,
+            "YouTube may make only some speeds available for the current video.");
+        var initial = options.FirstOrDefault(option => option.IsSelected)?.Id ??
+                      PlaybackRateOptionId(1);
+        return PlayerModalView(state, picker, initial,
+            "youtube.player.settings.rate-picker");
+    }
+
+    private WidgetView RenderCaptions(YouTubeWidgetState state)
+    {
+        var sheet = UI.ActionSheet(
+            "Captions",
+            "youtube.player.captions.sheet",
+            "youtube.player.captions.sheet",
+            CaptionsBackActionId,
+            [
+                new ActionSheetItem(
+                    "youtube.player.captions.open-youtube",
+                    "Open caption options in YouTube",
+                    OpenInYouTubeActionId,
+                    WidgetGlyph.Connection),
+            ],
+            "YouTube's documented caption preferences are player-construction options. " +
+            "Changing them here would recreate the player and interrupt this session.");
+        return PlayerModalView(state, sheet,
+            "youtube.player.captions.open-youtube", "youtube.player.captions.sheet");
+    }
+
+    private static WidgetView PlayerModalView(
+        YouTubeWidgetState state,
+        StackElement content,
+        string initialFocus,
+        string inputScope,
+        WidgetSurfaceAxisMode heightMode = WidgetSurfaceAxisMode.Content) => new(
+            content.AddClasses("youtube-player-settings"),
+            initialFocus,
+            ActiveInputScopeId: inputScope,
+            Surface: new WidgetSurfaceHints
+            {
+                Mode = WidgetSurfaceMode.Standard,
+                WidthMode = WidgetSurfaceAxisMode.Preferred,
+                HeightMode = heightMode,
+                PreferredWidth = 620,
+                PreferredHeight = 620,
+                MinimumWidth = 420,
+                MinimumHeight = 420,
+            })
+        { EmbeddedMedia = RetainedHiddenMediaSurface(state.Playback) };
+
     private WidgetView ApplicationView(
         YouTubeWidgetState state,
         WidgetElement content,
@@ -419,6 +544,30 @@ public sealed partial class YouTubeVideoWidget
                 return true;
             case LinkRouteActionId:
                 _model.Update(state => state.WithRoute(YouTubeRoute.Link));
+                return true;
+            case CaptionsActionId when _model.Value.Route is YouTubeRoute.Player or
+                YouTubeRoute.PlayerSettings:
+                _model.Update(state => state.WithRoute(
+                    state.Route == YouTubeRoute.Player
+                        ? YouTubeRoute.PlayerSettings
+                        : YouTubeRoute.Captions));
+                return true;
+            case PlaybackRateActionId when _model.Value.Route == YouTubeRoute.PlayerSettings:
+                _model.Update(state => state.WithRoute(YouTubeRoute.PlaybackRatePicker));
+                return true;
+            case PlayerSettingsBackActionId:
+                _model.Update(state => state.WithRoute(YouTubeRoute.Player));
+                return true;
+            case PlaybackRateBackActionId:
+                _model.Update(state => state.WithRoute(YouTubeRoute.PlayerSettings));
+                return true;
+            case CaptionsBackActionId:
+                _model.Update(state => state.WithRoute(YouTubeRoute.PlayerSettings));
+                return true;
+            case OpenInYouTubeActionId when _model.Value.Playback.VideoId is { } videoId:
+                Operations.RunSingleFlight("youtube.open-video",
+                    context => _application.OpenVideoInYouTubeAsync(videoId,
+                        context.CancellationToken));
                 return true;
             case "youtube.player.return":
                 _model.Update(state => state.WithRoute(YouTubeRoute.Player));
@@ -517,6 +666,13 @@ public sealed partial class YouTubeVideoWidget
         OperationCanceledException => new("search_canceled", "YouTube search was canceled."),
         _ => new("youtube_search_failed", "YouTube search could not be completed. Try again."),
     };
+
+    private static string PlaybackRateOptionId(double rate) =>
+        PlaybackRateOptionPrefix + rate.ToString("0.##",
+            System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string FormatPlaybackRate(double rate) =>
+        rate.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "×";
 
     /// <summary>
     /// Preserves the existing setup copy exactly. A message the bounded command
