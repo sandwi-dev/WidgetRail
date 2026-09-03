@@ -168,6 +168,15 @@ struct EnvironmentState final {
     std::wstring profileDirectory;
 };
 
+struct EnvironmentExit final {
+    std::uint64_t generation{};
+    ULONGLONG observedTick{};
+    DWORD browserProcessId{};
+    std::uint32_t browserProcessExitKind{};
+    std::size_t liveControllerOwners{};
+    std::size_t waiterCount{};
+};
+
 struct Configuration final {
     struct Resource final {
         std::wstring path;
@@ -192,6 +201,7 @@ struct Configuration final {
     std::function<void()> invalidate;
     std::function<void(const PlaybackEvent&)> playbackEvent;
     std::function<void(bool)> setPresentationVisible;
+    std::function<void(const EnvironmentExit&)> sharedEnvironmentExited;
 };
 
 struct PresentationTarget final {
@@ -248,6 +258,10 @@ public:
     [[nodiscard]] static RichMediaEnvironmentHandle CreateSharedEnvironment();
 
     [[nodiscard]] HRESULT Initialize(Configuration configuration) noexcept;
+    [[nodiscard]] HRESULT ResumeSharedEnvironmentRecovery() noexcept;
+    [[nodiscard]] bool waitingForSharedEnvironmentRecovery() const noexcept {
+        return waitingForSharedEnvironmentRecovery_;
+    }
     [[nodiscard]] HRESULT Retry(Configuration configuration) noexcept;
     [[nodiscard]] HRESULT SetVisible(bool visible) noexcept;
     [[nodiscard]] HRESULT UpdateGeometry(const RECT& bounds, double rasterScale) noexcept;
@@ -298,7 +312,8 @@ private:
     struct FrameSubscription;
     struct EnvironmentSignal;
     static void RecordBrowserProcessExit(
-        const std::shared_ptr<EnvironmentSignal>& signal, DWORD processId) noexcept;
+        const RichMediaEnvironmentHandle& sharedEnvironment,
+        DWORD processId, std::uint32_t exitKind) noexcept;
     [[nodiscard]] bool BrowserProcessExitObserved() const noexcept;
     [[nodiscard]] bool BrowserProcessExitObserverActive() const noexcept;
     [[nodiscard]] std::shared_ptr<CallbackLease> CreateCallbackLease() noexcept;
@@ -454,6 +469,7 @@ private:
     std::wstring profileRootDirectory_;
     std::wstring environmentProfileDirectory_;
     bool environmentFaulted_{};
+    bool waitingForSharedEnvironmentRecovery_{};
     bool ownsSharedController_{};
     std::uint64_t retrySurfaceGeneration_{};
     bool teardownBegun_{};

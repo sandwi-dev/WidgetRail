@@ -99,6 +99,7 @@ constexpr UINT kPinnedSurfaceChangedMessage = WM_APP + 11;
 constexpr UINT kProcessActivationMessage = WM_APP + 12;
 constexpr UINT kDevelopmentTrayYHoldMessage = WM_APP + 14;
 constexpr UINT kScrollPaginationPrefetchMessage = WM_APP + 15;
+constexpr UINT kSharedMediaEnvironmentExitedMessage = WM_APP + 16;
 #if defined(WRAIL_PINNED_SLIDER_ROUTE_TESTING)
 constexpr ULONG_PTR kPinnedSliderControllerFrameCopyData = 0x5752534cU;
 #endif
@@ -2311,6 +2312,12 @@ private:
         case kScrollPaginationPrefetchMessage:
             DispatchQueuedScrollPaginationPrefetch();
             return 0;
+        case kSharedMediaEnvironmentExitedMessage: {
+            std::unique_ptr<widgetrail::richmedia::EnvironmentExit> exit{
+                reinterpret_cast<widgetrail::richmedia::EnvironmentExit*>(lParam)};
+            if (exit) HandleSharedMediaEnvironmentExited(*exit);
+            return 0;
+        }
         case WM_ACTIVATEAPP:
             if (state_.surface() != widgetrail::Surface::Hidden) {
                 if (wParam == FALSE) {
@@ -2514,6 +2521,10 @@ private:
                 OnRichMediaStateChanged(sessionKey);
             });
         };
+        configuration.sharedEnvironmentExited = [this](
+            const widgetrail::richmedia::EnvironmentExit& exit) {
+            QueueSharedMediaEnvironmentExited(exit);
+        };
         configuration.setPresentationVisible = [this](const bool visible) {
           InvokeMediaCallbackGuarded(L"proof-presentation-visible", [&] {
             RECT currentBounds{};
@@ -2538,6 +2549,60 @@ private:
         AppendDiagnostic(
             L"Rich media proof requested owner=existing-content-hwnd origin=embedded-only");
         return true;
+    }
+
+    void QueueSharedMediaEnvironmentExited(
+        const widgetrail::richmedia::EnvironmentExit& exit) noexcept {
+        auto notification = std::make_unique<widgetrail::richmedia::EnvironmentExit>(exit);
+        if (!window_ || !PostMessageW(
+                window_, kSharedMediaEnvironmentExitedMessage, 0,
+                reinterpret_cast<LPARAM>(notification.get()))) {
+            return;
+        }
+        (void)notification.release();
+    }
+
+    void HandleSharedMediaEnvironmentExited(
+        const widgetrail::richmedia::EnvironmentExit& exit) {
+        if (exit.generation == 0 ||
+            exit.generation == retiredSharedMediaEnvironmentGeneration_) {
+            return;
+        }
+        retiredSharedMediaEnvironmentGeneration_ = exit.generation;
+        AppendDiagnostic(
+            L"Rich media shared environment exited generation=" +
+            std::to_wstring(exit.generation) + L" event-tick=" +
+            std::to_wstring(exit.observedTick) + L" browser-pid=" +
+            std::to_wstring(exit.browserProcessId) + L" exit-kind=" +
+            std::to_wstring(exit.browserProcessExitKind) + L" owners=" +
+            std::to_wstring(exit.liveControllerOwners) + L" waiters=" +
+            std::to_wstring(exit.waiterCount));
+        for (const auto& key : mediaSessions_.Keys()) {
+            const auto* session = mediaSessions_.Find(key);
+            if (!session || !session->coordinator ||
+                session->coordinator->waitingForSharedEnvironmentRecovery() ||
+                session->coordinator->state().authority.environmentGeneration !=
+                    exit.generation) {
+                continue;
+            }
+            StopEmbeddedMediaSession(key, L"shared-environment-exited");
+        }
+        for (const auto& key : mediaSessions_.Keys()) {
+            auto* session = mediaSessions_.Find(key);
+            if (!session || !session->coordinator ||
+                !session->coordinator->waitingForSharedEnvironmentRecovery()) {
+                continue;
+            }
+            const HRESULT resume =
+                session->coordinator->ResumeSharedEnvironmentRecovery();
+            if (FAILED(resume) && resume != E_PENDING) {
+                AppendDiagnostic(
+                    L"Rich media shared environment recovery failed generation=" +
+                    std::to_wstring(exit.generation) + L" hr=" +
+                    std::to_wstring(static_cast<long>(resume)));
+                StopEmbeddedMediaSession(key, L"shared-environment-recovery-failed");
+            }
+        }
     }
 
     void OnRichMediaStateChanged(const EmbeddedMediaSessionKey& sessionKey) {
@@ -5152,6 +5217,10 @@ private:
                 OnRichMediaStateChanged(sessionKey);
             });
         };
+        configuration.sharedEnvironmentExited = [this](
+            const widgetrail::richmedia::EnvironmentExit& exit) {
+            QueueSharedMediaEnvironmentExited(exit);
+        };
         configuration.playbackEvent = [this, sessionKey](
             const widgetrail::richmedia::PlaybackEvent& event) {
             InvokeMediaCallbackGuarded(L"playback-event", [&] {
@@ -5197,8 +5266,13 @@ private:
                         : widgetrail::richmedia::Lifecycle::Absent)));
           });
         };
-        const HRESULT initialize =
-            session->coordinator->Initialize(std::move(configuration));
+        const auto coordinator = session->coordinator;
+        const HRESULT initialize = coordinator->Initialize(std::move(configuration));
+        session = mediaSessions_.Find(sessionKey);
+        if (!session || !session->authority || !session->coordinator ||
+            session->coordinator.get() != coordinator.get()) {
+            return;
+        }
         if (initialize == E_PENDING) {
             incompleteAdmission.release();
             AppendDiagnostic(
@@ -16864,6 +16938,7 @@ private:
     widgetrail::richmedia::RichMediaEnvironmentHandle richMediaEnvironment_{
         widgetrail::richmedia::RichMediaSurfaceCoordinator::CreateSharedEnvironment()};
     widgetrail::media::MediaSessionManager mediaSessions_{richMediaEnvironment_};
+    std::uint64_t retiredSharedMediaEnvironmentGeneration_{};
     std::optional<EmbeddedMediaSessionKey> richMediaProofSessionKey_;
     std::optional<EmbeddedMediaSessionKey> embeddedMediaAccessibilityOwner_;
     long long embeddedMediaSessionPlaybackEventSequence_{};

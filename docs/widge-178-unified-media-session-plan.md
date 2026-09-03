@@ -15,10 +15,10 @@ For this item only, this file is implementation-owned after assignment. The plat
 | Implementation owner | Standing platform implementation task |
 | Branch | `codex/widge-178-unified-media-session` |
 | Worktree | `C:\Users\dwive\.codex\visualizations\2026\08\11\019fef3b-7e94-70f0-b329-3551f8dd805b\widge178` |
-| Current phase | `[~]` Exact three-path fullscreen follow-up is staged and cached-diff-check green; local commit pending |
-| Last completed checkpoint | `PinnedSurfaceTestsOnly` passed 465 checks. Final staged scope is only `main.cpp`, `PinnedSurfaceHostTests.cpp`, and this plan; staged diff-check is green. The accepted OverlayHost PID 25636 was not rebuilt or replaced |
-| Next checkpoint | Create the local `[WIDGE-178]` fullscreen follow-up commit, verify clean status/tree, and report the separate shared-environment recovery residual for reviewer triage |
-| Last updated | 2026-09-03 by implementation agent immediately before local follow-up commit |
+| Current phase | `[~]` Exact shared-recovery four-path candidate is staged and cached-diff-check green; local commit pending |
+| Last completed checkpoint | Replacement `Release -SkipTests` is green and the staged scope is exactly `RichMediaSurfaceCoordinator.h/.cpp`, `main.cpp`, and this plan; staged diff-check is green; no tests ran under physical-first ordering |
+| Next checkpoint | Create the local `[WIDGE-178]` shared-environment recovery candidate commit, verify clean status/tree, and stop for reviewer/user physical recovery validation |
+| Last updated | 2026-09-03 by implementation agent immediately before local shared-recovery candidate commit |
 
 Progress marks used throughout this file:
 
@@ -34,6 +34,13 @@ Progress marks used throughout this file:
 - `[~]` Generic reconciliation now treats only that exact checkpoint as fullscreen overlay layout. It must not use ordinary `committedWidgetVisualState_`, which fullscreen intentionally does not publish. The coordinator-only hide is suppressed only while the exact fullscreen request remains current, and transaction-owned `WM_SIZE` does not revoke the controller after fullscreen placement.
 - `[!]` Separate physical red, out of this fullscreen correction: at 12:47:47.448 a new YouTube Play-a-link session faulted in `RichMediaSurfaceCoordinator::Initialize -> RecoverExitedSharedEnvironment` with `shared-environment-exited-with-live-controller`, HRESULT `0x800700AA` (`ERROR_BUSY`). Browser-process-exited was set while shared live controller owners remained nonzero. Existing WebView2 processes and the Windows Application log supplied no browser-exit cause. The shared generation cannot presently broadcast-retire its live sessions and recreate. This is the plan's existing unchecked shared-environment recovery risk; do not alter it in this fullscreen slice.
 - `[ ]` Before build: review the exact `main.cpp` follow-up diff for session-key, generation, geometry, endpoint, and non-fullscreen regression boundaries. No new tests are authorized before physical fullscreen acceptance.
+
+## Shared environment recovery follow-up
+
+- `[~]` BrowserProcessExited is a failed exact shared WebView2 environment generation, not a per-controller renderer fault. The pinned WebView2 `ICoreWebView2BrowserProcessExitedEventArgs` interface exposes both browser PID and `BrowserProcessExitKind`; record those bounded diagnostics with generation, live-controller count, and waiter count only.
+- `[~]` The host will post one generation-keyed recovery event, retire every controller/session bound to that failed generation exactly once, preserve other generations and widget workers/providers, and re-resolve the registry record after every `Initialize`/synchronous callback before claiming admission.
+- `[~]` New admissions seeing a retired generation defer into one recovery waiter path rather than faulting `ERROR_BUSY`; after old owner drain, one current retained declaration begins a replacement shared environment and other current waiters join it. Removed/stale declarations are never resumed.
+- `[ ]` Physical-first: no new or changed tests before the recovered-generation candidate is accepted. Do not modify the accepted fullscreen behavior or the separate unknown root cause of the original browser exit.
 
 ## Compaction recovery procedure
 

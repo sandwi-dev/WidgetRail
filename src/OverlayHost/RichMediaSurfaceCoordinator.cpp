@@ -215,6 +215,7 @@ struct RichMediaSurfaceCoordinator::CallbackLease final {
 struct RichMediaSurfaceCoordinator::EnvironmentSignal final {
     std::atomic_bool browserProcessExited{};
     std::atomic<DWORD> browserProcessId{};
+    std::atomic_uint32_t browserProcessExitKind{};
 };
 
 class RichMediaEnvironment final {
@@ -249,6 +250,8 @@ private:
     std::uint64_t generation{};
     std::size_t liveControllerOwners{};
     bool faulted{};
+    bool browserExitNotified{};
+    std::function<void(const EnvironmentExit&)> browserExitNotification;
 
     friend class RichMediaSurfaceCoordinator;
     friend class RichMediaSurfaceCoordinatorTestPeer;
@@ -260,12 +263,27 @@ struct RichMediaSurfaceCoordinator::FrameSubscription final {
 };
 
 void RichMediaSurfaceCoordinator::RecordBrowserProcessExit(
-    const std::shared_ptr<EnvironmentSignal>& signal, const DWORD processId) noexcept {
-    if (!signal) return;
+    const RichMediaEnvironmentHandle& sharedEnvironment,
+    const DWORD processId, const std::uint32_t exitKind) noexcept {
+    if (!sharedEnvironment || !sharedEnvironment->signal) return;
+    const auto& signal = sharedEnvironment->signal;
     if (processId != 0 &&
         signal->browserProcessId.load(std::memory_order_acquire) == 0)
         signal->browserProcessId.store(processId, std::memory_order_release);
-    signal->browserProcessExited.store(true, std::memory_order_release);
+    signal->browserProcessExitKind.store(exitKind, std::memory_order_release);
+    if (signal->browserProcessExited.exchange(true, std::memory_order_acq_rel)) return;
+    if (!sharedEnvironment->browserExitNotified &&
+        sharedEnvironment->browserExitNotification) {
+        sharedEnvironment->browserExitNotified = true;
+        sharedEnvironment->browserExitNotification({
+            sharedEnvironment->generation,
+            GetTickCount64(),
+            signal->browserProcessId.load(std::memory_order_acquire),
+            exitKind,
+            sharedEnvironment->liveControllerOwners,
+            sharedEnvironment->waiters.size(),
+        });
+    }
 }
 
 bool RichMediaSurfaceCoordinator::BrowserProcessExitObserved() const noexcept {
@@ -312,6 +330,8 @@ HRESULT RichMediaSurfaceCoordinator::Initialize(Configuration configuration) noe
         shared.profileRootDirectory != configuration.profileRootDirectory) return E_INVALIDARG;
     profileRootDirectory_ = configuration.profileRootDirectory;
     shared.profileRootDirectory = configuration.profileRootDirectory;
+    if (!shared.browserExitNotification && configuration.sharedEnvironmentExited)
+        shared.browserExitNotification = configuration.sharedEnvironmentExited;
     const HRESULT recovery = RecoverExitedSharedEnvironment();
     if (installedAppReferer_.empty()) {
         const auto referer = ResolveInstalledAppReferer();
@@ -319,10 +339,18 @@ HRESULT RichMediaSurfaceCoordinator::Initialize(Configuration configuration) noe
     }
     configuration_ = std::move(configuration);
     state_ = {};
+    waitingForSharedEnvironmentRecovery_ = false;
     controllerGeometryApplied_ = false;
     desiredVisible_ = configuration_.initiallyVisible;
     state_.authority.surfaceGeneration = ++nextSurfaceGeneration_;
     state_.authority.sessionGeneration = ++nextSessionGeneration_;
+    if (recovery == E_PENDING) {
+        waitingForSharedEnvironmentRecovery_ = true;
+        state_.lifecycle = Lifecycle::EnvironmentCreating;
+        Emit(L"Rich media lifecycle=environment-recovery-waiting generation=" +
+             std::to_wstring(state_.authority.sessionGeneration));
+        return E_PENDING;
+    }
     if (FAILED(recovery)) {
         Fault(L"shared-environment-exited-with-live-controller", recovery);
         return S_OK;
@@ -353,7 +381,7 @@ HRESULT RichMediaSurfaceCoordinator::RecoverExitedSharedEnvironment() noexcept {
         !shared.signal->browserProcessExited.load(std::memory_order_acquire))
         return S_FALSE;
     if (shared.liveControllerOwners != 0 || !shared.waiters.empty())
-        return HRESULT_FROM_WIN32(ERROR_BUSY);
+        return E_PENDING;
     if (shared.environment5 && shared.browserProcessExitedToken.value) {
         const HRESULT remove = shared.environment5->remove_BrowserProcessExited(
             shared.browserProcessExitedToken);
@@ -368,8 +396,37 @@ HRESULT RichMediaSurfaceCoordinator::RecoverExitedSharedEnvironment() noexcept {
     shared.signal.reset();
     shared.profileDirectory.clear();
     shared.faulted = false;
+    shared.browserExitNotified = false;
     shared.lifecycle = EnvironmentLifecycle::Cold;
     return S_OK;
+}
+
+HRESULT RichMediaSurfaceCoordinator::ResumeSharedEnvironmentRecovery() noexcept {
+    if (!waitingForSharedEnvironmentRecovery_ ||
+        state_.lifecycle != Lifecycle::EnvironmentCreating) {
+        return S_FALSE;
+    }
+    const HRESULT recovery = RecoverExitedSharedEnvironment();
+    if (recovery == E_PENDING) return E_PENDING;
+    if (FAILED(recovery)) return recovery;
+    waitingForSharedEnvironmentRecovery_ = false;
+    auto& shared = *sharedEnvironment_;
+    if (shared.lifecycle == EnvironmentLifecycle::Ready && shared.environment &&
+        (!shared.signal ||
+         !shared.signal->browserProcessExited.load(std::memory_order_acquire))) {
+        environment_ = shared.environment;
+        environment5_ = shared.environment5;
+        environmentSignal_ = shared.signal;
+        environmentLifecycle_ = EnvironmentLifecycle::Ready;
+        nextEnvironmentGeneration_ = shared.generation;
+        environmentProfileDirectory_ = shared.profileDirectory;
+        state_.authority.environmentGeneration = shared.generation;
+        return BeginController();
+    }
+    if (shared.lifecycle == EnvironmentLifecycle::Creating)
+        return AwaitSharedEnvironment();
+    if (shared.lifecycle != EnvironmentLifecycle::Cold) return E_UNEXPECTED;
+    return BeginEnvironment();
 }
 
 HRESULT RichMediaSurfaceCoordinator::Retry(Configuration configuration) noexcept {
@@ -577,16 +634,21 @@ HRESULT RichMediaSurfaceCoordinator::CompleteSharedEnvironmentCreation(
     sharedEnvironment->environment = environment;
     sharedEnvironment->lifecycle = EnvironmentLifecycle::Ready;
     sharedEnvironment->faulted = false;
+    sharedEnvironment->browserExitNotified = false;
     sharedEnvironment->signal = std::make_shared<EnvironmentSignal>();
     if (SUCCEEDED(sharedEnvironment->environment.As(
             &sharedEnvironment->environment5))) {
-        const auto environmentSignal = sharedEnvironment->signal;
+        const auto environmentHandle = sharedEnvironment;
         (void)sharedEnvironment->environment5->add_BrowserProcessExited(
             Callback<ICoreWebView2BrowserProcessExitedEventHandler>(
-                [environmentSignal](ICoreWebView2Environment*, ICoreWebView2BrowserProcessExitedEventArgs* args) {
+                [environmentHandle](ICoreWebView2Environment*, ICoreWebView2BrowserProcessExitedEventArgs* args) {
                     UINT32 browserProcessId{};
                     if (args) (void)args->get_BrowserProcessId(&browserProcessId);
-                    RecordBrowserProcessExit(environmentSignal, browserProcessId);
+                    COREWEBVIEW2_BROWSER_PROCESS_EXIT_KIND exitKind{};
+                    if (args) (void)args->get_BrowserProcessExitKind(&exitKind);
+                    RecordBrowserProcessExit(
+                        environmentHandle, browserProcessId,
+                        static_cast<std::uint32_t>(exitKind));
                     return S_OK;
                 }).Get(), &sharedEnvironment->browserProcessExitedToken);
     }
@@ -2138,6 +2200,7 @@ void RichMediaSurfaceCoordinator::BeginSessionTeardown() noexcept {
 void RichMediaSurfaceCoordinator::CompleteSessionTeardown() noexcept {
     if (!teardownBegun_) return;
     state_ = {};
+    waitingForSharedEnvironmentRecovery_ = false;
     desiredVisible_ = false;
     controllerGeometryApplied_ = false;
     pageReady_ = false;
