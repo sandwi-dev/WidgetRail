@@ -291,6 +291,69 @@ function completePreference(start, signal) {
   });
 }
 
+function waitForMuted(command) {
+  if (pendingProviderOperation) {
+    return Promise.reject(
+      WidgetRailEmbeddedMediaAdapter.error("player-operation-overlap"));
+  }
+  return new Promise((resolve, reject) => {
+    let pollTimer = 0;
+    let remainingPolls = 60;
+    const finish = (error = null) => {
+      if (pendingProviderOperation !== pending) return;
+      pendingProviderOperation = null;
+      pending.cleanup();
+      if (error) reject(error);
+      else resolve({ playbackState: stateName(player.getPlayerState()) });
+    };
+    const cancel = () => finish(
+      WidgetRailEmbeddedMediaAdapter.error("authority-replaced"));
+    const poll = () => {
+      if (pendingProviderOperation !== pending) return;
+      const playerVideoId = currentPlayerVideoId();
+      if (command.sequence <= 0 || command.mediaKey !== mediaKey ||
+          (playerVideoId && playerVideoId !== command.mediaKey)) {
+        finish(WidgetRailEmbeddedMediaAdapter.error("media-key-mismatch"));
+        return;
+      }
+      if (player.isMuted() === command.muted) {
+        finish();
+        return;
+      }
+      if (--remainingPolls <= 0) {
+        finish(WidgetRailEmbeddedMediaAdapter.error("player-operation-timeout"));
+        return;
+      }
+      pollTimer = setTimeout(poll, 25);
+    };
+    const pending = {
+      expectedStates: null,
+      expectedPlaybackRate: null,
+      mediaKey: command.mediaKey,
+      commandSequence: command.sequence,
+      resolve,
+      reject,
+      cleanup: () => {
+        clearTimeout(pollTimer);
+        command.signal.removeEventListener("abort", cancel);
+      },
+    };
+    pendingProviderOperation = pending;
+    command.signal.addEventListener("abort", cancel, { once: true });
+    if (command.signal.aborted) {
+      cancel();
+      return;
+    }
+    try {
+      if (command.muted) player.mute();
+      else player.unMute();
+      poll();
+    } catch (error) {
+      finish(error);
+    }
+  });
+}
+
 function onReady() {
   clearTimeout(apiTimer);
   resolveApi(player);
@@ -462,10 +525,7 @@ adapter = WidgetRailEmbeddedMediaAdapter.create({
     },
     async setMuted(command) {
       await readyFor(command);
-      return completePreference(() => {
-        if (command.muted) player.mute();
-        else player.unMute();
-      }, command.signal);
+      return waitForMuted(command);
     },
     async setLoop(command) {
       await readyFor(command);

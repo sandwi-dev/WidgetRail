@@ -1122,6 +1122,7 @@ public sealed partial class YouTubeWidgetTests
         StringAssert.Contains(adapter, "onPlaybackRateChange");
         StringAssert.Contains(adapter, "getAvailablePlaybackRates()");
         StringAssert.Contains(adapter, "waitForPlaybackRate(command)");
+        StringAssert.Contains(adapter, "waitForMuted(command)");
         StringAssert.Contains(adapter, "player-operation-timeout");
         StringAssert.Contains(adapter, "client-identity-rejected");
         StringAssert.Contains(adapter, "embedding-disabled");

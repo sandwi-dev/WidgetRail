@@ -98,6 +98,10 @@ let playerErrorCallback = null;
 let playbackRateTimeout = null;
 let suppressPlaybackRateEvent = false;
 let providerErrorCode = null;
+let mutedValueAfterReads = 0;
+let pendingMutedValue = null;
+let holdMutedPolls = false;
+let heldMutedPolls = [];
 function emitProviderError() {
   if (providerErrorCode === null) return false;
   const code = providerErrorCode;
@@ -133,9 +137,16 @@ const player = {
   },
   getPlaybackRate() { return this.playbackRate; },
   getAvailablePlaybackRates() { return [...this.availablePlaybackRates]; },
-  mute() { this.muted = true; emitProviderError(); },
-  unMute() { this.muted = false; emitProviderError(); },
-  isMuted() { return this.muted; },
+  mute() { requestMuted(true); },
+  unMute() { requestMuted(false); },
+  isMuted() {
+    if (pendingMutedValue !== null && Number.isFinite(mutedValueAfterReads) &&
+        --mutedValueAfterReads <= 0) {
+      this.muted = pendingMutedValue;
+      pendingMutedValue = null;
+    }
+    return this.muted;
+  },
   setLoop(value) { this.loop = value; emitProviderError(); },
   getVideoData() { return {video_id:this.videoId}; },
   getPlayerState() { return this.state; },
@@ -167,7 +178,9 @@ const context = vm.createContext({
   setInterval() { return 1; },
   clearInterval() {},
   setTimeout(callback, delay) {
-    if (delay < 1_000) queueMicrotask(callback);
+    if (delay === 25 && holdMutedPolls) {
+      heldMutedPolls.push(callback);
+    } else if (delay < 1_000) queueMicrotask(callback);
     else if (delay === 1_500) playbackRateTimeout = callback;
     return 1;
   },
@@ -196,7 +209,7 @@ if (!messageListener)
 let commandId = 40;
 let commandSequence = 70;
 let currentMediaKey = profile === 'html-media' ? 'aurora-video-0' : 'M7lc1UVf-VE';
-const authority = {
+let authority = {
   environmentGeneration:1,
   surfaceGeneration:2,
   sessionGeneration:3,
@@ -224,6 +237,8 @@ await exercise({source:'bootstrap:load', command:'load'});
 for (const requirement of requirements) await exercise(requirement);
 if (request.playbackCommands.includes('SetPlaybackRate'))
   await exercisePlaybackRateContract();
+if (request.playbackCommands.includes('SetMuted'))
+  await exerciseMutedContract();
 if (request.playbackCommands.some(command =>
   ['SetPlaybackRate', 'SetMuted', 'SetLoop'].includes(command)))
   await exercisePreferenceProviderErrors();
@@ -247,10 +262,13 @@ async function exercise(requirement, options = {}) {
     positionSeconds:12,
     volume:.65,
     playbackRate:options.playbackRate ?? 1.25,
-    muted:true,
+    muted:options.muted ?? true,
     loop:false,
   };
   providerErrorCode = options.providerErrorCode ?? null;
+  mutedValueAfterReads = options.mutedValueAfterReads ?? 0;
+  holdMutedPolls = options.triggerMutedTimeout === true;
+  if (holdMutedPolls) heldMutedPolls = [];
   await send(message);
   providerErrorCode = null;
   if (options.emitSuppressedRate) {
@@ -262,6 +280,14 @@ async function exercise(requirement, options = {}) {
       fail('rate-timeout-missing', `${requirement.source} did not arm its timeout`);
     playbackRateTimeout();
     await flush();
+  }
+  if (options.triggerMutedTimeout) {
+    for (let index = 0; index < 60 && heldMutedPolls.length > 0; index++) {
+      heldMutedPolls.shift()();
+      await flush();
+    }
+    holdMutedPolls = false;
+    heldMutedPolls = [];
   }
   const armed = pageEvents.slice(before).find(event =>
     event.type === 'armed' && event.commandId === id && event.commandSequence === sequence);
@@ -368,6 +394,74 @@ async function exercisePreferenceProviderErrors() {
       fail('preference-provider-error-media-key',
         `${source} terminal lost current media authority`);
   }
+}
+
+async function exerciseMutedContract() {
+  player.state = 2;
+  player.muted = false;
+  pendingMutedValue = null;
+  const muted = await exercise(
+    {source:'muted:delayed-success', command:'muted'},
+    {muted:true, mutedValueAfterReads:3, expectedPlaybackState:'paused'});
+  if (muted.muted !== true)
+    fail('muted-delayed-value', 'delayed mute acknowledged before the provider applied it');
+
+  const unmuted = await exercise(
+    {source:'muted:delayed-unmute', command:'muted'},
+    {muted:false, mutedValueAfterReads:3, expectedPlaybackState:'paused'});
+  if (unmuted.muted !== false)
+    fail('unmuted-delayed-value', 'delayed unmute acknowledged before the provider applied it');
+
+  player.muted = false;
+  pendingMutedValue = null;
+  await exercise(
+    {source:'muted:timeout', command:'muted'},
+    {muted:true, mutedValueAfterReads:Number.POSITIVE_INFINITY,
+      expectedErrorCode:'player-operation-timeout', triggerMutedTimeout:true});
+
+  player.muted = false;
+  pendingMutedValue = null;
+  holdMutedPolls = true;
+  heldMutedPolls = [];
+  const staleId = ++commandId;
+  const staleSequence = ++commandSequence;
+  const staleStart = pageEvents.length;
+  await send({command:'muted', ...authority, commandId:staleId,
+    commandSequence:staleSequence, mediaKey:currentMediaKey, muted:true});
+  const stalePoll = heldMutedPolls.at(-1);
+  if (!stalePoll)
+    fail('muted-stale-poll-missing', 'mute did not retain its provider confirmation poll');
+  if (pageEvents.slice(staleStart).some(event =>
+      event.commandId === staleId && event.commandSequence === staleSequence))
+    fail('muted-stale-early-terminal', 'unconfirmed mute published a terminal');
+
+  const successorAuthority = {...authority, documentGeneration:authority.documentGeneration + 1};
+  await send({command:'initialize', ...successorAuthority, commandId:++commandId});
+  authority = successorAuthority;
+  stalePoll();
+  await flush();
+  if (pageEvents.slice(staleStart).some(event =>
+      event.commandId === staleId && event.commandSequence === staleSequence))
+    fail('muted-stale-terminal', 'retired mute acknowledged the successor authority');
+
+  holdMutedPolls = false;
+  heldMutedPolls = [];
+  pendingMutedValue = null;
+  const successor = await exercise(
+    {source:'muted:successor-authority', command:'muted'},
+    {muted:true, mutedValueAfterReads:2, expectedPlaybackState:'paused'});
+  if (successor.muted !== true)
+    fail('muted-successor-value', 'successor mute did not publish confirmed provider state');
+}
+
+function requestMuted(value) {
+  if (emitProviderError()) return;
+  if (mutedValueAfterReads <= 0) {
+    player.muted = value;
+    pendingMutedValue = null;
+    return;
+  }
+  pendingMutedValue = value;
 }
 
 async function send(data) {
