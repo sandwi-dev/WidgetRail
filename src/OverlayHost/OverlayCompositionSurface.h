@@ -201,6 +201,10 @@ public:
     HRESULT CreateExternalContentTarget(IUnknown** target) noexcept;
     HRESULT CreateExternalContentTarget(
         ExternalContentEndpoint endpoint, IUnknown** target) noexcept;
+    // Creates an unattached visual whose lifetime belongs to the caller. A
+    // retained external-content session can keep its controller rooted here
+    // while neither visible endpoint owns presentation.
+    HRESULT CreateExternalContentParkingTarget(IUnknown** target) noexcept;
     HRESULT CommitExternalContentPresentation(
         const RECT& bounds, bool visible, CommitTiming& timing) noexcept;
     HRESULT CommitExternalContentPresentation(

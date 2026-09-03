@@ -208,6 +208,17 @@ HRESULT OverlayCompositionSurface::CreateExternalContentTarget(
     return visual.CopyTo(target);
 }
 
+HRESULT OverlayCompositionSurface::CreateExternalContentParkingTarget(
+    IUnknown** target) noexcept {
+    if (!target) return E_POINTER;
+    *target = nullptr;
+    if (!device_) return E_UNEXPECTED;
+    Microsoft::WRL::ComPtr<IDCompositionVisual2> visual;
+    const HRESULT result = device_->CreateVisual(visual.ReleaseAndGetAddressOf());
+    if (FAILED(result)) return result;
+    return visual.CopyTo(target);
+}
+
 HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
     const ExternalContentEndpoint endpoint, const RECT& bounds,
     const bool visible, CommitTiming& timing) noexcept {
