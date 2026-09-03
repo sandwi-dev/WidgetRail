@@ -286,14 +286,12 @@ public sealed class BridgeCatalog
             trustedCatalogPath,
             installedCatalogRoot,
             workerHostExecutable,
-            observation: null,
             cancellationToken);
 
     internal static async Task<BridgeCatalogLoadResult> LoadWithInstalledObservedAsync(
         string trustedCatalogPath,
         string installedCatalogRoot,
         string workerHostExecutable,
-        Action<BridgeInstalledCatalogObservation>? observation,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
@@ -313,14 +311,17 @@ public sealed class BridgeCatalog
         {
             var code = exception is WidgetPackageException package ? package.Code : "catalog_unavailable";
             warnings.Add($"Installed widget catalog was ignored ({SafeDiagnostic(code)}).");
-            observation?.Invoke(new BridgeInstalledCatalogObservation(
-                Succeeded: false,
-                PackageCount: 0,
-                VersionCount: 0,
-                FileCount: 0,
-                ByteCount: 0,
-                ElapsedMilliseconds: BoundedElapsedMilliseconds(discoveryStarted)));
-            return new BridgeCatalogLoadResult(trusted, warnings, InstalledCatalogValid: false);
+            return new BridgeCatalogLoadResult(
+                trusted, warnings, InstalledCatalogValid: false)
+            {
+                InstalledCatalogObservation = new BridgeInstalledCatalogObservation(
+                    Succeeded: false,
+                    PackageCount: 0,
+                    VersionCount: 0,
+                    FileCount: 0,
+                    ByteCount: 0,
+                    ElapsedMilliseconds: BoundedElapsedMilliseconds(discoveryStarted)),
+            };
         }
 
         var combined = trusted._ordered.ToList();
@@ -450,18 +451,19 @@ public sealed class BridgeCatalog
                 VerifiedPackageFiles = widget.ActiveVersion.VerifiedFiles,
             }));
         }
-        var admitted = new BridgeCatalogLoadResult(
-            new BridgeCatalog(combined), warnings, InstalledCatalogValid: true);
-        observation?.Invoke(new BridgeInstalledCatalogObservation(
-            Succeeded: true,
-            PackageCount: installed.Widgets.Count,
-            VersionCount: installed.Widgets.Sum(widget => widget.Versions.Count),
-            FileCount: installed.Widgets.Sum(widget =>
-                widget.Versions.Sum(version => version.VerifiedEntryCount)),
-            ByteCount: installed.Widgets.Sum(widget =>
-                widget.Versions.Sum(version => version.VerifiedTotalBytes)),
-            ElapsedMilliseconds: BoundedElapsedMilliseconds(discoveryStarted)));
-        return admitted;
+        return new BridgeCatalogLoadResult(
+            new BridgeCatalog(combined), warnings, InstalledCatalogValid: true)
+        {
+            InstalledCatalogObservation = new BridgeInstalledCatalogObservation(
+                Succeeded: true,
+                PackageCount: installed.Widgets.Count,
+                VersionCount: installed.Widgets.Sum(widget => widget.Versions.Count),
+                FileCount: installed.Widgets.Sum(widget =>
+                    widget.Versions.Sum(version => version.VerifiedEntryCount)),
+                ByteCount: installed.Widgets.Sum(widget =>
+                    widget.Versions.Sum(version => version.VerifiedTotalBytes)),
+                ElapsedMilliseconds: BoundedElapsedMilliseconds(discoveryStarted)),
+        };
     }
 
     internal static BridgeCatalog LoadTrusted(
@@ -943,7 +945,10 @@ internal readonly record struct BridgeInstalledCatalogObservation(
 public sealed record BridgeCatalogLoadResult(
     BridgeCatalog Catalog,
     IReadOnlyList<string> Warnings,
-    bool InstalledCatalogValid = true);
+    bool InstalledCatalogValid = true)
+{
+    internal BridgeInstalledCatalogObservation? InstalledCatalogObservation { get; init; }
+}
 
 public sealed class BridgeCatalogException(string message, Exception? innerException = null)
     : Exception(message, innerException);

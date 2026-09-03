@@ -114,7 +114,6 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 _trustedCatalogPath,
                 _installedCatalogRoot,
                 _workerHostExecutable,
-                _catalogLoadObserved,
                 cancellationToken));
     }
 
@@ -233,6 +232,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             _beforePublicationCheck?.Invoke();
             BridgeCatalogChanged? changed = null;
             IReadOnlyList<string>? diagnosticsToPublish = null;
+            BridgeInstalledCatalogObservation? installedCatalogObservationToPublish = null;
             BridgeCatalogReloadResult result;
             lock (_stateGate)
             {
@@ -241,6 +241,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                         false, true, _revision, _current,
                         ["Widget catalog reload result was superseded; retained the current revision."]);
 
+                installedCatalogObservationToPublish = loaded?.InstalledCatalogObservation;
                 if (loadFailureWarnings is not null)
                 {
                     _lastDiagnostics = loadFailureWarnings;
@@ -291,6 +292,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 }
             }
 
+            if (installedCatalogObservationToPublish is { } installedCatalogObservation)
+                _catalogLoadObserved?.Invoke(installedCatalogObservation);
             if (diagnosticsToPublish is not null)
                 Diagnostics?.Invoke(this, diagnosticsToPublish);
             if (changed is not null) Changed?.Invoke(this, changed);

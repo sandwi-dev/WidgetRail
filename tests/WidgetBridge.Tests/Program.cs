@@ -2794,6 +2794,7 @@ static async Task CatalogReloadAuthorityIsLatestWinsAndCancellable()
         new TaskCompletionSource<BridgeCatalogLoadResult>(TaskCreationOptions.RunContinuationsAsynchronously),
     };
     var boundaryInvocation = -1;
+    var admittedTerminalObservations = new List<BridgeInstalledCatalogObservation>();
     await using var boundaryMonitor = new BridgeCatalogMonitor(
         trustedFiles.Path,
         installedRoot.Path,
@@ -2807,6 +2808,7 @@ static async Task CatalogReloadAuthorityIsLatestWinsAndCancellable()
             boundaryStarts[index].TrySetResult(true);
             return await boundaryCompletions[index].Task.WaitAsync(cancellationToken);
         },
+        catalogLoadObserved: observation => admittedTerminalObservations.Add(observation),
         beforePublicationCheck: () =>
         {
             if (Interlocked.Increment(ref boundaryChecks) != 1) return;
@@ -2816,7 +2818,16 @@ static async Task CatalogReloadAuthorityIsLatestWinsAndCancellable()
         });
     var forced = boundaryMonitor.ReloadAfterMutationAsync();
     await boundaryStarts[0].Task.WaitAsync(TimeSpan.FromSeconds(3));
-    boundaryCompletions[0].TrySetResult(new BridgeCatalogLoadResult(trusted, []));
+    boundaryCompletions[0].TrySetResult(new BridgeCatalogLoadResult(trusted, [])
+    {
+        InstalledCatalogObservation = new BridgeInstalledCatalogObservation(
+            Succeeded: true,
+            PackageCount: 1,
+            VersionCount: 1,
+            FileCount: 1,
+            ByteCount: 1,
+            ElapsedMilliseconds: 1),
+    });
     Assert.True(boundaryReached.Wait(TimeSpan.FromSeconds(3)),
         "The first reload did not reach the atomic publication boundary.");
     var coalesced = boundaryMonitor.ReloadGuaranteedForTesting(forceRevision: false);
@@ -2824,12 +2835,25 @@ static async Task CatalogReloadAuthorityIsLatestWinsAndCancellable()
     var supersededAtCommit = await forced.WaitAsync(TimeSpan.FromSeconds(3));
     Assert.False(supersededAtCommit.Published,
         "A reload published after a newer demand won the atomic boundary.");
+    Assert.Equal(0, admittedTerminalObservations.Count);
     await boundaryStarts[1].Task.WaitAsync(TimeSpan.FromSeconds(3));
-    boundaryCompletions[1].TrySetResult(new BridgeCatalogLoadResult(trusted, []));
+    boundaryCompletions[1].TrySetResult(new BridgeCatalogLoadResult(trusted, [])
+    {
+        InstalledCatalogObservation = new BridgeInstalledCatalogObservation(
+            Succeeded: true,
+            PackageCount: 2,
+            VersionCount: 2,
+            FileCount: 2,
+            ByteCount: 2,
+            ElapsedMilliseconds: 2),
+    });
     var forcedSuccessor = await coalesced.WaitAsync(TimeSpan.FromSeconds(3));
     Assert.True(forcedSuccessor.Published,
         "A watcher-equivalent successor lost the superseded mutation's forceRevision authority.");
     Assert.Equal(1L, forcedSuccessor.Revision);
+    Assert.Equal(1, admittedTerminalObservations.Count);
+    Assert.Equal(2, admittedTerminalObservations[0].PackageCount);
+    Assert.Equal(2L, admittedTerminalObservations[0].ElapsedMilliseconds);
 
     using var failureBoundaryReached = new ManualResetEventSlim();
     using var releaseFailureBoundary = new ManualResetEventSlim();
