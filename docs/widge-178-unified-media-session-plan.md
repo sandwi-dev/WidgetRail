@@ -15,10 +15,17 @@ For this item only, this file is implementation-owned after assignment. The plat
 | Implementation owner | Standing platform implementation task |
 | Branch | `codex/widge-178-unified-media-session` |
 | Worktree | `C:\Users\dwive\.codex\visualizations\2026\08\11\019fef3b-7e94-70f0-b329-3551f8dd805b\widge178` |
-| Current phase | `[~]` Physical pinned-resize follow-up: one coherent audited `Release -SkipTests` gate is green; exact four-path stage/diff-check and separate candidate commit are pending |
-| Last completed checkpoint | Replacement audited `Release -SkipTests` green: native/managed publications materialized with only the repository's four pre-existing `main.cpp` C4244 conversion warnings; no focused tests run under physical-first ordering |
-| Next checkpoint | Exact-stage/diff-check the four-path resize scope, create the separate local `[WIDGE-178]` candidate commit, verify clean tree and artifact hashes, and report for reviewer source review/launch |
-| Last updated | 2026-09-03 by implementation agent immediately after the resize-correction Release gate |
+| Current phase | `[~]` Pinned-resize production candidate `553e463b` is source-review ready; the manual compact-media grow/shrink gate is pending reviewer launch and user verification |
+| Last completed checkpoint | `553e463b87d72a2544014d6096ea86daedd6c8e5` (`[WIDGE-178] commit compact media after pinned resize`), tree `1bcf29f282ed0cba07cb52e2b8e90c4023373eda`; exact scope: this plan plus `WidgetSurfaceCoordinator.cpp/.h` and `main.cpp`. The audited `Release -SkipTests` gate is green with only the four pre-existing `main.cpp` C4244 conversion warnings. |
+| Next checkpoint | Reviewer source review/launch, then user manually verifies compact-pinned media through both growth and shrink. If accepted, run the proportional focused native follow-up; do not substitute a build for that physical gate. |
+| Last updated | 2026-09-03 by implementation agent after the pinned-resize candidate commit |
+
+### Current pinned-resize candidate evidence
+
+- **Source-review disposition:** pending reviewer review; this is a local, unintegrated candidate and no physical launch has been requested by this task.
+- **Physical gate:** compact-pinned embedded media must stay continuously visible through both width/height growth and shrink; the resize record must show an exact-session committed viewport after the coalesced paint. The host must not park, retarget, recreate, or otherwise retire the session merely because the geometry is pending.
+- **Deferred tests:** none ran under physical-first ordering. After physical acceptance, run only the directly owned pinned/embedded-media resize and authority-focused selectors.
+- **Audited Release artifacts:** `OverlayHost.exe` `86330369FE5B5A0A40434B4FE71492397A0D128F82E7D528FA090B0ED8575A1C`; runtime `WidgetBridge.exe` `11FE9D6823D44FB61A3D8B952B7EDD50E934D1158DA26065AB06C9BA47804B32`; runtime `WidgetWorkerHost.exe` `39BAAA35D214499F48D7D3489472AED3C9A62169ECCD56CFCD0FD5E669693E4F`; `widget-catalog.json` `0FAF10999798939730B18AF1630B65B9993B8192649A6E1F58C023B37E915514`.
 
 Progress marks used throughout this file:
 
