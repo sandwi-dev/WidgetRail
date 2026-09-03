@@ -1137,6 +1137,9 @@ public:
             embeddedMediaAuthority_.reset();
             embeddedMediaClientBounds_.reset();
             embeddedMediaClientClip_.reset();
+            overlayFullscreenMediaActivation_.reset();
+            testCaptureOverlayFullscreenNotifications_ = false;
+            testOverlayFullscreenNotifications_.clear();
             lastWidgetRenderResult_ = {};
             if (window_ && IsWindow(window_)) DestroyWindow(window_);
             window_ = nullptr;
@@ -1310,6 +1313,188 @@ public:
                 {0.0F, 0.0F, 320.0F, 180.0F},
                 {0.0F, 0.0F, 320.0F, 180.0F}});
         };
+        const auto attachCompositionEndpoint = [this](
+            const EmbeddedMediaProjection projection) {
+            Microsoft::WRL::ComPtr<IUnknown> target;
+            if (FAILED(compositionSurface_.CreateExternalContentTarget(
+                    CompositionEndpoint(projection), &target))) return false;
+            widgetrail::OverlayCompositionSurface::CommitTiming timing;
+            return SUCCEEDED(compositionSurface_.CommitExternalContentPresentation(
+                CompositionEndpoint(projection), RECT{0, 0, 320, 180}, true,
+                timing));
+        };
+        const auto verifyFreshCompositionEndpoints = [
+            this, &error, &attachCompositionEndpoint] {
+            if (!attachCompositionEndpoint(EmbeddedMediaProjection::Overlay))
+                return false;
+            widgetrail::OverlayCompositionSurface::CommitTiming timing;
+            if (FAILED(compositionSurface_.DetachExternalContentTarget(
+                    widgetrail::OverlayCompositionSurface::
+                        ExternalContentEndpoint::Overlay,
+                    timing))) return false;
+            if (!pinnedSurfaceCoordinator_.window() ||
+                !compositionSurface_.InitializePinnedExternalContentEndpoint(
+                    pinnedSurfaceCoordinator_.window(), error) ||
+                !attachCompositionEndpoint(EmbeddedMediaProjection::Pinned))
+                return false;
+            if (FAILED(compositionSurface_.DetachExternalContentTarget(
+                    widgetrail::OverlayCompositionSurface::
+                        ExternalContentEndpoint::Pinned,
+                    timing)) ||
+                FAILED(compositionSurface_.ReleasePinnedExternalContentEndpoint(
+                    timing))) return false;
+            return true;
+        };
+        using TransferFailureOperation = widgetrail::OverlayCompositionSurface::
+            ExternalContentFailureOperation;
+        const auto transferFailureRetiresBothEndpoints = [
+            this, runtimeGeneration, presentationGeneration, snapshotSequence,
+            &attachCompositionEndpoint, &error, &makeDescriptor, &makeSnapshot,
+            &mediaDeclaration, &preparePinnedCase, &seedOverlayGeometry,
+            &sessionRetired, &verifyFreshCompositionEndpoints](
+            const std::wstring_view key,
+            const EmbeddedMediaProjection source,
+            const widgetrail::richmedia::PresentationTransferFailureStage stage,
+            const TransferFailureOperation operation,
+            const bool removeDestinationGeometry = false) {
+            if (!preparePinnedCase(
+                    key, mediaDeclaration,
+                    makeDescriptor(runtimeGeneration, presentationGeneration),
+                    makeSnapshot(mediaDeclaration, snapshotSequence), stage))
+                return false;
+            if (source == EmbeddedMediaProjection::Overlay) {
+                widgetrail::OverlayCompositionSurface::CommitTiming timing;
+                if (FAILED(compositionSurface_.ReleasePinnedExternalContentEndpoint(
+                        timing))) return false;
+                embeddedMediaAuthority_->projection =
+                    EmbeddedMediaProjection::Overlay;
+            }
+            if (!attachCompositionEndpoint(source)) return false;
+            const auto destination = source == EmbeddedMediaProjection::Overlay
+                ? EmbeddedMediaProjection::Pinned
+                : EmbeddedMediaProjection::Overlay;
+            if (destination == EmbeddedMediaProjection::Overlay)
+                seedOverlayGeometry();
+            if (removeDestinationGeometry) {
+                if (destination == EmbeddedMediaProjection::Overlay)
+                    lastWidgetRenderResult_ = {};
+                else
+                    ++embeddedMediaAuthority_->sequence;
+            }
+            if (operation != TransferFailureOperation::None)
+                compositionSurface_.FailNextExternalContentOperationForTest(
+                    operation);
+            testEmbeddedMediaHandoffRetirementObserved_ = false;
+            if (TransferEmbeddedMediaSurface(destination, L"failure-matrix") ||
+                !sessionRetired() || !verifyFreshCompositionEndpoints())
+                return false;
+            if (!pinnedSurfaceCoordinator_.Unpin(
+                    widgetrail::pinned::WidgetSurfaceStopReason::Close))
+                return false;
+            state_ = widgetrail::OverlayState({}, {});
+            lastWidgetRenderResult_ = {};
+            return true;
+        };
+        constexpr std::array transferAttachFailures{
+            widgetrail::richmedia::PresentationTransferFailureStage::
+                VisibilityDetach,
+            widgetrail::richmedia::PresentationTransferFailureStage::
+                RootTargetAttach,
+            widgetrail::richmedia::PresentationTransferFailureStage::
+                ParentWindowAttach,
+            widgetrail::richmedia::PresentationTransferFailureStage::
+                GeometryAttach,
+            widgetrail::richmedia::PresentationTransferFailureStage::
+                VisibilityAttach,
+        };
+        int transferFailureCase = 0;
+        for (const auto source : {
+                 EmbeddedMediaProjection::Overlay,
+                 EmbeddedMediaProjection::Pinned}) {
+            for (const auto stage : transferAttachFailures) {
+                const auto key = L"transfer-failure-" +
+                    std::to_wstring(transferFailureCase++);
+                if (!transferFailureRetiresBothEndpoints(
+                        key, source, stage, TransferFailureOperation::None))
+                    return fail(50 + transferFailureCase);
+            }
+            const auto createFailure = source == EmbeddedMediaProjection::Overlay
+                ? TransferFailureOperation::CreatePinnedTarget
+                : TransferFailureOperation::CreateOverlayTarget;
+            if (!transferFailureRetiresBothEndpoints(
+                    L"transfer-create-failure-" +
+                        std::to_wstring(transferFailureCase++),
+                    source,
+                    widgetrail::richmedia::PresentationTransferFailureStage::None,
+                    createFailure)) return fail(50 + transferFailureCase);
+            if (!transferFailureRetiresBothEndpoints(
+                    L"transfer-geometry-failure-" +
+                        std::to_wstring(transferFailureCase++),
+                    source,
+                    widgetrail::richmedia::PresentationTransferFailureStage::None,
+                    TransferFailureOperation::None, true))
+                return fail(50 + transferFailureCase);
+            const auto detachFailure = source == EmbeddedMediaProjection::Overlay
+                ? TransferFailureOperation::DetachOverlay
+                : TransferFailureOperation::DetachPinned;
+            if (!transferFailureRetiresBothEndpoints(
+                    L"transfer-detach-failure-" +
+                        std::to_wstring(transferFailureCase++),
+                    source,
+                    widgetrail::richmedia::PresentationTransferFailureStage::None,
+                    detachFailure)) return fail(50 + transferFailureCase);
+        }
+        if (!transferFailureRetiresBothEndpoints(
+                L"transfer-release-failure", EmbeddedMediaProjection::Pinned,
+                widgetrail::richmedia::PresentationTransferFailureStage::None,
+                TransferFailureOperation::ReleasePinnedEndpoint))
+            return fail(70);
+        auto fullscreenDeclaration = mediaDeclaration;
+        fullscreenDeclaration.overlayFullscreenCapable = true;
+        const auto fullscreenSnapshot = makeSnapshot(
+            fullscreenDeclaration, snapshotSequence);
+        sessions_.SeedCurrentPresentationForEmbeddedMediaHandoffTest(
+            makeDescriptor(runtimeGeneration, presentationGeneration),
+            fullscreenSnapshot);
+        sessions_.SeedLifecycleForEmbeddedMediaHandoffTest(
+            std::wstring{widgetId}, widgetrail::WidgetLifecycleState::Visible);
+        seedSession(
+            L"fullscreen-parking", EmbeddedMediaProjection::Overlay,
+            widgetrail::richmedia::PresentationTransferFailureStage::None,
+            fullscreenDeclaration, true);
+        state_ = widgetrail::OverlayState(
+            {}, std::vector<std::wstring>{std::wstring{widgetId}});
+        if (!state_.OpenWidgetWithTrayFocus(widgetId)) return fail(71);
+        lastWidgetRenderResult_ = {};
+        testCaptureOverlayFullscreenNotifications_ = true;
+        testOverlayFullscreenNotifications_.clear();
+        if (EnterOverlayFullscreenMedia() || OverlayFullscreenMediaRequested() ||
+            !testOverlayFullscreenNotifications_.empty()) return fail(72);
+        seedOverlayGeometry();
+        if (!EnterOverlayFullscreenMedia() || !OverlayFullscreenMediaRequested() ||
+            testOverlayFullscreenNotifications_ != std::vector<bool>{true})
+            return fail(73);
+        if (!SuspendBoundEmbeddedMediaPresentation(L"fullscreen-parking-test") ||
+            overlayFullscreenMediaActivation_ || OverlayFullscreenMediaRequested() ||
+            !embeddedMediaAuthority_ || !embeddedMediaAuthority_->parked ||
+            testOverlayFullscreenNotifications_ !=
+                (std::vector<bool>{true, false}) ||
+            OverlayFullscreenMediaSeekTarget(
+                widgetrail::input::NavigationDirection::Left)) return fail(74);
+        widgetrail::WidgetNode fullscreenAction;
+        fullscreenAction.id = L"fullscreen-action";
+        fullscreenAction.kind = L"actionSurface";
+        fullscreenAction.actionId = L"host.embeddedMedia.enterFullscreen";
+        if (TryDispatchNativeMediaAction(
+                widgetId, fullscreenSnapshot, fullscreenAction, L"a",
+                widgetrail::input::NavigationEventPhase::Pressed) ||
+            testOverlayFullscreenNotifications_ !=
+                (std::vector<bool>{true, false})) return fail(75);
+        testCaptureOverlayFullscreenNotifications_ = false;
+        testOverlayFullscreenNotifications_.clear();
+        StopEmbeddedMediaSurface(L"handoff-test-complete");
+        state_ = widgetrail::OverlayState({}, {});
+        lastWidgetRenderResult_ = {};
         const auto retainedUnpinReattaches = [
             this, widgetId, runtimeGeneration, presentationGeneration,
             snapshotSequence, &makeDescriptor, &makeSnapshot,
@@ -3090,6 +3275,12 @@ private:
 
     [[nodiscard]] bool OverlayFullscreenMediaRequested() const noexcept {
         if (!overlayFullscreenMediaActivation_) return false;
+        if (!embeddedMediaAuthority_ || embeddedMediaAuthority_->parked ||
+            embeddedMediaAuthority_->projection != EmbeddedMediaProjection::Overlay ||
+            !EmbeddedMediaPresentationAuthorityCurrent() ||
+            !ResolveEmbeddedMediaPresentationGeometry(
+                embeddedMediaAuthority_->sequence))
+            return false;
         const auto& activation = *overlayFullscreenMediaActivation_;
         const auto* snapshot = SnapshotFor(state_.activeWidget());
         const auto* descriptor = sessions_.FindDescriptor(state_.activeWidget());
@@ -3119,6 +3310,12 @@ private:
         const auto* snapshot = SnapshotFor(state_.activeWidget());
         const auto* descriptor = sessions_.FindDescriptor(state_.activeWidget());
         if (!snapshot || !descriptor || !snapshot->embeddedMedia ||
+            !embeddedMediaAuthority_ || embeddedMediaAuthority_->parked ||
+            embeddedMediaAuthority_->projection != EmbeddedMediaProjection::Overlay ||
+            !EmbeddedMediaPresentationAuthorityCurrent() ||
+            embeddedMediaAuthority_->widgetId != state_.activeWidget() ||
+            embeddedMediaAuthority_->sequence != snapshot->sequence ||
+            !ResolveEmbeddedMediaPresentationGeometry(snapshot->sequence) ||
             !snapshot->embeddedMedia->overlayFullscreenCapable)
             return false;
         if (pinnedSurfaceCoordinator_.pinned() &&
@@ -3151,6 +3348,12 @@ private:
     [[nodiscard]] bool NotifyOverlayFullscreenChanged(
         const OverlayFullscreenMediaActivation& activation,
         const bool active) {
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+        if (testCaptureOverlayFullscreenNotifications_) {
+            testOverlayFullscreenNotifications_.push_back(active);
+            return true;
+        }
+#endif
         const auto* snapshot = SnapshotFor(activation.widgetId);
         const auto snapshotSequence = snapshot
             ? snapshot->sequence : activation.snapshotSequence;
@@ -4035,23 +4238,77 @@ private:
         if (!embeddedMediaAuthority_) return false;
         const auto mediaSurface = richMediaSurface_;
         if (!mediaSurface) return false;
+        const auto sourceAuthority = *embeddedMediaAuthority_;
+        const auto sourceBounds = embeddedMediaClientBounds_;
+        const auto sourceClip = embeddedMediaClientClip_;
+        const auto source = sourceAuthority.projection;
+        const bool sourceParked = sourceAuthority.parked;
+        const auto sessionKey = boundEmbeddedMediaSessionKey_;
         const std::wstring widgetId{embeddedMediaAuthority_->widgetId};
         const std::wstring transferReason{reason};
         const bool resumeDetached = mediaSurface->presentationTransferPending();
         if (embeddedMediaAuthority_->projection == destination &&
             !embeddedMediaAuthority_->parked && !resumeDetached) return true;
+        bool destinationEndpointInitialized = false;
+        bool destinationVisualCreated = false;
+        const auto failTransfer = [
+            this, destination, mediaSurface, sessionKey, sourceAuthority,
+            sourceBounds, sourceClip, widgetId, transferReason,
+            &destinationEndpointInitialized, &destinationVisualCreated](
+            const std::wstring_view operation, const HRESULT failure) {
+            AppendActionCorrelation(
+                L"stage=embedded-media-transfer-fault widget=" + widgetId +
+                L" operation=" + std::wstring{operation} + L" hr=" +
+                std::to_wstring(static_cast<long>(failure)) + L" reason=" +
+                transferReason);
+            if (destinationVisualCreated) {
+                widgetrail::OverlayCompositionSurface::CommitTiming timing;
+                (void)compositionSurface_.DetachExternalContentTarget(
+                    CompositionEndpoint(destination), timing);
+            }
+            if (destination == EmbeddedMediaProjection::Pinned &&
+                destinationEndpointInitialized) {
+                widgetrail::OverlayCompositionSurface::CommitTiming timing;
+                (void)compositionSurface_.ReleasePinnedExternalContentEndpoint(
+                    timing);
+            }
+            if (boundEmbeddedMediaSessionKey_ == sessionKey &&
+                richMediaSurface_.get() == mediaSurface.get() &&
+                embeddedMediaAuthority_) {
+                *embeddedMediaAuthority_ = sourceAuthority;
+                embeddedMediaClientBounds_ = sourceBounds;
+                embeddedMediaClientClip_ = sourceClip;
+                StopEmbeddedMediaSurface(L"projection-transfer-failed");
+            } else {
+                // A failure callback may already have retired the bound entry.
+                // Teardown is idempotent and keeps a failed controller from
+                // retaining either the source or destination RootVisualTarget.
+                mediaSurface->BeginSessionTeardown();
+                if (!sourceAuthority.parked) {
+                    widgetrail::OverlayCompositionSurface::CommitTiming timing;
+                    (void)compositionSurface_.DetachExternalContentTarget(
+                        CompositionEndpoint(sourceAuthority.projection), timing);
+                    if (sourceAuthority.projection ==
+                            EmbeddedMediaProjection::Pinned)
+                        (void)compositionSurface_.ReleasePinnedExternalContentEndpoint(
+                            timing);
+                }
+                mediaSurface->CompleteSessionTeardown();
+                residentEmbeddedMediaSessions_.erase(sessionKey);
+            }
+            return false;
+        };
         // A composition controller whose RootVisualTarget was cleared is not a
         // reusable presentation owner. Only the live-retarget path below may
         // preserve a session across projection changes.
-        if (resumeDetached) return false;
+        if (resumeDetached)
+            return failTransfer(L"detached-controller", E_UNEXPECTED);
         const HWND owner = EmbeddedMediaOwnerWindow(destination);
-        if (!owner) return false;
+        if (!owner) return failTransfer(L"destination-owner", E_HANDLE);
         if (destination == EmbeddedMediaProjection::Pinned &&
             !pinnedSurfaceCoordinator_.CurrentMediaViewport(
                 embeddedMediaAuthority_->surfaceId))
-            return false;
-        const auto source = embeddedMediaAuthority_->projection;
-        const bool sourceParked = embeddedMediaAuthority_->parked;
+            return failTransfer(L"destination-viewport", E_INVALIDARG);
         const auto projectionName = [](const EmbeddedMediaProjection projection) {
             return projection == EmbeddedMediaProjection::Pinned
                 ? std::wstring_view{L"pinned"}
@@ -4071,12 +4328,9 @@ private:
             std::wstring error;
             if (!compositionSurface_.InitializePinnedExternalContentEndpoint(owner, error)) {
                 AppendDiagnostic(L"Embedded media pinned endpoint failed: " + error);
-                AppendActionCorrelation(
-                    L"stage=embedded-media-transfer-fault widget=" +
-                    widgetId +
-                    L" operation=pinned-endpoint-initialize");
-                return false;
+                return failTransfer(L"pinned-endpoint-initialize", E_FAIL);
             }
+            destinationEndpointInitialized = true;
         }
         const auto resolvedGeometry =
             ResolveEmbeddedMediaPresentationGeometryForProjection(
@@ -4111,49 +4365,26 @@ private:
                     ? L"pinned" : L"overlay") +
                 L" reason=" + transferReason +
                 L" geometry=unavailable");
-            AppendActionCorrelation(
-                L"stage=embedded-media-transfer-fault widget=" +
-                widgetId + L" destination=" +
-                std::wstring{projectionName(destination)} +
-                L" operation=geometry-unavailable reason=" + transferReason);
-            return false;
+            return failTransfer(L"geometry-unavailable", E_INVALIDARG);
         }
         if (hostBounds.right <= hostBounds.left ||
             hostBounds.bottom <= hostBounds.top ||
             hostClip.right <= hostClip.left || hostClip.bottom <= hostClip.top ||
             controllerBounds.right <= controllerBounds.left ||
-            controllerBounds.bottom <= controllerBounds.top) return false;
+            controllerBounds.bottom <= controllerBounds.top)
+            return failTransfer(L"geometry-invalid", E_INVALIDARG);
         Microsoft::WRL::ComPtr<IUnknown> target;
         result = compositionSurface_.CreateExternalContentTarget(
             CompositionEndpoint(destination), &target);
-        if (FAILED(result)) {
-            AppendActionCorrelation(
-                L"stage=embedded-media-transfer-fault widget=" +
-                widgetId +
-                L" operation=composition-target-create hr=" +
-                std::to_wstring(static_cast<long>(result)));
-            return false;
-        }
+        if (FAILED(result))
+            return failTransfer(L"composition-target-create", result);
+        destinationVisualCreated = true;
         widgetrail::richmedia::PresentationTransferFailureStage failureStage{};
         result = mediaSurface->BeginPresentationRetarget(&failureStage);
-        if (FAILED(result)) {
-            AppendActionCorrelation(
-                L"stage=embedded-media-transfer-fault widget=" + widgetId +
-                L" operation=" + std::wstring{widgetrail::richmedia::
-                    PresentationTransferFailureStageValue(failureStage)} + L" hr=" +
-                std::to_wstring(static_cast<long>(result)));
-            widgetrail::OverlayCompositionSurface::CommitTiming discardTiming;
-            (void)compositionSurface_.DetachExternalContentTarget(
-                CompositionEndpoint(destination), discardTiming);
-            if (destination == EmbeddedMediaProjection::Pinned)
-                (void)compositionSurface_.ReleasePinnedExternalContentEndpoint(
-                    discardTiming);
-            return false;
-        }
-        embeddedMediaAuthority_->projection = destination;
-        embeddedMediaAuthority_->parked = false;
-        embeddedMediaClientBounds_ = hostBounds;
-        embeddedMediaClientClip_ = hostClip;
+        if (FAILED(result))
+            return failTransfer(
+                widgetrail::richmedia::PresentationTransferFailureStageValue(
+                    failureStage), result);
         AppendActionCorrelation(
             L"stage=embedded-media-transfer-retarget widget=" +
             widgetId + L" source=" +
@@ -4166,36 +4397,33 @@ private:
         presentation.compositionTarget = std::move(target);
         presentation.bounds = controllerBounds;
         presentation.rasterScale = MediaPixelsPerDip(owner);
-        const auto sessionKey = boundEmbeddedMediaSessionKey_;
         presentation.setPresentationVisible =
-            [this, sessionKey, destination, endpoint](const bool visible) {
+            [this, sessionKey, source, sourceParked, destination, endpoint,
+             hostBounds, hostClip](const bool visible) {
             if (!BindEmbeddedMediaSession(sessionKey)) return;
-            if (!embeddedMediaAuthority_ ||
-                embeddedMediaAuthority_->projection != destination ||
-                !embeddedMediaClientBounds_) return;
+            if (!embeddedMediaAuthority_) return;
+            const bool transferInFlight =
+                embeddedMediaAuthority_->projection == source &&
+                embeddedMediaAuthority_->parked == sourceParked;
+            const bool destinationCommitted =
+                embeddedMediaAuthority_->projection == destination &&
+                !embeddedMediaAuthority_->parked;
+            if (!transferInFlight && !destinationCommitted) return;
             widgetrail::OverlayCompositionSurface::CommitTiming timing;
             (void)compositionSurface_.CommitExternalContentPresentation(
-                endpoint, *embeddedMediaClientBounds_, *embeddedMediaClientClip_,
-                visible, timing);
+                endpoint, hostBounds, hostClip, visible, timing);
             RecordEmbeddedMediaPresentation(endpoint, timing, L"transfer-visibility");
         };
         result = mediaSurface->CompletePresentationTransfer(
             std::move(presentation), &failureStage);
-        if (FAILED(result)) {
-            AppendActionCorrelation(
-                L"stage=embedded-media-transfer-fault widget=" +
-                widgetId + L" operation=" +
-                std::wstring{widgetrail::richmedia::
-                    PresentationTransferFailureStageValue(failureStage)} + L" hr=" +
-                std::to_wstring(static_cast<long>(result)));
-            widgetrail::OverlayCompositionSurface::CommitTiming destinationTiming;
-            (void)compositionSurface_.DetachExternalContentTarget(
-                CompositionEndpoint(destination), destinationTiming);
-            if (destination == EmbeddedMediaProjection::Pinned)
-                (void)compositionSurface_.ReleasePinnedExternalContentEndpoint(
-                    destinationTiming);
-            return false;
-        }
+        if (FAILED(result))
+            return failTransfer(
+                widgetrail::richmedia::PresentationTransferFailureStageValue(
+                    failureStage), result);
+        if (boundEmbeddedMediaSessionKey_ != sessionKey ||
+            richMediaSurface_.get() != mediaSurface.get() ||
+            !embeddedMediaAuthority_)
+            return failTransfer(L"authority-changed", E_UNEXPECTED);
         if (!sourceParked) result = compositionSurface_.DetachExternalContentTarget(
             CompositionEndpoint(source), detachTiming);
         if (!sourceParked && SUCCEEDED(result) &&
@@ -4204,18 +4432,19 @@ private:
             result = compositionSurface_.ReleasePinnedExternalContentEndpoint(
                 releaseTiming);
         }
-        if (FAILED(result)) {
-            AppendActionCorrelation(
-                L"stage=embedded-media-transfer-fault widget=" + widgetId +
-                L" operation=source-endpoint-retire hr=" +
-                std::to_wstring(static_cast<long>(result)));
-            return false;
-        }
-        (void)compositionSurface_.CommitExternalContentPresentation(
-            endpoint, hostBounds, hostClip,
-            EmbeddedMediaPresentationVisible(), detachTiming);
-        RecordEmbeddedMediaPresentation(endpoint, detachTiming, L"transfer-complete");
+        if (FAILED(result))
+            return failTransfer(L"source-endpoint-retire", result);
+        embeddedMediaAuthority_->projection = destination;
+        embeddedMediaAuthority_->parked = false;
+        embeddedMediaClientBounds_ = hostBounds;
+        embeddedMediaClientClip_ = hostClip;
         const bool presentationVisible = EmbeddedMediaPresentationVisible();
+        result = compositionSurface_.CommitExternalContentPresentation(
+            endpoint, hostBounds, hostClip,
+            presentationVisible, detachTiming);
+        if (FAILED(result))
+            return failTransfer(L"destination-presentation-commit", result);
+        RecordEmbeddedMediaPresentation(endpoint, detachTiming, L"transfer-complete");
         embeddedMediaAuthority_->pinnedFrameGeneration =
             destination == EmbeddedMediaProjection::Pinned
                 ? pinnedSurfaceCoordinator_.CurrentMediaViewport(
@@ -4225,13 +4454,8 @@ private:
             ReconcileCompactPinnedMediaChrome();
         const HRESULT visibilityResult = mediaSurface->SetVisible(
             presentationVisible);
-        if (FAILED(visibilityResult)) {
-            AppendActionCorrelation(
-                L"stage=embedded-media-transfer-fault widget=" + widgetId +
-                L" operation=controller-visibility-finalize hr=" +
-                std::to_wstring(static_cast<long>(visibilityResult)));
-            return false;
-        }
+        if (FAILED(visibilityResult))
+            return failTransfer(L"controller-visibility-finalize", visibilityResult);
         AppendDiagnostic(
             L"Embedded media transferred widget=" + widgetId +
             L" projection=" +
@@ -4439,6 +4663,10 @@ private:
             return SUCCEEDED(mediaSurface->SetVisible(false));
         if (!window_ || !embeddedMediaClientBounds_ || !embeddedMediaClientClip_)
             return false;
+        if (overlayFullscreenMediaActivation_ &&
+            overlayFullscreenMediaActivation_->widgetId ==
+                embeddedMediaAuthority_->widgetId)
+            (void)ExitOverlayFullscreenMedia();
         const auto priorBounds = *embeddedMediaClientBounds_;
         const LONG width = priorBounds.right - priorBounds.left;
         const LONG height = priorBounds.bottom - priorBounds.top;
@@ -16368,6 +16596,8 @@ private:
 #endif
 #if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
     bool testEmbeddedMediaHandoffRetirementObserved_{};
+    bool testCaptureOverlayFullscreenNotifications_{};
+    std::vector<bool> testOverlayFullscreenNotifications_;
 #endif
     widgetrail::PlacementRefreshGate placementRefreshGate_;
     widgetrail::DisplayRefreshAccumulator displayRefresh_;

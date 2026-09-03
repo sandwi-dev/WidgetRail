@@ -180,6 +180,9 @@ void OverlayCompositionSurface::Reset() noexcept {
     d2dDevice_.Reset();
     d3dDevice_.Reset();
     paintCounters_ = {};
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    externalContentFailureForTest_ = ExternalContentFailureOperation::None;
+#endif
 }
 
 HRESULT OverlayCompositionSurface::CreateExternalContentTarget(
@@ -199,6 +202,15 @@ HRESULT OverlayCompositionSurface::CreateExternalContentTarget(
         : pinnedExternalTarget_ && pinnedExternalRootVisual_;
     if (!device_ || !endpointReady || visual)
         return E_UNEXPECTED;
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    const auto createFailure = endpoint == ExternalContentEndpoint::Overlay
+        ? ExternalContentFailureOperation::CreateOverlayTarget
+        : ExternalContentFailureOperation::CreatePinnedTarget;
+    if (externalContentFailureForTest_ == createFailure) {
+        externalContentFailureForTest_ = ExternalContentFailureOperation::None;
+        return E_FAIL;
+    }
+#endif
     HRESULT result = device_->CreateVisual(visual.ReleaseAndGetAddressOf());
     if (FAILED(result)) {
         visual.Reset();
@@ -323,6 +335,15 @@ HRESULT OverlayCompositionSurface::DetachExternalContentTarget(
         ? content_.visual.Get() : pinnedExternalRootVisual_.Get();
     if (!device_ || !parent) return E_UNEXPECTED;
     if (!visual) return S_FALSE;
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    const auto detachFailure = endpoint == ExternalContentEndpoint::Overlay
+        ? ExternalContentFailureOperation::DetachOverlay
+        : ExternalContentFailureOperation::DetachPinned;
+    if (externalContentFailureForTest_ == detachFailure) {
+        externalContentFailureForTest_ = ExternalContentFailureOperation::None;
+        return E_FAIL;
+    }
+#endif
     const auto started = std::chrono::steady_clock::now();
     HRESULT result = S_OK;
     if (attached) result = parent->RemoveVisual(visual.Get());
@@ -348,6 +369,13 @@ HRESULT OverlayCompositionSurface::ReleasePinnedExternalContentEndpoint(
     if (!device_ || !pinnedExternalTarget_ || !pinnedExternalRootVisual_)
         return S_FALSE;
     if (pinnedExternalContentVisual_) return E_UNEXPECTED;
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    if (externalContentFailureForTest_ ==
+            ExternalContentFailureOperation::ReleasePinnedEndpoint) {
+        externalContentFailureForTest_ = ExternalContentFailureOperation::None;
+        return E_FAIL;
+    }
+#endif
     const auto started = std::chrono::steady_clock::now();
     HRESULT result = pinnedExternalTarget_->SetRoot(nullptr);
     if (SUCCEEDED(result)) result = device_->Commit();

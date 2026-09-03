@@ -205,6 +205,20 @@ public:
     // retained external-content session can keep its controller rooted here
     // while neither visible endpoint owns presentation.
     HRESULT CreateExternalContentParkingTarget(IUnknown** target) noexcept;
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    enum class ExternalContentFailureOperation {
+        None,
+        CreateOverlayTarget,
+        CreatePinnedTarget,
+        DetachOverlay,
+        DetachPinned,
+        ReleasePinnedEndpoint,
+    };
+    void FailNextExternalContentOperationForTest(
+        ExternalContentFailureOperation operation) noexcept {
+        externalContentFailureForTest_ = operation;
+    }
+#endif
     HRESULT CommitExternalContentPresentation(
         const RECT& bounds, bool visible, CommitTiming& timing) noexcept;
     HRESULT CommitExternalContentPresentation(
@@ -253,6 +267,10 @@ private:
         pinnedMediaChromePresentation_;
     unsigned int pinnedMediaChromeWidth_{};
     unsigned int pinnedMediaChromeHeight_{};
+#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
+    ExternalContentFailureOperation externalContentFailureForTest_{
+        ExternalContentFailureOperation::None};
+#endif
     struct ExternalContentPresentationState final {
         bool current{};
         IDCompositionVisual2* visual{};
