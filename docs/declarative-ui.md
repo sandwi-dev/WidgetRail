@@ -137,7 +137,7 @@ primary accessibility contract.
 | `UI.HorizontalScroll(id, children)` | `scroll` | Host-owned horizontal viewport with controller focus-follow. |
 | `UI.Scroll(id, axis, children)` | `scroll` | Axis-explicit form of the same bounded viewport. |
 | `UI.Text(text, id, accessibilityLabel?)` | `text` | Non-interactive text. |
-| `UI.MediaViewport(surface, id)` | `mediaViewport` | Protocol-v23 non-interactive native layout leaf for the one current `WidgetView.EmbeddedMedia` surface. The declarative renderer owns its responsive geometry, clip, theme placeholder, and Image semantics; WebView2 contributes only the bounded media pixels. |
+| `UI.MediaViewport(session, id)` | `mediaViewport` | Protocol-v23 non-interactive native layout leaf for the one current `WidgetView.EmbeddedMediaSession`. The declarative renderer owns its responsive geometry, clip, theme placeholder, and Image semantics; WebView2 contributes only the bounded media pixels. |
 | `UI.CodeText(text, id, accessibilityLabel?)` | `text` | Bounded non-interactive diagnostics/command text with the semantic monospace class. |
 | `UI.Button(label, action, id)` | `button` | Focusable action control; may include one semantic glyph or bounded leading PNG inside the same focus target. |
 | `UI.Select(label, options, id, accessibilityLabel?)` | `select` | Protocol-v41 single focus stop with a host-owned anchored 1–128 option popup. A opens/commits, Up/Down moves, and B dismisses without changing layout extent. |
@@ -173,9 +173,10 @@ primary accessibility contract.
 | `UI.ChoiceRow(...)` | `button` | One full-row choice/action target with selected, Disabled, and Busy semantics. |
 | `UI.ControllerHint(...)` | `row`, `text` | Display-only key/label pair; does not bind controller input. |
 
-Protocol v25 adds an optional compact pinned presentation to
-`EmbeddedMediaSurface`. Set `CompactPinnedPresentation` to keep the ordinary
-authored player in the overlay while the pinned owner presents the existing
+An `EmbeddedMediaSession` declares alternative host presentations through its
+closed `SupportedPresentations` collection. Add
+`MediaPresentationKind.CompactPinned` to keep the ordinary authored player in
+the overlay while the pinned owner presents the existing
 `MediaViewport` as a video-first surface with one host-native, auto-hiding seek
 bar. `MediaSeekStepSeconds` is optional (10 seconds by default) and is
 bounded to 1–60 seconds. It is the step for every host-owned presentation that
@@ -191,18 +192,11 @@ current media position. A does not enter a hidden seek mode, and D-pad or left
 stick navigation never seeks. B exits compact interaction to click-through.
 View retains the host tray route.
 
-Protocol v29 adds `RetainSessionWhenHidden` for route changes that deliberately
-omit the `MediaViewport` while retaining an already-resident exact media
-session. Such a snapshot declares the same `EmbeddedMediaSurface`, contains no
-media viewport, and leaves the external plane detached and hidden. Reintroducing
-the exact viewport rebinds the existing controller/document and playback state;
-it does not navigate or recreate the adapter. The option cannot start media in
-the background and does not survive declaration removal, incompatible
-authority/resource replacement, widget removal or restart, browser failure,
-slot retirement, or host shutdown.
-
-Protocol v30 adds `OverlayFullscreenCapable`. A widget sets this Boolean on its
-existing `EmbeddedMediaSurface` to declare that the surface *may* be presented
+Protocol v42 permits zero `MediaViewport` nodes for the declared session. An
+exact resident controller parks without teardown; a cold declaration remains
+dormant and creates no background controller. Reintroducing the exact viewport
+reattaches the existing document and playback state without navigation. Add
+`MediaPresentationKind.OverlayFullscreen` to `SupportedPresentations` to allow
 fullscreen; whether it currently is remains host state. The host aspect-fits
 that same media plane inside the monitor work area using the existing overlay
 HWND, DirectComposition endpoint, controller session, input scope, and
@@ -224,11 +218,9 @@ apply while the mode is active; playback events continue to arrive through
 `OnEmbeddedMediaPlaybackEventAsync`, which is what keeps position and state
 current for the layout restored on exit.
 
-The SDK reports each effective host-owned transition through
-`OnOverlayFullscreenChangedAsync(bool)`. This is observation only: it grants no
-provider, capability, focus, window, or presentation authority. Playback events
-continue through `OnEmbeddedMediaPlaybackEventAsync`, including while the host
-is fullscreen, so the ordinary view resumes from current media state.
+Playback events continue through `OnEmbeddedMediaPlaybackEventAsync`, including
+while the host is fullscreen, so the ordinary view resumes from current media
+state. Fullscreen state is not published as widget authority.
 
 An embedded-media widget builds its visible shell from the same native Text,
 Progress, Button, Row, and Stack nodes as any other widget. Reserved
@@ -238,7 +230,7 @@ they do not expose DOM, browsing, script, or arbitrary pointer authority.
 
 Package-focused adapter tests should pass the authored snapshot and sealed
 adapter to `EmbeddedMediaAdapterConformanceGate`. The gate reads the serialized
-`EmbeddedMediaSurface.Commands` declaration, sends each corresponding adapter
+`EmbeddedMediaSession.Commands` declaration, sends each corresponding adapter
 message through a deterministic fake player, and requires exactly one correlated
 terminal before the next operation. When adding a command, declare the public
 `EmbeddedMediaCommand`, implement its closed adapter message, and add any

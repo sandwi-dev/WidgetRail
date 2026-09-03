@@ -786,7 +786,7 @@ WidgetNode ParseNode(const JsonObject& source) {
     const bool declaredSelect = node.kind == L"select";
     if (node.kind == L"mediaViewport" &&
         !HasNoUnknownProperties(source,
-            {L"id", L"kind", L"mediaSurfaceId", L"accessibilityLabel",
+            {L"id", L"kind", L"mediaSessionId", L"accessibilityLabel",
              L"visibleWhen", L"styleClasses", L"shortcuts", L"contextActions",
              L"selectOptions", L"children"}))
         throw winrt::hresult_invalid_argument(
@@ -930,14 +930,14 @@ WidgetNode ParseNode(const JsonObject& source) {
          node.focusBackgroundArtworkHandle.size() > kMaximumIdentifierLength ||
          !IsIdentifier(node.focusBackgroundArtworkHandle)))
         throw winrt::hresult_invalid_argument();
-    node.mediaSurfaceId = OptionalString(source, L"mediaSurfaceId");
-    if (!node.mediaSurfaceId.empty() &&
+    node.mediaSessionId = OptionalString(source, L"mediaSessionId");
+    if (!node.mediaSessionId.empty() &&
         (node.kind != L"mediaViewport" ||
-         node.mediaSurfaceId.size() > kMaximumIdentifierLength ||
-         !IsIdentifier(node.mediaSurfaceId)))
+         node.mediaSessionId.size() > kMaximumIdentifierLength ||
+         !IsIdentifier(node.mediaSessionId)))
         throw winrt::hresult_invalid_argument(
             L"MediaViewport surface identity is invalid.");
-    if (node.kind == L"mediaViewport" && node.mediaSurfaceId.empty())
+    if (node.kind == L"mediaViewport" && node.mediaSessionId.empty())
         throw winrt::hresult_invalid_argument(
             L"MediaViewport requires an embedded media surface identity.");
     node.imageFit = OptionalString(source, L"imageFit");
@@ -1436,7 +1436,7 @@ void ValidateFocusPresentations(const WidgetNode& root, const int protocolVersio
         if (!kindAllowed || !node.actionId.empty() || !node.contextActions.empty() ||
             !node.selectOptions.empty() || node.isSelect ||
             !node.valueChangedActionId.empty() || !node.sliderInteractionMode.empty() ||
-            !node.focusBackgroundArtworkHandle.empty() || !node.mediaSurfaceId.empty() ||
+            !node.focusBackgroundArtworkHandle.empty() || !node.mediaSessionId.empty() ||
             !node.actionSurfaceOrientation.empty() || !node.actionSurfacePresentation.empty() ||
             node.isDisabled || node.isSelected || node.isBusy ||
             !node.focusPersistenceId.empty() || !node.focusUp.empty() ||
@@ -1614,36 +1614,31 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
             snapshot.protocolVersion < protocol_contract::PinnedPresentationLayoutsVersion)
             throw winrt::hresult_invalid_argument();
     }
-    if (source.HasKey(L"embeddedMedia")) {
-        if (snapshot.protocolVersion < protocol_contract::EmbeddedMediaSurfaceVersion)
+    if (source.HasKey(L"embeddedMediaSession")) {
+        if (snapshot.protocolVersion < protocol_contract::EmbeddedMediaSessionVersion)
             throw winrt::hresult_invalid_argument(
-                L"Embedded media requires protocol version 22 or later.");
-        const auto media = source.GetNamedObject(L"embeddedMedia");
+                L"Embedded media sessions require protocol version 42 or later.");
+        const auto media = source.GetNamedObject(L"embeddedMediaSession");
         if (!HasNoUnknownProperties(media,
                 {L"id", L"accessibleName", L"entryAsset", L"surface",
                  L"aspectRatio", L"resources", L"commands",
                  L"allowedFrameOrigins", L"allowedFrameDomainFamilies", L"pendingCommand",
-                 L"compactPinnedPresentation", L"mediaSeekStepSeconds",
-                 L"retainSessionWhenHidden", L"overlayFullscreenCapable"}))
+                 L"supportedPresentations", L"mediaSeekStepSeconds"}))
             throw winrt::hresult_invalid_argument(
                 L"Embedded media contains an unknown property.");
-        EmbeddedMediaSurfaceDeclaration parsed;
+        EmbeddedMediaSessionDeclaration parsed;
         parsed.id = OptionalString(media, L"id");
         parsed.accessibleName = OptionalString(media, L"accessibleName");
         parsed.entryAsset = OptionalString(media, L"entryAsset");
         parsed.surface = parseSurface(media.GetNamedObject(L"surface"));
         parsed.aspectRatio = media.GetNamedNumber(L"aspectRatio");
-        parsed.compactPinnedPresentation =
-            media.GetNamedBoolean(L"compactPinnedPresentation", false);
-        parsed.retainSessionWhenHidden =
-            media.GetNamedBoolean(L"retainSessionWhenHidden", false);
-        parsed.overlayFullscreenCapable =
-            media.GetNamedBoolean(L"overlayFullscreenCapable", false);
         if (media.HasKey(L"mediaSeekStepSeconds"))
             parsed.mediaSeekStepSeconds =
                 media.GetNamedNumber(L"mediaSeekStepSeconds");
         const auto resources = media.GetNamedArray(L"resources");
         const auto commands = media.GetNamedArray(L"commands");
+        const auto presentations = media.GetNamedArray(
+            L"supportedPresentations", JsonArray{});
         const auto frameOrigins = media.GetNamedArray(L"allowedFrameOrigins", JsonArray{});
         const auto frameFamilies = media.GetNamedArray(
             L"allowedFrameDomainFamilies", JsonArray{});
@@ -1666,10 +1661,34 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                  protocol_contract::MaximumMediaSeekStepSeconds))
             throw winrt::hresult_invalid_argument(
                 L"Compact pinned media seek step is invalid.");
-        if (!parsed.compactPinnedPresentation &&
-            !parsed.overlayFullscreenCapable && parsed.mediaSeekStepSeconds)
+        if (presentations.Size() > 2)
             throw winrt::hresult_invalid_argument(
-                L"Compact pinned media seek step requires compact presentation.");
+                L"Embedded media supported presentations are invalid.");
+        std::unordered_set<std::wstring> presentationSet;
+        for (uint32_t index = 0; index < presentations.Size(); ++index) {
+            const auto value = std::wstring(
+                std::wstring_view(presentations.GetStringAt(index)));
+            if (!presentationSet.insert(value).second)
+                throw winrt::hresult_invalid_argument(
+                    L"Embedded media supported presentations are invalid.");
+            if (value == L"overlayFullscreen") {
+                parsed.supportedPresentations.push_back(
+                    MediaPresentationKind::OverlayFullscreen);
+            } else if (value == L"compactPinned") {
+                parsed.supportedPresentations.push_back(
+                    MediaPresentationKind::CompactPinned);
+            } else {
+                throw winrt::hresult_invalid_argument(
+                    L"Embedded media supported presentations are invalid.");
+            }
+        }
+        const bool supportsCompact = SupportsMediaPresentation(
+            parsed, MediaPresentationKind::CompactPinned);
+        const bool supportsFullscreen = SupportsMediaPresentation(
+            parsed, MediaPresentationKind::OverlayFullscreen);
+        if (!supportsCompact && !supportsFullscreen && parsed.mediaSeekStepSeconds)
+            throw winrt::hresult_invalid_argument(
+                L"Embedded media seek step requires a host-owned presentation.");
         std::unordered_set<std::wstring> paths;
         for (uint32_t index = 0; index < resources.Size(); ++index) {
             const auto resource = resources.GetObjectAt(index);
@@ -1706,23 +1725,12 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                     L"Embedded media command declaration is invalid.");
             parsed.commands.push_back(command);
         }
-        if (parsed.compactPinnedPresentation &&
+        if (supportsCompact &&
             (!commandSet.contains(L"togglePlayback") ||
              !commandSet.contains(L"seekBackward") ||
              !commandSet.contains(L"seekForward")))
             throw winrt::hresult_invalid_argument(
                 L"Compact pinned media capabilities are incomplete.");
-        if ((parsed.compactPinnedPresentation ||
-             parsed.mediaSeekStepSeconds) &&
-            snapshot.protocolVersion <
-                protocol_contract::CompactPinnedMediaPresentationVersion)
-            throw winrt::hresult_invalid_argument(
-                L"Compact pinned media presentation requires protocol version 25.");
-        if (parsed.overlayFullscreenCapable &&
-            snapshot.protocolVersion <
-                protocol_contract::OverlayFullscreenMediaPresentationVersion)
-            throw winrt::hresult_invalid_argument(
-                L"Overlay fullscreen media presentation requires protocol version 30.");
         if (frameOrigins.Size() > protocol_contract::MaximumEmbeddedMediaFrameOriginCount)
             throw winrt::hresult_invalid_argument(
                 L"Embedded media frame origin declaration is invalid.");
@@ -1817,7 +1825,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                     L"Embedded media playback command is invalid.");
             parsed.pendingCommand = std::move(command);
         }
-        snapshot.embeddedMedia = std::move(parsed);
+        snapshot.embeddedMediaSession = std::move(parsed);
     }
     if (source.HasKey(L"quickActions")) {
         const JsonArray actions = source.GetNamedArray(L"quickActions");
@@ -1868,14 +1876,14 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     };
     validateSelects(validateSelects, snapshot.root);
     std::size_t mediaViewportCount{};
-    std::wstring mediaViewportSurfaceId;
+    std::wstring mediaViewportSessionId;
     std::wstring mediaViewportAccessibleName;
     const auto collectMediaViewports = [&](const auto& self,
                                            const WidgetNode& node) -> void {
         if (node.kind == L"mediaViewport") {
             ++mediaViewportCount;
-            if (mediaViewportSurfaceId.empty())
-                mediaViewportSurfaceId = node.mediaSurfaceId;
+            if (mediaViewportSessionId.empty())
+                mediaViewportSessionId = node.mediaSessionId;
             if (mediaViewportAccessibleName.empty())
                 mediaViewportAccessibleName = node.accessibilityLabel;
             if (!node.children.empty() || node.accessibilityLabel.empty())
@@ -1885,28 +1893,15 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         for (const auto& child : node.children) self(self, child);
     };
     collectMediaViewports(collectMediaViewports, snapshot.root);
-    if (mediaViewportCount != 0 && !snapshot.embeddedMedia)
+    if (mediaViewportCount != 0 && !snapshot.embeddedMediaSession)
         throw winrt::hresult_invalid_argument(
             L"MediaViewport has no current embedded media declaration.");
     if (mediaViewportCount > 1)
         throw winrt::hresult_invalid_argument(
             L"A presentation may contain only one MediaViewport.");
-    if (snapshot.embeddedMedia && snapshot.embeddedMedia->retainSessionWhenHidden &&
-        mediaViewportCount != 0)
-        throw winrt::hresult_invalid_argument(
-            L"Retained hidden embedded media cannot publish a MediaViewport.");
-    if (snapshot.protocolVersion >= protocol_contract::MediaViewportVersion &&
-        snapshot.embeddedMedia && mediaViewportCount == 0 &&
-        !snapshot.embeddedMedia->retainSessionWhenHidden)
-        throw winrt::hresult_invalid_argument(
-            L"Protocol-v23 embedded media requires one MediaViewport.");
-    if (snapshot.embeddedMedia && snapshot.embeddedMedia->retainSessionWhenHidden &&
-        snapshot.protocolVersion < protocol_contract::RetainedHiddenEmbeddedMediaVersion)
-        throw winrt::hresult_invalid_argument(
-            L"Retained hidden embedded media requires protocol version 29.");
-    if (mediaViewportCount == 1 && snapshot.embeddedMedia &&
-        (mediaViewportSurfaceId != snapshot.embeddedMedia->id ||
-         mediaViewportAccessibleName != snapshot.embeddedMedia->accessibleName))
+    if (mediaViewportCount == 1 && snapshot.embeddedMediaSession &&
+        (mediaViewportSessionId != snapshot.embeddedMediaSession->id ||
+         mediaViewportAccessibleName != snapshot.embeddedMediaSession->accessibleName))
         throw winrt::hresult_invalid_argument(
             L"MediaViewport does not match the current embedded media surface authority.");
     for (const auto& layout : snapshot.pinnedLayouts) {
@@ -1977,7 +1972,7 @@ bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
         L"actionId", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
         L"valueChangedActionId", L"sliderInteractionMode", L"imageSource",
-        L"artworkHandle", L"focusBackgroundArtworkHandle", L"mediaSurfaceId",
+        L"artworkHandle", L"focusBackgroundArtworkHandle", L"mediaSessionId",
         L"imageFit", L"glyph", L"indicatorSize",
         L"actionSurfaceOrientation", L"actionSurfacePresentation", L"gridMinimumColumnWidth",
         L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
@@ -1998,7 +1993,7 @@ bool ValidateWidgetDocumentStructure(
     if (!HasNoUnknownProperties(document,
             {L"protocolVersion", L"sequence", L"widgetInstanceId",
              L"activeInputScopeId", L"initialFocusId", L"quickActions",
-             L"surface", L"pinnedLayouts", L"embeddedMedia", L"root"}) ||
+             L"surface", L"pinnedLayouts", L"embeddedMediaSession", L"root"}) ||
         !document.HasKey(L"root") ||
         document.GetNamedValue(L"root").ValueType() != JsonValueType::Object) {
         error = L"The materialized widget document shape is invalid.";
@@ -2022,7 +2017,7 @@ bool ValidateWidgetDocumentStructure(
                  L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum",
                  L"step", L"valueChangedActionId", L"sliderInteractionMode",
                  L"imageSource", L"artworkHandle", L"focusBackgroundArtworkHandle",
-                 L"mediaSurfaceId", L"imageFit", L"glyph",
+                 L"mediaSessionId", L"imageFit", L"glyph",
                  L"indicatorSize", L"actionSurfaceOrientation", L"actionSurfacePresentation",
                  L"gridMinimumColumnWidth", L"gridMaximumColumns", L"isDisabled",
                  L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
@@ -2532,7 +2527,7 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         property == L"defaultFocusPresentation")
         return Effect::Resource | Effect::MeasureLayout |
             Effect::Paint | Effect::Accessibility;
-    if (property == L"mediaSurfaceId") {
+    if (property == L"mediaSessionId") {
         return Effect::Authority | Effect::SurfacePlacement |
             Effect::MeasureLayout | Effect::Paint | Effect::Accessibility;
     }
@@ -2704,19 +2699,18 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
     const std::wstring_view runtimeGeneration,
     const std::wstring_view presentationGeneration,
     const long long sequence,
-    const std::wstring_view surfaceId) {
+    const std::wstring_view sessionId) {
     if (!HasNoUnknownProperties(body,
             {L"widgetId", L"instanceId", L"runtimeGeneration",
-             L"presentationGeneration", L"sequence", L"surfaceId",
+             L"presentationGeneration", L"sequence", L"sessionId",
              L"entryAsset", L"surface", L"aspectRatio", L"accessibleName",
              L"commands", L"allowedFrameOrigins", L"allowedFrameDomainFamilies", L"pendingCommand",
-             L"compactPinnedPresentation", L"mediaSeekStepSeconds",
-             L"retainSessionWhenHidden", L"overlayFullscreenCapable",
+             L"supportedPresentations", L"mediaSeekStepSeconds",
              L"resources"}) ||
         !body.HasKey(L"widgetId") || !body.HasKey(L"instanceId") ||
         !body.HasKey(L"runtimeGeneration") ||
         !body.HasKey(L"presentationGeneration") || !body.HasKey(L"sequence") ||
-        !body.HasKey(L"surfaceId") || !body.HasKey(L"entryAsset") ||
+        !body.HasKey(L"sessionId") || !body.HasKey(L"entryAsset") ||
         !body.HasKey(L"surface") || !body.HasKey(L"aspectRatio") ||
         !body.HasKey(L"accessibleName") || !body.HasKey(L"commands") ||
         !body.HasKey(L"allowedFrameOrigins") || !body.HasKey(L"resources"))
@@ -2727,23 +2721,39 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
     bundle.runtimeGeneration = OptionalString(body, L"runtimeGeneration");
     bundle.presentationGeneration = OptionalString(body, L"presentationGeneration");
     bundle.sequence = RequiredIntegral(body, L"sequence");
-    bundle.surface.id = OptionalString(body, L"surfaceId");
+    bundle.surface.id = OptionalString(body, L"sessionId");
     bundle.surface.entryAsset = OptionalString(body, L"entryAsset");
     bundle.surface.accessibleName = OptionalString(body, L"accessibleName");
     bundle.surface.aspectRatio = body.GetNamedNumber(L"aspectRatio");
-    bundle.surface.compactPinnedPresentation =
-        body.GetNamedBoolean(L"compactPinnedPresentation", false);
-    bundle.surface.retainSessionWhenHidden =
-        body.GetNamedBoolean(L"retainSessionWhenHidden", false);
-    bundle.surface.overlayFullscreenCapable =
-        body.GetNamedBoolean(L"overlayFullscreenCapable", false);
     if (body.HasKey(L"mediaSeekStepSeconds"))
         bundle.surface.mediaSeekStepSeconds =
             body.GetNamedNumber(L"mediaSeekStepSeconds");
+    const auto presentations = body.GetNamedArray(
+        L"supportedPresentations", JsonArray{});
+    if (presentations.Size() > 2) return std::nullopt;
+    std::unordered_set<std::wstring> presentationSet;
+    for (uint32_t index = 0; index < presentations.Size(); ++index) {
+        const auto value = std::wstring(
+            std::wstring_view(presentations.GetStringAt(index)));
+        if (!presentationSet.insert(value).second) return std::nullopt;
+        if (value == L"overlayFullscreen") {
+            bundle.surface.supportedPresentations.push_back(
+                MediaPresentationKind::OverlayFullscreen);
+        } else if (value == L"compactPinned") {
+            bundle.surface.supportedPresentations.push_back(
+                MediaPresentationKind::CompactPinned);
+        } else {
+            return std::nullopt;
+        }
+    }
+    const bool supportsCompact = SupportsMediaPresentation(
+        bundle.surface, MediaPresentationKind::CompactPinned);
+    const bool supportsFullscreen = SupportsMediaPresentation(
+        bundle.surface, MediaPresentationKind::OverlayFullscreen);
     if (bundle.widgetId != widgetId || bundle.instanceId != instanceId ||
         bundle.runtimeGeneration != runtimeGeneration ||
         bundle.presentationGeneration != presentationGeneration ||
-        bundle.sequence != sequence || bundle.surface.id != surfaceId ||
+        bundle.sequence != sequence || bundle.surface.id != sessionId ||
         !IsIdentifier(bundle.widgetId) || !IsIdentifier(bundle.instanceId) ||
         !IsIdentifier(bundle.runtimeGeneration) ||
         !IsIdentifier(bundle.presentationGeneration) ||
@@ -2762,8 +2772,7 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
                  protocol_contract::MinimumMediaSeekStepSeconds ||
              *bundle.surface.mediaSeekStepSeconds >
                  protocol_contract::MaximumMediaSeekStepSeconds)) ||
-        (!bundle.surface.compactPinnedPresentation &&
-            !bundle.surface.overlayFullscreenCapable &&
+        (!supportsCompact && !supportsFullscreen &&
             bundle.surface.mediaSeekStepSeconds) ||
         !IsNormalizedEmbeddedMediaPath(bundle.surface.entryAsset))
         return std::nullopt;
@@ -2824,7 +2833,7 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
             return std::nullopt;
         bundle.surface.commands.push_back(command);
     }
-    if (bundle.surface.compactPinnedPresentation &&
+    if (supportsCompact &&
         (commandSet.find(L"togglePlayback") == commandSet.end() ||
          commandSet.find(L"seekBackward") == commandSet.end() ||
          commandSet.find(L"seekForward") == commandSet.end())) return std::nullopt;
@@ -4039,12 +4048,12 @@ std::optional<EmbeddedMediaBundle> WidgetBridgeClient::ResolveEmbeddedMedia(
     const std::wstring_view runtimeGeneration,
     const std::wstring_view presentationGeneration,
     const long long sequence,
-    const std::wstring_view surfaceId) {
+    const std::wstring_view sessionId) {
     std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE || sequence <= 0 ||
         !IsIdentifier(widgetId) || !IsIdentifier(instanceId) ||
         !IsIdentifier(runtimeGeneration) || !IsIdentifier(presentationGeneration) ||
-        !IsIdentifier(surfaceId)) return std::nullopt;
+        !IsIdentifier(sessionId)) return std::nullopt;
     try {
         JsonObject payload;
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
@@ -4052,7 +4061,7 @@ std::optional<EmbeddedMediaBundle> WidgetBridgeClient::ResolveEmbeddedMedia(
         payload.Insert(L"runtimeGeneration", JsonValue::CreateStringValue(winrt::hstring(runtimeGeneration)));
         payload.Insert(L"presentationGeneration", JsonValue::CreateStringValue(winrt::hstring(presentationGeneration)));
         payload.Insert(L"sequence", JsonValue::CreateNumberValue(static_cast<double>(sequence)));
-        payload.Insert(L"surfaceId", JsonValue::CreateStringValue(winrt::hstring(surfaceId)));
+        payload.Insert(L"sessionId", JsonValue::CreateStringValue(winrt::hstring(sessionId)));
         const long long requestId = ++nextRequestId_;
         JsonObject envelope;
         envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
@@ -4081,7 +4090,7 @@ std::optional<EmbeddedMediaBundle> WidgetBridgeClient::ResolveEmbeddedMedia(
             const auto body = response.GetNamedObject(L"payload");
             auto bundle = ParseEmbeddedMediaBundle(
                 body, widgetId, instanceId, runtimeGeneration,
-                presentationGeneration, sequence, surfaceId);
+                presentationGeneration, sequence, sessionId);
             if (!bundle) return std::nullopt;
             lastError_.clear();
             return bundle;
@@ -4103,7 +4112,7 @@ std::optional<bool> WidgetBridgeClient::PublishEmbeddedMediaPlaybackEvent(
     if (pipe_ == INVALID_HANDLE_VALUE || sequence <= 0 ||
         !IsIdentifier(widgetId) || !IsIdentifier(instanceId) ||
         !IsIdentifier(runtimeGeneration) || !IsIdentifier(presentationGeneration) ||
-        !IsIdentifier(playbackEvent.surfaceId) || playbackEvent.sequence <= 0 ||
+        !IsIdentifier(playbackEvent.sessionId) || playbackEvent.sequence <= 0 ||
         playbackEvent.commandSequence < 0 || !IsIdentifier(playbackEvent.mediaKey) ||
         !std::isfinite(playbackEvent.positionSeconds) ||
         !std::isfinite(playbackEvent.durationSeconds) ||
@@ -4114,7 +4123,7 @@ std::optional<bool> WidgetBridgeClient::PublishEmbeddedMediaPlaybackEvent(
         return std::nullopt;
     try {
         JsonObject event;
-        event.Insert(L"surfaceId", JsonValue::CreateStringValue(playbackEvent.surfaceId));
+        event.Insert(L"sessionId", JsonValue::CreateStringValue(playbackEvent.sessionId));
         event.Insert(L"sequence", JsonValue::CreateNumberValue(
             static_cast<double>(playbackEvent.sequence)));
         event.Insert(L"commandSequence", JsonValue::CreateNumberValue(
@@ -4192,7 +4201,6 @@ JsonObject BuildControllerInputRequestEnvelope(
     const std::wstring_view pinnedLayoutId,
     const std::optional<bool> pinnedLayoutSelected,
     const std::wstring_view expectedActionId,
-    const std::optional<bool> overlayFullscreenActive,
     const std::wstring_view expectedSelectOptionActionId) {
     JsonObject input;
     input.Insert(L"button", JsonValue::CreateStringValue(winrt::hstring(button)));
@@ -4222,10 +4230,6 @@ JsonObject BuildControllerInputRequestEnvelope(
     if (pinnedLayoutSelected)
         input.Insert(L"isPinnedLayoutSelected",
                      JsonValue::CreateBooleanValue(*pinnedLayoutSelected));
-    if (overlayFullscreenActive)
-        input.Insert(L"isOverlayFullscreenActive",
-                     JsonValue::CreateBooleanValue(*overlayFullscreenActive));
-
     JsonObject payload;
     payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
     if (!runtimeGeneration.empty())
@@ -4267,7 +4271,6 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const std::wstring_view pinnedLayoutId,
     const std::optional<bool> pinnedLayoutSelected,
     const std::wstring_view expectedActionId,
-    const std::optional<bool> overlayFullscreenActive,
     const std::wstring_view expectedSelectOptionActionId) {
     std::scoped_lock lock(requestMutex_);
     lastControllerInputResultCode_.clear();
@@ -4292,8 +4295,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
             activeInputScopeId, snapshotSequence, sequence,
             monotonicTimestampMicroseconds, phase, requestedValue, origin,
             runtimeGeneration, pinnedLayoutId, pinnedLayoutSelected,
-            expectedActionId, overlayFullscreenActive,
-            expectedSelectOptionActionId);
+            expectedActionId, expectedSelectOptionActionId);
         if (!WriteFrame(winrt::to_string(envelope.Stringify()))) {
             lastControllerInputResultCode_ = L"transport-write-failed";
             return std::nullopt;
@@ -4835,7 +4837,7 @@ std::string SerializeControllerInputRequest(
         41, L"widget.test", L"a", L"pinnedWidget", L"select.control",
         L"root", 7, 11, 123456, L"pressed", std::nullopt,
         ControllerInputOrigin::AccessibilityAutomation, L"runtime-1",
-        L"compact", true, {}, false, expectedSelectOptionActionId);
+        L"compact", true, {}, expectedSelectOptionActionId);
     return winrt::to_string(envelope.Stringify());
 }
 
@@ -4885,13 +4887,13 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundleResponse(
     const std::wstring_view runtimeGeneration,
     const std::wstring_view presentationGeneration,
     const long long sequence,
-    const std::wstring_view surfaceId,
+    const std::wstring_view sessionId,
     std::wstring& error) {
     try {
         const auto payload = JsonObject::Parse(winrt::to_hstring(payloadUtf8));
         auto bundle = ParseEmbeddedMediaBundle(
             payload, widgetId, instanceId, runtimeGeneration,
-            presentationGeneration, sequence, surfaceId);
+            presentationGeneration, sequence, sessionId);
         if (!bundle) {
             error = L"Invalid embedded media bundle contract.";
             return std::nullopt;

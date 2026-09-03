@@ -144,8 +144,8 @@ public static class SnapshotPreview
             writer.Write($" collectionItem={node.CollectionItemKey}");
         if (!string.IsNullOrWhiteSpace(node.ArtworkHandle))
             writer.Write($" artworkHandle={node.ArtworkHandle}");
-        if (!string.IsNullOrWhiteSpace(node.MediaSurfaceId))
-            writer.Write($" media={node.MediaSurfaceId} placeholder=native");
+        if (!string.IsNullOrWhiteSpace(node.MediaSessionId))
+            writer.Write($" media={node.MediaSessionId} placeholder=native");
         if (!string.IsNullOrWhiteSpace(node.AccessibilityLabel))
             writer.Write($" a11y={Quote(node.AccessibilityLabel)}");
         if (!string.IsNullOrWhiteSpace(node.AccessibilityValue))

@@ -19,8 +19,8 @@ dotnet test --project .\tests\MediaDeck.Tests.csproj `
 ```
 
 The generated widget is a complete two-source example. It declares one native
-full player, a configurable seek step, an optional host-owned compact pinned
-presentation, a retained-hidden library route, exact command terminals, bounded
+full player, a configurable seek step, explicit host-owned alternative
+presentations, a zero-viewport parked library route, exact command terminals, bounded
 provider errors, and sealed local fake media. It needs no provider SDK,
 credential, account, network, browser automation, or native-host source.
 
@@ -32,7 +32,7 @@ correlation, unsolicited observations, cancellation, and bounded error tokens.
 It is opt-in WidgetSdk `contentFiles`; the host never injects it.
 
 The generated project explicitly stages the canonical file beside
-`adapter.html` as `media/adapter-runtime.js`. The surface declares the exact
+`adapter.html` as `media/adapter-runtime.js`. The session declares the exact
 package path `payload/media/adapter-runtime.js` with
 `application/javascript`, and the document loads `adapter-runtime.js` before
 provider code. The provider-neutral driver calls
@@ -53,8 +53,8 @@ steps, not automatic injection.
 | First visible activation | Viewport plus one `Load` | Wait for one exact correlated terminal; do not retry or poll. |
 | Stable player | Viewport plus current observation | Admit command-sequence-zero observations without treating them as terminals. |
 | One action pending | Same viewport and one `PendingCommand` | Keep one in flight; only its exact terminal clears it. |
-| Library/hidden route after load | Same surface, no viewport, `RetainSessionWhenHidden = true` | Do not send `Load` or `Cue`; returning reattaches the resident document. |
-| Library route before load | No surface and no viewport | Hidden retention cannot create a session. |
+| Library/hidden route after load | Same session, no viewport | Do not send `Load` or `Cue`; returning reattaches the resident document. |
+| Library route before load | Same session, no viewport | The valid cold declaration remains dormant and creates no background controller. |
 | Provider error | Bounded package status | Clear the exact command; retain last resident identity only when it existed. |
 | Controller/document replacement | New authoritative declaration/generation | Abort old driver work and reject late events. |
 | Removal, restart, eviction, adapter crash, or host shutdown | No retained contract | Treat as terminal; do not persist pending/browser authority. |

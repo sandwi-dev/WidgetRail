@@ -58,7 +58,7 @@ public sealed partial class YouTubeWidgetTests
             ProtocolConstants.EmbeddedMediaFrameDomainFamiliesVersion,
             snapshot.ProtocolVersion);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(snapshot));
-        var media = snapshot.EmbeddedMedia!;
+        var media = snapshot.EmbeddedMediaSession!;
         Assert.AreEqual(200d, media.Surface.MinimumHeight);
         Assert.IsGreaterThanOrEqualTo(200d, media.Surface.MinimumWidth!.Value);
         CollectionAssert.AreEqual(
@@ -101,7 +101,7 @@ public sealed partial class YouTubeWidgetTests
         Assert.AreEqual("youtube.playback.toggle", loading.InitialFocusId);
         Assert.IsEmpty(loading.QuickActions);
         Assert.IsEmpty(Find(loading.Root, "youtube.root").Shortcuts);
-        var load = loading.EmbeddedMedia!.PendingCommand!;
+        var load = loading.EmbeddedMediaSession!.PendingCommand!;
 
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1,
             duration: 120);
@@ -143,7 +143,7 @@ public sealed partial class YouTubeWidgetTests
         var errorWidget = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(errorWidget, $"https://youtu.be/{VideoId}");
         var errorLoad = errorWidget.RenderSnapshot("youtube-test", 1)
-            .EmbeddedMedia!.PendingCommand!;
+            .EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(errorWidget, errorLoad, EmbeddedMediaPlaybackState.Error, 1,
             errorCode: "embedding-disabled");
         var error = errorWidget.RenderSnapshot("youtube-test", 2);
@@ -164,7 +164,7 @@ public sealed partial class YouTubeWidgetTests
         Assert.IsTrue(loadingFullscreen.IsDisabled);
         Assert.AreEqual("youtube.player.back", Find(loading.Root, "youtube.link").Focus!.Up);
 
-        var load = loading.EmbeddedMedia!.PendingCommand!;
+        var load = loading.EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1,
             duration: 120);
         var ready = widget.RenderSnapshot("youtube-test", 2);
@@ -176,7 +176,8 @@ public sealed partial class YouTubeWidgetTests
         // and offers the reserved entry action. The widget holds no fullscreen
         // state, so repeated renders cannot disagree about the mode, and no B
         // shortcut is needed - or possible - to leave it.
-        Assert.IsTrue(ready.EmbeddedMedia!.OverlayFullscreenCapable);
+        Assert.IsTrue(ready.EmbeddedMediaSession!.SupportedPresentations.Contains(
+            MediaPresentationKind.OverlayFullscreen));
         Assert.AreEqual("host.embeddedMedia.enterFullscreen",
             Find(ready.Root, "youtube.player.fullscreen").ActionId);
         Assert.IsEmpty(Find(ready.Root, "youtube.root").Shortcuts
@@ -186,7 +187,8 @@ public sealed partial class YouTubeWidgetTests
             YouTubeVideoWidget.EnterFullscreenActionId, "youtube.player.fullscreen"));
         var afterEnter = widget.RenderSnapshot("youtube-test", 3);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(afterEnter));
-        Assert.IsTrue(afterEnter.EmbeddedMedia!.OverlayFullscreenCapable);
+        Assert.IsTrue(afterEnter.EmbeddedMediaSession!.SupportedPresentations.Contains(
+            MediaPresentationKind.OverlayFullscreen));
         Assert.AreEqual("host.embeddedMedia.enterFullscreen",
             Find(afterEnter.Root, "youtube.player.fullscreen").ActionId);
 
@@ -201,7 +203,8 @@ public sealed partial class YouTubeWidgetTests
         Assert.IsNull(TryFind(retainedLink.Root, "youtube.player.fullscreen"));
         Assert.AreEqual("youtube.player.back",
             Find(retainedLink.Root, "youtube.link").Focus!.Up);
-        Assert.IsFalse(retainedLink.EmbeddedMedia!.OverlayFullscreenCapable);
+        Assert.IsFalse(retainedLink.EmbeddedMediaSession!.SupportedPresentations.Contains(
+            MediaPresentationKind.OverlayFullscreen));
         await WidgetTestHost.DestroyAsync(widget);
     }
 
@@ -236,7 +239,7 @@ public sealed partial class YouTubeWidgetTests
         var link = $"https://youtu.be/{VideoId}";
         await CommitAsync(widget, link);
         var loading = widget.RenderSnapshot("youtube-test", 2);
-        var load = loading.EmbeddedMedia!.PendingCommand!;
+        var load = loading.EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1,
             duration: 120);
         var ready = widget.RenderSnapshot("youtube-test", 3);
@@ -282,7 +285,7 @@ public sealed partial class YouTubeWidgetTests
 
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.ToggleActionId, "youtube.playback.toggle"));
-        var play = widget.RenderSnapshot("youtube-test", 4).EmbeddedMedia!.PendingCommand!;
+        var play = widget.RenderSnapshot("youtube-test", 4).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, play, EmbeddedMediaPlaybackState.Playing, 2,
             position: 10, duration: 120);
         var playingToggle = Find(widget.RenderSnapshot("youtube-test", 5).Root,
@@ -312,7 +315,7 @@ public sealed partial class YouTubeWidgetTests
     {
         var widget = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(widget, $"https://youtu.be/{VideoId}");
-        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Paused, 1,
             duration: 120, playbackRate: 1);
 
@@ -372,7 +375,7 @@ public sealed partial class YouTubeWidgetTests
 
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.player.settings.rate.1.5", "youtube.player.settings.rate.1.5"));
-        var setRate = widget.RenderSnapshot("youtube-test", 4).EmbeddedMedia!.PendingCommand!;
+        var setRate = widget.RenderSnapshot("youtube-test", 4).EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.SetPlaybackRate, setRate.Kind);
         Assert.AreEqual(1.5, setRate.PlaybackRate);
         await ObserveAsync(widget, setRate, EmbeddedMediaPlaybackState.Paused, 2,
@@ -383,7 +386,7 @@ public sealed partial class YouTubeWidgetTests
             "youtube.player.settings.rate-picker"));
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.MutedActionId, "youtube.player.settings.muted"));
-        var setMuted = widget.RenderSnapshot("youtube-test", 5).EmbeddedMedia!.PendingCommand!;
+        var setMuted = widget.RenderSnapshot("youtube-test", 5).EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.SetMuted, setMuted.Kind);
         Assert.AreEqual(true, setMuted.Muted);
         await ObserveAsync(widget, setMuted, EmbeddedMediaPlaybackState.Paused, 3,
@@ -391,7 +394,7 @@ public sealed partial class YouTubeWidgetTests
 
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.LoopActionId, "youtube.player.settings.loop"));
-        var setLoop = widget.RenderSnapshot("youtube-test", 6).EmbeddedMedia!.PendingCommand!;
+        var setLoop = widget.RenderSnapshot("youtube-test", 6).EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.SetLoop, setLoop.Kind);
         Assert.AreEqual(true, setLoop.Loop);
         await ObserveAsync(widget, setLoop, EmbeddedMediaPlaybackState.Paused, 4,
@@ -402,7 +405,7 @@ public sealed partial class YouTubeWidgetTests
             "youtube.player.settings.rate-row.action"));
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.player.settings.rate.1.25", "youtube.player.settings.rate.1.25"));
-        var rejected = widget.RenderSnapshot("youtube-test", 7).EmbeddedMedia!.PendingCommand!;
+        var rejected = widget.RenderSnapshot("youtube-test", 7).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, rejected, EmbeddedMediaPlaybackState.Error, 5,
             duration: 120, playbackRate: 1.5, muted: true, loop: true,
             errorCode: "command-unsupported");
@@ -410,7 +413,7 @@ public sealed partial class YouTubeWidgetTests
             YouTubeVideoWidget.PlaybackRateBackActionId,
             "youtube.player.settings.rate-picker"));
         var afterRejection = widget.RenderSnapshot("youtube-test", 8);
-        Assert.IsNull(afterRejection.EmbeddedMedia!.PendingCommand);
+        Assert.IsNull(afterRejection.EmbeddedMediaSession!.PendingCommand);
         Assert.AreEqual("That setting is unavailable for the current YouTube video.",
             Find(afterRejection.Root, "youtube.player.settings.error").Text);
         Assert.IsNotNull(TryFind(
@@ -433,14 +436,14 @@ public sealed partial class YouTubeWidgetTests
         await configured;
 
         var home = widget.RenderSnapshot("youtube-test", 1);
-        Assert.IsNull(home.EmbeddedMedia);
+        Assert.IsNull(home.EmbeddedMediaSession);
         Assert.IsNotNull(TryFind(home.Root, "youtube.search.root"));
 
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.link.open", "youtube.link.open"));
         await CommitAsync(widget, $"https://youtu.be/{VideoId}");
         var loading = widget.RenderSnapshot("youtube-test", 2);
-        var load = loading.EmbeddedMedia!.PendingCommand!;
+        var load = loading.EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Playing, 1,
             position: 37, duration: 120, volume: 0.55);
 
@@ -448,15 +451,14 @@ public sealed partial class YouTubeWidgetTests
             "youtube.back", "youtube.player.back"));
         var hidden = widget.RenderSnapshot("youtube-test", 3);
         var requiredProtocolVersion = Math.Max(
-            ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
+            ProtocolConstants.EmbeddedMediaSessionVersion,
             ProtocolConstants.RememberedChildFocusGroupVersion);
         Assert.AreEqual(requiredProtocolVersion,
             hidden.ProtocolVersion);
         Assert.AreEqual("youtube.search.query",
             Find(hidden.Root, "youtube.search.controls").InitialChildFocusId);
-        Assert.IsNotNull(hidden.EmbeddedMedia);
-        Assert.IsTrue(hidden.EmbeddedMedia.RetainSessionWhenHidden);
-        Assert.IsNull(hidden.EmbeddedMedia.PendingCommand);
+        Assert.IsNotNull(hidden.EmbeddedMediaSession);
+        Assert.IsNull(hidden.EmbeddedMediaSession.PendingCommand);
         Assert.IsNull(TryFind(hidden.Root, "youtube.viewport"));
         Assert.IsNotNull(TryFind(hidden.Root, "youtube.player.return"));
         Assert.IsEmpty(ViewSnapshotValidator.Validate(hidden));
@@ -464,14 +466,13 @@ public sealed partial class YouTubeWidgetTests
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.player.return", "youtube.player.return"));
         var returned = widget.RenderSnapshot("youtube-test", 4);
-        Assert.IsNotNull(returned.EmbeddedMedia);
-        Assert.IsFalse(returned.EmbeddedMedia.RetainSessionWhenHidden);
-        Assert.IsNull(returned.EmbeddedMedia.PendingCommand);
+        Assert.IsNotNull(returned.EmbeddedMediaSession);
+        Assert.IsNull(returned.EmbeddedMediaSession.PendingCommand);
         Assert.IsNotNull(TryFind(returned.Root, "youtube.viewport"));
-        Assert.AreEqual(hidden.EmbeddedMedia.EntryAsset, returned.EmbeddedMedia.EntryAsset);
+        Assert.AreEqual(hidden.EmbeddedMediaSession.EntryAsset, returned.EmbeddedMediaSession.EntryAsset);
         CollectionAssert.AreEqual(
-            hidden.EmbeddedMedia.Resources.ToArray(),
-            returned.EmbeddedMedia.Resources.ToArray());
+            hidden.EmbeddedMediaSession.Resources.ToArray(),
+            returned.EmbeddedMediaSession.Resources.ToArray());
         Assert.IsEmpty(ViewSnapshotValidator.Validate(returned));
         await WidgetTestHost.DestroyAsync(widget);
     }
@@ -482,18 +483,18 @@ public sealed partial class YouTubeWidgetTests
         var widget = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(widget, $"https://youtu.be/{VideoId}");
         var loading = widget.RenderSnapshot("youtube-test", 1);
-        var load = loading.EmbeddedMedia!.PendingCommand!;
+        var load = loading.EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Load, load.Kind);
         Assert.AreEqual(VideoId, load.MediaKey);
 
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, eventSequence: 1);
         var ready = widget.RenderSnapshot("youtube-test", 2);
-        Assert.IsNull(ready.EmbeddedMedia!.PendingCommand);
+        Assert.IsNull(ready.EmbeddedMediaSession!.PendingCommand);
         StringAssert.Contains(Find(ready.Root, "youtube.status").Text!, "press Play");
 
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.ToggleActionId, "youtube.playback.toggle"));
-        var play = widget.RenderSnapshot("youtube-test", 3).EmbeddedMedia!.PendingCommand!;
+        var play = widget.RenderSnapshot("youtube-test", 3).EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Play, play.Kind);
         Assert.IsGreaterThan(load.Sequence, play.Sequence);
     }
@@ -503,12 +504,12 @@ public sealed partial class YouTubeWidgetTests
     {
         var widget = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(widget, $"https://www.youtube.com/watch?v={VideoId}");
-        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1);
 
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.ToggleActionId, "youtube.playback.toggle"));
-        var play = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
+        var play = widget.RenderSnapshot("youtube-test", 2).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, play, EmbeddedMediaPlaybackState.Playing, 2,
             position: 14, duration: 120, volume: 0.65);
         var playing = widget.RenderSnapshot("youtube-test", 3);
@@ -518,7 +519,7 @@ public sealed partial class YouTubeWidgetTests
 
         await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = YouTubeVideoWidget.SurfaceId,
+            SessionId = YouTubeVideoWidget.SessionId,
             Sequence = 3,
             CommandSequence = play.Sequence - 1,
             MediaKey = VideoId,
@@ -537,23 +538,23 @@ public sealed partial class YouTubeWidgetTests
     {
         var widget = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(widget, $"https://www.youtube.com/watch?v={VideoId}");
-        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1);
 
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.ToggleActionId, "youtube.playback.toggle"));
-        var play = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
+        var play = widget.RenderSnapshot("youtube-test", 2).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, play, EmbeddedMediaPlaybackState.Playing, 2,
             position: 14, duration: 120, volume: 0.65);
 
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.SeekForwardActionId, "youtube.root"));
-        var seek = widget.RenderSnapshot("youtube-test", 3).EmbeddedMedia!.PendingCommand!;
+        var seek = widget.RenderSnapshot("youtube-test", 3).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 3,
             position: 24, duration: 120, volume: 0.65);
 
         var buffering = widget.RenderSnapshot("youtube-test", 4);
-        Assert.IsNull(buffering.EmbeddedMedia!.PendingCommand);
+        Assert.IsNull(buffering.EmbeddedMediaSession!.PendingCommand);
         Assert.AreEqual("Buffering YouTube video…", Find(buffering.Root, "youtube.status").Text);
         var bufferingToggle = Find(buffering.Root, "youtube.playback.toggle");
         Assert.AreEqual(WidgetGlyph.Pause, bufferingToggle.Glyph);
@@ -575,7 +576,7 @@ public sealed partial class YouTubeWidgetTests
 
         await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = YouTubeVideoWidget.SurfaceId,
+            SessionId = YouTubeVideoWidget.SessionId,
             Sequence = 4,
             CommandSequence = 0,
             MediaKey = VideoId,
@@ -595,12 +596,12 @@ public sealed partial class YouTubeWidgetTests
     {
         var widget = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(widget, $"https://www.youtube.com/watch?v={VideoId}");
-        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1,
             duration: 120, volume: 0.65);
         await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = YouTubeVideoWidget.SurfaceId,
+            SessionId = YouTubeVideoWidget.SessionId,
             Sequence = 2,
             CommandSequence = 0,
             MediaKey = VideoId,
@@ -612,7 +613,7 @@ public sealed partial class YouTubeWidgetTests
 
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.SeekForwardActionId, "youtube.root"));
-        var seek = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
+        var seek = widget.RenderSnapshot("youtube-test", 2).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 3,
             position: 24, duration: 120, volume: 0.65);
 
@@ -626,7 +627,7 @@ public sealed partial class YouTubeWidgetTests
 
         await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = YouTubeVideoWidget.SurfaceId,
+            SessionId = YouTubeVideoWidget.SessionId,
             Sequence = 4,
             CommandSequence = 0,
             MediaKey = VideoId,
@@ -696,7 +697,7 @@ public sealed partial class YouTubeWidgetTests
             await invalidated;
 
             var command = widget.RenderSnapshot("youtube-test", snapshot.Sequence + 1)
-                .EmbeddedMedia!.PendingCommand!;
+                .EmbeddedMediaSession!.PendingCommand!;
             if (button == ControllerButton.X)
             {
                 Assert.AreEqual(
@@ -736,7 +737,7 @@ public sealed partial class YouTubeWidgetTests
 
         var error = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(error, $"https://youtu.be/{VideoId}");
-        var errorLoad = error.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        var errorLoad = error.RenderSnapshot("youtube-test", 1).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(error, errorLoad, EmbeddedMediaPlaybackState.Error, 1,
             errorCode: "embedding-disabled");
         await AssertTransportInputsRejectedAsync(
@@ -804,7 +805,7 @@ public sealed partial class YouTubeWidgetTests
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
         await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = YouTubeVideoWidget.SurfaceId,
+            SessionId = YouTubeVideoWidget.SessionId,
             Sequence = 3,
             CommandSequence = 0,
             MediaKey = VideoId,
@@ -839,7 +840,7 @@ public sealed partial class YouTubeWidgetTests
             Sequence: 94,
             SnapshotSequence: reactivated.Sequence)));
         await pauseInvalidated;
-        var pause = widget.RenderSnapshot("youtube-test", 23).EmbeddedMedia!.PendingCommand!;
+        var pause = widget.RenderSnapshot("youtube-test", 23).EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Pause, pause.Kind);
         await ObserveAsync(widget, pause, EmbeddedMediaPlaybackState.Paused, 4,
             position: 51, duration: 120, volume: 0.65);
@@ -855,7 +856,7 @@ public sealed partial class YouTubeWidgetTests
             ActiveInputScopeId: paused.ActiveInputScopeId,
             SnapshotSequence: paused.Sequence)));
         await seekInvalidated;
-        var seek = widget.RenderSnapshot("youtube-test", 25).EmbeddedMedia!.PendingCommand!;
+        var seek = widget.RenderSnapshot("youtube-test", 25).EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Seek, seek.Kind);
         Assert.AreEqual(61d, seek.PositionSeconds);
         Assert.AreEqual(VideoId, seek.MediaKey);
@@ -880,7 +881,7 @@ public sealed partial class YouTubeWidgetTests
             Assert.IsNull(TryFind(search.Root, "youtube.viewport"));
             Assert.IsEmpty(search.QuickActions);
             Assert.IsEmpty(Find(search.Root, "youtube.search.root").Shortcuts);
-            Assert.IsTrue(search.EmbeddedMedia!.RetainSessionWhenHidden);
+            Assert.IsNotNull(search.EmbeddedMediaSession);
 
             await WidgetTestHost.SetLifecycleStateAsync(
                 widget, WidgetLifecycleState.Visible);
@@ -896,7 +897,8 @@ public sealed partial class YouTubeWidgetTests
             var link = widget.RenderSnapshot("youtube-test", 32 + cycle * 10);
             Assert.AreEqual("youtube.link", link.InitialFocusId);
             Assert.IsNull(TryFind(link.Root, "youtube.player.fullscreen"));
-            Assert.IsFalse(link.EmbeddedMedia!.OverlayFullscreenCapable);
+            Assert.IsFalse(link.EmbeddedMediaSession!.SupportedPresentations.Contains(
+                MediaPresentationKind.OverlayFullscreen));
 
             await WidgetTestHost.SetLifecycleStateAsync(
                 widget, WidgetLifecycleState.Visible);
@@ -904,7 +906,8 @@ public sealed partial class YouTubeWidgetTests
             Assert.AreEqual("youtube.link", dashboardLink.InitialFocusId,
                 "Yielding Link-player to the dashboard must preserve its route.");
             Assert.IsNull(TryFind(dashboardLink.Root, "youtube.player.fullscreen"));
-            Assert.IsFalse(dashboardLink.EmbeddedMedia!.OverlayFullscreenCapable);
+            Assert.IsFalse(dashboardLink.EmbeddedMediaSession!.SupportedPresentations.Contains(
+                MediaPresentationKind.OverlayFullscreen));
 
             var root = Find(dashboardLink.Root, "youtube.root");
             foreach (var (button, actionId) in new[]
@@ -931,7 +934,7 @@ public sealed partial class YouTubeWidgetTests
                 SnapshotSequence: dashboardLink.Sequence)));
             await toggleInvalidated;
             var toggle = widget.RenderSnapshot("youtube-test", 34 + cycle * 10)
-                .EmbeddedMedia!.PendingCommand!;
+                .EmbeddedMediaSession!.PendingCommand!;
             var expectedState = cycle == 0
                 ? EmbeddedMediaPlaybackState.Paused
                 : EmbeddedMediaPlaybackState.Playing;
@@ -963,7 +966,8 @@ public sealed partial class YouTubeWidgetTests
         var link = widget.RenderSnapshot("youtube-test", 40);
         Assert.AreEqual("youtube.link", link.InitialFocusId);
         Assert.IsNull(TryFind(link.Root, "youtube.player.fullscreen"));
-        Assert.IsFalse(link.EmbeddedMedia!.OverlayFullscreenCapable);
+        Assert.IsFalse(link.EmbeddedMediaSession!.SupportedPresentations.Contains(
+            MediaPresentationKind.OverlayFullscreen));
         foreach (var id in new[]
                  {
                      "youtube.playback.toggle",
@@ -999,7 +1003,7 @@ public sealed partial class YouTubeWidgetTests
             ActiveInputScopeId: link.ActiveInputScopeId,
             SnapshotSequence: link.Sequence)));
         await pauseInvalidated;
-        var pause = widget.RenderSnapshot("youtube-test", 41).EmbeddedMedia!.PendingCommand!;
+        var pause = widget.RenderSnapshot("youtube-test", 41).EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Pause, pause.Kind);
         await ObserveAsync(widget, pause, EmbeddedMediaPlaybackState.Paused, 3,
             position: 50, duration: 120, volume: 0.65);
@@ -1015,7 +1019,7 @@ public sealed partial class YouTubeWidgetTests
             ActiveInputScopeId: paused.ActiveInputScopeId,
             SnapshotSequence: paused.Sequence)));
         await seekInvalidated;
-        var seek = widget.RenderSnapshot("youtube-test", 43).EmbeddedMedia!.PendingCommand!;
+        var seek = widget.RenderSnapshot("youtube-test", 43).EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Seek, seek.Kind);
         Assert.AreEqual(60d, seek.PositionSeconds);
         await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Paused, 4,
@@ -1030,7 +1034,7 @@ public sealed partial class YouTubeWidgetTests
             Sequence: 103,
             SnapshotSequence: settled.Sequence)));
         await playInvalidated;
-        var play = widget.RenderSnapshot("youtube-test", 45).EmbeddedMedia!.PendingCommand!;
+        var play = widget.RenderSnapshot("youtube-test", 45).EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Play, play.Kind);
         await ObserveAsync(widget, play, EmbeddedMediaPlaybackState.Playing, 5,
             position: 60, duration: 120, volume: 0.65);
@@ -1046,7 +1050,7 @@ public sealed partial class YouTubeWidgetTests
             ActiveInputScopeId: playing.ActiveInputScopeId,
             SnapshotSequence: playing.Sequence)));
         await backInvalidated;
-        var back = widget.RenderSnapshot("youtube-test", 47).EmbeddedMedia!.PendingCommand!;
+        var back = widget.RenderSnapshot("youtube-test", 47).EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Seek, back.Kind);
         Assert.AreEqual(50d, back.PositionSeconds);
         await ObserveAsync(widget, back, EmbeddedMediaPlaybackState.Playing, 6,
@@ -1061,7 +1065,7 @@ public sealed partial class YouTubeWidgetTests
             Sequence: 105,
             SnapshotSequence: afterBack.Sequence)));
         await forwardInvalidated;
-        var forward = widget.RenderSnapshot("youtube-test", 49).EmbeddedMedia!.PendingCommand!;
+        var forward = widget.RenderSnapshot("youtube-test", 49).EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Seek, forward.Kind);
         Assert.AreEqual(60d, forward.PositionSeconds);
         await WidgetTestHost.DestroyAsync(widget);
@@ -1082,7 +1086,7 @@ public sealed partial class YouTubeWidgetTests
         {
             var widget = await CreateConfiguredLinkWidgetAsync();
             await CommitAsync(widget, $"https://youtu.be/{VideoId}");
-            var command = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+            var command = widget.RenderSnapshot("youtube-test", 1).EmbeddedMediaSession!.PendingCommand!;
             await ObserveAsync(widget, command, EmbeddedMediaPlaybackState.Error, 1,
                 errorCode: pair.Key);
             var text = Find(widget.RenderSnapshot("youtube-test", 2).Root, "youtube.status").Text!;
@@ -1099,39 +1103,39 @@ public sealed partial class YouTubeWidgetTests
         await WidgetTestHost.InitializeAsync(widget);
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
         await CommitAsync(widget, $"https://youtu.be/{VideoId}");
-        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1);
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.ToggleActionId, "youtube.playback.toggle"));
-        var play = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
+        var play = widget.RenderSnapshot("youtube-test", 2).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, play, EmbeddedMediaPlaybackState.Playing, 2,
             position: 37, duration: 120, volume: 0.55);
 
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
         var hidden = widget.RenderSnapshot("youtube-test", 3);
-        Assert.IsNull(hidden.EmbeddedMedia!.PendingCommand);
+        Assert.IsNull(hidden.EmbeddedMediaSession!.PendingCommand);
         Assert.AreEqual(37d, Find(hidden.Root, "youtube.timeline").Value);
         Assert.AreEqual("Playing", Find(hidden.Root, "youtube.status").Text);
 
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
         var retained = widget.RenderSnapshot("youtube-test", 5);
-        Assert.IsNull(retained.EmbeddedMedia!.PendingCommand);
+        Assert.IsNull(retained.EmbeddedMediaSession!.PendingCommand);
         Assert.AreEqual(37d, Find(retained.Root, "youtube.timeline").Value);
         Assert.AreEqual("Playing", Find(retained.Root, "youtube.status").Text);
 
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.VolumeActionId, "youtube.volume") { RequestedValue = 0.6 });
-        var volume = widget.RenderSnapshot("youtube-test", 6).EmbeddedMedia!.PendingCommand!;
+        var volume = widget.RenderSnapshot("youtube-test", 6).EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.SetVolume, volume.Kind);
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
         Assert.AreEqual(volume,
-            widget.RenderSnapshot("youtube-test", 7).EmbeddedMedia!.PendingCommand);
+            widget.RenderSnapshot("youtube-test", 7).EmbeddedMediaSession!.PendingCommand);
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
         Assert.AreEqual(volume,
-            widget.RenderSnapshot("youtube-test", 8).EmbeddedMedia!.PendingCommand);
+            widget.RenderSnapshot("youtube-test", 8).EmbeddedMediaSession!.PendingCommand);
         await ObserveAsync(widget, volume, EmbeddedMediaPlaybackState.Playing, 3,
             position: 38, duration: 120, volume: 0.6);
-        Assert.IsNull(widget.RenderSnapshot("youtube-test", 9).EmbeddedMedia!.PendingCommand);
+        Assert.IsNull(widget.RenderSnapshot("youtube-test", 9).EmbeddedMediaSession!.PendingCommand);
         await WidgetTestHost.DestroyAsync(widget);
     }
 
@@ -1356,7 +1360,7 @@ public sealed partial class YouTubeWidgetTests
         string? errorCode = null) =>
         await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = YouTubeVideoWidget.SurfaceId,
+            SessionId = YouTubeVideoWidget.SessionId,
             Sequence = eventSequence,
             CommandSequence = command.Sequence,
             MediaKey = command.MediaKey,
@@ -1377,12 +1381,12 @@ public sealed partial class YouTubeWidgetTests
     {
         var widget = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(widget, $"https://youtu.be/{VideoId}");
-        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1,
             position: 50, duration: 120, volume: 0.65);
         await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = YouTubeVideoWidget.SurfaceId,
+            SessionId = YouTubeVideoWidget.SessionId,
             Sequence = 2,
             CommandSequence = 0,
             MediaKey = VideoId,
@@ -1396,7 +1400,7 @@ public sealed partial class YouTubeWidgetTests
         {
             await widget.OnActionAsync(new WidgetActionEvent(
                 YouTubeVideoWidget.SeekForwardActionId, "youtube.root"));
-            var seek = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
+            var seek = widget.RenderSnapshot("youtube-test", 2).EmbeddedMediaSession!.PendingCommand!;
             await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 3,
                 position: 60, duration: 120, volume: 0.65);
             position = 60;
@@ -1449,7 +1453,7 @@ public sealed partial class YouTubeWidgetTests
     {
         var widget = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(widget, $"https://youtu.be/{VideoId}");
-        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Playing, 1,
             position: 50, duration: 600, volume: 0.65);
 
@@ -1459,13 +1463,13 @@ public sealed partial class YouTubeWidgetTests
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.SeekForwardActionId, "youtube.root"));
         var pendingSnapshot = widget.RenderSnapshot("youtube-test", 3);
-        Assert.IsNotNull(pendingSnapshot.EmbeddedMedia!.PendingCommand,
+        Assert.IsNotNull(pendingSnapshot.EmbeddedMediaSession!.PendingCommand,
             "The seek must actually be in flight for this to prove anything.");
         AssertHeldSeekDeclared(pendingSnapshot, "with a command pending");
 
         // The seek drives the player into Loading. This is the state that used
         // to withdraw the declaration and end the hold after one step.
-        var seek = pendingSnapshot.EmbeddedMedia!.PendingCommand!;
+        var seek = pendingSnapshot.EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 2,
             position: 60, duration: 600, volume: 0.65);
         AssertHeldSeekDeclared(widget.RenderSnapshot("youtube-test", 4), "while buffering");
@@ -1476,7 +1480,7 @@ public sealed partial class YouTubeWidgetTests
             YouTubeVideoWidget.SeekForwardActionId, "youtube.root"));
         var second = widget.RenderSnapshot("youtube-test", 5);
         AssertHeldSeekDeclared(second, "on a second seek while still loading");
-        if (second.EmbeddedMedia!.PendingCommand is { } queued)
+        if (second.EmbeddedMediaSession!.PendingCommand is { } queued)
             await ObserveAsync(widget, queued, EmbeddedMediaPlaybackState.Loading, 3,
                 position: 70, duration: 600, volume: 0.65);
         AssertHeldSeekDeclared(
@@ -1493,12 +1497,12 @@ public sealed partial class YouTubeWidgetTests
     {
         var widget = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(widget, $"https://youtu.be/{VideoId}");
-        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Playing, 1,
             position: 50, duration: 600, volume: 0.65);
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.SeekForwardActionId, "youtube.root"));
-        var seek = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
+        var seek = widget.RenderSnapshot("youtube-test", 2).EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 2,
             position: 60, duration: 600, volume: 0.65);
 

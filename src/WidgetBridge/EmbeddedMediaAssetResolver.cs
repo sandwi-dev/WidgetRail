@@ -11,7 +11,7 @@ internal static class EmbeddedMediaAssetResolver
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(publication);
-        var media = publication.Snapshot.EmbeddedMedia ??
+        var media = publication.Snapshot.EmbeddedMediaSession ??
             throw new BridgeProtocolException("The current snapshot has no embedded media surface.");
         var configured = publication.Configured;
         if (string.IsNullOrWhiteSpace(configured.PackageRoot) ||
@@ -96,10 +96,8 @@ internal static class EmbeddedMediaAssetResolver
             media.AllowedFrameOrigins,
             media.AllowedFrameDomainFamilies,
             media.PendingCommand,
-            media.CompactPinnedPresentation,
+            media.SupportedPresentations,
             media.MediaSeekStepSeconds,
-            media.RetainSessionWhenHidden,
-            media.OverlayFullscreenCapable,
             resources);
     }
 

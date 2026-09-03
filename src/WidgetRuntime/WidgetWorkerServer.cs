@@ -577,15 +577,6 @@ internal sealed class WidgetWorkerServer
                    char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.')))))
             throw new WidgetProtocolViolationException(
                 "Pinned layout selection input is invalid.");
-        if (input.Context == ControllerInputContext.OverlayFullscreenPresentation &&
-            (input.IsOverlayFullscreenActive is null ||
-             input.IsPinnedLayoutSelected is not null || input.PinnedLayoutId is not null))
-            throw new WidgetProtocolViolationException(
-                "Overlay fullscreen notification is invalid.");
-        if (input.Context != ControllerInputContext.OverlayFullscreenPresentation &&
-            input.IsOverlayFullscreenActive is not null)
-            throw new WidgetProtocolViolationException(
-                "Overlay fullscreen state is valid only for its notification context.");
     }
 
     private static bool IsBoundedIdentifier(string? value) =>

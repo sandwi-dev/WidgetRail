@@ -127,6 +127,7 @@ public:
         D2D1_COLOR_F trackColor{};
         D2D1_COLOR_F accentColor{};
         D2D1_COLOR_F focusColor{};
+        double rasterScale{1.0};
     };
 
     struct VisualPresentation final {
@@ -215,42 +216,6 @@ public:
     // retained external-content session can keep its controller rooted here
     // while neither visible endpoint owns presentation.
     HRESULT CreateExternalContentParkingTarget(IUnknown** target) noexcept;
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    enum class ExternalContentFailureOperation {
-        None,
-        CreateOverlayTarget,
-        CreatePinnedTarget,
-        DetachOverlay,
-        DetachPinned,
-        ReleasePinnedEndpoint,
-        DetachOverlayPersistent,
-        DetachPinnedPersistent,
-        ReleasePinnedEndpointPersistent,
-        DetachOverlayCommit,
-        DetachPinnedCommit,
-        ReleasePinnedEndpointCommit,
-        DetachOverlayWait,
-        DetachPinnedWait,
-        ReleasePinnedEndpointWait,
-    };
-    void FailNextExternalContentOperationForTest(
-        ExternalContentFailureOperation operation) noexcept {
-        externalContentFailureForTest_ = operation;
-    }
-    [[nodiscard]] std::uint64_t externalContentRecoveryCountForTest() const noexcept {
-        return externalContentRecoveryCountForTest_;
-    }
-    [[nodiscard]] bool hasPinnedExternalContentEndpointForTest() const noexcept {
-        return pinnedExternalTarget_ || pinnedExternalRootVisual_ ||
-            pinnedExternalContentVisual_;
-    }
-    [[nodiscard]] bool hasExternalContentVisualForTest(
-        const ExternalContentEndpoint endpoint) const noexcept {
-        return endpoint == ExternalContentEndpoint::Overlay
-            ? externalContentVisual_ != nullptr
-            : pinnedExternalContentVisual_ != nullptr;
-    }
-#endif
     HRESULT CommitExternalContentPresentation(
         const RECT& bounds, bool visible, CommitTiming& timing) noexcept;
     HRESULT CommitExternalContentPresentation(
@@ -263,6 +228,9 @@ public:
     HRESULT CommitExternalContentPresentation(
         ExternalContentEndpoint endpoint, const RECT& bounds,
         const RECT& clipBounds, bool visible, CommitTiming& timing) noexcept;
+    HRESULT StageExternalContentPresentation(
+        ExternalContentEndpoint endpoint, const RECT& bounds,
+        const RECT& clipBounds, CommitTiming& timing) noexcept;
     HRESULT DetachExternalContentTarget(
         ExternalContentEndpoint endpoint, CommitTiming& timing) noexcept;
     HRESULT ReleasePinnedExternalContentEndpoint(CommitTiming& timing) noexcept;
@@ -309,11 +277,6 @@ private:
         pinnedMediaChromePresentation_;
     unsigned int pinnedMediaChromeWidth_{};
     unsigned int pinnedMediaChromeHeight_{};
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    ExternalContentFailureOperation externalContentFailureForTest_{
-        ExternalContentFailureOperation::None};
-    std::uint64_t externalContentRecoveryCountForTest_{};
-#endif
     struct ExternalContentPresentationState final {
         bool current{};
         IDCompositionVisual2* visual{};

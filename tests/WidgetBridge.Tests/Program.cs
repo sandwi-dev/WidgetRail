@@ -1275,7 +1275,7 @@ static Task RequestClassificationIsClosed()
             runtimeGeneration = "runtime-generation",
             presentationGeneration = "presentation-generation",
             sequence = 7,
-            surfaceId = "primary-media",
+            sessionId = "primary-media",
             path = @"C:\\forbidden.html",
         }),
     });
@@ -4918,12 +4918,16 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
                 VerifiedPackageFiles = verified,
             };
             var descriptor = configured.PublicDescriptor();
-            var media = new EmbeddedMediaSurface
+            var media = new EmbeddedMediaSession
             {
                 Id = "primary-media",
                 AccessibleName = $"{adapterName} media",
                 EntryAsset = "media/adapter.html",
-                RetainSessionWhenHidden = true,
+                SupportedPresentations =
+                [
+                    MediaPresentationKind.OverlayFullscreen,
+                    MediaPresentationKind.CompactPinned,
+                ],
                 Surface = new WidgetSurfaceHints
                 {
                     PreferredWidth = 760,
@@ -4958,11 +4962,11 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
             };
             var snapshot = new ViewSnapshot
             {
-                ProtocolVersion = ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
+                ProtocolVersion = ProtocolConstants.EmbeddedMediaSessionVersion,
                 Sequence = 7,
                 WidgetInstanceId = configured.InstanceId,
                 ActiveInputScopeId = "root",
-                EmbeddedMedia = media,
+                EmbeddedMediaSession = media,
                 Root = new ViewNode
                 {
                     Id = "root",
@@ -4980,9 +4984,9 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
             var bundle = EmbeddedMediaAssetResolver.Resolve(
                 request, new BridgeClientSnapshot(configured, snapshot));
             Assert.Equal(adapterName, bundle.WidgetId);
-            Assert.Equal(media.Id, bundle.SurfaceId);
-            Assert.True(bundle.RetainSessionWhenHidden,
-                "Bridge resolution dropped retained-hidden session authority.");
+            Assert.Equal(media.Id, bundle.SessionId);
+            Assert.SequenceEqual(media.SupportedPresentations,
+                bundle.SupportedPresentations);
             Assert.Equal(2, bundle.Resources.Count);
             Assert.Equal($"{adapterName}.tone", bundle.PendingCommand?.MediaKey);
             Assert.SequenceEqual(
@@ -5041,15 +5045,17 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
                 descriptor.Id, WidgetLifecycleState.Visible));
         Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
         var initial = await SampleSnapshotAsync(client, descriptor.Id);
-        var media = initial.EmbeddedMedia
+        var media = initial.EmbeddedMediaSession
             ?? throw new InvalidOperationException("Built sample omitted embedded media.");
         Assert.Equal(
-            ProtocolConstants.SurfaceAppearanceVersion,
+            ProtocolConstants.EmbeddedMediaSessionVersion,
             initial.ProtocolVersion);
-        Assert.True(media.CompactPinnedPresentation,
+        Assert.True(media.SupportedPresentations.Contains(
+                MediaPresentationKind.CompactPinned),
             "Built sample omitted compact pinned media presentation.");
         Assert.Equal<double?>(2D, media.MediaSeekStepSeconds);
-        Assert.True(media.OverlayFullscreenCapable,
+        Assert.True(media.SupportedPresentations.Contains(
+                MediaPresentationKind.OverlayFullscreen),
             "Built sample omitted overlay fullscreen presentation.");
         Assert.SequenceEqual(
             new[]
@@ -5074,7 +5080,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
                 descriptor.Id, initial.WidgetInstanceId,
                 descriptor.RuntimeGeneration, descriptor.PresentationGeneration,
                 initial.Sequence, media.Id));
-        Assert.Equal(BridgeMessageTypes.EmbeddedMedia, resolved.Type);
+        Assert.Equal(BridgeMessageTypes.EmbeddedMediaSession, resolved.Type);
         var bundle = BridgeJson.FromElement<BridgeEmbeddedMediaBundle>(resolved.Payload);
         Assert.True(bundle.Resources.Any(resource =>
                 resource.Path == "payload/media/adapter.html" &&
@@ -5122,7 +5128,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
                     actionId, sourceElementId)));
             _ = await client.ReadEventAsync(BridgeMessageTypes.Invalidation);
             var snapshot = await SampleSnapshotAsync(client, descriptor.Id);
-            var command = snapshot.EmbeddedMedia?.PendingCommand
+            var command = snapshot.EmbeddedMediaSession?.PendingCommand
                 ?? throw new InvalidOperationException(
                     $"{actionId} did not publish a typed command.");
             return (snapshot, command);
@@ -5142,7 +5148,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
                     snapshot.Sequence,
                     new EmbeddedMediaPlaybackEvent
                     {
-                        SurfaceId = snapshot.EmbeddedMedia!.Id,
+                        SessionId = snapshot.EmbeddedMediaSession!.Id,
                         Sequence = ++eventSequence,
                         CommandSequence = command.Sequence,
                         MediaKey = command.MediaKey,
@@ -5155,7 +5161,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
             _ = await client.ReadEventAsync(BridgeMessageTypes.Invalidation);
             var acknowledged = await SampleSnapshotAsync(client, descriptor.Id);
             Assert.Equal<EmbeddedMediaPlaybackCommand?>(
-                null, acknowledged.EmbeddedMedia?.PendingCommand);
+                null, acknowledged.EmbeddedMediaSession?.PendingCommand);
             return acknowledged;
         }
 
@@ -5172,10 +5178,10 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
                     snapshot.Sequence,
                     new EmbeddedMediaPlaybackEvent
                     {
-                        SurfaceId = snapshot.EmbeddedMedia!.Id,
+                        SessionId = snapshot.EmbeddedMediaSession!.Id,
                         Sequence = ++eventSequence,
                         CommandSequence = 0,
-                        MediaKey = snapshot.EmbeddedMedia.PendingCommand!.MediaKey,
+                        MediaKey = snapshot.EmbeddedMediaSession.PendingCommand!.MediaKey,
                         State = state,
                         PositionSeconds = position,
                         DurationSeconds = 60,
@@ -5200,7 +5206,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
                     snapshot.Sequence,
                     new EmbeddedMediaPlaybackEvent
                     {
-                        SurfaceId = snapshot.EmbeddedMedia!.Id,
+                        SessionId = snapshot.EmbeddedMediaSession!.Id,
                         Sequence = ++eventSequence,
                         CommandSequence = 0,
                         MediaKey = mediaKey,
@@ -5217,7 +5223,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
         var (play, playCommand) = await CommandAsync(
             "host.embeddedMedia.togglePlayback", "media-shell.play");
         Assert.Equal(
-            ProtocolConstants.SurfaceAppearanceVersion,
+            ProtocolConstants.EmbeddedMediaSessionVersion,
             play.ProtocolVersion);
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Play, playCommand.Kind);
         var playing = await AcknowledgeAsync(
@@ -5254,7 +5260,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
             resume, EmbeddedMediaPlaybackState.Paused, 8);
         Assert.True(compatibleResume.Sequence > resume.Sequence,
             "Unsolicited progress did not advance the compatible snapshot.");
-        Assert.Equal(resumeCommand, compatibleResume.EmbeddedMedia!.PendingCommand);
+        Assert.Equal(resumeCommand, compatibleResume.EmbeddedMediaSession!.PendingCommand);
         _ = await AcknowledgeAsync(
             resume, resumeCommand, EmbeddedMediaPlaybackState.Playing, 8);
 

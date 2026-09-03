@@ -62,11 +62,11 @@ internal static class ProtocolVersionRequirementsTests
     {
         var cases = new RequirementCase[]
         {
-            new("embedded media", "embedded-media-surface",
-                ProtocolConstants.EmbeddedMediaSurfaceVersion,
-                "$.embeddedMedia", snapshot => snapshot with
+            new("embedded media session", "embedded-media-session",
+                ProtocolConstants.EmbeddedMediaSessionVersion,
+                "$.embeddedMediaSession", snapshot => snapshot with
                 {
-                    EmbeddedMedia = new()
+                    EmbeddedMediaSession = new()
                     {
                         Id = "media",
                         AccessibleName = "Neutral media",
@@ -84,60 +84,6 @@ internal static class ProtocolVersionRequirementsTests
                             new() { Path = "media/index.html", ContentType = "text/html" },
                         ],
                     },
-                }),
-            new("retained hidden media", "retained-hidden-embedded-media",
-                ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
-                "$.embeddedMedia.retainSessionWhenHidden", snapshot => snapshot with
-                {
-                    EmbeddedMedia = new()
-                    {
-                        Id = "media",
-                        AccessibleName = "Neutral media",
-                        EntryAsset = "media/index.html",
-                        RetainSessionWhenHidden = true,
-                        Surface = new()
-                        {
-                            PreferredWidth = 760,
-                            PreferredHeight = 425,
-                            MinimumWidth = 320,
-                            MinimumHeight = 180,
-                        },
-                        AspectRatio = 16.0 / 9.0,
-                        Resources =
-                        [
-                            new() { Path = "media/index.html", ContentType = "text/html" },
-                        ],
-                    },
-                }),
-            new("media viewport", "media-viewport",
-                ProtocolConstants.MediaViewportVersion,
-                "$.root.children[0]", snapshot => snapshot with
-                {
-                    EmbeddedMedia = new()
-                    {
-                        Id = "media",
-                        AccessibleName = "Neutral media",
-                        EntryAsset = "media/index.html",
-                        Surface = new()
-                        {
-                            PreferredWidth = 640,
-                            PreferredHeight = 360,
-                            MinimumWidth = 240,
-                            MinimumHeight = 135,
-                        },
-                        AspectRatio = 16.0 / 9.0,
-                        Resources =
-                        [
-                            new() { Path = "media/index.html", ContentType = "text/html" },
-                        ],
-                    },
-                    Root = Root(new ViewNode
-                    {
-                        Id = "media.viewport",
-                        Kind = ViewNodeKind.MediaViewport,
-                        MediaSurfaceId = "media",
-                        AccessibilityLabel = "Neutral media",
-                    }),
                 }),
             new("surface hints", "surface-hints", ProtocolConstants.SurfaceHintsVersion,
                 "$.surface", snapshot => snapshot with { Surface = new() }),

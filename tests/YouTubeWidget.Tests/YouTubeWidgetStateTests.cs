@@ -470,7 +470,7 @@ public sealed class YouTubeWidgetStateTests
         string? mediaKey = null,
         string? errorCode = null) => new()
     {
-        SurfaceId = "youtube-video.primary",
+        SessionId = "youtube-video.primary",
         Sequence = sequence,
         CommandSequence = commandSequence,
         MediaKey = mediaKey ?? VideoId,

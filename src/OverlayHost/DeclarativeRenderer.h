@@ -98,7 +98,7 @@ struct ResponsiveSurfacePresentation final {
 /// layout/renderer pass that owns native paint and semantics.
 struct RenderMediaViewportRegion final {
     std::wstring nodeId;
-    std::wstring mediaSurfaceId;
+    std::wstring mediaSessionId;
     declarative::Rect bounds;
     declarative::Rect clip;
 };
@@ -519,7 +519,7 @@ private:
         std::wstring widgetId;
         std::wstring widgetInstanceId;
         std::wstring authorityId;
-        std::wstring surfaceId;
+        std::wstring sessionId;
         std::wstring imageSource;
         std::wstring artworkHandle;
         std::wstring imageFit;

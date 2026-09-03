@@ -441,7 +441,7 @@ internal static class BridgeClientRegistryScenarios
         var configured = Widget("embedded-media-authority", worker: 'm', catalog: 'm');
         var includePendingCommand = true;
         long pendingCommandSequence = 3;
-        double aspectRatio = 16.0 / 9.0;
+        var entryAsset = "media/index.html";
         await using var fixture = new RegistryFixture(
             Catalog(configured),
             configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
@@ -451,11 +451,11 @@ internal static class BridgeClientRegistryScenarios
                 WidgetInstanceId = configured.InstanceId,
                 ActiveInputScopeId = "root",
                 Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack },
-                EmbeddedMedia = new EmbeddedMediaSurface
+                EmbeddedMediaSession = new EmbeddedMediaSession
                 {
                     Id = "primary-media",
                     AccessibleName = "Neutral media",
-                    EntryAsset = "media/index.html",
+                    EntryAsset = entryAsset,
                     Surface = new WidgetSurfaceHints
                     {
                         PreferredWidth = 760,
@@ -463,7 +463,7 @@ internal static class BridgeClientRegistryScenarios
                         MinimumWidth = 320,
                         MinimumHeight = 180,
                     },
-                    AspectRatio = aspectRatio,
+                    AspectRatio = 16.0 / 9.0,
                     PendingCommand = includePendingCommand &&
                         (sequence & uint.MaxValue) >= 3
                         ? new EmbeddedMediaPlaybackCommand
@@ -478,7 +478,7 @@ internal static class BridgeClientRegistryScenarios
                     [
                         new EmbeddedMediaResource
                         {
-                            Path = "media/index.html",
+                            Path = entryAsset,
                             ContentType = "text/html",
                         },
                     ],
@@ -494,7 +494,7 @@ internal static class BridgeClientRegistryScenarios
             descriptor.RuntimeGeneration,
             descriptor.PresentationGeneration,
             snapshot.Snapshot.Sequence,
-            snapshot.Snapshot.EmbeddedMedia!.Id);
+            snapshot.Snapshot.EmbeddedMediaSession!.Id);
 
         using (var admitted = fixture.Registry.AdmitEmbeddedMedia(initialExact))
         {
@@ -504,7 +504,7 @@ internal static class BridgeClientRegistryScenarios
 
         var initialObservation = new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = initialExact.SurfaceId,
+            SessionId = initialExact.SessionId,
             Sequence = 1,
             CommandSequence = 0,
             MediaKey = "aurora-track",
@@ -538,7 +538,7 @@ internal static class BridgeClientRegistryScenarios
 
         var playbackEvent = new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = exact.SurfaceId,
+            SessionId = exact.SessionId,
             Sequence = 7,
             CommandSequence = 3,
             MediaKey = "aurora-track",
@@ -583,7 +583,7 @@ internal static class BridgeClientRegistryScenarios
             compatibleSuccessor.Snapshot.Sequence > commandSnapshot.Snapshot.Sequence);
         RegistryAssert.Equal(
             playbackEvent.CommandSequence,
-            compatibleSuccessor.Snapshot.EmbeddedMedia!.PendingCommand!.Sequence);
+            compatibleSuccessor.Snapshot.EmbeddedMediaSession!.PendingCommand!.Sequence);
         await fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
             eventRequest, CancellationToken.None);
         var client = fixture.Clients.Single();
@@ -597,7 +597,7 @@ internal static class BridgeClientRegistryScenarios
         includePendingCommand = false;
         var retired = await fixture.GetSnapshotAsync(configured.Id);
         RegistryAssert.Equal<EmbeddedMediaPlaybackCommand?>(
-            null, retired.Snapshot.EmbeddedMedia!.PendingCommand);
+            null, retired.Snapshot.EmbeddedMediaSession!.PendingCommand);
         await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
             fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
                 eventRequest, CancellationToken.None));
@@ -620,15 +620,15 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.True(nextCompatible.Snapshot.Sequence > nextOriginSequence);
         RegistryAssert.Equal(
             pendingCommandSequence,
-            nextCompatible.Snapshot.EmbeddedMedia!.PendingCommand!.Sequence);
+            nextCompatible.Snapshot.EmbeddedMediaSession!.PendingCommand!.Sequence);
 
-        aspectRatio = 4.0 / 3.0;
+        entryAsset = "media/replacement.html";
         var wrongResource = await fixture.GetSnapshotAsync(configured.Id);
         await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
             fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
                 nextRequest with { Sequence = wrongResource.Snapshot.Sequence },
                 CancellationToken.None));
-        aspectRatio = 16.0 / 9.0;
+        entryAsset = "media/index.html";
         var exactCurrent = await fixture.GetSnapshotAsync(configured.Id);
         await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
             fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(

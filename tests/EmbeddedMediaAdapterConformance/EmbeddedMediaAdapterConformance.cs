@@ -27,7 +27,7 @@ public static class EmbeddedMediaAdapterConformanceGate
             throw new FileNotFoundException("The embedded-media adapter was not found.", adapterPath);
 
         using var snapshotDocument = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
-        var embeddedMedia = snapshotDocument.RootElement.GetProperty("embeddedMedia");
+        var embeddedMedia = snapshotDocument.RootElement.GetProperty("embeddedMediaSession");
         var declaredCommands = embeddedMedia.GetProperty("commands")
             .EnumerateArray()
             .Select(value => value.GetString() ?? string.Empty)

@@ -5,9 +5,8 @@ namespace {{Publisher}}.{{WidgetName}};
 
 public sealed class {{WidgetName}} : Widget
 {
-    public const string SurfaceId = "media.primary";
+    public const string SessionId = "media.primary";
     public const double SeekStepSeconds = 5;
-    public const bool EnableCompactPinnedPresentation = true;
     private static readonly MediaSource[] Sources =
     [
         new("aurora-video-0", "Aurora Signal"),
@@ -32,7 +31,7 @@ public sealed class {{WidgetName}} : Widget
     {
         lock (_gate)
         {
-            var media = CreateSurface(retainSessionWhenHidden: !_showPlayer && _sessionResident);
+            var media = CreateSession();
             if (!_showPlayer)
             {
                 return new WidgetView(
@@ -46,7 +45,7 @@ public sealed class {{WidgetName}} : Widget
                         .InputScope("media.library.root"),
                     "media.library.open", ActiveInputScopeId: "media.library.root")
                 {
-                    EmbeddedMedia = _sessionResident ? media : null,
+                    EmbeddedMediaSession = media,
                 };
             }
 
@@ -104,7 +103,7 @@ public sealed class {{WidgetName}} : Widget
                     PreferredWidth = 760, PreferredHeight = 610,
                 })
             {
-                EmbeddedMedia = media,
+                EmbeddedMediaSession = media,
             };
         }
     }
@@ -185,7 +184,7 @@ public sealed class {{WidgetName}} : Widget
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!string.Equals(playbackEvent.SurfaceId, SurfaceId, StringComparison.Ordinal))
+        if (!string.Equals(playbackEvent.SessionId, SessionId, StringComparison.Ordinal))
             return ValueTask.CompletedTask;
         lock (_gate)
         {
@@ -217,9 +216,9 @@ public sealed class {{WidgetName}} : Widget
         return ValueTask.CompletedTask;
     }
 
-    private EmbeddedMediaSurface CreateSurface(bool retainSessionWhenHidden) => new()
+    private EmbeddedMediaSession CreateSession() => new()
     {
-        Id = SurfaceId,
+        Id = SessionId,
         AccessibleName = "Two-source embedded media player",
         EntryAsset = "payload/media/adapter.html",
         Surface = new WidgetSurfaceHints
@@ -244,9 +243,12 @@ public sealed class {{WidgetName}} : Widget
             EmbeddedMediaCommand.SeekBackward,
             EmbeddedMediaCommand.SeekForward,
         ],
-        CompactPinnedPresentation = EnableCompactPinnedPresentation,
+        SupportedPresentations =
+        [
+            MediaPresentationKind.OverlayFullscreen,
+            MediaPresentationKind.CompactPinned,
+        ],
         MediaSeekStepSeconds = SeekStepSeconds,
-        RetainSessionWhenHidden = retainSessionWhenHidden,
         PendingCommand = _pendingCommand,
     };
 

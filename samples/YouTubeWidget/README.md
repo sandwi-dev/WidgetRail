@@ -3,7 +3,7 @@
 This full-trust Community package searches public YouTube videos through the
 YouTube Data API v3 and retains the existing link-to-play route. Playback uses
 YouTube's official IFrame Player API inside WidgetRail's host-owned
-embedded-media surface. It does not use an account, OAuth, stream extraction,
+embedded-media session. It does not use an account, OAuth, stream extraction,
 arbitrary browsing, autoplay, or browser-owned fullscreen.
 
 ## Search setup

@@ -70,41 +70,57 @@ void TestAcceptedCompactMediaHostContract() {
     };
     Check(has("if (current == std::numeric_limits<long long>::max()) return std::nullopt;") &&
               has("return current + 1;") &&
-              has("NextEmbeddedMediaPlaybackObservationSequence(\n                embeddedMediaPlaybackEventSequence_)") &&
-              has("embeddedMediaPlaybackEventSequence_ = publishedEventSequence;") &&
+              has("NextEmbeddedMediaPlaybackObservationSequence(\n                embeddedMediaSessionPlaybackEventSequence_)") &&
+              has("embeddedMediaSessionPlaybackEventSequence_ = publishedEventSequence;") &&
               has("event.mediaKey, event.state, event.positionSeconds") &&
               has("origin->commandSequence != commandSequence") &&
               has("origin->mediaKey != event.mediaKey"),
           "page-event restart projects onto a host-monotonic sequence, fails closed at exhaustion, and retains command/media/origin authority");
-    const auto residentSession = section(
-        "struct EmbeddedMediaSession final {",
-        "struct CommittedOverlayFullscreenMediaPresentation final {");
-    Check(residentSession.find("coordinator") != std::string::npos &&
-              residentSession.find("authority") != std::string::npos &&
-              residentSession.find("playbackEventSequence") == std::string::npos,
-          "resident session retains its controller and authority without owning a restartable playback observation epoch");
-    const auto residentOwnership = section(
-        "void SaveBoundEmbeddedMediaSession() {",
-        "[[nodiscard]] float MediaPixelsPerDip");
-    Check(residentOwnership.find("std::move(richMediaSurface_)") !=
-              std::string::npos &&
-              residentOwnership.find("std::move(found->second.coordinator)") !=
-              std::string::npos &&
-              residentOwnership.find("playbackEventSequence") == std::string::npos,
-          "cycling saves and rebinds the exact resident controller without resetting the process observation epoch");
-    const auto transfer = section(
-        "[[nodiscard]] bool TransferEmbeddedMediaSurface(",
-        "void ReconcileEmbeddedMediaProjection(");
-    const auto deferred = transfer.find("geometry=awaiting-committed-frame");
-    Check(transfer.find("presentationTransferPending()") != std::string::npos &&
-              deferred != std::string::npos &&
-              transfer.find("return true;", deferred) != std::string::npos &&
-              transfer.find("CompletePresentationTransfer") > deferred &&
-              transfer.find("richMediaSurface_->state().failureCode") ==
+    const auto managerHeader = ReadSource(
+        fs::path{__FILE__}.parent_path() / "MediaSessionManager.h");
+    const auto managerSource = ReadSource(
+        fs::path{__FILE__}.parent_path() / "MediaSessionManager.cpp");
+    Check(managerHeader.find("struct SessionKey final {") != std::string::npos &&
+              managerHeader.find("std::wstring widgetId;") != std::string::npos &&
+              managerHeader.find("std::wstring instanceId;") != std::string::npos &&
+              managerHeader.find("std::wstring runtimeGeneration;") != std::string::npos &&
+              managerHeader.find("std::wstring sessionId;") != std::string::npos &&
+              managerHeader.find("struct SessionRecord final {") != std::string::npos &&
+              managerHeader.find(
+                  "std::shared_ptr<richmedia::RichMediaSurfaceCoordinator> coordinator;") !=
                   std::string::npos &&
-              transfer.find("PresentationTransferFailureStageValue(failureStage)") !=
-                  std::string::npos,
-          "cycling defers exact geometry reattachment without retiring the retained controller and completes it only after geometry resolves");
+              managerHeader.find("std::optional<SessionAuthority> authority;") !=
+                  std::string::npos &&
+              managerHeader.find("playbackEventSequence") == std::string::npos,
+          "resident session retains exact durable identity, controller, and authority without owning the process playback observation epoch");
+    Check(managerSource.find("if (sessions_.size() >= MaximumResidentSessions)") !=
+                  std::string::npos &&
+              managerSource.find("sessions_.find(key.value())") !=
+                  std::string::npos &&
+              managerSource.find("EndpointOwner(") != std::string::npos &&
+              managerSource.find("ClearEndpointOwnership(key);") !=
+                  std::string::npos &&
+              managerSource.find("sessions_.erase(key.value());") !=
+                  std::string::npos &&
+              !has("residentEmbeddedMediaSessions_") &&
+              !has("boundEmbeddedMediaSessionKey_") &&
+              !has("richMediaSurface_") &&
+              !has("embeddedMediaAuthority_"),
+          "one bounded exact-key manager owns resident lifetime and endpoint retirement without a parallel bound-session owner");
+    Check(managerSource.find(
+              "input.geometry == GeometryState::Pending") !=
+                  std::string::npos &&
+              managerSource.find("TransitionEffect::Park") !=
+                  std::string::npos &&
+              managerSource.find("TransitionEffect::Present") !=
+                  std::string::npos &&
+              managerSource.find("TransitionEffect::Update") !=
+                  std::string::npos &&
+              has("EmbeddedMediaTransitionOperations(") &&
+              has("if (session.key != exactKey) return E_ACCESSDENIED;") &&
+              has("mediaSessions_.Reconcile(") &&
+              has("SameEmbeddedMediaDocumentIdentity("),
+          "manager transition planning and exact-key host effects defer pending geometry and reject stale document or endpoint authority");
     const auto pinnedCoordinator = ReadSource(
         fs::path{__FILE__}.parent_path() / "WidgetSurfaceCoordinator.cpp");
     const auto unpinBegin = pinnedCoordinator.find(
@@ -122,20 +138,20 @@ void TestAcceptedCompactMediaHostContract() {
                   std::string::npos,
           "pinned retirement revokes presentation authority before its reentrant media callback");
     const auto retirementCallback = section(
-        "pinnedSurfaceCoordinator_.SetBeforeWindowRetirement(",
-        "if (!developmentProbeOnly_)");
-    const auto transferCall = retirementCallback.find(
-        "TransferEmbeddedMediaSurface(");
-    Check(transferCall != std::string::npos &&
-              retirementCallback.find("retiringWidgetId", transferCall) !=
+        "void HandlePinnedSurfaceWindowRetirement(",
+        "[[nodiscard]] HRESULT ExecuteParkEmbeddedMediaSession(");
+    Check(retirementCallback.find(
+              "mediaSessions_.EndpointOwner(widgetrail::media::Endpoint::Pinned)") !=
                   std::string::npos &&
-              retirementCallback.find("transferPending", transferCall) !=
+              retirementCallback.find(
+                  "session->authority->presentation !=\n                EmbeddedMediaPresentationState::CompactPinned") !=
                   std::string::npos &&
-              retirementCallback.find("embeddedMediaAuthority_", transferCall) ==
+              retirementCallback.find("ReconcileEmbeddedMediaPresentation(") !=
                   std::string::npos &&
-              retirementCallback.find("richMediaSurface_", transferCall) ==
-                  std::string::npos,
-          "retirement diagnostics retain caller-owned identity and terminal outcome across reentrant transfer failure");
+              retirementCallback.find("StopEmbeddedMediaSession(*sessionKey") !=
+                  std::string::npos &&
+              retirementCallback.find("retiringWidgetId") != std::string::npos,
+          "pinned retirement retains exact endpoint identity and a bounded park, overlay-return, or terminal outcome");
     const auto coordinatorTransfer = ReadSource(
         fs::path{__FILE__}.parent_path() / "RichMediaSurfaceCoordinator.cpp");
     Check(coordinatorTransfer.find(
@@ -148,19 +164,20 @@ void TestAcceptedCompactMediaHostContract() {
     const auto residency = section(
         "void SyncWidgetActivity(",
         "void RetireBridgeSessionPresentationAuthority(");
-    Check(residency.find(
-              "SuspendBoundEmbeddedMediaPresentation(L\"active-widget-changed\")") !=
-              std::string::npos &&
+    Check(residency.find("const auto mediaKeys = mediaSessions_.Keys();") !=
+                  std::string::npos &&
+              residency.find("mediaSessions_.Find(key)") != std::string::npos &&
               residency.find(
-                  "TransferEmbeddedMediaSurface(\n                    destination, L\"lifecycle-reconciliation\")") !=
-              std::string::npos &&
+                  "? EmbeddedMediaPresentationState::CompactPinned") !=
+                  std::string::npos &&
               residency.find(
-                  "if (richMediaSurface_->presentationTransferPending()) continue;") !=
-              std::string::npos &&
-              residency.find(
-                  "ReconcileEmbeddedMediaProjection(L\"lifecycle-reconciliation\")") !=
-              std::string::npos,
-          "lifecycle reconciliation suspends hidden residents and waits for exact deferred reattachment before projection admission");
+                  "ReconcileEmbeddedMediaPresentation(\n                key, destination, L\"lifecycle-reconciliation\"") !=
+                  std::string::npos &&
+              residency.find("ParkingReason::HostHidden") !=
+                  std::string::npos &&
+              residency.find("ParkingReason::WidgetCycled") !=
+                  std::string::npos,
+          "lifecycle reconciliation retains every exact session and routes hidden, cycled, overlay, and compact ownership through the manager");
     Check(has("XINPUT_GAMEPAD_X") &&
               has("Command::TogglePlayback") &&
               has("XINPUT_GAMEPAD_LEFT_SHOULDER") &&
@@ -374,6 +391,8 @@ void TestWidgetContextActionHostContract() {
 void TestAcceptedOverlayFullscreenMediaHostContract() {
     const auto source = ReadSource(
         fs::path{__FILE__}.parent_path() / "main.cpp");
+    const auto managerSource = ReadSource(
+        fs::path{__FILE__}.parent_path() / "MediaSessionManager.cpp");
     const auto requireOrdered = [&](const std::string_view first,
                                     const std::string_view second,
                                     const std::string_view message) {
@@ -384,49 +403,142 @@ void TestAcceptedOverlayFullscreenMediaHostContract() {
               message);
     };
     const auto section = [&](const std::string_view begin,
-                             const std::string_view end) {
+                             const std::string_view end,
+                             const std::string_view message) {
         const auto beginOffset = source.find(begin);
-        Check(beginOffset != std::string::npos,
-              "fullscreen host contract section begins");
+        Check(beginOffset != std::string::npos, message);
         const auto endOffset = source.find(end, beginOffset + begin.size());
-        Check(endOffset != std::string::npos,
-              "fullscreen host contract section ends");
+        Check(endOffset != std::string::npos, message);
         return source.substr(beginOffset, endOffset - beginOffset);
     };
 
-    // Anchored on the controller-frame branch specifically. The predicate is
-    // consulted in several places, so a bare "if (OverlayFullscreenMediaRequested()) {"
-    // would silently select an earlier presentation site and widen this section
-    // until the XINPUT_GAMEPAD_BACK exclusion below stopped meaning anything.
+    const auto fullscreenAuthority = section(
+        "[[nodiscard]] bool OverlayFullscreenMediaRequested() const noexcept {",
+        "[[nodiscard]] bool EnterOverlayFullscreenMedia()",
+        "fullscreen request authority owner exists");
+    Check(fullscreenAuthority.find("CurrentEmbeddedMediaSessionKey(") !=
+                  std::string::npos &&
+              fullscreenAuthority.find("mediaSessions_.Find(*key)") !=
+                  std::string::npos &&
+              fullscreenAuthority.find(
+                  "session->presentationRequest->target !=\n                EmbeddedMediaPresentationState::OverlayFullscreen") !=
+                  std::string::npos &&
+              fullscreenAuthority.find(
+                  "session->presentationRequest->presentationGeneration !=\n                session->authority->presentationGeneration") !=
+                  std::string::npos &&
+              fullscreenAuthority.find(
+                  "OverlayFullscreenMediaAuthorityCurrent(") !=
+                  std::string::npos &&
+              fullscreenAuthority.find(
+                  "MediaPresentationKind::OverlayFullscreen") !=
+                  std::string::npos &&
+              fullscreenAuthority.find("pinnedSurfaceCoordinator_.pinned()") !=
+                  std::string::npos,
+          "fullscreen activation requires the exact current session, generation, capability, and non-pinned authority");
+
+    const auto fullscreenEntryExit = section(
+        "[[nodiscard]] bool EnterOverlayFullscreenMedia()",
+        "void ClearStaleOverlayFullscreenMediaActivation()",
+        "fullscreen entry and exit owners exist");
+    Check(fullscreenEntryExit.find(
+              "EmbeddedMediaPresentationState::OverlayViewport") !=
+                  std::string::npos &&
+              fullscreenEntryExit.find(
+                  "EmbeddedMediaPresentationAuthorityCurrent(*key)") !=
+                  std::string::npos &&
+              fullscreenEntryExit.find(
+                  "ResolveOrdinaryOverlayEmbeddedMediaPresentationGeometry(") !=
+                  std::string::npos &&
+              fullscreenEntryExit.find(
+                  "MediaPresentationKind::OverlayFullscreen") !=
+                  std::string::npos &&
+              fullscreenEntryExit.find(
+                  "*key, EmbeddedMediaPresentationState::OverlayFullscreen") !=
+                  std::string::npos &&
+              fullscreenEntryExit.find(
+                  "*key, EmbeddedMediaPresentationState::OverlayViewport") !=
+                  std::string::npos &&
+              fullscreenEntryExit.find("mediaSessions_.RequestPresentation(") !=
+                  std::string::npos,
+          "host-owned fullscreen entry and exit mutate only the exact manager presentation request");
+
     const auto fullscreenInput = section(
-        "if (OverlayFullscreenMediaRequested()) {\n"
-        "            if (frame.recoveryChordPressed",
-        "const auto pinnedControllerCommand");
-    Check(fullscreenInput.find("DispatchControllerAction(L\"B\", true);") !=
+        "constexpr WORD recoveryChord = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;",
+        "const auto pinnedControllerCommand",
+        "fullscreen controller route exists");
+    const auto fullscreenBranch = source.find(
+        "if (OverlayFullscreenMediaRequested()) {",
+        source.find("constexpr WORD recoveryChord"));
+    const auto fullscreenTerminal = source.find(
+        "            return;\n        }", fullscreenBranch);
+    const auto pinnedViewRoute = source.find(
+        "const auto pinnedControllerCommand", fullscreenTerminal);
+    Check(fullscreenInput.find(
+              "mediaSessions_.EndpointOwner(widgetrail::media::Endpoint::Overlay)") !=
+                  std::string::npos &&
+              fullscreenInput.find("mediaSessions_.Find(*fullscreenKey)") !=
+                  std::string::npos &&
+              fullscreenInput.find(
+                  "EmbeddedMediaPresentationState::OverlayFullscreen") !=
+                  std::string::npos &&
+              fullscreenInput.find("DispatchControllerAction(L\"B\", true);") !=
               std::string::npos &&
               fullscreenInput.find("Command::TogglePlayback") != std::string::npos &&
               fullscreenInput.find("frame.leftTriggerPressed") != std::string::npos &&
               fullscreenInput.find("NavigationDirection::Left") != std::string::npos &&
               fullscreenInput.find("frame.rightTriggerPressed") != std::string::npos &&
               fullscreenInput.find("NavigationDirection::Right") != std::string::npos &&
-              fullscreenInput.find("XINPUT_GAMEPAD_BACK") == std::string::npos,
+              fullscreenBranch != std::string::npos &&
+              fullscreenTerminal != std::string::npos &&
+              pinnedViewRoute != std::string::npos &&
+              fullscreenTerminal < pinnedViewRoute,
           "fullscreen routes B, X, LT, and RT while View cannot reach hidden tray routing");
 
     const auto fullscreenPaint = section(
         "const bool overlayFullscreen = OverlayFullscreenMediaRequested();",
-        "if (layer == CompositionPaintLayer::Tray && trayLayout)");
+        "if (layer == CompositionPaintLayer::Tray && trayLayout)",
+        "fullscreen paint suppression owner exists");
     Check(fullscreenPaint.find(
               "overlayFullscreen && layer == CompositionPaintLayer::Tray") !=
               std::string::npos &&
               fullscreenPaint.find(
                   "overlayFullscreen && layer == CompositionPaintLayer::Guide") !=
               std::string::npos &&
-              fullscreenPaint.find("ClearAccessibilityTree();") != std::string::npos &&
-              fullscreenPaint.find("ResolveOverlayFullscreenMediaSurfaceBounds") !=
+              fullscreenPaint.find(
+                  "overlayFullscreen && layer == CompositionPaintLayer::Content") !=
               std::string::npos &&
-              fullscreenPaint.find("mediaViewportRegions.push_back") !=
-              std::string::npos,
-          "fullscreen suppresses tray, guide, and widget accessibility while retaining one media viewport");
+              fullscreenPaint.find("ClearAccessibilityTree();") !=
+                  std::string::npos,
+          "fullscreen suppresses tray, guide, content paint, and widget accessibility");
+
+    const auto fullscreenGeometry = section(
+        "if (OverlayFullscreenMediaRequested() && metrics && window_) {",
+        "drawMicroseconds = static_cast<std::uint64_t>(",
+        "fullscreen geometry projection owner exists");
+    Check(fullscreenGeometry.find("CurrentEmbeddedMediaSessionKey(") !=
+                  std::string::npos &&
+              fullscreenGeometry.find(
+                  "ResolveOverlayFullscreenMediaSurfaceBounds(") !=
+                  std::string::npos &&
+              fullscreenGeometry.find(
+                  "ResolveMediaViewportPresentationGeometry(") !=
+                  std::string::npos &&
+              fullscreenGeometry.find("set.overlayFullscreenGeometry =") !=
+                  std::string::npos &&
+              fullscreenGeometry.find("*sessionKey") != std::string::npos &&
+              source.find(
+                  "ReconcileEmbeddedMediaPresentation(\n                fullscreen.sessionKey,\n                EmbeddedMediaPresentationState::OverlayFullscreen") !=
+                  std::string::npos,
+          "fullscreen uses one exact session-keyed aspect-fit geometry and manager presentation owner");
+
+    Check(managerSource.find(
+              "case PresentationState::OverlayFullscreen:\n        return Endpoint::Overlay;") !=
+                  std::string::npos &&
+              managerSource.find("auto& owner = *endpoint == Endpoint::Overlay") !=
+                  std::string::npos &&
+              managerSource.find("if (owner && *owner != key)") !=
+                  std::string::npos,
+          "the manager admits one overlay endpoint owner and parks any displaced session before fullscreen presentation");
 
     requireOrdered(
         "CommittedOverlayFullscreenMediaAuthorityCurrent(priorVisibleWidget)",
@@ -441,7 +553,8 @@ void TestAcceptedOverlayFullscreenMediaHostContract() {
         "ApplyPresentation(presentation);",
         "fullscreen exit settles before composition admission");
     Check(source.find("!settleOverlayFullscreenExit;") != std::string::npos &&
-              source.find("committedOverlayFullscreenMediaPresentation_ ||\n            replacedOverlayFullscreenPresentation") !=
+              source.find(
+                  "mediaSessions_.EndpointOwner(widgetrail::media::Endpoint::Overlay)") !=
               std::string::npos &&
               source.find("ReconcileCommittedEmbeddedMediaSurface();") !=
               std::string::npos,
@@ -754,15 +867,26 @@ void TestAcceptedMediaBackOwnershipHostContract() {
               hostExit < widgetBack &&
               mediaBack.find("DispatchWidgetAction", exitRoute) == std::string::npos,
           "fullscreen B clears host-owned activation and never dispatches to the widget");
+    const auto mediaBackOwnerBegin = mediaBack.find(
+        "const auto overlayKey =");
     const auto mediaBackAuthorityBegin = mediaBack.find(
         "const bool overlayMediaAuthorityCurrent =");
-    Check(mediaBackAuthorityBegin != std::string::npos &&
+    Check(mediaBackOwnerBegin != std::string::npos &&
+              mediaBackAuthorityBegin != std::string::npos &&
+              mediaBackOwnerBegin < mediaBackAuthorityBegin &&
               mediaBackAuthorityBegin < mediaBackRouter,
           "media Back authority is assembled before the shared route");
     const auto mediaBackBranch =
-        mediaBack.substr(mediaBackAuthorityBegin);
+        mediaBack.substr(mediaBackOwnerBegin);
     Check(mediaBackBranch.find(
-              "embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay") !=
+              "mediaSessions_.EndpointOwner(widgetrail::media::Endpoint::Overlay)") !=
+              std::string::npos &&
+              mediaBackBranch.find("mediaSessions_.Find(*overlayKey)") !=
+              std::string::npos &&
+              mediaBackBranch.find("EmbeddedMediaAuthorityCurrent(*overlayKey)") !=
+              std::string::npos &&
+              mediaBackBranch.find(
+                  "overlaySession->authority->presentation !=\n                EmbeddedMediaPresentationState::Parked") !=
               std::string::npos &&
               mediaBackBranch.find(
                   "state_.surface() == widgetrail::Surface::Widget") !=
@@ -771,7 +895,7 @@ void TestAcceptedMediaBackOwnershipHostContract() {
                   "state_.focusRegion() == widgetrail::FocusRegion::Widget") !=
               std::string::npos &&
               mediaBackBranch.find(
-                  "state_.activeWidget() == embeddedMediaAuthority_->widgetId") !=
+                  "state_.activeWidget() ==\n                    overlaySession->authority->widgetId") !=
               std::string::npos &&
               mediaBackBranch.find(
                   "Dispatch(widgetrail::Command::SampleWidgetBack);") !=

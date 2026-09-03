@@ -256,25 +256,6 @@ public:
         std::wstring_view widgetId) const noexcept;
     [[nodiscard]] WidgetSessionPresentation Presentation(
         std::wstring_view widgetId) const noexcept;
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    void SeedCurrentPresentationForEmbeddedMediaHandoffTest(
-        WidgetDescriptor descriptor,
-        WidgetSnapshot snapshot) {
-        descriptors_.assign(1, std::move(descriptor));
-        snapshots_.clear();
-        snapshots_.emplace(descriptors_.front().id, std::move(snapshot));
-        refreshStates_.clear();
-        refreshStates_.emplace(
-            descriptors_.front().id, WidgetRefreshState::Current);
-        failures_.clear();
-    }
-    void SeedLifecycleForEmbeddedMediaHandoffTest(
-        std::wstring widgetId,
-        const WidgetLifecycleState lifecycle) {
-        lifecycleStates_.insert_or_assign(widgetId, lifecycle);
-        lifecycleTargets_.insert_or_assign(std::move(widgetId), lifecycle);
-    }
-#endif
     [[nodiscard]] const WidgetSessionFailure* Failure(std::wstring_view widgetId) const noexcept;
     [[nodiscard]] std::optional<WidgetLifecycleState> Lifecycle(
         std::wstring_view widgetId) const noexcept;

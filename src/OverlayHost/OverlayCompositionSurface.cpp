@@ -186,9 +186,6 @@ void OverlayCompositionSurface::Reset() noexcept {
     chromeWindow_ = nullptr;
     initializationFactory_.Reset();
     paintCounters_ = {};
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    externalContentFailureForTest_ = ExternalContentFailureOperation::None;
-#endif
 }
 
 HRESULT OverlayCompositionSurface::CreateExternalContentTarget(
@@ -208,15 +205,6 @@ HRESULT OverlayCompositionSurface::CreateExternalContentTarget(
         : pinnedExternalTarget_ && pinnedExternalRootVisual_;
     if (!device_ || !endpointReady || visual)
         return E_UNEXPECTED;
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    const auto createFailure = endpoint == ExternalContentEndpoint::Overlay
-        ? ExternalContentFailureOperation::CreateOverlayTarget
-        : ExternalContentFailureOperation::CreatePinnedTarget;
-    if (externalContentFailureForTest_ == createFailure) {
-        externalContentFailureForTest_ = ExternalContentFailureOperation::None;
-        return E_FAIL;
-    }
-#endif
     HRESULT result = device_->CreateVisual(visual.ReleaseAndGetAddressOf());
     if (FAILED(result)) {
         visual.Reset();
@@ -280,6 +268,11 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
     HRESULT result = visual->SetOffsetX(static_cast<float>(bounds.left));
     if (SUCCEEDED(result)) result = visual->SetOffsetY(static_cast<float>(bounds.top));
     if (SUCCEEDED(result)) result = visual->SetClip(clip);
+    Microsoft::WRL::ComPtr<IDCompositionVisual3> opacityVisual;
+    if (SUCCEEDED(result)) result = visual.As(&opacityVisual);
+    if (SUCCEEDED(result)) {
+        result = opacityVisual->SetOpacity(visible ? 1.0F : 0.0F);
+    }
     if (SUCCEEDED(result) && visible && !attached) {
         IDCompositionVisual2* reference =
             endpoint == ExternalContentEndpoint::Pinned &&
@@ -308,6 +301,67 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
         presentation.bounds = bounds;
         presentation.clipBounds = clipBounds;
         presentation.visible = visible;
+    }
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::StageExternalContentPresentation(
+    const ExternalContentEndpoint endpoint, const RECT& bounds,
+    const RECT& clipBounds, CommitTiming& timing) noexcept {
+    timing = {};
+    auto& visual = endpoint == ExternalContentEndpoint::Overlay
+        ? externalContentVisual_ : pinnedExternalContentVisual_;
+    auto& attached = endpoint == ExternalContentEndpoint::Overlay
+        ? externalContentAttached_ : pinnedExternalContentAttached_;
+    auto& presentation = ExternalPresentationFor(endpoint);
+    ++presentation.counters.requested;
+    const auto coordinates = ExternalContentCoordinates(endpoint);
+    auto* parent = coordinates == ExternalContentCoordinateSpace::ContentLocal
+        ? content_.visual.Get() : pinnedExternalRootVisual_.Get();
+    if (!device_ || !visual || !parent || bounds.right <= bounds.left ||
+        bounds.bottom <= bounds.top || clipBounds.right <= clipBounds.left ||
+        clipBounds.bottom <= clipBounds.top) return E_INVALIDARG;
+    const auto started = std::chrono::steady_clock::now();
+    const auto width = bounds.right - bounds.left;
+    const auto height = bounds.bottom - bounds.top;
+    const D2D_RECT_F clip{
+        static_cast<float>(std::clamp(clipBounds.left - bounds.left, 0L, width)),
+        static_cast<float>(std::clamp(clipBounds.top - bounds.top, 0L, height)),
+        static_cast<float>(std::clamp(clipBounds.right - bounds.left, 0L, width)),
+        static_cast<float>(std::clamp(clipBounds.bottom - bounds.top, 0L, height))};
+    if (clip.right <= clip.left || clip.bottom <= clip.top) return E_INVALIDARG;
+    HRESULT result = visual->SetOffsetX(static_cast<float>(bounds.left));
+    if (SUCCEEDED(result)) result = visual->SetOffsetY(static_cast<float>(bounds.top));
+    if (SUCCEEDED(result)) result = visual->SetClip(clip);
+    Microsoft::WRL::ComPtr<IDCompositionVisual3> opacityVisual;
+    if (SUCCEEDED(result)) result = visual.As(&opacityVisual);
+    if (SUCCEEDED(result)) result = opacityVisual->SetOpacity(0.0F);
+    if (SUCCEEDED(result) && !attached) {
+        IDCompositionVisual2* reference =
+            endpoint == ExternalContentEndpoint::Pinned &&
+                pinnedMediaChromeAttached_
+            ? pinnedMediaChromeVisual_.Get()
+            : nullptr;
+        result = parent->AddVisual(
+            visual.Get(),
+            coordinates == ExternalContentCoordinateSpace::ContentLocal
+                ? TRUE : FALSE,
+            reference);
+        if (SUCCEEDED(result)) attached = true;
+    }
+    if (SUCCEEDED(result)) result = device_->Commit();
+    timing.commitMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
+    if (SUCCEEDED(result)) {
+        timing.externalPresentationCommitted = true;
+        ++presentation.counters.committed;
+        presentation.current = true;
+        presentation.visual = visual.Get();
+        presentation.parent = parent;
+        presentation.bounds = bounds;
+        presentation.clipBounds = clipBounds;
+        presentation.visible = false;
     }
     return result;
 }
@@ -341,42 +395,11 @@ HRESULT OverlayCompositionSurface::DetachExternalContentTarget(
         ? content_.visual.Get() : pinnedExternalRootVisual_.Get();
     if (!visual) return S_FALSE;
     if (!device_ || !parent) return E_UNEXPECTED;
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    const auto detachFailure = endpoint == ExternalContentEndpoint::Overlay
-        ? ExternalContentFailureOperation::DetachOverlay
-        : ExternalContentFailureOperation::DetachPinned;
-    const auto persistentDetachFailure = endpoint == ExternalContentEndpoint::Overlay
-        ? ExternalContentFailureOperation::DetachOverlayPersistent
-        : ExternalContentFailureOperation::DetachPinnedPersistent;
-    if (externalContentFailureForTest_ == detachFailure) {
-        externalContentFailureForTest_ = ExternalContentFailureOperation::None;
-        return E_FAIL;
-    }
-    if (externalContentFailureForTest_ == persistentDetachFailure) return E_FAIL;
-#endif
     const auto started = std::chrono::steady_clock::now();
     HRESULT result = S_OK;
     if (attached) result = parent->RemoveVisual(visual.Get());
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    const auto commitFailure = endpoint == ExternalContentEndpoint::Overlay
-        ? ExternalContentFailureOperation::DetachOverlayCommit
-        : ExternalContentFailureOperation::DetachPinnedCommit;
-    if (SUCCEEDED(result) && externalContentFailureForTest_ == commitFailure) {
-        externalContentFailureForTest_ = ExternalContentFailureOperation::None;
-        result = E_FAIL;
-    }
-#endif
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result)) {
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        const auto waitFailure = endpoint == ExternalContentEndpoint::Overlay
-            ? ExternalContentFailureOperation::DetachOverlayWait
-            : ExternalContentFailureOperation::DetachPinnedWait;
-        if (externalContentFailureForTest_ == waitFailure) {
-            externalContentFailureForTest_ = ExternalContentFailureOperation::None;
-            result = E_FAIL;
-        } else
-#endif
         result = device_->WaitForCommitCompletion();
         timing.waitedForCompletion = true;
     }
@@ -397,34 +420,10 @@ HRESULT OverlayCompositionSurface::ReleasePinnedExternalContentEndpoint(
     if (!device_ || !pinnedExternalTarget_ || !pinnedExternalRootVisual_)
         return S_FALSE;
     if (pinnedExternalContentVisual_) return E_UNEXPECTED;
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    if (externalContentFailureForTest_ ==
-            ExternalContentFailureOperation::ReleasePinnedEndpoint) {
-        externalContentFailureForTest_ = ExternalContentFailureOperation::None;
-        return E_FAIL;
-    }
-    if (externalContentFailureForTest_ ==
-            ExternalContentFailureOperation::ReleasePinnedEndpointPersistent)
-        return E_FAIL;
-#endif
     const auto started = std::chrono::steady_clock::now();
     HRESULT result = pinnedExternalTarget_->SetRoot(nullptr);
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    if (SUCCEEDED(result) && externalContentFailureForTest_ ==
-            ExternalContentFailureOperation::ReleasePinnedEndpointCommit) {
-        externalContentFailureForTest_ = ExternalContentFailureOperation::None;
-        result = E_FAIL;
-    }
-#endif
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result)) {
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        if (externalContentFailureForTest_ ==
-                ExternalContentFailureOperation::ReleasePinnedEndpointWait) {
-            externalContentFailureForTest_ = ExternalContentFailureOperation::None;
-            result = E_FAIL;
-        } else
-#endif
         result = device_->WaitForCommitCompletion();
         timing.waitedForCompletion = true;
     }
@@ -465,9 +464,6 @@ OverlayCompositionSurface::RetireExternalContentEndpoint(
     const HWND contentWindow = contentWindow_;
     const HWND chromeWindow = chromeWindow_;
     ComPtr<ID2D1Factory1> factory = initializationFactory_;
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    ++externalContentRecoveryCountForTest_;
-#endif
     Reset();
     std::wstring error;
     bool recovered = contentWindow && factory &&
@@ -485,6 +481,8 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
     if (!device_ || !pinnedExternalRootVisual_ ||
         presentation.bounds.right <= presentation.bounds.left ||
         presentation.bounds.bottom <= presentation.bounds.top ||
+        !std::isfinite(presentation.rasterScale) ||
+        presentation.rasterScale < 0.5 || presentation.rasterScale > 8.0 ||
         !std::isfinite(presentation.progress) || presentation.progress < 0.0 ||
         presentation.progress > 1.0) return E_INVALIDARG;
     const auto sameColor = [](const D2D1_COLOR_F& left,
@@ -499,6 +497,7 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
             left.bounds.top == right.bounds.top &&
             left.bounds.right == right.bounds.right &&
             left.bounds.bottom == right.bounds.bottom &&
+            left.rasterScale == right.rasterScale &&
             left.visible == right.visible && left.focused == right.focused &&
             left.scrubActive == right.scrubActive &&
             left.progress == right.progress &&
@@ -524,6 +523,7 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
         pinnedMediaChromePresentation_->bounds.bottom == presentation.bounds.bottom;
     const bool renderedContentChanged = replacement ||
         !pinnedMediaChromePresentation_ ||
+        pinnedMediaChromePresentation_->rasterScale != presentation.rasterScale ||
         pinnedMediaChromePresentation_->focused != presentation.focused ||
         pinnedMediaChromePresentation_->scrubActive != presentation.scrubActive ||
         pinnedMediaChromePresentation_->progress != presentation.progress ||
@@ -561,7 +561,9 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
             target->SetTransform(D2D1::Matrix3x2F::Translation(
                 static_cast<float>(offset.x), static_cast<float>(offset.y)));
             target->Clear(D2D1::ColorF(0, 0.0F));
-            const float barHeight = std::min(28.0F, static_cast<float>(height));
+            const float scale = static_cast<float>(presentation.rasterScale);
+            const float barHeight = std::min(
+                28.0F * scale, static_cast<float>(height));
             const float top = static_cast<float>(height) - barHeight;
             ComPtr<ID2D1SolidColorBrush> shade;
             ComPtr<ID2D1SolidColorBrush> track;
@@ -578,29 +580,34 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
                 target->FillRectangle(
                     D2D1::RectF(0.0F, top, static_cast<float>(width),
                                 static_cast<float>(height)), shade.Get());
-                const float left = 12.0F;
+                const float left = 12.0F * scale;
                 const float right = std::max(
-                    left, static_cast<float>(width) - 12.0F);
-                const float trackTop = top + barHeight * 0.5F - 2.0F;
+                    left, static_cast<float>(width) - 12.0F * scale);
+                const float trackHeight = 4.0F * scale;
+                const float trackTop = top + barHeight * 0.5F -
+                    trackHeight * 0.5F;
                 target->FillRoundedRectangle(
                     D2D1::RoundedRect(
-                        D2D1::RectF(left, trackTop, right, trackTop + 4.0F),
-                        2.0F, 2.0F), track.Get());
+                        D2D1::RectF(
+                            left, trackTop, right, trackTop + trackHeight),
+                        2.0F * scale, 2.0F * scale), track.Get());
                 const float progressRight = left + (right - left) *
                     static_cast<float>(presentation.progress);
                 target->FillRoundedRectangle(
                     D2D1::RoundedRect(
                         D2D1::RectF(left, trackTop, progressRight,
-                                    trackTop + 4.0F), 2.0F, 2.0F),
+                                    trackTop + trackHeight),
+                        2.0F * scale, 2.0F * scale),
                     accent.Get());
                 if (presentation.focused) {
                     target->DrawRoundedRectangle(
                         D2D1::RoundedRect(
-                            D2D1::RectF(4.0F, top + 3.0F,
-                                        static_cast<float>(width) - 4.0F,
-                                        static_cast<float>(height) - 3.0F),
-                            5.0F, 5.0F),
-                        accent.Get(), presentation.scrubActive ? 2.5F : 1.5F);
+                            D2D1::RectF(4.0F * scale, top + 3.0F * scale,
+                                        static_cast<float>(width) - 4.0F * scale,
+                                        static_cast<float>(height) - 3.0F * scale),
+                            5.0F * scale, 5.0F * scale),
+                        accent.Get(),
+                        (presentation.scrubActive ? 2.5F : 1.5F) * scale);
                 }
             }
             target.Reset();

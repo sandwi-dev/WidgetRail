@@ -161,7 +161,7 @@ internal static class BridgeRequestClassifier
             !BridgeRequestKey.IsBoundedIdentifier(request.RuntimeGeneration) ||
             !BridgeRequestKey.IsBoundedIdentifier(request.PresentationGeneration) ||
             request.Sequence <= 0 ||
-            !BridgeRequestKey.IsBoundedIdentifier(request.SurfaceId))
+            !BridgeRequestKey.IsBoundedIdentifier(request.SessionId))
             throw new BridgeProtocolException(
                 "Embedded media request authority is invalid.");
         return key;
@@ -176,7 +176,7 @@ internal static class BridgeRequestClassifier
             !BridgeRequestKey.IsBoundedIdentifier(request.RuntimeGeneration) ||
             !BridgeRequestKey.IsBoundedIdentifier(request.PresentationGeneration) ||
             request.Sequence <= 0 || request.Event is null ||
-            !BridgeRequestKey.IsBoundedIdentifier(request.Event.SurfaceId))
+            !BridgeRequestKey.IsBoundedIdentifier(request.Event.SessionId))
             throw new BridgeProtocolException(
                 "Embedded media event authority is invalid.");
         return key;

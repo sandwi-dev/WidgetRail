@@ -79,11 +79,17 @@ struct WidgetSurfacePaginationBatch final {
 };
 
 struct PinnedLayoutOption final {
+    enum class Kind {
+        Authored,
+        CompactMedia,
+    };
+
     std::wstring id;
     std::wstring name;
     float contentWidthDip{};
     float contentHeightDip{};
     std::optional<WidgetSnapshot> projection;
+    Kind kind{Kind::Authored};
 };
 
 struct PinnedLayoutSelectionNotification final {
@@ -119,6 +125,17 @@ struct CompactPinnedMediaState final {
     bool seekBarVisible{};
 };
 
+struct CompactMediaSeekRequest final {
+    std::wstring widgetId;
+    std::wstring instanceId;
+    std::wstring runtimeGeneration;
+    std::wstring presentationGeneration;
+    std::wstring sessionId;
+    std::wstring selectedLayoutId;
+    long long snapshotSequence{};
+    double targetSeconds{};
+};
+
 struct WidgetSurfaceAdmission final {
     std::wstring widgetId;
     std::wstring instanceId;
@@ -133,6 +150,7 @@ struct WidgetSurfaceAdmission final {
     PlacementLimits placementLimits{};
     std::vector<PinnedLayoutOption> pinnedLayouts;
     surface_appearance::Policy surfaceAppearancePolicy;
+    bool compactMediaSessionAvailable{true};
 };
 
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
@@ -171,7 +189,8 @@ public:
         std::wstring_view widgetId,
         std::wstring_view runtimeGeneration,
         const WidgetSnapshot& snapshot,
-        std::vector<PinnedLayoutOption> layouts = {});
+        std::vector<PinnedLayoutOption> layouts = {},
+        bool compactMediaSessionAvailable = true);
     void SetSurfaceAppearancePolicy(surface_appearance::Policy policy);
     [[nodiscard]] bool SetInteractionMode(InteractionMode mode);
     [[nodiscard]] bool ToggleInteractionMode();
@@ -280,7 +299,7 @@ public:
         return focusedElementId_;
     }
     [[nodiscard]] std::optional<CommittedMediaViewportPresentation>
-        CurrentMediaViewport(std::wstring_view surfaceId) const noexcept;
+        CurrentMediaViewport(std::wstring_view sessionId) const noexcept;
     [[nodiscard]] bool compactMediaPresentation() const noexcept;
     [[nodiscard]] CompactPinnedMediaState compactMediaState() const noexcept;
     void UpdateCompactMediaPlayback(
@@ -292,7 +311,10 @@ public:
         input::NavigationDirection direction) const noexcept;
     [[nodiscard]] std::optional<double> CommitCompactMediaScrub() noexcept;
     [[nodiscard]] bool CancelCompactMediaScrub() noexcept;
-    [[nodiscard]] std::optional<double> TakeCompactMediaSeekRequest() noexcept;
+    [[nodiscard]] std::optional<CompactMediaSeekRequest>
+        TakeCompactMediaSeekRequest() noexcept;
+    [[nodiscard]] bool IsCurrentCompactMediaSeekRequest(
+        const CompactMediaSeekRequest& request) const noexcept;
     [[nodiscard]] WidgetSurfacePresentationState presentationState() const noexcept;
     [[nodiscard]] PlacementMode placementMode() const noexcept {
         return placementSession_ ? placementSession_->mode : PlacementMode::None;
@@ -319,6 +341,13 @@ private:
     static LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
     [[nodiscard]] bool CreateWindowForAdmission(std::wstring& error);
+    [[nodiscard]] static std::optional<std::vector<PinnedLayoutOption>>
+        BuildLayoutOptions(
+            float fullWidthDip,
+            float fullHeightDip,
+            const std::vector<PinnedLayoutOption>& authored,
+            const WidgetSnapshot& snapshot,
+            bool compactMediaSessionAvailable);
     [[nodiscard]] bool EnsureGraphicsResources();
     void Paint();
     void RequestPaint(const RECT* update = nullptr) noexcept;
@@ -409,7 +438,7 @@ private:
     double compactMediaPreviewSeconds_{};
     bool compactMediaPlaying_{};
     bool compactMediaScrubActive_{};
-    std::optional<double> compactMediaSeekRequest_;
+    std::optional<CompactMediaSeekRequest> compactMediaSeekRequest_;
     bool pointerPlacement_{};
     PlacementMode pointerPlacementMode_{PlacementMode::None};
     std::wstring pointerActionNode_;

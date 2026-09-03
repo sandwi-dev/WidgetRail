@@ -191,7 +191,7 @@ int main() {
     widgetrail::WidgetNode mediaViewport;
     mediaViewport.id = L"cedar.viewport";
     mediaViewport.kind = L"mediaViewport";
-    mediaViewport.mediaSurfaceId = L"cedar.media";
+    mediaViewport.mediaSessionId = L"cedar.media";
     mediaViewport.accessibilityLabel = L"Cedar local media";
     mediaSnapshot.root.children.push_back(mediaViewport);
     widgetrail::RenderResult mediaRender;

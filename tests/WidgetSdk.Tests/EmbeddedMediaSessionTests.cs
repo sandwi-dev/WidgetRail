@@ -3,7 +3,7 @@ using WidgetRail.WidgetSdk;
 using WidgetRail.Samples.EmbeddedMediaWidget;
 using WidgetRail.EmbeddedMediaAdapterConformance;
 
-internal static class EmbeddedMediaSurfaceTests
+internal static class EmbeddedMediaSessionTests
 {
     internal static async Task Run()
     {
@@ -17,17 +17,17 @@ internal static class EmbeddedMediaSurfaceTests
                 UI.Text("Native controls", "controls")),
             ActiveInputScopeId: "root")
         {
-            EmbeddedMedia = media,
+            EmbeddedMediaSession = media,
         };
         var snapshot = view.CreateSnapshot("fixture.instance", 4);
-        Equal(ProtocolConstants.MediaViewportVersion, snapshot.ProtocolVersion);
-        Equal("primary-media", snapshot.EmbeddedMedia?.Id);
+        Equal(ProtocolConstants.EmbeddedMediaSessionVersion, snapshot.ProtocolVersion);
+        Equal("primary-media", snapshot.EmbeddedMediaSession?.Id);
         Equal(ViewNodeKind.MediaViewport, snapshot.Root.Children[1].Kind);
-        Equal("primary-media", snapshot.Root.Children[1].MediaSurfaceId);
+        Equal("primary-media", snapshot.Root.Children[1].MediaSessionId);
         var roundTrip = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
-        Equal("media/adapter.html", roundTrip.EmbeddedMedia?.EntryAsset);
-        Equal(2, roundTrip.EmbeddedMedia?.Resources.Count);
-        Equal("primary-media", roundTrip.Root.Children[1].MediaSurfaceId);
+        Equal("media/adapter.html", roundTrip.EmbeddedMediaSession?.EntryAsset);
+        Equal(2, roundTrip.EmbeddedMediaSession?.Resources.Count);
+        Equal("primary-media", roundTrip.Root.Children[1].MediaSessionId);
         var playback = Valid("primary-media") with
         {
             AllowedFrameOrigins = ["https://media-fixture.invalid"],
@@ -39,10 +39,10 @@ internal static class EmbeddedMediaSurfaceTests
                 PositionSeconds = 20,
             },
         };
-        var playbackSnapshot = view with { EmbeddedMedia = playback };
+        var playbackSnapshot = view with { EmbeddedMediaSession = playback };
         var playbackWire = playbackSnapshot.CreateSnapshot("fixture.instance", 5);
-        Equal(ProtocolConstants.EmbeddedMediaPlaybackVersion, playbackWire.ProtocolVersion);
-        Equal(7L, playbackWire.EmbeddedMedia?.PendingCommand?.Sequence);
+        Equal(ProtocolConstants.EmbeddedMediaSessionVersion, playbackWire.ProtocolVersion);
+        Equal(7L, playbackWire.EmbeddedMediaSession?.PendingCommand?.Sequence);
         var preference = Valid("primary-media") with
         {
             PendingCommand = new()
@@ -53,12 +53,12 @@ internal static class EmbeddedMediaSurfaceTests
                 PlaybackRate = 1.5,
             },
         };
-        var preferenceWire = (view with { EmbeddedMedia = preference })
+        var preferenceWire = (view with { EmbeddedMediaSession = preference })
             .CreateSnapshot("fixture.instance", 6);
-        Equal(ProtocolConstants.EmbeddedMediaPlaybackPreferencesVersion,
+        Equal(ProtocolConstants.EmbeddedMediaSessionVersion,
             preferenceWire.ProtocolVersion);
         var preferenceRoundTrip = SnapshotJson.Deserialize(
-            SnapshotJson.Serialize(preferenceWire)).EmbeddedMedia!.PendingCommand!;
+            SnapshotJson.Serialize(preferenceWire)).EmbeddedMediaSession!.PendingCommand!;
         Equal(EmbeddedMediaPlaybackCommandKind.SetPlaybackRate,
             preferenceRoundTrip.Kind);
         Equal(1.5D, preferenceRoundTrip.PlaybackRate);
@@ -66,18 +66,20 @@ internal static class EmbeddedMediaSurfaceTests
         {
             AllowedFrameDomainFamilies = ["example.com"],
         };
-        var familyWire = (view with { EmbeddedMedia = familyMedia })
+        var familyWire = (view with { EmbeddedMediaSession = familyMedia })
             .CreateSnapshot("fixture.instance", 6);
-        Equal(ProtocolConstants.EmbeddedMediaFrameDomainFamiliesVersion,
+        Equal(ProtocolConstants.EmbeddedMediaSessionVersion,
             familyWire.ProtocolVersion);
-        Equal("example.com", familyWire.EmbeddedMedia?.AllowedFrameDomainFamilies.Single());
+        Equal("example.com", familyWire.EmbeddedMediaSession?.AllowedFrameDomainFamilies.Single());
         using (var document = System.Text.Json.JsonDocument.Parse(SnapshotJson.Serialize(snapshot)))
         {
-            var commands = document.RootElement.GetProperty("embeddedMedia").GetProperty("commands")
+            var mediaDocument = document.RootElement.GetProperty("embeddedMediaSession");
+            var commands = mediaDocument.GetProperty("commands")
                 .EnumerateArray().Select(command => command.GetString()).ToArray();
             Equal(
                 "navigatePrevious,navigateNext,activate,back,togglePlayback,seekBackward,seekForward",
                 string.Join(',', commands));
+            Equal(0, mediaDocument.GetProperty("supportedPresentations").GetArrayLength());
         }
 
         // The additive property must not change the established positional API.
@@ -90,14 +92,14 @@ internal static class EmbeddedMediaSurfaceTests
 
         Error(snapshot with
         {
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
                 EntryAsset = "../outside.html",
             },
         }, "invalid_package_asset_path");
         Error(snapshot with
         {
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
                 Resources =
                 [
@@ -108,11 +110,11 @@ internal static class EmbeddedMediaSurfaceTests
         }, "duplicate_resource");
         Error(snapshot with
         {
-            EmbeddedMedia = Valid("primary-media") with { AspectRatio = double.NaN },
+            EmbeddedMediaSession = Valid("primary-media") with { AspectRatio = double.NaN },
         }, "out_of_range");
         Error(snapshot with
         {
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
                 Surface = new WidgetSurfaceHints
                 {
@@ -121,10 +123,13 @@ internal static class EmbeddedMediaSurfaceTests
                 },
             },
         }, "complete_bounds_required");
-        Error(snapshot with { ProtocolVersion = 21 }, "feature_requires_version");
         Error(snapshot with
         {
-            EmbeddedMedia = Valid("primary-media") with
+            ProtocolVersion = ProtocolConstants.EmbeddedMediaSessionVersion - 1,
+        }, "feature_requires_version");
+        Error(snapshot with
+        {
+            EmbeddedMediaSession = Valid("primary-media") with
             {
                 AllowedFrameOrigins = ["http://not-secure.invalid"],
             },
@@ -139,7 +144,7 @@ internal static class EmbeddedMediaSurfaceTests
         {
             Error(snapshot with
             {
-                EmbeddedMedia = Valid("primary-media") with
+                EmbeddedMediaSession = Valid("primary-media") with
                 {
                     AllowedFrameOrigins = [origin],
                 },
@@ -154,7 +159,7 @@ internal static class EmbeddedMediaSurfaceTests
         {
             Error(snapshot with
             {
-                EmbeddedMedia = Valid("primary-media") with
+                EmbeddedMediaSession = Valid("primary-media") with
                 {
                     AllowedFrameDomainFamilies = [family],
                 },
@@ -162,21 +167,21 @@ internal static class EmbeddedMediaSurfaceTests
         }
         Error(snapshot with
         {
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
                 AllowedFrameDomainFamilies = Enumerable.Repeat("example.com", 5).ToArray(),
             },
         }, "too_many");
         Error(snapshot with
         {
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
                 AllowedFrameDomainFamilies = [new string('a', 254)],
             },
         }, "invalid_domain_family");
         Error(snapshot with
         {
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
                 AllowedFrameDomainFamilies =
                     Enumerable.Range(0, 4).Select(_ => new string('a', 130)).ToArray(),
@@ -184,7 +189,7 @@ internal static class EmbeddedMediaSurfaceTests
         }, "aggregate_too_large");
         Error(snapshot with
         {
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
                 PendingCommand = new()
                 {
@@ -196,7 +201,7 @@ internal static class EmbeddedMediaSurfaceTests
         }, "required");
         Error(snapshot with
         {
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
                 PendingCommand = new()
                 {
@@ -209,7 +214,7 @@ internal static class EmbeddedMediaSurfaceTests
         }, "out_of_range");
         Error(snapshot with
         {
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
                 PendingCommand = new()
                 {
@@ -221,7 +226,7 @@ internal static class EmbeddedMediaSurfaceTests
         }, "required");
         Error(snapshot with
         {
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
                 PendingCommand = new()
                 {
@@ -232,96 +237,75 @@ internal static class EmbeddedMediaSurfaceTests
                 },
             },
         }, "unexpected");
-        Error(snapshot with
+        var parked = snapshot with
         {
-            Root = snapshot.Root with
-            {
-                Children = snapshot.Root.Children.Where(
-                    child => child.Kind is not ViewNodeKind.MediaViewport).ToArray(),
-            },
-        }, "media_viewport_required");
-        var retainedHidden = snapshot with
-        {
-            ProtocolVersion = ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
-            EmbeddedMedia = Valid("primary-media") with
-            {
-                RetainSessionWhenHidden = true,
-            },
             Root = snapshot.Root with
             {
                 Children = snapshot.Root.Children.Where(
                     child => child.Kind is not ViewNodeKind.MediaViewport).ToArray(),
             },
         };
-        Equal(0, ViewSnapshotValidator.Validate(retainedHidden).Count);
-        Equal(true, SnapshotJson.Deserialize(
-            SnapshotJson.Serialize(retainedHidden)).EmbeddedMedia?.RetainSessionWhenHidden);
-        Error(retainedHidden with
+        Equal(0, ViewSnapshotValidator.Validate(parked).Count);
+        var parkedRoundTrip = SnapshotJson.Deserialize(SnapshotJson.Serialize(parked));
+        Equal("primary-media", parkedRoundTrip.EmbeddedMediaSession?.Id);
+        Equal(0, Nodes(parkedRoundTrip.Root).Count(
+            node => node.Kind is ViewNodeKind.MediaViewport));
+        Error(parked with
         {
-            ProtocolVersion = ProtocolConstants.RetainedHiddenEmbeddedMediaVersion - 1,
+            ProtocolVersion = ProtocolConstants.EmbeddedMediaSessionVersion - 1,
         }, "feature_requires_version");
         var overlayFullscreen = snapshot with
         {
-            ProtocolVersion = ProtocolConstants.OverlayFullscreenMediaPresentationVersion,
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
-                OverlayFullscreenCapable = true,
+                SupportedPresentations = [MediaPresentationKind.OverlayFullscreen],
             },
         };
         Equal(0, ViewSnapshotValidator.Validate(overlayFullscreen).Count);
-        Equal(true, SnapshotJson.Deserialize(
-            SnapshotJson.Serialize(overlayFullscreen)).EmbeddedMedia?
-            .OverlayFullscreenCapable);
+        Equal(MediaPresentationKind.OverlayFullscreen, SnapshotJson.Deserialize(
+            SnapshotJson.Serialize(overlayFullscreen)).EmbeddedMediaSession?
+            .SupportedPresentations.Single());
         Error(overlayFullscreen with
         {
-            ProtocolVersion = ProtocolConstants.OverlayFullscreenMediaPresentationVersion - 1,
+            ProtocolVersion = ProtocolConstants.EmbeddedMediaSessionVersion - 1,
         }, "feature_requires_version");
         // The seek step drives overlay fullscreen as well as the compact pinned
-        // player, so a fullscreen-capable surface may declare one without opting
+        // player, so a fullscreen-capable session may declare one without opting
         // into an unrelated pinned presentation to do it.
         var fullscreenSeekStep = snapshot with
         {
-            ProtocolVersion = ProtocolConstants.OverlayFullscreenMediaPresentationVersion,
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
-                OverlayFullscreenCapable = true,
+                SupportedPresentations = [MediaPresentationKind.OverlayFullscreen],
                 MediaSeekStepSeconds = 5,
             },
         };
         Equal(0, ViewSnapshotValidator.Validate(fullscreenSeekStep).Count);
         Equal(5.0, SnapshotJson.Deserialize(SnapshotJson.Serialize(fullscreenSeekStep))
-            .EmbeddedMedia?.MediaSeekStepSeconds);
+            .EmbeddedMediaSession?.MediaSeekStepSeconds);
         // A step still needs some presentation that seeks on the widget's behalf.
         Error(fullscreenSeekStep with
         {
-            EmbeddedMedia = Valid("primary-media") with { MediaSeekStepSeconds = 5 },
+            EmbeddedMediaSession = Valid("primary-media") with { MediaSeekStepSeconds = 5 },
         }, "seek_presentation_required");
-        var fullscreenObserver = new FullscreenObserverWidget();
-        var entered = new ControllerInputEvent(
-            ControllerButton.View, ControllerEventPhase.Pressed,
-            ControllerInputContext.OverlayFullscreenPresentation)
-        {
-            IsOverlayFullscreenActive = true,
-        };
-        Equal(true, await fullscreenObserver.OnControllerInputAsync(entered));
-        Equal(true, await fullscreenObserver.OnControllerInputAsync(entered));
-        Equal(1, fullscreenObserver.Changes.Count);
-        Equal(true, fullscreenObserver.Changes[0]);
-        Equal(true, await fullscreenObserver.OnControllerInputAsync(entered with
-        {
-            IsOverlayFullscreenActive = false,
-        }));
-        Equal(2, fullscreenObserver.Changes.Count);
-        Equal(true, fullscreenObserver.Changes[0]);
-        Equal(false, fullscreenObserver.Changes[1]);
         Error(snapshot with
         {
-            ProtocolVersion = ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
-            EmbeddedMedia = Valid("primary-media") with
+            EmbeddedMediaSession = Valid("primary-media") with
             {
-                RetainSessionWhenHidden = true,
+                SupportedPresentations =
+                [
+                    MediaPresentationKind.CompactPinned,
+                    MediaPresentationKind.CompactPinned,
+                ],
             },
-        }, "hidden_media_has_viewport");
+        }, "duplicate_presentation");
+        Error(snapshot with
+        {
+            EmbeddedMediaSession = Valid("primary-media") with
+            {
+                SupportedPresentations = [(MediaPresentationKind)99],
+            },
+        }, "unsupported_presentation");
         Error(snapshot with
         {
             Root = snapshot.Root with
@@ -340,16 +324,16 @@ internal static class EmbeddedMediaSurfaceTests
                 Children =
                 [
                     snapshot.Root.Children[0],
-                    snapshot.Root.Children[1] with { MediaSurfaceId = "wrong-media" },
+                    snapshot.Root.Children[1] with { MediaSessionId = "wrong-media" },
                     snapshot.Root.Children[2],
                 ],
             },
-        }, "media_viewport_surface_mismatch");
-        Error(snapshot with { EmbeddedMedia = null }, "media_viewport_without_surface");
+        }, "media_viewport_session_mismatch");
+        Error(snapshot with { EmbeddedMediaSession = null }, "media_viewport_without_session");
 
         var sample = new EmbeddedMediaSampleWidget();
         var initialSample = sample.Render();
-        Equal(null, initialSample.EmbeddedMedia?.PendingCommand);
+        Equal(null, initialSample.EmbeddedMediaSession?.PendingCommand);
         var initialSampleSnapshot = sample.RenderSnapshot(
             "embedded-media-sample.instance", 1);
         Equal(0D, Find(initialSampleSnapshot.Root, "media-shell.timeline.slider").Value);
@@ -362,12 +346,12 @@ internal static class EmbeddedMediaSurfaceTests
 
         await sample.OnActionAsync(new WidgetActionEvent(
             "host.embeddedMedia.togglePlayback", "media-shell.play"));
-        var playCommand = sample.Render().EmbeddedMedia?.PendingCommand;
+        var playCommand = sample.Render().EmbeddedMediaSession?.PendingCommand;
         Equal(EmbeddedMediaPlaybackCommandKind.Play, playCommand?.Kind);
         Equal("aurora-video-0", playCommand?.MediaKey);
         await sample.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = "embedded-media-sample.primary",
+            SessionId = "embedded-media-sample.primary",
             Sequence = 1,
             CommandSequence = playCommand!.Sequence + 1,
             MediaKey = playCommand.MediaKey,
@@ -376,10 +360,10 @@ internal static class EmbeddedMediaSurfaceTests
             DurationSeconds = 60,
             Volume = 1,
         });
-        Equal(playCommand, sample.Render().EmbeddedMedia?.PendingCommand);
+        Equal(playCommand, sample.Render().EmbeddedMediaSession?.PendingCommand);
         await sample.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = "embedded-media-sample.primary",
+            SessionId = "embedded-media-sample.primary",
             Sequence = 1,
             CommandSequence = playCommand.Sequence,
             MediaKey = "cedar-tone-0",
@@ -388,10 +372,10 @@ internal static class EmbeddedMediaSurfaceTests
             DurationSeconds = 60,
             Volume = 1,
         });
-        Equal(playCommand, sample.Render().EmbeddedMedia?.PendingCommand);
+        Equal(playCommand, sample.Render().EmbeddedMediaSession?.PendingCommand);
         await sample.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = "embedded-media-sample.primary",
+            SessionId = "embedded-media-sample.primary",
             Sequence = 1,
             CommandSequence = playCommand!.Sequence,
             MediaKey = playCommand.MediaKey,
@@ -401,18 +385,18 @@ internal static class EmbeddedMediaSurfaceTests
             Volume = 1,
         });
         var playingSample = sample.Render();
-        Equal(null, playingSample.EmbeddedMedia?.PendingCommand);
+        Equal(null, playingSample.EmbeddedMediaSession?.PendingCommand);
         Equal(7D, Find(playingSample.CreateSnapshot(
             "embedded-media-sample.instance", 2).Root, "media-shell.timeline.slider").Value);
 
         await sample.OnActionAsync(new WidgetActionEvent(
             "host.embeddedMedia.seekForward", "media-shell.seek-forward"));
-        var seekCommand = sample.Render().EmbeddedMedia?.PendingCommand;
+        var seekCommand = sample.Render().EmbeddedMediaSession?.PendingCommand;
         Equal(EmbeddedMediaPlaybackCommandKind.Seek, seekCommand?.Kind);
         Equal(9D, seekCommand?.PositionSeconds);
         await sample.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
-            SurfaceId = "embedded-media-sample.primary",
+            SessionId = "embedded-media-sample.primary",
             Sequence = 2,
             CommandSequence = seekCommand!.Sequence,
             MediaKey = seekCommand.MediaKey,
@@ -423,25 +407,25 @@ internal static class EmbeddedMediaSurfaceTests
         });
         await sample.OnActionAsync(new WidgetActionEvent(
             "host.embeddedMedia.next", "media-shell.next"));
-        var nextCommand = sample.Render().EmbeddedMedia?.PendingCommand;
+        var nextCommand = sample.Render().EmbeddedMediaSession?.PendingCommand;
         Equal(EmbeddedMediaPlaybackCommandKind.Load, nextCommand?.Kind);
         Equal("horizon-video-1", nextCommand?.MediaKey);
 
         var preferences = new EmbeddedMediaSampleWidget();
         await preferences.OnActionAsync(new WidgetActionEvent(
             "host.embeddedMedia.playbackRate", "media-shell.rate"));
-        var rateCommand = preferences.Render().EmbeddedMedia!.PendingCommand!;
+        var rateCommand = preferences.Render().EmbeddedMediaSession!.PendingCommand!;
         Equal(EmbeddedMediaPlaybackCommandKind.SetPlaybackRate, rateCommand.Kind);
         Equal(1.25D, rateCommand.PlaybackRate);
         await preferences.OnEmbeddedMediaPlaybackEventAsync(PreferenceEvent(
             1, rateCommand, playbackRate: 1.25, muted: false, loop: true));
-        Equal(null, preferences.Render().EmbeddedMedia?.PendingCommand);
+        Equal(null, preferences.Render().EmbeddedMediaSession?.PendingCommand);
         Equal("1.25x", Find(preferences.Render().CreateSnapshot(
             "embedded-media-sample.instance", 3).Root, "media-shell.rate").Text);
 
         await preferences.OnActionAsync(new WidgetActionEvent(
             "host.embeddedMedia.muted", "media-shell.mute"));
-        var muteCommand = preferences.Render().EmbeddedMedia!.PendingCommand!;
+        var muteCommand = preferences.Render().EmbeddedMediaSession!.PendingCommand!;
         Equal(true, muteCommand.Muted);
         await preferences.OnEmbeddedMediaPlaybackEventAsync(PreferenceEvent(
             2, muteCommand, playbackRate: 1.25, muted: true, loop: true,
@@ -451,7 +435,7 @@ internal static class EmbeddedMediaSurfaceTests
 
         await preferences.OnActionAsync(new WidgetActionEvent(
             "host.embeddedMedia.loop", "media-shell.loop"));
-        var loopCommand = preferences.Render().EmbeddedMedia!.PendingCommand!;
+        var loopCommand = preferences.Render().EmbeddedMediaSession!.PendingCommand!;
         Equal(false, loopCommand.Loop);
         await preferences.OnEmbeddedMediaPlaybackEventAsync(PreferenceEvent(
             3, loopCommand, playbackRate: 1.25, muted: true, loop: false,
@@ -485,7 +469,7 @@ internal static class EmbeddedMediaSurfaceTests
 
     private static EmbeddedMediaPlaybackEvent PublicationEvent() => new()
     {
-        SurfaceId = "publication.primary",
+        SessionId = "publication.primary",
         Sequence = 1,
         CommandSequence = 0,
         MediaKey = "publication-media",
@@ -495,7 +479,7 @@ internal static class EmbeddedMediaSurfaceTests
         Volume = 1,
     };
 
-    private static EmbeddedMediaSurface Valid(string id) => new()
+    private static EmbeddedMediaSession Valid(string id) => new()
     {
         Id = id,
         AccessibleName = "Provider-neutral media",
@@ -524,20 +508,6 @@ internal static class EmbeddedMediaSurfaceTests
             EmbeddedMediaCommand.SeekForward,
         ],
     };
-
-    private sealed class FullscreenObserverWidget : Widget
-    {
-        internal List<bool> Changes { get; } = [];
-        public override WidgetView Render() => new(UI.Text("Fixture", "root"));
-        public override ValueTask OnOverlayFullscreenChangedAsync(
-            bool isActive,
-            CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            Changes.Add(isActive);
-            return ValueTask.CompletedTask;
-        }
-    }
 
     private sealed class PlaybackPublicationWidget : Widget
     {
@@ -586,7 +556,7 @@ internal static class EmbeddedMediaSurfaceTests
         bool loop,
         double volume = 0.8) => new()
     {
-        SurfaceId = "embedded-media-sample.primary",
+        SessionId = "embedded-media-sample.primary",
         Sequence = eventSequence,
         CommandSequence = command.Sequence,
         MediaKey = command.MediaKey,
@@ -608,6 +578,14 @@ internal static class EmbeddedMediaSurfaceTests
             if (match is not null) return match;
         }
         return null;
+    }
+
+    private static IEnumerable<ViewNode> Nodes(ViewNode node)
+    {
+        yield return node;
+        foreach (var child in node.Children)
+        foreach (var descendant in Nodes(child))
+            yield return descendant;
     }
 
     private static void Error(ViewSnapshot snapshot, string code)

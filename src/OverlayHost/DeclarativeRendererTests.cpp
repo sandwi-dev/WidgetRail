@@ -4523,7 +4523,7 @@ void MediaViewportUsesFinalDeclarativeGeometry() {
     snapshot.sequence = 7;
     snapshot.instanceId = L"aurora.instance";
     snapshot.activeInputScopeId = L"aurora.root";
-    widgetrail::EmbeddedMediaSurfaceDeclaration mediaDeclaration;
+    widgetrail::EmbeddedMediaSessionDeclaration mediaDeclaration;
     mediaDeclaration.id = L"aurora.primary";
     mediaDeclaration.accessibleName = L"Aurora local media";
     mediaDeclaration.entryAsset = L"media/aurora.html";
@@ -4536,7 +4536,7 @@ void MediaViewportUsesFinalDeclarativeGeometry() {
     mediaDeclaration.aspectRatio = 16.0 / 9.0;
     mediaDeclaration.resources = {{L"media/aurora.html", L"text/html"}};
     mediaDeclaration.commands = {L"activate", L"togglePlayback"};
-    snapshot.embeddedMedia = std::move(mediaDeclaration);
+    snapshot.embeddedMediaSession = std::move(mediaDeclaration);
     snapshot.root = Node(L"aurora.root", L"stack");
     snapshot.root.baseStyle = {
         {L"padding", LengthList(L"12px")},
@@ -4546,7 +4546,7 @@ void MediaViewportUsesFinalDeclarativeGeometry() {
     auto title = Node(L"aurora.title", L"text");
     title.text = L"Provider-neutral Aurora sample";
     auto viewport = Node(L"aurora.viewport", L"mediaViewport");
-    viewport.mediaSurfaceId = L"aurora.primary";
+    viewport.mediaSessionId = L"aurora.primary";
     viewport.accessibilityLabel = L"Aurora local media";
     viewport.baseStyle = {
         {L"flex-shrink", Number(1)},
@@ -4608,7 +4608,7 @@ void MediaViewportUsesFinalDeclarativeGeometry() {
             "exactly one renderer-owned media viewport is published");
         const auto& media = result->mediaViewportRegions.front();
         Check(media.nodeId == L"aurora.viewport" &&
-              media.mediaSurfaceId == L"aurora.primary",
+              media.mediaSessionId == L"aurora.primary",
             "media geometry retains exact node and surface identity");
         Check(media.bounds.width > 0.5F && media.bounds.height > 0.5F &&
               media.clip.width > 0.5F && media.clip.height > 0.5F,

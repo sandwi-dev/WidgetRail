@@ -59,6 +59,7 @@ target_link_libraries(ArtworkDecoderHost PRIVATE windowscodecs ole32)
 
 add_executable(OverlayHost WIN32
     main.cpp
+    MediaSessionManager.cpp
     OverlayCompositionSurface.cpp
     OverlayProcessOwner.cpp
     OverlayState.cpp

@@ -70,7 +70,7 @@ internal static class WidgetPresentationDiff
             return Checkpoint("unstable_identity");
         if (!SameJson(previous.PinnedLayouts, current.PinnedLayouts))
             return Checkpoint("pinned_layout_catalog_changed");
-        if (!SameJson(previous.EmbeddedMedia, current.EmbeddedMedia))
+        if (!SameJson(previous.EmbeddedMediaSession, current.EmbeddedMediaSession))
             return Checkpoint("embedded_media_changed");
 
         var operations = new List<PresentationUpdateOperation>();
@@ -378,7 +378,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.ImageSource, before.ImageSource, after.ImageSource);
         Add(PresentationProperty.ArtworkHandle, before.ArtworkHandle, after.ArtworkHandle);
         Add(PresentationProperty.FocusBackgroundArtworkHandle, before.FocusBackgroundArtworkHandle, after.FocusBackgroundArtworkHandle);
-        Add(PresentationProperty.MediaSurfaceId, before.MediaSurfaceId, after.MediaSurfaceId);
+        Add(PresentationProperty.MediaSessionId, before.MediaSessionId, after.MediaSessionId);
         Add(PresentationProperty.ImageFit, before.ImageFit, after.ImageFit);
         Add(PresentationProperty.Glyph, before.Glyph, after.Glyph);
         Add(PresentationProperty.IndicatorSize, before.IndicatorSize, after.IndicatorSize);

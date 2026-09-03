@@ -285,16 +285,6 @@ public:
         State& next) noexcept;
     [[nodiscard]] static std::wstring CommandJson(
         Command command, const Authority& authority, std::uint64_t commandId);
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    void ConfigurePresentationTransferForTest(
-        PresentationTransferFailureStage stage,
-        std::function<void()> invalidate,
-        bool initiallyVisible = false,
-        bool requireRootBeforeParent = false);
-    [[nodiscard]] HRESULT CompletePresentationTransferForTest(
-        PresentationTarget target, bool rootFirst,
-        PresentationTransferFailureStage* failureStage = nullptr) noexcept;
-#endif
 
 private:
     enum class InstalledAppRefererResult {
@@ -324,8 +314,10 @@ private:
     void ReleaseSharedEnvironmentReadyForTest() noexcept;
     void FailSharedEnvironment(
         const std::shared_ptr<CallbackLease>& lease, HRESULT result) noexcept;
-    [[nodiscard]] HRESULT OnEnvironmentCreated(
-        const std::shared_ptr<CallbackLease>& lease, HRESULT result,
+    [[nodiscard]] static HRESULT CompleteSharedEnvironmentCreation(
+        const RichMediaEnvironmentHandle& sharedEnvironment,
+        const std::shared_ptr<CallbackLease>& initiatingLease,
+        HRESULT result,
         ICoreWebView2Environment* environment) noexcept;
     [[nodiscard]] HRESULT OnControllerCreated(
         const std::shared_ptr<CallbackLease>& lease, HRESULT result,
@@ -469,14 +461,6 @@ private:
     bool presentationTransferDetached_{};
     bool transferDesiredVisible_{};
     bool controllerGeometryApplied_{};
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    std::optional<PresentationTransferFailureStage>
-        presentationTransferFailureForTest_;
-    bool presentationTransferRequireRootBeforeParentForTest_{};
-    bool presentationTransferRootAttachedForTest_{};
-    bool presentationTransferDetachedForTest_{};
-#endif
-    HRESULT browserEventRegistrationResult_{E_UNEXPECTED};
     std::wstring pageUri_;
     std::wstring installedAppReferer_;
     RichMediaEnvironmentHandle sharedEnvironment_;

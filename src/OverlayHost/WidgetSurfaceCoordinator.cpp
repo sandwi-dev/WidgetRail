@@ -35,7 +35,24 @@ constexpr std::size_t kMaximumPendingInputRequests = 16;
 constexpr std::size_t kMaximumPendingLayoutSelectionNotifications = 16;
 constexpr std::size_t kMaximumFeedbackCharacters = 160;
 constexpr std::wstring_view kFullWidgetLayoutId = L"host.full-widget";
+constexpr std::wstring_view kCompactMediaLayoutId = L"host.compact-media";
 constexpr COLORREF kTransparentSurfaceColorKey = RGB(1, 2, 3);
+
+[[nodiscard]] bool SameCompactMediaGeometryContract(
+    const std::optional<EmbeddedMediaSessionDeclaration>& left,
+    const std::optional<EmbeddedMediaSessionDeclaration>& right) noexcept {
+    if (left.has_value() != right.has_value()) return false;
+    if (!left) return true;
+    const auto& a = left->surface;
+    const auto& b = right->surface;
+    return left->id == right->id && left->aspectRatio == right->aspectRatio &&
+        a.mode == b.mode && a.widthMode == b.widthMode &&
+        a.heightMode == b.heightMode &&
+        a.preferredWidth == b.preferredWidth &&
+        a.preferredHeight == b.preferredHeight &&
+        a.minimumWidth == b.minimumWidth &&
+        a.minimumHeight == b.minimumHeight;
+}
 
 [[nodiscard]] std::filesystem::path DefaultPlacementPath() {
     std::array<wchar_t, 32768> localAppData{};
@@ -153,6 +170,51 @@ bool WidgetSurfaceCoordinator::Initialize(
     return true;
 }
 
+std::optional<std::vector<PinnedLayoutOption>>
+WidgetSurfaceCoordinator::BuildLayoutOptions(
+    const float fullWidthDip,
+    const float fullHeightDip,
+    const std::vector<PinnedLayoutOption>& authored,
+    const WidgetSnapshot& snapshot,
+    const bool compactMediaSessionAvailable) {
+    std::vector<PinnedLayoutOption> result;
+    result.push_back({
+        std::wstring{kFullWidgetLayoutId}, L"Full widget",
+        fullWidthDip, fullHeightDip});
+    for (const auto& layout : authored) {
+        if (layout.id.empty() || layout.name.empty() ||
+            layout.id == kCompactMediaLayoutId ||
+            layout.kind != PinnedLayoutOption::Kind::Authored ||
+            !std::isfinite(layout.contentWidthDip) ||
+            !std::isfinite(layout.contentHeightDip) ||
+            layout.contentWidthDip <= 0.0F || layout.contentHeightDip <= 0.0F ||
+            std::ranges::any_of(result, [&](const auto& existing) {
+                return existing.id == layout.id;
+            }))
+            return std::nullopt;
+        result.push_back(layout);
+    }
+    if (compactMediaSessionAvailable && snapshot.embeddedMediaSession &&
+        SupportsMediaPresentation(
+            *snapshot.embeddedMediaSession,
+            MediaPresentationKind::CompactPinned)) {
+        const auto& media = *snapshot.embeddedMediaSession;
+        result.push_back({
+            std::wstring{kCompactMediaLayoutId},
+            L"Compact media",
+            media.surface.preferredWidth
+                ? static_cast<float>(*media.surface.preferredWidth)
+                : fullWidthDip,
+            media.surface.preferredHeight
+                ? static_cast<float>(*media.surface.preferredHeight)
+                : fullHeightDip,
+            std::nullopt,
+            PinnedLayoutOption::Kind::CompactMedia,
+        });
+    }
+    return result;
+}
+
 bool WidgetSurfaceCoordinator::Pin(
     WidgetSurfaceAdmission admission,
     std::wstring& error) {
@@ -185,23 +247,14 @@ bool WidgetSurfaceCoordinator::Pin(
         error = L"The pinned surface descriptor was rejected.";
         return false;
     }
-    std::vector<PinnedLayoutOption> layouts;
-    layouts.push_back({std::wstring(kFullWidgetLayoutId), L"Full widget",
-                       admission.initialContentWidthDip,
-                       admission.initialContentHeightDip});
-    for (auto& layout : admission.pinnedLayouts) {
-        if (layout.id.empty() || layout.name.empty() ||
-            !std::isfinite(layout.contentWidthDip) ||
-            !std::isfinite(layout.contentHeightDip) ||
-            layout.contentWidthDip <= 0.0F || layout.contentHeightDip <= 0.0F ||
-            std::ranges::any_of(layouts, [&](const auto& existing) {
-                return existing.id == layout.id;
-            })) {
-            error = L"The current widget exposes an invalid pinned layout catalog.";
-            policy_.Stop(StopReason::Unpin);
-            return false;
-        }
-        layouts.push_back(std::move(layout));
+    auto layouts = BuildLayoutOptions(
+        admission.initialContentWidthDip, admission.initialContentHeightDip,
+        admission.pinnedLayouts, admission.snapshot,
+        admission.compactMediaSessionAvailable);
+    if (!layouts) {
+        error = L"The current widget exposes an invalid pinned layout catalog.";
+        policy_.Stop(StopReason::Unpin);
+        return false;
     }
     placementLimits_ = admission.placementLimits;
     placementLimits_.maximumWidthDip = std::max(
@@ -212,7 +265,7 @@ bool WidgetSurfaceCoordinator::Pin(
         admission.initialContentHeightDip + kChromeHeightDip + kBottomInsetDip);
     workCounters_ = {};
     admission_ = std::move(admission);
-    layoutOptions_ = std::move(layouts);
+    layoutOptions_ = std::move(*layouts);
     selectedLayoutIndex_ = 0;
     focusedElementId_ = SelectedSnapshot().initialFocusId;
     focusGroupMemory_.Remember(
@@ -247,32 +300,45 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     const std::wstring_view widgetIdValue,
     const std::wstring_view runtimeGenerationValue,
     const WidgetSnapshot& snapshot,
-    std::vector<PinnedLayoutOption> layouts) {
+    std::vector<PinnedLayoutOption> layouts,
+    const bool compactMediaSessionAvailable) {
     if (!pinned() || widgetIdValue != admission_->widgetId ||
         runtimeGenerationValue != admission_->runtimeGeneration ||
         snapshot.instanceId != admission_->instanceId) {
         return false;
     }
+    auto nextLayouts = BuildLayoutOptions(
+        admission_->initialContentWidthDip,
+        admission_->initialContentHeightDip, layouts, snapshot,
+        compactMediaSessionAvailable);
+    if (!nextLayouts) return false;
     ++workCounters_.snapshots;
     const auto priorSurfaceAppearance = EffectiveSurfaceAppearance();
     const std::wstring priorLayoutId{SelectedLayoutId()};
+    const bool priorCompactMedia = compactMediaPresentation();
+    const auto priorMediaGeometry = SelectedSnapshot().embeddedMediaSession;
     const std::wstring priorInputScopeId{
         SelectedSnapshot().activeInputScopeId};
-    const std::optional<widgetrail::EmbeddedMediaSurfaceDeclaration>
-        priorMediaContract = SelectedSnapshot().embeddedMedia
-            ? std::optional{widgetrail::EmbeddedMediaResourceContract(
-                  *SelectedSnapshot().embeddedMedia)}
+    const std::optional<widgetrail::EmbeddedMediaDocumentIdentity>
+        priorMediaContract = SelectedSnapshot().embeddedMediaSession
+            ? std::optional{widgetrail::MakeEmbeddedMediaDocumentIdentity(
+                  *SelectedSnapshot().embeddedMediaSession)}
             : std::nullopt;
-    admission_->snapshot = snapshot;
-    admission_->pinnedLayouts = std::move(layouts);
-    std::vector<PinnedLayoutOption> nextLayouts;
-    nextLayouts.push_back({std::wstring(kFullWidgetLayoutId), L"Full widget",
-                           admission_->initialContentWidthDip,
-                           admission_->initialContentHeightDip});
-    for (auto& layout : admission_->pinnedLayouts) nextLayouts.push_back(std::move(layout));
     const std::wstring selectedId = selectedLayoutIndex_ < layoutOptions_.size()
         ? layoutOptions_[selectedLayoutIndex_].id : std::wstring(kFullWidgetLayoutId);
-    layoutOptions_ = std::move(nextLayouts);
+    const auto nextSelected = std::ranges::find_if(
+        *nextLayouts, [&](const auto& layout) { return layout.id == selectedId; });
+    if (priorCompactMedia && nextSelected == nextLayouts->end()) {
+        // The compact endpoint cannot silently fall back to Full Widget in the
+        // old compact HWND extent. Retire the pin while its exact old geometry
+        // is still available to the before-window-retirement transfer owner.
+        (void)Unpin(WidgetSurfaceStopReason::Unpin);
+        return false;
+    }
+    admission_->snapshot = snapshot;
+    admission_->pinnedLayouts = std::move(layouts);
+    admission_->compactMediaSessionAvailable = compactMediaSessionAvailable;
+    layoutOptions_ = std::move(*nextLayouts);
     const auto selected = std::ranges::find_if(layoutOptions_, [&](const auto& layout) {
         return layout.id == selectedId;
     });
@@ -301,16 +367,19 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     const auto decision = freeScroll_.Evaluate(authority, focusedElementId_);
     const auto& binding = freeScroll_.binding();
     const bool selectedLayoutReplaced = priorLayoutId != SelectedLayoutId();
-    const std::optional<widgetrail::EmbeddedMediaSurfaceDeclaration>
-        nextMediaContract = selectedSnapshot.embeddedMedia
-            ? std::optional{widgetrail::EmbeddedMediaResourceContract(
-                  *selectedSnapshot.embeddedMedia)}
+    const std::optional<widgetrail::EmbeddedMediaDocumentIdentity>
+        nextMediaContract = selectedSnapshot.embeddedMediaSession
+            ? std::optional{widgetrail::MakeEmbeddedMediaDocumentIdentity(
+                  *selectedSnapshot.embeddedMediaSession)}
             : std::nullopt;
     const bool mediaContractReplaced =
         priorMediaContract.has_value() != nextMediaContract.has_value() ||
         (priorMediaContract && nextMediaContract &&
-         !widgetrail::SameEmbeddedMediaResourceContract(
+         !widgetrail::SameEmbeddedMediaDocumentIdentity(
              *priorMediaContract, *nextMediaContract));
+    const bool compactGeometryChanged =
+        !SameCompactMediaGeometryContract(
+            priorMediaGeometry, selectedSnapshot.embeddedMediaSession);
     const bool preserveFreeScrollBinding = binding &&
         !selectedLayoutReplaced && priorFocus == focusedElementId_ &&
         decision.disposition == input::FreeScrollAuthorityDisposition::Current &&
@@ -359,7 +428,8 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         }
         if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
     }
-    if (selectedLayoutReplaced || mediaContractReplaced)
+    if (selectedLayoutReplaced || mediaContractReplaced ||
+        (compactMediaPresentation() && compactGeometryChanged))
         mediaViewportGeometryDirty_ = true;
     if (mediaContractReplaced) {
         compactMediaPositionSeconds_ = 0.0;
@@ -1059,7 +1129,9 @@ std::wstring_view WidgetSurfaceCoordinator::SelectedLayoutId() const noexcept {
 void WidgetSurfaceCoordinator::QueueLayoutSelection(
     const std::wstring_view layoutId,
     const bool selected) {
-    if (!admission_ || layoutId.empty() || layoutId == kFullWidgetLayoutId) return;
+    if (!admission_ || layoutId.empty() ||
+        layoutId == kFullWidgetLayoutId ||
+        layoutId == kCompactMediaLayoutId) return;
     if (layoutSelectionNotifications_.size() >=
         kMaximumPendingLayoutSelectionNotifications)
         layoutSelectionNotifications_.erase(layoutSelectionNotifications_.begin());
@@ -1152,6 +1224,8 @@ bool WidgetSurfaceCoordinator::CycleLayout(const int delta) {
         QueueLayoutSelection(priorId, false);
         QueueLayoutSelection(layout.id, true);
         focusedElementId_ = SelectedSnapshot().initialFocusId;
+        if (compactMediaPresentation())
+            focusedElementId_ = L"host.compact-media.seek";
         focusGroupMemory_.Remember(
             admission_->widgetId, SelectedSnapshot(), focusedElementId_);
         inputRequests_.clear();
@@ -1641,25 +1715,29 @@ std::wstring_view WidgetSurfaceCoordinator::runtimeGeneration() const noexcept {
 
 std::optional<CommittedMediaViewportPresentation>
 WidgetSurfaceCoordinator::CurrentMediaViewport(
-    const std::wstring_view surfaceId) const noexcept {
-    if (!pinned() || !committedMediaViewport_)
+    const std::wstring_view sessionId) const noexcept {
+    if (!pinned() || mediaViewportGeometryDirty_ || !committedMediaViewport_)
         return std::nullopt;
     const auto& region = committedMediaViewport_->region;
-    if (region.mediaSurfaceId != surfaceId) return std::nullopt;
+    if (region.mediaSessionId != sessionId) return std::nullopt;
     const auto& snapshot = SelectedSnapshot();
-    if (!snapshot.embeddedMedia || snapshot.embeddedMedia->id != surfaceId)
+    if (!snapshot.embeddedMediaSession || snapshot.embeddedMediaSession->id != sessionId)
         return std::nullopt;
     return committedMediaViewport_;
 }
 
 bool WidgetSurfaceCoordinator::compactMediaPresentation() const noexcept {
-    if (!pinned()) return false;
-    const auto& media = SelectedSnapshot().embeddedMedia;
-    return media && media->compactPinnedPresentation;
+    if (!pinned() || selectedLayoutIndex_ >= layoutOptions_.size() ||
+        layoutOptions_[selectedLayoutIndex_].kind !=
+            PinnedLayoutOption::Kind::CompactMedia)
+        return false;
+    const auto& media = SelectedSnapshot().embeddedMediaSession;
+    return media && SupportsMediaPresentation(
+        *media, MediaPresentationKind::CompactPinned);
 }
 
 CompactPinnedMediaState WidgetSurfaceCoordinator::compactMediaState() const noexcept {
-    const auto& media = SelectedSnapshot().embeddedMedia;
+    const auto& media = SelectedSnapshot().embeddedMediaSession;
     const double step = media && media->mediaSeekStepSeconds
         ? *media->mediaSeekStepSeconds
         : protocol_contract::DefaultMediaSeekStepSeconds;
@@ -1741,8 +1819,23 @@ bool WidgetSurfaceCoordinator::CancelCompactMediaScrub() noexcept {
     return true;
 }
 
-std::optional<double> WidgetSurfaceCoordinator::TakeCompactMediaSeekRequest() noexcept {
+std::optional<CompactMediaSeekRequest>
+WidgetSurfaceCoordinator::TakeCompactMediaSeekRequest() noexcept {
     return std::exchange(compactMediaSeekRequest_, std::nullopt);
+}
+
+bool WidgetSurfaceCoordinator::IsCurrentCompactMediaSeekRequest(
+    const CompactMediaSeekRequest& request) const noexcept {
+    if (!admission_ || !compactMediaPresentation() ||
+        request.widgetId != admission_->widgetId ||
+        request.instanceId != admission_->instanceId ||
+        request.runtimeGeneration != admission_->runtimeGeneration ||
+        request.presentationGeneration != admission_->presentationGeneration ||
+        request.selectedLayoutId != SelectedLayoutId()) return false;
+    const auto& snapshot = SelectedSnapshot();
+    return snapshot.sequence == request.snapshotSequence &&
+        snapshot.embeddedMediaSession &&
+        snapshot.embeddedMediaSession->id == request.sessionId;
 }
 
 InteractionMode WidgetSurfaceCoordinator::interactionMode() const noexcept {
@@ -2225,7 +2318,17 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
             *request.requestedValue >= 0.0 &&
             *request.requestedValue <= compactMediaDurationSeconds_) {
             compactMediaPreviewSeconds_ = *request.requestedValue;
-            compactMediaSeekRequest_ = *request.requestedValue;
+            const auto& media = *SelectedSnapshot().embeddedMediaSession;
+            compactMediaSeekRequest_ = CompactMediaSeekRequest{
+                admission_->widgetId,
+                admission_->instanceId,
+                admission_->runtimeGeneration,
+                admission_->presentationGeneration,
+                media.id,
+                std::wstring{SelectedLayoutId()},
+                SelectedSnapshot().sequence,
+                *request.requestedValue,
+            };
             NotifyOwner();
             continue;
         }
@@ -2400,11 +2503,16 @@ void WidgetSurfaceCoordinator::Paint() {
         ? D2D1::ColorF(1.0F / 255.0F, 2.0F / 255.0F, 3.0F / 255.0F, 1.0F)
         : D2D1::ColorF(0x16212E));
     const bool compactMedia = compactMediaPresentation();
-    if (!compactMedia) {
+    const bool showHostSetupChrome = compactMedia &&
+        (placementSession_.has_value() || opacityPreviewOriginal_.has_value());
+    const bool showChrome = !compactMedia || showHostSetupChrome;
+    if (showChrome) {
         renderTarget_->FillRectangle(
             D2D1::RectF(0, 0, widthDip, kChromeHeightDip), chromeBrush_.Get());
+        const std::wstring title = showHostSetupChrome
+            ? std::wstring(selectedLayoutName()) : admission_->name;
         renderTarget_->DrawTextW(
-            admission_->name.c_str(), static_cast<UINT32>(admission_->name.size()),
+            title.c_str(), static_cast<UINT32>(title.size()),
             titleFormat_.Get(), D2D1::RectF(
                 kSideInsetDip, 7.0F,
                 std::max(kSideInsetDip + 1.0F, widthDip * 0.40F), 31.0F),
@@ -2433,7 +2541,7 @@ void WidgetSurfaceCoordinator::Paint() {
             ? L"Interactive · A activate · B widget back · View tray"
             : L"Click-through · View enters · Menu options";
     }
-    if (!compactMedia) {
+    if (showChrome) {
         renderTarget_->DrawTextW(
             chrome.c_str(), static_cast<UINT32>(chrome.size()), chromeFormat_.Get(),
             D2D1::RectF(std::max(kSideInsetDip, widthDip * 0.42F), 9.0F,
@@ -2480,7 +2588,7 @@ void WidgetSurfaceCoordinator::Paint() {
     }
     options.suppressFocusedDescendantFollow =
         freeScrollDecision.followSuppressed;
-    const declarative::Rect viewport = compactMedia
+    const declarative::Rect viewport = compactMedia && !showHostSetupChrome
         ? declarative::Rect{
               kPinnedBorderDip, kPinnedBorderDip,
               std::max(1.0F, widthDip - kPinnedBorderDip * 2.0F),
@@ -2490,8 +2598,8 @@ void WidgetSurfaceCoordinator::Paint() {
               std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
               std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip)};
     RenderResult renderResult;
-    if (compactMedia && selectedSnapshot.embeddedMedia) {
-        const float aspect = static_cast<float>(selectedSnapshot.embeddedMedia->aspectRatio);
+    if (compactMedia && selectedSnapshot.embeddedMediaSession) {
+        const float aspect = static_cast<float>(selectedSnapshot.embeddedMediaSession->aspectRatio);
         float mediaWidth = viewport.width;
         float mediaHeight = mediaWidth / aspect;
         if (mediaHeight > viewport.height) {
@@ -2506,7 +2614,7 @@ void WidgetSurfaceCoordinator::Paint() {
         renderResult.responsiveSurface = ResponsiveSurfacePresentation{
             {viewport.width, viewport.height}, ResponsiveSurfaceMode::Compact};
         renderResult.mediaViewportRegions.push_back({
-            L"host.compact-media.viewport", selectedSnapshot.embeddedMedia->id,
+            L"host.compact-media.viewport", selectedSnapshot.embeddedMediaSession->id,
             mediaBounds, mediaBounds});
     } else {
         renderResult = renderer_->Render(
@@ -2714,8 +2822,8 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
     const bool compactMedia = compactMediaPresentation();
     accessibility::Node heading;
     heading.id = L"pinned.heading";
-    heading.name = compactMedia && snapshot.embeddedMedia
-        ? snapshot.embeddedMedia->accessibleName : tree.name;
+    heading.name = compactMedia && snapshot.embeddedMediaSession
+        ? snapshot.embeddedMediaSession->accessibleName : tree.name;
     heading.domain = accessibility::ElementDomain::HostShell;
     heading.role = accessibility::Role::Heading;
     heading.keyboardFocusable = false;
@@ -2739,10 +2847,22 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
                 std::to_wstring(layoutOptions_.size()) +
                 L". Left or right trigger changes layout. Left stick or D-pad moves. Right stick resizes. Commit or cancel.";
     } else if (compactMedia) {
-        state.value = L"Compact media. Left trigger rewinds and right trigger "
-            L"forwards by the configured seek interval. X plays or pauses. "
-            L"Left and right bumper select available media. B exits to "
-            L"click-through. View returns to the tray.";
+        const auto& commands = snapshot.embeddedMediaSession->commands;
+        const auto supports = [&](const std::wstring_view command) {
+            return std::ranges::find(commands, command) != commands.end();
+        };
+        state.value = L"Compact media.";
+        if (supports(L"seekBackward"))
+            state.value += L" Left trigger rewinds by the configured seek interval.";
+        if (supports(L"seekForward"))
+            state.value += L" Right trigger forwards by the configured seek interval.";
+        if (supports(L"togglePlayback"))
+            state.value += L" X plays or pauses.";
+        if (supports(L"navigatePrevious"))
+            state.value += L" Left bumper selects previous media.";
+        if (supports(L"navigateNext"))
+            state.value += L" Right bumper selects next media.";
+        state.value += L" B exits to click-through. View returns to the tray.";
     } else {
         state.value = policy_.interactionMode() == InteractionMode::Focusable
             ? L"Interactive. D-pad navigates. A activates. B is widget Back. View returns to the tray. Menu opens options."
@@ -2828,7 +2948,12 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
     for (std::size_t index = 0; index < actions.size(); ++index)
         addAction(std::move(actions[index]), index);
 
-    if (compactMedia && policy_.interactionMode() == InteractionMode::Focusable) {
+    const auto committedCompactMedia = compactMedia &&
+            snapshot.embeddedMediaSession
+        ? CurrentMediaViewport(snapshot.embeddedMediaSession->id)
+        : std::nullopt;
+    if (compactMedia && committedCompactMedia &&
+        policy_.interactionMode() == InteractionMode::Focusable) {
         const auto media = compactMediaState();
         accessibility::Node seek;
         seek.id = L"host.compact-media.seek";
@@ -2845,8 +2970,14 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
         seek.rangeMaximum = media.durationSeconds;
         seek.rangeStep = media.seekStepSeconds;
         seek.keyboardFocusable = true;
-        seek.bounds = {kSideInsetDip, std::max(0.0F, static_cast<float>(client.bottom - client.top) / scale - 34.0F),
-                       std::max(1.0F, widthDip - kSideInsetDip * 2.0F), 26.0F};
+        const auto& mediaBounds = committedCompactMedia->region.bounds;
+        const float seekHeight = std::min(28.0F, mediaBounds.height);
+        seek.bounds = {
+            mediaBounds.x,
+            mediaBounds.y + mediaBounds.height - seekHeight,
+            mediaBounds.width,
+            seekHeight,
+        };
         tree.nodes.push_back(std::move(seek));
         if (controllerFocused_) tree.focusedNode = tree.nodes.size() - 1;
     } else if (policy_.interactionMode() == InteractionMode::Focusable &&

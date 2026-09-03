@@ -20,7 +20,6 @@ param(
     [switch]$CompositionTestsOnly,
     [switch]$WidgetSwitchTestsOnly,
     [switch]$PinnedSliderRouteTestsOnly,
-    [switch]$EmbeddedMediaHandoffTestsOnly,
     [switch]$WidgetSwitchFallbackAuthorityTestsOnly,
     [string]$WidgetSwitchFallbackAuthorityReplayLog,
     [Int64]$WidgetSwitchFallbackAuthorityReplayMarker,
@@ -40,6 +39,7 @@ param(
     [switch]$WidgetActionFailureHostTestsOnly,
     [switch]$AudioMixerScrollHostTestsOnly,
     [switch]$RichMediaTestsOnly,
+    [switch]$RichMediaContractTestsOnly,
     [switch]$RichMediaPerformanceTestsOnly
 )
 
@@ -363,6 +363,7 @@ function Invoke-OverlayPlatformInteropBuild {
 function Invoke-RichMediaTests {
     $arguments = $common + @(
         (Join-Path $projectDirectory 'RichMediaSurfaceCoordinatorTests.cpp'),
+        (Join-Path $projectDirectory 'MediaSessionManager.cpp'),
         (Join-Path $projectDirectory 'RichMediaSurfaceCoordinator.cpp'),
         (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),
         (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
@@ -378,7 +379,13 @@ function Invoke-RichMediaTests {
     if ($LASTEXITCODE -ne 0) {
         throw "RichMediaSurfaceCoordinatorTests build failed with exit code $LASTEXITCODE."
     }
-    $testArguments = if ($RichMediaPerformanceTestsOnly) { @('--performance') } else { @() }
+    $testArguments = if ($RichMediaContractTestsOnly) {
+        @('--contract-only')
+    } elseif ($RichMediaPerformanceTestsOnly) {
+        @('--performance')
+    } else {
+        @()
+    }
     & (Join-Path $outputDirectory 'RichMediaSurfaceCoordinatorTests.exe') $testArguments
     if ($LASTEXITCODE -ne 0) {
         throw "RichMediaSurfaceCoordinatorTests failed with exit code $LASTEXITCODE."
@@ -1677,7 +1684,7 @@ if ($TrustedArtworkTestsOnly) {
     return
 }
 
-if ($RichMediaTestsOnly -or $RichMediaPerformanceTestsOnly) {
+if ($RichMediaTestsOnly -or $RichMediaContractTestsOnly -or $RichMediaPerformanceTestsOnly) {
     if ($SkipTests) {
         throw 'RichMedia test routes cannot be combined with SkipTests.'
     }
@@ -1718,12 +1725,10 @@ $hostCompileArguments = $common
 if ($PinnedSliderRouteTestsOnly) {
     $hostCompileArguments += '/DWRAIL_PINNED_SLIDER_ROUTE_TESTING'
 }
-if ($EmbeddedMediaHandoffTestsOnly) {
-    $hostCompileArguments += '/DWRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING'
-}
 $hostArguments = $hostCompileArguments + @(
     '/DWRAIL_OVERLAY_PLATFORM_IMPORTS',
     (Join-Path $projectDirectory 'main.cpp'),
+    (Join-Path $projectDirectory 'MediaSessionManager.cpp'),
     (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
     (Join-Path $projectDirectory 'RichMediaSurfaceCoordinator.cpp'),
     (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),
@@ -1783,19 +1788,6 @@ $hostArguments = $hostCompileArguments + @(
 & $cl $hostArguments
 if ($LASTEXITCODE -ne 0) {
     throw "OverlayHost build failed with exit code $LASTEXITCODE."
-}
-
-if ($EmbeddedMediaHandoffTestsOnly) {
-    if ($SkipTests) {
-        throw 'EmbeddedMediaHandoffTestsOnly cannot be combined with SkipTests.'
-    }
-    & (Join-Path $outputDirectory 'OverlayHost.exe') `
-        --embedded-media-handoff-owner-tests
-    if ($LASTEXITCODE -ne 0) {
-        throw "Embedded media handoff owner tests failed with exit code $LASTEXITCODE."
-    }
-    Write-Host 'Embedded media handoff owner tests passed: 63.'
-    return
 }
 
 $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'

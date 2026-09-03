@@ -27,7 +27,7 @@ internal static class BridgeMessageTypes
     public const string ResolveArtwork = "resolve-artwork";
     public const string Artwork = "artwork";
     public const string ResolveEmbeddedMedia = "resolve-embedded-media";
-    public const string EmbeddedMedia = "embedded-media";
+    public const string EmbeddedMediaSession = "embedded-media";
     public const string EmbeddedMediaPlaybackEvent = "embedded-media-playback-event";
     public const string RestartWidget = "restart-widget";
     public const string SetWidgetLifecycle = "set-widget-lifecycle";
@@ -73,7 +73,7 @@ internal sealed record BridgeEmbeddedMediaRequest(
     string RuntimeGeneration,
     string PresentationGeneration,
     long Sequence,
-    string SurfaceId);
+    string SessionId);
 internal sealed record BridgeEmbeddedMediaResource(
     string Path,
     string ContentType,
@@ -85,7 +85,7 @@ internal sealed record BridgeEmbeddedMediaBundle(
     string RuntimeGeneration,
     string PresentationGeneration,
     long Sequence,
-    string SurfaceId,
+    string SessionId,
     string EntryAsset,
     WidgetSurfaceHints Surface,
     double AspectRatio,
@@ -94,10 +94,8 @@ internal sealed record BridgeEmbeddedMediaBundle(
     IReadOnlyList<string> AllowedFrameOrigins,
     IReadOnlyList<string> AllowedFrameDomainFamilies,
     EmbeddedMediaPlaybackCommand? PendingCommand,
-    bool CompactPinnedPresentation,
+    IReadOnlyList<MediaPresentationKind> SupportedPresentations,
     double? MediaSeekStepSeconds,
-    bool RetainSessionWhenHidden,
-    bool OverlayFullscreenCapable,
     IReadOnlyList<BridgeEmbeddedMediaResource> Resources);
 internal sealed record BridgeEmbeddedMediaPlaybackEventRequest(
     string WidgetId,

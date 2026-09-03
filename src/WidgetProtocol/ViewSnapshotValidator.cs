@@ -72,7 +72,7 @@ public static class ViewSnapshotValidator
         var inputScopes = new Dictionary<string, string>(StringComparer.Ordinal);
         var nodes = 0;
         var mediaViewportCount = 0;
-        string? mediaViewportSurfaceId = null;
+        string? mediaViewportSessionId = null;
 
         if (snapshot.ProtocolVersion < ProtocolConstants.MinimumSupportedVersion ||
             snapshot.ProtocolVersion > ProtocolConstants.CurrentVersion)
@@ -85,7 +85,7 @@ public static class ViewSnapshotValidator
         }
         CheckIdentifier(snapshot.WidgetInstanceId, "$.widgetInstanceId", "widget instance ID");
         ValidateSurfaceHints(snapshot.Surface, "$.surface");
-        ValidateEmbeddedMedia(snapshot.EmbeddedMedia);
+        ValidateEmbeddedMedia(snapshot.EmbeddedMediaSession);
         var pinnedLayouts = snapshot.PinnedLayouts ?? [];
         if (snapshot.PinnedLayouts is null)
             Add("$.pinnedLayouts", "required", "Pinned layouts cannot be null.");
@@ -141,7 +141,7 @@ public static class ViewSnapshotValidator
                 InitialFocusId = layout.InitialFocusId,
                 QuickActions = [],
                 PinnedLayouts = [],
-                EmbeddedMedia = null,
+                EmbeddedMediaSession = null,
             };
             foreach (var projectionError in Validate(projection))
             {
@@ -173,25 +173,16 @@ public static class ViewSnapshotValidator
                 $"The full widget and pinned projections may reference at most {ProtocolConstants.MaximumPinnedPresentationAggregateResourceCount} resources in total.");
         Visit(snapshot.Root, "$.root", 1, "$.root");
         ValidateFocusPresentationOwnership(snapshot.Root, "$.root", consumerDepth: 0);
-        if (mediaViewportCount != 0 && snapshot.EmbeddedMedia is null)
-            Add("$.root", "media_viewport_without_surface",
-                "A MediaViewport requires one current embedded media surface declaration.");
+        if (mediaViewportCount != 0 && snapshot.EmbeddedMediaSession is null)
+            Add("$.root", "media_viewport_without_session",
+                "A MediaViewport requires one current embedded media session declaration.");
         else if (mediaViewportCount > 1)
             Add("$.root", "duplicate_media_viewport",
-                "A presentation may contain exactly one MediaViewport for its embedded media surface.");
-        else if (snapshot.EmbeddedMedia?.RetainSessionWhenHidden == true &&
-                 mediaViewportCount != 0)
-            Add("$.embeddedMedia.retainSessionWhenHidden", "hidden_media_has_viewport",
-                "Retained hidden embedded media cannot publish a MediaViewport.");
-        else if (snapshot.ProtocolVersion >= ProtocolConstants.MediaViewportVersion &&
-                 snapshot.EmbeddedMedia is not null && mediaViewportCount == 0 &&
-                 !snapshot.EmbeddedMedia.RetainSessionWhenHidden)
-            Add("$.root", "media_viewport_required",
-                "Embedded media requires one declarative MediaViewport unless its existing session is explicitly retained hidden.");
-        else if (mediaViewportCount == 1 && snapshot.EmbeddedMedia is { } embeddedMedia &&
-                 !string.Equals(mediaViewportSurfaceId, embeddedMedia.Id, StringComparison.Ordinal))
-            Add("$.root", "media_viewport_surface_mismatch",
-                "MediaViewport must reference the current embedded media surface identity.");
+                "A presentation may contain at most one MediaViewport for its embedded media session.");
+        else if (mediaViewportCount == 1 && snapshot.EmbeddedMediaSession is { } embeddedMedia &&
+                 !string.Equals(mediaViewportSessionId, embeddedMedia.Id, StringComparison.Ordinal))
+            Add("$.root", "media_viewport_session_mismatch",
+                "MediaViewport must reference the current embedded media session identity.");
         var activeInputScopeId = snapshot.ActiveInputScopeId ?? string.Empty;
         CheckIdentifier(activeInputScopeId, "$.activeInputScopeId", "active input scope ID",
             ProtocolValidationIdentifierKind.ElementReference);
@@ -328,18 +319,18 @@ public static class ViewSnapshotValidator
 
         return errors;
 
-        void ValidateEmbeddedMedia(EmbeddedMediaSurface? media)
+        void ValidateEmbeddedMedia(EmbeddedMediaSession? media)
         {
             if (media is null) return;
-            const string path = "$.embeddedMedia";
-            CheckIdentifier(media.Id, $"{path}.id", "embedded media surface ID");
+            const string path = "$.embeddedMediaSession";
+            CheckIdentifier(media.Id, $"{path}.id", "embedded media session ID");
             CheckString(media.AccessibleName, $"{path}.accessibleName");
             if (string.IsNullOrWhiteSpace(media.AccessibleName))
                 Add($"{path}.accessibleName", "required",
-                    "An embedded media surface requires an accessible name.");
+                    "An embedded media session requires an accessible name.");
             if (media.Surface is null)
                 Add($"{path}.surface", "required",
-                    "An embedded media surface requires bounded sizing hints.");
+                    "An embedded media session requires bounded sizing hints.");
             else
             {
                 ValidateSurfaceHints(media.Surface, $"{path}.surface");
@@ -408,17 +399,35 @@ public static class ViewSnapshotValidator
                     Add($"{path}.commands[{index}]", "duplicate_command",
                         "Embedded media commands must be unique.");
             }
+            var presentations = media.SupportedPresentations ?? [];
+            if (media.SupportedPresentations is null)
+                Add($"{path}.supportedPresentations", "required",
+                    "Supported media presentations cannot be null.");
+            if (presentations.Count > Enum.GetValues<MediaPresentationKind>().Length)
+                Add($"{path}.supportedPresentations", "too_many",
+                    "Supported media presentations exceed the closed host vocabulary.");
+            var knownPresentations = new HashSet<MediaPresentationKind>();
+            for (var index = 0; index < presentations.Count; index++)
+            {
+                if (!Enum.IsDefined(presentations[index]))
+                    Add($"{path}.supportedPresentations[{index}]", "unsupported_presentation",
+                        "The media presentation is not supported.");
+                else if (!knownPresentations.Add(presentations[index]))
+                    Add($"{path}.supportedPresentations[{index}]", "duplicate_presentation",
+                        "Supported media presentations must be unique.");
+            }
             if (media.MediaSeekStepSeconds is { } seekStep &&
                 (!double.IsFinite(seekStep) ||
                  seekStep < ProtocolConstants.MinimumMediaSeekStepSeconds ||
                  seekStep > ProtocolConstants.MaximumMediaSeekStepSeconds))
                 Add($"{path}.mediaSeekStepSeconds", "out_of_range",
                     $"Media seek step must be finite and between {ProtocolConstants.MinimumMediaSeekStepSeconds} and {ProtocolConstants.MaximumMediaSeekStepSeconds} seconds.");
-            if (!media.CompactPinnedPresentation && !media.OverlayFullscreenCapable &&
+            if (!knownPresentations.Contains(MediaPresentationKind.CompactPinned) &&
+                !knownPresentations.Contains(MediaPresentationKind.OverlayFullscreen) &&
                 media.MediaSeekStepSeconds is not null)
                 Add($"{path}.mediaSeekStepSeconds", "seek_presentation_required",
                     "A media seek step requires compact pinned presentation or overlay fullscreen capability.");
-            if (media.CompactPinnedPresentation &&
+            if (knownPresentations.Contains(MediaPresentationKind.CompactPinned) &&
                 (!knownCommands.Contains(EmbeddedMediaCommand.TogglePlayback) ||
                  !knownCommands.Contains(EmbeddedMediaCommand.SeekBackward) ||
                  !knownCommands.Contains(EmbeddedMediaCommand.SeekForward)))
@@ -681,10 +690,10 @@ public static class ViewSnapshotValidator
             if (node.Kind is ViewNodeKind.MediaViewport)
             {
                 mediaViewportCount++;
-                mediaViewportSurfaceId ??= node.MediaSurfaceId;
-                CheckIdentifier(node.MediaSurfaceId, $"{path}.mediaSurfaceId",
-                    "embedded media surface ID");
-                if (snapshot.EmbeddedMedia is { } currentMedia &&
+                mediaViewportSessionId ??= node.MediaSessionId;
+                CheckIdentifier(node.MediaSessionId, $"{path}.mediaSessionId",
+                    "embedded media session ID");
+                if (snapshot.EmbeddedMediaSession is { } currentMedia &&
                     !string.Equals(node.AccessibilityLabel, currentMedia.AccessibleName,
                         StringComparison.Ordinal))
                     Add($"{path}.accessibilityLabel", "media_viewport_accessible_name_mismatch",
@@ -701,12 +710,12 @@ public static class ViewSnapshotValidator
                     node.GridMaximumColumns is not null || node.IsDisabled is not null ||
                     node.IsSelected is not null || node.IsBusy is not null)
                     Add(path, "media_viewport_property_not_allowed",
-                        "MediaViewport accepts only its ID, media surface identity, accessible name, visibility, and style classes.");
+                        "MediaViewport accepts only its ID, media session identity, accessible name, visibility, and style classes.");
             }
-            else if (node.MediaSurfaceId is not null)
+            else if (node.MediaSessionId is not null)
             {
-                Add($"{path}.mediaSurfaceId", "media_surface_id_not_allowed",
-                    "Media surface identity applies only to MediaViewport nodes.");
+                Add($"{path}.mediaSessionId", "media_session_id_not_allowed",
+                    "Media session identity applies only to MediaViewport nodes.");
             }
             if (node.Kind is ViewNodeKind.LoadingIndicator)
             {
@@ -1328,7 +1337,7 @@ public static class ViewSnapshotValidator
                     node.Minimum is not null || node.Maximum is not null || node.Step is not null ||
                     node.ValueChangedActionId is not null || node.ImageSource is not null ||
                     node.ArtworkHandle is not null || node.FocusBackgroundArtworkHandle is not null ||
-                    node.MediaSurfaceId is not null || node.ImageFit is not null || node.Glyph is not null ||
+                    node.MediaSessionId is not null || node.ImageFit is not null || node.Glyph is not null ||
                     node.IndicatorSize is not null || node.ActionSurfaceOrientation is not null ||
                     node.ActionSurfacePresentation is not null || node.GridMinimumColumnWidth is not null ||
                     node.GridMaximumColumns is not null || node.IsDisabled is not null ||
@@ -1467,7 +1476,7 @@ public static class ViewSnapshotValidator
                     node.TextEntryMaximumLength is not null || node.TextEntryInputKind is not null ||
                     node.Minimum is not null || node.Step is not null ||
                     node.ValueChangedActionId is not null || node.SliderInteractionMode is not null ||
-                    node.FocusBackgroundArtworkHandle is not null || node.MediaSurfaceId is not null ||
+                    node.FocusBackgroundArtworkHandle is not null || node.MediaSessionId is not null ||
                     node.ActionSurfaceOrientation is not null || node.ActionSurfacePresentation is not null ||
                     node.IsDisabled is not null || node.IsSelected is not null || node.IsBusy is not null ||
                     node.FocusPersistenceId is not null || node.Focus is not null ||
@@ -1522,7 +1531,7 @@ public static class ViewSnapshotValidator
                     StringLength(node.TextEntryPlaceholder) + StringLength(node.ValueChangedActionId) +
                     StringLength(node.ImageSource) + StringLength(node.ArtworkHandle) +
                     StringLength(node.FocusBackgroundArtworkHandle) +
-                    StringLength(node.MediaSurfaceId) +
+                    StringLength(node.MediaSessionId) +
                     StringLength(node.FocusPersistenceId) + StringLength(node.InputScopeId) +
                     StringLength(node.InitialChildFocusId) +
                     StringLength(node.ScrollNearStartActionId) + StringLength(node.ScrollNearEndActionId) +

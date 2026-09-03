@@ -832,8 +832,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 throw new BridgeProtocolException(
                     "Controller input cannot combine exact action authority kinds.");
             DemandCurrent(registration);
-            if (input.Context is (ControllerInputContext.PinnedSurface or
-                    ControllerInputContext.OverlayFullscreenPresentation) &&
+            if (input.Context == ControllerInputContext.PinnedSurface &&
                 string.IsNullOrWhiteSpace(expectedRuntimeGeneration))
                 throw new BridgeProtocolException(
                     "Host-owned controller notification requires exact runtime generation authority.");
@@ -844,8 +843,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     StringComparison.Ordinal))
                 throw new BridgeProtocolException(
                     "Controller input runtime authority is stale or unavailable.");
-            if (input.Context is not (ControllerInputContext.PinnedLayoutSelection or
-                ControllerInputContext.OverlayFullscreenPresentation))
+            if (input.Context != ControllerInputContext.PinnedLayoutSelection)
                 DemandInteractionAllowed(registration);
             var selectAction = DemandSelectActionAuthority(
                 registration, input, expectedSelectOptionActionId);
@@ -1246,13 +1244,13 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 !registration.IsRetiring && registration.CachedSnapshot is { } snapshot)
             {
                 var descriptor = registration.Configured.PublicDescriptor();
-                var media = snapshot.EmbeddedMedia;
+                var media = snapshot.EmbeddedMediaSession;
                 if (media is not null &&
                     snapshot.Sequence == request.Sequence &&
                     string.Equals(snapshot.WidgetInstanceId, request.InstanceId, StringComparison.Ordinal) &&
                     string.Equals(descriptor.RuntimeGeneration, request.RuntimeGeneration, StringComparison.Ordinal) &&
                     string.Equals(descriptor.PresentationGeneration, request.PresentationGeneration, StringComparison.Ordinal) &&
-                    string.Equals(media.Id, request.SurfaceId, StringComparison.Ordinal))
+                    string.Equals(media.Id, request.SessionId, StringComparison.Ordinal))
                     return AdmitPublicationLocked(
                         registration,
                         new BridgeClientSnapshot(registration.Configured, snapshot));
@@ -1276,7 +1274,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             var snapshot = registration.CachedSnapshot ?? throw new BridgeProtocolException(
                 "Embedded media event has no current snapshot authority.");
             var descriptor = registration.Configured.PublicDescriptor();
-            var media = snapshot.EmbeddedMedia;
+            var media = snapshot.EmbeddedMediaSession;
             var playbackEvent = request.Event;
             if (playbackEvent.Sequence <= 0 || playbackEvent.CommandSequence < 0 ||
                 string.IsNullOrWhiteSpace(playbackEvent.MediaKey) ||
@@ -1302,7 +1300,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 !string.Equals(snapshot.WidgetInstanceId, request.InstanceId, StringComparison.Ordinal) ||
                 !string.Equals(descriptor.RuntimeGeneration, request.RuntimeGeneration, StringComparison.Ordinal) ||
                 !string.Equals(descriptor.PresentationGeneration, request.PresentationGeneration, StringComparison.Ordinal) ||
-                !string.Equals(media.Id, request.Event.SurfaceId, StringComparison.Ordinal) ||
+                !string.Equals(media.Id, request.Event.SessionId, StringComparison.Ordinal) ||
                 !registration.AdmitsEmbeddedMediaPlaybackEvent(
                     request.Sequence, playbackEvent, snapshot))
                 throw new BridgeProtocolException(
@@ -2316,7 +2314,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 while (_pinnedInputOriginSnapshots.Count > MaximumPinnedInputOriginSnapshots)
                     _pinnedInputOriginSnapshots.Dequeue();
             }
-            var media = snapshot.EmbeddedMedia;
+            var media = snapshot.EmbeddedMediaSession;
             var pending = media?.PendingCommand;
             if (pending is null || media is null)
             {
@@ -2325,10 +2323,11 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             else if (_embeddedMediaCommandAuthority is not { } current ||
                 !string.Equals(current.InstanceId, snapshot.WidgetInstanceId,
                     StringComparison.Ordinal) ||
-                !string.Equals(current.SurfaceId, media.Id, StringComparison.Ordinal) ||
+                !string.Equals(current.SessionId, media.Id, StringComparison.Ordinal) ||
                 current.CommandSequence != pending.Sequence ||
                 !string.Equals(current.MediaKey, pending.MediaKey,
-                    StringComparison.Ordinal))
+                    StringComparison.Ordinal) ||
+                current.Command != pending)
             {
                 _embeddedMediaCommandAuthority = new(
                     snapshot.Sequence,
@@ -2336,6 +2335,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     media.Id,
                     pending.Sequence,
                     pending.MediaKey,
+                    pending with { },
                     EmbeddedMediaResourceAuthority.Capture(media));
             }
             CachedSnapshot = snapshot;
@@ -2356,7 +2356,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         {
             if (playbackEvent.CommandSequence == 0)
                 return requestSequence == snapshot.Sequence;
-            var media = snapshot.EmbeddedMedia;
+            var media = snapshot.EmbeddedMediaSession;
             var pending = media?.PendingCommand;
             return _embeddedMediaCommandAuthority is { } authority &&
                 !authority.TerminalPublished &&
@@ -2364,11 +2364,12 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                  requestSequence == snapshot.Sequence) &&
                 string.Equals(authority.InstanceId, snapshot.WidgetInstanceId,
                     StringComparison.Ordinal) &&
-                string.Equals(authority.SurfaceId, media?.Id, StringComparison.Ordinal) &&
+                string.Equals(authority.SessionId, media?.Id, StringComparison.Ordinal) &&
                 media is not null && authority.ResourceAuthority.Matches(media) &&
                 authority.CommandSequence == playbackEvent.CommandSequence &&
                 string.Equals(authority.MediaKey, playbackEvent.MediaKey,
                     StringComparison.Ordinal) &&
+                authority.Command == pending &&
                 pending?.Sequence == playbackEvent.CommandSequence &&
                 string.Equals(pending.MediaKey, playbackEvent.MediaKey,
                     StringComparison.Ordinal);
@@ -2390,16 +2391,18 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         private sealed class EmbeddedMediaCommandAuthority(
             long originSnapshotSequence,
             string instanceId,
-            string surfaceId,
+            string sessionId,
             long commandSequence,
             string mediaKey,
+            EmbeddedMediaPlaybackCommand command,
             EmbeddedMediaResourceAuthority resourceAuthority)
         {
             internal long OriginSnapshotSequence { get; } = originSnapshotSequence;
             internal string InstanceId { get; } = instanceId;
-            internal string SurfaceId { get; } = surfaceId;
+            internal string SessionId { get; } = sessionId;
             internal long CommandSequence { get; } = commandSequence;
             internal string MediaKey { get; } = mediaKey;
+            internal EmbeddedMediaPlaybackCommand Command { get; } = command;
             internal EmbeddedMediaResourceAuthority ResourceAuthority { get; } =
                 resourceAuthority;
             internal bool TerminalPublished { get; set; }
@@ -2409,46 +2412,28 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         {
             private string Id { get; init; } = string.Empty;
             private string EntryAsset { get; init; } = string.Empty;
-            private WidgetSurfaceHints Surface { get; init; } = new();
-            private double AspectRatio { get; init; }
             private EmbeddedMediaResource[] Resources { get; init; } = [];
-            private EmbeddedMediaCommand[] Commands { get; init; } = [];
             private string[] AllowedFrameOrigins { get; init; } = [];
             private string[] AllowedFrameDomainFamilies { get; init; } = [];
-            private bool CompactPinnedPresentation { get; init; }
-            private double? MediaSeekStepSeconds { get; init; }
-            private bool RetainSessionWhenHidden { get; init; }
 
             internal static EmbeddedMediaResourceAuthority Capture(
-                EmbeddedMediaSurface media) => new()
+                EmbeddedMediaSession media) => new()
             {
                 Id = media.Id,
                 EntryAsset = media.EntryAsset,
-                Surface = media.Surface with { },
-                AspectRatio = media.AspectRatio,
                 Resources = media.Resources.Select(resource => resource with { }).ToArray(),
-                Commands = media.Commands.ToArray(),
                 AllowedFrameOrigins = media.AllowedFrameOrigins.ToArray(),
                 AllowedFrameDomainFamilies = media.AllowedFrameDomainFamilies.ToArray(),
-                CompactPinnedPresentation = media.CompactPinnedPresentation,
-                MediaSeekStepSeconds = media.MediaSeekStepSeconds,
-                RetainSessionWhenHidden = media.RetainSessionWhenHidden,
             };
 
-            internal bool Matches(EmbeddedMediaSurface media) =>
+            internal bool Matches(EmbeddedMediaSession media) =>
                 string.Equals(Id, media.Id, StringComparison.Ordinal) &&
                 string.Equals(EntryAsset, media.EntryAsset, StringComparison.Ordinal) &&
-                Surface == media.Surface &&
-                AspectRatio == media.AspectRatio &&
                 Resources.SequenceEqual(media.Resources) &&
-                Commands.SequenceEqual(media.Commands) &&
                 AllowedFrameOrigins.SequenceEqual(
                     media.AllowedFrameOrigins, StringComparer.Ordinal) &&
                 AllowedFrameDomainFamilies.SequenceEqual(
-                    media.AllowedFrameDomainFamilies, StringComparer.Ordinal) &&
-                CompactPinnedPresentation == media.CompactPinnedPresentation &&
-                MediaSeekStepSeconds == media.MediaSeekStepSeconds &&
-                RetainSessionWhenHidden == media.RetainSessionWhenHidden;
+                    media.AllowedFrameDomainFamilies, StringComparer.Ordinal);
         }
 
         internal void AcceptDashboardInputSequence(long sequence)

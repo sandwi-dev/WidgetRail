@@ -335,7 +335,7 @@ widgetrail::WidgetSnapshot FreeScrollSelectSnapshot(
 
 widgetrail::WidgetSnapshot CompactMediaSnapshot(const long long sequence = 1) {
     auto snapshot = Snapshot(sequence);
-    widgetrail::EmbeddedMediaSurfaceDeclaration media;
+    widgetrail::EmbeddedMediaSessionDeclaration media;
     media.id = L"fixture.media";
     media.accessibleName = L"Provider-neutral compact media";
     media.entryAsset = L"index.html";
@@ -343,9 +343,10 @@ widgetrail::WidgetSnapshot CompactMediaSnapshot(const long long sequence = 1) {
     media.commands = {
         L"togglePlayback", L"navigatePrevious", L"navigateNext",
         L"seekBackward", L"seekForward"};
-    media.compactPinnedPresentation = true;
+    media.supportedPresentations.push_back(
+        widgetrail::MediaPresentationKind::CompactPinned);
     media.mediaSeekStepSeconds = 7.0;
-    snapshot.embeddedMedia = std::move(media);
+    snapshot.embeddedMediaSession = std::move(media);
     return snapshot;
 }
 
@@ -1712,7 +1713,8 @@ int main() {
             compact.OnOverlayShown();
             auto admission = Admission();
             admission.snapshot = CompactMediaSnapshot();
-            Check(compact.Pin(admission, error) && compact.CommitSetup(error) &&
+            Check(compact.Pin(admission, error) && compact.CycleLayout(1) &&
+                      compact.CommitSetup(error) &&
                       compact.ToggleInteractionMode() && compact.EnterControllerFocus(),
                   "compact media fixture establishes one focused native presentation");
             compact.UpdateCompactMediaPlayback(3.0, 20.0, false);
@@ -1775,7 +1777,8 @@ int main() {
             scheduler.OnOverlayShown();
             auto admission = Admission();
             admission.snapshot = CompactMediaSnapshot();
-            Check(scheduler.Pin(admission, error) && scheduler.CommitSetup(error) &&
+            Check(scheduler.Pin(admission, error) && scheduler.CycleLayout(1) &&
+                      scheduler.CommitSetup(error) &&
                       scheduler.ToggleInteractionMode() &&
                       scheduler.EnterControllerFocus(),
                   "compact media scheduler fixture establishes one native presentation");
@@ -1830,7 +1833,7 @@ int main() {
                   "one coalesced paint presents the newest compatible snapshot without media geometry churn");
 
             auto replacement = CompactMediaSnapshot(5);
-            replacement.embeddedMedia->aspectRatio = 4.0 / 3.0;
+            replacement.embeddedMediaSession->aspectRatio = 4.0 / 3.0;
             Check(scheduler.UpdateSnapshot(
                       admission.widgetId, admission.runtimeGeneration,
                       replacement),

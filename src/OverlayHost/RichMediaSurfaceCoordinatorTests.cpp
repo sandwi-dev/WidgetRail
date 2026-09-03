@@ -1,5 +1,6 @@
 #include "OverlayCompositionSurface.h"
 #include "EmbeddedMediaResourceContract.h"
+#include "MediaSessionManager.h"
 #include "RichMediaSurfaceCoordinator.h"
 #include "WidgetProtocolPresentationContract.generated.h"
 
@@ -465,7 +466,94 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
     std::shared_ptr<FixtureCallbackProbe> callbackProbe_;
 };
 
+namespace media = ::widgetrail::media;
+
+void RunMediaSessionManagerContractCases() {
+    auto environment =
+        widgetrail::richmedia::RichMediaSurfaceCoordinator::CreateSharedEnvironment();
+    media::MediaSessionManager manager{environment};
+    const media::SessionKey key{
+        L"neutral-widget", L"neutral.instance", L"runtime-1", L"media.primary"};
+    auto* session = manager.Ensure(key);
+    Require(session != nullptr, "media manager reserves the first exact session");
+    session->authority = media::SessionAuthority{
+        .widgetId = key.widgetId,
+        .instanceId = key.instanceId,
+        .runtimeGeneration = key.runtimeGeneration,
+        .presentationGeneration = L"presentation-1",
+        .sessionId = key.sessionId,
+    };
+    Require(manager.RequestPresentation(
+                key, media::PresentationState::OverlayFullscreen,
+                L"presentation-1"),
+            "fullscreen intent is accepted against exact generation authority");
+
+    int presents = 0;
+    int updates = 0;
+    int parks = 0;
+    const media::TransitionOperations operations{
+        [&](const media::SessionKey& exact, media::SessionRecord&,
+            media::ParkingReason) {
+            Require(exact == key, "park receives exact session key");
+            ++parks;
+            return S_OK;
+        },
+        [&](const media::SessionKey& exact, media::SessionRecord&,
+            media::PresentationState target, const media::EndpointGeometry&) {
+            Require(exact == key &&
+                        target == media::PresentationState::OverlayFullscreen,
+                    "present receives exact fullscreen session authority");
+            ++presents;
+            return S_OK;
+        },
+        [&](const media::SessionKey& exact, media::SessionRecord&,
+            media::PresentationState target, const media::EndpointGeometry&) {
+            Require(exact == key &&
+                        target == media::PresentationState::OverlayFullscreen,
+                    "update receives exact fullscreen session authority");
+            ++updates;
+            return S_OK;
+        },
+        [](const media::SessionKey&, media::SessionRecord&) { return S_OK; },
+        [](const media::SessionKey&, media::SessionRecord&) { return S_OK; },
+    };
+    const media::EndpointGeometry visible{
+        reinterpret_cast<HWND>(1),
+        {10, 20, 650, 380},
+        {10, 20, 650, 380},
+        {0, 0, 640, 360},
+        1.25,
+        true,
+        7,
+    };
+    media::TransitionInput input{
+        true, true, true, true, media::GeometryState::Ready,
+        media::PresentationState::OverlayFullscreen,
+        media::ParkingReason::EndpointUnavailable, visible};
+    Require(SUCCEEDED(manager.Reconcile(key, input, operations)) &&
+                presents == 1 && updates == 0 && parks == 0,
+            "first fullscreen reconcile presents exactly once");
+    session = manager.Find(key);
+    Require(session && session->presentationRequest &&
+                session->presentationRequest->target ==
+                    media::PresentationState::OverlayFullscreen &&
+                session->authority->presentation ==
+                    media::PresentationState::OverlayFullscreen,
+            "fulfilled fullscreen remains desired and current");
+
+    input.desiredGeometry->committedFrameGeneration = 8;
+    Require(manager.Reconcile(key, input, operations) == S_FALSE &&
+                presents == 1 && updates == 0 &&
+                manager.Find(key)->committedGeometry->committedFrameGeneration == 8,
+            "equivalent repaint refreshes authority without composition work");
+    input.desiredGeometry->visible = false;
+    Require(SUCCEEDED(manager.Reconcile(key, input, operations)) &&
+                updates == 1 && manager.Find(key)->presentationRequest,
+            "visibility changes execute once without consuming fullscreen intent");
+}
+
 void RunContractCases() {
+    RunMediaSessionManagerContractCases();
     using namespace widgetrail::richmedia;
     {
         RichMediaSurfaceCoordinator unbound;
@@ -518,7 +606,7 @@ void RunContractCases() {
                     "return SUCCEEDED(result) && SUCCEEDED(leaveResult);") !=
                     std::string::npos,
             "retained controller activation publishes one complete move/down/up/leave gesture and terminalizes either send failure");
-    widgetrail::EmbeddedMediaSurfaceDeclaration initialSurface;
+    widgetrail::EmbeddedMediaSessionDeclaration initialSurface;
     initialSurface.id = L"neutral.primary";
     initialSurface.accessibleName = L"Neutral media";
     initialSurface.entryAsset = L"media/index.html";
@@ -536,45 +624,45 @@ void RunContractCases() {
     pendingSurface.pendingCommand = widgetrail::EmbeddedMediaPlaybackCommand{
         3, L"play", L"neutral-tone", std::nullopt, std::nullopt};
     const auto admittedContract =
-        widgetrail::EmbeddedMediaResourceContract(initialSurface);
+        widgetrail::MakeEmbeddedMediaDocumentIdentity(initialSurface);
     std::wstring sourceWidgetId = L"neutral-widget";
-    std::wstring sourceSurfaceId = initialSurface.id;
+    std::wstring sourceSessionId = initialSurface.id;
     const std::wstring retainedWidgetId{std::wstring_view{sourceWidgetId}};
-    const std::wstring retainedSurfaceId{std::wstring_view{sourceSurfaceId}};
+    const std::wstring retainedSessionId{std::wstring_view{sourceSessionId}};
     sourceWidgetId.assign(L"navigatePrevious");
-    sourceSurfaceId.assign(L"retired-surface-with-different-storage");
+    sourceSessionId.assign(L"retired-surface-with-different-storage");
     initialSurface.id.assign(L"retired.contract");
     initialSurface.resources.clear();
     Require(retainedWidgetId == L"neutral-widget" &&
-                retainedSurfaceId == L"neutral.primary" &&
+                retainedSessionId == L"neutral.primary" &&
                 admittedContract.id == L"neutral.primary" &&
                 admittedContract.resources.size() == 1 &&
                 admittedContract.resources[0].path == L"media/index.html",
             "retained media identity/resource contract borrowed snapshot storage");
     int controllerAdmissions = 1;
-    const bool pendingRetainsSession = widgetrail::SameEmbeddedMediaResourceContract(
+    const bool pendingRetainsSession = widgetrail::SameEmbeddedMediaDocumentIdentity(
         admittedContract, pendingSurface);
     if (!pendingRetainsSession) ++controllerAdmissions;
     Require(pendingRetainsSession,
             "playback command snapshot churn replaced the sealed media session");
     pendingSurface.pendingCommand.reset();
     const bool acknowledgementRetainsSession =
-        widgetrail::SameEmbeddedMediaResourceContract(
+        widgetrail::SameEmbeddedMediaDocumentIdentity(
             admittedContract, pendingSurface);
     if (!acknowledgementRetainsSession) ++controllerAdmissions;
     Require(acknowledgementRetainsSession,
             "playback acknowledgement snapshot churn replaced the sealed media session");
     auto renamedSurface = pendingSurface;
     renamedSurface.accessibleName = L"Neutral media for the selected item";
-    Require(widgetrail::SameEmbeddedMediaResourceContract(
+    Require(widgetrail::SameEmbeddedMediaDocumentIdentity(
                 admittedContract, renamedSurface),
             "semantic accessible-name update replaced the sealed media session");
     auto replacementSurface = pendingSurface;
     replacementSurface.resources[0].path = L"media/replacement.html";
-    Require(!widgetrail::SameEmbeddedMediaResourceContract(
+    Require(!widgetrail::SameEmbeddedMediaDocumentIdentity(
                 admittedContract, replacementSurface),
             "genuine sealed media resource replacement retained stale authority");
-    if (!widgetrail::SameEmbeddedMediaResourceContract(
+    if (!widgetrail::SameEmbeddedMediaDocumentIdentity(
             admittedContract, replacementSurface)) ++controllerAdmissions;
     Require(controllerAdmissions == 2,
             "compatible updates or genuine replacement produced wrong controller count");

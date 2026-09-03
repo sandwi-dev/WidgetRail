@@ -352,7 +352,7 @@ public sealed partial class YouTubeVideoWidget
             MinimumWidth = 420,
             MinimumHeight = 420,
         })
-        { EmbeddedMedia = RetainedHiddenMediaSurface(state.Playback) };
+        { EmbeddedMediaSession = ParkedMediaSession(state.Playback) };
     }
 
     private static WidgetElement? NowPlayingRow(YouTubePlaybackState playback)
@@ -490,7 +490,7 @@ public sealed partial class YouTubeVideoWidget
                 MinimumWidth = 420,
                 MinimumHeight = 420,
             })
-        { EmbeddedMedia = RetainedHiddenMediaSurface(state.Playback) };
+        { EmbeddedMediaSession = ParkedMediaSession(state.Playback) };
 
     private WidgetView ApplicationView(
         YouTubeWidgetState state,
@@ -510,14 +510,15 @@ public sealed partial class YouTubeVideoWidget
             MinimumWidth = 420,
             MinimumHeight = 420,
         })
-        { EmbeddedMedia = RetainedHiddenMediaSurface(state.Playback) };
+        { EmbeddedMediaSession = ParkedMediaSession(state.Playback) };
     }
 
-    private static EmbeddedMediaSurface? RetainedHiddenMediaSurface(
+    private static EmbeddedMediaSession? ParkedMediaSession(
         YouTubePlaybackState playback)
     {
-        return playback.HasPlaybackObservation && playback.VideoId is { } videoId
-            ? CreateMediaSurface(videoId, playback.PendingCommand, retainSessionWhenHidden: true)
+        return playback.VideoId is { } videoId
+            ? CreateMediaSession(
+                videoId, playback.PendingCommand, overlayFullscreen: false)
             : null;
     }
 

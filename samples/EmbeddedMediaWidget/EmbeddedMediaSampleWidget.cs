@@ -6,7 +6,7 @@ namespace WidgetRail.Samples.EmbeddedMediaWidget;
 /// <summary>Provider-neutral native shell over two sealed local media items.</summary>
 public sealed class EmbeddedMediaSampleWidget : Widget
 {
-    private const string SurfaceId = "embedded-media-sample.primary";
+    private const string SessionId = "embedded-media-sample.primary";
     private const double SeekStepSeconds = 2;
     private static readonly MediaItem[] MediaItems =
     [
@@ -47,9 +47,9 @@ public sealed class EmbeddedMediaSampleWidget : Widget
             muted = _muted;
             loop = _loop;
         }
-        var media = new EmbeddedMediaSurface
+        var media = new EmbeddedMediaSession
         {
-            Id = SurfaceId,
+            Id = SessionId,
             AccessibleName = "Provider-neutral local media viewport",
             EntryAsset = "payload/media/adapter.html",
             Surface = new WidgetSurfaceHints { PreferredWidth = 640, PreferredHeight = 360, MinimumWidth = 320, MinimumHeight = 180 },
@@ -62,10 +62,13 @@ public sealed class EmbeddedMediaSampleWidget : Widget
                 new EmbeddedMediaResource { Path = "payload/media/horizon.mp4", ContentType = "video/mp4" },
             ],
             Commands = [EmbeddedMediaCommand.Activate, EmbeddedMediaCommand.TogglePlayback, EmbeddedMediaCommand.Previous, EmbeddedMediaCommand.Next, EmbeddedMediaCommand.SeekBackward, EmbeddedMediaCommand.SeekForward],
-            CompactPinnedPresentation = true,
+            SupportedPresentations =
+            [
+                MediaPresentationKind.OverlayFullscreen,
+                MediaPresentationKind.CompactPinned,
+            ],
             MediaSeekStepSeconds = SeekStepSeconds,
             PendingCommand = pending,
-            OverlayFullscreenCapable = true,
         };
         var back = UI.Button("Back", "host.embeddedMedia.back", "media-shell.back").FocusDown("media-shell.timeline.slider").Classes("media-shell-back");
         var fullscreen = UI.Button(
@@ -122,7 +125,7 @@ public sealed class EmbeddedMediaSampleWidget : Widget
                 MinimumWidth = 440,
                 MinimumHeight = 410,
             })
-        { EmbeddedMedia = media };
+        { EmbeddedMediaSession = media };
     }
 
     public override ValueTask OnActionAsync(
@@ -146,11 +149,11 @@ public sealed class EmbeddedMediaSampleWidget : Widget
                     break;
                 case "host.embeddedMedia.seekBackward":
                     kind = EmbeddedMediaPlaybackCommandKind.Seek;
-                    position = Math.Max(0, _position - CurrentMediaSeekStepSeconds);
+                    position = Math.Max(0, _position - SeekStepSeconds);
                     break;
                 case "host.embeddedMedia.seekForward":
                     kind = EmbeddedMediaPlaybackCommandKind.Seek;
-                    position = Math.Min(_duration, _position + CurrentMediaSeekStepSeconds);
+                    position = Math.Min(_duration, _position + SeekStepSeconds);
                     break;
                 case "host.embeddedMedia.seek" when action.RequestedValue is { } requested &&
                                                          double.IsFinite(requested):
@@ -203,7 +206,7 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!string.Equals(playbackEvent.SurfaceId, SurfaceId, StringComparison.Ordinal))
+        if (!string.Equals(playbackEvent.SessionId, SessionId, StringComparison.Ordinal))
             return ValueTask.CompletedTask;
         lock (_gate)
         {

@@ -755,9 +755,9 @@ struct DeclarativeRenderer::RenderPass final {
         element.flexShrink = style.flexShrink();
         if (!style.flexBasisAuto()) element.flexBasis = style.flexBasisPx();
         element.aspectRatio = style.aspectRatio();
-        if (node.kind == L"mediaViewport" && snapshot->embeddedMedia &&
-            node.mediaSurfaceId == snapshot->embeddedMedia->id) {
-            const auto& media = *snapshot->embeddedMedia;
+        if (node.kind == L"mediaViewport" && snapshot->embeddedMediaSession &&
+            node.mediaSessionId == snapshot->embeddedMediaSession->id) {
+            const auto& media = *snapshot->embeddedMediaSession;
             if (!element.width && media.surface.preferredWidth)
                 element.width = static_cast<float>(*media.surface.preferredWidth);
             if (media.surface.minimumWidth)
@@ -2366,11 +2366,11 @@ struct DeclarativeRenderer::RenderPass final {
                 std::max({minimumContentHeight, tokens.leadingSize, text.height}),
             };
         }
-        if (node.kind == L"mediaViewport" && snapshot->embeddedMedia &&
-            node.mediaSurfaceId == snapshot->embeddedMedia->id) {
+        if (node.kind == L"mediaViewport" && snapshot->embeddedMediaSession &&
+            node.mediaSessionId == snapshot->embeddedMediaSession->id) {
             return {
-                static_cast<float>(snapshot->embeddedMedia->surface.preferredWidth.value_or(0.0)),
-                static_cast<float>(snapshot->embeddedMedia->surface.preferredHeight.value_or(0.0)),
+                static_cast<float>(snapshot->embeddedMediaSession->surface.preferredWidth.value_or(0.0)),
+                static_cast<float>(snapshot->embeddedMediaSession->surface.preferredHeight.value_or(0.0)),
             };
         }
         if (node.kind == L"image") return {120.0F, 120.0F};
@@ -3216,7 +3216,7 @@ struct DeclarativeRenderer::RenderPass final {
             entry.widgetId = options.artworkWidgetId;
             entry.widgetInstanceId = snapshot->instanceId;
             entry.authorityId = authorityId;
-            entry.surfaceId = node.id;
+            entry.sessionId = node.id;
             entry.imageSource = desired.imageSource;
             entry.artworkHandle = desired.artworkHandle;
             entry.imageFit = desired.imageFit;
@@ -3571,13 +3571,13 @@ struct DeclarativeRenderer::RenderPass final {
                 return false;
             }
             const bool retire = retained.authorityId != authorityId ||
-                !present.contains(retained.surfaceId);
+                !present.contains(retained.sessionId);
             if (retire) {
                 Add(
-                    retained.surfaceId, L"background_crossfade_retirement",
+                    retained.sessionId, L"background_crossfade_retirement",
                     L"event=retirement widget=" + retained.widgetId +
                         L" instance=" + retained.widgetInstanceId +
-                        L" surface=" + retained.surfaceId +
+                        L" surface=" + retained.sessionId +
                         (retained.authorityId != authorityId
                             ? L" reason=authority-changed"
                             : L" reason=surface-removed"),
@@ -3826,7 +3826,7 @@ struct DeclarativeRenderer::RenderPass final {
                 mediaClip.width > 0.5F && mediaClip.height > 0.5F) {
                 result.mediaViewportRegions.push_back({
                     node.id,
-                    node.mediaSurfaceId,
+                    node.mediaSessionId,
                     presented.contentBox,
                     mediaClip,
                 });

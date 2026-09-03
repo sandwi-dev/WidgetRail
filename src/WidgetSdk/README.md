@@ -22,9 +22,9 @@ selects one on the single pinned surface. Override
 `OnPinnedLayoutSelectionChangedAsync` only to observe package data demand;
 null revokes it and never grants host authority.
 
-Widgets that need one embedded media rectangle may set the optional
-`WidgetView.EmbeddedMedia` protocol-v22 property. The declaration contains a
-stable surface ID and accessible name, bounded surface/aspect hints, a closed
+Widgets that need one embedded media document may set the optional
+`WidgetView.EmbeddedMediaSession` property. The declaration contains a stable
+session ID and accessible name, bounded presentation/aspect hints, a closed
 typed command set, and a finite inventory of package-local assets. Every asset
 path must be normalized and declared in the signed package inventory; the host
 revalidates its length and digest before creating the native surface. The host
@@ -32,16 +32,16 @@ owns the WebView2 controller, origin, bounds/DPI, focus and input routing,
 accessibility boundary, visibility, fault handling, and teardown. Widgets own
 only their provider adapter assets and typed state. The contract intentionally
 does not expose navigation, DOM access, script execution, arbitrary URLs, or a
-second HWND/input owner. Widgets that omit `EmbeddedMedia` retain their existing
+second HWND/input owner. Widgets that omit `EmbeddedMediaSession` retain their existing
 snapshot and rendering behavior.
 
 Use the SDK's readable `EmbeddedMediaAdapterRuntime.js` as the canonical adapter
 command boundary. The SDK package carries it under
 `contentFiles/any/any/WidgetRail`, but this is opt-in content: WidgetRail does
-not inject it, and declaring `EmbeddedMedia` does not add it automatically.
+not inject it, and declaring `EmbeddedMediaSession` does not add it automatically.
 Copy it beside the entry document (optionally as the package-local alias
 `adapter-runtime.js`), declare that exact staged path in
-`EmbeddedMediaSurface.Resources` with `ContentType = "application/javascript"`,
+`EmbeddedMediaSession.Resources` with `ContentType = "application/javascript"`,
 and load the same relative path before the provider driver.
 
 ```xml
@@ -100,12 +100,12 @@ are never evicted. A fifth session fails explicitly until a slot is released by
 widget removal/restart, exact authority retirement, controller failure, or host
 shutdown. Those terminal boundaries start fresh and do not restore playback.
 
-Protocol v23 adds `UI.MediaViewport(surface, id)`, a provider-neutral native
-layout leaf that binds the one current `WidgetView.EmbeddedMedia` declaration
+Protocol v23 adds `UI.MediaViewport(session, id)`, a provider-neutral native
+layout leaf that binds the one current `WidgetView.EmbeddedMediaSession` declaration
 into the ordinary declarative tree. Taffy layout, WRSS/GBSS styling, clipping,
 accessibility, and responsive geometry remain host-owned; the embedded browser
 supplies only the pixels inside the committed viewport. Exactly one viewport
-must reference the current surface identity. Missing, duplicate, or mismatched
+must reference the current session identity. Missing, duplicate, or mismatched
 bindings fail closed, and semantic previews display a deterministic native
 placeholder rather than creating WebView2.
 
@@ -114,7 +114,7 @@ bind their action IDs to `host.embeddedMedia.togglePlayback`,
 `host.embeddedMedia.seekBackward`, `host.embeddedMedia.seekForward`,
 `host.embeddedMedia.previous`, `host.embeddedMedia.next`, or
 `host.embeddedMedia.back`; the host admits those actions only against the exact
-current widget, surface, viewport, input scope, focus, sequence, and declared
+current widget, session, viewport, input scope, focus, sequence, and declared
 closed command set. The browser never receives the widget focus graph or raw
 controller keys. Overlay-root B remains host Back, while ordinary pinned B
 retains the selected-projection widget route; the compact-pinned exception is
@@ -122,8 +122,8 @@ described below.
 
 Media widgets choose their own quick-seek increment for authored overlay
 controls or use the existing Slider absolute-value action for direct seeking.
-Protocol v25 additionally lets a widget opt into the host-owned compact pinned
-presentation with `CompactPinnedPresentation`. The pin keeps the same
+The session opts into host-owned alternative presentations through the closed
+`SupportedPresentations` collection. `MediaPresentationKind.CompactPinned` keeps the same
 `MediaViewport` and media session, removes the authored title/transport rows,
 and overlays one native themed seek bar that hides during passive playback.
 `MediaSeekStepSeconds` defaults to 10 and accepts finite values from 1 through
@@ -638,12 +638,12 @@ as a dashboard quick action or open-widget shortcut; snapshot validation reports
 for the host-owned `PinnedLayoutSelection` notification delivered by the pinned
 layout handle/test-host contract.
 
-Protocol v24 extends the single host-owned `EmbeddedMediaSurface` with one
+Protocol v24 extends the single host-owned `EmbeddedMediaSession` with one
 optional monotonic `PendingCommand` and validated playback observations through
 `OnEmbeddedMediaPlaybackEventAsync`. Commands are a closed load/cue/play/pause/
 seek/volume vocabulary over bounded opaque media keys; observations contain
 only typed playback state, time, volume, and sanitized error codes. The host
-revalidates widget, instance, runtime, presentation, snapshot, surface, and
+revalidates widget, instance, runtime, presentation, snapshot, session, and
 command authority before either direction crosses the worker boundary. Optional
 `AllowedFrameOrigins` entries use canonical lowercase `https://host` form with
 no trailing slash, userinfo, wildcard, or explicit port, and are exact origins
@@ -667,20 +667,15 @@ document: `Load` and `Cue` retain them while changing media within that
 document, while controller/document replacement resets them to adapter
 defaults. Muting never changes the authored volume.
 
-Protocol v29 adds `RetainSessionWhenHidden` for an already-resident embedded
-media session whose current widget route intentionally has no `MediaViewport`.
-The hidden snapshot must still declare the exact surface and sealed resource
-contract, and it must contain zero media viewports. The host detaches and hides
-composition while retaining the same bounded controller/document slot and its
-typed command/event authority. Returning the exact viewport reattaches that
-session without a load, cue, or controller recreation. The flag cannot create
-a background session, and ordinary declaration removal, identity/resource or
-runtime replacement, widget removal, browser failure, slot retirement, and
-host shutdown remain terminal.
+Protocol v42 unifies embedded-media lifetime and presentation. A declared
+session with zero `MediaViewport` nodes is valid: an exact resident controller
+parks, while a cold declaration remains dormant and creates no background
+controller. `SupportedPresentations` explicitly opts into `OverlayFullscreen`
+and/or `CompactPinned`; these are capabilities, not state, and the host owns
+which presentation currently holds the session.
 
-Protocol v30 adds `OverlayFullscreenCapable` to the existing embedded media
-declaration. It is a capability, not state: the package declares that its
-surface may be presented fullscreen, and the host owns whether it currently is.
+Entering and leaving fullscreen preserve the sealed adapter, controller,
+document, and playback session.
 Entering and leaving preserve the sealed adapter, controller, document, and
 playback session. The host owns safe-work-area placement, aspect fit, DPI,
 native guide, focus, accessibility, and return to the authored layout.
@@ -698,12 +693,8 @@ While fullscreen is active the host services X and the triggers directly against
 the media plane, so optimistic pending/busy state in the widget does not apply;
 playback events still arrive through `OnEmbeddedMediaPlaybackEventAsync`.
 
-Override `OnOverlayFullscreenChangedAsync(bool)` only to observe the host-owned
-mode. The callback is delivered once per effective state change and grants no
-provider, capability, focus, window, or presentation authority. Use
-`CurrentMediaSeekStepSeconds` for package-side seek command math so it matches
-the exact `MediaSeekStepSeconds` declaration consumed by host-owned compact and
-fullscreen controls.
+Use the declared `MediaSeekStepSeconds` for package-side seek command math so it
+matches the exact value consumed by host-owned compact and fullscreen controls.
 
 Protocol v26 adds `AllowedFrameDomainFamilies` for the bounded case where an
 external frame legitimately spans one registrable DNS family. Entries are

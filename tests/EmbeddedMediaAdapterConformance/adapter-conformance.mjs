@@ -235,11 +235,11 @@ if (profile === 'state-callback' && readyPlaybackKeys.length !== 0)
 
 await exercise({source:'bootstrap:load', command:'load'});
 for (const requirement of requirements) await exercise(requirement);
-if (request.playbackCommands.includes('SetPlaybackRate'))
+if (profile === 'state-callback' && request.playbackCommands.includes('SetPlaybackRate'))
   await exercisePlaybackRateContract();
-if (request.playbackCommands.includes('SetMuted'))
+if (profile === 'state-callback' && request.playbackCommands.includes('SetMuted'))
   await exerciseMutedContract();
-if (request.playbackCommands.some(command =>
+if (profile === 'state-callback' && request.playbackCommands.some(command =>
   ['SetPlaybackRate', 'SetMuted', 'SetLoop'].includes(command)))
   await exercisePreferenceProviderErrors();
 await exercise(

@@ -19,7 +19,7 @@ internal static class ScenarioPreviewTests
     private static async Task ExplainsTheIsolatedContractAsync()
     {
         var help = await RunCliAsync("preview", "help");
-        Equal(0, help.Code);
+        Equal(0, help.Code, $"preview help failed: {help.Error}");
         Contains("widgetrail.scenarios.json", help.Output);
         Contains("without resolving or", help.Output);
         Contains("loading the provider assembly", help.Output);
@@ -35,7 +35,7 @@ internal static class ScenarioPreviewTests
             Scenario("empty", "Empty", "No active playback"));
 
         var listed = await RunCliAsync("preview", temp.Path);
-        Equal(0, listed.Code);
+        Equal(0, listed.Code, $"scenario listing failed: {listed.Error}");
         Contains("playing - Authenticated playback without OAuth", listed.Output);
         Contains("empty - No active playback", listed.Output);
         Contains("Listing does not load the provider assembly", listed.Output);
@@ -182,7 +182,7 @@ internal static class ScenarioPreviewTests
 
     private static void MediaViewportUsesDeterministicNativePlaceholder()
     {
-        var media = new EmbeddedMediaSurface
+        var media = new EmbeddedMediaSession
         {
             Id = "aurora.media",
             AccessibleName = "Aurora local media",
@@ -207,7 +207,7 @@ internal static class ScenarioPreviewTests
                 UI.MediaViewport(media, "viewport")),
             ActiveInputScopeId: "root")
         {
-            EmbeddedMedia = media,
+            EmbeddedMediaSession = media,
         }.CreateSnapshot("aurora.preview", 1);
 
         var preview = SnapshotPreview.Format(snapshot);
@@ -232,7 +232,7 @@ internal static class ScenarioPreviewTests
 
         var ordinary = await RunCliAsync(
             "preview", temp.Path, "--scenario", "descendant");
-        Equal(0, ordinary.Code);
+        Equal(0, ordinary.Code, $"ordinary scenario preview failed: {ordinary.Error}");
         using (var document = JsonDocument.Parse(ordinary.Output))
             Equal("descendant", document.RootElement.GetProperty("scenario").GetString());
 
@@ -240,7 +240,7 @@ internal static class ScenarioPreviewTests
         var pinned = await RunCliAsync(
             "preview", temp.Path, "--scenario", "descendant",
             "--pinned-layout", "descendant", "--output", destination);
-        Equal(0, pinned.Code);
+        Equal(0, pinned.Code, $"pinned scenario preview failed: {pinned.Error}");
         Contains("Layout descendant | Descendant scope", pinned.Output);
         Contains("Active input scope: descendant.scope", pinned.Output);
         Contains("▶ Button #descendant.play", pinned.Output);
@@ -364,6 +364,13 @@ internal static class ScenarioPreviewTests
     {
         if (!EqualityComparer<T>.Default.Equals(expected, actual))
             throw new InvalidOperationException($"Expected '{expected}', got '{actual}'.");
+    }
+
+    private static void Equal<T>(T expected, T actual, string message)
+    {
+        if (!EqualityComparer<T>.Default.Equals(expected, actual))
+            throw new InvalidOperationException(
+                $"{message} Expected '{expected}', got '{actual}'.");
     }
 
     private static void Contains(string expected, string actual)

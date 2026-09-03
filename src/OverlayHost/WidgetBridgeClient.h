@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -337,7 +338,7 @@ struct WidgetNode final {
     std::wstring focusBackgroundArtworkHandle;
     // Protocol-v23 declarative binding from one native layout viewport to the
     // one current embedded-media declaration. It grants no browser authority.
-    std::wstring mediaSurfaceId;
+    std::wstring mediaSessionId;
     std::wstring imageFit;
     std::wstring glyph;
     std::wstring indicatorSize;
@@ -428,7 +429,7 @@ struct EmbeddedMediaPlaybackCommand final {
 };
 
 struct EmbeddedMediaPlaybackEvent final {
-    std::wstring surfaceId;
+    std::wstring sessionId;
     long long sequence{};
     long long commandSequence{};
     std::wstring mediaKey;
@@ -442,7 +443,12 @@ struct EmbeddedMediaPlaybackEvent final {
     bool loop{};
 };
 
-struct EmbeddedMediaSurfaceDeclaration final {
+enum class MediaPresentationKind {
+    OverlayFullscreen,
+    CompactPinned,
+};
+
+struct EmbeddedMediaSessionDeclaration final {
     std::wstring id;
     std::wstring accessibleName;
     std::wstring entryAsset;
@@ -453,11 +459,18 @@ struct EmbeddedMediaSurfaceDeclaration final {
     std::vector<std::wstring> allowedFrameOrigins;
     std::vector<std::wstring> allowedFrameDomainFamilies;
     std::optional<EmbeddedMediaPlaybackCommand> pendingCommand;
-    bool compactPinnedPresentation{};
+    std::vector<MediaPresentationKind> supportedPresentations;
     std::optional<double> mediaSeekStepSeconds;
-    bool retainSessionWhenHidden{};
-    bool overlayFullscreenCapable{};
 };
+
+[[nodiscard]] inline bool SupportsMediaPresentation(
+    const EmbeddedMediaSessionDeclaration& declaration,
+    const MediaPresentationKind presentation) noexcept {
+    return std::find(
+        declaration.supportedPresentations.begin(),
+        declaration.supportedPresentations.end(),
+        presentation) != declaration.supportedPresentations.end();
+}
 
 struct EmbeddedMediaResource final {
     std::wstring path;
@@ -472,7 +485,7 @@ struct EmbeddedMediaBundle final {
     std::wstring runtimeGeneration;
     std::wstring presentationGeneration;
     long long sequence{};
-    EmbeddedMediaSurfaceDeclaration surface;
+    EmbeddedMediaSessionDeclaration surface;
     std::vector<EmbeddedMediaResource> resources;
 };
 
@@ -485,7 +498,7 @@ struct WidgetSnapshot final {
     std::vector<WidgetQuickAction> quickActions;
     std::optional<WidgetSurfaceHints> surface;
     std::vector<WidgetPinnedLayout> pinnedLayouts;
-    std::optional<EmbeddedMediaSurfaceDeclaration> embeddedMedia;
+    std::optional<EmbeddedMediaSessionDeclaration> embeddedMediaSession;
     WidgetNode root;
     // Canonical unstyled semantic document retained by the sole native
     // session owner. It is the immutable base for an atomic update candidate;
@@ -739,7 +752,7 @@ public:
         std::wstring_view runtimeGeneration,
         std::wstring_view presentationGeneration,
         long long sequence,
-        std::wstring_view surfaceId);
+        std::wstring_view sessionId);
     [[nodiscard]] std::optional<bool> PublishEmbeddedMediaPlaybackEvent(
         std::wstring_view widgetId,
         std::wstring_view instanceId,
@@ -763,7 +776,6 @@ public:
         std::wstring_view pinnedLayoutId = {},
         std::optional<bool> pinnedLayoutSelected = std::nullopt,
         std::wstring_view expectedActionId = {},
-        std::optional<bool> overlayFullscreenActive = std::nullopt,
         std::wstring_view expectedSelectOptionActionId = {});
     [[nodiscard]] std::optional<bool> SendAction(
         std::wstring_view widgetId,
@@ -866,7 +878,7 @@ struct BridgeFrameReadResult final {
     std::wstring_view runtimeGeneration,
     std::wstring_view presentationGeneration,
     long long sequence,
-    std::wstring_view surfaceId,
+    std::wstring_view sessionId,
     std::wstring& error);
 [[nodiscard]] std::optional<WidgetPresentationUpdate>
 ParseWidgetPresentationUpdateResponse(

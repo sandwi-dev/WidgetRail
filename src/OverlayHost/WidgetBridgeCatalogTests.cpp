@@ -542,10 +542,10 @@ void VerifyEmbeddedMediaSnapshotContract() {
     std::wstring error;
     constexpr std::string_view productionShapedMediaViewportNode = R"json({
         "snapshot": {
-            "protocolVersion":41,"sequence":7,
+            "protocolVersion":42,"sequence":7,
             "widgetInstanceId":"production.media-viewport","activeInputScopeId":"root",
             "quickActions":[],"pinnedLayouts":[],
-            "embeddedMedia":{"id":"production-media","accessibleName":"Production media",
+            "embeddedMediaSession":{"id":"production-media","accessibleName":"Production media",
                 "entryAsset":"media/index.html","aspectRatio":1.7777777778,
                 "surface":{"mode":"standard","preferredWidth":640,"preferredHeight":360,
                            "minimumWidth":240,"minimumHeight":180},
@@ -557,7 +557,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
                  "contextActions":[],"selectOptions":[],"styleClasses":[],"shortcuts":[],
                  "children":[]},
                 {"id":"production.viewport","kind":"mediaViewport",
-                 "accessibilityLabel":"Production media","mediaSurfaceId":"production-media",
+                 "accessibilityLabel":"Production media","mediaSessionId":"production-media",
                  "contextActions":[],"selectOptions":[],"styleClasses":[],"shortcuts":[],
                  "children":[]}
             ]}
@@ -610,20 +610,20 @@ void VerifyEmbeddedMediaSnapshotContract() {
     error.clear();
     Require(!widgetrail::testing::ParseWidgetSnapshotResponse(
                 mutate(std::string{productionShapedMediaViewportNode},
-                    R"json("mediaSurfaceId":"production-media",
+                    R"json("mediaSessionId":"production-media",
                  "contextActions":[],"selectOptions":[])json",
-                    R"json("mediaSurfaceId":"production-media",
+                    R"json("mediaSessionId":"production-media",
                  "contextActions":[],"selectOptions":[{"id":"invalid","label":"Invalid","actionId":"invalid","isSelected":true}])json"),
                 error),
             "MediaViewport admitted a non-empty Select option collection");
 
     const auto valid = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
-            "protocolVersion":27,"sequence":7,
+            "protocolVersion":42,"sequence":7,
             "widgetInstanceId":"neutral.adapter","activeInputScopeId":"root",
             "surface":{"mode":"standard","preferredWidth":760,"preferredHeight":425,
                        "minimumWidth":320,"minimumHeight":180},
-            "embeddedMedia":{"id":"media","accessibleName":"Neutral media",
+            "embeddedMediaSession":{"id":"media","accessibleName":"Neutral media",
                 "entryAsset":"media/index.html","aspectRatio":1.7777777778,
                 "surface":{"mode":"standard","preferredWidth":760,"preferredHeight":425,
                            "minimumWidth":320,"minimumHeight":180},
@@ -637,7 +637,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
                     "mediaKey":"aurora-video","playbackRate":1.5}},
             "root":{"id":"root","kind":"stack","contextActions":[],"children":[
                 {"id":"title","kind":"text","text":"Aurora fixture","contextActions":[],"children":[]},
-                {"id":"viewport","kind":"mediaViewport","mediaSurfaceId":"media",
+                {"id":"viewport","kind":"mediaViewport","mediaSessionId":"media",
                  "accessibilityLabel":"Neutral media","styleClasses":["media-shell-viewport"],
                  "shortcuts":[],"contextActions":[],"children":[]},
                 {"id":"controls","kind":"button","text":"Play",
@@ -645,25 +645,25 @@ void VerifyEmbeddedMediaSnapshotContract() {
             ]}
         }
     })json", error);
-    Require(valid && error.empty() && valid->embeddedMedia &&
-                valid->embeddedMedia->id == L"media" &&
-                valid->embeddedMedia->resources.size() == 2 &&
-                valid->embeddedMedia->commands.size() == 3 &&
-                valid->embeddedMedia->allowedFrameDomainFamilies ==
+    Require(valid && error.empty() && valid->embeddedMediaSession &&
+                valid->embeddedMediaSession->id == L"media" &&
+                valid->embeddedMediaSession->resources.size() == 2 &&
+                valid->embeddedMediaSession->commands.size() == 3 &&
+                valid->embeddedMediaSession->allowedFrameDomainFamilies ==
                     std::vector<std::wstring>{L"example.com"} &&
-                valid->embeddedMedia->pendingCommand &&
-                valid->embeddedMedia->pendingCommand->kind == L"setPlaybackRate" &&
-                valid->embeddedMedia->pendingCommand->playbackRate == 1.5 &&
+                valid->embeddedMediaSession->pendingCommand &&
+                valid->embeddedMediaSession->pendingCommand->kind == L"setPlaybackRate" &&
+                valid->embeddedMediaSession->pendingCommand->playbackRate == 1.5 &&
                 valid->root.children.size() == 3 &&
                 valid->root.children[1].kind == L"mediaViewport" &&
-                valid->root.children[1].mediaSurfaceId == L"media",
+                valid->root.children[1].mediaSessionId == L"media",
             "valid protocol-v24 MediaViewport snapshot was rejected");
 
     constexpr std::string_view validJson = R"json({
         "snapshot": {
-            "protocolVersion":24,"sequence":7,
+            "protocolVersion":42,"sequence":7,
             "widgetInstanceId":"cedar.adapter","activeInputScopeId":"root",
-            "embeddedMedia":{"id":"cedar-media","accessibleName":"Cedar media",
+            "embeddedMediaSession":{"id":"cedar-media","accessibleName":"Cedar media",
                 "entryAsset":"media/index.html","aspectRatio":1.7777777778,
                 "surface":{"mode":"standard","preferredWidth":640,"preferredHeight":360,
                            "minimumWidth":240,"minimumHeight":180},
@@ -672,26 +672,19 @@ void VerifyEmbeddedMediaSnapshotContract() {
                 "allowedFrameOrigins":["https://frames.cedar.invalid"]},
             "root":{"id":"root","kind":"stack","children":[
                 {"id":"cedar.viewport","kind":"mediaViewport",
-                 "mediaSurfaceId":"cedar-media","accessibilityLabel":"Cedar media",
+                 "mediaSessionId":"cedar-media","accessibilityLabel":"Cedar media",
                  "styleClasses":["media-shell-viewport"],"shortcuts":[],"children":[]}
             ]}
         }
     })json";
     for (const auto& [malformed, expected] : {
-             std::pair{mutate(
-                 mutate(std::string{validJson},
-                     R"json("kind":"mediaViewport")json",
-                     R"json("kind":"text")json"),
-                 R"json("mediaSurfaceId":"cedar-media",)json",
-                 R"json("text":"No viewport",)json"),
-                 std::wstring_view{L"requires one MediaViewport"}},
              std::pair{mutate(std::string{validJson},
-                 R"json("mediaSurfaceId":"cedar-media")json",
-                 R"json("mediaSurfaceId":"wrong-media")json"),
+                 R"json("mediaSessionId":"cedar-media")json",
+                 R"json("mediaSessionId":"wrong-media")json"),
                  std::wstring_view{L"does not match"}},
              std::pair{mutate(std::string{validJson},
-                 R"json("mediaSurfaceId":"cedar-media",)json",
-                 R"json("mediaSurfaceId":"cedar-media","actionId":"escape",)json"),
+                 R"json("mediaSessionId":"cedar-media",)json",
+                 R"json("mediaSessionId":"cedar-media","actionId":"escape",)json"),
                  std::wstring_view{L"unsupported properties"}},
              std::pair{mutate(std::string{validJson},
                  R"json("shortcuts":[])json",
@@ -718,9 +711,9 @@ void VerifyEmbeddedMediaSnapshotContract() {
     error.clear();
     const auto unknown = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
-            "protocolVersion":22,"sequence":7,
+            "protocolVersion":42,"sequence":7,
             "widgetInstanceId":"neutral.adapter","activeInputScopeId":"root",
-            "embeddedMedia":{"id":"media","accessibleName":"Neutral media",
+            "embeddedMediaSession":{"id":"media","accessibleName":"Neutral media",
                 "entryAsset":"media/index.html","aspectRatio":1.0,
                 "surface":{"mode":"standard","preferredWidth":320,"preferredHeight":180,
                            "minimumWidth":320,"minimumHeight":180},
@@ -732,12 +725,12 @@ void VerifyEmbeddedMediaSnapshotContract() {
     Require(!unknown && error.find(L"unknown") != std::wstring::npos,
             "unknown embedded media browsing field was admitted");
 
-    constexpr std::string_view retainedHiddenJson = R"json({
+    constexpr std::string_view parkedJson = R"json({
         "snapshot": {
-            "protocolVersion":29,"sequence":8,
+            "protocolVersion":42,"sequence":8,
             "widgetInstanceId":"cedar.adapter","activeInputScopeId":"root",
-            "embeddedMedia":{"id":"cedar-media","accessibleName":"Cedar media",
-                "entryAsset":"media/index.html","retainSessionWhenHidden":true,
+            "embeddedMediaSession":{"id":"cedar-media","accessibleName":"Cedar media",
+                "entryAsset":"media/index.html",
                 "aspectRatio":1.7777777778,
                 "surface":{"mode":"standard","preferredWidth":640,"preferredHeight":360,
                            "minimumWidth":240,"minimumHeight":180},
@@ -747,32 +740,25 @@ void VerifyEmbeddedMediaSnapshotContract() {
         }
     })json";
     error.clear();
-    const auto retainedHidden =
-        widgetrail::testing::ParseWidgetSnapshotResponse(retainedHiddenJson, error);
-    Require(retainedHidden && retainedHidden->embeddedMedia &&
-                retainedHidden->embeddedMedia->retainSessionWhenHidden && error.empty(),
-            "valid retained-hidden embedded media snapshot was rejected");
+    const auto parked =
+        widgetrail::testing::ParseWidgetSnapshotResponse(parkedJson, error);
+    Require(parked && parked->embeddedMediaSession && error.empty(),
+            "valid parked embedded media session snapshot was rejected");
     error.clear();
     Require(!widgetrail::testing::ParseWidgetSnapshotResponse(
-                mutate(std::string{retainedHiddenJson},
-                    R"json("children":[])json",
-                    R"json("children":[{"id":"viewport","kind":"mediaViewport","mediaSurfaceId":"cedar-media","accessibilityLabel":"Cedar media","shortcuts":[],"children":[]}])json"),
-                error) && error.find(L"cannot publish a MediaViewport") != std::wstring::npos,
-            "retained-hidden media with a viewport did not fail closed");
-    error.clear();
-    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(
-                mutate(std::string{retainedHiddenJson},
-                    R"json("protocolVersion":29)json",
-                    R"json("protocolVersion":28)json"), error) &&
-                error.find(L"protocol version 29") != std::wstring::npos,
-            "retained-hidden media was admitted before protocol v29");
+                mutate(std::string{parkedJson},
+                    R"json("protocolVersion":42)json",
+                    R"json("protocolVersion":41)json"), error) &&
+                error.find(L"protocol version 42") != std::wstring::npos,
+            "embedded media session was admitted before protocol v42");
 
     constexpr std::string_view overlayFullscreenJson = R"json({
         "snapshot": {
-            "protocolVersion":30,"sequence":9,
+            "protocolVersion":42,"sequence":9,
             "widgetInstanceId":"cedar.adapter","activeInputScopeId":"root",
-            "embeddedMedia":{"id":"cedar-media","accessibleName":"Cedar media",
-                "entryAsset":"media/index.html","overlayFullscreenCapable":true,
+            "embeddedMediaSession":{"id":"cedar-media","accessibleName":"Cedar media",
+                "entryAsset":"media/index.html",
+                "supportedPresentations":["overlayFullscreen"],
                 "mediaSeekStepSeconds":5,
                 "aspectRatio":1.7777777778,
                 "surface":{"mode":"standard","preferredWidth":640,"preferredHeight":360,
@@ -781,7 +767,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
                 "commands":["togglePlayback","seekBackward","seekForward","back"]},
             "root":{"id":"root","kind":"stack","children":[
                 {"id":"cedar.viewport","kind":"mediaViewport",
-                 "mediaSurfaceId":"cedar-media","accessibilityLabel":"Cedar media",
+                 "mediaSessionId":"cedar-media","accessibilityLabel":"Cedar media",
                  "shortcuts":[],"children":[]}
             ]}
         }
@@ -789,31 +775,33 @@ void VerifyEmbeddedMediaSnapshotContract() {
     error.clear();
     const auto overlayFullscreen =
         widgetrail::testing::ParseWidgetSnapshotResponse(overlayFullscreenJson, error);
-    Require(overlayFullscreen && overlayFullscreen->embeddedMedia &&
-                overlayFullscreen->embeddedMedia->overlayFullscreenCapable &&
-                overlayFullscreen->embeddedMedia->mediaSeekStepSeconds == 5.0 &&
+    Require(overlayFullscreen && overlayFullscreen->embeddedMediaSession &&
+                widgetrail::SupportsMediaPresentation(
+                    *overlayFullscreen->embeddedMediaSession,
+                    widgetrail::MediaPresentationKind::OverlayFullscreen) &&
+                overlayFullscreen->embeddedMediaSession->mediaSeekStepSeconds == 5.0 &&
                 error.empty(),
-            "valid protocol-v30 overlay fullscreen media snapshot was rejected");
+            "valid protocol-v42 overlay fullscreen media snapshot was rejected");
     error.clear();
     Require(!widgetrail::testing::ParseWidgetSnapshotResponse(
                 mutate(std::string{overlayFullscreenJson},
-                    R"json("protocolVersion":30)json",
-                    R"json("protocolVersion":29)json"), error) &&
-                error.find(L"protocol version 30") != std::wstring::npos,
-            "overlay fullscreen media was admitted before protocol v30");
+                    R"json("protocolVersion":42)json",
+                    R"json("protocolVersion":41)json"), error) &&
+                error.find(L"protocol version 42") != std::wstring::npos,
+            "overlay fullscreen media was admitted before protocol v42");
 }
 
 void VerifyEmbeddedMediaBundleBoundary() {
     constexpr std::string_view valid = R"json({
         "widgetId":"aurora-widget","instanceId":"aurora-instance",
         "runtimeGeneration":"runtime-1","presentationGeneration":"presentation-1",
-        "sequence":7,"surfaceId":"media","entryAsset":"media/index.html",
-        "retainSessionWhenHidden":true,
-        "overlayFullscreenCapable":true,"mediaSeekStepSeconds":5,
+        "sequence":7,"sessionId":"media","entryAsset":"media/index.html",
+        "supportedPresentations":["overlayFullscreen","compactPinned"],
+        "mediaSeekStepSeconds":5,
         "surface":{"mode":"standard","preferredWidth":760,"preferredHeight":425,
                    "minimumWidth":320,"minimumHeight":180},
         "aspectRatio":1.7777777778,"accessibleName":"Aurora media",
-        "commands":["activate","togglePlayback"],
+        "commands":["activate","togglePlayback","seekBackward","seekForward"],
         "allowedFrameOrigins":["https://frames.aurora.invalid"],
         "allowedFrameDomainFamilies":["example.com"],
         "pendingCommand":{"sequence":8,"kind":"setMuted",
@@ -836,8 +824,12 @@ void VerifyEmbeddedMediaBundleBoundary() {
         return source;
     };
     const auto parsed = parse(valid);
-    Require(parsed && parsed->surface.retainSessionWhenHidden &&
-                parsed->surface.overlayFullscreenCapable &&
+    Require(parsed && widgetrail::SupportsMediaPresentation(
+                    parsed->surface,
+                    widgetrail::MediaPresentationKind::OverlayFullscreen) &&
+                widgetrail::SupportsMediaPresentation(
+                    parsed->surface,
+                    widgetrail::MediaPresentationKind::CompactPinned) &&
                 parsed->surface.mediaSeekStepSeconds == 5.0 &&
                 parsed->surface.allowedFrameDomainFamilies ==
                 std::vector<std::wstring>{L"example.com"} &&
@@ -869,10 +861,12 @@ void VerifyEmbeddedMediaBundleBoundary() {
                      "\"aspectRatio\":20"),
              replace(std::string{valid}, "\"accessibleName\":\"Aurora media\"",
                      "\"accessibleName\":\"\""),
-             replace(std::string{valid}, "\"commands\":[\"activate\",\"togglePlayback\"]",
-                     "\"commands\":[\"activate\",\"activate\"]"),
-             replace(std::string{valid}, "\"commands\":[\"activate\",\"togglePlayback\"]",
-                     "\"commands\":[\"browse\"]"),
+             replace(std::string{valid},
+                     "\"commands\":[\"activate\",\"togglePlayback\",\"seekBackward\",\"seekForward\"]",
+                     "\"commands\":[\"activate\",\"togglePlayback\",\"seekBackward\",\"seekForward\",\"activate\"]"),
+             replace(std::string{valid},
+                     "\"commands\":[\"activate\",\"togglePlayback\",\"seekBackward\",\"seekForward\"]",
+                     "\"commands\":[\"activate\",\"togglePlayback\",\"seekBackward\",\"seekForward\",\"browse\"]"),
              replace(std::string{valid}, "\"muted\":true", "\"loop\":true"),
              replace(std::string{valid}, "\"muted\":true",
                      "\"muted\":true,\"script\":\"bad\""),

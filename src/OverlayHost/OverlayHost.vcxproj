@@ -36,6 +36,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="MediaSessionManager.cpp" />
     <ClCompile Include="OverlayCompositionSurface.cpp" />
     <ClCompile Include="RichMediaSurfaceCoordinator.cpp" />
     <ClCompile Include="PublicSuffixDomainAuthority.cpp" />
@@ -59,6 +60,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="OverlayState.h" />
+    <ClInclude Include="MediaSessionManager.h" />
     <ClInclude Include="OverlayCompositionSurface.h" />
     <ClInclude Include="RichMediaSurfaceCoordinator.h" />
     <ClInclude Include="PublicSuffixDomainAuthority.h" />

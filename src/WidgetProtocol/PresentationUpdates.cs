@@ -43,7 +43,7 @@ public enum PresentationProperty
     ImageSource,
     ArtworkHandle,
     FocusBackgroundArtworkHandle,
-    MediaSurfaceId,
+    MediaSessionId,
     ImageFit,
     Glyph,
     IndicatorSize,
@@ -180,7 +180,7 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.MeasureLayout |
             PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Accessibility,
-        PresentationProperty.MediaSurfaceId =>
+        PresentationProperty.MediaSessionId =>
             PresentationPropertyImpact.Authority |
             PresentationPropertyImpact.SurfacePlacement |
             PresentationPropertyImpact.MeasureLayout |

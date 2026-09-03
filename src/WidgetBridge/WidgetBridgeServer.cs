@@ -457,7 +457,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             using var mediaAdmission = _registry.AdmitEmbeddedMedia(mediaRequest);
             var bundle = EmbeddedMediaAssetResolver.Resolve(mediaRequest, mediaAdmission.Value);
             await ReplyAsync(
-                BridgeMessageTypes.EmbeddedMedia,
+                BridgeMessageTypes.EmbeddedMediaSession,
                 request.RequestId,
                 bundle,
                 cancellationToken).ConfigureAwait(false);
@@ -1153,15 +1153,6 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
               !BridgeRequestKey.IsBoundedIdentifier(input.PinnedLayoutId))))
             throw new BridgeProtocolException(
                 "Pinned layout selection input is invalid.");
-        if (input.Context == ControllerInputContext.OverlayFullscreenPresentation &&
-            (input.IsOverlayFullscreenActive is null ||
-             input.IsPinnedLayoutSelected is not null || input.PinnedLayoutId is not null))
-            throw new BridgeProtocolException(
-                "Overlay fullscreen notification is invalid.");
-        if (input.Context != ControllerInputContext.OverlayFullscreenPresentation &&
-            input.IsOverlayFullscreenActive is not null)
-            throw new BridgeProtocolException(
-                "Overlay fullscreen state is valid only for its notification context.");
         if (input.Context == ControllerInputContext.PinnedSurface &&
             (input.SnapshotSequence <= 0 ||
              !BridgeRequestKey.IsBoundedIdentifier(input.ActiveInputScopeId) ||

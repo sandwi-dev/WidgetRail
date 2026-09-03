@@ -389,7 +389,7 @@ public sealed record ViewNode
     /// Protocol-v23 identity of the one top-level EmbeddedMedia declaration
     /// whose pixels are placed inside this native layout node.
     /// </summary>
-    public string? MediaSurfaceId { get; init; }
+    public string? MediaSessionId { get; init; }
     public ImageFit? ImageFit { get; init; }
     public WidgetGlyph? Glyph { get; init; }
     public LoadingIndicatorSize? IndicatorSize { get; init; }
@@ -506,13 +506,15 @@ public sealed record ViewSnapshot
     public WidgetSurfaceHints? Surface { get; init; }
     public IReadOnlyList<PinnedPresentationLayout> PinnedLayouts { get; init; } = [];
     /// <summary>
-    /// Optional protocol-v22 declaration for one host-owned embedded-media
-    /// surface. The host retains HWND, composition, input, focus,
-    /// accessibility, geometry, navigation, and teardown authority. Adapter
-    /// files are normalized package-relative references resolved only through
-    /// the installed package's verified content inventory.
+    /// Optional protocol-v42 declaration for one host-owned embedded-media
+    /// session. The host retains controller/document lifetime, HWND,
+    /// composition, input, focus, accessibility, geometry, navigation, and
+    /// teardown authority. Adapter files are normalized package-relative
+    /// references resolved only through the installed package's verified
+    /// content inventory. Omitting this declaration closes the session;
+    /// declaring it without a matching MediaViewport parks an existing session.
     /// </summary>
-    public EmbeddedMediaSurface? EmbeddedMedia { get; init; }
+    public EmbeddedMediaSession? EmbeddedMediaSession { get; init; }
     public required ViewNode Root { get; init; }
 }
 
@@ -550,7 +552,14 @@ public enum EmbeddedMediaPlaybackState
     Error,
 }
 
-/// <summary>One monotonic, bounded package request for the current media surface.</summary>
+/// <summary>Closed host-owned visual presentations supported by a media session.</summary>
+public enum MediaPresentationKind
+{
+    OverlayFullscreen,
+    CompactPinned,
+}
+
+/// <summary>One monotonic, bounded package request for the current media session.</summary>
 public sealed record EmbeddedMediaPlaybackCommand
 {
     public required long Sequence { get; init; }
@@ -566,7 +575,7 @@ public sealed record EmbeddedMediaPlaybackCommand
 /// <summary>A validated host observation from the exact current embedded-media adapter.</summary>
 public sealed record EmbeddedMediaPlaybackEvent
 {
-    public required string SurfaceId { get; init; }
+    public required string SessionId { get; init; }
     public required long Sequence { get; init; }
     public required long CommandSequence { get; init; }
     public required string MediaKey { get; init; }
@@ -587,10 +596,10 @@ public sealed record EmbeddedMediaResource
 }
 
 /// <summary>
-/// A closed, package-local adapter contract for a single host-owned media
-/// surface. This is not a browser, navigation, DOM, or script API.
+/// A closed, package-local adapter contract for one durable host-owned media
+/// session. This is not a browser, navigation, DOM, or script API.
 /// </summary>
-public sealed record EmbeddedMediaSurface
+public sealed record EmbeddedMediaSession
 {
     public required string Id { get; init; }
     public required string AccessibleName { get; init; }
@@ -602,26 +611,12 @@ public sealed record EmbeddedMediaSurface
     public IReadOnlyList<string> AllowedFrameOrigins { get; init; } = [];
     public IReadOnlyList<string> AllowedFrameDomainFamilies { get; init; } = [];
     public EmbeddedMediaPlaybackCommand? PendingCommand { get; init; }
-    /// <summary>Opts the pinned surface into the host-owned compact media player.</summary>
-    public bool CompactPinnedPresentation { get; init; }
+    /// <summary>Alternative host-owned presentations this session supports.</summary>
+    public IReadOnlyList<MediaPresentationKind> SupportedPresentations { get; init; } = [];
     /// <summary>
     /// Optional bounded scrub step for every host-owned media presentation that
     /// seeks on the widget's behalf: the compact pinned player and overlay
     /// fullscreen. The host default applies when omitted.
     /// </summary>
     public double? MediaSeekStepSeconds { get; init; }
-    /// <summary>
-    /// Retains an already-resident controller/document while this snapshot
-    /// intentionally contains no MediaViewport. It does not create a hidden
-    /// viewport or permit an undeclared background session.
-    /// </summary>
-    public bool RetainSessionWhenHidden { get; init; }
-    /// <summary>
-    /// Declares that this media surface may be presented fullscreen inside the
-    /// existing overlay window. This is a capability, not a state: the host owns
-    /// whether fullscreen is currently active, entering it through the reserved
-    /// enter action and leaving it on B. The webpage remains a bounded pixel
-    /// plane and can neither request nor exit fullscreen itself.
-    /// </summary>
-    public bool OverlayFullscreenCapable { get; init; }
 }

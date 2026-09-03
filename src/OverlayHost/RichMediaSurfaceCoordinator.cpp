@@ -456,6 +456,7 @@ HRESULT RichMediaSurfaceCoordinator::BeginEnvironment() noexcept {
     pendingNavigationId_ = 0;
     const auto lease = CreateCallbackLease();
     state_.lifecycle = Lifecycle::EnvironmentCreating;
+    shared.waiters.push_back(lease);
     Emit(L"Rich media lifecycle=environment-creating generation=" +
          std::to_wstring(state_.authority.sessionGeneration));
     ComPtr<ICoreWebView2EnvironmentOptions> options =
@@ -464,19 +465,18 @@ HRESULT RichMediaSurfaceCoordinator::BeginEnvironment() noexcept {
     const HRESULT result = CreateCoreWebView2EnvironmentWithOptions(
         nullptr, environmentProfileDirectory_.c_str(), options.Get(),
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-            [lease](HRESULT status, ICoreWebView2Environment* environment) {
-                auto* owner = lease->owner.load(std::memory_order_acquire);
-                const HRESULT callbackResult = owner
-                    ? owner->OnEnvironmentCreated(lease, status, environment) : S_FALSE;
+            [sharedEnvironment = sharedEnvironment_, lease](
+                HRESULT status, ICoreWebView2Environment* environment) {
+                const HRESULT callbackResult =
+                    CompleteSharedEnvironmentCreation(
+                        sharedEnvironment, lease, status, environment);
                 lease->outstandingCreates.fetch_sub(1, std::memory_order_release);
                 return callbackResult;
             }).Get());
     if (FAILED(result)) {
         lease->outstandingCreates.fetch_sub(1, std::memory_order_release);
-        environmentFaulted_ = true;
-        shared.faulted = true;
-        shared.lifecycle = EnvironmentLifecycle::Cold;
-        Fault(L"environment-start", result);
+        (void)CompleteSharedEnvironmentCreation(
+            sharedEnvironment_, lease, result, nullptr);
     }
     return result;
 }
@@ -552,47 +552,51 @@ void RichMediaSurfaceCoordinator::ReleaseSharedEnvironmentReadyForTest() noexcep
     ResumeSharedEnvironmentWaiters();
 }
 
-HRESULT RichMediaSurfaceCoordinator::OnEnvironmentCreated(
-    const std::shared_ptr<CallbackLease>& lease, const HRESULT result,
+HRESULT RichMediaSurfaceCoordinator::CompleteSharedEnvironmentCreation(
+    const RichMediaEnvironmentHandle& sharedEnvironment,
+    const std::shared_ptr<CallbackLease>& initiatingLease,
+    const HRESULT result,
     ICoreWebView2Environment* environment) noexcept {
-    if (!IsCurrentCallback(lease, false) ||
-        state_.lifecycle != Lifecycle::EnvironmentCreating) return S_FALSE;
+    if (!sharedEnvironment || !initiatingLease ||
+        sharedEnvironment->lifecycle != EnvironmentLifecycle::Creating ||
+        sharedEnvironment->generation !=
+            initiatingLease->authority.environmentGeneration)
+        return S_FALSE;
+    auto waiters = std::move(sharedEnvironment->waiters);
+    sharedEnvironment->waiters.clear();
     if (FAILED(result) || !environment) {
-        auto waiters = std::move(sharedEnvironment_->waiters);
-        sharedEnvironment_->waiters.clear();
-        environmentFaulted_ = true;
-        sharedEnvironment_->faulted = true;
-        sharedEnvironment_->lifecycle = EnvironmentLifecycle::Cold;
-        Fault(L"environment-create", result);
+        sharedEnvironment->faulted = true;
+        sharedEnvironment->lifecycle = EnvironmentLifecycle::Cold;
+        const HRESULT failure = FAILED(result) ? result : E_FAIL;
         for (const auto& waiter : waiters) {
             if (auto* owner = waiter->owner.load(std::memory_order_acquire))
-                owner->FailSharedEnvironment(waiter, result);
+                owner->FailSharedEnvironment(waiter, failure);
         }
         return S_OK;
     }
-    environment_ = environment;
-    environmentLifecycle_ = EnvironmentLifecycle::Ready;
-    environmentSignal_ = std::make_shared<EnvironmentSignal>();
-    sharedEnvironment_->environment = environment_;
-    sharedEnvironment_->lifecycle = EnvironmentLifecycle::Ready;
-    sharedEnvironment_->faulted = false;
-    sharedEnvironment_->signal = environmentSignal_;
-    if (SUCCEEDED(environment_.As(&environment5_))) {
-        const auto environmentSignal = environmentSignal_;
-        browserEventRegistrationResult_ = environment5_->add_BrowserProcessExited(
+    sharedEnvironment->environment = environment;
+    sharedEnvironment->lifecycle = EnvironmentLifecycle::Ready;
+    sharedEnvironment->faulted = false;
+    sharedEnvironment->signal = std::make_shared<EnvironmentSignal>();
+    if (SUCCEEDED(sharedEnvironment->environment.As(
+            &sharedEnvironment->environment5))) {
+        const auto environmentSignal = sharedEnvironment->signal;
+        (void)sharedEnvironment->environment5->add_BrowserProcessExited(
             Callback<ICoreWebView2BrowserProcessExitedEventHandler>(
                 [environmentSignal](ICoreWebView2Environment*, ICoreWebView2BrowserProcessExitedEventArgs* args) {
                     UINT32 browserProcessId{};
                     if (args) (void)args->get_BrowserProcessId(&browserProcessId);
                     RecordBrowserProcessExit(environmentSignal, browserProcessId);
                     return S_OK;
-                }).Get(), &browserProcessExitedToken_);
-        sharedEnvironment_->environment5 = environment5_;
-        sharedEnvironment_->browserProcessExitedToken = browserProcessExitedToken_;
+                }).Get(), &sharedEnvironment->browserProcessExitedToken);
     }
-    const HRESULT controllerResult = BeginController();
-    ResumeSharedEnvironmentWaiters();
-    return controllerResult;
+    for (const auto& waiter : waiters) {
+        auto* owner = waiter->owner.load(std::memory_order_acquire);
+        if (!owner) continue;
+        const HRESULT resume = owner->ResumeSharedEnvironment(waiter);
+        if (FAILED(resume)) owner->FailSharedEnvironment(waiter, resume);
+    }
+    return S_OK;
 }
 
 HRESULT RichMediaSurfaceCoordinator::BeginController() noexcept {
@@ -1500,14 +1504,8 @@ HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer(
     const bool detachRoot,
     PresentationTransferFailureStage* const failureStage) noexcept {
     if (failureStage) *failureStage = PresentationTransferFailureStage::None;
-    const bool testTransferOwner =
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        presentationTransferFailureForTest_.has_value();
-#else
-        false;
-#endif
     if (presentationTransferPending_ ||
-        ((!controller_ || !controllerBase_) && !testTransferOwner) ||
+        !controller_ || !controllerBase_ ||
         (state_.lifecycle != Lifecycle::ReadyHidden &&
          state_.lifecycle != Lifecycle::Visible)) {
         if (failureStage)
@@ -1518,32 +1516,14 @@ HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer(
     state_.inputEnabled = false;
     if (configuration_.setPresentationVisible)
         configuration_.setPresentationVisible(false);
-    HRESULT result =
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        testTransferOwner
-            ? (*presentationTransferFailureForTest_ ==
-                       PresentationTransferFailureStage::VisibilityDetach
-                   ? E_FAIL
-                   : S_OK)
-            :
-#endif
-        controllerBase_->put_IsVisible(FALSE);
+    HRESULT result = controllerBase_->put_IsVisible(FALSE);
     if (FAILED(result)) {
         if (failureStage)
             *failureStage = PresentationTransferFailureStage::VisibilityDetach;
         Fault(L"presentation-transfer-visibility", result);
         return result;
     }
-    if (detachRoot) result =
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        testTransferOwner
-            ? (*presentationTransferFailureForTest_ ==
-                       PresentationTransferFailureStage::RootTargetDetach
-                   ? E_FAIL
-                   : S_OK)
-            :
-#endif
-        controller_->put_RootVisualTarget(nullptr);
+    if (detachRoot) result = controller_->put_RootVisualTarget(nullptr);
     if (FAILED(result)) {
         if (failureStage)
             *failureStage = PresentationTransferFailureStage::RootTargetDetach;
@@ -1558,10 +1538,6 @@ HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer(
     state_.lifecycle = Lifecycle::ReadyHidden;
     state_.focusedActionBoundsCurrent = false;
     controllerGeometryApplied_ = false;
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    presentationTransferDetachedForTest_ = detachRoot;
-    if (detachRoot) presentationTransferRootAttachedForTest_ = false;
-#endif
     presentationTransferDetached_ = detachRoot;
     presentationTransferPending_ = true;
     Emit(detachRoot
@@ -1570,51 +1546,18 @@ HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer(
     return S_OK;
 }
 
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-void RichMediaSurfaceCoordinator::ConfigurePresentationTransferForTest(
-    const PresentationTransferFailureStage stage,
-    std::function<void()> invalidate,
-    const bool initiallyVisible,
-    const bool requireRootBeforeParent) {
-    presentationTransferFailureForTest_ = stage;
-    presentationTransferRequireRootBeforeParentForTest_ = requireRootBeforeParent;
-    presentationTransferRootAttachedForTest_ = initiallyVisible;
-    presentationTransferDetachedForTest_ = false;
-    pageReady_ = initiallyVisible;
-    state_.lifecycle = initiallyVisible ? Lifecycle::Visible : Lifecycle::ReadyHidden;
-    state_.inputEnabled = initiallyVisible;
-    desiredVisible_ = initiallyVisible;
-    configuration_.invalidate = std::move(invalidate);
-}
-#endif
-
 HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransfer(
     PresentationTarget target,
     PresentationTransferFailureStage* const failureStage) noexcept {
     return CompletePresentationTransfer(std::move(target), true, failureStage);
 }
 
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransferForTest(
-    PresentationTarget target, const bool rootFirst,
-    PresentationTransferFailureStage* const failureStage) noexcept {
-    return CompletePresentationTransfer(
-        std::move(target), rootFirst, failureStage);
-}
-#endif
-
 HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransfer(
     PresentationTarget target, const bool rootFirst,
     PresentationTransferFailureStage* const failureStage) noexcept {
     if (failureStage) *failureStage = PresentationTransferFailureStage::None;
-    const bool testTransferOwner =
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        presentationTransferFailureForTest_.has_value();
-#else
-        false;
-#endif
     if (!presentationTransferPending_ ||
-        ((!controller_ || !controllerBase_) && !testTransferOwner) ||
+        !controller_ || !controllerBase_ ||
         !target.ownerWindow || !target.compositionTarget ||
         target.bounds.right <= target.bounds.left ||
         target.bounds.bottom <= target.bounds.top ||
@@ -1629,39 +1572,12 @@ HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransfer(
     configuration_.bounds = target.bounds;
     configuration_.rasterScale = target.rasterScale;
     configuration_.setPresentationVisible = std::move(target.setPresentationVisible);
-    const auto testResult = [this, testTransferOwner](
-                                const PresentationTransferFailureStage stage) {
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-        if (!testTransferOwner) return S_OK;
-        if (*presentationTransferFailureForTest_ == stage) return E_FAIL;
-        if (presentationTransferDetachedForTest_ &&
-            (stage == PresentationTransferFailureStage::RootTargetAttach ||
-             stage == PresentationTransferFailureStage::ParentWindowAttach)) {
-            return HRESULT_FROM_WIN32(ERROR_INVALID_STATE);
-        }
-        if (stage == PresentationTransferFailureStage::ParentWindowAttach &&
-            presentationTransferRequireRootBeforeParentForTest_ &&
-            !presentationTransferRootAttachedForTest_) {
-            return HRESULT_FROM_WIN32(ERROR_INVALID_STATE);
-        }
-        if (stage == PresentationTransferFailureStage::RootTargetAttach)
-            presentationTransferRootAttachedForTest_ = true;
-        return S_OK;
-#else
-        (void)stage;
-        return S_OK;
-#endif
-    };
     const auto attachRoot = [&] {
-        return testTransferOwner
-            ? testResult(PresentationTransferFailureStage::RootTargetAttach)
-            : controller_->put_RootVisualTarget(
-                configuration_.compositionTarget.Get());
+        return controller_->put_RootVisualTarget(
+            configuration_.compositionTarget.Get());
     };
     const auto attachParent = [&] {
-        return testTransferOwner
-            ? testResult(PresentationTransferFailureStage::ParentWindowAttach)
-            : controllerBase_->put_ParentWindow(target.ownerWindow);
+        return controllerBase_->put_ParentWindow(target.ownerWindow);
     };
     auto failedStage = rootFirst
         ? PresentationTransferFailureStage::RootTargetAttach
@@ -1675,19 +1591,12 @@ HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransfer(
     }
     if (SUCCEEDED(result)) {
         failedStage = PresentationTransferFailureStage::GeometryAttach;
-        if (testTransferOwner) {
-            result = testResult(PresentationTransferFailureStage::GeometryAttach);
-            if (SUCCEEDED(result)) controllerGeometryApplied_ = true;
-        } else {
-            result = UpdateGeometry(target.bounds, target.rasterScale);
-        }
+        result = UpdateGeometry(target.bounds, target.rasterScale);
     }
     const bool visible = transferDesiredVisible_ && pageReady_;
     if (SUCCEEDED(result)) {
         failedStage = PresentationTransferFailureStage::VisibilityAttach;
-        result = testTransferOwner
-            ? testResult(PresentationTransferFailureStage::VisibilityAttach)
-            : controllerBase_->put_IsVisible(visible ? TRUE : FALSE);
+        result = controllerBase_->put_IsVisible(visible ? TRUE : FALSE);
     }
     if (FAILED(result)) {
         if (failureStage) *failureStage = failedStage;
@@ -1701,9 +1610,6 @@ HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransfer(
     transferDesiredVisible_ = false;
     presentationTransferPending_ = false;
     presentationTransferDetached_ = false;
-#if defined(WRAIL_EMBEDDED_MEDIA_HANDOFF_TESTING)
-    presentationTransferDetachedForTest_ = false;
-#endif
     state_.lifecycle = visible ? Lifecycle::Visible : Lifecycle::ReadyHidden;
     state_.inputEnabled = visible;
     configuration_.setPresentationVisible(visible);

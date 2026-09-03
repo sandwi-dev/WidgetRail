@@ -28,7 +28,7 @@ inject it. This project explicitly takes it from the WidgetSdk NuGet
 `contentFiles/any/any/WidgetRail` location and stages it as
 `media/adapter-runtime.js`; `adapter.html` loads that exact relative file before
 calling `WidgetRailEmbeddedMediaAdapter.create`. Keep the same staged path in
-`EmbeddedMediaSurface.Resources` with `application/javascript`.
+`EmbeddedMediaSession.Resources` with `application/javascript`.
 
 The two MP4s are sealed, package-local example sources. Replace both the files
 and their bounded key-to-path map together. Do not accept arbitrary paths or
@@ -57,18 +57,19 @@ all agree.
 2. **One command in flight:** retain one `PendingCommand`. Every initiating
    control derives Busy from its exact kind. Ignore additional actions until the
    exact terminal event clears it; there is no backlog.
-3. **Terminal admission:** accept a correlated terminal only when surface ID,
+3. **Terminal admission:** accept a correlated terminal only when session ID,
    monotonic event sequence, command sequence, and bounded media key all match.
    Unsolicited observations use command sequence zero and may update current
    playback state, but never acknowledge a pending command.
-4. **Route hide/show:** after a session is resident, the library route publishes
-   the same surface with `RetainSessionWhenHidden = true` and no `MediaViewport`.
-   Returning publishes the exact viewport without `Load`, `Cue`, or recreation.
-   Before residency, the library route declares no media surface.
+4. **Route hide/show:** the library route publishes the same session declaration
+   with no `MediaViewport`. An already-resident controller parks without teardown;
+   a cold declaration remains dormant and creates no background controller.
+   Returning publishes the exact viewport and loads only when no resident session
+   exists.
 5. **Provider error:** an exact error terminal clears its command and exposes a
    bounded error code. A prior resident session remains represented; an initial
    load failure does not invent residency or fake playback.
-6. **Replacement:** changing the surface identity, entry document, resource
+6. **Replacement:** changing the session identity, entry document, resource
    declaration, or controller generation retires the old document and all of
    its pending work. The shared runtime aborts driver hooks; package code must
    reject late events by current authority.
@@ -77,8 +78,9 @@ all agree.
    package deliberately persists provider-neutral durable state. Never persist
    a pending command or browser/controller identity.
 
-The optional compact presentation is enabled by
-`EnableCompactPinnedPresentation`. Setting it to `false` removes only that host
-projection; the ordinary native full player and its command authority remain.
+Alternative presentations are declared explicitly through
+`SupportedPresentations`. Remove `MediaPresentationKind.CompactPinned` to remove
+only that host projection; the ordinary native full player and its command
+authority remain.
 The pinned surface owns X/LT/RT/B/View behavior through the declared generic
 media contract—do not author a second pinned control tree.

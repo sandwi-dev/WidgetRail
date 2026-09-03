@@ -143,7 +143,6 @@ enum WidgetRail.WidgetSdk.CardVariant.Subtle = WidgetRail.WidgetSdk.CardVariant.
 enum WidgetRail.WidgetSdk.CardVariant.Transparent = WidgetRail.WidgetSdk.CardVariant.Transparent
 enum WidgetRail.WidgetSdk.ControllerInputContext.DashboardQuickAction = WidgetRail.WidgetSdk.ControllerInputContext.DashboardQuickAction
 enum WidgetRail.WidgetSdk.ControllerInputContext.OpenWidget = WidgetRail.WidgetSdk.ControllerInputContext.OpenWidget
-enum WidgetRail.WidgetSdk.ControllerInputContext.OverlayFullscreenPresentation = WidgetRail.WidgetSdk.ControllerInputContext.OverlayFullscreenPresentation
 enum WidgetRail.WidgetSdk.ControllerInputContext.PinnedLayoutSelection = WidgetRail.WidgetSdk.ControllerInputContext.PinnedLayoutSelection
 enum WidgetRail.WidgetSdk.ControllerInputContext.PinnedSurface = WidgetRail.WidgetSdk.ControllerInputContext.PinnedSurface
 enum WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation = WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation
@@ -1491,7 +1490,7 @@ method static WidgetRail.WidgetSdk.UI.IconButton(WidgetRail.WidgetProtocol.Widge
 method static WidgetRail.WidgetSdk.UI.Image(string source, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Cover) -> WidgetRail.WidgetSdk.ImageElement
 method static WidgetRail.WidgetSdk.UI.InlinePngImage(string pngBase64, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Contain) -> WidgetRail.WidgetSdk.ImageElement
 method static WidgetRail.WidgetSdk.UI.LoadingIndicator(string id, string accessibilityLabel = "Loading", WidgetRail.WidgetProtocol.LoadingIndicatorSize size = WidgetRail.WidgetProtocol.LoadingIndicatorSize.Standard) -> WidgetRail.WidgetSdk.LoadingIndicatorElement
-method static WidgetRail.WidgetSdk.UI.MediaViewport(WidgetRail.WidgetProtocol.EmbeddedMediaSurface surface, string id) -> WidgetRail.WidgetSdk.MediaViewportElement
+method static WidgetRail.WidgetSdk.UI.MediaViewport(WidgetRail.WidgetProtocol.EmbeddedMediaSession session, string id) -> WidgetRail.WidgetSdk.MediaViewportElement
 method static WidgetRail.WidgetSdk.UI.NavigationShell(string id, string selectedDestinationId, string contentEntryFocusId, WidgetRail.WidgetSdk.WidgetElement content, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.NavigationShellDestination> destinations, WidgetRail.WidgetSdk.WidgetElement? expandedPane = null, string? expandedPaneEntryFocusId = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Picker(string title, string id, string scopeId, string backAction, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.PickerOption> options, string? description = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.PosterTile(string title, string stateLabel, string action, string id, string? subtitle = null, string? metadata = null, WidgetRail.WidgetSdk.TileArtwork? artwork = null, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ActionSurfaceElement
@@ -1803,7 +1802,6 @@ method virtual WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Equals(Wi
 method virtual WidgetRail.WidgetSdk.Widget.OnActionAsync(WidgetRail.WidgetSdk.WidgetActionEvent action, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnControllerInputAsync(WidgetRail.WidgetSdk.ControllerInputEvent input, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method virtual WidgetRail.WidgetSdk.Widget.OnEmbeddedMediaPlaybackEventAsync(WidgetRail.WidgetProtocol.EmbeddedMediaPlaybackEvent playbackEvent, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
-method virtual WidgetRail.WidgetSdk.Widget.OnOverlayFullscreenChangedAsync(bool isActive, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnPinnedLayoutSelectionChangedAsync(string? layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnResolveArtworkAsync(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>
 method virtual WidgetRail.WidgetSdk.WidgetActionEvent.Equals(WidgetRail.WidgetSdk.WidgetActionEvent? other) -> bool
@@ -2009,8 +2007,8 @@ property WidgetRail.WidgetProtocol.ControllerButton WidgetRail.WidgetSdk.Control
 property WidgetRail.WidgetProtocol.ControllerButton? WidgetRail.WidgetSdk.WidgetActionEvent.ControllerButton { get; set; }
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.ControllerInputEvent.Phase { get; set; }
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.WidgetActionEvent.Phase { get; set; }
-property WidgetRail.WidgetProtocol.EmbeddedMediaSurface WidgetRail.WidgetSdk.MediaViewportElement.Surface { get; set; }
-property WidgetRail.WidgetProtocol.EmbeddedMediaSurface? WidgetRail.WidgetSdk.WidgetView.EmbeddedMedia { get; set; }
+property WidgetRail.WidgetProtocol.EmbeddedMediaSession WidgetRail.WidgetSdk.MediaViewportElement.Session { get; set; }
+property WidgetRail.WidgetProtocol.EmbeddedMediaSession? WidgetRail.WidgetSdk.WidgetView.EmbeddedMediaSession { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ActionSurfaceElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ButtonElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ScrubberElement.FocusNeighbors { get; set; }
@@ -2235,7 +2233,6 @@ property bool? WidgetRail.WidgetSdk.ActionSurfaceElement.IsSelected { get; set; 
 property bool? WidgetRail.WidgetSdk.ButtonElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.ButtonElement.IsDisabled { get; set; }
 property bool? WidgetRail.WidgetSdk.ButtonElement.IsSelected { get; set; }
-property bool? WidgetRail.WidgetSdk.ControllerInputEvent.IsOverlayFullscreenActive { get; set; }
 property bool? WidgetRail.WidgetSdk.ControllerInputEvent.IsPinnedLayoutSelected { get; set; }
 property bool? WidgetRail.WidgetSdk.ScrubberElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.ScrubberElement.IsDisabled { get; set; }

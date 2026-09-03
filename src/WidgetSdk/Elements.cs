@@ -778,25 +778,25 @@ public sealed record SpacerElement : WidgetElement
 /// </summary>
 public sealed record MediaViewportElement : WidgetElement
 {
-    internal MediaViewportElement(string id, EmbeddedMediaSurface surface)
+    internal MediaViewportElement(string id, EmbeddedMediaSession session)
         : base(RequireId(id))
     {
-        Surface = surface ?? throw new ArgumentNullException(nameof(surface));
-        StableIdentifier.Validate(surface.Id, nameof(surface));
-        if (string.IsNullOrWhiteSpace(surface.AccessibleName))
+        Session = session ?? throw new ArgumentNullException(nameof(session));
+        StableIdentifier.Validate(session.Id, nameof(session));
+        if (string.IsNullOrWhiteSpace(session.AccessibleName))
             throw new ArgumentException(
-                "An embedded media viewport requires an accessible surface name.",
-                nameof(surface));
+                "An embedded media viewport requires an accessible session name.",
+                nameof(session));
     }
 
-    public EmbeddedMediaSurface Surface { get; init; }
+    public EmbeddedMediaSession Session { get; init; }
 
     internal override ViewNode ToProtocolNode() => new()
     {
         Id = Id,
         Kind = ViewNodeKind.MediaViewport,
-        MediaSurfaceId = Surface.Id,
-        AccessibilityLabel = Surface.AccessibleName,
+        MediaSessionId = Session.Id,
+        AccessibilityLabel = Session.AccessibleName,
         StyleClasses = StyleClasses,
     };
 }

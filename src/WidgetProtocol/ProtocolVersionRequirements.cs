@@ -71,53 +71,12 @@ internal sealed class ProtocolVersionRequirements
                 "$.pinnedLayouts",
                 $"Pinned presentation projections require protocol version {ProtocolConstants.PinnedPresentationProjectionsVersion} or later.");
 
-        if (snapshot.EmbeddedMedia is not null)
+        if (snapshot.EmbeddedMediaSession is not null)
             Add(
-                "embedded-media-surface",
-                ProtocolConstants.EmbeddedMediaSurfaceVersion,
-                "$.embeddedMedia",
-                $"Embedded media surfaces require protocol version {ProtocolConstants.EmbeddedMediaSurfaceVersion} or later.");
-        if (snapshot.EmbeddedMedia is { } media &&
-            (media.PendingCommand is not null || (media.AllowedFrameOrigins?.Count ?? 0) != 0))
-            Add(
-                "embedded-media-playback",
-                ProtocolConstants.EmbeddedMediaPlaybackVersion,
-                "$.embeddedMedia",
-                $"Embedded media playback requires protocol version {ProtocolConstants.EmbeddedMediaPlaybackVersion} or later.");
-        if (snapshot.EmbeddedMedia is { CompactPinnedPresentation: true } ||
-            snapshot.EmbeddedMedia?.MediaSeekStepSeconds is not null)
-            Add(
-                "compact-pinned-media-presentation",
-                ProtocolConstants.CompactPinnedMediaPresentationVersion,
-                "$.embeddedMedia.compactPinnedPresentation",
-                $"Compact pinned media presentation requires protocol version {ProtocolConstants.CompactPinnedMediaPresentationVersion} or later.");
-        if ((snapshot.EmbeddedMedia?.AllowedFrameDomainFamilies?.Count ?? 0) != 0)
-            Add(
-                "embedded-media-frame-domain-families",
-                ProtocolConstants.EmbeddedMediaFrameDomainFamiliesVersion,
-                "$.embeddedMedia.allowedFrameDomainFamilies",
-                $"Embedded media frame domain families require protocol version {ProtocolConstants.EmbeddedMediaFrameDomainFamiliesVersion} or later.");
-        if (snapshot.EmbeddedMedia?.PendingCommand?.Kind is
-            EmbeddedMediaPlaybackCommandKind.SetPlaybackRate or
-            EmbeddedMediaPlaybackCommandKind.SetMuted or
-            EmbeddedMediaPlaybackCommandKind.SetLoop)
-            Add(
-                "embedded-media-playback-preferences",
-                ProtocolConstants.EmbeddedMediaPlaybackPreferencesVersion,
-                "$.embeddedMedia.pendingCommand",
-                $"Embedded media playback preferences require protocol version {ProtocolConstants.EmbeddedMediaPlaybackPreferencesVersion} or later.");
-        if (snapshot.EmbeddedMedia?.RetainSessionWhenHidden == true)
-            Add(
-                "retained-hidden-embedded-media",
-                ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
-                "$.embeddedMedia.retainSessionWhenHidden",
-                $"Retained hidden embedded media requires protocol version {ProtocolConstants.RetainedHiddenEmbeddedMediaVersion} or later.");
-        if (snapshot.EmbeddedMedia?.OverlayFullscreenCapable == true)
-            Add(
-                "overlay-fullscreen-media-presentation",
-                ProtocolConstants.OverlayFullscreenMediaPresentationVersion,
-                "$.embeddedMedia.overlayFullscreenCapable",
-                $"Overlay fullscreen media presentation requires protocol version {ProtocolConstants.OverlayFullscreenMediaPresentationVersion} or later.");
+                "embedded-media-session",
+                ProtocolConstants.EmbeddedMediaSessionVersion,
+                "$.embeddedMediaSession",
+                $"Embedded media sessions require protocol version {ProtocolConstants.EmbeddedMediaSessionVersion} or later.");
 
         Visit(snapshot.Root, "$.root", 1);
         var pinnedLayouts = snapshot.PinnedLayouts ?? [];

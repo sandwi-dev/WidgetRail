@@ -6,7 +6,7 @@ namespace WidgetRail.Samples.YouTubeWidget;
 /// <summary>A link-to-play YouTube client over the generic embedded-media contract.</summary>
 public sealed partial class YouTubeVideoWidget : Widget
 {
-    internal const string SurfaceId = "youtube-video.primary";
+    internal const string SessionId = "youtube-video.primary";
     internal const string LinkActionId = "youtube.link.commit";
     internal const string ToggleActionId = "youtube.playback.toggle";
     internal const string SeekBackwardActionId = "youtube.playback.seek-backward";
@@ -35,7 +35,7 @@ public sealed partial class YouTubeVideoWidget : Widget
 
     // One committed state is captured here and threaded through every render
     // helper. Rereading the model per helper would let a concurrent commit tear
-    // one frame across the header, the transport, and the media surface.
+    // one frame across the header, the transport, and the media session.
     public override WidgetView Render() => RenderApplication(_model.Value);
 
     private WidgetView RenderPlayer(YouTubeWidgetState state)
@@ -51,10 +51,8 @@ public sealed partial class YouTubeVideoWidget : Widget
         var showFullscreenAction = state.Route == YouTubeRoute.Player && videoId is not null;
         var fullscreenActionEnabled = showFullscreenAction && error is null && !mediaLoading;
         var captionsActionEnabled = showFullscreenAction && transportActionsAvailable;
-        // Declared only on the route that also offers the reserved entry action,
-        // so the capability never outlives a way to reach it.
-        var media = CreateMediaSurface(videoId, playback.PendingCommand,
-            retainSessionWhenHidden: false, overlayFullscreenCapable: showFullscreenAction);
+        var media = CreateMediaSession(
+            videoId, playback.PendingCommand, showFullscreenAction);
 
         var linkEntry = UI.TextEntry(
                 playback.Link,
@@ -206,16 +204,15 @@ public sealed partial class YouTubeVideoWidget : Widget
                 MinimumWidth = 420,
                 MinimumHeight = 540,
             })
-        { EmbeddedMedia = media };
+        { EmbeddedMediaSession = media };
     }
 
-    private static EmbeddedMediaSurface CreateMediaSurface(
+    private static EmbeddedMediaSession CreateMediaSession(
         string? videoId,
         EmbeddedMediaPlaybackCommand? pendingCommand,
-        bool retainSessionWhenHidden,
-        bool overlayFullscreenCapable = false) => new()
+        bool overlayFullscreen = true) => new()
     {
-        Id = SurfaceId,
+        Id = SessionId,
         AccessibleName = videoId is null
             ? "YouTube player. No video loaded."
             : $"YouTube player for video {videoId}",
@@ -265,11 +262,12 @@ public sealed partial class YouTubeVideoWidget : Widget
             "ytimg.com",
             "gstatic.com",
         ],
-        CompactPinnedPresentation = true,
+        SupportedPresentations = overlayFullscreen
+            ? [MediaPresentationKind.OverlayFullscreen,
+               MediaPresentationKind.CompactPinned]
+            : [MediaPresentationKind.CompactPinned],
         MediaSeekStepSeconds = SeekStepSeconds,
         PendingCommand = pendingCommand,
-        RetainSessionWhenHidden = retainSessionWhenHidden,
-        OverlayFullscreenCapable = overlayFullscreenCapable,
     };
 
     public override ValueTask OnActionAsync(
@@ -287,7 +285,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         }
 
         var isActive = IsActive;
-        var seekStep = CurrentMediaSeekStepSeconds;
+        var seekStep = SeekStepSeconds;
         var request = action.ActionId switch
         {
             ToggleActionId => new YouTubePlaybackRequest(
@@ -321,7 +319,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!string.Equals(playbackEvent.SurfaceId, SurfaceId, StringComparison.Ordinal))
+        if (!string.Equals(playbackEvent.SessionId, SessionId, StringComparison.Ordinal))
             return ValueTask.CompletedTask;
         // The SDK-owned correlation owner rejects stale, foreign, and unknown
         // command reports before the pure playback transition sees them.
