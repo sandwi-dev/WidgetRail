@@ -323,16 +323,6 @@ public sealed class BridgeCatalog
             return new BridgeCatalogLoadResult(trusted, warnings, InstalledCatalogValid: false);
         }
 
-        observation?.Invoke(new BridgeInstalledCatalogObservation(
-            Succeeded: true,
-            PackageCount: installed.Widgets.Count,
-            VersionCount: installed.Widgets.Sum(widget => widget.Versions.Count),
-            FileCount: installed.Widgets.Sum(widget =>
-                widget.Versions.Sum(version => version.VerifiedEntryCount)),
-            ByteCount: installed.Widgets.Sum(widget =>
-                widget.Versions.Sum(version => version.VerifiedTotalBytes)),
-            ElapsedMilliseconds: BoundedElapsedMilliseconds(discoveryStarted)));
-
         var combined = trusted._ordered.ToList();
         var known = combined.Select(widget => widget.Id).ToHashSet(StringComparer.Ordinal);
         var knownPackages = combined.Select(widget => widget.PackageId)
@@ -460,7 +450,18 @@ public sealed class BridgeCatalog
                 VerifiedPackageFiles = widget.ActiveVersion.VerifiedFiles,
             }));
         }
-        return new BridgeCatalogLoadResult(new BridgeCatalog(combined), warnings, InstalledCatalogValid: true);
+        var admitted = new BridgeCatalogLoadResult(
+            new BridgeCatalog(combined), warnings, InstalledCatalogValid: true);
+        observation?.Invoke(new BridgeInstalledCatalogObservation(
+            Succeeded: true,
+            PackageCount: installed.Widgets.Count,
+            VersionCount: installed.Widgets.Sum(widget => widget.Versions.Count),
+            FileCount: installed.Widgets.Sum(widget =>
+                widget.Versions.Sum(version => version.VerifiedEntryCount)),
+            ByteCount: installed.Widgets.Sum(widget =>
+                widget.Versions.Sum(version => version.VerifiedTotalBytes)),
+            ElapsedMilliseconds: BoundedElapsedMilliseconds(discoveryStarted)));
+        return admitted;
     }
 
     internal static BridgeCatalog LoadTrusted(

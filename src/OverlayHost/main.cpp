@@ -984,6 +984,12 @@ public:
             if (auto change = sessions_.EstablishCatalog()) {
                 ApplyWidgetCatalogChange(*change);
                 developmentCatalogReady = true;
+            } else {
+                bridgeStartupFailure = bridge_.lastError();
+                AppendDiagnostic(
+                    L"WidgetBridge startup stage=catalog-admission result=failed pid=" +
+                    std::to_wstring(bridge_.lastStartupProcessId()) + L" error=" +
+                    bridgeStartupFailure);
             }
         } else {
             bridgeStartupFailure = bridge_.lastError();

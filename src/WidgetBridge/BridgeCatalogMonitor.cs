@@ -48,6 +48,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Func<CancellationToken, Task<BridgeCatalogLoadResult>> _loadCatalog;
     private readonly Action<BridgeInstalledCatalogObservation>? _catalogLoadObserved;
+    private readonly Func<CancellationToken, Task> _prepareWatchers;
+    private readonly Action? _beforePublicationCheck;
 
     private BridgeCatalog _current;
     private IReadOnlyList<string> _lastDiagnostics;
@@ -55,9 +57,11 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     private bool _retainedLastGood;
     private bool _installedCatalogPending;
     private long _reloadDemandGeneration;
+    private bool _pendingForceRevision;
     private FileSystemWatcher? _trustedWatcher;
     private FileSystemWatcher? _installedWatcher;
     private Task? _reloadWorker;
+    private Task? _watcherSetupWorker;
     private bool _started;
     private bool _disposed;
 
@@ -75,7 +79,9 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             initialDiagnostics,
             installedCatalogPending: false,
             loadCatalog: null,
-            catalogLoadObserved: null)
+            catalogLoadObserved: null,
+            prepareWatchers: null,
+            beforePublicationCheck: null)
     {
     }
 
@@ -87,7 +93,9 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         IReadOnlyList<string>? initialDiagnostics,
         bool installedCatalogPending,
         Func<CancellationToken, Task<BridgeCatalogLoadResult>>? loadCatalog,
-        Action<BridgeInstalledCatalogObservation>? catalogLoadObserved = null)
+        Action<BridgeInstalledCatalogObservation>? catalogLoadObserved = null,
+        Func<CancellationToken, Task>? prepareWatchers = null,
+        Action? beforePublicationCheck = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trustedCatalogPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
@@ -99,6 +107,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         _lastDiagnostics = initialDiagnostics?.Take(64).ToArray() ?? [];
         _installedCatalogPending = installedCatalogPending;
         _catalogLoadObserved = catalogLoadObserved;
+        _prepareWatchers = prepareWatchers ?? PrepareWatchersAsync;
+        _beforePublicationCheck = beforePublicationCheck;
         _loadCatalog = loadCatalog ?? (cancellationToken =>
             BridgeCatalog.LoadWithInstalledObservedAsync(
                 _trustedCatalogPath,
@@ -152,54 +162,61 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_started) return;
-
-        var trustedDirectory = Path.GetDirectoryName(_trustedCatalogPath)
-            ?? throw new InvalidOperationException("Trusted catalog path has no parent directory.");
-        Directory.CreateDirectory(_installedCatalogRoot);
-        _trustedWatcher = CreateWatcher(
-            trustedDirectory,
-            Path.GetFileName(_trustedCatalogPath),
-            includeSubdirectories: false,
-            IsTrustedCatalogChange);
-        _installedWatcher = CreateWatcher(
-            _installedCatalogRoot,
-            "*",
-            includeSubdirectories: true,
-            IsInstalledCatalogChange);
         _started = true;
         _reloadWorker = RunReloadWorkerAsync(_shutdown.Token);
+        _watcherSetupWorker = RunWatcherSetupWorkerAsync(_shutdown.Token);
         // Close the load-to-watch race: a mutation made after the caller's
-        // initial load but before both watchers became active is caught by one
-        // complete semantic reload.
-        SignalReload();
+        // trusted-only startup but before both watchers become active is caught
+        // by a complete semantic reload. Watcher creation itself is background
+        // work and therefore cannot delay the trusted control pipe.
+        SignalReload(forceRevision: false);
     }
 
     public Task<BridgeCatalogReloadResult> ReloadNowAsync(
         CancellationToken cancellationToken = default) =>
-        ReloadNowCoreAsync(
-            forceRevision: false,
-            Interlocked.Increment(ref _reloadDemandGeneration),
+        ReloadDirectAsync(
+            requestedForceRevision: false,
             cancellationToken);
 
     internal Task<BridgeCatalogReloadResult> ReloadAfterMutationAsync(
         CancellationToken cancellationToken = default) =>
-        ReloadNowCoreAsync(
-            forceRevision: true,
-            Interlocked.Increment(ref _reloadDemandGeneration),
+        ReloadDirectAsync(
+            requestedForceRevision: true,
             cancellationToken);
 
-    private async Task<BridgeCatalogReloadResult> ReloadNowCoreAsync(
-        bool forceRevision,
-        long demandGeneration,
+    private async Task<BridgeCatalogReloadResult> ReloadDirectAsync(
+        bool requestedForceRevision,
         CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        using var reloadCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken, _shutdown.Token);
+        cancellationToken.ThrowIfCancellationRequested();
+        var demand = AdmitGuaranteedReloadDemand(requestedForceRevision);
+        using var cancellationHandoff = cancellationToken.Register(
+            () => SignalReload(demand.ForceRevision));
+        return await ReloadNowCoreAsync(
+            requestedForceRevision,
+            demand,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<BridgeCatalogReloadResult> ReloadNowCoreAsync(
+        bool requestedForceRevision,
+        ReloadDemand? admittedDemand,
+        CancellationToken cancellationToken)
+    {
+        CancellationTokenSource reloadCancellation;
+        lock (_stateGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            reloadCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, _shutdown.Token);
+        }
+        using var disposeReloadCancellation = reloadCancellation;
         await _reloadGate.WaitAsync(reloadCancellation.Token).ConfigureAwait(false);
+        var demand = admittedDemand ?? AdmitGuaranteedReloadDemand(requestedForceRevision);
         try
         {
-            BridgeCatalogLoadResult loaded;
+            BridgeCatalogLoadResult? loaded = null;
+            IReadOnlyList<string>? loadFailureWarnings = null;
             try
             {
                 loaded = await _loadCatalog(reloadCancellation.Token).ConfigureAwait(false);
@@ -207,67 +224,77 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             catch (Exception exception) when (exception is BridgeCatalogException or
                                                    IOException or UnauthorizedAccessException)
             {
-                var warnings = new[]
-                {
+                loadFailureWarnings =
+                [
                     $"Widget catalog reload was rejected; retained the last-good revision ({SafeCode(exception)}).",
-                };
-                Diagnostics?.Invoke(this, warnings);
-                lock (_stateGate)
-                {
-                    _lastDiagnostics = warnings;
-                    _retainedLastGood = true;
-                    _installedCatalogPending = false;
-                    return new BridgeCatalogReloadResult(false, true, _revision, _current, warnings);
-                }
+                ];
             }
 
-            if (demandGeneration != Volatile.Read(ref _reloadDemandGeneration))
+            _beforePublicationCheck?.Invoke();
+            BridgeCatalogChanged? changed = null;
+            IReadOnlyList<string>? diagnosticsToPublish = null;
+            BridgeCatalogReloadResult result;
+            lock (_stateGate)
             {
-                lock (_stateGate)
+                if (demand.Generation != _reloadDemandGeneration)
                     return new BridgeCatalogReloadResult(
                         false, true, _revision, _current,
                         ["Widget catalog reload result was superseded; retained the current revision."]);
-            }
 
-            if (!loaded.InstalledCatalogValid)
-            {
-                var warnings = loaded.Warnings.Concat(
-                ["Widget catalog reload was rejected; retained the last-good revision."])
-                    .Take(64)
-                    .ToArray();
-                lock (_stateGate)
+                if (loadFailureWarnings is not null)
                 {
-                    _lastDiagnostics = warnings;
+                    _lastDiagnostics = loadFailureWarnings;
                     _retainedLastGood = true;
                     _installedCatalogPending = false;
+                    diagnosticsToPublish = loadFailureWarnings;
+                    result = new BridgeCatalogReloadResult(
+                        false, true, _revision, _current, loadFailureWarnings);
                 }
-
-                Diagnostics?.Invoke(this, warnings);
-                lock (_stateGate)
-                    return new BridgeCatalogReloadResult(
-                        false, true, _revision, _current, warnings);
-            }
-
-            BridgeCatalogChanged? changed = null;
-            lock (_stateGate)
-            {
-                _lastDiagnostics = loaded.Warnings.Take(64).ToArray();
-                _retainedLastGood = false;
-                if (forceRevision || _installedCatalogPending ||
-                    !_current.IsEquivalentTo(loaded.Catalog))
+                else if (!loaded!.InstalledCatalogValid)
                 {
-                    _current = loaded.Catalog;
-                    checked { ++_revision; }
-                    changed = new BridgeCatalogChanged(_revision, _current, loaded.Warnings);
+                    var warnings = loaded.Warnings.Concat(
+                    ["Widget catalog reload failed closed to the trusted catalog; all community widgets were retired."])
+                        .Take(64)
+                        .ToArray();
+                    _lastDiagnostics = warnings;
+                    _retainedLastGood = false;
+                    _installedCatalogPending = false;
+                    if (demand.ForceRevision || !_current.IsEquivalentTo(loaded.Catalog))
+                    {
+                        _current = loaded.Catalog;
+                        checked { ++_revision; }
+                        changed = new BridgeCatalogChanged(_revision, _current, warnings);
+                        _pendingForceRevision = false;
+                    }
+                    diagnosticsToPublish = warnings;
+                    result = new BridgeCatalogReloadResult(
+                        changed is not null, false, _revision, _current, warnings);
                 }
-                _installedCatalogPending = false;
+                else
+                {
+                    _lastDiagnostics = loaded.Warnings.Take(64).ToArray();
+                    _retainedLastGood = false;
+                    if (demand.ForceRevision || _installedCatalogPending ||
+                        !_current.IsEquivalentTo(loaded.Catalog))
+                    {
+                        _current = loaded.Catalog;
+                        checked { ++_revision; }
+                        changed = new BridgeCatalogChanged(
+                            _revision, _current, loaded.Warnings);
+                    }
+                    _installedCatalogPending = false;
+                    _pendingForceRevision = false;
+                    if (loaded.Warnings.Count != 0)
+                        diagnosticsToPublish = loaded.Warnings;
+                    result = new BridgeCatalogReloadResult(
+                        changed is not null, false, _revision, _current, loaded.Warnings);
+                }
             }
 
-            if (loaded.Warnings.Count != 0) Diagnostics?.Invoke(this, loaded.Warnings);
+            if (diagnosticsToPublish is not null)
+                Diagnostics?.Invoke(this, diagnosticsToPublish);
             if (changed is not null) Changed?.Invoke(this, changed);
-            lock (_stateGate)
-                return new BridgeCatalogReloadResult(
-                    changed is not null, false, _revision, _current, loaded.Warnings);
+            return result;
         }
         finally
         {
@@ -277,10 +304,11 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_disposed) return;
-        _disposed = true;
-        _trustedWatcher?.Dispose();
-        _installedWatcher?.Dispose();
+        lock (_stateGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
         _shutdown.Cancel();
         _reloadSignals.Writer.TryComplete();
         if (_reloadWorker is not null)
@@ -288,10 +316,51 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             try { await _reloadWorker.ConfigureAwait(false); }
             catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         }
+        if (_watcherSetupWorker is not null)
+        {
+            try { await _watcherSetupWorker.ConfigureAwait(false); }
+            catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
+        }
+        _trustedWatcher?.Dispose();
+        _installedWatcher?.Dispose();
         await _reloadGate.WaitAsync().ConfigureAwait(false);
         _reloadGate.Release();
         _shutdown.Dispose();
         _reloadGate.Dispose();
+    }
+
+    private Task PrepareWatchersAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_trustedWatcher is not null && _installedWatcher is not null)
+            return Task.CompletedTask;
+        var trustedDirectory = Path.GetDirectoryName(_trustedCatalogPath)
+            ?? throw new InvalidOperationException("Trusted catalog path has no parent directory.");
+        Directory.CreateDirectory(_installedCatalogRoot);
+        FileSystemWatcher? trusted = null;
+        FileSystemWatcher? installed = null;
+        try
+        {
+            trusted = CreateWatcher(
+                trustedDirectory,
+                Path.GetFileName(_trustedCatalogPath),
+                includeSubdirectories: false,
+                IsTrustedCatalogChange);
+            installed = CreateWatcher(
+                _installedCatalogRoot,
+                "*",
+                includeSubdirectories: true,
+                IsInstalledCatalogChange);
+            _trustedWatcher = trusted;
+            _installedWatcher = installed;
+            return Task.CompletedTask;
+        }
+        catch
+        {
+            trusted?.Dispose();
+            installed?.Dispose();
+            throw;
+        }
     }
 
     private FileSystemWatcher CreateWatcher(
@@ -309,17 +378,18 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         };
         FileSystemEventHandler onChange = (_, args) =>
         {
-            if (accepts(args.FullPath)) SignalReload();
+            if (accepts(args.FullPath)) SignalReload(forceRevision: false);
         };
         RenamedEventHandler onRenamed = (_, args) =>
         {
-            if (accepts(args.FullPath) || accepts(args.OldFullPath)) SignalReload();
+            if (accepts(args.FullPath) || accepts(args.OldFullPath))
+                SignalReload(forceRevision: false);
         };
         watcher.Changed += onChange;
         watcher.Created += onChange;
         watcher.Deleted += onChange;
         watcher.Renamed += onRenamed;
-        watcher.Error += (_, _) => SignalReload();
+        watcher.Error += (_, _) => SignalReload(forceRevision: false);
         watcher.EnableRaisingEvents = true;
         return watcher;
     }
@@ -341,11 +411,39 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                relative.Equals("packages", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void SignalReload()
+    private void SignalReload(bool forceRevision)
     {
-        if (_disposed) return;
-        Interlocked.Increment(ref _reloadDemandGeneration);
+        lock (_stateGate)
+        {
+            if (_disposed) return;
+            checked { ++_reloadDemandGeneration; }
+            _pendingForceRevision |= forceRevision;
+        }
         _reloadSignals.Writer.TryWrite(0);
+    }
+
+    internal Task<BridgeCatalogReloadResult> ReloadGuaranteedForTesting(
+        bool forceRevision = false) =>
+        ReloadNowCoreAsync(
+            requestedForceRevision: false,
+            AdmitGuaranteedReloadDemand(forceRevision),
+            CancellationToken.None);
+
+    private ReloadDemand AdmitGuaranteedReloadDemand(bool forceRevision)
+    {
+        lock (_stateGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            checked { ++_reloadDemandGeneration; }
+            _pendingForceRevision |= forceRevision;
+            return new ReloadDemand(_reloadDemandGeneration, _pendingForceRevision);
+        }
+    }
+
+    private ReloadDemand CurrentReloadDemand()
+    {
+        lock (_stateGate)
+            return new ReloadDemand(_reloadDemandGeneration, _pendingForceRevision);
     }
 
     private async Task RunReloadWorkerAsync(CancellationToken cancellationToken)
@@ -357,10 +455,10 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             while (_reloadSignals.Reader.TryRead(out _)) { }
             try
             {
-                var demandGeneration = Volatile.Read(ref _reloadDemandGeneration);
+                var demand = CurrentReloadDemand();
                 await ReloadNowCoreAsync(
-                    forceRevision: false,
-                    demandGeneration,
+                    requestedForceRevision: false,
+                    demand,
                     cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -382,6 +480,45 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             }
         }
     }
+
+    private async Task RunWatcherSetupWorkerAsync(CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        var retryDelay = TimeSpan.FromMilliseconds(250);
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await _prepareWatchers(cancellationToken).ConfigureAwait(false);
+                SignalReload(forceRevision: false);
+                return;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                var diagnostics = new[]
+                {
+                    $"Widget catalog watcher setup is unavailable; background retry remains active ({SafeCode(exception)}).",
+                };
+                lock (_stateGate)
+                {
+                    if (_disposed) return;
+                    _lastDiagnostics = diagnostics;
+                    _retainedLastGood = true;
+                }
+                Diagnostics?.Invoke(this, diagnostics);
+                await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
+                retryDelay = TimeSpan.FromMilliseconds(Math.Min(
+                    retryDelay.TotalMilliseconds * 2,
+                    30_000));
+            }
+        }
+    }
+
+    private readonly record struct ReloadDemand(long Generation, bool ForceRevision);
 
     private static string SafeCode(Exception exception) => exception switch
     {

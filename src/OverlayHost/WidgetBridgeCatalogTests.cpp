@@ -85,6 +85,21 @@ void VerifyWidgetBridgePipeReadinessContract() {
               L"WidgetBridge pipe readiness timed out (Win32 error 2).") ==
           L"WidgetBridge startup failed: WidgetBridge pipe readiness timed out "
           L"(Win32 error 2).");
+
+    const auto hostPath = std::filesystem::path{__FILE__}.parent_path() / "main.cpp";
+    std::ifstream hostStream(hostPath, std::ios::binary);
+    CHECK(hostStream.good());
+    std::ostringstream hostPayload;
+    hostPayload << hostStream.rdbuf();
+    const auto host = hostPayload.str();
+    const auto establish = host.find("if (auto change = sessions_.EstablishCatalog())");
+    const auto capture = host.find(
+        "bridgeStartupFailure = bridge_.lastError();", establish);
+    const auto projection = host.find(
+        "ProjectStartupSettingsFailure(\n                        bridgeStartupFailure)", capture);
+    CHECK(establish != std::string::npos);
+    CHECK(capture != std::string::npos);
+    CHECK(projection != std::string::npos);
 }
 
 std::string Descriptor(const int index) {
