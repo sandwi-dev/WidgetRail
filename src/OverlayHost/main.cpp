@@ -1793,6 +1793,16 @@ public:
             richMediaSurface_->presentationTransferPending()) return fail(22);
         auto* const repinParkingTarget = residentEmbeddedMediaSessions_.at(
             L"repin-retained").parkingTarget.Get();
+        ReconcileEmbeddedMediaProjection(L"pinned-surface-changed");
+        if (!richMediaSurface_ ||
+            richMediaSurface_.get() != repinCoordinator.get() ||
+            richMediaSurface_->presentationTransferPending() ||
+            richMediaSurface_->state().lifecycle !=
+                widgetrail::richmedia::Lifecycle::ReadyHidden ||
+            !embeddedMediaAuthority_ || !embeddedMediaAuthority_->parked ||
+            residentEmbeddedMediaSessions_.at(
+                L"repin-retained").parkingTarget.Get() != repinParkingTarget ||
+            !richMediaSurface_->state().failureCode.empty()) return fail(43);
         if (!state_.Dispatch(widgetrail::Command::CloseOverlay)) return fail(39);
         SyncWidgetActivity();
         if (!embeddedMediaAuthority_ || !embeddedMediaAuthority_->parked ||
@@ -4675,6 +4685,12 @@ private:
             : std::nullopt;
         if (destination == EmbeddedMediaProjection::Pinned && !pinnedPresentation)
             return;
+        if (destination == EmbeddedMediaProjection::Overlay &&
+            embeddedMediaAuthority_->parked &&
+            !OverlayOwnsBoundEmbeddedMediaViewport() &&
+            RetainedHiddenEmbeddedMediaAuthorityCurrent()) {
+            return;
+        }
         if (destination == EmbeddedMediaProjection::Pinned &&
             embeddedMediaAuthority_->projection == destination &&
             embeddedMediaAuthority_->pinnedFrameGeneration ==
@@ -4777,9 +4793,10 @@ private:
         return false;
     }
 
-    [[nodiscard]] bool HiddenPinnedEmbeddedMediaRetentionCurrent() const noexcept {
+    [[nodiscard]] bool RetainedHiddenEmbeddedMediaAuthorityCurrent() const noexcept {
         if (!embeddedMediaAuthority_ ||
-            embeddedMediaAuthority_->projection != EmbeddedMediaProjection::Pinned)
+            (embeddedMediaAuthority_->projection != EmbeddedMediaProjection::Pinned &&
+             !embeddedMediaAuthority_->parked))
             return false;
         const auto* descriptor = sessions_.FindDescriptor(
             embeddedMediaAuthority_->widgetId);
@@ -4826,7 +4843,7 @@ private:
         const bool retainHidden =
             reason == widgetrail::pinned::WidgetSurfaceStopReason::Unpin &&
             !returnToOverlay &&
-            HiddenPinnedEmbeddedMediaRetentionCurrent();
+            RetainedHiddenEmbeddedMediaAuthorityCurrent();
         bool transferPending = false;
         const bool retained = retainHidden
             ? SuspendBoundEmbeddedMediaPresentation(L"pinned-window-retirement")
