@@ -298,6 +298,8 @@ internal sealed record YouTubePlaybackState
         "player-api-load-failed" => "The YouTube player could not be loaded. Check the network and retry.",
         "playback-unavailable" => "YouTube could not play this video in the embedded player.",
         "command-unsupported" => "This YouTube player control is unavailable.",
+        "media-key-mismatch" =>
+            "The playback session changed before this control completed. Return to the player and retry.",
         _ => "YouTube playback failed. Try another public embeddable video.",
     };
 

@@ -1076,6 +1076,7 @@ public sealed partial class YouTubeWidgetTests
             ["video-private-or-missing"] = "private, unavailable",
             ["embedding-disabled"] = "does not allow embedded playback",
             ["client-identity-rejected"] = "verify this desktop client",
+            ["media-key-mismatch"] = "playback session changed",
         };
         foreach (var pair in expected)
         {
