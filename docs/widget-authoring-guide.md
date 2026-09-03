@@ -1200,6 +1200,10 @@ Use its `Result` with `Operations`; do not reread unrelated widget fields.
 another mutable state graph. Simple widgets can continue using ordinary fields
 and explicit `Invalidate()`.
 
+SDK unit tests that do not need runtime invalidation may construct an isolated
+model with `WidgetModel<TState>.CreateForTesting(initial)`. Production widgets
+must use protected `CreateModel` so changed state schedules a render.
+
 Now Playing's `MediaSessionsWidget` is the medium production reference: all of
 its render-facing state shares one model, and repeated selection of the current
 session is equality-suppressed while a real selection change invalidates once.
@@ -1232,7 +1236,8 @@ _playback = CreateOptimisticCommand(
         Apply = (state, request) => new(
             state.Project(request),
             ProviderCommand.From(state, request)),
-        Execute = (command, token) => Provider.ControlAsync(command, token),
+        Execute = (command, context) =>
+            Provider.ControlAsync(command, context.CancellationToken),
         Reconcile = (current, command, result) =>
             current.MergeProviderResult(command, result),
         Rollback = (current, baseline, command) =>
@@ -1243,8 +1248,15 @@ _playback = CreateOptimisticCommand(
     });
 ```
 
-`Apply` is a quick, side-effect-free serialized model update. It returns the
-optimistic state and provider input derived from the exact same prior revision.
+`Apply`, `Reconcile`, `Rollback`, and `Fail` are quick, side-effect-free
+reducers that run under the model lock. They must not call the model or command
+recursively, invoke providers, acquire unrelated locks, or block. `Apply`
+returns the optimistic state and provider input derived from the exact same
+prior revision. `Execute` runs without the model or command lock, may await,
+and receives the actual `WidgetOperationContext`; honor its cancellation token
+and inspect `IsCurrent` before committing adjacent provider-side work.
+`MapError` also runs without those locks and must remain bounded,
+side-effect-free, and non-throwing.
 Call `_playback.Run(request)` and inspect the ordinary
 `WidgetOperationHandle`; do not create a parallel task or input queue.
 
@@ -1269,6 +1281,10 @@ owned by that command so subscription/provider events that arrived while I/O
 was pending survive. For a Latest replacement chain, rollback receives the
 first pre-chain baseline. The SDK rejects non-current late completion, but it
 cannot infer domain identity, confirmation deadlines, or merge semantics.
+Ownership is installed or retired before model invalidation and `Changed`
+observers run, so a synchronous observer may start a newer command without an
+older publication clearing the new owner. Observers still must not become a
+second state owner.
 
 Map exceptions to `WidgetCommandError`, whose code is a stable identifier and
 whose safe UI message is limited to 256 visible characters. A mapper failure

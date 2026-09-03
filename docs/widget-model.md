@@ -84,6 +84,17 @@ private void Increment()
 `CreateModel` requires a non-null initial state. The initial revision is zero.
 Constructing a model does not itself invalidate the widget.
 
+For an isolated unit test that has no runtime widget owner, use the deliberately
+narrow testing seam:
+
+```csharp
+var model = WidgetModel<CounterState>.CreateForTesting(CounterState.Initial);
+```
+
+This model still serializes updates, advances revisions, and publishes
+`Changed`; it intentionally has no widget invalidation callback. Production
+widgets must continue to use `CreateModel` so changed state schedules rendering.
+
 ## Equality is the publication contract
 
 `WidgetModel<TState>` uses the comparer passed to `CreateModel`, or
@@ -260,6 +271,9 @@ examples of the generic contract, not package-specific API behavior.
 - Treating the model revision as a provider, protocol, persistence, or security
   authority.
 - Using `Changed` to run domain behavior or maintain a mirrored state store.
+- Calling a model or command recursively from an update/optimistic reducer;
+  synchronous `Changed` observers may start a later command after publication,
+  but reducers themselves run under the model lock.
 - Calling `Invalidate()` after a changed model update, which requests a second
   invalidation for the same local transition.
 - Treating adjacent invalidations from independent SDK owners as a defect and

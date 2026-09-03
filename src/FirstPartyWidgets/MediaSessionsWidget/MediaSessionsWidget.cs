@@ -95,10 +95,12 @@ public sealed class MediaSessionsWidget : Widget
             {
                 Policy = WidgetCommandPolicy.SingleFlight,
                 Apply = PrepareCommand,
-                Execute = async (execution, token) =>
+                Execute = async (execution, context) =>
                 {
                     await HostServices.Media.ControlAsync(
-                        execution.Session!.SessionId, execution.Command, token)
+                        execution.Session!.SessionId,
+                        execution.Command,
+                        context.CancellationToken)
                         .ConfigureAwait(false);
                     return true;
                 },

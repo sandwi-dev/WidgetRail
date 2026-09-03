@@ -354,6 +354,11 @@ records and never mutate a published reference in place. `Changed` is a
 contained diagnostic/test observer, not a second state store. After Destroying,
 model changes no longer invalidate the widget.
 
+SDK unit tests that need state, revision, and observer behavior without a
+runtime widget may use `WidgetModel<TState>.CreateForTesting`. It intentionally
+has no widget invalidation owner; production widgets must use protected
+`CreateModel`.
+
 For one non-paged provider value, create a `WidgetResource<TValue>` with
 `CreateResource`. Supply an async `Load`, a presentation-safe `MapError`, and
 optionally an explicit cache duration, lifecycle, and last-good policy. Its
@@ -379,7 +384,8 @@ _playback = CreateOptimisticCommand(
         Apply = (state, request) => new(
             state.Project(request),
             ProviderCommand.From(state, request)),
-        Execute = (command, token) => Provider.ControlAsync(command, token),
+        Execute = (command, context) =>
+            Provider.ControlAsync(command, context.CancellationToken),
         Reconcile = (current, command, result) =>
             current.MergeResult(command, result),
         Rollback = (current, baseline, command) =>
@@ -391,9 +397,14 @@ _playback = CreateOptimisticCommand(
 var handle = _playback.Run(request);
 ```
 
-`Apply` runs inside the model's serialized update and returns both projected UI
-state and the exact provider input derived from that same revision. Keep it
-quick and side-effect free. SingleFlight joins an existing command without a
+`Apply`, `Reconcile`, `Rollback`, and `Fail` run under the model lock and return
+immutable state. Keep them quick and side-effect free: never call the model or
+command recursively, invoke providers, acquire unrelated locks, or block.
+`Execute` runs without the model or command lock, may await, and receives the
+actual `WidgetOperationContext`; honor its cancellation token and use
+`IsCurrent` before committing adjacent provider-side work. `MapError` also runs
+without those locks and must remain bounded, side-effect free, and non-throwing.
+SingleFlight joins an existing command without a
 duplicate projection, Latest cancels stale work and retains the first baseline
 through replacements, and Serial applies each projection only when its bounded
 FIFO turn begins. Inactive/capacity-rejected requests and joined SingleFlight
@@ -403,7 +414,10 @@ provider.
 
 The helper reuses `WidgetOperations`, including Active/State/Widget lifetime
 ownership, cancellation, draining, admission/completion handles, busy state,
-and current-attempt checks. `Reconcile`, `Rollback`, and optional `Fail` receive
+and current-attempt checks. Model publication occurs after command ownership is
+installed or retired, so a synchronous `Changed`/invalidation observer may
+start a newer command without the older publication clearing that new owner.
+`Reconcile`, `Rollback`, and optional `Fail` receive
 the current model value plus command data, so callbacks can remove only their
 own projection while preserving provider events that arrived in flight. The
 SDK cannot infer that merge and does not automatically retry mutations.

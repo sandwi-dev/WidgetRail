@@ -1635,6 +1635,7 @@ method static WidgetRail.WidgetSdk.WidgetMediaSession.op_Equality(WidgetRail.Wid
 method static WidgetRail.WidgetSdk.WidgetMediaSession.op_Inequality(WidgetRail.WidgetSdk.WidgetMediaSession? left, WidgetRail.WidgetSdk.WidgetMediaSession? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetMediaSessionsChanged.op_Equality(WidgetRail.WidgetSdk.WidgetMediaSessionsChanged? left, WidgetRail.WidgetSdk.WidgetMediaSessionsChanged? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetMediaSessionsChanged.op_Inequality(WidgetRail.WidgetSdk.WidgetMediaSessionsChanged? left, WidgetRail.WidgetSdk.WidgetMediaSessionsChanged? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetModel<TState>.CreateForTesting(TState initialValue, System.Collections.Generic.IEqualityComparer<TState>? comparer = null) -> WidgetRail.WidgetSdk.WidgetModel<TState>
 method static WidgetRail.WidgetSdk.WidgetModelSnapshot<TState>.op_Equality(WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> left, WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> right) -> bool
 method static WidgetRail.WidgetSdk.WidgetModelSnapshot<TState>.op_Inequality(WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> left, WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> right) -> bool
 method static WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>.op_Equality(WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult> left, WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult> right) -> bool
@@ -1952,7 +1953,7 @@ property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> 
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.MapError { get; set; }
 property System.Func<System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<TValue>> WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.Load { get; set; }
 property System.Func<TAuthority,TObservation,bool> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.MatchesProjectionAuthority { get; set; }
-property System.Func<TExecution,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<TResult?>> WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Execute { get; set; }
+property System.Func<TExecution,WidgetRail.WidgetSdk.WidgetOperationContext,System.Threading.Tasks.ValueTask<TResult?>> WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Execute { get; set; }
 property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ItemKey { get; set; }
 property System.Func<TItem,int,string> WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.ItemFocusId { get; set; }
 property System.Func<TItem,string> WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ItemFocusId { get; set; }

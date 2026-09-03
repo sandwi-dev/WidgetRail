@@ -56,6 +56,15 @@ public sealed class WidgetModel<TState> where TState : notnull
     }
 
     /// <summary>
+    /// Creates a model without a runtime widget invalidation owner for isolated
+    /// unit tests. Changed-state observers still publish normally.
+    /// </summary>
+    public static WidgetModel<TState> CreateForTesting(
+        TState initialValue,
+        IEqualityComparer<TState>? comparer = null) =>
+        new(initialValue, comparer, static () => { });
+
+    /// <summary>
     /// Observes committed transitions. Handlers are diagnostic observers: an
     /// exception from one handler is contained and does not block other handlers.
     /// </summary>

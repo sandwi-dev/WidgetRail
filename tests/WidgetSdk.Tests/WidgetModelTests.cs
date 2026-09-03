@@ -5,104 +5,85 @@ internal static class WidgetModelTests
 {
     public static async Task Run()
     {
-        await PublishesOnlyChangedStateAsync();
+        PublishesOnlyChangedState();
         await SerializesConcurrentUpdatesAsync();
-        await DerivesResultsFromTheCommittedRevisionAsync();
-        await CustomComparerDefinesSemanticCollectionEqualityAsync();
-        await FailedUpdaterDoesNotCommitOrPublishAsync();
+        DerivesResultsFromTheCommittedRevision();
+        CustomComparerDefinesSemanticCollectionEquality();
+        FailedUpdaterDoesNotCommitOrPublish();
         await ContainsObserversAndStopsInvalidatingAfterDestroyAsync();
         RejectsInvalidInputs();
     }
 
-    private static async Task CustomComparerDefinesSemanticCollectionEqualityAsync()
+    private static void CustomComparerDefinesSemanticCollectionEquality()
     {
-        var widget = new CollectionModelWidget(
-            new CollectionState(["one", "two"], "ready"));
-        var invalidations = 0;
-        widget.Invalidated += (_, _) => invalidations++;
-        await WidgetTestHost.InitializeAsync(widget);
+        var model = WidgetModel<CollectionState>.CreateForTesting(
+            new CollectionState(["one", "two"], "ready"),
+            new CollectionStateComparer());
 
-        var equal = widget.Model.Set(new(["one", "two"], "ready"));
+        var equal = model.Set(new(["one", "two"], "ready"));
         False(equal.Changed,
             "The configured sequence comparer did not suppress an equal collection.");
         Equal(0L, equal.Revision);
-        Equal(0, invalidations);
 
-        var changed = widget.Model.Set(new(["one", "three"], "ready"));
+        var changed = model.Set(new(["one", "three"], "ready"));
         True(changed.Changed, "A distinct collection was not committed.");
         Equal(1L, changed.Revision);
-        Equal(1, invalidations);
-        await WidgetTestHost.DestroyAsync(widget);
     }
 
-    private static async Task FailedUpdaterDoesNotCommitOrPublishAsync()
+    private static void FailedUpdaterDoesNotCommitOrPublish()
     {
-        var widget = new ModelWidget(new State(7, "ready"));
-        var invalidations = 0;
+        var model = WidgetModel<State>.CreateForTesting(new State(7, "ready"));
         var changes = 0;
-        widget.Invalidated += (_, _) => invalidations++;
-        widget.Model.Changed += (_, _) => changes++;
-        await WidgetTestHost.InitializeAsync(widget);
+        model.Changed += (_, _) => changes++;
 
-        Throws<InvalidOperationException>(() => widget.Model.Update(_ =>
+        Throws<InvalidOperationException>(() => model.Update(_ =>
             throw new InvalidOperationException("fixture")));
 
-        Equal(new State(7, "ready"), widget.Model.Value);
-        Equal(0L, widget.Model.Snapshot.Revision);
-        Equal(0, invalidations);
+        Equal(new State(7, "ready"), model.Value);
+        Equal(0L, model.Snapshot.Revision);
         Equal(0, changes);
-        await WidgetTestHost.DestroyAsync(widget);
     }
 
-    private static async Task PublishesOnlyChangedStateAsync()
+    private static void PublishesOnlyChangedState()
     {
-        var widget = new ModelWidget(new State(1, "ready"));
-        var invalidations = 0;
+        var model = WidgetModel<State>.CreateForTesting(new State(1, "ready"));
         var changes = new List<WidgetModelChangedEventArgs<State>>();
-        widget.Invalidated += (_, _) => invalidations++;
-        widget.Model.Changed += (_, change) => changes.Add(change);
-        await WidgetTestHost.InitializeAsync(widget);
+        model.Changed += (_, change) => changes.Add(change);
 
-        var unchanged = widget.Model.Update(state => state with { });
+        var unchanged = model.Update(state => state with { });
         False(unchanged.Changed, "An equal record replacement was reported as changed.");
         Equal(0L, unchanged.Revision);
-        Equal(0, invalidations);
 
-        var changed = widget.Model.Set(new State(2, "updated"));
+        var changed = model.Set(new State(2, "updated"));
         True(changed.Changed, "A distinct replacement was not committed.");
         Equal(new State(1, "ready"), changed.Previous);
         Equal(new State(2, "updated"), changed.Current);
         Equal(1L, changed.Revision);
-        Equal(1, invalidations);
         Equal(1, changes.Count);
         Equal(0L, changes[0].Previous.Revision);
         Equal(1L, changes[0].Current.Revision);
-        Equal(changed.Current, widget.Model.Value);
-        Equal(new WidgetModelSnapshot<State>(changed.Current, 1), widget.Model.Snapshot);
-        await WidgetTestHost.DestroyAsync(widget);
+        Equal(changed.Current, model.Value);
+        Equal(new WidgetModelSnapshot<State>(changed.Current, 1), model.Snapshot);
     }
 
     private static async Task SerializesConcurrentUpdatesAsync()
     {
-        var widget = new ModelWidget(new State(0, "counter"));
-        await WidgetTestHost.InitializeAsync(widget);
+        var model = WidgetModel<State>.CreateForTesting(new State(0, "counter"));
         var tasks = Enumerable.Range(0, 200)
             .Select(_ => Task.Run(() =>
-                widget.Model.Update(state => state with { Count = state.Count + 1 })))
+                model.Update(state => state with { Count = state.Count + 1 })))
             .ToArray();
         await Task.WhenAll(tasks);
 
-        Equal(200, widget.Model.Value.Count);
-        Equal(200L, widget.Model.Snapshot.Revision);
-        await WidgetTestHost.DestroyAsync(widget);
+        Equal(200, model.Value.Count);
+        Equal(200L, model.Snapshot.Revision);
     }
 
-    private static async Task DerivesResultsFromTheCommittedRevisionAsync()
+    private static void DerivesResultsFromTheCommittedRevision()
     {
-        var widget = new ModelWidget(new State(4, "ready"));
-        await WidgetTestHost.InitializeAsync(widget);
+        var model = WidgetModel<State>.CreateForTesting(new State(4, "ready"));
 
-        var update = widget.Model.Update(state =>
+        var update = model.Update(state =>
         {
             var next = state with { Count = state.Count + 1 };
             return (next, $"command-for-{next.Count}");
@@ -113,11 +94,10 @@ internal static class WidgetModelTests
         Equal(5, update.Current.Count);
         Equal(1L, update.Revision);
 
-        var noChange = widget.Model.Update(state => (state, state.Count));
+        var noChange = model.Update(state => (state, state.Count));
         False(noChange.Changed, "An equal result-bearing update advanced revision.");
         Equal(5, noChange.Result);
         Equal(1L, noChange.Revision);
-        await WidgetTestHost.DestroyAsync(widget);
     }
 
     private static async Task ContainsObserversAndStopsInvalidatingAfterDestroyAsync()
@@ -142,10 +122,11 @@ internal static class WidgetModelTests
 
     private static void RejectsInvalidInputs()
     {
-        var widget = new ModelWidget(new State(0, "ready"));
-        Throws<ArgumentNullException>(() => widget.Model.Update(null!));
-        Throws<ArgumentNullException>(() => widget.Model.Set(null!));
-        Throws<ArgumentNullException>(() => widget.SetNullFromUpdate());
+        Throws<ArgumentNullException>(() => WidgetModel<State>.CreateForTesting(null!));
+        var model = WidgetModel<State>.CreateForTesting(new State(0, "ready"));
+        Throws<ArgumentNullException>(() => model.Update(null!));
+        Throws<ArgumentNullException>(() => model.Set(null!));
+        Throws<ArgumentNullException>(() => model.Update(_ => null!));
     }
 
     private sealed record State(int Count, string Status);
@@ -180,18 +161,6 @@ internal static class WidgetModelTests
 
         public override WidgetView Render() => new(
             UI.Stack("model.root", UI.Text(Model.Value.Status, "model.status")));
-    }
-
-    private sealed class CollectionModelWidget : Widget
-    {
-        internal CollectionModelWidget(CollectionState initial) =>
-            Model = CreateModel(initial, new CollectionStateComparer());
-
-        internal WidgetModel<CollectionState> Model { get; }
-
-        public override WidgetView Render() => new(
-            UI.Stack("collection-model.root", UI.Text(
-                Model.Value.Status, "collection-model.status")));
     }
 
     private static void True(bool value, string message)

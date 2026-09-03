@@ -37,6 +37,8 @@ var modelPath = Path.Combine(repository, "docs", "widget-model.md");
 var model = File.ReadAllText(modelPath);
 var modelSource = File.ReadAllText(Path.Combine(
     repository, "src", "WidgetSdk", "WidgetModel.cs"));
+var optimisticCommandSource = File.ReadAllText(Path.Combine(
+    repository, "src", "WidgetSdk", "WidgetOptimisticCommand.cs"));
 string[] requiredModelContracts =
 [
     "## Choose the owner, not just a container",
@@ -53,6 +55,7 @@ string[] requiredModelContracts =
     "WidgetOptimisticCommand<TState,TRequest,TExecution,TResult>",
     "private readonly WidgetModel<CounterState> _model;",
     "_model = CreateModel(CounterState.Initial);",
+    "WidgetModel<CounterState>.CreateForTesting(CounterState.Initial);",
     "var snapshot = _model.Snapshot;",
     "return (next, new RefreshRequest(next.Filter));",
     "../src/FirstPartyWidgets/MediaSessionsWidget/MediaSessionsWidget.cs",
@@ -68,11 +71,21 @@ string[] requiredModelSourceContracts =
     "public WidgetModelUpdate<TState> Set(TState value)",
     "public WidgetModelUpdate<TState> Update(Func<TState, TState> updater)",
     "public WidgetModelUpdate<TState, TResult> Update<TResult>",
+    "public static WidgetModel<TState> CreateForTesting(",
     "if (LifecycleState != WidgetLifecycleState.Destroying) Invalidate();",
 ];
 foreach (var contract in requiredModelSourceContracts)
     if (!modelSource.Contains(contract, StringComparison.Ordinal))
         failures.Add($"WidgetModel source no longer supports documented claim '{contract}'.");
+string[] requiredOptimisticCommandSourceContracts =
+[
+    "Func<TExecution, WidgetOperationContext, ValueTask<TResult>> Execute",
+    "_model.UpdateBeforePublication(",
+];
+foreach (var contract in requiredOptimisticCommandSourceContracts)
+    if (!optimisticCommandSource.Contains(contract, StringComparison.Ordinal))
+        failures.Add(
+            $"WidgetOptimisticCommand source no longer supports documented claim '{contract}'.");
 string[] requiredGuideContracts =
 [
     "## Versions: three different contracts",

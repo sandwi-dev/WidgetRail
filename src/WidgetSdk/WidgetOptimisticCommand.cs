@@ -58,7 +58,9 @@ public sealed record WidgetOptimisticCommandOptions<
 {
     /// <summary>
     /// Projects UI state and derives the provider input from the same serialized
-    /// state revision. Keep this callback quick and side-effect free.
+    /// state revision. This callback runs under the model lock. Keep it quick
+    /// and side-effect free; do not call the model, this command, providers, or
+    /// blocking code from it.
     /// </summary>
     public required Func<TState, TRequest, WidgetCommandProjection<TState, TExecution>> Apply
     {
@@ -66,8 +68,14 @@ public sealed record WidgetOptimisticCommandOptions<
         init;
     }
 
-    /// <summary>Executes the one provider mutation. The SDK never retries it.</summary>
-    public required Func<TExecution, CancellationToken, ValueTask<TResult>> Execute
+    /// <summary>
+    /// Executes the one provider mutation. The SDK never retries it. This
+    /// callback runs without the model or command lock and may await. Honor
+    /// <see cref="WidgetOperationContext.CancellationToken"/> and inspect
+    /// <see cref="WidgetOperationContext.IsCurrent"/> before committing any
+    /// provider-side work not otherwise owned by this command.
+    /// </summary>
+    public required Func<TExecution, WidgetOperationContext, ValueTask<TResult>> Execute
     {
         get;
         init;
@@ -76,6 +84,8 @@ public sealed record WidgetOptimisticCommandOptions<
     /// <summary>
     /// Merges a successful result into the current model. The current value may
     /// include unrelated subscription updates that arrived during execution.
+    /// This callback runs under the model lock. Keep it quick and side-effect
+    /// free; do not call the model, this command, providers, or blocking code.
     /// </summary>
     public required Func<TState, TExecution, TResult, TState> Reconcile
     {
@@ -86,7 +96,8 @@ public sealed record WidgetOptimisticCommandOptions<
     /// <summary>
     /// Removes this command's optimistic projection after cancellation without
     /// discarding unrelated changes. The second value is the first baseline for
-    /// a chain of Latest replacements.
+    /// a chain of Latest replacements. This callback runs under the model lock
+    /// with the same restrictions as <see cref="Apply"/>.
     /// </summary>
     public required Func<TState, TState, TExecution, TState> Rollback
     {
@@ -94,12 +105,18 @@ public sealed record WidgetOptimisticCommandOptions<
         init;
     }
 
-    /// <summary>Maps provider failures to bounded presentation-safe data.</summary>
+    /// <summary>
+    /// Maps provider failures to bounded presentation-safe data. This callback
+    /// runs without the model or command lock; keep it bounded, side-effect
+    /// free, and non-throwing. A thrown exception maps to the safe fallback.
+    /// </summary>
     public Func<Exception, WidgetCommandError> MapError { get; init; } =
         _ => WidgetCommandError.Unexpected;
 
     /// <summary>
     /// Applies a mapped failure. By default this uses <see cref="Rollback"/>.
+    /// This callback runs under the model lock with the same restrictions as
+    /// <see cref="Apply"/>.
     /// </summary>
     public Func<TState, TState, TExecution, WidgetCommandError, TState>? Fail
     {
@@ -127,7 +144,6 @@ public sealed class WidgetOptimisticCommand<TState, TRequest, TExecution, TResul
         TState Baseline,
         bool ShouldExecute);
 
-    private readonly object _gate = new();
     private readonly string _key;
     private readonly WidgetModel<TState> _model;
     private readonly WidgetOptimisticCommandOptions<TState, TRequest, TExecution, TResult> _options;
@@ -181,7 +197,21 @@ public sealed class WidgetOptimisticCommand<TState, TRequest, TExecution, TResul
             WidgetCommandPolicy.SingleFlight => _operations.RunSingleFlight(
                 _key, context => ExecuteAsync(request, start.Task, context), _options.Lifetime),
             WidgetCommandPolicy.Latest => _operations.RunLatest(
-                _key, context => ExecuteAsync(request, start.Task, context), _options.Lifetime),
+                _key,
+                context => ExecuteAsync(request, start.Task, context),
+                _options.Lifetime,
+                () =>
+                {
+                    try
+                    {
+                        start.TrySetResult(BeginAttempt(
+                            request, preserveLatestBaseline: true));
+                    }
+                    catch (Exception exception)
+                    {
+                        start.TrySetException(exception);
+                    }
+                }),
             WidgetCommandPolicy.Serial => _operations.RunSerial(
                 _key, context => ExecuteAsync(request, start.Task, context), _options.Lifetime),
             _ => throw new ArgumentOutOfRangeException(nameof(_options.Policy)),
@@ -199,15 +229,8 @@ public sealed class WidgetOptimisticCommand<TState, TRequest, TExecution, TResul
             return handle;
         }
 
-        if (_options.Policy == WidgetCommandPolicy.Latest)
-        {
-            try { start.TrySetResult(BeginAttempt(request, preserveLatestBaseline: true)); }
-            catch (Exception exception) { start.TrySetException(exception); }
-        }
-        else
-        {
+        if (_options.Policy != WidgetCommandPolicy.Latest)
             start.TrySetResult(null);
-        }
         return handle;
     }
 
@@ -225,7 +248,7 @@ public sealed class WidgetOptimisticCommand<TState, TRequest, TExecution, TResul
         }
         try
         {
-            var result = await _options.Execute(attempt.Execution, context.CancellationToken)
+            var result = await _options.Execute(attempt.Execution, context)
                 .ConfigureAwait(false);
             if (!context.IsCurrent) return;
             CommitIfOwned(attempt, current =>
@@ -245,47 +268,50 @@ public sealed class WidgetOptimisticCommand<TState, TRequest, TExecution, TResul
 
     private Attempt BeginAttempt(TRequest request, bool preserveLatestBaseline)
     {
-        lock (_gate)
-        {
-            var update = _model.Update(state =>
+        var attemptId = Interlocked.Increment(ref _nextAttemptId);
+        var update = _model.UpdateBeforePublication(
+            state =>
             {
                 var projection = _options.Apply(state, request);
                 ArgumentNullException.ThrowIfNull(projection.State);
                 ArgumentNullException.ThrowIfNull(projection.Execution);
-                return (projection.State,
-                    (Baseline: state, projection.Execution, projection.ShouldExecute));
+                var baseline = preserveLatestBaseline && _hasLatestBaseline
+                    ? _latestBaseline
+                    : state;
+                return (projection.State, new Attempt(
+                    attemptId,
+                    projection.Execution,
+                    baseline,
+                    projection.ShouldExecute));
+            },
+            committed =>
+            {
+                var attempt = committed.Result;
+                _ownerAttemptId = attempt.Id;
+                if (preserveLatestBaseline)
+                {
+                    _latestBaseline = attempt.Baseline;
+                    _hasLatestBaseline = true;
+                }
+                else
+                {
+                    _latestBaseline = default!;
+                    _hasLatestBaseline = false;
+                }
             });
-            var baseline = preserveLatestBaseline && _hasLatestBaseline
-                ? _latestBaseline
-                : update.Result.Baseline;
-            var attempt = new Attempt(
-                Interlocked.Increment(ref _nextAttemptId),
-                update.Result.Execution,
-                baseline,
-                update.Result.ShouldExecute);
-            _ownerAttemptId = attempt.Id;
-            if (preserveLatestBaseline)
-            {
-                _latestBaseline = baseline;
-                _hasLatestBaseline = true;
-            }
-            else
-            {
-                _latestBaseline = default!;
-                _hasLatestBaseline = false;
-            }
-            return attempt;
-        }
+        return update.Result;
     }
 
     private void CommitIfOwned(Attempt attempt, Func<TState, TState> merge)
     {
-        lock (_gate)
-        {
-            if (_ownerAttemptId != attempt.Id) return;
-            _model.Update(merge);
-            ClearOwner();
-        }
+        _model.UpdateBeforePublication(
+            state => _ownerAttemptId == attempt.Id
+                ? (merge(state), true)
+                : (state, false),
+            committed =>
+            {
+                if (committed.Result) ClearOwner();
+            });
     }
 
     private void RollbackIfOwned(Attempt attempt) => CommitIfOwned(attempt, current =>

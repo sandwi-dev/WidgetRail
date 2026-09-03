@@ -444,8 +444,9 @@ public sealed partial class YouTubeVideoWidget
 
     private async ValueTask<YouTubeSetupOperation> ExecuteSetupAsync(
         YouTubeSetupRequest request,
-        CancellationToken cancellationToken)
+        WidgetOperationContext context)
     {
+        var cancellationToken = context.CancellationToken;
         if (request.Operation == YouTubeSetupOperation.Configure)
         {
             await _application.ConfigureApiKeyAsync(request.Secret, cancellationToken)
@@ -456,6 +457,7 @@ public sealed partial class YouTubeVideoWidget
         // The cursor resource is not part of the model, so a superseded delete
         // must not clear it. Cancellation here rolls the attempt back untouched.
         cancellationToken.ThrowIfCancellationRequested();
+        if (!context.IsCurrent) return YouTubeSetupOperation.Delete;
         _searchResults.Reset(invalidate: false);
         return YouTubeSetupOperation.Delete;
     }

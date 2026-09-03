@@ -12,6 +12,10 @@ internal static class WidgetOptimisticCommandTests
         await SingleFlightJoinsWithoutProjectingDuplicateAsync();
         await SerialRequestsProjectInExecutionOrderAsync();
         await LifecycleCancellationRollsBackAndDrainsAsync();
+        await ExecuteCanInspectCurrentAttemptAsync();
+        await InvalidatedReentryKeepsTheNewOwnerAsync();
+        await ReentrantApplyPublicationKeepsTheNewOwnerAsync();
+        await ReentrantReconcilePublicationKeepsTheNewOwnerAsync();
     }
 
     private static async Task RejectedInactiveDoesNotProjectAsync()
@@ -40,15 +44,15 @@ internal static class WidgetOptimisticCommandTests
         var secondResult = new TaskCompletionSource<int>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
-        var widget = new CommandWidget(async (execution, token) =>
+        var widget = new CommandWidget(async (execution, context) =>
         {
             var call = Interlocked.Increment(ref calls);
             if (call == 1)
             {
                 firstStarted.TrySetResult();
-                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                await Task.Delay(Timeout.InfiniteTimeSpan, context.CancellationToken);
             }
-            return await secondResult.Task.WaitAsync(token);
+            return await secondResult.Task.WaitAsync(context.CancellationToken);
         });
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
 
@@ -95,12 +99,12 @@ internal static class WidgetOptimisticCommandTests
         var firstStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
-        var widget = new CommandWidget(async (_, token) =>
+        var widget = new CommandWidget(async (_, context) =>
         {
             if (Interlocked.Increment(ref calls) == 1)
             {
                 firstStarted.TrySetResult();
-                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                await Task.Delay(Timeout.InfiniteTimeSpan, context.CancellationToken);
             }
             throw new InvalidOperationException("replacement failed");
         });
@@ -135,10 +139,10 @@ internal static class WidgetOptimisticCommandTests
         var result = new TaskCompletionSource<int>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
-        var widget = new CommandWidget((_, token) =>
+        var widget = new CommandWidget((_, context) =>
         {
             calls++;
-            return new(result.Task.WaitAsync(token));
+            return new(result.Task.WaitAsync(context.CancellationToken));
         }, policy: WidgetCommandPolicy.SingleFlight);
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
 
@@ -163,10 +167,10 @@ internal static class WidgetOptimisticCommandTests
         var second = new TaskCompletionSource<int>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
-        var widget = new CommandWidget((_, token) =>
+        var widget = new CommandWidget((_, context) =>
         {
             var gate = Interlocked.Increment(ref calls) == 1 ? first : second;
-            return new(gate.Task.WaitAsync(token));
+            return new(gate.Task.WaitAsync(context.CancellationToken));
         }, policy: WidgetCommandPolicy.Serial);
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
 
@@ -190,10 +194,10 @@ internal static class WidgetOptimisticCommandTests
     {
         var started = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var widget = new CommandWidget(async (_, token) =>
+        var widget = new CommandWidget(async (_, context) =>
         {
             started.TrySetResult();
-            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            await Task.Delay(Timeout.InfiniteTimeSpan, context.CancellationToken);
             return 0;
         });
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
@@ -206,6 +210,148 @@ internal static class WidgetOptimisticCommandTests
         Equal(WidgetOperationStatus.Canceled, (await handle.Completion).Status);
         Equal(0, widget.State.Value);
         False(widget.State.Pending, "Lifecycle cancellation did not roll back pending state.");
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    private static async Task ExecuteCanInspectCurrentAttemptAsync()
+    {
+        WidgetOperationContext? observed = null;
+        var wasCurrentDuringExecute = false;
+        var widget = new CommandWidget((_, context) =>
+        {
+            observed = context;
+            wasCurrentDuringExecute = context.IsCurrent;
+            return ValueTask.FromResult(4);
+        });
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+
+        Equal(WidgetOperationStatus.Succeeded, (await widget.Run(4).Completion).Status);
+        True(observed is not null, "Execute did not receive an operation context.");
+        True(wasCurrentDuringExecute, "The attempt was not current during execution.");
+        Equal(4, widget.State.Value);
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    private static async Task ReentrantApplyPublicationKeepsTheNewOwnerAsync()
+    {
+        var replacementStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var replacementResult = new TaskCompletionSource<int>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var widget = new CommandWidget(async (execution, context) =>
+        {
+            if (execution.Delta == 1)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, context.CancellationToken);
+                return 0;
+            }
+            replacementStarted.TrySetResult();
+            return await replacementResult.Task.WaitAsync(context.CancellationToken);
+        });
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+
+        WidgetOperationHandle? replacement = null;
+        var replaced = 0;
+        widget.Model.Changed += (_, change) =>
+        {
+            if (change.Current.Value.Pending &&
+                Interlocked.CompareExchange(ref replaced, 1, 0) == 0)
+                replacement = widget.Run(2);
+        };
+
+        var original = widget.Run(1);
+        True(replacement is not null, "Changed did not reenter the command during Apply publication.");
+        await replacementStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        replacementResult.TrySetResult(20);
+
+        Equal(WidgetOperationStatus.Superseded, (await original.Completion).Status);
+        Equal(WidgetOperationStatus.Succeeded, (await replacement!.Value.Completion).Status);
+        Equal(20, widget.State.Value);
+        False(widget.State.Pending, "The reentrant Apply owner was cleared by its predecessor.");
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    private static async Task InvalidatedReentryKeepsTheNewOwnerAsync()
+    {
+        var replacementStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var replacementResult = new TaskCompletionSource<int>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var widget = new CommandWidget(async (execution, context) =>
+        {
+            if (execution.Delta == 1)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, context.CancellationToken);
+                return 0;
+            }
+            replacementStarted.TrySetResult();
+            return await replacementResult.Task.WaitAsync(context.CancellationToken);
+        }, runtimeModel: true);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+
+        WidgetOperationHandle? replacement = null;
+        CommandState? firstInvalidatedState = null;
+        var reentered = 0;
+        widget.Invalidated += (_, _) =>
+        {
+            if (Interlocked.CompareExchange(ref reentered, 1, 0) != 0) return;
+            firstInvalidatedState = widget.State;
+            replacement = widget.Run(2);
+        };
+
+        var original = widget.Run(1);
+        True(replacement is not null,
+            "The synchronous widget invalidation did not reenter the command.");
+        Equal(1, firstInvalidatedState!.Value);
+        True(firstInvalidatedState.Pending,
+            "Latest admission published busy before installing its projection owner.");
+        Equal(WidgetOperationAdmission.Replaced, replacement!.Value.Admission);
+        await replacementStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        replacementResult.TrySetResult(20);
+
+        Equal(WidgetOperationStatus.Superseded, (await original.Completion).Status);
+        Equal(WidgetOperationStatus.Succeeded, (await replacement.Value.Completion).Status);
+        Equal(20, widget.State.Value);
+        False(widget.State.Pending,
+            "The invalidation-reentrant owner was cleared by its predecessor.");
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    private static async Task ReentrantReconcilePublicationKeepsTheNewOwnerAsync()
+    {
+        var first = new TaskCompletionSource<int>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var second = new TaskCompletionSource<int>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var widget = new CommandWidget((_, context) => new(
+            (Interlocked.Increment(ref calls) == 1 ? first : second).Task
+                .WaitAsync(context.CancellationToken)));
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+
+        WidgetOperationHandle? replacement = null;
+        widget.Model.Changed += (_, change) =>
+        {
+            if (!change.Current.Value.Pending && change.Current.Value.Value == 10)
+                replacement = widget.Run(2);
+        };
+
+        var original = widget.Run(1);
+        await WaitUntil(() => calls == 1);
+        first.TrySetResult(10);
+        await WaitUntil(() => replacement is not null);
+        Equal(WidgetOperationAdmission.Replaced, replacement!.Value.Admission);
+        var originalStatus = (await original.Completion).Status;
+        True(originalStatus == WidgetOperationStatus.Superseded,
+            "A terminal-publication successor did not supersede the still-active predecessor.");
+        await WaitUntil(() => calls == 2);
+        second.TrySetResult(20);
+
+        True(replacement is not null,
+            "Changed did not reenter the command during Reconcile publication.");
+        Equal(WidgetOperationStatus.Succeeded, (await replacement!.Value.Completion).Status);
+        Equal(20, widget.State.Value);
+        False(widget.State.Pending, "The reentrant Reconcile owner was cleared by its predecessor.");
         await WidgetTestHost.DestroyAsync(widget);
     }
 
@@ -226,11 +372,14 @@ internal static class WidgetOptimisticCommandTests
         private readonly WidgetOptimisticCommand<CommandState, int, Execution, int> _command;
 
         internal CommandWidget(
-            Func<Execution, CancellationToken, ValueTask<int>> execute,
+            Func<Execution, WidgetOperationContext, ValueTask<int>> execute,
             WidgetCommandPolicy policy = WidgetCommandPolicy.Latest,
-            bool throwFromMapper = false)
+            bool throwFromMapper = false,
+            bool runtimeModel = false)
         {
-            _model = CreateModel(CommandState.Initial);
+            _model = runtimeModel
+                ? CreateModel(CommandState.Initial)
+                : WidgetModel<CommandState>.CreateForTesting(CommandState.Initial);
             _command = CreateOptimisticCommand(
                 "test.optimistic",
                 _model,
@@ -269,6 +418,7 @@ internal static class WidgetOptimisticCommandTests
         }
 
         internal CommandState State => _model.Value;
+        internal WidgetModel<CommandState> Model => _model;
         internal WidgetOperationHandle Run(int delta) => _command.Run(delta);
         internal void PublishProviderRevision(int revision) =>
             _model.Update(state => state with { ProviderRevision = revision });

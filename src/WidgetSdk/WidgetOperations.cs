@@ -229,7 +229,29 @@ public sealed class WidgetOperations
     public WidgetOperationHandle RunLatest(
         string key,
         Func<WidgetOperationContext, ValueTask> operation,
-        WidgetOperationLifetime lifetime = WidgetOperationLifetime.Active)
+        WidgetOperationLifetime lifetime = WidgetOperationLifetime.Active) =>
+        RunLatestCore(key, operation, lifetime, onAdmitted: null);
+
+    /// <summary>
+    /// Admits Latest work and invokes a nonthrowing facility hook after lane
+    /// ownership is committed but before busy publication, cancellation, or
+    /// execution start. The hook runs without the operations lock.
+    /// </summary>
+    internal WidgetOperationHandle RunLatest(
+        string key,
+        Func<WidgetOperationContext, ValueTask> operation,
+        WidgetOperationLifetime lifetime,
+        Action onAdmitted)
+    {
+        ArgumentNullException.ThrowIfNull(onAdmitted);
+        return RunLatestCore(key, operation, lifetime, onAdmitted);
+    }
+
+    private WidgetOperationHandle RunLatestCore(
+        string key,
+        Func<WidgetOperationContext, ValueTask> operation,
+        WidgetOperationLifetime lifetime,
+        Action? onAdmitted)
     {
         ValidateRequest(key, operation, lifetime);
         var lease = _resolveLifetime(lifetime);
@@ -283,6 +305,12 @@ public sealed class WidgetOperations
             }
         }
 
+        try { onAdmitted?.Invoke(); }
+        catch
+        {
+            // Internal facility hooks must contain their own failures. A bad
+            // hook cannot corrupt or interrupt the operations lane owner.
+        }
         if (becameBusy) PublishBusy(key, true);
         CompleteWithoutRunning(supersededPending, WidgetOperationStatus.Superseded);
         Cancel(cancelActive);
