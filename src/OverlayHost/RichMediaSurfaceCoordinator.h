@@ -291,6 +291,8 @@ public:
         std::function<void()> invalidate,
         bool initiallyVisible = false,
         bool requireRootBeforeParent = false);
+    void ConfigurePlaybackCommandDispatchForTest(
+        std::function<void(const PlaybackCommand&)> dispatch);
     [[nodiscard]] HRESULT CompletePresentationTransferForTest(
         PresentationTarget target, bool rootFirst,
         PresentationTransferFailureStage* failureStage = nullptr) noexcept;
@@ -475,6 +477,7 @@ private:
     bool presentationTransferRequireRootBeforeParentForTest_{};
     bool presentationTransferRootAttachedForTest_{};
     bool presentationTransferDetachedForTest_{};
+    std::function<void(const PlaybackCommand&)> playbackCommandDispatchForTest_;
 #endif
     HRESULT browserEventRegistrationResult_{E_UNEXPECTED};
     std::wstring pageUri_;
