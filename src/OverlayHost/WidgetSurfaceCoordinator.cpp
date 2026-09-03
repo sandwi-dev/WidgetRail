@@ -278,6 +278,9 @@ bool WidgetSurfaceCoordinator::Pin(
     controllerFocused_ = false;
     opacityPercent_ = 100;
     opacityPreviewOriginal_.reset();
+    lastPinnedClientExtent_.reset();
+    pendingPinnedResizeDiagnostic_.reset();
+    pinnedResizeCommitDiagnostics_.clear();
     if (!CreateWindowForAdmission(error)) {
         admission_.reset();
         layoutOptions_.clear();
@@ -1113,6 +1116,13 @@ WidgetSurfaceCoordinator::TakeBackgroundSurfaceDiagnostics() noexcept {
     return result;
 }
 
+std::vector<PinnedResizeCommitDiagnostic>
+WidgetSurfaceCoordinator::TakePinnedResizeCommitDiagnostics() noexcept {
+    std::vector<PinnedResizeCommitDiagnostic> result;
+    result.swap(pinnedResizeCommitDiagnostics_);
+    return result;
+}
+
 const WidgetSnapshot& WidgetSurfaceCoordinator::SelectedSnapshot() const noexcept {
     if (selectedLayoutIndex_ < layoutOptions_.size() &&
         layoutOptions_[selectedLayoutIndex_].projection)
@@ -1637,6 +1647,9 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     lastRenderResult_ = {};
     committedMediaViewport_.reset();
     mediaViewportGeometryDirty_ = true;
+    lastPinnedClientExtent_.reset();
+    pendingPinnedResizeDiagnostic_.reset();
+    pinnedResizeCommitDiagnostics_.clear();
     policy_.Stop(reason == WidgetSurfaceStopReason::HostExit ||
                          reason == WidgetSurfaceStopReason::CoordinatorDisposed
                      ? StopReason::HostExit
@@ -1716,7 +1729,7 @@ std::wstring_view WidgetSurfaceCoordinator::runtimeGeneration() const noexcept {
 std::optional<CommittedMediaViewportPresentation>
 WidgetSurfaceCoordinator::CurrentMediaViewport(
     const std::wstring_view sessionId) const noexcept {
-    if (!pinned() || mediaViewportGeometryDirty_ || !committedMediaViewport_)
+    if (!pinned() || !committedMediaViewport_)
         return std::nullopt;
     const auto& region = committedMediaViewport_->region;
     if (region.mediaSessionId != sessionId) return std::nullopt;
@@ -2138,11 +2151,24 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
         ReconcileDisplayEnvironment();
         return 0;
     case WM_SIZE:
-        if (wParam != SIZE_MINIMIZED) mediaViewportGeometryDirty_ = true;
+        if (wParam != SIZE_MINIMIZED) {
+            mediaViewportGeometryDirty_ = true;
+            const SIZE currentClientExtent{
+                static_cast<LONG>(LOWORD(lParam)), static_cast<LONG>(HIWORD(lParam))};
+            if (pendingPinnedResizeDiagnostic_) {
+                pendingPinnedResizeDiagnostic_->currentClientExtent = currentClientExtent;
+                ++pendingPinnedResizeDiagnostic_->coalescedResizeCount;
+            } else {
+                pendingPinnedResizeDiagnostic_ = PendingPinnedResizeDiagnostic{
+                    lastPinnedClientExtent_, currentClientExtent};
+            }
+            lastPinnedClientExtent_ = currentClientExtent;
+        }
         if (renderTarget_ && wParam != SIZE_MINIMIZED) {
             renderTarget_->Resize(D2D1::SizeU(LOWORD(lParam), HIWORD(lParam)));
             if (renderer_) renderer_->DiscardTargetResources();
         }
+        if (wParam != SIZE_MINIMIZED) RequestPaint();
         return 0;
     case WM_ERASEBKGND:
         return 1;
@@ -2724,6 +2750,7 @@ void WidgetSurfaceCoordinator::Paint() {
     const HRESULT result = renderTarget_->EndDraw();
     bool mediaViewportReconciled{};
     bool backgroundSurfaceDiagnosticsQueued{};
+    bool pinnedResizeDiagnosticsQueued{};
     input::ScrollPaginationSessionOutcome paginationOutcome;
     if (result == D2DERR_RECREATE_TARGET) ReleaseGraphicsResources();
     else if (SUCCEEDED(result)) {
@@ -2789,6 +2816,24 @@ void WidgetSurfaceCoordinator::Paint() {
             mediaViewportGeometryDirty_ = false;
             mediaViewportReconciled = true;
             ++workCounters_.mediaViewportReconciliations;
+            if (pendingPinnedResizeDiagnostic_) {
+                if (committedMediaViewport_) {
+                    constexpr std::size_t maximumPendingResizeDiagnostics = 16;
+                    if (pinnedResizeCommitDiagnostics_.size() >=
+                        maximumPendingResizeDiagnostics) {
+                        pinnedResizeCommitDiagnostics_.erase(
+                            pinnedResizeCommitDiagnostics_.begin());
+                    }
+                    pinnedResizeCommitDiagnostics_.push_back({
+                        pendingPinnedResizeDiagnostic_->previousClientExtent,
+                        pendingPinnedResizeDiagnostic_->currentClientExtent,
+                        pendingPinnedResizeDiagnostic_->coalescedResizeCount,
+                        *committedMediaViewport_,
+                    });
+                    pinnedResizeDiagnosticsQueued = true;
+                }
+                pendingPinnedResizeDiagnostic_.reset();
+            }
         }
         PublishAccessibility();
     } else {
@@ -2801,6 +2846,8 @@ void WidgetSurfaceCoordinator::Paint() {
         (mediaViewportReconciled || paginationNotification)) NotifyOwner();
     if (SUCCEEDED(result) && backgroundSurfaceDiagnosticsQueued)
         NotifyOwner(kBackgroundSurfaceDiagnosticNotification);
+    if (SUCCEEDED(result) && pinnedResizeDiagnosticsQueued)
+        NotifyOwner(kPinnedResizeDiagnosticNotification);
 }
 
 void WidgetSurfaceCoordinator::PublishAccessibility() {
@@ -3083,6 +3130,9 @@ void WidgetSurfaceCoordinator::OnWindowDestroyed() noexcept {
             admission_->widgetId, L"pinned-window-destroyed");
         paginationDiagnostics_.clear();
         focusedElementId_.clear();
+        lastPinnedClientExtent_.reset();
+        pendingPinnedResizeDiagnostic_.reset();
+        pinnedResizeCommitDiagnostics_.clear();
         admission_.reset();
         policy_.Stop(StopReason::Unpin);
         ++teardownCount_;

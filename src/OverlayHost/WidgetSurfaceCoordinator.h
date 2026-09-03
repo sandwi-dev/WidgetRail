@@ -27,6 +27,7 @@
 namespace widgetrail::pinned {
 
 inline constexpr WPARAM kBackgroundSurfaceDiagnosticNotification = 1;
+inline constexpr WPARAM kPinnedResizeDiagnosticNotification = 2;
 
 [[nodiscard]] std::optional<double> ResolveBoundedMediaSeekTarget(
     double currentPositionSeconds,
@@ -103,6 +104,13 @@ struct PinnedLayoutSelectionNotification final {
 struct CommittedMediaViewportPresentation final {
     RenderMediaViewportRegion region;
     std::uint64_t frameGeneration{};
+};
+
+struct PinnedResizeCommitDiagnostic final {
+    std::optional<SIZE> previousClientExtent;
+    SIZE currentClientExtent{};
+    std::size_t coalescedResizeCount{};
+    CommittedMediaViewportPresentation committedViewport;
 };
 
 struct WidgetSurfaceWorkCounters final {
@@ -233,6 +241,8 @@ public:
         TakeLayoutSelectionNotifications() noexcept;
     [[nodiscard]] std::vector<std::wstring>
         TakeBackgroundSurfaceDiagnostics() noexcept;
+    [[nodiscard]] std::vector<PinnedResizeCommitDiagnostic>
+        TakePinnedResizeCommitDiagnostics() noexcept;
     void SetActionFeedback(std::wstring message, bool failure);
     void SetBeforeWindowRetirement(
         std::function<void(WidgetSurfaceStopReason)> callback);
@@ -419,6 +429,14 @@ private:
     std::optional<CommittedMediaViewportPresentation> committedMediaViewport_;
     std::uint64_t nextCommittedFrameGeneration_{1};
     bool mediaViewportGeometryDirty_{true};
+    struct PendingPinnedResizeDiagnostic final {
+        std::optional<SIZE> previousClientExtent;
+        SIZE currentClientExtent{};
+        std::size_t coalescedResizeCount{1};
+    };
+    std::optional<SIZE> lastPinnedClientExtent_;
+    std::optional<PendingPinnedResizeDiagnostic> pendingPinnedResizeDiagnostic_;
+    std::vector<PinnedResizeCommitDiagnostic> pinnedResizeCommitDiagnostics_;
     mutable WidgetSurfaceWorkCounters workCounters_;
     std::wstring focusedElementId_;
     input::WidgetFocusGroupMemory focusGroupMemory_;

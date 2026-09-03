@@ -2028,6 +2028,11 @@ private:
                 DrainPinnedSurfaceDiagnostics();
                 return 0;
             }
+            if (wParam ==
+                widgetrail::pinned::kPinnedResizeDiagnosticNotification) {
+                DrainPinnedResizeDiagnostics();
+                return 0;
+            }
             DrainPinnedSurfaceInputs();
             ReconcileCommittedEmbeddedMediaSurface();
             if (!pinnedSurfaceCoordinator_.pinned() ||
@@ -9542,6 +9547,60 @@ private:
         for (const auto& diagnostic :
                  pinnedSurfaceCoordinator_.TakeBackgroundSurfaceDiagnostics()) {
             AppendDiagnostic(L"Renderer pinned " + diagnostic);
+        }
+    }
+
+    void DrainPinnedResizeDiagnostics() {
+        const auto pinnedKey =
+            mediaSessions_.EndpointOwner(widgetrail::media::Endpoint::Pinned);
+        for (const auto& diagnostic :
+                 pinnedSurfaceCoordinator_.TakePinnedResizeCommitDiagnostics()) {
+            const auto* session = pinnedKey ? mediaSessions_.Find(*pinnedKey) : nullptr;
+            const bool exactSession = session && session->authority &&
+                session->coordinator &&
+                session->authority->sessionId ==
+                    diagnostic.committedViewport.region.mediaSessionId &&
+                session->authority->presentation ==
+                    EmbeddedMediaPresentationState::CompactPinned;
+            const auto lifecycle = exactSession
+                ? session->coordinator->state().lifecycle
+                : widgetrail::richmedia::Lifecycle::Absent;
+            const auto dimensionDirection = [&diagnostic](const bool horizontal) {
+                if (!diagnostic.previousClientExtent) return std::wstring_view{L"initial"};
+                const auto previous = horizontal
+                    ? diagnostic.previousClientExtent->cx
+                    : diagnostic.previousClientExtent->cy;
+                const auto current = horizontal
+                    ? diagnostic.currentClientExtent.cx
+                    : diagnostic.currentClientExtent.cy;
+                return current > previous ? std::wstring_view{L"grow"}
+                    : current < previous ? std::wstring_view{L"shrink"}
+                                         : std::wstring_view{L"same"};
+            };
+            const auto& region = diagnostic.committedViewport.region;
+            AppendActionCorrelation(
+                L"stage=pinned-resize-commit old=" +
+                    std::to_wstring(diagnostic.previousClientExtent
+                        ? diagnostic.previousClientExtent->cx : -1) + L"x" +
+                    std::to_wstring(diagnostic.previousClientExtent
+                        ? diagnostic.previousClientExtent->cy : -1) + L" new=" +
+                    std::to_wstring(diagnostic.currentClientExtent.cx) + L"x" +
+                    std::to_wstring(diagnostic.currentClientExtent.cy) +
+                L" horizontal=" + std::wstring(dimensionDirection(true)) +
+                L" vertical=" + std::wstring(dimensionDirection(false)) +
+                L" coalesced=" + std::to_wstring(diagnostic.coalescedResizeCount) +
+                L" bounds=" + std::to_wstring(region.bounds.x) + L"," +
+                    std::to_wstring(region.bounds.y) + L"," +
+                    std::to_wstring(region.bounds.width) + L"," +
+                    std::to_wstring(region.bounds.height) +
+                L" clip=" + std::to_wstring(region.clip.x) + L"," +
+                    std::to_wstring(region.clip.y) + L"," +
+                    std::to_wstring(region.clip.width) + L"," +
+                    std::to_wstring(region.clip.height) +
+                L" frame=" +
+                    std::to_wstring(diagnostic.committedViewport.frameGeneration) +
+                L" exact-session=" + (exactSession ? L"1" : L"0") +
+                L" lifecycle=" + std::to_wstring(static_cast<int>(lifecycle)));
         }
     }
 
