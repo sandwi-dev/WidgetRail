@@ -134,8 +134,35 @@ Endpoint contention must park the non-winning session rather than destroy it. Fu
 - An ordinary non-media pinned surface continues to work. If pinned endpoint policy permits only one visual endpoint, admission/arbitration is explicit and the losing media session parks without affecting its playback lifetime. Do not silently replace unrelated pinned content.
 - A compact-pinned session and a different overlay/fullscreen session may remain active simultaneously because they own distinct endpoints and distinct coordinators in the shared environment.
 - Compact commands and chrome updates must be session-keyed. Telemetry or re-entrant callbacks from a parked/overlay/fullscreen session must never update the compact chrome belonging to another session.
+- Preserve the host-owned compact controller contract: `X` toggles play/pause; `LT`/`RT` seek backward/forward by the session's declared step; `LB`/`RB` select previous/next only when declared; `B` exits compact interaction to click-through; and `View` returns to the tray. Route every held/repeated action through the exact `CompactPinned` session key.
 - Held buttons/repeat state, focus, and accessibility authority retire when compact presentation ownership changes, while the media session itself remains resident.
 - Tray unpin/repin, widget cycling, overlay hide/show, pinned-window retirement, widget removal, runtime replacement, and host shutdown must each have one explicit manager transition and one terminal/non-terminal classification.
+
+### Existing compact-pinned presentation mechanics to preserve
+
+WIDGE-178 replaces fragmented ownership; it must port the mature placement and anti-flicker mechanics already on `main`. Do not simplify these into a detach/recreate or show-then-position path:
+
+- [ ] Preserve the pinned aspect-fit and centering calculation in `WidgetSurfaceCoordinator::Paint`: use the pinned client area minus the one-DIP border, fit the declared aspect ratio, and center on both axes. Keep the synthetic `host.compact-media.viewport` bounds and clip coherent.
+- [ ] Publish pinned media geometry only after the pinned render completes successfully. Preserve the `committedMediaViewport_`, `mediaViewportGeometryDirty_`, `nextCommittedFrameGeneration_`, and `CurrentMediaViewport(...)` invariants behind the new per-session presentation record.
+- [ ] Dirty/recompute pinned geometry after resource-contract replacement, pinned-layout replacement or cycling, window move/resize, DPI/graphics lifecycle changes, and unpin/teardown. Reconcile media only after the pinned coordinator reports a successfully committed viewport.
+- [ ] Preserve exact geometry authority: live pinned surface, committed region, matching session ID, and selected pinned snapshot still declaring that exact session/presentation.
+- [ ] Preserve endpoint coordinate spaces. Ordinary overlay media uses content-local coordinates and the overlay content transform; compact media uses pinned-HWND endpoint-local coordinates.
+- [ ] Preserve relative clipping in `OverlayCompositionSurface::CommitExternalContentPresentation`: offset the external visual by host bounds, normalize clip coordinates against the visual origin, and clamp to visual width/height.
+- [ ] Preserve controller-local WebView2 bounds `{0, 0, width, height}` in `RichMediaSurfaceCoordinator::UpdateGeometry`. Never apply the host offset to both the DirectComposition visual and the controller, which recreates the historical double-offset bug.
+- [ ] Compute raster scale from the actual destination owner HWND. Do not reuse overlay DPI when the compact-pinned window may be on another monitor.
+- [ ] Resolve and validate destination HWND, exact committed viewport, bounds, clip, dimensions, DPI, and authority before mutating the live controller. `Pending` remains hidden/parked; `Invalid` fails closed.
+- [ ] Preserve live retargeting. `BeginPresentationTransfer` hides the controller and disables input; `CompletePresentationTransfer` changes root target/parent, applies local geometry and destination scale, commits presentation, and only then reveals/re-enables the controller. Do not create another controller and do not expose stale/default coordinates.
+- [ ] Preserve successful transfer ordering: create destination endpoint; resolve geometry; create visual target; hide/disable input; attach root and parent; apply local bounds and destination DPI; commit destination; retire source; reveal only if the destination is still current.
+- [ ] Preserve composition-first visibility. Commit external visual bounds, clip, and visibility before `SetVisible(true)`; if WebView visibility fails, roll the composition presentation back to hidden.
+- [ ] Preserve equivalent-presentation deduplication so playback telemetry does not cause redundant DirectComposition commits or flicker.
+- [ ] Preserve atomic endpoint retirement: removal/root changes require composition `Commit` and the existing completion wait. An uncertain removal, commit, or completion result invalidates/rebuilds the affected composition graph rather than trusting partially mutated fields.
+- [ ] Preserve unpin ordering through `beforeWindowRetirement_`: transfer or park media while the pinned HWND and committed geometry still exist, then destroy the pinned window.
+- [ ] Preserve the unattached parking target. When no visual endpoint is ready, retarget the same controller to the unattached visual, keep it hidden/non-interactive, and retire the former visible endpoint only after successful retarget.
+- [ ] Preserve pinned host-chrome layering above the video visual, with bounds synchronized to the same media region and visibility based on controller focus, scrub state, and playback.
+- [ ] Preserve compact progress, finite/bounded seek target calculation, scrub preview/commit/cancel, repaint, and accessibility publication without making playback telemetry a presentation-owner change.
+- [ ] Treat composition-graph invalidation as affecting every endpoint on that graph and reconcile every affected session from manager state; do not assume only the currently selected media session was affected.
+
+Historical commits that introduced or corrected these invariants must be inspected as evidence during Phase 0: `b2623de4` (committed pinned geometry/frame generation), `0958bb38` (visibility reconciliation), `8260e7fb` (presentation stability), `0195ece3` / `ac839ce3` / `ac58b39b` / `a54ba422` (compact presentation, ownership, composition, progress and seeking), and the integrated WIDGE-174 chain including atomic unpin, attached retarget, parking target, fail-closed endpoint recovery, geometry deferral, and refresh authority. Port the behavior into the new manager boundary; do not preserve the old mutable bound-session facade merely to reuse it.
 
 ## Removal inventory
 
@@ -411,6 +438,7 @@ The implementation task prepares this checklist; only the reviewer/user performs
 - [ ] Exercise compact pin while the owning widget is cycled away and back. The same session survives and controls remain current.
 - [ ] Start media in a second widget while YouTube remains resident. Both sessions remain independent; presenting or closing one does not retire the other.
 - [ ] Verify ordinary overlay controller input, fullscreen input, compact-pinned controls, Guide/B behavior, focus restoration, and media accessibility labels.
+- [ ] In Compact media, verify `X` play/pause, `LT`/`RT` session-step seeking, conditional `LB`/`RB` previous/next, `B` click-through exit, and `View` tray return before and after an ordinary-layout switch and unpin/repin.
 - [ ] Remove the media session declaration by ending/closing playback. Its controller is retired and no hidden undeclared playback remains.
 
 ## Final evidence and handoff
