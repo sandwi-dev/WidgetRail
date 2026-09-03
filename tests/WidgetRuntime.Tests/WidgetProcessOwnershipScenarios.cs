@@ -168,6 +168,129 @@ internal static class WidgetProcessOwnershipScenarios
         Equal(0, companion.RunCount);
     }
 
+    internal static async Task StartupPhasesRetainIndependentDeadlines()
+    {
+        var setupTokens = new ConcurrentQueue<(CancellationToken Token, bool WasCurrent)>();
+        var handshakeTokens = new ConcurrentQueue<(CancellationToken Token, bool WasCurrent)>();
+        var lifecycleTokens = new ConcurrentQueue<(CancellationToken Token, bool WasCurrent)>();
+        var replacementCompanion = new TrackingCompanion
+        {
+            LifecycleTokenObserved = token =>
+                lifecycleTokens.Enqueue((token, token.CanBeCanceled && !token.IsCancellationRequested)),
+        };
+        var hooks = new WidgetProcessClientTestHooks
+        {
+            BeforeProcessStartAsync = token =>
+            {
+                setupTokens.Enqueue((token, token.CanBeCanceled && !token.IsCancellationRequested));
+                return Task.CompletedTask;
+            },
+            AfterHandshakeAsync = token =>
+            {
+                handshakeTokens.Enqueue((token, token.CanBeCanceled && !token.IsCancellationRequested));
+                return Task.CompletedTask;
+            },
+        };
+        await using (var client = CreateClient(
+                         hooks,
+                         new TrackingCompanion(),
+                         replacementCompanion: replacementCompanion,
+                         connectTimeout: TimeSpan.FromSeconds(15)))
+        {
+            await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+            var failed = new TaskCompletionSource<WidgetFailure>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            client.Failed += (_, failure) => failed.TrySetResult(failure);
+            _ = await client.AdmitActionAsync(new WidgetActionEvent("crash", "button"));
+            _ = await failed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            var recovered = await client.GetSnapshotAsync();
+            Equal("runtime.test", recovered.WidgetInstanceId);
+            Equal(2, client.Starts);
+        }
+
+        Equal(2, setupTokens.Count);
+        Equal(2, handshakeTokens.Count);
+        Equal(1, lifecycleTokens.Count);
+        var setup = setupTokens.ToArray()[1];
+        var handshake = handshakeTokens.ToArray()[1];
+        var lifecycle = lifecycleTokens.Single();
+        True(setup.WasCurrent, "Pre-process setup did not receive a current bounded token.");
+        True(handshake.WasCurrent, "Successful handshake did not retain a current bounded token.");
+        True(lifecycle.WasCurrent, "Initial lifecycle did not receive a current bounded token.");
+        False(setup.Token.Equals(handshake.Token),
+            "Process startup reused the pre-process setup deadline for the handshake phase.");
+        False(handshake.Token.Equals(lifecycle.Token),
+            "Initial lifecycle reused the process-to-handshake deadline.");
+        False(setup.Token.Equals(lifecycle.Token),
+            "Initial lifecycle reused the pre-process setup deadline.");
+
+        var hangingLifecycle = new TrackingCompanion
+        {
+            HoldLifecycle = true,
+        };
+        var timeoutHooks = new WidgetProcessClientTestHooks();
+        await using var timeoutClient = CreateClient(
+            timeoutHooks,
+            new TrackingCompanion(),
+            replacementCompanion: hangingLifecycle,
+            connectTimeout: TimeSpan.FromSeconds(15),
+            requestTimeout: TimeSpan.FromMilliseconds(100));
+        await timeoutClient.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+        var crashFailure = new TaskCompletionSource<WidgetFailure>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        timeoutClient.Failed += (_, failure) => crashFailure.TrySetResult(failure);
+        _ = await timeoutClient.AdmitActionAsync(new WidgetActionEvent("crash", "button"));
+        _ = await crashFailure.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var lifecycleFailure = new TaskCompletionSource<WidgetFailure>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        timeoutClient.Failed += (_, failure) => lifecycleFailure.TrySetResult(failure);
+        await ThrowsAsync<TimeoutException>(async () => await timeoutClient.GetSnapshotAsync());
+        var failure = await lifecycleFailure.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Equal(WidgetFailureReason.RequestTimedOut, failure.Reason);
+        True(failure.Exception is TimeoutException,
+            "Forced worker exit replaced the initial lifecycle timeout identity.");
+    }
+
+    internal static async Task StartupOverlapWaitsForCompletion()
+    {
+        var handshakeReached = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseHandshake = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var lifecycleReached = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var hooks = new WidgetProcessClientTestHooks
+        {
+            AfterHandshakeAsync = async token =>
+            {
+                handshakeReached.TrySetResult();
+                await releaseHandshake.Task.WaitAsync(token);
+            },
+        };
+        await using var client = CreateClient(
+            hooks,
+            new TrackingCompanion
+            {
+                LifecycleTokenObserved = _ => lifecycleReached.TrySetResult(),
+            },
+            connectTimeout: TimeSpan.FromSeconds(15));
+
+        var startup = client.GetSnapshotAsync();
+        await handshakeReached.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var overlappingLifecycle = client.SetLifecycleStateAsync(
+            WidgetLifecycleState.Visible);
+        False(lifecycleReached.Task.IsCompleted,
+            "An overlapping caller bypassed the incomplete startup transaction.");
+
+        releaseHandshake.TrySetResult();
+        _ = await startup;
+        await overlappingLifecycle;
+        True(lifecycleReached.Task.IsCompleted,
+            "The serialized lifecycle caller did not resume after startup completed.");
+    }
+
     internal static async Task StaleNotificationsCannotCrossReplacement()
     {
         await AssertStalePublicationSuppressedAsync(
@@ -463,7 +586,10 @@ internal static class WidgetProcessOwnershipScenarios
         IWidgetProcessCompanionSession? companion = null,
         Func<IDisposable>? processLeaseFactory = null,
         IReadOnlyList<string>? extraArguments = null,
-        IWidgetProcessCompanionSession? replacementCompanion = null)
+        IWidgetProcessCompanionSession? replacementCompanion = null,
+        TimeSpan? connectTimeout = null,
+        TimeSpan? requestTimeout = null,
+        TimeSpan? setupTimeout = null)
     {
         var executable = Environment.ProcessPath ??
             throw new InvalidOperationException("Test process path is unavailable.");
@@ -473,8 +599,8 @@ internal static class WidgetProcessOwnershipScenarios
             ExecutablePath = executable,
             Arguments = extraArguments ?? [],
             WidgetInstanceId = "runtime.test",
-            ConnectTimeout = TimeSpan.FromSeconds(3),
-            RequestTimeout = TimeSpan.FromSeconds(2),
+            ConnectTimeout = connectTimeout ?? TimeSpan.FromSeconds(3),
+            RequestTimeout = requestTimeout ?? TimeSpan.FromSeconds(2),
             MaximumRestartAttempts = 2,
             MaximumMessageBytes = 64 * 1024,
             CompanionSessionFactory = companion is null
@@ -484,6 +610,7 @@ internal static class WidgetProcessOwnershipScenarios
                         ? companion
                         : replacementCompanion,
             ProcessLeaseFactory = processLeaseFactory,
+            ContentLeaseTimeout = setupTimeout ?? TimeSpan.FromSeconds(5),
             IsolationPolicy = WidgetWorkerIsolationPolicy.HostTrustedJobOnly,
         }, TimeProvider.System, hooks);
     }
@@ -612,6 +739,8 @@ internal static class WidgetProcessOwnershipScenarios
         internal List<WidgetDashboardGestureAuthority> GrantedAuthorities { get; } = [];
         internal ConcurrentQueue<long> RevokedInputSequences { get; } = [];
         internal bool HoldGestureGrant { get; init; }
+        internal bool HoldLifecycle { get; init; }
+        internal Action<CancellationToken>? LifecycleTokenObserved { get; init; }
         internal TaskCompletionSource GrantStarted { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource GrantCompleted { get; } = new(
@@ -628,9 +757,14 @@ internal static class WidgetProcessOwnershipScenarios
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         }
 
-        public Task SetLifecycleStateAsync(
+        public async Task SetLifecycleStateAsync(
             WidgetLifecycleState state,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default)
+        {
+            LifecycleTokenObserved?.Invoke(cancellationToken);
+            if (HoldLifecycle)
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
 
         public async Task GrantDashboardGestureAuthorityAsync(
             WidgetDashboardGestureAuthority authority,

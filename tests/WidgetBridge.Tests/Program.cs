@@ -5070,7 +5070,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
             media.Commands);
         Assert.True(Flatten(initial.Root).Any(node =>
                 node.Id == "media-shell.fullscreen" &&
-                node.ActionId == "host.embeddedMedia.enterFullscreen"),
+                node.ActionId == "host.embeddedMediaSession.enterFullscreen"),
             "Built sample omitted its exact fullscreen action declaration.");
         Assert.Equal<EmbeddedMediaPlaybackCommand?>(null, media.PendingCommand);
 
@@ -5221,7 +5221,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
         }
 
         var (play, playCommand) = await CommandAsync(
-            "host.embeddedMedia.togglePlayback", "media-shell.play");
+            "host.embeddedMediaSession.togglePlayback", "media-shell.play");
         Assert.Equal(
             ProtocolConstants.EmbeddedMediaSessionVersion,
             play.ProtocolVersion);
@@ -5240,7 +5240,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
             node => node.Id == "media-shell.title").Text);
 
         var (pause, pauseCommand) = await CommandAsync(
-            "host.embeddedMedia.togglePlayback", "media-shell.play");
+            "host.embeddedMediaSession.togglePlayback", "media-shell.play");
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Pause, pauseCommand.Kind);
         var paused = await AcknowledgeAsync(
             pause, pauseCommand, EmbeddedMediaPlaybackState.Paused, 8);
@@ -5254,7 +5254,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
             node => node.Id == "media-shell.title").Text);
 
         var (resume, resumeCommand) = await CommandAsync(
-            "host.embeddedMedia.togglePlayback", "media-shell.play");
+            "host.embeddedMediaSession.togglePlayback", "media-shell.play");
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Play, resumeCommand.Kind);
         var compatibleResume = await ObserveAsync(
             resume, EmbeddedMediaPlaybackState.Paused, 8);
@@ -5265,14 +5265,14 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
             resume, resumeCommand, EmbeddedMediaPlaybackState.Playing, 8);
 
         var (seekForward, seekForwardCommand) = await CommandAsync(
-            "host.embeddedMedia.seekForward", "media-shell.seek-forward");
+            "host.embeddedMediaSession.seekForward", "media-shell.seek-forward");
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Seek, seekForwardCommand.Kind);
         Assert.Equal(10D, seekForwardCommand.PositionSeconds);
         _ = await AcknowledgeAsync(
             seekForward, seekForwardCommand, EmbeddedMediaPlaybackState.Playing, 10);
 
         var (next, nextCommand) = await CommandAsync(
-            "host.embeddedMedia.next", "media-shell.next");
+            "host.embeddedMediaSession.next", "media-shell.next");
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Load, nextCommand.Kind);
         Assert.True(!string.Equals(
             playCommand.MediaKey, nextCommand.MediaKey, StringComparison.Ordinal),
@@ -5285,14 +5285,14 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
             "Next acknowledgement did not project the current native scene title.");
 
         var (previous, previousCommand) = await CommandAsync(
-            "host.embeddedMedia.previous", "media-shell.previous");
+            "host.embeddedMediaSession.previous", "media-shell.previous");
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Load, previousCommand.Kind);
         Assert.Equal(playCommand.MediaKey, previousCommand.MediaKey);
         _ = await AcknowledgeAsync(
             previous, previousCommand, EmbeddedMediaPlaybackState.Ready, 0);
 
         var (finalSeek, finalSeekCommand) = await CommandAsync(
-            "host.embeddedMedia.seekForward", "media-shell.seek-forward");
+            "host.embeddedMediaSession.seekForward", "media-shell.seek-forward");
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Seek, finalSeekCommand.Kind);
         Assert.True(finalSeekCommand.Sequence > previousCommand.Sequence &&
             previousCommand.Sequence > nextCommand.Sequence &&

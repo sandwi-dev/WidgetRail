@@ -351,6 +351,27 @@ void ClearStartupError() {
         error);
 }
 
+void AppendDiagnostic(const std::wstring_view message);
+
+// WebView2 delivers controller, navigation, and message callbacks from
+// Chromium frames that are compiled without exception support. A C++ exception
+// unwinding out of a host callback into those frames has no handler and fails
+// the process fast with FAST_FAIL_FATAL_APP_EXIT rather than surfacing. Every
+// host callback body handed to RichMediaSurfaceCoordinator must be contained
+// here so a host fault is logged and fails that session closed instead of
+// terminating the overlay.
+template <typename Callable>
+void InvokeMediaCallbackGuarded(
+    const std::wstring_view site, Callable&& body) noexcept {
+    try {
+        std::forward<Callable>(body)();
+    } catch (...) {
+        AppendDiagnostic(
+            L"Embedded media callback fault site=" + std::wstring{site} +
+            L" " + widgetrail::DescribeCurrentException());
+    }
+}
+
 void AppendDiagnostic(const std::wstring_view message) {
     static std::mutex logMutex;
     std::lock_guard lock(logMutex);
@@ -2355,7 +2376,11 @@ private:
                 // The next successful native render republishes one exact box.
                 if (session->committedGeometry)
                     session->committedGeometry->visible = false;
-                (void)session->coordinator->SetVisible(false);
+                // A failing hide faults the controller, which retires this
+                // session and releases the registry reference from inside the
+                // coordinator's own callback.
+                const auto coordinator = session->coordinator;
+                (void)coordinator->SetVisible(false);
             }
             return 0;
         }
@@ -2377,7 +2402,8 @@ private:
                        session && session->coordinator && session->authority) {
                 if (session->committedGeometry)
                     session->committedGeometry->visible = false;
-                (void)session->coordinator->SetVisible(false);
+                const auto coordinator = session->coordinator;
+                (void)coordinator->SetVisible(false);
             }
             QueueDisplayEnvironmentRefresh(widgetrail::DisplayEnvironmentChange::Dpi);
             return 0;
@@ -2477,12 +2503,17 @@ private:
         configuration.initiallyVisible = true;
         configuration.profileRootDirectory = richMediaProfileDirectory_;
         configuration.diagnostic = [this](const std::wstring_view message) {
-            AppendDiagnostic(std::wstring{message});
+            InvokeMediaCallbackGuarded(L"proof-diagnostic", [&] {
+                AppendDiagnostic(std::wstring{message});
+            });
         };
         configuration.invalidate = [this, sessionKey] {
-            OnRichMediaStateChanged(sessionKey);
+            InvokeMediaCallbackGuarded(L"proof-invalidate", [&] {
+                OnRichMediaStateChanged(sessionKey);
+            });
         };
         configuration.setPresentationVisible = [this](const bool visible) {
+          InvokeMediaCallbackGuarded(L"proof-presentation-visible", [&] {
             RECT currentBounds{};
             if (!window_ || !GetClientRect(window_, &currentBounds)) return;
             widgetrail::OverlayCompositionSurface::CommitTiming timing;
@@ -2491,6 +2522,7 @@ private:
             if (FAILED(result))
                 AppendDiagnostic(L"Rich media presentation commit failed hr=" +
                                  std::to_wstring(static_cast<long>(result)));
+          });
         };
         const HRESULT initialize =
             session->coordinator->Initialize(std::move(configuration));
@@ -2827,6 +2859,12 @@ private:
         const auto* snapshot = SnapshotFor(authority.widgetId);
         const auto* descriptor = sessions_.FindDescriptor(
             authority.widgetId);
+        // Geometry has three meanings. Invalid fails closed and destroys the
+        // session, so it is reserved for a real contract violation. A frame
+        // that simply does not carry this session's viewport yet - a retained
+        // or inert refresh, a snapshot whose sequence has moved on, a commit
+        // still describing another widget - is Pending: the session stays
+        // resident and parks until a frame that does carry it arrives.
         if (!snapshot || !snapshot->embeddedMediaSession ||
             snapshot->embeddedMediaSession->id != authority.sessionId ||
             snapshot->sequence != expectedSequence || !descriptor ||
@@ -2834,7 +2872,7 @@ private:
             descriptor->runtimeGeneration != authority.runtimeGeneration ||
             descriptor->presentationGeneration != authority.presentationGeneration ||
             !window_) {
-            return {OrdinaryEmbeddedMediaGeometryStatus::Invalid, std::nullopt};
+            return {};
         }
         if (!committedWidgetVisualState_) return {};
         const bool committedIdentityCurrent =
@@ -2847,15 +2885,25 @@ private:
             committedWidgetVisualState_->presentationGeneration ==
                 authority.presentationGeneration &&
             committedWidgetVisualState_->snapshotSequence == expectedSequence;
-        if (!committedIdentityCurrent || !lastWidgetRenderResult_.succeeded) {
-            return {OrdinaryEmbeddedMediaGeometryStatus::Invalid, std::nullopt};
-        }
-        if (lastWidgetRenderResult_.mediaViewportRegions.size() != 1) {
-            return {OrdinaryEmbeddedMediaGeometryStatus::Invalid, std::nullopt};
-        }
+        // The committed frame describes another widget or sequence, or the
+        // render did not succeed. Both are transient and must not revoke a
+        // live session.
+        if (!committedIdentityCurrent || !lastWidgetRenderResult_.succeeded)
+            return {};
+        // A frame without exactly one media viewport has not published this
+        // session's geometry yet. Park rather than fail closed.
+        if (lastWidgetRenderResult_.mediaViewportRegions.size() != 1) return {};
         const auto& viewport = lastWidgetRenderResult_.mediaViewportRegions.front();
-        if (viewport.mediaSessionId != authority.sessionId)
+        // A published viewport bound to a different session is an actual
+        // contract violation and still fails closed.
+        if (viewport.mediaSessionId != authority.sessionId) {
+            AppendDiagnostic(
+                L"Embedded media geometry invalid reason=viewport-session-mismatch"
+                L" widget=" + authority.widgetId +
+                L" authority-session=" + authority.sessionId +
+                L" viewport-session=" + viewport.mediaSessionId);
             return {OrdinaryEmbeddedMediaGeometryStatus::Invalid, std::nullopt};
+        }
         auto geometry = widgetrail::ResolveMediaViewportPresentationGeometry(
             {viewport.bounds.x, viewport.bounds.y,
              viewport.bounds.width, viewport.bounds.height},
@@ -2863,6 +2911,18 @@ private:
              viewport.clip.width, viewport.clip.height},
             MediaPixelsPerDip(window_));
         if (!geometry) {
+            AppendDiagnostic(
+                L"Embedded media geometry invalid reason=unresolvable"
+                L" widget=" + authority.widgetId +
+                L" bounds=" + std::to_wstring(viewport.bounds.x) + L"," +
+                std::to_wstring(viewport.bounds.y) + L"," +
+                std::to_wstring(viewport.bounds.width) + L"," +
+                std::to_wstring(viewport.bounds.height) +
+                L" clip=" + std::to_wstring(viewport.clip.x) + L"," +
+                std::to_wstring(viewport.clip.y) + L"," +
+                std::to_wstring(viewport.clip.width) + L"," +
+                std::to_wstring(viewport.clip.height) +
+                L" scale=" + std::to_wstring(MediaPixelsPerDip(window_)));
             return {OrdinaryEmbeddedMediaGeometryStatus::Invalid, std::nullopt};
         }
         return {OrdinaryEmbeddedMediaGeometryStatus::Valid, std::move(geometry)};
@@ -3661,44 +3721,6 @@ private:
             source == EmbeddedMediaPresentationState::Parked;
         const std::wstring widgetId{authority.widgetId};
         const std::wstring transferReason{reason};
-        const bool resumeDetached = mediaSurface->presentationTransferPending();
-        bool destinationEndpointInitialized = false;
-        bool destinationVisualCreated = false;
-        const auto failTransfer = [
-            this, destination, mediaSurface, sessionKey, sourceAuthority,
-            sourceBounds, sourceClip, widgetId, transferReason,
-            &destinationEndpointInitialized, &destinationVisualCreated](
-            const std::wstring_view operation, const HRESULT failure) {
-            AppendActionCorrelation(
-                L"stage=embedded-media-transfer-fault widget=" + widgetId +
-                L" operation=" + std::wstring{operation} + L" hr=" +
-                std::to_wstring(static_cast<long>(failure)) + L" reason=" +
-                transferReason);
-            if (destinationVisualCreated) {
-                (void)RetireEmbeddedMediaCompositionEndpoint(
-                    destination, L"failed transfer destination");
-            } else if (destination ==
-                           EmbeddedMediaPresentationState::CompactPinned &&
-                       destinationEndpointInitialized) {
-                (void)RetireEmbeddedMediaCompositionEndpoint(
-                    destination, L"failed transfer pinned endpoint");
-            }
-            // The manager owns the fail-closed transition after this exact
-            // operation reports failure. No selected-session state is restored.
-            return EmbeddedMediaTransferResult::Failed;
-        };
-        // A composition controller whose RootVisualTarget was cleared is not a
-        // reusable presentation owner. Only the live-retarget path below may
-        // preserve a session across projection changes.
-        if (resumeDetached)
-            return failTransfer(L"detached-controller", E_UNEXPECTED);
-        const HWND owner = EmbeddedMediaOwnerWindow(destination);
-        if (!owner || desired.ownerWindow != owner)
-            return failTransfer(L"destination-owner", E_HANDLE);
-        if (destination == EmbeddedMediaPresentationState::CompactPinned &&
-            !pinnedSurfaceCoordinator_.CurrentMediaViewport(
-                authority.sessionId))
-            return failTransfer(L"destination-viewport", E_INVALIDARG);
         const auto presentationName = [](
                 const EmbeddedMediaPresentationState presentation) {
             switch (presentation) {
@@ -3713,6 +3735,83 @@ private:
             }
             return std::wstring_view{L"unknown"};
         };
+        const bool resumeDetached = mediaSurface->presentationTransferPending();
+        bool destinationEndpointInitialized = false;
+        bool destinationVisualCreated = false;
+        // Every abandoned transfer below is classified deliberately. Fatal
+        // means the session cannot be trusted again: its authority is gone, or
+        // its controller or composition graph was left in a state this host
+        // cannot reason about. Deferred means the step simply could not run
+        // yet; the session stays resident and the next reconcile retries.
+        // Both dispositions run the same destination cleanup, because a
+        // half-created endpoint must never outlive the attempt that made it.
+        const auto abandonTransfer = [
+            this, destination, mediaSurface, sessionKey, sourceAuthority,
+            sourceBounds, sourceClip, widgetId, transferReason,
+            &destinationEndpointInitialized, &destinationVisualCreated](
+            const std::wstring_view operation, const HRESULT failure,
+            const bool fatal) {
+            AppendActionCorrelation(
+                std::wstring{fatal
+                    ? L"stage=embedded-media-transfer-fault widget="
+                    : L"stage=embedded-media-transfer-deferred widget="} +
+                widgetId +
+                L" operation=" + std::wstring{operation} + L" hr=" +
+                std::to_wstring(static_cast<long>(failure)) + L" reason=" +
+                transferReason);
+            if (destinationVisualCreated) {
+                (void)RetireEmbeddedMediaCompositionEndpoint(
+                    destination, L"failed transfer destination");
+            } else if (destination ==
+                           EmbeddedMediaPresentationState::CompactPinned &&
+                       destinationEndpointInitialized) {
+                (void)RetireEmbeddedMediaCompositionEndpoint(
+                    destination, L"failed transfer pinned endpoint");
+            }
+            // The manager owns the transition after this exact operation
+            // reports its disposition. No selected-session state is restored.
+            return fatal ? EmbeddedMediaTransferResult::Failed
+                         : EmbeddedMediaTransferResult::Deferred;
+        };
+        const auto failTransfer = [&abandonTransfer](
+            const std::wstring_view operation, const HRESULT failure) {
+            return abandonTransfer(operation, failure, true);
+        };
+        const auto deferTransfer = [&abandonTransfer](
+            const std::wstring_view operation, const HRESULT failure) {
+            return abandonTransfer(operation, failure, false);
+        };
+        // A composition controller whose RootVisualTarget was cleared is not a
+        // reusable presentation owner. Only the live-retarget path below may
+        // preserve a session across projection changes.
+        if (resumeDetached)
+            return failTransfer(L"detached-controller", E_UNEXPECTED);
+        // Initialize returns once the shared environment exists, while the
+        // controller is still created asynchronously. Attaching a presentation
+        // before it exists is rejected by the coordinator admission guard, and
+        // the failure cleanup would retire the destination visual and the
+        // session that the pending controller is still being created for.
+        // Defer instead; OnRichMediaStateChanged reconciles this session again
+        // when the controller reaches a presentable lifecycle.
+        const auto controllerLifecycle = mediaSurface->state().lifecycle;
+        if (controllerLifecycle !=
+                widgetrail::richmedia::Lifecycle::ReadyHidden &&
+            controllerLifecycle != widgetrail::richmedia::Lifecycle::Visible) {
+            if (transferPending) *transferPending = true;
+            AppendActionCorrelation(
+                L"stage=embedded-media-transfer-deferred widget=" + widgetId +
+                L" destination=" +
+                std::wstring{presentationName(destination)} +
+                L" reason=" + transferReason);
+            return EmbeddedMediaTransferResult::Deferred;
+        }
+        const HWND owner = EmbeddedMediaOwnerWindow(destination);
+        if (!owner || desired.ownerWindow != owner)
+            return deferTransfer(L"destination-owner", E_HANDLE);
+        if (destination == EmbeddedMediaPresentationState::CompactPinned &&
+            !pinnedSurfaceCoordinator_.CurrentMediaViewport(
+                authority.sessionId))
+            return deferTransfer(L"destination-viewport", E_INVALIDARG);
         AppendActionCorrelation(
             L"stage=embedded-media-transfer-begin widget=" +
             widgetId + L" source=" +
@@ -3727,7 +3826,14 @@ private:
             std::wstring error;
             if (!compositionSurface_.InitializePinnedExternalContentEndpoint(owner, error)) {
                 AppendDiagnostic(L"Embedded media pinned endpoint failed: " + error);
-                return failTransfer(L"pinned-endpoint-initialize", E_FAIL);
+                // The pinned endpoint can be momentarily unavailable while a
+                // prior pin retires. Defer so the next reconcile retries
+                // instead of destroying a live media session.
+                if (transferPending) *transferPending = true;
+                AppendActionCorrelation(
+                    L"stage=embedded-media-transfer-deferred widget=" + widgetId +
+                    L" destination=pinned reason=pinned-endpoint-initialize");
+                return EmbeddedMediaTransferResult::Deferred;
             }
             destinationEndpointInitialized = true;
         }
@@ -3739,25 +3845,25 @@ private:
             hostClip.right <= hostClip.left || hostClip.bottom <= hostClip.top ||
             controllerBounds.right <= controllerBounds.left ||
             controllerBounds.bottom <= controllerBounds.top)
-            return failTransfer(L"geometry-invalid", E_INVALIDARG);
+            return deferTransfer(L"geometry-invalid", E_INVALIDARG);
         Microsoft::WRL::ComPtr<IUnknown> target;
         result = compositionSurface_.CreateExternalContentTarget(
             CompositionEndpoint(destination), &target);
         if (FAILED(result))
-            return failTransfer(L"composition-target-create", result);
+            return deferTransfer(L"composition-target-create", result);
         destinationVisualCreated = true;
         const auto endpoint = CompositionEndpoint(destination);
         widgetrail::OverlayCompositionSurface::CommitTiming stageTiming;
         result = compositionSurface_.StageExternalContentPresentation(
             endpoint, hostBounds, hostClip, stageTiming);
         if (FAILED(result))
-            return failTransfer(L"destination-presentation-stage", result);
+            return deferTransfer(L"destination-presentation-stage", result);
         RecordEmbeddedMediaPresentation(
             endpoint, stageTiming, L"transfer-destination-staged");
         widgetrail::richmedia::PresentationTransferFailureStage failureStage{};
         result = mediaSurface->BeginPresentationRetarget(&failureStage);
         if (FAILED(result))
-            return failTransfer(
+            return deferTransfer(
                 widgetrail::richmedia::PresentationTransferFailureStageValue(
                     failureStage), result);
         AppendActionCorrelation(
@@ -3775,6 +3881,7 @@ private:
         presentation.setPresentationVisible =
             [this, sessionKey, destination, endpoint,
              presentationRevealEnabled](const bool visible) {
+          InvokeMediaCallbackGuarded(L"transfer-visibility", [&] {
             auto* current = mediaSessions_.Find(sessionKey);
             if (!current || !current->authority ||
                 !current->committedGeometry ||
@@ -3786,6 +3893,7 @@ private:
                 endpoint, geometry.bounds, geometry.clip,
                 *presentationRevealEnabled && visible, timing);
             RecordEmbeddedMediaPresentation(endpoint, timing, L"transfer-visibility");
+          });
         };
         result = mediaSurface->CompletePresentationTransfer(
             std::move(presentation), &failureStage);
@@ -3796,15 +3904,21 @@ private:
         auto* current = mediaSessions_.Find(sessionKey);
         if (!current || current->coordinator.get() != mediaSurface.get() ||
             !current->authority)
-            return failTransfer(L"authority-changed", E_UNEXPECTED);
+            return deferTransfer(L"authority-changed", E_UNEXPECTED);
         current->authority->projectionDeferralRecorded = false;
         current->clientBounds = hostBounds;
         current->clientClip = hostClip;
-        current->authority->pinnedFrameGeneration =
+        const auto committedPinnedViewport =
             destination == EmbeddedMediaPresentationState::CompactPinned
                 ? pinnedSurfaceCoordinator_.CurrentMediaViewport(
-                      current->authority->sessionId)->frameGeneration
-                : 0;
+                      current->authority->sessionId)
+                : std::nullopt;
+        if (destination == EmbeddedMediaPresentationState::CompactPinned &&
+            !committedPinnedViewport)
+            return deferTransfer(L"destination-viewport", E_INVALIDARG);
+        current->authority->pinnedFrameGeneration = committedPinnedViewport
+            ? committedPinnedViewport->frameGeneration
+            : 0;
         *presentationRevealEnabled = true;
         const bool presentationVisible = desired.visible &&
             mediaSurface->state().lifecycle ==
@@ -3812,13 +3926,21 @@ private:
         result = compositionSurface_.CommitExternalContentPresentation(
             endpoint, hostBounds, hostClip, presentationVisible, detachTiming);
         if (FAILED(result))
-            return failTransfer(L"destination-presentation-commit", result);
+            return deferTransfer(L"destination-presentation-commit", result);
         RecordEmbeddedMediaPresentation(
             endpoint, detachTiming, L"transfer-destination-committed");
         const HRESULT visibilityResult = mediaSurface->SetVisible(
             desired.visible);
         if (FAILED(visibilityResult))
-            return failTransfer(L"controller-visibility-finalize", visibilityResult);
+            return deferTransfer(L"controller-visibility-finalize", visibilityResult);
+        if (desired.visible &&
+            mediaSurface->state().lifecycle !=
+                widgetrail::richmedia::Lifecycle::Visible) {
+            // The controller accepted the request but is not showing yet.
+            // Defer so a later reconcile reveals it rather than recording this
+            // presentation as complete.
+            return deferTransfer(L"controller-visibility-pending", S_FALSE);
+        }
         if (!sourceParked &&
             CompositionEndpoint(source) != CompositionEndpoint(destination)) {
             const auto sourceEndpoint = MediaEndpoint(source);
@@ -3826,7 +3948,7 @@ private:
                 ? mediaSessions_.EndpointOwner(*sourceEndpoint)
                 : std::nullopt;
             if (!sourceOwner || *sourceOwner != sessionKey)
-                return failTransfer(L"source-endpoint-authority", E_ACCESSDENIED);
+                return deferTransfer(L"source-endpoint-authority", E_ACCESSDENIED);
             const auto retirement = RetireEmbeddedMediaCompositionEndpoint(
                 source, L"transfer source retirement");
             result = retirement.cleanupResult;
@@ -3855,23 +3977,49 @@ private:
         const EmbeddedMediaPresentationState presentation,
         const widgetrail::media::EndpointGeometry& desired,
         const std::wstring_view reason) {
+        // These are currency preconditions, not corruption. When one does not
+        // hold the update simply does not apply to the session's present
+        // state, which happens routinely while an overlay hide/show or route
+        // change is still settling. Defer so the next reconcile re-plans;
+        // failing here would destroy a live media session.
         if (session.key != sessionKey || !session.authority ||
             !session.coordinator || !session.committedGeometry ||
             session.authority->presentation != presentation ||
             !EmbeddedMediaEndpointOwnerCurrent(sessionKey, presentation) ||
             desired.ownerWindow != EmbeddedMediaOwnerWindow(presentation)) {
-            return E_ACCESSDENIED;
+            AppendDiagnostic(
+                L"Embedded media update deferred reason=" +
+                std::wstring{reason} +
+                L" key-match=" + (session.key == sessionKey ? L"1" : L"0") +
+                L" authority=" + (session.authority ? L"1" : L"0") +
+                L" coordinator=" + (session.coordinator ? L"1" : L"0") +
+                L" committed-geometry=" +
+                (session.committedGeometry ? L"1" : L"0") +
+                L" presentation-match=" +
+                (session.authority &&
+                 session.authority->presentation == presentation
+                    ? L"1" : L"0") +
+                L" endpoint-owner-current=" +
+                (EmbeddedMediaEndpointOwnerCurrent(sessionKey, presentation)
+                    ? L"1" : L"0") +
+                L" owner-window-match=" +
+                (desired.ownerWindow == EmbeddedMediaOwnerWindow(presentation)
+                    ? L"1" : L"0"));
+            return E_PENDING;
         }
 
         const auto mediaSurface = session.coordinator;
+        // A geometry or visibility step that cannot apply right now is not a
+        // session fault. Defer so the session survives and the next reconcile
+        // reapplies the current geometry.
         HRESULT result = mediaSurface->UpdateGeometry(
             desired.controllerBounds, desired.rasterScale);
-        if (FAILED(result)) return result;
+        if (FAILED(result)) return E_PENDING;
 
         const auto endpoint = CompositionEndpoint(presentation);
         if (!desired.visible) {
             result = mediaSurface->SetVisible(false);
-            if (FAILED(result)) return result;
+            if (FAILED(result)) return E_PENDING;
         }
 
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
@@ -3880,9 +4028,27 @@ private:
         RecordEmbeddedMediaPresentation(endpoint, timing, reason);
         if (FAILED(result)) {
             (void)mediaSurface->SetVisible(false);
-            return result;
+            return E_PENDING;
         }
 
+        if (presentation ==
+                EmbeddedMediaPresentationState::OverlayFullscreen) {
+            AppendDiagnostic(
+                L"Embedded media fullscreen update visible=" +
+                std::wstring{desired.visible ? L"1" : L"0"} +
+                L" lifecycle=" + std::to_wstring(static_cast<int>(
+                    mediaSurface->state().lifecycle)) +
+                L" bounds=" + std::to_wstring(desired.bounds.left) + L"," +
+                std::to_wstring(desired.bounds.top) + L"," +
+                std::to_wstring(desired.bounds.right) + L"," +
+                std::to_wstring(desired.bounds.bottom) +
+                L" controller=" +
+                std::to_wstring(desired.controllerBounds.left) + L"," +
+                std::to_wstring(desired.controllerBounds.top) + L"," +
+                std::to_wstring(desired.controllerBounds.right) + L"," +
+                std::to_wstring(desired.controllerBounds.bottom) +
+                L" commit-hr=" + std::to_wstring(static_cast<long>(result)));
+        }
         if (desired.visible) {
             result = mediaSurface->SetVisible(true);
             if (FAILED(result)) {
@@ -3891,7 +4057,22 @@ private:
                     endpoint, desired.bounds, desired.clip, false, rollbackTiming);
                 RecordEmbeddedMediaPresentation(
                     endpoint, rollbackTiming, L"visibility-rollback");
-                return result;
+                return E_PENDING;
+            }
+            // SetVisible reports success without revealing the controller when
+            // the document is not ready yet. Reporting success here would let
+            // the manager record this geometry as committed, and its
+            // equivalent-presentation dedupe would never retry the reveal,
+            // leaving a permanently hidden controller that still plays audio.
+            if (mediaSurface->state().lifecycle !=
+                widgetrail::richmedia::Lifecycle::Visible) {
+                AppendDiagnostic(
+                    L"Embedded media reveal deferred reason=" +
+                    std::wstring{reason} + L" presentation=" +
+                    std::to_wstring(static_cast<int>(presentation)) +
+                    L" lifecycle=" + std::to_wstring(static_cast<int>(
+                        mediaSurface->state().lifecycle)));
+                return E_PENDING;
             }
         }
 
@@ -4085,6 +4266,43 @@ private:
                 desiredGeometry,
             },
             operations);
+        // A fault destroys the session, so record the exact reconcile input
+        // that produced it. Reconcile reports E_INVALIDARG after running the
+        // fault effect.
+        if (result == E_INVALIDARG) {
+            AppendDiagnostic(
+                L"Embedded media reconcile faulted widget=" + authority.widgetId +
+                L" session=" + authority.sessionId +
+                L" destination=" +
+                std::to_wstring(static_cast<int>(destination)) +
+                L" geometry=" + std::to_wstring(static_cast<int>(geometry)) +
+                L" endpoint-requested=" +
+                (destination != EmbeddedMediaPresentationState::Parked
+                    ? L"1" : L"0") +
+                L" endpoint-available=" + (endpointAvailable ? L"1" : L"0") +
+                L" desired-geometry=" + (desiredGeometry ? L"1" : L"0") +
+                L" declaration-current=" + (declarationCurrent ? L"1" : L"0") +
+                L" document-current=" + (documentCurrent ? L"1" : L"0") +
+                L" override=" + (committedGeometryOverride ? L"1" : L"0") +
+                L" pinned=" + (pinnedSurfaceCoordinator_.pinned() ? L"1" : L"0") +
+                L" compact=" +
+                (pinnedSurfaceCoordinator_.compactMediaPresentation()
+                    ? L"1" : L"0") +
+                L" surface=" + std::to_wstring(
+                    static_cast<int>(state_.surface())) +
+                L" reason=" + std::wstring{reason});
+        }
+        if (FAILED(result) && result != E_PENDING) {
+            AppendDiagnostic(
+                L"Embedded media reconcile failed widget=" + authority.widgetId +
+                L" destination=" +
+                std::to_wstring(static_cast<int>(destination)) +
+                L" geometry=" + std::to_wstring(static_cast<int>(geometry)) +
+                L" endpoint-available=" + (endpointAvailable ? L"1" : L"0") +
+                L" desired-geometry=" + (desiredGeometry ? L"1" : L"0") +
+                L" hr=" + std::to_wstring(static_cast<long>(result)) +
+                L" reason=" + std::wstring{reason});
+        }
         if (result == E_PENDING && transferPending) *transferPending = true;
         if (SUCCEEDED(result) && destination ==
                 EmbeddedMediaPresentationState::CompactPinned)
@@ -4096,6 +4314,9 @@ private:
         EmbeddedMediaSession& session,
         const std::wstring_view reason) {
         if (!session.authority || !session.coordinator) return S_FALSE;
+        // Retirement erases this record, so keep the controller alive for the
+        // ordered teardown below.
+        const auto mediaSurface = session.coordinator;
         auto& authority = *session.authority;
         const bool commandRetired =
             !authority.commandOrigin ||
@@ -4111,7 +4332,7 @@ private:
                 authority.widgetId,
                 widgetrail::WidgetSessionFailureStage::Protocol,
                 L"Embedded media command cancellation could not be delivered.");
-        session.coordinator->BeginSessionTeardown();
+        mediaSurface->BeginSessionTeardown();
         const auto presentation = authority.presentation;
         widgetrail::OverlayCompositionSurface::ExternalContentRetirement retirement{
             S_FALSE, false, false};
@@ -4122,7 +4343,7 @@ private:
                     presentation, L"session stop");
             }
         }
-        session.coordinator->CompleteSessionTeardown();
+        mediaSurface->CompleteSessionTeardown();
         if (embeddedMediaAccessibilityOwner_ &&
             *embeddedMediaAccessibilityOwner_ == session.key) {
             accessibilityProvider_.SetEmbeddedFragmentRoot(nullptr);
@@ -4138,7 +4359,7 @@ private:
             (retirement.surfaceInvalidated ? L"1" : L"0") +
             L" surface-recovered=" +
             (retirement.surfaceRecovered ? L"1" : L"0"));
-        session.coordinator->Shutdown();
+        mediaSurface->Shutdown();
         // Teardown above is irreversible. A composition cleanup failure is
         // preserved in diagnostics and may rebuild the graph, but it cannot
         // leave this closed coordinator registered as a live endpoint owner.
@@ -4227,7 +4448,26 @@ private:
             session->authority->presentation !=
                 EmbeddedMediaPresentationState::CompactPinned ||
             session->authority->widgetId !=
-                pinnedSurfaceCoordinator_.widgetId()) return;
+                pinnedSurfaceCoordinator_.widgetId()) {
+            // No media session owns the pinned endpoint, but the endpoint is
+            // bound to the HWND that is about to be destroyed. A composition
+            // target and content visual left behind here outlive their window
+            // and make the next pin inherit an orphaned endpoint, so retire it
+            // unconditionally. Retirement is a no-op when nothing is resident.
+            const auto orphanRetirement = RetireEmbeddedMediaCompositionEndpoint(
+                EmbeddedMediaPresentationState::CompactPinned,
+                L"pinned window retirement without media owner");
+            if (FAILED(orphanRetirement.cleanupResult) ||
+                orphanRetirement.surfaceInvalidated) {
+                AppendDiagnostic(
+                    L"Embedded media pinned endpoint orphan retirement hr=" +
+                    std::to_wstring(static_cast<long>(
+                        orphanRetirement.cleanupResult)) +
+                    L" surface-invalidated=" +
+                    (orphanRetirement.surfaceInvalidated ? L"1" : L"0"));
+            }
+            return;
+        }
         const std::wstring retiringWidgetId{session->authority->widgetId};
         AppendActionCorrelation(
             L"stage=embedded-media-retirement-begin widget=" +
@@ -4249,12 +4489,40 @@ private:
         }
         const bool returnToOverlay =
             OverlayOwnsEmbeddedMediaViewport(*sessionKey);
-        const HRESULT retirementResult = ReconcileEmbeddedMediaPresentation(
+        HRESULT retirementResult = ReconcileEmbeddedMediaPresentation(
             *sessionKey,
             returnToOverlay
                 ? EmbeddedMediaPresentationState::OverlayViewport
                 : EmbeddedMediaPresentationState::Parked,
             L"pinned-window-retirement");
+        // There is no later retry at window retirement: this HWND is about to
+        // be destroyed. A deferred move away from the pinned endpoint must be
+        // resolved here, first by forcing the session to park.
+        if (retirementResult == E_PENDING && returnToOverlay) {
+            retirementResult = ReconcileEmbeddedMediaPresentation(
+                *sessionKey, EmbeddedMediaPresentationState::Parked,
+                L"pinned-window-retirement-park",
+                nullptr, widgetrail::media::ParkingReason::EndpointUnavailable);
+        }
+        if (retirementResult == E_PENDING) {
+            // Parking still could not run. The session stays resident and
+            // playing, but its endpoint cannot outlive the window, so retire
+            // the composition endpoint directly and let the next reconcile
+            // reattach the controller wherever it belongs.
+            const auto forced = RetireEmbeddedMediaCompositionEndpoint(
+                EmbeddedMediaPresentationState::CompactPinned,
+                L"pinned window retirement forced");
+            AppendDiagnostic(
+                L"Embedded media pinned endpoint force-retired widget=" +
+                retiringWidgetId + L" hr=" +
+                std::to_wstring(static_cast<long>(forced.cleanupResult)) +
+                L" surface-invalidated=" +
+                (forced.surfaceInvalidated ? L"1" : L"0"));
+            AppendActionCorrelation(
+                L"stage=embedded-media-retirement-complete widget=" +
+                retiringWidgetId + L" outcome=endpoint-forced");
+            return;
+        }
         const bool retained = SUCCEEDED(retirementResult);
         if (!retained) {
             AppendActionCorrelation(
@@ -4275,15 +4543,70 @@ private:
         EmbeddedMediaSession& session,
         const widgetrail::media::ParkingReason parkingReason,
         const std::wstring_view reason) {
-        if (!session.authority || !session.coordinator) return E_UNEXPECTED;
+        // Fatal park failures leave the controller or composition graph in a
+        // state this host cannot reason about. Everything else is a deferral:
+        // the session stays exactly as it was and the next reconcile retries.
+        const auto parkFailure = [&](const std::wstring_view stage,
+                                     const HRESULT failure) {
+            AppendDiagnostic(
+                L"Embedded media park failed stage=" + std::wstring{stage} +
+                L" reason=" + std::wstring{reason} +
+                L" hr=" + std::to_wstring(static_cast<long>(failure)));
+            return failure;
+        };
+        const auto parkDefer = [&](const std::wstring_view stage,
+                                   const HRESULT failure) {
+            AppendDiagnostic(
+                L"Embedded media park deferred stage=" + std::wstring{stage} +
+                L" reason=" + std::wstring{reason} +
+                L" hr=" + std::to_wstring(static_cast<long>(failure)));
+            return E_PENDING;
+        };
+        if (!session.authority || !session.coordinator)
+            return parkFailure(L"authority", E_UNEXPECTED);
         auto& authority = *session.authority;
         const auto mediaSurface = session.coordinator;
         const auto sessionKey = session.key;
         if (mediaSurface->presentationTransferPending()) return E_PENDING;
-        if (authority.presentation == EmbeddedMediaPresentationState::Parked)
-            return mediaSurface->SetVisible(false);
-        if (!window_ || !session.clientBounds || !session.clientClip)
-            return E_UNEXPECTED;
+        if (authority.presentation == EmbeddedMediaPresentationState::Parked) {
+            // Already parked. Hiding a controller that is not in a presentable
+            // lifecycle is not a session fault; it simply cannot apply yet.
+            const HRESULT hidden = mediaSurface->SetVisible(false);
+            if (FAILED(hidden)) {
+                AppendDiagnostic(
+                    L"Embedded media park hide deferred reason=" +
+                    std::wstring{reason} + L" lifecycle=" +
+                    std::to_wstring(static_cast<int>(
+                        mediaSurface->state().lifecycle)) +
+                    L" hr=" + std::to_wstring(static_cast<long>(hidden)));
+                return E_PENDING;
+            }
+            return hidden;
+        }
+        if (!window_) return parkDefer(L"host-window", E_UNEXPECTED);
+        // The manager's committed endpoint geometry is the authoritative
+        // record; fall back to it when the executor's copy is absent.
+        const auto priorBounds = session.clientBounds
+            ? session.clientBounds
+            : session.committedGeometry
+                ? std::optional<RECT>{session.committedGeometry->bounds}
+                : std::nullopt;
+        if (!priorBounds) {
+            // There is no live composition geometry to retarget away from, so
+            // there is nothing to park. Hide the controller and let the
+            // manager record the parked state.
+            const HRESULT hidden = mediaSurface->SetVisible(false);
+            if (FAILED(hidden)) {
+                AppendDiagnostic(
+                    L"Embedded media park hide deferred reason=" +
+                    std::wstring{reason} + L" lifecycle=" +
+                    std::to_wstring(static_cast<int>(
+                        mediaSurface->state().lifecycle)) +
+                    L" hr=" + std::to_wstring(static_cast<long>(hidden)));
+                return E_PENDING;
+            }
+            return S_OK;
+        }
         const bool retainPresentationIntent =
             parkingReason == widgetrail::media::ParkingReason::HostHidden ||
             parkingReason == widgetrail::media::ParkingReason::WidgetCycled ||
@@ -4291,26 +4614,26 @@ private:
                 widgetrail::media::ParkingReason::EndpointUnavailable;
         if (!retainPresentationIntent)
             mediaSessions_.ClearPresentationRequest(sessionKey);
-        const auto priorBounds = *session.clientBounds;
-        const LONG width = priorBounds.right - priorBounds.left;
-        const LONG height = priorBounds.bottom - priorBounds.top;
-        if (width <= 0 || height <= 0) return E_INVALIDARG;
+        const LONG width = priorBounds->right - priorBounds->left;
+        const LONG height = priorBounds->bottom - priorBounds->top;
+        if (width <= 0 || height <= 0)
+            return parkDefer(L"prior-bounds", E_INVALIDARG);
         Microsoft::WRL::ComPtr<IUnknown> parkingTarget;
         HRESULT result = EnsureEmbeddedMediaParkingTarget(
             sessionKey, parkingTarget);
         if (FAILED(result)) {
             AppendActionCorrelation(
-                L"stage=embedded-media-transfer-fault widget=" +
+                L"stage=embedded-media-transfer-deferred widget=" +
                 authority.widgetId +
                 L" operation=parking-target-create hr=" +
                 std::to_wstring(static_cast<long>(result)));
-            return result;
+            return parkDefer(L"parking-target-create", result);
         }
         result = mediaSurface->SetVisible(false);
-        if (FAILED(result)) return result;
+        if (FAILED(result)) return parkDefer(L"hide", result);
         widgetrail::richmedia::PresentationTransferFailureStage failureStage{};
         result = mediaSurface->BeginPresentationRetarget(&failureStage);
-        if (FAILED(result)) return result;
+        if (FAILED(result)) return parkDefer(L"begin-retarget", result);
         widgetrail::richmedia::PresentationTarget presentation;
         presentation.ownerWindow = window_;
         presentation.compositionTarget = parkingTarget;
@@ -4322,7 +4645,9 @@ private:
         auto* current = mediaSessions_.Find(sessionKey);
         if (FAILED(result) || !current ||
             current->coordinator.get() != mediaSurface.get() ||
-            !current->authority) return FAILED(result) ? result : E_UNEXPECTED;
+            !current->authority)
+            return parkFailure(
+                L"complete-retarget", FAILED(result) ? result : E_UNEXPECTED);
 
         const auto source = current->authority->presentation;
         const auto sourceEndpoint = MediaEndpoint(source);
@@ -4330,7 +4655,7 @@ private:
             ? mediaSessions_.EndpointOwner(*sourceEndpoint)
             : std::nullopt;
         if (!sourceEndpoint || !sourceOwner || *sourceOwner != sessionKey)
-            return E_ACCESSDENIED;
+            return parkDefer(L"source-endpoint-authority", E_ACCESSDENIED);
         const auto retirement = RetireEmbeddedMediaCompositionEndpoint(
             source, L"parking source retirement");
         result = retirement.cleanupResult;
@@ -4373,6 +4698,12 @@ private:
             declaresViewport, snapshot.root);
         const auto sessionKey = MakeEmbeddedMediaSessionKey(
             widgetId, snapshot, *descriptor, declaration);
+        const auto activeSessionKey = CurrentEmbeddedMediaSessionKey(
+            state_.activeWidget());
+        const bool sessionOwnsOverlayFullscreen =
+            state_.surface() == widgetrail::Surface::Widget &&
+            activeSessionKey && *activeSessionKey == sessionKey &&
+            OverlayFullscreenMediaRequested();
         auto* session = mediaSessions_.Find(sessionKey);
         bool creatingSession = session == nullptr;
         if (!hasDeclaredViewport && creatingSession) {
@@ -4500,9 +4831,7 @@ private:
                 pinnedSurfaceCoordinator_.widgetId() == widgetId &&
                 pinnedSurfaceCoordinator_.compactMediaPresentation()
                     ? EmbeddedMediaPresentationState::CompactPinned
-                    : session->presentationRequest &&
-                          session->presentationRequest->target ==
-                              EmbeddedMediaPresentationState::OverlayFullscreen
+                    : sessionOwnsOverlayFullscreen
                         ? EmbeddedMediaPresentationState::OverlayFullscreen
                         : EmbeddedMediaPresentationState::OverlayViewport;
             const bool projectionCurrent = session->authority &&
@@ -4543,8 +4872,10 @@ private:
             }
             if (retainedIdentityCurrent)
                 (void)session->coordinator->SetVisible(false);
-            session->clientBounds.reset();
-            session->clientClip.reset();
+            // Keep the last committed client geometry. The session is still
+            // recorded as presenting, and parking it later retargets away from
+            // exactly these bounds. Discarding them here made the next park
+            // fail its geometry authority and destroy a live session.
             return;
         }
         const auto retainCurrentSession = [&] {
@@ -4557,7 +4888,7 @@ private:
                 pinnedSurfaceCoordinator_.widgetId() == widgetId &&
                 pinnedSurfaceCoordinator_.compactMediaPresentation()
                     ? EmbeddedMediaPresentationState::CompactPinned
-                    : OverlayFullscreenMediaRequested()
+                    : sessionOwnsOverlayFullscreen
                         ? EmbeddedMediaPresentationState::OverlayFullscreen
                         : EmbeddedMediaPresentationState::OverlayViewport;
             const auto pinnedPresentation =
@@ -4671,7 +5002,7 @@ private:
             pinnedSurfaceCoordinator_.widgetId() == widgetId &&
             pinnedSurfaceCoordinator_.compactMediaPresentation()
                 ? EmbeddedMediaPresentationState::CompactPinned
-                : OverlayFullscreenMediaRequested()
+                : sessionOwnsOverlayFullscreen
                     ? EmbeddedMediaPresentationState::OverlayFullscreen
                     : EmbeddedMediaPresentationState::OverlayViewport;
         EmbeddedMediaAuthority authority;
@@ -4748,17 +5079,24 @@ private:
         configuration.allowedFrameDomainFamilies =
             bundle->surface.allowedFrameDomainFamilies;
         configuration.diagnostic = [this](const std::wstring_view message) {
-            AppendDiagnostic(std::wstring{message});
+            InvokeMediaCallbackGuarded(L"diagnostic", [&] {
+                AppendDiagnostic(std::wstring{message});
+            });
         };
         configuration.invalidate = [this, sessionKey] {
-            OnRichMediaStateChanged(sessionKey);
+            InvokeMediaCallbackGuarded(L"invalidate", [&] {
+                OnRichMediaStateChanged(sessionKey);
+            });
         };
         configuration.playbackEvent = [this, sessionKey](
             const widgetrail::richmedia::PlaybackEvent& event) {
-            (void)OnEmbeddedMediaPlaybackEvent(sessionKey, event);
+            InvokeMediaCallbackGuarded(L"playback-event", [&] {
+                (void)OnEmbeddedMediaPlaybackEvent(sessionKey, event);
+            });
         };
         configuration.setPresentationVisible =
             [this, sessionKey](const bool visible) {
+          InvokeMediaCallbackGuarded(L"presentation-visible", [&] {
             const auto* current = mediaSessions_.Find(sessionKey);
             if (!current || !current->authority ||
                 !current->committedGeometry) return;
@@ -4774,7 +5112,26 @@ private:
             RecordEmbeddedMediaPresentation(endpoint, timing, L"visibility");
             if (FAILED(result)) AppendDiagnostic(
                 L"Embedded media presentation commit failed hr=" +
-                std::to_wstring(static_cast<long>(result)));
+                std::to_wstring(static_cast<long>(result)) +
+                L" endpoint=" + std::wstring{endpoint ==
+                    widgetrail::OverlayCompositionSurface::
+                        ExternalContentEndpoint::Pinned ? L"pinned" : L"overlay"} +
+                L" visible=" + (visible ? L"1" : L"0") +
+                L" bounds=" + std::to_wstring(geometry.bounds.left) + L"," +
+                std::to_wstring(geometry.bounds.top) + L"," +
+                std::to_wstring(geometry.bounds.right) + L"," +
+                std::to_wstring(geometry.bounds.bottom) +
+                L" clip=" + std::to_wstring(geometry.clip.left) + L"," +
+                std::to_wstring(geometry.clip.top) + L"," +
+                std::to_wstring(geometry.clip.right) + L"," +
+                std::to_wstring(geometry.clip.bottom) +
+                L" rejected=" + std::to_wstring(
+                    static_cast<int>(timing.externalCommitRejection)) +
+                L" lifecycle=" + std::to_wstring(static_cast<int>(
+                    current->coordinator
+                        ? current->coordinator->state().lifecycle
+                        : widgetrail::richmedia::Lifecycle::Absent)));
+          });
         };
         const HRESULT initialize =
             session->coordinator->Initialize(std::move(configuration));
@@ -4798,6 +5155,8 @@ private:
             L"Embedded media admitted widget=" + std::wstring{widgetId} +
             L" surface=" + declaration.id + L" sequence=" +
             std::to_wstring(snapshot.sequence));
+        // The controller may still be creating. A deferred presentation keeps
+        // the session resident until OnRichMediaStateChanged reconciles it.
         const HRESULT presentationResult = ReconcileEmbeddedMediaPresentation(
             sessionKey, presentation, L"initial-admission");
         if (FAILED(presentationResult) && presentationResult != E_PENDING) {
@@ -4809,25 +5168,24 @@ private:
         DispatchPendingEmbeddedMediaCommand(sessionKey);
     }
 
-    void ReconcileCommittedEmbeddedMediaSurface(
+    void ReconcileCommittedEmbeddedMediaPresentation(
         const EmbeddedMediaSessionKey& sessionKey) {
-        if (richMediaProof_) return;
         ClearStaleOverlayFullscreenMediaActivation();
         const auto* session = mediaSessions_.Find(sessionKey);
         if (!session || !session->authority) return;
         const std::wstring widgetId{session->authority->widgetId};
-        const auto* snapshot = SnapshotFor(widgetId);
-        if (!snapshot) return;
-        ReconcileEmbeddedMediaSurface(
-            widgetId, *snapshot, sessions_.FindDescriptor(widgetId));
-        session = mediaSessions_.Find(sessionKey);
-        if (!session || !session->authority) return;
+        const auto activeSessionKey = CurrentEmbeddedMediaSessionKey(
+            state_.activeWidget());
+        const bool sessionOwnsOverlayFullscreen =
+            state_.surface() == widgetrail::Surface::Widget &&
+            activeSessionKey && *activeSessionKey == sessionKey &&
+            OverlayFullscreenMediaRequested();
         const auto destination =
             pinnedSurfaceCoordinator_.pinned() &&
             pinnedSurfaceCoordinator_.widgetId() == widgetId &&
             pinnedSurfaceCoordinator_.compactMediaPresentation()
                 ? EmbeddedMediaPresentationState::CompactPinned
-                : OverlayFullscreenMediaRequested()
+                : sessionOwnsOverlayFullscreen
                     ? EmbeddedMediaPresentationState::OverlayFullscreen
                     : state_.surface() == widgetrail::Surface::Widget &&
                           state_.activeWidget() == widgetId
@@ -4842,18 +5200,47 @@ private:
                 : widgetrail::media::ParkingReason::EndpointUnavailable);
     }
 
+    void ReconcileCommittedEmbeddedMediaSurface(
+        const EmbeddedMediaSessionKey& sessionKey) {
+        if (richMediaProof_) return;
+        const auto* session = mediaSessions_.Find(sessionKey);
+        if (!session || !session->authority) return;
+        const std::wstring widgetId{session->authority->widgetId};
+        const auto currentKey = CurrentEmbeddedMediaSessionKey(widgetId);
+        if (!currentKey || *currentKey != sessionKey) return;
+        const auto* snapshot = SnapshotFor(widgetId);
+        if (!snapshot) return;
+        ReconcileEmbeddedMediaSurface(
+            widgetId, *snapshot, sessions_.FindDescriptor(widgetId));
+        ReconcileCommittedEmbeddedMediaPresentation(sessionKey);
+    }
+
     void ReconcileCommittedEmbeddedMediaSurface() {
         if (richMediaProof_) return;
+        std::vector<EmbeddedMediaSessionKey> reconciledSessionKeys;
         if (state_.surface() == widgetrail::Surface::Widget) {
-            if (const auto key =
-                    CurrentEmbeddedMediaSessionKey(state_.activeWidget())) {
-                ReconcileCommittedEmbeddedMediaSurface(*key);
-                return;
+            const std::wstring widgetId{state_.activeWidget()};
+            if (const auto* snapshot = SnapshotFor(widgetId)) {
+                ReconcileEmbeddedMediaSurface(
+                    widgetId, *snapshot, sessions_.FindDescriptor(widgetId));
+            }
+            if (const auto activeSessionKey =
+                    CurrentEmbeddedMediaSessionKey(widgetId)) {
+                ReconcileCommittedEmbeddedMediaPresentation(*activeSessionKey);
+                reconciledSessionKeys.push_back(*activeSessionKey);
             }
         }
-        if (const auto key =
-                mediaSessions_.EndpointOwner(widgetrail::media::Endpoint::Pinned))
-            ReconcileCommittedEmbeddedMediaSurface(*key);
+        const auto reconcileEndpointOwner = [&](const widgetrail::media::Endpoint endpoint) {
+            const auto sessionKey = mediaSessions_.EndpointOwner(endpoint);
+            if (!sessionKey ||
+                std::find(
+                    reconciledSessionKeys.begin(), reconciledSessionKeys.end(),
+                    *sessionKey) != reconciledSessionKeys.end()) return;
+            ReconcileCommittedEmbeddedMediaSurface(*sessionKey);
+            reconciledSessionKeys.push_back(*sessionKey);
+        };
+        reconcileEndpointOwner(widgetrail::media::Endpoint::Overlay);
+        reconcileEndpointOwner(widgetrail::media::Endpoint::Pinned);
     }
 
     void Shutdown() {
@@ -5884,22 +6271,23 @@ private:
                     mediaSession && mediaSession->authority &&
                         mediaSession->coordinator);
             }
-            if (pinnedWidget) ReconcileEmbeddedMediaSurface(
-                event.widgetId, *current, sessions_.FindDescriptor(event.widgetId));
+            const bool deferMediaUntilOrdinaryCommit =
+                !pinnedWidget &&
+                state_.surface() == widgetrail::Surface::Widget &&
+                state_.activeWidget() == event.widgetId;
+            if (!deferMediaUntilOrdinaryCommit) {
+                ReconcileEmbeddedMediaSurface(
+                    event.widgetId, *current,
+                    sessions_.FindDescriptor(event.widgetId));
+            }
             const auto currentWidget = state_.surface() == widgetrail::Surface::Widget
                 ? state_.activeWidget()
                 : state_.selectedWidget();
             if (currentWidget != event.widgetId) {
-                if (!pinnedWidget)
-                    ReconcileEmbeddedMediaSurface(
-                        event.widgetId, *current,
-                        sessions_.FindDescriptor(event.widgetId));
                 admissionTrace_.RecordAdmissionPresentation(
                     event.correlationId, event.widgetId, false, GetTickCount64());
                 continue;
             }
-            if (!pinnedWidget) ReconcileEmbeddedMediaSurface(
-                event.widgetId, *current, sessions_.FindDescriptor(event.widgetId));
             const bool newerRefreshRequested =
                 sessions_.RefreshState(event.widgetId) ==
                     widgetrail::WidgetRefreshState::RefreshRequested;
@@ -14804,6 +15192,33 @@ private:
                         metrics->physicalPixelsPerDip)
                     : std::nullopt;
                 if (resolved) {
+                    AppendDiagnostic(
+                        L"Embedded media fullscreen geometry widget=" +
+                        std::wstring{state_.activeWidget()} +
+                        L" window-visible=" +
+                        (IsWindowVisible(window_) ? L"1" : L"0") +
+                        L" host=" +
+                        std::to_wstring(resolved->hostBounds.left) + L"," +
+                        std::to_wstring(resolved->hostBounds.top) + L"," +
+                        std::to_wstring(resolved->hostBounds.right) + L"," +
+                        std::to_wstring(resolved->hostBounds.bottom) +
+                        L" controller=" +
+                        std::to_wstring(resolved->controllerBounds.left) + L"," +
+                        std::to_wstring(resolved->controllerBounds.top) + L"," +
+                        std::to_wstring(resolved->controllerBounds.right) + L"," +
+                        std::to_wstring(resolved->controllerBounds.bottom) +
+                        L" scale=" + std::to_wstring(
+                            metrics->physicalPixelsPerDip) +
+                        L" viewport-dip=" +
+                        std::to_wstring(metrics->viewportWidthDip) + L"x" +
+                        std::to_wstring(metrics->viewportHeightDip) +
+                        L" surface=" +
+                        std::to_wstring(compositionSurface_.width()) + L"x" +
+                        std::to_wstring(compositionSurface_.height()) +
+                        L" desired-extent=" +
+                        std::to_wstring(DesiredPresentationExtentDip().widthDip) +
+                        L"x" +
+                        std::to_wstring(DesiredPresentationExtentDip().heightDip));
                     set.overlayFullscreenGeometry =
                         CompositionFrameSet::OverlayFullscreenGeometry{
                             *sessionKey,

@@ -635,7 +635,7 @@ HRESULT RichMediaSurfaceCoordinator::BeginController() noexcept {
 HRESULT RichMediaSurfaceCoordinator::OnControllerCreated(
     const std::shared_ptr<CallbackLease>& lease, const HRESULT result,
     ICoreWebView2CompositionController* controller) noexcept {
-    if (!IsCurrentCallback(lease, false) ||
+    if (teardownRequested_ || !IsCurrentCallback(lease, false) ||
         state_.lifecycle != Lifecycle::ControllerCreating) return S_FALSE;
     if (FAILED(result) || !controller) { Fault(L"controller-create", result); return S_OK; }
     controller_ = controller;
@@ -660,6 +660,12 @@ HRESULT RichMediaSurfaceCoordinator::OnControllerCreated(
     if (configuration_.setPresentationVisible) configuration_.setPresentationVisible(false);
     Emit(L"Rich media lifecycle=ready-hidden");
     if (configuration_.invalidate) configuration_.invalidate();
+    // The host callbacks above run arbitrary reconciliation and can retire
+    // this session, which resets core_ and the callback lease underneath this
+    // frame. Re-establish that this coordinator still owns a live document
+    // before navigating it.
+    if (teardownRequested_ || teardownBegun_ ||
+        !IsCurrentCallback(lease, false) || !core_) return S_OK;
     state_.authority.documentGeneration = ++nextDocumentGeneration_;
     lease->authority.documentGeneration = state_.authority.documentGeneration;
     pageUri_ = configuration_.origin.empty()
@@ -2038,6 +2044,11 @@ void RichMediaSurfaceCoordinator::Shutdown() noexcept {
 
 void RichMediaSurfaceCoordinator::BeginSessionTeardown() noexcept {
     if (state_.lifecycle == Lifecycle::Absent || teardownBegun_) return;
+    // The wait below dispatches messages, which lets WebView2 deliver a
+    // pending controller creation for this exact coordinator. Refuse that
+    // adoption up front so the doomed callback cannot run a full
+    // initialization and notify the host about a session being retired.
+    teardownRequested_ = true;
     sessionTeardownResult_ = {};
     retrySurfaceGeneration_ = state_.lifecycle == Lifecycle::Faulted
         ? state_.authority.surfaceGeneration : 0;
@@ -2121,6 +2132,7 @@ void RichMediaSurfaceCoordinator::BeginSessionTeardown() noexcept {
     sessionTeardownResult_.environmentRetained =
         environmentLifecycle_ == EnvironmentLifecycle::Ready && environment_;
     teardownBegun_ = true;
+    teardownRequested_ = false;
 }
 
 void RichMediaSurfaceCoordinator::CompleteSessionTeardown() noexcept {

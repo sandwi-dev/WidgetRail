@@ -65,7 +65,7 @@ public sealed class EmbeddedMediaScenarioTests
         Assert.IsNull(widget.Render().EmbeddedMediaSession!.PendingCommand);
 
         await widget.OnActionAsync(new WidgetActionEvent(
-            "host.embeddedMedia.next", "media.next"));
+            "host.embeddedMediaSession.next", "media.next"));
         var next = widget.Render().EmbeddedMediaSession!.PendingCommand!;
         Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Load, next.Kind);
         Assert.AreEqual("horizon-video-1", next.MediaKey);
@@ -113,7 +113,7 @@ public sealed class EmbeddedMediaScenarioTests
             sequence: 1, commandSequence: load.Sequence,
             mediaKey: load.MediaKey, EmbeddedMediaPlaybackState.Paused));
         await widget.OnActionAsync(new WidgetActionEvent(
-            "host.embeddedMedia.seekForward", "media.next"));
+            "host.embeddedMediaSession.seekForward", "media.next"));
         var seek = widget.Render().EmbeddedMediaSession!.PendingCommand!;
         await widget.OnEmbeddedMediaPlaybackEventAsync(Event(
             sequence: 2, commandSequence: seek.Sequence,

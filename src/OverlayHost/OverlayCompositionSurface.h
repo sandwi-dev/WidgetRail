@@ -96,10 +96,24 @@ public:
         bool drawing{};
     };
 
+    // Names the exact precondition that rejected an external-content commit so
+    // a caller can report why the endpoint refused the presentation.
+    enum class ExternalCommitRejection {
+        None,
+        Device,
+        Visual,
+        Parent,
+        Bounds,
+        ClipBounds,
+        DegenerateClip,
+    };
+
     struct CommitTiming final {
         std::uint64_t commitMicroseconds{};
         bool waitedForCompletion{};
         bool externalPresentationCommitted{};
+        ExternalCommitRejection externalCommitRejection{
+            ExternalCommitRejection::None};
     };
 
     struct ExternalContentCommitCounters final {
@@ -254,6 +268,10 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionTarget> target_;
     Microsoft::WRL::ComPtr<IDCompositionTarget> chromeTarget_;
     Microsoft::WRL::ComPtr<IDCompositionTarget> pinnedExternalTarget_;
+    // The pinned HWND the endpoint above targets. A DirectComposition
+    // target is bound to one window, so a new pinned window requires a
+    // rebuilt endpoint while the same window can reuse it.
+    HWND pinnedExternalWindow_{};
     HWND contentWindow_{};
     HWND chromeWindow_{};
     Microsoft::WRL::ComPtr<ID2D1Factory1> initializationFactory_;

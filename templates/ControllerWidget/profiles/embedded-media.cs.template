@@ -53,19 +53,19 @@ public sealed class {{WidgetName}} : Widget
             var playing = _playbackState == EmbeddedMediaPlaybackState.Playing;
             var unavailable = !_sessionResident && pending is null ||
                               _playbackState == EmbeddedMediaPlaybackState.Error;
-            var previous = UI.Button("", "host.embeddedMedia.previous", "media.previous")
+            var previous = UI.Button("", "host.embeddedMediaSession.previous", "media.previous")
                 .Icon(WidgetGlyph.Previous, "Previous source")
                 .Disabled(unavailable).Busy(pending?.Kind == EmbeddedMediaPlaybackCommandKind.Load);
-            var play = UI.Button("", "host.embeddedMedia.togglePlayback", "media.toggle")
+            var play = UI.Button("", "host.embeddedMediaSession.togglePlayback", "media.toggle")
                 .Icon(playing ? WidgetGlyph.Pause : WidgetGlyph.Play,
                     playing ? "Pause media" : "Play media")
                 .Disabled(unavailable).Busy(pending?.Kind is EmbeddedMediaPlaybackCommandKind.Play or
                     EmbeddedMediaPlaybackCommandKind.Pause);
-            var next = UI.Button("", "host.embeddedMedia.next", "media.next")
+            var next = UI.Button("", "host.embeddedMediaSession.next", "media.next")
                 .Icon(WidgetGlyph.Next, "Next source")
                 .Disabled(unavailable).Busy(pending?.Kind == EmbeddedMediaPlaybackCommandKind.Load);
             var timeline = UI.Slider(_position, 0, Math.Max(1, _duration), SeekStepSeconds,
-                    "host.embeddedMedia.seek", "media.timeline", "Playback position",
+                    "host.embeddedMediaSession.seek", "media.timeline", "Playback position",
                     $"{FormatTime(_position)} of {FormatTime(_duration)}")
                 .RequireControllerActivation()
                 .Disabled(unavailable).Busy(pending?.Kind == EmbeddedMediaPlaybackCommandKind.Seek);
@@ -143,22 +143,22 @@ public sealed class {{WidgetName}} : Widget
 
             switch (action.ActionId)
             {
-                case "host.embeddedMedia.togglePlayback":
+                case "host.embeddedMediaSession.togglePlayback":
                     QueueCommand(
                         _playbackState == EmbeddedMediaPlaybackState.Playing
                             ? EmbeddedMediaPlaybackCommandKind.Pause
                             : EmbeddedMediaPlaybackCommandKind.Play,
                         _mediaKey);
                     break;
-                case "host.embeddedMedia.seekBackward":
+                case "host.embeddedMediaSession.seekBackward":
                     QueueCommand(EmbeddedMediaPlaybackCommandKind.Seek, _mediaKey,
                         Math.Max(0, _position - SeekStepSeconds));
                     break;
-                case "host.embeddedMedia.seekForward":
+                case "host.embeddedMediaSession.seekForward":
                     QueueCommand(EmbeddedMediaPlaybackCommandKind.Seek, _mediaKey,
                         Math.Min(_duration, _position + SeekStepSeconds));
                     break;
-                case "host.embeddedMedia.seek" when action.RequestedValue is { } requested &&
+                case "host.embeddedMediaSession.seek" when action.RequestedValue is { } requested &&
                                                     double.IsFinite(requested):
                     QueueCommand(EmbeddedMediaPlaybackCommandKind.Seek, _mediaKey,
                         Math.Clamp(requested, 0, Math.Max(0, _duration)));
@@ -168,10 +168,10 @@ public sealed class {{WidgetName}} : Widget
                     QueueCommand(EmbeddedMediaPlaybackCommandKind.SetVolume, _mediaKey,
                         volume: Math.Clamp(requested, 0, 1));
                     break;
-                case "host.embeddedMedia.previous":
+                case "host.embeddedMediaSession.previous":
                     QueueSource(-1);
                     break;
-                case "host.embeddedMedia.next":
+                case "host.embeddedMediaSession.next":
                     QueueSource(1);
                     break;
             }

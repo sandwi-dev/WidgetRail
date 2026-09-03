@@ -110,10 +110,10 @@ bindings fail closed, and semantic previews display a deterministic native
 placeholder rather than creating WebView2.
 
 Visible media chrome remains ordinary declarative UI. Host-native buttons may
-bind their action IDs to `host.embeddedMedia.togglePlayback`,
-`host.embeddedMedia.seekBackward`, `host.embeddedMedia.seekForward`,
-`host.embeddedMedia.previous`, `host.embeddedMedia.next`, or
-`host.embeddedMedia.back`; the host admits those actions only against the exact
+bind their action IDs to `host.embeddedMediaSession.togglePlayback`,
+`host.embeddedMediaSession.seekBackward`, `host.embeddedMediaSession.seekForward`,
+`host.embeddedMediaSession.previous`, `host.embeddedMediaSession.next`, or
+`host.embeddedMediaSession.back`; the host admits those actions only against the exact
 current widget, session, viewport, input scope, focus, sequence, and declared
 closed command set. The browser never receives the widget focus graph or raw
 controller keys. Overlay-root B remains host Back, while ordinary pinned B
@@ -680,7 +680,7 @@ Entering and leaving preserve the sealed adapter, controller, document, and
 playback session. The host owns safe-work-area placement, aspect fit, DPI,
 native guide, focus, accessibility, and return to the authored layout.
 
-Offer entry with the reserved `host.embeddedMedia.enterFullscreen` action; the
+Offer entry with the reserved `host.embeddedMediaSession.enterFullscreen` action; the
 host leaves the mode on B without routing it to the widget, and View remains
 host-owned. Webpages can neither request nor exit fullscreen. A widget holds no
 fullscreen state and needs no exit shortcut, so it cannot leave the user inside

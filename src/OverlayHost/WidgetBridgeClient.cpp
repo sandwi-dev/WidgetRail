@@ -24,6 +24,21 @@
 
 namespace widgetrail {
 
+std::wstring DescribeCurrentException() noexcept {
+    try {
+        throw;
+    } catch (const winrt::hresult_error& error) {
+        return L"hresult=" +
+            std::to_wstring(static_cast<long>(error.code().value)) + L" " +
+            std::wstring{error.message()};
+    } catch (const std::exception& error) {
+        const std::string what{error.what()};
+        return L"std=" + std::wstring{what.begin(), what.end()};
+    } catch (...) {
+        return L"unknown";
+    }
+}
+
 WidgetBridgePipeReadinessResult WaitForWidgetBridgePipeReadiness(
     const std::function<WidgetBridgePipeConnectAttempt()>& tryConnect,
     const std::function<bool()>& childExited,

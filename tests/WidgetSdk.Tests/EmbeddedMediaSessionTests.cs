@@ -345,7 +345,7 @@ internal static class EmbeddedMediaSessionTests
             Enum.GetValues<EmbeddedMediaPlaybackCommandKind>());
 
         await sample.OnActionAsync(new WidgetActionEvent(
-            "host.embeddedMedia.togglePlayback", "media-shell.play"));
+            "host.embeddedMediaSession.togglePlayback", "media-shell.play"));
         var playCommand = sample.Render().EmbeddedMediaSession?.PendingCommand;
         Equal(EmbeddedMediaPlaybackCommandKind.Play, playCommand?.Kind);
         Equal("aurora-video-0", playCommand?.MediaKey);
@@ -390,7 +390,7 @@ internal static class EmbeddedMediaSessionTests
             "embedded-media-sample.instance", 2).Root, "media-shell.timeline.slider").Value);
 
         await sample.OnActionAsync(new WidgetActionEvent(
-            "host.embeddedMedia.seekForward", "media-shell.seek-forward"));
+            "host.embeddedMediaSession.seekForward", "media-shell.seek-forward"));
         var seekCommand = sample.Render().EmbeddedMediaSession?.PendingCommand;
         Equal(EmbeddedMediaPlaybackCommandKind.Seek, seekCommand?.Kind);
         Equal(9D, seekCommand?.PositionSeconds);
@@ -406,14 +406,14 @@ internal static class EmbeddedMediaSessionTests
             Volume = 1,
         });
         await sample.OnActionAsync(new WidgetActionEvent(
-            "host.embeddedMedia.next", "media-shell.next"));
+            "host.embeddedMediaSession.next", "media-shell.next"));
         var nextCommand = sample.Render().EmbeddedMediaSession?.PendingCommand;
         Equal(EmbeddedMediaPlaybackCommandKind.Load, nextCommand?.Kind);
         Equal("horizon-video-1", nextCommand?.MediaKey);
 
         var preferences = new EmbeddedMediaSampleWidget();
         await preferences.OnActionAsync(new WidgetActionEvent(
-            "host.embeddedMedia.playbackRate", "media-shell.rate"));
+            "host.embeddedMediaSession.playbackRate", "media-shell.rate"));
         var rateCommand = preferences.Render().EmbeddedMediaSession!.PendingCommand!;
         Equal(EmbeddedMediaPlaybackCommandKind.SetPlaybackRate, rateCommand.Kind);
         Equal(1.25D, rateCommand.PlaybackRate);
@@ -424,7 +424,7 @@ internal static class EmbeddedMediaSessionTests
             "embedded-media-sample.instance", 3).Root, "media-shell.rate").Text);
 
         await preferences.OnActionAsync(new WidgetActionEvent(
-            "host.embeddedMedia.muted", "media-shell.mute"));
+            "host.embeddedMediaSession.muted", "media-shell.mute"));
         var muteCommand = preferences.Render().EmbeddedMediaSession!.PendingCommand!;
         Equal(true, muteCommand.Muted);
         await preferences.OnEmbeddedMediaPlaybackEventAsync(PreferenceEvent(
@@ -434,7 +434,7 @@ internal static class EmbeddedMediaSessionTests
             "embedded-media-sample.instance", 4).Root, "media-shell.mute").Text);
 
         await preferences.OnActionAsync(new WidgetActionEvent(
-            "host.embeddedMedia.loop", "media-shell.loop"));
+            "host.embeddedMediaSession.loop", "media-shell.loop"));
         var loopCommand = preferences.Render().EmbeddedMediaSession!.PendingCommand!;
         Equal(false, loopCommand.Loop);
         await preferences.OnEmbeddedMediaPlaybackEventAsync(PreferenceEvent(

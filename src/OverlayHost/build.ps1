@@ -1721,7 +1721,7 @@ if ($WidgetSwitchFallbackAuthorityTestsOnly -or
 
 Invoke-OverlayPlatformInteropBuild
 
-$hostCompileArguments = $common
+$hostCompileArguments = $common + @('/Zi')
 if ($PinnedSliderRouteTestsOnly) {
     $hostCompileArguments += '/DWRAIL_PINNED_SLIDER_ROUTE_TESTING'
 }

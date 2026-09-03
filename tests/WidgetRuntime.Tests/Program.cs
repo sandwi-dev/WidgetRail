@@ -91,6 +91,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Worker session terminal cleanup is shared and exact", WidgetProcessOwnershipScenarios.SessionTerminalCleanupIsShared),
     ("Replacement sessions share no request or gesture state", WidgetProcessOwnershipScenarios.ReplacementSessionsDoNotShareMutableAuthority),
     ("Stop linearizes against paused worker construction", WidgetProcessOwnershipScenarios.StopDuringConstructionRejectsLateResources),
+    ("Worker startup phases retain independent deadlines and timeout identity", WidgetProcessOwnershipScenarios.StartupPhasesRetainIndependentDeadlines),
+    ("Worker startup phases serialize overlapping callers", WidgetProcessOwnershipScenarios.StartupOverlapWaitsForCompletion),
     ("Retired sessions cannot publish notifications into replacements", WidgetProcessOwnershipScenarios.StaleNotificationsCannotCrossReplacement),
     ("Retired responses cannot complete after replacement", WidgetProcessOwnershipScenarios.StaleResponseCannotCompleteAfterReplacement),
     ("Retired sessions cannot grant gesture authority into replacements", WidgetProcessOwnershipScenarios.StaleGestureCannotGrantReplacementAuthority),

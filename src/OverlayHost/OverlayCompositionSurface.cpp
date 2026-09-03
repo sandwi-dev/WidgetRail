@@ -122,10 +122,38 @@ bool OverlayCompositionSurface::InitializeChromeTarget(
 
 bool OverlayCompositionSurface::InitializePinnedExternalContentEndpoint(
     const HWND window, std::wstring& error) {
-    if (!window || !device_ || !desktopDevice_ || pinnedExternalTarget_ ||
-        pinnedExternalRootVisual_ || pinnedExternalContentVisual_) {
+    if (!window || !device_ || !desktopDevice_) {
         error = L"DirectComposition pinned external endpoint received an invalid state";
         return false;
+    }
+    // Initialization is idempotent for the exact pinned window, whether or not
+    // content is currently attached to it. Rebuilding the endpoint for the
+    // same owner would needlessly detach a live session.
+    if (pinnedExternalTarget_ && pinnedExternalRootVisual_ &&
+        pinnedExternalWindow_ == window)
+        return true;
+    if (pinnedExternalTarget_ || pinnedExternalRootVisual_ ||
+        pinnedExternalContentVisual_) {
+        // Whatever is resident belongs to a pinned window that has been
+        // retired, so its content visual is orphaned. Detaching the content
+        // and releasing the endpoint are one operation; releasing alone is
+        // refused while a content visual is still attached, which previously
+        // left the endpoint permanently unusable across a repin.
+        const auto retirement = RetireExternalContentEndpoint(
+            ExternalContentEndpoint::Pinned, true);
+        if (pinnedExternalTarget_ || pinnedExternalRootVisual_ ||
+            pinnedExternalContentVisual_) {
+            error = L"DirectComposition pinned external endpoint could not be "
+                    L"retired hresult=" +
+                std::to_wstring(
+                    static_cast<unsigned long>(retirement.cleanupResult));
+            return false;
+        }
+        if (!device_ || !desktopDevice_) {
+            error = L"DirectComposition pinned external endpoint lost its "
+                    L"device during retirement";
+            return false;
+        }
     }
     HRESULT result = desktopDevice_->CreateTargetForHwnd(
         window, TRUE, pinnedExternalTarget_.ReleaseAndGetAddressOf());
@@ -141,8 +169,10 @@ bool OverlayCompositionSurface::InitializePinnedExternalContentEndpoint(
         if (pinnedExternalTarget_) (void)pinnedExternalTarget_->SetRoot(nullptr);
         pinnedExternalRootVisual_.Reset();
         pinnedExternalTarget_.Reset();
+        pinnedExternalWindow_ = nullptr;
         return false;
     }
+    pinnedExternalWindow_ = window;
     return true;
 }
 
@@ -170,6 +200,7 @@ void OverlayCompositionSurface::Reset() noexcept {
     pinnedMediaChromeWidth_ = 0;
     pinnedMediaChromeHeight_ = 0;
     pinnedExternalRootVisual_.Reset();
+    pinnedExternalWindow_ = nullptr;
     guide_ = {};
     tray_ = {};
     effect_.Reset();
@@ -203,8 +234,15 @@ HRESULT OverlayCompositionSurface::CreateExternalContentTarget(
     const bool endpointReady = endpoint == ExternalContentEndpoint::Overlay
         ? rootVisual_ && content_.visual
         : pinnedExternalTarget_ && pinnedExternalRootVisual_;
-    if (!device_ || !endpointReady || visual)
-        return E_UNEXPECTED;
+    if (!device_ || !endpointReady) return E_UNEXPECTED;
+    if (visual) {
+        // The endpoint already owns a content visual, which means this
+        // transfer is re-presenting the same endpoint. Reuse it: creating a
+        // second visual would orphan the first, and refusing would strand the
+        // caller with no way to make progress.
+        presentation.current = false;
+        return visual.CopyTo(target);
+    }
     HRESULT result = device_->CreateVisual(visual.ReleaseAndGetAddressOf());
     if (FAILED(result)) {
         visual.Reset();
@@ -245,9 +283,18 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
     const auto coordinates = ExternalContentCoordinates(endpoint);
     auto* parent = coordinates == ExternalContentCoordinateSpace::ContentLocal
         ? content_.visual.Get() : pinnedExternalRootVisual_.Get();
-    if (!device_ || !visual || !parent || bounds.right <= bounds.left ||
-        bounds.bottom <= bounds.top || clipBounds.right <= clipBounds.left ||
-        clipBounds.bottom <= clipBounds.top) return E_INVALIDARG;
+    const auto reject = [&](const ExternalCommitRejection reason) {
+        timing.externalCommitRejection = reason;
+        return E_INVALIDARG;
+    };
+    if (!device_) return reject(ExternalCommitRejection::Device);
+    if (!visual) return reject(ExternalCommitRejection::Visual);
+    if (!parent) return reject(ExternalCommitRejection::Parent);
+    if (bounds.right <= bounds.left || bounds.bottom <= bounds.top)
+        return reject(ExternalCommitRejection::Bounds);
+    if (clipBounds.right <= clipBounds.left ||
+        clipBounds.bottom <= clipBounds.top)
+        return reject(ExternalCommitRejection::ClipBounds);
     const auto started = std::chrono::steady_clock::now();
     const auto width = bounds.right - bounds.left;
     const auto height = bounds.bottom - bounds.top;
@@ -256,7 +303,8 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
         static_cast<float>(std::clamp(clipBounds.top - bounds.top, 0L, height)),
         static_cast<float>(std::clamp(clipBounds.right - bounds.left, 0L, width)),
         static_cast<float>(std::clamp(clipBounds.bottom - bounds.top, 0L, height))};
-    if (clip.right <= clip.left || clip.bottom <= clip.top) return E_INVALIDARG;
+    if (clip.right <= clip.left || clip.bottom <= clip.top)
+        return reject(ExternalCommitRejection::DegenerateClip);
     const auto sameRect = [](const RECT& left, const RECT& right) noexcept {
         return left.left == right.left && left.top == right.top &&
             left.right == right.right && left.bottom == right.bottom;
@@ -439,6 +487,7 @@ HRESULT OverlayCompositionSurface::ReleasePinnedExternalContentEndpoint(
         pinnedMediaChromeHeight_ = 0;
         pinnedExternalRootVisual_.Reset();
         pinnedExternalTarget_.Reset();
+        pinnedExternalWindow_ = nullptr;
         pinnedExternalContentAttached_ = false;
         pinnedExternalContentPresentation_.current = false;
     }

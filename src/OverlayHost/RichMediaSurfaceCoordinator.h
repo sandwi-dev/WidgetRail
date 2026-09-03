@@ -457,6 +457,10 @@ private:
     bool ownsSharedController_{};
     std::uint64_t retrySurfaceGeneration_{};
     bool teardownBegun_{};
+    // Set as soon as teardown starts, before it pumps messages waiting for
+    // an outstanding creation callback to drain. A session that is being
+    // retired must not adopt a controller that arrives during that pump.
+    bool teardownRequested_{};
     bool presentationTransferPending_{};
     bool presentationTransferDetached_{};
     bool transferDesiredVisible_{};

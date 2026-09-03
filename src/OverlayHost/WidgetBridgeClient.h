@@ -18,6 +18,11 @@
 
 namespace widgetrail {
 
+// Describes the exception currently being handled. Implemented in the
+// translation unit that already owns winrt so callers can identify a
+// winrt::hresult_error without pulling winrt into their own headers.
+[[nodiscard]] std::wstring DescribeCurrentException() noexcept;
+
 struct WidgetBridgeReadinessContract final {
     static constexpr DWORD AcceptTimeoutMilliseconds = 10'000;
     static constexpr DWORD PollIntervalMilliseconds = 20;

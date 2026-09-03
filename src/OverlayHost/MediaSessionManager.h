@@ -21,6 +21,14 @@ namespace widgetrail::media {
 
 inline constexpr std::size_t MaximumResidentSessions = 4;
 
+// A deferred effect means "not yet", so it must be retried. It must not be
+// retried forever: a condition that never clears would leave a session
+// resident but permanently unpresented, which reads to a user as a frozen or
+// empty surface with no error. A deferral streak that outlives both bounds
+// below is escalated to a real failure so it fails loudly instead of silently.
+inline constexpr std::uint64_t MaximumDeferralStreakMilliseconds = 10000;
+inline constexpr std::uint32_t MinimumDeferralStreakAttempts = 8;
+
 enum class PresentationState {
     Parked,
     OverlayViewport,
@@ -108,6 +116,10 @@ struct PresentationRequest final {
 
 struct SessionRecord final {
     SessionKey key;
+    // Consecutive deferrals for this session. Reset by any effect that
+    // actually commits, including a no-op reconcile.
+    std::uint32_t deferralStreak{};
+    std::uint64_t deferralStreakStartTick{};
     std::shared_ptr<richmedia::RichMediaSurfaceCoordinator> coordinator;
     std::optional<SessionAuthority> authority;
     std::optional<RECT> clientBounds;
@@ -192,6 +204,11 @@ private:
     [[nodiscard]] static std::optional<Endpoint> EndpointFor(
         PresentationState presentation) noexcept;
     void ClearEndpointOwnership(const SessionKey& key) noexcept;
+    // Records one deferral and reports whether the streak has outlived
+    // its bounds and must be escalated to a failure.
+    [[nodiscard]] static bool DeferralExhausted(SessionRecord& record) noexcept;
+    void ReleaseOtherEndpointOwnership(
+        const SessionKey& key, Endpoint retained) noexcept;
 
     richmedia::RichMediaEnvironmentHandle environment_;
     std::map<std::wstring, SessionRecord, std::less<>> sessions_;

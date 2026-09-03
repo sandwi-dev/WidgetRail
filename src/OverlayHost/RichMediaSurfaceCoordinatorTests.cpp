@@ -550,6 +550,149 @@ void RunMediaSessionManagerContractCases() {
     Require(SUCCEEDED(manager.Reconcile(key, input, operations)) &&
                 updates == 1 && manager.Find(key)->presentationRequest,
             "visibility changes execute once without consuming fullscreen intent");
+
+    // WIDGE-178 review repro: a session that moves from the overlay endpoint to
+    // the pinned endpoint must release the overlay endpoint, otherwise an
+    // unrelated overlay session displaces the live compact-pinned session.
+    const media::SessionKey compactKey{
+        L"compact-widget", L"compact.instance", L"runtime-1", L"media.compact"};
+    auto* compact = manager.Ensure(compactKey);
+    Require(compact != nullptr, "compact session is admitted");
+    compact->authority = media::SessionAuthority{
+        .widgetId = compactKey.widgetId,
+        .instanceId = compactKey.instanceId,
+        .runtimeGeneration = compactKey.runtimeGeneration,
+        .presentationGeneration = L"presentation-1",
+        .sessionId = compactKey.sessionId,
+    };
+    int compactParks = 0;
+    const media::TransitionOperations neutral{
+        [&](const media::SessionKey& exact, media::SessionRecord&,
+            media::ParkingReason) {
+            if (exact == compactKey) ++compactParks;
+            return S_OK;
+        },
+        [](const media::SessionKey&, media::SessionRecord&,
+           media::PresentationState, const media::EndpointGeometry&) {
+            return S_OK;
+        },
+        [](const media::SessionKey&, media::SessionRecord&,
+           media::PresentationState, const media::EndpointGeometry&) {
+            return S_OK;
+        },
+        [](const media::SessionKey&, media::SessionRecord&) { return S_OK; },
+        [](const media::SessionKey&, media::SessionRecord&) { return S_OK; },
+    };
+    const media::EndpointGeometry overlayGeometry{
+        reinterpret_cast<HWND>(2), {0, 0, 400, 300}, {0, 0, 400, 300},
+        {0, 0, 400, 300}, 1.0, true, 0};
+    const media::EndpointGeometry pinnedGeometry{
+        reinterpret_cast<HWND>(3), {0, 0, 320, 180}, {0, 0, 320, 180},
+        {0, 0, 320, 180}, 1.0, true, 4};
+    media::TransitionInput compactInput{
+        true, true, true, true, media::GeometryState::Ready,
+        media::PresentationState::OverlayViewport,
+        media::ParkingReason::EndpointUnavailable, overlayGeometry};
+    Require(SUCCEEDED(manager.Reconcile(compactKey, compactInput, neutral)),
+            "compact session first presents on the overlay endpoint");
+    compactInput.requestedPresentation = media::PresentationState::CompactPinned;
+    compactInput.desiredGeometry = pinnedGeometry;
+    Require(SUCCEEDED(manager.Reconcile(compactKey, compactInput, neutral)),
+            "compact session moves to the pinned endpoint");
+    Require(manager.EndpointOwner(media::Endpoint::Pinned) == compactKey,
+            "compact session owns the pinned endpoint");
+    Require(manager.EndpointOwner(media::Endpoint::Overlay) != compactKey,
+            "moving to the pinned endpoint releases the overlay endpoint");
+
+    const media::SessionKey overlayKey{
+        L"overlay-widget", L"overlay.instance", L"runtime-1", L"media.overlay"};
+    auto* overlay = manager.Ensure(overlayKey);
+    Require(overlay != nullptr, "second overlay session is admitted");
+    overlay->authority = media::SessionAuthority{
+        .widgetId = overlayKey.widgetId,
+        .instanceId = overlayKey.instanceId,
+        .runtimeGeneration = overlayKey.runtimeGeneration,
+        .presentationGeneration = L"presentation-1",
+        .sessionId = overlayKey.sessionId,
+    };
+    media::TransitionInput overlayInput{
+        true, true, true, true, media::GeometryState::Ready,
+        media::PresentationState::OverlayViewport,
+        media::ParkingReason::EndpointUnavailable, overlayGeometry};
+    Require(SUCCEEDED(manager.Reconcile(overlayKey, overlayInput, neutral)),
+            "second session presents on the overlay endpoint");
+    Require(compactParks == 0,
+            "an unrelated overlay session must not park the compact-pinned session");
+    Require(manager.Find(compactKey) &&
+                manager.Find(compactKey)->authority->presentation ==
+                    media::PresentationState::CompactPinned,
+            "compact-pinned session survives an unrelated overlay presentation");
+
+    // WIDGE-178 review repro: a presentation side effect can fault the media
+    // controller, and that fault synchronously retires the exact session
+    // through the host invalidate callback before the effect returns. The
+    // reconciler must not touch the erased record afterwards.
+    const media::SessionKey reentrantKey{
+        L"reentrant-widget", L"reentrant.instance", L"runtime-1",
+        L"media.reentrant"};
+    auto* reentrant = manager.Ensure(reentrantKey);
+    Require(reentrant != nullptr, "re-entrant session is admitted");
+    reentrant->authority = media::SessionAuthority{
+        .widgetId = reentrantKey.widgetId,
+        .instanceId = reentrantKey.instanceId,
+        .runtimeGeneration = reentrantKey.runtimeGeneration,
+        .presentationGeneration = L"presentation-1",
+        .sessionId = reentrantKey.sessionId,
+    };
+    int reentrantFaults = 0;
+    int reentrantRetires = 0;
+    const media::TransitionOperations retiring{
+        [](const media::SessionKey&, media::SessionRecord&,
+           media::ParkingReason) { return S_OK; },
+        [](const media::SessionKey&, media::SessionRecord&,
+           media::PresentationState, const media::EndpointGeometry&) {
+            return S_OK;
+        },
+        [](const media::SessionKey&, media::SessionRecord&,
+           media::PresentationState, const media::EndpointGeometry&) {
+            return S_OK;
+        },
+        [&](const media::SessionKey&, media::SessionRecord&) {
+            ++reentrantRetires;
+            return S_OK;
+        },
+        [&](const media::SessionKey&, media::SessionRecord&) {
+            ++reentrantFaults;
+            return S_OK;
+        },
+    };
+    const media::TransitionInput retireInput{
+        false, false, false, false, media::GeometryState::Invalid,
+        media::PresentationState::Parked,
+        media::ParkingReason::EndpointUnavailable};
+    media::TransitionOperations faulting = retiring;
+    faulting.present = [&](const media::SessionKey& exact,
+                           media::SessionRecord&,
+                           media::PresentationState,
+                           const media::EndpointGeometry&) {
+        // Stands in for RichMediaSurfaceCoordinator::Fault reaching the host
+        // invalidate callback, which stops and erases this exact session.
+        (void)manager.Reconcile(exact, retireInput, retiring);
+        return E_FAIL;
+    };
+    media::TransitionInput reentrantInput{
+        true, true, true, true, media::GeometryState::Ready,
+        media::PresentationState::OverlayViewport,
+        media::ParkingReason::EndpointUnavailable, overlayGeometry};
+    Require(FAILED(manager.Reconcile(reentrantKey, reentrantInput, faulting)),
+            "a faulted presentation reports failure");
+    Require(reentrantRetires == 1 && reentrantFaults == 0,
+            "the re-entrant retirement runs once and is not repeated on the "
+            "erased record");
+    Require(manager.Find(reentrantKey) == nullptr,
+            "the faulted session is no longer resident");
+    Require(manager.EndpointOwner(media::Endpoint::Overlay) != reentrantKey,
+            "the faulted session no longer owns the overlay endpoint");
 }
 
 void RunContractCases() {

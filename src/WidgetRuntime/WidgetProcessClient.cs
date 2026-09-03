@@ -544,9 +544,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
 
     private async Task EnsureConnectedAsync(CancellationToken cancellationToken)
     {
-        if (IsRunning) return;
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        CancellationTokenSource? startupDeadline = null;
+        CancellationTokenSource? phaseDeadline = null;
+        var startupPhase = WidgetProcessStartupPhase.PreProcessSetup;
         try
         {
             if (IsRunning) return;
@@ -562,9 +562,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             await DisposeSessionAsync(previousSession, cancellationToken).ConfigureAwait(false);
             _stopping = false;
             Interlocked.Exchange(ref _failureReported, 0);
-            startupDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            startupDeadline.CancelAfter(_options.ConnectTimeout);
-            var startupToken = startupDeadline.Token;
+            phaseDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            phaseDeadline.CancelAfter(_options.ContentLeaseTimeout);
+            var phaseToken = phaseDeadline.Token;
             var currentSession = new WidgetProcessSession(
                 _timeProvider,
                 MaximumDashboardGestureReservationLifetime);
@@ -577,12 +577,12 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 currentSession.AttachProcessLease(
                     leaseFactory() ?? throw new WidgetProcessAdmissionException(
                         "Worker process admission returned no lease."));
-                startupToken.ThrowIfCancellationRequested();
+                phaseToken.ThrowIfCancellationRequested();
             }
             if (_options.ContentLeaseFactory is { } contentLeaseFactory)
             {
                 using var contentTimeout = CancellationTokenSource.CreateLinkedTokenSource(
-                    startupToken);
+                    phaseToken);
                 contentTimeout.CancelAfter(_options.ContentLeaseTimeout);
                 try
                 {
@@ -594,19 +594,19 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     ValidateContentLease(contentLease);
                 }
                 catch (OperationCanceledException) when (
-                    !startupToken.IsCancellationRequested &&
+                    !phaseToken.IsCancellationRequested &&
                     contentTimeout.IsCancellationRequested)
                 {
                     throw new WidgetProcessAdmissionException(
                         "Worker content admission exceeded its time limit.");
                 }
             }
-            startupToken.ThrowIfCancellationRequested();
+            phaseToken.ThrowIfCancellationRequested();
             using var appContainer = _options.IsolationPolicy ==
                 WidgetWorkerIsolationPolicy.RequireAppContainer
                     ? WindowsAppContainer.OpenOrCreate(_options.IsolationKey!)
                     : null;
-            startupToken.ThrowIfCancellationRequested();
+            phaseToken.ThrowIfCancellationRequested();
             if (appContainer is not null)
             {
                 var executableDirectory = Path.GetDirectoryName(
@@ -636,14 +636,14 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                         workerDiagnosticPath = null;
                     }
                 }
-                startupToken.ThrowIfCancellationRequested();
+                phaseToken.ThrowIfCancellationRequested();
                 if (currentSession.ContentLease is not null)
                 {
                     appContainer.ReplaceReadAndExecuteGrant(
                         currentSession.ContentLease.Targets,
                         _options.ContentAuthorityOperations,
                         _options.ContentAuthorityJournal);
-                    startupToken.ThrowIfCancellationRequested();
+                    phaseToken.ThrowIfCancellationRequested();
                 }
             }
             var pipeSuffix = $"wrail-widget-{Environment.ProcessId}-{Guid.NewGuid():N}";
@@ -659,7 +659,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 : appContainer.CreatePipe(serverPipeName, 4096);
             var channel = new LengthPrefixedJsonChannel(pipe, _options.MaximumMessageBytes);
             currentSession.AttachTransport(pipe, channel);
-            startupToken.ThrowIfCancellationRequested();
+            phaseToken.ThrowIfCancellationRequested();
 
             if (_options.CompanionSessionFactory is not null)
             {
@@ -671,7 +671,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     ?? throw new WidgetProcessException("Companion session factory returned null.");
                 ValidateCompanionArguments(companion.WorkerArguments, companionContext);
                 currentSession.AttachCompanion(companion);
-                startupToken.ThrowIfCancellationRequested();
+                phaseToken.ThrowIfCancellationRequested();
             }
 
             var startInfo = new ProcessStartInfo(_options.ExecutablePath)
@@ -702,8 +702,13 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             }
 
             if (_testHooks?.BeforeProcessStartAsync is { } beforeProcessStart)
-                await beforeProcessStart(startupToken).ConfigureAwait(false);
-            startupToken.ThrowIfCancellationRequested();
+                await beforeProcessStart(phaseToken).ConfigureAwait(false);
+            phaseToken.ThrowIfCancellationRequested();
+            phaseDeadline.Dispose();
+            startupPhase = WidgetProcessStartupPhase.ProcessToHandshake;
+            phaseDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            phaseDeadline.CancelAfter(_options.ConnectTimeout);
+            phaseToken = phaseDeadline.Token;
             currentSession.StartProcess(() =>
             {
                 if (!OperatingSystem.IsWindows())
@@ -721,7 +726,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     throw;
                 }
             });
-            startupToken.ThrowIfCancellationRequested();
+            phaseToken.ThrowIfCancellationRequested();
             if (currentSession.Companion is not null)
             {
                 currentSession.Companion.BindWorkerProcess(currentSession.Process!.Id);
@@ -737,13 +742,13 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 session: currentSession,
                 startOrdinal: startOrdinal);
 
-            await pipe.WaitForConnectionAsync(startupToken).ConfigureAwait(false);
+            await pipe.WaitForConnectionAsync(phaseToken).ConfigureAwait(false);
             if (OperatingSystem.IsWindows())
                 WindowsAppContainer.VerifyPipeClientProcess(
                     pipe,
                     currentSession.Process?.Id ??
                         throw new WidgetProcessException("Worker process identity is unavailable."));
-            var hello = await channel.ReadAsync(startupToken).ConfigureAwait(false);
+            var hello = await channel.ReadAsync(phaseToken).ConfigureAwait(false);
             if (hello.Type != MessageTypes.Hello || hello.RequestId != 0)
                 throw new WidgetProtocolViolationException("Worker handshake was malformed.");
             var helloPayload = RuntimeJson.FromElement<HelloPayload>(hello.Payload);
@@ -761,17 +766,24 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             {
                 Type = MessageTypes.HelloAccepted,
                 Payload = RuntimeJson.ToElement(new { }),
-            }, startupToken).ConfigureAwait(false);
+            }, phaseToken).ConfigureAwait(false);
             currentSession.MarkHandshakeCompleted();
+            if (_testHooks?.AfterHandshakeAsync is { } afterHandshake)
+                await afterHandshake(phaseToken).ConfigureAwait(false);
             currentSession.StartReader(token =>
                 ReadResponsesAsync(currentSession, channel, token));
             if (_hostLifecycle != WidgetLifecycleState.Background)
             {
+                phaseDeadline.Dispose();
+                startupPhase = WidgetProcessStartupPhase.InitialLifecycle;
+                phaseDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                phaseDeadline.CancelAfter(_options.RequestTimeout);
+                phaseToken = phaseDeadline.Token;
                 await SetCompanionLifecycleAsync(
-                    currentSession, _hostLifecycle, startupToken).ConfigureAwait(false);
+                    currentSession, _hostLifecycle, phaseToken).ConfigureAwait(false);
                 var lifecycleResponse = await RequestConnectedAsync(
                     currentSession, MessageTypes.SetWidgetLifecycle,
-                    new WidgetLifecyclePayload(_hostLifecycle), startupToken)
+                    new WidgetLifecyclePayload(_hostLifecycle), phaseToken)
                     .ConfigureAwait(false);
                 if (lifecycleResponse.Type != MessageTypes.Acknowledged)
                     throw new WidgetProtocolViolationException(
@@ -780,16 +792,40 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         }
         catch (OperationCanceledException) when (
             !cancellationToken.IsCancellationRequested &&
-            startupDeadline?.IsCancellationRequested == true)
+            phaseDeadline?.IsCancellationRequested == true)
         {
-            var exception = new WidgetProcessException(
-                "Widget worker startup exceeded its time limit.");
+            Exception exception = startupPhase switch
+            {
+                WidgetProcessStartupPhase.PreProcessSetup =>
+                    new WidgetProcessAdmissionException(
+                        "Worker pre-process setup exceeded its time limit."),
+                WidgetProcessStartupPhase.InitialLifecycle =>
+                    new TimeoutException(
+                        $"Widget initial lifecycle exceeded {_options.RequestTimeout.TotalMilliseconds:0} ms."),
+                _ => new WidgetProcessException(
+                    "Widget worker connection exceeded its time limit."),
+            };
             if (!_stopping)
-                ReportFailure(WidgetFailureReason.ConnectionFailed, exception);
+            {
+                if (startupPhase != WidgetProcessStartupPhase.PreProcessSetup)
+                    ReportFailure(
+                        startupPhase == WidgetProcessStartupPhase.InitialLifecycle
+                            ? WidgetFailureReason.RequestTimedOut
+                            : WidgetFailureReason.ConnectionFailed,
+                        exception);
+            }
             var session = Volatile.Read(ref _session);
             session?.Terminate();
             await DisposeSessionAsync(session, CancellationToken.None).ConfigureAwait(false);
             throw exception;
+        }
+        catch (TimeoutException) when (
+            startupPhase == WidgetProcessStartupPhase.InitialLifecycle)
+        {
+            var session = Volatile.Read(ref _session);
+            session?.Terminate();
+            await DisposeSessionAsync(session, CancellationToken.None).ConfigureAwait(false);
+            throw;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -838,7 +874,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         }
         finally
         {
-            startupDeadline?.Dispose();
+            phaseDeadline?.Dispose();
             _lifecycleGate.Release();
         }
     }
@@ -1321,11 +1357,19 @@ internal sealed class WidgetProcessClientTestHooks
 {
     internal TimeSpan LifecycleDrainTimeout { get; init; } = TimeSpan.FromSeconds(6);
     internal Func<CancellationToken, Task>? BeforeProcessStartAsync { get; init; }
+    internal Func<CancellationToken, Task>? AfterHandshakeAsync { get; init; }
     internal Action? SessionTerminalStarted { get; init; }
     internal Action<string>? BeforePublicationAdmission { get; init; }
     internal Action<string, bool>? PublicationAdmissionCompleted { get; init; }
     internal Action<string>? BeforeResponseCorrelation { get; init; }
     internal Action<string, bool>? ResponseCorrelationCompleted { get; init; }
+}
+
+internal enum WidgetProcessStartupPhase
+{
+    PreProcessSetup,
+    ProcessToHandshake,
+    InitialLifecycle,
 }
 
 public sealed class WidgetProcessException : Exception

@@ -203,7 +203,7 @@ HWND, DirectComposition endpoint, controller session, input scope, and
 accessibility owner. Browser/DOM fullscreen is never used.
 
 The host owns both edges of the mode, so a package never holds half of it. The
-reserved `host.embeddedMedia.enterFullscreen` action enters; B leaves and never
+reserved `host.embeddedMediaSession.enterFullscreen` action enters; B leaves and never
 reaches the widget; View retains the host tray route. A widget therefore cannot
 strand the user by omitting an exit for a presentation that paints no tray, no
 guide, and no accessibility tree. The activation is bound to the exact admitted
@@ -224,7 +224,7 @@ state. Fullscreen state is not published as widget authority.
 
 An embedded-media widget builds its visible shell from the same native Text,
 Progress, Button, Row, and Stack nodes as any other widget. Reserved
-`host.embeddedMedia.*` action IDs bind those native buttons to the existing
+`host.embeddedMediaSession.*` action IDs bind those native buttons to the existing
 closed media command declarations after normal focus and generation admission;
 they do not expose DOM, browsing, script, or arbitrary pointer authority.
 

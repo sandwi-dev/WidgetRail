@@ -70,31 +70,35 @@ public sealed class EmbeddedMediaSampleWidget : Widget
             MediaSeekStepSeconds = SeekStepSeconds,
             PendingCommand = pending,
         };
-        var back = UI.Button("Back", "host.embeddedMedia.back", "media-shell.back").FocusDown("media-shell.timeline.slider").Classes("media-shell-back");
+        var back = UI.Button("Back", "host.embeddedMediaSession.back", "media-shell.back").FocusDown("media-shell.timeline.slider").Classes("media-shell-back");
         var fullscreen = UI.Button(
-                "Fullscreen", "host.embeddedMedia.enterFullscreen",
+                "Fullscreen", "host.embeddedMediaSession.enterFullscreen",
                 "media-shell.fullscreen")
             .FocusDown("media-shell.timeline.slider")
             .FocusRight("media-shell.back")
             .Classes("media-shell-back");
-        var previous = UI.Button("", "host.embeddedMedia.previous", "media-shell.previous").Icon(WidgetGlyph.Previous, "Previous video").FocusUp("media-shell.timeline.slider").FocusRight("media-shell.seek-back").Classes("media-shell-transport");
-        var seekBack = UI.Button("-2s", "host.embeddedMedia.seekBackward", "media-shell.seek-back").FocusUp("media-shell.timeline.slider").FocusLeft("media-shell.previous").FocusRight("media-shell.play").Classes("media-shell-transport", "media-shell-quick-seek");
+        var previous = UI.Button("", "host.embeddedMediaSession.previous", "media-shell.previous").Icon(WidgetGlyph.Previous, "Previous video").FocusUp("media-shell.timeline.slider").FocusRight("media-shell.seek-back").Classes("media-shell-transport");
+        var seekBack = UI.Button("-2s", "host.embeddedMediaSession.seekBackward", "media-shell.seek-back").FocusUp("media-shell.timeline.slider").FocusLeft("media-shell.previous").FocusRight("media-shell.play").Classes("media-shell-transport", "media-shell-quick-seek");
         var playing = playbackState == EmbeddedMediaPlaybackState.Playing;
-        var play = UI.Button("", "host.embeddedMedia.togglePlayback", "media-shell.play").Icon(playing ? WidgetGlyph.Pause : WidgetGlyph.Play, playing ? "Pause local media" : "Play local media").FocusUp("media-shell.timeline.slider").FocusLeft("media-shell.seek-back").FocusRight("media-shell.seek-forward").Classes("media-shell-play");
-        var seekForward = UI.Button("+2s", "host.embeddedMedia.seekForward", "media-shell.seek-forward").FocusUp("media-shell.timeline.slider").FocusLeft("media-shell.play").FocusRight("media-shell.next").Classes("media-shell-transport", "media-shell-quick-seek");
-        var next = UI.Button("", "host.embeddedMedia.next", "media-shell.next").Icon(WidgetGlyph.Next, "Next video").FocusUp("media-shell.timeline.slider").FocusLeft("media-shell.seek-forward").Classes("media-shell-transport");
-        var rate = UI.Button($"{playbackRate:0.##}x", "host.embeddedMedia.playbackRate", "media-shell.rate")
+        var play = UI.Button("", "host.embeddedMediaSession.togglePlayback", "media-shell.play").Icon(playing ? WidgetGlyph.Pause : WidgetGlyph.Play, playing ? "Pause local media" : "Play local media").FocusUp("media-shell.timeline.slider").FocusLeft("media-shell.seek-back").FocusRight("media-shell.seek-forward").Classes("media-shell-play");
+        var seekForward = UI.Button("+2s", "host.embeddedMediaSession.seekForward", "media-shell.seek-forward").FocusUp("media-shell.timeline.slider").FocusLeft("media-shell.play").FocusRight("media-shell.next").Classes("media-shell-transport", "media-shell-quick-seek");
+        var next = UI.Button("", "host.embeddedMediaSession.next", "media-shell.next").Icon(WidgetGlyph.Next, "Next video").FocusUp("media-shell.timeline.slider").FocusLeft("media-shell.seek-forward").Classes("media-shell-transport");
+        var rate = UI.Button($"{playbackRate:0.##}x", "host.embeddedMediaSession.playbackRate", "media-shell.rate")
             .FocusUp("media-shell.play").FocusRight("media-shell.mute").Classes("media-shell-preference");
-        var mute = UI.Button(muted ? "Unmute" : "Mute", "host.embeddedMedia.muted", "media-shell.mute")
+        var mute = UI.Button(muted ? "Unmute" : "Mute", "host.embeddedMediaSession.muted", "media-shell.mute")
             .FocusUp("media-shell.play").FocusLeft("media-shell.rate").FocusRight("media-shell.loop").Classes("media-shell-preference");
-        var loopButton = UI.Button(loop ? "Loop on" : "Loop off", "host.embeddedMedia.loop", "media-shell.loop")
+        var loopButton = UI.Button(loop ? "Loop on" : "Loop off", "host.embeddedMediaSession.loop", "media-shell.loop")
             .FocusUp("media-shell.play").FocusLeft("media-shell.mute").Classes("media-shell-preference");
         var timeline = UI.Slider(
                 position,
                 0,
                 Math.Max(1, duration),
-                SeekStepSeconds,
-                "host.embeddedMedia.seek",
+                // A playback observation can arrive before the element reports
+                // its duration. The step must stay inside the clamped range or
+                // the snapshot fails slider validation and the render is
+                // rejected.
+                Math.Min(SeekStepSeconds, Math.Max(1, duration)),
+                "host.embeddedMediaSession.seek",
                 "media-shell.timeline.slider",
                 $"Playback position. {FormatTime(position)} of {FormatTime(duration)}",
                 $"{FormatTime(position)} of {FormatTime(duration)}")
@@ -142,41 +146,41 @@ public sealed class EmbeddedMediaSampleWidget : Widget
             var commandMediaKey = _mediaKey;
             switch (action.ActionId)
             {
-                case "host.embeddedMedia.togglePlayback":
+                case "host.embeddedMediaSession.togglePlayback":
                     kind = _state == EmbeddedMediaPlaybackState.Playing
                         ? EmbeddedMediaPlaybackCommandKind.Pause
                         : EmbeddedMediaPlaybackCommandKind.Play;
                     break;
-                case "host.embeddedMedia.seekBackward":
+                case "host.embeddedMediaSession.seekBackward":
                     kind = EmbeddedMediaPlaybackCommandKind.Seek;
                     position = Math.Max(0, _position - SeekStepSeconds);
                     break;
-                case "host.embeddedMedia.seekForward":
+                case "host.embeddedMediaSession.seekForward":
                     kind = EmbeddedMediaPlaybackCommandKind.Seek;
                     position = Math.Min(_duration, _position + SeekStepSeconds);
                     break;
-                case "host.embeddedMedia.seek" when action.RequestedValue is { } requested &&
+                case "host.embeddedMediaSession.seek" when action.RequestedValue is { } requested &&
                                                          double.IsFinite(requested):
                     kind = EmbeddedMediaPlaybackCommandKind.Seek;
                     position = Math.Clamp(requested, 0, Math.Max(0, _duration));
                     break;
-                case "host.embeddedMedia.previous":
+                case "host.embeddedMediaSession.previous":
                     commandMediaKey = MediaItems[
                         (_activeMediaIndex + MediaItems.Length - 1) % MediaItems.Length].Key;
                     kind = EmbeddedMediaPlaybackCommandKind.Load;
                     break;
-                case "host.embeddedMedia.next":
+                case "host.embeddedMediaSession.next":
                     commandMediaKey = MediaItems[
                         (_activeMediaIndex + 1) % MediaItems.Length].Key;
                     kind = EmbeddedMediaPlaybackCommandKind.Load;
                     break;
-                case "host.embeddedMedia.playbackRate":
+                case "host.embeddedMediaSession.playbackRate":
                     kind = EmbeddedMediaPlaybackCommandKind.SetPlaybackRate;
                     break;
-                case "host.embeddedMedia.muted":
+                case "host.embeddedMediaSession.muted":
                     kind = EmbeddedMediaPlaybackCommandKind.SetMuted;
                     break;
-                case "host.embeddedMedia.loop":
+                case "host.embeddedMediaSession.loop":
                     kind = EmbeddedMediaPlaybackCommandKind.SetLoop;
                     break;
             }

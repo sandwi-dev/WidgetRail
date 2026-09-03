@@ -178,7 +178,7 @@ public sealed partial class YouTubeWidgetTests
         // shortcut is needed - or possible - to leave it.
         Assert.IsTrue(ready.EmbeddedMediaSession!.SupportedPresentations.Contains(
             MediaPresentationKind.OverlayFullscreen));
-        Assert.AreEqual("host.embeddedMedia.enterFullscreen",
+        Assert.AreEqual("host.embeddedMediaSession.enterFullscreen",
             Find(ready.Root, "youtube.player.fullscreen").ActionId);
         Assert.IsEmpty(Find(ready.Root, "youtube.root").Shortcuts
             .Where(shortcut => shortcut.Button == ControllerButton.B));
@@ -189,7 +189,7 @@ public sealed partial class YouTubeWidgetTests
         Assert.IsEmpty(ViewSnapshotValidator.Validate(afterEnter));
         Assert.IsTrue(afterEnter.EmbeddedMediaSession!.SupportedPresentations.Contains(
             MediaPresentationKind.OverlayFullscreen));
-        Assert.AreEqual("host.embeddedMedia.enterFullscreen",
+        Assert.AreEqual("host.embeddedMediaSession.enterFullscreen",
             Find(afterEnter.Root, "youtube.player.fullscreen").ActionId);
 
         // Leaving the player route withdraws the capability, which is the exact

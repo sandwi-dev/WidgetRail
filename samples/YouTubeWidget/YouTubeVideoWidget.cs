@@ -25,7 +25,7 @@ public sealed partial class YouTubeVideoWidget : Widget
     // Fullscreen is a host-owned mode. The package declares the surface may be
     // presented that way and offers this reserved entry action; the host owns
     // the state and returns to this layout on B.
-    internal const string EnterFullscreenActionId = "host.embeddedMedia.enterFullscreen";
+    internal const string EnterFullscreenActionId = "host.embeddedMediaSession.enterFullscreen";
     private const string FullscreenFocusId = "youtube.player.fullscreen";
     private const string PendingFeedbackKey = "youtube.playback.feedback";
     private const double SeekStepSeconds = 10;
