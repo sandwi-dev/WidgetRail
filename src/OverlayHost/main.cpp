@@ -2013,14 +2013,77 @@ public:
         ReconcileEmbeddedMediaProjection(L"committed-presentation");
         if (!sessionRetired()) return fail(306);
 
+        const auto mismatchedCommittedCoordinator =
+            prepareOrdinaryParkedSuccessor(
+                L"parked-successor-mismatched-committed", mediaDeclaration);
+        if (!mismatchedCommittedCoordinator) return fail(307);
+        seedOverlayGeometry();
+        committedWidgetVisualState_->snapshotSequence = snapshotSequence;
+        ReconcileEmbeddedMediaProjection(L"committed-presentation");
+        if (!sessionRetired()) return fail(308);
+
+        const auto failedRenderCoordinator = prepareOrdinaryParkedSuccessor(
+            L"parked-successor-failed-render", mediaDeclaration);
+        if (!failedRenderCoordinator) return fail(309);
+        seedOverlayGeometry();
+        lastWidgetRenderResult_.succeeded = false;
+        ReconcileEmbeddedMediaProjection(L"committed-presentation");
+        if (!sessionRetired()) return fail(310);
+
         const auto outOfBoundsCoordinator = prepareOrdinaryParkedSuccessor(
             L"parked-successor-out-of-bounds", mediaDeclaration);
-        if (!outOfBoundsCoordinator) return fail(307);
+        if (!outOfBoundsCoordinator) return fail(311);
         seedOverlayGeometry(
             {3.0e9F, 0.0F, 320.0F, 180.0F},
             {3.0e9F, 0.0F, 320.0F, 180.0F});
         ReconcileEmbeddedMediaProjection(L"committed-presentation");
-        if (!sessionRetired()) return fail(308);
+        if (!sessionRetired()) return fail(312);
+
+        const auto hiddenPinnedInvalidGeometryRetires = [
+            this, runtimeGeneration, presentationGeneration, snapshotSequence,
+            &makeDescriptor, &makeSnapshot, &mediaDeclaration,
+            &preparePinnedCase, &seedOverlayGeometry, &sessionRetired](
+            const std::wstring_view key, const bool outOfBounds) {
+            if (!preparePinnedCase(
+                    key, mediaDeclaration,
+                    makeDescriptor(runtimeGeneration, presentationGeneration),
+                    makeSnapshot(mediaDeclaration, snapshotSequence)))
+                return false;
+            if (!state_.Dispatch(widgetrail::Command::CloseOverlay) ||
+                state_.surface() != widgetrail::Surface::Hidden)
+                return false;
+            if (outOfBounds) {
+                seedOverlayGeometry(
+                    {3.0e9F, 0.0F, 320.0F, 180.0F},
+                    {3.0e9F, 0.0F, 320.0F, 180.0F});
+            } else {
+                seedOverlayGeometry();
+                lastWidgetRenderResult_.mediaViewportRegions.front().mediaSurfaceId =
+                    L"different-surface";
+            }
+            const auto result = TransferEmbeddedMediaSurface(
+                EmbeddedMediaProjection::Overlay,
+                L"hidden-pinned-invalid-geometry");
+            const bool rejectedWithoutTransfer =
+                result == EmbeddedMediaTransferResult::Failed &&
+                !testEmbeddedMediaHandoffRetirementObserved_ &&
+                sessionRetired() &&
+                !compositionSurface_.hasExternalContentVisualForTest(
+                    widgetrail::OverlayCompositionSurface::
+                        ExternalContentEndpoint::Overlay);
+            const bool unpinned = pinnedSurfaceCoordinator_.Unpin(
+                widgetrail::pinned::WidgetSurfaceStopReason::Close);
+            state_ = widgetrail::OverlayState({}, {});
+            lastWidgetRenderResult_ = {};
+            committedWidgetVisualState_.reset();
+            return rejectedWithoutTransfer && unpinned;
+        };
+        if (!hiddenPinnedInvalidGeometryRetires(
+                L"hidden-pinned-mismatched-surface", false))
+            return fail(313);
+        if (!hiddenPinnedInvalidGeometryRetires(
+                L"hidden-pinned-out-of-bounds", true))
+            return fail(314);
 
         enum class ParkedSuccessorRejectionCase {
             InactiveWidget,
@@ -4133,7 +4196,8 @@ private:
             !window_) {
             return {OrdinaryEmbeddedMediaGeometryStatus::Invalid, std::nullopt};
         }
-        const bool committedCurrent = committedWidgetVisualState_ &&
+        if (!committedWidgetVisualState_) return {};
+        const bool committedIdentityCurrent =
             committedWidgetVisualState_->widgetId ==
                 embeddedMediaAuthority_->widgetId &&
             committedWidgetVisualState_->instanceId ==
@@ -4142,9 +4206,10 @@ private:
                 embeddedMediaAuthority_->runtimeGeneration &&
             committedWidgetVisualState_->presentationGeneration ==
                 embeddedMediaAuthority_->presentationGeneration &&
-            committedWidgetVisualState_->snapshotSequence == expectedSequence &&
-            lastWidgetRenderResult_.succeeded;
-        if (!committedCurrent) return {};
+            committedWidgetVisualState_->snapshotSequence == expectedSequence;
+        if (!committedIdentityCurrent || !lastWidgetRenderResult_.succeeded) {
+            return {OrdinaryEmbeddedMediaGeometryStatus::Invalid, std::nullopt};
+        }
         if (lastWidgetRenderResult_.mediaViewportRegions.size() != 1) {
             return {OrdinaryEmbeddedMediaGeometryStatus::Invalid, std::nullopt};
         }
@@ -5065,6 +5130,8 @@ private:
             controllerBounds = Win32Rect(resolvedGeometry->controllerBounds);
         } else if (source == EmbeddedMediaProjection::Pinned &&
                    destination == EmbeddedMediaProjection::Overlay &&
+                   ordinaryGeometryStatus ==
+                       OrdinaryEmbeddedMediaGeometryStatus::Unavailable &&
                    state_.surface() == widgetrail::Surface::Hidden &&
                    embeddedMediaClientBounds_ && embeddedMediaClientClip_) {
             const auto& priorBounds = *embeddedMediaClientBounds_;
