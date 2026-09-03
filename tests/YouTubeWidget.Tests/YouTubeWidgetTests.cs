@@ -320,17 +320,44 @@ public sealed partial class YouTubeWidgetTests
             YouTubeVideoWidget.CaptionsActionId, YouTubeVideoWidget.CaptionsActionId));
         var settings = widget.RenderSnapshot("youtube-test", 2);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(settings));
-        Assert.IsNotNull(TryFind(settings.Root, "youtube.player.settings.rate-row"));
-        Assert.IsNotNull(TryFind(settings.Root, "youtube.player.settings.muted"));
-        Assert.IsNotNull(TryFind(settings.Root, "youtube.player.settings.loop"));
+        Assert.AreEqual(WidgetSurfaceAxisMode.Preferred, settings.Surface!.HeightMode);
+        var settingsRoot = Find(settings.Root, "youtube.player.settings");
+        var settingsTitle = Find(settings.Root, "youtube.player.settings.title");
+        var settingsScroll = Find(settings.Root, "youtube.player.settings.scroll");
+        Assert.AreSame(settingsTitle, settingsRoot.Children[0]);
+        Assert.AreSame(settingsScroll, settingsRoot.Children[1]);
+        Assert.AreEqual(ViewNodeKind.Scroll, settingsScroll.Kind);
+        Assert.AreEqual(ScrollAxis.Vertical, settingsScroll.ScrollAxis);
+        Assert.Contains("youtube-player-settings-scroll", settingsScroll.StyleClasses);
+        Assert.IsNull(TryFind(settingsScroll, "youtube.player.settings.title"));
+        foreach (var (id, action) in new[]
+                 {
+                     ("youtube.player.settings.rate-row.action", YouTubeVideoWidget.PlaybackRateActionId),
+                     ("youtube.player.settings.muted", YouTubeVideoWidget.MutedActionId),
+                     ("youtube.player.settings.loop", YouTubeVideoWidget.LoopActionId),
+                     ("youtube.player.settings.captions-row.action", YouTubeVideoWidget.CaptionsActionId),
+                     ("youtube.player.settings.open-row.action", YouTubeVideoWidget.OpenInYouTubeActionId),
+                 })
+        {
+            var actionNode = Find(settingsScroll, id);
+            Assert.AreEqual(action, actionNode.ActionId, $"{id} lost its exact action authority.");
+            Assert.AreNotEqual(true, actionNode.IsDisabled, $"{id} became unreachable.");
+        }
+        Assert.AreEqual(YouTubeVideoWidget.PlayerSettingsBackActionId,
+            settingsRoot.Shortcuts.Single(shortcut => shortcut.Button == ControllerButton.B).ActionId);
         Assert.AreEqual("Auto · managed by YouTube",
             Find(settings.Root, "youtube.player.settings.quality.value").Text);
+        var settingsStyles = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "styles", "default.wrss"));
+        StringAssert.Contains(settingsStyles,
+            ".youtube-player-settings-scroll { width: 100%; min-width: 0px; min-height: 0px; flex-basis: 0px; flex-grow: 1; flex-shrink: 1;");
 
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.PlaybackRateActionId,
             "youtube.player.settings.rate-row.action"));
         var picker = widget.RenderSnapshot("youtube-test", 3);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(picker));
+        Assert.AreEqual(WidgetSurfaceAxisMode.Content, picker.Surface!.HeightMode);
         foreach (var rate in new[] { "0.5", "0.75", "1", "1.25", "1.5", "2" })
             Assert.IsNotNull(TryFind(picker.Root, $"youtube.player.settings.rate.{rate}"));
 
@@ -377,6 +404,9 @@ public sealed partial class YouTubeWidgetTests
         Assert.IsNull(afterRejection.EmbeddedMedia!.PendingCommand);
         Assert.AreEqual("That setting is unavailable for the current YouTube video.",
             Find(afterRejection.Root, "youtube.player.settings.error").Text);
+        Assert.IsNotNull(TryFind(
+            Find(afterRejection.Root, "youtube.player.settings.scroll"),
+            "youtube.player.settings.error"));
         Assert.AreEqual("1.5×",
             Find(afterRejection.Root, "youtube.player.settings.rate-row.value").Text);
         await WidgetTestHost.DestroyAsync(widget);

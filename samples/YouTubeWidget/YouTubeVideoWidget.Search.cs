@@ -413,18 +413,28 @@ public sealed partial class YouTubeVideoWidget
                     "youtube.player.settings.open-row",
                     description: "Use YouTube for provider-owned controls and preferences.",
                     isDisabled: playback.VideoId is null));
+        var body = (StackElement)content.Children[1];
         if (playback.PreferenceError is { } error)
-            content = content with
+            body = body with
             {
                 Children =
                 [
-                    .. content.Children,
+                    .. body.Children,
                     UI.Text(error, "youtube.player.settings.error")
                         .Classes("youtube-status", "is-error"),
                 ],
             };
+        content = content with
+        {
+            Children =
+            [
+                content.Children[0],
+                UI.VerticalScroll("youtube.player.settings.scroll", body)
+                    .Classes("youtube-player-settings-scroll"),
+            ],
+        };
         return PlayerModalView(state, content, "youtube.player.settings.rate-row.action",
-            "youtube.player.settings");
+            "youtube.player.settings", WidgetSurfaceAxisMode.Preferred);
     }
 
     private WidgetView RenderPlaybackRatePicker(YouTubeWidgetState state)
@@ -477,7 +487,8 @@ public sealed partial class YouTubeVideoWidget
         YouTubeWidgetState state,
         StackElement content,
         string initialFocus,
-        string inputScope) => new(
+        string inputScope,
+        WidgetSurfaceAxisMode heightMode = WidgetSurfaceAxisMode.Content) => new(
             content.AddClasses("youtube-player-settings"),
             initialFocus,
             ActiveInputScopeId: inputScope,
@@ -485,7 +496,7 @@ public sealed partial class YouTubeVideoWidget
             {
                 Mode = WidgetSurfaceMode.Standard,
                 WidthMode = WidgetSurfaceAxisMode.Preferred,
-                HeightMode = WidgetSurfaceAxisMode.Content,
+                HeightMode = heightMode,
                 PreferredWidth = 620,
                 PreferredHeight = 620,
                 MinimumWidth = 420,
