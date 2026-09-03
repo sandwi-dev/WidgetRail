@@ -39,6 +39,9 @@ struct WidgetBridgePipeReadinessResult final {
     DWORD error{ERROR_SUCCESS};
 };
 
+[[nodiscard]] std::wstring ProjectStartupSettingsFailure(
+    std::wstring_view bridgeStartupFailure);
+
 [[nodiscard]] WidgetBridgePipeReadinessResult WaitForWidgetBridgePipeReadiness(
     const std::function<WidgetBridgePipeConnectAttempt()>& tryConnect,
     const std::function<bool()>& childExited,
@@ -780,6 +783,7 @@ public:
     [[nodiscard]] std::optional<bool> CancelLocalWidgetPackageInstall(
         std::wstring_view operationId);
     [[nodiscard]] std::wstring lastError() const;
+    [[nodiscard]] DWORD lastStartupProcessId() const noexcept;
     [[nodiscard]] long long bridgeSessionGeneration() const noexcept;
     /// Bounded classification for the most recent controller-input reply.
     [[nodiscard]] std::wstring lastControllerInputResultCode() const;
@@ -812,6 +816,7 @@ private:
     HANDLE pipe_{INVALID_HANDLE_VALUE};
     HANDLE process_{};
     DWORD processId_{};
+    DWORD lastStartupProcessId_{};
     bool transportTainted_{};
     std::wstring pipeName_;
     std::wstring lastError_;

@@ -68,6 +68,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
     ("Catalog monitor retains invalid trusted state and fails closed on installed state", CatalogMonitorIsRevisionedAndLastGood),
+    ("Cold installed catalog loading does not block trusted bridge readiness", ColdInstalledCatalogDoesNotBlockBridgeReadiness),
+    ("Catalog reload authority is single-flight latest-wins and cancellable", CatalogReloadAuthorityIsLatestWinsAndCancellable),
     ("Live installed bytes are pinned and post-release tamper cannot relaunch", InstalledPackageTamperRetiresLiveWorker),
     ("Catalog monitor closes the startup notification window", CatalogMonitorStartupCatchUp),
     ("Catalog reconciliation preserves compatible workers and retires changed workers", CatalogReconciliationPreservesCompatibleWorkers),
@@ -646,6 +648,24 @@ static async Task MediaSessionDiagnosticsAreBounded()
     var path = System.IO.Path.Combine(temporary.Path, "overlay.log");
     await using (var diagnostics = new MediaSessionsDiagnosticLog(path))
     {
+        diagnostics.RecordBridgeStartupPhase("invalid-stage", 42);
+        diagnostics.RecordBridgeStartupPhase("trusted-catalog-ready", 17);
+        diagnostics.RecordBridgeStartupPhase("control-plane-created");
+        diagnostics.RecordBridgeStartupPhase("installed-catalog-pending");
+        diagnostics.RecordInstalledCatalogLoad(new BridgeInstalledCatalogObservation(
+            Succeeded: true,
+            PackageCount: 3,
+            VersionCount: 4,
+            FileCount: 5,
+            ByteCount: 6,
+            ElapsedMilliseconds: 7));
+        diagnostics.RecordInstalledCatalogLoad(new BridgeInstalledCatalogObservation(
+            Succeeded: false,
+            PackageCount: int.MaxValue,
+            VersionCount: int.MaxValue,
+            FileCount: int.MaxValue,
+            ByteCount: long.MaxValue,
+            ElapsedMilliseconds: long.MaxValue));
         diagnostics.Record(
             "media-sessions",
             PlatformCapabilities.MediaSessionsReadV1,
@@ -685,11 +705,28 @@ static async Task MediaSessionDiagnosticsAreBounded()
     }
 
     var lines = File.ReadAllLines(path);
-    Assert.Equal(2, lines.Length);
+    Assert.Equal(7, lines.Length);
     Assert.True(lines[0].Contains(
+        "stage=trusted-catalog-ready elapsed-ms=17",
+        StringComparison.Ordinal), "Trusted-catalog startup phase was not recorded.");
+    Assert.True(lines[1].Contains(
+        "stage=control-plane-created elapsed-ms=0",
+        StringComparison.Ordinal), "Control-plane startup phase was not recorded.");
+    Assert.True(lines[2].Contains(
+        "stage=installed-catalog-pending elapsed-ms=0",
+        StringComparison.Ordinal), "Installed-catalog pending phase was not recorded.");
+    Assert.True(lines[3].Contains(
+        "stage=installed-catalog-terminal result=validated packages=3 versions=4 " +
+        "files=5 bytes=6 elapsed-ms=7",
+        StringComparison.Ordinal), "Validated installed-catalog counts were not recorded.");
+    Assert.True(lines[4].Contains(
+        "stage=installed-catalog-terminal result=rejected packages=256 versions=512 " +
+        "files=32768 bytes=2147483648 elapsed-ms=300000",
+        StringComparison.Ordinal), "Rejected installed-catalog counts were not bounded.");
+    Assert.True(lines[5].Contains(
         "widget=media-sessions stage=snapshot-read code=channel_closed",
         StringComparison.Ordinal), "First transition was not recorded.");
-    Assert.True(lines[1].Contains(
+    Assert.True(lines[6].Contains(
         "widget=media-sessions stage=snapshot-read code=platform_unavailable",
         StringComparison.Ordinal), "Reset transition was not recorded.");
     Assert.True(lines.All(line =>
@@ -2449,16 +2486,18 @@ static async Task CatalogMonitorIsRevisionedAndLastGood()
     await File.WriteAllBytesAsync(trusted.Path, validTrusted);
     await File.WriteAllTextAsync(Path.Combine(catalogRoot, "catalog-state.json"), "{");
     var invalidInstalled = await monitor.ReloadNowAsync();
-    Assert.False(invalidInstalled.RetainedLastGood,
-        "Invalid installed state retained stale community package authority.");
-    Assert.True(invalidInstalled.Published, "Invalid installed state did not publish trusted-only state.");
-    Assert.Equal(3L, invalidInstalled.Revision);
-    Assert.SequenceEqual(["test-widget"], invalidInstalled.Current.Widgets.Select(widget => widget.Id));
+    Assert.True(invalidInstalled.RetainedLastGood,
+        "Invalid installed state did not retain the last validated catalog.");
+    Assert.False(invalidInstalled.Published,
+        "Invalid installed state replaced the last validated catalog.");
+    Assert.Equal(2L, invalidInstalled.Revision);
+    Assert.SequenceEqual(["test-widget", "dev.example.alpha"],
+        invalidInstalled.Current.Widgets.Select(widget => widget.Id));
     await File.WriteAllBytesAsync(Path.Combine(catalogRoot, "catalog-state.json"), validState);
 
     var restored = await monitor.ReloadNowAsync();
-    Assert.True(restored.Published, "Restored installed state was not published.");
-    Assert.Equal(4L, restored.Revision);
+    Assert.False(restored.Published, "Equivalent restored installed state advanced the revision.");
+    Assert.Equal(2L, restored.Revision);
     Assert.SequenceEqual(["test-widget", "dev.example.alpha"],
         restored.Current.Widgets.Select(widget => widget.Id));
 
@@ -2466,15 +2505,222 @@ static async Task CatalogMonitorIsRevisionedAndLastGood()
         TaskCreationOptions.RunContinuationsAsynchronously);
     monitor.Changed += (_, change) =>
     {
-        if (change.Revision >= 5) watched.TrySetResult(change);
+        if (change.Revision >= 3) watched.TrySetResult(change);
     };
     monitor.Start();
     await catalog.SetEnabledAsync("dev.example.beta", true);
     var fileSystemChange = await watched.Task.WaitAsync(TimeSpan.FromSeconds(5));
-    Assert.Equal(5L, fileSystemChange.Revision);
+    Assert.Equal(3L, fileSystemChange.Revision);
     Assert.SequenceEqual(["test-widget", "dev.example.beta", "dev.example.alpha"],
         fileSystemChange.Catalog.Widgets.Select(widget => widget.Id));
-    Assert.SequenceEqual([1L, 2L, 3L, 4L, 5L], revisions);
+    Assert.SequenceEqual([1L, 2L, 3L], revisions);
+}
+
+static async Task ColdInstalledCatalogDoesNotBlockBridgeReadiness()
+{
+    using var trustedFiles = TemporaryCatalog.Create(
+        id: "settings",
+        packageId: "widgetrail.firstparty.settings",
+        publisherId: "widgetrail.firstparty",
+        name: "Settings",
+        instanceId: "settings.instance");
+    using var installedFiles = TemporaryCatalog.Create(
+        id: "dev.example.delayed",
+        packageId: "dev.example.delayed",
+        publisherId: "dev.example",
+        name: "Delayed Widget",
+        instanceId: "delayed.instance");
+    using var installedRoot = new TemporaryDirectory("wrail-bridge-delayed-catalog");
+    var trusted = BridgeCatalog.LoadTrusted(trustedFiles.Path, installedRoot.Path);
+    var installed = BridgeCatalog.Load(installedFiles.Path);
+    var combined = new BridgeCatalog(
+    [
+        trusted.GetConfigured("settings"),
+        installed.GetConfigured("dev.example.delayed"),
+    ]);
+    var loadStarted = new TaskCompletionSource<bool>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseLoad = new TaskCompletionSource<BridgeCatalogLoadResult>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    await using var monitor = new BridgeCatalogMonitor(
+        trustedFiles.Path,
+        installedRoot.Path,
+        Environment.ProcessPath!,
+        trusted,
+        initialDiagnostics: null,
+        installedCatalogPending: true,
+        loadCatalog: async cancellationToken =>
+        {
+            loadStarted.TrySetResult(true);
+            return await releaseLoad.Task.WaitAsync(cancellationToken);
+        });
+    await using var appearance = await TemporaryAppearance.CreateAsync();
+    var pipeName = $"wrail-bridge-delayed-startup-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(
+        pipeName,
+        trusted,
+        64 * 1024,
+        appearance.Service,
+        catalogMonitor: monitor);
+    monitor.Start();
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
+    await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
+    try
+    {
+        await loadStarted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.True(!releaseLoad.Task.IsCompleted,
+            "The delayed installed-catalog loader unexpectedly completed.");
+
+        var listedWhilePending = await client.RequestAsync(
+            BridgeMessageTypes.ListWidgets, new { });
+        Assert.Equal(BridgeMessageTypes.Widgets, listedWhilePending.Type);
+        Assert.SequenceEqual(["settings"], listedWhilePending.Payload
+            .GetProperty("widgets").EnumerateArray()
+            .Select(widget => widget.GetProperty("id").GetString()!));
+        var appearanceWhilePending = await client.RequestAsync(
+            BridgeMessageTypes.GetPlatformAppearance, new { });
+        Assert.Equal(BridgeMessageTypes.PlatformAppearance, appearanceWhilePending.Type);
+        Assert.Equal("dev.example.bridge",
+            appearanceWhilePending.Payload.GetProperty("themeId").GetString());
+        var pending = monitor.DiagnosticsSnapshot();
+        Assert.True(pending.InstalledCatalogPending,
+            "Installed catalog authority was not explicitly pending.");
+        Assert.Equal(0L, pending.Revision);
+        Assert.Equal(0, server.RunningWorkerCount);
+
+        var revisions = new List<long>();
+        monitor.Changed += (_, change) => revisions.Add(change.Revision);
+        releaseLoad.TrySetResult(new BridgeCatalogLoadResult(combined, []));
+        var changed = await client.ReadEventAsync(BridgeMessageTypes.CatalogChanged);
+        Assert.Equal(1L, changed.Payload.GetProperty("revision").GetInt64());
+        var listedAfterValidation = await client.RequestAsync(
+            BridgeMessageTypes.ListWidgets, new { });
+        Assert.SequenceEqual(["settings", "dev.example.delayed"], listedAfterValidation.Payload
+            .GetProperty("widgets").EnumerateArray()
+            .Select(widget => widget.GetProperty("id").GetString()!));
+        Assert.SequenceEqual([1L], revisions);
+        Assert.True(!monitor.DiagnosticsSnapshot().InstalledCatalogPending,
+            "Successful installed validation did not close pending authority.");
+        Assert.Equal(0, server.RunningWorkerCount);
+    }
+    finally
+    {
+        releaseLoad.TrySetCanceled();
+        try { await client.RequestAsync(BridgeMessageTypes.Stop, new { }); }
+        catch { }
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(3));
+    }
+}
+
+static async Task CatalogReloadAuthorityIsLatestWinsAndCancellable()
+{
+    using var trustedFiles = TemporaryCatalog.Create(name: "Trusted");
+    using var firstFiles = TemporaryCatalog.Create(name: "Superseded");
+    using var latestFiles = TemporaryCatalog.Create(name: "Latest");
+    using var installedRoot = new TemporaryDirectory("wrail-bridge-latest-catalog");
+    var trusted = BridgeCatalog.LoadTrusted(trustedFiles.Path, installedRoot.Path);
+    var superseded = BridgeCatalog.Load(firstFiles.Path);
+    var latest = BridgeCatalog.Load(latestFiles.Path);
+    var starts = new[]
+    {
+        new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously),
+        new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously),
+        new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously),
+    };
+    var completions = new[]
+    {
+        new TaskCompletionSource<BridgeCatalogLoadResult>(TaskCreationOptions.RunContinuationsAsynchronously),
+        new TaskCompletionSource<BridgeCatalogLoadResult>(TaskCreationOptions.RunContinuationsAsynchronously),
+        new TaskCompletionSource<BridgeCatalogLoadResult>(TaskCreationOptions.RunContinuationsAsynchronously),
+    };
+    var invocation = -1;
+    await using var monitor = new BridgeCatalogMonitor(
+        trustedFiles.Path,
+        installedRoot.Path,
+        Environment.ProcessPath!,
+        trusted,
+        initialDiagnostics: null,
+        installedCatalogPending: true,
+        loadCatalog: async cancellationToken =>
+        {
+            var index = Interlocked.Increment(ref invocation);
+            starts[index].TrySetResult(true);
+            return await completions[index].Task.WaitAsync(cancellationToken);
+        });
+
+    var first = monitor.ReloadNowAsync();
+    await starts[0].Task.WaitAsync(TimeSpan.FromSeconds(3));
+    var second = monitor.ReloadNowAsync();
+    completions[0].TrySetResult(new BridgeCatalogLoadResult(superseded, []));
+    var stale = await first.WaitAsync(TimeSpan.FromSeconds(3));
+    Assert.False(stale.Published, "A superseded catalog result was published.");
+    Assert.Equal(0L, stale.Revision);
+    Assert.Equal("Trusted", stale.Current.Widgets.Single().Name);
+
+    await starts[1].Task.WaitAsync(TimeSpan.FromSeconds(3));
+    completions[1].TrySetResult(new BridgeCatalogLoadResult(latest, []));
+    var accepted = await second.WaitAsync(TimeSpan.FromSeconds(3));
+    Assert.True(accepted.Published, "The latest catalog result was not published.");
+    Assert.Equal(1L, accepted.Revision);
+    Assert.Equal("Latest", accepted.Current.Widgets.Single().Name);
+
+    using var canceled = new CancellationTokenSource();
+    var canceledReload = monitor.ReloadNowAsync(canceled.Token);
+    await starts[2].Task.WaitAsync(TimeSpan.FromSeconds(3));
+    canceled.Cancel();
+    await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+        await canceledReload.WaitAsync(TimeSpan.FromSeconds(3)));
+    Assert.Equal(1L, monitor.Revision);
+    Assert.Equal("Latest", monitor.Current.Widgets.Single().Name);
+
+    var disposalStarted = new TaskCompletionSource<bool>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var disposalCanceled = new TaskCompletionSource<bool>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var disposalMonitor = new BridgeCatalogMonitor(
+        trustedFiles.Path,
+        installedRoot.Path,
+        Environment.ProcessPath!,
+        trusted,
+        initialDiagnostics: null,
+        installedCatalogPending: true,
+        loadCatalog: async cancellationToken =>
+        {
+            disposalStarted.TrySetResult(true);
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                throw new InvalidOperationException("Canceled catalog load continued.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                disposalCanceled.TrySetResult(true);
+                throw;
+            }
+        });
+    disposalMonitor.Start();
+    await disposalStarted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    await disposalMonitor.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+    await disposalCanceled.Task.WaitAsync(TimeSpan.FromSeconds(3));
+
+    await using var rejectedMonitor = new BridgeCatalogMonitor(
+        trustedFiles.Path,
+        installedRoot.Path,
+        Environment.ProcessPath!,
+        trusted,
+        initialDiagnostics: null,
+        installedCatalogPending: true,
+        loadCatalog: _ => Task.FromResult(new BridgeCatalogLoadResult(
+            trusted,
+            ["Rejected installed validation."],
+            InstalledCatalogValid: false)));
+    var rejected = await rejectedMonitor.ReloadNowAsync().WaitAsync(TimeSpan.FromSeconds(3));
+    Assert.True(rejected.RetainedLastGood,
+        "Rejected installed validation did not retain last-good authority.");
+    Assert.False(rejected.Published,
+        "Rejected installed validation published catalog authority.");
+    Assert.True(!rejectedMonitor.DiagnosticsSnapshot().InstalledCatalogPending,
+        "Rejected installed validation remained incorrectly pending after its terminal result.");
 }
 
 static async Task InstalledPackageTamperRetiresLiveWorker()
@@ -2533,7 +2779,8 @@ static async Task InstalledPackageTamperRetiresLiveWorker()
         Directory.Move(movedPayloadDirectory, payloadDirectory);
 
         var failedClosed = await monitor.ReloadNowAsync();
-        Assert.False(failedClosed.RetainedLastGood, "Tampered package retained stale authority.");
+        Assert.True(failedClosed.RetainedLastGood,
+            "Rejected installed discovery did not retain the trusted-only last-good catalog.");
         Assert.SequenceEqual(["test-widget"],
             failedClosed.Current.Widgets.Select(widget => widget.Id));
         Assert.Equal(0, server.RunningWorkerCount);

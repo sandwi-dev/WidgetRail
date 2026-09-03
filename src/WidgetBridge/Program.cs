@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Diagnostics;
 using WidgetRail.PlatformSettings;
 using WidgetRail.PlatformBroker;
 using WidgetRail.WindowsAudioProvider;
@@ -38,27 +39,26 @@ internal static class Program
             var installedCatalogRoot = ResolveInstalledCatalogRoot(args, settingsPaths.RootDirectory);
             var workerHostExecutable = Path.Combine(
                 installationRoot, "runtime", "WidgetWorkerHost", "WidgetWorkerHost.exe");
-            var catalogLoad = await BridgeCatalog.LoadWithInstalledAsync(
-                catalogPath,
-                installedCatalogRoot,
-                workerHostExecutable,
-                shutdown.Token).ConfigureAwait(false);
-            foreach (var warning in catalogLoad.Warnings)
-                Console.Error.WriteLine($"Widget catalog warning: {warning}");
-            var catalog = catalogLoad.Catalog;
+            await using var mediaDiagnostics = new MediaSessionsDiagnosticLog(
+                Path.Combine(settingsPaths.RootDirectory, "overlay.log"),
+                bridgeSessionGeneration);
+            var trustedCatalogStarted = Stopwatch.GetTimestamp();
+            var catalog = BridgeCatalog.LoadTrusted(catalogPath, installedCatalogRoot);
+            mediaDiagnostics.RecordBridgeStartupPhase(
+                "trusted-catalog-ready",
+                (long)Stopwatch.GetElapsedTime(trustedCatalogStarted).TotalMilliseconds);
             await using var catalogMonitor = new BridgeCatalogMonitor(
                 catalogPath, installedCatalogRoot, workerHostExecutable, catalog,
-                catalogLoad.Warnings);
+                initialDiagnostics: null,
+                installedCatalogPending: true,
+                loadCatalog: null,
+                catalogLoadObserved: mediaDiagnostics.RecordInstalledCatalogLoad);
             catalogMonitor.Diagnostics += (_, warnings) =>
             {
                 foreach (var warning in warnings)
                     Console.Error.WriteLine($"Widget catalog warning: {warning}");
             };
-            catalogMonitor.Start();
             var settingsStore = new PlatformSettingsStore(settingsPaths);
-            await using var mediaDiagnostics = new MediaSessionsDiagnosticLog(
-                Path.Combine(settingsPaths.RootDirectory, "overlay.log"),
-                bridgeSessionGeneration);
             mediaDiagnostics.RecordBridgeSessionStarted(Environment.ProcessId);
             await using var appearance = new PlatformAppearanceService(
                 settingsPaths,
@@ -89,6 +89,9 @@ internal static class Program
                 mediaDiagnostics.RecordLifetime,
                 mediaDiagnostics.RecordRequestFailure,
                 Path.Combine(settingsPaths.RootDirectory, "worker-diagnostics"));
+            mediaDiagnostics.RecordBridgeStartupPhase("control-plane-created");
+            catalogMonitor.Start();
+            mediaDiagnostics.RecordBridgeStartupPhase("installed-catalog-pending");
             await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
                 .ConfigureAwait(false);
             return 0;

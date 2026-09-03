@@ -3275,6 +3275,13 @@ WidgetBridgeClient::~WidgetBridgeClient() {
     Stop();
 }
 
+std::wstring ProjectStartupSettingsFailure(
+    const std::wstring_view bridgeStartupFailure) {
+    return bridgeStartupFailure.empty()
+        ? L"Settings is unavailable in the admitted widget catalog."
+        : L"WidgetBridge startup failed: " + std::wstring(bridgeStartupFailure);
+}
+
 bool WidgetBridgeClient::EnsureStarted(
     const std::wstring& installationDirectory,
     const std::wstring& installedCatalogRoot) {
@@ -3284,6 +3291,7 @@ bool WidgetBridgeClient::EnsureStarted(
     }
     if (pipe_ != INVALID_HANDLE_VALUE || process_) CloseTransport();
     lastError_.clear();
+    lastStartupProcessId_ = 0;
     if (Launch(installationDirectory, installedCatalogRoot) && Connect()) return true;
     CloseTransport();
     return false;
@@ -3349,6 +3357,7 @@ bool WidgetBridgeClient::Launch(
     CloseHandle(process.hThread);
     process_ = process.hProcess;
     processId_ = process.dwProcessId;
+    lastStartupProcessId_ = process.dwProcessId;
     return true;
 }
 
@@ -3372,7 +3381,14 @@ bool WidgetBridgeClient::Connect() {
             std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
         });
     if (readiness.status == WidgetBridgePipeReadinessStatus::ChildExited) {
-        Fail(L"WidgetBridge exited before accepting the host connection.");
+        DWORD exitCode = 0;
+        const bool exitAvailable = process_ &&
+            GetExitCodeProcess(process_, &exitCode) != FALSE &&
+            exitCode != STILL_ACTIVE;
+        Fail(L"WidgetBridge exited before accepting the host connection" +
+             (exitAvailable
+                 ? L" (exit=" + std::to_wstring(exitCode) + L")."
+                 : L"."));
         return false;
     }
     if (readiness.status == WidgetBridgePipeReadinessStatus::TimedOut) {
@@ -4650,6 +4666,11 @@ void WidgetBridgeClient::Fail(std::wstring message) {
 std::wstring WidgetBridgeClient::lastError() const {
     std::scoped_lock lock(requestMutex_);
     return lastError_;
+}
+
+DWORD WidgetBridgeClient::lastStartupProcessId() const noexcept {
+    std::scoped_lock lock(requestMutex_);
+    return lastStartupProcessId_;
 }
 
 long long WidgetBridgeClient::bridgeSessionGeneration() const noexcept {

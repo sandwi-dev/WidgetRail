@@ -972,16 +972,27 @@ public:
         // widget-worker boundary. Fetch it once at host startup, then only in
         // response to a revision event.
         bool developmentCatalogReady = false;
+        std::wstring bridgeStartupFailure;
         if (bridge_.EnsureStarted(
                 installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
+            AppendDiagnostic(
+                L"WidgetBridge startup stage=pipe-ready pid=" +
+                std::to_wstring(bridge_.lastStartupProcessId()) +
+                L" bridge-session=" +
+                std::to_wstring(bridge_.bridgeSessionGeneration()));
             RefreshPlatformAppearance();
             if (auto change = sessions_.EstablishCatalog()) {
                 ApplyWidgetCatalogChange(*change);
                 developmentCatalogReady = true;
             }
         } else {
+            bridgeStartupFailure = bridge_.lastError();
+            AppendDiagnostic(
+                L"WidgetBridge startup stage=pipe-readiness result=failed pid=" +
+                std::to_wstring(bridge_.lastStartupProcessId()) + L" error=" +
+                bridgeStartupFailure);
             AppendDiagnostic(L"Platform appearance unavailable at startup: " +
-                             bridge_.lastError());
+                             bridgeStartupFailure);
         }
         if (developmentReadyPath_) {
             if (!developmentCatalogReady || !ExpectedDevelopmentWidgetPresent()) {
@@ -1017,8 +1028,8 @@ public:
                     return opened;
                 });
                 if (!opened) {
-                    initializationError_ =
-                        L"Settings is unavailable in the admitted widget catalog.";
+                    initializationError_ = widgetrail::ProjectStartupSettingsFailure(
+                        bridgeStartupFailure);
                     return false;
                 }
             }

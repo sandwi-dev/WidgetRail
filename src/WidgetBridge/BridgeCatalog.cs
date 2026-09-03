@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Diagnostics;
 using WidgetRail.PlatformBroker;
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetProtocol;
@@ -276,11 +277,24 @@ public sealed class BridgeCatalog
         return new BridgeCatalog(widgets.Values);
     }
 
-    public static async Task<BridgeCatalogLoadResult> LoadWithInstalledAsync(
+    public static Task<BridgeCatalogLoadResult> LoadWithInstalledAsync(
         string trustedCatalogPath,
         string installedCatalogRoot,
         string workerHostExecutable,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        LoadWithInstalledObservedAsync(
+            trustedCatalogPath,
+            installedCatalogRoot,
+            workerHostExecutable,
+            observation: null,
+            cancellationToken);
+
+    internal static async Task<BridgeCatalogLoadResult> LoadWithInstalledObservedAsync(
+        string trustedCatalogPath,
+        string installedCatalogRoot,
+        string workerHostExecutable,
+        Action<BridgeInstalledCatalogObservation>? observation,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
         ArgumentException.ThrowIfNullOrWhiteSpace(workerHostExecutable);
@@ -289,6 +303,7 @@ public sealed class BridgeCatalog
         var workerHost = Path.GetFullPath(workerHostExecutable);
         var warnings = new List<string>();
         WidgetCatalogSnapshot installed;
+        var discoveryStarted = Stopwatch.GetTimestamp();
         try
         {
             installed = await new CatalogService(
@@ -298,8 +313,25 @@ public sealed class BridgeCatalog
         {
             var code = exception is WidgetPackageException package ? package.Code : "catalog_unavailable";
             warnings.Add($"Installed widget catalog was ignored ({SafeDiagnostic(code)}).");
+            observation?.Invoke(new BridgeInstalledCatalogObservation(
+                Succeeded: false,
+                PackageCount: 0,
+                VersionCount: 0,
+                FileCount: 0,
+                ByteCount: 0,
+                ElapsedMilliseconds: BoundedElapsedMilliseconds(discoveryStarted)));
             return new BridgeCatalogLoadResult(trusted, warnings, InstalledCatalogValid: false);
         }
+
+        observation?.Invoke(new BridgeInstalledCatalogObservation(
+            Succeeded: true,
+            PackageCount: installed.Widgets.Count,
+            VersionCount: installed.Widgets.Sum(widget => widget.Versions.Count),
+            FileCount: installed.Widgets.Sum(widget =>
+                widget.Versions.Sum(version => version.VerifiedEntryCount)),
+            ByteCount: installed.Widgets.Sum(widget =>
+                widget.Versions.Sum(version => version.VerifiedTotalBytes)),
+            ElapsedMilliseconds: BoundedElapsedMilliseconds(discoveryStarted)));
 
         var combined = trusted._ordered.ToList();
         var known = combined.Select(widget => widget.Id).ToHashSet(StringComparer.Ordinal);
@@ -429,6 +461,15 @@ public sealed class BridgeCatalog
             }));
         }
         return new BridgeCatalogLoadResult(new BridgeCatalog(combined), warnings, InstalledCatalogValid: true);
+    }
+
+    internal static BridgeCatalog LoadTrusted(
+        string trustedCatalogPath,
+        string installedCatalogRoot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
+        return Load(trustedCatalogPath).WithSettingsCatalogRoot(
+            Path.GetFullPath(installedCatalogRoot));
     }
 
     private BridgeCatalog WithSettingsCatalogRoot(string installedCatalogRoot)
@@ -882,7 +923,21 @@ public sealed class BridgeCatalog
     private static bool IsBridgeLabel(string value) =>
         !string.IsNullOrWhiteSpace(value) && value.Length <= 256;
 
+    private static long BoundedElapsedMilliseconds(long started) =>
+        Math.Clamp(
+            (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+            0,
+            300_000);
+
 }
+
+internal readonly record struct BridgeInstalledCatalogObservation(
+    bool Succeeded,
+    int PackageCount,
+    int VersionCount,
+    int FileCount,
+    long ByteCount,
+    long ElapsedMilliseconds);
 
 public sealed record BridgeCatalogLoadResult(
     BridgeCatalog Catalog,

@@ -73,6 +73,18 @@ internal static class BridgeDiagnosticsScenarios
         Contains("application workers 1/8 (user-configured count limit)",
             configured.Bridge.Summary,
             "The explicit application-worker cap was not reported truthfully.");
+
+        var pendingProjection = new BridgeDiagnosticsProjection(
+            new ControlledDiagnosticsSource(Model(Catalog()) with
+            {
+                InstalledCatalogPending = true,
+            }),
+            () => new BridgeAuthorityRecoveryProjection(new ControlledRecoveryService([])));
+        var pending = await pendingProjection.CreateAsync(CancellationToken.None);
+        Equal(PlatformDiagnosticState.Unavailable, pending.Catalog.State,
+            "Pending installed-catalog authority was not projected as unavailable.");
+        Contains("installed catalog validation is pending", pending.Catalog.Summary,
+            "Pending installed-catalog authority was not described truthfully.");
     }
 
     internal static async Task PartialFailureMalformedInputAndDeadlineAreClosed()
@@ -211,6 +223,7 @@ internal static class BridgeDiagnosticsScenarios
         CatalogDiagnosticRevision: 4,
         CatalogDiagnosticCount: 0,
         CatalogRetainedLastGood: false,
+        InstalledCatalogPending: false,
         new BridgeAppearanceDiagnostic(false, 0, 0),
         ProvidersConfigured: true);
 

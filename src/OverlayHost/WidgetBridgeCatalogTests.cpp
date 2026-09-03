@@ -78,6 +78,13 @@ void VerifyWidgetBridgePipeReadinessContract() {
     CHECK(neverReady.error == ERROR_FILE_NOT_FOUND);
     CHECK(attempts == 500);
     CHECK(tick == widgetrail::WidgetBridgeReadinessContract::AcceptTimeoutMilliseconds);
+
+    CHECK(widgetrail::ProjectStartupSettingsFailure({}) ==
+          L"Settings is unavailable in the admitted widget catalog.");
+    CHECK(widgetrail::ProjectStartupSettingsFailure(
+              L"WidgetBridge pipe readiness timed out (Win32 error 2).") ==
+          L"WidgetBridge startup failed: WidgetBridge pipe readiness timed out "
+          L"(Win32 error 2).");
 }
 
 std::string Descriptor(const int index) {

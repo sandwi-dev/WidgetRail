@@ -22,6 +22,7 @@ internal sealed record BridgeDiagnosticsReadModel(
     long CatalogDiagnosticRevision,
     int CatalogDiagnosticCount,
     bool CatalogRetainedLastGood,
+    bool InstalledCatalogPending,
     BridgeAppearanceDiagnostic Appearance,
     bool ProvidersConfigured);
 
@@ -42,7 +43,8 @@ internal sealed class WidgetBridgeDiagnosticsSource(
     {
         var registrySnapshot = registry.DiagnosticsSnapshot();
         var catalog = catalogMonitor?.DiagnosticsSnapshot() ?? new(
-            registrySnapshot.CatalogRevision, 0, RetainedLastGood: false);
+            registrySnapshot.CatalogRevision, 0, RetainedLastGood: false,
+            InstalledCatalogPending: false);
         var appearanceErrors = appearance?.LastReloadDiagnostics.Count(item =>
             item.Severity == WidgetRail.WidgetStyling.WrssDiagnosticSeverity.Error) ?? 0;
         return new BridgeDiagnosticsReadModel(
@@ -50,6 +52,7 @@ internal sealed class WidgetBridgeDiagnosticsSource(
             catalog.Revision,
             catalog.DiagnosticCount,
             catalog.RetainedLastGood,
+            catalog.InstalledCatalogPending,
             new BridgeAppearanceDiagnostic(
                 appearance is not null,
                 appearance?.Current.Revision ?? 0,
@@ -113,11 +116,15 @@ internal sealed class BridgeDiagnosticsProjection(
         var catalogRevision = Math.Max(0, registry.CatalogRevision);
         var diagnosticRevision = Math.Max(0, input.CatalogDiagnosticRevision);
         var catalogReconciliationPending = diagnosticRevision != catalogRevision;
-        var catalogState = input.CatalogRetainedLastGood || catalogWarnings != 0 ||
+        var catalogState = input.InstalledCatalogPending
+            ? PlatformDiagnosticState.Unavailable
+            : input.CatalogRetainedLastGood || catalogWarnings != 0 ||
             catalogReconciliationPending
             ? PlatformDiagnosticState.Degraded
             : PlatformDiagnosticState.Healthy;
-        var catalogSummary = catalogReconciliationPending
+        var catalogSummary = input.InstalledCatalogPending
+            ? $"Revision {catalogRevision}; installed catalog validation is pending"
+            : catalogReconciliationPending
             ? $"Revision {catalogRevision}; reload revision {diagnosticRevision} awaits reconciliation"
             : input.CatalogRetainedLastGood
             ? $"Revision {catalogRevision}; retained last good after a rejected reload"

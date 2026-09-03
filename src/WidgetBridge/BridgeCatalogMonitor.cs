@@ -17,7 +17,12 @@ public sealed record BridgeCatalogReloadResult(
 internal readonly record struct BridgeCatalogDiagnosticSnapshot(
     long Revision,
     int DiagnosticCount,
-    bool RetainedLastGood);
+    bool RetainedLastGood,
+    bool InstalledCatalogPending);
+
+internal readonly record struct BridgeCatalogStateSnapshot(
+    BridgeCatalog Catalog,
+    long Revision);
 
 /// <summary>
 /// Maintains one validated, last-good bridge catalog and publishes monotonically
@@ -41,11 +46,15 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         AllowSynchronousContinuations = false,
     });
     private readonly CancellationTokenSource _shutdown = new();
+    private readonly Func<CancellationToken, Task<BridgeCatalogLoadResult>> _loadCatalog;
+    private readonly Action<BridgeInstalledCatalogObservation>? _catalogLoadObserved;
 
     private BridgeCatalog _current;
     private IReadOnlyList<string> _lastDiagnostics;
     private long _revision;
     private bool _retainedLastGood;
+    private bool _installedCatalogPending;
+    private long _reloadDemandGeneration;
     private FileSystemWatcher? _trustedWatcher;
     private FileSystemWatcher? _installedWatcher;
     private Task? _reloadWorker;
@@ -58,6 +67,27 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         string workerHostExecutable,
         BridgeCatalog initialCatalog,
         IReadOnlyList<string>? initialDiagnostics = null)
+        : this(
+            trustedCatalogPath,
+            installedCatalogRoot,
+            workerHostExecutable,
+            initialCatalog,
+            initialDiagnostics,
+            installedCatalogPending: false,
+            loadCatalog: null,
+            catalogLoadObserved: null)
+    {
+    }
+
+    internal BridgeCatalogMonitor(
+        string trustedCatalogPath,
+        string installedCatalogRoot,
+        string workerHostExecutable,
+        BridgeCatalog initialCatalog,
+        IReadOnlyList<string>? initialDiagnostics,
+        bool installedCatalogPending,
+        Func<CancellationToken, Task<BridgeCatalogLoadResult>>? loadCatalog,
+        Action<BridgeInstalledCatalogObservation>? catalogLoadObserved = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trustedCatalogPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
@@ -67,6 +97,15 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         _workerHostExecutable = Path.GetFullPath(workerHostExecutable);
         _current = initialCatalog ?? throw new ArgumentNullException(nameof(initialCatalog));
         _lastDiagnostics = initialDiagnostics?.Take(64).ToArray() ?? [];
+        _installedCatalogPending = installedCatalogPending;
+        _catalogLoadObserved = catalogLoadObserved;
+        _loadCatalog = loadCatalog ?? (cancellationToken =>
+            BridgeCatalog.LoadWithInstalledObservedAsync(
+                _trustedCatalogPath,
+                _installedCatalogRoot,
+                _workerHostExecutable,
+                _catalogLoadObserved,
+                cancellationToken));
     }
 
     public event EventHandler<BridgeCatalogChanged>? Changed;
@@ -95,7 +134,16 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     internal BridgeCatalogDiagnosticSnapshot DiagnosticsSnapshot()
     {
         lock (_stateGate)
-            return new(_revision, _lastDiagnostics.Count, _retainedLastGood);
+            return new(
+                _revision,
+                _lastDiagnostics.Count,
+                _retainedLastGood,
+                _installedCatalogPending);
+    }
+
+    internal BridgeCatalogStateSnapshot StateSnapshot()
+    {
+        lock (_stateGate) return new(_current, _revision);
     }
 
     internal string InstalledCatalogRoot => _installedCatalogRoot;
@@ -128,28 +176,33 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
 
     public Task<BridgeCatalogReloadResult> ReloadNowAsync(
         CancellationToken cancellationToken = default) =>
-        ReloadNowCoreAsync(forceRevision: false, cancellationToken);
+        ReloadNowCoreAsync(
+            forceRevision: false,
+            Interlocked.Increment(ref _reloadDemandGeneration),
+            cancellationToken);
 
     internal Task<BridgeCatalogReloadResult> ReloadAfterMutationAsync(
         CancellationToken cancellationToken = default) =>
-        ReloadNowCoreAsync(forceRevision: true, cancellationToken);
+        ReloadNowCoreAsync(
+            forceRevision: true,
+            Interlocked.Increment(ref _reloadDemandGeneration),
+            cancellationToken);
 
     private async Task<BridgeCatalogReloadResult> ReloadNowCoreAsync(
         bool forceRevision,
+        long demandGeneration,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        await _reloadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using var reloadCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _shutdown.Token);
+        await _reloadGate.WaitAsync(reloadCancellation.Token).ConfigureAwait(false);
         try
         {
             BridgeCatalogLoadResult loaded;
             try
             {
-                loaded = await BridgeCatalog.LoadWithInstalledAsync(
-                    _trustedCatalogPath,
-                    _installedCatalogRoot,
-                    _workerHostExecutable,
-                    cancellationToken).ConfigureAwait(false);
+                loaded = await _loadCatalog(reloadCancellation.Token).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is BridgeCatalogException or
                                                    IOException or UnauthorizedAccessException)
@@ -163,34 +216,36 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 {
                     _lastDiagnostics = warnings;
                     _retainedLastGood = true;
+                    _installedCatalogPending = false;
                     return new BridgeCatalogReloadResult(false, true, _revision, _current, warnings);
                 }
+            }
+
+            if (demandGeneration != Volatile.Read(ref _reloadDemandGeneration))
+            {
+                lock (_stateGate)
+                    return new BridgeCatalogReloadResult(
+                        false, true, _revision, _current,
+                        ["Widget catalog reload result was superseded; retained the current revision."]);
             }
 
             if (!loaded.InstalledCatalogValid)
             {
                 var warnings = loaded.Warnings.Concat(
-                ["Widget catalog reload failed closed to the trusted catalog; all community widgets were retired."])
+                ["Widget catalog reload was rejected; retained the last-good revision."])
                     .Take(64)
                     .ToArray();
-                BridgeCatalogChanged? failClosedChange = null;
                 lock (_stateGate)
                 {
                     _lastDiagnostics = warnings;
-                    _retainedLastGood = false;
-                    if (!_current.IsEquivalentTo(loaded.Catalog))
-                    {
-                        _current = loaded.Catalog;
-                        checked { ++_revision; }
-                        failClosedChange = new BridgeCatalogChanged(_revision, _current, warnings);
-                    }
+                    _retainedLastGood = true;
+                    _installedCatalogPending = false;
                 }
 
                 Diagnostics?.Invoke(this, warnings);
-                if (failClosedChange is not null) Changed?.Invoke(this, failClosedChange);
                 lock (_stateGate)
                     return new BridgeCatalogReloadResult(
-                        failClosedChange is not null, false, _revision, _current, warnings);
+                        false, true, _revision, _current, warnings);
             }
 
             BridgeCatalogChanged? changed = null;
@@ -198,12 +253,14 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             {
                 _lastDiagnostics = loaded.Warnings.Take(64).ToArray();
                 _retainedLastGood = false;
-                if (forceRevision || !_current.IsEquivalentTo(loaded.Catalog))
+                if (forceRevision || _installedCatalogPending ||
+                    !_current.IsEquivalentTo(loaded.Catalog))
                 {
                     _current = loaded.Catalog;
                     checked { ++_revision; }
                     changed = new BridgeCatalogChanged(_revision, _current, loaded.Warnings);
                 }
+                _installedCatalogPending = false;
             }
 
             if (loaded.Warnings.Count != 0) Diagnostics?.Invoke(this, loaded.Warnings);
@@ -231,6 +288,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             try { await _reloadWorker.ConfigureAwait(false); }
             catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         }
+        await _reloadGate.WaitAsync().ConfigureAwait(false);
+        _reloadGate.Release();
         _shutdown.Dispose();
         _reloadGate.Dispose();
     }
@@ -284,7 +343,9 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
 
     private void SignalReload()
     {
-        if (!_disposed) _reloadSignals.Writer.TryWrite(0);
+        if (_disposed) return;
+        Interlocked.Increment(ref _reloadDemandGeneration);
+        _reloadSignals.Writer.TryWrite(0);
     }
 
     private async Task RunReloadWorkerAsync(CancellationToken cancellationToken)
@@ -296,7 +357,11 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             while (_reloadSignals.Reader.TryRead(out _)) { }
             try
             {
-                await ReloadNowAsync(cancellationToken).ConfigureAwait(false);
+                var demandGeneration = Volatile.Read(ref _reloadDemandGeneration);
+                await ReloadNowCoreAsync(
+                    forceRevision: false,
+                    demandGeneration,
+                    cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

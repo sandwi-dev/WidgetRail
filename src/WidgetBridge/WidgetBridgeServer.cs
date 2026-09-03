@@ -165,7 +165,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         if (_catalogMonitor is not null)
         {
             _catalogMonitor.Changed += OnCatalogChanged;
-            ApplyCatalog(_catalogMonitor.Current, _catalogMonitor.Revision, publishEvent: false);
+            var catalog = _catalogMonitor.StateSnapshot();
+            ApplyCatalog(catalog.Catalog, catalog.Revision, publishEvent: false);
         }
         await using var pipe = new NamedPipeServerStream(
             _pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,

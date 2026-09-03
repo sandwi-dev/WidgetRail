@@ -58,6 +58,34 @@ internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
             $"event=bridge-session-started{Environment.NewLine}");
     }
 
+    internal void RecordBridgeStartupPhase(string stage, long elapsedMilliseconds = 0)
+    {
+        if (Volatile.Read(ref _disposed) != 0 || stage is not (
+                "trusted-catalog-ready" or "control-plane-created" or
+                "installed-catalog-pending"))
+            return;
+        _lines.Writer.TryWrite(
+            $"{DateTimeOffset.UtcNow:O} Bridge startup " +
+            $"bridge-session={_bridgeSessionGeneration} stage={stage} " +
+            $"elapsed-ms={Math.Clamp(elapsedMilliseconds, 0, 300_000)}" +
+            Environment.NewLine);
+    }
+
+    internal void RecordInstalledCatalogLoad(BridgeInstalledCatalogObservation observation)
+    {
+        if (Volatile.Read(ref _disposed) != 0) return;
+        _lines.Writer.TryWrite(
+            $"{DateTimeOffset.UtcNow:O} Bridge startup " +
+            $"bridge-session={_bridgeSessionGeneration} stage=installed-catalog-terminal " +
+            $"result={(observation.Succeeded ? "validated" : "rejected")} " +
+            $"packages={Math.Clamp(observation.PackageCount, 0, 256)} " +
+            $"versions={Math.Clamp(observation.VersionCount, 0, 512)} " +
+            $"files={Math.Clamp(observation.FileCount, 0, 32_768)} " +
+            $"bytes={Math.Clamp(observation.ByteCount, 0, 2L * 1024L * 1024L * 1024L)} " +
+            $"elapsed-ms={Math.Clamp(observation.ElapsedMilliseconds, 0, 300_000)}" +
+            Environment.NewLine);
+    }
+
     internal void RecordLifetime(BridgeClientLifetimeDiagnostic diagnostic)
     {
         if (Volatile.Read(ref _disposed) != 0 ||
