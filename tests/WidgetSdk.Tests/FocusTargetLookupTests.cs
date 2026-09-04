@@ -16,10 +16,14 @@ internal static class FocusTargetLookupTests
         var enabled = UI.Button("Enabled", "enabled", "focus.enabled")
             .FocusBackground(new WidgetArtworkHandle("focus.art"))
             .VisibleWhen(ResponsiveVisibility.CompactOnly);
+        var collectionPresentation = UI.Button("Wrapped", "wrapped", "focus.wrapped")
+            .CollectionItem(new WidgetCollectionItemKey("focus.wrapped.key"))
+            .PresentOnFocus(UI.Text("Focused", "focus.wrapped.presentation"));
         var root = UI.BackgroundSurface(
             UI.Stack("focus.root",
                 UI.Text("Copy", "focus.copy"),
                 enabled,
+                collectionPresentation,
                 UI.Button("Disabled", "disabled", "focus.disabled") with { IsDisabled = true },
                 UI.Stack("focus.dialog", UI.Button("Dialog", "dialog", "focus.dialog.action"))
                     .InputScope("focus.dialog.scope")),
@@ -27,6 +31,8 @@ internal static class FocusTargetLookupTests
 
         Equal(WidgetFocusTargetState.Valid,
             WidgetFocusTargetLookup.Resolve(root, "focus.enabled", "focus.background").State);
+        Equal(WidgetFocusTargetState.Valid,
+            WidgetFocusTargetLookup.Resolve(root, "focus.wrapped", "focus.background").State);
         var disabled = WidgetFocusTargetLookup.Resolve(
             root, "focus.disabled", "focus.background");
         Equal(WidgetFocusTargetState.Disabled, disabled.State);
