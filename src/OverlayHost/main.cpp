@@ -8714,13 +8714,28 @@ private:
         kTrayContextMenuGapDip +
         kTrayContextMenuItemHeightDip *
             static_cast<float>(kTrayContextMenuMaximumItems);
+    static constexpr float kPanelToGuideGapDip = 3.0F;
+
+    [[nodiscard]] static float DashboardGuideContentBottomDip(
+        const float height) noexcept {
+        const float titleTop = std::min(10.0F, height);
+        const float titleBottom = std::max(
+            titleTop, std::min(44.0F, height));
+        return std::max(titleBottom, std::min(66.0F, height));
+    }
+
+    [[nodiscard]] static float WidgetGuideContentBottomDip(
+        const float guideHeight) noexcept {
+        return guideHeight - std::min(12.0F, guideHeight * 0.25F);
+    }
 
     [[nodiscard]] static widgetrail::shell::TrayBand TrayBandBelowGuide(
         const float height,
         const widgetrail::OverlaySurfaceGeometry* surface = nullptr) noexcept {
         const float guideBottom = surface
-            ? surface->footerY + surface->footerHeight
-            : std::min(66.0F, height);
+            ? surface->footerY +
+                WidgetGuideContentBottomDip(surface->footerHeight)
+            : DashboardGuideContentBottomDip(height);
         return {
             std::clamp(guideBottom, 0.0F, height),
             height,
@@ -14634,6 +14649,7 @@ private:
         widgetrail::declarative::Rect guideBounds;
         RECT trayClientBounds{};
         RECT guideClientBounds{};
+        LONG renderedGuideContentBottom{};
         RECT windowBounds{};
         widgetrail::shell::FixedChromeSessionKey key;
     };
@@ -14999,7 +15015,7 @@ private:
             0L, static_cast<LONG>(std::lround(
                 kGuideToTrayGapDip * metrics->physicalPixelsPerDip)));
         const LONG chromeWidth = std::max(trayWidth, guideWidth);
-        const LONG chromeHeight =
+        LONG chromeHeight =
             trayMenuHeadroom + guideHeight + guideToTrayGap + trayHeight;
         if (chromeWidth <= 0 || chromeHeight <= 0) return false;
 
@@ -15022,6 +15038,41 @@ private:
             guideLeft, trayMenuHeadroom,
             guideLeft + guideWidth, trayMenuHeadroom + guideHeight,
         };
+        session.windowBounds = widgetrail::shell::ComputeFixedChromeWindowBounds(
+            workArea, chromeWidth, chromeHeight);
+        if (state_.surface() == widgetrail::Surface::Widget) {
+            const float guideHeightDip = static_cast<float>(guideHeight) /
+                session.pixelsPerDip;
+            session.renderedGuideContentBottom =
+                session.guideClientBounds.top + static_cast<LONG>(std::lround(
+                    WidgetGuideContentBottomDip(guideHeightDip) *
+                    session.pixelsPerDip));
+        } else {
+            const auto dashboardPlacement = ComputePlatformPlacement(
+                workArea, effectiveDpi,
+                static_cast<float>(kPanelWidth) * interfaceScale,
+                static_cast<float>(kDashboardHeight) * interfaceScale);
+            if (!dashboardPlacement) return false;
+            const int panelToGuideGap = static_cast<int>(std::lround(
+                kPanelToGuideGapDip * session.pixelsPerDip));
+            const auto dashboardBounds =
+                widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
+                    workArea,
+                    session.windowBounds.top + session.guideClientBounds.top,
+                    dashboardPlacement->width, dashboardPlacement->height,
+                    panelToGuideGap);
+            if (!dashboardBounds) return false;
+            const float dashboardHeightDip =
+                static_cast<float>(dashboardPlacement->height) /
+                session.pixelsPerDip;
+            session.renderedGuideContentBottom =
+                dashboardBounds->top - session.windowBounds.top +
+                static_cast<LONG>(std::lround(
+                    DashboardGuideContentBottomDip(dashboardHeightDip) *
+                    session.pixelsPerDip));
+        }
+        session.renderedGuideContentBottom = std::clamp(
+            session.renderedGuideContentBottom, 0L, chromeHeight);
         const auto localTrayLayout = ComputeCompositionTrayLayout(session);
         if (!localTrayLayout) return false;
         const LONG localStripTop = static_cast<LONG>(std::floor(
@@ -15031,24 +15082,49 @@ private:
             session.pixelsPerDip));
         const LONG stripHeight = std::max(1L, localStripBottom - localStripTop);
         const LONG freeBandHeight = std::max(
-            0L, chromeHeight - session.guideClientBounds.bottom);
-        const LONG centeredStripTop = session.guideClientBounds.bottom +
+            0L, chromeHeight - session.renderedGuideContentBottom);
+        LONG centeredStripTop = session.renderedGuideContentBottom +
             std::max(0L, (freeBandHeight - stripHeight) / 2L);
+        LONG requestedTrayTop = centeredStripTop - localStripTop;
+        if (requestedTrayTop < 0) {
+            // The tray child keeps its bounded menu headroom above the strip.
+            // Grow the short chrome window upward only as much as that
+            // headroom requires, and shift the guide by the same amount so
+            // its established screen anchor and content placement do not move.
+            const LONG availableWorkHeight = std::max(
+                0L, workArea.bottom - workArea.top);
+            const LONG topExpansion = std::min(
+                -requestedTrayTop,
+                std::max(0L, availableWorkHeight - chromeHeight));
+            if (topExpansion > 0) {
+                chromeHeight += topExpansion;
+                session.canvasHeight = static_cast<unsigned int>(chromeHeight);
+                session.guideClientBounds.top += topExpansion;
+                session.guideClientBounds.bottom += topExpansion;
+                session.renderedGuideContentBottom += topExpansion;
+                centeredStripTop += topExpansion;
+                requestedTrayTop += topExpansion;
+                session.windowBounds =
+                    widgetrail::shell::ComputeFixedChromeWindowBounds(
+                        workArea, chromeWidth, chromeHeight);
+            }
+        }
         const LONG maximumTrayTop = std::max(0L, chromeHeight - traySurfaceHeight);
-        const LONG trayTop = std::clamp(
-            centeredStripTop - localStripTop, 0L, maximumTrayTop);
+        const LONG trayTop = std::clamp(requestedTrayTop, 0L, maximumTrayTop);
         session.trayClientBounds = {
             trayLeft, trayTop,
             trayLeft + trayWidth, trayTop + traySurfaceHeight,
         };
+        const LONG visibleGapAbove = trayTop + localStripTop -
+            session.renderedGuideContentBottom;
+        const LONG visibleGapBelow = chromeHeight -
+            (trayTop + localStripBottom);
         session.guideBounds = {
             0.0F,
             0.0F,
             static_cast<float>(guideWidth) / session.pixelsPerDip,
             static_cast<float>(guideHeight) / session.pixelsPerDip,
         };
-        session.windowBounds = widgetrail::shell::ComputeFixedChromeWindowBounds(
-            workArea, chromeWidth, chromeHeight);
         if (!widgetrail::shell::ApplyFixedChromeWindow(
                 window_, chromeWindow_, session.windowBounds, true)) {
             AppendDiagnostic(L"Fixed chrome placement failed error=" +
@@ -15107,6 +15183,10 @@ private:
             FormatPhysicalBounds(session.guideClientBounds) +
             L" tray-client=" +
             FormatPhysicalBounds(session.trayClientBounds) +
+            L" guide-content-bottom=" +
+            std::to_wstring(session.renderedGuideContentBottom) +
+            L" tray-visual-gaps=" + std::to_wstring(visibleGapAbove) +
+            L"," + std::to_wstring(visibleGapBelow) +
             L" guide-screen=" + FormatPhysicalBounds(*guideScreen) +
             L" tray-screen=" + FormatPhysicalBounds(*trayScreen) +
             L" exact=" + (exact ? std::wstring{L"true"} : L"false") +
@@ -15131,7 +15211,6 @@ private:
             compositionChromeSession_->guideClientBounds);
         if (!guide) return std::nullopt;
 
-        constexpr float kPanelToGuideGapDip = 3.0F;
         const int panelToGuideGap = static_cast<int>(std::lround(
             kPanelToGuideGapDip * fixedChromeAnchor_->dpi / 96.0F *
             fixedChromeAnchor_->interfaceScale));
@@ -16079,7 +16158,7 @@ private:
         const float titleTop = std::min(10.0F, height);
         const float titleBottom = std::max(titleTop, std::min(44.0F, height));
         const float hintTop = titleBottom;
-        const float hintBottom = std::max(hintTop, std::min(66.0F, height));
+        const float hintBottom = DashboardGuideContentBottomDip(height);
         const std::wstring_view title = state_.reorderMode()
             ? L"Reorder widgets"
             : DisplayWidgetName(state_.selectedWidget());
@@ -16171,9 +16250,6 @@ private:
         const float panelRight = fixedGuideBounds
             ? fixedGuideBounds->x + fixedGuideBounds->width
             : geometry.panelX + geometry.panelWidth;
-        const float panelBottom = fixedGuideBounds
-            ? fixedGuideBounds->y + fixedGuideBounds->height
-            : geometry.panelY + geometry.panelHeight;
         const float guideWidth = panelRight - panelLeft;
         const float horizontalInset = std::min(30.0F, guideWidth * 0.1F);
         const float contentLeft = panelLeft + horizontalInset;
@@ -16184,8 +16260,8 @@ private:
             ? fixedGuideBounds->height : geometry.footerHeight;
         const float textTop = guideTop +
             std::min(15.0F, guideHeight * 0.35F);
-        const float textBottom = panelBottom -
-            std::min(12.0F, guideHeight * 0.25F);
+        const float textBottom = guideTop +
+            WidgetGuideContentBottomDip(guideHeight);
         if (textBottom <= textTop + 1.0F) return;
         const widgetrail::declarative::Rect footerBounds{
             contentLeft, textTop, contentRight - contentLeft, textBottom - textTop,
