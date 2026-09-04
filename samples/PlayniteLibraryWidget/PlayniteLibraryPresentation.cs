@@ -647,9 +647,11 @@ internal static class PlayniteLibraryPresentation
                 !state.OrganizationBusy)
                 page = page
                     .Shortcut(ControllerButton.LeftTrigger,
-                        actionId: PlayniteLibraryActions.CollectionPrevious)
+                        actionId: PlayniteLibraryActions.CollectionPrevious,
+                        label: "Previous collection")
                     .Shortcut(ControllerButton.RightTrigger,
-                        actionId: PlayniteLibraryActions.CollectionNext);
+                        actionId: PlayniteLibraryActions.CollectionNext,
+                        label: "Next collection");
             var browseStage = CinematicStage(
                 "playnite-library.browse.stage", page,
                 "playnite-library-browse-stage");
@@ -824,10 +826,12 @@ internal static class PlayniteLibraryPresentation
             return scroll;
         if (snapshot.HasBefore)
             scroll = scroll.Shortcut(
-                ControllerButton.LeftBumper, "playnite-library.previous");
+                ControllerButton.LeftBumper, "playnite-library.previous",
+                label: "Previous page");
         if (snapshot.HasAfter)
             scroll = scroll.Shortcut(
-                ControllerButton.RightBumper, "playnite-library.next");
+                ControllerButton.RightBumper, "playnite-library.next",
+                label: "Next page");
         return scroll;
     }
 
@@ -1037,7 +1041,8 @@ internal static class PlayniteLibraryPresentation
         {
             var actionEnabled = availability.Launchable;
             tile = tile
-                .Shortcut(ControllerButton.X, actionId: PlayniteLibraryActions.Favorite)
+                .Shortcut(ControllerButton.X, actionId: PlayniteLibraryActions.Favorite,
+                    label: favorite ? "Remove favorite" : "Add favorite")
                 .ContextAction(PlayniteLibraryActions.Favorite,
                     favorite ? "Remove favorite" : "Add favorite", disabled: !actionEnabled)
                 .ContextAction(PlayniteLibraryActions.Hide, "Hide", disabled: !actionEnabled)

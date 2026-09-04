@@ -244,6 +244,13 @@ focused. Put an action that must work anywhere in the open window on the active
 scope-root Stack/Row/Scroll. Do not copy the same window shortcut onto sibling
 buttons and do not expect the router to search those siblings.
 
+An optional bounded shortcut `Label` is presentation metadata for that exact
+binding. The open-widget controller guide uses it first, then falls back to the
+owning control's visible text and accessibility label. Scope-root bindings that
+should be advertised need explicit labels because one element accessibility
+name cannot describe several button/action pairs. An absent label preserves an
+input-only shortcut. Dashboard QuickAction labels do not supply shortcut text.
+
 The runtime also requires the input's active-scope ID and snapshot sequence to
 match the latest rendered snapshot. Stale input, a mismatched scope, or a focus
 ID outside the active scope returns unhandled. Explicit focus-neighbor edges

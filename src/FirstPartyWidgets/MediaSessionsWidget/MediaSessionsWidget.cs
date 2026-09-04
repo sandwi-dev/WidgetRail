@@ -251,9 +251,14 @@ public sealed class MediaSessionsWidget : Widget
         var root = UI.Stack("media.root", content.ToArray())
             .InputScope("media-sessions")
             .Classes("media-sessions-widget");
-        if (selected.CanPrevious) root = root.Shortcut(ControllerButton.LeftBumper, "media.previous");
-        if (toggleEnabled) root = root.Shortcut(ControllerButton.X, "media.toggle");
-        if (selected.CanNext) root = root.Shortcut(ControllerButton.RightBumper, "media.next");
+        if (selected.CanPrevious)
+            root = root.Shortcut(
+                ControllerButton.LeftBumper, "media.previous", label: "Previous track");
+        if (toggleEnabled)
+            root = root.Shortcut(ControllerButton.X, "media.toggle", label: toggleLabel);
+        if (selected.CanNext)
+            root = root.Shortcut(
+                ControllerButton.RightBumper, "media.next", label: "Next track");
 
         var quickActions = new List<WidgetQuickAction>();
         if (selected.CanPrevious)

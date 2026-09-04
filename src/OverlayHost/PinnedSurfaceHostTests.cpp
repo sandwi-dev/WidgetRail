@@ -413,47 +413,50 @@ void TestAcceptedOverlayFullscreenMediaHostContract() {
     };
 
     const auto fullscreenAuthority = section(
+        "[[nodiscard]] FullscreenEntryDecision EvaluateFullscreenEntry(",
         "[[nodiscard]] bool OverlayFullscreenMediaRequested() const noexcept {",
-        "[[nodiscard]] bool EnterOverlayFullscreenMedia()",
         "fullscreen request authority owner exists");
     Check(fullscreenAuthority.find("CurrentEmbeddedMediaSessionKey(") !=
                   std::string::npos &&
-              fullscreenAuthority.find("mediaSessions_.Find(*key)") !=
+              fullscreenAuthority.find("mediaSessions_.Find(*decision.sessionKey)") !=
                   std::string::npos &&
               fullscreenAuthority.find(
-                  "session->presentationRequest->target !=\n                EmbeddedMediaPresentationState::OverlayFullscreen") !=
+                  "authority.presentationGeneration == descriptor->presentationGeneration") !=
                   std::string::npos &&
               fullscreenAuthority.find(
-                  "session->presentationRequest->presentationGeneration !=\n                session->authority->presentationGeneration") !=
+                  "EmbeddedMediaPresentationAuthorityCurrent(*decision.sessionKey)") !=
                   std::string::npos &&
               fullscreenAuthority.find(
-                  "OverlayFullscreenMediaAuthorityCurrent(") !=
+                  "mediaSessions_.EndpointOwner(widgetrail::media::Endpoint::Overlay)") !=
+                  std::string::npos &&
+              fullscreenAuthority.find("decision.overlayViewport") !=
+                  std::string::npos &&
+              fullscreenAuthority.find("decision.committedViewport") !=
                   std::string::npos &&
               fullscreenAuthority.find(
                   "MediaPresentationKind::OverlayFullscreen") !=
                   std::string::npos &&
-              fullscreenAuthority.find("pinnedSurfaceCoordinator_.pinned()") !=
+              fullscreenAuthority.find("decision.pinnedTakeover") !=
+                  std::string::npos &&
+              fullscreenAuthority.find("decision.requestEligible") !=
                   std::string::npos,
           "fullscreen activation requires the exact current session, generation, capability, and non-pinned authority");
 
     const auto fullscreenEntryExit = section(
-        "[[nodiscard]] bool EnterOverlayFullscreenMedia()",
+        "[[nodiscard]] bool EnterOverlayFullscreenMedia(",
         "void ClearStaleOverlayFullscreenMediaActivation(",
         "fullscreen entry and exit owners exist");
     Check(fullscreenEntryExit.find(
-              "EmbeddedMediaPresentationState::OverlayViewport") !=
+              "if (!decision.requestEligible || !decision.sessionKey) return false;") !=
                   std::string::npos &&
               fullscreenEntryExit.find(
-                  "EmbeddedMediaPresentationAuthorityCurrent(*key)") !=
+                  "*decision.sessionKey, EmbeddedMediaPresentationState::OverlayFullscreen") !=
                   std::string::npos &&
               fullscreenEntryExit.find(
-                  "ResolveOrdinaryOverlayEmbeddedMediaPresentationGeometry(") !=
+                  "const auto key = CurrentEmbeddedMediaSessionKey(state_.activeWidget())") !=
                   std::string::npos &&
               fullscreenEntryExit.find(
-                  "MediaPresentationKind::OverlayFullscreen") !=
-                  std::string::npos &&
-              fullscreenEntryExit.find(
-                  "*key, EmbeddedMediaPresentationState::OverlayFullscreen") !=
+                  "session->authority->presentation !=\n                 EmbeddedMediaPresentationState::OverlayFullscreen") !=
                   std::string::npos &&
               fullscreenEntryExit.find(
                   "*key, EmbeddedMediaPresentationState::OverlayViewport") !=
@@ -894,6 +897,63 @@ void TestSelectActivationRoutingContract() {
               keyboardGeneric != std::string::npos &&
               keyboardSelect < keyboardGeneric,
           "pinned Enter consumes Select before generic input fallback");
+}
+
+void TestFullscreenShortcutDispatchContract() {
+    const auto source = ReadSource(
+        fs::path{__FILE__}.parent_path() / "main.cpp");
+    const auto helperBegin = source.find(
+        "void AttemptOverlayFullscreenMediaEntry(");
+    const auto focusedBegin = source.find(
+        "[[nodiscard]] bool TryDispatchNativeMediaAction(", helperBegin);
+    const auto dispatchBegin = source.find(
+        "void DispatchWidgetAction(", focusedBegin);
+    Check(helperBegin != std::string::npos &&
+              focusedBegin != std::string::npos &&
+              dispatchBegin != std::string::npos &&
+              helperBegin < focusedBegin && focusedBegin < dispatchBegin,
+          "fullscreen A and scope shortcut routes share one bounded attempt owner");
+
+    const auto helper = source.substr(helperBegin, focusedBegin - helperBegin);
+    const auto firstAttempt = source.find(
+        "EnterOverlayFullscreenMedia(decision)");
+    Check(firstAttempt != std::string::npos &&
+              source.find("EnterOverlayFullscreenMedia(decision)", firstAttempt + 1) ==
+                  std::string::npos &&
+              helper.find("EvaluateFullscreenEntry(widgetId, snapshot)") !=
+                  std::string::npos &&
+              helper.find("RefreshAndApplyPresentation([] {});") !=
+                  std::string::npos &&
+              helper.find("Fullscreen is unavailable for the current media session") !=
+                  std::string::npos,
+          "one fullscreen attempt owner preserves admission refresh and feedback");
+
+    const auto focused = source.substr(focusedBegin, dispatchBegin - focusedBegin);
+    Check(focused.find("protocolButton != L\"a\"") != std::string::npos &&
+              focused.find("NavigationEventPhase::Pressed") != std::string::npos &&
+              focused.find(
+                  "widgetId, snapshot, L\"focused-node\", protocolButton") !=
+                  std::string::npos,
+          "focused fullscreen activation remains exact A Pressed authority");
+
+    const auto scopeBegin = source.find(
+        "if (isOpen && protocolButton != L\"a\"", dispatchBegin);
+    const auto genericBegin = source.find(
+        "const auto* descriptor = sessions_.FindDescriptor(widget);", scopeBegin);
+    Check(scopeBegin != std::string::npos &&
+              genericBegin != std::string::npos && scopeBegin < genericBegin,
+          "scope fullscreen shortcut precedes generic package dispatch");
+    const auto scope = source.substr(scopeBegin, genericBegin - scopeBegin);
+    Check(scope.find("ResolveHostControllerShortcut(") != std::string::npos &&
+              scope.find("ControllerShortcutResolutionStatus::Resolved") !=
+                  std::string::npos &&
+              scope.find("host.embeddedMediaSession.enterFullscreen") !=
+                  std::string::npos &&
+              scope.find(
+                  "widget, *snapshot, L\"scope-shortcut\", protocolButton") !=
+                  std::string::npos &&
+              scope.find("return;") != std::string::npos,
+          "page-wide non-A shortcut consumes only the exact admitted fullscreen action");
 }
 
 void TestAcceptedMediaBackOwnershipHostContract() {
@@ -1561,6 +1621,7 @@ int wmain(const int argc, wchar_t** argv) {
         TestAcceptedWidgetOwnedFocusMemoryHostContract();
         TestAcceptedHiddenBridgeControlPlaneContract();
         TestSelectActivationRoutingContract();
+        TestFullscreenShortcutDispatchContract();
         TestAcceptedMediaBackOwnershipHostContract();
         TestPolicyAndPlacement();
         const auto result = TestRealHostWindow(ParseEvidencePath(argc, argv));

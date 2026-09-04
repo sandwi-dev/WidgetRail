@@ -271,11 +271,17 @@ public sealed record FocusNeighbors(
     string? Left = null,
     string? Right = null);
 
+/// <summary>
+/// Binds one controller input to one action. An optional bounded label lets the
+/// host describe that exact binding in the open-widget controller guide; it
+/// grants no additional input or action authority.
+/// </summary>
 public sealed record ControllerShortcut(
     ControllerButton Button,
     string ActionId,
     ControllerEventPhase Phase = ControllerEventPhase.Pressed,
-    ControllerActionRepeatPolicy RepeatPolicy = ControllerActionRepeatPolicy.None);
+    ControllerActionRepeatPolicy RepeatPolicy = ControllerActionRepeatPolicy.None,
+    string? Label = null);
 
 /// <summary>
 /// Names the one exact control-capability operation a dashboard quick action may

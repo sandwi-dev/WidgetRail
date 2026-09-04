@@ -37,6 +37,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Inline PNG images are bounded local and negotiate the highest protocol", InlinePngImagesAreBounded),
     ("Trusted encoded artwork is versioned and value-owned", TrustedEncodedArtworkIsVersionedAndValueOwned),
     ("Input surfaces serialize and validate scoped shortcuts", InputSurfacesValidate),
+    ("Controller shortcut labels are additive bounded and versioned",
+        ControllerShortcutLabelTests.Run),
     ("Held-button action repeat is generic opt-in and never backlogs",
         HeldButtonActionRepeatTests.Run),
     ("Remembered-child focus groups share one bounded container contract",

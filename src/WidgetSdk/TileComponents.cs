@@ -189,6 +189,19 @@ public sealed record ActionSurfaceElement : WidgetElement
                 new ControllerShortcut(button, actionId ?? ActionId, phase, repeatPolicy),
             ],
         };
+    public ActionSurfaceElement Shortcut(
+        ControllerButton button,
+        string label,
+        ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        string? actionId = null,
+        ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
+        {
+            Shortcuts =
+            [
+                .. Shortcuts,
+                new ControllerShortcut(button, actionId ?? ActionId, phase, repeatPolicy, label),
+            ],
+        };
     public ActionSurfaceElement ContextAction(
         string actionId,
         string label,

@@ -131,12 +131,35 @@ int main() {
               .actions.empty(),
           "a busy ancestor owner is not advertised by the guide");
     snapshot.root.isBusy = false;
+    snapshot.quickActions.push_back(
+        {L"x", L"root.command", L"Dashboard label", L"none"});
     const auto enabledAncestor =
         widgetrail::guide::ResolveOpenWidgetAuthority(snapshot, L"density");
     Check(enabledAncestor.actions.size() == 1 &&
               enabledAncestor.actions[0].button == L"x" &&
               enabledAncestor.actions[0].label == L"Root command",
-          "the guide advertises the exact enabled ancestor owner");
+          "owner text wins without borrowing the dashboard QuickAction label");
+
+    snapshot.root.shortcuts[0].label = L"Explicit command";
+    const auto explicitlyLabeled =
+        widgetrail::guide::ResolveOpenWidgetAuthority(snapshot, L"density");
+    Check(explicitlyLabeled.actions.size() == 1 &&
+              explicitlyLabeled.actions[0].label == L"Explicit command",
+          "an explicit shortcut label wins over owner and QuickAction text");
+
+    snapshot.root.shortcuts[0].label.clear();
+    snapshot.root.text.clear();
+    snapshot.root.accessibilityLabel = L"Accessible owner";
+    const auto accessibleOwner =
+        widgetrail::guide::ResolveOpenWidgetAuthority(snapshot, L"density");
+    Check(accessibleOwner.actions.size() == 1 &&
+              accessibleOwner.actions[0].label == L"Accessible owner",
+          "direct owner accessibility text is the final guide fallback");
+
+    snapshot.root.accessibilityLabel.clear();
+    Check(widgetrail::guide::ResolveOpenWidgetAuthority(snapshot, L"density")
+              .actions.empty(),
+          "an unlabeled owner never borrows dashboard QuickAction text");
 
     std::cout << "GuideInputCompatibilityTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

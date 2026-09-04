@@ -7,20 +7,6 @@
 namespace widgetrail::guide {
 namespace {
 
-std::wstring_view QuickActionLabel(
-    const WidgetSnapshot& snapshot,
-    const WidgetShortcut& shortcut) noexcept {
-    const auto match = std::find_if(
-        snapshot.quickActions.begin(), snapshot.quickActions.end(),
-        [&](const WidgetQuickAction& action) {
-            return action.button == shortcut.button &&
-                action.actionId == shortcut.actionId && !action.label.empty();
-        });
-    return match == snapshot.quickActions.end()
-        ? std::wstring_view{}
-        : std::wstring_view{match->label};
-}
-
 int ButtonPriority(const std::wstring_view button) noexcept {
     if (button == L"x") return 0;
     if (button == L"leftTrigger") return 1;
@@ -146,11 +132,11 @@ OpenWidgetAuthority ResolveOpenWidgetAuthority(
                 !resolved.owner)
                 continue;
             const auto& owner = *resolved.owner;
-            const std::wstring_view label = !owner.text.empty()
-                ? std::wstring_view{owner.text}
-                : !owner.accessibilityLabel.empty()
-                    ? std::wstring_view{owner.accessibilityLabel}
-                    : QuickActionLabel(snapshot, shortcut);
+            const std::wstring_view label = !shortcut.label.empty()
+                ? std::wstring_view{shortcut.label}
+                : !owner.text.empty()
+                    ? std::wstring_view{owner.text}
+                    : std::wstring_view{owner.accessibilityLabel};
             if (label.empty()) continue;
             result.actions.push_back({shortcut.button, std::wstring{label}});
         }

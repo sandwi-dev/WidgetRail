@@ -325,8 +325,10 @@ traffic is admitted and is never sent to sealed or denied resources.
 Stack, Row, Grid, and Scroll containers may call `.InputScope("scope-id")` to start a nested
 controller input surface. The root is always the default input scope, so a
 simple widget does not need to declare one. Those containers may also call
-`.Shortcut(button, actionId)` for a surface-level action that must work without
-focused content, such as B to dismiss a modal.
+`.Shortcut(button, actionId, label: "Action")` for a surface-level action that
+must work without focused content, such as B to dismiss a modal. The optional
+bounded label describes that exact binding in the open-widget controller guide;
+omit it for an input-only shortcut that should not be advertised.
 
 `LoadingIndicator` is indeterminate presentation, not a worker lifecycle or
 polling mechanism. Its accessible label is required, and the protocol rejects
@@ -1074,9 +1076,9 @@ return new WidgetView(
                     .Icon(WidgetGlyph.Next)
                     .FocusLeft("play")))
         .InputScope("player-window")
-        .Shortcut(ControllerButton.LeftBumper, "previous")
-        .Shortcut(ControllerButton.X, "toggle")
-        .Shortcut(ControllerButton.RightBumper, "next"),
+        .Shortcut(ControllerButton.LeftBumper, "previous", label: "Previous")
+        .Shortcut(ControllerButton.X, "toggle", label: "Play or pause")
+        .Shortcut(ControllerButton.RightBumper, "next", label: "Next"),
     InitialFocusId: "play");
 ```
 
@@ -1095,6 +1097,16 @@ button because exact focus and active scope disambiguate them:
 A Button-local shortcut is available only while that exact Button is focused.
 Declare a window-wide shortcut once on the active scope-root container, as in
 the transport example above; copying it across siblings is not a substitute.
+The controller guide uses an explicit shortcut `label` first. When the shortcut
+is attached directly to a named control, its visible text and then its
+accessibility label are safe fallbacks. A scope root can own several bindings,
+so its element accessibility label cannot name those commands; label each
+guide-visible scope shortcut explicitly. Dashboard `QuickActions` remain a
+separate maximum-three contract and are never a shortcut-label source.
+Protocol v43 adds this optional label; snapshots that omit it retain the
+existing input-only shortcut contract and may continue to use their otherwise
+required protocol version. The SDK exposes labels through an additive overload
+and retains the original unlabeled method signature for already-built widgets.
 
 ```csharp
 var root = UI.Stack("root",

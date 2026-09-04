@@ -791,6 +791,64 @@ void VerifyEmbeddedMediaSnapshotContract() {
             "overlay fullscreen media was admitted before protocol v42");
 }
 
+void VerifyControllerShortcutLabelContract() {
+    std::wstring error;
+    const auto ordinary = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot":{"protocolVersion":43,"sequence":1,
+        "widgetInstanceId":"shortcut.label","activeInputScopeId":"root",
+        "root":{"id":"root","kind":"stack","shortcuts":[
+            {"button":"x","actionId":"toggle","phase":"pressed",
+             "label":"Play or pause"}],"children":[]}}
+    })json", error);
+    CHECK(ordinary && error.empty());
+    CHECK(ordinary->root.shortcuts.size() == 1);
+    CHECK(ordinary->root.shortcuts[0].label == L"Play or pause");
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot":{"protocolVersion":42,"sequence":1,
+        "widgetInstanceId":"shortcut.label.old","activeInputScopeId":"root",
+        "root":{"id":"root","kind":"stack","shortcuts":[
+            {"button":"x","actionId":"toggle","phase":"pressed",
+             "label":"Play or pause"}],"children":[]}}
+    })json", error));
+    CHECK(error.find(L"protocol version 43") != std::wstring::npos);
+
+    error.clear();
+    const auto pinned = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot":{"protocolVersion":43,"sequence":1,
+        "widgetInstanceId":"shortcut.label.pinned","activeInputScopeId":"root",
+        "pinnedLayouts":[{"id":"compact","name":"Compact",
+            "surface":{"mode":"compact","preferredWidth":320,"preferredHeight":180,
+                       "minimumWidth":240,"minimumHeight":180},
+            "activeInputScopeId":"pinned.root",
+            "root":{"id":"pinned.root","kind":"stack","shortcuts":[
+                {"button":"y","actionId":"refresh","phase":"pressed",
+                 "label":"Refresh"}],"children":[]}}],
+        "root":{"id":"root","kind":"stack","children":[]}}
+    })json", error);
+    CHECK(pinned && error.empty());
+    CHECK(pinned->pinnedLayouts.size() == 1);
+    CHECK(pinned->pinnedLayouts[0].root);
+    CHECK(pinned->pinnedLayouts[0].root->shortcuts.size() == 1);
+    CHECK(pinned->pinnedLayouts[0].root->shortcuts[0].label == L"Refresh");
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot":{"protocolVersion":42,"sequence":1,
+        "widgetInstanceId":"shortcut.label.pinned-old","activeInputScopeId":"root",
+        "pinnedLayouts":[{"id":"compact","name":"Compact",
+            "surface":{"mode":"compact","preferredWidth":320,"preferredHeight":180,
+                       "minimumWidth":240,"minimumHeight":180},
+            "activeInputScopeId":"pinned.root",
+            "root":{"id":"pinned.root","kind":"stack","shortcuts":[
+                {"button":"y","actionId":"refresh","phase":"pressed",
+                 "label":"Refresh"}],"children":[]}}],
+        "root":{"id":"root","kind":"stack","children":[]}}
+    })json", error));
+    CHECK(error.find(L"protocol version 43") != std::wstring::npos);
+}
+
 void VerifyEmbeddedMediaBundleBoundary() {
     constexpr std::string_view valid = R"json({
         "widgetId":"aurora-widget","instanceId":"aurora-instance",
@@ -1073,6 +1131,7 @@ int main() {
     VerifyFrameSafeCancellationRecovery();
     VerifyAtomicPresentationUpdateMaterialization();
     VerifySelectControllerInputSerializationAndPopupRaster();
+    VerifyControllerShortcutLabelContract();
     VerifyEmbeddedMediaSnapshotContract();
     VerifyEmbeddedMediaBundleBoundary();
     VerifyVirtualCollectionProtocol();

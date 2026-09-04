@@ -166,7 +166,7 @@ internal static class GamesAppsPresentation
                     accessibilityLabel:
                         $"{GamesAppsAppLibraryPresentation.DisplayName(item)}, " +
                         $"{SourceLabel(item)}, {tileState}")
-                .Shortcut(ControllerButton.X, actionId: "games.remove")
+                .Shortcut(ControllerButton.X, actionId: "games.remove", label: "Remove")
                 .Busy(isOpening)
                 .Disabled(!isResolved || !GamesAppsAppLibraryPresentation.CanLaunch(item) ||
                     state.LaunchingAppId is not null ||
@@ -221,7 +221,7 @@ internal static class GamesAppsPresentation
                             .Classes("games-library-scroll"))
                     .Classes("games-content"))
             .InputScope("games-apps")
-            .Shortcut(ControllerButton.Y, RetryActionId)
+            .Shortcut(ControllerButton.Y, RetryActionId, label: "Refresh")
             .Classes("games-apps-widget");
         return new WidgetView(
             root, LibraryElementId(curated[0].SavedId), Surface: LibrarySurface);

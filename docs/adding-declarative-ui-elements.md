@@ -652,6 +652,9 @@ contract.
 - [ ] Visible truncation does not truncate accessible text.
 - [ ] The controller guide advertises only the exact available action and adds
       no dispatch owner.
+- [ ] Guide-visible scope shortcuts publish one bounded label per binding;
+      element accessibility names and dashboard QuickAction labels are not
+      substitutes for distinct shortcut command text.
 
 ### Evidence
 

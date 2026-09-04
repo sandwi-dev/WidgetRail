@@ -154,13 +154,19 @@ internal sealed class ProtocolVersionRequirements
             var shortcuts = node.Shortcuts ?? [];
             for (var shortcutIndex = 0; shortcutIndex < shortcuts.Count; shortcutIndex++)
             {
-                if (shortcuts[shortcutIndex]?.RepeatPolicy !=
-                    ControllerActionRepeatPolicy.WhileHeld) continue;
-                Add(
-                    "held-button-action-repeat",
-                    ProtocolConstants.HeldButtonActionRepeatVersion,
-                    $"{path}.shortcuts[{shortcutIndex}].repeatPolicy",
-                    $"Held-button action repeat requires protocol version {ProtocolConstants.HeldButtonActionRepeatVersion} or later.");
+                var shortcut = shortcuts[shortcutIndex];
+                if (shortcut?.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld)
+                    Add(
+                        "held-button-action-repeat",
+                        ProtocolConstants.HeldButtonActionRepeatVersion,
+                        $"{path}.shortcuts[{shortcutIndex}].repeatPolicy",
+                        $"Held-button action repeat requires protocol version {ProtocolConstants.HeldButtonActionRepeatVersion} or later.");
+                if (shortcut?.Label is not null)
+                    Add(
+                        "controller-shortcut-label",
+                        ProtocolConstants.ControllerShortcutLabelVersion,
+                        $"{path}.shortcuts[{shortcutIndex}].label",
+                        $"Controller shortcut labels require protocol version {ProtocolConstants.ControllerShortcutLabelVersion} or later.");
             }
 
             switch (node.Kind)

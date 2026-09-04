@@ -185,11 +185,14 @@ public sealed partial class YouTubeVideoWidget : Widget
         if (transportActionsAvailable)
         {
             root = root
-                .Shortcut(ControllerButton.X, ToggleActionId)
+                .Shortcut(ControllerButton.X, ToggleActionId, label: "Play or pause")
+                .Shortcut(ControllerButton.Y, EnterFullscreenActionId, label: "Fullscreen")
                 .Shortcut(ControllerButton.LeftTrigger, SeekBackwardActionId,
-                    repeatPolicy: ControllerActionRepeatPolicy.WhileHeld)
+                    repeatPolicy: ControllerActionRepeatPolicy.WhileHeld,
+                    label: "Seek backward 10 seconds")
                 .Shortcut(ControllerButton.RightTrigger, SeekForwardActionId,
-                    repeatPolicy: ControllerActionRepeatPolicy.WhileHeld);
+                    repeatPolicy: ControllerActionRepeatPolicy.WhileHeld,
+                    label: "Seek forward 10 seconds");
         }
         return new WidgetView(
             root,

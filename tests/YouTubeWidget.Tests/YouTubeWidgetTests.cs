@@ -119,13 +119,18 @@ public sealed partial class YouTubeWidgetTests
         };
         var expectedShortcuts = new[]
         {
-            new ControllerShortcut(ControllerButton.X, YouTubeVideoWidget.ToggleActionId),
+            new ControllerShortcut(ControllerButton.X, YouTubeVideoWidget.ToggleActionId,
+                Label: "Play or pause"),
+            new ControllerShortcut(ControllerButton.Y,
+                YouTubeVideoWidget.EnterFullscreenActionId, Label: "Fullscreen"),
             new ControllerShortcut(ControllerButton.LeftTrigger,
                 YouTubeVideoWidget.SeekBackwardActionId,
-                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
+                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld,
+                Label: "Seek backward 10 seconds"),
             new ControllerShortcut(ControllerButton.RightTrigger,
                 YouTubeVideoWidget.SeekForwardActionId,
-                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
+                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld,
+                Label: "Seek forward 10 seconds"),
         };
         Assert.AreEqual("youtube.playback.toggle", ready.InitialFocusId);
         CollectionAssert.AreEqual(expectedQuickActions, ready.QuickActions.ToArray());
@@ -180,6 +185,8 @@ public sealed partial class YouTubeWidgetTests
             MediaPresentationKind.OverlayFullscreen));
         Assert.AreEqual("host.embeddedMediaSession.enterFullscreen",
             Find(ready.Root, "youtube.player.fullscreen").ActionId);
+        Assert.AreEqual("Fullscreen", Find(ready.Root, "youtube.root").Shortcuts
+            .Single(shortcut => shortcut.Button == ControllerButton.Y).Label);
         Assert.IsEmpty(Find(ready.Root, "youtube.root").Shortcuts
             .Where(shortcut => shortcut.Button == ControllerButton.B));
 
@@ -192,18 +199,18 @@ public sealed partial class YouTubeWidgetTests
         Assert.AreEqual("host.embeddedMediaSession.enterFullscreen",
             Find(afterEnter.Root, "youtube.player.fullscreen").ActionId);
 
-        // Leaving the player route withdraws the capability, which is the exact
-        // declaration the host requires to keep its activation alive.
+        // The Link route renders the same retained live player, so it preserves
+        // the host-owned fullscreen capability and page-wide Y binding.
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.back", "youtube.player.back"));
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.link.open", "youtube.link.open"));
         var retainedLink = widget.RenderSnapshot("youtube-test", 4);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(retainedLink));
-        Assert.IsNull(TryFind(retainedLink.Root, "youtube.player.fullscreen"));
+        Assert.IsNotNull(TryFind(retainedLink.Root, "youtube.player.fullscreen"));
         Assert.AreEqual("youtube.player.back",
             Find(retainedLink.Root, "youtube.link").Focus!.Up);
-        Assert.IsFalse(retainedLink.EmbeddedMediaSession!.SupportedPresentations.Contains(
+        Assert.IsTrue(retainedLink.EmbeddedMediaSession!.SupportedPresentations.Contains(
             MediaPresentationKind.OverlayFullscreen));
         await WidgetTestHost.DestroyAsync(widget);
     }
@@ -896,8 +903,8 @@ public sealed partial class YouTubeWidgetTests
                 "youtube.link.open", "youtube.link.open"));
             var link = widget.RenderSnapshot("youtube-test", 32 + cycle * 10);
             Assert.AreEqual("youtube.link", link.InitialFocusId);
-            Assert.IsNull(TryFind(link.Root, "youtube.player.fullscreen"));
-            Assert.IsFalse(link.EmbeddedMediaSession!.SupportedPresentations.Contains(
+            Assert.IsNotNull(TryFind(link.Root, "youtube.player.fullscreen"));
+            Assert.IsTrue(link.EmbeddedMediaSession!.SupportedPresentations.Contains(
                 MediaPresentationKind.OverlayFullscreen));
 
             await WidgetTestHost.SetLifecycleStateAsync(
@@ -905,8 +912,8 @@ public sealed partial class YouTubeWidgetTests
             var dashboardLink = widget.RenderSnapshot("youtube-test", 33 + cycle * 10);
             Assert.AreEqual("youtube.link", dashboardLink.InitialFocusId,
                 "Yielding Link-player to the dashboard must preserve its route.");
-            Assert.IsNull(TryFind(dashboardLink.Root, "youtube.player.fullscreen"));
-            Assert.IsFalse(dashboardLink.EmbeddedMediaSession!.SupportedPresentations.Contains(
+            Assert.IsNotNull(TryFind(dashboardLink.Root, "youtube.player.fullscreen"));
+            Assert.IsTrue(dashboardLink.EmbeddedMediaSession!.SupportedPresentations.Contains(
                 MediaPresentationKind.OverlayFullscreen));
 
             var root = Find(dashboardLink.Root, "youtube.root");
@@ -952,7 +959,7 @@ public sealed partial class YouTubeWidgetTests
     }
 
     [TestMethod]
-    public async Task LiveLinkPlayerAdmitsVisibleAndScopedTransportWithoutFullscreen()
+    public async Task LiveLinkPlayerAdmitsVisibleScopedTransportAndFullscreen()
     {
         var (widget, _, _) = await CreateTransportWidgetAsync(
             EmbeddedMediaPlaybackState.Playing, seekBuffering: false);
@@ -965,8 +972,8 @@ public sealed partial class YouTubeWidgetTests
 
         var link = widget.RenderSnapshot("youtube-test", 40);
         Assert.AreEqual("youtube.link", link.InitialFocusId);
-        Assert.IsNull(TryFind(link.Root, "youtube.player.fullscreen"));
-        Assert.IsFalse(link.EmbeddedMediaSession!.SupportedPresentations.Contains(
+        Assert.IsNotNull(TryFind(link.Root, "youtube.player.fullscreen"));
+        Assert.IsTrue(link.EmbeddedMediaSession!.SupportedPresentations.Contains(
             MediaPresentationKind.OverlayFullscreen));
         foreach (var id in new[]
                  {
@@ -978,18 +985,23 @@ public sealed partial class YouTubeWidgetTests
 
         var expected = new[]
         {
-            (ControllerButton.X, YouTubeVideoWidget.ToggleActionId),
-            (ControllerButton.LeftTrigger, YouTubeVideoWidget.SeekBackwardActionId),
-            (ControllerButton.RightTrigger, YouTubeVideoWidget.SeekForwardActionId),
+            (ControllerButton.X, YouTubeVideoWidget.ToggleActionId, "Play or pause"),
+            (ControllerButton.Y, YouTubeVideoWidget.EnterFullscreenActionId, "Fullscreen"),
+            (ControllerButton.LeftTrigger, YouTubeVideoWidget.SeekBackwardActionId,
+                "Seek backward 10 seconds"),
+            (ControllerButton.RightTrigger, YouTubeVideoWidget.SeekForwardActionId,
+                "Seek forward 10 seconds"),
         };
         var root = Find(link.Root, "youtube.root");
-        foreach (var (button, actionId) in expected)
+        foreach (var (button, actionId, label) in expected)
         {
-            Assert.IsTrue(link.QuickActions.Any(action =>
-                    action.Button == button && action.ActionId == actionId),
-                $"Live Link-player dashboard action {button} -> {actionId} was omitted.");
+            if (button != ControllerButton.Y)
+                Assert.IsTrue(link.QuickActions.Any(action =>
+                        action.Button == button && action.ActionId == actionId),
+                    $"Live Link-player dashboard action {button} -> {actionId} was omitted.");
             Assert.IsTrue(root.Shortcuts.Any(shortcut =>
-                    shortcut.Button == button && shortcut.ActionId == actionId),
+                    shortcut.Button == button && shortcut.ActionId == actionId &&
+                    shortcut.Label == label),
                 $"Live Link-player scoped shortcut {button} -> {actionId} was omitted.");
         }
 
@@ -1419,6 +1431,7 @@ public sealed partial class YouTubeWidgetTests
         foreach (var button in new[]
                  {
                      ControllerButton.X,
+                     ControllerButton.Y,
                      ControllerButton.LeftTrigger,
                      ControllerButton.RightTrigger,
                  })

@@ -155,6 +155,18 @@ internal static class ProtocolVersionRequirementsTests
                     ActionSurfaceOrientation = ActionSurfaceOrientation.Horizontal,
                     Children = [Text("surface-text")],
                 }),
+            NodeCase("controller shortcut label", "controller-shortcut-label",
+                ProtocolConstants.ControllerShortcutLabelVersion,
+                new()
+                {
+                    Id = "shortcut.scope",
+                    Kind = ViewNodeKind.Stack,
+                    Shortcuts =
+                    [
+                        new ControllerShortcut(
+                            ControllerButton.X, "shortcut.invoke", Label: "Invoke"),
+                    ],
+                }, "$.root.children[0].shortcuts[0].label"),
             NodeCase("poster tile", "poster-tile", ProtocolConstants.PosterTileVersion,
                 new()
                 {

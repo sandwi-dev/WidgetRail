@@ -98,6 +98,20 @@ public abstract record ContainerElement : WidgetElement
             ],
         };
 
+    public ContainerElement Shortcut(
+        ControllerButton button,
+        string actionId,
+        string label,
+        ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
+        {
+            Shortcuts =
+            [
+                .. Shortcuts,
+                new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy, label),
+            ],
+        };
+
     protected ViewNode ToContainerProtocolNode(ViewNodeKind kind) => new()
     {
         Id = Id,
@@ -228,6 +242,15 @@ public sealed record StackElement : ContainerElement
         {
             Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy)],
         };
+    public new StackElement Shortcut(
+        ControllerButton button,
+        string actionId,
+        string label,
+        ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
+        {
+            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy, label)],
+        };
 
     internal override ViewNode ToProtocolNode() => ToContainerProtocolNode(ViewNodeKind.Stack);
 }
@@ -246,6 +269,15 @@ public sealed record RowElement : ContainerElement
         ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
         {
             Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy)],
+        };
+    public new RowElement Shortcut(
+        ControllerButton button,
+        string actionId,
+        string label,
+        ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
+        {
+            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy, label)],
         };
 
     internal override ViewNode ToProtocolNode() => ToContainerProtocolNode(ViewNodeKind.Row);
@@ -281,6 +313,15 @@ public sealed record ScrollElement : ContainerElement
         ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
         {
             Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy)],
+        };
+    public new ScrollElement Shortcut(
+        ControllerButton button,
+        string actionId,
+        string label,
+        ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
+        {
+            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy, label)],
         };
 
     /// <summary>
@@ -430,6 +471,16 @@ public sealed record ButtonElement : WidgetElement
         ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
         {
             Shortcuts = [.. Shortcuts, new ControllerShortcut(button, actionId ?? ActionId, phase, repeatPolicy)],
+        };
+
+    public ButtonElement Shortcut(
+        ControllerButton button,
+        string label,
+        ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        string? actionId = null,
+        ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
+        {
+            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, actionId ?? ActionId, phase, repeatPolicy, label)],
         };
 
     internal override ViewNode ToProtocolNode() => new()

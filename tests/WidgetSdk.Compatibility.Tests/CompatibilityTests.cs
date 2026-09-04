@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Xml.Linq;
 using WidgetRail.WrailCli;
+using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -39,6 +40,79 @@ public sealed class CompatibilityTests
         Assert.IsLessThanOrEqualTo(
             WidgetSdkBaselineContract.MaximumBaselineBytes,
             WidgetSdkPublicApi.Serialize(first).Length);
+    }
+
+    [TestMethod]
+    public void ShortcutOverloadsRetainLegacyClrMembersAndAddLabels()
+    {
+        var containerLegacy = new[]
+        {
+            typeof(ControllerButton),
+            typeof(string),
+            typeof(ControllerEventPhase),
+            typeof(ControllerActionRepeatPolicy),
+        };
+        var containerLabeled = new[]
+        {
+            typeof(ControllerButton),
+            typeof(string),
+            typeof(string),
+            typeof(ControllerEventPhase),
+            typeof(ControllerActionRepeatPolicy),
+        };
+        foreach (var (type, returnType) in new[]
+                 {
+                     (typeof(ContainerElement), typeof(ContainerElement)),
+                     (typeof(StackElement), typeof(StackElement)),
+                     (typeof(RowElement), typeof(RowElement)),
+                     (typeof(ScrollElement), typeof(ScrollElement)),
+                     (typeof(GridElement), typeof(GridElement)),
+                 })
+        {
+            AssertShortcutOverload(type, returnType, containerLegacy, hasLabel: false);
+            AssertShortcutOverload(type, returnType, containerLabeled, hasLabel: true);
+        }
+
+        var focusableLegacy = new[]
+        {
+            typeof(ControllerButton),
+            typeof(ControllerEventPhase),
+            typeof(string),
+            typeof(ControllerActionRepeatPolicy),
+        };
+        var focusableLabeled = new[]
+        {
+            typeof(ControllerButton),
+            typeof(string),
+            typeof(ControllerEventPhase),
+            typeof(string),
+            typeof(ControllerActionRepeatPolicy),
+        };
+        foreach (var type in new[] { typeof(ButtonElement), typeof(ActionSurfaceElement) })
+        {
+            AssertShortcutOverload(type, type, focusableLegacy, hasLabel: false);
+            AssertShortcutOverload(type, type, focusableLabeled, hasLabel: true);
+        }
+    }
+
+    private static void AssertShortcutOverload(
+        Type declaringType,
+        Type returnType,
+        Type[] parameterTypes,
+        bool hasLabel)
+    {
+        var method = declaringType.GetMethod(
+            "Shortcut",
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly,
+            binder: null,
+            types: parameterTypes,
+            modifiers: null);
+        Assert.IsNotNull(method,
+            $"{declaringType.Name} is missing its {(hasLabel ? "labeled" : "legacy")} Shortcut CLR member.");
+        Assert.AreEqual(returnType, method.ReturnType);
+        var labels = method.GetParameters().Where(parameter => parameter.Name == "label").ToArray();
+        Assert.AreEqual(hasLabel ? 1 : 0, labels.Length);
+        if (hasLabel) Assert.IsFalse(labels[0].IsOptional);
     }
 
     [TestMethod]

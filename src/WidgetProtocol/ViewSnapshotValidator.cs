@@ -1359,6 +1359,12 @@ public static class ViewSnapshotValidator
                 var shortcut = shortcuts[index];
                 CheckIdentifier(shortcut.ActionId, $"{path}.shortcuts[{index}].actionId",
                     "shortcut action ID", ProtocolValidationIdentifierKind.Action);
+                if (shortcut.Label is { } label &&
+                    (string.IsNullOrWhiteSpace(label) ||
+                     label.Length > ProtocolConstants.MaximumStringLength ||
+                     label.Any(char.IsControl)))
+                    Add($"{path}.shortcuts[{index}].label", "invalid_shortcut_label",
+                        "A controller shortcut label must be bounded, non-whitespace, and control-free.");
                 if (!Enum.IsDefined(shortcut.Phase))
                     Add($"{path}.shortcuts[{index}].phase", "invalid_controller_phase",
                         "The controller event phase is not supported.");
@@ -1539,7 +1545,8 @@ public static class ViewSnapshotValidator
                     StringLength(node.Focus?.Up) + StringLength(node.Focus?.Down) +
                     StringLength(node.Focus?.Left) + StringLength(node.Focus?.Right) +
                     (node.StyleClasses?.Sum(StringLength) ?? 0) +
-                    (node.Shortcuts?.Sum(shortcut => StringLength(shortcut?.ActionId)) ?? 0) +
+                    (node.Shortcuts?.Sum(shortcut =>
+                        StringLength(shortcut?.ActionId) + StringLength(shortcut?.Label)) ?? 0) +
                     (node.SelectOptions?.Take(ProtocolConstants.MaximumSelectOptionCount).Sum(option =>
                         option is null ? 0 :
                             StringLength(option.Id) + StringLength(option.ActionId) +

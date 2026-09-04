@@ -13474,6 +13474,44 @@ private:
         }
     }
 
+    void AttemptOverlayFullscreenMediaEntry(
+        const std::wstring_view widgetId,
+        const widgetrail::WidgetSnapshot& snapshot,
+        const std::wstring_view source,
+        const std::wstring_view protocolButton) {
+        const auto decision = EvaluateFullscreenEntry(widgetId, snapshot);
+        const bool requested = decision.requestEligible &&
+            EnterOverlayFullscreenMedia(decision);
+        AppendActionCorrelation(
+            L"stage=embedded-media-fullscreen-entry source=" + std::wstring(source) +
+            L" button=" + std::wstring(protocolButton) + L" interaction-sequence=" +
+            std::to_wstring(snapshot.sequence) + L" authority-sequence=" +
+            std::to_wstring(decision.authoritySequence) + L" session=" +
+            (decision.sessionPresent ? L"1" : L"0") + L" identity=" +
+            (decision.exactIdentity ? L"1" : L"0") + L" authority=" +
+            (decision.presentationAuthorityCurrent ? L"1" : L"0") + L" owner=" +
+            (decision.overlayOwnerCurrent ? L"1" : L"0") + L" viewport=" +
+            (decision.committedViewport ? L"1" : L"0") + L" capability=" +
+            (decision.fullscreenCapable ? L"1" : L"0") + L" pinned=" +
+            (decision.pinnedTakeover ? L"1" : L"0") + L" requested=" +
+            (requested ? L"1" : L"0") + L" overlay-viewport=" +
+            (decision.overlayViewport ? L"1" : L"0") + L" a-pressed=" +
+            (protocolButton == L"a" ? L"1" : L"0"));
+        if (requested) RefreshAndApplyPresentation([] {});
+        else {
+            lastActionWidgetId_ = std::wstring(widgetId);
+            lastActionMessage_ = L"Fullscreen is unavailable for the current media session";
+            lastActionExpiresAt_ = GetTickCount64() + 2400;
+            if (pinnedSurfaceCoordinator_.pinned() &&
+                pinnedSurfaceCoordinator_.widgetId() == widgetId) {
+                pinnedSurfaceCoordinator_.SetActionFeedback(
+                    lastActionMessage_, true);
+            }
+            AppendDiagnostic(lastActionMessage_);
+        }
+        InvalidateRect(window_, nullptr, FALSE);
+    }
+
     [[nodiscard]] bool TryDispatchNativeMediaAction(
         const std::wstring_view widgetId,
         const widgetrail::WidgetSnapshot& snapshot,
@@ -13481,39 +13519,11 @@ private:
         const std::wstring_view protocolButton,
         const widgetrail::input::NavigationEventPhase phase) {
         if (node.actionId == L"host.embeddedMediaSession.enterFullscreen") {
-            const auto decision = protocolButton == L"a" &&
-                    phase == widgetrail::input::NavigationEventPhase::Pressed
-                ? EvaluateFullscreenEntry(widgetId, snapshot)
-                : FullscreenEntryDecision{};
-            const bool requested = decision.requestEligible &&
-                EnterOverlayFullscreenMedia(decision);
-            AppendActionCorrelation(
-                L"stage=embedded-media-fullscreen-entry interaction-sequence=" +
-                std::to_wstring(snapshot.sequence) + L" authority-sequence=" +
-                std::to_wstring(decision.authoritySequence) + L" session=" +
-                (decision.sessionPresent ? L"1" : L"0") + L" identity=" +
-                (decision.exactIdentity ? L"1" : L"0") + L" authority=" +
-                (decision.presentationAuthorityCurrent ? L"1" : L"0") + L" owner=" +
-                (decision.overlayOwnerCurrent ? L"1" : L"0") + L" viewport=" +
-                (decision.committedViewport ? L"1" : L"0") + L" capability=" +
-                (decision.fullscreenCapable ? L"1" : L"0") + L" pinned=" +
-                (decision.pinnedTakeover ? L"1" : L"0") + L" requested=" +
-                (requested ? L"1" : L"0") + L" overlay-viewport=" +
-                (decision.overlayViewport ? L"1" : L"0") + L" a-pressed=" +
-                (protocolButton == L"a" && phase == widgetrail::input::NavigationEventPhase::Pressed ? L"1" : L"0"));
-            if (requested) RefreshAndApplyPresentation([] {});
-            else {
-                lastActionWidgetId_ = std::wstring(widgetId);
-                lastActionMessage_ = L"Fullscreen is unavailable for the current media session";
-                lastActionExpiresAt_ = GetTickCount64() + 2400;
-                if (pinnedSurfaceCoordinator_.pinned() &&
-                    pinnedSurfaceCoordinator_.widgetId() == widgetId) {
-                    pinnedSurfaceCoordinator_.SetActionFeedback(
-                        lastActionMessage_, true);
-                }
-                AppendDiagnostic(lastActionMessage_);
-            }
-            InvalidateRect(window_, nullptr, FALSE);
+            if (protocolButton != L"a" ||
+                phase != widgetrail::input::NavigationEventPhase::Pressed)
+                return false;
+            AttemptOverlayFullscreenMediaEntry(
+                widgetId, snapshot, L"focused-node", protocolButton);
             return true;
         }
         const auto sessionKey = CurrentEmbeddedMediaSessionKey(widgetId);
@@ -13670,6 +13680,28 @@ private:
                     return;
                 if (focusedNode && TryInvokeLocalWidgetPackageImport(
                         *snapshot, *focusedNode, protocolButton, phase)) return;
+            }
+            if (isOpen && protocolButton != L"a" &&
+                phase == widgetrail::input::NavigationEventPhase::Pressed) {
+                const auto* scopeRoot = widgetrail::input::FindControllerShortcutScopeRoot(
+                    snapshot->root, snapshot->activeInputScopeId);
+                if (scopeRoot) {
+                    const auto shortcut = widgetrail::input::ResolveHostControllerShortcut(
+                        *scopeRoot,
+                        visibleFocus ? std::optional<std::wstring_view>{*visibleFocus}
+                                     : std::nullopt,
+                        visibleFocus ? std::optional<std::wstring_view>{*visibleFocus}
+                                     : std::nullopt,
+                        protocolButton, L"pressed");
+                    if (shortcut.status == widgetrail::input::
+                            ControllerShortcutResolutionStatus::Resolved &&
+                        shortcut.actionId ==
+                            L"host.embeddedMediaSession.enterFullscreen") {
+                        AttemptOverlayFullscreenMediaEntry(
+                            widget, *snapshot, L"scope-shortcut", protocolButton);
+                        return;
+                    }
+                }
             }
             const auto* descriptor = sessions_.FindDescriptor(widget);
             const auto* workerSnapshot = SnapshotFor(widget);

@@ -57,6 +57,20 @@ public sealed record GridElement : ContainerElement
             ],
         };
 
+    public new GridElement Shortcut(
+        ControllerButton button,
+        string actionId,
+        string label,
+        ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
+        {
+            Shortcuts =
+            [
+                .. Shortcuts,
+                new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy, label),
+            ],
+        };
+
     internal override ViewNode ToProtocolNode() => ToContainerProtocolNode(ViewNodeKind.Grid) with
     {
         GridMinimumColumnWidth = MinimumColumnWidth,

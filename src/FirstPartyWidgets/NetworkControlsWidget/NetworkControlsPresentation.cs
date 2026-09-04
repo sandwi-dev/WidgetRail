@@ -162,8 +162,8 @@ internal static class NetworkControlsPresentation
 
         var root = UI.Stack("network.root", content.ToArray())
             .InputScope("network-controls")
-            .Shortcut(ControllerButton.LeftBumper, "network.tab.previous")
-            .Shortcut(ControllerButton.RightBumper, "network.tab.next")
+            .Shortcut(ControllerButton.LeftBumper, "network.tab.previous", label: "Previous tab")
+            .Shortcut(ControllerButton.RightBumper, "network.tab.next", label: "Next tab")
             .Classes("network-controls-widget",
                 state.ActiveTab == NetworkControlsTab.Wifi ? "is-wifi" : "is-bluetooth",
                 networks.Count == 0 ? "has-state" : "has-networks");
@@ -424,7 +424,7 @@ internal static class NetworkControlsPresentation
                     .Icon(network.IsConnected ? WidgetGlyph.Check : WidgetGlyph.Wifi,
                         $"{network.DisplayName}. {state}. Signal {network.SignalPercent} percent. {actionLabel}")
                     .Disabled(!interactive || controlBusy || network.IsConnected)
-                    .Shortcut(ControllerButton.X, actionId: "wifi.connect.item")
+                    .Shortcut(ControllerButton.X, actionId: "wifi.connect.item", label: "Connect")
                     .FocusUp(index == 0 ? "network.wifi.scan" : ids[index - 1])
                     .FocusLeft(id)
                     .FocusRight(id)
@@ -544,7 +544,7 @@ internal static class NetworkControlsPresentation
             var button = UI.Button(device.DisplayName, actionId, id)
                 .Icon(WidgetGlyph.Connection,
                     $"{device.DisplayName}. {deviceState}. {detail}. {actionLabel}")
-                .Shortcut(ControllerButton.X, actionId: "bluetooth.device.manage")
+                .Shortcut(ControllerButton.X, actionId: "bluetooth.device.manage", label: "Manage device")
                 .Busy(isPending)
                 .FocusUp(index == 0 ? "network.bluetooth.radio" : ids[index - 1])
                 .FocusLeft(id)

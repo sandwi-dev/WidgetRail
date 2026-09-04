@@ -448,6 +448,7 @@ method WidgetRail.WidgetSdk.ActionSurfaceElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ActionSurfaceElement.PersistFocusAs(string id) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Selected(bool selected = true) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? actionId = null, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ActionSurfaceElement
+method WidgetRail.WidgetSdk.ActionSurfaceElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string label, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? actionId = null, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.ToString() -> string
 method WidgetRail.WidgetSdk.BackgroundSurfaceElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.BackgroundSurfaceElement.Equals(object? obj) -> bool
@@ -469,6 +470,7 @@ method WidgetRail.WidgetSdk.ButtonElement.LeadingInlinePng(string pngBase64, Wid
 method WidgetRail.WidgetSdk.ButtonElement.PersistFocusAs(string id) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.Selected(bool selected = true) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? actionId = null, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ButtonElement
+method WidgetRail.WidgetSdk.ButtonElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string label, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? actionId = null, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.ToString() -> string
 method WidgetRail.WidgetSdk.CollectionItemElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.CollectionItemElement.Equals(object? obj) -> bool
@@ -500,6 +502,7 @@ method WidgetRail.WidgetSdk.ContainerElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ContainerElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.ContainerElement
 method WidgetRail.WidgetSdk.ContainerElement.RememberChildFocus(string initialChildFocusId) -> WidgetRail.WidgetSdk.ContainerElement
 method WidgetRail.WidgetSdk.ContainerElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ContainerElement
+method WidgetRail.WidgetSdk.ContainerElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, string label, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ContainerElement
 method WidgetRail.WidgetSdk.ContainerElement.ToString() -> string
 method WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.<Clone>$() -> WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest
 method WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.Deconstruct(out string SessionId, out WidgetRail.WidgetSdk.WidgetMediaSessionCommand Command) -> void
@@ -529,6 +532,7 @@ method WidgetRail.WidgetSdk.GridElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.GridElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.GridElement
 method WidgetRail.WidgetSdk.GridElement.RememberChildFocus(string initialChildFocusId) -> WidgetRail.WidgetSdk.GridElement
 method WidgetRail.WidgetSdk.GridElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.GridElement
+method WidgetRail.WidgetSdk.GridElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, string label, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.GridElement
 method WidgetRail.WidgetSdk.GridElement.ToString() -> string
 method WidgetRail.WidgetSdk.IconElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.IconElement.Equals(object? obj) -> bool
@@ -597,6 +601,7 @@ method WidgetRail.WidgetSdk.RowElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.RowElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.RowElement
 method WidgetRail.WidgetSdk.RowElement.RememberChildFocus(string initialChildFocusId) -> WidgetRail.WidgetSdk.RowElement
 method WidgetRail.WidgetSdk.RowElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.RowElement
+method WidgetRail.WidgetSdk.RowElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, string label, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.RowElement
 method WidgetRail.WidgetSdk.RowElement.ToString() -> string
 method WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest.<Clone>$() -> WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest
 method WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest.Deconstruct(out string Slot, out string Secret) -> void
@@ -610,6 +615,7 @@ method WidgetRail.WidgetSdk.ScrollElement.InputScope(string scopeId) -> WidgetRa
 method WidgetRail.WidgetSdk.ScrollElement.Paginate(string? nearStartActionId, string? nearEndActionId, int threshold = 2) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.ScrollElement.RememberChildFocus(string initialChildFocusId) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.ScrollElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ScrollElement
+method WidgetRail.WidgetSdk.ScrollElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, string label, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.ScrollElement.ToString() -> string
 method WidgetRail.WidgetSdk.ScrubberElement.Activate(string actionId) -> WidgetRail.WidgetSdk.ScrubberElement
 method WidgetRail.WidgetSdk.ScrubberElement.Busy(bool busy = true) -> WidgetRail.WidgetSdk.ScrubberElement
@@ -707,6 +713,7 @@ method WidgetRail.WidgetSdk.StackElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.StackElement.InputScope(string scopeId) -> WidgetRail.WidgetSdk.StackElement
 method WidgetRail.WidgetSdk.StackElement.RememberChildFocus(string initialChildFocusId) -> WidgetRail.WidgetSdk.StackElement
 method WidgetRail.WidgetSdk.StackElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.StackElement
+method WidgetRail.WidgetSdk.StackElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, string actionId, string label, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy repeatPolicy = WidgetRail.WidgetProtocol.ControllerActionRepeatPolicy.None) -> WidgetRail.WidgetSdk.StackElement
 method WidgetRail.WidgetSdk.StackElement.ToString() -> string
 method WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest.<Clone>$() -> WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest
 method WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest.Deconstruct(out string ProfileId) -> void

@@ -1101,12 +1101,28 @@ WidgetNode ParseNode(const JsonObject& source) {
         node.shortcuts.reserve(shortcuts.Size());
         for (uint32_t index = 0; index < shortcuts.Size(); ++index) {
             const auto shortcut = shortcuts.GetObjectAt(index);
+            if (!HasNoUnknownProperties(shortcut,
+                    {L"button", L"actionId", L"phase", L"repeatPolicy", L"label"}))
+                throw winrt::hresult_invalid_argument();
+            std::wstring label;
+            if (shortcut.HasKey(L"label")) {
+                const auto encodedLabel = shortcut.GetNamedValue(L"label");
+                if (encodedLabel.ValueType() == JsonValueType::String) {
+                    label = std::wstring(std::wstring_view(
+                        shortcut.GetNamedString(L"label")));
+                    if (!IsBoundedVisibleText(label))
+                        throw winrt::hresult_invalid_argument();
+                } else if (encodedLabel.ValueType() != JsonValueType::Null) {
+                    throw winrt::hresult_invalid_argument();
+                }
+            }
             node.shortcuts.push_back({
                 std::wstring(std::wstring_view(shortcut.GetNamedString(L"button"))),
                 std::wstring(std::wstring_view(shortcut.GetNamedString(L"actionId"))),
                 std::wstring(std::wstring_view(shortcut.GetNamedString(L"phase"))),
                 std::wstring(std::wstring_view(
                     shortcut.GetNamedString(L"repeatPolicy", L"none"))),
+                std::move(label),
             });
         }
     }
@@ -1433,6 +1449,21 @@ void ValidateBackgroundSurfaces(const WidgetNode& root, const int protocolVersio
     visit(visit, root);
 }
 
+void ValidateControllerShortcutLabels(
+    const WidgetNode& root,
+    const int protocolVersion) {
+    const auto visit = [&](const auto& self, const WidgetNode& node) -> void {
+        if (protocolVersion < protocol_contract::ControllerShortcutLabelVersion &&
+            std::ranges::any_of(node.shortcuts, [](const WidgetShortcut& shortcut) {
+                return !shortcut.label.empty();
+            }))
+            throw winrt::hresult_invalid_argument(
+                L"Controller shortcut labels require protocol version 43.");
+        for (const auto& child : node.children) self(self, child);
+    };
+    visit(visit, root);
+}
+
 void ValidateFocusPresentations(const WidgetNode& root, const int protocolVersion) {
     const auto validateFragment = [&](const auto& self, const WidgetNode& node,
                                       const std::size_t depth,
@@ -1609,6 +1640,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                 parsed.root = ParseNode(layout.GetNamedObject(L"root"));
                 ValidatePosterTiles(*parsed.root, snapshot.protocolVersion);
                 ValidateBackgroundSurfaces(*parsed.root, snapshot.protocolVersion);
+                ValidateControllerShortcutLabels(
+                    *parsed.root, snapshot.protocolVersion);
                 ValidateRememberedChildFocusGroups(
                     *parsed.root, snapshot.protocolVersion);
                 parsed.activeInputScopeId = OptionalString(layout, L"activeInputScopeId");
@@ -1859,6 +1892,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     snapshot.root = ParseNode(source.GetNamedObject(L"root"));
     ValidatePosterTiles(snapshot.root, snapshot.protocolVersion);
     ValidateBackgroundSurfaces(snapshot.root, snapshot.protocolVersion);
+    ValidateControllerShortcutLabels(snapshot.root, snapshot.protocolVersion);
     ValidateFocusPresentations(snapshot.root, snapshot.protocolVersion);
     ValidateRememberedChildFocusGroups(snapshot.root, snapshot.protocolVersion);
     const auto validateContextActions = [&](const auto& self,

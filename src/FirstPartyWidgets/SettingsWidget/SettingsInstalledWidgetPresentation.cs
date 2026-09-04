@@ -100,8 +100,12 @@ internal static class SettingsInstalledWidgetPresentation
             .InputScope("installed.widgets")
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
-        if (page > 0) scope = scope.Shortcut(ControllerButton.LeftBumper, "installed.previous-page");
-        if (page < lastPage) scope = scope.Shortcut(ControllerButton.RightBumper, "installed.next-page");
+        if (page > 0)
+            scope = scope.Shortcut(
+                ControllerButton.LeftBumper, "installed.previous-page", label: "Previous page");
+        if (page < lastPage)
+            scope = scope.Shortcut(
+                ControllerButton.RightBumper, "installed.next-page", label: "Next page");
         var selectedBuiltInIndex = builtIn
             .Select((manifest, index) => (manifest, index))
             .Where(item => item.manifest.Id == selectedBuiltInId)
@@ -165,8 +169,12 @@ internal static class SettingsInstalledWidgetPresentation
             .InputScope("installed.repair.list")
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
-        if (page > 0) scope = scope.Shortcut(ControllerButton.LeftBumper, "installed.previous-page");
-        if (page < lastPage) scope = scope.Shortcut(ControllerButton.RightBumper, "installed.next-page");
+        if (page > 0)
+            scope = scope.Shortcut(
+                ControllerButton.LeftBumper, "installed.previous-page", label: "Previous page");
+        if (page < lastPage)
+            scope = scope.Shortcut(
+                ControllerButton.RightBumper, "installed.next-page", label: "Next page");
         return SettingsPresentation.View(
             header, scope,
             visible.Length == 0 ? "installed.repair.back" : $"installed.repair.item.{start}",
@@ -575,9 +583,13 @@ internal static class SettingsInstalledWidgetPresentation
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
         if (page > 0)
-            scope = scope.Shortcut(ControllerButton.LeftBumper, "installed.versions.previous-page");
+            scope = scope.Shortcut(
+                ControllerButton.LeftBumper, "installed.versions.previous-page",
+                label: "Previous page");
         if (page < lastPage)
-            scope = scope.Shortcut(ControllerButton.RightBumper, "installed.versions.next-page");
+            scope = scope.Shortcut(
+                ControllerButton.RightBumper, "installed.versions.next-page",
+                label: "Next page");
         var initialFocus = package.Enabled
             ? "installed.versions.back"
             : visible.Select((version, offset) => (version, offset))

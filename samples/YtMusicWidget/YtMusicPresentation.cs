@@ -206,10 +206,10 @@ internal static class YtMusicPresentation
                                     $"repeat-{repeatMode.ToString().ToLowerInvariant()}")))
                         .Classes("media-details"))
                     .Classes("media-layout"))
-                .Shortcut(ControllerButton.LeftBumper, "previous")
-                .Shortcut(ControllerButton.X, "toggle-playback")
-                .Shortcut(ControllerButton.RightBumper, "next")
-                .Shortcut(ControllerButton.Y, YtMusicActionPolicy.RefreshId)
+                .Shortcut(ControllerButton.LeftBumper, "previous", label: "Previous track")
+                .Shortcut(ControllerButton.X, "toggle-playback", label: "Play or pause")
+                .Shortcut(ControllerButton.RightBumper, "next", label: "Next track")
+                .Shortcut(ControllerButton.Y, YtMusicActionPolicy.RefreshId, label: "Refresh")
                 .Classes("ytmusic-widget", "is-connected"),
             InitialFocusId: "play-pause",
             QuickActions: ConnectedQuickActions,

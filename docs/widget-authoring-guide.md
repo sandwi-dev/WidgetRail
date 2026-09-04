@@ -349,9 +349,9 @@ UI.Stack("player.window",
                 .Icon(WidgetGlyph.Next)
                 .FocusLeft("player.play")))
     .InputScope("player-window")
-    .Shortcut(ControllerButton.LeftBumper, "previous")
-    .Shortcut(ControllerButton.X, "toggle-playback")
-    .Shortcut(ControllerButton.RightBumper, "next")
+    .Shortcut(ControllerButton.LeftBumper, "previous", label: "Previous")
+    .Shortcut(ControllerButton.X, "toggle-playback", label: "Play or pause")
+    .Shortcut(ControllerButton.RightBumper, "next", label: "Next")
 ```
 
 The default `OnControllerInputAsync` resolves against the exact last rendered
@@ -365,6 +365,16 @@ with no focus, but never leak into a different nested active scope.
 Override `OnControllerInputAsync` only for semantic controls that cannot be
 represented as declarative actions; Guide/Home and arbitrary HID reports are
 never transported.
+
+Give every shortcut that should appear in the open-widget controller guide an
+explicit bounded `label`. The guide falls back to visible text and then the
+accessibility label only when the shortcut is owned directly by that named
+control. Do not use a scope root's accessibility label to describe multiple
+commands, and do not duplicate a shortcut label through `QuickActions`:
+dashboard QuickActions are a separate, maximum-three surface. Leave input-only
+or hidden bindings unlabeled when they should not be advertised. The labeled
+form is an additive overload; the original unlabeled `.Shortcut(...)` CLR
+signature remains available to already-built widgets.
 
 Every successfully resolved open-widget action carries the exact active scope
 as `WidgetActionEvent.InputScopeId`: A activation, focused shortcuts,

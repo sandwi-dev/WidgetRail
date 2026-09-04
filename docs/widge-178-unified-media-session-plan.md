@@ -15,10 +15,169 @@ For this item only, this file is implementation-owned after assignment. The plat
 | Implementation owner | Standing platform implementation task |
 | Branch | `codex/widge-178-unified-media-session` |
 | Worktree | `C:\Users\dwive\.codex\visualizations\2026\08\11\019fef3b-7e94-70f0-b329-3551f8dd805b\widge178` |
-| Current phase | `[~]` Fullscreen compatible-authority and retained Link-player correction has a green audited Release gate and is at its exact stage/commit checkpoint |
-| Last completed checkpoint | `553e463b87d72a2544014d6096ea86daedd6c8e5` (`[WIDGE-178] commit compact media after pinned resize`), tree `1bcf29f282ed0cba07cb52e2b8e90c4023373eda`; exact scope: this plan plus `WidgetSurfaceCoordinator.cpp/.h` and `main.cpp`. The audited `Release -SkipTests` gate is green with only the four pre-existing `main.cpp` C4244 conversion warnings. |
-| Next checkpoint | Exact-stage/diff-check the five-path source scope, create the local physical candidate commit, verify clean identity/artifact hashes, and return it for reviewer launch. |
-| Last updated | 2026-09-03 by implementation agent after the pinned-resize candidate commit |
+| Current phase | `[~]` User physically accepted the SDK-compatible protocol-v43 / YouTube `0.3.19` candidate. The accepted process tree remains running and unchanged; focused regression closure is now active. |
+| Last completed checkpoint | Physical checks accepted unchanged precompiled YT Music compatibility plus YouTube video load, page-wide Y fullscreen, focused A, and X/LT/RT/B behavior on the corrected candidate. |
+| Next checkpoint | Add and run only the proportional focused WIDGE-178 binary-compatibility, protocol-v43, guide-label, Y-routing, and named media-owner gates; then audit, exact-stage, and commit the cumulative accepted chain. |
+| Last updated | 2026-09-03 by implementation agent at the post-acceptance focused-test boundary |
+
+## Post-acceptance focused-test checklist
+
+- [x] Add deterministic SDK compatibility coverage proving all seven exact legacy Shortcut CLR members remain alongside the seven labeled overloads, and labeled overloads serialize the exact `ControllerShortcut.Label` without changing unlabeled JSON.
+- [x] Add managed protocol coverage for v43 only when a label is present, bounded invalid-label diagnostics, aggregate string accounting, and absent/null compatibility.
+- [x] Add native parsing coverage for ordinary and pinned labeled trees, including rejection below v43, plus Controller Guide precedence `explicit label -> owner text -> owner accessibility -> omit` with no QuickAction coupling.
+- [x] Add focused host source/route coverage proving exact Y scope shortcut enters through the shared fullscreen attempt owner while focused A remains eligible and X falls through to package action routing.
+- [x] Update the existing YouTube focused declaration oracle for `0.3.19`, exact X/Y/LT/RT shortcut labels, and X/LT/RT-only QuickActions.
+- [x] Reuse the already-owned MediaSessionManager, PinnedSurface, WidgetSurface, renderer, and accessibility scenarios named by WIDGE-178; do not create an exhaustive transition table or duplicate equivalent cases.
+- [x] Before each gate, record the exact selector and preserve the accepted running candidate. The one PinnedSurface first red received one bounded source-locator correction and its exact replacement passed.
+- [ ] If all focused gates are green, review the full production/docs/tests diff, run `git diff --check`, exact-stage only WIDGE-178 paths, inspect cached diff, commit `[WIDGE-178] ...`, and report commit/tree/artifact provenance/residual physical risk/cleanliness. Do not install, launch, integrate, push, or mutate Plane.
+
+Focused gate order for this accepted amendment:
+
+1. Serialized no-restore `WidgetSdk.Tests` compilation, then exact `Controller shortcut labels` selector.
+2. Registered `WidgetSdk.Compatibility.Tests` gate for public API and exact CLR members.
+3. Canonical managed/native protocol parity verifier once for v43.
+4. Directly affected YouTube test methods covering route shortcut declarations, retained Link fullscreen, transport fail-closed behavior, and manifest/package shape.
+5. `WidgetBridgeCatalogTestsOnly` for native ordinary/pinned v43 parsing.
+6. `ControllerGuideTestsOnly` for label precedence and QuickAction independence.
+7. `PinnedSurfaceTestsOnly` for the shared A/Y fullscreen attempt and X/package fallthrough source contract.
+
+The previously green MediaSessionManager 48-case contract, WidgetSurface 331,
+renderer 5090, and accessibility 26 evidence remains authoritative because the
+accepted label/Y amendment does not change their production owners. Do not
+rerun those already-completed focused gates merely to accumulate duplicate
+evidence.
+
+### Post-acceptance focused-test evidence
+
+- Serialized no-restore `WidgetSdk.Tests` compilation: green in 25.86 seconds, 0 warnings, 0 errors. Exact `Controller shortcut labels` selector: 1/1 green.
+- Registered `WidgetSdk.Compatibility.Tests`: 14/14 green in 1.439 seconds, including reviewed PublicApi equality and exact legacy/labeled Shortcut CLR members.
+- Canonical managed/native protocol parity: green at 111 managed constants, 1 shortcut-repeat rule, and 4 owner-availability rules.
+- YouTube package tests: 42/42 green in 1.408 seconds, including retained Link fullscreen, exact X/Y/LT/RT labels, X/LT/RT-only QuickActions, fail-closed unavailable input, and immutable manifest shape.
+- `WidgetBridgeCatalogTestsOnly`: green; all 13 embedded-media native boundary cases plus catalog passed, including ordinary/pinned v43 shortcut-label admission.
+- `ControllerGuideTestsOnly`: green, 25 checks, proving explicit label then owner text then owner accessibility then omit, with no QuickAction label coupling.
+- First `PinnedSurfaceTestsOnly` reached 49 checks and failed the stale pre-existing source locator `fullscreen request authority owner exists`: it still sliced on removed parameterless `EnterOverlayFullscreenMedia()` and expected decision predicates in the executor. One bounded test-only correction moved those assertions to `EvaluateFullscreenEntry` and retained exact request/exit mutation checks on the parameterized executor. Exact replacement passed 471 checks; private working-set delta 1,298,432 bytes, idle CPU 0%, semantic p95 0.0004 ms.
+- Previously green manager 48, WidgetSurface 331, renderer 5090, and accessibility 26 evidence was not rerun. No test or gate rebuilt, relaunched, installed, or mutated the accepted running candidate.
+
+## Direct ControllerShortcut label amendment checklist
+
+This additive amendment is part of WIDGE-178 under the user's explicit contract decision. Resume here after compaction; preserve the retained Y candidate and do not begin tests/build/package/install/process/staging/commit work until the source-ready checkpoint is reviewed.
+
+- [x] Inventory the canonical managed `ControllerShortcut` record, JSON serializer options, validation/version owners, native `WidgetShortcut` parser, every public SDK `.Shortcut(...)` overload, Controller Guide label resolution, every in-repository shortcut declaration, generated/public API artifacts, and directly affected public docs.
+- [x] Add optional bounded managed `ControllerShortcut.Label` with additive absent/null semantics; require protocol v43 only when a non-null label is authored, and advance managed/native current protocol versions to 43.
+- [x] Extend all seven public SDK `.Shortcut(...)` authoring overloads with an optional final named `label` while preserving existing positional calls and input-only defaults; propagate the value into `ControllerShortcut` without compatibility adapters.
+- [x] Validate the label as bounded, non-whitespace, and control-free using `MaximumStringLength`; count it in aggregate snapshot string authority; carry it unchanged through the existing `SnapshotJson` worker/Bridge path; add and parse the native transport member with matching bounded optional/null semantics.
+- [x] Delete Controller Guide's `QuickActionLabel` cross-reference. Resolve explicit shortcut label first, then shortcut-owner visible text, then owner accessibility label, otherwise omit; preserve current focus path, availability, priority, width, sanitization, action budget, and accessibility behavior.
+- [x] Inventory all repository `.Shortcut` declarations. Add labels only to actions intended for the open-widget guide; explicitly leave B/input-only and directly named fallback shortcuts unlabeled. QuickAction semantics and the maximum-three dashboard bound are unchanged.
+- [x] Label YouTube Player/Play-a-Link X/Y/LT/RT shortcuts directly and advance the corrected immutable package to `0.3.19`; dashboard QuickActions remain X/LT/RT only. The earlier rebuilt `0.3.18` hash is rejected immutable-version evidence.
+- [x] Update directly affected public shortcut/guide authoring documentation plus production/build-required generated and public API source artifacts. Test-only baselines and all test execution remain deferred until physical acceptance.
+- [x] Consolidate the duplicated native fullscreen attempt behind `AttemptOverlayFullscreenMediaEntry`, preserving focused A and page-wide Y authority, diagnostics, feedback, refresh/invalidation, and non-owning fallthrough.
+- [x] Inspect every changed path and repository-wide constructor/call-site compatibility, run `git diff --check`, record the exact labeled/unlabeled declaration inventory and protocol v43 here, and stop without building, packaging, installing, relaunching, staging, or committing.
+
+### ControllerShortcut label source-ready inventory
+
+- Canonical contract: `ControllerShortcut` gains optional final `Label`; `SnapshotJson` already omits null values and is the sole worker/Bridge snapshot serializer. A present label requires protocol v43; snapshots without labels retain their otherwise required version. The generated native constant source is updated to the exact deterministic v43 output shape; canonical generator/parity execution is deferred with the build gate.
+- Bounds: managed validation rejects blank, over-`MaximumStringLength`, or control-bearing labels and includes label bytes in aggregate snapshot string accounting. Native parsing accepts absent/null, rejects wrong types and non-visible/over-bound text, and stores the value only on `WidgetShortcut`. A recursive post-parse owner independently rejects any labeled ordinary or pinned tree below protocol v43.
+- SDK/API: Container, Stack, Row, Scroll, Grid, Button, and ActionSurface `.Shortcut(...)` methods add only one optional final `label`; every prior positional call remains source-compatible. No legacy overload, alternate label owner, or host inference map was added.
+- Guide: explicit shortcut label wins; directly owning visible text then accessibility label are the only fallbacks. `WidgetView.QuickActions` no longer supplies open-widget shortcut text and remains independently capped at three.
+- Declaration inventory: 48 production/template fluent shortcut sites were reviewed. Thirty-three guide-visible bindings now carry explicit labels across YouTube, YT Music, Spotify, Playnite Library, Media Sessions, Games & Apps, Network Controls, and Settings paging. Thirteen B bindings remain unlabeled because B is host/back input rather than a contextual guide action. Clock X and the basic-template RB remain unlabeled because their directly owning Buttons already provide the exact visible command text. Four SDK-generated B constructors remain unlabeled input-only owners. Test fixtures were inventoried but not modified under physical-first ordering.
+- YouTube: open Player/Play-a-Link X=`Play or pause`, Y=`Fullscreen`, LT=`Seek backward 10 seconds`, and RT=`Seek forward 10 seconds`; only X/LT/RT remain dashboard QuickActions. Corrected manifest source is `0.3.19`.
+- Exact current source scope is 28 paths: five public docs plus this plan; four Community/bundled sample presentation files plus YouTube manifest; four first-party presentation files; `ControllerGuide.cpp`, `WidgetBridgeClient.cpp/.h`, generated protocol header, and `main.cpp`; four managed protocol files; and four SDK/API files. No test file changed.
+
+### ControllerShortcut label pre-build review correction
+
+- Reviewer identified that managed version requirements enforced v43 for a present label, while native parsing initially validated and retained the text without independently rejecting a malicious or inconsistent labeled v42 snapshot.
+- `ValidateControllerShortcutLabels` now traverses every ordinary child and every pinned projection root at the existing post-`ParseNode` feature-validation boundary. Any non-empty parsed shortcut label with `protocolVersion < ControllerShortcutLabelVersion` fails closed with the exact versioned feature error.
+- Optional/null behavior, label bounds, all other version gates, shortcut matching, input/action authority, guide rendering, and the QuickAction contract are unchanged. No build or test was run for this source-review correction.
+
+### Protocol v43 Release/package candidate and full-trust gate
+
+- Reviewer independently accepted the complete 28-path source after the native v43 shortcut-label traversal was added.
+- Coherent audited `Release -SkipTests` completed with terminal exit 0 and final `Built` output; only the same four existing `main.cpp` C4244 warnings were emitted. Artifact SHA-256: `OverlayHost.exe` `9E8771CF3052C833ADAC7E2FC3AACD1C71932ED8932F135195252D2C5633FAC2`; `WidgetBridge.exe` `C9F4772524278E3EAC44EF3294FBBEE34565BAD7D38EB075AB88E8E8AFBAD966`; `WidgetWorkerHost.exe` `1DF03B3FCAEE86925A65E6CEF71F75875765E7C4F8CB9AA515FE055E833D6181`.
+- Immutable YouTube `0.3.18` built, validated, and packed green as 13 files / 1,609,864 bytes. Package SHA-256: `13F18DC4E5B0BA0BAB81A71F0EDB7EC7B5E5196F8EC1DED5CCD56E9D0A5FA9A6`; publish `YouTubeWidget.dll` SHA-256: `95B7ECF1A52848F70C9F71631254963B8D193153F24C114DF0239F474629C744`.
+- Reviewer stopped the exact prior `0.3.17` host tree and removed only obsolete, non-selected YouTube `0.3.9` under the existing bounded deletion authority to free one catalog slot.
+- The full-trust gate rejected install/enable because `0.3.18` materially changes executable code. No install command ran. Catalog authority remains `enabled=true`, `activeVersion=0.3.17`; no OverlayHost, Bridge, or widget worker is running.
+- Explicit user approval for full-trust YouTube `0.3.18` is required before install, selection, enablement, and candidate launch. No test, staging, commit, integration, push, or Plane mutation accompanies this evidence-only update.
+
+### YouTube 0.3.18 installed physical candidate
+
+- The exact full-trust YouTube `0.3.18` package was subsequently installed, selected, and enabled under user/reviewer authority. Catalog state reports `activeVersion=0.3.18` and `enabled=true`.
+- Exact running process identities: WIDGE-178 OverlayHost PID 9696, matching WidgetBridge PID 23228, and installed YouTubeApplication `0.3.18` PID 23508. The host is responsive.
+- Startup diagnostics show the YouTube worker admitted, interactive lifecycle completed with `failure=none`, media adapter navigation completed, the exact page event arrived, media became visible, and the same session later parked as retained hidden when the overlay deactivated. No startup or runtime failure was found for this launch.
+- Physical acceptance remains pending. No automated tests ran under the physical-first gate, and the existing 28-path amendment remains unstaged and uncommitted.
+
+### SDK Shortcut binary-compatibility physical red
+
+- Installed YT Music `0.2.10` was compiled against exact `ScrollElement.Shortcut(ControllerButton,string,ControllerEventPhase,ControllerActionRepeatPolicy)` member reference `0A0000E5`. The first v43 implementation replaced that four-parameter CLR method with a five-parameter method containing an optional label; optional source parameters do not preserve CLR member identity.
+- YT Music render therefore failed deterministically at Bridge request 370 / worker request 5 at 19:19:05, and retry workers repeated `worker_request_failed`. YouTube `0.3.18` itself remained healthy and parked with `failure=none`; the red is SDK method resolution, not media-session or shortcut-label protocol behavior.
+- Bounded correction: Container, Stack, Row, Scroll, Grid, Button, and ActionSurface now expose their exact original unlabeled method signatures plus distinct additive labeled overloads. Container-family labeled overloads take `(button, actionId, label, phase, repeatPolicy)`; Button/ActionSurface take `(button, label, phase, actionId, repeatPolicy)`. Named `label:` call sites remain clear, while old binaries resolve the unchanged legacy members.
+- `ControllerShortcut.Label`, protocol v43 requirements, managed/native validation, native transport, guide precedence, QuickAction cap, and all authored label values are unchanged. Public API baselines and authoring docs describe the additive overload. No test change or test execution is allowed before the replacement physical verdict.
+- Reviewer stopped exact rejected host PID 9696 and its children. No product process is running. Install, launch, staging, commit, integration, push, and Plane mutation remain prohibited at this checkpoint.
+- Pre-build static audit: all seven SDK element types expose both their exact original CLR signature and one labeled overload; named `label:` call sites resolve without changing their source shape; PublicApi lists 14 methods; no test path changed; `git diff --check` is green. Authorized build command: `pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -SkipTests` with supported unrestricted network access and NuGet auditing enabled. If green, rebuild/validate/package only YouTube `0.3.18` because its packaged WidgetSdk payload changes.
+- Replacement coherent audited `Release -SkipTests`: terminal exit 0 with final `Built` output and only the same four existing C4244 warnings. Artifact SHA-256: `OverlayHost.exe` `BF4000267D304316E964D9A79A63BFD6E87E9275816C3DBE08D4317B9A973C51`; `WidgetBridge.exe` `C9F4772524278E3EAC44EF3294FBBEE34565BAD7D38EB075AB88E8E8AFBAD966`; `WidgetWorkerHost.exe` `1DF03B3FCAEE86925A65E6CEF71F75875765E7C4F8CB9AA515FE055E833D6181`; runtime `WidgetSdk.dll` `4FAC7737BB364E53C9039E87BCE6ADD01B8B1BA0872AC0D9262284B62A396A57`.
+- Replacement YouTube `0.3.18` build/validate/pack: terminal exit 0; `Valid: 3 file(s) checked`; packed 13 files / 1,611,400 uncompressed bytes. Archive length is 570,757 bytes with SHA-256 `513C0E7B2C8486177EEFC44E1C7B579B26EDAC009087A37D82B10FFB6DEF7A30`. Publish `YouTubeWidget.dll` SHA-256 is `80774D2F5EEE38A0560AC002BDAF1ED3BB1A1C6AEECBD8F20FF2829594610C1A`; publish `WidgetSdk.dll` matches the runtime hash `4FAC7737BB364E53C9039E87BCE6ADD01B8B1BA0872AC0D9262284B62A396A57`.
+- No automated test ran. No install, launch, process, staging, commit, integration, push, or Plane mutation occurred. The complete 28-path source/docs amendment remains unstaged for the replacement physical verdict.
+- Reviewer pre-install review rejected reuse of `0.3.18`: that version is already installed with immutable package hash `13F18DC4E5B0BA0BAB81A71F0EDB7EC7B5E5196F8EC1DED5CCD56E9D0A5FA9A6`, while the SDK-compatible rebuilt archive had hash `513C0E7B2C8486177EEFC44E1C7B579B26EDAC009087A37D82B10FFB6DEF7A30`. The latter archive is retained only as rejected build evidence and must not be installed or published.
+- Owner-correct immutable correction: advance only the YouTube manifest to `0.3.19`, then rebuild/validate/pack that exact version once. Preserve the green corrected host outputs and do not rerun the coherent Release build.
+- Exact YouTube `0.3.19` replacement gate completed once with terminal exit 0: `Valid: 3 file(s) checked`; packed 13 files / 1,611,400 uncompressed bytes. Archive length is 570,757 bytes; SHA-256 `F42C8658BF20A5D1AAFFD14BDF001A4A2691710F07F6467F70EE506F8AA7B3DD`. Publish `YouTubeWidget.dll` SHA-256 is `80774D2F5EEE38A0560AC002BDAF1ED3BB1A1C6AEECBD8F20FF2829594610C1A`; publish `WidgetSdk.dll` SHA-256 is `4FAC7737BB364E53C9039E87BCE6ADD01B8B1BA0872AC0D9262284B62A396A57`.
+- The coherent host build was not rerun. `OverlayHost.exe` remains length 8,980,992 with SHA-256 `BF4000267D304316E964D9A79A63BFD6E87E9275816C3DBE08D4317B9A973C51`. No install, launch, test, process, staging, commit, integration, push, or Plane mutation occurred.
+
+### SDK-compatible YouTube 0.3.19 installed candidate
+
+- Reviewer verified the corrected runtime `WidgetSdk.dll` SHA-256 `4FAC7737BB364E53C9039E87BCE6ADD01B8B1BA0872AC0D9262284B62A396A57` exposes both every exact legacy Shortcut CLR member and the new labeled overload.
+- Immutable YouTube `0.3.19` archive SHA-256 `F42C8658BF20A5D1AAFFD14BDF001A4A2691710F07F6467F70EE506F8AA7B3DD` was installed, selected, and enabled under the user's standing full-trust authorization. Catalog reports `activeVersion=0.3.19`, `enabled=true`.
+- Installed `YouTubeWidget.dll` SHA-256 `80774D2F5EEE38A0560AC002BDAF1ED3BB1A1C6AEECBD8F20FF2829594610C1A` and installed `WidgetSdk.dll` SHA-256 `4FAC7737BB364E53C9039E87BCE6ADD01B8B1BA0872AC0D9262284B62A396A57` match their publish artifacts.
+- Under prior explicit old-version cleanup authority, the reviewer removed only obsolete, inactive YouTube `0.3.10` to free the eighth catalog slot. Active `0.3.18` was preserved until `0.3.19` selection succeeded.
+- Exact running process identities: corrected OverlayHost PID 33480, matching WidgetBridge PID 35568, and YouTubeApplication `0.3.19` PID 13104. The host is responsive.
+- No YT Music process has yet started in this launch. Selecting unchanged installed YT Music `0.2.10` remains the decisive legacy-binary compatibility check. After that, verify YouTube video load, page-wide Y fullscreen, focused A, and X/LT/RT/B behavior.
+- The prior `0.3.18` / YT Music candidate remains rejected evidence. No automated tests ran under physical-first ordering, and no commit is authorized.
+
+### YouTube 0.3.15 physical composition checkpoint
+
+- Reviewer path-verified and stopped the obsolete exact WIDGE-178 OverlayHost PID 4844 before package replacement.
+- Repository-owned `Build-CommunityPackage.ps1 Release -Install` published, validated, and packed immutable YouTube `0.3.15` (13 files, 1,608,840 bytes). The first install encountered `widget_enabled`; bounded catalog recovery disabled `0.3.14`, installed `0.3.15`, then selected `widgetrail.samples.youtube-video 0.3.15` and enabled it with `--accept-full-trust` under the previously granted full-trust authority.
+- Current catalog authority is `enabled=true`, `activeVersion=0.3.15`; catalog validation reports 6 packages and 14 versions. Package SHA-256: `716DF96BA262661A26C7ED6D1BC982CD7DD9147CB034767A06B0ED93E12E1B6E`. Installed and publish `YouTubeWidget.dll` SHA-256 match: `99C2A8B61A00EB090408356A4958A9DEE70EEC420B4C659234FCBC02C12BB727`.
+- Reviewer relaunched the exact WIDGE-178 Release tree: OverlayHost PID 2052 and Bridge PID 34132. Both respond from the exact worktree. Physical checks remain pending: ordinary Player fullscreen entry and retained Player → Search → Link fullscreen/settings/captions behavior.
+
+### Reserved fullscreen action follow-up
+
+- Physical evidence at 17:50:17.869 proves A/Pressed on the fullscreen node enters fullscreen with all exact authority predicates satisfied. At 17:50:19.396, an X held-repeat on the same focused node incorrectly entered the reserved fullscreen branch with an empty decision and consumed the ordinary page-level play/pause shortcut.
+- Owner-correct correction: the reserved fullscreen branch returns false immediately for any non-A or non-Pressed event. Only A/Pressed evaluates/logs/consumes fullscreen authority; ordinary X/repeat routing remains worker/page-owned. No YouTube package rebuild is required because the installed `0.3.15` package already publishes the correct action shape.
+
+### Terminal-build replacement evidence
+
+- The earlier PID 30544 launch was premature: its `OverlayHost.exe` SHA-256 `E0903FE6BC356CEC456E59E7C253167E116C580DC47CD031AA0213AC0FA74373` and 21:30 UTC write time proved it was the pre-fix binary, while the corrected `main.obj` had compiled at 00:53. A yielded long-running build execution is not a completed build; wait for its terminal exit and final `Built ...OverlayHost.exe` output before launching or reporting artifact identity.
+- Reviewer path-verified and stopped PID 30544, resumed the audited Release build to terminal exit 0, and verified the newly linked exact artifact: length 8,976,896; LastWriteTimeUtc `2026-09-04 00:57:02`; SHA-256 `A5369830CAF77D97A34485EAA93D679532486CC1A451FBD0CF93D318677C856D`.
+- Exact rebuilt WIDGE-178 OverlayHost now runs as PID 23596 with Bridge PID 23872 from the correct worktree paths; both respond. The installed YouTube catalog remains enabled at `0.3.15`.
+
+### Y shortcut first-red correction
+
+- Reviewer-run Release compiled and failed at `main.cpp:13686`: a synthetic `ControllerShortcutResolution{}` fallback cannot deduce its template node, leaving `shortcut` uninitialized. This is the first genuine Y-amendment build red and is construction-only, not an authority or behavior failure.
+- Correction: only resolve and inspect the shortcut inside the existing non-null scope-root branch; do not construct a fallback result.
+
+### YouTube 0.3.16 Y-shortcut physical candidate
+
+- The exact replacement audited `Release -SkipTests` completed with terminal exit 0 and final `Built` output after the first-red correction. It emitted only the four existing `main.cpp` C4244 warnings. Exact `OverlayHost.exe` SHA-256: `6D97C5131BF081262E17520D3B2FF753D51F94CB7E9192E4DD7419082ADE0B2E`.
+- Immutable YouTube `0.3.16` built, validated, and packed as 13 files / 1,608,840 bytes. Package SHA-256: `4A6E7172F1212EDCA7EE43DAE3EB5AAE773D7CC1D209085D33BE0D3D644A0445`.
+- The first install reached `installed_widget_version_limit`. Under prior explicit old-version deletion authority, the reviewer removed only obsolete, non-selected YouTube `0.3.7`, then installed, selected, and enabled `0.3.16` with explicit full-trust approval. Current catalog authority is `enabled=true`, `activeVersion=0.3.16`; validation reports 6 packages / 14 versions.
+- Installed and publish `YouTubeWidget.dll` hashes match exactly: `0832F7640BBCD54E69D7687325F77ECF008913789B84959DA1906F00DA0B0E2F`.
+- Exact candidate process identity: OverlayHost PID 27164 and Bridge PID 22000, both from the intended worktree paths and responding. Physical gate: Y from multiple Player/Link focus targets enters fullscreen exactly once; focused A fullscreen remains intact; X play/pause, LT/RT seek, and B behavior remain unchanged.
+- Pre-commit cleanup remains required after the physical verdict: consolidate the duplicated fullscreen-attempt body behind one exact host owner/helper without changing behavior. This is deferred sequencing, not accepted technical debt. No staging or commit is authorized before the user’s verdict and completion of that cleanup.
+
+### YouTube 0.3.16 QuickAction physical red and 0.3.17 correction
+
+- Physical playback reached the first post-load presentation update, then worker PID 31780 rejected render request 15 with `worker_protocol_validation_failed`, `validationPath=$.quickActions`, and `validationCode=too_many`. OverlayHost surfaced `worker-runtime-failed` at `2026-09-04T01:28:48.8238066Z`. This was a deterministic snapshot validation failure, not a worker-process crash or media-session failure.
+- Root cause: YouTube already publishes the protocol maximum of three dashboard QuickActions—X, LT, and RT. Adding Y as a fourth exceeded `ProtocolConstants.MaximumQuickActionCount = 3`; Y is also intentionally excluded from dashboard QuickActions because the host owns it there.
+- Bounded correction for immutable YouTube `0.3.17`: remove only the added snapshot-level Y `WidgetQuickAction`. Retain `.Shortcut(ControllerButton.Y, EnterFullscreenActionId)` on the shared open Player/Play-a-Link root. The page-wide Y action and open-widget controller-guide label remain owned by the current admitted scope shortcut/action surface, while dashboard Y remains host-owned.
+- No protocol bound, host routing, tests, build, package, install, process, staging, or commit changed in this correction checkpoint. The running `0.3.16` process remains untouched as rejected evidence pending replacement disposition.
+
+### YouTube 0.3.17 replacement physical candidate
+
+- Reviewer verified the correction diff/check, then built and validated immutable YouTube `0.3.17`: 13 files / 1,608,840 bytes; package SHA-256 `972D04AA1673441CCC2EB04E3941D7DF0E8136A9D6DD9D258AF2421078CA2E89`.
+- Under prior explicit old-version deletion authority, the reviewer removed only obsolete, non-selected YouTube `0.3.8` to free the bounded version slot, stopped exact rejected OverlayHost PID 27164, disabled `0.3.16`, and installed, selected, and enabled `0.3.17` with explicit full-trust authority. Current catalog authority is `enabled=true`, `activeVersion=0.3.17`.
+- Installed and publish `YouTubeWidget.dll` SHA-256 hashes match: `C4DC067D821E841A76DB029D600DC2DC03A5F147F31915F2E202A00654A05E77`.
+- The host binary is unchanged from the terminal-green replacement build: SHA-256 `6D97C5131BF081262E17520D3B2FF753D51F94CB7E9192E4DD7419082ADE0B2E`. Exact corrected candidate process identity is OverlayHost PID 25096 and Bridge PID 27028; both use the intended worktree paths and respond.
+- Physical tests are pending. Verify that video load no longer produces `$.quickActions / too_many`, Y enters fullscreen once from multiple Player/Link focus targets, focused A fullscreen remains intact, and X/LT/RT/B remain unchanged.
+- Helper consolidation remains mandatory before commit. No source, test, staging, commit, integration, push, or Plane mutation accompanies this evidence-only checkpoint.
 
 ### Current pinned-resize candidate evidence
 

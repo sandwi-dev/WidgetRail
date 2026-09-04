@@ -273,6 +273,7 @@ struct WidgetShortcut final {
     std::wstring actionId;
     std::wstring phase;
     std::wstring repeatPolicy;
+    std::wstring label;
 };
 
 struct WidgetContextAction final {

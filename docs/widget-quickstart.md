@@ -248,9 +248,12 @@ The starter contains:
 
 The generated widget uses the root input scope. For a nested modal or component
 surface, call `.InputScope("scope-id")` on its Stack/Row, bind focus-independent
-actions with `.Shortcut(button, actionId)`, and return that ID through
-`WidgetView.ActiveInputScopeId`. Keep root and nested bindings independent; the
-runtime never bubbles between scopes.
+actions with `.Shortcut(button, actionId, label: "Action")`, and return that ID
+through `WidgetView.ActiveInputScopeId`. Add the optional bounded label when the
+binding should appear in the open-widget controller guide; unlabeled shortcuts
+remain input-only unless their directly owning control supplies visible or
+accessible text. Dashboard QuickActions remain a separate contract. Keep root
+and nested bindings independent; the runtime never bubbles between scopes.
 
 Publisher names must be lowercase reverse-DNS identifiers that are also valid
 C# namespaces. Widget IDs use lowercase reverse-DNS components and may also

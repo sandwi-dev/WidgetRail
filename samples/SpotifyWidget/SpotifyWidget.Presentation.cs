@@ -135,7 +135,7 @@ internal static class SpotifyPresentation
             .Classes("spotify-pinned-root",
                 includeUpNext ? "spotify-pinned-up-next" : "spotify-pinned-now-playing");
         root = ApplyPlaybackShortcuts(root, presentation.Playback)
-            .Shortcut(ControllerButton.Y, "spotify.refresh");
+            .Shortcut(ControllerButton.Y, "spotify.refresh", label: "Refresh");
         return layout.Present(root, initialFocusId);
     }
 
@@ -442,7 +442,7 @@ internal static class SpotifyPresentation
         if (playlistDetail is not null && destination == SpotifyDestination.Playlists)
             root = root.Shortcut(ControllerButton.B, "spotify.playlist.back");
         root = ApplyPlaybackShortcuts(root, playback)
-            .Shortcut(ControllerButton.Y, "spotify.refresh");
+            .Shortcut(ControllerButton.Y, "spotify.refresh", label: "Refresh");
 
         var quickActions = new List<WidgetQuickAction>();
         if (playback is { IsAvailable: true })
@@ -656,11 +656,15 @@ internal static class SpotifyPresentation
         var disallowed = playback.DisallowedActions;
         var toggleBlocked = playback.IsPlaying ? disallowed.Pausing : disallowed.Resuming;
         if (!disallowed.SkippingPrevious)
-            root = root.Shortcut(ControllerButton.LeftBumper, "spotify.previous");
+            root = root.Shortcut(
+                ControllerButton.LeftBumper, "spotify.previous", label: "Previous track");
         if (!toggleBlocked)
-            root = root.Shortcut(ControllerButton.X, "spotify.play-toggle");
+            root = root.Shortcut(
+                ControllerButton.X, "spotify.play-toggle",
+                label: playback.IsPlaying ? "Pause" : "Play");
         if (!disallowed.SkippingNext)
-            root = root.Shortcut(ControllerButton.RightBumper, "spotify.next");
+            root = root.Shortcut(
+                ControllerButton.RightBumper, "spotify.next", label: "Next track");
         return root;
     }
 
