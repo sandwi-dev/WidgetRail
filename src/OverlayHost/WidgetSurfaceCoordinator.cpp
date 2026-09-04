@@ -29,12 +29,9 @@ constexpr float kSideInsetDip = surface_geometry::kPinnedSideInsetDip;
 constexpr float kBottomInsetDip = surface_geometry::kPinnedBottomInsetDip;
 constexpr float kPinnedBorderDip = 1.0F;
 constexpr float kAdjustBorderDip = 3.0F;
-constexpr unsigned int kMinimumOpacityPercent = 30;
-constexpr unsigned int kMaximumOpacityPercent = 100;
 constexpr std::size_t kMaximumPendingInputRequests = 16;
 constexpr std::size_t kMaximumPendingLayoutSelectionNotifications = 16;
 constexpr std::size_t kMaximumFeedbackCharacters = 160;
-constexpr std::wstring_view kFullWidgetLayoutId = L"host.full-widget";
 constexpr std::wstring_view kCompactMediaLayoutId = L"host.compact-media";
 constexpr COLORREF kTransparentSurfaceColorKey = RGB(1, 2, 3);
 
@@ -276,7 +273,7 @@ bool WidgetSurfaceCoordinator::Pin(
     actionFeedback_.clear();
     actionFeedbackFailure_ = false;
     controllerFocused_ = false;
-    opacityPercent_ = 100;
+    opacityPercent_ = kMaximumOpacityPercent;
     opacityPreviewOriginal_.reset();
     lastPinnedClientExtent_.reset();
     pendingPinnedResizeDiagnostic_.reset();
@@ -1611,7 +1608,7 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     setupNewPin_.reset();
     setupOriginalLayoutId_.clear();
     opacityPreviewOriginal_.reset();
-    opacityPercent_ = 100;
+    opacityPercent_ = kMaximumOpacityPercent;
     controllerFocused_ = false;
     compactMediaPositionSeconds_ = 0.0;
     compactMediaDurationSeconds_ = 0.0;

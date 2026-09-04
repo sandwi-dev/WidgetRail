@@ -8,6 +8,7 @@ internal static class PinnedPresentationLayoutTests
 
     internal static async Task Run()
     {
+        Equal("host.full-widget", PinnedSurfaceContract.FullWidgetLayoutId);
         ExistingWidgetViewApiRemainsAdditive();
         CatalogIsBoundedAndVersioned();
         ProjectionIsDeclarativeBoundedAndVersioned();
@@ -240,7 +241,7 @@ internal static class PinnedPresentationLayoutTests
             "A stale layout notification replaced current handle authority.");
         Equal(1, invalidations);
 
-        True(await host.SelectAsync("host.full-widget"),
+        True(await host.SelectAsync(PinnedSurfaceContract.FullWidgetLayoutId),
             "Full widget did not revoke package-authored demand.");
         True(firstSelection.IsCancellationRequested &&
              !widget.Compact.IsSelected && host.SelectedLayoutId is null,
@@ -300,7 +301,8 @@ internal static class PinnedPresentationLayoutTests
         Equal("compact-play", (await widget.NextActionAsync()).ActionId);
 
         True(await widget.OnControllerInputAsync(PinnedInput(
-            "host.full-widget", "full.root", "full.play", 17)),
+            PinnedSurfaceContract.FullWidgetLayoutId,
+            "full.root", "full.play", 17)),
             "The host Full widget fallback did not resolve the ordinary root.");
         Equal("full-play", (await widget.NextActionAsync()).ActionId);
 

@@ -35,6 +35,10 @@ int main() {
     try {
         using widgetrail::input::NavigationDirection;
         using widgetrail::pinned::PlacementDirection;
+        Check(widgetrail::pinned::kFullWidgetLayoutId == L"host.full-widget" &&
+                  widgetrail::pinned::kMinimumOpacityPercent == 30 &&
+                  widgetrail::pinned::kMaximumOpacityPercent == 100,
+              "pinned persistence consumes the exact shared identity and opacity bounds");
         Check(!widgetrail::pinned::ResolvePlacementDirection(NavigationDirection::None),
               "neutral navigation has no placement direction");
         Check(widgetrail::pinned::ResolvePlacementDirection(NavigationDirection::Left) ==
@@ -168,7 +172,7 @@ int main() {
               "placement store restores geometry opacity and selected layout together");
         auto expandedStored = *expandedCommitted;
         expandedStored.opacityPercent = 90;
-        expandedStored.selectedLayoutId = L"host.full-widget";
+        expandedStored.selectedLayoutId = widgetrail::pinned::kFullWidgetLayoutId;
         Check(store.Save(L"dev.example.expanded", expandedStored, error),
               "durable storage accepts geometry admitted beyond legacy default maxima");
         const auto expandedReloaded = store.Load(L"dev.example.expanded");
@@ -183,7 +187,8 @@ int main() {
         }
         const auto legacyLoaded = store.Load(L"dev.example.widget");
         Check(legacyLoaded && legacyLoaded->opacityPercent == 80 &&
-                  legacyLoaded->selectedLayoutId == L"host.full-widget",
+                  legacyLoaded->selectedLayoutId ==
+                      widgetrail::pinned::kFullWidgetLayoutId,
               "pre-layout placement falls back to the host Full widget checkpoint");
         {
             std::wofstream malformed(storePath, std::ios::trunc);

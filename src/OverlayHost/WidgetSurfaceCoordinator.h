@@ -435,7 +435,7 @@ private:
     std::size_t selectedLayoutIndex_{};
     std::optional<bool> setupNewPin_;
     std::wstring setupOriginalLayoutId_;
-    unsigned int opacityPercent_{100};
+    unsigned int opacityPercent_{kMaximumOpacityPercent};
     std::optional<unsigned int> opacityPreviewOriginal_;
     RenderResult lastRenderResult_;
     std::optional<CommittedMediaViewportPresentation> committedMediaViewport_;

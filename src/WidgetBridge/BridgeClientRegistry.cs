@@ -2071,7 +2071,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         ViewNode root;
         string scope;
         if (input.Context == ControllerInputContext.PinnedSurface &&
-            !string.Equals(input.PinnedLayoutId, "host.full-widget", StringComparison.Ordinal))
+            !string.Equals(input.PinnedLayoutId,
+                PinnedSurfaceContract.FullWidgetLayoutId, StringComparison.Ordinal))
         {
             var layout = snapshot.PinnedLayouts.SingleOrDefault(candidate =>
                 string.Equals(candidate.Id, input.PinnedLayoutId, StringComparison.Ordinal));
@@ -2131,7 +2132,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
     {
         ViewNode root;
         string inputScopeId;
-        if (string.Equals(input.PinnedLayoutId, "host.full-widget", StringComparison.Ordinal))
+        if (string.Equals(input.PinnedLayoutId,
+                PinnedSurfaceContract.FullWidgetLayoutId, StringComparison.Ordinal))
         {
             root = snapshot.Root;
             inputScopeId = snapshot.ActiveInputScopeId;

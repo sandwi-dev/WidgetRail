@@ -400,7 +400,6 @@ public static class WidgetTestHost
 /// </summary>
 public sealed class WidgetPinnedLayoutTestHost
 {
-    private const string FullWidgetLayoutId = "host.full-widget";
     private readonly Widget _widget;
     private readonly string _widgetInstanceId;
     private long _sequence;
@@ -433,7 +432,8 @@ public sealed class WidgetPinnedLayoutTestHost
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(layoutId);
-        if (string.Equals(layoutId, FullWidgetLayoutId, StringComparison.Ordinal))
+        if (string.Equals(layoutId,
+                PinnedSurfaceContract.FullWidgetLayoutId, StringComparison.Ordinal))
             return await RevokeAsync(cancellationToken).ConfigureAwait(false);
         if (!CurrentSnapshot.PinnedLayouts.Any(layout =>
                 string.Equals(layout.Id, layoutId, StringComparison.Ordinal)))

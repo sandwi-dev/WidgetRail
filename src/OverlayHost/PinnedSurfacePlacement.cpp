@@ -14,8 +14,6 @@ namespace widgetrail::pinned {
 namespace {
 
 constexpr std::size_t kMaximumStoredWidgets = 64;
-constexpr unsigned int kMinimumOpacityPercent = 30;
-constexpr unsigned int kMaximumOpacityPercent = 100;
 constexpr std::size_t kMaximumLayoutIdLength = 128;
 // The durable parser owns a structural envelope, not a widget's current
 // interactive resize policy: maximum authored content plus pinned chrome.
@@ -183,8 +181,8 @@ std::optional<DurablePinnedPlacement> CaptureDurablePlacement(
         travelY == 0 ? 0.0 : static_cast<double>(constrained.top - monitor.workArea.top) / travelY,
         static_cast<float>(width) * 96.0F / monitor.dpi,
         static_cast<float>(height) * 96.0F / monitor.dpi,
-        100,
-        L"host.full-widget",
+        kMaximumOpacityPercent,
+        std::wstring{kFullWidgetLayoutId},
     };
 }
 

@@ -2,6 +2,7 @@
 
 #include "ControllerNavigation.h"
 #include "PinnedSurfacePolicy.h"
+#include "WidgetProtocolPresentationContract.generated.h"
 #include "WidgetSurfaceGeometry.h"
 
 #include <filesystem>
@@ -13,6 +14,11 @@
 #include <vector>
 
 namespace widgetrail::pinned {
+
+inline constexpr std::wstring_view kFullWidgetLayoutId =
+    protocol_contract::FullWidgetLayoutId;
+inline constexpr unsigned int kMinimumOpacityPercent = 30;
+inline constexpr unsigned int kMaximumOpacityPercent = 100;
 
 enum class PlacementMode {
     None,
@@ -54,8 +60,8 @@ struct DurablePinnedPlacement final {
     double anchorY{};
     float widthDip{480.0F};
     float heightDip{270.0F};
-    unsigned int opacityPercent{100};
-    std::wstring selectedLayoutId{L"host.full-widget"};
+    unsigned int opacityPercent{kMaximumOpacityPercent};
+    std::wstring selectedLayoutId{kFullWidgetLayoutId};
 };
 
 struct PlacementSession final {

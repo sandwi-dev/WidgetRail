@@ -32,6 +32,7 @@ inline constexpr std::int32_t EmbeddedMediaSurfaceVersion = 22;
 inline constexpr std::int32_t FocusAssociatedPresentationVersion = 40;
 inline constexpr std::int32_t FocusPersistenceVersion = 13;
 inline constexpr std::int32_t FocusedBackgroundArtworkVersion = 39;
+inline constexpr std::wstring_view FullWidgetLayoutId = L"host.full-widget";
 inline constexpr std::int32_t HeldButtonActionRepeatVersion = 32;
 inline constexpr std::int32_t InlinePngImageVersion = 6;
 inline constexpr std::int32_t LoadingIndicatorVersion = 5;

@@ -54,6 +54,8 @@ static string FindRepositoryRoot(string start)
 
 static FieldInfo[] ContractFields() => typeof(ProtocolConstants)
     .GetFields(BindingFlags.Public | BindingFlags.Static)
+    .Concat(typeof(PinnedSurfaceContract).GetFields(
+        BindingFlags.NonPublic | BindingFlags.Static))
     .Where(field => field.IsLiteral && !field.IsInitOnly)
     .OrderBy(field => field.Name, StringComparer.Ordinal)
     .ToArray();
@@ -83,6 +85,7 @@ static string GenerateArtifact()
             int number => ("std::int32_t", number.ToString(CultureInfo.InvariantCulture)),
             long number => ("std::int64_t", number.ToString(CultureInfo.InvariantCulture) + "LL"),
             double number => ("double", RenderDouble(number)),
+            string text => ("std::wstring_view", RenderWideString(text)),
             _ => throw new InvalidOperationException(
                 $"Unsupported presentation contract type {field.FieldType.Name} for {field.Name}."),
         };
@@ -187,6 +190,10 @@ static void VerifyDriftDetection(string artifact)
         .Single(line => line.Contains($" {firstField.Name} = ", StringComparison.Ordinal)) + "\n";
     var availabilityLine = artifact.Split('\n', StringSplitOptions.RemoveEmptyEntries)
         .Single(line => line.Contains("{false, false, true}", StringComparison.Ordinal)) + "\n";
+    var fullWidgetLayoutLine = artifact.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+        .Single(line => line.Contains(
+            $" {nameof(PinnedSurfaceContract.FullWidgetLayoutId)} = ",
+            StringComparison.Ordinal)) + "\n";
 
     var vectors = new[]
     {
@@ -199,6 +206,11 @@ static void VerifyDriftDetection(string artifact)
         artifact.Replace(
             availabilityLine,
             availabilityLine.Replace("true", "false", StringComparison.Ordinal),
+            StringComparison.Ordinal),
+        artifact.Replace(
+            fullWidgetLayoutLine,
+            fullWidgetLayoutLine.Replace(
+                "host.full-widget", "host.changed", StringComparison.Ordinal),
             StringComparison.Ordinal),
     };
     if (vectors.Any(candidate => string.Equals(candidate, artifact, StringComparison.Ordinal)))

@@ -1,5 +1,10 @@
 namespace WidgetRail.WidgetProtocol;
 
+internal static class PinnedSurfaceContract
+{
+    internal const string FullWidgetLayoutId = "host.full-widget";
+}
+
 public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;

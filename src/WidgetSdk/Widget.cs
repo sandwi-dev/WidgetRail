@@ -692,7 +692,8 @@ public abstract partial class Widget
             {
                 if (string.IsNullOrWhiteSpace(input.PinnedLayoutId))
                     return ValueTask.FromResult(false);
-                if (string.Equals(input.PinnedLayoutId, "host.full-widget", StringComparison.Ordinal))
+                if (string.Equals(input.PinnedLayoutId,
+                        PinnedSurfaceContract.FullWidgetLayoutId, StringComparison.Ordinal))
                 {
                     inputRoot = snapshot.Root;
                     inputScopeId = snapshot.ActiveInputScopeId;
