@@ -43,6 +43,7 @@ var tests = new (string Name, Func<Task> Run)[]
         HeldButtonActionRepeatTests.Run),
     ("Remembered-child focus groups share one bounded container contract",
         RememberedChildFocusGroupTests.Run),
+    ("Focus-target lookup shares protocol validation authority", FocusTargetLookupTests.Run),
     ("Dashboard quick action authority is typed bounded and versioned", DashboardAuthorityContract),
     ("Host-reserved View mappings fail with precise author diagnostics", HostReservedViewMappingsAreRejected),
     ("Unsafe image sources are rejected", UnsafeImageSourcesAreRejected),

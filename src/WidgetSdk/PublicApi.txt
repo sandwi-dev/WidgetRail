@@ -77,6 +77,7 @@ ctor WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>()
 ctor WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>(WidgetRail.WidgetSdk.WidgetPagedResourceStatus Status, System.Collections.Generic.IReadOnlyList<TItem> Items, WidgetRail.WidgetSdk.WidgetCollectionCursor? Before, WidgetRail.WidgetSdk.WidgetCollectionCursor? After, WidgetRail.WidgetSdk.WidgetCollectionItemKey? Anchor, string? RequestedFocusId, WidgetRail.WidgetSdk.WidgetResourceError? Error, long Revision)
 ctor WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>(string ScrollId, System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> ItemKey, System.Func<TItem,string> ItemFocusId, string? EmptyFocusId = null)
 ctor WidgetRail.WidgetSdk.WidgetEncodedArtwork(WidgetRail.WidgetSdk.WidgetArtworkContentType contentType, System.ReadOnlyMemory<byte> bytes)
+ctor WidgetRail.WidgetSdk.WidgetFocusTargetResult(string? Id, WidgetRail.WidgetSdk.WidgetFocusTargetState State)
 ctor WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs(long Revision)
 ctor WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader(string Name, string Value)
 ctor WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest(string Path, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader> Headers, string? BearerSecretSlot, string? JsonBody, int TimeoutMilliseconds, bool InvalidateBearerSecretOnUnauthorized = false)
@@ -267,6 +268,12 @@ enum WidgetRail.WidgetSdk.WidgetCommandPolicy.Serial = WidgetRail.WidgetSdk.Widg
 enum WidgetRail.WidgetSdk.WidgetCommandPolicy.SingleFlight = WidgetRail.WidgetSdk.WidgetCommandPolicy.SingleFlight
 enum WidgetRail.WidgetSdk.WidgetCursorDirection.After = WidgetRail.WidgetSdk.WidgetCursorDirection.After
 enum WidgetRail.WidgetSdk.WidgetCursorDirection.Before = WidgetRail.WidgetSdk.WidgetCursorDirection.Before
+enum WidgetRail.WidgetSdk.WidgetFocusTargetState.Disabled = WidgetRail.WidgetSdk.WidgetFocusTargetState.Disabled
+enum WidgetRail.WidgetSdk.WidgetFocusTargetState.Duplicate = WidgetRail.WidgetSdk.WidgetFocusTargetState.Duplicate
+enum WidgetRail.WidgetSdk.WidgetFocusTargetState.Missing = WidgetRail.WidgetSdk.WidgetFocusTargetState.Missing
+enum WidgetRail.WidgetSdk.WidgetFocusTargetState.NotFocusable = WidgetRail.WidgetSdk.WidgetFocusTargetState.NotFocusable
+enum WidgetRail.WidgetSdk.WidgetFocusTargetState.OutsideActiveScope = WidgetRail.WidgetSdk.WidgetFocusTargetState.OutsideActiveScope
+enum WidgetRail.WidgetSdk.WidgetFocusTargetState.Valid = WidgetRail.WidgetSdk.WidgetFocusTargetState.Valid
 enum WidgetRail.WidgetSdk.WidgetLifecycleState.Background = WidgetRail.WidgetSdk.WidgetLifecycleState.Background
 enum WidgetRail.WidgetSdk.WidgetLifecycleState.Created = WidgetRail.WidgetSdk.WidgetLifecycleState.Created
 enum WidgetRail.WidgetSdk.WidgetLifecycleState.Destroying = WidgetRail.WidgetSdk.WidgetLifecycleState.Destroying
@@ -1014,6 +1021,10 @@ method WidgetRail.WidgetSdk.WidgetElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetElement.PresentOnFocus(WidgetRail.WidgetSdk.WidgetElement presentation) -> WidgetRail.WidgetSdk.WidgetElement
 method WidgetRail.WidgetSdk.WidgetElement.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetElement.VisibleWhen(WidgetRail.WidgetProtocol.ResponsiveVisibility visibility) -> WidgetRail.WidgetSdk.WidgetElement
+method WidgetRail.WidgetSdk.WidgetFocusTargetResult.Deconstruct(out string? Id, out WidgetRail.WidgetSdk.WidgetFocusTargetState State) -> void
+method WidgetRail.WidgetSdk.WidgetFocusTargetResult.Equals(object obj) -> bool
+method WidgetRail.WidgetSdk.WidgetFocusTargetResult.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetFocusTargetResult.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetIdScope.Id(string name) -> string
 method WidgetRail.WidgetSdk.WidgetIdScope.KeyedId(string name, string durableKey) -> string
 method WidgetRail.WidgetSdk.WidgetIdScope.Scope(string segment) -> WidgetRail.WidgetSdk.WidgetIdScope
@@ -1623,6 +1634,10 @@ method static WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.op_Equality(Widge
 method static WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>? left, WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetElement.op_Equality(WidgetRail.WidgetSdk.WidgetElement? left, WidgetRail.WidgetSdk.WidgetElement? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetElement.op_Inequality(WidgetRail.WidgetSdk.WidgetElement? left, WidgetRail.WidgetSdk.WidgetElement? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetFocusTargetLookup.First(WidgetRail.WidgetSdk.WidgetElement root, string? activeInputScopeId = null, bool includeDisabled = false) -> WidgetRail.WidgetSdk.WidgetFocusTargetResult
+method static WidgetRail.WidgetSdk.WidgetFocusTargetLookup.Resolve(WidgetRail.WidgetSdk.WidgetElement root, string? targetId, string? activeInputScopeId = null) -> WidgetRail.WidgetSdk.WidgetFocusTargetResult
+method static WidgetRail.WidgetSdk.WidgetFocusTargetResult.op_Equality(WidgetRail.WidgetSdk.WidgetFocusTargetResult left, WidgetRail.WidgetSdk.WidgetFocusTargetResult right) -> bool
+method static WidgetRail.WidgetSdk.WidgetFocusTargetResult.op_Inequality(WidgetRail.WidgetSdk.WidgetFocusTargetResult left, WidgetRail.WidgetSdk.WidgetFocusTargetResult right) -> bool
 method static WidgetRail.WidgetSdk.WidgetIds.Scope(string rootId) -> WidgetRail.WidgetSdk.WidgetIdScope
 method static WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.op_Equality(WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? left, WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.op_Inequality(WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? left, WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? right) -> bool
@@ -1861,6 +1876,7 @@ method virtual WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.Equals(Wi
 method virtual WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetFocusTargetResult.Equals(WidgetRail.WidgetSdk.WidgetFocusTargetResult other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.Equals(WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader.Equals(WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.Equals(WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest? other) -> bool
@@ -2105,6 +2121,7 @@ property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.FocusPresentati
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.DefaultPresentation { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.ResponsiveBranchElement.Child { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetView.Root { get; set; }
+property WidgetRail.WidgetSdk.WidgetFocusTargetState WidgetRail.WidgetSdk.WidgetFocusTargetResult.State { get; set; }
 property WidgetRail.WidgetSdk.WidgetHostServices WidgetRail.WidgetSdk.WidgetScenarioDefinition.HostServices { get; }
 property WidgetRail.WidgetSdk.WidgetLoopbackHttpService WidgetRail.WidgetSdk.WidgetHostServices.Loopback { get; }
 property WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus WidgetRail.WidgetSdk.WidgetMediaSession.PlaybackStatus { get; set; }
@@ -2197,6 +2214,7 @@ property bool WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>.Sh
 property bool WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.IsBusy { get; }
 property bool WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.HasAfter { get; }
 property bool WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.HasBefore { get; }
+property bool WidgetRail.WidgetSdk.WidgetFocusTargetResult.IsEnabled { get; }
 property bool WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.InvalidateBearerSecretOnUnauthorized { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.InvalidateBearerSecretOnUnauthorized { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetMediaSession.CanNext { get; set; }
@@ -2549,6 +2567,7 @@ property string? WidgetRail.WidgetSdk.WidgetAppLibraryQuery.SearchText { get; se
 property string? WidgetRail.WidgetSdk.WidgetAppLibraryQuery.SourceAttribution { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.RequestedFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.EmptyFocusId { get; set; }
+property string? WidgetRail.WidgetSdk.WidgetFocusTargetResult.Id { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.BearerSecretSlot { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.JsonBody { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.BearerSecretSlot { get; set; }
@@ -2601,6 +2620,7 @@ type enum WidgetRail.WidgetSdk.WidgetBluetoothRadioState : System.IComparable, S
 type enum WidgetRail.WidgetSdk.WidgetBluetoothUnpairingOutcome : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetCommandPolicy : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetCursorDirection : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum WidgetRail.WidgetSdk.WidgetFocusTargetState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetLifecycleState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetMediaSessionCommand : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -2800,6 +2820,7 @@ type static class WidgetRail.WidgetSdk.UI
 type static class WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities
 type static class WidgetRail.WidgetSdk.WidgetAudioCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCommunityPlatformLimits
+type static class WidgetRail.WidgetSdk.WidgetFocusTargetLookup
 type static class WidgetRail.WidgetSdk.WidgetIds
 type static class WidgetRail.WidgetSdk.WidgetLoopbackCapabilities
 type static class WidgetRail.WidgetSdk.WidgetMediaCapabilities
@@ -2812,6 +2833,7 @@ type struct WidgetRail.WidgetSdk.WidgetArtworkHandle : System.IEquatable<WidgetR
 type struct WidgetRail.WidgetSdk.WidgetCollectionCursor : System.IEquatable<WidgetRail.WidgetSdk.WidgetCollectionCursor>
 type struct WidgetRail.WidgetSdk.WidgetCollectionItemKey : System.IEquatable<WidgetRail.WidgetSdk.WidgetCollectionItemKey>
 type struct WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>>
+type struct WidgetRail.WidgetSdk.WidgetFocusTargetResult : System.IEquatable<WidgetRail.WidgetSdk.WidgetFocusTargetResult>
 type struct WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> : System.IEquatable<WidgetRail.WidgetSdk.WidgetModelSnapshot<TState>>
 type struct WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult> : System.IEquatable<WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>>
 type struct WidgetRail.WidgetSdk.WidgetModelUpdate<TState> : System.IEquatable<WidgetRail.WidgetSdk.WidgetModelUpdate<TState>>

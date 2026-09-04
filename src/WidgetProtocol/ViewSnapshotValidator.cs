@@ -240,17 +240,22 @@ public static class ViewSnapshotValidator
 
         if (snapshot.InitialFocusId is { } initial)
         {
-            if (!ids.TryGetValue(initial, out var initialTarget))
+            var focusTarget = ViewFocusTargetLookup.Resolve(
+                snapshot.Root, initial, activeInputScopeId);
+            if (focusTarget.State is ViewFocusTargetState.Missing or ViewFocusTargetState.Duplicate)
                 AddIdentifier("$.initialFocusId", "invalid_focus_target",
                     "Initial focus must name a focusable node.",
                     ProtocolValidationIdentifierKind.InitialFocus,
-                    ProtocolValidationIdentifierState.Missing, initial);
-            else if (!initialTarget.Node.IsFocusable)
+                    focusTarget.State == ViewFocusTargetState.Duplicate
+                        ? ProtocolValidationIdentifierState.Duplicate
+                        : ProtocolValidationIdentifierState.Missing,
+                    initial);
+            else if (focusTarget.State == ViewFocusTargetState.NotFocusable)
                 AddIdentifier("$.initialFocusId", "invalid_focus_target",
                     "Initial focus must name a focusable node.",
                     ProtocolValidationIdentifierKind.InitialFocus,
                     ProtocolValidationIdentifierState.NotFocusable, initial);
-            else if (hasActiveScope && !string.Equals(initialTarget.ScopeKey, activeScopeKey, StringComparison.Ordinal))
+            else if (focusTarget.State == ViewFocusTargetState.OutsideActiveScope)
                 AddIdentifier("$.initialFocusId", "initial_focus_outside_active_scope",
                     "Initial focus must belong to the active input scope.",
                     ProtocolValidationIdentifierKind.InitialFocus,

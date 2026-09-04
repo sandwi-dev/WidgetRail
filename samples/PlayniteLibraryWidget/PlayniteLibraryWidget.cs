@@ -227,120 +227,22 @@ public sealed partial class PlayniteLibraryWidget : Widget
         string activeScopeId,
         bool allowDisabledRequestedTarget)
     {
-        var requested = FindFocusTarget(root, requestedId, activeScopeId, null);
-        if (requested is not null &&
-            (allowDisabledRequestedTarget || !requested.Value.Disabled))
-            return requested.Value.Id;
+        var requested = WidgetFocusTargetLookup.Resolve(root, requestedId, activeScopeId);
+        if (requested.Id is not null &&
+            (requested.IsEnabled ||
+             (allowDisabledRequestedTarget && requested.State == WidgetFocusTargetState.Disabled)))
+            return requested.Id;
 
-        var routeFallback = FindFocusTarget(
-            root, routeFallbackId, activeScopeId, null);
-        if (routeFallback is { Disabled: false }) return routeFallback.Value.Id;
+        var routeFallback = WidgetFocusTargetLookup.Resolve(
+            root, routeFallbackId, activeScopeId);
+        if (routeFallback.IsEnabled) return routeFallback.Id;
 
-        var enabled = FindFirstFocusTarget(
-            root, activeScopeId, null, requireEnabled: true);
-        if (enabled is not null) return enabled.Value.Id;
+        var enabled = WidgetFocusTargetLookup.First(root, activeScopeId);
+        if (enabled.Id is not null) return enabled.Id;
 
-        return routeFallback?.Id ?? FindFirstFocusTarget(
-            root, activeScopeId, null, requireEnabled: false)?.Id;
+        return routeFallback.Id ?? WidgetFocusTargetLookup.First(
+            root, activeScopeId, includeDisabled: true).Id;
     }
-
-    private static FocusTarget? FindFocusTarget(
-        WidgetElement element,
-        string? id,
-        string activeScopeId,
-        string? inheritedScopeId)
-    {
-        if (id is null) return null;
-        foreach (var target in FindFocusTargets(
-                     element, activeScopeId, inheritedScopeId))
-            if (string.Equals(target.Id, id, StringComparison.Ordinal))
-                return target;
-        return null;
-    }
-
-    private static FocusTarget? FindFirstFocusTarget(
-        WidgetElement element,
-        string activeScopeId,
-        string? inheritedScopeId,
-        bool requireEnabled)
-    {
-        foreach (var target in FindFocusTargets(
-                     element, activeScopeId, inheritedScopeId))
-            if (!requireEnabled || !target.Disabled)
-                return target;
-        return null;
-    }
-
-    private static IEnumerable<FocusTarget> FindFocusTargets(
-        WidgetElement element,
-        string activeScopeId,
-        string? inheritedScopeId)
-    {
-        switch (element)
-        {
-            case BackgroundSurfaceElement wrapper:
-                foreach (var target in FindFocusTargets(
-                             wrapper.Content, activeScopeId, inheritedScopeId))
-                    yield return target;
-                yield break;
-            case FocusPresentationSurfaceElement wrapper:
-                foreach (var target in FindFocusTargets(
-                             wrapper.Content, activeScopeId, inheritedScopeId))
-                    yield return target;
-                yield break;
-            case CollectionItemElement wrapper:
-                foreach (var target in FindFocusTargets(
-                             wrapper.Child, activeScopeId, inheritedScopeId))
-                    yield return target;
-                yield break;
-            case FocusBackgroundElement wrapper:
-                foreach (var target in FindFocusTargets(
-                             wrapper.Child, activeScopeId, inheritedScopeId))
-                    yield return target;
-                yield break;
-            case FocusPresentationElement wrapper:
-                foreach (var target in FindFocusTargets(
-                             wrapper.Child, activeScopeId, inheritedScopeId))
-                    yield return target;
-                yield break;
-            case ResponsiveBranchElement wrapper:
-                foreach (var target in FindFocusTargets(
-                             wrapper.Child, activeScopeId, inheritedScopeId))
-                    yield return target;
-                yield break;
-            case ContainerElement container:
-            {
-                var scopeId = container.InputScopeId ?? inheritedScopeId;
-                if (scopeId is not null &&
-                    !string.Equals(scopeId, activeScopeId, StringComparison.Ordinal))
-                    yield break;
-                foreach (var child in container.Children)
-                foreach (var target in FindFocusTargets(child, activeScopeId, scopeId))
-                    yield return target;
-                yield break;
-            }
-            case ButtonElement button:
-                yield return new(button.Id, button.IsDisabled == true);
-                yield break;
-            case SelectElement select:
-                yield return new(select.Id, select.IsDisabled == true);
-                yield break;
-            case ActionSurfaceElement surface:
-                yield return new(surface.Id, surface.IsDisabled == true);
-                yield break;
-            case TextEntryElement entry:
-                yield return new(entry.Id, entry.IsDisabled);
-                yield break;
-            case SliderElement slider:
-                yield return new(slider.Id, slider.IsDisabled == true);
-                yield break;
-            case ScrubberElement scrubber:
-                yield return new(scrubber.SliderId, scrubber.IsDisabled == true);
-                yield break;
-        }
-    }
-
-    private readonly record struct FocusTarget(string Id, bool Disabled);
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
