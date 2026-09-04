@@ -141,10 +141,17 @@ public static partial class ThemeIdentity
     public const string BuiltInDefaultVersion = "1.0.0";
     public const string BuiltInCoolSlate = "widgetrail.builtin.cool-slate";
     public const string BuiltInCoolSlateVersion = "1.0.0";
+    public const string BuiltInNeonCircuit = "widgetrail.builtin.neon-circuit";
+    public const string BuiltInNeonCircuitVersion = "1.0.0";
+    public const string BuiltInArcadeRush = "widgetrail.builtin.arcade-rush";
+    public const string BuiltInArcadeRushVersion = "1.0.0";
+    public const string BuiltInRedline = "widgetrail.builtin.redline";
+    public const string BuiltInRedlineVersion = "1.0.0";
     public const int MaximumLength = 128;
 
     public static bool IsBuiltIn(string? value) =>
-        value is BuiltInDefault or BuiltInCoolSlate;
+        value is BuiltInDefault or BuiltInCoolSlate or BuiltInNeonCircuit or BuiltInArcadeRush
+             or BuiltInRedline;
 
     public static bool IsValid(string? value) =>
         value is { Length: > 0 and <= MaximumLength } &&

@@ -15,5 +15,17 @@
                       LogicalName="WidgetRail.PlatformSettings.Themes.builtin-cool-slate.theme.json" />
     <EmbeddedResource Include="Themes\builtin-cool-slate\theme.wrss"
                       LogicalName="WidgetRail.PlatformSettings.Themes.builtin-cool-slate.theme.wrss" />
+    <EmbeddedResource Include="Themes\builtin-neon-circuit\theme.json"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-neon-circuit.theme.json" />
+    <EmbeddedResource Include="Themes\builtin-neon-circuit\theme.wrss"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-neon-circuit.theme.wrss" />
+    <EmbeddedResource Include="Themes\builtin-arcade-rush\theme.json"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-arcade-rush.theme.json" />
+    <EmbeddedResource Include="Themes\builtin-arcade-rush\theme.wrss"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-arcade-rush.theme.wrss" />
+    <EmbeddedResource Include="Themes\builtin-redline\theme.json"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-redline.theme.json" />
+    <EmbeddedResource Include="Themes\builtin-redline\theme.wrss"
+                      LogicalName="WidgetRail.PlatformSettings.Themes.builtin-redline.theme.wrss" />
   </ItemGroup>
 </Project>

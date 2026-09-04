@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 2,
+  "id": "widgetrail.builtin.neon-circuit",
+  "publisher": "widgetrail.builtin",
+  "name": "Neon Circuit",
+  "version": "1.0.0",
+  "entryFile": "theme.wrss"
+}

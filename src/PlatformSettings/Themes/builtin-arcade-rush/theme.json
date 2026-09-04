@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 2,
+  "id": "widgetrail.builtin.arcade-rush",
+  "publisher": "widgetrail.builtin",
+  "name": "Arcade Rush",
+  "version": "1.0.0",
+  "entryFile": "theme.wrss"
+}

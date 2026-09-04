@@ -1,0 +1,138 @@
+/* Neon Circuit — a dark, controller-first "HUD" reading of the shared
+   minimalist baseline. It keeps every controller-safe dimension, focus ring,
+   and accessibility affordance owned by builtin.default and changes only
+   palette, corner geometry, and label typography.
+
+   Theme layers beat selector specificity, so this file never declares a
+   property that builtin.default varies per pseudo-state (background, color,
+   border-color, outline-*, opacity, scale). Those follow the tokens below
+   instead, which keeps :focused, :selected, :pressed, and :disabled intact. */
+
+:root {
+  /* Deep indigo-black instead of warm graphite. Surfaces keep the platform's
+     four-step ramp so raised/subtle/active separation still reads at 720p. */
+  --canvas: #05070e;
+  --canvas-veil: rgba(2, 4, 10, 0.74);
+  --surface: rgba(12, 16, 28, 0.98);
+  --surface-raised: rgba(19, 24, 41, 0.98);
+  --surface-subtle: rgba(26, 32, 54, 0.94);
+  --surface-active: rgba(35, 45, 74, 0.98);
+  --surface-muted: rgba(26, 32, 54, 0.92);
+
+  /* Hairlines carry a faint cyan cast so panel edges belong to the palette
+     without becoming visible chrome. */
+  --border: rgba(122, 214, 255, 0.16);
+  --border-strong: rgba(122, 214, 255, 0.34);
+
+  --text: #e8f1fb;
+  --text-muted: #9aa8c4;
+  --text-subdued: #7d89a5;
+
+  /* Focus stays a near-neutral bright value, only barely cooled toward the
+     palette. The ring must not compete with the accent or lose contrast under
+     host high-contrast policy. */
+  --focus: #eaf7ff;
+
+  /* Electric cyan is the single interactive accent: progress, sliders, primary
+     icon buttons, and tile state. Magenta is a label-only companion used for
+     eyebrows, never for a state or a focus cue. */
+  --accent: #3fe0ff;
+  --accent-alt: #ff4fd8;
+
+  --success: #4ed6a1;
+  --info: #5cc8ff;
+  --warning: #ffbf4d;
+  --danger: #ff5d7e;
+  --error: #ff5d7e;
+
+  --scrim: rgba(3, 5, 12, 0.66);
+  --poster-scrim: rgba(5, 7, 14, 0.86);
+
+  --font-text: Segoe UI Variable Text, Segoe UI;
+  --font-display: Segoe UI Variable Display, Segoe UI;
+}
+
+/* Geometry: tighter, more angular rounding than the soft default. Radius is
+   never state-dependent in the platform layer, so overriding it here is safe
+   and does not touch hit-target sizes, padding, or focus geometry. */
+panel,
+tray,
+.wrail-dialog,
+.wrail-action-sheet,
+.wrail-picker { corner-radius: 8px; }
+
+tray-item,
+button,
+select,
+slider,
+.wrail-icon-button,
+.wrail-card,
+.wrail-switch,
+.wrail-stepper__button,
+.wrail-segmented-tabs,
+.wrail-navigation-shell__compact,
+.wrail-navigation-shell__rail,
+.wrail-alert,
+.wrail-empty-state,
+.wrail-toast,
+.wrail-action-surface { corner-radius: 6px; }
+
+.wrail-icon-button--large,
+.wrail-poster-tile,
+.wrail-poster-tile__artwork { corner-radius: 8px; }
+
+.wrail-segmented-tabs__tab,
+.wrail-navigation-shell__compact-item,
+.wrail-navigation-shell__rail-item,
+.wrail-settings-row__action,
+.wrail-action-sheet__item,
+.wrail-picker__option,
+.wrail-choice-row,
+.wrail-scrubber__slider,
+.wrail-badge,
+.wrail-tile__artwork,
+.wrail-controller-hint__key,
+.wrail-code-text { corner-radius: 4px; }
+
+progress { corner-radius: 1px; }
+
+/* Selection marks: one accent edge instead of extra chrome. Per-edge borders
+   are additive overrides, so the inherited uniform border and the neutral
+   focus ring both survive on the same element. */
+.wrail-segmented-tabs__tab--selected {
+  border-bottom-color: var(--accent);
+  border-bottom-width: 2px;
+}
+.wrail-navigation-shell__item--selected,
+.wrail-choice-row--selected,
+.wrail-picker__option--selected {
+  border-left-color: var(--accent);
+  border-left-width: 2px;
+}
+
+/* Typography: display text tightens, small labels become tracked uppercase
+   HUD tags. Sizes, line heights, and line caps stay exactly as authored by
+   the platform so text scale and reflow behave identically. */
+title { font-weight: 600; letter-spacing: -0.01em; }
+.wrail-section-header__title,
+.wrail-dialog__title,
+.wrail-action-sheet__title,
+.wrail-picker__title { font-weight: 600; letter-spacing: -0.01em; }
+
+.wrail-section-header__eyebrow {
+  color: var(--accent-alt);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.wrail-badge__label,
+.wrail-tile__state,
+.wrail-poster-tile__state,
+.wrail-poster-tile__subtitle {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.wrail-controller-hint__key { font-weight: 600; letter-spacing: 0.04em; }

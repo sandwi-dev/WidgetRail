@@ -13,5 +13,14 @@
     <Content Include="..\..\src\PlatformSettings\Themes\builtin-cool-slate\theme.wrss"
              Link="Themes\builtin-cool-slate.wrss"
              CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\src\PlatformSettings\Themes\builtin-neon-circuit\theme.wrss"
+             Link="Themes\builtin-neon-circuit.wrss"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\src\PlatformSettings\Themes\builtin-arcade-rush\theme.wrss"
+             Link="Themes\builtin-arcade-rush.wrss"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\src\PlatformSettings\Themes\builtin-redline\theme.wrss"
+             Link="Themes\builtin-redline.wrss"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

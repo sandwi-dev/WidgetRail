@@ -1,0 +1,119 @@
+/* Arcade Rush — a warm, rounded cabinet reading of the shared baseline. Where
+   Neon Circuit goes angular and two-tone on near-black, this one lifts the
+   ground to a deep plum, spends its boldness on a single fuchsia accent, and
+   turns controller-height controls into pills.
+
+   Theme layers beat selector specificity, so this file never declares a
+   property that builtin.default varies per pseudo-state (background, color,
+   border-color, outline-*, opacity, scale). Those follow the tokens below,
+   which keeps :focused, :selected, :pressed, and :disabled intact. */
+
+:root {
+  /* A plum ground, not a black one: the shell reads as warm even before any
+     accent lands on it. The four-step surface ramp keeps its separation. */
+  --canvas: #1a1020;
+  --canvas-veil: rgba(14, 8, 18, 0.72);
+  --surface: rgba(36, 23, 48, 0.98);
+  --surface-raised: rgba(46, 30, 60, 0.98);
+  --surface-subtle: rgba(56, 37, 72, 0.94);
+  --surface-active: rgba(72, 48, 92, 0.98);
+  --surface-muted: rgba(56, 37, 72, 0.92);
+
+  /* Hairlines pick up the warm cast rather than a cool one. */
+  --border: rgba(255, 226, 245, 0.14);
+  --border-strong: rgba(255, 226, 245, 0.28);
+
+  --text: #f6eef8;
+  --text-muted: #c0aec8;
+  --text-subdued: #9a86a4;
+
+  /* Focus stays a near-neutral bright value, warmed only enough to belong to
+     the palette. It must not compete with the accent or lose contrast under
+     host high-contrast policy. */
+  --focus: #fdf4fa;
+
+  /* One loud color, and only one. Fuchsia carries progress, sliders, primary
+     icon buttons, and tile state; nothing else in the theme shouts, so the
+     semantic trio below stays readable as status rather than decoration. */
+  --accent: #ff3ea5;
+
+  --success: #3ddc97;
+  --info: #6cc6ff;
+  --warning: #ffb23d;
+  --danger: #ff5236;
+  --error: #ff5236;
+
+  --scrim: rgba(14, 8, 18, 0.62);
+  --poster-scrim: rgba(20, 12, 24, 0.86);
+
+  --font-text: Segoe UI Variable Text, Segoe UI;
+  --font-display: Segoe UI Variable Display, Segoe UI;
+}
+
+/* Geometry is the theme's second idea: controller-height controls become
+   pills and the 44 DIP tray/icon buttons become circles. Radius is never
+   state-dependent in the platform layer, so overriding it is safe and does not
+   touch hit-target sizes, padding, or focus geometry. */
+panel,
+tray,
+.wrail-dialog,
+.wrail-action-sheet,
+.wrail-picker { corner-radius: 14px; }
+
+tray-item,
+button,
+select,
+slider,
+.wrail-switch,
+.wrail-stepper__button,
+.wrail-segmented-tabs__tab,
+.wrail-navigation-shell__compact-item,
+.wrail-navigation-shell__rail-item,
+.wrail-settings-row__action,
+.wrail-action-sheet__item,
+.wrail-picker__option,
+.wrail-choice-row,
+.wrail-scrubber__slider { corner-radius: 22px; }
+
+.wrail-icon-button { corner-radius: 23px; }
+.wrail-icon-button--small { corner-radius: 22px; }
+.wrail-icon-button--large { corner-radius: 26px; }
+
+/* A pill inside a container needs the container's own radius to grow by its
+   padding, or the inner shape crops against a tighter outer corner. */
+.wrail-segmented-tabs,
+.wrail-navigation-shell__compact { corner-radius: 25px; }
+.wrail-navigation-shell__rail { corner-radius: 20px; }
+
+.wrail-card,
+.wrail-alert,
+.wrail-empty-state,
+.wrail-toast,
+.wrail-action-surface { corner-radius: 16px; }
+
+.wrail-tile__artwork,
+.wrail-poster-tile,
+.wrail-poster-tile__artwork { corner-radius: 14px; }
+
+.wrail-badge { corner-radius: 12px; }
+.wrail-controller-hint__key { corner-radius: 10px; }
+.wrail-code-text { corner-radius: 12px; }
+progress { corner-radius: 2px; }
+
+/* Typography stays quiet so the geometry and the single accent carry the
+   theme. Uppercase is reserved for the one label role that is genuinely an
+   eyebrow; badges and state text keep sentence case. */
+title { font-weight: 600; letter-spacing: -0.005em; }
+.wrail-section-header__title,
+.wrail-dialog__title,
+.wrail-action-sheet__title,
+.wrail-picker__title { font-weight: 600; letter-spacing: -0.005em; }
+
+.wrail-section-header__eyebrow {
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.wrail-badge__label { font-weight: 600; letter-spacing: 0.02em; }
+.wrail-controller-hint__key { font-weight: 600; }

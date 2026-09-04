@@ -69,6 +69,18 @@ public sealed class ThemeCatalog
         "WidgetRail.PlatformSettings.Themes.builtin-cool-slate.theme.json";
     private const string BuiltInCoolSlateSourceResource =
         "WidgetRail.PlatformSettings.Themes.builtin-cool-slate.theme.wrss";
+    private const string BuiltInNeonCircuitManifestResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-neon-circuit.theme.json";
+    private const string BuiltInNeonCircuitSourceResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-neon-circuit.theme.wrss";
+    private const string BuiltInArcadeRushManifestResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-arcade-rush.theme.json";
+    private const string BuiltInArcadeRushSourceResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-arcade-rush.theme.wrss";
+    private const string BuiltInRedlineManifestResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-redline.theme.json";
+    private const string BuiltInRedlineSourceResource =
+        "WidgetRail.PlatformSettings.Themes.builtin-redline.theme.wrss";
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     private readonly PlatformSettingsPaths _paths;
@@ -86,7 +98,26 @@ public sealed class ThemeCatalog
             ThemeIdentity.BuiltInCoolSlate,
             ThemeIdentity.BuiltInCoolSlateVersion,
             "widgetrail.builtin");
-        _builtIns = Array.AsReadOnly<ThemeLoadResult>([_builtIn, coolSlate]);
+        var neonCircuit = LoadBuiltInPackage(
+            BuiltInNeonCircuitManifestResource,
+            BuiltInNeonCircuitSourceResource,
+            ThemeIdentity.BuiltInNeonCircuit,
+            ThemeIdentity.BuiltInNeonCircuitVersion,
+            "widgetrail.builtin");
+        var arcadeRush = LoadBuiltInPackage(
+            BuiltInArcadeRushManifestResource,
+            BuiltInArcadeRushSourceResource,
+            ThemeIdentity.BuiltInArcadeRush,
+            ThemeIdentity.BuiltInArcadeRushVersion,
+            "widgetrail.builtin");
+        var redline = LoadBuiltInPackage(
+            BuiltInRedlineManifestResource,
+            BuiltInRedlineSourceResource,
+            ThemeIdentity.BuiltInRedline,
+            ThemeIdentity.BuiltInRedlineVersion,
+            "widgetrail.builtin");
+        _builtIns = Array.AsReadOnly<ThemeLoadResult>(
+            [_builtIn, coolSlate, neonCircuit, arcadeRush, redline]);
         _builtInsById = new ReadOnlyDictionary<string, ThemeLoadResult>(
             _builtIns.ToDictionary(item => item.Descriptor.Id, StringComparer.Ordinal));
     }

@@ -1,0 +1,96 @@
+/* Redline — an oxblood ground with a scarlet structural edge. Where Neon
+   Circuit sharpens corners and Arcade Rush rounds them, this theme leaves the
+   platform's geometry alone entirely and spends its whole identity on palette
+   plus one structural line under every container.
+
+   A red accent forces one deliberate trade. --danger is conventionally red, so
+   leaving it there would make a destructive row indistinguishable from an
+   ordinary accented one. Danger moves to rose (#ff5fa8): still unmistakably an
+   alarm, ~35 degrees of hue away from the scarlet accent, and lighter than it
+   so the two never read as the same ink. Warning moves to a clearly yellow
+   amber and success stays cool mint, keeping four separable status hues on a
+   warm field.
+
+   Theme layers beat selector specificity, so this file never declares a
+   property that builtin.default varies per pseudo-state (background, color,
+   border-color, outline-*, opacity, scale). Those follow the tokens below,
+   which keeps :focused, :selected, :pressed, and :disabled intact. */
+
+:root {
+  --canvas: #160b0d;
+  --canvas-veil: rgba(12, 5, 7, 0.72);
+  --surface: rgba(36, 18, 20, 0.98);
+  --surface-raised: rgba(46, 23, 25, 0.98);
+  --surface-subtle: rgba(59, 30, 33, 0.94);
+  --surface-active: rgba(77, 40, 43, 0.98);
+  --surface-muted: rgba(59, 30, 33, 0.92);
+
+  /* Hairlines take a warm blush cast so they belong to the oxblood ground. */
+  --border: rgba(255, 214, 208, 0.14);
+  --border-strong: rgba(255, 214, 208, 0.30);
+
+  --text: #fbeeec;
+  --text-muted: #cdaeaa;
+  --text-subdued: #a5847f;
+
+  /* Focus stays a near-neutral bright value, warmed only enough to belong to
+     the palette. It must not compete with the accent or lose contrast under
+     host high-contrast policy. */
+  --focus: #fff4f2;
+
+  --accent: #ff3d2e;
+
+  --success: #3ddc97;
+  --info: #6cc6ff;
+  --warning: #ffc531;
+  --danger: #ff5fa8;
+  --error: #ff5fa8;
+
+  --scrim: rgba(12, 5, 7, 0.62);
+  --poster-scrim: rgba(18, 9, 11, 0.86);
+
+  --font-text: Segoe UI Variable Text, Segoe UI;
+  --font-display: Segoe UI Variable Display, Segoe UI;
+}
+
+/* The redline: every container sits on a scarlet edge. Per-edge borders are
+   additive overrides, so the inherited uniform hairline, the corner radii, and
+   the focus ring all survive underneath it. Controls deliberately stay off
+   this list — the line marks structure, not every hit target. */
+panel,
+tray,
+.wrail-dialog,
+.wrail-action-sheet,
+.wrail-picker,
+.wrail-card {
+  border-bottom-color: var(--accent);
+  border-bottom-width: 2px;
+}
+
+/* A transparent card has no box to underline. The platform zeroes its uniform
+   border, and a per-edge override would otherwise reinstate the bottom edge. */
+.wrail-card--transparent { border-bottom-width: 0px; }
+
+/* Typography runs heavier and tighter than the baseline, with uppercase
+   reserved for the two roles that are genuinely readouts. */
+title { font-weight: 700; letter-spacing: -0.015em; }
+.wrail-section-header__title,
+.wrail-dialog__title,
+.wrail-action-sheet__title,
+.wrail-picker__title { font-weight: 700; letter-spacing: -0.015em; }
+
+.wrail-section-header__eyebrow {
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.wrail-tile__state,
+.wrail-poster-tile__state {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wrail-controller-hint__key { font-weight: 700; }

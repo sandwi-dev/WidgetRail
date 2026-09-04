@@ -8,10 +8,16 @@ watcher, last-good revisions, globally layered widget styles, and safe
 live shell styles and host-owned interface scale, text scale, backdrop,
 motion, contrast, bold-text, and transparency preferences. The shipped
 `builtin.default` is the shared minimalist warm-graphite baseline for shell,
-SDK semantic components, and first-party widget styles. The embedded selectable
-`widgetrail.builtin.cool-slate` theme exercises the same path with a distinct
-navy/slate palette and desaturated blue accent while preserving controller-safe
-geometry and host accessibility policy. Native graphical
+SDK semantic components, and first-party widget styles. Four embedded selectable themes exercise
+the same path rather than hard-coded skins: `widgetrail.builtin.cool-slate`
+swaps in a distinct navy/slate palette and desaturated blue accent,
+`widgetrail.builtin.neon-circuit` adds a deep indigo palette, an electric-cyan
+interactive accent, tighter corner geometry, and tracked uppercase labels, and
+`widgetrail.builtin.arcade-rush` lifts the ground to a warm plum with a single
+fuchsia accent and pill-shaped controller-height controls, and
+`widgetrail.builtin.redline` pairs an oxblood ground with a scarlet edge under
+every container. All four preserve controller-safe geometry, the neutral focus
+ring, and host accessibility policy. Native graphical
 theme preview, signing/revocation, theme removal/update UI, auto-scroll, and
 the full physical accessibility/resolution matrix are not implemented.
 
@@ -332,6 +338,73 @@ data** remains a separate explicit choice.
 The manifest requests no permissions, budgets 32 MB and 1 Hz, and declares
 `suspend` background policy metadata. Lifecycle-policy enforcement remains a
 separate platform limitation; the widget itself performs no background loop.
+
+## Built-in themes
+
+Five themes ship inside `PlatformSettings` and appear in Settings →
+Appearance without installation. They are protected from removal and cannot be
+shadowed by a user-installed directory that reuses their reserved ID.
+
+| ID | Name | Character |
+| --- | --- | --- |
+| `builtin.default` | Default | Warm-graphite minimalist baseline. Also the platform layer every other theme is composed over. |
+| `widgetrail.builtin.cool-slate` | Cool Slate | Navy/slate palette with a desaturated blue accent. Tokens only. |
+| `widgetrail.builtin.neon-circuit` | Neon Circuit | Deep-indigo palette, electric-cyan interactive accent, magenta label accent, 4–8 DIP corner geometry, and tracked uppercase eyebrows, badges, and state labels. |
+| `widgetrail.builtin.arcade-rush` | Arcade Rush | Warm plum palette, a single fuchsia accent, 14–16 DIP panels with pill-shaped 44 DIP controls and circular tray targets, and uppercase reserved for eyebrows. |
+| `widgetrail.builtin.redline` | Redline | Oxblood palette with a scarlet accent, a 2 DIP accent edge under every container, heavier tighter titles, and platform geometry left untouched. |
+
+`builtin.default` owns every controller-safe dimension, the neutral focus ring,
+and the component structure. A selectable theme is composed over it as the user
+layer, so a theme normally only needs to retune `:root` tokens; Cool Slate does
+exactly that. Neon Circuit and Arcade Rush additionally show how far a theme
+can go while staying inside the platform contract, and that the two can differ
+in geometry and label voice as well as hue: Neon Circuit tightens corners and
+tracks labels uppercase, while Arcade Rush rounds the same controls into pills
+and keeps sentence case everywhere but the eyebrow. Redline changes no geometry
+at all and spends its identity on palette plus one structural per-edge border.
+
+When a theme does change `corner-radius`, remember that a rounded container has
+to grow its own radius by its padding, or the inner control crops against a
+tighter outer corner. Arcade Rush carries a 25 DIP segmented-tab container
+around its 22 DIP tabs for exactly this reason.
+
+A theme that adds a per-edge border to a component family must also account for
+that family's "transparent" variant, whose uniform border the platform zeroes:
+a per-edge override outranks that zero and would reinstate the edge. Redline
+resets `.wrail-card--transparent` explicitly.
+
+### Semantic colors are not free to move
+
+`--success`, `--warning`, and `--danger` carry meaning the accent does not, and
+a theme that pushes its accent into their hue range has to resolve the
+collision rather than ignore it. Redline is the worked example: its accent is
+scarlet, so `--danger` moves to rose — still an alarm, roughly 35 degrees away
+in hue, and lighter than the accent — while `--warning` moves to a clearly
+yellow amber and `--success` stays cool mint. Never resolve a collision by
+letting destructive intent and accent resolve to the same value.
+
+### Layer priority beats selector specificity
+
+`ThemeLayerCompiler` resolves each property by layer priority first and only
+then by specificity. A base rule in the user layer therefore defeats a
+pseudo-state rule in the platform layer for the same property:
+
+```css
+/* Wrong: this also wins over the platform's button:focused rule, so focused
+   buttons lose their surface change. */
+button { background: rgba(19, 24, 41, 0.98); }
+```
+
+Do not declare a property in a themed base rule when the platform layer varies
+that property per state — `background`, `color`, `border-color`, `outline-*`,
+`opacity`, and `scale`. Retune those through `:root` tokens, which flow into
+every platform rule including its state variants. Properties the platform never
+varies per state, such as `corner-radius`, `letter-spacing`, `text-transform`,
+and `font-weight`, are safe to override directly. When a themed rule must set a
+state-varied property, restate it for every affected pseudo-state.
+
+Run `wrail theme preview <directory>` to confirm the result: it prints computed
+`:focused` and `:selected` roles from the real built-in-plus-user cascade.
 
 ## Theme authoring and distribution
 

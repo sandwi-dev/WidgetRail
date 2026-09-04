@@ -427,7 +427,7 @@ static async Task ThemeSelection()
     await Action(widget, "open.appearance");
     await Action(widget, "open.themes");
     var snapshot = Snapshot(widget);
-    await Action(widget, "theme.open.2");
+    await Action(widget, $"theme.open.{ThemeIndex(widget, "Slate")}");
     Assert.Equal(SettingsPage.ThemeVersion, widget.CurrentPage);
     await Action(widget, "theme.select");
     var saved = await Store(temp.Path).LoadAsync();
@@ -457,8 +457,9 @@ static async Task ThemeVersionManagement()
     Assert.Equal(true, Button(Snapshot(widget).Root, "theme.version.remove").IsDisabled);
     await Action(widget, "back");
 
-    // Catalog ordering is two built-ins, then family 1.0.0 and 2.0.0.
-    await Action(widget, "theme.open.2");
+    // Built-ins come first, then family 1.0.0 and 2.0.0; the earlier "Family"
+    // entry is the older version.
+    await Action(widget, $"theme.open.{ThemeIndex(widget, "Family")}");
     await Action(widget, "theme.remove.request");
     Assert.Equal(SettingsPage.ThemeRemoval, widget.CurrentPage);
     Assert.Contains("dev.test.family · 1.0.0", Text(Snapshot(widget).Root, "theme.removal.identity").Text!);
@@ -473,15 +474,13 @@ static async Task ThemeVersionManagement()
     Assert.True(Directory.Exists(Path.Combine(
         new PlatformSettingsPaths(temp.Path).ThemesDirectory, "dev.test.other", "1.0.0")),
         "Unrelated theme was removed.");
-    Assert.Equal("theme.item.2.action", Snapshot(widget).InitialFocusId);
+    // Focus lands on the entry that now occupies the retired version's slot.
+    Assert.Equal(
+        $"theme.item.{ThemeIndex(widget, "Family")}.action",
+        Snapshot(widget).InitialFocusId);
 
     // The invalid package remains reviewable and removable without being selectable.
-    var invalidIndex = Nodes(Snapshot(widget).Root)
-        .Where(node => node.Id.StartsWith("theme.item.", StringComparison.Ordinal) &&
-                       node.Id.EndsWith(".label", StringComparison.Ordinal) && node.Text == "Broken")
-        .Select(node => int.Parse(node.Id.Split('.')[2], System.Globalization.CultureInfo.InvariantCulture))
-        .Single();
-    await Action(widget, $"theme.open.{invalidIndex}");
+    await Action(widget, $"theme.open.{ThemeIndex(widget, "Broken")}");
     Assert.Equal(true, Button(Snapshot(widget).Root, "theme.version.select").IsDisabled);
     Assert.True(Button(Snapshot(widget).Root, "theme.version.remove").IsDisabled is not true,
         "Inactive invalid version was not removable.");
@@ -2397,6 +2396,13 @@ static IEnumerable<ViewNode> Nodes(ViewNode node)
 
 static IEnumerable<ViewNode> Buttons(ViewNode root) =>
     Nodes(root).Where(node => node.Kind == ViewNodeKind.Button);
+
+static int ThemeIndex(SettingsWidget widget, string label) =>
+    Nodes(Snapshot(widget).Root)
+        .Where(node => node.Id.StartsWith("theme.item.", StringComparison.Ordinal) &&
+                       node.Id.EndsWith(".label", StringComparison.Ordinal) && node.Text == label)
+        .Select(node => int.Parse(node.Id.Split('.')[2], System.Globalization.CultureInfo.InvariantCulture))
+        .First();
 
 static ViewNode Button(ViewNode root, string id) =>
     Buttons(root).Single(node => node.Id == id);

@@ -2109,8 +2109,14 @@ share the translated boxes while static layout size does not change. The
 transient pressed-state map is connected to exact physical actions. Shell/
 widget open, close, and replacement transitions plus packaged visual/
 accessibility evidence remain open. The embedded selectable
-Cool Slate theme exercises the same token and renderer pipeline with a visibly
-distinct palette rather than a hard-coded widget skin.
+Cool Slate, Neon Circuit, Arcade Rush, and Redline themes exercise the same
+token and renderer pipeline with visibly distinct palettes rather than
+hard-coded widget skins. Neon Circuit and Arcade Rush also cover the
+themed-geometry and themed-label path — corner radii, tracking, and uppercase
+transforms — in opposite directions, and Redline covers themed per-edge
+structure plus a relocated semantic palette. All of them leave controller-safe
+dimensions, pseudo-state rules, and the neutral focus ring to the platform
+layer.
 
 The CLI provides `wrail theme new|validate|preview|pack|inspect|install|list|remove`.
 Schema-version-2 `.wrtheme` packages are data-only, deterministic, bounded,
