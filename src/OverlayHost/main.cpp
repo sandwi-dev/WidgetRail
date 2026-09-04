@@ -11150,10 +11150,7 @@ private:
                 // so no stale media command can follow the transition.
                 if (pinnedControllerCommand ==
                     widgetrail::pinned::ControllerCommand::Exit) {
-                    (void)pinnedSurfaceCoordinator_.ExitControllerFocus();
-                    (void)pinnedSurfaceCoordinator_.SetInteractionMode(
-                        widgetrail::pinned::InteractionMode::ClickThrough);
-                    Dispatch(widgetrail::Command::SampleWidgetBack);
+                    ReturnPinnedControllerFocusToOverlay(now);
                     return;
                 }
                 if ((pressed & XINPUT_GAMEPAD_B) != 0) {
@@ -11268,12 +11265,7 @@ private:
                            widgetrail::pinned::ControllerCommand::Exit &&
                        !pinnedSurfaceCoordinator_.HandleFocusedSelectButton(
                            L"b", widgetrail::ControllerInputOrigin::PhysicalController)) {
-                (void)pinnedSurfaceCoordinator_.ExitControllerFocus();
-                (void)pinnedSurfaceCoordinator_.SetInteractionMode(
-                    widgetrail::pinned::InteractionMode::ClickThrough);
-                Dispatch(widgetrail::Command::SampleWidgetBack);
-                lastActionMessage_ = L"View returned focus to the tray";
-                lastActionExpiresAt_ = now + 2400;
+                ReturnPinnedControllerFocusToOverlay(now);
             }
             const auto queuePinnedButton = [&](const bool pressedNow,
                                                const std::wstring_view protocolButton) {
@@ -11322,8 +11314,8 @@ private:
                 lastActionWidgetId_ =
                     std::wstring(pinnedSurfaceCoordinator_.widgetId());
                 lastActionMessage_ = pinnedSurfaceCoordinator_.compactMediaPresentation()
-                    ? L"Compact pinned focus entered. X plays or pauses; LT and RT seek; B exits to click-through; View returns to the tray."
-                    : L"Pinned focus entered. View returns to the tray; B stays in the widget.";
+                    ? L"Compact pinned focus entered. X plays or pauses; LT and RT seek; B exits to click-through; View returns to the prior overlay location."
+                    : L"Pinned focus entered. View returns to the prior overlay location; B stays in the widget.";
                 lastActionExpiresAt_ = now + 4000;
                 InvalidateRect(window_, nullptr, FALSE);
             }
@@ -11555,6 +11547,28 @@ private:
             interactionSession_.ClearFocus();
         if (!interactionSession_.focusedElementId().empty())
             (void)scrollEvidenceProbe_.RecordTarget(interactionSession_.focusedElementId(), L"restore");
+    }
+
+    void ReturnPinnedControllerFocusToOverlay(const ULONGLONG now) {
+        heldActionRepeat_.Reset();
+        heldActionAuthority_.reset();
+        (void)pinnedSurfaceCoordinator_.ExitControllerFocus();
+        (void)pinnedSurfaceCoordinator_.SetInteractionMode(
+            widgetrail::pinned::InteractionMode::ClickThrough);
+
+        const bool widgetOwned =
+            state_.surface() == widgetrail::Surface::Widget &&
+            state_.focusRegion() == widgetrail::FocusRegion::Widget;
+        if (widgetOwned)
+            RestoreFocusForActiveSurface(state_.activeWidget());
+
+        (void)SetFocus(window_);
+        lastActionWidgetId_ = std::wstring(pinnedSurfaceCoordinator_.widgetId());
+        lastActionMessage_ = widgetOwned
+            ? L"View returned focus to the prior widget location"
+            : L"View returned focus to the selected tray item";
+        lastActionExpiresAt_ = now + 2400;
+        InvalidateRect(window_, nullptr, FALSE);
     }
 
     void HandleAccessibilityActions() {

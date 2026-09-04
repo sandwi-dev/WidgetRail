@@ -2926,10 +2926,10 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
             state.value += L" Left bumper selects previous media.";
         if (supports(L"navigateNext"))
             state.value += L" Right bumper selects next media.";
-        state.value += L" B exits to click-through. View returns to the tray.";
+        state.value += L" B exits to click-through. View returns to the prior overlay location.";
     } else {
         state.value = policy_.interactionMode() == InteractionMode::Focusable
-            ? L"Interactive. D-pad navigates. A activates. B is widget Back. View returns to the tray. Menu opens options."
+            ? L"Interactive. D-pad navigates. A activates. B is widget Back. View returns to the prior overlay location. Menu opens options."
             : L"Click-through. From the tray or open overlay widget, View enters this pin. Menu opens options from the tray.";
     }
     state.domain = accessibility::ElementDomain::HostShell;
