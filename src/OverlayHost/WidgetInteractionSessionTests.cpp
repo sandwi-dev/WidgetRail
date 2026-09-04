@@ -351,6 +351,40 @@ void FocusAndSurfaceLifecycle() {
           "a nested input scope restores its own focus surface");
 }
 
+void PinnedViewReturnUsesExistingFocusMemory() {
+    using widgetrail::input::WidgetInteractionSession;
+    auto root = Snapshot();
+    WidgetInteractionSession session;
+
+    session.SetFocus(L"fixture.widget", root, L"volume-b");
+    session.RememberFocus(L"fixture.widget", root);
+
+    auto dialog = Snapshot(42, L"fixture.instance", L"dialog");
+    session.SetFocus(L"fixture.widget", dialog, L"dialog.confirm");
+    session.RememberFocus(L"fixture.widget", dialog);
+
+    session.ClearFocus();
+    Check(session.RestoreFocus(L"fixture.widget", root) == L"volume-b",
+          "returning from pinned focus restores the exact remembered root-scope target");
+    session.ClearFocus();
+    Check(session.RestoreFocus(L"fixture.widget", dialog) == L"dialog.confirm",
+          "returning from pinned focus preserves independent input-scope memory");
+
+    auto compatible = root;
+    ++compatible.sequence;
+    session.ClearFocus();
+    Check(session.RestoreFocus(L"fixture.widget", compatible) == L"volume-b",
+          "a compatible successor retains the exact remembered widget target");
+
+    auto removed = compatible;
+    std::erase_if(removed.root.children, [](const widgetrail::WidgetNode& node) {
+        return node.id == L"volume-b";
+    });
+    session.ClearFocus();
+    Check(session.RestoreFocus(L"fixture.widget", removed) == L"row.partial",
+          "a removed remembered target uses the existing nearest-valid ordinal fallback");
+}
+
 void ResponsiveFocusHandoffUsesInteractionOwner() {
     using namespace widgetrail::input;
     widgetrail::WidgetSnapshot snapshot;
@@ -1386,6 +1420,7 @@ void AnchoredSelectPopupIsExactAndBounded() {
 
 int main() {
     FocusAndSurfaceLifecycle();
+    PinnedViewReturnUsesExistingFocusMemory();
     ResponsiveFocusHandoffUsesInteractionOwner();
     RememberedGroupsUseExplicitAndGeometricEntryOwners();
     ResponsiveGridScrollOwnsDirectionalPriority();

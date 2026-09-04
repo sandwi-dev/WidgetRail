@@ -2363,7 +2363,7 @@ int main() {
                   FindAutomationId(surface, L"host:pinned.emergency"),
               "interactive UIA composes widget content with Close and emergency host actions");
         Check(AutomationValueContains(surface, L"host:pinned.mode", L"B is widget Back") &&
-                  AutomationValueContains(surface, L"host:pinned.mode", L"View returns to the tray"),
+                  AutomationValueContains(surface, L"host:pinned.mode", L"View returns to the prior overlay location"),
               "pinned accessibility semantics distinguish widget B from host View");
         Check(coordinator.MoveControllerFocus(
                   widgetrail::input::NavigationDirection::Right) &&

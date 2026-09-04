@@ -189,13 +189,27 @@ void TestAcceptedCompactMediaHostContract() {
               has("frame.rightTriggerPressed") &&
               has("CompactMediaSeekTarget(\n                                widgetrail::input::NavigationDirection::Right)"),
           "compact X, LB/RB, and LT/RT retain the accepted typed command routes");
-    Check(has("Compact pinned media returned to click-through") &&
-              has("pinnedControllerCommand ==\n                    widgetrail::pinned::ControllerCommand::Exit") &&
-              has("Dispatch(widgetrail::Command::SampleWidgetBack);") &&
+    const auto compactController = section(
+        "if (pinnedSurfaceCoordinator_.controllerFocused()) {",
+        "if (pinnedSurfaceCoordinator_.selectPopupOpen()) {");
+    Check(compactController.find(
+              "ReturnPinnedControllerFocusToOverlay(now);") !=
+                  std::string::npos &&
+              compactController.find("CancelCompactMediaScrub()") !=
+                  std::string::npos &&
+              compactController.find(
+                  "pinnedSurfaceCoordinator_.ExitControllerFocus()") !=
+                  std::string::npos &&
+              compactController.find(
+                  "widgetrail::pinned::InteractionMode::ClickThrough") !=
+                  std::string::npos &&
+              compactController.find(
+                  "Dispatch(widgetrail::Command::SampleWidgetBack);") ==
+                  std::string::npos &&
               !has("BeginCompactMediaScrub()") &&
               !has("StepCompactMediaScrub(") &&
               !has("CommitCompactMediaScrub()"),
-          "compact B exits to click-through, View uses the tray route, and A/navigation expose no scrub mapping");
+          "compact B retains its click-through exit, View uses the overlay-return owner, and A/navigation expose no scrub mapping");
 }
 
 void TestBoundedOverlayDiagnosticContract() {
@@ -703,6 +717,86 @@ void TestAcceptedWidgetOwnedFocusMemoryHostContract() {
               remember < clearLiveFocus && clearLiveFocus < reopenAuthority &&
               reopenAuthority < restore,
           "widget hide remembers exact focus, clears only live focus, and restores on exact Hidden-to-Widget authority before presentation");
+}
+
+void TestPinnedViewReturnsToPriorOverlayFocusContract() {
+    const auto source = ReadSource(
+        fs::path{__FILE__}.parent_path() / "main.cpp");
+    const auto helperBegin = source.find(
+        "void ReturnPinnedControllerFocusToOverlay(const ULONGLONG now) {");
+    const auto helperEnd = source.find(
+        "void HandleAccessibilityActions()", helperBegin);
+    Check(helperBegin != std::string::npos && helperEnd != std::string::npos &&
+              helperBegin < helperEnd,
+          "pinned View has one bounded overlay-focus return owner");
+    const auto helper = source.substr(helperBegin, helperEnd - helperBegin);
+    const auto repeatRetirement = helper.find("heldActionRepeat_.Reset();");
+    const auto pinnedExit = helper.find(
+        "pinnedSurfaceCoordinator_.ExitControllerFocus();", repeatRetirement);
+    const auto clickThrough = helper.find(
+        "widgetrail::pinned::InteractionMode::ClickThrough", pinnedExit);
+    const auto widgetOwner = helper.find(
+        "state_.focusRegion() == widgetrail::FocusRegion::Widget", clickThrough);
+    const auto restore = helper.find(
+        "RestoreFocusForActiveSurface(state_.activeWidget());", widgetOwner);
+    const auto mainFocus = helper.find("SetFocus(window_);", restore);
+    const auto repaint = helper.find(
+        "InvalidateRect(window_, nullptr, FALSE);", mainFocus);
+    Check(repeatRetirement != std::string::npos &&
+              helper.find("heldActionAuthority_.reset();", repeatRetirement) !=
+                  std::string::npos &&
+              pinnedExit != std::string::npos &&
+              clickThrough != std::string::npos &&
+              widgetOwner != std::string::npos && restore != std::string::npos &&
+              mainFocus != std::string::npos && repaint != std::string::npos &&
+              helper.find("SampleWidgetBack") == std::string::npos &&
+              repeatRetirement < pinnedExit && pinnedExit < clickThrough &&
+              clickThrough < widgetOwner && widgetOwner < restore &&
+              restore < mainFocus && mainFocus < repaint,
+          "View retires pinned-only authority and restores the retained Widget or Tray owner without forcing tray state");
+
+    const auto focusedBegin = source.find(
+        "if (pinnedSurfaceCoordinator_.controllerFocused()) {");
+    const auto focusedEnd = source.find(
+        "if (pinnedControllerCommand == widgetrail::pinned::ControllerCommand::Enter",
+        focusedBegin);
+    Check(focusedBegin != std::string::npos && focusedEnd != std::string::npos &&
+              focusedBegin < focusedEnd,
+          "focused pinned controller routing has a bounded source section");
+    const auto focused = source.substr(focusedBegin, focusedEnd - focusedBegin);
+    constexpr std::string_view returnCall =
+        "ReturnPinnedControllerFocusToOverlay(now);";
+    const auto firstReturn = focused.find(returnCall);
+    Check(firstReturn != std::string::npos,
+          "compact View exit uses the shared overlay-focus return owner");
+    const auto secondReturn = focused.find(returnCall, firstReturn + returnCall.size());
+    Check(secondReturn != std::string::npos &&
+              focused.find(returnCall, secondReturn + returnCall.size()) ==
+                  std::string::npos &&
+              focused.find("Dispatch(widgetrail::Command::SampleWidgetBack);") ==
+                  std::string::npos,
+          "compact and ordinary View exits share the return owner and neither dispatches the forced tray transition");
+    Check(focused.find(
+              "queuePinnedButton((pressed & XINPUT_GAMEPAD_B) != 0, L\"b\");") !=
+                  std::string::npos,
+          "ordinary pinned B remains routed as widget-owned input");
+
+    widgetrail::PersistentState persisted;
+    persisted.order = {L"fixture.widget"};
+    widgetrail::OverlayState overlay(persisted, {L"fixture.widget"});
+    Check(overlay.Dispatch(widgetrail::Command::ToggleOverlay) &&
+              overlay.surface() == widgetrail::Surface::Dashboard &&
+              overlay.focusRegion() == widgetrail::FocusRegion::Tray &&
+              overlay.selectedWidget() == L"fixture.widget",
+          "tray-to-pin ownership begins at the exact selected tray item");
+    Check(overlay.Dispatch(widgetrail::Command::Activate) &&
+              overlay.surface() == widgetrail::Surface::Widget &&
+              overlay.focusRegion() == widgetrail::FocusRegion::Widget &&
+              overlay.activeWidget() == L"fixture.widget",
+          "widget-to-pin ownership begins at the exact active widget");
+    Check(overlay.Dispatch(widgetrail::Command::SampleWidgetBack) &&
+              overlay.focusRegion() == widgetrail::FocusRegion::Tray,
+          "the removed SampleWidgetBack transition is the operation that forced widget focus to tray");
 }
 
 void TestAcceptedHiddenBridgeControlPlaneContract() {
@@ -1619,6 +1713,7 @@ int wmain(const int argc, wchar_t** argv) {
         TestWidgetContextActionHostContract();
         TestAcceptedOverlayFullscreenMediaHostContract();
         TestAcceptedWidgetOwnedFocusMemoryHostContract();
+        TestPinnedViewReturnsToPriorOverlayFocusContract();
         TestAcceptedHiddenBridgeControlPlaneContract();
         TestSelectActivationRoutingContract();
         TestFullscreenShortcutDispatchContract();
