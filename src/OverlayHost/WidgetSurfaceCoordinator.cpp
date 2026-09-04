@@ -1185,8 +1185,8 @@ bool WidgetSurfaceCoordinator::BeginPlacement(const PlacementMode mode) {
     if (!placementSession_) return false;
     if (policy_.interactionMode() != InteractionMode::Focusable) {
         policy_.SetInteractionMode(InteractionMode::Focusable);
-        ApplyWindowPolicy();
     }
+    ApplyWindowPolicy();
     PublishAccessibility();
     RequestPaint();
     NotifyOwner();
@@ -1209,8 +1209,8 @@ bool WidgetSurfaceCoordinator::BeginSetup(const bool newPin) {
     if (committedPlacement_) setupOriginalLayoutId_ = committedPlacement_->selectedLayoutId;
     if (policy_.interactionMode() != InteractionMode::Focusable) {
         policy_.SetInteractionMode(InteractionMode::Focusable);
-        ApplyWindowPolicy();
     }
+    ApplyWindowPolicy();
     (void)SetFocus(window_);
     (void)EnterControllerFocus();
     PublishAccessibility();
@@ -1395,6 +1395,7 @@ bool WidgetSurfaceCoordinator::CommitPlacement(std::wstring& error) {
     pointerPlacement_ = false;
     pointerPlacementMode_ = PlacementMode::None;
     if (GetCapture() == window_) ReleaseCapture();
+    ApplyWindowPolicy();
     PublishAccessibility();
     RequestPaint();
     NotifyOwner();
@@ -1409,6 +1410,7 @@ bool WidgetSurfaceCoordinator::CancelPlacement() noexcept {
     pointerPlacementMode_ = PlacementMode::None;
     if (GetCapture() == window_) ReleaseCapture();
     ApplyPlacementBounds(original);
+    ApplyWindowPolicy();
     PublishAccessibility();
     RequestPaint();
     NotifyOwner();
@@ -1420,7 +1422,7 @@ void WidgetSurfaceCoordinator::ApplyOpacity() noexcept {
     const BYTE alpha = static_cast<BYTE>(std::lround(
         static_cast<double>(opacityPercent_) * 255.0 / 100.0));
     const bool transparent = admission_ &&
-        EffectiveSurfaceAppearance() == surface_appearance::Mode::Transparent;
+        !placementSession_ && !opacityPreviewOriginal_;
     (void)SetLayeredWindowAttributes(
         window_, transparent ? kTransparentSurfaceColorKey : 0, alpha,
         transparent ? LWA_ALPHA | LWA_COLORKEY : LWA_ALPHA);
@@ -1478,8 +1480,8 @@ bool WidgetSurfaceCoordinator::BeginOpacityAdjustment() {
     opacityPreviewOriginal_ = opacityPercent_;
     if (policy_.interactionMode() != InteractionMode::Focusable) {
         policy_.SetInteractionMode(InteractionMode::Focusable);
-        ApplyWindowPolicy();
     }
+    ApplyWindowPolicy();
     PublishAccessibility();
     RequestPaint();
     NotifyOwner();
@@ -1512,14 +1514,15 @@ bool WidgetSurfaceCoordinator::CommitOpacity(std::wstring& error) {
     const auto original = *opacityPreviewOriginal_;
     if (!SaveCurrentState(error)) {
         opacityPercent_ = original;
-        ApplyOpacity();
         opacityPreviewOriginal_.reset();
+        ApplyWindowPolicy();
         PublishAccessibility();
         RequestPaint();
         NotifyOwner();
         return false;
     }
     opacityPreviewOriginal_.reset();
+    ApplyWindowPolicy();
     PublishAccessibility();
     RequestPaint();
     NotifyOwner();
@@ -1531,7 +1534,7 @@ bool WidgetSurfaceCoordinator::CancelOpacity() noexcept {
     if (!opacityPreviewOriginal_) return false;
     opacityPercent_ = *opacityPreviewOriginal_;
     opacityPreviewOriginal_.reset();
-    ApplyOpacity();
+    ApplyWindowPolicy();
     PublishAccessibility();
     RequestPaint();
     NotifyOwner();
@@ -2523,15 +2526,25 @@ void WidgetSurfaceCoordinator::Paint() {
     renderTarget_->SetDpi(96.0F * dpiScale, 96.0F * dpiScale);
     ++workCounters_.rasterDraws;
     renderTarget_->BeginDraw();
-    const bool transparent = EffectiveSurfaceAppearance() ==
-        surface_appearance::Mode::Transparent;
+    const bool adjustmentActive =
+        placementSession_.has_value() || opacityPreviewOriginal_.has_value();
+    const bool transparent = !adjustmentActive;
     renderTarget_->Clear(transparent
         ? D2D1::ColorF(1.0F / 255.0F, 2.0F / 255.0F, 3.0F / 255.0F, 1.0F)
         : D2D1::ColorF(0x16212E));
     const bool compactMedia = compactMediaPresentation();
-    const bool showHostSetupChrome = compactMedia &&
-        (placementSession_.has_value() || opacityPreviewOriginal_.has_value());
-    const bool showChrome = !compactMedia || showHostSetupChrome;
+    const bool showHostSetupChrome = compactMedia && adjustmentActive;
+    const bool showChrome = adjustmentActive;
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+    lastHostCanvasTransparentForTesting_ = transparent;
+    lastHostChromeVisibleForTesting_ = showChrome;
+    lastHostBorderVisibleForTesting_ = adjustmentActive || controllerFocused_;
+    lastHostBorderUsesFocusColorForTesting_ =
+        !adjustmentActive && controllerFocused_;
+    lastHostBorderDipForTesting_ = adjustmentActive
+        ? kAdjustBorderDip
+        : controllerFocused_ ? kPinnedBorderDip : 0.0F;
+#endif
     if (showChrome) {
         renderTarget_->FillRectangle(
             D2D1::RectF(0, 0, widthDip, kChromeHeightDip), chromeBrush_.Get());
@@ -2623,6 +2636,9 @@ void WidgetSurfaceCoordinator::Paint() {
               kSideInsetDip, kChromeHeightDip,
               std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
               std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip)};
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+    lastContentViewportForTesting_ = viewport;
+#endif
     RenderResult renderResult;
     if (compactMedia && selectedSnapshot.embeddedMediaSession) {
         const float aspect = static_cast<float>(selectedSnapshot.embeddedMediaSession->aspectRatio);
@@ -2741,12 +2757,13 @@ void WidgetSurfaceCoordinator::Paint() {
              .followSuppressed) {
         ClearFreeScroll();
     }
-    renderTarget_->DrawRectangle(
-        D2D1::RectF(0.5F, 0.5F, std::max(0.5F, widthDip - 0.5F),
-                    std::max(0.5F, heightDip - 0.5F)),
-        chromeBrush_.Get(),
-        placementSession_ && placementSession_->mode == PlacementMode::Adjust
-            ? kAdjustBorderDip : kPinnedBorderDip);
+    if (adjustmentActive || controllerFocused_) {
+        renderTarget_->DrawRectangle(
+            D2D1::RectF(0.5F, 0.5F, std::max(0.5F, widthDip - 0.5F),
+                        std::max(0.5F, heightDip - 0.5F)),
+            adjustmentActive ? chromeBrush_.Get() : textBrush_.Get(),
+            adjustmentActive ? kAdjustBorderDip : kPinnedBorderDip);
+    }
     const HRESULT result = renderTarget_->EndDraw();
     bool mediaViewportReconciled{};
     bool backgroundSurfaceDiagnosticsQueued{};

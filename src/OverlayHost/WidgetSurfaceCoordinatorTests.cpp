@@ -25,6 +25,26 @@ namespace {
 using Microsoft::WRL::ComPtr;
 int checks{};
 
+struct LayeredWindowState final {
+    COLORREF colorKey{};
+    BYTE alpha{};
+    DWORD flags{};
+};
+
+std::optional<LayeredWindowState> ReadLayeredWindowState(const HWND window) {
+    LayeredWindowState state;
+    if (!GetLayeredWindowAttributes(
+            window, &state.colorKey, &state.alpha, &state.flags)) return std::nullopt;
+    return state;
+}
+
+bool SameRect(
+    const widgetrail::declarative::Rect& left,
+    const widgetrail::declarative::Rect& right) noexcept {
+    return left.x == right.x && left.y == right.y &&
+        left.width == right.width && left.height == right.height;
+}
+
 ComPtr<IUIAutomationElement> FindAutomationId(
     HWND window, const wchar_t* automationId);
 
@@ -2117,13 +2137,111 @@ int main() {
                       durableCommitted->heightDip * committedDpi / 96.0F)) ==
                       committedBounds.bottom - committedBounds.top,
               "successful commit persists exact logical bounds for durable reload");
+
+        UpdateWindow(surface);
+        const auto passivePaint = coordinator.PaintTraceForTesting();
+        const auto passiveLayered = ReadLayeredWindowState(surface);
+        Check(passivePaint.hostCanvasTransparent &&
+                  !passivePaint.hostChromeVisible &&
+                  !passivePaint.hostBorderVisible &&
+                  passivePaint.hostBorderDip == 0.0F &&
+                  passiveLayered &&
+                  passiveLayered->colorKey == RGB(1, 2, 3) &&
+                  passiveLayered->alpha == 255 &&
+                  passiveLayered->flags == (LWA_ALPHA | LWA_COLORKEY),
+              "passive pinned presentation color-keys only the host canvas and draws no header or border");
+        Check(coordinator.BeginPlacement(widgetrail::pinned::PlacementMode::Move),
+              "placement adjustment enters the existing host-owned session");
+        UpdateWindow(surface);
+        const auto placementPaint = coordinator.PaintTraceForTesting();
+        const auto placementLayered = ReadLayeredWindowState(surface);
+        Check(!placementPaint.hostCanvasTransparent &&
+                  placementPaint.hostChromeVisible &&
+                  placementPaint.hostBorderVisible &&
+                  !placementPaint.hostBorderUsesFocusColor &&
+                  placementPaint.hostBorderDip == 3.0F &&
+                  SameRect(passivePaint.contentViewport,
+                           placementPaint.contentViewport) &&
+                  placementLayered &&
+                  placementLayered->alpha == 255 &&
+                  placementLayered->flags == LWA_ALPHA,
+              "placement adjustment restores solid host chrome and a thick outline without changing content geometry");
+        Check(coordinator.CancelPlacement(),
+              "placement cancellation closes the existing host-owned session");
+        UpdateWindow(surface);
+        const auto placementCanceledPaint = coordinator.PaintTraceForTesting();
+        const auto placementCanceledLayered = ReadLayeredWindowState(surface);
+        Check(placementCanceledPaint.hostCanvasTransparent &&
+                  !placementCanceledPaint.hostChromeVisible &&
+                  !placementCanceledPaint.hostBorderVisible &&
+                  SameRect(passivePaint.contentViewport,
+                           placementCanceledPaint.contentViewport) &&
+                  placementCanceledLayered &&
+                  placementCanceledLayered->colorKey == RGB(1, 2, 3) &&
+                  placementCanceledLayered->alpha == 255 &&
+                  placementCanceledLayered->flags ==
+                      (LWA_ALPHA | LWA_COLORKEY),
+              "placement cancellation restores ordinary transparent presentation without geometry drift");
+
         const auto originalOpacity = coordinator.opacityPercent();
         Check(coordinator.BeginOpacityAdjustment() &&
+                  coordinator.StepOpacity(widgetrail::pinned::PlacementDirection::Left),
+              "opacity preview uses the existing bounded adjustment owner");
+        const auto previewOpacity = coordinator.opacityPercent();
+        UpdateWindow(surface);
+        const auto opacityPreviewPaint = coordinator.PaintTraceForTesting();
+        const auto opacityPreviewLayered = ReadLayeredWindowState(surface);
+        Check(previewOpacity != originalOpacity &&
+                  !opacityPreviewPaint.hostCanvasTransparent &&
+                  opacityPreviewPaint.hostChromeVisible &&
+                  opacityPreviewPaint.hostBorderVisible &&
+                  opacityPreviewPaint.hostBorderDip == 3.0F &&
+                  SameRect(passivePaint.contentViewport,
+                           opacityPreviewPaint.contentViewport) &&
+                  opacityPreviewLayered &&
+                  opacityPreviewLayered->alpha == static_cast<BYTE>(std::lround(
+                      static_cast<double>(previewOpacity) * 255.0 / 100.0)) &&
+                  opacityPreviewLayered->flags == LWA_ALPHA,
+              "opacity preview keeps the selected alpha on solid adjustment chrome without geometry drift");
+        Check(coordinator.CommitOpacity(error) &&
+                  coordinator.opacityPercent() == previewOpacity,
+              "opacity save retains the exact preview alpha");
+        UpdateWindow(surface);
+        const auto opacityCommittedPaint = coordinator.PaintTraceForTesting();
+        const auto opacityCommittedLayered = ReadLayeredWindowState(surface);
+        Check(opacityCommittedPaint.hostCanvasTransparent &&
+                  !opacityCommittedPaint.hostChromeVisible &&
+                  !opacityCommittedPaint.hostBorderVisible &&
+                  SameRect(passivePaint.contentViewport,
+                           opacityCommittedPaint.contentViewport) &&
+                  opacityCommittedLayered &&
+                  opacityCommittedLayered->colorKey == RGB(1, 2, 3) &&
+                  opacityCommittedLayered->alpha == static_cast<BYTE>(std::lround(
+                      static_cast<double>(previewOpacity) * 255.0 / 100.0)) &&
+                  opacityCommittedLayered->flags ==
+                      (LWA_ALPHA | LWA_COLORKEY),
+              "opacity save restores ordinary transparency with the committed alpha");
+        Check(coordinator.BeginOpacityAdjustment() &&
                   coordinator.StepOpacity(widgetrail::pinned::PlacementDirection::Left) &&
-                  coordinator.opacityPercent() != originalOpacity &&
+                  coordinator.opacityPercent() != previewOpacity &&
                   coordinator.CancelOpacity() &&
-                  coordinator.opacityPercent() == originalOpacity,
-              "B-equivalent opacity cancellation restores the exact prior alpha");
+                  coordinator.opacityPercent() == previewOpacity,
+              "B-equivalent opacity cancellation restores the exact committed alpha");
+        UpdateWindow(surface);
+        const auto opacityCanceledPaint = coordinator.PaintTraceForTesting();
+        const auto opacityCanceledLayered = ReadLayeredWindowState(surface);
+        Check(opacityCanceledPaint.hostCanvasTransparent &&
+                  !opacityCanceledPaint.hostChromeVisible &&
+                  !opacityCanceledPaint.hostBorderVisible &&
+                  SameRect(passivePaint.contentViewport,
+                           opacityCanceledPaint.contentViewport) &&
+                  opacityCanceledLayered &&
+                  opacityCanceledLayered->colorKey == RGB(1, 2, 3) &&
+                  opacityCanceledLayered->alpha == static_cast<BYTE>(std::lround(
+                      static_cast<double>(previewOpacity) * 255.0 / 100.0)) &&
+                  opacityCanceledLayered->flags ==
+                      (LWA_ALPHA | LWA_COLORKEY),
+              "opacity cancel restores ordinary transparency with the prior committed alpha");
         Check(!coordinator.Pin(Admission(), error) &&
                   error.find(L"already pinned") != std::wstring::npos,
               "duplicate pin is bounded");
@@ -2224,6 +2342,22 @@ int main() {
         Check(EqualRect(&committedBounds, &focusedBounds),
               "controller focus acquisition retains committed placement bounds");
         UpdateWindow(surface);
+        const auto focusedPaint = coordinator.PaintTraceForTesting();
+        const auto focusedLayered = ReadLayeredWindowState(surface);
+        Check(focusedPaint.hostCanvasTransparent &&
+                  !focusedPaint.hostChromeVisible &&
+                  focusedPaint.hostBorderVisible &&
+                  focusedPaint.hostBorderUsesFocusColor &&
+                  focusedPaint.hostBorderDip == 1.0F &&
+                  SameRect(initialClickThroughPaint.contentViewport,
+                           focusedPaint.contentViewport) &&
+                  focusedLayered &&
+                  focusedLayered->colorKey == RGB(1, 2, 3) &&
+                  focusedLayered->alpha == static_cast<BYTE>(std::lround(
+                      static_cast<double>(coordinator.opacityPercent()) *
+                      255.0 / 100.0)) &&
+                  focusedLayered->flags == (LWA_ALPHA | LWA_COLORKEY),
+              "controller focus adds only the one-DIP white ring while retaining transparent alpha and exact content geometry");
         Check(FindAutomationId(surface, L"widget:pin.fixture.action") &&
                   FindAutomationId(surface, L"host:pinned.close") &&
                   FindAutomationId(surface, L"host:pinned.emergency"),

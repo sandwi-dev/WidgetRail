@@ -168,6 +168,12 @@ struct WidgetSurfacePaintTrace final {
     bool declarativeRenderSucceeded{}, admittedContentPresented{};
     std::size_t navigationNodeCount{};
     std::optional<RenderDiagnostic> currentFirstRenderDiagnostic;
+    bool hostCanvasTransparent{};
+    bool hostChromeVisible{};
+    bool hostBorderVisible{};
+    bool hostBorderUsesFocusColor{};
+    float hostBorderDip{};
+    declarative::Rect contentViewport{};
 };
 #endif
 
@@ -279,7 +285,13 @@ public:
                 lastRenderResult_.diagnostics.empty()
                     ? std::nullopt
                     : std::optional<RenderDiagnostic>{
-                          lastRenderResult_.diagnostics.front()}};
+                          lastRenderResult_.diagnostics.front()},
+                lastHostCanvasTransparentForTesting_,
+                lastHostChromeVisibleForTesting_,
+                lastHostBorderVisibleForTesting_,
+                lastHostBorderUsesFocusColorForTesting_,
+                lastHostBorderDipForTesting_,
+                lastContentViewportForTesting_};
     }
     [[nodiscard]] std::optional<float> ScrollOffsetForTesting(
         const std::wstring_view scrollId) const noexcept {
@@ -429,6 +441,14 @@ private:
     std::optional<CommittedMediaViewportPresentation> committedMediaViewport_;
     std::uint64_t nextCommittedFrameGeneration_{1};
     bool mediaViewportGeometryDirty_{true};
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+    bool lastHostCanvasTransparentForTesting_{};
+    bool lastHostChromeVisibleForTesting_{};
+    bool lastHostBorderVisibleForTesting_{};
+    bool lastHostBorderUsesFocusColorForTesting_{};
+    float lastHostBorderDipForTesting_{};
+    declarative::Rect lastContentViewportForTesting_{};
+#endif
     struct PendingPinnedResizeDiagnostic final {
         std::optional<SIZE> previousClientExtent;
         SIZE currentClientExtent{};
