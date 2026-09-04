@@ -60,8 +60,12 @@ void CheckCompleteReachability(
 int main() {
     const auto standard = widgetrail::shell::ComputeTrayLayout(800, 600, 3, 0);
     Check(standard && standard->tiles.size() == 3, "all fitting widgets are visible");
-    Check(standard->stripBounds.y == 488 && standard->stripBounds.height == 98,
-          "dashboard fallback band matches the rendered shell");
+    Check(standard->stripBounds.y == 505 && standard->stripBounds.height == 64 &&
+          standard->stripBounds.x == standard->tiles.front().bounds.x &&
+          standard->stripBounds.x + standard->stripBounds.width ==
+              standard->tiles.back().bounds.x +
+                  standard->tiles.back().bounds.width,
+          "dashboard tray publishes the tight visual control envelope centered in its band");
     Check(standard->tiles[0].slot == 0 && standard->tiles[2].slot == 2,
           "visible slots preserve catalog order");
     Check(standard->tiles[0].bounds.width == 64 &&
@@ -75,6 +79,14 @@ int main() {
               standard->tiles[0].bounds.x + standard->tiles[0].bounds.width,
               standard->tiles[0].bounds.y),
           "right edge is outside a tile");
+    const float firstGapX = standard->tiles[0].bounds.x +
+        standard->tiles[0].bounds.width + 1.0F;
+    Check(firstGapX < standard->tiles[1].bounds.x &&
+          !widgetrail::shell::HitTestTray(
+              *standard, firstGapX, standard->tiles[0].bounds.y + 1.0F) &&
+          !widgetrail::shell::HitTestTrayOverflow(
+              *standard, firstGapX, standard->tiles[0].bounds.y + 1.0F),
+          "transparent space inside the tight envelope owns no pointer target");
 
     const auto paged = widgetrail::shell::ComputeTrayLayout(300, 600, 10, 9);
     Check(paged && paged->tiles.size() == 2, "narrow tray reserves explicit overflow controls");
@@ -144,9 +156,21 @@ int main() {
 
     const auto embedded = widgetrail::shell::ComputeTrayLayout(
         720, 540, 2, 1, widgetrail::shell::TrayBand{420, 510});
-    Check(embedded && embedded->stripBounds.y == 420 &&
-          embedded->stripBounds.height == 90,
-          "widget-surface tray uses the supplied final band");
+    Check(embedded && embedded->stripBounds.y == 433 &&
+          embedded->stripBounds.height == 64 &&
+          embedded->stripBounds.y + embedded->stripBounds.height * 0.5F ==
+              (420.0F + 510.0F) * 0.5F,
+          "open-widget tray centers its tight envelope in the supplied post-guide band");
+    const auto dashboardGuideBand = widgetrail::shell::ComputeTrayLayout(
+        800, 180, 3, 0, widgetrail::shell::TrayBand{66, 180});
+    const auto openWidgetGuideBand = widgetrail::shell::ComputeTrayLayout(
+        800, 328, 3, 0, widgetrail::shell::TrayBand{198, 328});
+    Check(dashboardGuideBand && openWidgetGuideBand &&
+          dashboardGuideBand->stripBounds.y * 2.0F +
+                  dashboardGuideBand->stripBounds.height == 66.0F + 180.0F &&
+          openWidgetGuideBand->stripBounds.y * 2.0F +
+                  openWidgetGuideBand->stripBounds.height == 198.0F + 328.0F,
+          "dashboard and open-widget rendered-guide inputs produce equal visual gaps");
 
     const auto productionBand = [](const float height) {
         return widgetrail::shell::TrayBand{height - 112.0F, height - 14.0F};

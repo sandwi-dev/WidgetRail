@@ -12,7 +12,12 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace {
@@ -235,6 +240,133 @@ void CheckTrayMenuCompositionHeadroom() {
           "one row geometry exactly partitions render, pointer, and UIA menu bounds");
 }
 
+void CheckRenderedGuideContentCentering() {
+    struct CenteredChrome final {
+        LONG chromeHeight{};
+        LONG guideTop{};
+        LONG guideContentBottom{};
+        LONG trayTop{};
+        LONG gapAbove{};
+        LONG gapBelow{};
+    };
+    const auto center = [](
+        LONG chromeHeight,
+        const LONG workHeight,
+        LONG guideTop,
+        LONG guideContentBottom,
+        const LONG traySurfaceHeight,
+        const LONG localStripTop,
+        const LONG localStripBottom) {
+        const LONG stripHeight = localStripBottom - localStripTop;
+        const LONG freeBandHeight = chromeHeight - guideContentBottom;
+        LONG centeredStripTop = guideContentBottom +
+            (freeBandHeight - stripHeight) / 2;
+        LONG requestedTrayTop = centeredStripTop - localStripTop;
+        if (requestedTrayTop < 0) {
+            const LONG expansion = std::min(
+                -requestedTrayTop, workHeight - chromeHeight);
+            chromeHeight += expansion;
+            guideTop += expansion;
+            guideContentBottom += expansion;
+            centeredStripTop += expansion;
+            requestedTrayTop += expansion;
+        }
+        const LONG trayTop = std::clamp(
+            requestedTrayTop, 0L, chromeHeight - traySurfaceHeight);
+        return CenteredChrome{
+            chromeHeight,
+            guideTop,
+            guideContentBottom,
+            trayTop,
+            trayTop + localStripTop - guideContentBottom,
+            chromeHeight - (trayTop + localStripBottom),
+        };
+    };
+
+    constexpr LONG workHeight = 1080;
+    constexpr LONG baseChromeHeight = 328;
+    constexpr LONG baseGuideTop = 152;
+    constexpr LONG traySurfaceHeight = 224;
+    constexpr LONG menuHeadroom = 152;
+    constexpr LONG localStripTop = 156;
+    constexpr LONG localStripBottom = 220;
+    const auto openWidget = center(
+        baseChromeHeight, workHeight, baseGuideTop, 198,
+        traySurfaceHeight, localStripTop, localStripBottom);
+    Check(openWidget.chromeHeight == baseChromeHeight &&
+              std::abs(openWidget.gapAbove - openWidget.gapBelow) <= 1,
+          "open-widget tray centers below the rendered footer text rather than the guide client bottom");
+
+    const auto dashboard = center(
+        baseChromeHeight, workHeight, baseGuideTop, 35,
+        traySurfaceHeight, localStripTop, localStripBottom);
+    const LONG guideScreenBefore = workHeight - baseChromeHeight + baseGuideTop;
+    const LONG guideScreenAfter =
+        workHeight - dashboard.chromeHeight + dashboard.guideTop;
+    Check(dashboard.chromeHeight > baseChromeHeight &&
+              dashboard.trayTop >= 0 &&
+              dashboard.trayTop + localStripTop - menuHeadroom >= 0 &&
+              guideScreenAfter == guideScreenBefore &&
+              std::abs(dashboard.gapAbove - dashboard.gapBelow) <= 1,
+          "dashboard centering grows chrome upward boundedly while preserving guide anchor and menu headroom");
+
+    const auto sourcePath =
+        std::filesystem::path{__FILE__}.parent_path() / "main.cpp";
+    std::ifstream sourceStream(sourcePath, std::ios::binary);
+    const std::string source{
+        std::istreambuf_iterator<char>{sourceStream},
+        std::istreambuf_iterator<char>{}};
+    const auto ensureBegin = source.find("bool EnsureCompositionChromeSession()");
+    const auto ensureEnd = source.find(
+        "AnchorContentPlacementToChrome(", ensureBegin);
+    Check(sourceStream.good() || sourceStream.eof(),
+          "fixed-chrome production source is readable");
+    Check(ensureBegin != std::string::npos && ensureEnd != std::string::npos,
+          "fixed-chrome session owner has a bounded source slice");
+    const std::string_view ensureOwner{
+        source.data() + ensureBegin, ensureEnd - ensureBegin};
+    Check(ensureOwner.find("WidgetGuideContentBottomDip(guideHeightDip)") !=
+              std::string_view::npos &&
+          ensureOwner.find("DashboardGuideContentBottomDip(dashboardHeightDip)") !=
+              std::string_view::npos &&
+          ensureOwner.find("chromeHeight - session.renderedGuideContentBottom") !=
+              std::string_view::npos &&
+          ensureOwner.find("centeredStripTop = session.renderedGuideContentBottom") !=
+              std::string_view::npos,
+          "fixed chrome centers from the exact rendered dashboard or widget guide-content bottom");
+    Check(ensureOwner.find("session.guideClientBounds.top += topExpansion") !=
+              std::string_view::npos &&
+          ensureOwner.find("session.renderedGuideContentBottom += topExpansion") !=
+              std::string_view::npos &&
+          ensureOwner.find("ComputeFixedChromeWindowBounds") !=
+              std::string_view::npos &&
+          ensureOwner.find("tray-visual-gaps=") != std::string_view::npos,
+          "bounded upward expansion preserves the guide screen anchor and reports both visual gaps");
+
+    const auto stateBegin = source.find("CurrentTrayPaintState(");
+    const auto stateEnd = source.find("bool RenderCompositionLayer(", stateBegin);
+    const auto drawBegin = source.find("void DrawIconStrip(");
+    const auto drawEnd = source.find("static std::wstring_view DisplayButton", drawBegin);
+    Check(stateBegin != std::string::npos && stateEnd != std::string::npos &&
+              drawBegin != std::string::npos && drawEnd != std::string::npos,
+          "tray visual-policy owners have bounded source slices");
+    const std::string_view retainedOwner{
+        source.data() + stateBegin, stateEnd - stateBegin};
+    const std::string_view drawOwner{
+        source.data() + drawBegin, drawEnd - drawBegin};
+    Check(retainedOwner.find(
+              "selected &&\n                    state_.focusRegion() == widgetrail::FocusRegion::Tray") !=
+              std::string_view::npos &&
+          drawOwner.find("traySelectedBrush_.Get()") != std::string_view::npos &&
+          drawOwner.find(
+              "state_.focusRegion() == widgetrail::FocusRegion::Tray") !=
+              std::string_view::npos,
+          "selection and tray-owned focus remain distinct retained tile visuals");
+    Check(drawOwner.find("FillColorKeyRoundedRectangle") ==
+              std::string_view::npos,
+          "floating tray paint reserves no outer background panel");
+}
+
 void CheckFrame(
     ID2D1Factory* d2d,
     IWICImagingFactory* wic,
@@ -385,7 +517,7 @@ void CheckRetainedTrayInvalidation() {
     widgetrail::shell::RetainedTrayState initial{
         420, 84, 7,
         {
-            {{8, 8, 68, 68}, L"settings", true, true},
+            {{8, 8, 68, 68}, L"settings", true, false},
             {{76, 8, 136, 68}, L"network", false, false},
             {{144, 8, 204, 68}, L"audio", false, false},
         },
@@ -395,22 +527,30 @@ void CheckRetainedTrayInvalidation() {
     Check(!widgetrail::shell::RequiresTrayRepaint(&initial, initial),
           "content-only publication retains tray pixels");
 
+    auto focused = initial;
+    focused.items[0].focused = true;
+    Check(widgetrail::shell::RequiresTrayRepaint(&initial, focused),
+          "tray focus adds the selected-tile outline without changing selection");
+
     auto selected = initial;
     selected.items[0].selected = false;
-    selected.items[0].focused = false;
     selected.items[1].selected = true;
-    selected.items[1].focused = true;
     Check(widgetrail::shell::RequiresTrayRepaint(&initial, selected),
-          "selection replaces the complete retained tray surface");
+          "selection replaces the retained tray independently of focus");
 
-    auto reordered = selected;
+    auto selectedFocused = selected;
+    selectedFocused.items[1].focused = true;
+    Check(widgetrail::shell::RequiresTrayRepaint(&selected, selectedFocused),
+          "focused outline follows only the selected tile while tray owns focus");
+
+    auto reordered = selectedFocused;
     std::swap(reordered.items[1].identity, reordered.items[2].identity);
-    Check(widgetrail::shell::RequiresTrayRepaint(&selected, reordered),
+    Check(widgetrail::shell::RequiresTrayRepaint(&selectedFocused, reordered),
           "reorder replaces the complete retained tray surface");
 
     auto provider = reordered;
     Check(!widgetrail::shell::RequiresTrayRepaint(&reordered, provider),
-          "provider, slider, scroll, focus, and motion retain unchanged tray pixels");
+          "provider, slider, scroll, and motion retain unchanged tray pixels");
 
     auto appearance = provider;
     ++appearance.appearanceRevision;
@@ -659,6 +799,7 @@ int main() {
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.5F);
     CheckCompositionCoordinatePolicies();
     CheckTrayMenuCompositionHeadroom();
+    CheckRenderedGuideContentCentering();
     CheckRetainedTrayInvalidation();
     CheckFixedChromeWindowPolicy();
     widgetrail::shell::FillColorKeyRoundedRectangle(nullptr, {}, nullptr);

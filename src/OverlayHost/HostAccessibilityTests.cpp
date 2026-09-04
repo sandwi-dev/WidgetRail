@@ -56,6 +56,14 @@ int main() {
           tree.nodes[1].bounds.width == layout->tiles[0].bounds.width &&
           tree.nodes[1].bounds.height == layout->tiles[0].bounds.height,
           "accessibility uses the exact shared paint/hit-test rectangle");
+    Check(std::none_of(
+              tree.nodes.begin(), tree.nodes.end(), [&](const auto& node) {
+                  return node.bounds.x == layout->stripBounds.x &&
+                      node.bounds.y == layout->stripBounds.y &&
+                      node.bounds.width == layout->stripBounds.width &&
+                      node.bounds.height == layout->stripBounds.height;
+              }),
+          "removed outer tray background contributes no accessibility element or bounds");
 
     const widgetrail::accessibility::DashboardSemantics dashboard{
         L"Reorder widgets", {24, 10, 192, 34},
