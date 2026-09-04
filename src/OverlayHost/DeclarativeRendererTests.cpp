@@ -3954,17 +3954,20 @@ void RealDirect2DSmoke() {
         Near(selectedPlacement.leading.x, selectedRect.x + 10.0F,
             "authored justify-start aligns selection-row content at the shared leading inset",
             0.51F);
-        for (const auto* id : {L"matrix.selected", L"matrix.busy"}) {
-            const auto& placement = matrixResult.buttonContentPlacements.at(id);
-            const auto& rect = matrixResult.elementRects.at(id);
-            Near(placement.trailingStateCue.y + placement.trailingStateCue.height * 0.5F,
-                rect.y + rect.height * 0.5F,
-                "selected and busy cues share vertical centering",
-                0.51F);
-            Check(placement.text.x + placement.text.width + 7.5F <=
-                    placement.trailingStateCue.x,
-                "stateful label remains clear of the shared cue lane");
-        }
+        Check(selectedPlacement.trailingStateCue.width == 0.0F &&
+              selectedPlacement.trailingStateCue.height == 0.0F,
+              "selected text button reserves no automatic state-cue lane");
+        const auto& busyPlacement =
+            matrixResult.buttonContentPlacements.at(L"matrix.busy");
+        const auto& busyRect = matrixResult.elementRects.at(L"matrix.busy");
+        Near(busyPlacement.trailingStateCue.y +
+                busyPlacement.trailingStateCue.height * 0.5F,
+            busyRect.y + busyRect.height * 0.5F,
+            "busy cue remains vertically centered",
+            0.51F);
+        Check(busyPlacement.text.x + busyPlacement.text.width + 7.5F <=
+                busyPlacement.trailingStateCue.x,
+            "busy label remains clear of the shared cue lane");
         const auto& disabledPlacement =
             matrixResult.buttonContentPlacements.at(L"matrix.disabled");
         Check(disabledPlacement.trailingStateCue.width == 0.0F &&
@@ -4004,10 +4007,19 @@ void RealDirect2DSmoke() {
     disabledSwitchOn.isDisabled = true;
     auto ordinarySelected = matrixButton(
         L"switch-cue.ordinary-selected", L"Selected row");
+    ordinarySelected.glyph.clear();
     ordinarySelected.isSelected = true;
+    auto iconOnlySelected = Node(L"switch-cue.icon-selected", L"button");
+    iconOnlySelected.glyph = L"like";
+    iconOnlySelected.isSelected = true;
+    iconOnlySelected.baseStyle = {
+        {L"width", Length(44)},
+        {L"height", Length(44)},
+    };
     switchSnapshot.root.children = {
         std::move(switchOn), std::move(switchOff),
         std::move(disabledSwitchOn), std::move(ordinarySelected),
+        std::move(iconOnlySelected),
     };
     widgetrail::DeclarativeRenderOptions switchOptions;
     switchOptions.accessibility.contrastHook = [](
@@ -4019,13 +4031,14 @@ void RealDirect2DSmoke() {
         target.Get(), switchSnapshot, L"switch-cue.on",
         {0.0F, 0.0F, 240.0F, 220.0F}, switchOptions);
     Check(SUCCEEDED(target->EndDraw()) && switchResult.succeeded &&
-              switchResult.buttonContentPlacements.size() == 4,
+              switchResult.buttonContentPlacements.size() == 5,
           "Switch cue fixture completes one focused high-contrast Direct2D frame");
     const auto& switchOnPlacement =
         switchResult.buttonContentPlacements.at(L"switch-cue.on");
     Check(switchOnPlacement.leading.width == 0.0F &&
-              switchOnPlacement.trailingStateCue.width > 0.0F,
-          "focused selected Switch has no leading glyph and exactly one trailing non-color cue under package styling and high contrast");
+              switchOnPlacement.trailingStateCue.width == 0.0F &&
+              !switchResult.buttonStateCues.contains(L"switch-cue.on"),
+          "focused selected Switch has no leading glyph, automatic check, or reserved cue lane under package styling and high contrast");
     const auto& switchOffPlacement =
         switchResult.buttonContentPlacements.at(L"switch-cue.off");
     Check(switchOffPlacement.leading.width == 0.0F &&
@@ -4034,13 +4047,23 @@ void RealDirect2DSmoke() {
     const auto& disabledSwitchOnPlacement =
         switchResult.buttonContentPlacements.at(L"switch-cue.disabled-on");
     Check(disabledSwitchOnPlacement.leading.width == 0.0F &&
-              disabledSwitchOnPlacement.trailingStateCue.width > 0.0F,
-          "disabled selected Switch retains the single trailing state cue");
+              disabledSwitchOnPlacement.trailingStateCue.width == 0.0F &&
+              !switchResult.buttonStateCues.contains(L"switch-cue.disabled-on"),
+          "disabled selected Switch retains semantics and styling without an automatic cue");
     const auto& ordinarySelectedPlacement =
         switchResult.buttonContentPlacements.at(L"switch-cue.ordinary-selected");
-    Check(ordinarySelectedPlacement.leading.width > 0.0F &&
-              ordinarySelectedPlacement.trailingStateCue.width > 0.0F,
-          "ordinary selected button retains its authored leading glyph and selected-state cue");
+    Check(ordinarySelectedPlacement.leading.width == 0.0F &&
+              ordinarySelectedPlacement.trailingStateCue.width == 0.0F &&
+              !switchResult.buttonStateCues.contains(
+                  L"switch-cue.ordinary-selected"),
+          "ordinary selected text navigation button has no automatic check or reserved cue lane");
+    const auto& iconOnlySelectedPlacement =
+        switchResult.buttonContentPlacements.at(L"switch-cue.icon-selected");
+    Check(iconOnlySelectedPlacement.leading.width > 0.0F &&
+              iconOnlySelectedPlacement.trailingStateCue.width == 0.0F &&
+              switchResult.buttonStateCues.at(L"switch-cue.icon-selected") ==
+                  L"selected-dot",
+          "icon-only selected control retains its compact non-check dot");
 
     slider.baseStyle = {
         {L"background", Color(L"#00ff00")},

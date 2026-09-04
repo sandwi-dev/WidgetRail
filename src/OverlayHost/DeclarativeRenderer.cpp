@@ -58,6 +58,11 @@ constexpr NativeColor kDefaultButton{0.122F, 0.133F, 0.169F, 0.96F};
 constexpr NativeColor kDefaultTrack{0.25F, 0.26F, 0.30F, 0.72F};
 constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
 
+[[nodiscard]] bool ReservesTrailingButtonStateCue(
+    const WidgetNode& node) noexcept {
+    return !node.text.empty() && (node.isSelect || node.isBusy);
+}
+
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
 std::uint64_t gRendererWidgetStateRetirementCount{};
 std::wstring gLastRetiredRendererWidgetInstance;
@@ -2316,8 +2321,7 @@ struct DeclarativeRenderer::RenderPass final {
             const bool hasLeading = !node.imageSource.empty() ||
                 !node.artworkHandle.empty() || !node.glyph.empty();
             const bool hasText = !node.text.empty();
-            const bool reserveStateCue = hasText &&
-                (node.isSelect || node.isBusy || node.isSelected);
+            const bool reserveStateCue = ReservesTrailingButtonStateCue(node);
             const auto lineHeight = style.fontSizePx() * style.lineHeight();
             const auto maximumLeadingSize =
                 node.imageSource.empty() && node.artworkHandle.empty() ? 32.0F : 44.0F;
@@ -3702,6 +3706,9 @@ struct DeclarativeRenderer::RenderPass final {
                 style.foreground().value_or(kDefaultAccent), opacity));
             if (!brush) return;
             if (node.isBusy) {
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+                result.buttonStateCues.insert_or_assign(node.id, L"busy-spinner");
+#endif
                 const auto radius = std::clamp(rect.height * 0.105F, 4.0F, 6.0F);
                 target->DrawEllipse(
                     D2D1::Ellipse(
@@ -3710,6 +3717,9 @@ struct DeclarativeRenderer::RenderPass final {
                         radius, radius),
                     brush.Get(), 2.0F);
             } else if (node.isSelected) {
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+                result.buttonStateCues.insert_or_assign(node.id, L"selected-dot");
+#endif
                 const auto radius = std::clamp(rect.height * 0.065F, 2.5F, 4.0F);
                 target->FillEllipse(
                     D2D1::Ellipse(
@@ -3734,6 +3744,9 @@ struct DeclarativeRenderer::RenderPass final {
             auto brush = Brush(target, WithOpacity(
                 style.foreground().value_or(kDefaultAccent), opacity));
             if (!brush) return;
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+            result.buttonStateCues.insert_or_assign(node.id, L"select-chevron");
+#endif
             const float centerX = cue.x + cue.width * 0.5F;
             const float centerY = cue.y + cue.height * 0.5F;
             const float half = std::clamp(cue.width * 0.22F, 3.0F, 5.0F);
@@ -3747,8 +3760,14 @@ struct DeclarativeRenderer::RenderPass final {
                 D2D1::Point2F(centerX + half, centerY - drop * 0.5F),
                 brush.Get(), 1.8F);
         } else if (node.isBusy) {
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+            result.buttonStateCues.insert_or_assign(node.id, L"busy-spinner");
+#endif
             DrawSemanticIcon(node, style, cue, opacity, L"refresh");
-        } else if (node.isSelected) {
+        } else if (node.isSelected && node.kind == L"actionSurface") {
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+            result.buttonStateCues.insert_or_assign(node.id, L"selected-check");
+#endif
             DrawSemanticIcon(node, style, cue, opacity, L"check");
         }
     }
@@ -3918,8 +3937,7 @@ struct DeclarativeRenderer::RenderPass final {
             const bool hasLeading = !node.imageSource.empty() ||
                 !node.artworkHandle.empty() || !node.glyph.empty();
             const bool hasText = !node.text.empty();
-            const bool reserveStateCue = hasText &&
-                (node.isSelect || node.isBusy || node.isSelected);
+            const bool reserveStateCue = ReservesTrailingButtonStateCue(node);
             const auto maximumLeadingSize =
                 node.imageSource.empty() && node.artworkHandle.empty() ? 32.0F : 44.0F;
             const auto iconSize = hasLeading
