@@ -325,6 +325,42 @@ int main() {
                   widgetrail::accessibility::HostAction::None,
           "a Select with no available options is exposed as unavailable and unexpandable");
 
+    widgetrail::WidgetSnapshot switchSnapshot;
+    switchSnapshot.sequence = 42;
+    switchSnapshot.instanceId = L"switch.instance";
+    switchSnapshot.activeInputScopeId = L"switch.root";
+    switchSnapshot.root.id = L"switch.root";
+    switchSnapshot.root.kind = L"stack";
+    switchSnapshot.root.inputScopeId = L"switch.root";
+    widgetrail::WidgetNode switchOn;
+    switchOn.id = L"switch.on";
+    switchOn.kind = L"button";
+    switchOn.text = L"Motion  On";
+    switchOn.accessibilityLabel = L"Motion, On";
+    switchOn.actionId = L"toggle-motion";
+    switchOn.isSelected = true;
+    switchOn.isDisabled = true;
+    widgetrail::WidgetNode switchOff = switchOn;
+    switchOff.id = L"switch.off";
+    switchOff.text = L"Motion  Off";
+    switchOff.accessibilityLabel = L"Motion, Off";
+    switchOff.isSelected = false;
+    switchOff.isDisabled = false;
+    switchSnapshot.root.children = {switchOn, switchOff};
+    widgetrail::RenderResult switchRender;
+    switchRender.accessibilityRegions = {
+        Region(L"switch.on", 20), Region(L"switch.off", 60)};
+    const auto switchTree = widgetrail::accessibility::BuildWidgetTree(
+        L"switch", L"generation-switch", switchSnapshot, switchRender,
+        L"switch.on");
+    Check(switchTree.nodes.size() == 2 &&
+              switchTree.nodes[0].role == widgetrail::accessibility::Role::Button &&
+              switchTree.nodes[0].selected && !switchTree.nodes[0].enabled &&
+              switchTree.nodes[0].name == L"Motion, On" &&
+              !switchTree.nodes[1].selected && switchTree.nodes[1].enabled &&
+              switchTree.nodes[1].name == L"Motion, Off",
+          "Switch On and Off retain exact selected and unavailable accessibility state independent of visual glyphs");
+
     render.accessibilityRegions.clear();
     tree = widgetrail::accessibility::BuildWidgetTree(
         L"music", L"generation-1", snapshot, render, L"modal-text");

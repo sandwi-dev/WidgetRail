@@ -1890,7 +1890,7 @@ static Task SettingsCompositesAreSemantic()
     Assert.Equal("Reduced motion, On", toggle.AccessibilityLabel);
     Assert.Equal("toggle-motion", toggle.ActionId);
     Assert.Equal(true, toggle.IsSelected);
-    Assert.Equal(WidgetGlyph.Check, toggle.Glyph);
+    Assert.Equal(null, toggle.Glyph);
     Assert.True(
         new[] { "wrail-switch", "wrail-switch--on" }
             .SequenceEqual(toggle.StyleClasses),
@@ -1906,6 +1906,25 @@ static Task SettingsCompositesAreSemantic()
         new[] { "wrail-switch", "wrail-switch--off" }
             .SequenceEqual(offToggle.StyleClasses),
         "Switch must expose only the platform root and current-state hooks.");
+
+    var packageStyledDisabledOn = UI.Switch(
+            "High contrast", true, "toggle-contrast", "contrast-toggle", isDisabled: true)
+        .AddClasses("package-switch-accent")
+        .ToProtocolNode();
+    Assert.Equal(true, packageStyledDisabledOn.IsSelected);
+    Assert.Equal(true, packageStyledDisabledOn.IsDisabled);
+    Assert.Equal(null, packageStyledDisabledOn.Glyph);
+    Assert.Equal("High contrast, On", packageStyledDisabledOn.AccessibilityLabel);
+    Assert.True(
+        new[] { "wrail-switch", "wrail-switch--on", "package-switch-accent" }
+            .SequenceEqual(packageStyledDisabledOn.StyleClasses),
+        "Package styling must not replace the Switch semantic or state hooks.");
+
+    var roundTrip = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
+    Assert.Equal(true, Find(roundTrip.Root, "motion-toggle").IsSelected);
+    Assert.Equal(null, Find(roundTrip.Root, "motion-toggle").Glyph);
+    Assert.Equal(null, Find(roundTrip.Root, "bold-toggle").IsSelected);
+    Assert.Equal(null, Find(roundTrip.Root, "bold-toggle").Glyph);
 
     var explicitIcon = UI.Button("Liked", "like", "liked")
         .Icon(WidgetGlyph.Like, "Like track")
@@ -2061,7 +2080,7 @@ static Task ModernControllerComponentsAreSemantic()
     Assert.Equal("modern.tabs.voice", output.Focus!.Left);
     Assert.Equal("modern.tabs.audio", output.Focus.Right);
     Assert.Equal(true, Find(snapshot.Root, "modern.motion").IsSelected);
-    Assert.Equal(WidgetGlyph.Check, Find(snapshot.Root, "modern.motion").Glyph);
+    Assert.Equal(null, Find(snapshot.Root, "modern.motion").Glyph);
     Assert.Equal(true, Find(snapshot.Root, "modern.hdr").IsDisabled);
     Assert.Equal("modern.dialog.scope", Find(snapshot.Root, "modern.dialog").InputScopeId);
     Assert.Equal("dismiss-dialog", Find(snapshot.Root, "modern.dialog").Shortcuts.Single().ActionId);

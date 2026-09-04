@@ -965,7 +965,6 @@ public static partial class UI
         return new ButtonElement(id, $"{label}  {state}", action)
         {
             AccessibilityLabel = $"{label}, {state}",
-            Glyph = isOn ? WidgetGlyph.Check : null,
             IsSelected = isOn ? true : null,
             IsDisabled = isDisabled ? true : null,
             StyleClasses = ["wrail-switch", isOn ? "wrail-switch--on" : "wrail-switch--off"],

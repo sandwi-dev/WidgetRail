@@ -3986,6 +3986,62 @@ void RealDirect2DSmoke() {
         }
     }
 
+    WidgetSnapshot switchSnapshot;
+    switchSnapshot.instanceId = L"switch-cue.runtime";
+    switchSnapshot.root = Node(L"switch-cue.root", L"stack");
+    switchSnapshot.root.baseStyle = {{L"gap", LengthList(L"4px")}};
+    auto switchOn = matrixButton(L"switch-cue.on", L"Motion  On");
+    switchOn.glyph.clear();
+    switchOn.isSelected = true;
+    switchOn.styleClasses = {
+        L"wrail-switch", L"wrail-switch--on", L"package-switch-accent"};
+    switchOn.baseStyle.insert_or_assign(L"foreground", Color(L"#00ff00"));
+    auto switchOff = matrixButton(L"switch-cue.off", L"Motion  Off");
+    switchOff.glyph.clear();
+    switchOff.styleClasses = {L"wrail-switch", L"wrail-switch--off"};
+    auto disabledSwitchOn = switchOn;
+    disabledSwitchOn.id = L"switch-cue.disabled-on";
+    disabledSwitchOn.isDisabled = true;
+    auto ordinarySelected = matrixButton(
+        L"switch-cue.ordinary-selected", L"Selected row");
+    ordinarySelected.isSelected = true;
+    switchSnapshot.root.children = {
+        std::move(switchOn), std::move(switchOff),
+        std::move(disabledSwitchOn), std::move(ordinarySelected),
+    };
+    widgetrail::DeclarativeRenderOptions switchOptions;
+    switchOptions.accessibility.contrastHook = [](
+        const widgetrail::NativeColor color,
+        const widgetrail::NativeColor) { return color; };
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+    const auto switchResult = renderer.Render(
+        target.Get(), switchSnapshot, L"switch-cue.on",
+        {0.0F, 0.0F, 240.0F, 220.0F}, switchOptions);
+    Check(SUCCEEDED(target->EndDraw()) && switchResult.succeeded &&
+              switchResult.buttonContentPlacements.size() == 4,
+          "Switch cue fixture completes one focused high-contrast Direct2D frame");
+    const auto& switchOnPlacement =
+        switchResult.buttonContentPlacements.at(L"switch-cue.on");
+    Check(switchOnPlacement.leading.width == 0.0F &&
+              switchOnPlacement.trailingStateCue.width > 0.0F,
+          "focused selected Switch has no leading glyph and exactly one trailing non-color cue under package styling and high contrast");
+    const auto& switchOffPlacement =
+        switchResult.buttonContentPlacements.at(L"switch-cue.off");
+    Check(switchOffPlacement.leading.width == 0.0F &&
+              switchOffPlacement.trailingStateCue.width == 0.0F,
+          "off Switch has no leading or trailing selected-state cue");
+    const auto& disabledSwitchOnPlacement =
+        switchResult.buttonContentPlacements.at(L"switch-cue.disabled-on");
+    Check(disabledSwitchOnPlacement.leading.width == 0.0F &&
+              disabledSwitchOnPlacement.trailingStateCue.width > 0.0F,
+          "disabled selected Switch retains the single trailing state cue");
+    const auto& ordinarySelectedPlacement =
+        switchResult.buttonContentPlacements.at(L"switch-cue.ordinary-selected");
+    Check(ordinarySelectedPlacement.leading.width > 0.0F &&
+              ordinarySelectedPlacement.trailingStateCue.width > 0.0F,
+          "ordinary selected button retains its authored leading glyph and selected-state cue");
+
     slider.baseStyle = {
         {L"background", Color(L"#00ff00")},
         {L"height", Length(44)},
