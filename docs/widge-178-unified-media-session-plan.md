@@ -15,10 +15,29 @@ For this item only, this file is implementation-owned after assignment. The plat
 | Implementation owner | Standing platform implementation task |
 | Branch | `codex/widge-178-unified-media-session` |
 | Worktree | `C:\Users\dwive\.codex\visualizations\2026\08\11\019fef3b-7e94-70f0-b329-3551f8dd805b\widge178` |
-| Current phase | `[~]` User physically accepted the SDK-compatible protocol-v43 / YouTube `0.3.19` candidate. The accepted process tree remains running and unchanged; focused regression closure is now active. |
-| Last completed checkpoint | Physical checks accepted unchanged precompiled YT Music compatibility plus YouTube video load, page-wide Y fullscreen, focused A, and X/LT/RT/B behavior on the corrected candidate. |
-| Next checkpoint | Add and run only the proportional focused WIDGE-178 binary-compatibility, protocol-v43, guide-label, Y-routing, and named media-owner gates; then audit, exact-stage, and commit the cumulative accepted chain. |
-| Last updated | 2026-09-03 by implementation agent at the post-acceptance focused-test boundary |
+| Current phase | `[x]` User physically accepted the native-only pinned-shell transparency/focus-ring amendment; focused regression closure is green and committed append-only. This finalized living plan remains intentionally unstaged for reviewer attachment to Plane. |
+| Last completed checkpoint | Commit `e03e84b6b6fc8778bee5d0d288cb26f08387d16c`, tree `e4b1b9b1eb40dadcade30e651db686d562abefad`; three production/test paths, 192 insertions / 21 deletions. Replacement `WidgetSurfaceTestsOnly` passed 342 checks after reviewer released the accepted same-tree process lock. |
+| Next checkpoint | Reviewer attaches this finalized local plan to Plane, reviews the two-commit accepted chain `22b75bc5` + `e03e84b6`, and decides integration. No further platform implementation is authorized in this worktree. |
+| Last updated | 2026-09-03 by implementation agent at the completed WIDGE-178 pinned-shell closure boundary |
+
+## Pinned-shell transparency and focus-ring amendment
+
+- [x] Ownership audit: `WidgetSurfaceCoordinator` owns the pinned layered HWND, color key, whole-window alpha, host canvas/header paint, controller focus, placement/opacity adjustment state, and every begin/commit/cancel transition. No SDK/protocol/widget/package/persistence owner is involved.
+- [x] Outside adjustment (`!placementSession_ && !opacityPreviewOriginal_`), apply `LWA_ALPHA | LWA_COLORKEY` with the existing `RGB(1,2,3)` color key and current 30-100% alpha; clear only the host canvas to that key and suppress host title/instruction chrome.
+- [x] While `controllerFocused_` outside adjustment, draw one white/high-contrast outer ring inside the existing client bounds without modifying HWND, declarative viewport, media viewport, hit-test, or accessibility geometry. Passive click-through draws no host border.
+- [x] During any placement or opacity adjustment, retain the current solid blue host canvas, title/instruction header, and thicker three-DIP outline using the same whole-window alpha.
+- [x] Reapply layered-window policy on every placement/setup/opacity begin, commit, failure rollback, and cancel after the adjustment owner changes, even when `InteractionMode` is already `Focusable`.
+- [x] Preserve widget-authored backgrounds, media composition, selected layout, saved placement, controller/pointer routing, click-through policy, and all viewport calculations byte-for-byte outside the paint/layer owner.
+- [x] Source-reviewed the exact plan plus `WidgetSurfaceCoordinator.cpp` diff; `git diff --check` passed and one coherent audited `Release -SkipTests` completed green. No appearance tests, install, final-candidate launch, stage, commit, integration, push, or Plane mutation occurred.
+- [x] User accepted the physical candidate launched as OverlayHost PID `22556` with Bridge PID `33200` from exact OverlayHost SHA-256 `5256348F954B5107DF1AEEE48AE7DA92710B7B9DFA60A10D0923A8F8A6B58AFE`.
+- [x] Passive pinned presentation: host canvas is transparent with no host border or header.
+- [x] Controller-focused pinned presentation: entering View focus adds the white one-DIP ring without moving the media or declarative viewport.
+- [x] Placement/opacity adjustment: the blue host canvas, title/instruction header, and three-DIP outline appear only while adjustment is active.
+- [x] Opacity lifecycle: preview, save, and cancel preserve the selected alpha and restore transparent focused/passive presentation when adjustment ends.
+- [x] Added compile-time-only paint-path trace fields plus real HWND layered-window assertions for passive, focused, placement, opacity preview/save/cancel, alpha, and exact content-viewport stability.
+- [!] First focused execution: `pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -WidgetSurfaceTestsOnly` stopped before test compilation with `LNK1104` on the same-tree `ArtworkDecoderHost.exe`. Exact live owner is PID `36460`, alongside accepted OverlayHost PID `22556` and Bridge PID `33200`; this is an artifact-lock/setup red, not product or test behavior evidence.
+- [x] Reviewer identity-checked and released exact PIDs `22556`, `33200`, and `36460`; the one authorized replacement `WidgetSurfaceTestsOnly` passed 342 checks with a pinned private working-set delta of 12,288 bytes.
+- [x] Exact-staged only `WidgetSurfaceCoordinator.cpp`, `WidgetSurfaceCoordinator.h`, and `WidgetSurfaceCoordinatorTests.cpp`; cached diff-check passed and commit `e03e84b6b6fc8778bee5d0d288cb26f08387d16c` records the accepted production/test closure. This plan was not staged or committed.
 
 ## Post-acceptance focused-test checklist
 
@@ -29,7 +48,7 @@ For this item only, this file is implementation-owned after assignment. The plat
 - [x] Update the existing YouTube focused declaration oracle for `0.3.19`, exact X/Y/LT/RT shortcut labels, and X/LT/RT-only QuickActions.
 - [x] Reuse the already-owned MediaSessionManager, PinnedSurface, WidgetSurface, renderer, and accessibility scenarios named by WIDGE-178; do not create an exhaustive transition table or duplicate equivalent cases.
 - [x] Before each gate, record the exact selector and preserve the accepted running candidate. The one PinnedSurface first red received one bounded source-locator correction and its exact replacement passed.
-- [ ] If all focused gates are green, review the full production/docs/tests diff, run `git diff --check`, exact-stage only WIDGE-178 paths, inspect cached diff, commit `[WIDGE-178] ...`, and report commit/tree/artifact provenance/residual physical risk/cleanliness. Do not install, launch, integrate, push, or mutate Plane.
+- [x] Reviewed the full production/test diff, ran `git diff --check`, exact-staged only the three WIDGE-178 coordinator paths, inspected the cached diff, and committed `[WIDGE-178] refine pinned surface focus chrome`. The living plan remains the sole unstaged file. No install, launch, integration, push, or Plane mutation occurred during closure.
 
 Focused gate order for this accepted amendment:
 
