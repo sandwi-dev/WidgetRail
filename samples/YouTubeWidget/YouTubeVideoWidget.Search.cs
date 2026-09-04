@@ -546,18 +546,17 @@ public sealed partial class YouTubeVideoWidget
             case LinkRouteActionId:
                 _model.Update(state => state.WithRoute(YouTubeRoute.Link));
                 return true;
-            case CaptionsActionId when _model.Value.Route is YouTubeRoute.Player or
-                YouTubeRoute.PlayerSettings:
-                _model.Update(state => state.WithRoute(
-                    state.Route == YouTubeRoute.Player
-                        ? YouTubeRoute.PlayerSettings
-                        : YouTubeRoute.Captions));
+            case CaptionsActionId when _model.Value.RendersLiveTransport:
+                _model.Update(state => state.WithPlayerSettingsRoute());
+                return true;
+            case CaptionsActionId when _model.Value.Route == YouTubeRoute.PlayerSettings:
+                _model.Update(state => state.WithRoute(YouTubeRoute.Captions));
                 return true;
             case PlaybackRateActionId when _model.Value.Route == YouTubeRoute.PlayerSettings:
                 _model.Update(state => state.WithRoute(YouTubeRoute.PlaybackRatePicker));
                 return true;
             case PlayerSettingsBackActionId:
-                _model.Update(state => state.WithRoute(YouTubeRoute.Player));
+                _model.Update(state => state.WithRoute(state.PlayerSettingsReturnRoute));
                 return true;
             case PlaybackRateBackActionId:
                 _model.Update(state => state.WithRoute(YouTubeRoute.PlayerSettings));

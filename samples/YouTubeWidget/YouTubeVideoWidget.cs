@@ -48,7 +48,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         var busyControl = playback.BusyControl;
         var transportActionsAvailable = state.CanDeclareTransportAction(IsActive);
         var controlsUnavailable = !transportActionsAvailable;
-        var showFullscreenAction = state.Route == YouTubeRoute.Player && videoId is not null;
+        var showFullscreenAction = state.RendersLiveTransport && videoId is not null;
         var fullscreenActionEnabled = showFullscreenAction && error is null && !mediaLoading;
         var captionsActionEnabled = showFullscreenAction && transportActionsAvailable;
         var media = CreateMediaSession(

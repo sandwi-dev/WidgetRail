@@ -320,6 +320,7 @@ internal sealed record YouTubeWidgetState
     public static YouTubeWidgetState Initial { get; } = new();
 
     public YouTubeRoute Route { get; init; } = YouTubeRoute.Setup;
+    public YouTubeRoute PlayerSettingsReturnRoute { get; init; } = YouTubeRoute.Player;
     public YouTubeSetupState Setup { get; init; } = YouTubeSetupState.Initial;
     public YouTubeSearchState Search { get; init; } = YouTubeSearchState.Initial;
     public YouTubePlaybackState Playback { get; init; } = YouTubePlaybackState.Initial;
@@ -369,6 +370,12 @@ internal sealed record YouTubeWidgetState
     // host drops its own activation as soon as the admitted snapshot stops
     // declaring the capability for this exact surface.
     public YouTubeWidgetState WithRoute(YouTubeRoute route) => this with { Route = route };
+
+    public YouTubeWidgetState WithPlayerSettingsRoute() => this with
+    {
+        PlayerSettingsReturnRoute = RendersLiveTransport ? Route : PlayerSettingsReturnRoute,
+        Route = YouTubeRoute.PlayerSettings,
+    };
 
     /// <summary>The route to fall back to, which needs a key before search is reachable.</summary>
     public YouTubeWidgetState WithConfiguredRoute() =>

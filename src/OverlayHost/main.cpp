@@ -2676,6 +2676,64 @@ private:
         widgetrail::media::EndpointGeometry geometry;
     };
 
+    struct FullscreenEntryDecision final {
+        std::optional<EmbeddedMediaSessionKey> sessionKey;
+        std::wstring presentationGeneration;
+        long long authoritySequence{};
+        bool sessionPresent{};
+        bool exactIdentity{};
+        bool presentationAuthorityCurrent{};
+        bool overlayOwnerCurrent{};
+        bool overlayViewport{};
+        bool committedViewport{};
+        bool fullscreenCapable{};
+        bool pinnedTakeover{};
+        bool requestEligible{};
+    };
+
+    [[nodiscard]] FullscreenEntryDecision EvaluateFullscreenEntry(
+        const std::wstring_view widgetId,
+        const widgetrail::WidgetSnapshot& interactionSnapshot) const {
+        FullscreenEntryDecision decision;
+        decision.sessionKey = CurrentEmbeddedMediaSessionKey(widgetId);
+        const auto* session = decision.sessionKey
+            ? mediaSessions_.Find(*decision.sessionKey) : nullptr;
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        const auto overlayOwner =
+            mediaSessions_.EndpointOwner(widgetrail::media::Endpoint::Overlay);
+        decision.sessionPresent = session && session->authority;
+        if (!decision.sessionPresent || !descriptor ||
+            !interactionSnapshot.embeddedMediaSession) return decision;
+        const auto& authority = *session->authority;
+        decision.presentationGeneration = authority.presentationGeneration;
+        decision.authoritySequence = authority.sequence;
+        decision.exactIdentity = authority.widgetId == widgetId &&
+            authority.instanceId == interactionSnapshot.instanceId &&
+            authority.runtimeGeneration == descriptor->runtimeGeneration &&
+            authority.presentationGeneration == descriptor->presentationGeneration &&
+            authority.sessionId == interactionSnapshot.embeddedMediaSession->id &&
+            widgetrail::SameEmbeddedMediaDocumentIdentity(
+                authority.documentIdentity, *interactionSnapshot.embeddedMediaSession);
+        decision.presentationAuthorityCurrent =
+            EmbeddedMediaPresentationAuthorityCurrent(*decision.sessionKey);
+        decision.overlayOwnerCurrent = overlayOwner &&
+            *overlayOwner == *decision.sessionKey;
+        decision.overlayViewport = authority.presentation ==
+            EmbeddedMediaPresentationState::OverlayViewport;
+        decision.committedViewport = ResolveOrdinaryOverlayEmbeddedMediaPresentationGeometry(
+            *decision.sessionKey, interactionSnapshot.sequence).geometry.has_value();
+        decision.fullscreenCapable = widgetrail::SupportsMediaPresentation(
+            *interactionSnapshot.embeddedMediaSession,
+            widgetrail::MediaPresentationKind::OverlayFullscreen);
+        decision.pinnedTakeover = pinnedSurfaceCoordinator_.pinned() &&
+            pinnedSurfaceCoordinator_.widgetId() == widgetId;
+        decision.requestEligible = decision.exactIdentity &&
+            decision.presentationAuthorityCurrent && decision.overlayOwnerCurrent &&
+            decision.overlayViewport && decision.committedViewport &&
+            decision.fullscreenCapable && !decision.pinnedTakeover;
+        return decision;
+    }
+
     [[nodiscard]] bool OverlayFullscreenMediaRequested() const noexcept {
         const auto key = CurrentEmbeddedMediaSessionKey(state_.activeWidget());
         const auto* session = key ? mediaSessions_.Find(*key) : nullptr;
@@ -2714,31 +2772,12 @@ private:
 
     // Enters the host-owned mode for the exact declaration currently admitted
     // for this widget. Returns false when nothing eligible is resident.
-    [[nodiscard]] bool EnterOverlayFullscreenMedia() {
-        if (state_.surface() != widgetrail::Surface::Widget) return false;
-        const auto* snapshot = SnapshotFor(state_.activeWidget());
-        const auto* descriptor = sessions_.FindDescriptor(state_.activeWidget());
-        const auto key = CurrentEmbeddedMediaSessionKey(state_.activeWidget());
-        auto* session = key ? mediaSessions_.Find(*key) : nullptr;
-        if (!snapshot || !descriptor || !snapshot->embeddedMediaSession ||
-            !key || !session || !session->authority ||
-            session->authority->presentation !=
-                EmbeddedMediaPresentationState::OverlayViewport ||
-            !EmbeddedMediaPresentationAuthorityCurrent(*key) ||
-            session->authority->widgetId != state_.activeWidget() ||
-            session->authority->sequence != snapshot->sequence ||
-            !ResolveOrdinaryOverlayEmbeddedMediaPresentationGeometry(
-                *key, snapshot->sequence).geometry ||
-            !widgetrail::SupportsMediaPresentation(
-                *snapshot->embeddedMediaSession,
-                widgetrail::MediaPresentationKind::OverlayFullscreen))
-            return false;
-        if (pinnedSurfaceCoordinator_.pinned() &&
-            pinnedSurfaceCoordinator_.widgetId() == state_.activeWidget())
-            return false;
+    [[nodiscard]] bool EnterOverlayFullscreenMedia(
+        const FullscreenEntryDecision& decision) {
+        if (!decision.requestEligible || !decision.sessionKey) return false;
         return mediaSessions_.RequestPresentation(
-            *key, EmbeddedMediaPresentationState::OverlayFullscreen,
-            descriptor->presentationGeneration);
+            *decision.sessionKey, EmbeddedMediaPresentationState::OverlayFullscreen,
+            decision.presentationGeneration);
     }
 
     bool ExitOverlayFullscreenMedia() {
@@ -9765,8 +9804,11 @@ private:
                     request.widgetId, *workerSnapshot, *nativeNode,
                     request.protocolButton,
                     widgetrail::input::NavigationEventPhase::Pressed)) {
-                pinnedSurfaceCoordinator_.SetActionFeedback(
-                    L"Media control updated.", false);
+                if (nativeNode->actionId !=
+                    L"host.embeddedMediaSession.enterFullscreen") {
+                    pinnedSurfaceCoordinator_.SetActionFeedback(
+                        L"Media control updated.", false);
+                }
                 continue;
             }
             const auto handled = bridge_.SendControllerInput(
@@ -13438,6 +13480,42 @@ private:
         const widgetrail::WidgetNode& node,
         const std::wstring_view protocolButton,
         const widgetrail::input::NavigationEventPhase phase) {
+        if (node.actionId == L"host.embeddedMediaSession.enterFullscreen") {
+            const auto decision = protocolButton == L"a" &&
+                    phase == widgetrail::input::NavigationEventPhase::Pressed
+                ? EvaluateFullscreenEntry(widgetId, snapshot)
+                : FullscreenEntryDecision{};
+            const bool requested = decision.requestEligible &&
+                EnterOverlayFullscreenMedia(decision);
+            AppendActionCorrelation(
+                L"stage=embedded-media-fullscreen-entry interaction-sequence=" +
+                std::to_wstring(snapshot.sequence) + L" authority-sequence=" +
+                std::to_wstring(decision.authoritySequence) + L" session=" +
+                (decision.sessionPresent ? L"1" : L"0") + L" identity=" +
+                (decision.exactIdentity ? L"1" : L"0") + L" authority=" +
+                (decision.presentationAuthorityCurrent ? L"1" : L"0") + L" owner=" +
+                (decision.overlayOwnerCurrent ? L"1" : L"0") + L" viewport=" +
+                (decision.committedViewport ? L"1" : L"0") + L" capability=" +
+                (decision.fullscreenCapable ? L"1" : L"0") + L" pinned=" +
+                (decision.pinnedTakeover ? L"1" : L"0") + L" requested=" +
+                (requested ? L"1" : L"0") + L" overlay-viewport=" +
+                (decision.overlayViewport ? L"1" : L"0") + L" a-pressed=" +
+                (protocolButton == L"a" && phase == widgetrail::input::NavigationEventPhase::Pressed ? L"1" : L"0"));
+            if (requested) RefreshAndApplyPresentation([] {});
+            else {
+                lastActionWidgetId_ = std::wstring(widgetId);
+                lastActionMessage_ = L"Fullscreen is unavailable for the current media session";
+                lastActionExpiresAt_ = GetTickCount64() + 2400;
+                if (pinnedSurfaceCoordinator_.pinned() &&
+                    pinnedSurfaceCoordinator_.widgetId() == widgetId) {
+                    pinnedSurfaceCoordinator_.SetActionFeedback(
+                        lastActionMessage_, true);
+                }
+                AppendDiagnostic(lastActionMessage_);
+            }
+            InvalidateRect(window_, nullptr, FALSE);
+            return true;
+        }
         const auto sessionKey = CurrentEmbeddedMediaSessionKey(widgetId);
         auto* session = sessionKey ? mediaSessions_.Find(*sessionKey) : nullptr;
         if (protocolButton != L"a" ||
@@ -13457,19 +13535,6 @@ private:
                 return true;
             }
             return false;
-        }
-        // Entering fullscreen is reserved because leaving it is: the host owns
-        // both edges of the mode, so a package never holds half of it. The
-        // matching exit is B, routed by RouteOverlayMediaBackButton.
-        if (node.actionId == L"host.embeddedMediaSession.enterFullscreen") {
-            if (!overlayOwner || *overlayOwner != *sessionKey ||
-                session->authority->presentation !=
-                    EmbeddedMediaPresentationState::OverlayViewport)
-                return false;
-            if (!EnterOverlayFullscreenMedia()) return false;
-            RefreshAndApplyPresentation([] {});
-            InvalidateRect(window_, nullptr, FALSE);
-            return true;
         }
         // Native media controls remain ordinary package actions. The package
         // publishes one typed playback command in its next exact snapshot;
