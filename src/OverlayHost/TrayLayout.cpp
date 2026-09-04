@@ -25,35 +25,33 @@ std::optional<TrayLayout> ComputeTrayLayout(
     constexpr float stableTrayWidth = 560.0F;
     const float layoutWidth = std::min(width, stableTrayWidth);
     const float layoutOffsetX = (width - layoutWidth) * 0.5F;
-    const float stripTop = band
+    const float bandTop = band
         ? band->top
         : std::max(0.0F, height - 112.0F);
-    const float stripBottom = band
+    const float bandBottom = band
         ? band->bottom
-        : std::max(stripTop, height - 14.0F);
-    const float stripHeight = stripBottom - stripTop;
-    if (!std::isfinite(stripTop) || !std::isfinite(stripBottom) ||
-        stripHeight <= 0.0F) return std::nullopt;
+        : std::max(bandTop, height - 14.0F);
+    const float bandHeight = bandBottom - bandTop;
+    if (!std::isfinite(bandTop) || !std::isfinite(bandBottom) ||
+        bandHeight <= 0.0F) return std::nullopt;
 
     const float verticalPadding = std::min(
-        16.0F, std::max(0.0F, (stripHeight - preferredTileSize) * 0.5F));
+        16.0F, std::max(0.0F, (bandHeight - preferredTileSize) * 0.5F));
     const float horizontalPadding = std::min(14.0F, layoutWidth * 0.15F);
     const float preferredBoundedTileSize = std::max(
         1.0F, std::min({preferredTileSize,
                         layoutWidth - horizontalPadding * 2.0F,
-                        stripHeight - verticalPadding * 2.0F}));
+                        bandHeight - verticalPadding * 2.0F}));
     const float allCatalogTileSize =
         (layoutWidth - horizontalPadding * 2.0F -
          gap * static_cast<float>(widgetCount > 0 ? widgetCount - 1 : 0)) /
         static_cast<float>(widgetCount);
     const bool stableCatalogFits = width >= stableTrayWidth &&
         allCatalogTileSize >= minimumFullCatalogTileSize &&
-        stripHeight - verticalPadding * 2.0F >= minimumFullCatalogTileSize;
+        bandHeight - verticalPadding * 2.0F >= minimumFullCatalogTileSize;
     const float tileSize = stableCatalogFits
         ? std::min(preferredBoundedTileSize, allCatalogTileSize)
         : preferredBoundedTileSize;
-    const float stripPadding = std::min(
-        14.0F, std::max(0.0F, (layoutWidth - tileSize) * 0.5F));
     const auto unreservedMaximum = stableCatalogFits
         ? widgetCount
         : static_cast<std::size_t>(std::max(
@@ -80,14 +78,14 @@ std::optional<TrayLayout> ComputeTrayLayout(
         boundedSelected > half ? boundedSelected - half : 0U,
         maximumFirst);
     const float stripWidth = tileSize * static_cast<float>(visibleCount) +
-        gap * static_cast<float>(visibleCount - 1) + stripPadding * 2.0F +
-        overflowReserve;
+        gap * static_cast<float>(visibleCount - 1) + overflowReserve;
     const float stripLeft = layoutOffsetX + (layoutWidth - stripWidth) * 0.5F;
-    const float tileLeft = stripLeft + stripPadding +
+    const float stripTop = bandTop + (bandHeight - tileSize) * 0.5F;
+    const float tileLeft = stripLeft +
         (showOverflow ? overflowSize + gap : 0.0F);
 
     TrayLayout result;
-    result.stripBounds = {stripLeft, stripTop, stripWidth, stripHeight};
+    result.stripBounds = {stripLeft, stripTop, stripWidth, tileSize};
     result.totalCount = widgetCount;
     result.tiles.reserve(visibleCount);
     for (std::size_t visibleIndex = 0; visibleIndex < visibleCount; ++visibleIndex) {
@@ -96,7 +94,7 @@ std::optional<TrayLayout> ComputeTrayLayout(
             {
                 tileLeft +
                     static_cast<float>(visibleIndex) * (tileSize + gap),
-                stripTop + verticalPadding,
+                stripTop,
                 tileSize,
                 tileSize,
             },
@@ -108,8 +106,8 @@ std::optional<TrayLayout> ComputeTrayLayout(
             firstSlot,
             firstSlot - 1,
             {
-                stripLeft + stripPadding,
-                stripTop + (stripHeight - overflowSize) * 0.5F,
+                stripLeft,
+                stripTop + (tileSize - overflowSize) * 0.5F,
                 overflowSize,
                 overflowSize,
             },
@@ -124,7 +122,7 @@ std::optional<TrayLayout> ComputeTrayLayout(
             {
                 tileLeft + tileSize * static_cast<float>(visibleCount) +
                     gap * static_cast<float>(visibleCount),
-                stripTop + (stripHeight - overflowSize) * 0.5F,
+                stripTop + (tileSize - overflowSize) * 0.5F,
                 overflowSize,
                 overflowSize,
             },

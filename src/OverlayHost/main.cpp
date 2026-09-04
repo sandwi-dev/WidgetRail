@@ -8715,6 +8715,33 @@ private:
         kTrayContextMenuItemHeightDip *
             static_cast<float>(kTrayContextMenuMaximumItems);
 
+    [[nodiscard]] static widgetrail::shell::TrayBand TrayBandBelowGuide(
+        const float height,
+        const widgetrail::OverlaySurfaceGeometry* surface = nullptr) noexcept {
+        const float guideBottom = surface
+            ? surface->footerY + surface->footerHeight
+            : std::min(66.0F, height);
+        return {
+            std::clamp(guideBottom, 0.0F, height),
+            height,
+        };
+    }
+
+    [[nodiscard]] bool IsTrayInteractivePoint(
+        const widgetrail::shell::TrayLayout& layout,
+        const float x,
+        const float y,
+        const float viewportWidth) const {
+        if (widgetrail::shell::HitTestTray(layout, x, y) ||
+            widgetrail::shell::HitTestTrayOverflow(layout, x, y)) {
+            return true;
+        }
+        const auto menu = CurrentTrayContextMenuLayout(layout, viewportWidth);
+        return menu && x >= menu->bounds.x && y >= menu->bounds.y &&
+            x < menu->bounds.x + menu->bounds.width &&
+            y < menu->bounds.y + menu->bounds.height;
+    }
+
     [[nodiscard]] bool WidgetContextMenuAuthorityCurrent() const {
         if (!widgetContextMenu_ ||
             state_.surface() != widgetrail::Surface::Widget ||
@@ -9114,11 +9141,9 @@ private:
             trayLayout = widgetrail::shell::ComputeTrayLayout(
                 metrics->viewportWidthDip, metrics->viewportHeightDip,
                 state_.order().size(), state_.selectedSlot(),
-                surfaceGeometry
-                    ? std::optional<widgetrail::shell::TrayBand>{widgetrail::shell::TrayBand{
-                        surfaceGeometry->trayY,
-                        surfaceGeometry->trayY + surfaceGeometry->trayHeight}}
-                    : std::nullopt);
+                TrayBandBelowGuide(
+                    metrics->viewportHeightDip,
+                    surfaceGeometry ? &*surfaceGeometry : nullptr));
         }
         if (interactionSession_.selectPopup()) {
             widgetrail::input::WidgetInteractionAuthority authority{};
@@ -9333,15 +9358,18 @@ private:
                     surface->footerHeight})) return true;
         }
         const auto tray = CurrentCompositionTrayLayout();
-        if (tray) return contains(trayX, trayY, tray->stripBounds);
+        if (tray) return IsTrayInteractivePoint(
+            *tray, trayX, trayY,
+            CurrentTrayViewportWidthDip(metrics->viewportWidthDip));
         const auto fallbackTray = widgetrail::shell::ComputeTrayLayout(
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
-            surface
-                ? std::optional<widgetrail::shell::TrayBand>{widgetrail::shell::TrayBand{
-                    surface->trayY, surface->trayY + surface->trayHeight}}
-                : std::nullopt);
-        return fallbackTray && contains(trayX, trayY, fallbackTray->stripBounds);
+            TrayBandBelowGuide(
+                metrics->viewportHeightDip,
+                surface ? &*surface : nullptr));
+        return fallbackTray && IsTrayInteractivePoint(
+            *fallbackTray, trayX, trayY,
+            metrics->viewportWidthDip);
     }
 
     void PinWidget(const std::wstring_view requestedWidgetId) {
@@ -14032,6 +14060,7 @@ private:
         return backgroundBrush_ && cardBrush_ && solidCardBrush_ && textBrush_ && secondaryBrush_ &&
                dashboardSecondaryBrush_ && dashboardTextBrush_ && accentBrush_ &&
                successBrush_ && trayItemBrush_ && trayItemTextBrush_ &&
+               traySelectedBrush_ && traySelectedTextBrush_ &&
                selectedTextBrush_ && focusBrush_ && titleFormat_ && bodyFormat_ &&
                hintFormat_ && iconFormat_;
     }
@@ -14114,8 +14143,13 @@ private:
                            trayItemSelectedStyle_.opacity());
         const auto itemBackground = PaintedLayer(
             trayItemStyle_.background(), trayBackground, trayItemStyle_.opacity());
+        const auto traySelectedBackground = PaintedLayer(
+            trayItemSelectedStyle_.background(), kDefaultAccent,
+            trayItemSelectedStyle_.opacity());
         const auto trayItemForeground = colorOr(
             trayItemStyle_.foreground(), dashboardForeground);
+        const auto traySelectedForeground = colorOr(
+            trayItemSelectedStyle_.foreground(), foreground);
         const auto selectedForeground = colorOr(
             trayItemSelectedFocusedStyle_.foreground(),
             colorOr(trayItemSelectedStyle_.foreground(), foreground));
@@ -14151,6 +14185,12 @@ private:
         renderTarget_->CreateSolidColorBrush(
             D2DColor(trayItemForeground),
             trayItemTextBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(traySelectedBackground),
+            traySelectedBrush_.ReleaseAndGetAddressOf());
+        renderTarget_->CreateSolidColorBrush(
+            D2DColor(traySelectedForeground),
+            traySelectedTextBrush_.ReleaseAndGetAddressOf());
         renderTarget_->CreateSolidColorBrush(
             D2DColor(selectedForeground), selectedTextBrush_.ReleaseAndGetAddressOf());
         renderTarget_->CreateSolidColorBrush(
@@ -14245,6 +14285,8 @@ private:
         titleFormat_.Reset();
         focusBrush_.Reset();
         selectedTextBrush_.Reset();
+        traySelectedTextBrush_.Reset();
+        traySelectedBrush_.Reset();
         trayItemTextBrush_.Reset();
         trayItemBrush_.Reset();
         accentBrush_.Reset();
@@ -14804,18 +14846,19 @@ private:
 
     [[nodiscard]] bool IsCurrentFixedChromeHit(
         const POINT screenPoint) const {
-        if (!compositionChromeSession_) return false;
+        if (!compositionChromeSession_ ||
+            compositionChromeSession_->pixelsPerDip <= 0.0F) return false;
         const auto trayLayout = CurrentCompositionTrayLayout();
         if (!trayLayout) return false;
-        const auto tray = ProjectTrayBoundsToScreen(trayLayout->stripBounds);
-        if (!tray) return false;
-        if (PtInRect(&*tray, screenPoint) != FALSE)
-            return true;
-        const auto menu = CurrentTrayContextMenuLayout(
-            *trayLayout, CurrentTrayViewportWidthDip(0.0F));
-        if (!menu) return false;
-        const auto menuBounds = ProjectTrayBoundsToScreen(menu->bounds);
-        return menuBounds && PtInRect(&*menuBounds, screenPoint) != FALSE;
+        const auto traySurface = ProjectChromeClientBoundsToScreen(
+            compositionChromeSession_->trayClientBounds);
+        if (!traySurface) return false;
+        const float x = static_cast<float>(screenPoint.x - traySurface->left) /
+            compositionChromeSession_->pixelsPerDip;
+        const float y = static_cast<float>(screenPoint.y - traySurface->top) /
+            compositionChromeSession_->pixelsPerDip;
+        return IsTrayInteractivePoint(
+            *trayLayout, x, y, CurrentTrayViewportWidthDip(0.0F));
     }
 
     [[nodiscard]] bool EnsureFixedChromeAnchor() {
@@ -14973,15 +15016,27 @@ private:
         session.dpi = effectiveDpi;
         session.key = std::move(key);
         session.pixelsPerDip = metrics->physicalPixelsPerDip;
-        const LONG trayTop = guideHeight + guideToTrayGap;
-        const auto localTrayLayout = ComputeCompositionTrayLayout(session);
-        if (!localTrayLayout) return false;
         const LONG guideLeft = (chromeWidth - guideWidth) / 2;
         const LONG trayLeft = (chromeWidth - trayWidth) / 2;
         session.guideClientBounds = {
             guideLeft, trayMenuHeadroom,
             guideLeft + guideWidth, trayMenuHeadroom + guideHeight,
         };
+        const auto localTrayLayout = ComputeCompositionTrayLayout(session);
+        if (!localTrayLayout) return false;
+        const LONG localStripTop = static_cast<LONG>(std::floor(
+            localTrayLayout->stripBounds.y * session.pixelsPerDip));
+        const LONG localStripBottom = static_cast<LONG>(std::ceil(
+            (localTrayLayout->stripBounds.y + localTrayLayout->stripBounds.height) *
+            session.pixelsPerDip));
+        const LONG stripHeight = std::max(1L, localStripBottom - localStripTop);
+        const LONG freeBandHeight = std::max(
+            0L, chromeHeight - session.guideClientBounds.bottom);
+        const LONG centeredStripTop = session.guideClientBounds.bottom +
+            std::max(0L, (freeBandHeight - stripHeight) / 2L);
+        const LONG maximumTrayTop = std::max(0L, chromeHeight - traySurfaceHeight);
+        const LONG trayTop = std::clamp(
+            centeredStripTop - localStripTop, 0L, maximumTrayTop);
         session.trayClientBounds = {
             trayLeft, trayTop,
             trayLeft + trayWidth, trayTop + traySurfaceHeight,
@@ -15206,12 +15261,8 @@ private:
                     std::to_wstring(static_cast<int>(
                         DisplayWidgetIcon(state_.order()[tile.slot]))),
                 selected,
-                // The retained DirectComposition tray is selection chrome.
-                // Entering, moving within, or leaving widget content changes
-                // UIA/input focus but must never clear or redraw this child.
-                // A later tray-owned selection/order/style update refreshes
-                // the complete raster and its in-bounds selection indicator.
-                false,
+                selected &&
+                    state_.focusRegion() == widgetrail::FocusRegion::Tray,
             });
         }
         if (layout.nextOverflow) {
@@ -15830,28 +15881,11 @@ private:
             ? std::optional<widgetrail::shell::TrayLayout>{}
             : widgetrail::shell::ComputeTrayLayout(
                 width, height, state_.order().size(), state_.selectedSlot(),
-                surfaceGeometry
-                    ? std::optional<widgetrail::shell::TrayBand>{widgetrail::shell::TrayBand{
-                        surfaceGeometry->trayY,
-                        surfaceGeometry->trayY + surfaceGeometry->trayHeight,
-                    }}
-                    : std::nullopt);
+                TrayBandBelowGuide(height, surfaceGeometry));
         const auto* layout = frameLayout
             ? frameLayout
             : computedLayout ? &*computedLayout : nullptr;
         if (!layout) return;
-        const auto& stripBounds = layout->stripBounds;
-        const D2D1_ROUNDED_RECT strip{
-            D2D1::RectF(
-                stripBounds.x, stripBounds.y,
-                stripBounds.x + stripBounds.width,
-                stripBounds.y + stripBounds.height),
-            trayCornerRadius_, trayCornerRadius_};
-        widgetrail::shell::FillColorKeyRoundedRectangle(
-            renderTarget_.Get(), strip, backgroundBrush_.Get(),
-            compositionSurface_.available()
-                ? widgetrail::shell::OuterChromeBoundary::PremultipliedAlpha
-                : widgetrail::shell::OuterChromeBoundary::ColorKeyAliased);
 
         const auto drawOverflow = [&](const widgetrail::shell::TrayOverflowLayout& overflow) {
             const auto& bounds = overflow.bounds;
@@ -15885,7 +15919,7 @@ private:
                 D2D1::RectF(x, top, x + tileSize, top + tileSize),
                 trayItemCornerRadius_, trayItemCornerRadius_};
             renderTarget_->FillRoundedRectangle(
-                tile, slot == state_.selectedSlot() ? accentBrush_.Get()
+                tile, slot == state_.selectedSlot() ? traySelectedBrush_.Get()
                                                     : trayItemBrush_.Get());
             if (slot == state_.selectedSlot()) {
                 const float indicatorInset = std::min(18.0F, tileSize * 0.28F);
@@ -15894,9 +15928,9 @@ private:
                     D2D1::RectF(x + indicatorInset, top + tileSize - indicatorHeight,
                                 x + tileSize - indicatorInset, top + tileSize),
                     2.0F, 2.0F};
-                renderTarget_->FillRoundedRectangle(indicator, selectedTextBrush_.Get());
-                if (!compositionSurface_.available() &&
-                    state_.focusRegion() == widgetrail::FocusRegion::Tray) {
+                renderTarget_->FillRoundedRectangle(
+                    indicator, traySelectedTextBrush_.Get());
+                if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
                     renderTarget_->DrawRoundedRectangle(
                         tile, focusBrush_.Get(), focusOutlineWidth_);
                 }
@@ -15909,7 +15943,7 @@ private:
                 D2D1::RectF(x + iconInset, top + iconInset,
                             x + tileSize - iconInset, top + tileSize - iconInset),
                 slot == state_.selectedSlot()
-                    ? selectedTextBrush_.Get()
+                    ? traySelectedTextBrush_.Get()
                     : trayItemTextBrush_.Get(),
                 2.35F);
         }
@@ -16080,7 +16114,8 @@ private:
             const auto layout = frameTrayLayout
                 ? std::optional<widgetrail::shell::TrayLayout>{*frameTrayLayout}
                 : widgetrail::shell::ComputeTrayLayout(
-                    width, height, state_.order().size(), state_.selectedSlot());
+                    width, height, state_.order().size(), state_.selectedSlot(),
+                    TrayBandBelowGuide(height));
             if (layout) PublishTrayAccessibility(*layout, width, height, &dashboard);
         }
     }
@@ -16420,8 +16455,7 @@ private:
             ? std::optional<widgetrail::shell::TrayLayout>{}
             : widgetrail::shell::ComputeTrayLayout(
                 width, height, state_.order().size(), state_.selectedSlot(),
-                widgetrail::shell::TrayBand{
-                    geometry->trayY, geometry->trayY + geometry->trayHeight});
+                TrayBandBelowGuide(height, &*geometry));
         const auto* trayLayout = frameTrayLayout
             ? frameTrayLayout
             : sessionTrayLayout ? &*sessionTrayLayout
@@ -17242,6 +17276,8 @@ private:
     ComPtr<ID2D1SolidColorBrush> successBrush_;
     ComPtr<ID2D1SolidColorBrush> trayItemBrush_;
     ComPtr<ID2D1SolidColorBrush> trayItemTextBrush_;
+    ComPtr<ID2D1SolidColorBrush> traySelectedBrush_;
+    ComPtr<ID2D1SolidColorBrush> traySelectedTextBrush_;
     ComPtr<ID2D1SolidColorBrush> selectedTextBrush_;
     ComPtr<ID2D1SolidColorBrush> focusBrush_;
     ComPtr<IDWriteTextFormat> titleFormat_;

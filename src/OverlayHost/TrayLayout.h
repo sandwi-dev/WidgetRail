@@ -31,6 +31,8 @@ struct TrayOverflowLayout final {
 };
 
 struct TrayLayout final {
+    // Tight visual envelope of the visible tiles and overflow controls. It is
+    // not an interactive panel; pointer authority remains on the controls.
     declarative::Rect stripBounds;
     std::vector<TrayTileLayout> tiles;
     std::optional<TrayOverflowLayout> previousOverflow;
