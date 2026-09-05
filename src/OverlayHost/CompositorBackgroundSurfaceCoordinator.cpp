@@ -1,5 +1,7 @@
 #include "CompositorBackgroundSurfaceCoordinator.h"
 
+#include "BackgroundSurfaceTransitionPolicy.h"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -10,9 +12,9 @@ using Microsoft::WRL::ComPtr;
 
 namespace widgetrail {
 namespace {
-constexpr std::uint64_t kSettleMilliseconds = 150;
-constexpr std::uint64_t kFadeMilliseconds = 400;
-constexpr std::uint64_t kMaximumRebaseBytes = 32ULL * 1024ULL * 1024ULL;
+constexpr auto kSettleMilliseconds = background_surface_policy::SettleMilliseconds;
+constexpr auto kFadeMilliseconds = background_surface_policy::FadeMilliseconds;
+constexpr auto kMaximumRebaseBytes = background_surface_policy::MaximumRebaseBytes;
 }
 
 bool CompositorBackgroundSurfaceCoordinator::SameDestination(
@@ -45,7 +47,57 @@ std::wstring CompositorBackgroundSurfaceCoordinator::Key(
         L"\x1f" + background.artworkHandle + L"\x1f" + background.imageFit;
 }
 
-bool CompositorBackgroundSurfaceCoordinator::Stage(
+bool CompositorBackgroundSurfaceCoordinator::RebaseOutgoing(
+    const State& state,
+    DeclarativeRenderer& renderer,
+    ID2D1RenderTarget* const target,
+    const unsigned int width,
+    const unsigned int height,
+    const std::uint64_t nowMilliseconds,
+    Image& result,
+    std::wstring& diagnostic) const {
+    if (!state.committed || !state.incoming || !target ||
+        static_cast<std::uint64_t>(width) * height * 4ULL >
+            kMaximumRebaseBytes) {
+        diagnostic = L"rebase=resource-bound";
+        return false;
+    }
+    const auto elapsed = std::min<std::uint64_t>(
+        kFadeMilliseconds, nowMilliseconds - state.transitionStartedAt);
+    const float linear = static_cast<float>(elapsed) /
+        static_cast<float>(kFadeMilliseconds);
+    const float inverse = 1.0F - linear;
+    const float progress = 1.0F - inverse * inverse * inverse;
+    ComPtr<ID2D1BitmapRenderTarget> composite;
+    const auto size = D2D1::SizeF(
+        state.incoming->descriptor.bounds.width,
+        state.incoming->descriptor.bounds.height);
+    if (FAILED(target->CreateCompatibleRenderTarget(
+            &size, nullptr, nullptr,
+            D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
+            composite.ReleaseAndGetAddressOf())) || !composite) {
+        diagnostic = L"rebase=failed";
+        return false;
+    }
+    composite->BeginDraw();
+    composite->Clear(D2D1::ColorF(0, 0, 0, 0));
+    (void)renderer.PaintCompositorBackground(
+        composite.Get(), state.committed->descriptor,
+        state.committed->bitmap.Get(), false, 1.0F);
+    (void)renderer.PaintCompositorBackground(
+        composite.Get(), state.incoming->descriptor,
+        state.incoming->bitmap.Get(), false, progress);
+    result.descriptor = state.incoming->descriptor;
+    if (FAILED(composite->EndDraw()) ||
+        FAILED(composite->GetBitmap(result.bitmap.ReleaseAndGetAddressOf()))) {
+        diagnostic = L"rebase=failed";
+        return false;
+    }
+    return true;
+}
+
+CompositorBackgroundSurfaceCoordinator::StageDisposition
+CompositorBackgroundSurfaceCoordinator::Stage(
     State& next,
     DeclarativeRenderer& renderer,
     OverlayCompositionSurface& surface,
@@ -56,7 +108,8 @@ bool CompositorBackgroundSurfaceCoordinator::Stage(
     const bool activate,
     std::wstring& diagnostic) {
     if (!next.proposal || width == 0 || height == 0 ||
-        !std::isfinite(pixelsPerDip) || pixelsPerDip <= 0.0F) return false;
+        !std::isfinite(pixelsPerDip) || pixelsPerDip <= 0.0F)
+        return StageDisposition::Failed;
     auto& proposal = *next.proposal;
     std::array<OverlayCompositionSurface::Frame, 3> frames;
     const auto begin = [&](const std::size_t index,
@@ -70,71 +123,44 @@ bool CompositorBackgroundSurfaceCoordinator::Stage(
         frames[index].target->Clear(D2D1::ColorF(0, 0, 0, 0));
         return true;
     };
+    if (!begin(0, OverlayCompositionSurface::Layer::BackgroundBase))
+        return StageDisposition::Failed;
+    (void)renderer.PaintCompositorBackground(
+        frames[0].target.Get(), proposal.image.descriptor, nullptr, true);
+    if (FAILED(surface.EndFrame(frames[0]))) return StageDisposition::Failed;
+    OverlayCompositionSurface::CommitTiming baseTiming;
+    if (FAILED(surface.CommitBackgroundBase(frames[0], baseTiming)))
+        return StageDisposition::Failed;
     auto outgoing = next.committed;
     const std::size_t candidateIndex = outgoing ? 2 : 1;
     const auto candidateLayer = outgoing
         ? OverlayCompositionSurface::Layer::BackgroundIncoming
         : OverlayCompositionSurface::Layer::BackgroundOutgoing;
-    if (!begin(candidateIndex, candidateLayer)) return false;
+    if (!begin(candidateIndex, candidateLayer)) return StageDisposition::Failed;
     if (!proposal.image.bitmap)
         proposal.image.bitmap = renderer.ResolveCompositorBackgroundBitmap(
             frames[candidateIndex].target.Get(), proposal.image.descriptor);
     if (!proposal.image.bitmap) {
         surface.AbandonFrame(frames[candidateIndex]);
         diagnostic = L"readiness=pending";
-        return false;
+        return StageDisposition::Pending;
     }
     (void)renderer.PaintCompositorBackground(
         frames[candidateIndex].target.Get(), proposal.image.descriptor,
         proposal.image.bitmap.Get(), false);
-    if (FAILED(surface.EndFrame(frames[candidateIndex]))) return false;
-
-    if (!begin(0, OverlayCompositionSurface::Layer::BackgroundBase)) return false;
-    (void)renderer.PaintCompositorBackground(
-        frames[0].target.Get(), proposal.image.descriptor, nullptr, true);
-    if (FAILED(surface.EndFrame(frames[0]))) return false;
+    if (FAILED(surface.EndFrame(frames[candidateIndex])))
+        return StageDisposition::Failed;
 
     if (outgoing && !begin(
-            1, OverlayCompositionSurface::Layer::BackgroundOutgoing)) return false;
+            1, OverlayCompositionSurface::Layer::BackgroundOutgoing))
+        return StageDisposition::Failed;
     if (activate && next.incoming) {
-        if (static_cast<std::uint64_t>(width) * height * 4ULL >
-            kMaximumRebaseBytes) {
-            for (auto& frame : frames) surface.AbandonFrame(frame);
-            diagnostic = L"rebase=resource-bound";
-            return false;
-        }
-        const auto elapsed = std::min<std::uint64_t>(
-            kFadeMilliseconds, nowMilliseconds - next.transitionStartedAt);
-        const float linear = static_cast<float>(elapsed) /
-            static_cast<float>(kFadeMilliseconds);
-        const float inverse = 1.0F - linear;
-        const float progress = 1.0F - inverse * inverse * inverse;
-        ComPtr<ID2D1BitmapRenderTarget> composite;
-        const auto size = D2D1::SizeF(
-            proposal.image.descriptor.bounds.width,
-            proposal.image.descriptor.bounds.height);
-        if (FAILED(frames[1].target->CreateCompatibleRenderTarget(
-                &size, nullptr, nullptr,
-                D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
-                composite.ReleaseAndGetAddressOf())) || !composite) {
+        Image rebased;
+        if (!RebaseOutgoing(
+                next, renderer, frames[1].target.Get(), width, height,
+                nowMilliseconds, rebased, diagnostic)) {
             surface.AbandonFrame(frames[1]);
-            diagnostic = L"rebase=failed";
-            return false;
-        }
-        composite->BeginDraw();
-        composite->Clear(D2D1::ColorF(0, 0, 0, 0));
-        (void)renderer.PaintCompositorBackground(
-            composite.Get(), next.committed->descriptor,
-            next.committed->bitmap.Get(), false, 1.0F);
-        (void)renderer.PaintCompositorBackground(
-            composite.Get(), next.incoming->descriptor,
-            next.incoming->bitmap.Get(), false, progress);
-        Image rebased{next.incoming->descriptor, {}};
-        if (FAILED(composite->EndDraw()) ||
-            FAILED(composite->GetBitmap(rebased.bitmap.ReleaseAndGetAddressOf()))) {
-            surface.AbandonFrame(frames[1]);
-            diagnostic = L"rebase=failed";
-            return false;
+            return StageDisposition::Failed;
         }
         outgoing = std::move(rebased);
     }
@@ -142,7 +168,8 @@ bool CompositorBackgroundSurfaceCoordinator::Stage(
         (void)renderer.PaintCompositorBackground(
             frames[1].target.Get(), outgoing->descriptor,
             outgoing->bitmap.Get(), false);
-        if (FAILED(surface.EndFrame(frames[1]))) return false;
+        if (FAILED(surface.EndFrame(frames[1])))
+            return StageDisposition::Failed;
     }
     const auto generation = proposal.generation;
     OverlayCompositionSurface::BackgroundPresentation visual{
@@ -154,7 +181,7 @@ bool CompositorBackgroundSurfaceCoordinator::Stage(
     }
     OverlayCompositionSurface::CommitTiming timing;
     if (FAILED(surface.CommitFrames(pointers, false, timing, nullptr, &visual)))
-        return false;
+        return StageDisposition::Failed;
     if (!outgoing) {
         next.committed = proposal.image;
         next.proposal.reset();
@@ -168,7 +195,7 @@ bool CompositorBackgroundSurfaceCoordinator::Stage(
     }
     diagnostic = L"stage=background commit-us=" +
         std::to_wstring(timing.commitMicroseconds);
-    return true;
+    return StageDisposition::Committed;
 }
 
 bool CompositorBackgroundSurfaceCoordinator::Observe(
@@ -222,7 +249,8 @@ bool CompositorBackgroundSurfaceCoordinator::Observe(
     return true;
 }
 
-bool CompositorBackgroundSurfaceCoordinator::Advance(
+CompositorBackgroundSurfaceCoordinator::AdvanceDisposition
+CompositorBackgroundSurfaceCoordinator::Advance(
     const std::optional<ComputedCompositorBackground>& current,
     DeclarativeRenderer& renderer,
     OverlayCompositionSurface& surface,
@@ -236,33 +264,44 @@ bool CompositorBackgroundSurfaceCoordinator::Advance(
         state_.proposal->image.descriptor.focusedElementId !=
             current->focusedElementId ||
         state_.proposal->image.descriptor.snapshotSequence !=
-            current->snapshotSequence) return false;
+            current->snapshotSequence)
+        return AdvanceDisposition::NotApplicableOrStale;
     auto next = state_;
     const auto deadline = next.proposal->observedAt + kSettleMilliseconds;
     if (nowMilliseconds < deadline) {
+        StageDisposition staged = StageDisposition::Committed;
         if (!next.incoming && !next.proposal->staged)
-            (void)Stage(next, renderer, surface, width, height,
+            staged = Stage(next, renderer, surface, width, height,
                 pixelsPerDip, nowMilliseconds, false, diagnostic);
         state_ = std::move(next);
-        return true;
+        return staged == StageDisposition::Pending
+            ? AdvanceDisposition::HandledPending
+            : staged == StageDisposition::Failed
+                ? AdvanceDisposition::Failed
+                : AdvanceDisposition::Advanced;
     }
     if (next.proposal->staged && !next.incoming) {
         OverlayCompositionSurface::CommitTiming timing;
         const auto key = Key(next.proposal->image.descriptor);
         if (FAILED(surface.CommitPreparedBackground(
-                key, next.proposal->generation, timing))) return false;
+                key, next.proposal->generation, timing)))
+            return AdvanceDisposition::Failed;
         next.incoming = next.proposal->image;
         next.transitionStartedAt = nowMilliseconds;
         next.proposal.reset();
         diagnostic = L"start=opacity-only commit-us=" +
             std::to_wstring(timing.commitMicroseconds);
         state_ = std::move(next);
-        return true;
+        return AdvanceDisposition::Advanced;
     }
-    if (!Stage(next, renderer, surface, width, height,
-            pixelsPerDip, nowMilliseconds, true, diagnostic)) return false;
+    const auto staged = Stage(next, renderer, surface, width, height,
+        pixelsPerDip, nowMilliseconds, true, diagnostic);
+    if (staged == StageDisposition::Pending)
+        return AdvanceDisposition::HandledPending;
+    if (staged == StageDisposition::Failed)
+        return AdvanceDisposition::Failed;
     state_ = std::move(next);
-    return true;
+    return AdvanceDisposition::Advanced;
 }
 
 void CompositorBackgroundSurfaceCoordinator::Retire(

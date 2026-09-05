@@ -229,6 +229,7 @@ public:
     HRESULT CommitPreparedBackground(
         std::wstring_view key, std::uint64_t generation,
         CommitTiming& timing) noexcept;
+    HRESULT CommitBackgroundBase(Frame& frame, CommitTiming& timing) noexcept;
     HRESULT RetireBackground(CommitTiming& timing) noexcept;
     HRESULT CommitPresentation(
         const VisualPresentation& presentation, CommitTiming& timing) noexcept;

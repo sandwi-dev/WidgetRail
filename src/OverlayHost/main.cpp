@@ -7792,16 +7792,20 @@ private:
         if (!metrics) return false;
         std::wstring diagnostic;
         const auto contentBefore = compositionSurface_.paintCounters().content;
-        const bool advanced = compositorBackgroundCoordinator_.Advance(
+        const auto disposition = compositorBackgroundCoordinator_.Advance(
             lastWidgetRenderResult_.compositorBackground,
             *declarativeRenderer_, compositionSurface_,
             client.right - client.left, client.bottom - client.top,
             metrics->physicalPixelsPerDip, nowMilliseconds, diagnostic);
-        if (advanced) AppendDiagnostic(
+        const bool handled = disposition == widgetrail::
+                CompositorBackgroundSurfaceCoordinator::AdvanceDisposition::Advanced ||
+            disposition == widgetrail::CompositorBackgroundSurfaceCoordinator::
+                AdvanceDisposition::HandledPending;
+        if (handled) AppendDiagnostic(
             L"Background compositor " + diagnostic + L" content-repaints=" +
             std::to_wstring(compositionSurface_.paintCounters().content -
                 contentBefore));
-        return advanced;
+        return handled;
     }
 
     void InvalidateWidgetFocusChange(

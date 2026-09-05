@@ -1,5 +1,7 @@
 #include "OverlayCompositionSurface.h"
 
+#include "BackgroundSurfaceTransitionPolicy.h"
+
 #include <d3d11.h>
 #include <dxgi1_2.h>
 
@@ -971,7 +973,8 @@ HRESULT OverlayCompositionSurface::ApplyBackgroundPresentation(
         backgroundIncomingAnimation_.Reset();
         return incoming->SetOpacity(0.0F);
     }
-    constexpr double duration = 0.4;
+    constexpr double duration = static_cast<double>(
+        background_surface_policy::FadeMilliseconds) / 1000.0;
     const double elapsed = std::clamp(
         static_cast<double>(presentation.elapsedMilliseconds) / 1000.0,
         0.0, duration);
@@ -1015,6 +1018,30 @@ HRESULT OverlayCompositionSurface::CommitPreparedBackground(
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - started).count());
     if (SUCCEEDED(result)) backgroundPresentation_ = std::move(next);
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::CommitBackgroundBase(
+    Frame& frame, CommitTiming& timing) noexcept {
+    timing = {};
+    if (frame.layer != Layer::BackgroundBase || frame.drawing ||
+        !frame.surface || !backgroundBase_.visual) return E_INVALIDARG;
+    ComPtr<IDCompositionVisual3> base;
+    HRESULT result = backgroundBase_.visual.As(&base);
+    const auto started = std::chrono::steady_clock::now();
+    if (SUCCEEDED(result) && frame.replacement)
+        result = backgroundBase_.visual->SetContent(frame.surface.Get());
+    if (SUCCEEDED(result)) result = base->SetOpacity(1.0F);
+    if (SUCCEEDED(result)) result = device_->Commit();
+    timing.commitMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
+    if (SUCCEEDED(result) && frame.replacement) {
+        backgroundBase_.surface = frame.surface;
+        backgroundBase_.width = frame.width;
+        backgroundBase_.height = frame.height;
+    }
+    frame = {};
     return result;
 }
 

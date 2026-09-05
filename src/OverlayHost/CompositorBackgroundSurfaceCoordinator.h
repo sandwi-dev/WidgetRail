@@ -11,6 +11,12 @@ namespace widgetrail {
 
 class CompositorBackgroundSurfaceCoordinator final {
 public:
+    enum class AdvanceDisposition {
+        Advanced,
+        HandledPending,
+        NotApplicableOrStale,
+        Failed,
+    };
     [[nodiscard]] bool Observe(
         const ComputedCompositorBackground& background,
         DeclarativeRenderer& renderer,
@@ -20,7 +26,7 @@ public:
         float pixelsPerDip,
         std::uint64_t nowMilliseconds,
         std::wstring& diagnostic);
-    [[nodiscard]] bool Advance(
+    [[nodiscard]] AdvanceDisposition Advance(
         const std::optional<ComputedCompositorBackground>& current,
         DeclarativeRenderer& renderer,
         OverlayCompositionSurface& surface,
@@ -33,6 +39,7 @@ public:
     [[nodiscard]] std::optional<std::uint64_t> deadline() const noexcept;
 
 private:
+    enum class StageDisposition { Committed, Pending, Failed };
     struct Image final {
         ComputedCompositorBackground descriptor;
         Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
@@ -56,7 +63,16 @@ private:
         const ComputedCompositorBackground& right) noexcept;
     [[nodiscard]] static std::wstring Key(
         const ComputedCompositorBackground& background);
-    [[nodiscard]] bool Stage(
+    [[nodiscard]] bool RebaseOutgoing(
+        const State& state,
+        DeclarativeRenderer& renderer,
+        ID2D1RenderTarget* target,
+        unsigned int width,
+        unsigned int height,
+        std::uint64_t nowMilliseconds,
+        Image& result,
+        std::wstring& diagnostic) const;
+    [[nodiscard]] StageDisposition Stage(
         State& next,
         DeclarativeRenderer& renderer,
         OverlayCompositionSurface& surface,

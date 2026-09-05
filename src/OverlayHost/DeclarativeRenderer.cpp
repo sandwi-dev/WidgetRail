@@ -1,5 +1,6 @@
 #include "DeclarativeRenderer.h"
 
+#include "BackgroundSurfaceTransitionPolicy.h"
 #include "NativeIcons.h"
 #include "NativeTextLayout.h"
 #include "RemoteImageCache.h"
@@ -28,8 +29,10 @@ constexpr std::size_t kMaximumDiagnostics = 256;
 constexpr std::size_t kMaximumBitmapEntries = 256;
 constexpr std::size_t kMaximumBitmapEntryBytes = 32U * 1024U * 1024U;
 constexpr std::size_t kMaximumBitmapBytes = 96U * 1024U * 1024U;
-constexpr std::uint64_t kBackgroundSurfaceCrossfadeMilliseconds = 400;
-constexpr std::uint64_t kBackgroundSurfaceProposalSettleMilliseconds = 150;
+constexpr auto kBackgroundSurfaceCrossfadeMilliseconds =
+    background_surface_policy::FadeMilliseconds;
+constexpr auto kBackgroundSurfaceProposalSettleMilliseconds =
+    background_surface_policy::SettleMilliseconds;
 constexpr float kMinimumControlSize = 44.0F;
 constexpr float kButtonIconLabelGap = 8.0F;
 constexpr float kButtonStateCueGap = 8.0F;
@@ -2901,6 +2904,46 @@ struct DeclarativeRenderer::RenderPass final {
             D2DRect(placement.source));
     }
 
+    void DrawBackgroundSurfaceOverlays(
+        const NativeRenderStyle& style,
+        const Rect rect,
+        const float opacity) {
+        const auto radius = RadiusFor(style, rect);
+        ComPtr<ID2D1Layer> layer;
+        ComPtr<ID2D1RoundedRectangleGeometry> geometry;
+        bool rounded{};
+        if (owner->d2dFactory_ && radius > 0.0F &&
+            SUCCEEDED(owner->d2dFactory_->CreateRoundedRectangleGeometry(
+                {D2DRect(rect), radius, radius},
+                geometry.ReleaseAndGetAddressOf())) &&
+            SUCCEEDED(target->CreateLayer(nullptr, layer.ReleaseAndGetAddressOf()))) {
+            D2D1_LAYER_PARAMETERS parameters{};
+            parameters.contentBounds = D2DRect(rect);
+            parameters.geometricMask = geometry.Get();
+            parameters.maskAntialiasMode = D2D1_ANTIALIAS_MODE_PER_PRIMITIVE;
+            parameters.opacity = 1.0F;
+            target->PushLayer(parameters, layer.Get());
+            rounded = true;
+        } else {
+            target->PushAxisAlignedClip(
+                D2DRect(rect), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        }
+        if (style.imageTint()) {
+            auto tint = Brush(target, WithOpacity(*style.imageTint(), opacity));
+            if (tint) target->FillRectangle(D2DRect(rect), tint.Get());
+        }
+        if (style.scrimColor()) {
+            auto scrim = Brush(target, WithOpacity(*style.scrimColor(), opacity));
+            if (scrim) {
+                const Rect bottom{rect.x, rect.y + rect.height * 0.55F,
+                    rect.width, rect.height * 0.45F};
+                target->FillRectangle(D2DRect(bottom), scrim.Get());
+            }
+        }
+        if (rounded) target->PopLayer();
+        else target->PopAxisAlignedClip();
+    }
+
     bool DrawResolvedImageLayers(
         const WidgetNode& committedNode,
         ID2D1Bitmap* const committedBitmap,
@@ -2911,7 +2954,8 @@ struct DeclarativeRenderer::RenderPass final {
         const NativeRenderStyle& style,
         const Rect rect,
         const float opacity,
-        const bool focused) {
+        const bool focused,
+        const bool drawOverlays = true) {
         if (!target || !committedBitmap) return false;
         const auto radius = RadiusFor(style, rect);
 
@@ -2945,19 +2989,7 @@ struct DeclarativeRenderer::RenderPass final {
         // Tint and scrim are surface styling, not texture content. Apply them
         // once after the two image layers so their authored opacity remains
         // stable throughout the blend.
-        if (style.imageTint()) {
-            auto tint = Brush(target, WithOpacity(*style.imageTint(), opacity));
-            if (tint) target->FillRectangle(D2DRect(rect), tint.Get());
-        }
-        if (style.scrimColor()) {
-            auto scrim = Brush(target, WithOpacity(*style.scrimColor(), opacity));
-            if (scrim) {
-                const Rect bottom{
-                    rect.x, rect.y + rect.height * 0.55F,
-                    rect.width, rect.height * 0.45F};
-                target->FillRectangle(D2DRect(bottom), scrim.Get());
-            }
-        }
+        if (drawOverlays) DrawBackgroundSurfaceOverlays(style, rect, opacity);
         if (pushed) target->PopLayer();
         else target->PopAxisAlignedClip();
         return true;
@@ -3049,7 +3081,7 @@ struct DeclarativeRenderer::RenderPass final {
         }
         const auto estimatedBytes64 = pixelWidth * pixelHeight * 4ULL;
         const auto retainedBytes = owner->focusBackgroundCompositeBytes_;
-        if (estimatedBytes64 > kMaximumBitmapEntryBytes ||
+        if (estimatedBytes64 > background_surface_policy::MaximumRebaseBytes ||
             retainedBytes > kMaximumBitmapBytes ||
             estimatedBytes64 > kMaximumBitmapBytes - retainedBytes) {
             AddBackgroundSurfaceTransitionDiagnostic(
@@ -3099,7 +3131,7 @@ struct DeclarativeRenderer::RenderPass final {
         const auto pixelSize = bitmap->GetPixelSize();
         const auto byteCount64 = static_cast<std::uint64_t>(pixelSize.width) *
             static_cast<std::uint64_t>(pixelSize.height) * 4ULL;
-        if (byteCount64 > kMaximumBitmapEntryBytes) {
+        if (byteCount64 > background_surface_policy::MaximumRebaseBytes) {
             AddBackgroundSurfaceTransitionDiagnostic(
                 node, L"rebase-failed", L"surface-bitmap-budget");
             return {};
@@ -3988,6 +4020,8 @@ struct DeclarativeRenderer::RenderPass final {
 
         if (node.kind == L"backgroundSurface" && !compositorBackground)
             DrawBackgroundSurfaceImage(node, style, paintRect, opacity);
+        else if (compositorBackground)
+            DrawBackgroundSurfaceOverlays(style, paintRect, opacity);
 
         if (node.kind == L"actionSurface" &&
             node.actionSurfacePresentation == L"poster") {
@@ -4186,7 +4220,7 @@ bool DeclarativeRenderer::PaintCompositorBackground(
     return bitmap && pass.DrawResolvedImageLayers(
         node, bitmap, false, nullptr, nullptr, 0.0F,
         background.style, background.bounds,
-        background.opacity * opacity, false);
+        background.opacity * opacity, false, false);
 }
 
 std::optional<IncrementalPresentationPlan>
