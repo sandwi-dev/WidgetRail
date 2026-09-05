@@ -10,9 +10,14 @@ history and the preserved worktrees named below are evidence only.
 
 - Plane item: **WIDGE-158**.
 - New objective: correct the original cursor implementation's focus memory.
-- Restart baseline: `main` and `origin/main` at
-  `226e021337c7954a07a5f57a71417c7f08cbf422`.
-- Baseline tree: `4517e1284593877100f70822a894bcbfb168fe19`.
+- Production-code restart baseline:
+  `226e021337c7954a07a5f57a71417c7f08cbf422`, tree
+  `4517e1284593877100f70822a894bcbfb168fe19`.
+- Reviewer-history checkpoint:
+  `13f56afe48fc30423b3630e32a8df757f8dd149b` adds only this document on top of
+  that code baseline. A fresh implementation worktree may begin at the reviewer
+  checkpoint after verifying that its only delta from the production-code baseline
+  is `docs/widge-158-progress.md`.
 - Integration state: none of the WIDGE-158 implementation branches described in
   this document are integrated into `main`.
 - Prior candidate disposition: the complete indexed/grid-aware virtualization,
