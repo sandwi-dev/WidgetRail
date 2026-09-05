@@ -260,13 +260,24 @@ internal sealed class WidgetProcessSession(
 
     private async Task DisposeCoreAsync(CancellationToken cancellationToken)
     {
+        try
+        {
+            await DisposeOwnedResourcesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            ReleaseLeases();
+        }
+    }
+
+    private async Task DisposeOwnedResourcesAsync(CancellationToken cancellationToken)
+    {
         GestureReservations.Clear();
         PendingRequests.FailAll(new WidgetProcessException("Widget session ended."));
         Cancel();
         Pipe?.Dispose();
         Process?.Dispose();
         WindowsJob?.Dispose();
-        ReleaseLeases();
 
         Task? companionDisposeTask = null;
         if (Companion is not null)

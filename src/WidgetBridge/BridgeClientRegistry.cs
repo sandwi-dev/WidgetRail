@@ -406,14 +406,10 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         _lifetimeDiagnostic = lifetimeDiagnostic;
     }
 
-    internal int RunningWorkerCount
-    {
-        get
-        {
-            lock (_gate)
-                return _clients.Values.Count(item => !item.IsRetiring && item.Client.IsRunning);
-        }
-    }
+    // One admitted residency slot remains observable through terminal cleanup.
+    // Reaching zero is therefore the exact worker-resource retirement boundary,
+    // not merely the earlier point where a session stops accepting operations.
+    internal int RunningWorkerCount => _residentBudget.Snapshot.TotalWorkers;
 
     internal WorkerResidencyBudgetSnapshot ResidencyBudget => _residentBudget.Snapshot;
 

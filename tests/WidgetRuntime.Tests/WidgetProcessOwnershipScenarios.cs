@@ -96,12 +96,16 @@ internal static class WidgetProcessOwnershipScenarios
             "Concurrent terminal callers did not share one cleanup task.");
         True(companion.DisposeStarted, "Companion cleanup did not start.");
         False(first.IsCompleted, "Terminal cleanup completed before its companion drained.");
-        Equal(1, processLease.DisposeCount);
-        Equal(1, contentLease.DisposeCount);
+        True(session.IsTerminal,
+            "The gated session did not expose its terminal phase.");
+        Equal(0, processLease.DisposeCount);
+        Equal(0, contentLease.DisposeCount);
 
         companion.ReleaseDispose();
         await Task.WhenAll(first, second);
         True(session.IsTerminal, "The session did not retain its terminal state.");
+        Equal(1, processLease.DisposeCount);
+        Equal(1, contentLease.DisposeCount);
         Equal(1, companion.DisposeCount);
         True(ReferenceEquals(first, session.DisposeAsync()),
             "A later terminal call did not observe the completed terminal task.");

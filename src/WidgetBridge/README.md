@@ -146,6 +146,14 @@ attempts every client and retains only a saturating failure count plus the first
 failure before completing its one shared outcome; registrations do not retain
 an unconsumed duplicate retirement task.
 
+`RunningWorkerCount` reports admitted residency slots rather than only
+operation-ready sessions. It therefore remains nonzero while a terminal
+session is completing bounded cleanup and releases the slot at the same exact
+boundary as `ResidencyBudget`. Per-widget diagnostic `IsRunning` continues to
+mean that the current session is operation-ready. Consumers which require full
+worker retirement wait for `RunningWorkerCount` to reach zero; they do not
+combine two unsynchronized snapshots or add a delay.
+
 A launched Background worker remains resident under the default `keep-alive`
 policy. Entering Background cancels the shared Visible/Interactive lifetime
 used by presentation work, but explicitly permitted widget-lifetime background

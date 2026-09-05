@@ -1456,6 +1456,37 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(1, client.DisposeCount);
     }
 
+    internal static async Task RetirementCompletionIncludesResidencyRelease()
+    {
+        var configured = Widget("retirement-completion", worker: 'r', catalog: 'r');
+        await using var fixture = new RegistryFixture(
+            Catalog(configured),
+            configure: (_, client) => client.BlockDispose = true);
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        var client = fixture.Clients.Single();
+        RegistryAssert.Equal(1, fixture.Registry.RunningWorkerCount);
+        RegistryAssert.Equal(1, fixture.Registry.ResidencyBudget.ApplicationWorkers);
+        RegistryAssert.Equal(64L,
+            fixture.Registry.ResidencyBudget.ApplicationAdvisoryMemoryMb);
+
+        RegistryAssert.True(fixture.Registry.ApplyCatalog(Catalog(), revision: 1));
+        await client.DisposeEntered.WaitAsync(TimeSpan.FromSeconds(2));
+        RegistryAssert.True(!client.IsRunning,
+            "A terminal client remained operation-ready during retirement.");
+        RegistryAssert.Equal(1, fixture.Registry.RunningWorkerCount);
+        RegistryAssert.Equal(1, fixture.Registry.ResidencyBudget.ApplicationWorkers);
+        RegistryAssert.Equal(64L,
+            fixture.Registry.ResidencyBudget.ApplicationAdvisoryMemoryMb);
+
+        client.ReleaseDispose();
+        await client.Disposed.WaitAsync(TimeSpan.FromSeconds(2));
+        RegistryAssert.Equal(0, fixture.Registry.RunningWorkerCount);
+        RegistryAssert.Equal(0, fixture.Registry.ResidencyBudget.ApplicationWorkers);
+        RegistryAssert.Equal(0L,
+            fixture.Registry.ResidencyBudget.ApplicationAdvisoryMemoryMb);
+        RegistryAssert.Equal(1, client.DisposeCount);
+    }
+
     internal static async Task BudgetRefusalAndFailedStartReleaseReservations()
     {
         var first = Widget("first", worker: '1', catalog: '1');
@@ -1979,7 +2010,7 @@ internal sealed class RegistryTestClient(
         if (Interlocked.Increment(ref _disposeCount) == 1)
         {
             OnDisposeStarted?.Invoke();
-            Stop();
+            StopOperationally();
             _disposeEntered.TrySetResult();
             try
             {
@@ -1990,6 +2021,7 @@ internal sealed class RegistryTestClient(
             }
             finally
             {
+                ReleaseReservation();
                 _disposed.TrySetResult();
             }
         }
@@ -2032,10 +2064,23 @@ internal sealed class RegistryTestClient(
 
     private void Stop()
     {
-        IDisposable? reservation;
+        StopOperationally();
+        ReleaseReservation();
+    }
+
+    private void StopOperationally()
+    {
         lock (_gate)
         {
             _running = 0;
+        }
+    }
+
+    private void ReleaseReservation()
+    {
+        IDisposable? reservation;
+        lock (_gate)
+        {
             reservation = _reservation;
             _reservation = null;
         }

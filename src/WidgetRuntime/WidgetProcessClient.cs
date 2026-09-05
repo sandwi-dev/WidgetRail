@@ -1000,7 +1000,6 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             exitCode: exitCode,
             failureCode: _stopping ? "cooperative-stop" : "unexpected-exit");
         if (_stopping) return;
-        session.ReleaseLeases();
         if (TryBeginCurrentPublication(session, "process-exited", out var publication))
         {
             var startupDiagnostic = session.HandshakeCompleted
@@ -1020,6 +1019,13 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             new WidgetProcessException("Widget worker exited unexpectedly."));
         session.GestureReservations.Clear();
         session.Cancel();
+        _ = ObserveExitedSessionRetirementAsync(session.DisposeAsync());
+    }
+
+    private static async Task ObserveExitedSessionRetirementAsync(Task retirement)
+    {
+        try { await retirement.ConfigureAwait(false); }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { }
     }
 
     private void ReportFailure(

@@ -131,6 +131,10 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         _revisionNotifications = new BridgeRevisionNotificationLane();
     }
 
+    /// <summary>
+    /// Counts admitted worker residency slots, including terminal sessions
+    /// whose bounded cleanup has not yet released its residency lease.
+    /// </summary>
     public int RunningWorkerCount => _registry.RunningWorkerCount;
     public WorkerResidencyBudgetSnapshot ResidencyBudget => _registry.ResidencyBudget;
     internal int ArtworkRegistrationCount => _appLibraryArtwork?.RegistrationCount ?? 0;

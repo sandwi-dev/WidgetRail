@@ -87,6 +87,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Client registry notification burst cancels and drains on replacement", BridgeClientRegistryScenarios.NotificationBurstIsBoundedAndRetires),
     ("Client registry cancelled restart transfers exact retirement", BridgeClientRegistryScenarios.CancelledRestartTransfersRetirement),
     ("Client registry starts external retirement outside its identity gate", BridgeClientRegistryScenarios.ExternalRetirementStartsOutsideIdentityGate),
+    ("Worker retirement completion includes residency release", BridgeClientRegistryScenarios.RetirementCompletionIncludesResidencyRelease),
     ("Client registry releases refused and failed-start residency", BridgeClientRegistryScenarios.BudgetRefusalAndFailedStartReleaseReservations),
     ("Client registry terminal disposal serializes with operations", BridgeClientRegistryScenarios.TerminalDisposalSerializesWithConcurrentOperation),
     ("Client registry observes retirement failures and disposes every client", BridgeClientRegistryScenarios.RetirementFailuresAreObservedAndDrained),
@@ -3044,7 +3045,11 @@ static async Task CatalogReconciliationPreservesCompatibleWorkers()
     harness.Server.ApplyCatalog(capabilityChanged, revision: 2);
     var changedEvent = await harness.Client.ReadEventAsync(BridgeMessageTypes.CatalogChanged);
     Assert.Equal(2L, changedEvent.Payload.GetProperty("revision").GetInt64());
+    await WaitUntilAsync(() => harness.Server.RunningWorkerCount == 0,
+        TimeSpan.FromSeconds(3));
     Assert.Equal(0, harness.Server.RunningWorkerCount);
+    Assert.Equal(0, harness.Server.ResidencyBudget.ApplicationWorkers);
+    Assert.Equal(0L, harness.Server.ResidencyBudget.ApplicationAdvisoryMemoryMb);
     var changedList = await harness.Client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
     Assert.Equal(0, harness.Server.RunningWorkerCount);
     Assert.True(initialRuntime != changedList.Payload.GetProperty("widgets")[0]
