@@ -61,6 +61,7 @@ add_executable(OverlayHost WIN32
     main.cpp
     MediaSessionManager.cpp
     OverlayCompositionSurface.cpp
+    CompositorBackgroundSurfaceCoordinator.cpp
     OverlayProcessOwner.cpp
     OverlayState.cpp
     WidgetBridgeClient.cpp

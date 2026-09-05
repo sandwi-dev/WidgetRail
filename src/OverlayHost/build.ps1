@@ -1730,6 +1730,7 @@ $hostArguments = $hostCompileArguments + @(
     (Join-Path $projectDirectory 'main.cpp'),
     (Join-Path $projectDirectory 'MediaSessionManager.cpp'),
     (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
+    (Join-Path $projectDirectory 'CompositorBackgroundSurfaceCoordinator.cpp'),
     (Join-Path $projectDirectory 'RichMediaSurfaceCoordinator.cpp'),
     (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),
     (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),

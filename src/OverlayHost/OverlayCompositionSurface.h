@@ -10,6 +10,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 
 namespace widgetrail {
 
@@ -77,6 +78,9 @@ public:
     enum class ExternalContentEndpoint { Overlay, Pinned };
     enum class ExternalContentCoordinateSpace { ContentLocal, EndpointLocal };
     enum class Layer {
+        BackgroundBase,
+        BackgroundOutgoing,
+        BackgroundIncoming,
         Content,
         Guide,
         Tray,
@@ -152,6 +156,14 @@ public:
         float clipWidth{};
         float clipHeight{};
     };
+    struct BackgroundPresentation final {
+        bool visible{};
+        bool hasIncoming{};
+        bool prepared{};
+        std::wstring key;
+        std::uint64_t generation{};
+        float elapsedMilliseconds{};
+    };
 
     struct ChromePresentation final {
         float guideOffsetX{};
@@ -212,7 +224,12 @@ public:
         const VisualPresentation* presentation = nullptr) noexcept;
     HRESULT CommitFrames(
         std::span<Frame*> frames, bool waitForCompletion, CommitTiming& timing,
-        const VisualPresentation* presentation = nullptr) noexcept;
+        const VisualPresentation* presentation = nullptr,
+        const BackgroundPresentation* background = nullptr) noexcept;
+    HRESULT CommitPreparedBackground(
+        std::wstring_view key, std::uint64_t generation,
+        CommitTiming& timing) noexcept;
+    HRESULT RetireBackground(CommitTiming& timing) noexcept;
     HRESULT CommitPresentation(
         const VisualPresentation& presentation, CommitTiming& timing) noexcept;
     // Fixed chrome placement is a separate, typed presentation operation.
@@ -283,6 +300,7 @@ private:
     };
 
     Microsoft::WRL::ComPtr<IDCompositionVisual2> rootVisual_;
+    Microsoft::WRL::ComPtr<IDCompositionVisual2> presentationVisual_;
     Microsoft::WRL::ComPtr<IDCompositionVisual2> externalContentVisual_;
     bool externalContentAttached_{};
     Microsoft::WRL::ComPtr<IDCompositionVisual2> pinnedExternalRootVisual_;
@@ -308,12 +326,20 @@ private:
     ExternalContentPresentationState pinnedExternalContentPresentation_{};
     Microsoft::WRL::ComPtr<IDCompositionVisual2> chromeRootVisual_;
     Microsoft::WRL::ComPtr<IDCompositionEffectGroup> effect_;
+    LayerState backgroundBase_;
+    LayerState backgroundOutgoing_;
+    LayerState backgroundIncoming_;
     LayerState content_;
     LayerState guide_;
     LayerState tray_;
     PaintCounters paintCounters_{};
+    BackgroundPresentation backgroundPresentation_{};
+    Microsoft::WRL::ComPtr<IDCompositionAnimation> backgroundOutgoingAnimation_;
+    Microsoft::WRL::ComPtr<IDCompositionAnimation> backgroundIncomingAnimation_;
 
     HRESULT ApplyPresentation(const VisualPresentation& presentation) noexcept;
+    HRESULT ApplyBackgroundPresentation(
+        const BackgroundPresentation& presentation) noexcept;
     HRESULT ApplyChromePresentation(const ChromePresentation& presentation) noexcept;
     [[nodiscard]] LayerState& StateFor(Layer layer) noexcept;
     [[nodiscard]] const LayerState& StateFor(Layer layer) const noexcept;
