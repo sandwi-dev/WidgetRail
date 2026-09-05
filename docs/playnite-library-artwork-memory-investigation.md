@@ -427,7 +427,7 @@ game ID, artwork handle, encoded content, or request identifier.
 
 | Owner | Gauge or monotonic unit |
 | --- | --- |
-| Playnite application | encoded entry count, current encoded bytes, high-water bytes, cache hits/misses, fallback-alias count, evictions, and bounded cover/background/neutral role-event counts |
+| Playnite application | encoded entry count, current encoded bytes, high-water bytes, cache hits/misses, background-to-cover fallback count, evictions, and bounded cover/background/neutral role-event counts |
 | WidgetBridge | artwork requests/completions/failures, current and peak in-flight requests, raw bytes, Base64 characters, managed heap bytes, LOH bytes when the runtime reports them, allocation bytes/second between observations, Gen2 collection count, process private bytes, and working-set bytes |
 | native decoded cache | current encoded and decoded bytes, ready/pending/failed entries, request/hit/supply/stale-completion counts, evictions, total ready source pixels, and maximum source dimensions |
 | ordinary and pinned renderers | independent bitmap bytes/entries/hits/creates/evictions, visible versus fully clipped artwork observations, cumulative requested paint pixels, and maximum requested paint pixels |
@@ -441,7 +441,8 @@ bitmap estimate is tracked ownership, not an OS/GPU residency measurement.
 `scripts/Measure-ArtworkMemory.ps1` records timestamped process private and
 working-set bytes for explicit PID/opaque-role pairs. It performs no process
 discovery, launch, interaction, dump, GC, or content capture. Use a fresh output
-file at each of these named checkpoints: `cold-start`, `stable-home`,
+file at each of these named checkpoints; the tool atomically rejects an existing
+path and never overwrites prior evidence: `cold-start`, `stable-home`,
 `slow-navigation`, `rapid-home`, `browse`, `focus-thrash`, `hide-reopen`, the
 three idle checkpoints, and `repeat-traversal`. The reviewer/user performs the
 real overlay actions and supplies only the process identities they consent to

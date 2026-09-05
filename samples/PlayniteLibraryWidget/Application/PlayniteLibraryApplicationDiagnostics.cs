@@ -48,7 +48,7 @@ internal sealed class PlayniteLibraryApplicationDiagnostics :
             " high-water-bytes=", snapshot.HighWaterBytes,
             " hits=", snapshot.Hits,
             " misses=", snapshot.Misses,
-            " fallback-aliases=", snapshot.FallbackAliases,
+            " background-to-cover-fallbacks=", snapshot.BackgroundToCoverFallbacks,
             " evictions=", snapshot.Evictions,
             " cover-events=", snapshot.CoverEvents,
             " background-events=", snapshot.BackgroundEvents,

@@ -47,13 +47,17 @@ internal sealed class PlayniteLibraryApplicationService(
     public void PinArtworkHandles(IReadOnlyList<string> handles)
     {
         ArgumentNullException.ThrowIfNull(handles);
+        var memoryEvents = new List<PlayniteArtworkMemoryEvent>();
         lock (_artworkGate)
         {
             _pinnedArtwork = handles.Where(_artwork.ContainsKey)
                 .Take(MaximumArtworkEntries)
                 .ToHashSet(StringComparer.Ordinal);
-            TrimArtworkLocked(MaximumArtworkEntries + MaximumArtworkTransitionEntries);
+            TrimArtworkLocked(
+                MaximumArtworkEntries + MaximumArtworkTransitionEntries,
+                memoryEvents);
         }
+        RecordMemory(memoryEvents);
     }
 
     public async ValueTask<WidgetAppLibraryPage> QueryAsync(
@@ -220,15 +224,17 @@ internal sealed class PlayniteLibraryApplicationService(
                 _artworkDiagnostics.Record("authority", "unknown-handle", 1, "unknown");
                 return null;
             }
+            WidgetEncodedArtwork? cached;
             lock (_artworkGate)
-                if (_artworkContent.TryGetValue(handle.Value, out var cached))
-                {
-                    _artworkDiagnostics.RecordMemory(new(
-                        PlayniteArtworkMemoryEventKind.Hit,
-                        Role(registration.Kind),
-                        cached.Bytes.Length));
-                    return cached;
-                }
+                _artworkContent.TryGetValue(handle.Value, out cached);
+            if (cached is not null)
+            {
+                _artworkDiagnostics.RecordMemory(new(
+                    PlayniteArtworkMemoryEventKind.Hit,
+                    Role(registration.Kind),
+                    cached.Bytes.Length));
+                return cached;
+            }
             _artworkDiagnostics.RecordMemory(new(
                 PlayniteArtworkMemoryEventKind.Miss, Role(registration.Kind)));
             var result = await _client.ResolveArtworkAsync(
@@ -243,7 +249,7 @@ internal sealed class PlayniteLibraryApplicationService(
                 // unsupported payloads remain isolated failures.
                 backgroundNotFound = true;
                 _artworkDiagnostics.RecordMemory(new(
-                    PlayniteArtworkMemoryEventKind.FallbackAlias,
+                    PlayniteArtworkMemoryEventKind.BackgroundToCoverFallback,
                     PlayniteArtworkRole.Background));
                 result = await _client.ResolveArtworkAsync(
                         registration.GameId, PlayniteBridgeArtworkKind.Cover,
@@ -572,6 +578,7 @@ internal sealed class PlayniteLibraryApplicationService(
         PlayniteBridgeArtworkKind kind)
     {
         var handle = ContentId("artwork-handle", gameId, revision, kind.ToString());
+        var memoryEvents = new List<PlayniteArtworkMemoryEvent>();
         lock (_artworkGate)
         {
             if (!_artwork.ContainsKey(handle))
@@ -579,12 +586,17 @@ internal sealed class PlayniteLibraryApplicationService(
                 _artwork.Add(handle, new(gameId, revision, kind));
                 _artworkOrder.Enqueue(handle);
             }
-            TrimArtworkLocked(MaximumArtworkEntries + MaximumArtworkTransitionEntries);
+            TrimArtworkLocked(
+                MaximumArtworkEntries + MaximumArtworkTransitionEntries,
+                memoryEvents);
         }
+        RecordMemory(memoryEvents);
         return handle;
     }
 
-    private void TrimArtworkLocked(int maximumEntries)
+    private void TrimArtworkLocked(
+        int maximumEntries,
+        ICollection<PlayniteArtworkMemoryEvent> memoryEvents)
     {
         var attempts = _artworkOrder.Count;
         while (_artwork.Count > maximumEntries && attempts-- > 0)
@@ -599,7 +611,7 @@ internal sealed class PlayniteLibraryApplicationService(
                 ? registration
                 : null;
             if (_artworkContent.Remove(candidate, out var removed))
-                _artworkDiagnostics.RecordMemory(new(
+                memoryEvents.Add(new(
                     PlayniteArtworkMemoryEventKind.Eviction,
                     removedRegistration is null
                         ? PlayniteArtworkRole.Neutral
@@ -613,6 +625,7 @@ internal sealed class PlayniteLibraryApplicationService(
         ArtworkRegistration registration,
         WidgetEncodedArtwork artwork)
     {
+        PlayniteArtworkMemoryEvent? memoryEvent = null;
         lock (_artworkGate)
         {
             if (_artwork.TryGetValue(handle, out var current) &&
@@ -622,13 +635,19 @@ internal sealed class PlayniteLibraryApplicationService(
                     ? previous.Bytes.Length
                     : 0;
                 _artworkContent[handle] = artwork;
-                _artworkDiagnostics.RecordMemory(new(
+                memoryEvent = new(
                     PlayniteArtworkMemoryEventKind.Store,
                     Role(registration.Kind),
                     artwork.Bytes.Length,
-                    previousBytes));
+                    previousBytes);
             }
         }
+        if (memoryEvent is { } value) _artworkDiagnostics.RecordMemory(value);
+    }
+
+    private void RecordMemory(IEnumerable<PlayniteArtworkMemoryEvent> values)
+    {
+        foreach (var value in values) _artworkDiagnostics.RecordMemory(value);
     }
 
     private static PlayniteArtworkRole Role(PlayniteBridgeArtworkKind kind) => kind switch

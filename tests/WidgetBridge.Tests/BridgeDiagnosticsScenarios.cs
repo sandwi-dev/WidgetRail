@@ -17,16 +17,20 @@ internal static class BridgeDiagnosticsScenarios
             return lease;
         })));
         foreach (var lease in leases) lease.Dispose();
+        using (diagnostics.BeginRequest())
+        {
+            diagnostics.RecordPayload(7, 12);
+        }
 
         var snapshot = diagnostics.Capture();
-        Equal(32L, snapshot.Requests, "Artwork request accounting lost a concurrent update.");
+        Equal(33L, snapshot.Requests, "Artwork request accounting lost a concurrent update.");
         Equal(32L, snapshot.Completed, "Artwork completion accounting lost an update.");
-        Equal(0L, snapshot.Failed, "Successful artwork requests were counted as failures.");
+        Equal(1L, snapshot.Failed, "Failed artwork requests were not counted exactly once.");
         Equal(0L, snapshot.InFlight, "Artwork in-flight accounting did not drain.");
         Equal(32L, snapshot.MaximumInFlight,
             "Artwork peak concurrency did not retain the bounded high-water mark.");
-        Equal(32L * 1024L, snapshot.RawBytes, "Raw artwork bytes did not roll up exactly.");
-        Equal(32L * 1368L, snapshot.Base64Characters,
+        Equal(32L * 1024L + 7L, snapshot.RawBytes, "Raw artwork bytes did not roll up exactly.");
+        Equal(32L * 1368L + 12L, snapshot.Base64Characters,
             "Base64 character accounting did not roll up exactly.");
         Require(snapshot.ManagedHeapBytes >= 0 && snapshot.LargeObjectHeapBytes >= 0 &&
                 snapshot.AllocatedBytesPerSecond >= 0 && snapshot.Gen2Collections >= 0 &&
@@ -43,7 +47,11 @@ internal static class BridgeDiagnosticsScenarios
         diagnostics.Reset();
         var reset = diagnostics.Capture();
         Equal(0L, reset.Requests, "Artwork diagnostic reset retained request history.");
+        Equal(0L, reset.Completed, "Artwork diagnostic reset retained completion history.");
+        Equal(0L, reset.Failed, "Artwork diagnostic reset retained failure history.");
         Equal(0L, reset.RawBytes, "Artwork diagnostic reset retained payload history.");
+        Equal(0L, reset.Base64Characters,
+            "Artwork diagnostic reset retained Base64 history.");
         Equal(0L, reset.InFlight, "Artwork diagnostic reset retained in-flight work.");
     }
 

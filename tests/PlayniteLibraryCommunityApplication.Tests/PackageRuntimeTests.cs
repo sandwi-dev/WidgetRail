@@ -29,7 +29,7 @@ public sealed class PackageRuntimeTests
             PlayniteArtworkRole.Cover,
             Bytes: 1024)));
         counters.Record(new(
-            PlayniteArtworkMemoryEventKind.FallbackAlias,
+            PlayniteArtworkMemoryEventKind.BackgroundToCoverFallback,
             PlayniteArtworkRole.Background));
         counters.Record(new(
             PlayniteArtworkMemoryEventKind.Miss,
@@ -44,7 +44,7 @@ public sealed class PackageRuntimeTests
         Assert.AreEqual(32L * 1024L, snapshot.HighWaterBytes);
         Assert.AreEqual(32L, snapshot.Hits);
         Assert.AreEqual(1L, snapshot.Misses);
-        Assert.AreEqual(1L, snapshot.FallbackAliases);
+        Assert.AreEqual(1L, snapshot.BackgroundToCoverFallbacks);
         Assert.AreEqual(1L, snapshot.Evictions);
         Assert.AreEqual(65L, snapshot.CoverEvents);
         Assert.AreEqual(1L, snapshot.BackgroundEvents);

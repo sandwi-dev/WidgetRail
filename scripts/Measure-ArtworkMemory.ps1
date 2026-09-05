@@ -78,5 +78,22 @@ for ($sample = 1; $sample -le $Samples; $sample++) {
     }
 }
 
-$rows | Export-Csv -LiteralPath $resolvedOutput -NoTypeInformation -Encoding utf8
+$csv = $rows | ConvertTo-Csv -NoTypeInformation
+$stream = [System.IO.FileStream]::new(
+    $resolvedOutput,
+    [System.IO.FileMode]::CreateNew,
+    [System.IO.FileAccess]::Write,
+    [System.IO.FileShare]::None)
+try {
+    $writer = [System.IO.StreamWriter]::new(
+        $stream, [System.Text.UTF8Encoding]::new($false))
+    try {
+        foreach ($line in $csv) { $writer.WriteLine($line) }
+        $writer.Flush()
+    } finally {
+        $writer.Dispose()
+    }
+} finally {
+    $stream.Dispose()
+}
 Write-Output "Captured $($rows.Count) bounded process samples at checkpoint '$Checkpoint'."

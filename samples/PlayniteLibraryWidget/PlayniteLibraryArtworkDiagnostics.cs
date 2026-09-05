@@ -12,7 +12,7 @@ internal enum PlayniteArtworkMemoryEventKind
     Miss,
     Store,
     Eviction,
-    FallbackAlias,
+    BackgroundToCoverFallback,
 }
 
 internal enum PlayniteArtworkRole
@@ -34,7 +34,7 @@ internal readonly record struct PlayniteArtworkMemorySnapshot(
     long HighWaterBytes,
     long Hits,
     long Misses,
-    long FallbackAliases,
+    long BackgroundToCoverFallbacks,
     long Evictions,
     long CoverEvents,
     long BackgroundEvents,
@@ -71,8 +71,8 @@ internal sealed class PlayniteArtworkMemoryCounters
                 Math.Max(_snapshot.HighWaterBytes, currentBytes),
                 AddIf(_snapshot.Hits, value.Kind == PlayniteArtworkMemoryEventKind.Hit),
                 AddIf(_snapshot.Misses, value.Kind == PlayniteArtworkMemoryEventKind.Miss),
-                AddIf(_snapshot.FallbackAliases,
-                    value.Kind == PlayniteArtworkMemoryEventKind.FallbackAlias),
+                AddIf(_snapshot.BackgroundToCoverFallbacks,
+                    value.Kind == PlayniteArtworkMemoryEventKind.BackgroundToCoverFallback),
                 AddIf(_snapshot.Evictions,
                     value.Kind == PlayniteArtworkMemoryEventKind.Eviction),
                 AddIf(_snapshot.CoverEvents, value.Role == PlayniteArtworkRole.Cover),
