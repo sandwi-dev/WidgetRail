@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
@@ -19,8 +20,8 @@ public sealed class SdkGalleryWidget : Widget
     public const string MissingBackgroundArtworkHandle = "gallery.artwork.background.missing";
     private const string SampleArtworkHandle = DefaultBackgroundArtworkHandle;
     private const string SampleWebPArtworkHandle = "gallery.artwork.sample-webp";
-    private static readonly byte[] SampleWebPArtworkBytes = Convert.FromBase64String(
-        "UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAAdQmWZ0qf+BiOh/AAA=");
+    private const string SampleWebPArtworkResource =
+        "WidgetRail.Samples.SdkGalleryWidget.Assets.sample-webp.webp";
     private static readonly IReadOnlyDictionary<string, string> PackagedPngFiles =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -204,7 +205,7 @@ public sealed class SdkGalleryWidget : Widget
             return ValueTask.FromResult(ResolvePackagedPng(resourceName));
         return ValueTask.FromResult<WidgetEncodedArtwork?>(
             handle.Value == SampleWebPArtworkHandle
-                ? new WidgetEncodedArtwork(WidgetArtworkContentType.WebP, SampleWebPArtworkBytes)
+                ? ResolvePackagedWebP(SampleWebPArtworkResource)
                 : null);
     }
 
@@ -268,7 +269,13 @@ public sealed class SdkGalleryWidget : Widget
             "Nothing selected",
             "Empty states keep one clear recovery action and no decorative focus stops.",
             "gallery.overview.empty",
-            new ComponentAction("Populate example", "gallery.empty.populate", WidgetGlyph.Play)))
+            new ComponentAction("Populate example", "gallery.empty.populate", WidgetGlyph.Play)),
+        UI.Row("gallery.overview.hints",
+            UI.ControllerHint(ControllerButton.DPadRight, "Navigate", "gallery.hint.navigate"),
+            UI.ControllerHint(ControllerButton.A, "Select", "gallery.hint.select"),
+            UI.ControllerHint(ControllerButton.B, "Back", "gallery.hint.back"),
+            UI.ControllerHint(ControllerButton.RightStick, "Scroll", "gallery.hint.scroll"))
+            .Classes("gallery-controller-hints"))
         .AddClasses("gallery-page");
 
     private StackElement ControlsPage() => UI.Stack("gallery.controls",
@@ -304,6 +311,12 @@ public sealed class SdkGalleryWidget : Widget
             ],
             "gallery.controls.density",
             "Presentation density"),
+        UI.Card("gallery.controls.density-preview", CardVariant.Transparent,
+            UI.Text($"{_density} density", "gallery.controls.density-preview.title"),
+            UI.Text(
+                "The same semantic content uses a bounded spacing recipe without changing focus IDs.",
+                "gallery.controls.density-preview.description"))
+            .AddClasses("gallery-density-preview", DensityClass()),
         UI.Row("gallery.controls.openers",
             UI.Button("Choose density", "gallery.picker.open", "gallery.picker.open")
                 .Icon(WidgetGlyph.Settings).Classes("gallery-wide-action"),
@@ -369,7 +382,11 @@ public sealed class SdkGalleryWidget : Widget
                     metadata: "Bounded encoded artwork",
                     artwork: TileArtwork.FromHandle(
                         new WidgetArtworkHandle(SampleWebPArtworkHandle),
-                        "Provider-neutral encoded WebP artwork")),
+                        "Provider-neutral encoded WebP artwork"))
+                    .PresentOnFocus(UI.Stack("gallery.webp.presentation",
+                        UI.Text("Embedded WebP", "gallery.webp.presentation.title"),
+                        UI.Text("A visible 512 by 512 package resource with bounded encoded bytes.",
+                            "gallery.webp.presentation.detail"))),
                 UI.PosterTile(
                     "A deliberately longer poster title that demonstrates bounded two-line copy",
                     "Available",
@@ -379,7 +396,11 @@ public sealed class SdkGalleryWidget : Widget
                     metadata: "Provider-neutral poster",
                     artwork: TileArtwork.FromHandle(
                         new WidgetArtworkHandle(SampleArtworkHandle),
-                        "Provider-neutral poster artwork"))),
+                        "Provider-neutral poster artwork"))
+                    .PresentOnFocus(UI.Stack("gallery.poster.presentation",
+                        UI.Text("PosterTile", "gallery.poster.presentation.title"),
+                        UI.Text("Portrait artwork, bounded two-line copy, and one complete action target.",
+                            "gallery.poster.presentation.detail")))),
                 UI.Stack("gallery.tiles.presentation.default",
                     UI.Text("Choose a tile", "gallery.tiles.presentation.default.title"),
                     UI.Text("Focused details appear here without another widget render.",
@@ -395,7 +416,10 @@ public sealed class SdkGalleryWidget : Widget
             "gallery.utilities.header",
             description: "Use semantic components instead of custom drawing or focus hacks."),
         UI.Card("gallery.utilities.code-card", CardVariant.Subtle,
-            UI.Text("Copyable command", "gallery.utilities.code-title"),
+            UI.Text("Presentational command", "gallery.utilities.code-title"),
+            UI.Text(
+                "CodeText is nonfocusable and does not provide a clipboard action.",
+                "gallery.utilities.code-description"),
             UI.CodeText(
                 "dotnet run --project tools/WrailCli/WrailCli.csproj -- render <assembly> --type <widget-type>",
                 "gallery.utilities.code",
@@ -431,12 +455,22 @@ public sealed class SdkGalleryWidget : Widget
                 UI.Button("Cool artwork", "gallery.toast.show", "gallery.backgrounds.cool")
                     .Classes("gallery-background-button")
                     .FocusBackground(new WidgetArtworkHandle(CoolBackgroundArtworkHandle)))
+                .RememberChildFocus("gallery.backgrounds.warm")
                 .Classes("gallery-background-focus-row"))
             .AddClasses("gallery-background-demo-card"),
         UI.BackgroundSurface(
+                UI.Card("gallery.backgrounds.cover.card", CardVariant.Transparent,
+                    UI.Text("Cover", "gallery.backgrounds.cover.title"),
+                    UI.Text("Cover fills every edge and crops overflow when aspect ratios differ.",
+                        "gallery.backgrounds.cover.description")),
+                "gallery.backgrounds.cover.surface",
+                BackgroundSurfaceArtwork.FromHandle(
+                    new WidgetArtworkHandle(DefaultBackgroundArtworkHandle), ImageFit.Cover))
+            .AddClasses("gallery-background-demo-surface", "gallery-background-demo-surface--cover"),
+        UI.BackgroundSurface(
                 UI.Card("gallery.backgrounds.contain.card", CardVariant.Transparent,
-                    UI.Text("Nested Contain owner", "gallery.backgrounds.contain.title"),
-                    UI.Text("This nested surface consumes its own focused artwork without replacing the root.",
+                    UI.Text("Contain", "gallery.backgrounds.contain.title"),
+                    UI.Text("Contain preserves the whole image and may leave unused space.",
                         "gallery.backgrounds.contain.description"),
                     UI.Button("Focus nested artwork", "gallery.toast.show", "gallery.backgrounds.contain.focus")
                         .Classes("gallery-background-button")
@@ -499,7 +533,23 @@ public sealed class SdkGalleryWidget : Widget
         });
 
     private string InitialFocus(WidgetNavigationSnapshot<GalleryRoute> navigation) =>
-        navigation.InitialFocusId ?? ContentEntryFocus(navigation);
+        NormalizeHeaderFocus(navigation) ?? ContentEntryFocus(navigation);
+
+    private static string? NormalizeHeaderFocus(
+        WidgetNavigationSnapshot<GalleryRoute> navigation)
+    {
+        var restored = navigation.InitialFocusId;
+        if (restored is null || navigation.Route.Modal != GalleryModal.None)
+            return restored;
+        foreach (var presentation in new[] { "compact", "rail" })
+        {
+            if (Destinations.Any(destination => string.Equals(
+                    HeaderElementId(presentation, destination.Id), restored,
+                    StringComparison.Ordinal)))
+                return HeaderElementId(presentation, TabId(navigation.Route.Page));
+        }
+        return restored;
+    }
 
     private string ContentEntryFocus(WidgetNavigationSnapshot<GalleryRoute> navigation) =>
         navigation.Route.Modal switch
@@ -558,6 +608,12 @@ public sealed class SdkGalleryWidget : Widget
         _ => "gallery.tab.utilities",
     };
 
+    private static string HeaderElementId(string presentation, string destinationId) =>
+        WidgetIds.Scope("gallery.shell").KeyedId(presentation, destinationId);
+
+    private string DensityClass() =>
+        $"gallery-density-preview--{_density.ToLowerInvariant()}";
+
     private static WidgetEncodedArtwork? ResolvePackagedPng(string resourceName)
     {
         using var stream = typeof(SdkGalleryWidget).Assembly
@@ -571,5 +627,21 @@ public sealed class SdkGalleryWidget : Widget
             new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })
                 ? new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes)
                 : null;
+    }
+
+    private static WidgetEncodedArtwork? ResolvePackagedWebP(string resourceName)
+    {
+        using var stream = typeof(SdkGalleryWidget).Assembly
+            .GetManifestResourceStream(resourceName);
+        if (stream is null || !stream.CanSeek ||
+            stream.Length is < 20 or > ProtocolConstants.MaximumEncodedArtworkBytes)
+            return null;
+        var bytes = new byte[checked((int)stream.Length)];
+        stream.ReadExactly(bytes);
+        return bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) &&
+               bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8) &&
+               BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4, 4)) == bytes.Length - 8
+            ? new WidgetEncodedArtwork(WidgetArtworkContentType.WebP, bytes)
+            : null;
     }
 }

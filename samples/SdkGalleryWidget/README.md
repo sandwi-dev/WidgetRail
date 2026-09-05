@@ -10,10 +10,14 @@ The five pages cover:
 - switches, segmented tabs, `SettingsRow`, `Picker`, nested-B `ActionSheet`, and
   a controller-native `Scrubber`;
 - responsive `Tile` action surfaces for media and application content;
+- a visible embedded WebP and a portrait `PosterTile`, each with its own
+  focus-associated detail presentation;
 - deterministic package-local `BackgroundSurface` artwork with Cover, Contain,
   Fill, root/nested focus ownership, retained focus artwork, and missing-art
   fallback; and
-- `CodeText`, `LoadingIndicator`, and non-focus-stealing `Toast` feedback.
+- presentational, nonfocusable `CodeText`, `LoadingIndicator`, and
+  non-focus-stealing `Toast` feedback. `CodeText` displays bounded monospace
+  content; it does not imply clipboard behavior.
 
 The sample is also the production-style reference for the public responsive
 navigation and stable-ID coordination APIs. `UI.NavigationShell` renders one
@@ -33,9 +37,22 @@ shared worker process base and working directory. They are sealed package
 resources—not provider URLs, user paths, cache entries, or network
 dependencies. The root owns the default Cover image and
 focused-descendant replacement; nested surfaces separately demonstrate
-Contain and Fill. Focusing the unadorned **Retain artwork** button deliberately
-keeps the last accepted root image. An unknown handle demonstrates that the
-same semantic foreground remains usable when artwork cannot resolve.
+all three fit policies: Cover fills and may crop, Contain preserves the whole
+image with possible unused space, and Fill stretches to the authored bounds.
+The replacement row is one remembered-child focus group. Focusing the
+unadorned **Retain artwork** button deliberately keeps the last accepted root
+image. An unknown handle demonstrates that the same semantic foreground remains
+usable when artwork cannot resolve.
+
+The Tiles page embeds a visible 512 by 512 WebP resource inside the sample
+assembly and keeps it independent of process working directories, just like the
+PNG fixtures. WebP and PosterTile publish distinct `PresentOnFocus` fragments.
+The Controls page applies Compact, Comfortable, and Spacious classes to a
+bounded preview without changing the Select focus identity. Overview includes
+presentational controller hints for navigation, A Select, B Back, and
+right-stick scrolling. Repeated destination changes normalize only stale
+header-focus memory to the newly activated logical destination; ordinary page
+content focus memory remains owned by `WidgetNavigator`.
 
 `WidgetIds.Scope("gallery")` builds the validated navigation ID. One
 `WidgetNavigator<GalleryRoute>` owns root destinations, nested
@@ -105,11 +122,12 @@ version, or pass `-Catalog <directory>` to test against an isolated catalog.
 - The responsive grid derives columns from available logical-DIP width. The
   host may clamp every surface hint for work area, DPI, or text scale.
 
-The focused Gallery suite covers eight tests, including complete page
+The focused Gallery suite covers nine tests, including complete page
 coverage, control state, route-owned nested scopes, non-focus-stealing Toast,
 sealed provider-neutral artwork, root/nested background ownership, all current
-fit modes, missing-art fallback, generic package isolation, and
-responsive/theme-safe WRSS.
+fit modes, missing-art fallback, remembered focus groups, visible density,
+header-focus stability, generic package isolation, and responsive/theme-safe
+WRSS.
 
 See the [widget authoring guide](../../docs/widget-authoring-guide.md),
 [declarative UI reference](../../docs/declarative-ui.md), and

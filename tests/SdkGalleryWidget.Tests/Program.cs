@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using WidgetRail.Samples.SdkGalleryWidget;
 using System.Security.Cryptography;
 using WidgetRail.WidgetProtocol;
@@ -12,6 +13,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Toast feedback adds no focus or action target", ToastDoesNotTakeFocus),
     ("Trusted artwork preserves provider-neutral encoded bytes", TrustedArtwork),
     ("Background gallery proves package artwork fits focus ownership and fallback", BackgroundGallery),
+    ("Repeated header activation retains the exact logical destination", HeaderFocusDoesNotDrift),
     ("Manifest and project use the generic capability-free community path", PackageContract),
     ("Gallery WRSS is valid, responsive, and theme-token based", StyleContract),
 };
@@ -67,6 +69,14 @@ static async Task PageCoverage()
     Assert.Equal(1, overview.QuickActions.Count);
     Assert.Equal(ControllerButton.X, overview.QuickActions[0].Button);
     Assert.Equal(null, overview.QuickActions[0].Capability);
+    var hints = Find(overview, "gallery.overview.hints");
+    Assert.Equal(4, hints.Children.Count);
+    Assert.True(hints.Children.All(node => node.Kind == ViewNodeKind.Row &&
+        node.ActionId is null && node.Shortcuts.Count == 0));
+    Assert.Equal("D-pad right", Find(overview, "gallery.hint.navigate.key").Text);
+    Assert.Equal("A", Find(overview, "gallery.hint.select.key").Text);
+    Assert.Equal("B", Find(overview, "gallery.hint.back.key").Text);
+    Assert.Equal("RS", Find(overview, "gallery.hint.scroll.key").Text);
 
     await Act(widget, "gallery.tab.controls");
     var controls = Snapshot(widget, 2);
@@ -100,10 +110,24 @@ static async Task PageCoverage()
         Find(tiles, "gallery.media").FocusPresentation?.Id);
     Assert.Equal("gallery.app.presentation",
         Find(tiles, "gallery.app").FocusPresentation?.Id);
+    Assert.Equal("gallery.webp.presentation",
+        Find(tiles, "gallery.webp").FocusPresentation?.Id);
+    Assert.Equal("gallery.poster.presentation",
+        Find(tiles, "gallery.poster").FocusPresentation?.Id);
+    Assert.False(string.Equals(
+        Find(tiles, "gallery.webp").FocusPresentation?.Id,
+        Find(tiles, "gallery.poster").FocusPresentation?.Id,
+        StringComparison.Ordinal));
 
     await Act(widget, "gallery.tab.utilities");
     var utilities = Snapshot(widget, 4);
     Assert.ContainsClass(utilities, "wrail-code-text");
+    Assert.Equal("Presentational command", Find(utilities, "gallery.utilities.code-title").Text);
+    Assert.Equal(
+        "CodeText is nonfocusable and does not provide a clipboard action.",
+        Find(utilities, "gallery.utilities.code-description").Text);
+    Assert.Equal(ViewNodeKind.Text, Find(utilities, "gallery.utilities.code").Kind);
+    Assert.Equal(null, Find(utilities, "gallery.utilities.code").ActionId);
     Assert.Equal(ViewNodeKind.LoadingIndicator, Find(utilities, "gallery.utilities.loading").Kind);
     Assert.Equal(LoadingIndicatorSize.Compact, Find(utilities, "gallery.utilities.loading").IndicatorSize);
 }
@@ -123,9 +147,17 @@ static async Task ControlState()
     Assert.Equal(3, density.SelectOptions.Count);
     Assert.Equal("gallery.density.comfortable",
         density.SelectOptions.Single(option => option.IsSelected).ActionId);
+    Assert.True(Find(switched, "gallery.controls.density-preview").StyleClasses.Contains(
+        "gallery-density-preview--comfortable", StringComparer.Ordinal));
     await widget.OnActionAsync(new WidgetActionEvent(
         "gallery.density.spacious", density.Id));
-    Assert.Equal("Spacious", Find(Snapshot(widget, 2), density.Id).AccessibilityValue);
+    var spacious = Snapshot(widget, 2);
+    Assert.Equal("Spacious", Find(spacious, density.Id).AccessibilityValue);
+    Assert.Equal(density.Id, Find(spacious, "gallery.controls.density").Id);
+    Assert.True(Find(spacious, "gallery.controls.density-preview").StyleClasses.Contains(
+        "gallery-density-preview--spacious", StringComparer.Ordinal));
+    Assert.Equal("Spacious density",
+        Find(spacious, "gallery.controls.density-preview.title").Text);
 
     await widget.OnActionAsync(new WidgetActionEvent(
         "gallery.scrub", "gallery.scrubber.slider", RequestedValue: 150_000));
@@ -220,7 +252,13 @@ static async Task TrustedArtwork()
     Assert.True(webP is not null);
     Assert.Equal(WidgetArtworkContentType.WebP, webP!.ContentType);
     Assert.True(webP.Bytes.Span[..12].SequenceEqual(
-        new byte[] { 82, 73, 70, 70, 30, 0, 0, 0, 87, 69, 66, 80 }));
+        new byte[] { 82, 73, 70, 70, 4, 147, 3, 0, 87, 69, 66, 80 }));
+    Assert.Equal(234_252, webP.Bytes.Length);
+    Assert.True(WebPDimensions(webP.Bytes.Span) == (512, 512),
+        "The embedded WebP did not retain its decoded 512 by 512 canvas.");
+    Assert.Equal(
+        "F498C68D0ACD29152C084437C651D19F8E0CE376BE63C8042C62324EBFFEAB4E",
+        Convert.ToHexString(SHA256.HashData(webP.Bytes.Span)));
 }
 
 static async Task BackgroundGallery()
@@ -241,8 +279,10 @@ static async Task BackgroundGallery()
     var backgrounds = Snapshot(widget, 2);
     Assert.Equal("gallery.backgrounds.warm", backgrounds.InitialFocusId);
     Assert.Equal(0, ViewSnapshotValidator.Validate(backgrounds).Count);
-    Assert.Equal(4, Nodes(backgrounds.Root).Count(
+    Assert.Equal(5, Nodes(backgrounds.Root).Count(
         node => node.Kind == ViewNodeKind.BackgroundSurface));
+    Assert.Equal("gallery.backgrounds.warm",
+        Find(backgrounds, "gallery.backgrounds.focus-row").InitialChildFocusId);
     Assert.Equal(SdkGalleryWidget.WarmBackgroundArtworkHandle,
         Find(backgrounds, "gallery.backgrounds.warm").FocusBackgroundArtworkHandle);
     Assert.Equal<string?>(null,
@@ -250,8 +290,17 @@ static async Task BackgroundGallery()
     Assert.Equal(SdkGalleryWidget.CoolBackgroundArtworkHandle,
         Find(backgrounds, "gallery.backgrounds.cool").FocusBackgroundArtworkHandle);
 
+    var cover = Find(backgrounds, "gallery.backgrounds.cover.surface");
+    Assert.Equal(ImageFit.Cover, cover.ImageFit);
+    Assert.Equal(
+        "Cover fills every edge and crops overflow when aspect ratios differ.",
+        Find(backgrounds, "gallery.backgrounds.cover.description").Text);
+
     var contain = Find(backgrounds, "gallery.backgrounds.contain.surface");
     Assert.Equal(ImageFit.Contain, contain.ImageFit);
+    Assert.Equal(
+        "Contain preserves the whole image and may leave unused space.",
+        Find(backgrounds, "gallery.backgrounds.contain.description").Text);
     Assert.Equal(true, contain.UsesFocusedDescendantArtwork);
     Assert.Equal(SdkGalleryWidget.WarmBackgroundArtworkHandle,
         Find(backgrounds, "gallery.backgrounds.contain.focus").FocusBackgroundArtworkHandle);
@@ -259,6 +308,9 @@ static async Task BackgroundGallery()
         ["wrail-background-surface", "gallery-background-demo-surface",
          "gallery-background-demo-surface--contain"]));
     Assert.Equal(ImageFit.Fill, Find(backgrounds, "gallery.backgrounds.fill.surface").ImageFit);
+    Assert.Equal(
+        "Fill stretches the sealed warm artwork to the bounded sample region.",
+        Find(backgrounds, "gallery.backgrounds.fill.description").Text);
     Assert.Equal(ImageFit.Cover, Find(backgrounds, "gallery.backgrounds.missing.surface").ImageFit);
     Assert.Equal(SdkGalleryWidget.MissingBackgroundArtworkHandle,
         Find(backgrounds, "gallery.backgrounds.missing.surface").ArtworkHandle);
@@ -299,6 +351,32 @@ static async Task BackgroundGallery()
         "A nested BackgroundSurface survived after its exact page left the tree.");
 }
 
+static async Task HeaderFocusDoesNotDrift()
+{
+    foreach (var presentation in new[] { "gallery.shell.compact", "gallery.shell.rail" })
+    {
+        var widget = new SdkGalleryWidget();
+        var overview = Snapshot(widget, 1);
+        var controlsSource = HeaderAction(overview, presentation, "gallery.tab.controls");
+        await ActFrom(widget, "gallery.tab.controls", controlsSource.Id);
+
+        var controls = Snapshot(widget, 2);
+        var tilesSource = HeaderAction(controls, presentation, "gallery.tab.tiles");
+        await ActFrom(widget, "gallery.tab.tiles", tilesSource.Id);
+
+        var tiles = Snapshot(widget, 3);
+        var controlsReturn = HeaderAction(tiles, presentation, "gallery.tab.controls");
+        await ActFrom(widget, "gallery.tab.controls", controlsReturn.Id);
+
+        var returned = Snapshot(widget, 4);
+        Assert.Equal(controlsReturn.Id, returned.InitialFocusId);
+        Assert.Equal(controlsReturn.FocusPersistenceId,
+            Find(returned, controlsReturn.Id).FocusPersistenceId);
+        Assert.Equal("gallery.tab.controls",
+            HeaderAction(returned, presentation, "gallery.tab.controls").ActionId);
+    }
+}
+
 static Task PackageContract()
 {
     var manifest = ManifestJson.Deserialize(File.ReadAllBytes(
@@ -306,7 +384,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.6", manifest.Version);
+    Assert.Equal("0.1.7", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);
@@ -325,8 +403,11 @@ static Task PackageContract()
         "WidgetRail.Samples.SdkGalleryWidget.Assets.background-default.png",
         "WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-cool.png",
         "WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-warm.png",
+        "WidgetRail.Samples.SdkGalleryWidget.Assets.sample-webp.webp",
     };
     Assert.True(project.Contains("<EmbeddedResource Include=\"assets\\background-default.png\"",
+        StringComparison.Ordinal));
+    Assert.True(project.Contains("<EmbeddedResource Include=\"assets\\sample-webp.webp\"",
         StringComparison.Ordinal));
     foreach (var resource in expectedResources)
         Assert.True(project.Contains($"LogicalName=\"{resource}\"", StringComparison.Ordinal));
@@ -366,6 +447,21 @@ static Task StyleContract()
     var grid = compiled.Theme.Resolve(new WrssElement(
         "grid", StyleClasses: new HashSet<string>(["wrail-responsive-grid"])))!;
     Assert.Equal("100%", grid.Get("width")?.Text);
+    var compactDensity = compiled.Theme.Resolve(new WrssElement(
+        "stack", StyleClasses: new HashSet<string>(
+            ["gallery-density-preview", "gallery-density-preview--compact"])))!;
+    var comfortableDensity = compiled.Theme.Resolve(new WrssElement(
+        "stack", StyleClasses: new HashSet<string>(
+            ["gallery-density-preview", "gallery-density-preview--comfortable"])))!;
+    var spaciousDensity = compiled.Theme.Resolve(new WrssElement(
+        "stack", StyleClasses: new HashSet<string>(
+            ["gallery-density-preview", "gallery-density-preview--spacious"])))!;
+    Assert.Equal("7px", compactDensity.Get("padding")?.Text);
+    Assert.Equal("12px", comfortableDensity.Get("padding")?.Text);
+    Assert.Equal("18px", spaciousDensity.Get("padding")?.Text);
+    Assert.False(string.Equals(
+        compactDensity.Get("gap")?.Text, spaciousDensity.Get("gap")?.Text,
+        StringComparison.Ordinal));
     Assert.False(source.Contains("wrail-navigation-shell", StringComparison.Ordinal),
         "The sample must inherit the platform navigation recipe instead of rebuilding it.");
     Assert.Equal("rgba(8, 12, 18, 0.68)", root.Get("background")?.Text);
@@ -388,6 +484,12 @@ static ViewSnapshot Snapshot(SdkGalleryWidget widget, long sequence) =>
 static ValueTask Act(SdkGalleryWidget widget, string action) =>
     widget.OnActionAsync(new WidgetActionEvent(action, action));
 
+static ValueTask ActFrom(SdkGalleryWidget widget, string action, string sourceElementId) =>
+    widget.OnActionAsync(new WidgetActionEvent(action, sourceElementId));
+
+static ViewNode HeaderAction(ViewSnapshot snapshot, string presentation, string actionId) =>
+    Find(snapshot, presentation).Children.Single(node => node.ActionId == actionId);
+
 static ViewNode Find(ViewSnapshot snapshot, string id) =>
     Nodes(snapshot.Root).Single(node => node.Id == id);
 
@@ -400,6 +502,30 @@ static IEnumerable<ViewNode> Nodes(ViewNode root)
 }
 
 static string ActionSheetItemToneClass(string tone) => $"wrail-action-sheet__item--{tone}";
+
+static (int Width, int Height) WebPDimensions(ReadOnlySpan<byte> bytes)
+{
+    var offset = 12;
+    while (bytes.Length - offset >= 8)
+    {
+        var chunkLength = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(
+            bytes.Slice(offset + 4, 4)));
+        var data = offset + 8;
+        if (chunkLength > bytes.Length - data)
+            throw new InvalidOperationException("The WebP chunk is truncated.");
+        var chunk = bytes.Slice(offset, 4);
+        if (chunk.SequenceEqual("VP8L"u8))
+        {
+            if (chunkLength < 5 || bytes[data] != 0x2f)
+                throw new InvalidOperationException("The WebP lossless header is invalid.");
+            var packed = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(data + 1, 4));
+            return ((int)(packed & 0x3fff) + 1, (int)((packed >> 14) & 0x3fff) + 1);
+        }
+        var padded = chunkLength + (chunkLength & 1);
+        offset = checked(data + padded);
+    }
+    throw new InvalidOperationException("The WebP has no supported image payload.");
+}
 
 static async Task WaitUntil(Func<bool> predicate)
 {

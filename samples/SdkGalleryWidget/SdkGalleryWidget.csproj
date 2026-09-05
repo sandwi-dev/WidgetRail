@@ -17,5 +17,7 @@
                       LogicalName="WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-warm.png" />
     <EmbeddedResource Include="assets\background-focus-cool.png"
                       LogicalName="WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-cool.png" />
+    <EmbeddedResource Include="assets\sample-webp.webp"
+                      LogicalName="WidgetRail.Samples.SdkGalleryWidget.Assets.sample-webp.webp" />
   </ItemGroup>
 </Project>
