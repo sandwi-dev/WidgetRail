@@ -1709,6 +1709,56 @@ struct DeclarativeRenderer::RenderPass final {
         return scope;
     }
 
+    struct AxisFocusRevealRange final {
+        float minimumDelta{};
+        float maximumDelta{};
+        bool targetFits{};
+        bool valid{};
+    };
+
+    [[nodiscard]] static AxisFocusRevealRange ResolveAxisFocusRevealRange(
+        const float targetStart,
+        const float targetExtent,
+        const float viewportStart,
+        const float viewportExtent) noexcept {
+        if (!std::isfinite(targetStart) || !std::isfinite(targetExtent) ||
+            !std::isfinite(viewportStart) || !std::isfinite(viewportExtent) ||
+            targetExtent <= kRevealEpsilon || viewportExtent <= kRevealEpsilon) {
+            return {};
+        }
+        const bool targetFits = targetExtent <= viewportExtent + kRevealEpsilon;
+        // Delta is the screen-space translation applied to the target. A
+        // fit-sized target must be inside the viewport; an oversized target
+        // must contain the viewport. The latter exposes one complete,
+        // stable viewport-sized portion instead of alternating target edges.
+        const float minimumDelta = targetFits
+            ? viewportStart - targetStart
+            : viewportStart + viewportExtent - targetStart - targetExtent;
+        const float maximumDelta = targetFits
+            ? viewportStart + viewportExtent - targetStart - targetExtent
+            : viewportStart - targetStart;
+        return {minimumDelta, maximumDelta, targetFits, true};
+    }
+
+    [[nodiscard]] static bool AxisFocusIsRevealed(
+        const AxisFocusRevealRange& range,
+        const float delta = 0.0F,
+        const float tolerance = kRevealEpsilon) noexcept {
+        return range.valid && delta >= range.minimumDelta - tolerance &&
+            delta <= range.maximumDelta + tolerance;
+    }
+
+    [[nodiscard]] static float ResolveAxisFocusOffset(
+        const AxisFocusRevealRange& range,
+        const float currentOffset,
+        const float maximumOffset) noexcept {
+        if (!range.valid || AxisFocusIsRevealed(range)) return currentOffset;
+        const float targetDelta = std::clamp(
+            0.0F, range.minimumDelta, range.maximumDelta);
+        return std::clamp(
+            currentOffset - targetDelta, 0.0F, maximumOffset);
+    }
+
     [[nodiscard]] std::pair<bool, bool> FocusedBoundaryOf(
         const WidgetNode& scroll) const {
         const auto focusPath = FocusPath();
@@ -1767,18 +1817,17 @@ struct DeclarativeRenderer::RenderPass final {
                 viewportBox,
                 atLeadingBoundary,
                 atTrailingBoundary);
+            const auto axisRange = scrollBox->scrollAxis ==
+                    declarative::ScrollAxis::Vertical
+                ? ResolveAxisFocusRevealRange(
+                    targetRect.y, targetRect.height,
+                    viewportBox.y, viewportBox.height)
+                : ResolveAxisFocusRevealRange(
+                    targetRect.x, targetRect.width,
+                    viewportBox.x, viewportBox.width);
             const auto focusVisibleAt = [&](const float candidateOffset) {
                 const float delta = scrollBox->scrollOffset - candidateOffset;
-                if (scrollBox->scrollAxis == declarative::ScrollAxis::Vertical) {
-                    const float top = targetRect.y + delta;
-                    return top >= viewportBox.y - kRevealEpsilon &&
-                           top + targetRect.height <=
-                               viewportBox.y + viewportBox.height + kRevealEpsilon;
-                }
-                const float left = targetRect.x + delta;
-                return left >= viewportBox.x - kRevealEpsilon &&
-                       left + targetRect.width <=
-                           viewportBox.x + viewportBox.width + kRevealEpsilon;
+                return AxisFocusIsRevealed(axisRange, delta);
             };
             if (atLeadingBoundary && focusVisibleAt(0.0F)) {
                 // A just-enough reveal would stop as soon as the first control
@@ -1791,16 +1840,11 @@ struct DeclarativeRenderer::RenderPass final {
                 // Reaching the last control must expose trailing status/help
                 // content and the complete rounded card boundary as well.
                 desired = scrollBox->maximumScrollOffset;
-            } else if (scrollBox->scrollAxis == declarative::ScrollAxis::Vertical) {
-                if (targetRect.y < viewportBox.y)
-                    desired -= viewportBox.y - targetRect.y;
-                else if (targetRect.y + targetRect.height > viewportBox.y + viewportBox.height)
-                    desired += targetRect.y + targetRect.height - viewportBox.y - viewportBox.height;
             } else {
-                if (targetRect.x < viewportBox.x)
-                    desired -= viewportBox.x - targetRect.x;
-                else if (targetRect.x + targetRect.width > viewportBox.x + viewportBox.width)
-                    desired += targetRect.x + targetRect.width - viewportBox.x - viewportBox.width;
+                desired = ResolveAxisFocusOffset(
+                    axisRange,
+                    scrollBox->scrollOffset,
+                    scrollBox->maximumScrollOffset);
             }
             desired = std::clamp(desired, 0.0F, scrollBox->maximumScrollOffset);
             const auto key = ScrollStateKey(scroll.id);
@@ -1920,14 +1964,15 @@ struct DeclarativeRenderer::RenderPass final {
                 targetRect.y += offsetDelta;
             else
                 targetRect.x += offsetDelta;
-            const bool visible = scrollBox->scrollAxis ==
+            const auto axisRange = scrollBox->scrollAxis ==
                     declarative::ScrollAxis::Vertical
-                ? targetRect.y >= viewportBox.y - kRevealEpsilon &&
-                    targetRect.y + targetRect.height <=
-                        viewportBox.y + viewportBox.height + kRevealEpsilon
-                : targetRect.x >= viewportBox.x - kRevealEpsilon &&
-                    targetRect.x + targetRect.width <=
-                        viewportBox.x + viewportBox.width + kRevealEpsilon;
+                ? ResolveAxisFocusRevealRange(
+                    targetRect.y, targetRect.height,
+                    viewportBox.y, viewportBox.height)
+                : ResolveAxisFocusRevealRange(
+                    targetRect.x, targetRect.width,
+                    viewportBox.x, viewportBox.width);
+            const bool visible = AxisFocusIsRevealed(axisRange);
             sample.nodes.push_back(FocusFollowNodeObservation{
                 BoundedDiagnosticIdentifier(item->id),
                 scrollBox->scrollAxis,
@@ -2074,8 +2119,19 @@ struct DeclarativeRenderer::RenderPass final {
         const auto before = CaptureFocusFollowSample(usePresentationGeometry);
         const bool changed = ApplyFocusedDescendantFollow(usePresentationGeometry);
         const auto after = CaptureFocusFollowSample(usePresentationGeometry);
-        return RecordFocusFollowPass(
+        auto attempt = RecordFocusFollowPass(
             before, after, changed, usePresentationGeometry);
+        if (attempt.changed &&
+            (!attempt.meaningfulOffsetChange || attempt.repeatedOffsetState)) {
+            // Apply tentatively writes the exact retained vector so cycle
+            // detection can compare it. Restore the layout-owning vector
+            // before terminating; callers must not relayout a repeated state.
+            for (const auto& node : before.nodes)
+                StoreScrollOffset(ScrollStateKey(node.id), node.offset);
+            attempt.changed = false;
+            attempt.meaningfulOffsetChange = false;
+        }
+        return attempt;
     }
 
     void AddFocusFollowElapsed(
@@ -2193,9 +2249,9 @@ struct DeclarativeRenderer::RenderPass final {
             std::isfinite(options.pixelScale) && options.pixelScale > 0.0F
             ? kRevealRasterEdgePixelTolerance / options.pixelScale
             : 0.0F;
-        if (targetStart >= clipStart - rasterEdgeTolerance &&
-            targetStart + targetSize <=
-                clipStart + clipSize + rasterEdgeTolerance) {
+        const auto revealRange = ResolveAxisFocusRevealRange(
+            targetStart, targetSize, clipStart, clipSize);
+        if (AxisFocusIsRevealed(revealRange, 0.0F, rasterEdgeTolerance)) {
             return true;
         }
 
@@ -2215,19 +2271,9 @@ struct DeclarativeRenderer::RenderPass final {
         }
         if (!hasMatchingScroll) return false;
 
-        float requiredMinimum{};
-        float requiredMaximum{};
-        if (targetSize <= clipSize + kRevealEpsilon) {
-            requiredMinimum = clipStart - targetStart;
-            requiredMaximum = clipStart + clipSize - targetStart - targetSize;
-        } else {
-            // Oversized controls cannot be wholly contained; require a
-            // non-trivial visible intersection and clip their focus outline.
-            requiredMinimum = clipStart - targetStart - targetSize + kRevealEpsilon;
-            requiredMaximum = clipStart + clipSize - targetStart - kRevealEpsilon;
-        }
-        return std::max(minimumDelta, requiredMinimum) <=
-            std::min(maximumDelta, requiredMaximum) + kRevealEpsilon;
+        return revealRange.valid &&
+            std::max(minimumDelta, revealRange.minimumDelta) <=
+                std::min(maximumDelta, revealRange.maximumDelta) + kRevealEpsilon;
     }
 
     [[nodiscard]] bool CanRevealNode(const std::wstring_view nodeId) const {
@@ -2550,8 +2596,10 @@ struct DeclarativeRenderer::RenderPass final {
             bool lastFollowChanged{};
             for (std::size_t pass = 0; pass < kMaximumFocusFollowPasses; ++pass) {
                 ++followAttempts;
-                lastFollowChanged = FollowFocusedDescendant(false).changed;
-                if (!lastFollowChanged) break;
+                const auto follow = FollowFocusedDescendant(false);
+                lastFollowChanged = follow.changed;
+                if (!lastFollowChanged || !follow.meaningfulOffsetChange ||
+                    follow.repeatedOffsetState) break;
                 prepared.clear();
                 textMeasurements.clear();
                 auto revealedRoot = PrepareNode(
@@ -4765,7 +4813,6 @@ RenderResult DeclarativeRenderer::Render(
     bool presentationMatchesLayout = false;
     std::size_t presentationFollowAttempts{};
     bool lastPresentationFollowChanged{};
-    bool presentationCorrectnessFallbackUsed{};
     for (std::size_t followPass = 0;
          !options.suppressFocusedDescendantFollow &&
              followPass < kMaximumFocusFollowPasses;
@@ -4783,16 +4830,7 @@ RenderResult DeclarativeRenderer::Render(
         const bool stableOrRepeated = !lastPresentationFollowChanged ||
             !followAttempt.meaningfulOffsetChange ||
             followAttempt.repeatedOffsetState;
-        if (stableOrRepeated && !presentationCorrectnessFallbackUsed) {
-            // The focused target is still outside at least one scroll viewport.
-            // Retain any meaningful destination vector already written by the
-            // presentation pass, then use the existing bounded static/full
-            // focus-follow path once to establish a correctness checkpoint.
-            presentationCorrectnessFallbackUsed = true;
-            presentationMatchesLayout = false;
-            pass.BuildLayout();
-            continue;
-        }
+        if (stableOrRepeated) break;
         // A translated focused descendant may cross a scroll boundary even
         // when its static layout box was visible. Rebuild against the updated
         // host-owned offset and converge with the same hard bound used by
@@ -5003,6 +5041,13 @@ RenderResult DeclarativeRenderer::Render(
         elapsed(deferredFocusFinished, finalizationFinished),
     };
     pass.result.timing.focusFollowSummary = pass.BuildFocusFollowSummary();
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+    pass.result.focusFollowPassCount = pass.focusFollowTrace.passCount;
+    pass.result.focusFollowConverged = pass.focusFollowTrace.converged;
+    pass.result.focusFollowNoProgress = pass.focusFollowTrace.noProgress;
+    pass.result.focusFollowCycle = pass.focusFollowTrace.cycle;
+    pass.result.focusFollowBoundHit = pass.focusFollowTrace.boundHit;
+#endif
     pass.result.timing.collectionAdmissionSummary =
         std::move(collectionAdmissionSummary);
     return pass.result;
