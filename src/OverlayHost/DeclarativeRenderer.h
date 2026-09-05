@@ -159,6 +159,11 @@ struct RenderResult final {
     std::map<std::wstring, std::wstring, std::less<>> buttonStateCues;
     std::map<std::wstring, std::uint32_t, std::less<>> textLineCounts;
     std::map<std::wstring, std::wstring, std::less<>> backgroundArtworkHandles;
+    std::size_t focusFollowPassCount{};
+    bool focusFollowConverged{};
+    bool focusFollowNoProgress{};
+    bool focusFollowCycle{};
+    bool focusFollowBoundHit{};
 #endif
     std::map<std::wstring, declarative::Rect, std::less<>> focusRects;
     // Full logical controller geometry includes offscreen descendants of a

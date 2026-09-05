@@ -2619,6 +2619,214 @@ void NestedScrollFocusFollowReachesFixedPoint() {
          "outer scroll corrects the stale pre-inner target geometry");
 }
 
+void OversizedFocusFollowUsesOneAxisSymmetricRevealOwner() {
+    const auto axisSnapshot = [](const bool horizontal,
+                                 const double prefixExtent,
+                                 const double targetExtent,
+                                 const double suffixExtent,
+                                 const std::wstring_view instance) {
+        WidgetSnapshot snapshot;
+        snapshot.instanceId = std::wstring(instance);
+        snapshot.activeInputScopeId = L"oversized.scroll";
+        snapshot.root = Node(L"oversized.scroll", L"scroll");
+        snapshot.root.inputScopeId = snapshot.activeInputScopeId;
+        snapshot.root.scrollAxis = horizontal ? L"horizontal" : L"vertical";
+        if (horizontal)
+            snapshot.root.baseStyle.insert_or_assign(
+                L"flex-direction", Keyword(L"row"));
+        const auto sizedNode = [horizontal](
+            const wchar_t* id, const wchar_t* kind, const double extent) {
+            auto node = Node(id, kind);
+            if (kind == std::wstring_view{L"button"}) {
+                node.text = L"Oversized action";
+                node.actionId = id;
+            }
+            if (horizontal) {
+                node.baseStyle = {
+                    {L"width", Length(extent)},
+                    {L"min-width", Length(extent)},
+                    {L"height", Length(80)},
+                    {L"flex-shrink", Number(0)}};
+            } else {
+                node.baseStyle = {
+                    {L"height", Length(extent)},
+                    {L"min-height", Length(extent)},
+                    {L"flex-shrink", Number(0)}};
+            }
+            return node;
+        };
+        snapshot.root.children = {
+            sizedNode(L"oversized.prefix", L"spacer", prefixExtent),
+            sizedNode(L"oversized.target", L"button", targetExtent),
+            sizedNode(L"oversized.suffix", L"spacer", suffixExtent),
+        };
+        return snapshot;
+    };
+    const auto verify = [](const widgetrail::RenderResult& result,
+                           const bool horizontal) {
+        Check(result.focusRects.contains(L"oversized.target") &&
+              result.navigationRects.contains(L"oversized.target"),
+            "oversized focus retains visible and logical controller geometry");
+        const auto& visible = result.focusRects.at(L"oversized.target");
+        const auto& logical = result.navigationRects.at(L"oversized.target");
+        Check(horizontal
+                ? visible.width < logical.width && visible.width >= 179.9F
+                : visible.height < logical.height && visible.height >= 119.9F,
+            "oversized focus exposes one complete viewport-sized useful region");
+        Check(result.focusFollowPassCount <= 2U && result.focusFollowConverged &&
+              !result.focusFollowNoProgress && !result.focusFollowCycle &&
+              !result.focusFollowBoundHit,
+            "single-scroll oversized focus converges without cycle or pass bound");
+        const auto accessible = std::find_if(
+            result.accessibilityRegions.begin(), result.accessibilityRegions.end(),
+            [](const auto& region) { return region.nodeId == L"oversized.target"; });
+        Check(accessible != result.accessibilityRegions.end(),
+            "oversized focus retains one visible accessibility region");
+    };
+
+    widgetrail::DeclarativeRenderOptions options;
+    options.collectAccessibility = true;
+    options.pixelScale = 1.5F;
+    options.animationTimestampMilliseconds = 100;
+
+    DeclarativeRenderer verticalRenderer{nullptr, nullptr, nullptr};
+    const auto verticalSnapshot = axisSnapshot(
+        false, 100.0, 300.0, 100.0, L"oversized.vertical");
+    const auto vertical = verticalRenderer.Render(
+        nullptr, verticalSnapshot, L"oversized.target",
+        {0.0F, 0.0F, 240.0F, 120.0F}, options);
+    verify(vertical, false);
+    Near(vertical.scrollOffsets.at(L"oversized.scroll"), 100.0F,
+        "vertical oversized entry deterministically aligns its leading edge");
+    const auto verticalRetained = verticalRenderer.Render(
+        nullptr, verticalSnapshot, L"oversized.target",
+        {0.0F, 0.0F, 240.0F, 120.0F}, options);
+    Near(verticalRetained.scrollOffsets.at(L"oversized.scroll"), 100.0F,
+        "unchanged oversized focus retains its converged offset");
+    Check(verticalRetained.focusFollowPassCount <= 1U &&
+          !verticalRetained.focusFollowCycle &&
+          !verticalRetained.focusFollowBoundHit,
+        "retained oversized focus does not relayout or rediscover a cycle");
+
+    DeclarativeRenderer horizontalRenderer{nullptr, nullptr, nullptr};
+    const auto horizontalSnapshot = axisSnapshot(
+        true, 100.0, 300.0, 100.0, L"oversized.horizontal");
+    const auto horizontal = horizontalRenderer.Render(
+        nullptr, horizontalSnapshot, L"oversized.target",
+        {0.0F, 0.0F, 180.0F, 120.0F}, options);
+    verify(horizontal, true);
+    Near(horizontal.scrollOffsets.at(L"oversized.scroll"), 100.0F,
+        "horizontal oversized entry uses the same deterministic edge policy");
+
+    DeclarativeRenderer fitRenderer{nullptr, nullptr, nullptr};
+    auto fitSnapshot = axisSnapshot(
+        false, 200.0, 44.0, 100.0, L"focus-fit.vertical");
+    fitSnapshot.root.children[2] = FixedButton(L"fit.after", 100.0);
+    const auto fit = fitRenderer.Render(
+        nullptr, fitSnapshot, L"oversized.target",
+        {0.0F, 0.0F, 240.0F, 180.0F}, options);
+    Near(fit.scrollOffsets.at(L"oversized.scroll"), 64.0F,
+        "fit-sized focus retains exact full-containment reveal math");
+    Near(fit.focusRects.at(L"oversized.target").height, 44.0F,
+        "fit-sized focus remains wholly visible");
+
+    DeclarativeRenderer boundaryRenderer{nullptr, nullptr, nullptr};
+    const auto leadingSnapshot = axisSnapshot(
+        false, 0.0, 300.0, 100.0, L"oversized.leading");
+    const auto leading = boundaryRenderer.Render(
+        nullptr, leadingSnapshot, L"oversized.target",
+        {0.0F, 0.0F, 240.0F, 120.0F}, options);
+    Near(leading.scrollOffsets.at(L"oversized.scroll"), 0.0F,
+        "oversized leading boundary retains the true content start");
+    const auto trailingSnapshot = axisSnapshot(
+        false, 100.0, 300.0, 0.0, L"oversized.trailing");
+    const auto trailing = boundaryRenderer.Render(
+        nullptr, trailingSnapshot, L"oversized.target",
+        {0.0F, 0.0F, 240.0F, 120.0F}, options);
+    Near(trailing.scrollOffsets.at(L"oversized.scroll"), 280.0F,
+        "oversized trailing boundary retains the true content end");
+
+    WidgetSnapshot nested;
+    nested.instanceId = L"oversized.nested";
+    nested.activeInputScopeId = L"nested.outer";
+    nested.root = Node(L"nested.outer", L"scroll");
+    nested.root.inputScopeId = nested.activeInputScopeId;
+    nested.root.scrollAxis = L"vertical";
+    auto inner = Node(L"nested.inner", L"scroll");
+    inner.scrollAxis = L"vertical";
+    inner.baseStyle = {
+        {L"height", Length(120)}, {L"min-height", Length(120)},
+        {L"flex-shrink", Number(0)}};
+    inner.children = {
+        FixedSpacer(L"nested.prefix", 80),
+        FixedButton(L"nested.oversized", 250),
+        FixedSpacer(L"nested.suffix", 80),
+    };
+    nested.root.children = {
+        FixedSpacer(L"nested.outer-prefix", 100),
+        std::move(inner),
+        FixedSpacer(L"nested.outer-suffix", 300),
+    };
+    DeclarativeRenderer nestedRenderer{nullptr, nullptr, nullptr};
+    const auto nestedResult = nestedRenderer.Render(
+        nullptr, nested, L"nested.oversized",
+        {0.0F, 0.0F, 240.0F, 120.0F}, options);
+    Check(nestedResult.focusRects.contains(L"nested.oversized") &&
+          nestedResult.scrollOffsets.at(L"nested.inner") > 0.0F &&
+          nestedResult.scrollOffsets.at(L"nested.outer") > 0.0F,
+        "nested oversized focus retains both ancestor scroll owners");
+    Check(nestedResult.focusFollowPassCount <= 3U &&
+          !nestedResult.focusFollowCycle && !nestedResult.focusFollowBoundHit,
+        "nested oversized convergence is bounded by ancestor depth");
+
+    auto translated = verticalSnapshot;
+    translated.instanceId = L"oversized.presentation";
+    auto& translatedTarget = translated.root.children[1];
+    translatedTarget.baseStyle.insert_or_assign(L"translate-y", Length(40));
+    DeclarativeRenderer translatedRenderer{nullptr, nullptr, nullptr};
+    const auto translatedResult = translatedRenderer.Render(
+        nullptr, translated, L"oversized.target",
+        {0.0F, 0.0F, 240.0F, 120.0F}, options);
+    Check(translatedResult.focusRects.contains(L"oversized.target") &&
+          translatedResult.focusFollowPassCount <= 3U &&
+          !translatedResult.focusFollowCycle &&
+          !translatedResult.focusFollowBoundHit,
+        "presentation-phase oversized translation converges without fallback cycling");
+
+    WidgetSnapshot mixed;
+    mixed.instanceId = L"oversized.mixed-grid";
+    mixed.activeInputScopeId = L"mixed.scroll";
+    mixed.root = Node(L"mixed.scroll", L"scroll");
+    mixed.root.inputScopeId = mixed.activeInputScopeId;
+    mixed.root.scrollAxis = L"vertical";
+    auto grid = Node(L"mixed.grid", L"grid");
+    grid.gridMinimumColumnWidth = 140.0;
+    grid.gridMaximumColumns = 2;
+    grid.baseStyle = {{L"gap", LengthList(L"12px")}};
+    auto tile = Node(L"mixed.tile", L"actionSurface");
+    tile.actionId = L"open-tile";
+    tile.baseStyle = {{L"height", Length(120)}};
+    auto poster = Node(L"mixed.poster", L"actionSurface");
+    poster.actionId = L"open-poster";
+    poster.actionSurfacePresentation = L"poster";
+    poster.baseStyle = {{L"height", Length(300)}};
+    grid.children = {std::move(tile), std::move(poster)};
+    mixed.root.children = {
+        FixedSpacer(L"mixed.heading", 60),
+        std::move(grid),
+        FixedSpacer(L"mixed.tail", 60),
+    };
+    DeclarativeRenderer mixedRenderer{nullptr, nullptr, nullptr};
+    const auto mixedResult = mixedRenderer.Render(
+        nullptr, mixed, L"mixed.poster",
+        {0.0F, 0.0F, 360.0F, 180.0F}, options);
+    Check(mixedResult.focusRects.contains(L"mixed.poster") &&
+          mixedResult.navigationRects.at(L"mixed.poster").height > 180.0F &&
+          mixedResult.focusFollowPassCount <= 2U &&
+          !mixedResult.focusFollowCycle && !mixedResult.focusFollowBoundHit,
+        "mixed Tile and PosterTile grid shape converges through generic geometry");
+}
+
 void IrrevealableClipsDoNotBecomeFocusTraps() {
     WidgetSnapshot rasterEdge;
     rasterEdge.instanceId = L"raster-edge.runtime";
@@ -4767,6 +4975,7 @@ int main() {
     WrappedPermissionCopyContributesToScrollExtent();
     ScrollFocusReachesTrueContentBoundaries();
     NestedScrollFocusFollowReachesFixedPoint();
+    OversizedFocusFollowUsesOneAxisSymmetricRevealOwner();
     IrrevealableClipsDoNotBecomeFocusTraps();
     ScrollStateCapEvictsOnlyInactiveLruEntries();
     DeferredFocusOutlineUsesEffectiveVisibilityClip();
