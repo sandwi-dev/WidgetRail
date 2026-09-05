@@ -13,6 +13,7 @@
 #include <span>
 #include <stdexcept>
 #include <utility>
+#include <unordered_set>
 
 namespace widgetrail {
 namespace {
@@ -336,8 +337,10 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring ke
     }
     {
         std::scoped_lock lock(mutex_);
+        if (trustedArtworkRequests_ != UINT64_MAX) ++trustedArtworkRequests_;
         if (shuttingDown_) return RemoteImageRequestResult::ShuttingDown;
         if (const auto found = entries_.find(key); found != entries_.end()) {
+            if (trustedArtworkHits_ != UINT64_MAX) ++trustedArtworkHits_;
             found->second.lastUse = ++useCounter_;
             return RemoteImageRequestResult::AlreadyTracked;
         }
@@ -413,7 +416,11 @@ bool RemoteImageCache::SupplyTrustedArtwork(
         queue_.push_back(key);
         supplied = true;
     }
-    if (!supplied) return false;
+    if (!supplied) {
+        if (staleArtworkCompletions_ != UINT64_MAX) ++staleArtworkCompletions_;
+        return false;
+    }
+    if (trustedArtworkSupplies_ != UINT64_MAX) ++trustedArtworkSupplies_;
     condition_.notify_one();
     return true;
 }
@@ -476,6 +483,9 @@ RemoteImageCacheStats RemoteImageCache::GetStats() const {
     std::size_t https = 0;
     std::size_t inlineImages = 0;
     std::size_t trustedArtwork = 0;
+    std::uint64_t readySourcePixels = 0;
+    UINT32 maximumSourceWidth = 0;
+    UINT32 maximumSourceHeight = 0;
     for (const auto& [url, entry] : entries_) {
         if (entry.state == RemoteImageState::Queued || entry.state == RemoteImageState::Loading) ++pending;
         else if (entry.state == RemoteImageState::Ready) ++ready;
@@ -483,13 +493,51 @@ RemoteImageCacheStats RemoteImageCache::GetStats() const {
         if (url.starts_with(L"wrail-artwork\x1f")) ++trustedArtwork;
         else if (url.starts_with(inlinePngPrefix)) ++inlineImages;
         else ++https;
+        if (entry.state == RemoteImageState::Ready && entry.image) {
+            readySourcePixels += static_cast<std::uint64_t>(entry.image->width) *
+                static_cast<std::uint64_t>(entry.image->height);
+            maximumSourceWidth = std::max(maximumSourceWidth, entry.image->width);
+            maximumSourceHeight = std::max(maximumSourceHeight, entry.image->height);
+        }
     }
     return {
         entries_.size(), decodedBytes_, pending, ready, failed,
         https, inlineImages, trustedArtwork, evictions_,
         countPressureEvictions_, bytePressureEvictions_, supersededEntries_,
         countCapacityRejections_, pendingCapacityRejections_,
+        encodedArtworkBytes_, trustedArtworkRequests_, trustedArtworkHits_,
+        trustedArtworkSupplies_, staleArtworkCompletions_, readySourcePixels,
+        maximumSourceWidth, maximumSourceHeight,
     };
+}
+
+TrustedArtworkResidencyStats RemoteImageCache::GetTrustedArtworkResidency(
+    const std::wstring_view widgetId,
+    const std::span<const std::wstring> currentArtworkHandles) const {
+    TrustedArtworkResidencyStats result;
+    if (widgetId.empty() || currentArtworkHandles.empty()) return result;
+    const auto prefix = L"wrail-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
+    std::unordered_set<std::wstring_view> handles;
+    handles.reserve(currentArtworkHandles.size());
+    for (const auto& handle : currentArtworkHandles)
+        if (!handle.empty()) handles.insert(handle);
+    std::scoped_lock lock(mutex_);
+    for (const auto& [key, entry] : entries_) {
+        if (!key.starts_with(prefix)) continue;
+        const auto separator = key.rfind(L'\x1f');
+        if (separator == std::wstring::npos ||
+            !handles.contains(std::wstring_view(key).substr(separator + 1))) continue;
+        ++result.entries;
+        result.encodedBytes += entry.pendingBytes.size();
+        if (entry.state == RemoteImageState::Ready && entry.image) {
+            ++result.readyEntries;
+            result.decodedBytes += entry.image->premultipliedBgra.size();
+        } else if (entry.state == RemoteImageState::Queued ||
+                   entry.state == RemoteImageState::Loading) {
+            ++result.inFlightEntries;
+        }
+    }
+    return result;
 }
 
 std::shared_ptr<const RemoteDecodedImage> RemoteImageCache::GetReadyImage(

@@ -108,6 +108,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Worker request diagnostics are bounded developer-only records", WorkerRequestDiagnosticsAreBounded),
     ("Current worker validator diagnostics persist and correlate across the Bridge", WorkerValidatorDiagnosticsPersistAndCorrelate),
     ("Diagnostics projection is bounded sanitized and read only", BridgeDiagnosticsScenarios.ProjectionIsBoundedSanitizedAndReadOnly),
+    ("Artwork memory diagnostics are bounded concurrent and private", BridgeDiagnosticsScenarios.ArtworkMemoryCountersAreBoundedAndConcurrent),
     ("Diagnostics partial failures malformed input and deadline are closed", BridgeDiagnosticsScenarios.PartialFailureMalformedInputAndDeadlineAreClosed),
     ("Authority recovery projection is exact bounded and cancellation safe", BridgeDiagnosticsScenarios.RecoveryRetryIsExactBoundedAndCancellationSafe),
     ("User theme layers override widget selectors", UserThemeOverridesWidgetStyles),
@@ -1587,6 +1588,13 @@ static async Task TrustedArtworkDemandIsExact()
         Assert.Equal("image/png", artwork.Payload.GetProperty("contentType").GetString());
         Assert.Equal(png, artwork.Payload.GetProperty("contentBase64").GetString());
         Assert.Equal(1, backend.AppLibraryIconCalls);
+        var artworkMemory = server.ArtworkMemoryDiagnostics;
+        Assert.Equal(1L, artworkMemory.Requests);
+        Assert.Equal(1L, artworkMemory.Completed);
+        Assert.Equal(0L, artworkMemory.Failed);
+        Assert.Equal(0L, artworkMemory.InFlight);
+        Assert.Equal(Convert.FromBase64String(png).Length, artworkMemory.RawBytes);
+        Assert.Equal(png.Length, artworkMemory.Base64Characters);
 
         var staleStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1640,6 +1648,10 @@ static async Task TrustedArtworkDemandIsExact()
         _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
         Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
         Assert.Equal(2, backend.AppLibraryIconCalls);
+        artworkMemory = server.ArtworkMemoryDiagnostics;
+        Assert.Equal(2L, artworkMemory.Requests);
+        Assert.Equal(1L, artworkMemory.Completed);
+        Assert.Equal(1L, artworkMemory.Failed);
 
         var forged = await client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
@@ -1649,6 +1661,9 @@ static async Task TrustedArtworkDemandIsExact()
         _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
         Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
         Assert.Equal(2, backend.AppLibraryIconCalls);
+        artworkMemory = server.ArtworkMemoryDiagnostics;
+        Assert.Equal(3L, artworkMemory.Requests);
+        Assert.Equal(2L, artworkMemory.Failed);
 
         var blockedStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1677,6 +1692,14 @@ static async Task TrustedArtworkDemandIsExact()
         releaseBlocked.TrySetResult();
         await blockedFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(3, backend.AppLibraryIconCalls);
+        await WaitUntilAsync(
+            () => server.ArtworkMemoryDiagnostics.InFlight == 0,
+            TimeSpan.FromSeconds(2));
+        artworkMemory = server.ArtworkMemoryDiagnostics;
+        Assert.Equal(4L, artworkMemory.Requests);
+        Assert.Equal(1L, artworkMemory.Completed);
+        Assert.Equal(3L, artworkMemory.Failed);
+        Assert.Equal(0L, artworkMemory.InFlight);
     }
     finally
     {

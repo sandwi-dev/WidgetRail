@@ -208,6 +208,7 @@ public:
     void SetSurfaceAppearancePolicy(surface_appearance::Policy policy);
     [[nodiscard]] bool SetInteractionMode(InteractionMode mode);
     [[nodiscard]] bool ToggleInteractionMode();
+    [[nodiscard]] ImageBitmapCacheStats GetImageBitmapCacheStats() const noexcept;
     [[nodiscard]] bool EnterControllerFocus();
     [[nodiscard]] bool ExitControllerFocus() noexcept;
     [[nodiscard]] bool MoveControllerFocus(

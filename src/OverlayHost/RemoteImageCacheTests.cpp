@@ -700,6 +700,27 @@ int main() {
     }
     assert(artworkCache.GetState(newRevision) == RemoteImageState::Ready);
     assert(artworkCache.GetState(oldRevision) == RemoteImageState::Ready);
+    const auto artworkStats = artworkCache.GetStats();
+    assert(artworkStats.trustedArtworkRequests ==
+           static_cast<std::uint64_t>(largeCollectionItems * 2 + 2));
+    assert(artworkStats.trustedArtworkHits ==
+           static_cast<std::uint64_t>(largeCollectionItems));
+    assert(artworkStats.trustedArtworkSupplies ==
+           static_cast<std::uint64_t>(largeCollectionItems + 2));
+    assert(artworkStats.staleArtworkCompletions == 0);
+    assert(artworkStats.readySourcePixels == artworkStats.readyEntries);
+    assert(artworkStats.maximumSourceWidth == 1 &&
+           artworkStats.maximumSourceHeight == 1);
+    const std::vector<std::wstring> currentHandles{
+        L"library.art.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        L"library.art.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        L"library.art.not-current-not-retained"};
+    const auto currentResidency = artworkCache.GetTrustedArtworkResidency(
+        L"games-apps", currentHandles);
+    assert(currentResidency.entries == 2);
+    assert(currentResidency.readyEntries == 2);
+    assert(currentResidency.inFlightEntries == 0);
+    assert(currentResidency.decodedBytes == 8);
     artworkCache.Shutdown();
 
     std::vector<std::pair<std::wstring, RemoteImageState>> artworkTransitions;
@@ -744,6 +765,7 @@ int main() {
     assert(!failureCache.SupplyTrustedArtwork(
         L"playnite-library", L"library.art.11111111111111111111111111111111",
         L"image/png", trustedPngBase64));
+    assert(failureCache.GetStats().staleArtworkCompletions == 1);
     const auto sharedFailedRevision =
         L"wrail-artwork\x1fplaynite-library\x1fsecond-tile.artwork\x1f"
         L"library.art.11111111111111111111111111111111";

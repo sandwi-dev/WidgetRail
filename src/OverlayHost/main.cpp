@@ -195,6 +195,20 @@ constexpr std::uint32_t PlatformBoolean(const bool value) noexcept {
         placement.x, placement.y, placement.width, placement.height};
 }
 
+void CollectCurrentArtworkHandles(
+    const widgetrail::WidgetNode& node,
+    std::unordered_set<std::wstring>& handles) {
+    if (!node.artworkHandle.empty()) handles.insert(node.artworkHandle);
+    if (!node.focusBackgroundArtworkHandle.empty())
+        handles.insert(node.focusBackgroundArtworkHandle);
+    for (const auto& child : node.children)
+        CollectCurrentArtworkHandles(child, handles);
+    for (const auto& child : node.focusPresentation)
+        CollectCurrentArtworkHandles(child, handles);
+    for (const auto& child : node.defaultFocusPresentation)
+        CollectCurrentArtworkHandles(child, handles);
+}
+
 D2D1_COLOR_F D2DColor(const widgetrail::NativeColor& color) noexcept {
     return D2D1::ColorF(color.red, color.green, color.blue, color.alpha);
 }
@@ -17037,7 +17051,21 @@ private:
                             : widgetrail::declarative::Rect{};
                         const auto bitmapCache =
                             declarativeRenderer_->GetImageBitmapCacheStats();
+                        const auto pinnedBitmapCache =
+                            pinnedSurfaceCoordinator_.GetImageBitmapCacheStats();
                         const auto decodedCache = imageCache_->GetStats();
+                        std::unordered_set<std::wstring> currentArtworkSet;
+                        CollectCurrentArtworkHandles(snapshot->root, currentArtworkSet);
+                        for (const auto& layout : snapshot->pinnedLayouts) {
+                            if (layout.root)
+                                CollectCurrentArtworkHandles(
+                                    *layout.root, currentArtworkSet);
+                        }
+                        const std::vector<std::wstring> currentArtworkHandles{
+                            currentArtworkSet.begin(), currentArtworkSet.end()};
+                        const auto currentArtwork =
+                            imageCache_->GetTrustedArtworkResidency(
+                                renderedWidget, currentArtworkHandles);
                         const auto bitmapDomain = [&]() -> std::wstring_view {
                             switch (bitmapCache.resourceDomain) {
                             case widgetrail::ImageBitmapResourceDomain::Device:
@@ -17114,6 +17142,40 @@ private:
                             std::to_wstring(bitmapCache.resourceInvalidations) +
                             L" bitmap-resource-generation=" +
                             std::to_wstring(bitmapCache.resourceGeneration) +
+                            L" bitmap-artwork-visible=" +
+                            std::to_wstring(bitmapCache.visibleArtworkObservations) +
+                            L" bitmap-artwork-clipped=" +
+                            std::to_wstring(bitmapCache.clippedArtworkObservations) +
+                            L" bitmap-requested-paint-pixels=" +
+                            std::to_wstring(bitmapCache.requestedPaintPixels) +
+                            L" bitmap-max-requested-paint-pixels=" +
+                            std::to_wstring(bitmapCache.maximumRequestedPaintPixels) +
+                            L" bitmap-max-requested-paint=" +
+                            std::to_wstring(bitmapCache.maximumRequestedPaintWidth) + L"x" +
+                            std::to_wstring(bitmapCache.maximumRequestedPaintHeight) +
+                            L" pinned-bitmap-entries=" +
+                            std::to_wstring(pinnedBitmapCache.entries) +
+                            L" pinned-bitmap-bytes=" +
+                            std::to_wstring(pinnedBitmapCache.bytes) +
+                            L" pinned-bitmap-hits=" +
+                            std::to_wstring(pinnedBitmapCache.hits) +
+                            L" pinned-bitmap-creates=" +
+                            std::to_wstring(pinnedBitmapCache.creates) +
+                            L" pinned-bitmap-evictions=" +
+                            std::to_wstring(pinnedBitmapCache.evictions) +
+                            L" pinned-artwork-visible=" +
+                            std::to_wstring(
+                                pinnedBitmapCache.visibleArtworkObservations) +
+                            L" pinned-artwork-clipped=" +
+                            std::to_wstring(
+                                pinnedBitmapCache.clippedArtworkObservations) +
+                            L" pinned-requested-paint-pixels=" +
+                            std::to_wstring(pinnedBitmapCache.requestedPaintPixels) +
+                            L" pinned-max-requested-paint=" +
+                            std::to_wstring(
+                                pinnedBitmapCache.maximumRequestedPaintWidth) + L"x" +
+                            std::to_wstring(
+                                pinnedBitmapCache.maximumRequestedPaintHeight) +
                             L" decoded-entries=" +
                             std::to_wstring(decodedCache.entries) +
                             L" decoded-ready=" +
@@ -17142,6 +17204,31 @@ private:
                             std::to_wstring(decodedCache.countCapacityRejections) +
                             L" decoded-pending-rejections=" +
                             std::to_wstring(decodedCache.pendingCapacityRejections) +
+                            L" encoded-artwork-bytes=" +
+                            std::to_wstring(decodedCache.encodedArtworkBytes) +
+                            L" artwork-requests=" +
+                            std::to_wstring(decodedCache.trustedArtworkRequests) +
+                            L" artwork-hits=" +
+                            std::to_wstring(decodedCache.trustedArtworkHits) +
+                            L" artwork-supplies=" +
+                            std::to_wstring(decodedCache.trustedArtworkSupplies) +
+                            L" artwork-stale-completions=" +
+                            std::to_wstring(decodedCache.staleArtworkCompletions) +
+                            L" decoded-source-pixels=" +
+                            std::to_wstring(decodedCache.readySourcePixels) +
+                            L" decoded-max-source=" +
+                            std::to_wstring(decodedCache.maximumSourceWidth) + L"x" +
+                            std::to_wstring(decodedCache.maximumSourceHeight) +
+                            L" current-artwork-entries=" +
+                            std::to_wstring(currentArtwork.entries) +
+                            L" current-artwork-encoded-bytes=" +
+                            std::to_wstring(currentArtwork.encodedBytes) +
+                            L" current-artwork-decoded-bytes=" +
+                            std::to_wstring(currentArtwork.decodedBytes) +
+                            L" current-artwork-ready=" +
+                            std::to_wstring(currentArtwork.readyEntries) +
+                            L" current-artwork-inflight=" +
+                            std::to_wstring(currentArtwork.inFlightEntries) +
                             L" tray-total=" +
                             std::to_wstring(trayLayout ? trayLayout->totalCount : 0) +
                             L" tray-visible=" +

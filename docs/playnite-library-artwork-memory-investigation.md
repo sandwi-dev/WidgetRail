@@ -418,6 +418,43 @@ byte-budget, and request-supersession changes. Then set separate budgets for the
 application, bridge, decoded CPU cache, renderer bitmap cache, pinned renderer,
 and total warm/idle footprint.
 
+## WIDGE-161 attributed counter contract
+
+WIDGE-161 adds measurement only; it does not change cache limits, transport,
+decode size, rendering, cursor behavior, or lifecycle policy. The counters use
+bounded aggregate categories and never retain a package path, token, title,
+game ID, artwork handle, encoded content, or request identifier.
+
+| Owner | Gauge or monotonic unit |
+| --- | --- |
+| Playnite application | encoded entry count, current encoded bytes, high-water bytes, cache hits/misses, fallback-alias count, evictions, and bounded cover/background/neutral role-event counts |
+| WidgetBridge | artwork requests/completions/failures, current and peak in-flight requests, raw bytes, Base64 characters, managed heap bytes, LOH bytes when the runtime reports them, allocation bytes/second between observations, Gen2 collection count, process private bytes, and working-set bytes |
+| native decoded cache | current encoded and decoded bytes, ready/pending/failed entries, request/hit/supply/stale-completion counts, evictions, total ready source pixels, and maximum source dimensions |
+| ordinary and pinned renderers | independent bitmap bytes/entries/hits/creates/evictions, visible versus fully clipped artwork observations, cumulative requested paint pixels, and maximum requested paint pixels |
+
+Application and Bridge diagnostics saturate rather than wrap. Current entries,
+bytes, and in-flight work are gauges; high-water and event totals are monotonic
+for the process lifetime. Native cache and renderer counts are process-lifetime
+monotonic counters beside the existing bounded current gauges. A cache entry or
+bitmap estimate is tracked ownership, not an OS/GPU residency measurement.
+
+`scripts/Measure-ArtworkMemory.ps1` records timestamped process private and
+working-set bytes for explicit PID/opaque-role pairs. It performs no process
+discovery, launch, interaction, dump, GC, or content capture. Use a fresh output
+file at each of these named checkpoints: `cold-start`, `stable-home`,
+`slow-navigation`, `rapid-home`, `browse`, `focus-thrash`, `hide-reopen`, the
+three idle checkpoints, and `repeat-traversal`. The reviewer/user performs the
+real overlay actions and supplies only the process identities they consent to
+measure. Correlate each CSV checkpoint with the bounded application, Bridge,
+and host aggregate lines, then report steady, peak, and post-idle values
+separately.
+
+This implementation task cannot produce the observed live-package run because
+its authority explicitly excludes installation, launch, live private tracing,
+and product-process mutation. The measurement run therefore remains the manual
+gate before any remediation ticket selects retention, transport, decode-size,
+or cache-budget policy. Process totals alone must not be described as a leak.
+
 ## Open questions that require profiling
 
 - Which managed types retain most of the bridge's private commitment after a

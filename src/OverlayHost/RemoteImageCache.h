@@ -12,6 +12,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <stop_token>
 #include <string>
 #include <string_view>
@@ -115,6 +116,22 @@ struct RemoteImageCacheStats {
     std::uint64_t supersededEntries{};
     std::uint64_t countCapacityRejections{};
     std::uint64_t pendingCapacityRejections{};
+    std::size_t encodedArtworkBytes{};
+    std::uint64_t trustedArtworkRequests{};
+    std::uint64_t trustedArtworkHits{};
+    std::uint64_t trustedArtworkSupplies{};
+    std::uint64_t staleArtworkCompletions{};
+    std::uint64_t readySourcePixels{};
+    UINT32 maximumSourceWidth{};
+    UINT32 maximumSourceHeight{};
+};
+
+struct TrustedArtworkResidencyStats {
+    std::size_t entries{};
+    std::size_t encodedBytes{};
+    std::size_t decodedBytes{};
+    std::size_t readyEntries{};
+    std::size_t inFlightEntries{};
 };
 
 /// Thread-safe CPU image cache. Network and legacy image decode execute on its
@@ -166,6 +183,12 @@ public:
     [[nodiscard]] RemoteImageState GetState(std::wstring_view url) const;
     [[nodiscard]] std::wstring GetError(std::wstring_view url) const;
     [[nodiscard]] RemoteImageCacheStats GetStats() const;
+    /// Bounded current-authority accounting. Callers provide only the exact
+    /// current snapshot's opaque handles; no handle or widget identity is
+    /// retained in the result.
+    [[nodiscard]] TrustedArtworkResidencyStats GetTrustedArtworkResidency(
+        std::wstring_view widgetId,
+        std::span<const std::wstring> currentArtworkHandles) const;
 
     /// Returns one immutable, fully decoded cache entry without creating a
     /// render-target resource. Launcher presentation uses this only after the
@@ -254,6 +277,10 @@ private:
     std::array<std::uint64_t, maximumArtworkDiagnosticRecords_>
         artworkDiagnosticKeys_{};
     std::size_t artworkDiagnosticKeyCount_{};
+    std::uint64_t trustedArtworkRequests_{};
+    std::uint64_t trustedArtworkHits_{};
+    std::uint64_t trustedArtworkSupplies_{};
+    std::uint64_t staleArtworkCompletions_{};
     bool shuttingDown_{};
 };
 

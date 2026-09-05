@@ -221,7 +221,16 @@ internal sealed class PlayniteLibraryApplicationService(
                 return null;
             }
             lock (_artworkGate)
-                if (_artworkContent.TryGetValue(handle.Value, out var cached)) return cached;
+                if (_artworkContent.TryGetValue(handle.Value, out var cached))
+                {
+                    _artworkDiagnostics.RecordMemory(new(
+                        PlayniteArtworkMemoryEventKind.Hit,
+                        Role(registration.Kind),
+                        cached.Bytes.Length));
+                    return cached;
+                }
+            _artworkDiagnostics.RecordMemory(new(
+                PlayniteArtworkMemoryEventKind.Miss, Role(registration.Kind)));
             var result = await _client.ResolveArtworkAsync(
                     registration.GameId, registration.Kind, cancellationToken)
                 .ConfigureAwait(false);
@@ -233,6 +242,9 @@ internal sealed class PlayniteLibraryApplicationService(
                 // same-game absence may fall back to its cover; malformed and
                 // unsupported payloads remain isolated failures.
                 backgroundNotFound = true;
+                _artworkDiagnostics.RecordMemory(new(
+                    PlayniteArtworkMemoryEventKind.FallbackAlias,
+                    PlayniteArtworkRole.Background));
                 result = await _client.ResolveArtworkAsync(
                         registration.GameId, PlayniteBridgeArtworkKind.Cover,
                         cancellationToken)
@@ -583,8 +595,16 @@ internal sealed class PlayniteLibraryApplicationService(
                 _artworkOrder.Enqueue(candidate);
                 continue;
             }
-            _artwork.Remove(candidate);
-            _artworkContent.Remove(candidate);
+            var removedRegistration = _artwork.Remove(candidate, out var registration)
+                ? registration
+                : null;
+            if (_artworkContent.Remove(candidate, out var removed))
+                _artworkDiagnostics.RecordMemory(new(
+                    PlayniteArtworkMemoryEventKind.Eviction,
+                    removedRegistration is null
+                        ? PlayniteArtworkRole.Neutral
+                        : Role(removedRegistration.Kind),
+                    removed.Bytes.Length));
         }
     }
 
@@ -597,9 +617,26 @@ internal sealed class PlayniteLibraryApplicationService(
         {
             if (_artwork.TryGetValue(handle, out var current) &&
                 ReferenceEquals(current, registration))
+            {
+                var previousBytes = _artworkContent.TryGetValue(handle, out var previous)
+                    ? previous.Bytes.Length
+                    : 0;
                 _artworkContent[handle] = artwork;
+                _artworkDiagnostics.RecordMemory(new(
+                    PlayniteArtworkMemoryEventKind.Store,
+                    Role(registration.Kind),
+                    artwork.Bytes.Length,
+                    previousBytes));
+            }
         }
     }
+
+    private static PlayniteArtworkRole Role(PlayniteBridgeArtworkKind kind) => kind switch
+    {
+        PlayniteBridgeArtworkKind.Cover => PlayniteArtworkRole.Cover,
+        PlayniteBridgeArtworkKind.Background => PlayniteArtworkRole.Background,
+        _ => PlayniteArtworkRole.Neutral,
+    };
 
     private static PlayniteLibraryAuthorityProjection ProjectAuthority(
         IReadOnlyList<PlayniteBridgeGame> games,

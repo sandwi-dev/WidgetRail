@@ -24,7 +24,8 @@ internal sealed record BridgeDiagnosticsReadModel(
     bool CatalogRetainedLastGood,
     bool InstalledCatalogPending,
     BridgeAppearanceDiagnostic Appearance,
-    bool ProvidersConfigured);
+    bool ProvidersConfigured,
+    BridgeArtworkMemorySnapshot Artwork);
 
 internal interface IBridgeDiagnosticsSource
 {
@@ -37,7 +38,8 @@ internal sealed class WidgetBridgeDiagnosticsSource(
     BridgeCatalogMonitor? catalogMonitor,
     PlatformAppearanceService? appearance,
     ConsentStore? consentStore,
-    bool providersConfigured) : IBridgeDiagnosticsSource
+    bool providersConfigured,
+    BridgeArtworkMemoryDiagnostics artwork) : IBridgeDiagnosticsSource
 {
     public BridgeDiagnosticsReadModel Capture()
     {
@@ -57,7 +59,8 @@ internal sealed class WidgetBridgeDiagnosticsSource(
                 appearance is not null,
                 appearance?.Current.Revision ?? 0,
                 appearanceErrors),
-            providersConfigured);
+            providersConfigured,
+            artwork.Capture());
     }
 
     public async ValueTask<BridgeConsentDiagnostic> ReadConsentAsync(
@@ -145,6 +148,7 @@ internal sealed class BridgeDiagnosticsProjection(
               "(user-configured count limit)"
             : $"{Math.Max(0, residency.ApplicationWorkers)} " +
               "(no application-worker count limit)";
+        var artwork = input.Artwork;
 
         return new PlatformDiagnosticsSnapshot(
             PlatformDiagnosticsSnapshot.CurrentSchemaVersion,
@@ -154,7 +158,13 @@ internal sealed class BridgeDiagnosticsProjection(
                 $"reported memory guidance " +
                 $"{Math.Max(0, residency.ApplicationAdvisoryMemoryMb)} MiB; control plane " +
                 $"{Math.Max(0, residency.ControlPlaneWorkers)} " +
-                $"({Math.Max(0, residency.ControlPlaneAdvisoryMemoryMb)} MiB reported)"),
+                $"({Math.Max(0, residency.ControlPlaneAdvisoryMemoryMb)} MiB reported); " +
+                $"artwork requests {artwork.Requests}, in-flight {artwork.InFlight}/" +
+                $"{artwork.MaximumInFlight}, raw {artwork.RawBytes} bytes, Base64 " +
+                $"{artwork.Base64Characters} chars, managed heap {artwork.ManagedHeapBytes} " +
+                $"bytes, LOH {artwork.LargeObjectHeapBytes} bytes, allocation rate " +
+                $"{artwork.AllocatedBytesPerSecond} B/s, Gen2 {artwork.Gen2Collections}, " +
+                $"private {artwork.PrivateBytes} bytes, working set {artwork.WorkingSetBytes} bytes"),
             Area("catalog", "Widget catalog", catalogState, catalogSummary),
             appearance,
             input.ProvidersConfigured

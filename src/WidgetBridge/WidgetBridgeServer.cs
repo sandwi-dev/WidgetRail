@@ -21,6 +21,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeCatalogMonitor? _catalogMonitor;
     private readonly BridgeClientRegistry _registry;
     private readonly BridgeDiagnosticsProjection _diagnostics;
+    private readonly BridgeArtworkMemoryDiagnostics _artworkDiagnostics = new();
     private readonly BridgeAuthorityRecoveryProjection _authorityRecovery;
     private readonly BridgeWidgetLocalDataService _localData;
     private readonly BridgeWidgetPackageUninstallService _packageUninstall;
@@ -124,7 +125,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 _catalogMonitor,
                 _appearance,
                 _consentStore,
-                _platformBackend is not null),
+                _platformBackend is not null,
+                _artworkDiagnostics),
             () => _authorityRecovery);
         _frameWriter = new BridgeFrameWriteBoundary(
             new ServerFrameWriteAdapter(this));
@@ -138,6 +140,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     public int RunningWorkerCount => _registry.RunningWorkerCount;
     public WorkerResidencyBudgetSnapshot ResidencyBudget => _registry.ResidencyBudget;
     internal int ArtworkRegistrationCount => _appLibraryArtwork?.RegistrationCount ?? 0;
+    internal BridgeArtworkMemorySnapshot ArtworkMemoryDiagnostics =>
+        _artworkDiagnostics.Capture();
     internal ValueTask<PlatformWidgetLocalDataInspection> InspectWidgetLocalDataAsync(
         string widgetId,
         CancellationToken cancellationToken = default) =>
@@ -379,6 +383,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         }
         case BridgeMessageTypes.ResolveArtwork:
         {
+            using var artworkDiagnostic = _artworkDiagnostics.BeginRequest();
             var artworkRequest = BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload);
             if (!BridgeRequestKey.IsBoundedIdentifier(artworkRequest.ArtworkHandle))
                 throw new BridgeProtocolException("Artwork handle is invalid.");
@@ -416,6 +421,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     contentType = WidgetEncodedArtworkContract.ContentTypeValue(
                         artwork.ContentType);
                     contentBase64 = Convert.ToBase64String(artwork.Bytes.Span);
+                    _artworkDiagnostics.RecordPayload(
+                        artwork.Bytes.Length, contentBase64.Length);
                 }
                 else if (_appLibraryArtwork is not null &&
                     AppLibraryArtworkRegistry.IsHandle(artworkRequest.ArtworkHandle))
@@ -426,7 +433,11 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                         identity, artworkRequest.ArtworkHandle, cancellationToken)
                         .ConfigureAwait(false);
                     if (contentBase64 is not null)
+                    {
                         contentType = WidgetEncodedArtworkContract.PngContentType;
+                        _artworkDiagnostics.RecordPayload(
+                            DecodedBase64Length(contentBase64), contentBase64.Length);
+                    }
                     if (!_appLibraryArtwork.IsCurrent(identity, artworkRequest.ArtworkHandle))
                         contentBase64 = contentType = string.Empty;
                     contentBase64 ??= string.Empty;
@@ -452,6 +463,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     contentBase64,
                 },
                 _sessionCancellation).ConfigureAwait(false);
+            BridgeArtworkMemoryDiagnostics.MarkSucceeded(artworkDiagnostic);
             break;
         }
 
@@ -1128,6 +1140,14 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         if (string.IsNullOrWhiteSpace(value) || value.Length > 200 || value.Contains('\\'))
             throw new ArgumentException("Bridge pipe name is invalid.", nameof(value));
         return value;
+    }
+
+    private static int DecodedBase64Length(string value)
+    {
+        if (value.Length == 0) return 0;
+        var padding = value.EndsWith("==", StringComparison.Ordinal) ? 2 :
+            value.EndsWith('=') ? 1 : 0;
+        return checked(value.Length / 4 * 3 - padding);
     }
 
     private static void ValidateControllerInput(ControllerInputEvent input)
