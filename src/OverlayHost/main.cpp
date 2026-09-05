@@ -12214,22 +12214,6 @@ private:
                 !PublishAccessibilityTree(metrics->physicalPixelsPerDip)) {
                 return false;
             }
-            if (lastWidgetRenderResult_.compositorBackground && metrics) {
-                std::wstring diagnostic;
-                if (!compositorBackgroundCoordinator_.Observe(
-                        *lastWidgetRenderResult_.compositorBackground,
-                        *declarativeRenderer_, compositionSurface_, width, height,
-                        metrics->physicalPixelsPerDip, GetTickCount64(), diagnostic))
-                    return false;
-                AppendDiagnostic(L"Background compositor " + diagnostic);
-                if (const auto deadline = compositorBackgroundCoordinator_.deadline())
-                    lastWidgetRenderResult_.backgroundSurfaceSettleWake =
-                        widgetrail::BackgroundSurfaceSettleWake{
-                            lastWidgetRenderResult_.compositorBackground->bounds,
-                            *deadline};
-            } else {
-                compositorBackgroundCoordinator_.Retire(compositionSurface_);
-            }
         }
         return true;
     }
@@ -15621,6 +15605,22 @@ private:
                     transportUpdate, set,
                     &*trayLayout)) {
                 return false;
+            }
+            if (lastWidgetRenderResult_.compositorBackground && metrics) {
+                std::wstring diagnostic;
+                if (!compositorBackgroundCoordinator_.Observe(
+                        *lastWidgetRenderResult_.compositorBackground,
+                        *declarativeRenderer_, compositionSurface_, width, height,
+                        metrics->physicalPixelsPerDip, GetTickCount64(), diagnostic))
+                    return false;
+                AppendDiagnostic(L"Background compositor " + diagnostic);
+                if (const auto deadline = compositorBackgroundCoordinator_.deadline())
+                    lastWidgetRenderResult_.backgroundSurfaceSettleWake =
+                        widgetrail::BackgroundSurfaceSettleWake{
+                            lastWidgetRenderResult_.compositorBackground->bounds,
+                            *deadline};
+            } else {
+                compositorBackgroundCoordinator_.Retire(compositionSurface_);
             }
         }
 

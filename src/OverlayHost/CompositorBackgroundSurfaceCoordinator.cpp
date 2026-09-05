@@ -84,13 +84,13 @@ bool CompositorBackgroundSurfaceCoordinator::Stage(
         diagnostic = L"readiness=pending";
         return false;
     }
-    renderer.PaintCompositorBackground(
+    (void)renderer.PaintCompositorBackground(
         frames[candidateIndex].target.Get(), proposal.image.descriptor,
         proposal.image.bitmap.Get(), false);
     if (FAILED(surface.EndFrame(frames[candidateIndex]))) return false;
 
     if (!begin(0, OverlayCompositionSurface::Layer::BackgroundBase)) return false;
-    renderer.PaintCompositorBackground(
+    (void)renderer.PaintCompositorBackground(
         frames[0].target.Get(), proposal.image.descriptor, nullptr, true);
     if (FAILED(surface.EndFrame(frames[0]))) return false;
 
@@ -123,10 +123,10 @@ bool CompositorBackgroundSurfaceCoordinator::Stage(
         }
         composite->BeginDraw();
         composite->Clear(D2D1::ColorF(0, 0, 0, 0));
-        renderer.PaintCompositorBackground(
+        (void)renderer.PaintCompositorBackground(
             composite.Get(), next.committed->descriptor,
             next.committed->bitmap.Get(), false, 1.0F);
-        renderer.PaintCompositorBackground(
+        (void)renderer.PaintCompositorBackground(
             composite.Get(), next.incoming->descriptor,
             next.incoming->bitmap.Get(), false, progress);
         Image rebased{next.incoming->descriptor, {}};
@@ -139,7 +139,7 @@ bool CompositorBackgroundSurfaceCoordinator::Stage(
         outgoing = std::move(rebased);
     }
     if (outgoing) {
-        renderer.PaintCompositorBackground(
+        (void)renderer.PaintCompositorBackground(
             frames[1].target.Get(), outgoing->descriptor,
             outgoing->bitmap.Get(), false);
         if (FAILED(surface.EndFrame(frames[1]))) return false;
