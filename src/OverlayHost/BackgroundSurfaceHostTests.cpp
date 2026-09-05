@@ -1,4 +1,6 @@
 #include "DeclarativeRenderer.h"
+#include "BackgroundSurfaceTransitionPolicy.h"
+#include "CompositorBackgroundSurfaceCoordinator.h"
 #include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
 
@@ -14,7 +16,47 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
+
+namespace widgetrail {
+struct CompositorBackgroundSurfaceCoordinatorTestAccess final {
+    static bool SameDestination(
+        const ComputedCompositorBackground& left,
+        const ComputedCompositorBackground& right) {
+        return CompositorBackgroundSurfaceCoordinator::SameDestination(left, right);
+    }
+    static std::optional<std::uint64_t> Deadline(
+        const ComputedCompositorBackground& descriptor,
+        const std::uint64_t observedAt) {
+        CompositorBackgroundSurfaceCoordinator coordinator;
+        coordinator.state_.proposal =
+            CompositorBackgroundSurfaceCoordinator::Proposal{
+                {descriptor, {}}, observedAt, 1, false};
+        return coordinator.deadline();
+    }
+    static bool CommitAndCancelAreTransactional() {
+        CompositorBackgroundSurfaceCoordinator coordinator;
+        coordinator.state_.generation = 3;
+        auto changed = coordinator.state_;
+        changed.generation = 4;
+        coordinator.pendingObservation_ =
+            CompositorBackgroundSurfaceCoordinator::PendingObservation{7, changed};
+        coordinator.CancelObservation(7);
+        if (coordinator.state_.generation != 3 ||
+            coordinator.pendingObservation_) return false;
+        coordinator.pendingObservation_ =
+            CompositorBackgroundSurfaceCoordinator::PendingObservation{8, changed};
+        return coordinator.CommitObservation(8) &&
+            coordinator.state_.generation == 4 &&
+            !coordinator.pendingObservation_;
+    }
+    static std::uint64_t LiveGeneration(
+        const CompositorBackgroundSurfaceCoordinator& coordinator) {
+        return coordinator.state_.generation;
+    }
+};
+} // namespace widgetrail
 
 namespace {
 
@@ -90,6 +132,48 @@ int wmain() {
         const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         Require(SUCCEEDED(initialized) || initialized == RPC_E_CHANGED_MODE,
             "COM initialization failed");
+
+        {
+            using widgetrail::background_surface_policy::FadeMilliseconds;
+            using widgetrail::background_surface_policy::SettleMilliseconds;
+            static_assert(SettleMilliseconds == 150);
+            static_assert(FadeMilliseconds == 400);
+            widgetrail::ComputedCompositorBackground first;
+            first.authorityId = L"widget\x1fruntime\x1fpresentation";
+            first.widgetInstanceId = L"instance";
+            first.nodeId = L"surface";
+            first.focusedElementId = L"first";
+            first.artworkHandle = L"artwork";
+            first.imageFit = L"cover";
+            first.bounds = {0, 0, 1280, 720};
+            first.snapshotSequence = 1;
+            first.resourceGeneration = 9;
+            auto compatible = first;
+            compatible.focusedElementId = L"same-artwork-second-focus";
+            compatible.snapshotSequence = 2;
+            Require(widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                        SameDestination(first, compatible),
+                "same destination did not dedupe across current-tree refresh");
+            auto changed = compatible;
+            changed.artworkHandle = L"replacement";
+            Require(!widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                         SameDestination(first, changed),
+                "changed artwork retained same-destination authority");
+            changed = compatible;
+            changed.authorityId += L"-stale";
+            Require(!widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                         SameDestination(first, changed),
+                "changed runtime/presentation authority was not retired");
+            const auto deadline =
+                widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                    Deadline(first, 1000);
+            Require(deadline && *deadline == 1150,
+                "coordinator did not own the exact 150 ms settle deadline");
+            Require(widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                        CommitAndCancelAreTransactional(),
+                "coordinator commit/cancel changed live state out of order");
+
+        }
 
         {
         std::wstring error;
@@ -447,6 +531,166 @@ int wmain() {
             Require(bitmapStats.entries <= bitmapStats.maximumEntries &&
                     bitmapStats.bytes <= bitmapStats.maximumBytes,
                 "retarget fixture exceeded bounded renderer bitmap ownership");
+
+            widgetrail::DeclarativeRenderer compositorRenderer{
+                d2d.Get(), write.Get(), &retargetCache};
+            auto compositorOptions = retargetOptions;
+            compositorOptions.compositorBackgroundAvailable = true;
+            compositorOptions.animationTimestampMilliseconds = 3000;
+            target->BeginDraw();
+            const auto eligible = compositorRenderer.Render(
+                target.Get(), *retargetSnapshot, L"background.retarget.red",
+                viewport, compositorOptions);
+            Require(SUCCEEDED(target->EndDraw()) && eligible.succeeded &&
+                    eligible.compositorBackground &&
+                    eligible.compositorBackground->nodeId == retargetSurface &&
+                    eligible.compositorBackground->focusedElementId ==
+                        L"background.retarget.red" &&
+                    eligible.compositorBackground->artworkHandle ==
+                        L"background.retarget.red",
+                "transparent current-tree surface did not emit exact compositor authority");
+
+            auto opaqueSnapshot = *retargetSnapshot;
+            widgetrail::WidgetNode opaqueRoot;
+            opaqueRoot.id = L"background.retarget.opaque-root";
+            opaqueRoot.kind = L"stack";
+            opaqueRoot.imageSource = L"data:image/png;base64," +
+                std::wstring{redPng};
+            opaqueRoot.children.push_back(std::move(opaqueSnapshot.root));
+            opaqueSnapshot.root = std::move(opaqueRoot);
+            target->BeginDraw();
+            const auto fallback = compositorRenderer.Render(
+                target.Get(), opaqueSnapshot, L"background.retarget.red",
+                viewport, compositorOptions);
+            Require(SUCCEEDED(target->EndDraw()) && fallback.succeeded &&
+                    !fallback.compositorBackground &&
+                    HasDiagnostic(
+                        fallback, L"background_crossfade_compositor-fallback"),
+                "painted ancestor did not retain the raster fallback boundary");
+
+            ComPtr<ID2D1Factory1> compositionFactory;
+            Require(SUCCEEDED(D2D1CreateFactory(
+                        D2D1_FACTORY_TYPE_SINGLE_THREADED,
+                        IID_PPV_ARGS(compositionFactory.ReleaseAndGetAddressOf()))),
+                "compositor fixture could not create its D2D factory");
+            HWND compositionWindow = CreateWindowExW(
+                WS_EX_TOOLWINDOW, L"STATIC", L"WIDGE-184 compositor fixture",
+                WS_POPUP, 0, 0, 640, 360, nullptr, nullptr,
+                GetModuleHandleW(nullptr), nullptr);
+            Require(compositionWindow != nullptr,
+                "compositor fixture could not create its hidden HWND");
+            widgetrail::OverlayCompositionSurface composition;
+            std::wstring compositionError;
+            Require(composition.Initialize(
+                        compositionWindow, compositionFactory.Get(), compositionError),
+                "compositor fixture could not initialize the real DComp owner");
+            widgetrail::CompositorBackgroundSurfaceCoordinator coordinator;
+            widgetrail::DeclarativeRenderer integratedRenderer{
+                compositionFactory.Get(), write.Get(), &retargetCache};
+            auto integratedOptions = compositorOptions;
+            const widgetrail::declarative::Rect integratedViewport{
+                0, 0, 640, 360};
+            const auto renderIntegrated = [&](const std::wstring_view focus,
+                                              const std::uint64_t now) {
+                widgetrail::OverlayCompositionSurface::Frame content;
+                Require(SUCCEEDED(composition.BeginFrame(
+                            widgetrail::OverlayCompositionSurface::Layer::Content,
+                            640, 360, 0, 0, nullptr, content)),
+                    "integrated fixture could not begin Content");
+                content.target->SetDpi(96, 96);
+                content.target->Clear(D2D1::ColorF(0, 0, 0, 0));
+                integratedOptions.animationTimestampMilliseconds = now;
+                auto result = integratedRenderer.Render(
+                    content.target.Get(), *retargetSnapshot, focus,
+                    integratedViewport, integratedOptions);
+                Require(result.succeeded && result.compositorBackground &&
+                        SUCCEEDED(composition.EndFrame(content)),
+                    "integrated fixture did not produce a compositor descriptor");
+                return std::pair{std::move(content), std::move(result)};
+            };
+            const auto commitObservation = [&](
+                widgetrail::OverlayCompositionSurface::Frame content,
+                widgetrail::CompositorBackgroundSurfaceCoordinator::Observation observation) {
+                std::vector<widgetrail::OverlayCompositionSurface::Frame*> frames{&content};
+                for (auto& background : observation.frames)
+                    frames.push_back(&background);
+                widgetrail::OverlayCompositionSurface::CommitTiming timing;
+                Require(SUCCEEDED(composition.CommitFrames(
+                            frames, false, timing, nullptr,
+                            observation.presentation
+                                ? &*observation.presentation : nullptr)) &&
+                        coordinator.CommitObservation(observation.transactionId),
+                    "integrated host transaction did not publish atomically");
+            };
+
+            auto [redContent, redResult] = renderIntegrated(
+                L"background.retarget.red", 3000);
+            auto redObservation = coordinator.Observe(
+                *redResult.compositorBackground, integratedRenderer, composition,
+                640, 360, 1.0F, 3000);
+            Require(redObservation.has_value(),
+                "initial integrated observation was rejected");
+            commitObservation(std::move(redContent), std::move(*redObservation));
+
+            auto [greenContent, greenResult] = renderIntegrated(
+                L"background.retarget.green", 3100);
+            auto greenObservation = coordinator.Observe(
+                *greenResult.compositorBackground, integratedRenderer, composition,
+                640, 360, 1.0F, 3100);
+            Require(greenObservation && greenObservation->presentation &&
+                    greenObservation->presentation->prepared,
+                "ordinary host frame did not prepare the settled candidate");
+            commitObservation(std::move(greenContent), std::move(*greenObservation));
+            const auto contentBeforeTransition =
+                composition.paintCounters().content;
+            std::wstring advanceDiagnostic;
+            Require(coordinator.Advance(
+                        greenResult.compositorBackground, integratedRenderer,
+                        composition, 640, 360, 1.0F, 3250,
+                        advanceDiagnostic) == widgetrail::
+                            CompositorBackgroundSurfaceCoordinator::
+                                AdvanceDisposition::Advanced &&
+                    composition.paintCounters().content == contentBeforeTransition,
+                "committed background-only transition repainted Content");
+
+            auto [blueContent, blueResult] = renderIntegrated(
+                L"background.retarget.blue", 3300);
+            auto blueObservation = coordinator.Observe(
+                *blueResult.compositorBackground, integratedRenderer, composition,
+                640, 360, 1.0F, 3300);
+            Require(blueObservation.has_value(),
+                "active-transition retarget observation was rejected");
+            commitObservation(std::move(blueContent), std::move(*blueObservation));
+            const auto contentBeforeRebase = composition.paintCounters().content;
+            Require(coordinator.Advance(
+                        blueResult.compositorBackground, integratedRenderer,
+                        composition, 640, 360, 1.0F, 3450,
+                        advanceDiagnostic) == widgetrail::
+                            CompositorBackgroundSurfaceCoordinator::
+                                AdvanceDisposition::Advanced &&
+                    composition.paintCounters().content == contentBeforeRebase,
+                "rapid background-only rebase repainted Content");
+
+            auto [cancelledContent, cancelledResult] = renderIntegrated(
+                L"background.retarget.red", 3500);
+            auto cancelledObservation = coordinator.Observe(
+                *cancelledResult.compositorBackground, integratedRenderer,
+                composition, 640, 360, 1.0F, 3500);
+            Require(cancelledObservation.has_value(),
+                "cancelled transaction fixture was not created");
+            const auto generationBeforeCancel =
+                widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                    LiveGeneration(coordinator);
+            coordinator.CancelObservation(cancelledObservation->transactionId);
+            Require(widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                        LiveGeneration(coordinator) == generationBeforeCancel &&
+                    !coordinator.CommitObservation(
+                        cancelledObservation->transactionId),
+                "failed/cancelled host transaction published live state");
+            composition.AbandonFrame(cancelledContent);
+            coordinator.Retire(composition);
+            composition.Reset();
+            DestroyWindow(compositionWindow);
             retargetCache.Shutdown();
         }
 
@@ -1057,7 +1301,7 @@ int wmain() {
         })json", wrongOwnerError),
             "native parser admitted focused-background ownership on a non-surface");
         cache.Shutdown();
-        std::cout << "BackgroundSurface host tests: 11/11 passed.\n";
+        std::cout << "BackgroundSurface host tests: 12/12 passed.\n";
         }
         if (SUCCEEDED(initialized)) CoUninitialize();
         return 0;

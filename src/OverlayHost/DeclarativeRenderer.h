@@ -108,6 +108,21 @@ struct BackgroundSurfaceSettleWake final {
     std::uint64_t deadlineMilliseconds{};
 };
 
+struct ComputedCompositorBackground final {
+    std::wstring authorityId;
+    std::wstring widgetInstanceId;
+    std::wstring nodeId;
+    std::wstring focusedElementId;
+    std::wstring imageSource;
+    std::wstring artworkHandle;
+    std::wstring imageFit;
+    declarative::Rect bounds;
+    NativeRenderStyle style;
+    float opacity{1.0F};
+    long long snapshotSequence{};
+    std::uint64_t resourceGeneration{};
+};
+
 struct RenderResult final {
     bool succeeded{};
     /// True only while at least one paint-only node transition requires a
@@ -121,6 +136,7 @@ struct RenderResult final {
     /// Hosts invalidate this damage once at or after the absolute deadline;
     /// static settle time never becomes animation work.
     std::optional<BackgroundSurfaceSettleWake> backgroundSurfaceSettleWake;
+    std::optional<ComputedCompositorBackground> compositorBackground;
     /// Captured on every call but emitted only by the existing host diagnostic
     /// when the containing composition frame exceeds its slow threshold.
     DeclarativeRenderTiming timing;
@@ -284,6 +300,7 @@ struct DeclarativeRenderOptions final {
     /// Exact runtime/presentation authority for host-retained focused
     /// BackgroundSurface selection. Empty preserves test/source compatibility.
     std::wstring artworkAuthorityId;
+    bool compositorBackgroundAvailable{};
     /// Right-stick free scroll deliberately retains semantic focus without
     /// allowing that descendant to pull the viewport back until re-entry.
     bool suppressFocusedDescendantFollow{};
@@ -334,6 +351,16 @@ public:
         std::wstring_view focusedElementId,
         declarative::Rect viewport,
         const DeclarativeRenderOptions& options = {});
+    [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap>
+    ResolveCompositorBackgroundBitmap(
+        ID2D1RenderTarget* renderTarget,
+        const ComputedCompositorBackground& background);
+    [[nodiscard]] bool PaintCompositorBackground(
+        ID2D1RenderTarget* renderTarget,
+        const ComputedCompositorBackground& background,
+        ID2D1Bitmap* bitmap,
+        bool baseOnly,
+        float opacity = 1.0F) const;
 
     /// Binds one admitted update to the last complete renderer checkpoint.
     /// A missing plan means the caller must conservatively repaint/re-layout

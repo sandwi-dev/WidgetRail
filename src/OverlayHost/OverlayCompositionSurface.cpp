@@ -1,5 +1,7 @@
 #include "OverlayCompositionSurface.h"
 
+#include "BackgroundSurfaceTransitionPolicy.h"
+
 #include <d3d11.h>
 #include <dxgi1_2.h>
 
@@ -58,6 +60,14 @@ bool OverlayCompositionSurface::Initialize(
     if (SUCCEEDED(result)) {
         result = device_->CreateVisual(rootVisual_.ReleaseAndGetAddressOf());
     }
+    if (SUCCEEDED(result)) result = device_->CreateVisual(
+        presentationVisual_.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result)) result = device_->CreateVisual(
+        backgroundBase_.visual.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result)) result = device_->CreateVisual(
+        backgroundOutgoing_.visual.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result)) result = device_->CreateVisual(
+        backgroundIncoming_.visual.ReleaseAndGetAddressOf());
     if (SUCCEEDED(result)) {
         result = device_->CreateVisual(content_.visual.ReleaseAndGetAddressOf());
     }
@@ -72,8 +82,16 @@ bool OverlayCompositionSurface::Initialize(
     }
     if (SUCCEEDED(result)) result = rootVisual_->SetEffect(effect_.Get());
     if (SUCCEEDED(result)) {
-        result = rootVisual_->AddVisual(content_.visual.Get(), FALSE, nullptr);
+        result = rootVisual_->AddVisual(presentationVisual_.Get(), FALSE, nullptr);
     }
+    if (SUCCEEDED(result)) result = presentationVisual_->AddVisual(
+        backgroundBase_.visual.Get(), FALSE, nullptr);
+    if (SUCCEEDED(result)) result = presentationVisual_->AddVisual(
+        backgroundOutgoing_.visual.Get(), TRUE, backgroundBase_.visual.Get());
+    if (SUCCEEDED(result)) result = presentationVisual_->AddVisual(
+        backgroundIncoming_.visual.Get(), TRUE, backgroundOutgoing_.visual.Get());
+    if (SUCCEEDED(result)) result = presentationVisual_->AddVisual(
+        content_.visual.Get(), TRUE, backgroundIncoming_.visual.Get());
     if (SUCCEEDED(result)) result = target_->SetRoot(rootVisual_.Get());
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result)) result = device_->WaitForCommitCompletion();
@@ -186,6 +204,11 @@ void OverlayCompositionSurface::Reset() noexcept {
         (void)target_->SetRoot(nullptr);
         (void)device_->Commit();
     }
+    backgroundBase_ = {};
+    backgroundOutgoing_ = {};
+    backgroundIncoming_ = {};
+    backgroundPresentation_ = {};
+    backgroundIncomingAnimation_.Reset();
     content_ = {};
     externalContentVisual_.Reset();
     externalContentAttached_ = false;
@@ -206,6 +229,7 @@ void OverlayCompositionSurface::Reset() noexcept {
     effect_.Reset();
     chromeRootVisual_.Reset();
     rootVisual_.Reset();
+    presentationVisual_.Reset();
     chromeTarget_.Reset();
     pinnedExternalTarget_.Reset();
     target_.Reset();
@@ -701,6 +725,9 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
 OverlayCompositionSurface::LayerState& OverlayCompositionSurface::StateFor(
     const Layer layer) noexcept {
     switch (layer) {
+    case Layer::BackgroundBase: return backgroundBase_;
+    case Layer::BackgroundOutgoing: return backgroundOutgoing_;
+    case Layer::BackgroundIncoming: return backgroundIncoming_;
     case Layer::Guide: return guide_;
     case Layer::Tray: return tray_;
     case Layer::Content:
@@ -711,6 +738,9 @@ OverlayCompositionSurface::LayerState& OverlayCompositionSurface::StateFor(
 const OverlayCompositionSurface::LayerState& OverlayCompositionSurface::StateFor(
     const Layer layer) const noexcept {
     switch (layer) {
+    case Layer::BackgroundBase: return backgroundBase_;
+    case Layer::BackgroundOutgoing: return backgroundOutgoing_;
+    case Layer::BackgroundIncoming: return backgroundIncoming_;
     case Layer::Guide: return guide_;
     case Layer::Tray: return tray_;
     case Layer::Content:
@@ -820,6 +850,9 @@ HRESULT OverlayCompositionSurface::EndFrame(Frame& frame) noexcept {
     const HRESULT result = frame.surface->EndDraw();
     if (SUCCEEDED(result)) {
         switch (frame.layer) {
+        case Layer::BackgroundBase:
+        case Layer::BackgroundOutgoing:
+        case Layer::BackgroundIncoming: break;
         case Layer::Content: ++paintCounters_.content; break;
         case Layer::Guide: ++paintCounters_.guide; break;
         case Layer::Tray: ++paintCounters_.tray; break;
@@ -837,7 +870,8 @@ HRESULT OverlayCompositionSurface::CommitFrame(
 
 HRESULT OverlayCompositionSurface::CommitFrames(
     const std::span<Frame*> frames, const bool waitForCompletion,
-    CommitTiming& timing, const VisualPresentation* presentation) noexcept {
+    CommitTiming& timing, const VisualPresentation* presentation,
+    const BackgroundPresentation* background) noexcept {
     timing = {};
     if (!device_ || frames.empty()) return E_UNEXPECTED;
     for (const auto* frame : frames) {
@@ -861,6 +895,7 @@ HRESULT OverlayCompositionSurface::CommitFrames(
         if (FAILED(result)) break;
     }
     if (SUCCEEDED(result) && presentation) result = ApplyPresentation(*presentation);
+    if (SUCCEEDED(result) && background) result = ApplyBackgroundPresentation(*background);
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result) && waitForCompletion) {
         result = device_->WaitForCommitCompletion();
@@ -877,6 +912,7 @@ HRESULT OverlayCompositionSurface::CommitFrames(
             state.width = frame->width;
             state.height = frame->height;
         }
+        if (background) backgroundPresentation_ = *background;
     }
     for (auto* frame : frames) *frame = {};
     return result;
@@ -884,7 +920,7 @@ HRESULT OverlayCompositionSurface::CommitFrames(
 
 HRESULT OverlayCompositionSurface::ApplyPresentation(
     const VisualPresentation& presentation) noexcept {
-    if (!content_.visual || !std::isfinite(presentation.scaleX) ||
+    if (!presentationVisual_ || !std::isfinite(presentation.scaleX) ||
         !std::isfinite(presentation.scaleY) ||
         !std::isfinite(presentation.offsetX) ||
         !std::isfinite(presentation.offsetY) ||
@@ -902,8 +938,86 @@ HRESULT OverlayCompositionSurface::ApplyPresentation(
     const D2D_RECT_F clip{
         0.0F, 0.0F, presentation.clipWidth, presentation.clipHeight,
     };
-    HRESULT result = content_.visual->SetTransform(transform);
-    if (SUCCEEDED(result)) result = content_.visual->SetClip(clip);
+    HRESULT result = presentationVisual_->SetTransform(transform);
+    if (SUCCEEDED(result)) result = presentationVisual_->SetClip(clip);
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::ApplyBackgroundPresentation(
+    const BackgroundPresentation& presentation) noexcept {
+    ComPtr<IDCompositionVisual3> base;
+    ComPtr<IDCompositionVisual3> outgoing;
+    ComPtr<IDCompositionVisual3> incoming;
+    HRESULT result = backgroundBase_.visual.As(&base);
+    if (SUCCEEDED(result)) result = backgroundOutgoing_.visual.As(&outgoing);
+    if (SUCCEEDED(result)) result = backgroundIncoming_.visual.As(&incoming);
+    if (FAILED(result)) return result;
+    if (!presentation.visible) {
+        backgroundIncomingAnimation_.Reset();
+        result = base->SetOpacity(0.0F);
+        if (SUCCEEDED(result)) result = outgoing->SetOpacity(0.0F);
+        if (SUCCEEDED(result)) result = incoming->SetOpacity(0.0F);
+        return result;
+    }
+    result = base->SetOpacity(1.0F);
+    if (SUCCEEDED(result)) result = outgoing->SetOpacity(1.0F);
+    if (FAILED(result) || !presentation.hasIncoming) {
+        backgroundIncomingAnimation_.Reset();
+        return FAILED(result) ? result : incoming->SetOpacity(0.0F);
+    }
+    if (presentation.prepared) {
+        backgroundIncomingAnimation_.Reset();
+        return incoming->SetOpacity(0.0F);
+    }
+    constexpr double duration = static_cast<double>(
+        background_surface_policy::FadeMilliseconds) / 1000.0;
+    const double elapsed = std::clamp(
+        static_cast<double>(presentation.elapsedMilliseconds) / 1000.0,
+        0.0, duration);
+    const double remaining = duration - elapsed;
+    ComPtr<IDCompositionAnimation> fadeIn;
+    result = device_->CreateAnimation(fadeIn.ReleaseAndGetAddressOf());
+    const double divisor = duration * duration * duration;
+    const float c = static_cast<float>(1.0 - remaining * remaining * remaining / divisor);
+    const float l = static_cast<float>(3.0 * remaining * remaining / divisor);
+    const float q = static_cast<float>(-3.0 * remaining / divisor);
+    const float k = static_cast<float>(1.0 / divisor);
+    if (SUCCEEDED(result)) result = fadeIn->AddCubic(0, c, l, q, k);
+    if (SUCCEEDED(result)) result = fadeIn->End(remaining, 1.0F);
+    if (SUCCEEDED(result)) result = incoming->SetOpacity(fadeIn.Get());
+    if (SUCCEEDED(result)) backgroundIncomingAnimation_ = std::move(fadeIn);
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::CommitPreparedBackground(
+    const std::wstring_view key,
+    const std::uint64_t generation,
+    CommitTiming& timing) noexcept {
+    if (!backgroundPresentation_.visible || !backgroundPresentation_.prepared ||
+        backgroundPresentation_.key != key ||
+        backgroundPresentation_.generation != generation) return E_INVALIDARG;
+    auto next = backgroundPresentation_;
+    next.prepared = false;
+    const auto started = std::chrono::steady_clock::now();
+    HRESULT result = ApplyBackgroundPresentation(next);
+    if (SUCCEEDED(result)) result = device_->Commit();
+    timing.commitMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
+    if (SUCCEEDED(result)) backgroundPresentation_ = std::move(next);
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::RetireBackground(
+    CommitTiming& timing) noexcept {
+    const auto started = std::chrono::steady_clock::now();
+    const BackgroundPresentation hidden{};
+    HRESULT result = ApplyBackgroundPresentation(hidden);
+    if (SUCCEEDED(result)) result = device_->Commit();
+    timing.commitMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
+    if (SUCCEEDED(result)) backgroundPresentation_ = {};
     return result;
 }
 

@@ -1,10 +1,12 @@
 #include "DeclarativeRenderer.h"
 
+#include "BackgroundSurfaceTransitionPolicy.h"
 #include "NativeIcons.h"
 #include "NativeTextLayout.h"
 #include "RemoteImageCache.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <limits>
@@ -27,8 +29,10 @@ constexpr std::size_t kMaximumDiagnostics = 256;
 constexpr std::size_t kMaximumBitmapEntries = 256;
 constexpr std::size_t kMaximumBitmapEntryBytes = 32U * 1024U * 1024U;
 constexpr std::size_t kMaximumBitmapBytes = 96U * 1024U * 1024U;
-constexpr std::uint64_t kBackgroundSurfaceCrossfadeMilliseconds = 400;
-constexpr std::uint64_t kBackgroundSurfaceProposalSettleMilliseconds = 150;
+constexpr auto kBackgroundSurfaceCrossfadeMilliseconds =
+    background_surface_policy::FadeMilliseconds;
+constexpr auto kBackgroundSurfaceProposalSettleMilliseconds =
+    background_surface_policy::SettleMilliseconds;
 constexpr float kMinimumControlSize = 44.0F;
 constexpr float kButtonIconLabelGap = 8.0F;
 constexpr float kButtonStateCueGap = 8.0F;
@@ -528,6 +532,7 @@ struct DeclarativeRenderer::RenderPass final {
     bool backgroundSurfaceAnimationActive{};
     std::optional<Rect> backgroundSurfaceAnimationDamage;
     std::optional<BackgroundSurfaceSettleWake> backgroundSurfaceSettleWake;
+    std::wstring compositorBackgroundId;
 
     [[nodiscard]] bool IsResponsiveVisible(const WidgetNode& node) const noexcept {
         return node.visibleWhen.empty() || node.visibleWhen == L"always" ||
@@ -566,6 +571,78 @@ struct DeclarativeRenderer::RenderPass final {
         if (!reason.empty()) message += L" reason=" + std::wstring{reason};
         Add(node.id, L"background_crossfade_" + std::wstring{event}, message,
             RenderDiagnosticSeverity::Information);
+    }
+
+    [[nodiscard]] bool TrySelectCompositorBackground(
+        const WidgetNode& surface,
+        const NativeRenderStyle& style,
+        const Rect bounds,
+        const float opacity) {
+        if (!options.compositorBackgroundAvailable ||
+            !surface.usesFocusedDescendantArtwork) return false;
+        if (!compositorBackgroundId.empty()) return compositorBackgroundId == surface.id;
+        const auto selection = ResolveFocusBackgroundSelection(snapshot->root, focusedId);
+        if (selection.surface != &surface || !selection.focused) return false;
+        std::vector<const WidgetNode*> path;
+        if (!FindNodePath(snapshot->root, surface.id, path)) return false;
+        const auto paints = [&](const WidgetNode& node) {
+            const auto found = prepared.find(NarrowStableId(node.id));
+            if (found == prepared.end()) return true;
+            const auto& candidate = found->second.paintStyle;
+            const auto& edges = candidate.borderEdges();
+            const std::array edgeSet{edges.top, edges.right, edges.bottom, edges.left};
+            const bool border = std::any_of(
+                edgeSet.begin(), edgeSet.end(),
+                [](const NativeBorderEdgeStyle& edge) {
+                    return edge.widthPx > 0.0F && edge.color && edge.color->alpha > 0.0F;
+                });
+            return (candidate.background() && candidate.background()->alpha > 0.0F) ||
+                !node.imageSource.empty() || !node.artworkHandle.empty() ||
+                candidate.imageTint() || candidate.scrimColor() || border ||
+                candidate.backgroundBlurPx() > 0.0F || candidate.shadowBlurPx() > 0.0F ||
+                std::abs(candidate.opacity() - 1.0F) > 0.001F ||
+                std::abs(candidate.scale() - 1.0F) > 0.001F ||
+                std::abs(candidate.translateXPx()) > 0.001F ||
+                std::abs(candidate.translateYPx()) > 0.001F;
+        };
+        for (std::size_t index = 0; index + 1 < path.size(); ++index) {
+            const auto visible = std::count_if(
+                path[index]->children.begin(), path[index]->children.end(),
+                [&](const WidgetNode& child) { return IsResponsiveVisible(child); });
+            if (paints(*path[index]) || visible != 1) {
+                AddBackgroundSurfaceTransitionDiagnostic(
+                    surface, L"compositor-fallback",
+                    paints(*path[index]) ? L"painted-ancestor" : L"complex-painter-order");
+                return false;
+            }
+        }
+        const auto& edges = style.borderEdges();
+        const bool border = (edges.top.widthPx > 0.0F || edges.right.widthPx > 0.0F ||
+            edges.bottom.widthPx > 0.0F || edges.left.widthPx > 0.0F);
+        const auto shown = presentation.find(NarrowStableId(surface.id));
+        if (border || style.backgroundBlurPx() > 0.0F || style.shadowBlurPx() > 0.0F ||
+            std::abs(style.scale() - 1.0F) > 0.001F ||
+            std::abs(style.translateXPx()) > 0.001F ||
+            std::abs(style.translateYPx()) > 0.001F || shown == presentation.end() ||
+            !SameRect(shown->second.visibleBox, bounds)) {
+            AddBackgroundSurfaceTransitionDiagnostic(
+                surface, L"compositor-fallback", L"unsupported-surface-style");
+            return false;
+        }
+        compositorBackgroundId = surface.id;
+        WidgetNode desired = surface;
+        if (!selection.imageSource.empty() || !selection.artworkHandle.empty()) {
+            desired.imageSource = selection.imageSource;
+            desired.artworkHandle = selection.artworkHandle;
+        }
+        if (desired.imageFit.empty()) desired.imageFit = L"cover";
+        result.compositorBackground = ComputedCompositorBackground{
+            options.artworkAuthorityId, snapshot->instanceId, surface.id,
+            focusedId, desired.imageSource, desired.artworkHandle,
+            desired.imageFit, bounds, style, opacity,
+            snapshot->sequence, owner->bitmapResourceGeneration_};
+        AddBackgroundSurfaceTransitionDiagnostic(surface, L"compositor-eligible");
+        return true;
     }
 
     void MarkBackgroundSurfaceAnimation(const Rect damage) {
@@ -2827,6 +2904,46 @@ struct DeclarativeRenderer::RenderPass final {
             D2DRect(placement.source));
     }
 
+    void DrawBackgroundSurfaceOverlays(
+        const NativeRenderStyle& style,
+        const Rect rect,
+        const float opacity) {
+        const auto radius = RadiusFor(style, rect);
+        ComPtr<ID2D1Layer> layer;
+        ComPtr<ID2D1RoundedRectangleGeometry> geometry;
+        bool rounded{};
+        if (owner->d2dFactory_ && radius > 0.0F &&
+            SUCCEEDED(owner->d2dFactory_->CreateRoundedRectangleGeometry(
+                {D2DRect(rect), radius, radius},
+                geometry.ReleaseAndGetAddressOf())) &&
+            SUCCEEDED(target->CreateLayer(nullptr, layer.ReleaseAndGetAddressOf()))) {
+            D2D1_LAYER_PARAMETERS parameters{};
+            parameters.contentBounds = D2DRect(rect);
+            parameters.geometricMask = geometry.Get();
+            parameters.maskAntialiasMode = D2D1_ANTIALIAS_MODE_PER_PRIMITIVE;
+            parameters.opacity = 1.0F;
+            target->PushLayer(parameters, layer.Get());
+            rounded = true;
+        } else {
+            target->PushAxisAlignedClip(
+                D2DRect(rect), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        }
+        if (style.imageTint()) {
+            auto tint = Brush(target, WithOpacity(*style.imageTint(), opacity));
+            if (tint) target->FillRectangle(D2DRect(rect), tint.Get());
+        }
+        if (style.scrimColor()) {
+            auto scrim = Brush(target, WithOpacity(*style.scrimColor(), opacity));
+            if (scrim) {
+                const Rect bottom{rect.x, rect.y + rect.height * 0.55F,
+                    rect.width, rect.height * 0.45F};
+                target->FillRectangle(D2DRect(bottom), scrim.Get());
+            }
+        }
+        if (rounded) target->PopLayer();
+        else target->PopAxisAlignedClip();
+    }
+
     bool DrawResolvedImageLayers(
         const WidgetNode& committedNode,
         ID2D1Bitmap* const committedBitmap,
@@ -2837,7 +2954,8 @@ struct DeclarativeRenderer::RenderPass final {
         const NativeRenderStyle& style,
         const Rect rect,
         const float opacity,
-        const bool focused) {
+        const bool focused,
+        const bool drawOverlays = true) {
         if (!target || !committedBitmap) return false;
         const auto radius = RadiusFor(style, rect);
 
@@ -2871,19 +2989,7 @@ struct DeclarativeRenderer::RenderPass final {
         // Tint and scrim are surface styling, not texture content. Apply them
         // once after the two image layers so their authored opacity remains
         // stable throughout the blend.
-        if (style.imageTint()) {
-            auto tint = Brush(target, WithOpacity(*style.imageTint(), opacity));
-            if (tint) target->FillRectangle(D2DRect(rect), tint.Get());
-        }
-        if (style.scrimColor()) {
-            auto scrim = Brush(target, WithOpacity(*style.scrimColor(), opacity));
-            if (scrim) {
-                const Rect bottom{
-                    rect.x, rect.y + rect.height * 0.55F,
-                    rect.width, rect.height * 0.45F};
-                target->FillRectangle(D2DRect(bottom), scrim.Get());
-            }
-        }
+        if (drawOverlays) DrawBackgroundSurfaceOverlays(style, rect, opacity);
         if (pushed) target->PopLayer();
         else target->PopAxisAlignedClip();
         return true;
@@ -2975,7 +3081,7 @@ struct DeclarativeRenderer::RenderPass final {
         }
         const auto estimatedBytes64 = pixelWidth * pixelHeight * 4ULL;
         const auto retainedBytes = owner->focusBackgroundCompositeBytes_;
-        if (estimatedBytes64 > kMaximumBitmapEntryBytes ||
+        if (estimatedBytes64 > background_surface_policy::MaximumRebaseBytes ||
             retainedBytes > kMaximumBitmapBytes ||
             estimatedBytes64 > kMaximumBitmapBytes - retainedBytes) {
             AddBackgroundSurfaceTransitionDiagnostic(
@@ -3025,7 +3131,7 @@ struct DeclarativeRenderer::RenderPass final {
         const auto pixelSize = bitmap->GetPixelSize();
         const auto byteCount64 = static_cast<std::uint64_t>(pixelSize.width) *
             static_cast<std::uint64_t>(pixelSize.height) * 4ULL;
-        if (byteCount64 > kMaximumBitmapEntryBytes) {
+        if (byteCount64 > background_surface_policy::MaximumRebaseBytes) {
             AddBackgroundSurfaceTransitionDiagnostic(
                 node, L"rebase-failed", L"surface-bitmap-budget");
             return {};
@@ -3906,11 +4012,16 @@ struct DeclarativeRenderer::RenderPass final {
         // first duplicates that color across the complete 44-DIP hit target.
         // Authors can wrap a Slider in a Card/Row when they want a filled
         // control surface; the Slider itself stays visually lightweight.
-        if (node.kind != L"slider" && node.kind != L"loadingIndicator")
+        const bool compositorBackground = node.kind == L"backgroundSurface" &&
+            TrySelectCompositorBackground(node, style, paintRect, opacity);
+        if (node.kind != L"slider" && node.kind != L"loadingIndicator" &&
+            !compositorBackground)
             DrawSurface(node, style, paintRect, opacity);
 
-        if (node.kind == L"backgroundSurface")
+        if (node.kind == L"backgroundSurface" && !compositorBackground)
             DrawBackgroundSurfaceImage(node, style, paintRect, opacity);
+        else if (compositorBackground)
+            DrawBackgroundSurfaceOverlays(style, paintRect, opacity);
 
         if (node.kind == L"actionSurface" &&
             node.actionSurfacePresentation == L"poster") {
@@ -4063,6 +4174,54 @@ DeclarativeRenderer::DeclarativeRenderer(
     : d2dFactory_(d2dFactory),
       writeFactory_(writeFactory),
       imageCache_(imageCache) {}
+
+ComPtr<ID2D1Bitmap> DeclarativeRenderer::ResolveCompositorBackgroundBitmap(
+    ID2D1RenderTarget* const renderTarget,
+    const ComputedCompositorBackground& background) {
+    if (!renderTarget || background.resourceGeneration != bitmapResourceGeneration_ ||
+        !BindBitmapResourceDomain(renderTarget) ||
+        background.resourceGeneration != bitmapResourceGeneration_) return {};
+    WidgetNode node;
+    node.id = background.nodeId;
+    node.imageSource = background.imageSource;
+    node.artworkHandle = background.artworkHandle;
+    node.imageFit = background.imageFit;
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = background.widgetInstanceId;
+    RenderPass pass;
+    pass.owner = this;
+    pass.target = renderTarget;
+    pass.snapshot = &snapshot;
+    pass.options.artworkWidgetId = background.authorityId.substr(
+        0, background.authorityId.find(L'\x1f'));
+    auto state = ImagePresentationState::Pending;
+    return GetImageBitmap(
+        renderTarget, node, pass, pass.options.artworkWidgetId, state);
+}
+
+bool DeclarativeRenderer::PaintCompositorBackground(
+    ID2D1RenderTarget* const renderTarget,
+    const ComputedCompositorBackground& background,
+    ID2D1Bitmap* const bitmap,
+    const bool baseOnly,
+    const float opacity) const {
+    if (!renderTarget) return false;
+    WidgetNode node;
+    node.id = background.nodeId;
+    node.imageFit = background.imageFit;
+    RenderPass pass;
+    pass.owner = const_cast<DeclarativeRenderer*>(this);
+    pass.target = renderTarget;
+    if (baseOnly) {
+        pass.DrawSurface(node, background.style, background.bounds,
+            background.opacity);
+        return true;
+    }
+    return bitmap && pass.DrawResolvedImageLayers(
+        node, bitmap, false, nullptr, nullptr, 0.0F,
+        background.style, background.bounds,
+        background.opacity * opacity, false, false);
+}
 
 std::optional<IncrementalPresentationPlan>
 DeclarativeRenderer::PlanPresentationUpdate(

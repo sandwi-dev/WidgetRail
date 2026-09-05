@@ -15,6 +15,7 @@
 #include "NativeStyle.h"
 #include "OverlayChrome.h"
 #include "OverlayCompositionSurface.h"
+#include "CompositorBackgroundSurfaceCoordinator.h"
 #include "OverlayPlacement.h"
 #include "OverlayPresentationTransaction.h"
 #include "OverlayProcessOwner.h"
@@ -1927,7 +1928,8 @@ private:
             HandlePlatformEvents();
             return 0;
         case kImageReadyMessage:
-            InvalidateRect(window_, nullptr, FALSE);
+            if (!AdvanceCompositorBackground(GetTickCount64()))
+                InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case kCatalogRefreshMessage: {
             if (state_.surface() == widgetrail::Surface::Hidden &&
@@ -2264,12 +2266,15 @@ private:
                     lastWidgetRenderResult_.backgroundSurfaceSettleWake &&
                     now >= lastWidgetRenderResult_
                         .backgroundSurfaceSettleWake->deadlineMilliseconds &&
-                    !HasExactRefreshRetainedVisualCheckpoint() &&
-                    InvalidateRect(window_, nullptr, FALSE) != FALSE) {
-                    pendingContentRenderPlan_.reset();
-                    if (declarativeRenderer_)
-                        declarativeRenderer_->CancelPresentationUpdatePlan();
-                    lastWidgetRenderResult_.backgroundSurfaceSettleWake.reset();
+                    !HasExactRefreshRetainedVisualCheckpoint()) {
+                    if (AdvanceCompositorBackground(now)) {
+                        lastWidgetRenderResult_.backgroundSurfaceSettleWake.reset();
+                    } else if (InvalidateRect(window_, nullptr, FALSE) != FALSE) {
+                        pendingContentRenderPlan_.reset();
+                        if (declarativeRenderer_)
+                            declarativeRenderer_->CancelPresentationUpdatePlan();
+                        lastWidgetRenderResult_.backgroundSurfaceSettleWake.reset();
+                    }
                 }
                 PumpBridgeEvents(controllerTick);
             } else if (wParam == kGuideCompatibilityTimer) {
@@ -7771,6 +7776,36 @@ private:
         return metrics && metrics->physicalPixelsPerDip > 0.0F &&
             SubmitWidgetContentDamage(
                 *plan, metrics->physicalPixelsPerDip, client);
+    }
+
+    [[nodiscard]] bool AdvanceCompositorBackground(
+        const std::uint64_t nowMilliseconds) {
+        if (!declarativeRenderer_ || !compositionSurface_.available() ||
+            !lastWidgetRenderResult_.compositorBackground) return false;
+        RECT client{};
+        if (!GetClientRect(window_, &client)) return false;
+        const UINT dpi = std::max(1U, GetDpiForWindow(window_));
+        const float scale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F;
+        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
+            client.right - client.left, client.bottom - client.top, dpi, scale);
+        if (!metrics) return false;
+        std::wstring diagnostic;
+        const auto contentBefore = compositionSurface_.paintCounters().content;
+        const auto disposition = compositorBackgroundCoordinator_.Advance(
+            lastWidgetRenderResult_.compositorBackground,
+            *declarativeRenderer_, compositionSurface_,
+            client.right - client.left, client.bottom - client.top,
+            metrics->physicalPixelsPerDip, nowMilliseconds, diagnostic);
+        const bool handled = disposition == widgetrail::
+                CompositorBackgroundSurfaceCoordinator::AdvanceDisposition::Advanced ||
+            disposition == widgetrail::CompositorBackgroundSurfaceCoordinator::
+                AdvanceDisposition::HandledPending;
+        if (handled) AppendDiagnostic(
+            L"Background compositor " + diagnostic + L" content-repaints=" +
+            std::to_wstring(compositionSurface_.paintCounters().content -
+                contentBefore));
+        return handled;
     }
 
     void InvalidateWidgetFocusChange(
@@ -14522,6 +14557,10 @@ private:
         std::optional<widgetrail::CompositionUpdateRasterMapping>
             contentRasterMapping;
         std::vector<widgetrail::OverlayCompositionSurface::Frame> frames;
+        std::optional<widgetrail::OverlayCompositionSurface::
+            BackgroundPresentation> backgroundPresentation;
+        std::optional<std::uint64_t> backgroundObservationTransaction;
+        bool retireBackground{};
         std::optional<widgetrail::shell::RetainedTrayState> trayState;
         struct OverlayFullscreenGeometry final {
             EmbeddedMediaSessionKey sessionKey;
@@ -15575,6 +15614,22 @@ private:
                     &*trayLayout)) {
                 return false;
             }
+            if (lastWidgetRenderResult_.compositorBackground && metrics) {
+                auto observation = compositorBackgroundCoordinator_.Observe(
+                        *lastWidgetRenderResult_.compositorBackground,
+                        *declarativeRenderer_, compositionSurface_, width, height,
+                        metrics->physicalPixelsPerDip, GetTickCount64());
+                if (!observation) return false;
+                for (auto& frame : observation->frames)
+                    set.frames.push_back(std::move(frame));
+                set.backgroundPresentation =
+                    std::move(observation->presentation);
+                set.backgroundObservationTransaction = observation->transactionId;
+                AppendDiagnostic(
+                    L"Background compositor " + observation->diagnostic);
+            } else {
+                set.retireBackground = true;
+            }
         }
 
         const auto guideKey = CurrentGuidePaintKey(
@@ -15701,6 +15756,7 @@ private:
         pendingWidgetPresentationImpact_.reset();
         widgetrail::shell::ResetFixedChromeComposition(
             compositionSurface_, chromeWindow_);
+        compositorBackgroundCoordinator_.Abandon();
         chromeAccessibilityProvider_.Clear();
         retainedGuidePaintKey_.clear();
         retainedTrayPaintState_.reset();
@@ -15808,12 +15864,33 @@ private:
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
         const HRESULT result = compositionSurface_.CommitFrames(
-            framePointers, replacement, timing, nullptr);
+            framePointers, replacement, timing, nullptr,
+            frames.backgroundPresentation
+                ? &*frames.backgroundPresentation : nullptr);
         if (FAILED(result)) {
+            if (frames.backgroundObservationTransaction)
+                compositorBackgroundCoordinator_.CancelObservation(
+                    *frames.backgroundObservationTransaction);
             DisableCompositionFallback(
                 L"surface commit failed hresult=" +
                 std::to_wstring(static_cast<unsigned long>(result)));
             return false;
+        }
+        if (frames.backgroundObservationTransaction &&
+            !compositorBackgroundCoordinator_.CommitObservation(
+                *frames.backgroundObservationTransaction)) {
+            DisableCompositionFallback(
+                L"background observation transaction lost authority");
+            return false;
+        }
+        if (frames.retireBackground)
+            compositorBackgroundCoordinator_.Retire(compositionSurface_);
+        if (lastWidgetRenderResult_.compositorBackground) {
+            if (const auto deadline = compositorBackgroundCoordinator_.deadline())
+                lastWidgetRenderResult_.backgroundSurfaceSettleWake =
+                    widgetrail::BackgroundSurfaceSettleWake{
+                        lastWidgetRenderResult_.compositorBackground->bounds,
+                        *deadline};
         }
         retainedGuidePaintKey_ = std::move(frames.guideKey);
         retainedTrayPaintState_ = std::move(frames.trayState);
@@ -16756,6 +16833,8 @@ private:
                 options.pressedElementId =
                     interactionPresentation.pressedElementId;
                 options.artworkWidgetId = std::wstring{renderedWidget};
+                options.compositorBackgroundAvailable =
+                    compositionSurface_.available() && !inertRetainedSnapshot;
                 if (descriptor) {
                     options.artworkAuthorityId =
                         std::wstring{renderedWidget} + L"\x1f" +
@@ -17352,6 +17431,8 @@ private:
     ComPtr<ID2D1Factory1> d2dFactory_;
     ComPtr<IDWriteFactory> writeFactory_;
     widgetrail::OverlayCompositionSurface compositionSurface_;
+    widgetrail::CompositorBackgroundSurfaceCoordinator
+        compositorBackgroundCoordinator_;
     bool compositionPlacementInProgress_{};
     ComPtr<ID2D1HwndRenderTarget> hwndRenderTarget_;
     ComPtr<ID2D1RenderTarget> renderTarget_;
