@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace widgetrail {
 
@@ -17,15 +18,23 @@ public:
         NotApplicableOrStale,
         Failed,
     };
-    [[nodiscard]] bool Observe(
+    struct Observation final {
+        std::vector<OverlayCompositionSurface::Frame> frames;
+        std::optional<OverlayCompositionSurface::BackgroundPresentation>
+            presentation;
+        std::uint64_t transactionId{};
+        std::wstring diagnostic;
+    };
+    [[nodiscard]] std::optional<Observation> Observe(
         const ComputedCompositorBackground& background,
         DeclarativeRenderer& renderer,
         OverlayCompositionSurface& surface,
         unsigned int width,
         unsigned int height,
         float pixelsPerDip,
-        std::uint64_t nowMilliseconds,
-        std::wstring& diagnostic);
+        std::uint64_t nowMilliseconds);
+    [[nodiscard]] bool CommitObservation(std::uint64_t transactionId) noexcept;
+    void CancelObservation(std::uint64_t transactionId) noexcept;
     [[nodiscard]] AdvanceDisposition Advance(
         const std::optional<ComputedCompositorBackground>& current,
         DeclarativeRenderer& renderer,
@@ -36,6 +45,7 @@ public:
         std::uint64_t nowMilliseconds,
         std::wstring& diagnostic);
     void Retire(OverlayCompositionSurface& surface) noexcept;
+    void Abandon() noexcept;
     [[nodiscard]] std::optional<std::uint64_t> deadline() const noexcept;
 
 private:
@@ -56,7 +66,17 @@ private:
         std::optional<Proposal> proposal;
         std::uint64_t transitionStartedAt{};
         std::uint64_t generation{};
+        std::wstring presentationKey;
+        std::uint64_t presentationGeneration{};
     } state_;
+    struct PendingObservation final {
+        std::uint64_t id{};
+        State state;
+    };
+    struct Staged final {
+        std::vector<OverlayCompositionSurface::Frame> frames;
+        OverlayCompositionSurface::BackgroundPresentation presentation;
+    };
 
     [[nodiscard]] static bool SameDestination(
         const ComputedCompositorBackground& left,
@@ -81,7 +101,10 @@ private:
         float pixelsPerDip,
         std::uint64_t nowMilliseconds,
         bool activate,
+        Staged& staged,
         std::wstring& diagnostic);
+    std::uint64_t observationClock_{};
+    std::optional<PendingObservation> pendingObservation_;
 };
 
 } // namespace widgetrail

@@ -106,7 +106,9 @@ CompositorBackgroundSurfaceCoordinator::Stage(
     const float pixelsPerDip,
     const std::uint64_t nowMilliseconds,
     const bool activate,
+    Staged& staged,
     std::wstring& diagnostic) {
+    staged = {};
     if (!next.proposal || width == 0 || height == 0 ||
         !std::isfinite(pixelsPerDip) || pixelsPerDip <= 0.0F)
         return StageDisposition::Failed;
@@ -128,9 +130,6 @@ CompositorBackgroundSurfaceCoordinator::Stage(
     (void)renderer.PaintCompositorBackground(
         frames[0].target.Get(), proposal.image.descriptor, nullptr, true);
     if (FAILED(surface.EndFrame(frames[0]))) return StageDisposition::Failed;
-    OverlayCompositionSurface::CommitTiming baseTiming;
-    if (FAILED(surface.CommitBackgroundBase(frames[0], baseTiming)))
-        return StageDisposition::Failed;
     auto outgoing = next.committed;
     const std::size_t candidateIndex = outgoing ? 2 : 1;
     const auto candidateLayer = outgoing
@@ -143,6 +142,20 @@ CompositorBackgroundSurfaceCoordinator::Stage(
     if (!proposal.image.bitmap) {
         surface.AbandonFrame(frames[candidateIndex]);
         diagnostic = L"readiness=pending";
+        staged.frames.push_back(std::move(frames[0]));
+        staged.presentation = {
+            true, next.incoming.has_value(), false,
+            next.presentationKey.empty()
+                ? Key(proposal.image.descriptor) : next.presentationKey,
+            next.presentationGeneration == 0
+                ? proposal.generation : next.presentationGeneration,
+            next.incoming && nowMilliseconds >= next.transitionStartedAt
+                ? static_cast<float>(nowMilliseconds - next.transitionStartedAt)
+                : 0.0F};
+        if (next.presentationKey.empty()) {
+            next.presentationKey = staged.presentation.key;
+            next.presentationGeneration = staged.presentation.generation;
+        }
         return StageDisposition::Pending;
     }
     (void)renderer.PaintCompositorBackground(
@@ -175,13 +188,10 @@ CompositorBackgroundSurfaceCoordinator::Stage(
     OverlayCompositionSurface::BackgroundPresentation visual{
         true, outgoing.has_value(), !activate, Key(proposal.image.descriptor),
         generation, 0};
-    std::vector<OverlayCompositionSurface::Frame*> pointers;
     for (auto& frame : frames) {
-        if (frame.surface) pointers.push_back(&frame);
+        if (frame.surface) staged.frames.push_back(std::move(frame));
     }
-    OverlayCompositionSurface::CommitTiming timing;
-    if (FAILED(surface.CommitFrames(pointers, false, timing, nullptr, &visual)))
-        return StageDisposition::Failed;
+    staged.presentation = visual;
     if (!outgoing) {
         next.committed = proposal.image;
         next.proposal.reset();
@@ -193,21 +203,24 @@ CompositorBackgroundSurfaceCoordinator::Stage(
     } else {
         proposal.staged = true;
     }
-    diagnostic = L"stage=background commit-us=" +
-        std::to_wstring(timing.commitMicroseconds);
+    next.presentationKey = visual.key;
+    next.presentationGeneration = visual.generation;
+    diagnostic = L"stage=background";
     return StageDisposition::Committed;
 }
 
-bool CompositorBackgroundSurfaceCoordinator::Observe(
+std::optional<CompositorBackgroundSurfaceCoordinator::Observation>
+CompositorBackgroundSurfaceCoordinator::Observe(
     const ComputedCompositorBackground& background,
     DeclarativeRenderer& renderer,
     OverlayCompositionSurface& surface,
     const unsigned int width,
     const unsigned int height,
     const float pixelsPerDip,
-    const std::uint64_t nowMilliseconds,
-    std::wstring& diagnostic) {
+    const std::uint64_t nowMilliseconds) {
     auto next = state_;
+    std::wstring diagnostic;
+    Staged staged;
     if (next.incoming && nowMilliseconds >= next.transitionStartedAt &&
         nowMilliseconds - next.transitionStartedAt >= kFadeMilliseconds) {
         next.committed = next.incoming;
@@ -217,21 +230,19 @@ bool CompositorBackgroundSurfaceCoordinator::Observe(
     if (next.incoming && SameDestination(next.incoming->descriptor, background)) {
         next.incoming->descriptor = background;
         next.proposal.reset();
-        state_ = std::move(next);
         diagnostic = L"proposal=deduped";
-        return true;
+        goto publish;
     }
     if (!next.incoming && next.committed &&
         SameDestination(next.committed->descriptor, background)) {
         next.committed->descriptor = background;
         next.proposal.reset();
-        state_ = std::move(next);
         diagnostic = L"proposal=deduped";
-        return true;
+        goto publish;
     }
     if (!next.proposal ||
         !SameDestination(next.proposal->image.descriptor, background)) {
-        if (next.generation == UINT64_MAX) return false;
+        if (next.generation == UINT64_MAX) return std::nullopt;
         next.proposal = Proposal{{background, {}}, nowMilliseconds,
             ++next.generation, false};
         diagnostic = L"proposal=observed deadline=" +
@@ -239,14 +250,42 @@ bool CompositorBackgroundSurfaceCoordinator::Observe(
     } else {
         next.proposal->image.descriptor = background;
     }
-    if (!next.committed)
-        (void)Stage(next, renderer, surface, width, height,
-            pixelsPerDip, nowMilliseconds, true, diagnostic);
-    else if (!next.incoming)
-        (void)Stage(next, renderer, surface, width, height,
-            pixelsPerDip, nowMilliseconds, false, diagnostic);
-    state_ = std::move(next);
+    if (!next.committed) {
+        if (Stage(next, renderer, surface, width, height,
+                pixelsPerDip, nowMilliseconds, true, staged, diagnostic) ==
+            StageDisposition::Failed) return std::nullopt;
+    } else if (!next.incoming) {
+        if (Stage(next, renderer, surface, width, height,
+                pixelsPerDip, nowMilliseconds, false, staged, diagnostic) ==
+            StageDisposition::Failed) return std::nullopt;
+    }
+publish:
+    if (observationClock_ == UINT64_MAX) return std::nullopt;
+    const auto transactionId = ++observationClock_;
+    pendingObservation_ = PendingObservation{transactionId, std::move(next)};
+    auto presentation = staged.frames.empty()
+        ? std::nullopt
+        : std::optional{staged.presentation};
+    return Observation{
+        std::move(staged.frames),
+        std::move(presentation),
+        transactionId,
+        std::move(diagnostic)};
+}
+
+bool CompositorBackgroundSurfaceCoordinator::CommitObservation(
+    const std::uint64_t transactionId) noexcept {
+    if (!pendingObservation_ || transactionId == 0 ||
+        pendingObservation_->id != transactionId) return false;
+    state_ = std::move(pendingObservation_->state);
+    pendingObservation_.reset();
     return true;
+}
+
+void CompositorBackgroundSurfaceCoordinator::CancelObservation(
+    const std::uint64_t transactionId) noexcept {
+    if (pendingObservation_ && pendingObservation_->id == transactionId)
+        pendingObservation_.reset();
 }
 
 CompositorBackgroundSurfaceCoordinator::AdvanceDisposition
@@ -267,12 +306,25 @@ CompositorBackgroundSurfaceCoordinator::Advance(
             current->snapshotSequence)
         return AdvanceDisposition::NotApplicableOrStale;
     auto next = state_;
+    Staged stagedFrames;
+    const auto commitStaged = [&]() {
+        if (stagedFrames.frames.empty()) return true;
+        std::vector<OverlayCompositionSurface::Frame*> pointers;
+        for (auto& frame : stagedFrames.frames) pointers.push_back(&frame);
+        OverlayCompositionSurface::CommitTiming timing;
+        const HRESULT result = surface.CommitFrames(
+            pointers, false, timing, nullptr, &stagedFrames.presentation);
+        if (SUCCEEDED(result)) diagnostic += L" commit-us=" +
+            std::to_wstring(timing.commitMicroseconds);
+        return SUCCEEDED(result);
+    };
     const auto deadline = next.proposal->observedAt + kSettleMilliseconds;
     if (nowMilliseconds < deadline) {
         StageDisposition staged = StageDisposition::Committed;
         if (!next.incoming && !next.proposal->staged)
             staged = Stage(next, renderer, surface, width, height,
-                pixelsPerDip, nowMilliseconds, false, diagnostic);
+                pixelsPerDip, nowMilliseconds, false, stagedFrames, diagnostic);
+        if (!commitStaged()) return AdvanceDisposition::Failed;
         state_ = std::move(next);
         return staged == StageDisposition::Pending
             ? AdvanceDisposition::HandledPending
@@ -295,11 +347,14 @@ CompositorBackgroundSurfaceCoordinator::Advance(
         return AdvanceDisposition::Advanced;
     }
     const auto staged = Stage(next, renderer, surface, width, height,
-        pixelsPerDip, nowMilliseconds, true, diagnostic);
-    if (staged == StageDisposition::Pending)
-        return AdvanceDisposition::HandledPending;
+        pixelsPerDip, nowMilliseconds, true, stagedFrames, diagnostic);
     if (staged == StageDisposition::Failed)
         return AdvanceDisposition::Failed;
+    if (!commitStaged()) return AdvanceDisposition::Failed;
+    if (staged == StageDisposition::Pending) {
+        state_ = std::move(next);
+        return AdvanceDisposition::HandledPending;
+    }
     state_ = std::move(next);
     return AdvanceDisposition::Advanced;
 }
@@ -309,6 +364,11 @@ void CompositorBackgroundSurfaceCoordinator::Retire(
     if (!state_.committed && !state_.incoming && !state_.proposal) return;
     OverlayCompositionSurface::CommitTiming timing;
     if (SUCCEEDED(surface.RetireBackground(timing))) state_ = {};
+}
+
+void CompositorBackgroundSurfaceCoordinator::Abandon() noexcept {
+    state_ = {};
+    pendingObservation_.reset();
 }
 
 std::optional<std::uint64_t>

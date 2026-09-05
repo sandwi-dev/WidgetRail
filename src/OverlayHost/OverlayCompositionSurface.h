@@ -229,7 +229,6 @@ public:
     HRESULT CommitPreparedBackground(
         std::wstring_view key, std::uint64_t generation,
         CommitTiming& timing) noexcept;
-    HRESULT CommitBackgroundBase(Frame& frame, CommitTiming& timing) noexcept;
     HRESULT RetireBackground(CommitTiming& timing) noexcept;
     HRESULT CommitPresentation(
         const VisualPresentation& presentation, CommitTiming& timing) noexcept;
@@ -335,7 +334,6 @@ private:
     LayerState tray_;
     PaintCounters paintCounters_{};
     BackgroundPresentation backgroundPresentation_{};
-    Microsoft::WRL::ComPtr<IDCompositionAnimation> backgroundOutgoingAnimation_;
     Microsoft::WRL::ComPtr<IDCompositionAnimation> backgroundIncomingAnimation_;
 
     HRESULT ApplyPresentation(const VisualPresentation& presentation) noexcept;

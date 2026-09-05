@@ -14557,6 +14557,10 @@ private:
         std::optional<widgetrail::CompositionUpdateRasterMapping>
             contentRasterMapping;
         std::vector<widgetrail::OverlayCompositionSurface::Frame> frames;
+        std::optional<widgetrail::OverlayCompositionSurface::
+            BackgroundPresentation> backgroundPresentation;
+        std::optional<std::uint64_t> backgroundObservationTransaction;
+        bool retireBackground{};
         std::optional<widgetrail::shell::RetainedTrayState> trayState;
         struct OverlayFullscreenGeometry final {
             EmbeddedMediaSessionKey sessionKey;
@@ -15611,20 +15615,20 @@ private:
                 return false;
             }
             if (lastWidgetRenderResult_.compositorBackground && metrics) {
-                std::wstring diagnostic;
-                if (!compositorBackgroundCoordinator_.Observe(
+                auto observation = compositorBackgroundCoordinator_.Observe(
                         *lastWidgetRenderResult_.compositorBackground,
                         *declarativeRenderer_, compositionSurface_, width, height,
-                        metrics->physicalPixelsPerDip, GetTickCount64(), diagnostic))
-                    return false;
-                AppendDiagnostic(L"Background compositor " + diagnostic);
-                if (const auto deadline = compositorBackgroundCoordinator_.deadline())
-                    lastWidgetRenderResult_.backgroundSurfaceSettleWake =
-                        widgetrail::BackgroundSurfaceSettleWake{
-                            lastWidgetRenderResult_.compositorBackground->bounds,
-                            *deadline};
+                        metrics->physicalPixelsPerDip, GetTickCount64());
+                if (!observation) return false;
+                for (auto& frame : observation->frames)
+                    set.frames.push_back(std::move(frame));
+                set.backgroundPresentation =
+                    std::move(observation->presentation);
+                set.backgroundObservationTransaction = observation->transactionId;
+                AppendDiagnostic(
+                    L"Background compositor " + observation->diagnostic);
             } else {
-                compositorBackgroundCoordinator_.Retire(compositionSurface_);
+                set.retireBackground = true;
             }
         }
 
@@ -15752,7 +15756,7 @@ private:
         pendingWidgetPresentationImpact_.reset();
         widgetrail::shell::ResetFixedChromeComposition(
             compositionSurface_, chromeWindow_);
-        compositorBackgroundCoordinator_.Retire(compositionSurface_);
+        compositorBackgroundCoordinator_.Abandon();
         chromeAccessibilityProvider_.Clear();
         retainedGuidePaintKey_.clear();
         retainedTrayPaintState_.reset();
@@ -15860,12 +15864,33 @@ private:
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
         const HRESULT result = compositionSurface_.CommitFrames(
-            framePointers, replacement, timing, nullptr);
+            framePointers, replacement, timing, nullptr,
+            frames.backgroundPresentation
+                ? &*frames.backgroundPresentation : nullptr);
         if (FAILED(result)) {
+            if (frames.backgroundObservationTransaction)
+                compositorBackgroundCoordinator_.CancelObservation(
+                    *frames.backgroundObservationTransaction);
             DisableCompositionFallback(
                 L"surface commit failed hresult=" +
                 std::to_wstring(static_cast<unsigned long>(result)));
             return false;
+        }
+        if (frames.backgroundObservationTransaction &&
+            !compositorBackgroundCoordinator_.CommitObservation(
+                *frames.backgroundObservationTransaction)) {
+            DisableCompositionFallback(
+                L"background observation transaction lost authority");
+            return false;
+        }
+        if (frames.retireBackground)
+            compositorBackgroundCoordinator_.Retire(compositionSurface_);
+        if (lastWidgetRenderResult_.compositorBackground) {
+            if (const auto deadline = compositorBackgroundCoordinator_.deadline())
+                lastWidgetRenderResult_.backgroundSurfaceSettleWake =
+                    widgetrail::BackgroundSurfaceSettleWake{
+                        lastWidgetRenderResult_.compositorBackground->bounds,
+                        *deadline};
         }
         retainedGuidePaintKey_ = std::move(frames.guideKey);
         retainedTrayPaintState_ = std::move(frames.trayState);

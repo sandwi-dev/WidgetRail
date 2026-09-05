@@ -208,7 +208,6 @@ void OverlayCompositionSurface::Reset() noexcept {
     backgroundOutgoing_ = {};
     backgroundIncoming_ = {};
     backgroundPresentation_ = {};
-    backgroundOutgoingAnimation_.Reset();
     backgroundIncomingAnimation_.Reset();
     content_ = {};
     externalContentVisual_.Reset();
@@ -954,7 +953,6 @@ HRESULT OverlayCompositionSurface::ApplyBackgroundPresentation(
     if (SUCCEEDED(result)) result = backgroundIncoming_.visual.As(&incoming);
     if (FAILED(result)) return result;
     if (!presentation.visible) {
-        backgroundOutgoingAnimation_.Reset();
         backgroundIncomingAnimation_.Reset();
         result = base->SetOpacity(0.0F);
         if (SUCCEEDED(result)) result = outgoing->SetOpacity(0.0F);
@@ -964,12 +962,10 @@ HRESULT OverlayCompositionSurface::ApplyBackgroundPresentation(
     result = base->SetOpacity(1.0F);
     if (SUCCEEDED(result)) result = outgoing->SetOpacity(1.0F);
     if (FAILED(result) || !presentation.hasIncoming) {
-        backgroundOutgoingAnimation_.Reset();
         backgroundIncomingAnimation_.Reset();
         return FAILED(result) ? result : incoming->SetOpacity(0.0F);
     }
     if (presentation.prepared) {
-        backgroundOutgoingAnimation_.Reset();
         backgroundIncomingAnimation_.Reset();
         return incoming->SetOpacity(0.0F);
     }
@@ -980,10 +976,7 @@ HRESULT OverlayCompositionSurface::ApplyBackgroundPresentation(
         0.0, duration);
     const double remaining = duration - elapsed;
     ComPtr<IDCompositionAnimation> fadeIn;
-    ComPtr<IDCompositionAnimation> fadeOut;
     result = device_->CreateAnimation(fadeIn.ReleaseAndGetAddressOf());
-    if (SUCCEEDED(result)) result = device_->CreateAnimation(
-        fadeOut.ReleaseAndGetAddressOf());
     const double divisor = duration * duration * duration;
     const float c = static_cast<float>(1.0 - remaining * remaining * remaining / divisor);
     const float l = static_cast<float>(3.0 * remaining * remaining / divisor);
@@ -991,14 +984,8 @@ HRESULT OverlayCompositionSurface::ApplyBackgroundPresentation(
     const float k = static_cast<float>(1.0 / divisor);
     if (SUCCEEDED(result)) result = fadeIn->AddCubic(0, c, l, q, k);
     if (SUCCEEDED(result)) result = fadeIn->End(remaining, 1.0F);
-    if (SUCCEEDED(result)) result = fadeOut->AddCubic(0, 1.0F - c, -l, -q, -k);
-    if (SUCCEEDED(result)) result = fadeOut->End(remaining, 0.0F);
     if (SUCCEEDED(result)) result = incoming->SetOpacity(fadeIn.Get());
-    if (SUCCEEDED(result)) result = outgoing->SetOpacity(fadeOut.Get());
-    if (SUCCEEDED(result)) {
-        backgroundIncomingAnimation_ = std::move(fadeIn);
-        backgroundOutgoingAnimation_ = std::move(fadeOut);
-    }
+    if (SUCCEEDED(result)) backgroundIncomingAnimation_ = std::move(fadeIn);
     return result;
 }
 
@@ -1018,30 +1005,6 @@ HRESULT OverlayCompositionSurface::CommitPreparedBackground(
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - started).count());
     if (SUCCEEDED(result)) backgroundPresentation_ = std::move(next);
-    return result;
-}
-
-HRESULT OverlayCompositionSurface::CommitBackgroundBase(
-    Frame& frame, CommitTiming& timing) noexcept {
-    timing = {};
-    if (frame.layer != Layer::BackgroundBase || frame.drawing ||
-        !frame.surface || !backgroundBase_.visual) return E_INVALIDARG;
-    ComPtr<IDCompositionVisual3> base;
-    HRESULT result = backgroundBase_.visual.As(&base);
-    const auto started = std::chrono::steady_clock::now();
-    if (SUCCEEDED(result) && frame.replacement)
-        result = backgroundBase_.visual->SetContent(frame.surface.Get());
-    if (SUCCEEDED(result)) result = base->SetOpacity(1.0F);
-    if (SUCCEEDED(result)) result = device_->Commit();
-    timing.commitMicroseconds = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - started).count());
-    if (SUCCEEDED(result) && frame.replacement) {
-        backgroundBase_.surface = frame.surface;
-        backgroundBase_.width = frame.width;
-        backgroundBase_.height = frame.height;
-    }
-    frame = {};
     return result;
 }
 
