@@ -24,9 +24,12 @@ public sealed class SdkGalleryWidget : Widget
     private static readonly IReadOnlyDictionary<string, string> PackagedPngFiles =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            [DefaultBackgroundArtworkHandle] = "background-default.png",
-            [WarmBackgroundArtworkHandle] = "background-focus-warm.png",
-            [CoolBackgroundArtworkHandle] = "background-focus-cool.png",
+            [DefaultBackgroundArtworkHandle] =
+                "WidgetRail.Samples.SdkGalleryWidget.Assets.background-default.png",
+            [WarmBackgroundArtworkHandle] =
+                "WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-warm.png",
+            [CoolBackgroundArtworkHandle] =
+                "WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-cool.png",
         };
     private static readonly WidgetIdScope Ids = WidgetIds.Scope("gallery");
     private static readonly NavigationShellDestination[] Destinations =
@@ -197,8 +200,8 @@ public sealed class SdkGalleryWidget : Widget
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (PackagedPngFiles.TryGetValue(handle.Value, out var fileName))
-            return ValueTask.FromResult(ResolvePackagedPng(fileName));
+        if (PackagedPngFiles.TryGetValue(handle.Value, out var resourceName))
+            return ValueTask.FromResult(ResolvePackagedPng(resourceName));
         return ValueTask.FromResult<WidgetEncodedArtwork?>(
             handle.Value == SampleWebPArtworkHandle
                 ? new WidgetEncodedArtwork(WidgetArtworkContentType.WebP, SampleWebPArtworkBytes)
@@ -555,13 +558,15 @@ public sealed class SdkGalleryWidget : Widget
         _ => "gallery.tab.utilities",
     };
 
-    private static WidgetEncodedArtwork? ResolvePackagedPng(string fileName)
+    private static WidgetEncodedArtwork? ResolvePackagedPng(string resourceName)
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "assets", fileName);
-        var file = new FileInfo(path);
-        if (!file.Exists || file.Length is <= 0 or > ProtocolConstants.MaximumEncodedArtworkBytes)
+        using var stream = typeof(SdkGalleryWidget).Assembly
+            .GetManifestResourceStream(resourceName);
+        if (stream is null || !stream.CanSeek ||
+            stream.Length is <= 0 or > ProtocolConstants.MaximumEncodedArtworkBytes)
             return null;
-        var bytes = File.ReadAllBytes(path);
+        var bytes = new byte[checked((int)stream.Length)];
+        stream.ReadExactly(bytes);
         return bytes.Length >= 24 && bytes.AsSpan(0, 8).SequenceEqual(
             new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })
                 ? new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes)

@@ -2456,7 +2456,8 @@ cannot overwrite the current selection.
 Resolve every declared handle through the same bounded
 `OnResolveArtworkAsync` path as ordinary trusted artwork.
 The capability-free [SDK Gallery Backgrounds page](../samples/SdkGalleryWidget/README.md)
-shows the complete contract with sealed package PNGs: default Cover artwork,
+shows the complete contract with PNGs embedded in the widget assembly under
+stable manifest-resource names: default Cover artwork,
 focus-driven replacement and retention, nested Contain ownership, Fill, and an
 unresolved-handle fallback. It depends on neither a provider nor a prior cache
 and is suitable for first-run and restart verification.

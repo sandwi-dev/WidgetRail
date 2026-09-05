@@ -25,10 +25,13 @@ presentation changes; action IDs remain routing intent and may be shared. The
 built-in theme owns the standard shell dimensions and focus/selected/pressed
 treatment; the sample does not rebuild those rules in local WRSS.
 
-The Backgrounds page seals three visually distinct PNG files under `assets/`
-and resolves only their opaque handles through `OnResolveArtworkAsync`. The
-files are ordinary package resources—not provider URLs, user paths, cache
-entries, or network dependencies. The root owns the default Cover image and
+The Backgrounds page keeps three visually distinct source PNGs under `assets/`,
+embeds them in `SdkGalleryWidget.dll` with stable manifest-resource names, and
+resolves only their opaque handles through `OnResolveArtworkAsync`. The archive
+does not duplicate them as loose files, and resolution is independent of the
+shared worker process base and working directory. They are sealed package
+resources—not provider URLs, user paths, cache entries, or network
+dependencies. The root owns the default Cover image and
 focused-descendant replacement; nested surfaces separately demonstrate
 Contain and Fill. Focusing the unadorned **Retain artwork** button deliberately
 keeps the last accepted root image. An unknown handle demonstrates that the

@@ -266,23 +266,24 @@ static async Task BackgroundGallery()
         new WidgetArtworkHandle(SdkGalleryWidget.MissingBackgroundArtworkHandle)));
 
     var hashes = new HashSet<string>(StringComparer.Ordinal);
-    foreach (var (handle, fileName) in new[]
+    foreach (var (handle, length, hash) in new[]
     {
-        (SdkGalleryWidget.DefaultBackgroundArtworkHandle, "background-default.png"),
-        (SdkGalleryWidget.WarmBackgroundArtworkHandle, "background-focus-warm.png"),
-        (SdkGalleryWidget.CoolBackgroundArtworkHandle, "background-focus-cool.png"),
+        (SdkGalleryWidget.DefaultBackgroundArtworkHandle, 2_241_830,
+            "DBEE1BA7FFF3ABC765F684D3AC666E34DA5CC68575C19DBAF9B64A4CA8405297"),
+        (SdkGalleryWidget.WarmBackgroundArtworkHandle, 2_295_973,
+            "502D596BCBB590EAF24C7FC34ED81DE81B616E4F562F36118112E971BB38D247"),
+        (SdkGalleryWidget.CoolBackgroundArtworkHandle, 2_417_019,
+            "B317048E3A6A455350A1C3A19FDDFF13371CE8C6F112CDEA1B80BC2879341711"),
     })
     {
-        var expected = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "assets", fileName));
-        Assert.True(expected.Length > 1_000_000,
-            $"The sealed sample artwork '{fileName}' is not a meaningful visual fixture.");
-        Assert.True(expected.Length <= ProtocolConstants.MaximumEncodedArtworkBytes);
         var resolved = await widget.OnResolveArtworkAsync(new WidgetArtworkHandle(handle));
         Assert.True(resolved is not null);
         Assert.Equal(WidgetArtworkContentType.Png, resolved!.ContentType);
-        Assert.True(resolved.Bytes.Span.SequenceEqual(expected),
-            $"The resolver changed the sealed bytes for '{fileName}'.");
-        hashes.Add(Convert.ToHexString(SHA256.HashData(expected)));
+        Assert.Equal(length, resolved.Bytes.Length);
+        Assert.True(length <= ProtocolConstants.MaximumEncodedArtworkBytes);
+        var actualHash = Convert.ToHexString(SHA256.HashData(resolved.Bytes.Span));
+        Assert.Equal(hash, actualHash);
+        hashes.Add(actualHash);
     }
     Assert.Equal(3, hashes.Count);
 
@@ -319,21 +320,25 @@ static Task PackageContract()
     Assert.False(project.Contains("OverlayHost", StringComparison.OrdinalIgnoreCase));
     Assert.False(project.Contains("PlatformBroker", StringComparison.OrdinalIgnoreCase));
     Assert.False(project.Contains("WidgetRuntime", StringComparison.OrdinalIgnoreCase));
-    foreach (var asset in new[]
+    var expectedResources = new[]
     {
-        "assets\\background-default.png",
-        "assets\\background-focus-warm.png",
-        "assets\\background-focus-cool.png",
-    })
-        Assert.True(project.Contains(asset, StringComparison.Ordinal));
+        "WidgetRail.Samples.SdkGalleryWidget.Assets.background-default.png",
+        "WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-cool.png",
+        "WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-warm.png",
+    };
+    Assert.True(project.Contains("<EmbeddedResource Include=\"assets\\background-default.png\"",
+        StringComparison.Ordinal));
+    foreach (var resource in expectedResources)
+        Assert.True(project.Contains($"LogicalName=\"{resource}\"", StringComparison.Ordinal));
+    Assert.True(typeof(SdkGalleryWidget).Assembly.GetManifestResourceNames()
+        .Order(StringComparer.Ordinal).SequenceEqual(expectedResources));
 
     var packageScript = File.ReadAllText(Path.Combine(
         AppContext.BaseDirectory, "sample", "Build-CommunityPackage.ps1"));
     Assert.True(packageScript.Contains("$expectedFiles", StringComparison.Ordinal));
     Assert.True(packageScript.Contains("payload\\SdkGalleryWidget.dll", StringComparison.Ordinal));
-    Assert.True(packageScript.Contains("assets\\background-default.png", StringComparison.Ordinal));
-    Assert.True(packageScript.Contains("assets\\background-focus-warm.png", StringComparison.Ordinal));
-    Assert.True(packageScript.Contains("assets\\background-focus-cool.png", StringComparison.Ordinal));
+    Assert.False(packageScript.Contains("assets\\background-", StringComparison.Ordinal),
+        "Embedded artwork must not be duplicated as loose package files.");
     Assert.True(packageScript.Contains("Assert-NoReparsePoint", StringComparison.Ordinal));
     Assert.True(packageScript.Contains("validate $stagingRoot", StringComparison.Ordinal));
     Assert.True(packageScript.Contains("pack $stagingRoot --output $packagePath", StringComparison.Ordinal));

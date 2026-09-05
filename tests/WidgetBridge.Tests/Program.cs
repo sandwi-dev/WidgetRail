@@ -246,7 +246,8 @@ static async Task SdkGalleryBackgroundArtworkCrossesBridge()
     Assert.Equal(ImageFit.Cover, initial.Root.ImageFit);
     Assert.Equal(true, initial.Root.UsesFocusedDescendantArtwork);
     await AssertGalleryArtworkAsync(
-        SdkGalleryWidget.DefaultBackgroundArtworkHandle, "background-default.png");
+        SdkGalleryWidget.DefaultBackgroundArtworkHandle, 2_241_830,
+        "DBEE1BA7FFF3ABC765F684D3AC666E34DA5CC68575C19DBAF9B64A4CA8405297");
 
     var backgroundsTab = FindNode(initial.Root, "gallery.shell.compact").Children.Single(node =>
         node.ActionId == "gallery.tab.backgrounds");
@@ -266,11 +267,13 @@ static async Task SdkGalleryBackgroundArtworkCrossesBridge()
     Assert.Equal(ImageFit.Fill,
         FindNode(backgrounds.Root, "gallery.backgrounds.fill.surface").ImageFit);
     await AssertGalleryArtworkAsync(
-        SdkGalleryWidget.WarmBackgroundArtworkHandle, "background-focus-warm.png");
+        SdkGalleryWidget.WarmBackgroundArtworkHandle, 2_295_973,
+        "502D596BCBB590EAF24C7FC34ED81DE81B616E4F562F36118112E971BB38D247");
     await AssertGalleryArtworkAsync(
-        SdkGalleryWidget.CoolBackgroundArtworkHandle, "background-focus-cool.png");
+        SdkGalleryWidget.CoolBackgroundArtworkHandle, 2_417_019,
+        "B317048E3A6A455350A1C3A19FDDFF13371CE8C6F112CDEA1B80BC2879341711");
 
-    async Task AssertGalleryArtworkAsync(string handle, string fileName)
+    async Task AssertGalleryArtworkAsync(string handle, int expectedLength, string expectedHash)
     {
         var acknowledged = await harness.Client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
@@ -281,9 +284,8 @@ static async Task SdkGalleryBackgroundArtworkCrossesBridge()
         Assert.Equal("image/png", artwork.Payload.GetProperty("contentType").GetString());
         var actual = Convert.FromBase64String(
             artwork.Payload.GetProperty("contentBase64").GetString()!);
-        var expected = File.ReadAllBytes(Path.Combine(
-            AppContext.BaseDirectory, "assets", fileName));
-        Assert.SequenceEqual(expected, actual);
+        Assert.Equal(expectedLength, actual.Length);
+        Assert.Equal(expectedHash, Convert.ToHexString(SHA256.HashData(actual)));
     }
 }
 

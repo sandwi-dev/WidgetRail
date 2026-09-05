@@ -11,8 +11,11 @@
   <ItemGroup>
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="assets\background-default.png" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="assets\background-focus-warm.png" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="assets\background-focus-cool.png" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="assets\background-default.png"
+                      LogicalName="WidgetRail.Samples.SdkGalleryWidget.Assets.background-default.png" />
+    <EmbeddedResource Include="assets\background-focus-warm.png"
+                      LogicalName="WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-warm.png" />
+    <EmbeddedResource Include="assets\background-focus-cool.png"
+                      LogicalName="WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-cool.png" />
   </ItemGroup>
 </Project>
