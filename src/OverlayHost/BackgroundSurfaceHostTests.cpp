@@ -1,4 +1,6 @@
 #include "DeclarativeRenderer.h"
+#include "BackgroundSurfaceTransitionPolicy.h"
+#include "CompositorBackgroundSurfaceCoordinator.h"
 #include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
 
@@ -10,11 +12,49 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <chrono>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
+
+namespace widgetrail {
+struct CompositorBackgroundSurfaceCoordinatorTestAccess final {
+    static bool SameDestination(
+        const ComputedCompositorBackground& left,
+        const ComputedCompositorBackground& right) {
+        return CompositorBackgroundSurfaceCoordinator::SameDestination(left, right);
+    }
+    static std::optional<std::uint64_t> Deadline(
+        const ComputedCompositorBackground& descriptor,
+        const std::uint64_t observedAt) {
+        CompositorBackgroundSurfaceCoordinator coordinator;
+        coordinator.state_.proposal =
+            CompositorBackgroundSurfaceCoordinator::Proposal{
+                {descriptor, {}}, observedAt, 1, false};
+        return coordinator.deadline();
+    }
+    static bool CommitAndCancelAreTransactional() {
+        CompositorBackgroundSurfaceCoordinator coordinator;
+        coordinator.state_.generation = 3;
+        auto changed = coordinator.state_;
+        changed.generation = 4;
+        coordinator.pendingObservation_ =
+            CompositorBackgroundSurfaceCoordinator::PendingObservation{7, changed};
+        coordinator.CancelObservation(7);
+        if (coordinator.state_.generation != 3 ||
+            coordinator.pendingObservation_) return false;
+        coordinator.pendingObservation_ =
+            CompositorBackgroundSurfaceCoordinator::PendingObservation{8, changed};
+        return coordinator.CommitObservation(8) &&
+            coordinator.state_.generation == 4 &&
+            !coordinator.pendingObservation_;
+    }
+};
+} // namespace widgetrail
 
 namespace {
 
@@ -82,6 +122,28 @@ bool HasDiagnostic(
         [&](const auto& diagnostic) { return diagnostic.code == code; });
 }
 
+std::string ReadSource(const char* const name) {
+    const auto path = std::filesystem::path(__FILE__).parent_path() / name;
+    std::ifstream input(path, std::ios::binary);
+    Require(input.good(), "production source fixture could not be opened");
+    std::ostringstream content;
+    content << input.rdbuf();
+    return content.str();
+}
+
+std::string_view RequireSlice(
+    const std::string& source,
+    const std::string_view begin,
+    const std::string_view end,
+    const char* const message) {
+    const auto first = source.find(begin);
+    const auto last = first == std::string::npos
+        ? std::string::npos : source.find(end, first + begin.size());
+    Require(first != std::string::npos && last != std::string::npos && last > first,
+        message);
+    return std::string_view(source).substr(first, last - first);
+}
+
 } // namespace
 
 int wmain() {
@@ -90,6 +152,112 @@ int wmain() {
         const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         Require(SUCCEEDED(initialized) || initialized == RPC_E_CHANGED_MODE,
             "COM initialization failed");
+
+        {
+            using widgetrail::background_surface_policy::FadeMilliseconds;
+            using widgetrail::background_surface_policy::SettleMilliseconds;
+            static_assert(SettleMilliseconds == 150);
+            static_assert(FadeMilliseconds == 400);
+            widgetrail::ComputedCompositorBackground first;
+            first.authorityId = L"widget\x1fruntime\x1fpresentation";
+            first.widgetInstanceId = L"instance";
+            first.nodeId = L"surface";
+            first.focusedElementId = L"first";
+            first.artworkHandle = L"artwork";
+            first.imageFit = L"cover";
+            first.bounds = {0, 0, 1280, 720};
+            first.snapshotSequence = 1;
+            first.resourceGeneration = 9;
+            auto compatible = first;
+            compatible.focusedElementId = L"same-artwork-second-focus";
+            compatible.snapshotSequence = 2;
+            Require(widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                        SameDestination(first, compatible),
+                "same destination did not dedupe across current-tree refresh");
+            auto changed = compatible;
+            changed.artworkHandle = L"replacement";
+            Require(!widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                         SameDestination(first, changed),
+                "changed artwork retained same-destination authority");
+            changed = compatible;
+            changed.authorityId += L"-stale";
+            Require(!widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                         SameDestination(first, changed),
+                "changed runtime/presentation authority was not retired");
+            const auto deadline =
+                widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                    Deadline(first, 1000);
+            Require(deadline && *deadline == 1150,
+                "coordinator did not own the exact 150 ms settle deadline");
+            Require(widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                        CommitAndCancelAreTransactional(),
+                "coordinator commit/cancel changed live state out of order");
+
+            const auto coordinator = ReadSource(
+                "CompositorBackgroundSurfaceCoordinator.cpp");
+            const auto advance = RequireSlice(
+                coordinator, "CompositorBackgroundSurfaceCoordinator::Advance(",
+                "void CompositorBackgroundSurfaceCoordinator::Retire(",
+                "coordinator advance owner slice was unavailable");
+            Require(advance.find("HandledPending") != std::string_view::npos &&
+                    advance.find("InvalidateRect") == std::string_view::npos &&
+                    advance.find("Layer::Content") == std::string_view::npos,
+                "pending/background-only advancement can escape into Content repaint");
+            const auto stage = RequireSlice(
+                coordinator, "CompositorBackgroundSurfaceCoordinator::Stage(",
+                "CompositorBackgroundSurfaceCoordinator::Observe(",
+                "coordinator stage owner slice was unavailable");
+            Require(stage.find("Layer::BackgroundBase") <
+                        stage.find("ResolveCompositorBackgroundBitmap") &&
+                    stage.find("RebaseOutgoing(") != std::string_view::npos,
+                "base/readiness/rebase ordering left the coordinator owner");
+
+            const auto host = ReadSource("main.cpp");
+            const auto hostTransaction = RequireSlice(
+                host, "auto observation = compositorBackgroundCoordinator_.Observe(",
+                "if (frames.retireBackground)",
+                "host background transaction slice was unavailable");
+            const auto observeAt = hostTransaction.find("Observe(");
+            const auto commitAt = hostTransaction.find("compositionSurface_.CommitFrames(");
+            const auto publishAt = hostTransaction.find("CommitObservation(");
+            Require(observeAt < commitAt && commitAt < publishAt &&
+                    hostTransaction.find("CancelObservation(") != std::string_view::npos &&
+                    hostTransaction.find("paintCounters().content") ==
+                        std::string_view::npos,
+                "ordinary background frames were not bound to the final host commit");
+            const auto backgroundOnlyHost = RequireSlice(
+                host, "[[nodiscard]] bool AdvanceCompositorBackground(",
+                "void InvalidateWidgetFocusChange(",
+                "host background-only owner slice was unavailable");
+            Require(backgroundOnlyHost.find("InvalidateRect") ==
+                        std::string_view::npos &&
+                    backgroundOnlyHost.find("paintCounters().content") !=
+                        std::string_view::npos &&
+                    backgroundOnlyHost.find("contentBefore") !=
+                        std::string_view::npos,
+                "background-only commit no longer proves zero Content repaint delta");
+
+            const auto composition = ReadSource("OverlayCompositionSurface.cpp");
+            const auto opacity = RequireSlice(
+                composition, "OverlayCompositionSurface::ApplyBackgroundPresentation(",
+                "OverlayCompositionSurface::CommitPreparedBackground(",
+                "background opacity owner slice was unavailable");
+            Require(opacity.find("outgoing->SetOpacity(1.0F)") !=
+                        std::string_view::npos &&
+                    opacity.find("fadeOut") == std::string_view::npos,
+                "DComp source-over no longer matches committed-full/incoming-progress");
+            const auto endFrame = RequireSlice(
+                composition, "OverlayCompositionSurface::EndFrame(",
+                "OverlayCompositionSurface::CommitFrame(",
+                "composition frame-counter slice was unavailable");
+            Require(endFrame.find("case Layer::BackgroundBase:") !=
+                        std::string_view::npos &&
+                    endFrame.find("case Layer::BackgroundIncoming:") !=
+                        std::string_view::npos &&
+                    endFrame.find("case Layer::Content: ++paintCounters_.content") !=
+                        std::string_view::npos,
+                "background layers no longer remain outside the Content repaint counter");
+        }
 
         {
         std::wstring error;
@@ -447,6 +615,42 @@ int wmain() {
             Require(bitmapStats.entries <= bitmapStats.maximumEntries &&
                     bitmapStats.bytes <= bitmapStats.maximumBytes,
                 "retarget fixture exceeded bounded renderer bitmap ownership");
+
+            widgetrail::DeclarativeRenderer compositorRenderer{
+                d2d.Get(), write.Get(), &retargetCache};
+            auto compositorOptions = retargetOptions;
+            compositorOptions.compositorBackgroundAvailable = true;
+            compositorOptions.animationTimestampMilliseconds = 3000;
+            target->BeginDraw();
+            const auto eligible = compositorRenderer.Render(
+                target.Get(), *retargetSnapshot, L"background.retarget.red",
+                viewport, compositorOptions);
+            Require(SUCCEEDED(target->EndDraw()) && eligible.succeeded &&
+                    eligible.compositorBackground &&
+                    eligible.compositorBackground->nodeId == retargetSurface &&
+                    eligible.compositorBackground->focusedElementId ==
+                        L"background.retarget.red" &&
+                    eligible.compositorBackground->artworkHandle ==
+                        L"background.retarget.red",
+                "transparent current-tree surface did not emit exact compositor authority");
+
+            auto opaqueSnapshot = *retargetSnapshot;
+            widgetrail::WidgetNode opaqueRoot;
+            opaqueRoot.id = L"background.retarget.opaque-root";
+            opaqueRoot.kind = L"stack";
+            opaqueRoot.imageSource = L"data:image/png;base64," +
+                std::wstring{redPng};
+            opaqueRoot.children.push_back(std::move(opaqueSnapshot.root));
+            opaqueSnapshot.root = std::move(opaqueRoot);
+            target->BeginDraw();
+            const auto fallback = compositorRenderer.Render(
+                target.Get(), opaqueSnapshot, L"background.retarget.red",
+                viewport, compositorOptions);
+            Require(SUCCEEDED(target->EndDraw()) && fallback.succeeded &&
+                    !fallback.compositorBackground &&
+                    HasDiagnostic(
+                        fallback, L"background_crossfade_compositor-fallback"),
+                "painted ancestor did not retain the raster fallback boundary");
             retargetCache.Shutdown();
         }
 
@@ -1057,7 +1261,7 @@ int wmain() {
         })json", wrongOwnerError),
             "native parser admitted focused-background ownership on a non-surface");
         cache.Shutdown();
-        std::cout << "BackgroundSurface host tests: 11/11 passed.\n";
+        std::cout << "BackgroundSurface host tests: 12/12 passed.\n";
         }
         if (SUCCEEDED(initialized)) CoUninitialize();
         return 0;

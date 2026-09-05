@@ -583,10 +583,13 @@ function Invoke-BackgroundSurfaceHostTests {
     $arguments = $common + @(
         '/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING',
         '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
+        '/DWRAIL_COMPOSITOR_BACKGROUND_TESTING',
         (Join-Path $projectDirectory 'BackgroundSurfaceHostTests.cpp'),
         (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
         (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'CompositorBackgroundSurfaceCoordinator.cpp'),
+        (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
         (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
@@ -599,7 +602,8 @@ function Invoke-BackgroundSurfaceHostTests {
         '/link', '/SUBSYSTEM:CONSOLE'
     ) + $libraryArguments + @(
         'windowsapp.lib', 'user32.lib', 'bcrypt.lib', 'normaliz.lib',
-        'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
+        'd2d1.lib', 'dwrite.lib', 'd3d11.lib', 'dxgi.lib', 'dcomp.lib',
+        'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
     )
     & $cl $arguments
     if ($LASTEXITCODE -ne 0) {

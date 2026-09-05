@@ -49,6 +49,9 @@ public:
     [[nodiscard]] std::optional<std::uint64_t> deadline() const noexcept;
 
 private:
+#ifdef WRAIL_COMPOSITOR_BACKGROUND_TESTING
+    friend struct CompositorBackgroundSurfaceCoordinatorTestAccess;
+#endif
     enum class StageDisposition { Committed, Pending, Failed };
     struct Image final {
         ComputedCompositorBackground descriptor;
