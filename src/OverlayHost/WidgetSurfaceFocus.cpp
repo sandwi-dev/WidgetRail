@@ -105,12 +105,6 @@ const WidgetNode* FirstVisibleFocusDescendant(
 
 } // namespace
 
-std::wstring_view RootInputScope(const WidgetSnapshot& snapshot) noexcept {
-    return snapshot.root.inputScopeId.empty()
-        ? std::wstring_view(snapshot.root.id)
-        : std::wstring_view(snapshot.root.inputScopeId);
-}
-
 const WidgetNode* FindNodeInInputScope(
     const WidgetSnapshot& snapshot,
     const std::wstring_view nodeId,

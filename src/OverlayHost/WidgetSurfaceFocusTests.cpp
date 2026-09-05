@@ -1,4 +1,5 @@
 #include "DeclarativeRenderer.h"
+#include "ControllerNavigation.h"
 #include "WidgetSurfaceFocus.h"
 
 #include <cstdlib>
@@ -75,6 +76,33 @@ widgetrail::WidgetSnapshot Snapshot(const wchar_t* activeScope) {
     empty.kind = L"stack";
     empty.inputScopeId = L"empty";
     snapshot.root.children.push_back(std::move(empty));
+    return snapshot;
+}
+
+widgetrail::WidgetSnapshot WrappedRootSnapshot(
+    std::initializer_list<const wchar_t*> wrappers,
+    const wchar_t* activeScope = L"content.scope") {
+    widgetrail::WidgetSnapshot snapshot;
+    snapshot.sequence = 1;
+    snapshot.instanceId = L"wrapped.runtime.v1";
+    snapshot.activeInputScopeId = activeScope;
+    snapshot.initialFocusId = L"content.action";
+
+    widgetrail::WidgetNode content;
+    content.id = L"content";
+    content.kind = L"stack";
+    content.inputScopeId = L"content.scope";
+    content.children.push_back(Button(L"content.action"));
+
+    for (auto wrapper = wrappers.end(); wrapper != wrappers.begin();) {
+        --wrapper;
+        widgetrail::WidgetNode presentation;
+        presentation.id = std::wstring{L"presentation."} + *wrapper;
+        presentation.kind = *wrapper;
+        presentation.children.push_back(std::move(content));
+        content = std::move(presentation);
+    }
+    snapshot.root = std::move(content);
     return snapshot;
 }
 
@@ -182,6 +210,65 @@ widgetrail::RenderResult FocusGroupRender(
 } // namespace
 
 int main() {
+    using widgetrail::input::ControllerActionContext;
+    using widgetrail::input::ControllerActionRoute;
+    using widgetrail::input::NavigationDirection;
+    using widgetrail::input::RootInputScope;
+    using widgetrail::input::RouteUnhandledControllerAction;
+    using widgetrail::input::ShouldTransferFocusToTray;
+
+    auto directRoot = Snapshot(L"root");
+    Check(RootInputScope(directRoot) == L"root",
+          "an ordinary direct root retains its exact input scope");
+
+    for (auto wrappers : {
+             std::initializer_list<const wchar_t*>{L"backgroundSurface"},
+             std::initializer_list<const wchar_t*>{L"focusPresentationSurface"},
+             std::initializer_list<const wchar_t*>{
+                 L"backgroundSurface", L"focusPresentationSurface"}}) {
+        auto wrapped = WrappedRootSnapshot(wrappers);
+        Check(RootInputScope(wrapped) == L"content.scope" &&
+              RouteUnhandledControllerAction(
+                  wrapped.activeInputScopeId == RootInputScope(wrapped)
+                      ? ControllerActionContext::RootWidgetScope
+                      : ControllerActionContext::NestedWidgetScope,
+                  L"B") == ControllerActionRoute::HostBackToDashboard &&
+              ShouldTransferFocusToTray(
+                  NavigationDirection::Down,
+                  wrapped.activeInputScopeId == RootInputScope(wrapped),
+                  false,
+                  false),
+              "a presentation-only root preserves default B and final-Down exits");
+    }
+
+    auto responsiveWrapped = WrappedRootSnapshot({L"backgroundSurface"});
+    responsiveWrapped.root.children.front().visibleWhen = L"compactOnly";
+    Check(RootInputScope(responsiveWrapped) == L"content.scope",
+          "responsive visibility does not change the semantic root scope");
+
+    auto nestedWithoutBack = WrappedRootSnapshot({L"backgroundSurface"}, L"nested.scope");
+    widgetrail::WidgetNode nestedScope;
+    nestedScope.id = L"nested";
+    nestedScope.kind = L"stack";
+    nestedScope.inputScopeId = L"nested.scope";
+    nestedScope.children.push_back(Button(L"nested.action"));
+    nestedWithoutBack.root.children.front().children.push_back(std::move(nestedScope));
+    Check(RootInputScope(nestedWithoutBack) == L"content.scope" &&
+          RouteUnhandledControllerAction(
+              ControllerActionContext::NestedWidgetScope,
+              L"B") == ControllerActionRoute::None &&
+          !ShouldTransferFocusToTray(
+              NavigationDirection::Down,
+              nestedWithoutBack.activeInputScopeId == RootInputScope(nestedWithoutBack),
+              false,
+              false),
+          "an authored nested scope without B never falls through to host exits");
+
+    auto malformedWrapper = WrappedRootSnapshot({L"backgroundSurface"});
+    malformedWrapper.root.children.push_back(Button(L"unexpected.sibling"));
+    Check(RootInputScope(malformedWrapper) == malformedWrapper.root.id,
+          "a malformed presentation wrapper fails closed at its own scope");
+
     widgetrail::input::WidgetSurfaceFocusMemory memory;
     auto root = Snapshot(L"root");
     Check(memory.Restore(L"widget", root) == L"root-first",

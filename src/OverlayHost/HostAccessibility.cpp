@@ -1,5 +1,6 @@
 #include "HostAccessibility.h"
 #include "ControllerShortcutResolver.h"
+#include "WidgetSurfaceFocus.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -82,9 +83,7 @@ bool IsCurrentBackAction(
     const std::wstring_view focusedElementId) noexcept {
     if (targetScopeId.empty() || targetScopeId != snapshot.activeInputScopeId)
         return false;
-    const std::wstring_view rootScope = snapshot.root.inputScopeId.empty()
-        ? std::wstring_view(snapshot.root.id)
-        : std::wstring_view(snapshot.root.inputScopeId);
+    const std::wstring_view rootScope = widgetrail::input::RootInputScope(snapshot);
     if (action == HostAction::BackToTray)
         return targetScopeId == rootScope;
     if (action == HostAction::BackWithinWidget)

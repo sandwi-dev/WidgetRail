@@ -11,7 +11,22 @@ namespace widgetrail { struct RenderResult; }
 
 namespace widgetrail::input {
 
-[[nodiscard]] std::wstring_view RootInputScope(const WidgetSnapshot& snapshot) noexcept;
+/// Returns the semantic root input scope. Protocol-owned presentation surfaces
+/// are transparent to input: their required sole content child owns focus,
+/// shortcuts, and accessibility. Other containers remain scope boundaries so
+/// an arbitrary nested scope cannot acquire host-owned root exits.
+[[nodiscard]] inline std::wstring_view RootInputScope(
+    const WidgetSnapshot& snapshot) noexcept {
+    const WidgetNode* root = &snapshot.root;
+    while (root->inputScopeId.empty() && root->children.size() == 1U &&
+           (root->kind == L"backgroundSurface" ||
+            root->kind == L"focusPresentationSurface")) {
+        root = &root->children.front();
+    }
+    return root->inputScopeId.empty()
+        ? std::wstring_view(root->id)
+        : std::wstring_view(root->inputScopeId);
+}
 
 [[nodiscard]] const WidgetNode* FindNodeInInputScope(
     const WidgetSnapshot& snapshot,
