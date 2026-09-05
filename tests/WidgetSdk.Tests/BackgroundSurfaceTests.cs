@@ -25,6 +25,23 @@ internal static class BackgroundSurfaceTests
         True(!snapshot.Root.IsFocusable, "The paint-only surface gained focus authority.");
         Equal("surface.open", snapshot.InitialFocusId);
 
+        var fits = new WidgetView(
+            UI.Stack("fits",
+                UI.BackgroundSurface(UI.Text("Contain", "fits.contain.content"), "fits.contain",
+                    BackgroundSurfaceArtwork.FromHandle(
+                        new WidgetArtworkHandle("fits.contain.art"), ImageFit.Contain)),
+                UI.BackgroundSurface(UI.Text("Cover", "fits.cover.content"), "fits.cover",
+                    BackgroundSurfaceArtwork.FromHandle(
+                        new WidgetArtworkHandle("fits.cover.art"), ImageFit.Cover)),
+                UI.BackgroundSurface(UI.Text("Fill", "fits.fill.content"), "fits.fill",
+                    BackgroundSurfaceArtwork.FromHandle(
+                        new WidgetArtworkHandle("fits.fill.art"), ImageFit.Fill))))
+            .CreateSnapshot("fits.instance", 1);
+        Equal(0, ViewSnapshotValidator.Validate(fits).Count);
+        Equal(ImageFit.Contain, fits.Root.Children[0].ImageFit);
+        Equal(ImageFit.Cover, fits.Root.Children[1].ImageFit);
+        Equal(ImageFit.Fill, fits.Root.Children[2].ImageFit);
+
         var fallback = new WidgetView(
             UI.BackgroundSurface(foreground, "fallback"),
             InitialFocusId: "surface.open").CreateSnapshot("fallback.instance", 1);
@@ -61,6 +78,27 @@ internal static class BackgroundSurfaceTests
         Equal("focused.art.second", focused.Root.Children[0].Children[1]
             .FocusBackgroundArtworkHandle);
         Equal("focused.art.default", focused.Root.ArtworkHandle);
+
+        var nested = new WidgetView(
+            UI.BackgroundSurface(
+                    UI.BackgroundSurface(
+                            UI.Button("Nested", "nested", "nested.button")
+                                .FocusBackground(new WidgetArtworkHandle("nested.focus.art")),
+                            "nested.surface",
+                            BackgroundSurfaceArtwork.FromHandle(
+                                new WidgetArtworkHandle("nested.default.art")))
+                        .UseFocusedDescendantArtwork(),
+                    "outer.surface",
+                    BackgroundSurfaceArtwork.FromHandle(
+                        new WidgetArtworkHandle("outer.default.art")))
+                .UseFocusedDescendantArtwork(),
+            InitialFocusId: "nested.button").CreateSnapshot("nested.instance", 1);
+        Equal(0, ViewSnapshotValidator.Validate(nested).Count);
+        True(nested.Root.UsesFocusedDescendantArtwork is true &&
+             nested.Root.Children[0].UsesFocusedDescendantArtwork is true,
+            "Nested BackgroundSurface ownership was not serialized as two exact consumers.");
+        Equal("nested.focus.art", nested.Root.Children[0].Children[0]
+            .FocusBackgroundArtworkHandle);
 
         var nonFocusable = focused with
         {

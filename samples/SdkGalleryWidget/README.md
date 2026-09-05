@@ -4,23 +4,35 @@ This capability-free reference widget demonstrates the public controller-first
 `WidgetSdk` exactly as an independent addon can use it. It is intentionally not
 part of the built-in tray: install it only when developing or reviewing UI.
 
-The four pages cover:
+The five pages cover:
 
 - icon buttons, cards, section headers, status badges, alerts, and empty states;
 - switches, segmented tabs, `SettingsRow`, `Picker`, nested-B `ActionSheet`, and
   a controller-native `Scrubber`;
-- responsive `Tile` action surfaces for media and application content; and
+- responsive `Tile` action surfaces for media and application content;
+- deterministic package-local `BackgroundSurface` artwork with Cover, Contain,
+  Fill, root/nested focus ownership, retained focus artwork, and missing-art
+  fallback; and
 - `CodeText`, `LoadingIndicator`, and non-focus-stealing `Toast` feedback.
 
 The sample is also the production-style reference for the public responsive
 navigation and stable-ID coordination APIs. `UI.NavigationShell` renders one
-four-destination model as compact tabs or an expanded rail around one shared
+five-destination model as compact tabs or an expanded rail around one shared
 page subtree. Compact and rail controls receive distinct stable element IDs but
 share one protocol-v13 focus-persistence identity per logical destination. The
 host uses only that explicit identity to preserve focus across responsive
 presentation changes; action IDs remain routing intent and may be shared. The
 built-in theme owns the standard shell dimensions and focus/selected/pressed
 treatment; the sample does not rebuild those rules in local WRSS.
+
+The Backgrounds page seals three visually distinct PNG files under `assets/`
+and resolves only their opaque handles through `OnResolveArtworkAsync`. The
+files are ordinary package resources—not provider URLs, user paths, cache
+entries, or network dependencies. The root owns the default Cover image and
+focused-descendant replacement; nested surfaces separately demonstrate
+Contain and Fill. Focusing the unadorned **Retain artwork** button deliberately
+keeps the last accepted root image. An unknown handle demonstrates that the
+same semantic foreground remains usable when artwork cannot resolve.
 
 `WidgetIds.Scope("gallery")` builds the validated navigation ID. One
 `WidgetNavigator<GalleryRoute>` owns root destinations, nested
@@ -90,9 +102,11 @@ version, or pass `-Catalog <directory>` to test against an isolated catalog.
 - The responsive grid derives columns from available logical-DIP width. The
   host may clamp every surface hint for work area, DPI, or text scale.
 
-The focused Gallery suite currently passes 6/6 tests, including complete page
+The focused Gallery suite covers eight tests, including complete page
 coverage, control state, route-owned nested scopes, non-focus-stealing Toast,
-generic package isolation, and responsive/theme-safe WRSS.
+sealed provider-neutral artwork, root/nested background ownership, all current
+fit modes, missing-art fallback, generic package isolation, and
+responsive/theme-safe WRSS.
 
 See the [widget authoring guide](../../docs/widget-authoring-guide.md),
 [declarative UI reference](../../docs/declarative-ui.md), and

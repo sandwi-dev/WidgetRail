@@ -11,5 +11,8 @@
   <ItemGroup>
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="assets\background-default.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="assets\background-focus-warm.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="assets\background-focus-cool.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

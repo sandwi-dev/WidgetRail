@@ -68,7 +68,8 @@ foreach ($generatedDirectory in @($stagingRoot, $publishRoot)) {
         Remove-Item -LiteralPath $generatedDirectory -Recurse -Force
     }
 }
-New-Item -ItemType Directory -Force -Path $payloadRoot, (Join-Path $stagingRoot 'styles') | Out-Null
+$assetsRoot = Join-Path $stagingRoot 'assets'
+New-Item -ItemType Directory -Force -Path $payloadRoot, (Join-Path $stagingRoot 'styles'), $assetsRoot | Out-Null
 Assert-NoReparsePoint -Path $stagingRoot
 Assert-NoReparsePoint -Path $publishRoot
 
@@ -81,8 +82,19 @@ Copy-Item -LiteralPath (Join-Path $publishRoot 'SdkGalleryWidget.dll') `
 Copy-Item -LiteralPath $manifestPath -Destination (Join-Path $stagingRoot 'manifest.json') -Force
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
     -Destination (Join-Path $stagingRoot 'styles\default.wrss') -Force
+foreach ($asset in @('background-default.png', 'background-focus-warm.png', 'background-focus-cool.png')) {
+    Copy-Item -LiteralPath (Join-Path $sampleRoot "assets\$asset") `
+        -Destination (Join-Path $assetsRoot $asset) -Force
+}
 
-$expectedFiles = @('manifest.json', 'payload\SdkGalleryWidget.dll', 'styles\default.wrss')
+$expectedFiles = @(
+    'manifest.json',
+    'payload\SdkGalleryWidget.dll',
+    'styles\default.wrss',
+    'assets\background-default.png',
+    'assets\background-focus-warm.png',
+    'assets\background-focus-cool.png'
+)
 $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEach-Object {
     [System.IO.Path]::GetRelativePath($stagingRoot, $_.FullName)
 })

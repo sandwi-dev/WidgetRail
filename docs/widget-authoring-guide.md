@@ -982,9 +982,10 @@ snapshot. The YT Music regressions also show repeated playback commands
 superseding an older refresh burst without serially blocking controller input.
 
 For a smaller capability-free reference, install or render the
-[SDK Gallery Community addon](../samples/SdkGalleryWidget/README.md). Its four
+[SDK Gallery Community addon](../samples/SdkGalleryWidget/README.md). Its five
 controller-native pages exercise the shipped modern components, stable state,
-responsive Grid/Scroll behavior, nested Picker/ActionSheet B scopes, a
+responsive Grid/Scroll behavior, deterministic BackgroundSurface artwork,
+nested Picker/ActionSheet B scopes, a
 non-focus-stealing Toast, package-local WRSS, and the generic Community worker.
 The gallery intentionally stays out of the built-in tray and uses no private
 host API, so each composition is valid copyable author guidance.
@@ -2454,6 +2455,11 @@ different nested surface retires the prior surface override; stale completions
 cannot overwrite the current selection.
 Resolve every declared handle through the same bounded
 `OnResolveArtworkAsync` path as ordinary trusted artwork.
+The capability-free [SDK Gallery Backgrounds page](../samples/SdkGalleryWidget/README.md)
+shows the complete contract with sealed package PNGs: default Cover artwork,
+focus-driven replacement and retention, nested Contain ownership, Fill, and an
+unresolved-handle fallback. It depends on neither a provider nor a prior cache
+and is suitable for first-run and restart verification.
 
 For a controller rail whose details panel follows focus, wrap the ordinary
 content in `UI.FocusPresentationSurface(content, defaultPresentation, id)` and

@@ -23,5 +23,11 @@
                       ReferenceOutputAssembly="false"
                       Condition="'$(SkipPlayniteLibraryFixture)' != 'true'" />
     <ProjectReference Include="..\..\samples\BackgroundSurfaceWidget\BackgroundSurfaceWidget.csproj" />
+    <ProjectReference Include="..\..\samples\SdkGalleryWidget\SdkGalleryWidget.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\samples\SdkGalleryWidget\assets\background-default.png" Link="assets\background-default.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SdkGalleryWidget\assets\background-focus-warm.png" Link="assets\background-focus-warm.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SdkGalleryWidget\assets\background-focus-cool.png" Link="assets\background-focus-cool.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

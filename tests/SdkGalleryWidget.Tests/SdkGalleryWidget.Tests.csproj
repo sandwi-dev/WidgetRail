@@ -16,5 +16,8 @@
     <None Include="..\..\samples\SdkGalleryWidget\styles\default.wrss" Link="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SdkGalleryWidget\SdkGalleryWidget.csproj" Link="sample\SdkGalleryWidget.csproj" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SdkGalleryWidget\Build-CommunityPackage.ps1" Link="sample\Build-CommunityPackage.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SdkGalleryWidget\assets\background-default.png" Link="assets\background-default.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SdkGalleryWidget\assets\background-focus-warm.png" Link="assets\background-focus-warm.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SdkGalleryWidget\assets\background-focus-cool.png" Link="assets\background-focus-cool.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

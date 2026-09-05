@@ -7,7 +7,7 @@
   gap: 10px;
   padding: 16px 18px;
   overflow: clip;
-  background: var(--surface);
+  background: rgba(8, 12, 18, 0.68);
   color: var(--text);
 }
 
@@ -268,8 +268,8 @@
   min-height: 0px;
   object-fit: cover;
   object-position: center;
-  image-tint: rgba(8, 12, 18, 0.76);
-  scrim-color: rgba(8, 12, 18, 0.72);
+  image-tint: rgba(8, 12, 18, 0.18);
+  scrim-color: rgba(8, 12, 18, 0.30);
   corner-radius: 14px;
 }
 .gallery-nested-background {
@@ -278,6 +278,38 @@
   padding: 10px;
   background: var(--surface-active, #242933);
   corner-radius: 10px;
+}
+
+.gallery-backgrounds-page { gap: 12px; }
+.gallery-background-demo-card { gap: 8px; }
+.gallery-background-focus-row { gap: 8px; flex-wrap: wrap; }
+.gallery-background-button {
+  min-width: 142px;
+  min-height: 40px;
+  flex-grow: 1;
+  padding: 8px 12px;
+  background: var(--surface-active, #242933);
+  corner-radius: 8px;
+}
+.gallery-background-button:focused {
+  outline-color: var(--focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+}
+.gallery-background-demo-surface {
+  width: 100%;
+  min-width: 0px;
+  min-height: 150px;
+  padding: 12px;
+  image-tint: rgba(8, 12, 18, 0.24);
+  scrim-color: rgba(8, 12, 18, 0.38);
+  background: var(--surface-active, #242933);
+  corner-radius: 10px;
+}
+.gallery-background-demo-surface--missing {
+  background: var(--surface-raised);
+  border-color: var(--border, #343b48);
+  border-width: 1px;
 }
 
 .gallery-utilities-code-card { min-width: 0px; }

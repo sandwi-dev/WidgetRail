@@ -1,4 +1,5 @@
 using WidgetRail.Samples.SdkGalleryWidget;
+using System.Security.Cryptography;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetStyling;
@@ -10,6 +11,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Picker and action sheet own nested B scopes", NestedScopes),
     ("Toast feedback adds no focus or action target", ToastDoesNotTakeFocus),
     ("Trusted artwork preserves provider-neutral encoded bytes", TrustedArtwork),
+    ("Background gallery proves package artwork fits focus ownership and fallback", BackgroundGallery),
     ("Manifest and project use the generic capability-free community path", PackageContract),
     ("Gallery WRSS is valid, responsive, and theme-token based", StyleContract),
 };
@@ -40,7 +42,7 @@ static async Task PageCoverage()
 {
     var widget = new SdkGalleryWidget();
     var overview = Snapshot(widget, 1);
-    Assert.Equal(ProtocolConstants.BackgroundSurfaceVersion, overview.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.FocusedBackgroundArtworkVersion, overview.ProtocolVersion);
     Assert.Equal("gallery.refresh", overview.InitialFocusId);
     Assert.Equal(widget.Navigation.InputScopeId, overview.ActiveInputScopeId);
     Assert.Equal(WidgetSurfaceMode.Standard, overview.Surface!.Mode);
@@ -56,8 +58,8 @@ static async Task PageCoverage()
     Assert.Equal(ResponsiveVisibility.CompactOnly, compactNavigation.VisibleWhen);
     Assert.Equal(ResponsiveVisibility.ExpandedOnly, expandedNavigation.VisibleWhen);
     Assert.Equal(1, Nodes(overview.Root).Count(node => node.Id == "gallery.page-scroll"));
-    Assert.Equal(4, compactNavigation.Children.Count);
-    Assert.Equal(4, expandedNavigation.Children.Count);
+    Assert.Equal(5, compactNavigation.Children.Count);
+    Assert.Equal(5, expandedNavigation.Children.Count);
     Assert.Equal("gallery.tab.overview",
         compactNavigation.Children.Single(node => node.IsSelected == true).ActionId);
     Assert.Equal("gallery.tab.overview",
@@ -221,6 +223,81 @@ static async Task TrustedArtwork()
         new byte[] { 82, 73, 70, 70, 30, 0, 0, 0, 87, 69, 66, 80 }));
 }
 
+static async Task BackgroundGallery()
+{
+    var widget = new SdkGalleryWidget();
+    var initial = Snapshot(widget, 1);
+    Assert.Equal(ViewNodeKind.BackgroundSurface, initial.Root.Kind);
+    Assert.Equal(SdkGalleryWidget.DefaultBackgroundArtworkHandle, initial.Root.ArtworkHandle);
+    Assert.Equal(ImageFit.Cover, initial.Root.ImageFit);
+    Assert.Equal(true, initial.Root.UsesFocusedDescendantArtwork);
+    Assert.True(initial.Root.StyleClasses.SequenceEqual(
+        ["wrail-background-surface", "gallery-root-background"]));
+
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "gallery.tab.backgrounds",
+        Find(initial, "gallery.shell.compact").Children.Single(node =>
+            node.ActionId == "gallery.tab.backgrounds").Id));
+    var backgrounds = Snapshot(widget, 2);
+    Assert.Equal("gallery.backgrounds.warm", backgrounds.InitialFocusId);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(backgrounds).Count);
+    Assert.Equal(4, Nodes(backgrounds.Root).Count(
+        node => node.Kind == ViewNodeKind.BackgroundSurface));
+    Assert.Equal(SdkGalleryWidget.WarmBackgroundArtworkHandle,
+        Find(backgrounds, "gallery.backgrounds.warm").FocusBackgroundArtworkHandle);
+    Assert.Equal<string?>(null,
+        Find(backgrounds, "gallery.backgrounds.retain").FocusBackgroundArtworkHandle);
+    Assert.Equal(SdkGalleryWidget.CoolBackgroundArtworkHandle,
+        Find(backgrounds, "gallery.backgrounds.cool").FocusBackgroundArtworkHandle);
+
+    var contain = Find(backgrounds, "gallery.backgrounds.contain.surface");
+    Assert.Equal(ImageFit.Contain, contain.ImageFit);
+    Assert.Equal(true, contain.UsesFocusedDescendantArtwork);
+    Assert.Equal(SdkGalleryWidget.WarmBackgroundArtworkHandle,
+        Find(backgrounds, "gallery.backgrounds.contain.focus").FocusBackgroundArtworkHandle);
+    Assert.True(contain.StyleClasses.SequenceEqual(
+        ["wrail-background-surface", "gallery-background-demo-surface",
+         "gallery-background-demo-surface--contain"]));
+    Assert.Equal(ImageFit.Fill, Find(backgrounds, "gallery.backgrounds.fill.surface").ImageFit);
+    Assert.Equal(ImageFit.Cover, Find(backgrounds, "gallery.backgrounds.missing.surface").ImageFit);
+    Assert.Equal(SdkGalleryWidget.MissingBackgroundArtworkHandle,
+        Find(backgrounds, "gallery.backgrounds.missing.surface").ArtworkHandle);
+    Assert.Equal<WidgetEncodedArtwork?>(null, await widget.OnResolveArtworkAsync(
+        new WidgetArtworkHandle(SdkGalleryWidget.MissingBackgroundArtworkHandle)));
+
+    var hashes = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var (handle, fileName) in new[]
+    {
+        (SdkGalleryWidget.DefaultBackgroundArtworkHandle, "background-default.png"),
+        (SdkGalleryWidget.WarmBackgroundArtworkHandle, "background-focus-warm.png"),
+        (SdkGalleryWidget.CoolBackgroundArtworkHandle, "background-focus-cool.png"),
+    })
+    {
+        var expected = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "assets", fileName));
+        Assert.True(expected.Length > 1_000_000,
+            $"The sealed sample artwork '{fileName}' is not a meaningful visual fixture.");
+        Assert.True(expected.Length <= ProtocolConstants.MaximumEncodedArtworkBytes);
+        var resolved = await widget.OnResolveArtworkAsync(new WidgetArtworkHandle(handle));
+        Assert.True(resolved is not null);
+        Assert.Equal(WidgetArtworkContentType.Png, resolved!.ContentType);
+        Assert.True(resolved.Bytes.Span.SequenceEqual(expected),
+            $"The resolver changed the sealed bytes for '{fileName}'.");
+        hashes.Add(Convert.ToHexString(SHA256.HashData(expected)));
+    }
+    Assert.Equal(3, hashes.Count);
+
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "gallery.tab.overview",
+        Find(backgrounds, "gallery.shell.compact").Children.Single(node =>
+            node.ActionId == "gallery.tab.overview").Id));
+    var departed = Snapshot(widget, 3);
+    Assert.Equal(1, Nodes(departed.Root).Count(
+        node => node.Kind == ViewNodeKind.BackgroundSurface));
+    Assert.False(Nodes(departed.Root).Any(node =>
+        node.Id.StartsWith("gallery.backgrounds.", StringComparison.Ordinal)),
+        "A nested BackgroundSurface survived after its exact page left the tree.");
+}
+
 static Task PackageContract()
 {
     var manifest = ManifestJson.Deserialize(File.ReadAllBytes(
@@ -228,7 +305,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.5", manifest.Version);
+    Assert.Equal("0.1.6", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);
@@ -242,11 +319,21 @@ static Task PackageContract()
     Assert.False(project.Contains("OverlayHost", StringComparison.OrdinalIgnoreCase));
     Assert.False(project.Contains("PlatformBroker", StringComparison.OrdinalIgnoreCase));
     Assert.False(project.Contains("WidgetRuntime", StringComparison.OrdinalIgnoreCase));
+    foreach (var asset in new[]
+    {
+        "assets\\background-default.png",
+        "assets\\background-focus-warm.png",
+        "assets\\background-focus-cool.png",
+    })
+        Assert.True(project.Contains(asset, StringComparison.Ordinal));
 
     var packageScript = File.ReadAllText(Path.Combine(
         AppContext.BaseDirectory, "sample", "Build-CommunityPackage.ps1"));
     Assert.True(packageScript.Contains("$expectedFiles", StringComparison.Ordinal));
     Assert.True(packageScript.Contains("payload\\SdkGalleryWidget.dll", StringComparison.Ordinal));
+    Assert.True(packageScript.Contains("assets\\background-default.png", StringComparison.Ordinal));
+    Assert.True(packageScript.Contains("assets\\background-focus-warm.png", StringComparison.Ordinal));
+    Assert.True(packageScript.Contains("assets\\background-focus-cool.png", StringComparison.Ordinal));
     Assert.True(packageScript.Contains("Assert-NoReparsePoint", StringComparison.Ordinal));
     Assert.True(packageScript.Contains("validate $stagingRoot", StringComparison.Ordinal));
     Assert.True(packageScript.Contains("pack $stagingRoot --output $packagePath", StringComparison.Ordinal));
@@ -276,7 +363,13 @@ static Task StyleContract()
     Assert.Equal("100%", grid.Get("width")?.Text);
     Assert.False(source.Contains("wrail-navigation-shell", StringComparison.Ordinal),
         "The sample must inherit the platform navigation recipe instead of rebuilding it.");
-    Assert.True(source.Contains("var(--surface)", StringComparison.Ordinal));
+    Assert.Equal("rgba(8, 12, 18, 0.68)", root.Get("background")?.Text);
+    var background = compiled.Theme.Resolve(new WrssElement(
+        "background-surface", StyleClasses: new HashSet<string>(
+            ["wrail-background-surface", "gallery-root-background"])))!;
+    Assert.Equal("rgba(8, 12, 18, 0.18)", background.Get("image-tint")?.Text);
+    Assert.Equal("rgba(8, 12, 18, 0.30)", background.Get("scrim-color")?.Text);
+    Assert.True(source.Contains("var(--text)", StringComparison.Ordinal));
     Assert.True(source.Contains(":pressed", StringComparison.Ordinal));
     Assert.False(source.Contains("font-family:", StringComparison.OrdinalIgnoreCase));
     Assert.False(source.Split('\n').Any(line =>
