@@ -12,13 +12,11 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
-#include <filesystem>
-#include <fstream>
-#include <sstream>
 #include <chrono>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace widgetrail {
@@ -52,6 +50,10 @@ struct CompositorBackgroundSurfaceCoordinatorTestAccess final {
         return coordinator.CommitObservation(8) &&
             coordinator.state_.generation == 4 &&
             !coordinator.pendingObservation_;
+    }
+    static std::uint64_t LiveGeneration(
+        const CompositorBackgroundSurfaceCoordinator& coordinator) {
+        return coordinator.state_.generation;
     }
 };
 } // namespace widgetrail
@@ -122,28 +124,6 @@ bool HasDiagnostic(
         [&](const auto& diagnostic) { return diagnostic.code == code; });
 }
 
-std::string ReadSource(const char* const name) {
-    const auto path = std::filesystem::path(__FILE__).parent_path() / name;
-    std::ifstream input(path, std::ios::binary);
-    Require(input.good(), "production source fixture could not be opened");
-    std::ostringstream content;
-    content << input.rdbuf();
-    return content.str();
-}
-
-std::string_view RequireSlice(
-    const std::string& source,
-    const std::string_view begin,
-    const std::string_view end,
-    const char* const message) {
-    const auto first = source.find(begin);
-    const auto last = first == std::string::npos
-        ? std::string::npos : source.find(end, first + begin.size());
-    Require(first != std::string::npos && last != std::string::npos && last > first,
-        message);
-    return std::string_view(source).substr(first, last - first);
-}
-
 } // namespace
 
 int wmain() {
@@ -193,70 +173,6 @@ int wmain() {
                         CommitAndCancelAreTransactional(),
                 "coordinator commit/cancel changed live state out of order");
 
-            const auto coordinator = ReadSource(
-                "CompositorBackgroundSurfaceCoordinator.cpp");
-            const auto advance = RequireSlice(
-                coordinator, "CompositorBackgroundSurfaceCoordinator::Advance(",
-                "void CompositorBackgroundSurfaceCoordinator::Retire(",
-                "coordinator advance owner slice was unavailable");
-            Require(advance.find("HandledPending") != std::string_view::npos &&
-                    advance.find("InvalidateRect") == std::string_view::npos &&
-                    advance.find("Layer::Content") == std::string_view::npos,
-                "pending/background-only advancement can escape into Content repaint");
-            const auto stage = RequireSlice(
-                coordinator, "CompositorBackgroundSurfaceCoordinator::Stage(",
-                "CompositorBackgroundSurfaceCoordinator::Observe(",
-                "coordinator stage owner slice was unavailable");
-            Require(stage.find("Layer::BackgroundBase") <
-                        stage.find("ResolveCompositorBackgroundBitmap") &&
-                    stage.find("RebaseOutgoing(") != std::string_view::npos,
-                "base/readiness/rebase ordering left the coordinator owner");
-
-            const auto host = ReadSource("main.cpp");
-            const auto hostTransaction = RequireSlice(
-                host, "auto observation = compositorBackgroundCoordinator_.Observe(",
-                "if (frames.retireBackground)",
-                "host background transaction slice was unavailable");
-            const auto observeAt = hostTransaction.find("Observe(");
-            const auto commitAt = hostTransaction.find("compositionSurface_.CommitFrames(");
-            const auto publishAt = hostTransaction.find("CommitObservation(");
-            Require(observeAt < commitAt && commitAt < publishAt &&
-                    hostTransaction.find("CancelObservation(") != std::string_view::npos &&
-                    hostTransaction.find("paintCounters().content") ==
-                        std::string_view::npos,
-                "ordinary background frames were not bound to the final host commit");
-            const auto backgroundOnlyHost = RequireSlice(
-                host, "[[nodiscard]] bool AdvanceCompositorBackground(",
-                "void InvalidateWidgetFocusChange(",
-                "host background-only owner slice was unavailable");
-            Require(backgroundOnlyHost.find("InvalidateRect") ==
-                        std::string_view::npos &&
-                    backgroundOnlyHost.find("paintCounters().content") !=
-                        std::string_view::npos &&
-                    backgroundOnlyHost.find("contentBefore") !=
-                        std::string_view::npos,
-                "background-only commit no longer proves zero Content repaint delta");
-
-            const auto composition = ReadSource("OverlayCompositionSurface.cpp");
-            const auto opacity = RequireSlice(
-                composition, "OverlayCompositionSurface::ApplyBackgroundPresentation(",
-                "OverlayCompositionSurface::CommitPreparedBackground(",
-                "background opacity owner slice was unavailable");
-            Require(opacity.find("outgoing->SetOpacity(1.0F)") !=
-                        std::string_view::npos &&
-                    opacity.find("fadeOut") == std::string_view::npos,
-                "DComp source-over no longer matches committed-full/incoming-progress");
-            const auto endFrame = RequireSlice(
-                composition, "OverlayCompositionSurface::EndFrame(",
-                "OverlayCompositionSurface::CommitFrame(",
-                "composition frame-counter slice was unavailable");
-            Require(endFrame.find("case Layer::BackgroundBase:") !=
-                        std::string_view::npos &&
-                    endFrame.find("case Layer::BackgroundIncoming:") !=
-                        std::string_view::npos &&
-                    endFrame.find("case Layer::Content: ++paintCounters_.content") !=
-                        std::string_view::npos,
-                "background layers no longer remain outside the Content repaint counter");
         }
 
         {
@@ -651,6 +567,130 @@ int wmain() {
                     HasDiagnostic(
                         fallback, L"background_crossfade_compositor-fallback"),
                 "painted ancestor did not retain the raster fallback boundary");
+
+            ComPtr<ID2D1Factory1> compositionFactory;
+            Require(SUCCEEDED(D2D1CreateFactory(
+                        D2D1_FACTORY_TYPE_SINGLE_THREADED,
+                        IID_PPV_ARGS(compositionFactory.ReleaseAndGetAddressOf()))),
+                "compositor fixture could not create its D2D factory");
+            HWND compositionWindow = CreateWindowExW(
+                WS_EX_TOOLWINDOW, L"STATIC", L"WIDGE-184 compositor fixture",
+                WS_POPUP, 0, 0, 640, 360, nullptr, nullptr,
+                GetModuleHandleW(nullptr), nullptr);
+            Require(compositionWindow != nullptr,
+                "compositor fixture could not create its hidden HWND");
+            widgetrail::OverlayCompositionSurface composition;
+            std::wstring compositionError;
+            Require(composition.Initialize(
+                        compositionWindow, compositionFactory.Get(), compositionError),
+                "compositor fixture could not initialize the real DComp owner");
+            widgetrail::CompositorBackgroundSurfaceCoordinator coordinator;
+            widgetrail::DeclarativeRenderer integratedRenderer{
+                compositionFactory.Get(), write.Get(), &retargetCache};
+            auto integratedOptions = compositorOptions;
+            const widgetrail::declarative::Rect integratedViewport{
+                0, 0, 640, 360};
+            const auto renderIntegrated = [&](const std::wstring_view focus,
+                                              const std::uint64_t now) {
+                widgetrail::OverlayCompositionSurface::Frame content;
+                Require(SUCCEEDED(composition.BeginFrame(
+                            widgetrail::OverlayCompositionSurface::Layer::Content,
+                            640, 360, 0, 0, nullptr, content)),
+                    "integrated fixture could not begin Content");
+                content.target->SetDpi(96, 96);
+                content.target->Clear(D2D1::ColorF(0, 0, 0, 0));
+                integratedOptions.animationTimestampMilliseconds = now;
+                auto result = integratedRenderer.Render(
+                    content.target.Get(), *retargetSnapshot, focus,
+                    integratedViewport, integratedOptions);
+                Require(result.succeeded && result.compositorBackground &&
+                        SUCCEEDED(composition.EndFrame(content)),
+                    "integrated fixture did not produce a compositor descriptor");
+                return std::pair{std::move(content), std::move(result)};
+            };
+            const auto commitObservation = [&](
+                widgetrail::OverlayCompositionSurface::Frame content,
+                widgetrail::CompositorBackgroundSurfaceCoordinator::Observation observation) {
+                std::vector<widgetrail::OverlayCompositionSurface::Frame*> frames{&content};
+                for (auto& background : observation.frames)
+                    frames.push_back(&background);
+                widgetrail::OverlayCompositionSurface::CommitTiming timing;
+                Require(SUCCEEDED(composition.CommitFrames(
+                            frames, false, timing, nullptr,
+                            observation.presentation
+                                ? &*observation.presentation : nullptr)) &&
+                        coordinator.CommitObservation(observation.transactionId),
+                    "integrated host transaction did not publish atomically");
+            };
+
+            auto [redContent, redResult] = renderIntegrated(
+                L"background.retarget.red", 3000);
+            auto redObservation = coordinator.Observe(
+                *redResult.compositorBackground, integratedRenderer, composition,
+                640, 360, 1.0F, 3000);
+            Require(redObservation.has_value(),
+                "initial integrated observation was rejected");
+            commitObservation(std::move(redContent), std::move(*redObservation));
+
+            auto [greenContent, greenResult] = renderIntegrated(
+                L"background.retarget.green", 3100);
+            auto greenObservation = coordinator.Observe(
+                *greenResult.compositorBackground, integratedRenderer, composition,
+                640, 360, 1.0F, 3100);
+            Require(greenObservation && greenObservation->presentation &&
+                    greenObservation->presentation->prepared,
+                "ordinary host frame did not prepare the settled candidate");
+            commitObservation(std::move(greenContent), std::move(*greenObservation));
+            const auto contentBeforeTransition =
+                composition.paintCounters().content;
+            std::wstring advanceDiagnostic;
+            Require(coordinator.Advance(
+                        greenResult.compositorBackground, integratedRenderer,
+                        composition, 640, 360, 1.0F, 3250,
+                        advanceDiagnostic) == widgetrail::
+                            CompositorBackgroundSurfaceCoordinator::
+                                AdvanceDisposition::Advanced &&
+                    composition.paintCounters().content == contentBeforeTransition,
+                "committed background-only transition repainted Content");
+
+            auto [blueContent, blueResult] = renderIntegrated(
+                L"background.retarget.blue", 3300);
+            auto blueObservation = coordinator.Observe(
+                *blueResult.compositorBackground, integratedRenderer, composition,
+                640, 360, 1.0F, 3300);
+            Require(blueObservation.has_value(),
+                "active-transition retarget observation was rejected");
+            commitObservation(std::move(blueContent), std::move(*blueObservation));
+            const auto contentBeforeRebase = composition.paintCounters().content;
+            Require(coordinator.Advance(
+                        blueResult.compositorBackground, integratedRenderer,
+                        composition, 640, 360, 1.0F, 3450,
+                        advanceDiagnostic) == widgetrail::
+                            CompositorBackgroundSurfaceCoordinator::
+                                AdvanceDisposition::Advanced &&
+                    composition.paintCounters().content == contentBeforeRebase,
+                "rapid background-only rebase repainted Content");
+
+            auto [cancelledContent, cancelledResult] = renderIntegrated(
+                L"background.retarget.red", 3500);
+            auto cancelledObservation = coordinator.Observe(
+                *cancelledResult.compositorBackground, integratedRenderer,
+                composition, 640, 360, 1.0F, 3500);
+            Require(cancelledObservation.has_value(),
+                "cancelled transaction fixture was not created");
+            const auto generationBeforeCancel =
+                widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                    LiveGeneration(coordinator);
+            coordinator.CancelObservation(cancelledObservation->transactionId);
+            Require(widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                        LiveGeneration(coordinator) == generationBeforeCancel &&
+                    !coordinator.CommitObservation(
+                        cancelledObservation->transactionId),
+                "failed/cancelled host transaction published live state");
+            composition.AbandonFrame(cancelledContent);
+            coordinator.Retire(composition);
+            composition.Reset();
+            DestroyWindow(compositionWindow);
             retargetCache.Shutdown();
         }
 
