@@ -89,14 +89,21 @@ static async Task PageCoverage()
     var tiles = Snapshot(widget, 3);
     Assert.Equal(ProtocolConstants.FocusAssociatedPresentationVersion, tiles.ProtocolVersion);
     Assert.Equal(4, Nodes(tiles.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface));
-    Assert.Equal(3, Nodes(tiles.Root).Count(node =>
+    Assert.Equal(2, Nodes(tiles.Root).Count(node =>
         node.StyleClasses.SequenceEqual(["wrail-action-surface", "wrail-tile"])));
+    Assert.Equal(2, Nodes(tiles.Root).Count(node =>
+        node.StyleClasses.SequenceEqual(["wrail-action-surface", "wrail-poster-tile"])));
     var tilesGrid = Find(tiles, "gallery.tiles.grid");
     Assert.Equal(ViewNodeKind.Grid, tilesGrid.Kind);
     Assert.Equal(1, tilesGrid.Children.Count(node => node.Id == "gallery.media"));
     Assert.Equal(1, tilesGrid.Children.Count(node => node.Id == "gallery.app"));
     Assert.Equal(1, tilesGrid.Children.Count(node => node.Id == "gallery.webp"));
     Assert.Equal(1, tilesGrid.Children.Count(node => node.Id == "gallery.poster"));
+    var webP = Find(tiles, "gallery.webp");
+    Assert.Equal(ActionSurfacePresentation.Poster, webP.ActionSurfacePresentation);
+    Assert.True(webP.StyleClasses.SequenceEqual(
+        ["wrail-action-surface", "wrail-poster-tile"]));
+    Assert.Equal(ImageFit.Cover, Find(tiles, "gallery.webp.artwork").ImageFit);
     var poster = Find(tiles, "gallery.poster");
     Assert.Equal(ActionSurfacePresentation.Poster, poster.ActionSurfacePresentation);
     Assert.True(poster.StyleClasses.SequenceEqual(
@@ -222,6 +229,19 @@ static async Task NestedScopes()
         ControllerButton.B,
         InputScopeId: sheet.ActiveInputScopeId));
     Assert.Equal(GalleryModal.None, widget.Modal);
+    var sheetReturn = Snapshot(widget, 3);
+    Assert.Equal("gallery.sheet.open", sheetReturn.InitialFocusId);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(sheetReturn).Count);
+
+    var tilesSource = HeaderAction(
+        sheetReturn, "gallery.shell.compact", "gallery.tab.tiles");
+    await ActFrom(widget, "gallery.tab.tiles", tilesSource.Id);
+    var tiles = Snapshot(widget, 4);
+    Assert.Equal("gallery.media", tiles.InitialFocusId);
+    Assert.Equal(sheetReturn.ActiveInputScopeId, tiles.ActiveInputScopeId);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(tiles).Count);
+    Assert.False(Nodes(tiles.Root).Any(node => node.Id == "gallery.sheet.open"),
+        "A modal return-focus opener survived after its owning page left the tree.");
     await WidgetTestHost.DestroyAsync(widget);
 }
 
@@ -414,6 +434,19 @@ static async Task TopLevelPagesShareRootScope()
             Find(returned, controlsReturn.Id).FocusPersistenceId);
         Assert.Equal("gallery.tab.controls",
             HeaderAction(returned, presentation, "gallery.tab.controls").ActionId);
+
+        var repeatedSource = HeaderAction(
+            returned, presentation, "gallery.tab.controls");
+        await ActFrom(widget, "gallery.tab.controls", repeatedSource.Id);
+        var repeated = Snapshot(widget, 5);
+        Assert.Equal(rootScope, repeated.ActiveInputScopeId);
+        Assert.False(rootLifetime.IsCancellationRequested);
+        Assert.Equal("gallery.controls.compact.action", repeated.InitialFocusId);
+        Assert.Equal(repeatedSource.Id,
+            HeaderAction(repeated, presentation, "gallery.tab.controls").Id);
+        Assert.Equal(repeatedSource.FocusPersistenceId,
+            HeaderAction(repeated, presentation, "gallery.tab.controls").FocusPersistenceId);
+        Assert.Equal(0, ViewSnapshotValidator.Validate(repeated).Count);
     }
 }
 
