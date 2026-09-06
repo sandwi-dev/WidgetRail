@@ -120,6 +120,218 @@ void ImagePlacementMath() {
     Near(invalid.source.width, 0.0F, "invalid source is empty");
 }
 
+void BackgroundImageFitAndDiagnosticsUseOneBoundedOwner() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+              D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "create D2D factory for effective image-fit coverage");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+              DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+              reinterpret_cast<IUnknown**>(write.GetAddressOf()))),
+        "create DirectWrite factory for effective image-fit coverage");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+              CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+              IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "create WIC factory for effective image-fit coverage");
+    ComPtr<IWICBitmap> canvas;
+    Check(SUCCEEDED(wic->CreateBitmap(
+              100, 100, GUID_WICPixelFormat32bppPBGRA,
+              WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+        "create WIC canvas for effective image-fit coverage");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+              canvas.Get(), D2D1::RenderTargetProperties(),
+              target.ReleaseAndGetAddressOf())),
+        "create render target for effective image-fit coverage");
+
+    std::mutex readyMutex;
+    std::condition_variable readyChanged;
+    bool ready{};
+    widgetrail::RemoteImageCache imageCache(
+        {},
+        [&](std::wstring_view, const widgetrail::RemoteImageState state) {
+            {
+                std::scoped_lock lock(readyMutex);
+                ready = state == widgetrail::RemoteImageState::Ready;
+            }
+            readyChanged.notify_all();
+        },
+        [](std::wstring_view, std::stop_token,
+           const widgetrail::RemoteImageLimits&) {
+            widgetrail::RemoteDecodedImage image;
+            image.width = 200;
+            image.height = 100;
+            image.stride = 800;
+            image.mimeType = L"image/png";
+            image.premultipliedBgra.resize(200U * 100U * 4U);
+            for (std::size_t offset = 0;
+                 offset < image.premultipliedBgra.size(); offset += 4) {
+                image.premultipliedBgra[offset] = 0xE0;
+                image.premultipliedBgra[offset + 1] = 0x20;
+                image.premultipliedBgra[offset + 2] = 0x10;
+                image.premultipliedBgra[offset + 3] = 0xFF;
+            }
+            return widgetrail::RemoteImageFetchResult{
+                S_OK, std::move(image), {}};
+        });
+
+    WidgetSnapshot inlineSnapshot;
+    inlineSnapshot.sequence = 1;
+    inlineSnapshot.instanceId = L"fit.inline.runtime";
+    inlineSnapshot.activeInputScopeId = L"fit.inline.root";
+    inlineSnapshot.root = Node(L"fit.inline.root", L"stack");
+    auto image = Node(L"fit.inline.image", L"image");
+    image.imageSource = L"https://example.test/wide.png";
+    image.imageFit = L"contain";
+    image.baseStyle = {
+        {L"width", Length(100)},
+        {L"height", Length(100)},
+    };
+    inlineSnapshot.root.children = {image};
+
+    DeclarativeRenderer inlineRenderer{d2d.Get(), write.Get(), &imageCache};
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+    (void)inlineRenderer.Render(
+        target.Get(), inlineSnapshot, {}, {0.0F, 0.0F, 100.0F, 100.0F});
+    Check(SUCCEEDED(target->EndDraw()),
+        "initial image-fit frame queues its source");
+    {
+        std::unique_lock lock(readyMutex);
+        Check(readyChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+            return ready;
+        }), "effective image-fit source becomes ready");
+    }
+    const auto sampleBlue = [&](const UINT x, const UINT y) {
+        ComPtr<IWICBitmapLock> lock;
+        const WICRect area{0, 0, 100, 100};
+        Check(SUCCEEDED(canvas->Lock(
+                  &area, WICBitmapLockRead, lock.ReleaseAndGetAddressOf())),
+            "effective image-fit raster locks");
+        UINT stride{};
+        UINT byteCount{};
+        BYTE* pixels{};
+        Check(SUCCEEDED(lock->GetStride(&stride)) &&
+                  SUCCEEDED(lock->GetDataPointer(&byteCount, &pixels)),
+            "effective image-fit pixels are readable");
+        return pixels[y * stride + x * 4U];
+    };
+    const auto paintInline = [&] {
+        target->BeginDraw();
+        target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        const auto result = inlineRenderer.Render(
+            target.Get(), inlineSnapshot, {},
+            {0.0F, 0.0F, 100.0F, 100.0F});
+        Check(SUCCEEDED(target->EndDraw()) && result.succeeded,
+            "effective image-fit frame paints");
+    };
+    paintInline();
+    Check(sampleBlue(50, 5) < 0x20 && sampleBlue(50, 50) > 0xC0,
+        "inline semantic Contain keeps its letterbox geometry");
+    inlineSnapshot.root.children.front().baseStyle.insert_or_assign(
+        L"object-fit", Keyword(L"fill"));
+    ++inlineSnapshot.sequence;
+    paintInline();
+    Check(sampleBlue(50, 5) > 0xC0,
+        "inline explicit WRSS object-fit overrides the semantic fit");
+
+    WidgetSnapshot compositorSnapshot;
+    compositorSnapshot.sequence = 1;
+    compositorSnapshot.instanceId = L"fit.compositor.runtime";
+    compositorSnapshot.activeInputScopeId = L"fit.compositor.scope";
+    compositorSnapshot.initialFocusId = L"fit.compositor.action";
+    compositorSnapshot.root = Node(L"fit.compositor.root", L"stack");
+    auto surface = Node(L"fit.compositor.surface", L"backgroundSurface");
+    surface.imageSource = L"https://example.test/wide.png";
+    surface.imageFit = L"contain";
+    surface.usesFocusedDescendantArtwork = true;
+    surface.baseStyle = {
+        {L"width", Length(100)},
+        {L"height", Length(100)},
+    };
+    auto action = Node(L"fit.compositor.action", L"button");
+    action.text = L"Open";
+    action.actionId = L"open";
+    action.baseStyle = {{L"height", Length(44)}};
+    surface.children = {std::move(action)};
+    compositorSnapshot.root.children = {std::move(surface)};
+    widgetrail::DeclarativeRenderOptions compositorOptions;
+    compositorOptions.compositorBackgroundAvailable = true;
+    compositorOptions.artworkAuthorityId = L"fit.compositor.authority";
+    DeclarativeRenderer compositorRenderer{d2d.Get(), write.Get(), &imageCache};
+    target->BeginDraw();
+    const auto semanticCompositor = compositorRenderer.Render(
+        target.Get(), compositorSnapshot, L"fit.compositor.action",
+        {0.0F, 0.0F, 100.0F, 100.0F}, compositorOptions);
+    Check(SUCCEEDED(target->EndDraw()) && semanticCompositor.compositorBackground &&
+              semanticCompositor.compositorBackground->imageFit == L"contain",
+        "compositor uses the same semantic Contain fit as inline paint");
+    compositorSnapshot.root.children.front().baseStyle.insert_or_assign(
+        L"object-fit", Keyword(L"fill"));
+    ++compositorSnapshot.sequence;
+    DeclarativeRenderer overrideCompositor{d2d.Get(), write.Get(), &imageCache};
+    target->BeginDraw();
+    const auto styledCompositor = overrideCompositor.Render(
+        target.Get(), compositorSnapshot, L"fit.compositor.action",
+        {0.0F, 0.0F, 100.0F, 100.0F}, compositorOptions);
+    Check(SUCCEEDED(target->EndDraw()) && styledCompositor.compositorBackground &&
+              styledCompositor.compositorBackground->imageFit == L"fill",
+        "compositor honors the same explicit WRSS override as inline paint");
+
+    std::vector<std::wstring> diagnosticRecords;
+    widgetrail::RemoteImageCache pendingArtwork(
+        {}, {}, {}, [](std::wstring_view) { return true; });
+    DeclarativeRenderer diagnosticRenderer{
+        d2d.Get(), write.Get(), &pendingArtwork,
+        [&](const std::wstring_view record) {
+            diagnosticRecords.emplace_back(record);
+        }};
+    WidgetSnapshot diagnosticSnapshot;
+    diagnosticSnapshot.sequence = 1;
+    diagnosticSnapshot.instanceId = L"diagnostic.runtime";
+    diagnosticSnapshot.activeInputScopeId = L"diagnostic.image";
+    diagnosticSnapshot.root = Node(L"diagnostic.image", L"image");
+    diagnosticSnapshot.root.artworkHandle = L"private.raw.handle";
+    diagnosticSnapshot.root.baseStyle = {
+        {L"width", Length(40)},
+        {L"height", Length(40)},
+    };
+    widgetrail::DeclarativeRenderOptions diagnosticOptions;
+    diagnosticOptions.artworkWidgetId = L"diagnostic-widget";
+    const auto renderDiagnostic = [&] {
+        target->BeginDraw();
+        (void)diagnosticRenderer.Render(
+            target.Get(), diagnosticSnapshot, {},
+            {0.0F, 0.0F, 100.0F, 100.0F}, diagnosticOptions);
+        Check(SUCCEEDED(target->EndDraw()),
+            "diagnostic frame keeps Direct2D state balanced");
+    };
+    renderDiagnostic();
+    renderDiagnostic();
+    Check(diagnosticRecords.size() == 1U &&
+              diagnosticRecords.front().find(L"stage=draw") != std::wstring::npos &&
+              diagnosticRecords.front().find(L"resource-hash=") != std::wstring::npos &&
+              diagnosticRecords.front().find(L"handle-hash=") != std::wstring::npos &&
+              diagnosticRecords.front().find(L"destination=") != std::wstring::npos &&
+              diagnosticRecords.front().find(L"clip=") != std::wstring::npos &&
+              diagnosticRecords.front().find(L"private.raw.handle") == std::wstring::npos,
+        "opt-in diagnostics deduplicate geometry and expose hashes without raw handles");
+    for (int index = 0; index < 70; ++index) {
+        diagnosticSnapshot.root.id = L"diagnostic.image." + std::to_wstring(index);
+        diagnosticSnapshot.root.artworkHandle =
+            L"private.raw.handle." + std::to_wstring(index);
+        ++diagnosticSnapshot.sequence;
+        renderDiagnostic();
+    }
+    Check(diagnosticRecords.size() == 64U,
+        "renderer diagnostics stop at the fixed 64-record bound");
+    pendingArtwork.Shutdown();
+    imageCache.Shutdown();
+}
+
 void ButtonContentPlacementUsesSharedOpticalGeometry() {
     const Rect content{0.0F, 0.0F, 170.0F, 60.0F};
     const auto iconAndText = DeclarativeRenderer::ComputeButtonContentPlacement(
@@ -4946,6 +5158,7 @@ int main() {
     const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     Check(SUCCEEDED(initialized), "initialize COM");
     ImagePlacementMath();
+    BackgroundImageFitAndDiagnosticsUseOneBoundedOwner();
     ButtonContentPlacementUsesSharedOpticalGeometry();
     AccessibleStatePresentation();
     PressedComputedStyleLayersOnFocusedState();
