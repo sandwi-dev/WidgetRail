@@ -69,6 +69,13 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
 
     private sealed record Frame(TRoute Route, string InputScopeId, string? ReturnFocusId);
 
+    private enum RootFocusBehavior
+    {
+        RestoreRemembered,
+        PreserveCurrent,
+        RestoreRememberedOrDefault,
+    }
+
     private readonly object _gate = new();
     private readonly string _id;
     private readonly string _backActionId;
@@ -153,29 +160,11 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     {
         ArgumentNullException.ThrowIfNull(route);
         ValidateOptionalFocus(sourceFocusId);
-        RetiredLifetimes retired = default;
-        lock (_gate)
-        {
-            ThrowIfDisposed();
-            var current = _stack[^1];
-            var root = _stack[0];
-            if (_stack.Count == 1 && _comparer.Equals(root.Route, route))
-            {
-                RememberFocus(current.Route, sourceFocusId);
-                return WidgetNavigationResult.Unchanged;
-            }
-            if (!TryGetOrCreateScopeId(route, rootFrame: true, out var scopeId))
-                return WidgetNavigationResult.RejectedCapacity;
-
-            RememberFocus(current.Route, sourceFocusId);
-            var rootChanged = !_comparer.Equals(root.Route, route);
-            _stack.Clear();
-            _stack.Add(new(route, scopeId, null));
-            _focusMemory.TryGetValue(route, out var restoredFocus);
-            retired = Advance(restoredFocus, rootChanged);
-        }
-        Publish(retired);
-        return WidgetNavigationResult.Changed;
+        return ReplaceRoot(
+            route,
+            RootFocusBehavior.RestoreRemembered,
+            sourceFocusId,
+            defaultFocusId: null);
     }
 
     /// <summary>
@@ -186,23 +175,11 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     public WidgetNavigationResult NavigateRoot(TRoute route)
     {
         ArgumentNullException.ThrowIfNull(route);
-        RetiredLifetimes retired = default;
-        lock (_gate)
-        {
-            ThrowIfDisposed();
-            var root = _stack[0];
-            if (_stack.Count == 1 && _comparer.Equals(root.Route, route))
-                return WidgetNavigationResult.Unchanged;
-            if (!TryGetOrCreateScopeId(route, rootFrame: true, out var scopeId))
-                return WidgetNavigationResult.RejectedCapacity;
-
-            var rootChanged = !_comparer.Equals(root.Route, route);
-            _stack.Clear();
-            _stack.Add(new(route, scopeId, null));
-            retired = Advance(restoredFocus: null, replaceRootLifetime: rootChanged);
-        }
-        Publish(retired);
-        return WidgetNavigationResult.Changed;
+        return ReplaceRoot(
+            route,
+            RootFocusBehavior.PreserveCurrent,
+            sourceFocusId: null,
+            defaultFocusId: null);
     }
 
     /// <summary>
@@ -218,6 +195,19 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
         ArgumentNullException.ThrowIfNull(route);
         StableIdentifier.Validate(defaultFocusId, nameof(defaultFocusId));
         ValidateOptionalFocus(sourceContentFocusId);
+        return ReplaceRoot(
+            route,
+            RootFocusBehavior.RestoreRememberedOrDefault,
+            sourceContentFocusId,
+            defaultFocusId);
+    }
+
+    private WidgetNavigationResult ReplaceRoot(
+        TRoute route,
+        RootFocusBehavior focusBehavior,
+        string? sourceFocusId,
+        string? defaultFocusId)
+    {
         RetiredLifetimes retired = default;
         lock (_gate)
         {
@@ -226,19 +216,26 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             var root = _stack[0];
             if (_stack.Count == 1 && _comparer.Equals(root.Route, route))
             {
-                RememberFocus(current.Route, sourceContentFocusId);
+                if (focusBehavior != RootFocusBehavior.PreserveCurrent)
+                    RememberFocus(current.Route, sourceFocusId);
                 return WidgetNavigationResult.Unchanged;
             }
             if (!TryGetOrCreateScopeId(route, rootFrame: true, out var scopeId))
                 return WidgetNavigationResult.RejectedCapacity;
 
-            RememberFocus(current.Route, sourceContentFocusId);
+            if (focusBehavior != RootFocusBehavior.PreserveCurrent)
+                RememberFocus(current.Route, sourceFocusId);
             var rootChanged = !_comparer.Equals(root.Route, route);
             _stack.Clear();
             _stack.Add(new(route, scopeId, null));
-            var restoredFocus = _focusMemory.TryGetValue(route, out var remembered)
-                ? remembered
-                : defaultFocusId;
+            string? restoredFocus = null;
+            if (focusBehavior != RootFocusBehavior.PreserveCurrent)
+            {
+                _focusMemory.TryGetValue(route, out restoredFocus);
+                if (restoredFocus is null &&
+                    focusBehavior == RootFocusBehavior.RestoreRememberedOrDefault)
+                    restoredFocus = defaultFocusId;
+            }
             retired = Advance(restoredFocus, rootChanged);
         }
         Publish(retired);
