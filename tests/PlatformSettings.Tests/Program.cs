@@ -286,6 +286,18 @@ static Task ThemeDiscovery()
         catalog.BuiltInThemes.Select(theme => theme.Descriptor.Id));
     Assert.True(catalog.BuiltInThemes.All(theme => theme.Descriptor.IsBuiltIn && theme.IsValid),
         Describe(catalog.BuiltInThemes.SelectMany(item => item.Diagnostics)));
+    foreach (var theme in catalog.BuiltInThemes)
+    {
+        var themeResult = WrssThemeCompiler.Compile(theme.Package);
+        Assert.True(themeResult.IsValid, Describe(themeResult.Diagnostics));
+        var backgroundSurface = themeResult.Theme!.Resolve(new WrssElement(
+            "backgroundSurface",
+            null,
+            new HashSet<string>(["wrail-background-surface"]),
+            new HashSet<WrssPseudoState>()));
+        Assert.True(backgroundSurface.Get("object-fit") is null,
+            $"Built-in theme '{theme.Descriptor.Id}' must leave BackgroundSurface fit to the authored semantic value.");
+    }
     var builtIn = catalog.BuiltInDefault;
     var compiled = WrssThemeCompiler.Compile(builtIn.Package);
     Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));

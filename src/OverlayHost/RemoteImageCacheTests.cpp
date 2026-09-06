@@ -254,6 +254,7 @@ int main() {
         std::condition_variable nativeChanged;
         int nativeReady = 0;
         int nativeFailed = 0;
+        std::vector<TrustedArtworkDecodeDiagnostic> decodeDiagnostics;
         RemoteImageCache nativeCache(
             defaultLimits,
             [&](std::wstring_view, const RemoteImageState state) {
@@ -266,7 +267,11 @@ int main() {
                 nativeChanged.notify_all();
             },
             {},
-            [](std::wstring_view) { return true; });
+            [](std::wstring_view) { return true; },
+            [&](const TrustedArtworkDecodeDiagnostic& diagnostic) {
+                std::scoped_lock lock(nativeMutex);
+                decodeDiagnostics.push_back(diagnostic);
+            });
         const auto admit = [&](const std::wstring_view handle,
                                const std::wstring_view mime,
                                const std::vector<std::uint8_t>& bytes,
@@ -290,6 +295,27 @@ int main() {
         assert(nativeCache.GetReadyImage(pngKey)->width == 4'096);
         assert(nativeCache.GetReadyImage(jpegKey)->mimeType == L"image/jpeg");
         assert(nativeCache.GetReadyImage(maximumKey)->width == 1);
+        {
+            std::scoped_lock lock(nativeMutex);
+            assert(decodeDiagnostics.size() == 3);
+            assert(std::all_of(
+                decodeDiagnostics.begin(), decodeDiagnostics.end(),
+                [](const TrustedArtworkDecodeDiagnostic& diagnostic) {
+                    return diagnostic.resourceHash != 0 &&
+                        diagnostic.handleHash != 0 &&
+                        diagnostic.width > 0 && diagnostic.height > 0 &&
+                        diagnostic.hasVisibleAlpha;
+                }));
+            assert(decodeDiagnostics[0].contentType == TrustedArtworkContentType::Png);
+            assert(decodeDiagnostics[1].contentType == TrustedArtworkContentType::Jpeg);
+            assert(decodeDiagnostics[2].contentType == TrustedArtworkContentType::Png);
+        }
+        (void)nativeCache.GetReadyImage(pngKey);
+        {
+            std::scoped_lock lock(nativeMutex);
+            assert(decodeDiagnostics.size() == 3 &&
+                   "ready-resource reuse cannot repeat the one-time alpha scan");
+        }
 
         const auto oversizedKey = RemoteImageCache::TrustedArtworkKey(
             L"native-artwork", L"oversized-node", L"artwork.oversized");

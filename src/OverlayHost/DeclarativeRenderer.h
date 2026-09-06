@@ -9,8 +9,10 @@
 #include <dwrite.h>
 #include <wrl/client.h>
 
+#include <array>
 #include <cstdint>
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -342,10 +344,14 @@ struct DeclarativeRenderOptions final {
 
 class DeclarativeRenderer final {
 public:
+    using ArtworkRenderDiagnosticCallback =
+        std::function<void(std::wstring_view message)>;
+
     DeclarativeRenderer(
         ID2D1Factory* d2dFactory,
         IDWriteFactory* writeFactory,
-        RemoteImageCache* imageCache) noexcept;
+        RemoteImageCache* imageCache,
+        ArtworkRenderDiagnosticCallback artworkRenderDiagnostic = {}) noexcept;
 
     DeclarativeRenderer(const DeclarativeRenderer&) = delete;
     DeclarativeRenderer& operator=(const DeclarativeRenderer&) = delete;
@@ -590,10 +596,28 @@ private:
     void ClearBitmapCache(bool resourceInvalidation) noexcept;
     void TrimBitmapCache(std::size_t incomingBytes) noexcept;
     void RecalculateFocusBackgroundCompositeBytes() noexcept;
+    void ReportArtworkRenderDiagnostic(
+        const WidgetNode& node,
+        std::wstring_view artworkWidgetId,
+        std::wstring_view stage,
+        std::wstring_view disposition,
+        declarative::Size bitmapSize = {},
+        declarative::Rect destination = {},
+        declarative::Rect source = {},
+        declarative::Rect clip = {},
+        float opacity = 0.0F) noexcept;
+    [[nodiscard]] bool ArtworkRenderDiagnosticsEnabled() const noexcept {
+        return static_cast<bool>(artworkRenderDiagnostic_);
+    }
 
     ID2D1Factory* d2dFactory_{};
     IDWriteFactory* writeFactory_{};
     RemoteImageCache* imageCache_{};
+    ArtworkRenderDiagnosticCallback artworkRenderDiagnostic_;
+    static constexpr std::size_t maximumArtworkDiagnosticRecords_{64};
+    std::array<std::uint64_t, maximumArtworkDiagnosticRecords_>
+        artworkDiagnosticKeys_{};
+    std::size_t artworkDiagnosticKeyCount_{};
     Microsoft::WRL::ComPtr<IUnknown> bitmapResourceDomain_;
     bool bitmapResourceDomainIsDevice_{};
     ID2D1RenderTarget* surfaceClipTarget_{};

@@ -48,6 +48,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <climits>
@@ -914,6 +915,45 @@ public:
         }
 
         const widgetrail::RemoteImageLimits imageLimits;
+        widgetrail::RemoteImageCache::ArtworkDecodeDiagnosticCallback
+            decodeDiagnostic;
+        widgetrail::DeclarativeRenderer::ArtworkRenderDiagnosticCallback
+            renderDiagnostic;
+        if (artworkRenderDiagnostics_) {
+            decodeDiagnostic = [this](
+                const widgetrail::TrustedArtworkDecodeDiagnostic& diagnostic) {
+                const wchar_t* contentType = L"unknown";
+                switch (diagnostic.contentType) {
+                case widgetrail::TrustedArtworkContentType::Jpeg:
+                    contentType = L"jpeg";
+                    break;
+                case widgetrail::TrustedArtworkContentType::Png:
+                    contentType = L"png";
+                    break;
+                case widgetrail::TrustedArtworkContentType::WebP:
+                    contentType = L"webp";
+                    break;
+                case widgetrail::TrustedArtworkContentType::Unknown:
+                    break;
+                }
+                PublishArtworkRenderDiagnostic(
+                    L"stage=decode resource-hash=" +
+                    std::to_wstring(diagnostic.resourceHash) +
+                    L" handle-hash=" +
+                    std::to_wstring(diagnostic.handleHash) +
+                    L" content-type=" + std::wstring{contentType} +
+                    L" dimensions=" + std::to_wstring(diagnostic.width) +
+                    L"x" + std::to_wstring(diagnostic.height) +
+                    L" visible-alpha=" +
+                    (diagnostic.hasVisibleAlpha ? L"true" : L"false"));
+            };
+            renderDiagnostic = [this](const std::wstring_view message) {
+                PublishArtworkRenderDiagnostic(std::wstring{message});
+            };
+            AppendDiagnostic(
+                L"Artwork render diagnostics enabled record-limit=" +
+                std::to_wstring(kMaximumArtworkRenderDiagnosticRecords));
+        }
         imageCache_ = std::make_unique<widgetrail::RemoteImageCache>(
             imageLimits,
             [this](const std::wstring_view source, const widgetrail::RemoteImageState state) {
@@ -946,9 +986,11 @@ public:
                     prefix.size(), widgetSeparator - prefix.size());
                 const auto handle = source.substr(handleSeparator + 1);
                 return bridge_.RequestArtwork(widgetId, handle).value_or(false);
-            });
+            },
+            std::move(decodeDiagnostic));
         declarativeRenderer_ = std::make_unique<widgetrail::DeclarativeRenderer>(
-            d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get());
+            d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get(),
+            std::move(renderDiagnostic));
         const auto bitmapLimits = declarativeRenderer_->GetImageBitmapCacheStats();
         AppendDiagnostic(
             L"Image cache policy lifetime=process metadata-limit=" +
@@ -1144,6 +1186,20 @@ private:
         std::uint64_t correlationId{};
     };
 
+    void PublishArtworkRenderDiagnostic(std::wstring message) {
+        if (!artworkRenderDiagnostics_) return;
+        auto count = artworkRenderDiagnosticRecordCount_.load(
+            std::memory_order_relaxed);
+        while (count < kMaximumArtworkRenderDiagnosticRecords &&
+               !artworkRenderDiagnosticRecordCount_.compare_exchange_weak(
+                   count, count + 1,
+                   std::memory_order_relaxed,
+                   std::memory_order_relaxed)) {
+        }
+        if (count >= kMaximumArtworkRenderDiagnosticRecords) return;
+        AppendDiagnostic(L"Artwork render diagnostic " + std::move(message));
+    }
+
     bool ParseDevelopmentArguments() {
         auto takeValue = [&](const int& index, std::optional<std::wstring>& target,
                              const wchar_t* label) -> bool {
@@ -1199,6 +1255,13 @@ private:
                     return false;
                 }
                 richMediaProof_ = true;
+            } else if (_wcsicmp(__wargv[i], L"--artwork-render-diagnostics") == 0) {
+                if (artworkRenderDiagnostics_) {
+                    initializationError_ =
+                        L"--artwork-render-diagnostics was supplied more than once.";
+                    return false;
+                }
+                artworkRenderDiagnostics_ = true;
             }
         }
         try {
@@ -17297,6 +17360,9 @@ private:
     std::optional<std::wstring> scrollEvidencePath_;
     widgetrail::ScrollEvidenceProbe scrollEvidenceProbe_;
     bool richMediaProof_{};
+    bool artworkRenderDiagnostics_{};
+    static constexpr std::uint32_t kMaximumArtworkRenderDiagnosticRecords = 64;
+    std::atomic<std::uint32_t> artworkRenderDiagnosticRecordCount_{};
     std::wstring richMediaProfileDirectory_;
     widgetrail::richmedia::RichMediaEnvironmentHandle richMediaEnvironment_{
         widgetrail::richmedia::RichMediaSurfaceCoordinator::CreateSharedEnvironment()};

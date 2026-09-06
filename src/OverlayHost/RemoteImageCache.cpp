@@ -271,12 +271,14 @@ RemoteImageCache::RemoteImageCache(
     RemoteImageLimits limits,
     CompletionCallback completion,
     FetchFunction fetch,
-    ArtworkRequestFunction artworkRequest)
+    ArtworkRequestFunction artworkRequest,
+    ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic)
     : limits_(limits),
       completion_(std::move(completion)),
       usesCustomFetch_(static_cast<bool>(fetch)),
       fetch_(fetch ? std::move(fetch) : FetchAndDecodeSource),
-      artworkRequest_(std::move(artworkRequest)) {
+      artworkRequest_(std::move(artworkRequest)),
+      artworkDecodeDiagnostic_(std::move(artworkDecodeDiagnostic)) {
     if (limits_.maximumEntries == 0 || limits_.maximumEntries > 1'024 ||
         limits_.maximumReadyEntries == 0 || limits_.maximumReadyEntries > 1'024 ||
         limits_.maximumPendingEntries == 0 || limits_.maximumPendingEntries > 1'024 ||
@@ -516,6 +518,16 @@ std::wstring RemoteImageCache::TrustedArtworkKey(
     return result;
 }
 
+std::uint64_t RemoteImageCache::OpaqueDiagnosticHash(
+    const std::wstring_view value) noexcept {
+    std::uint64_t result = 1469598103934665603ULL;
+    for (const wchar_t character : value) {
+        result ^= static_cast<std::uint16_t>(character);
+        result *= 1099511628211ULL;
+    }
+    return result;
+}
+
 HRESULT RemoteImageCache::CreateBitmap(
     ID2D1RenderTarget* renderTarget,
     std::wstring_view url,
@@ -712,12 +724,71 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
             result = fetch_(source, stopToken, limits_);
         }
         RemoteImageState finalState = RemoteImageState::Failed;
+        std::shared_ptr<const RemoteDecodedImage> diagnosticImage;
+        std::uint64_t diagnosticResourceHash{};
+        std::uint64_t diagnosticHandleHash{};
         {
             std::scoped_lock lock(mutex_);
             if (shuttingDown_ || stopToken.stop_requested()) break;
             CompleteLocked(url, std::move(result));
             const auto found = entries_.find(url);
-            if (found != entries_.end()) finalState = found->second.state;
+            if (found != entries_.end()) {
+                finalState = found->second.state;
+                constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
+                const auto handleStart = url.rfind(L'\x1f');
+                if (artworkDecodeDiagnostic_ &&
+                    finalState == RemoteImageState::Ready &&
+                    found->second.image && url.starts_with(prefix) &&
+                    handleStart != std::wstring::npos &&
+                    handleStart + 1 < url.size()) {
+                    const auto resourceHash = OpaqueDiagnosticHash(url);
+                    const bool seen = std::find(
+                        artworkDiagnosticKeys_.begin(),
+                        artworkDiagnosticKeys_.begin() +
+                            static_cast<std::ptrdiff_t>(artworkDiagnosticKeyCount_),
+                        resourceHash) != artworkDiagnosticKeys_.begin() +
+                            static_cast<std::ptrdiff_t>(artworkDiagnosticKeyCount_);
+                    if (!seen && artworkDiagnosticKeyCount_ <
+                            maximumArtworkDiagnosticRecords_) {
+                        artworkDiagnosticKeys_[artworkDiagnosticKeyCount_++] = resourceHash;
+                        diagnosticImage = found->second.image;
+                        diagnosticResourceHash = resourceHash;
+                        diagnosticHandleHash = OpaqueDiagnosticHash(
+                            std::wstring_view(url).substr(handleStart + 1));
+                    }
+                }
+            }
+        }
+        if (diagnosticImage && artworkDecodeDiagnostic_ &&
+            !stopToken.stop_requested()) {
+            bool visibleAlpha = false;
+            for (std::size_t index = 3;
+                 index < diagnosticImage->premultipliedBgra.size();
+                 index += 4) {
+                if (diagnosticImage->premultipliedBgra[index] != 0) {
+                    visibleAlpha = true;
+                    break;
+                }
+            }
+            const auto contentType = diagnosticImage->mimeType == L"image/jpeg"
+                ? TrustedArtworkContentType::Jpeg
+                : diagnosticImage->mimeType == L"image/png"
+                ? TrustedArtworkContentType::Png
+                : diagnosticImage->mimeType == L"image/webp"
+                ? TrustedArtworkContentType::WebP
+                : TrustedArtworkContentType::Unknown;
+            try {
+                artworkDecodeDiagnostic_({
+                    diagnosticResourceHash,
+                    diagnosticHandleHash,
+                    contentType,
+                    diagnosticImage->width,
+                    diagnosticImage->height,
+                    visibleAlpha,
+                });
+            } catch (...) {
+                // Diagnostic callbacks never own cache-worker lifetime.
+            }
         }
         if (completion_ && !stopToken.stop_requested()) {
             try { completion_(url, finalState); }
