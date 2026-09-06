@@ -1191,6 +1191,265 @@ void PosterTileUsesFixedFullBleedGeometry() {
         "poster retains one full-surface accessibility semantic");
 }
 
+WidgetNode ArtworkPosterForAdmission(
+    const std::wstring& id,
+    const std::wstring& source) {
+    auto poster = Node(id.c_str(), L"actionSurface");
+    poster.actionId = L"open-poster";
+    poster.accessibilityLabel = L"Open poster";
+    poster.actionSurfaceOrientation = L"vertical";
+    poster.actionSurfacePresentation = L"poster";
+    poster.baseStyle = {
+        {L"width", Length(100)},
+        {L"height", Length(150)},
+        {L"padding", LengthList(L"0px")},
+        {L"overflow", Keyword(L"clip")},
+        {L"flex-shrink", Number(0)},
+    };
+
+    auto artwork = Node((id + L".artwork").c_str(), L"image");
+    artwork.imageSource = source;
+    artwork.imageFit = L"cover";
+    artwork.baseStyle = {
+        {L"width", Length(100)},
+        {L"height", Length(150)},
+    };
+    auto scrim = Node((id + L".scrim").c_str(), L"stack");
+    scrim.baseStyle = {
+        {L"width", Length(100)},
+        {L"height", Length(44)},
+    };
+    poster.children = {std::move(artwork), std::move(scrim)};
+    return poster;
+}
+
+WidgetSnapshot PosterAdmissionSnapshot(
+    const std::wstring_view prefix,
+    const std::wstring_view axis) {
+    WidgetSnapshot snapshot;
+    snapshot.sequence = 1;
+    snapshot.instanceId = std::wstring(prefix) + L".runtime";
+    snapshot.activeInputScopeId = std::wstring(prefix) + L".root";
+    snapshot.initialFocusId = std::wstring(prefix) + L".poster.0";
+    snapshot.root = Node(
+        (std::wstring(prefix) + L".root").c_str(), L"scroll");
+    snapshot.root.inputScopeId = snapshot.activeInputScopeId;
+    snapshot.root.scrollAxis = axis;
+    snapshot.root.baseStyle = {
+        {L"gap", LengthList(L"0px")},
+        {L"overflow", Keyword(L"clip")},
+    };
+    for (int index = 0; index < 5; ++index) {
+        const auto id = std::wstring(prefix) + L".poster." +
+            std::to_wstring(index);
+        const auto source = L"https://example.test/" + id + L".png";
+        snapshot.root.children.push_back(
+            ArtworkPosterForAdmission(id, source));
+    }
+    return snapshot;
+}
+
+void PosterArtworkAdmissionUsesPresentedGeometry() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "create D2D factory for poster artwork admission");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
+        "create DirectWrite factory for poster artwork admission");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "create WIC factory for poster artwork admission");
+    ComPtr<IWICBitmap> canvas;
+    Check(SUCCEEDED(wic->CreateBitmap(
+        640, 640, GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+        "create WIC canvas for poster artwork admission");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+        canvas.Get(), D2D1::RenderTargetProperties(),
+        target.ReleaseAndGetAddressOf())),
+        "create render target for poster artwork admission");
+
+    const auto fetch = [](
+        std::wstring_view, std::stop_token,
+        const widgetrail::RemoteImageLimits&) {
+        widgetrail::RemoteDecodedImage image;
+        image.width = 1;
+        image.height = 1;
+        image.stride = 4;
+        image.premultipliedBgra = {0x10, 0x20, 0x30, 0xFF};
+        image.mimeType = L"image/fake";
+        return widgetrail::RemoteImageFetchResult{S_OK, std::move(image), {}};
+    };
+    const auto wasRequested = [](
+        const widgetrail::RemoteImageCache& cache,
+        const std::wstring& source) {
+        return cache.GetState(source) != widgetrail::RemoteImageState::Missing;
+    };
+    const auto hasAccessibility = [](const auto& result, const std::wstring& id) {
+        return result.accessibilityRegions.end() != std::find_if(
+            result.accessibilityRegions.begin(),
+            result.accessibilityRegions.end(),
+            [&](const auto& region) { return region.nodeId == id; });
+    };
+    const auto render = [&](
+        DeclarativeRenderer& renderer,
+        const WidgetSnapshot& snapshot,
+        const std::wstring_view focused,
+        const Rect viewport) {
+        widgetrail::DeclarativeRenderOptions options;
+        options.collectAccessibility = true;
+        target->BeginDraw();
+        const auto result = renderer.Render(
+            target.Get(), snapshot, focused, viewport, options);
+        Check(SUCCEEDED(target->EndDraw()),
+            "poster artwork admission keeps Direct2D state balanced");
+        return result;
+    };
+
+    widgetrail::RemoteImageLimits limits;
+    limits.maximumEntries = 32;
+    widgetrail::RemoteImageCache horizontalCache(limits, {}, fetch);
+    DeclarativeRenderer horizontalRenderer{
+        d2d.Get(), write.Get(), &horizontalCache};
+    const auto horizontal = PosterAdmissionSnapshot(L"horizontal", L"horizontal");
+    const auto horizontalResult = render(
+        horizontalRenderer, horizontal, L"horizontal.poster.0",
+        {0.0F, 0.0F, 200.0F, 150.0F});
+    for (int index = 0; index < 5; ++index) {
+        const auto id = L"horizontal.poster." + std::to_wstring(index);
+        const auto source = L"https://example.test/" + id + L".png";
+        Check(wasRequested(horizontalCache, source) == (index <= 2),
+            "horizontal poster admission requests visible and one-band artwork only");
+        Check(horizontalResult.elementRects.contains(id) &&
+              horizontalResult.navigationRects.contains(id) &&
+              horizontalResult.focusScopes.contains(id),
+            "horizontal artwork admission preserves presentation and focus metadata");
+    }
+    Check(horizontalCache.GetStats().entries == 3,
+        "horizontal renderer submits exactly visible plus one poster band");
+    Near(horizontalResult.elementRects.at(L"horizontal.poster.3").x, 300.0F,
+        "horizontal exact outer edge is represented by production layout");
+    Check(!wasRequested(
+              horizontalCache,
+              L"https://example.test/horizontal.poster.3.png"),
+        "horizontal exact outer edge does not submit an artwork request");
+    Check(horizontalResult.scrollViewports.contains(L"horizontal.root") &&
+          hasAccessibility(horizontalResult, L"horizontal.poster.0") &&
+          !hasAccessibility(horizontalResult, L"horizontal.poster.3"),
+        "horizontal admission retains scroll and visible-only accessibility authority");
+
+    const auto horizontalScrolled = render(
+        horizontalRenderer, horizontal, L"horizontal.poster.4",
+        {0.0F, 0.0F, 200.0F, 150.0F});
+    Check(horizontalScrolled.scrollOffsets.at(L"horizontal.root") > 0.0F &&
+          horizontalScrolled.focusRects.contains(L"horizontal.poster.4") &&
+          hasAccessibility(horizontalScrolled, L"horizontal.poster.4"),
+        "scrolling admits the far poster without losing focus or accessibility authority");
+    Check(wasRequested(
+              horizontalCache,
+              L"https://example.test/horizontal.poster.4.png"),
+        "scrolling reaches the real resolver for newly admitted poster artwork");
+    horizontalCache.Shutdown();
+
+    widgetrail::RemoteImageCache verticalCache(limits, {}, fetch);
+    DeclarativeRenderer verticalRenderer{d2d.Get(), write.Get(), &verticalCache};
+    const auto vertical = PosterAdmissionSnapshot(L"vertical", L"vertical");
+    const auto verticalResult = render(
+        verticalRenderer, vertical, L"vertical.poster.0",
+        {0.0F, 0.0F, 100.0F, 300.0F});
+    for (int index = 0; index < 5; ++index) {
+        const auto id = L"vertical.poster." + std::to_wstring(index);
+        const auto source = L"https://example.test/" + id + L".png";
+        Check(wasRequested(verticalCache, source) == (index <= 2),
+            "vertical poster admission requests visible and one-band artwork only");
+        Check(verticalResult.elementRects.contains(id) &&
+              verticalResult.navigationRects.contains(id) &&
+              verticalResult.focusScopes.contains(id),
+            "vertical artwork admission preserves presentation and focus metadata");
+    }
+    Check(verticalCache.GetStats().entries == 3,
+        "vertical renderer submits exactly visible plus one poster band");
+    Near(verticalResult.elementRects.at(L"vertical.poster.3").y, 450.0F,
+        "vertical exact outer edge is represented by production layout");
+    Check(!wasRequested(
+              verticalCache,
+              L"https://example.test/vertical.poster.3.png"),
+        "vertical exact outer edge does not submit an artwork request");
+    verticalCache.Shutdown();
+
+    widgetrail::RemoteImageCache rejectedGeometryCache(limits, {}, fetch);
+    DeclarativeRenderer rejectedGeometryRenderer{
+        d2d.Get(), write.Get(), &rejectedGeometryCache};
+    const auto rejectedGeometry = PosterAdmissionSnapshot(L"rejected", L"horizontal");
+    (void)render(
+        rejectedGeometryRenderer, rejectedGeometry, L"rejected.poster.0",
+        {0.0F, 0.0F, 0.0F, 150.0F});
+    Check(rejectedGeometryCache.GetStats().entries == 0,
+        "empty ancestor geometry cannot submit poster artwork");
+    const auto invalid = rejectedGeometryRenderer.Render(
+        target.Get(), rejectedGeometry, L"rejected.poster.0",
+        {0.0F, 0.0F, std::numeric_limits<float>::quiet_NaN(), 150.0F});
+    Check(!invalid.succeeded && rejectedGeometryCache.GetStats().entries == 0,
+        "non-finite geometry fails closed before poster artwork submission");
+    rejectedGeometryCache.Shutdown();
+
+    WidgetSnapshot fallback;
+    fallback.instanceId = L"poster-fallback.runtime";
+    fallback.activeInputScopeId = L"poster-fallback.root";
+    fallback.root = Node(L"poster-fallback.root", L"stack");
+    fallback.root.inputScopeId = fallback.activeInputScopeId;
+    auto noArtwork = Node(L"poster-fallback.card", L"actionSurface");
+    noArtwork.actionId = L"open-poster";
+    noArtwork.accessibilityLabel = L"Poster without artwork";
+    noArtwork.actionSurfacePresentation = L"poster";
+    noArtwork.baseStyle = {
+        {L"width", Length(100)},
+        {L"height", Length(150)},
+        {L"padding", LengthList(L"0px")},
+        {L"background", Color(L"#000000")},
+    };
+    fallback.root.children = {std::move(noArtwork)};
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.0F));
+    widgetrail::DeclarativeRenderOptions fallbackOptions;
+    fallbackOptions.collectAccessibility = true;
+    const auto fallbackResult = horizontalRenderer.Render(
+        target.Get(), fallback, {}, {0.0F, 0.0F, 100.0F, 150.0F}, fallbackOptions);
+    Check(SUCCEEDED(target->EndDraw()),
+        "no-artwork poster fallback keeps Direct2D state balanced");
+    ComPtr<IWICBitmapLock> lock;
+    const WICRect fallbackArea{34, 34, 32, 82};
+    Check(SUCCEEDED(canvas->Lock(
+        &fallbackArea, WICBitmapLockRead, lock.ReleaseAndGetAddressOf())),
+        "no-artwork poster fallback raster locks");
+    UINT stride{};
+    UINT byteCount{};
+    BYTE* pixels{};
+    Check(SUCCEEDED(lock->GetStride(&stride)) &&
+          SUCCEEDED(lock->GetDataPointer(&byteCount, &pixels)),
+        "no-artwork poster fallback pixels are available");
+    std::size_t brightPixels{};
+    for (UINT y = 0; y < 82; ++y) {
+        for (UINT x = 0; x < 32; ++x) {
+            const auto* pixel = pixels + y * stride + x * 4U;
+            if (std::max({pixel[0], pixel[1], pixel[2]}) > 128U)
+                ++brightPixels;
+        }
+    }
+    Check(brightPixels > 8 &&
+          fallbackResult.navigationRects.contains(L"poster-fallback.card") &&
+          hasAccessibility(fallbackResult, L"poster-fallback.card") &&
+          fallbackResult.posterArtworkRects.empty(),
+        "genuine no-artwork poster keeps its semantic fallback and interaction authority");
+}
+
 void BackgroundSurfacePreservesForegroundAuthority() {
     using Microsoft::WRL::ComPtr;
     ComPtr<ID2D1Factory> d2d;
@@ -5240,6 +5499,7 @@ int main() {
     SliderPlanningAndAccessibilityTargets();
     ActionSurfacePlanningAndInteractionGeometry();
     PosterTileUsesFixedFullBleedGeometry();
+    PosterArtworkAdmissionUsesPresentedGeometry();
     BackgroundSurfacePreservesForegroundAuthority();
     ResponsiveGridFlowsThroughNativePlanning();
     FocusMotionUsesStableSnapshotIdentity();
