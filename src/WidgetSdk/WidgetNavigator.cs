@@ -441,7 +441,15 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
         lock (_gate)
         {
             ThrowIfDisposed();
-            if (!_scopeIds.Values.Contains(snapshot.InputScopeId, StringComparer.Ordinal) ||
+            var ownsPerRouteScope = _scopeIds.Values.Contains(
+                snapshot.InputScopeId, StringComparer.Ordinal);
+            var ownsSharedRootScope = _sharedRootScopeId is not null &&
+                snapshot.Depth == 0 &&
+                _comparer.Equals(snapshot.Route, snapshot.RootRoute) &&
+                _rootRoutes.Contains(snapshot.Route) &&
+                string.Equals(snapshot.InputScopeId, _sharedRootScopeId,
+                    StringComparison.Ordinal);
+            if (!(ownsPerRouteScope || ownsSharedRootScope) ||
                 snapshot.BackActionId is not null &&
                 !string.Equals(snapshot.BackActionId, _backActionId, StringComparison.Ordinal))
                 throw new ArgumentException(

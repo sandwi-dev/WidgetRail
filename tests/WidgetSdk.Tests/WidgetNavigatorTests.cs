@@ -29,6 +29,11 @@ internal static class WidgetNavigatorTests
 
         var player = widget.Navigation.Value;
         Equal("navigation.root", player.InputScopeId);
+        var playerRoot = widget.Navigation.Scope(
+            player, Root("player.root", "player.play"));
+        Equal("navigation.root", playerRoot.InputScopeId!);
+        False(playerRoot.Shortcuts.Any(IsPressedBack),
+            "The initial shared root unexpectedly exposed nested Back.");
         var playerPageLifetime = player.RootRouteCancellationToken;
         var playerRouteLifetime = player.RouteCancellationToken;
 
@@ -56,6 +61,27 @@ internal static class WidgetNavigatorTests
         Equal("library.group", library.FocusGroupEntryRequest.GroupId);
         False(library.RootRouteCancellationToken.IsCancellationRequested,
             "The successor root page began with a canceled lifetime.");
+        var libraryRoot = widget.Navigation.Scope(
+            library, Root("library.root", "library.first"));
+        Equal("navigation.root", libraryRoot.InputScopeId!);
+        False(libraryRoot.Shortcuts.Any(IsPressedBack),
+            "The switched shared root unexpectedly exposed nested Back.");
+
+        var nestedBorrow = new WidgetNavigationSnapshot<Route>(
+            Route.Detail,
+            Route.Library,
+            Depth: 1,
+            InputScopeId: "navigation.root",
+            InitialFocusId: null,
+            BackActionId: null,
+            Revision: library.Revision,
+            RouteCancellationToken: CancellationToken.None);
+        Throws<ArgumentException>(() => widget.Navigation.Scope(
+            nestedBorrow, Root("detail.root", "detail.play")));
+
+        var foreignRoot = library with { InputScopeId = "foreign.scope" };
+        Throws<ArgumentException>(() => widget.Navigation.Scope(
+            foreignRoot, Root("foreign.root", "foreign.play")));
 
         var libraryPageLifetime = library.RootRouteCancellationToken;
         Equal(WidgetNavigationResult.Changed,
