@@ -2,6 +2,8 @@
 .youtube-player-page, .youtube-search-root { width: 100%; min-width: 0px; min-height: 0px; gap: 12px; flex-grow: 1; flex-shrink: 1; overflow: clip; }
 .youtube-section-trailing-hints { min-width: 0px; align: center; justify: end; gap: 4px; flex-shrink: 0; }
 .youtube-section-expanded-hint { width: 100%; min-width: 0px; align: center; justify: end; flex-shrink: 0; }
+.youtube-section-bumper-key { align: center; justify: center; flex-shrink: 0; }
+.youtube-section-bumper-label { color: var(--canvas, #0b0d12); font-size: 9px; font-weight: 600; text-align: center; max-lines: 1; }
 .youtube-appbar { width: 100%; min-width: 0px; min-height: 58px; align: center; gap: 12px; flex-shrink: 0; }
 .youtube-appbar-copy { min-width: 0px; gap: 1px; flex-grow: 1; }
 .youtube-route-actions { align: center; justify: end; gap: 8px; flex-shrink: 0; }

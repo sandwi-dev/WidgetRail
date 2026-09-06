@@ -719,18 +719,19 @@ public sealed partial class YouTubeVideoWidget
         var trailingHints = configured
             ? UI.Row(
                     "youtube.section.trailing-hints",
-                    UI.Text("RB", "youtube.section.next.hint",
-                            "Right bumper, next section")
-                        .Classes("wrail-controller-hint__key"),
-                    UI.Text("Y", "youtube.section.settings.hint",
-                            "Y button, Settings")
-                        .Classes("wrail-controller-hint__key"))
+                    CompactControllerKey(
+                        "RB", "Right bumper, next section", "youtube.section.next.hint"),
+                    UI.ControllerHint(
+                        ControllerButton.Y,
+                        "Settings",
+                        "youtube.section.settings.hint"))
                 .Classes("youtube-section-trailing-hints")
             : UI.Row(
                     "youtube.section.trailing-hints",
-                    UI.Text("Y", "youtube.section.settings.hint",
-                            "Y button, Settings")
-                        .Classes("wrail-controller-hint__key"))
+                    UI.ControllerHint(
+                        ControllerButton.Y,
+                        "Settings",
+                        "youtube.section.settings.hint"))
                 .Classes("youtube-section-trailing-hints");
         var shell = UI.NavigationShell(
             "youtube.sections",
@@ -741,9 +742,8 @@ public sealed partial class YouTubeVideoWidget
             expandedPane: null,
             expandedPaneEntryFocusId: null,
             compactLeadingAdornment: configured
-                ? UI.Text("LB", "youtube.section.previous.hint",
-                        "Left bumper, previous section")
-                    .Classes("wrail-controller-hint__key")
+                ? CompactControllerKey(
+                    "LB", "Left bumper, previous section", "youtube.section.previous.hint")
                 : null,
             compactTrailingAdornment: trailingHints);
         var expandedSettingsHint = UI.Row(
@@ -766,6 +766,15 @@ public sealed partial class YouTubeVideoWidget
                     label: "Next section")
             : root;
     }
+
+    private static RowElement CompactControllerKey(
+        string key,
+        string accessibilityLabel,
+        string id) => UI.Row(
+            id,
+            UI.Text(key, id + ".label", accessibilityLabel)
+                .Classes("youtube-section-bumper-label"))
+            .Classes("wrail-controller-hint__key", "youtube-section-bumper-key");
 
     private async ValueTask<WidgetCursorPage<YouTubeSearchItem>> LoadSearchPageAsync(
         WidgetCollectionCursor? cursor,
