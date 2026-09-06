@@ -501,7 +501,7 @@ public sealed class SdkGalleryWidget : Widget
         UI.BackgroundSurface(
                 UI.Card("gallery.backgrounds.fill.card", CardVariant.Transparent,
                     UI.Text("Fill", "gallery.backgrounds.fill.title"),
-                    UI.Text("Fill stretches the sealed warm artwork to the bounded sample region.",
+                    UI.Text("Fill stretches the sealed default artwork to the bounded sample region.",
                         "gallery.backgrounds.fill.description")),
                 "gallery.backgrounds.fill.surface",
                 BackgroundSurfaceArtwork.FromHandle(

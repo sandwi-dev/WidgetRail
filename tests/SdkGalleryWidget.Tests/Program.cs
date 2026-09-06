@@ -336,7 +336,7 @@ static async Task BackgroundGallery()
     Assert.True(fill.StyleClasses.Contains(
         "gallery-background-fit-surface", StringComparer.Ordinal));
     Assert.Equal(
-        "Fill stretches the sealed warm artwork to the bounded sample region.",
+        "Fill stretches the sealed default artwork to the bounded sample region.",
         Find(backgrounds, "gallery.backgrounds.fill.description").Text);
     Assert.Equal(ImageFit.Cover, Find(backgrounds, "gallery.backgrounds.missing.surface").ImageFit);
     Assert.Equal(SdkGalleryWidget.MissingBackgroundArtworkHandle,
@@ -424,7 +424,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.8", manifest.Version);
+    Assert.Equal("0.1.9", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);
