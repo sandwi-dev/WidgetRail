@@ -341,6 +341,28 @@ int main() {
               L"music.sheet", nested, {}),
           "missing pressed-B authority suppresses nested Back without tray fallback");
 
+    widgetrail::WidgetSnapshot presentedRoot;
+    presentedRoot.activeInputScopeId = L"music.root";
+    presentedRoot.root.id = L"music.background";
+    presentedRoot.root.kind = L"backgroundSurface";
+    widgetrail::WidgetNode focusPresentation;
+    focusPresentation.id = L"music.presentation";
+    focusPresentation.kind = L"focusPresentationSurface";
+    widgetrail::WidgetNode presentedContent;
+    presentedContent.id = L"music.content";
+    presentedContent.kind = L"stack";
+    presentedContent.inputScopeId = L"music.root";
+    presentedContent.children.push_back(sheetAction);
+    focusPresentation.children.push_back(std::move(presentedContent));
+    presentedRoot.root.children.push_back(std::move(focusPresentation));
+    Check(widgetrail::accessibility::IsCurrentBackAction(
+              widgetrail::accessibility::HostAction::BackToTray,
+              L"music.root", presentedRoot, L"sheet.action") &&
+          !widgetrail::accessibility::IsCurrentBackAction(
+              widgetrail::accessibility::HostAction::BackWithinWidget,
+              L"music.root", presentedRoot, L"sheet.action"),
+          "presentation-only root wrappers preserve accessible host Back authority");
+
     std::cout << "HostAccessibilityTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }
