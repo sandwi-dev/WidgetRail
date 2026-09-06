@@ -42,15 +42,21 @@ separate, explicit action; package versions are immutable.
 
 ## Controller use
 
-Search, link playback, and setup share one route bar. Search and setup use compact
-task cards; the player keeps the 16:9 video primary and places icon transport,
-timeline, and compact volume on one row. The native **Fullscreen** action asks
+**Discover** and **Player** are flat sibling sections. Use LB/RB to switch between
+them without adding Back history; the destination restores its remembered content
+focus. **Play a link** is the Player section's empty/link-entry state, not a third
+section. The separate in-widget **Y Settings** hint opens search configuration and
+B returns to the exact control that opened it. Player settings remain nested behind
+the player control. Search uses a compact task card; the player keeps the 16:9 video
+primary and places icon transport, timeline, and compact volume on one row. The
+native **Fullscreen** action asks
 WidgetRail to transfer the same media plane into its host-owned overlay
 fullscreen presentation; the YouTube iframe keeps its own controls, keyboard,
 and fullscreen paths disabled. Pinning remains host-owned.
 
-1. Open **YouTube Video** and choose **Discover**, **Play a link**, or **Setup** from the route bar.
-2. Choose **Play a link**, press A, paste a supported public video URL, and commit the host-owned text
+1. Open **YouTube Video** and use LB/RB or the visible section header to choose
+   **Discover** or **Player**. Use Y for search-key Settings.
+2. In **Player**, focus the link entry, press A, paste a supported public video URL, and commit the host-owned text
    entry. The widget validates the URL and cues the video without autoplay.
 3. Focus **Play** and press A. WidgetRail correlates that visible user action
    with the embedded player before playback starts.

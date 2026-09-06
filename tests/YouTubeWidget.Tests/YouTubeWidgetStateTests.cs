@@ -449,7 +449,8 @@ public sealed class YouTubeWidgetStateTests
         Assert.AreEqual("synthwave", searching.Search.QueryDraft);
 
         var opened = searching.WithSelectedResult(
-            "youtube.result." + VideoId, VideoId, sequence: 1);
+            "youtube.result." + VideoId, VideoId, sequence: 1,
+            playerFocusGroupId: "youtube.player.page");
         Assert.AreEqual(YouTubeRoute.Player, opened.Route);
         Assert.AreEqual("youtube.result." + VideoId, opened.Search.ReturnFocusId);
         Assert.AreEqual(VideoId, opened.Playback.VideoId);
@@ -458,6 +459,61 @@ public sealed class YouTubeWidgetStateTests
             opened.Playback.PendingCommand!.Kind);
         Assert.AreEqual("synthwave", opened.Search.QueryDraft,
             "Opening a result leaves the query that produced it intact.");
+        Assert.AreEqual("youtube.player.page", opened.RootFocusGroupId);
+        Assert.AreEqual(1L, opened.RootFocusRequestId);
+    }
+
+    [TestMethod]
+    public void RootSectionsIssueMonotonicGroupEntryWithoutMirroringRouteState()
+    {
+        var search = YouTubeWidgetState.Initial.WithConfigurationSummary(configured: true);
+        Assert.AreEqual(YouTubeRootSection.Discover, search.RootSection);
+
+        var player = search.WithRootSection(
+            YouTubeRootSection.Player, "youtube.player.page");
+        Assert.AreEqual(YouTubeRoute.Link, player.Route);
+        Assert.AreEqual(YouTubeRootSection.Player, player.RootSection);
+        Assert.AreEqual(1L, player.RootFocusGroupEntryRequest!.RequestId);
+        Assert.AreEqual("youtube.player.page", player.RootFocusGroupEntryRequest.GroupId);
+
+        var discover = player.WithRootSection(
+            YouTubeRootSection.Discover, "youtube.search.page");
+        Assert.AreEqual(YouTubeRoute.Search, discover.Route);
+        Assert.AreEqual(2L, discover.RootFocusGroupEntryRequest!.RequestId);
+        Assert.AreEqual("youtube.search.page", discover.RootFocusGroupEntryRequest.GroupId);
+
+        var selectedByHeader = discover.WithRootSection(YouTubeRootSection.Player);
+        Assert.AreEqual(YouTubeRoute.Link, selectedByHeader.Route);
+        Assert.IsNull(selectedByHeader.RootFocusGroupEntryRequest,
+            "Header A selection must not publish a competing content-entry request.");
+    }
+
+    [TestMethod]
+    public void SetupReturnOwnsExactOpenerAndDeleteFallsBackFromUnavailableDiscover()
+    {
+        var search = YouTubeWidgetState.Initial
+            .WithConfigurationSummary(configured: true)
+            .WithSetupRoute("youtube.search.query");
+        Assert.AreEqual(YouTubeRoute.Search, search.SetupReturnRoute);
+        Assert.AreEqual("youtube.search.query", search.SetupReturnFocusId);
+
+        var deleted = search.WithSetupInFlight().WithDeletedKey();
+        Assert.AreEqual(YouTubeRoute.Link, deleted.SetupReturnRoute,
+            "Deleting the key must not return to unavailable Discover.");
+        Assert.IsNull(deleted.SetupReturnFocusId);
+        var player = deleted.WithSetupReturnRoute();
+        Assert.AreEqual(YouTubeRoute.Link, player.Route);
+        Assert.IsNull(player.RootInitialFocusId);
+
+        var unconfiguredPlayer = YouTubeWidgetState.Initial
+            .WithConfigurationSummary(configured: false)
+            .WithRootSection(YouTubeRootSection.Player)
+            .WithSetupRoute("youtube.link");
+        Assert.AreEqual(YouTubeRoute.Link, unconfiguredPlayer.SetupReturnRoute);
+        Assert.AreEqual("youtube.link", unconfiguredPlayer.SetupReturnFocusId);
+        var returned = unconfiguredPlayer.WithSetupReturnRoute();
+        Assert.AreEqual(YouTubeRoute.Link, returned.Route);
+        Assert.AreEqual("youtube.link", returned.RootInitialFocusId);
     }
 
     private static EmbeddedMediaPlaybackEvent Event(

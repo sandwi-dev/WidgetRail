@@ -104,6 +104,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Hierarchical widget IDs stay stable bounded and opaque", WidgetIdsTests.Run),
     ("Widget navigation owns bounded routes scopes focus Back and cancellation", WidgetNavigatorTests.Run),
     ("Navigation shells share responsive content and preserve controller traversal", NavigationShellTests.ComposesOneResponsiveContentTree),
+    ("Navigation shell legacy overloads match frozen pre-extraction trees", NavigationShellTests.LegacyOverloadsMatchFrozenPreExtractionTrees),
+    ("Navigation shell parts compose one scoped responsive content tree", NavigationShellTests.NamedPartsComposeOneScopedResponsiveContentTree),
     ("Navigation shells wire compact and expanded focus graphs", NavigationShellTests.PreservesControllerTraversal),
     ("Navigation shell compact adornments are input inert and additive", NavigationShellTests.CompactAdornmentsAreInputInertAndAdditive),
     ("Navigation shells reject ambiguous or unbounded destinations", NavigationShellTests.ValidatesAuthoringBounds),

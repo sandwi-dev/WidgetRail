@@ -3,6 +3,90 @@ using WidgetRail.WidgetSdk;
 
 internal static class NavigationShellTests
 {
+    internal static Task LegacyOverloadsMatchFrozenPreExtractionTrees()
+    {
+        var sevenShell = CreateShell();
+        var seven = sevenShell.ToProtocolNode();
+        AssertFrozenLegacyTree(seven, adorned: false);
+        AssertFullSnapshotMatchesFrozenPreExtraction(sevenShell, adorned: false);
+
+        var nineShell = UI.NavigationShell(
+            "shell",
+            "library",
+            "page.open",
+            Content(),
+            Destinations(),
+            UI.Stack("pane", UI.Button("Play", "play", "pane.play")),
+            "pane.play",
+            UI.ControllerHint(ControllerButton.LeftBumper, "Previous", "hint.previous"),
+            UI.ControllerHint(ControllerButton.RightBumper, "Next", "hint.next"));
+        var nine = nineShell.ToProtocolNode();
+        AssertFrozenLegacyTree(nine, adorned: true);
+        AssertFullSnapshotMatchesFrozenPreExtraction(nineShell, adorned: true);
+        return Task.CompletedTask;
+    }
+
+    internal static Task NamedPartsComposeOneScopedResponsiveContentTree()
+    {
+        var parts = UI.NavigationShellParts(
+            "shell",
+            "library",
+            "page.open",
+            Content(),
+            Destinations(),
+            UI.Stack("pane", UI.Button("Play", "play", "pane.play")),
+            "pane.play",
+            UI.ControllerHint(ControllerButton.LeftBumper, "Previous", "hint.previous"),
+            UI.ControllerHint(ControllerButton.RightBumper, "Next", "hint.next"));
+
+        var compactPart = parts.CompactNavigation.ToProtocolNode();
+        var bodyPart = parts.Body.ToProtocolNode();
+        Equal("shell.compact", compactPart.Id);
+        Equal(ResponsiveVisibility.CompactOnly, compactPart.VisibleWhen);
+        Equal("shell.body", bodyPart.Id);
+        Equal(null, compactPart.InputScopeId);
+        Equal(null, bodyPart.InputScopeId);
+
+        var header = UI.Row(
+            "custom.header",
+            parts.CompactNavigation,
+            UI.ControllerHint(ControllerButton.Y, "Settings", "custom.settings"));
+        var root = UI.Stack("custom.root", header, parts.Body)
+            .InputScope("custom.root");
+        var snapshot = new WidgetView(
+                root,
+                "page.open",
+                ActiveInputScopeId: "custom.root")
+            .CreateSnapshot("navigation.parts", 1);
+
+        Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        Equal(1, Descendants(snapshot.Root).Count(node => node.Id == "page.content"));
+        Equal("custom.header", snapshot.Root.Children[0].Id);
+        Equal("shell.compact", snapshot.Root.Children[0].Children[0].Id);
+        Equal("custom.settings", snapshot.Root.Children[0].Children[1].Id);
+        Equal("shell.body", snapshot.Root.Children[1].Id);
+        Equal(ResponsiveVisibility.ExpandedOnly,
+            Find(snapshot.Root, "shell.rail").VisibleWhen);
+        Equal("page.open", Find(snapshot.Root, ExpectedKeyedId("compact", "library")).Focus!.Down);
+        Equal("pane.play", Find(snapshot.Root, ExpectedKeyedId("rail", "library")).Focus!.Right);
+
+        Throws<ArgumentException>(() => UI.NavigationShellParts(
+            "interactive-parts",
+            "library",
+            "page.open",
+            Content(),
+            Destinations(),
+            compactLeadingAdornment: UI.Button("Open", "open", "interactive.open")));
+        Throws<ArgumentException>(() => UI.NavigationShellParts(
+            "missing-pane",
+            "library",
+            "page.open",
+            Content(),
+            Destinations(),
+            expandedPaneEntryFocusId: "pane.play"));
+        return Task.CompletedTask;
+    }
+
     internal static Task ComposesOneResponsiveContentTree()
     {
         var shell = CreateShell();
@@ -194,6 +278,201 @@ internal static class NavigationShellTests
         new("settings", "Settings", "nav.settings", WidgetGlyph.Settings,
             IsDisabled: true),
     ];
+
+    private static void AssertFrozenLegacyTree(ViewNode root, bool adorned)
+    {
+        Equal("shell", root.Id);
+        Equal(ViewNodeKind.Stack, root.Kind);
+        SequenceEqual(["wrail-navigation-shell"], root.StyleClasses);
+        SequenceEqual(["shell.compact", "shell.body"],
+            root.Children.Select(child => child.Id));
+
+        var compact = root.Children[0];
+        Equal(ViewNodeKind.Row, compact.Kind);
+        Equal(ResponsiveVisibility.CompactOnly, compact.VisibleWhen);
+        SequenceEqual(["wrail-navigation-shell__compact"], compact.StyleClasses);
+        var expectedCompactIds = new List<string>();
+        if (adorned) expectedCompactIds.Add("hint.previous");
+        expectedCompactIds.AddRange(Destinations().Select(destination =>
+            ExpectedKeyedId("compact", destination.Id)));
+        if (adorned) expectedCompactIds.Add("hint.next");
+        SequenceEqual(expectedCompactIds, compact.Children.Select(child => child.Id));
+
+        var body = root.Children[1];
+        Equal(ViewNodeKind.Row, body.Kind);
+        SequenceEqual(["wrail-navigation-shell__body"], body.StyleClasses);
+        SequenceEqual(["shell.rail", "shell.persistent", "shell.content"],
+            body.Children.Select(child => child.Id));
+
+        var rail = body.Children[0];
+        Equal(ResponsiveVisibility.ExpandedOnly, rail.VisibleWhen);
+        SequenceEqual(["wrail-navigation-shell__rail"], rail.StyleClasses);
+        SequenceEqual(Destinations().Select(destination => ExpectedKeyedId("rail", destination.Id)),
+            rail.Children.Select(child => child.Id));
+
+        var destinations = Destinations();
+        for (var index = 0; index < destinations.Length; index++)
+        {
+            var destination = destinations[index];
+            var compactButton = Find(root, ExpectedKeyedId("compact", destination.Id));
+            var railButton = Find(root, ExpectedKeyedId("rail", destination.Id));
+            var selected = destination.Id == "library";
+            Equal(destination.ActionId, compactButton.ActionId);
+            Equal(destination.ActionId, railButton.ActionId);
+            Equal(destination.Glyph, compactButton.Glyph);
+            Equal(destination.Glyph, railButton.Glyph);
+            Equal(selected ? true : null, compactButton.IsSelected);
+            Equal(selected ? true : null, railButton.IsSelected);
+            Equal(destination.IsDisabled ? true : null, compactButton.IsDisabled);
+            Equal(destination.IsDisabled ? true : null, railButton.IsDisabled);
+            Equal(ExpectedKeyedId("focus", destination.Id), compactButton.FocusPersistenceId);
+            Equal(compactButton.FocusPersistenceId, railButton.FocusPersistenceId);
+            Equal("page.open", compactButton.Focus!.Down);
+            Equal("pane.play", railButton.Focus!.Right);
+            Equal($"{destination.Label}, {(selected ? "Selected" : "Not selected")}",
+                compactButton.AccessibilityLabel);
+            SequenceEqual(
+                [
+                    "wrail-navigation-shell__compact-item",
+                    selected
+                        ? "wrail-navigation-shell__item--selected"
+                        : "wrail-navigation-shell__item--idle",
+                ],
+                compactButton.StyleClasses);
+        }
+
+        var persistent = body.Children[1];
+        Equal(ResponsiveVisibility.ExpandedOnly, persistent.VisibleWhen);
+        SequenceEqual(["wrail-navigation-shell__persistent"], persistent.StyleClasses);
+        SequenceEqual(["pane"], persistent.Children.Select(child => child.Id));
+        var content = body.Children[2];
+        SequenceEqual(["wrail-navigation-shell__content"], content.StyleClasses);
+        SequenceEqual(["page.content"], content.Children.Select(child => child.Id));
+    }
+
+    private static void AssertFullSnapshotMatchesFrozenPreExtraction(
+        StackElement actual,
+        bool adorned)
+    {
+        var expected = FrozenPreExtractionShell(adorned);
+        var expectedSnapshot = new WidgetView(expected, "page.open")
+            .CreateSnapshot("navigation.legacy-frozen", 1);
+        var actualSnapshot = new WidgetView(actual, "page.open")
+            .CreateSnapshot("navigation.legacy-frozen", 1);
+        var expectedJson = SnapshotJson.Serialize(expectedSnapshot);
+        var actualJson = SnapshotJson.Serialize(actualSnapshot);
+        if (!expectedJson.AsSpan().SequenceEqual(actualJson))
+            throw new InvalidOperationException(
+                $"Legacy {(adorned ? "nine" : "seven")}-argument NavigationShell output changed.");
+    }
+
+    private static StackElement FrozenPreExtractionShell(bool adorned)
+    {
+        var destinations = Destinations();
+        var compactIds = destinations.Select(destination =>
+            ExpectedKeyedId("compact", destination.Id)).ToArray();
+        var railIds = destinations.Select(destination =>
+            ExpectedKeyedId("rail", destination.Id)).ToArray();
+        var focusIds = destinations.Select(destination =>
+            ExpectedKeyedId("focus", destination.Id)).ToArray();
+        var compactButtons = new ButtonElement[destinations.Length];
+        var railButtons = new ButtonElement[destinations.Length];
+        for (var index = 0; index < destinations.Length; index++)
+        {
+            var destination = destinations[index];
+            var selected = destination.Id == "library";
+            var state = selected ? "Selected" : "Not selected";
+            compactButtons[index] = new ButtonElement(
+                compactIds[index], destination.Label, destination.ActionId)
+            {
+                AccessibilityLabel = $"{destination.Label}, {state}",
+                Glyph = destination.Glyph,
+                IsSelected = selected ? true : null,
+                IsDisabled = destination.IsDisabled ? true : null,
+                FocusPersistenceId = focusIds[index],
+                FocusNeighbors = new FocusNeighbors(
+                    Down: "page.open",
+                    Left: compactIds[(index - 1 + destinations.Length) % destinations.Length],
+                    Right: compactIds[(index + 1) % destinations.Length]),
+                RequiredStyleClasses =
+                [
+                    "wrail-navigation-shell__compact-item",
+                    selected
+                        ? "wrail-navigation-shell__item--selected"
+                        : "wrail-navigation-shell__item--idle",
+                ],
+            };
+            railButtons[index] = new ButtonElement(
+                railIds[index], destination.Label, destination.ActionId)
+            {
+                AccessibilityLabel = $"{destination.Label}, {state}",
+                Glyph = destination.Glyph,
+                IsSelected = selected ? true : null,
+                IsDisabled = destination.IsDisabled ? true : null,
+                FocusPersistenceId = focusIds[index],
+                FocusNeighbors = new FocusNeighbors(
+                    Up: railIds[(index - 1 + destinations.Length) % destinations.Length],
+                    Down: railIds[(index + 1) % destinations.Length],
+                    Right: "pane.play"),
+                RequiredStyleClasses =
+                [
+                    "wrail-navigation-shell__rail-item",
+                    selected
+                        ? "wrail-navigation-shell__item--selected"
+                        : "wrail-navigation-shell__item--idle",
+                ],
+            };
+        }
+
+        var compactChildren = new List<WidgetElement>();
+        if (adorned)
+            compactChildren.Add(UI.ControllerHint(
+                ControllerButton.LeftBumper, "Previous", "hint.previous"));
+        compactChildren.AddRange(compactButtons);
+        if (adorned)
+            compactChildren.Add(UI.ControllerHint(
+                ControllerButton.RightBumper, "Next", "hint.next"));
+        var compact = new RowElement("shell.compact", compactChildren)
+        {
+            RequiredStyleClasses = ["wrail-navigation-shell__compact"],
+        }.VisibleWhen(ResponsiveVisibility.CompactOnly);
+        var rail = new StackElement("shell.rail", railButtons)
+        {
+            RequiredStyleClasses = ["wrail-navigation-shell__rail"],
+        }.VisibleWhen(ResponsiveVisibility.ExpandedOnly);
+        var persistent = new StackElement(
+            "shell.persistent",
+            [UI.Stack("pane", UI.Button("Play", "play", "pane.play"))])
+        {
+            RequiredStyleClasses = ["wrail-navigation-shell__persistent"],
+        }.VisibleWhen(ResponsiveVisibility.ExpandedOnly);
+        var content = new StackElement("shell.content", [Content()])
+        {
+            RequiredStyleClasses = ["wrail-navigation-shell__content"],
+        };
+        var body = new RowElement("shell.body", [rail, persistent, content])
+        {
+            RequiredStyleClasses = ["wrail-navigation-shell__body"],
+        };
+        return new StackElement("shell", [compact, body])
+        {
+            RequiredStyleClasses = ["wrail-navigation-shell"],
+        };
+    }
+
+    private static string ExpectedKeyedId(string name, string durableKey)
+    {
+        var hash = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(durableKey));
+        return $"shell.{name}-{Convert.ToHexString(hash.AsSpan(0, 12)).ToLowerInvariant()}";
+    }
+
+    private static void SequenceEqual<T>(IEnumerable<T> expected, IEnumerable<T> actual)
+    {
+        if (!expected.SequenceEqual(actual))
+            throw new InvalidOperationException(
+                $"Expected '[{string.Join(", ", expected)}]', got '[{string.Join(", ", actual)}]'.");
+    }
 
     private static ViewNode Find(ViewNode node, string id) =>
         Descendants(node).Single(candidate => candidate.Id == id);

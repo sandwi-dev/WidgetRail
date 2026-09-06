@@ -67,7 +67,7 @@ public sealed partial class YouTubeWidgetTests
         Assert.Contains("https://www.youtube.com", media.AllowedFrameOrigins);
         Assert.HasCount(8, media.AllowedFrameOrigins);
         Assert.IsEmpty(snapshot.PinnedLayouts);
-        Assert.AreEqual("youtube.playback.toggle", snapshot.InitialFocusId);
+        Assert.AreEqual("youtube.link", snapshot.InitialFocusId);
         Assert.AreEqual("youtube.root", snapshot.ActiveInputScopeId);
         Assert.AreEqual(ViewNodeKind.MediaViewport,
             Find(snapshot.Root, "youtube.viewport").Kind);
@@ -84,28 +84,84 @@ public sealed partial class YouTubeWidgetTests
 
         var search = widget.RenderSnapshot("youtube-test", 1);
         Assert.AreEqual("youtube.search.query", search.InitialFocusId);
-        Assert.AreEqual("youtube.link.open",
-            Find(search.Root, "youtube.search.routes").InitialChildFocusId);
+        Assert.AreEqual("youtube.search.query",
+            Find(search.Root, "youtube.search.page").InitialChildFocusId);
+        Assert.IsNotNull(TryFind(search.Root, "youtube.section.header"));
+        Assert.IsNotNull(TryFind(search.Root, "youtube.section.settings.hint"));
+        var searchRoot = Find(search.Root, "youtube.root");
+        AssertSectionShortcuts(searchRoot);
         Assert.IsEmpty(search.QuickActions);
-        Assert.IsEmpty(Find(search.Root, "youtube.search.root").Shortcuts);
+        Assert.IsEmpty(Find(search.Root, "youtube.search.page").Shortcuts);
 
-        await widget.OnActionAsync(new WidgetActionEvent(
-            "youtube.link.open", "youtube.link.open"));
+        var playerInvalidated = NextInvalidation(widget);
+        Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.RightBumper,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: "youtube.search.query",
+            Sequence: 1,
+            ActiveInputScopeId: search.ActiveInputScopeId,
+            SnapshotSequence: search.Sequence)));
+        await playerInvalidated;
         var link = widget.RenderSnapshot("youtube-test", 2);
         Assert.AreEqual("youtube.link", link.InitialFocusId);
+        Assert.AreEqual("youtube.player.page", link.FocusGroupEntryRequest!.GroupId);
+        Assert.AreEqual(1L, link.FocusGroupEntryRequest.RequestId);
         Assert.IsEmpty(link.QuickActions);
-        Assert.IsEmpty(Find(link.Root, "youtube.root").Shortcuts);
+        AssertSectionShortcuts(Find(link.Root, "youtube.root"));
+
+        var discoverInvalidated = NextInvalidation(widget);
+        Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.LeftBumper,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: "youtube.link",
+            Sequence: 2,
+            ActiveInputScopeId: link.ActiveInputScopeId,
+            SnapshotSequence: link.Sequence)));
+        await discoverInvalidated;
+        var returnedSearch = widget.RenderSnapshot("youtube-test", 3);
+        Assert.AreEqual("youtube.search.page",
+            returnedSearch.FocusGroupEntryRequest!.GroupId);
+        Assert.AreEqual(2L, returnedSearch.FocusGroupEntryRequest.RequestId);
+
+        var playerHeaders = Descendants(returnedSearch.Root).Where(node =>
+            node.ActionId == "youtube.link.open" && node.IsFocusable).ToArray();
+        Assert.HasCount(2, playerHeaders,
+            "Compact and expanded navigation must expose the same Player destination.");
+        Assert.AreEqual(playerHeaders[0].FocusPersistenceId,
+            playerHeaders[1].FocusPersistenceId);
+        var playerHeader = playerHeaders[0];
+        var headerInvalidated = NextInvalidation(widget);
+        Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.A,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: playerHeader.Id,
+            Sequence: 3,
+            ActiveInputScopeId: returnedSearch.ActiveInputScopeId,
+            SnapshotSequence: returnedSearch.Sequence)));
+        await headerInvalidated;
+        var headerSelectedPlayer = widget.RenderSnapshot("youtube-test", 4);
+        Assert.IsNull(headerSelectedPlayer.FocusGroupEntryRequest,
+            "A on a persistent section header must not force content entry.");
+        var selectedPlayerHeaders = Descendants(headerSelectedPlayer.Root).Where(node =>
+            node.ActionId == "youtube.link.open" && node.IsSelected == true).ToArray();
+        Assert.HasCount(2, selectedPlayerHeaders);
+        Assert.IsTrue(selectedPlayerHeaders.All(node =>
+                node.FocusPersistenceId == playerHeader.FocusPersistenceId),
+            "The logical Player header must retain its responsive focus identity.");
 
         await CommitAsync(widget, $"https://youtu.be/{VideoId}");
-        var loading = widget.RenderSnapshot("youtube-test", 3);
-        Assert.AreEqual("youtube.playback.toggle", loading.InitialFocusId);
+        var loading = widget.RenderSnapshot("youtube-test", 5);
+        Assert.AreEqual("youtube.link", loading.InitialFocusId);
         Assert.IsEmpty(loading.QuickActions);
-        Assert.IsEmpty(Find(loading.Root, "youtube.root").Shortcuts);
+        AssertSectionShortcuts(Find(loading.Root, "youtube.root"));
         var load = loading.EmbeddedMediaSession!.PendingCommand!;
 
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1,
             duration: 120);
-        var ready = widget.RenderSnapshot("youtube-test", 4);
+        var ready = widget.RenderSnapshot("youtube-test", 6);
         var expectedQuickActions = new[]
         {
             new WidgetQuickAction(ControllerButton.X,
@@ -117,32 +173,28 @@ public sealed partial class YouTubeWidgetTests
                 YouTubeVideoWidget.SeekForwardActionId, "Seek forward 10 seconds",
                 RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
         };
-        var expectedShortcuts = new[]
-        {
-            new ControllerShortcut(ControllerButton.X, YouTubeVideoWidget.ToggleActionId,
-                Label: "Play or pause"),
-            new ControllerShortcut(ControllerButton.Y,
-                YouTubeVideoWidget.EnterFullscreenActionId, Label: "Fullscreen"),
-            new ControllerShortcut(ControllerButton.LeftTrigger,
-                YouTubeVideoWidget.SeekBackwardActionId,
-                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld,
-                Label: "Seek backward 10 seconds"),
-            new ControllerShortcut(ControllerButton.RightTrigger,
-                YouTubeVideoWidget.SeekForwardActionId,
-                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld,
-                Label: "Seek forward 10 seconds"),
-        };
         Assert.AreEqual("youtube.playback.toggle", ready.InitialFocusId);
         CollectionAssert.AreEqual(expectedQuickActions, ready.QuickActions.ToArray());
-        CollectionAssert.AreEqual(expectedShortcuts,
-            Find(ready.Root, "youtube.root").Shortcuts.ToArray());
+        var readyRoot = Find(ready.Root, "youtube.root");
+        AssertSectionShortcuts(readyRoot);
+        Assert.IsTrue(readyRoot.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.X &&
+            shortcut.ActionId == YouTubeVideoWidget.ToggleActionId));
+        Assert.IsTrue(readyRoot.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.LeftTrigger &&
+            shortcut.ActionId == YouTubeVideoWidget.SeekBackwardActionId &&
+            shortcut.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld));
+        Assert.IsTrue(readyRoot.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.RightTrigger &&
+            shortcut.ActionId == YouTubeVideoWidget.SeekForwardActionId &&
+            shortcut.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld));
 
         await widget.OnActionAsync(new WidgetActionEvent(
-            "youtube.back", "youtube.player.back"));
-        var returnedSearch = widget.RenderSnapshot("youtube-test", 5);
-        Assert.AreEqual("youtube.search.query", returnedSearch.InitialFocusId);
-        Assert.IsEmpty(returnedSearch.QuickActions);
-        Assert.IsEmpty(Find(returnedSearch.Root, "youtube.search.root").Shortcuts);
+            "youtube.search.open-route", "youtube.root"));
+        var finalSearch = widget.RenderSnapshot("youtube-test", 7);
+        Assert.AreEqual("youtube.search.query", finalSearch.InitialFocusId);
+        Assert.IsEmpty(finalSearch.QuickActions);
+        AssertSectionShortcuts(Find(finalSearch.Root, "youtube.root"));
         await WidgetTestHost.DestroyAsync(widget);
 
         var errorWidget = await CreateConfiguredLinkWidgetAsync();
@@ -153,7 +205,10 @@ public sealed partial class YouTubeWidgetTests
             errorCode: "embedding-disabled");
         var error = errorWidget.RenderSnapshot("youtube-test", 2);
         Assert.IsEmpty(error.QuickActions);
-        Assert.IsEmpty(Find(error.Root, "youtube.root").Shortcuts);
+        var errorRoot = Find(error.Root, "youtube.root");
+        AssertSectionShortcuts(errorRoot);
+        Assert.IsFalse(errorRoot.Shortcuts.Any(shortcut => shortcut.Button is
+            ControllerButton.X or ControllerButton.LeftTrigger or ControllerButton.RightTrigger));
         await WidgetTestHost.DestroyAsync(errorWidget);
     }
 
@@ -167,7 +222,7 @@ public sealed partial class YouTubeWidgetTests
         Assert.IsEmpty(ViewSnapshotValidator.Validate(loading));
         var loadingFullscreen = Find(loading.Root, "youtube.player.fullscreen");
         Assert.IsTrue(loadingFullscreen.IsDisabled);
-        Assert.AreEqual("youtube.player.back", Find(loading.Root, "youtube.link").Focus!.Up);
+        Assert.IsNull(Find(loading.Root, "youtube.link").Focus!.Up);
 
         var load = loading.EmbeddedMediaSession!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1,
@@ -175,7 +230,7 @@ public sealed partial class YouTubeWidgetTests
         var ready = widget.RenderSnapshot("youtube-test", 2);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(ready));
         Assert.IsTrue(Find(ready.Root, "youtube.player.fullscreen").IsDisabled is not true);
-        Assert.AreEqual("youtube.player.back", Find(ready.Root, "youtube.link").Focus!.Up);
+        Assert.IsNull(Find(ready.Root, "youtube.link").Focus!.Up);
 
         // Fullscreen is host-owned: the player route declares only the capability
         // and offers the reserved entry action. The widget holds no fullscreen
@@ -185,8 +240,10 @@ public sealed partial class YouTubeWidgetTests
             MediaPresentationKind.OverlayFullscreen));
         Assert.AreEqual("host.embeddedMediaSession.enterFullscreen",
             Find(ready.Root, "youtube.player.fullscreen").ActionId);
-        Assert.AreEqual("Fullscreen", Find(ready.Root, "youtube.root").Shortcuts
-            .Single(shortcut => shortcut.Button == ControllerButton.Y).Label);
+        var settingsShortcut = Find(ready.Root, "youtube.root").Shortcuts
+            .Single(shortcut => shortcut.Button == ControllerButton.Y);
+        Assert.AreEqual("youtube.setup.open", settingsShortcut.ActionId);
+        Assert.IsNull(settingsShortcut.Label);
         Assert.IsEmpty(Find(ready.Root, "youtube.root").Shortcuts
             .Where(shortcut => shortcut.Button == ControllerButton.B));
 
@@ -200,34 +257,118 @@ public sealed partial class YouTubeWidgetTests
             Find(afterEnter.Root, "youtube.player.fullscreen").ActionId);
 
         // The Link route renders the same retained live player, so it preserves
-        // the host-owned fullscreen capability and page-wide Y binding.
+        // the host-owned fullscreen capability while Y remains Settings.
         await widget.OnActionAsync(new WidgetActionEvent(
-            "youtube.back", "youtube.player.back"));
+            "youtube.search.open-route", "youtube.root"));
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.link.open", "youtube.link.open"));
         var retainedLink = widget.RenderSnapshot("youtube-test", 4);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(retainedLink));
         Assert.IsNotNull(TryFind(retainedLink.Root, "youtube.player.fullscreen"));
-        Assert.AreEqual("youtube.player.back",
-            Find(retainedLink.Root, "youtube.link").Focus!.Up);
+        Assert.IsNull(Find(retainedLink.Root, "youtube.link").Focus!.Up);
         Assert.IsTrue(retainedLink.EmbeddedMediaSession!.SupportedPresentations.Contains(
             MediaPresentationKind.OverlayFullscreen));
         await WidgetTestHost.DestroyAsync(widget);
     }
 
     [TestMethod]
-    public async Task SetupAppBarDeclaresItsEnabledRouteAsRememberedGroupEntry()
+    public async Task SettingsShortcutReturnsToItsActualFocusedOpener()
     {
         var widget = await CreateConfiguredSearchWidgetAsync();
-        await widget.OnActionAsync(new WidgetActionEvent(
-            "youtube.setup.open", "youtube.search.setup"));
+        var search = widget.RenderSnapshot("youtube-test", 1);
+        var setupInvalidated = NextInvalidation(widget);
+        Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.Y,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: "youtube.search.query",
+            Sequence: 1,
+            ActiveInputScopeId: search.ActiveInputScopeId,
+            SnapshotSequence: search.Sequence)));
+        await setupInvalidated;
 
-        var setup = widget.RenderSnapshot("youtube-test", 1);
+        var setup = widget.RenderSnapshot("youtube-test", 2);
         var appBar = Find(setup.Root, "youtube.setup.appbar");
-        Assert.AreEqual("youtube.search.open-route", appBar.InitialChildFocusId);
+        Assert.AreEqual("youtube.setup.back", appBar.InitialChildFocusId);
         Assert.AreNotEqual(true,
-            Find(setup.Root, "youtube.search.open-route").IsDisabled);
+            Find(setup.Root, "youtube.setup.back").IsDisabled);
+        Assert.AreEqual("youtube.setup.back", Find(setup.Root, "youtube.application.root")
+            .Shortcuts.Single(shortcut => shortcut.Button == ControllerButton.B).ActionId);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(setup));
+
+        var returnInvalidated = NextInvalidation(widget);
+        Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.B,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: "youtube.setup.key",
+            Sequence: 2,
+            ActiveInputScopeId: setup.ActiveInputScopeId,
+            SnapshotSequence: setup.Sequence)));
+        await returnInvalidated;
+        var returned = widget.RenderSnapshot("youtube-test", 3);
+        Assert.AreEqual("youtube.search.query", returned.InitialFocusId);
+        Assert.IsNotNull(TryFind(returned.Root, "youtube.search.page"));
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    [TestMethod]
+    public async Task UnconfiguredPlayerKeepsSettingsReturnWithoutAdvertisingDiscoverBumpers()
+    {
+        var widget = WidgetTestHost.Attach(
+            new YouTubeVideoWidget(new FakeApplicationService(configured: false)),
+            new WidgetTestHostServicesBuilder().Build());
+        var probed = NextInvalidation(widget);
+        await WidgetTestHost.InitializeAsync(widget);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+        await probed;
+
+        var firstRunSetup = widget.RenderSnapshot("youtube-test", 1);
+        Assert.IsEmpty(Find(firstRunSetup.Root, "youtube.application.root").Shortcuts
+            .Where(shortcut => shortcut.Button == ControllerButton.B));
+
+        var playerInvalidated = NextInvalidation(widget);
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "youtube.link.open", "youtube.link.open"));
+        await playerInvalidated;
+        var player = widget.RenderSnapshot("youtube-test", 2);
+        var playerRoot = Find(player.Root, "youtube.root");
+        Assert.IsFalse(playerRoot.Shortcuts.Any(shortcut => shortcut.Button is
+            ControllerButton.LeftBumper or ControllerButton.RightBumper));
+        Assert.AreEqual("youtube.setup.open", playerRoot.Shortcuts
+            .Single(shortcut => shortcut.Button == ControllerButton.Y).ActionId);
+        var discover = Descendants(player.Root).Where(node =>
+            node.ActionId == "youtube.search.open-route" && node.IsFocusable).ToArray();
+        Assert.HasCount(2, discover);
+        Assert.IsTrue(discover.All(node => node.IsDisabled == true));
+
+        var setupInvalidated = NextInvalidation(widget);
+        Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.Y,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: "youtube.link",
+            Sequence: 1,
+            ActiveInputScopeId: player.ActiveInputScopeId,
+            SnapshotSequence: player.Sequence)));
+        await setupInvalidated;
+        var setup = widget.RenderSnapshot("youtube-test", 3);
+        Assert.AreEqual("youtube.setup.back", Find(setup.Root, "youtube.application.root")
+            .Shortcuts.Single(shortcut => shortcut.Button == ControllerButton.B).ActionId);
+
+        var returnInvalidated = NextInvalidation(widget);
+        Assert.IsTrue(await widget.OnControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.B,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: "youtube.setup.key",
+            Sequence: 2,
+            ActiveInputScopeId: setup.ActiveInputScopeId,
+            SnapshotSequence: setup.Sequence)));
+        await returnInvalidated;
+        var returned = widget.RenderSnapshot("youtube-test", 4);
+        Assert.AreEqual("youtube.link", returned.InitialFocusId);
+        Assert.IsNotNull(TryFind(returned.Root, "youtube.player.page"));
         await WidgetTestHost.DestroyAsync(widget);
     }
 
@@ -259,6 +400,18 @@ public sealed partial class YouTubeWidgetTests
 
         Assert.AreEqual("Now playing", Find(ready.Root, "youtube.title").Text);
         Assert.IsNotNull(Find(ready.Root, "youtube.status").Text);
+        var header = Find(ready.Root, "youtube.section.header");
+        CollectionAssert.AreEqual(
+            new[] { "youtube.sections.compact", "youtube.section.settings.hint" },
+            header.Children.Select(child => child.Id).ToArray());
+        var compactNavigation = Find(ready.Root, "youtube.sections.compact");
+        Assert.AreEqual(ResponsiveVisibility.CompactOnly, compactNavigation.VisibleWhen);
+        Assert.AreEqual("youtube.section.previous.hint", compactNavigation.Children[0].Id);
+        Assert.AreEqual("youtube.section.next.hint", compactNavigation.Children[^1].Id);
+        Assert.IsFalse(Find(ready.Root, "youtube.section.settings.hint").IsFocusable);
+        Assert.AreEqual("youtube.sections.body", ready.Root.Children[1].Id);
+        Assert.AreEqual(1, Descendants(ready.Root).Count(node =>
+            node.Id == "youtube.player.page"));
 
         var toggle = Find(ready.Root, "youtube.playback.toggle");
         Assert.AreEqual(WidgetGlyph.Play, toggle.Glyph);
@@ -314,6 +467,15 @@ public sealed partial class YouTubeWidgetTests
             ".youtube-timeline-group { min-width: 156px; max-width: 360px;");
         StringAssert.Contains(styles,
             ".youtube-volume { width: 72px; min-width: 56px; height: 32px;");
+        StringAssert.Contains(styles,
+            ".youtube-section-header { width: 100%; min-width: 0px; align: center; justify: end; gap: 12px;");
+        StringAssert.Contains(styles,
+            ".youtube-section-navigation { min-width: 0px; flex-grow: 1; flex-shrink: 1; }");
+        StringAssert.Contains(styles,
+            ".youtube-section-settings-hint { flex-shrink: 0; }");
+        StringAssert.Contains(styles,
+            ".youtube-section-bumper-label { color: var(--text);");
+        Assert.DoesNotContain(".youtube-section-bumper-key { height: 100%", styles);
         await WidgetTestHost.DestroyAsync(widget);
     }
 
@@ -330,6 +492,10 @@ public sealed partial class YouTubeWidgetTests
             YouTubeVideoWidget.CaptionsActionId, YouTubeVideoWidget.CaptionsActionId));
         var settings = widget.RenderSnapshot("youtube-test", 2);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(settings));
+        Assert.IsFalse(Descendants(settings.Root).SelectMany(node => node.Shortcuts)
+            .Any(shortcut => shortcut.Button is ControllerButton.LeftBumper or
+                ControllerButton.RightBumper or ControllerButton.Y),
+            "Root section and configuration shortcuts must not leak into player dialogs.");
         Assert.AreEqual(WidgetSurfaceAxisMode.Preferred, settings.Surface!.HeightMode);
         var settingsRoot = Find(settings.Root, "youtube.player.settings");
         var settingsTitle = Find(settings.Root, "youtube.player.settings.title");
@@ -444,7 +610,7 @@ public sealed partial class YouTubeWidgetTests
 
         var home = widget.RenderSnapshot("youtube-test", 1);
         Assert.IsNull(home.EmbeddedMediaSession);
-        Assert.IsNotNull(TryFind(home.Root, "youtube.search.root"));
+        Assert.IsNotNull(TryFind(home.Root, "youtube.search.page"));
 
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.link.open", "youtube.link.open"));
@@ -455,11 +621,13 @@ public sealed partial class YouTubeWidgetTests
             position: 37, duration: 120, volume: 0.55);
 
         await widget.OnActionAsync(new WidgetActionEvent(
-            "youtube.back", "youtube.player.back"));
+            "youtube.search.open-route", "youtube.root"));
         var hidden = widget.RenderSnapshot("youtube-test", 3);
         var requiredProtocolVersion = Math.Max(
-            ProtocolConstants.EmbeddedMediaSessionVersion,
-            ProtocolConstants.RememberedChildFocusGroupVersion);
+            ProtocolConstants.ControllerShortcutLabelVersion,
+            Math.Max(
+                ProtocolConstants.EmbeddedMediaSessionVersion,
+                ProtocolConstants.RememberedChildFocusGroupVersion));
         Assert.AreEqual(requiredProtocolVersion,
             hidden.ProtocolVersion);
         Assert.AreEqual("youtube.search.query",
@@ -574,7 +742,7 @@ public sealed partial class YouTubeWidgetTests
         Assert.IsTrue(Find(buffering.Root, "youtube.volume").IsDisabled is not true);
 
         await widget.OnActionAsync(new WidgetActionEvent(
-            "youtube.back", "youtube.player.back"));
+            "youtube.search.open-route", "youtube.root"));
         var hidden = widget.RenderSnapshot("youtube-test", 5);
         StringAssert.Contains(Find(hidden.Root, "youtube.player.return").Text!, "Playing",
             "The retained row must use the same settled playback semantic as the transport glyph.");
@@ -754,7 +922,7 @@ public sealed partial class YouTubeWidgetTests
         var wrongRoute = await CreateTransportWidgetAsync(
             EmbeddedMediaPlaybackState.Paused, seekBuffering: false);
         await wrongRoute.Widget.OnActionAsync(new WidgetActionEvent(
-            "youtube.back", "youtube.player.back"));
+            "youtube.search.open-route", "youtube.root"));
         await AssertTransportInputsRejectedAsync(
             wrongRoute.Widget,
             wrongRoute.Widget.RenderSnapshot("youtube-test", 21),
@@ -881,19 +1049,19 @@ public sealed partial class YouTubeWidgetTests
         for (var cycle = 0; cycle < 2; cycle++)
         {
             await widget.OnActionAsync(new WidgetActionEvent(
-                "youtube.back", "youtube.player.back"));
+                "youtube.search.open-route", "youtube.root"));
 
             var search = widget.RenderSnapshot("youtube-test", 30 + cycle * 10);
-            Assert.IsNotNull(TryFind(search.Root, "youtube.search.root"));
+            Assert.IsNotNull(TryFind(search.Root, "youtube.search.page"));
             Assert.IsNull(TryFind(search.Root, "youtube.viewport"));
             Assert.IsEmpty(search.QuickActions);
-            Assert.IsEmpty(Find(search.Root, "youtube.search.root").Shortcuts);
+            Assert.IsEmpty(Find(search.Root, "youtube.search.page").Shortcuts);
             Assert.IsNotNull(search.EmbeddedMediaSession);
 
             await WidgetTestHost.SetLifecycleStateAsync(
                 widget, WidgetLifecycleState.Visible);
             var dashboardSearch = widget.RenderSnapshot("youtube-test", 31 + cycle * 10);
-            Assert.IsNotNull(TryFind(dashboardSearch.Root, "youtube.search.root"),
+            Assert.IsNotNull(TryFind(dashboardSearch.Root, "youtube.search.page"),
                 "Yielding Search to the dashboard must not rewrite the authored route.");
             Assert.IsEmpty(dashboardSearch.QuickActions);
 
@@ -902,7 +1070,7 @@ public sealed partial class YouTubeWidgetTests
             await widget.OnActionAsync(new WidgetActionEvent(
                 "youtube.link.open", "youtube.link.open"));
             var link = widget.RenderSnapshot("youtube-test", 32 + cycle * 10);
-            Assert.AreEqual("youtube.link", link.InitialFocusId);
+            Assert.AreEqual("youtube.playback.toggle", link.InitialFocusId);
             Assert.IsNotNull(TryFind(link.Root, "youtube.player.fullscreen"));
             Assert.IsTrue(link.EmbeddedMediaSession!.SupportedPresentations.Contains(
                 MediaPresentationKind.OverlayFullscreen));
@@ -910,7 +1078,7 @@ public sealed partial class YouTubeWidgetTests
             await WidgetTestHost.SetLifecycleStateAsync(
                 widget, WidgetLifecycleState.Visible);
             var dashboardLink = widget.RenderSnapshot("youtube-test", 33 + cycle * 10);
-            Assert.AreEqual("youtube.link", dashboardLink.InitialFocusId,
+            Assert.AreEqual("youtube.playback.toggle", dashboardLink.InitialFocusId,
                 "Yielding Link-player to the dashboard must preserve its route.");
             Assert.IsNotNull(TryFind(dashboardLink.Root, "youtube.player.fullscreen"));
             Assert.IsTrue(dashboardLink.EmbeddedMediaSession!.SupportedPresentations.Contains(
@@ -966,13 +1134,14 @@ public sealed partial class YouTubeWidgetTests
         await WidgetTestHost.SetLifecycleStateAsync(
             widget, WidgetLifecycleState.Interactive);
         await widget.OnActionAsync(new WidgetActionEvent(
-            "youtube.back", "youtube.player.back"));
+            "youtube.search.open-route", "youtube.root"));
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.link.open", "youtube.link.open"));
 
         var link = widget.RenderSnapshot("youtube-test", 40);
-        Assert.AreEqual("youtube.link", link.InitialFocusId);
-        Assert.IsNotNull(TryFind(link.Root, "youtube.player.fullscreen"));
+        Assert.AreEqual("youtube.playback.toggle", link.InitialFocusId);
+        Assert.AreEqual(YouTubeVideoWidget.EnterFullscreenActionId,
+            Find(link.Root, "youtube.player.fullscreen").ActionId);
         Assert.IsTrue(link.EmbeddedMediaSession!.SupportedPresentations.Contains(
             MediaPresentationKind.OverlayFullscreen));
         foreach (var id in new[]
@@ -983,10 +1152,10 @@ public sealed partial class YouTubeWidgetTests
             Assert.IsTrue(Find(link.Root, id).IsDisabled is not true,
                 $"The live Link-player control {id} must be enabled.");
 
-        var expected = new[]
+        var expected = new (ControllerButton Button, string ActionId, string? Label)[]
         {
             (ControllerButton.X, YouTubeVideoWidget.ToggleActionId, "Play or pause"),
-            (ControllerButton.Y, YouTubeVideoWidget.EnterFullscreenActionId, "Fullscreen"),
+            (ControllerButton.Y, "youtube.setup.open", null),
             (ControllerButton.LeftTrigger, YouTubeVideoWidget.SeekBackwardActionId,
                 "Seek backward 10 seconds"),
             (ControllerButton.RightTrigger, YouTubeVideoWidget.SeekForwardActionId,
@@ -1294,11 +1463,15 @@ public sealed partial class YouTubeWidgetTests
 
     private sealed class FakeApplicationService : IYouTubeApplicationService
     {
+        private readonly bool _configured;
+
+        internal FakeApplicationService(bool configured = true) => _configured = configured;
+
         public ValueTask<YouTubeConfigurationSummary> GetConfigurationAsync(
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(new YouTubeConfigurationSummary(true));
+            return ValueTask.FromResult(new YouTubeConfigurationSummary(_configured));
         }
 
         public ValueTask ConfigureApiKeyAsync(
@@ -1431,7 +1604,6 @@ public sealed partial class YouTubeWidgetTests
         foreach (var button in new[]
                  {
                      ControllerButton.X,
-                     ControllerButton.Y,
                      ControllerButton.LeftTrigger,
                      ControllerButton.RightTrigger,
                  })
@@ -1568,6 +1740,31 @@ public sealed partial class YouTubeWidgetTests
         }
         Assert.Fail($"Missing node '{id}'.");
         throw new InvalidOperationException();
+    }
+
+    private static IEnumerable<ViewNode> Descendants(ViewNode node)
+    {
+        yield return node;
+        foreach (var child in node.Children)
+        foreach (var descendant in Descendants(child))
+            yield return descendant;
+    }
+
+    private static void AssertSectionShortcuts(ViewNode root)
+    {
+        var left = root.Shortcuts.Single(shortcut =>
+            shortcut.Button == ControllerButton.LeftBumper);
+        Assert.AreEqual("youtube.section.previous", left.ActionId);
+        Assert.AreEqual("Previous section", left.Label);
+        var right = root.Shortcuts.Single(shortcut =>
+            shortcut.Button == ControllerButton.RightBumper);
+        Assert.AreEqual("youtube.section.next", right.ActionId);
+        Assert.AreEqual("Next section", right.Label);
+        var settings = root.Shortcuts.Single(shortcut =>
+            shortcut.Button == ControllerButton.Y);
+        Assert.AreEqual("youtube.setup.open", settings.ActionId);
+        Assert.IsNull(settings.Label,
+            "Y Settings is described inside the widget, not in the host controller guide.");
     }
 
     private static ViewNode? TryFind(ViewNode node, string id)
