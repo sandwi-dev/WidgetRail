@@ -52,9 +52,13 @@ assembly and keeps it independent of process working directories, just like the
 PNG fixtures. WebP and PosterTile publish distinct `PresentOnFocus` fragments.
 The Controls page applies Compact, Comfortable, and Spacious classes to a
 two-row repeated-content preview, with explicit current gap and padding values,
-without changing the Select focus identity. Overview includes
-presentational controller hints for navigation, A Select, B Back, LB/RB section
-switching, Y example actions, and right-stick scrolling. One
+without changing the Select focus identity. Overview includes presentational
+controller hints for navigation, A Select, B Back, Y example actions, and
+right-stick scrolling. The compact header places full-height, centered LB/RB
+key badges at the left and right ends of its five destinations; their spoken
+labels identify Previous section and Next section, while the footer does not
+duplicate them. The surface prefers 760 by 600 logical DIPs and still accepts
+host work-area, DPI, text-scale, and minimum-size clamping. One
 `WidgetNavigator<GalleryRoute>` owns the five flat roots and the nested Picker
 and ActionSheet routes. The roots share one stable scope; each page root is a
 distinct remembered-child group with its own default child. A on a compact or
