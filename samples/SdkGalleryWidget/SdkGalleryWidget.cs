@@ -58,8 +58,6 @@ public sealed class SdkGalleryWidget : Widget
         GalleryRoute.Backgrounds,
         GalleryRoute.Utilities,
     ];
-    private static readonly HashSet<string> NavigationHeaderFocusIds =
-        CreateNavigationHeaderFocusIds();
     private readonly WidgetNavigator<GalleryRoute> _navigation;
     private bool _compactMode = true;
     private string _density = "Comfortable";
@@ -153,7 +151,10 @@ public sealed class SdkGalleryWidget : Widget
                 PreferredHeight = 540,
                 MinimumWidth = 320,
                 MinimumHeight = 280,
-            });
+            })
+        {
+            FocusGroupEntryRequest = navigation.FocusGroupEntryRequest,
+        };
     }
 
     public override ValueTask OnActionAsync(
@@ -184,10 +185,10 @@ public sealed class SdkGalleryWidget : Widget
                 ActivatePage(GalleryRoute.Utilities);
                 return ValueTask.CompletedTask;
             case "gallery.page.previous":
-                SwitchPage(-1, action);
+                SwitchPage(-1);
                 return ValueTask.CompletedTask;
             case "gallery.page.next":
-                SwitchPage(1, action);
+                SwitchPage(1);
                 return ValueTask.CompletedTask;
             case "gallery.route.actions":
                 _navigation.PushFromAction(GalleryRoute.ActionSheet, action);
@@ -268,16 +269,19 @@ public sealed class SdkGalleryWidget : Widget
         trailing: UI.StatusBadge("Public SDK", StatusTone.Success, "gallery.header.status"))
         .AddClasses("gallery-header");
 
-    private ScrollElement PageContent(GalleryPage page) => UI.VerticalScroll(
-        "gallery.page-scroll",
-        page switch
+    private ScrollElement PageContent(GalleryPage page)
+    {
+        var content = (page switch
         {
             GalleryPage.Overview => OverviewPage(),
             GalleryPage.Controls => ControlsPage(),
             GalleryPage.Tiles => TilesPage(),
             GalleryPage.Backgrounds => BackgroundsPage(),
             _ => UtilitiesPage(),
-        }).Classes("gallery-page-scroll");
+        }).RememberChildFocus(PageInitialFocus(page));
+        return UI.VerticalScroll("gallery.page-scroll", content)
+            .Classes("gallery-page-scroll");
+    }
 
     private StackElement OverviewPage() => UI.Stack("gallery.overview",
         UI.SectionHeader(
@@ -627,21 +631,14 @@ public sealed class SdkGalleryWidget : Widget
         _ = _navigation.NavigateRoot(route);
     }
 
-    private void SwitchPage(int offset, WidgetActionEvent action)
+    private void SwitchPage(int offset)
     {
         var current = Array.IndexOf(RootRoutes, _navigation.Value.RootRoute);
         if (current < 0)
             throw new InvalidOperationException("The current Gallery root route is not registered.");
         var destination = RootRoutes[(current + offset + RootRoutes.Length) % RootRoutes.Length];
-        var focused = action.FocusedElementId;
-        var departingContentFocus = focused is not null &&
-            !NavigationHeaderFocusIds.Contains(focused)
-                ? focused
-                : null;
-        _ = _navigation.SwitchRoot(
-            destination,
-            PageInitialFocus(PageFor(destination)),
-            departingContentFocus);
+        _ = _navigation.NavigateRoot(
+            destination, PageFocusGroupId(PageFor(destination)));
     }
 
     private void SelectDensity(string density, string sourceFocusId)
@@ -700,17 +697,14 @@ public sealed class SdkGalleryWidget : Widget
         _ => GalleryModal.None,
     };
 
-    private static HashSet<string> CreateNavigationHeaderFocusIds()
+    private static string PageFocusGroupId(GalleryPage page) => page switch
     {
-        var ids = WidgetIds.Scope("gallery.shell");
-        return Destinations
-            .SelectMany(destination => new[]
-            {
-                ids.KeyedId("compact", destination.Id),
-                ids.KeyedId("rail", destination.Id),
-            })
-            .ToHashSet(StringComparer.Ordinal);
-    }
+        GalleryPage.Overview => "gallery.overview",
+        GalleryPage.Controls => "gallery.controls",
+        GalleryPage.Tiles => "gallery.tiles",
+        GalleryPage.Backgrounds => "gallery.backgrounds",
+        _ => "gallery.utilities",
+    };
 
     private string DensityClass() =>
         $"gallery-density-preview--{_density.ToLowerInvariant()}";

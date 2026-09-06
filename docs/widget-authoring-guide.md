@@ -481,14 +481,46 @@ future container roots preserve their concrete immutable type. Do not cast a
 page root to a particular layout type; a leaf control is rejected immediately
 because it cannot own the navigator input scope or its Back shortcut.
 
-Use this navigator when the generated per-route input scopes and bounded stack
-are the desired public behavior. It is not a requirement for a flat, lateral
-route machine that already has stable author-supplied scope IDs and no nested
-Back stack. Such a widget may keep its route in its widget-owned model, render
-the exact stable scope for that route, publish it as `ActiveInputScopeId`, and
-validate scoped actions against that same value. Do not adopt the navigator if
-changing to generated scopes or stack Back would change observable action,
-focus, or stale-Back authority. Do not mirror a navigator value into a model.
+For flat root sections that also own nested routes, opt into one shared root
+scope rather than maintaining a second page state beside the navigator:
+
+```csharp
+_navigation = CreateNavigatorWithOptions(
+    "library.navigation",
+    Route.Home,
+    new WidgetNavigatorOptions<Route>
+    {
+        SharedRootScopeId = "library.root",
+        RootRoutes = [Route.Home, Route.Browse, Route.Settings],
+    });
+
+var page = BuildPage(route)
+    .RememberChildFocus(DefaultContentFocus(route));
+return new WidgetView(
+    _navigation.Scope(page),
+    InitialFocusId: _navigation.Value.InitialFocusId,
+    ActiveInputScopeId: _navigation.Value.InputScopeId)
+{
+    FocusGroupEntryRequest = _navigation.Value.FocusGroupEntryRequest,
+};
+```
+
+Call `NavigateRoot(route)` for A on a persistent header: it changes the page
+without publishing an entry request, so the still-valid logical header remains
+focused. Call `NavigateRoot(route, groupId)` for LB/RB section switching. That
+overload emits one increasing, scope-validated request only when the root changes;
+the host enters the destination's `RememberChildFocus` group once, using its
+remembered valid child and then its authored default. Repeated data publications
+cannot replay a consumed request. `RootRouteCancellationToken` owns the selected
+page across nested routes, while `RouteCancellationToken` owns the current root
+or nested route. Use `PushFromAction(route, action)` when a shortcut such as Y
+opens a nested page without an opener button; Back then returns to the action's
+actual `FocusedElementId`, not the ancestor that declared the shortcut.
+
+Omitting `WidgetNavigatorOptions` preserves the existing generated per-route
+scopes and focus behavior. Do not mirror a navigator value into `WidgetModel`,
+publish a remembered group as `InitialFocusId`, synthesize D-pad input, or keep a
+second author-owned copy of host remembered-child focus.
 
 Use `WidgetIds` for large stable hierarchies:
 
@@ -777,9 +809,11 @@ Compact means the final widget surface is less than 960 DIPs wide or 540 DIPs
 high; otherwise the expanded branch is active. The inactive navigation branch
 is absent from layout, paint, hit testing, focus, shortcuts, and accessibility.
 The content subtree is authored once and remains present in both modes. Combine
-the shell with `WidgetNavigator<TRoute>` when root destinations also own nested
-routes, exact-scope B handling, return focus, or route cancellation. The SDK
-Gallery is the copyable production-style reference.
+the shell with an optionally shared-root `WidgetNavigator<TRoute>` when root
+destinations also own nested routes, exact-scope B handling, return focus, or
+page/route cancellation. The SDK Gallery is the copyable production-style
+reference, including A header retention, LB/RB remembered-group entry, and a
+Y-opened nested route.
 
 Each shell destination receives one protocol-v13 focus-persistence ID shared by
 its compact and rail controls. This ID exists only to preserve the logical focus

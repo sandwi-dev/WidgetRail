@@ -43,32 +43,45 @@ internal static class WidgetNavigatorTests
 
         var detailLifetime = widget.Navigation.Value.RouteCancellationToken;
         Equal(WidgetNavigationResult.Changed,
-            widget.Navigation.SwitchRoot(Route.Library, "library.first"));
+            widget.Navigation.NavigateRoot(Route.Library, "library.group"));
         True(detailLifetime.IsCancellationRequested,
             "Switching roots did not retire nested route work.");
         True(playerPageLifetime.IsCancellationRequested,
             "Switching roots did not retire the departed page.");
         var library = widget.Navigation.Value;
         Equal("navigation.root", library.InputScopeId);
-        Equal("library.first", library.InitialFocusId!);
+        True(library.InitialFocusId is null,
+            "Group entry also published a competing leaf focus target.");
+        Equal(1L, library.FocusGroupEntryRequest!.RequestId);
+        Equal("library.group", library.FocusGroupEntryRequest.GroupId);
         False(library.RootRouteCancellationToken.IsCancellationRequested,
             "The successor root page began with a canceled lifetime.");
 
         var libraryPageLifetime = library.RootRouteCancellationToken;
         Equal(WidgetNavigationResult.Changed,
-            widget.Navigation.SwitchRoot(Route.Player, "player.play", "library.queue"));
+            widget.Navigation.NavigateRoot(Route.Player, "player.group"));
         True(libraryPageLifetime.IsCancellationRequested,
             "Leaving the library did not cancel its page lifetime.");
         Equal("navigation.root", widget.Navigation.Value.InputScopeId);
+        Equal(2L, widget.Navigation.Value.FocusGroupEntryRequest!.RequestId);
+        Equal("player.group", widget.Navigation.Value.FocusGroupEntryRequest.GroupId);
 
         Equal(WidgetNavigationResult.Changed,
-            widget.Navigation.SwitchRoot(Route.Library, "library.first", "player.queue"));
-        Equal("library.queue", widget.Navigation.Value.InitialFocusId!);
+            widget.Navigation.NavigateRoot(Route.Library, "library.group"));
+        Equal(3L, widget.Navigation.Value.FocusGroupEntryRequest!.RequestId);
+        Equal("library.group", widget.Navigation.Value.FocusGroupEntryRequest.GroupId);
+
+        var request = widget.Navigation.Value.FocusGroupEntryRequest;
+        Equal(WidgetNavigationResult.Unchanged,
+            widget.Navigation.NavigateRoot(Route.Library, "library.group"));
+        Equal(request, widget.Navigation.Value.FocusGroupEntryRequest);
 
         Equal(WidgetNavigationResult.Changed,
             widget.Navigation.NavigateRoot(Route.Player));
         True(widget.Navigation.Value.InitialFocusId is null,
             "Persistent-header root activation published a focus override.");
+        True(widget.Navigation.Value.FocusGroupEntryRequest is null,
+            "Persistent-header root activation published a group-entry request.");
 
         await WidgetTestHost.DestroyAsync(widget);
     }
@@ -307,10 +320,18 @@ internal static class WidgetNavigatorTests
                 Route.Library => "library.root",
                 _ => "detail.root",
             };
+            var group = UI.Stack(
+                    state.Route == Route.Library ? "library.group" :
+                    state.Route == Route.Player ? "player.group" : "detail.group",
+                    UI.Button("Open", "open", focusId))
+                .RememberChildFocus(focusId);
             return new(
-                Navigation.Scope(Root(rootId, focusId)),
-                state.InitialFocusId ?? focusId,
-                ActiveInputScopeId: state.InputScopeId);
+                Navigation.Scope(UI.Stack(rootId, group)),
+                state.Revision == 0 ? focusId : state.InitialFocusId,
+                ActiveInputScopeId: state.InputScopeId)
+            {
+                FocusGroupEntryRequest = state.FocusGroupEntryRequest,
+            };
         }
 
         public void Dispose() => Navigation.Dispose();

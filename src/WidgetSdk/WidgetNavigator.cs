@@ -54,6 +54,12 @@ public sealed record WidgetNavigationSnapshot<TRoute>(
     /// this remains active while a nested route is pushed above that page.
     /// </summary>
     public CancellationToken RootRouteCancellationToken { get; init; }
+
+    /// <summary>
+    /// Optional one-shot host request produced by the most recent root
+    /// transition. Repeated renders may carry the same already-consumed request.
+    /// </summary>
+    public FocusGroupEntryRequest? FocusGroupEntryRequest { get; init; }
 }
 
 /// <summary>
@@ -73,7 +79,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     {
         RestoreRemembered,
         PreserveCurrent,
-        RestoreRememberedOrDefault,
+        EnterRememberedGroup,
     }
 
     private readonly object _gate = new();
@@ -96,7 +102,9 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     private CancellationTokenSource _rootRouteLifetime;
     private CancellationTokenSource _routeLifetime;
     private WidgetNavigationSnapshot<TRoute> _snapshot;
+    private FocusGroupEntryRequest? _focusGroupEntryRequest;
     private int _nextScopeOrdinal;
+    private long _nextFocusGroupEntryRequestId;
     private bool _disposed;
 
     internal WidgetNavigator(
@@ -164,7 +172,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             route,
             RootFocusBehavior.RestoreRemembered,
             sourceFocusId,
-            defaultFocusId: null);
+            focusGroupId: null);
     }
 
     /// <summary>
@@ -179,34 +187,30 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             route,
             RootFocusBehavior.PreserveCurrent,
             sourceFocusId: null,
-            defaultFocusId: null);
+            focusGroupId: null);
     }
 
     /// <summary>
-    /// Selects a sibling root destination, remembers an optional content focus
-    /// for the page being left, and enters the destination's remembered focus
-    /// or its authored focusable fallback.
+    /// Selects a root destination and requests one host-owned entry into its
+    /// authored remembered-child focus group. Repeated selection of the current
+    /// root is a no-op and does not issue another request.
     /// </summary>
-    public WidgetNavigationResult SwitchRoot(
-        TRoute route,
-        string defaultFocusId,
-        string? sourceContentFocusId = null)
+    public WidgetNavigationResult NavigateRoot(TRoute route, string focusGroupId)
     {
         ArgumentNullException.ThrowIfNull(route);
-        StableIdentifier.Validate(defaultFocusId, nameof(defaultFocusId));
-        ValidateOptionalFocus(sourceContentFocusId);
+        StableIdentifier.Validate(focusGroupId, nameof(focusGroupId));
         return ReplaceRoot(
             route,
-            RootFocusBehavior.RestoreRememberedOrDefault,
-            sourceContentFocusId,
-            defaultFocusId);
+            RootFocusBehavior.EnterRememberedGroup,
+            sourceFocusId: null,
+            focusGroupId);
     }
 
     private WidgetNavigationResult ReplaceRoot(
         TRoute route,
         RootFocusBehavior focusBehavior,
         string? sourceFocusId,
-        string? defaultFocusId)
+        string? focusGroupId)
     {
         RetiredLifetimes retired = default;
         lock (_gate)
@@ -222,21 +226,28 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             }
             if (!TryGetOrCreateScopeId(route, rootFrame: true, out var scopeId))
                 return WidgetNavigationResult.RejectedCapacity;
+            if (focusBehavior == RootFocusBehavior.EnterRememberedGroup &&
+                _nextFocusGroupEntryRequestId >=
+                    ProtocolConstants.MaximumFocusGroupEntryRequestId)
+                return WidgetNavigationResult.RejectedCapacity;
 
-            if (focusBehavior != RootFocusBehavior.PreserveCurrent)
+            if (focusBehavior == RootFocusBehavior.RestoreRemembered)
                 RememberFocus(current.Route, sourceFocusId);
             var rootChanged = !_comparer.Equals(root.Route, route);
             _stack.Clear();
             _stack.Add(new(route, scopeId, null));
             string? restoredFocus = null;
-            if (focusBehavior != RootFocusBehavior.PreserveCurrent)
-            {
+            if (focusBehavior == RootFocusBehavior.RestoreRemembered)
                 _focusMemory.TryGetValue(route, out restoredFocus);
-                if (restoredFocus is null &&
-                    focusBehavior == RootFocusBehavior.RestoreRememberedOrDefault)
-                    restoredFocus = defaultFocusId;
-            }
-            retired = Advance(restoredFocus, rootChanged);
+            var groupEntryRequest =
+                focusBehavior == RootFocusBehavior.EnterRememberedGroup
+                    ? new FocusGroupEntryRequest
+                    {
+                        RequestId = ++_nextFocusGroupEntryRequestId,
+                        GroupId = focusGroupId!,
+                    }
+                    : null;
+            retired = Advance(restoredFocus, rootChanged, groupEntryRequest);
         }
         Publish(retired);
         return WidgetNavigationResult.Changed;
@@ -265,7 +276,9 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             RememberFocus(_stack[^1].Route, sourceFocusId);
             _stack.Add(new(route, scopeId, sourceFocusId));
             _focusMemory.TryGetValue(route, out var restoredFocus);
-            retired = Advance(restoredFocus, replaceRootLifetime: false);
+            retired = Advance(
+                restoredFocus, replaceRootLifetime: false,
+                focusGroupEntryRequest: null);
         }
         Publish(retired);
         return WidgetNavigationResult.Changed;
@@ -287,7 +300,9 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             var removed = _stack[^1];
             RememberFocus(removed.Route, sourceFocusId);
             _stack.RemoveAt(_stack.Count - 1);
-            retired = Advance(removed.ReturnFocusId, replaceRootLifetime: false);
+            retired = Advance(
+                removed.ReturnFocusId, replaceRootLifetime: false,
+                focusGroupEntryRequest: null);
         }
         Publish(retired);
         return WidgetNavigationResult.Changed;
@@ -314,7 +329,9 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             var removed = _stack[^1];
             RememberFocus(removed.Route, sourceFocusId);
             _stack.RemoveAt(_stack.Count - 1);
-            retired = Advance(removed.ReturnFocusId, replaceRootLifetime: false);
+            retired = Advance(
+                removed.ReturnFocusId, replaceRootLifetime: false,
+                focusGroupEntryRequest: null);
         }
         Publish(retired);
         return true;
@@ -472,7 +489,8 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
 
     private RetiredLifetimes Advance(
         string? restoredFocus,
-        bool replaceRootLifetime)
+        bool replaceRootLifetime,
+        FocusGroupEntryRequest? focusGroupEntryRequest)
     {
         var previousRoute = _routeLifetime;
         CancellationTokenSource? previousRoot = null;
@@ -482,6 +500,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             _rootRouteLifetime = CancellationTokenSource.CreateLinkedTokenSource(_widgetLifetime);
         }
         _routeLifetime = CancellationTokenSource.CreateLinkedTokenSource(_widgetLifetime);
+        _focusGroupEntryRequest = focusGroupEntryRequest;
         var revision = checked(_snapshot.Revision + 1);
         _snapshot = CreateSnapshot(restoredFocus, revision);
         return new(previousRoute, previousRoot);
@@ -503,6 +522,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             _routeLifetime.Token)
         {
             RootRouteCancellationToken = _rootRouteLifetime.Token,
+            FocusGroupEntryRequest = _focusGroupEntryRequest,
         };
     }
 

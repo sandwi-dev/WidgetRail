@@ -53,20 +53,23 @@ PNG fixtures. WebP and PosterTile publish distinct `PresentOnFocus` fragments.
 The Controls page applies Compact, Comfortable, and Spacious classes to a
 two-row repeated-content preview, with explicit current gap and padding values,
 without changing the Select focus identity. Overview includes
-presentational controller hints for navigation, A Select, B Back, and
-right-stick scrolling. Top-level pages are explicit view state under one stable
-root input scope, so the same header element remains valid while its page is
-selected. `WidgetNavigator` owns only nested Picker and ActionSheet routes,
-their exact-scope B action, return focus, and cancellation.
+presentational controller hints for navigation, A Select, B Back, LB/RB section
+switching, Y example actions, and right-stick scrolling. One
+`WidgetNavigator<GalleryRoute>` owns the five flat roots and the nested Picker
+and ActionSheet routes. The roots share one stable scope; each page root is a
+distinct remembered-child group with its own default child. A on a compact or
+expanded header changes the page without an entry request and retains that
+logical header. LB/RB wraps through the visible section order and emits one
+host-owned group-entry request, so a valid remembered content control wins and
+the page default is the fallback. Y opens the ActionSheet from the actual
+focused control without requiring an opener button; nested B returns to it.
 
-`WidgetIds.Scope("gallery")` builds the validated navigation ID. One explicit
-`GalleryPage` value selects the shared-shell content without replacing its root
-scope. One `WidgetNavigator<GalleryModal>` owns nested Picker/ActionSheet routes,
-exact-scope B, remembered return focus, and route-lifetime cancellation. The
-focused suite proves one shared content subtree, distinct compact/expanded
-controls, stable root scope across page selection, selected-state accessibility,
-authoring bounds, and that opening or leaving a nested route cancels its token
-before the replacement view is published.
+`WidgetIds.Scope("gallery")` builds the validated navigation and shared-scope
+IDs. Root-page work uses `RootRouteCancellationToken` and survives a nested
+route; current route work uses `RouteCancellationToken`. Root-only LB/RB/Y
+shortcuts are absent from nested scopes, and routine renders cannot replay a
+consumed group-entry request. The focused suite is intentionally run after the
+packaged physical navigation verdict.
 
 The sample has no permissions, custom executable worker, native provider, or
 host-only escape hatch. Its manifest selects `dotnet-worker`, so an installed
@@ -114,6 +117,11 @@ version, or pass `-Catalog <directory>` to test against an isolated catalog.
 - D-pad, left stick, keyboard arrows, pointer, and `A`/Enter remain host-routed.
 - `X` is a dashboard quick action published by this widget; no shell mapping is
   assumed.
+- `LB` and `RB` wrap through the five root sections and enter that section's
+  remembered content group. `A` on a header keeps the header focused.
+- `Y` opens the nested example ActionSheet from the currently focused control;
+  `SourceElementId` remains the shortcut owner while `FocusedElementId` supplies
+  the exact Back return target.
 - Picker and ActionSheet publish their own active input scope. `B` closes that
   nested scope; at the gallery root, `B` remains available to the shell's normal
   navigation stack.
@@ -127,12 +135,11 @@ version, or pass `-Catalog <directory>` to test against an isolated catalog.
 - The responsive grid derives columns from available logical-DIP width. The
   host may clamp every surface hint for work area, DPI, or text scale.
 
-The focused Gallery suite covers nine tests, including complete page
-coverage, control state, route-owned nested scopes, non-focus-stealing Toast,
-sealed provider-neutral artwork, root/nested background ownership, all current
-fit modes, missing-art fallback, remembered focus groups, visible density,
-header-focus stability, generic package isolation, and responsive/theme-safe
-WRSS.
+The focused Gallery suite covers complete page coverage, control state,
+route-owned nested scopes, non-focus-stealing Toast, sealed provider-neutral
+artwork, root/nested background ownership, all current fit modes, missing-art
+fallback, remembered focus groups, visible density, header-focus stability,
+generic package isolation, and responsive/theme-safe WRSS.
 
 See the [widget authoring guide](../../docs/widget-authoring-guide.md),
 [declarative UI reference](../../docs/declarative-ui.md), and

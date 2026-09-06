@@ -1094,6 +1094,7 @@ method WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.ToString() -> strin
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Back(string? sourceFocusId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Navigate(TRoute route, string? sourceFocusId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.NavigateRoot(TRoute route) -> WidgetRail.WidgetSdk.WidgetNavigationResult
+method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.NavigateRoot(TRoute route, string focusGroupId) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Push(TRoute route, string? sourceFocusId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.PushFromAction(TRoute route, WidgetRail.WidgetSdk.WidgetActionEvent action, string? returnFocusOverrideId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.ContainerElement root) -> WidgetRail.WidgetSdk.ContainerElement
@@ -1108,7 +1109,6 @@ method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.W
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, WidgetRail.WidgetSdk.ScrollElement root) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, WidgetRail.WidgetSdk.StackElement root) -> WidgetRail.WidgetSdk.StackElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, WidgetRail.WidgetSdk.WidgetElement root) -> WidgetRail.WidgetSdk.ContainerElement
-method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.SwitchRoot(TRoute route, string defaultFocusId, string? sourceContentFocusId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.TryHandleBack(WidgetRail.WidgetSdk.WidgetActionEvent action, string? sourceFocusId = null) -> bool
 method WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.<Clone>$() -> WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails
 method WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.Deconstruct(out long Revision, out WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsState State, out WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity Connectivity, out WidgetRail.WidgetSdk.WidgetNetworkTransportKind Transport, out System.Collections.Generic.IReadOnlyList<string> IpAddresses, out System.Collections.Generic.IReadOnlyList<string> DefaultGateways, out System.Collections.Generic.IReadOnlyList<string> DnsServers) -> void
@@ -2040,6 +2040,7 @@ property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.Con
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.WidgetActionEvent.Phase { get; set; }
 property WidgetRail.WidgetProtocol.EmbeddedMediaSession WidgetRail.WidgetSdk.MediaViewportElement.Session { get; set; }
 property WidgetRail.WidgetProtocol.EmbeddedMediaSession? WidgetRail.WidgetSdk.WidgetView.EmbeddedMediaSession { get; set; }
+property WidgetRail.WidgetProtocol.FocusGroupEntryRequest? WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.FocusGroupEntryRequest { get; set; }
 property WidgetRail.WidgetProtocol.FocusGroupEntryRequest? WidgetRail.WidgetSdk.WidgetView.FocusGroupEntryRequest { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ActionSurfaceElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ButtonElement.FocusNeighbors { get; set; }

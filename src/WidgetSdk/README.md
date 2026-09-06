@@ -601,25 +601,38 @@ count. An empty non-terminal page still needs a focusable widget placeholder so
 the host can emit the next focus-edge action.
 
 For controller-native pages and nested surfaces, create a bounded
-`WidgetNavigator<TRoute>` with `CreateNavigator`. `Navigate` changes the root
-destination, `Push` opens a nested route, `Back` pops it, and
-`TryHandleBack` accepts only the navigator's exact pressed-B action in the
-current input scope. Render the current route through `Scope(root)` and publish
-`Value.InitialFocusId` plus `Value.InputScopeId`. Route changes cancel
-`Value.RouteCancellationToken` before invalidating, and focus is remembered per
-route and restored to the parent source on Back. `Scope` accepts every
-`ContainerElement` root, preserving its concrete Stack, Row, Scroll, Grid, or
-future container type; it rejects a leaf control before any route dispatch
-because only a container can own an input scope and Back shortcut. The default
-maximum depth is eight (16 hard maximum) and the route-identity table is bounded
-at 32.
+`WidgetNavigator<TRoute>` with `CreateNavigator`. Existing widgets retain the
+same generated per-route scope behavior: `Navigate` changes the root,
+`Push` opens a nested route, `Back` pops it, and `TryHandleBack` accepts only the
+navigator's exact pressed-B action in the current input scope. Render the current
+route through `Scope(root)` and publish `Value.InitialFocusId` plus
+`Value.InputScopeId`. Route changes cancel `Value.RouteCancellationToken` before
+invalidating, and focus is remembered per route and restored to the parent source
+on Back. `PushFromAction` captures `WidgetActionEvent.FocusedElementId`, which is
+the actual focused control at dispatch; `SourceElementId` remains the action or
+shortcut declaration owner.
 
-Those generated scopes and stack semantics are part of the navigator contract.
-For a flat lateral route machine that must retain existing author-supplied scope
-IDs and has no nested Back stack, keep the route in widget-owned state and
-publish the exact active scope directly. Do not move it into `WidgetNavigator`
-if generated scopes or stack Back would change observable focus/action
-authority, and never mirror a navigator snapshot into `WidgetModel`.
+Flat sibling roots may opt into one stable root scope with
+`CreateNavigatorWithOptions`. List only the root routes that share that scope;
+nested routes still receive independent scopes and exact B ownership. Use
+`NavigateRoot(route)` when A on a persistent header should keep that logical
+header. Use `NavigateRoot(route, groupId)` for LB/RB-style sibling navigation:
+the navigator issues one increasing protocol-v44 group-entry request only when
+the root actually changes. Publish `Value.FocusGroupEntryRequest` on the
+`WidgetView`, and author the destination container with
+`RememberChildFocus(defaultChildId)`. The host consumes the request once,
+restoring its valid remembered child or the group's authored fallback; routine
+renders carrying the same request cannot steal focus again.
+
+`Value.RootRouteCancellationToken` owns root-page work and remains active while
+a nested route is open. `Value.RouteCancellationToken` owns only the current
+route. Changing roots cancels both departed owners; pushing or popping a nested
+route cancels route work without cancelling the root page. `Scope` accepts every
+`ContainerElement` root, preserving its concrete Stack, Row, Scroll, Grid, or
+future container type; it rejects a leaf because only a container can own a
+scope and Back shortcut. The default maximum depth is eight (16 hard maximum)
+and the route-identity table is bounded at 32. Omitting navigator options keeps
+the existing generated-scope and focus behavior exactly.
 
 All open-widget actions produced by the standard router carry the current
 `WidgetActionEvent.InputScopeId`, including A activation, focused/root
