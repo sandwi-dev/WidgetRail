@@ -797,6 +797,46 @@ return new WidgetView(
     InitialFocusId: "library.content.first");
 ```
 
+If the compact navigation must share an author-owned header with separate
+noninteractive status or controller help, request its two named parts. Do not
+index `NavigationShell` children or copy its destination construction:
+
+```csharp
+var parts = UI.NavigationShellParts(
+    id: "library.shell",
+    selectedDestinationId: "library",
+    contentEntryFocusId: "library.content.first",
+    content: content,
+    destinations: destinations,
+    compactLeadingAdornment: previousHint,
+    compactTrailingAdornment: nextHint);
+
+var header = UI.Row(
+        "library.header",
+        parts.CompactNavigation.AddClasses("library-header-navigation"),
+        UI.ControllerHint(ControllerButton.Y, "Settings", "library.settings.hint")
+            .AddClasses("library-header-status"))
+    .Classes("library-header");
+
+return new WidgetView(
+    UI.Stack("library.root", header, parts.Body),
+    InitialFocusId: "library.content.first");
+```
+
+```css
+.library-header { width: 100%; min-width: 0; align: center; gap: 12px; }
+.library-header-navigation { min-width: 0; flex-grow: 1; flex-shrink: 1; }
+.library-header-status { flex-shrink: 0; }
+```
+
+`CompactNavigation` retains compact-only visibility. `Body` retains the
+expanded rail, optional persistent pane, and exactly one shared content
+subtree. The ordinary `UI.NavigationShell` overloads arrange those same parts
+inside the existing shell root and remain source- and binary-compatible. Keep
+both parts in the same input scope because generated navigation focus links
+target descendants in `Body`. Let navigation absorb constrained-width shrink;
+do not add fixed or percentage header heights.
+
 The shell accepts two to eight destinations. Destination IDs describe logical
 destinations; compact and rail element IDs are generated separately. Action IDs
 describe routing intent and may be shared when the handler distinguishes
@@ -845,6 +885,7 @@ or `ResponsiveGrid` when only placement, not hierarchy, changes.
 | `UI.Stack(id, children)` | vertical container | Can start an input scope and own shortcuts. |
 | `UI.Row(id, children)` | horizontal container | Can start an input scope and own shortcuts. |
 | `UI.NavigationShell(id, selectedDestinationId, contentEntryFocusId, content, destinations, expandedPane?, expandedPaneEntryFocusId?)` | compact tabs or expanded rail around one shared page subtree | Protocol 13; two to eight stable destinations with shell-owned explicit focus persistence. Action IDs need not be unique. |
+| `UI.NavigationShellParts(id, selectedDestinationId, contentEntryFocusId, content, destinations, expandedPane?, expandedPaneEntryFocusId?, compactLeadingAdornment?, compactTrailingAdornment?)` | named compact navigation and shell body for an author-owned outer header | Same protocol/tree owners as `NavigationShell`; keep `Body` below the header rather than beside it. |
 | `element.VisibleWhen(mode)` / `UI.ResponsiveBranch(mode, element)` | host-resolved conditional subtree | Protocol 9; use distinct compact/expanded branch IDs and keep the root unconditional. |
 | `UI.ResponsiveGrid(id, minimumColumnWidth, maximumColumns?, children)` | responsive row-major Grid | Protocol 8; host derives bounded columns from final logical width. |
 | `UI.VerticalScroll(id, children)` | vertical Scroll | Protocol 2; host-owned focus-follow offset. |

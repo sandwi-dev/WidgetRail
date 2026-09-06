@@ -668,6 +668,44 @@ The adornments appear only in the compact presentation. Keep root LB/RB
 shortcuts on the navigator-scoped owner so expanded layouts retain the same
 discoverable input contract without duplicating actions on the adornments.
 
+When compact navigation belongs inside a larger author-owned header, use
+`UI.NavigationShellParts` instead of indexing the shell's private children. It
+returns the same compact navigation and body that `UI.NavigationShell` arranges
+by default. Keep `Body` below the header: it owns the expanded rail, optional
+persistent pane, and the one shared content subtree.
+
+```csharp
+var parts = UI.NavigationShellParts(
+    "library.shell",
+    selectedDestinationId,
+    contentEntryFocusId,
+    content,
+    destinations,
+    compactLeadingAdornment: previousHint,
+    compactTrailingAdornment: nextHint);
+
+var header = UI.Row(
+        "library.header",
+        parts.CompactNavigation.AddClasses("library-header-navigation"),
+        statusHint.AddClasses("library-header-status"))
+    .Classes("library-header");
+var root = UI.Stack("library.root", header, parts.Body);
+```
+
+```css
+.library-header { width: 100%; min-width: 0; align: center; gap: 12px; }
+.library-header-navigation { min-width: 0; flex-grow: 1; flex-shrink: 1; }
+.library-header-status { flex-shrink: 0; }
+```
+
+`CompactNavigation` remains compact-only. Authors may place noninteractive
+status or controller help beside it without placing that content beside the
+complete page body. The original `UI.NavigationShell` overloads remain the
+preferred default and serialize the same tree as before. Keep both named parts
+under the same input scope because the generated navigation focus links target
+descendants in `Body`. Let the navigation group shrink beside natural-width
+header content; do not use percentage or fixed header heights.
+
 All open-widget actions produced by the standard router carry the current
 `WidgetActionEvent.InputScopeId`, including A activation, focused/root
 shortcuts, and Slider changes. Validate it for nested manual routing; never

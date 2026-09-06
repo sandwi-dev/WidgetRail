@@ -14,6 +14,15 @@ public sealed record NavigationShellDestination(
     string? AccessibilityLabel = null,
     bool IsDisabled = false);
 
+/// <summary>
+/// The two immutable layout parts of a navigation shell. Authors may place the
+/// compact navigation in a custom header while keeping the shell-owned body
+/// directly below it.
+/// </summary>
+public sealed record NavigationShellParts(
+    WidgetElement CompactNavigation,
+    WidgetElement Body);
+
 public static partial class UI
 {
     public const int MaximumNavigationShellDestinations = 8;
@@ -72,6 +81,41 @@ public static partial class UI
         string? expandedPaneEntryFocusId,
         WidgetElement? compactLeadingAdornment,
         WidgetElement? compactTrailingAdornment)
+    {
+        var parts = NavigationShellParts(
+            id,
+            selectedDestinationId,
+            contentEntryFocusId,
+            content,
+            destinations,
+            expandedPane,
+            expandedPaneEntryFocusId,
+            compactLeadingAdornment,
+            compactTrailingAdornment);
+        return new StackElement(id,
+        [
+            parts.CompactNavigation,
+            parts.Body,
+        ])
+        {
+            RequiredStyleClasses = ["wrail-navigation-shell"],
+        };
+    }
+
+    /// <summary>
+    /// Builds the existing compact navigation and body as named immutable parts
+    /// for layouts that provide their own outer header arrangement.
+    /// </summary>
+    public static NavigationShellParts NavigationShellParts(
+        string id,
+        string selectedDestinationId,
+        string contentEntryFocusId,
+        WidgetElement content,
+        IReadOnlyList<NavigationShellDestination> destinations,
+        WidgetElement? expandedPane = null,
+        string? expandedPaneEntryFocusId = null,
+        WidgetElement? compactLeadingAdornment = null,
+        WidgetElement? compactTrailingAdornment = null)
     {
         StableIdentifier.Validate(id, nameof(id));
         StableIdentifier.Validate(selectedDestinationId, nameof(selectedDestinationId));
@@ -220,17 +264,11 @@ public static partial class UI
             RequiredStyleClasses = ["wrail-navigation-shell__content"],
         });
 
-        return new StackElement(id,
-        [
-            compact,
-            new RowElement(ids.Id("body"), bodyChildren)
-            {
-                RequiredStyleClasses = ["wrail-navigation-shell__body"],
-            },
-        ])
+        var body = new RowElement(ids.Id("body"), bodyChildren)
         {
-            RequiredStyleClasses = ["wrail-navigation-shell"],
+            RequiredStyleClasses = ["wrail-navigation-shell__body"],
         };
+        return new NavigationShellParts(compact, body);
     }
 
     private static void ValidateCompactAdornment(

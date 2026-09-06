@@ -716,24 +716,7 @@ public sealed partial class YouTubeVideoWidget
             new("youtube.section.player", "Player", LinkRouteActionId,
                 WidgetGlyph.Play),
         ];
-        var trailingHints = configured
-            ? UI.Row(
-                    "youtube.section.trailing-hints",
-                    CompactControllerKey(
-                        "RB", "Right bumper, next section", "youtube.section.next.hint"),
-                    UI.ControllerHint(
-                        ControllerButton.Y,
-                        "Settings",
-                        "youtube.section.settings.hint"))
-                .Classes("youtube-section-trailing-hints")
-            : UI.Row(
-                    "youtube.section.trailing-hints",
-                    UI.ControllerHint(
-                        ControllerButton.Y,
-                        "Settings",
-                        "youtube.section.settings.hint"))
-                .Classes("youtube-section-trailing-hints");
-        var shell = UI.NavigationShell(
+        var parts = UI.NavigationShellParts(
             "youtube.sections",
             selected,
             contentEntryFocusId,
@@ -745,16 +728,23 @@ public sealed partial class YouTubeVideoWidget
                 ? CompactControllerKey(
                     "LB", "Left bumper, previous section", "youtube.section.previous.hint")
                 : null,
-            compactTrailingAdornment: trailingHints);
-        var expandedSettingsHint = UI.Row(
-                "youtube.section.expanded-settings-hint",
+            compactTrailingAdornment: configured
+                ? CompactControllerKey(
+                    "RB", "Right bumper, next section", "youtube.section.next.hint")
+                : null);
+        var header = UI.Row(
+                "youtube.section.header",
+                parts.CompactNavigation.AddClasses("youtube-section-navigation"),
                 UI.ControllerHint(
                     ControllerButton.Y,
                     "Settings",
-                    "youtube.section.expanded-settings"))
-            .VisibleWhen(ResponsiveVisibility.ExpandedOnly)
-            .Classes("youtube-section-expanded-hint");
-        var root = UI.Stack(RootScopeId, expandedSettingsHint, shell)
+                    "youtube.section.settings.hint")
+                    .AddClasses("youtube-section-settings-hint"))
+            .Classes("youtube-section-header");
+        var root = UI.Stack(
+                RootScopeId,
+                header,
+                parts.Body.AddClasses("youtube-section-body"))
             .InputScope(RootScopeId)
             .Shortcut(ControllerButton.Y, SetupRouteActionId)
             .Classes("youtube-root");
