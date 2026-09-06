@@ -42,6 +42,7 @@ public sealed class SdkGalleryWidget : Widget
     ];
     private readonly WidgetNavigator<GalleryModal> _navigation;
     private GalleryPage _page = GalleryPage.Overview;
+    private GalleryPage? _modalReturnFocusPage;
     private bool _compactMode = true;
     private string _density = "Comfortable";
     private TimeSpan _position = TimeSpan.FromSeconds(74);
@@ -133,7 +134,10 @@ public sealed class SdkGalleryWidget : Widget
         cancellationToken.ThrowIfCancellationRequested();
 
         if (_navigation.TryHandleBack(action))
+        {
+            _modalReturnFocusPage = _page;
             return ValueTask.CompletedTask;
+        }
 
         switch (action.ActionId)
         {
@@ -185,7 +189,7 @@ public sealed class SdkGalleryWidget : Widget
                 ShowToast();
                 return ValueTask.CompletedTask;
             case "gallery.sheet.remove":
-                _navigation.Back(action.SourceElementId);
+                BackToPage(action.SourceElementId);
                 ShowToast();
                 return ValueTask.CompletedTask;
             default:
@@ -552,10 +556,13 @@ public sealed class SdkGalleryWidget : Widget
         });
 
     private string InitialFocus(WidgetNavigationSnapshot<GalleryModal> navigation) =>
-        navigation.InitialFocusId ?? navigation.Route switch
+        navigation.Route switch
         {
-            GalleryModal.Picker => $"gallery.density.{_density.ToLowerInvariant()}",
-            GalleryModal.ActionSheet => "gallery.sheet.pin",
+            GalleryModal.Picker => navigation.InitialFocusId ??
+                $"gallery.density.{_density.ToLowerInvariant()}",
+            GalleryModal.ActionSheet => navigation.InitialFocusId ?? "gallery.sheet.pin",
+            _ when _modalReturnFocusPage == _page =>
+                navigation.InitialFocusId ?? PageInitialFocus(_page),
             _ => PageInitialFocus(_page),
         };
 
@@ -576,6 +583,7 @@ public sealed class SdkGalleryWidget : Widget
     private void SetPage(GalleryPage page)
     {
         if (_page == page) return;
+        _modalReturnFocusPage = null;
         _page = page;
         Invalidate();
     }
@@ -586,8 +594,16 @@ public sealed class SdkGalleryWidget : Widget
     private void SelectDensity(string density, string sourceFocusId)
     {
         _density = density;
-        if (_navigation.Back(sourceFocusId) != WidgetNavigationResult.Changed)
+        if (BackToPage(sourceFocusId) != WidgetNavigationResult.Changed)
             Invalidate();
+    }
+
+    private WidgetNavigationResult BackToPage(string? sourceFocusId)
+    {
+        var result = _navigation.Back(sourceFocusId);
+        if (result == WidgetNavigationResult.Changed)
+            _modalReturnFocusPage = _page;
+        return result;
     }
 
     private void ShowToast()
