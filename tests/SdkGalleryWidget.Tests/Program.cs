@@ -48,7 +48,10 @@ static async Task PageCoverage()
     Assert.Equal("gallery.refresh", overview.InitialFocusId);
     Assert.Equal(widget.Navigation.InputScopeId, overview.ActiveInputScopeId);
     Assert.Equal(WidgetSurfaceMode.Standard, overview.Surface!.Mode);
+    Assert.Equal(760d, overview.Surface.PreferredWidth);
+    Assert.Equal(600d, overview.Surface.PreferredHeight);
     Assert.Equal(320d, overview.Surface.MinimumWidth);
+    Assert.Equal(280d, overview.Surface.MinimumHeight);
     Assert.ContainsClass(overview, "wrail-card");
     Assert.ContainsClass(overview, "wrail-alert");
     Assert.ContainsClass(overview, "wrail-empty-state");
@@ -60,8 +63,34 @@ static async Task PageCoverage()
     Assert.Equal(ResponsiveVisibility.CompactOnly, compactNavigation.VisibleWhen);
     Assert.Equal(ResponsiveVisibility.ExpandedOnly, expandedNavigation.VisibleWhen);
     Assert.Equal(1, Nodes(overview.Root).Count(node => node.Id == "gallery.page-scroll"));
+    Assert.Equal(7, compactNavigation.Children.Count);
     Assert.Equal(5, compactNavigation.Children.Count(node => node.ActionId is not null));
     Assert.Equal(5, expandedNavigation.Children.Count);
+    var previousSection = compactNavigation.Children[0];
+    var nextSection = compactNavigation.Children[^1];
+    Assert.Equal("gallery.hint.section.previous", previousSection.Id);
+    Assert.Equal("gallery.hint.section.next", nextSection.Id);
+    Assert.Equal(ViewNodeKind.Row, previousSection.Kind);
+    Assert.Equal(ViewNodeKind.Row, nextSection.Kind);
+    Assert.True(previousSection.StyleClasses.SequenceEqual(
+        ["wrail-controller-hint__key", "gallery-section-bumper-key"]));
+    Assert.True(nextSection.StyleClasses.SequenceEqual(
+        ["wrail-controller-hint__key", "gallery-section-bumper-key"]));
+    Assert.True(previousSection.ActionId is null && previousSection.Focus is null &&
+        previousSection.Shortcuts.Count == 0);
+    Assert.True(nextSection.ActionId is null && nextSection.Focus is null &&
+        nextSection.Shortcuts.Count == 0);
+    var previousLabel = previousSection.Children.Single();
+    var nextLabel = nextSection.Children.Single();
+    Assert.Equal("LB", previousLabel.Text);
+    Assert.Equal("RB", nextLabel.Text);
+    Assert.Equal("LB, Previous section", previousLabel.AccessibilityLabel);
+    Assert.Equal("RB, Next section", nextLabel.AccessibilityLabel);
+    Assert.True(previousLabel.StyleClasses.SequenceEqual(["gallery-section-bumper-label"]));
+    Assert.True(nextLabel.StyleClasses.SequenceEqual(["gallery-section-bumper-label"]));
+    var rootHints = Find(overview, "gallery.section.hints");
+    Assert.Equal(1, rootHints.Children.Count);
+    Assert.Equal("gallery.hint.section.actions", rootHints.Children[0].Id);
     Assert.Equal("gallery.tab.overview",
         compactNavigation.Children.Single(node => node.IsSelected == true).ActionId);
     Assert.Equal("gallery.tab.overview",
@@ -190,8 +219,12 @@ static async Task NestedScopes()
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
     await Act(widget, "gallery.tab.controls");
     var controlsLifetime = widget.Navigation.RouteCancellationToken;
-    await Act(widget, "gallery.picker.open");
-    var picker = widget.RenderSnapshot("sdk-gallery.test", 1);
+    var controlsBeforePicker = widget.RenderSnapshot("sdk-gallery.test", 1);
+    var handled = await Press(
+        widget, controlsBeforePicker, ControllerButton.A, "gallery.picker.open");
+    Assert.True(handled);
+    await WaitUntil(() => widget.Modal == GalleryModal.Picker);
+    var picker = widget.RenderSnapshot("sdk-gallery.test", 2);
     Assert.Equal(GalleryModal.Picker, widget.Modal);
     Assert.True(controlsLifetime.IsCancellationRequested,
         "Opening a nested gallery route did not cancel parent route work.");
@@ -201,7 +234,7 @@ static async Task NestedScopes()
         widget.Navigation.BackActionId!);
 
     var pickerLifetime = widget.Navigation.RouteCancellationToken;
-    var handled = await widget.OnControllerInputAsync(new ControllerInputEvent(
+    handled = await widget.OnControllerInputAsync(new ControllerInputEvent(
         ControllerButton.B,
         ControllerEventPhase.Pressed,
         ControllerInputContext.OpenWidget,
@@ -215,29 +248,36 @@ static async Task NestedScopes()
     Assert.Equal(GalleryModal.None, widget.Modal);
     Assert.Equal("gallery.picker.open", widget.Render().InitialFocusId);
 
-    await Act(widget, "gallery.sheet.open");
-    var sheet = widget.RenderSnapshot("sdk-gallery.test", 2);
+    var controls = widget.RenderSnapshot("sdk-gallery.test", 3);
+    const string sheetReturnFocus = "gallery.controls.compact.action";
+    handled = await Press(widget, controls, ControllerButton.Y, sheetReturnFocus);
+    Assert.True(handled);
+    await WaitUntil(() => widget.Modal == GalleryModal.ActionSheet);
+    var sheet = widget.RenderSnapshot("sdk-gallery.test", 4);
     Assert.Equal(widget.Navigation.InputScopeId, sheet.ActiveInputScopeId);
     Assert.ContainsShortcut(Find(sheet, "gallery.sheet"), ControllerButton.B,
         widget.Navigation.BackActionId!);
     Assert.Equal(ActionSheetItemToneClass("danger"),
         Find(sheet, "gallery.sheet.remove").StyleClasses.Single(value => value.EndsWith("danger", StringComparison.Ordinal)));
 
-    await widget.OnActionAsync(new WidgetActionEvent(
-        widget.Navigation.BackActionId!,
-        "gallery.sheet",
-        ControllerButton.B,
-        InputScopeId: sheet.ActiveInputScopeId));
+    handled = await Press(widget, sheet, ControllerButton.B, "gallery.sheet.pin");
+    Assert.True(handled);
+    await WaitUntil(() => widget.Modal == GalleryModal.None);
     Assert.Equal(GalleryModal.None, widget.Modal);
-    var sheetReturn = Snapshot(widget, 3);
-    Assert.Equal("gallery.sheet.open", sheetReturn.InitialFocusId);
+    var sheetReturn = widget.RenderSnapshot("sdk-gallery.test", 5);
+    Assert.Equal(sheetReturnFocus, sheetReturn.InitialFocusId);
     Assert.Equal(0, ViewSnapshotValidator.Validate(sheetReturn).Count);
 
     var tilesSource = HeaderAction(
         sheetReturn, "gallery.shell.compact", "gallery.tab.tiles");
-    await ActFrom(widget, "gallery.tab.tiles", tilesSource.Id);
-    var tiles = Snapshot(widget, 4);
-    Assert.Equal("gallery.media", tiles.InitialFocusId);
+    handled = await Press(widget, sheetReturn, ControllerButton.A, tilesSource.Id);
+    Assert.True(handled);
+    await WaitUntil(() => widget.Page == GalleryPage.Tiles);
+    var tiles = widget.RenderSnapshot("sdk-gallery.test", 6);
+    Assert.True(tiles.InitialFocusId is null);
+    Assert.True(tiles.FocusGroupEntryRequest is null);
+    Assert.Equal(tilesSource.Id,
+        HeaderAction(tiles, "gallery.shell.compact", "gallery.tab.tiles").Id);
     Assert.Equal(sheetReturn.ActiveInputScopeId, tiles.ActiveInputScopeId);
     Assert.Equal(0, ViewSnapshotValidator.Validate(tiles).Count);
     Assert.False(Nodes(tiles.Root).Any(node => node.Id == "gallery.sheet.open"),
@@ -309,7 +349,8 @@ static async Task BackgroundGallery()
         Find(initial, "gallery.shell.compact").Children.Single(node =>
             node.ActionId == "gallery.tab.backgrounds").Id));
     var backgrounds = Snapshot(widget, 2);
-    Assert.Equal("gallery.backgrounds.warm", backgrounds.InitialFocusId);
+    Assert.True(backgrounds.InitialFocusId is null);
+    Assert.True(backgrounds.FocusGroupEntryRequest is null);
     Assert.Equal(0, ViewSnapshotValidator.Validate(backgrounds).Count);
     Assert.Equal(5, Nodes(backgrounds.Root).Count(
         node => node.Kind == ViewNodeKind.BackgroundSurface));
@@ -403,31 +444,45 @@ static async Task TopLevelPagesShareRootScope()
     foreach (var presentation in new[] { "gallery.shell.compact", "gallery.shell.rail" })
     {
         var widget = new SdkGalleryWidget();
-        var overview = Snapshot(widget, 1);
+        await WidgetTestHost.SetLifecycleStateAsync(
+            widget, WidgetLifecycleState.Interactive);
+        var overview = widget.RenderSnapshot("sdk-gallery.navigation", 1);
         var rootScope = overview.ActiveInputScopeId;
-        var rootLifetime = widget.Navigation.RouteCancellationToken;
+        var overviewRouteLifetime = widget.Navigation.RouteCancellationToken;
+        var overviewRootLifetime = widget.Navigation.RootRouteCancellationToken;
         var controlsSource = HeaderAction(overview, presentation, "gallery.tab.controls");
-        await ActFrom(widget, "gallery.tab.controls", controlsSource.Id);
+        var handled = await Press(widget, overview, ControllerButton.A, controlsSource.Id);
+        Assert.True(handled);
+        await WaitUntil(() => widget.Page == GalleryPage.Controls);
 
-        var controls = Snapshot(widget, 2);
+        var controls = widget.RenderSnapshot("sdk-gallery.navigation", 2);
         Assert.Equal(rootScope, controls.ActiveInputScopeId);
-        Assert.False(rootLifetime.IsCancellationRequested,
-            "Top-level page selection replaced the root route lifetime.");
+        Assert.True(overviewRouteLifetime.IsCancellationRequested,
+            "Changing roots did not cancel departed route work.");
+        Assert.True(overviewRootLifetime.IsCancellationRequested,
+            "Changing roots did not cancel departed root-page work.");
+        Assert.True(controls.FocusGroupEntryRequest is null,
+            "A on a persistent header requested remembered-group entry.");
         Assert.Equal(controlsSource.Id,
             HeaderAction(controls, presentation, "gallery.tab.controls").Id);
         var tilesSource = HeaderAction(controls, presentation, "gallery.tab.tiles");
-        await ActFrom(widget, "gallery.tab.tiles", tilesSource.Id);
+        handled = await Press(widget, controls, ControllerButton.A, tilesSource.Id);
+        Assert.True(handled);
+        await WaitUntil(() => widget.Page == GalleryPage.Tiles);
 
-        var tiles = Snapshot(widget, 3);
+        var tiles = widget.RenderSnapshot("sdk-gallery.navigation", 3);
         Assert.Equal(rootScope, tiles.ActiveInputScopeId);
+        Assert.True(tiles.FocusGroupEntryRequest is null);
         Assert.Equal(tilesSource.Id,
             HeaderAction(tiles, presentation, "gallery.tab.tiles").Id);
         var controlsReturn = HeaderAction(tiles, presentation, "gallery.tab.controls");
-        await ActFrom(widget, "gallery.tab.controls", controlsReturn.Id);
+        handled = await Press(widget, tiles, ControllerButton.A, controlsReturn.Id);
+        Assert.True(handled);
+        await WaitUntil(() => widget.Page == GalleryPage.Controls);
 
-        var returned = Snapshot(widget, 4);
+        var returned = widget.RenderSnapshot("sdk-gallery.navigation", 4);
         Assert.Equal(rootScope, returned.ActiveInputScopeId);
-        Assert.False(rootLifetime.IsCancellationRequested);
+        Assert.True(returned.FocusGroupEntryRequest is null);
         Assert.Equal(controlsReturn.Id,
             HeaderAction(returned, presentation, "gallery.tab.controls").Id);
         Assert.Equal(controlsReturn.FocusPersistenceId,
@@ -437,17 +492,65 @@ static async Task TopLevelPagesShareRootScope()
 
         var repeatedSource = HeaderAction(
             returned, presentation, "gallery.tab.controls");
-        await ActFrom(widget, "gallery.tab.controls", repeatedSource.Id);
-        var repeated = Snapshot(widget, 5);
+        var repeatedRouteLifetime = widget.Navigation.RouteCancellationToken;
+        var repeatedRootLifetime = widget.Navigation.RootRouteCancellationToken;
+        handled = await Press(widget, returned, ControllerButton.A, repeatedSource.Id);
+        Assert.True(handled);
+        var repeated = widget.RenderSnapshot("sdk-gallery.navigation", 5);
         Assert.Equal(rootScope, repeated.ActiveInputScopeId);
-        Assert.False(rootLifetime.IsCancellationRequested);
-        Assert.Equal("gallery.controls.compact.action", repeated.InitialFocusId);
+        Assert.False(repeatedRouteLifetime.IsCancellationRequested,
+            "Selecting the current root canceled valid route work.");
+        Assert.False(repeatedRootLifetime.IsCancellationRequested,
+            "Selecting the current root canceled valid root-page work.");
+        Assert.True(repeated.InitialFocusId is null);
+        Assert.True(repeated.FocusGroupEntryRequest is null);
         Assert.Equal(repeatedSource.Id,
             HeaderAction(repeated, presentation, "gallery.tab.controls").Id);
         Assert.Equal(repeatedSource.FocusPersistenceId,
             HeaderAction(repeated, presentation, "gallery.tab.controls").FocusPersistenceId);
         Assert.Equal(0, ViewSnapshotValidator.Validate(repeated).Count);
+        await WidgetTestHost.DestroyAsync(widget);
     }
+
+    var bumperWidget = new SdkGalleryWidget();
+    await WidgetTestHost.SetLifecycleStateAsync(
+        bumperWidget, WidgetLifecycleState.Interactive);
+    var overviewSnapshot = bumperWidget.RenderSnapshot("sdk-gallery.bumpers", 1);
+    var overviewLifetime = bumperWidget.Navigation.RouteCancellationToken;
+    var handledBumper = await Press(
+        bumperWidget, overviewSnapshot, ControllerButton.LeftBumper, "gallery.refresh");
+    Assert.True(handledBumper);
+    await WaitUntil(() => bumperWidget.Page == GalleryPage.Utilities);
+    var utilities = bumperWidget.RenderSnapshot("sdk-gallery.bumpers", 2);
+    Assert.True(overviewLifetime.IsCancellationRequested);
+    Assert.Equal(overviewSnapshot.ActiveInputScopeId, utilities.ActiveInputScopeId);
+    Assert.True(utilities.InitialFocusId is null);
+    Assert.Equal(1L, utilities.FocusGroupEntryRequest!.RequestId);
+    Assert.Equal("gallery.utilities", utilities.FocusGroupEntryRequest.GroupId);
+
+    var utilitiesLifetime = bumperWidget.Navigation.RouteCancellationToken;
+    handledBumper = await Press(
+        bumperWidget,
+        utilities,
+        ControllerButton.RightBumper,
+        "gallery.utilities.toast-button");
+    Assert.True(handledBumper);
+    await WaitUntil(() => bumperWidget.Page == GalleryPage.Overview);
+    var wrapped = bumperWidget.RenderSnapshot("sdk-gallery.bumpers", 3);
+    Assert.True(utilitiesLifetime.IsCancellationRequested);
+    Assert.Equal(2L, wrapped.FocusGroupEntryRequest!.RequestId);
+    Assert.Equal("gallery.overview", wrapped.FocusGroupEntryRequest.GroupId);
+
+    var rejected = await bumperWidget.OnControllerInputAsync(new ControllerInputEvent(
+        ControllerButton.RightBumper,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.OpenWidget,
+        FocusedElementId: "gallery.refresh",
+        ActiveInputScopeId: "foreign.scope",
+        SnapshotSequence: wrapped.Sequence));
+    Assert.False(rejected);
+    Assert.Equal(GalleryPage.Overview, bumperWidget.Page);
+    await WidgetTestHost.DestroyAsync(bumperWidget);
 }
 
 static Task PackageContract()
@@ -457,7 +560,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.14", manifest.Version);
+    Assert.Equal("0.1.16", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);
@@ -517,6 +620,16 @@ static Task StyleContract()
     Assert.Equal("100vw", root.Get("width")?.Text);
     Assert.Equal("100vh", root.Get("height")?.Text);
     Assert.Equal("clip", root.Get("overflow")?.Text);
+    var bumperKey = compiled.Theme.Resolve(new WrssElement(
+        "row", StyleClasses: new HashSet<string>(
+            ["wrail-controller-hint__key", "gallery-section-bumper-key"])))!;
+    Assert.Equal("center", bumperKey.Get("align")?.Text);
+    Assert.Equal("center", bumperKey.Get("justify")?.Text);
+    Assert.Equal("#f7f7fa", bumperKey.Get("background")?.Text);
+    var bumperLabel = compiled.Theme.Resolve(new WrssElement(
+        "text", StyleClasses: new HashSet<string>(["gallery-section-bumper-label"])))!;
+    Assert.Equal("#0b0d12", bumperLabel.Get("color")?.Text);
+    Assert.Equal("center", bumperLabel.Get("text-align")?.Text);
     var grid = compiled.Theme.Resolve(new WrssElement(
         "grid", StyleClasses: new HashSet<string>(["wrail-responsive-grid"])))!;
     Assert.Equal("100%", grid.Get("width")?.Text);
@@ -572,8 +685,17 @@ static ViewSnapshot Snapshot(SdkGalleryWidget widget, long sequence) =>
 static ValueTask Act(SdkGalleryWidget widget, string action) =>
     widget.OnActionAsync(new WidgetActionEvent(action, action));
 
-static ValueTask ActFrom(SdkGalleryWidget widget, string action, string sourceElementId) =>
-    widget.OnActionAsync(new WidgetActionEvent(action, sourceElementId));
+static ValueTask<bool> Press(
+    SdkGalleryWidget widget,
+    ViewSnapshot snapshot,
+    ControllerButton button,
+    string focusedElementId) => widget.OnControllerInputAsync(new ControllerInputEvent(
+        button,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.OpenWidget,
+        FocusedElementId: focusedElementId,
+        ActiveInputScopeId: snapshot.ActiveInputScopeId,
+        SnapshotSequence: snapshot.Sequence));
 
 static ViewNode HeaderAction(ViewSnapshot snapshot, string presentation, string actionId) =>
     Find(snapshot, presentation).Children.Single(node => node.ActionId == actionId);

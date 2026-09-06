@@ -641,6 +641,25 @@ presentational stacks, rows, text, icons, images, progress, or loading elements;
 actions, focus, scopes, shortcuts, scrolling, and interactive descendants are
 rejected.
 
+```csharp
+var shell = UI.NavigationShell(
+    "library.shell",
+    selectedDestinationId,
+    contentEntryFocusId,
+    content,
+    destinations,
+    expandedPane: null,
+    expandedPaneEntryFocusId: null,
+    compactLeadingAdornment: UI.ControllerHint(
+        ControllerButton.LeftBumper, "Previous section", "library.section.previous"),
+    compactTrailingAdornment: UI.ControllerHint(
+        ControllerButton.RightBumper, "Next section", "library.section.next"));
+```
+
+The adornments appear only in the compact presentation. Keep root LB/RB
+shortcuts on the navigator-scoped owner so expanded layouts retain the same
+discoverable input contract without duplicating actions on the adornments.
+
 All open-widget actions produced by the standard router carry the current
 `WidgetActionEvent.InputScopeId`, including A activation, focused/root
 shortcuts, and Slider changes. Validate it for nested manual routing; never
