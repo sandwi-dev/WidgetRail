@@ -393,7 +393,7 @@ public sealed class SdkGalleryWidget : Widget
                         UI.Text("Sample Game", "gallery.app.presentation.title"),
                         UI.Text("Ready from the community library",
                             "gallery.app.presentation.detail"))),
-                UI.Tile(
+                UI.PosterTile(
                     "WebP First Frame",
                     "Ready",
                     "gallery.app.open",
