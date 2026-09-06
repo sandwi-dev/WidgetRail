@@ -1390,7 +1390,6 @@ public sealed class GamesAppsWidget : Widget
         long generation)
     {
         var pageRoute = Page;
-        var returnToLibrary = false;
         lock (_gate)
         {
             if (Interlocked.Read(ref _generation) != generation) return;
@@ -1401,12 +1400,11 @@ public sealed class GamesAppsWidget : Widget
             var emptyCatalog = result.EmptyInitial && pageRoute == GamesAppsPage.Catalog;
             if (emptyCatalog)
             {
-                _items = _libraryItems;
-                _catalog = GamesAppsCatalogState.Empty;
-                _selectedAppId = _items.FirstOrDefault()?.AppId;
+                _items = [];
+                _catalog = result.State;
+                _selectedAppId = null;
                 _viewState = GamesAppsViewState.Ready;
-                _status = "No additional launchable applications were found";
-                returnToLibrary = true;
+                _status = "No applications are available to add";
             }
             else
             {
@@ -1429,10 +1427,6 @@ public sealed class GamesAppsWidget : Widget
                         : LibraryStatusLocked();
             }
         }
-        if (returnToLibrary)
-            _ = _navigation.NavigateRoot(
-                GamesAppsPage.Library,
-                GamesAppsPresentation.FocusGroupId(GamesAppsPage.Library));
         Invalidate();
     }
 
