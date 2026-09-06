@@ -4266,14 +4266,15 @@ struct DeclarativeRenderer::RenderPass final {
 
         if (node.kind == L"actionSurface" &&
             node.actionSurfacePresentation == L"poster") {
-            if (node.children.size() == 2U &&
-                PosterArtworkWithinAdmissionBand(presented)) {
-                const auto& artwork = node.children.front();
-                if (const auto preparedArtwork = prepared.find(NarrowStableId(artwork.id));
-                    preparedArtwork != prepared.end()) {
-                    DrawImage(
-                        artwork, preparedArtwork->second.paintStyle,
-                        paintRect, opacity, false);
+            if (node.children.size() == 2U) {
+                if (PosterArtworkWithinAdmissionBand(presented)) {
+                    const auto& artwork = node.children.front();
+                    if (const auto preparedArtwork = prepared.find(NarrowStableId(artwork.id));
+                        preparedArtwork != prepared.end()) {
+                        DrawImage(
+                            artwork, preparedArtwork->second.paintStyle,
+                            paintRect, opacity, false);
+                    }
                 }
             } else {
                 DrawSemanticIcon(
