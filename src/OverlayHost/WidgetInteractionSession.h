@@ -158,6 +158,11 @@ struct FocusGroupEntryApplication final {
     std::optional<std::wstring> target;
 };
 
+struct FocusGroupEntryPreview final {
+    bool current{};
+    std::optional<std::wstring> target;
+};
+
 enum class DirectionalFocusDisposition {
     MissingVisibleFocus,
     VisibleRecovery,
@@ -422,6 +427,16 @@ public:
     [[nodiscard]] FocusGroupEntryApplication ConsumeFocusGroupEntryRequest(
         const WidgetInteractionAuthority& authority,
         const RenderResult& renderResult);
+    [[nodiscard]] FocusGroupEntryPreview PreviewFocusGroupEntryRequest(
+        const WidgetInteractionAuthority& authority,
+        const RenderResult& renderResult) const;
+    [[nodiscard]] FocusGroupEntryApplication CommitPreparedFocusGroupEntryRequest(
+        const WidgetInteractionAuthority& authority,
+        const std::optional<std::wstring>& target);
+    [[nodiscard]] bool FocusGroupEntryRequestPending(
+        const WidgetInteractionAuthority& authority) const noexcept;
+    [[nodiscard]] bool RetireFocusGroupEntryRequest(
+        const WidgetInteractionAuthority& authority) noexcept;
     void ResetFocusGroupEntryRequests() noexcept;
 
     [[nodiscard]] RightStickScrollUpdate SampleRightStick(
@@ -585,6 +600,9 @@ private:
         const FocusGroupEntryHighWater&,
         const WidgetInteractionAuthority&) noexcept;
     [[nodiscard]] static bool SameFocusGroupEntryRuntime(
+        const PendingFocusGroupEntry&,
+        const WidgetInteractionAuthority&) noexcept;
+    [[nodiscard]] static bool ExactFocusGroupEntryRequest(
         const PendingFocusGroupEntry&,
         const WidgetInteractionAuthority&) noexcept;
     [[nodiscard]] static SliderInputDescriptor SliderDescriptor(

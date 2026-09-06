@@ -16885,9 +16885,9 @@ private:
                 transitionRetainedSnapshot
                     ? std::wstring_view{retainedPresentation->focusId}
                     : std::wstring_view{};
-            const auto renderedFocusId = widgetrail::ResolveWidgetContentFocusId(
+            std::wstring renderedFocusId{widgetrail::ResolveWidgetContentFocusId(
                 contentAuthority,
-                {currentFocusId, refreshRetainedFocusId, retainedCommittedFocusId});
+                {currentFocusId, refreshRetainedFocusId, retainedCommittedFocusId})};
             if (snapshot && declarativeRenderer_) {
                 const widgetrail::declarative::Rect viewport{
                     geometry->widgetViewportX,
@@ -16899,41 +16899,8 @@ private:
                     ? CurrentAccessibilityPolicy()
                     : widgetrail::NativeAccessibilityPolicy{};
                 const auto presentationTime = GetTickCount64();
-                auto interactionPresentation =
-                    interactionSession_.PrepareRenderPresentation(
-                        *snapshot, renderedFocusId, presentationTime,
-                        !inertRetainedSnapshot, !inertRetainedSnapshot,
-                        !inertRetainedSnapshot &&
-                            state_.focusRegion() == widgetrail::FocusRegion::Widget);
-                const widgetrail::accessibility::ProjectionKey projectionKey{
-                    std::wstring{renderedWidget},
-                    descriptor
-                        ? descriptor->runtimeGeneration
-                        : std::wstring{},
-                    snapshot->activeInputScopeId,
-                    std::wstring{renderedFocusId},
-                    snapshot->sequence,
-                    interactionPresentation.sliderPresentationRevision,
-                    appearanceState_.current() ? appearanceState_.current()->revision : 0,
-                    viewport.x,
-                    viewport.y,
-                    viewport.width,
-                    viewport.height,
-                    geometry->panelWidth,
-                    geometry->panelHeight,
-                    physicalPixelsPerDip,
-                    accessibilityPolicy.textScale,
-                    accessibilityPolicy.minimumFontWeight,
-                    accessibilityPolicy.reducedMotion,
-                    accessibilityPolicy.reducedTransparency,
-                };
-                const bool collectAccessibility = !inertRetainedSnapshot &&
-                    accessibilityActive_ &&
-                    descriptor &&
-                    widgetAccessibilityProjection_.ShouldCollect(projectionKey);
                 widgetrail::DeclarativeRenderOptions options;
                 options.pixelScale = physicalPixelsPerDip;
-                options.collectAccessibility = collectAccessibility;
                 options.responsiveViewport = widgetrail::declarative::Size{
                     geometry->panelWidth,
                     geometry->panelHeight,
@@ -16946,10 +16913,6 @@ private:
                 if (appearanceState_.current())
                     options.accessibility = accessibilityPolicy;
                 options.animationTimestampMilliseconds = presentationTime;
-                options.sliderValueOverrides =
-                    interactionPresentation.sliderValueOverrides;
-                options.pressedElementId =
-                    interactionPresentation.pressedElementId;
                 options.artworkWidgetId = std::wstring{renderedWidget};
                 options.compositorBackgroundAvailable =
                     compositionSurface_.available() && !inertRetainedSnapshot;
@@ -16978,6 +16941,114 @@ private:
                 options.suppressFocusedDescendantFollow =
                     freeScrollDecision.followSuppressed &&
                     (!inertRetainedSnapshot || retainedRefreshFreeScroll);
+
+                const std::wstring provisionalRenderedFocusId = renderedFocusId;
+                std::optional<widgetrail::input::WidgetInteractionAuthority>
+                    focusGroupEntryAuthority;
+                std::optional<std::wstring> preparedFocusGroupEntryTarget;
+                bool focusGroupEntryPrepared{};
+                if (descriptor && WidgetOwnsInputFocus(renderedWidget) &&
+                    !textEntryModal_.active() && !inertRetainedSnapshot) {
+                    focusGroupEntryAuthority =
+                        widgetrail::input::WidgetInteractionAuthority{
+                            renderedWidget,
+                            snapshot,
+                            descriptor->runtimeGeneration,
+                            descriptor->presentationGeneration,
+                            false,
+                        };
+                    if (interactionSession_.FocusGroupEntryRequestPending(
+                            *focusGroupEntryAuthority)) {
+                        const auto preparation =
+                            declarativeRenderer_->PrepareFocusEntry(
+                                *snapshot, renderedFocusId, viewport, options);
+                        const auto preview = preparation.succeeded
+                            ? interactionSession_.PreviewFocusGroupEntryRequest(
+                                *focusGroupEntryAuthority, preparation)
+                            : widgetrail::input::FocusGroupEntryPreview{};
+                        if (preview.current) {
+                            focusGroupEntryPrepared = true;
+                            preparedFocusGroupEntryTarget = preview.target;
+                            if (preview.target) renderedFocusId = *preview.target;
+                        } else {
+                            (void)interactionSession_.RetireFocusGroupEntryRequest(
+                                *focusGroupEntryAuthority);
+                            AppendDiagnostic(
+                                L"Focus-group entry request widget=" +
+                                std::wstring{renderedWidget} +
+                                L" state=preparation-retired");
+                        }
+                    }
+                }
+
+                auto interactionPresentation =
+                    interactionSession_.PrepareRenderPresentation(
+                        *snapshot, renderedFocusId, presentationTime,
+                        !inertRetainedSnapshot, !inertRetainedSnapshot,
+                        !inertRetainedSnapshot &&
+                            state_.focusRegion() == widgetrail::FocusRegion::Widget);
+                options.sliderValueOverrides =
+                    interactionPresentation.sliderValueOverrides;
+                options.pressedElementId =
+                    interactionPresentation.pressedElementId;
+                if (focusGroupEntryPrepared && preparedFocusGroupEntryTarget) {
+                    const auto validation =
+                        declarativeRenderer_->PrepareFocusEntry(
+                            *snapshot, renderedFocusId, viewport, options);
+                    const auto confirmed = validation.succeeded
+                        ? interactionSession_.PreviewFocusGroupEntryRequest(
+                            *focusGroupEntryAuthority, validation)
+                        : widgetrail::input::FocusGroupEntryPreview{};
+                    if (!confirmed.current ||
+                        confirmed.target != preparedFocusGroupEntryTarget) {
+                        (void)interactionSession_.RetireFocusGroupEntryRequest(
+                            *focusGroupEntryAuthority);
+                        focusGroupEntryPrepared = false;
+                        preparedFocusGroupEntryTarget.reset();
+                        renderedFocusId = provisionalRenderedFocusId;
+                        interactionPresentation =
+                            interactionSession_.PrepareRenderPresentation(
+                                *snapshot, renderedFocusId, presentationTime,
+                                !inertRetainedSnapshot, !inertRetainedSnapshot,
+                                !inertRetainedSnapshot &&
+                                    state_.focusRegion() ==
+                                        widgetrail::FocusRegion::Widget);
+                        options.sliderValueOverrides =
+                            interactionPresentation.sliderValueOverrides;
+                        options.pressedElementId =
+                            interactionPresentation.pressedElementId;
+                        AppendDiagnostic(
+                            L"Focus-group entry request widget=" +
+                            std::wstring{renderedWidget} +
+                            L" state=settlement-retired");
+                    }
+                }
+                const widgetrail::accessibility::ProjectionKey projectionKey{
+                    std::wstring{renderedWidget},
+                    descriptor
+                        ? descriptor->runtimeGeneration
+                        : std::wstring{},
+                    snapshot->activeInputScopeId,
+                    renderedFocusId,
+                    snapshot->sequence,
+                    interactionPresentation.sliderPresentationRevision,
+                    appearanceState_.current() ? appearanceState_.current()->revision : 0,
+                    viewport.x,
+                    viewport.y,
+                    viewport.width,
+                    viewport.height,
+                    geometry->panelWidth,
+                    geometry->panelHeight,
+                    physicalPixelsPerDip,
+                    accessibilityPolicy.textScale,
+                    accessibilityPolicy.minimumFontWeight,
+                    accessibilityPolicy.reducedMotion,
+                    accessibilityPolicy.reducedTransparency,
+                };
+                const bool collectAccessibility = !inertRetainedSnapshot &&
+                    accessibilityActive_ && descriptor &&
+                    widgetAccessibilityProjection_.ShouldCollect(projectionKey);
+                options.collectAccessibility = collectAccessibility;
                 auto result = declarativeRenderer_->Render(
                     renderTarget_.Get(), *snapshot, renderedFocusId, viewport, options);
                 for (const auto& diagnostic : result.diagnostics) {
@@ -17001,6 +17072,32 @@ private:
                     }
                 }
                 const auto& semanticSnapshot = *snapshot;
+                bool focusGroupEntryMoved{};
+                if (result.succeeded && focusGroupEntryPrepared &&
+                    focusGroupEntryAuthority) {
+                    const auto entry =
+                        interactionSession_.CommitPreparedFocusGroupEntryRequest(
+                            *focusGroupEntryAuthority,
+                            preparedFocusGroupEntryTarget);
+                    if (entry.consumed) {
+                        const auto priorFocus =
+                            interactionSession_.focusedElementId();
+                        if (entry.target && *entry.target != priorFocus) {
+                            ClearFreeScrollReentry(L"focus-group-entry-request");
+                            const auto focus = interactionSession_.MoveFocus(
+                                renderedWidget, semanticSnapshot, *entry.target,
+                                false, false);
+                            focusGroupEntryMoved = focus.changed;
+                            (void)scrollEvidenceProbe_.RecordTarget(
+                                *entry.target, L"focus-group-entry-request");
+                        }
+                        AppendDiagnostic(
+                            L"Focus-group entry request widget=" +
+                            std::wstring{renderedWidget} +
+                            L" state=settled-consumed target=" +
+                            (entry.target ? *entry.target : L"none"));
+                    }
+                }
                 if (result.succeeded) {
                     const std::wstring inputOwner =
                         state_.focusRegion() == widgetrail::FocusRegion::Tray
@@ -17326,38 +17423,6 @@ private:
                 declarativeMotionActive_ = !inertRetainedSnapshot && result.animationActive;
                 if (WidgetOwnsInputFocus(renderedWidget) &&
                     !textEntryModal_.active() && !inertRetainedSnapshot) {
-                    bool focusGroupEntryMoved{};
-                    if (descriptor) {
-                        const widgetrail::input::WidgetInteractionAuthority authority{
-                            renderedWidget,
-                            &semanticSnapshot,
-                            descriptor->runtimeGeneration,
-                            descriptor->presentationGeneration,
-                            false,
-                        };
-                        const auto entry =
-                            interactionSession_.ConsumeFocusGroupEntryRequest(
-                                authority, result);
-                        if (entry.consumed) {
-                            const auto priorFocus =
-                                interactionSession_.focusedElementId();
-                            if (entry.target && *entry.target != priorFocus) {
-                                ClearFreeScrollReentry(L"focus-group-entry-request");
-                                const auto focus = interactionSession_.MoveFocus(
-                                    renderedWidget, semanticSnapshot, *entry.target);
-                                focusGroupEntryMoved = focus.changed;
-                                (void)scrollEvidenceProbe_.RecordTarget(
-                                    *entry.target, L"focus-group-entry-request");
-                                InvalidateWidgetFocusChange(
-                                    focus.priorFocus,
-                                    focus.sliderDamageNodeIds);
-                            }
-                            AppendDiagnostic(
-                                L"Focus-group entry request widget=" +
-                                std::wstring{renderedWidget} + L" state=consumed target=" +
-                                (entry.target ? *entry.target : L"none"));
-                        }
-                    }
                     if (!options.suppressFocusedDescendantFollow ||
                         focusGroupEntryMoved) {
                         (void)ReconcileResponsiveFocusPersistence(

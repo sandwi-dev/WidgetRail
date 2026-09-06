@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.sdk-gallery",
   "publisher": "widgetrail.samples",
   "name": "SDK Gallery",
-  "version": "0.1.14",
+  "version": "0.1.16",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",

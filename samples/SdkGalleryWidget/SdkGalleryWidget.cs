@@ -287,16 +287,22 @@ public sealed class SdkGalleryWidget : Widget
             Destinations,
             expandedPane: null,
             expandedPaneEntryFocusId: null,
-            compactLeadingAdornment: UI.Text(
-                    "LB",
+            compactLeadingAdornment: UI.Row(
                     "gallery.hint.section.previous",
-                    "LB, Previous section")
-                .Classes("wrail-controller-hint__key"),
-            compactTrailingAdornment: UI.Text(
-                    "RB",
+                    UI.Text(
+                            "LB",
+                            "gallery.hint.section.previous.key",
+                            "LB, Previous section")
+                        .Classes("gallery-section-bumper-label"))
+                .Classes("wrail-controller-hint__key", "gallery-section-bumper-key"),
+            compactTrailingAdornment: UI.Row(
                     "gallery.hint.section.next",
-                    "RB, Next section")
-                .Classes("wrail-controller-hint__key"));
+                    UI.Text(
+                            "RB",
+                            "gallery.hint.section.next.key",
+                            "RB, Next section")
+                        .Classes("gallery-section-bumper-label"))
+                .Classes("wrail-controller-hint__key", "gallery-section-bumper-key"));
 
     private StackElement OverviewPage() => UI.Stack("gallery.overview",
         UI.SectionHeader(

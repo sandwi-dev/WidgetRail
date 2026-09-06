@@ -12,6 +12,18 @@
 }
 
 .gallery-header { flex-shrink: 0; }
+.gallery-section-bumper-key {
+  align: center;
+  justify: center;
+  flex-shrink: 0;
+}
+.gallery-section-bumper-label {
+  color: var(--canvas, #0b0d12);
+  font-size: 9px;
+  font-weight: 600;
+  text-align: center;
+  max-lines: 1;
+}
 .wrail-section-header__content {
   min-width: 0px;
   gap: 8px 16px;

@@ -458,7 +458,18 @@ std::wstring WidgetInteractionSession::RestoreFocus(
     const std::wstring_view widgetId,
     const WidgetSnapshot& snapshot) {
     focusedElementId_ = focusMemory_.Restore(widgetId, snapshot);
-    focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
+    const bool provisionalGroupEntry = pendingFocusGroupEntry_ &&
+        pendingFocusGroupEntry_->widgetId == widgetId &&
+        pendingFocusGroupEntry_->widgetInstanceId == snapshot.instanceId &&
+        pendingFocusGroupEntry_->inputScopeId == snapshot.activeInputScopeId &&
+        snapshot.focusGroupEntryRequest &&
+        pendingFocusGroupEntry_->requestId ==
+            snapshot.focusGroupEntryRequest->requestId &&
+        pendingFocusGroupEntry_->groupId ==
+            snapshot.focusGroupEntryRequest->groupId &&
+        snapshot.sequence >= pendingFocusGroupEntry_->snapshotSequence;
+    if (!provisionalGroupEntry)
+        focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
     return focusedElementId_;
 }
 
@@ -565,23 +576,71 @@ FocusGroupEntryObservation WidgetInteractionSession::ObserveFocusGroupEntryReque
 FocusGroupEntryApplication WidgetInteractionSession::ConsumeFocusGroupEntryRequest(
     const WidgetInteractionAuthority& authority,
     const RenderResult& renderResult) {
-    FocusGroupEntryApplication result;
-    if (!pendingFocusGroupEntry_ || !authority.semantics) return result;
-    const auto pending = *pendingFocusGroupEntry_;
+    if (!pendingFocusGroupEntry_) return {};
+    const auto preview = PreviewFocusGroupEntryRequest(authority, renderResult);
+    pendingFocusGroupEntry_.reset();
+    return {preview.current, preview.target};
+}
+
+FocusGroupEntryPreview WidgetInteractionSession::PreviewFocusGroupEntryRequest(
+    const WidgetInteractionAuthority& authority,
+    const RenderResult& renderResult) const {
+    if (!pendingFocusGroupEntry_ ||
+        !ExactFocusGroupEntryRequest(*pendingFocusGroupEntry_, authority)) {
+        return {};
+    }
+    return {
+        true,
+        focusGroupMemory_.Resolve(
+            authority.widgetId,
+            *authority.semantics,
+            pendingFocusGroupEntry_->groupId,
+            renderResult),
+    };
+}
+
+FocusGroupEntryApplication
+WidgetInteractionSession::CommitPreparedFocusGroupEntryRequest(
+    const WidgetInteractionAuthority& authority,
+    const std::optional<std::wstring>& target) {
+    if (!pendingFocusGroupEntry_ ||
+        !ExactFocusGroupEntryRequest(*pendingFocusGroupEntry_, authority)) {
+        return {};
+    }
+    pendingFocusGroupEntry_.reset();
+    return {true, target};
+}
+
+bool WidgetInteractionSession::FocusGroupEntryRequestPending(
+    const WidgetInteractionAuthority& authority) const noexcept {
+    return pendingFocusGroupEntry_ &&
+        ExactFocusGroupEntryRequest(*pendingFocusGroupEntry_, authority);
+}
+
+bool WidgetInteractionSession::RetireFocusGroupEntryRequest(
+    const WidgetInteractionAuthority& authority) noexcept {
+    if (!pendingFocusGroupEntry_ ||
+        !ExactFocusGroupEntryRequest(*pendingFocusGroupEntry_, authority)) {
+        return false;
+    }
+    pendingFocusGroupEntry_.reset();
+    return true;
+}
+
+bool WidgetInteractionSession::ExactFocusGroupEntryRequest(
+    const PendingFocusGroupEntry& pending,
+    const WidgetInteractionAuthority& authority) noexcept {
+    if (!SameFocusGroupEntryRuntime(pending, authority) ||
+        !authority.semantics) {
+        return false;
+    }
     const auto& snapshot = *authority.semantics;
-    const bool exact = SameFocusGroupEntryRuntime(pending, authority) &&
-        pending.presentationGeneration == authority.presentationGeneration &&
+    return pending.presentationGeneration == authority.presentationGeneration &&
         pending.inputScopeId == snapshot.activeInputScopeId &&
         snapshot.focusGroupEntryRequest &&
         snapshot.focusGroupEntryRequest->requestId == pending.requestId &&
         snapshot.focusGroupEntryRequest->groupId == pending.groupId &&
         snapshot.sequence >= pending.snapshotSequence;
-    pendingFocusGroupEntry_.reset();
-    if (!exact) return result;
-    result.consumed = true;
-    result.target = focusGroupMemory_.Resolve(
-        authority.widgetId, snapshot, pending.groupId, renderResult);
-    return result;
 }
 
 void WidgetInteractionSession::ResetFocusGroupEntryRequests() noexcept {

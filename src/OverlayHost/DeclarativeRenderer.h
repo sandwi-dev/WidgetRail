@@ -368,6 +368,15 @@ public:
         std::wstring_view focusedElementId,
         declarative::Rect viewport,
         const DeclarativeRenderOptions& options = {});
+
+    /// Computes the exact destination layout and shared focus eligibility used
+    /// by Render without drawing or publishing renderer-owned state. This is a
+    /// bounded preflight for an already-admitted one-shot group-entry request.
+    [[nodiscard]] RenderResult PrepareFocusEntry(
+        const WidgetSnapshot& snapshot,
+        std::wstring_view focusedElementId,
+        declarative::Rect viewport,
+        const DeclarativeRenderOptions& options = {});
     [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap>
     ResolveCompositorBackgroundBitmap(
         ID2D1RenderTarget* renderTarget,

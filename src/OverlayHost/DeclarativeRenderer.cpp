@@ -526,6 +526,9 @@ struct DeclarativeRenderer::RenderPass final {
     };
 
     DeclarativeRenderer* owner{};
+    std::unordered_map<std::wstring, ScrollStateEntry>* scrollState{};
+    std::uint64_t* scrollAccessClock{};
+    DeclarativeMotionTimeline* motionTimeline{};
     ID2D1RenderTarget* target{};
     const WidgetSnapshot* snapshot{};
     std::wstring focusedId;
@@ -554,6 +557,22 @@ struct DeclarativeRenderer::RenderPass final {
     std::optional<Rect> backgroundSurfaceAnimationDamage;
     std::optional<BackgroundSurfaceSettleWake> backgroundSurfaceSettleWake;
     std::wstring compositorBackgroundId;
+
+    [[nodiscard]] auto& ScrollState() noexcept {
+        return scrollState ? *scrollState : owner->scrollOffsets_;
+    }
+
+    [[nodiscard]] const auto& ScrollState() const noexcept {
+        return scrollState ? *scrollState : owner->scrollOffsets_;
+    }
+
+    [[nodiscard]] std::uint64_t& ScrollAccessClock() noexcept {
+        return scrollAccessClock ? *scrollAccessClock : owner->scrollStateAccessClock_;
+    }
+
+    [[nodiscard]] DeclarativeMotionTimeline& MotionTimeline() noexcept {
+        return motionTimeline ? *motionTimeline : owner->motionTimeline_;
+    }
 
     [[nodiscard]] bool IsResponsiveVisible(const WidgetNode& node) const noexcept {
         return node.visibleWhen.empty() || node.visibleWhen == L"always" ||
@@ -922,10 +941,10 @@ struct DeclarativeRenderer::RenderPass final {
                     L"Scroll requires the vertical or horizontal axis.",
                     RenderDiagnosticSeverity::Error);
             const auto key = ScrollStateKey(node.id);
-            if (const auto offset = owner->scrollOffsets_.find(key);
-                offset != owner->scrollOffsets_.end()) {
+            if (const auto offset = ScrollState().find(key);
+                offset != ScrollState().end()) {
                 if (!measurementOnly)
-                    offset->second.lastAccess = ++owner->scrollStateAccessClock_;
+                    offset->second.lastAccess = ++ScrollAccessClock();
                 element.scrollOffset = measurementOnly ? 0.0F : offset->second.offset;
             } else if (!measurementOnly && node.virtualCollectionWindow &&
                        node.virtualCollectionWindow->firstItemIndex) {
@@ -1059,7 +1078,7 @@ struct DeclarativeRenderer::RenderPass final {
         const auto& style = preparedNode->second.paintStyle;
         const auto disabledFactor = DeclarativeStateOpacityFactor(
             node.isDisabled, node.isBusy, options.accessibility);
-        const auto motion = owner->motionTimeline_.Resolve(
+        const auto motion = MotionTimeline().Resolve(
             MotionStateKey(node.id),
             DeclarativeMotionValue{
                 style.opacity() * disabledFactor,
@@ -1106,6 +1125,56 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
+    void ResolvePresentationWithFocusFollow() {
+        const auto started = std::chrono::steady_clock::now();
+        bool presentationMatchesLayout = false;
+        std::size_t presentationFollowAttempts{};
+        bool lastPresentationFollowChanged{};
+        for (std::size_t followPass = 0;
+             !options.suppressFocusedDescendantFollow &&
+                 followPass < kMaximumFocusFollowPasses;
+             ++followPass) {
+            ++presentationFollowAttempts;
+            presentation.clear();
+            ResolvePresentation(snapshot->root, 0.0F, 0.0F, viewport);
+            presentationMatchesLayout = true;
+            if (FocusedTargetVisibleInPresentation()) {
+                focusFollowTrace.converged = true;
+                break;
+            }
+            const auto followAttempt = FollowFocusedDescendant(true);
+            lastPresentationFollowChanged = followAttempt.changed;
+            const bool stableOrRepeated = !lastPresentationFollowChanged ||
+                !followAttempt.meaningfulOffsetChange ||
+                followAttempt.repeatedOffsetState;
+            if (stableOrRepeated) break;
+            presentationMatchesLayout = false;
+            BuildLayout(
+                false,
+                true,
+                CollectionAnchorPolicy::PreserveFocusFollowOffsets);
+        }
+        if (options.suppressFocusedDescendantFollow) {
+            presentation.clear();
+            ResolvePresentation(snapshot->root, 0.0F, 0.0F, viewport);
+            presentationMatchesLayout = true;
+        }
+        if (presentationFollowAttempts == kMaximumFocusFollowPasses &&
+            (!presentationMatchesLayout ||
+             !FocusedTargetVisibleInPresentation())) {
+            focusFollowTrace.boundHit = true;
+        }
+        if (!presentationMatchesLayout) {
+            presentation.clear();
+            ResolvePresentation(snapshot->root, 0.0F, 0.0F, viewport);
+        }
+        AddFocusFollowElapsed(
+            FocusFollowPhase::Presentation,
+            static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - started).count()));
+    }
+
     void VisitScrollNodes(
         const WidgetNode& node,
         const std::function<void(const WidgetNode&)>& callback) const {
@@ -1115,9 +1184,9 @@ struct DeclarativeRenderer::RenderPass final {
     }
 
     void StoreScrollOffset(const std::wstring_view key, const float offset) {
-        auto& state = owner->scrollOffsets_[std::wstring{key}];
+        auto& state = ScrollState()[std::wstring{key}];
         state.offset = offset;
-        state.lastAccess = ++owner->scrollStateAccessClock_;
+        state.lastAccess = ++ScrollAccessClock();
     }
 
     [[nodiscard]] const WidgetNode* FindCollectionItem(
@@ -1175,9 +1244,9 @@ struct DeclarativeRenderer::RenderPass final {
         VisitScrollNodes(snapshot->root, [&](const WidgetNode& scroll) {
             if (scroll.collectionAnchorKey.empty()) return;
             const auto stateKey = ScrollStateKey(scroll.id);
-            const auto existing = owner->scrollOffsets_.find(stateKey);
+            const auto existing = ScrollState().find(stateKey);
             const auto* scrollBox = layout.Find(NarrowStableId(scroll.id));
-            if (existing == owner->scrollOffsets_.end() ||
+            if (existing == ScrollState().end() ||
                 !scrollBox || scrollBox->scrollAxis == declarative::ScrollAxis::None) {
                 return;
             }
@@ -1397,8 +1466,8 @@ struct DeclarativeRenderer::RenderPass final {
                 scroll, scroll, snapshot->initialFocusId);
 
             const auto stateKey = ScrollStateKey(scroll.id);
-            if (const auto state = owner->scrollOffsets_.find(stateKey);
-                state != owner->scrollOffsets_.end()) {
+            if (const auto state = ScrollState().find(stateKey);
+                state != ScrollState().end()) {
                 observation.offset = state->second.offset;
                 observation.anchorPosition = state->second.anchorPosition;
                 observation.hasAnchorPosition = state->second.hasAnchorPosition;
@@ -1871,8 +1940,8 @@ struct DeclarativeRenderer::RenderPass final {
             }
             desired = std::clamp(desired, 0.0F, scrollBox->maximumScrollOffset);
             const auto key = ScrollStateKey(scroll.id);
-            const auto existing = owner->scrollOffsets_.find(key);
-            if (existing == owner->scrollOffsets_.end() ||
+            const auto existing = ScrollState().find(key);
+            if (existing == ScrollState().end() ||
                 std::abs(existing->second.offset - desired) > 0.01F) {
                 StoreScrollOffset(key, desired);
                 changed = true;
@@ -1972,8 +2041,8 @@ struct DeclarativeRenderer::RenderPass final {
             }
 
             const auto key = ScrollStateKey(item->id);
-            const auto retained = owner->scrollOffsets_.find(key);
-            const float offset = retained != owner->scrollOffsets_.end()
+            const auto retained = ScrollState().find(key);
+            const float offset = retained != ScrollState().end()
                 ? retained->second.offset
                 : scrollBox->scrollOffset;
             const auto viewportBox = usePresentationGeometry
@@ -2349,7 +2418,7 @@ struct DeclarativeRenderer::RenderPass final {
             if (const auto* box = layout.Find(NarrowStableId(scroll.id))) {
                 StoreScrollOffset(key, box->scrollOffset);
                 result.scrollOffsets[scroll.id] = box->scrollOffset;
-                auto& state = owner->scrollOffsets_[key];
+                auto& state = ScrollState()[key];
                 state.anchorKey = scroll.collectionAnchorKey;
                 state.hasAnchorPosition = false;
                 if (!scroll.collectionAnchorKey.empty()) {
@@ -2371,25 +2440,25 @@ struct DeclarativeRenderer::RenderPass final {
         prefix.push_back(L'\x1f');
         prefix.append(snapshot->activeInputScopeId);
         prefix.push_back(L'\x1f');
-        std::erase_if(owner->scrollOffsets_, [&](const auto& entry) {
+        std::erase_if(ScrollState(), [&](const auto& entry) {
             return entry.first.starts_with(prefix) && !activeKeys.contains(entry.first);
         });
-        if (owner->scrollOffsets_.size() <= kMaximumScrollStateEntries) return;
+        if (ScrollState().size() <= kMaximumScrollStateEntries) return;
 
         // Evict only the overflow, oldest inactive entries first. The active
         // snapshot (at most the protocol's bounded node count) survives a cap
         // transition instead of losing its scroll position with the old map
         // clear behavior.
         std::vector<std::pair<std::uint64_t, std::wstring>> inactive;
-        inactive.reserve(owner->scrollOffsets_.size() - activeKeys.size());
-        for (const auto& [key, state] : owner->scrollOffsets_) {
+        inactive.reserve(ScrollState().size() - activeKeys.size());
+        for (const auto& [key, state] : ScrollState()) {
             if (!activeKeys.contains(key)) inactive.emplace_back(state.lastAccess, key);
         }
         std::ranges::sort(inactive);
-        const auto overflow = owner->scrollOffsets_.size() - kMaximumScrollStateEntries;
+        const auto overflow = ScrollState().size() - kMaximumScrollStateEntries;
         const auto count = std::min(overflow, inactive.size());
         for (std::size_t index = 0; index < count; ++index)
-            owner->scrollOffsets_.erase(inactive[index].second);
+            ScrollState().erase(inactive[index].second);
     }
 
     [[nodiscard]] Size MeasureText(
@@ -4012,6 +4081,56 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
+    void CollectFocusGeometry(
+        const WidgetNode& node,
+        const std::wstring_view inputScope,
+        const PresentationNode& presented) {
+        if (node.kind != L"button" && node.kind != L"slider" &&
+            node.kind != L"actionSurface") {
+            return;
+        }
+        result.navigationRects[node.id] = presented.borderBox;
+        // Disabled and busy describe activation, not navigability. This is the
+        // same focus graph used by both preparation and target-backed drawing.
+        result.navigationEnabled[node.id] = true;
+        result.focusScopes[node.id] = std::wstring{inputScope};
+        if (CanRevealNode(node.id)) result.revealableFocusIds.insert(node.id);
+        const auto visibleRect = presented.visibleBox;
+        if (visibleRect.width > 0.5F && visibleRect.height > 0.5F) {
+            result.hitRegions.push_back(
+                {node.id, visibleRect, !node.isDisabled && !node.isBusy});
+            result.focusRects[node.id] = visibleRect;
+            if (node.id == focusedId) result.currentFocusRect = visibleRect;
+        }
+        if (node.id == focusedId)
+            result.currentFocusOutlineClip = EffectiveFocusVisibilityClip(node.id);
+    }
+
+    void CollectFocusGeometryTree(
+        const WidgetNode& node,
+        const std::wstring_view inheritedInputScope = {}) {
+        const std::wstring_view inputScope = !node.inputScopeId.empty()
+            ? std::wstring_view(node.inputScopeId)
+            : inheritedInputScope.empty()
+                ? std::wstring_view(node.id)
+                : inheritedInputScope;
+        const auto presented = presentation.find(NarrowStableId(node.id));
+        if (presented == presentation.end()) return;
+        CollectFocusGeometry(node, inputScope, presented->second);
+        if (node.kind == L"focusPresentationSurface") {
+            const auto selection = ResolveFocusPresentationSelection(
+                snapshot->root, focusedId);
+            const auto* fragment = selection.surface == &node
+                ? selection.fragment
+                : !node.defaultFocusPresentation.empty()
+                    ? &node.defaultFocusPresentation.front()
+                    : nullptr;
+            if (fragment) CollectFocusGeometryTree(*fragment, inputScope);
+        }
+        for (const auto& child : node.children)
+            CollectFocusGeometryTree(child, inputScope);
+    }
+
     void DrawNode(
         const WidgetNode& node,
         const std::wstring_view inheritedInputScope = {}) {
@@ -4079,28 +4198,7 @@ struct DeclarativeRenderer::RenderPass final {
             result.accessibilityRegions.push_back({node.id, visibleRect});
         }
 
-        if (node.kind == L"button" || node.kind == L"slider" ||
-            node.kind == L"actionSurface") {
-            result.navigationRects[node.id] = presented.borderBox;
-            // A busy slider retains its place in the focus graph while its
-            // value is pending, but the host suppresses adjustment/activation.
-            // Disabled and busy describe activation state, not navigability.
-            // Focus remains stable so status changes never teleport the user.
-            result.navigationEnabled[node.id] = true;
-            result.focusScopes[node.id] = std::wstring{inputScope};
-            if (CanRevealNode(node.id)) result.revealableFocusIds.insert(node.id);
-            // Controller focus and pointer hit-testing must use the geometry a
-            // user can actually see. A clipped/offscreen child remains in the
-            // declarative tree but is not a navigation candidate.
-            if (visibleRect.width > 0.5F && visibleRect.height > 0.5F) {
-                result.hitRegions.push_back(
-                    {node.id, visibleRect, !node.isDisabled && !node.isBusy});
-                result.focusRects[node.id] = visibleRect;
-                if (focused) result.currentFocusRect = visibleRect;
-            }
-            if (focused)
-                result.currentFocusOutlineClip = EffectiveFocusVisibilityClip(node.id);
-        }
+        CollectFocusGeometry(node, inputScope, presented);
 
         if (!target) {
             if (node.kind == L"focusPresentationSurface") {
@@ -4938,58 +5036,8 @@ RenderResult DeclarativeRenderer::Render(
         pass.BuildLayout(!options.suppressFocusedDescendantFollow);
     }
     const auto preparationFinished = std::chrono::steady_clock::now();
-    const auto presentationFollowStarted = preparationFinished;
-    bool presentationMatchesLayout = false;
-    std::size_t presentationFollowAttempts{};
-    bool lastPresentationFollowChanged{};
-    for (std::size_t followPass = 0;
-         !options.suppressFocusedDescendantFollow &&
-             followPass < kMaximumFocusFollowPasses;
-         ++followPass) {
-        ++presentationFollowAttempts;
-        pass.presentation.clear();
-        pass.ResolvePresentation(snapshot.root, 0.0F, 0.0F, viewport);
-        presentationMatchesLayout = true;
-        if (pass.FocusedTargetVisibleInPresentation()) {
-            pass.focusFollowTrace.converged = true;
-            break;
-        }
-        const auto followAttempt = pass.FollowFocusedDescendant(true);
-        lastPresentationFollowChanged = followAttempt.changed;
-        const bool stableOrRepeated = !lastPresentationFollowChanged ||
-            !followAttempt.meaningfulOffsetChange ||
-            followAttempt.repeatedOffsetState;
-        if (stableOrRepeated) break;
-        // A translated focused descendant may cross a scroll boundary even
-        // when its static layout box was visible. Rebuild against the updated
-        // host-owned offset and converge with the same hard bound used by
-        // nested static focus follow.
-        presentationMatchesLayout = false;
-        pass.BuildLayout(
-            false,
-            true,
-            RenderPass::CollectionAnchorPolicy::PreserveFocusFollowOffsets);
-    }
-    if (options.suppressFocusedDescendantFollow) {
-        pass.presentation.clear();
-        pass.ResolvePresentation(snapshot.root, 0.0F, 0.0F, viewport);
-        presentationMatchesLayout = true;
-    }
-    if (presentationFollowAttempts == kMaximumFocusFollowPasses &&
-        (!presentationMatchesLayout ||
-         !pass.FocusedTargetVisibleInPresentation())) {
-        pass.focusFollowTrace.boundHit = true;
-    }
-    if (!presentationMatchesLayout) {
-        pass.presentation.clear();
-        pass.ResolvePresentation(snapshot.root, 0.0F, 0.0F, viewport);
-    }
+    pass.ResolvePresentationWithFocusFollow();
     const auto presentationFinished = std::chrono::steady_clock::now();
-    pass.AddFocusFollowElapsed(
-        RenderPass::FocusFollowPhase::Presentation,
-        static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::microseconds>(
-                presentationFinished - presentationFollowStarted).count()));
     const auto cornerRadius = std::isfinite(options.surfaceCornerRadiusPx)
         ? std::clamp(options.surfaceCornerRadiusPx, 0.0F,
                      std::min(viewport.width, viewport.height) * 0.5F)
@@ -5179,6 +5227,67 @@ RenderResult DeclarativeRenderer::Render(
 #endif
     pass.result.timing.collectionAdmissionSummary =
         std::move(collectionAdmissionSummary);
+    return pass.result;
+}
+
+RenderResult DeclarativeRenderer::PrepareFocusEntry(
+    const WidgetSnapshot& snapshot,
+    const std::wstring_view focusedElementId,
+    const Rect viewport,
+    const DeclarativeRenderOptions& options) {
+    RenderPass pass;
+    pass.owner = this;
+    pass.snapshot = &snapshot;
+    pass.focusedId = focusedElementId;
+    pass.pressedId = options.pressedElementId;
+    pass.viewport = viewport;
+    pass.options = options;
+    pass.options.collectAccessibility = false;
+    pass.options.compositorBackgroundAvailable = false;
+    const auto responsiveViewport = options.responsiveViewport.value_or(
+        Size{viewport.width, viewport.height});
+    pass.compactMode = IsCompactResponsiveSurface(responsiveViewport);
+
+    auto preparedScrollState = scrollOffsets_;
+    auto preparedScrollClock = scrollStateAccessClock_;
+    auto preparedMotionTimeline = motionTimeline_;
+    pass.scrollState = &preparedScrollState;
+    pass.scrollAccessClock = &preparedScrollClock;
+    pass.motionTimeline = &preparedMotionTimeline;
+
+    if (!FiniteRect(viewport) || viewport.width < 0.0F || viewport.height < 0.0F) {
+        pass.Add({}, L"invalid_viewport",
+            L"Focus-entry preparation requires finite non-negative geometry.",
+            RenderDiagnosticSeverity::Error);
+        return pass.result;
+    }
+    if (!writeFactory_)
+        pass.Add({}, L"missing_write_factory",
+            L"Intrinsic text uses fallback metrics without DirectWrite.");
+    const auto animationTimestamp = options.animationTimestampMilliseconds.value_or(
+        static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count()));
+    pass.options.animationTimestampMilliseconds = animationTimestamp;
+    preparedMotionTimeline.BeginFrame(animationTimestamp);
+    pass.BuildLayout(!options.suppressFocusedDescendantFollow);
+    pass.ResolvePresentationWithFocusFollow();
+    pass.CollectFocusGeometryTree(snapshot.root);
+    (void)preparedMotionTimeline.EndFrame();
+
+    const auto hasErrors = std::any_of(
+        pass.result.diagnostics.begin(), pass.result.diagnostics.end(),
+        [](const RenderDiagnostic& diagnostic) {
+            return diagnostic.severity == RenderDiagnosticSeverity::Error;
+        });
+    pass.result.succeeded = !hasErrors && pass.layout.valid();
+    if (pass.result.succeeded) {
+        pass.result.responsiveSurface = ResponsiveSurfacePresentation{
+            responsiveViewport,
+            pass.compactMode
+                ? ResponsiveSurfaceMode::Compact
+                : ResponsiveSurfaceMode::Expanded,
+        };
+    }
     return pass.result;
 }
 
