@@ -37,6 +37,7 @@ public sealed class GamesAppsWidget : Widget
     public const int MaximumItems =
         MaximumCuratedItems + GamesAppsLibraryPolicy.MaximumExcludedGames;
     private const string LibraryLoadOperationKey = "games.library.load";
+    private const string PageLoadOperationKey = "games.page.load";
     private static readonly WidgetAppLibraryQuery AllInstalledQuery = new();
     private static readonly WidgetAppLibraryQuery InstalledGamesQuery =
         new(Kind: WidgetAppLibraryKind.Game);
@@ -189,22 +190,20 @@ public sealed class GamesAppsWidget : Widget
                     OpenLibrary(enterRememberedContent: !IsSectionHeaderAction(action));
                 return;
             case "games.open-catalog":
-                await OpenCatalogAsync(
-                    cancellationToken,
+                OpenCatalog(
                     enterRememberedContent: !IsSectionHeaderAction(action),
-                    force: false).ConfigureAwait(false);
+                    force: false);
                 return;
             case "games.open-running":
-                await OpenRunningAsync(
-                    cancellationToken,
+                OpenRunning(
                     enterRememberedContent: !IsSectionHeaderAction(action),
-                    force: false).ConfigureAwait(false);
+                    force: false);
                 return;
             case "games.section.previous":
-                await SwitchRootAsync(-1, cancellationToken).ConfigureAwait(false);
+                SwitchRoot(-1);
                 return;
             case "games.section.next":
-                await SwitchRootAsync(1, cancellationToken).ConfigureAwait(false);
+                SwitchRoot(1);
                 return;
             case "games.toggle-curation":
                 string? catalogAppId = null;
@@ -237,13 +236,13 @@ public sealed class GamesAppsWidget : Widget
                 return;
             case RetryActionId:
             case RefreshCatalogActionId:
-                await RefreshCurrentRouteAsync(cancellationToken).ConfigureAwait(false);
+                RefreshCurrentRoute();
                 return;
             case "games.load-more":
-                await LoadMoreAsync(cancellationToken).ConfigureAwait(false);
+                LoadMore();
                 return;
             case "games.previous-page":
-                await LoadPreviousPageAsync(cancellationToken).ConfigureAwait(false);
+                LoadPreviousPage();
                 return;
             case "games.launch":
                 string? appId = null;
@@ -599,58 +598,76 @@ public sealed class GamesAppsWidget : Widget
         }
     }
 
-    private Task RefreshCurrentRouteAsync(CancellationToken cancellationToken) => Page switch
+    private void RefreshCurrentRoute()
     {
-        GamesAppsPage.Catalog => OpenCatalogAsync(
-            cancellationToken, enterRememberedContent: false, force: true),
-        GamesAppsPage.Running => OpenRunningAsync(
-            cancellationToken, enterRememberedContent: false, force: true),
-        _ => RefreshLibraryAsync(cancellationToken),
-    };
+        switch (Page)
+        {
+            case GamesAppsPage.Catalog:
+                OpenCatalog(enterRememberedContent: false, force: true);
+                break;
+            case GamesAppsPage.Running:
+                OpenRunning(enterRememberedContent: false, force: true);
+                break;
+            default:
+                RefreshLibrary();
+                break;
+        }
+    }
 
-    private async Task RefreshLibraryAsync(CancellationToken cancellationToken)
+    private void RefreshLibrary()
     {
         if (!IsActive || ActiveCancellationToken.IsCancellationRequested) return;
-
-        var acquired = false;
-        try
+        StopActiveRun();
+        var generation = Interlocked.Increment(ref _generation);
+        lock (_gate)
         {
-            acquired = await _commandGate.WaitAsync(0, cancellationToken).ConfigureAwait(false);
-            if (!acquired || !IsActive || ActiveCancellationToken.IsCancellationRequested) return;
-
-            StopActiveRun();
-            var generation = Interlocked.Increment(ref _generation);
-            lock (_gate)
+            _viewState = _hasLibrarySnapshot
+                ? GamesAppsViewState.Ready
+                : GamesAppsViewState.Loading;
+            _items = _libraryItems;
+            _status = _hasLibrarySnapshot
+                ? LibraryStatusLocked() + " · refreshing"
+                : "Reloading your saved library…";
+            _launchingAppId = null;
+            _loadingMore = false;
+            _catalogRefreshBusy = true;
+        }
+        Invalidate();
+        var operation = Operations.RunLatest(
+            LibraryLoadOperationKey,
+            async context =>
             {
-                _viewState = _hasLibrarySnapshot
-                    ? GamesAppsViewState.Ready
-                    : GamesAppsViewState.Loading;
-                _items = _libraryItems;
-                _status = _hasLibrarySnapshot
-                    ? LibraryStatusLocked() + " · refreshing"
-                    : "Reloading your saved library…";
-                _launchingAppId = null;
-                _loadingMore = false;
-                _catalogRefreshBusy = true;
-            }
-            Invalidate();
-            var operation = Operations.RunLatest(
-                LibraryLoadOperationKey,
-                context => LoadSavedLibraryRunAsync(
-                    generation, showColdLoading: false,
-                    refreshCatalog: true, context),
-                WidgetOperationLifetime.Active);
-            await operation.Completion.ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (
-            cancellationToken.IsCancellationRequested || ActiveCancellationToken.IsCancellationRequested)
+                var acquired = false;
+                try
+                {
+                    await _commandGate.WaitAsync(context.CancellationToken).ConfigureAwait(false);
+                    acquired = true;
+                    await LoadSavedLibraryRunAsync(
+                            generation, showColdLoading: false,
+                            refreshCatalog: true, context)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    if (acquired) _commandGate.Release();
+                    var changed = false;
+                    lock (_gate)
+                    {
+                        if (Interlocked.Read(ref _generation) == generation)
+                        {
+                            _catalogRefreshBusy = false;
+                            changed = true;
+                        }
+                    }
+                    if (changed) Invalidate();
+                }
+            },
+            WidgetOperationLifetime.Active);
+        if (!operation.IsAccepted)
         {
-            if (cancellationToken.IsCancellationRequested) throw;
-        }
-        finally
-        {
-            lock (_gate) _catalogRefreshBusy = false;
-            if (acquired) _commandGate.Release();
+            lock (_gate)
+                if (Interlocked.Read(ref _generation) == generation)
+                    _catalogRefreshBusy = false;
             Invalidate();
         }
     }
@@ -659,6 +676,7 @@ public sealed class GamesAppsWidget : Widget
     {
         Interlocked.Increment(ref _generation);
         Operations.Cancel(LibraryLoadOperationKey);
+        Operations.Cancel(PageLoadOperationKey);
         _toastExpiry.Cancel();
         lock (_gate)
         {
@@ -899,7 +917,7 @@ public sealed class GamesAppsWidget : Widget
         action.SourceElementId.StartsWith("games.sections.compact-", StringComparison.Ordinal) ||
         action.SourceElementId.StartsWith("games.sections.rail-", StringComparison.Ordinal);
 
-    private async Task SwitchRootAsync(int offset, CancellationToken cancellationToken)
+    private void SwitchRoot(int offset)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         var current = Array.IndexOf(RootPages, Page);
@@ -912,20 +930,17 @@ public sealed class GamesAppsWidget : Widget
                 OpenLibrary(enterRememberedContent: true);
                 break;
             case GamesAppsPage.Catalog:
-                await OpenCatalogAsync(
-                    cancellationToken, enterRememberedContent: true, force: false)
-                    .ConfigureAwait(false);
+                OpenCatalog(enterRememberedContent: true, force: false);
                 break;
             case GamesAppsPage.Running:
-                await OpenRunningAsync(
-                    cancellationToken, enterRememberedContent: true, force: false)
-                    .ConfigureAwait(false);
+                OpenRunning(enterRememberedContent: true, force: false);
                 break;
         }
     }
 
     private void OpenLibrary(bool enterRememberedContent)
     {
+        Operations.Cancel(PageLoadOperationKey);
         Interlocked.Increment(ref _generation);
         lock (_gate)
         {
@@ -933,6 +948,8 @@ public sealed class GamesAppsWidget : Widget
             _catalog = GamesAppsCatalogState.Empty;
             _runningRevision = null;
             _loadingMore = false;
+            _catalogRefreshBusy = false;
+            _toast = null;
             _viewState = _hasLibrarySnapshot
                 ? GamesAppsViewState.Ready
                 : GamesAppsViewState.Initial;
@@ -951,156 +968,238 @@ public sealed class GamesAppsWidget : Widget
         Invalidate();
     }
 
-    private async Task OpenCatalogAsync(
-        CancellationToken cancellationToken,
+    private void OpenCatalog(
         bool enterRememberedContent,
         bool force)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         if (Page == GamesAppsPage.Catalog && !force) return;
-        using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken, ActiveCancellationToken);
-        var acquired = false;
-        CancellationTokenSource? routeLifetime = null;
-        try
+        Operations.Cancel(LibraryLoadOperationKey);
+        var sameRoute = Page == GamesAppsPage.Catalog;
+        long generation;
+        lock (_gate)
         {
-            acquired = await _commandGate.WaitAsync(0, commandLifetime.Token).ConfigureAwait(false);
-            if (!acquired) return;
-            Operations.Cancel(LibraryLoadOperationKey);
-            await Operations.WhenIdleAsync(LibraryLoadOperationKey, commandLifetime.Token)
-                .ConfigureAwait(false);
-            long generation;
-            lock (_gate)
+            generation = Interlocked.Increment(ref _generation);
+            if (!sameRoute)
             {
-                generation = Interlocked.Increment(ref _generation);
-                _viewState = force && _items.Count != 0
-                    ? GamesAppsViewState.Ready
-                    : GamesAppsViewState.Loading;
-                _status = "Loading applications you can add…";
-                _loadingMore = true;
+                _items = [];
+                _catalog = GamesAppsCatalogState.Empty;
             }
-            _ = enterRememberedContent
-                ? _navigation.NavigateRoot(
-                    GamesAppsPage.Catalog,
-                    GamesAppsPresentation.FocusGroupId(GamesAppsPage.Catalog))
-                : _navigation.NavigateRoot(GamesAppsPage.Catalog);
-            routeLifetime = CancellationTokenSource.CreateLinkedTokenSource(
-                commandLifetime.Token,
-                _navigation.Value.RootRouteCancellationToken);
-            Invalidate();
-            var page = await HostServices.AppLibrary.QueryAsync(
-                    AllInstalledQuery, limit: PageSize, refresh: force,
-                    cancellationToken: routeLifetime.Token).ConfigureAwait(false);
-            ApplyPage(page, GamesAppsCatalogPageTransition.Initial, generation);
+            _viewState = force && sameRoute && _items.Count != 0
+                ? GamesAppsViewState.Ready
+                : GamesAppsViewState.Loading;
+            _status = "Loading applications you can add…";
+            _loadingMore = true;
+            _catalogRefreshBusy = false;
+            _toast = null;
         }
-        catch (OperationCanceledException) when (
-            commandLifetime.IsCancellationRequested || routeLifetime?.IsCancellationRequested == true)
-        {
-            if (cancellationToken.IsCancellationRequested) throw;
-        }
-        catch (Exception exception)
-        {
-            var message = ApplyCommandError(exception, "Applications could not be loaded");
-            ShowToast("Catalog unavailable", message, ToastTone.Danger);
-            if (Page == GamesAppsPage.Catalog)
-                OpenLibrary(enterRememberedContent: false);
-        }
-        finally
-        {
-            routeLifetime?.Dispose();
-            if (acquired)
+        _ = enterRememberedContent
+            ? _navigation.NavigateRoot(
+                GamesAppsPage.Catalog,
+                GamesAppsPresentation.FocusGroupId(GamesAppsPage.Catalog))
+            : _navigation.NavigateRoot(GamesAppsPage.Catalog);
+        var navigation = _navigation.Value;
+        Invalidate();
+        SchedulePageOperation(
+            GamesAppsPage.Catalog,
+            navigation,
+            generation,
+            async cancellationToken =>
             {
-                lock (_gate) _loadingMore = false;
-                _commandGate.Release();
-                Invalidate();
-            }
-        }
+                var page = await HostServices.AppLibrary.QueryAsync(
+                        AllInstalledQuery, limit: PageSize, refresh: force,
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                ApplyPage(page, GamesAppsCatalogPageTransition.Initial, generation);
+            },
+            "Catalog unavailable",
+            "Applications could not be loaded",
+            ToastTone.Danger);
     }
 
-    private async Task OpenRunningAsync(
-        CancellationToken cancellationToken,
+    private void OpenRunning(
         bool enterRememberedContent,
         bool force)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         if (Page == GamesAppsPage.Running && !force) return;
-        using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken, ActiveCancellationToken);
-        if (!await _commandGate.WaitAsync(0, commandLifetime.Token).ConfigureAwait(false)) return;
-        CancellationTokenSource? routeLifetime = null;
-        try
+        Operations.Cancel(LibraryLoadOperationKey);
+        var sameRoute = Page == GamesAppsPage.Running;
+        long generation;
+        lock (_gate)
         {
-            Operations.Cancel(LibraryLoadOperationKey);
-            await Operations.WhenIdleAsync(LibraryLoadOperationKey, commandLifetime.Token)
-                .ConfigureAwait(false);
-            lock (_gate)
+            generation = Interlocked.Increment(ref _generation);
+            if (!sameRoute)
             {
-                Interlocked.Increment(ref _generation);
-                _viewState = force && _items.Count != 0
-                    ? GamesAppsViewState.Ready
-                    : GamesAppsViewState.Loading;
-                _status = "Checking visible installed applications…";
-                _loadingMore = true;
+                _items = [];
+                _runningRevision = null;
             }
-            _ = enterRememberedContent
-                ? _navigation.NavigateRoot(
-                    GamesAppsPage.Running,
-                    GamesAppsPresentation.FocusGroupId(GamesAppsPage.Running))
-                : _navigation.NavigateRoot(GamesAppsPage.Running);
-            routeLifetime = CancellationTokenSource.CreateLinkedTokenSource(
-                commandLifetime.Token,
-                _navigation.Value.RootRouteCancellationToken);
-            Invalidate();
-            var observed = await HostServices.AppLibrary.ObserveRunningAsync(routeLifetime.Token)
-                .ConfigureAwait(false);
-            var items = observed.Items.Select(item => new WidgetAppLibraryItem(
-                item.SavedId,
-                item.SavedId,
-                new WidgetAppLibraryPresentation(
-                    item.DisplayName,
-                    item.Kind,
-                    new WidgetAppLibrarySourceReference(
-                        "source-running", item.SourceAttribution),
-                    new WidgetAppLibraryAvailability(
-                        WidgetAppLibraryAvailabilityState.StaleSource,
-                        false, "confirmation_required"),
-                    new WidgetAppLibraryArtworkSet([]),
-                    Metadata: null,
-                    new WidgetAppLibraryCapabilitySet([]),
-                    ActiveOperation: null))).ToArray();
-            lock (_gate)
+            _viewState = force && sameRoute && _items.Count != 0
+                ? GamesAppsViewState.Ready
+                : GamesAppsViewState.Loading;
+            _status = "Checking visible installed applications…";
+            _loadingMore = true;
+            _catalogRefreshBusy = false;
+            _toast = null;
+        }
+        _ = enterRememberedContent
+            ? _navigation.NavigateRoot(
+                GamesAppsPage.Running,
+                GamesAppsPresentation.FocusGroupId(GamesAppsPage.Running))
+            : _navigation.NavigateRoot(GamesAppsPage.Running);
+        var navigation = _navigation.Value;
+        Invalidate();
+        SchedulePageOperation(
+            GamesAppsPage.Running,
+            navigation,
+            generation,
+            async cancellationToken =>
             {
-                if (Page != GamesAppsPage.Running) return;
-                _runningRevision = observed.Revision;
-                _items = items;
-                _selectedAppId = items.FirstOrDefault()?.AppId;
+                var observed = await HostServices.AppLibrary
+                    .ObserveRunningAsync(cancellationToken).ConfigureAwait(false);
+                var items = observed.Items.Select(item => new WidgetAppLibraryItem(
+                    item.SavedId,
+                    item.SavedId,
+                    new WidgetAppLibraryPresentation(
+                        item.DisplayName,
+                        item.Kind,
+                        new WidgetAppLibrarySourceReference(
+                            "source-running", item.SourceAttribution),
+                        new WidgetAppLibraryAvailability(
+                            WidgetAppLibraryAvailabilityState.StaleSource,
+                            false, "confirmation_required"),
+                        new WidgetAppLibraryArtworkSet([]),
+                        Metadata: null,
+                        new WidgetAppLibraryCapabilitySet([]),
+                        ActiveOperation: null))).ToArray();
+                lock (_gate)
+                {
+                    if (Interlocked.Read(ref _generation) != generation ||
+                        Page != GamesAppsPage.Running) return;
+                    _runningRevision = observed.Revision;
+                    _items = items;
+                    _selectedAppId = items.FirstOrDefault()?.AppId;
+                    _viewState = GamesAppsViewState.Ready;
+                    _status = items.Length == 0
+                        ? "No visible applications match your installed library"
+                        : $"{items.Length} visible installed application{(items.Length == 1 ? "" : "s")}";
+                    _catalog = GamesAppsCatalogState.Empty;
+                }
+                Invalidate();
+            },
+            "Running apps unavailable",
+            "Running apps could not be checked",
+            ToastTone.Warning);
+    }
+
+    private void SchedulePageOperation(
+        GamesAppsPage route,
+        WidgetNavigationSnapshot<GamesAppsPage> navigation,
+        long generation,
+        Func<CancellationToken, Task> work,
+        string errorTitle,
+        string errorFallback,
+        ToastTone errorTone)
+    {
+        var operation = Operations.RunLatest(
+            PageLoadOperationKey,
+            async context =>
+            {
+                using var routeLifetime = CancellationTokenSource.CreateLinkedTokenSource(
+                    context.CancellationToken,
+                    navigation.RootRouteCancellationToken);
+                var acquired = false;
+                try
+                {
+                    await _commandGate.WaitAsync(routeLifetime.Token).ConfigureAwait(false);
+                    acquired = true;
+                    if (!IsCurrentPageOperation(route, generation, context)) return;
+                    await work(routeLifetime.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (routeLifetime.IsCancellationRequested)
+                {
+                }
+                catch (Exception exception)
+                {
+                    if (IsCurrentPageOperation(route, generation, context))
+                        ApplyPageOperationError(
+                            generation, exception, errorTitle, errorFallback, errorTone);
+                }
+                finally
+                {
+                    if (acquired) _commandGate.Release();
+                    CompletePageOperation(generation);
+                }
+            },
+            WidgetOperationLifetime.Active);
+        if (!operation.IsAccepted)
+            RejectPageOperation(generation, errorFallback);
+    }
+
+    private bool IsCurrentPageOperation(
+        GamesAppsPage route,
+        long generation,
+        WidgetOperationContext context)
+    {
+        if (!context.IsCurrent ||
+            context.CancellationToken.IsCancellationRequested ||
+            Page != route)
+            return false;
+        lock (_gate)
+            return Interlocked.Read(ref _generation) == generation;
+    }
+
+    private void CompletePageOperation(long generation)
+    {
+        var changed = false;
+        lock (_gate)
+        {
+            if (Interlocked.Read(ref _generation) == generation)
+            {
+                _loadingMore = false;
+                changed = true;
+            }
+        }
+        if (changed) Invalidate();
+    }
+
+    private void RejectPageOperation(long generation, string status)
+    {
+        var changed = false;
+        lock (_gate)
+        {
+            if (Interlocked.Read(ref _generation) == generation)
+            {
+                _loadingMore = false;
                 _viewState = GamesAppsViewState.Ready;
-                _status = items.Length == 0
-                    ? "No visible applications match your installed library"
-                    : $"{items.Length} visible installed application{(items.Length == 1 ? "" : "s")}";
-                _catalog = GamesAppsCatalogState.Empty;
+                _status = status;
+                changed = true;
             }
         }
-        catch (OperationCanceledException) when (
-            commandLifetime.IsCancellationRequested || routeLifetime?.IsCancellationRequested == true)
+        if (changed) Invalidate();
+    }
+
+    private void ApplyPageOperationError(
+        long generation,
+        Exception exception,
+        string title,
+        string fallback,
+        ToastTone tone)
+    {
+        var (_, status) = ErrorState(exception);
+        var message = status == "App library request failed" ? fallback : status;
+        var notice = new GamesAppsToastNotice(
+            title, message, tone, UI.DefaultToastDuration);
+        lock (_gate)
         {
-            if (cancellationToken.IsCancellationRequested) throw;
+            if (Interlocked.Read(ref _generation) != generation) return;
+            _loadingMore = false;
+            _viewState = GamesAppsViewState.Ready;
+            _status = message;
+            _toast = notice;
         }
-        catch (Exception exception)
-        {
-            ShowToast("Running apps unavailable",
-                ApplyCommandError(exception, "Running apps could not be checked"),
-                ToastTone.Warning);
-            if (Page == GamesAppsPage.Running)
-                OpenLibrary(enterRememberedContent: false);
-        }
-        finally
-        {
-            routeLifetime?.Dispose();
-            lock (_gate) _loadingMore = false;
-            _commandGate.Release();
-            Invalidate();
-        }
+        Invalidate();
+        ScheduleToastExpiry(notice);
     }
 
     private async Task AddRunningAsync(string savedId, CancellationToken cancellationToken)
@@ -1128,110 +1227,74 @@ public sealed class GamesAppsWidget : Widget
         await ToggleCuratedAsync(current.AppId, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task LoadMoreAsync(CancellationToken cancellationToken)
+    private void LoadMore()
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         var navigation = _navigation.Value;
         if (navigation.RootRoute != GamesAppsPage.Catalog) return;
-        using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken, ActiveCancellationToken,
-            navigation.RootRouteCancellationToken);
-        var acquired = false;
-        try
+        WidgetCollectionCursor? cursor;
+        long generation;
+        lock (_gate)
         {
-            acquired = await _commandGate.WaitAsync(0, commandLifetime.Token).ConfigureAwait(false);
-            if (!acquired) return;
-
-            WidgetCollectionCursor? cursor;
-            long generation;
-            lock (_gate)
+            cursor = _catalog.After;
+            if (cursor is null || Page != GamesAppsPage.Catalog ||
+                LifecycleState != WidgetLifecycleState.Interactive)
+                return;
+            generation = Interlocked.Increment(ref _generation);
+            _loadingMore = true;
+            _status = "Loading more installed apps…";
+        }
+        Invalidate();
+        SchedulePageOperation(
+            GamesAppsPage.Catalog,
+            navigation,
+            generation,
+            async cancellationToken =>
             {
-                cursor = _catalog.After;
-                generation = Interlocked.Read(ref _generation);
-                if (cursor is null || Page != GamesAppsPage.Catalog ||
-                    LifecycleState != WidgetLifecycleState.Interactive)
-                    return;
-                _loadingMore = true;
-                _status = "Loading more installed apps…";
-            }
-            Invalidate();
-            var page = await HostServices.AppLibrary.QueryAsync(
-                    AllInstalledQuery, cursor, WidgetCursorDirection.After,
-                    PageSize, cancellationToken: commandLifetime.Token)
-                .ConfigureAwait(false);
-            ApplyPage(page, GamesAppsCatalogPageTransition.Next, generation);
-        }
-        catch (OperationCanceledException) when (commandLifetime.IsCancellationRequested)
-        {
-            if (cancellationToken.IsCancellationRequested) throw;
-        }
-        catch (Exception exception)
-        {
-            var message = ApplyCommandError(exception, "More apps could not be loaded");
-            ShowToast("Could not load more", message, ToastTone.Danger);
-        }
-        finally
-        {
-            if (acquired)
-            {
-                lock (_gate) _loadingMore = false;
-                _commandGate.Release();
-                Invalidate();
-            }
-        }
+                var page = await HostServices.AppLibrary.QueryAsync(
+                        AllInstalledQuery, cursor.Value, WidgetCursorDirection.After,
+                        PageSize, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                ApplyPage(page, GamesAppsCatalogPageTransition.Next, generation);
+            },
+            "Could not load more",
+            "More apps could not be loaded",
+            ToastTone.Danger);
     }
 
-    private async Task LoadPreviousPageAsync(CancellationToken cancellationToken)
+    private void LoadPreviousPage()
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         var navigation = _navigation.Value;
         if (navigation.RootRoute != GamesAppsPage.Catalog) return;
-        using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken, ActiveCancellationToken,
-            navigation.RootRouteCancellationToken);
-        var acquired = false;
-        try
+        WidgetCollectionCursor cursor;
+        long generation;
+        lock (_gate)
         {
-            acquired = await _commandGate.WaitAsync(0, commandLifetime.Token).ConfigureAwait(false);
-            if (!acquired) return;
-
-            WidgetCollectionCursor cursor;
-            long generation;
-            lock (_gate)
+            if (!_catalog.CanLoadPrevious || Page != GamesAppsPage.Catalog ||
+                LifecycleState != WidgetLifecycleState.Interactive)
+                return;
+            cursor = _catalog.Before!.Value;
+            generation = Interlocked.Increment(ref _generation);
+            _loadingMore = true;
+            _status = "Loading the previous application page…";
+        }
+        Invalidate();
+        SchedulePageOperation(
+            GamesAppsPage.Catalog,
+            navigation,
+            generation,
+            async cancellationToken =>
             {
-                if (!_catalog.CanLoadPrevious || Page != GamesAppsPage.Catalog ||
-                    LifecycleState != WidgetLifecycleState.Interactive)
-                    return;
-                cursor = _catalog.Before!.Value;
-                generation = Interlocked.Read(ref _generation);
-                _loadingMore = true;
-                _status = "Loading the previous application page…";
-            }
-            Invalidate();
-            var page = await HostServices.AppLibrary.QueryAsync(
-                    AllInstalledQuery, cursor, WidgetCursorDirection.Before,
-                    PageSize, cancellationToken: commandLifetime.Token)
-                .ConfigureAwait(false);
-            ApplyPage(page, GamesAppsCatalogPageTransition.Previous, generation);
-        }
-        catch (OperationCanceledException) when (commandLifetime.IsCancellationRequested)
-        {
-            if (cancellationToken.IsCancellationRequested) throw;
-        }
-        catch (Exception exception)
-        {
-            var message = ApplyCommandError(exception, "The previous page could not be loaded");
-            ShowToast("Could not load page", message, ToastTone.Danger);
-        }
-        finally
-        {
-            if (acquired)
-            {
-                lock (_gate) _loadingMore = false;
-                _commandGate.Release();
-                Invalidate();
-            }
-        }
+                var page = await HostServices.AppLibrary.QueryAsync(
+                        AllInstalledQuery, cursor, WidgetCursorDirection.Before,
+                        PageSize, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                ApplyPage(page, GamesAppsCatalogPageTransition.Previous, generation);
+            },
+            "Could not load page",
+            "The previous page could not be loaded",
+            ToastTone.Danger);
     }
 
     private async Task LaunchAsync(string appId, CancellationToken cancellationToken)
@@ -1513,8 +1576,13 @@ public sealed class GamesAppsWidget : Widget
         lock (_gate)
             _toast = notice;
         Invalidate();
+        ScheduleToastExpiry(notice);
+    }
+
+    private void ScheduleToastExpiry(GamesAppsToastNotice notice)
+    {
         _ = _toastExpiry.ScheduleLatest(
-            duration,
+            notice.Duration,
             () =>
             {
                 var changed = false;
