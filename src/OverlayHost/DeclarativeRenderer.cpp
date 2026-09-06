@@ -4131,6 +4131,39 @@ struct DeclarativeRenderer::RenderPass final {
             CollectFocusGeometryTree(child, inputScope);
     }
 
+    [[nodiscard]] static bool PosterArtworkWithinAdmissionBand(
+        const PresentationNode& presented) noexcept {
+        if (!FiniteRect(presented.borderBox) ||
+            !FiniteRect(presented.ancestorClip) ||
+            presented.borderBox.width <= 0.5F ||
+            presented.borderBox.height <= 0.5F ||
+            presented.ancestorClip.width <= 0.5F ||
+            presented.ancestorClip.height <= 0.5F) {
+            return false;
+        }
+
+        const auto posterLeft = static_cast<double>(presented.borderBox.x);
+        const auto posterTop = static_cast<double>(presented.borderBox.y);
+        const auto posterRight = posterLeft + presented.borderBox.width;
+        const auto posterBottom = posterTop + presented.borderBox.height;
+        const auto admissionLeft =
+            static_cast<double>(presented.ancestorClip.x) -
+            presented.borderBox.width;
+        const auto admissionTop =
+            static_cast<double>(presented.ancestorClip.y) -
+            presented.borderBox.height;
+        const auto admissionRight =
+            static_cast<double>(presented.ancestorClip.x) +
+            presented.ancestorClip.width + presented.borderBox.width;
+        const auto admissionBottom =
+            static_cast<double>(presented.ancestorClip.y) +
+            presented.ancestorClip.height + presented.borderBox.height;
+        return std::min(posterRight, admissionRight) -
+                    std::max(posterLeft, admissionLeft) > 0.5 &&
+            std::min(posterBottom, admissionBottom) -
+                    std::max(posterTop, admissionTop) > 0.5;
+    }
+
     void DrawNode(
         const WidgetNode& node,
         const std::wstring_view inheritedInputScope = {}) {
@@ -4233,7 +4266,8 @@ struct DeclarativeRenderer::RenderPass final {
 
         if (node.kind == L"actionSurface" &&
             node.actionSurfacePresentation == L"poster") {
-            if (node.children.size() == 2U) {
+            if (node.children.size() == 2U &&
+                PosterArtworkWithinAdmissionBand(presented)) {
                 const auto& artwork = node.children.front();
                 if (const auto preparedArtwork = prepared.find(NarrowStableId(artwork.id));
                     preparedArtwork != prepared.end()) {
