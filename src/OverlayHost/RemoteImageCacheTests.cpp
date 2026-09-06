@@ -267,7 +267,7 @@ int main() {
                 nativeChanged.notify_all();
             },
             {},
-            [](std::wstring_view) { return true; },
+            [](std::wstring_view, std::stop_token) { return true; },
             [&](const TrustedArtworkDecodeDiagnostic& diagnostic) {
                 std::scoped_lock lock(nativeMutex);
                 decodeDiagnostics.push_back(diagnostic);
@@ -613,6 +613,155 @@ int main() {
     cache.Shutdown();
     assert(cache.Request(L"https://example.test/c") == RemoteImageRequestResult::ShuttingDown);
 
+    {
+        std::mutex demandMutex;
+        std::condition_variable demandChanged;
+        bool secondDemandEntered = false;
+        bool releaseSecondDemand = false;
+        bool secondDemandReturned = false;
+        int demandCalls = 0;
+        std::vector<std::pair<std::wstring, RemoteImageState>> transitions;
+        RemoteImageLimits demandLimits;
+        demandLimits.maximumEntries = 3;
+        demandLimits.maximumPendingEntries = 2;
+        demandLimits.maximumReadyEntries = 2;
+        demandLimits.maximumDecodedBytes = 8;
+        RemoteImageCache demandCache(
+            demandLimits,
+            [&](const std::wstring_view key, const RemoteImageState state) {
+                {
+                    std::scoped_lock lock(demandMutex);
+                    transitions.emplace_back(key, state);
+                }
+                demandChanged.notify_all();
+            },
+            [](std::wstring_view, std::stop_token,
+               const RemoteImageLimits&) {
+                RemoteDecodedImage image;
+                image.width = 1;
+                image.height = 1;
+                image.stride = 4;
+                image.premultipliedBgra = {0x20, 0x30, 0x40, 0xFF};
+                image.mimeType = L"image/png";
+                return RemoteImageFetchResult{S_OK, std::move(image), {}};
+            },
+            [&](const std::wstring_view key, const std::stop_token token) {
+                std::unique_lock lock(demandMutex);
+                ++demandCalls;
+                if (key.ends_with(L"artwork.async-b")) {
+                    secondDemandEntered = true;
+                    demandChanged.notify_all();
+                    demandChanged.wait(lock, [&] {
+                        return releaseSecondDemand || token.stop_requested();
+                    });
+                    secondDemandReturned = true;
+                    demandChanged.notify_all();
+                    return false;
+                }
+                return key.ends_with(L"artwork.async-a");
+            });
+        const auto firstKey = RemoteImageCache::TrustedArtworkKey(
+            L"async-artwork", L"tile-a", L"artwork.async-a");
+        const auto refusedKey = RemoteImageCache::TrustedArtworkKey(
+            L"async-artwork", L"tile-b", L"artwork.async-b");
+        const auto capacityKey = RemoteImageCache::TrustedArtworkKey(
+            L"async-artwork", L"tile-c", L"artwork.async-c");
+        assert(demandCache.RequestTrustedArtwork(firstKey) ==
+               RemoteImageRequestResult::Queued);
+        {
+            std::unique_lock lock(demandMutex);
+            assert(demandChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+                return demandCalls == 1;
+            }));
+        }
+        assert(demandCache.SupplyTrustedArtwork(
+            L"async-artwork", L"artwork.async-a", L"image/png",
+            trustedPngBase64));
+        assert(demandCache.RequestTrustedArtwork(firstKey) ==
+               RemoteImageRequestResult::AlreadyTracked);
+        assert(demandCache.RequestTrustedArtwork(refusedKey) ==
+               RemoteImageRequestResult::Queued);
+        assert(demandCache.RequestTrustedArtwork(capacityKey) ==
+               RemoteImageRequestResult::CapacityExceeded);
+        {
+            std::unique_lock lock(demandMutex);
+            assert(demandChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+                return secondDemandEntered;
+            }));
+            assert(!secondDemandReturned);
+        }
+        {
+            std::unique_lock lock(demandMutex);
+            assert(demandChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+                return demandCache.GetState(firstKey) == RemoteImageState::Ready;
+            }));
+        }
+        const auto httpsKey = L"https://example.test/independent.png";
+        assert(demandCache.Request(httpsKey) == RemoteImageRequestResult::Queued);
+        {
+            std::unique_lock lock(demandMutex);
+            assert(demandChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+                return demandCache.GetState(httpsKey) == RemoteImageState::Ready;
+            }));
+            assert(!secondDemandReturned);
+            releaseSecondDemand = true;
+        }
+        demandChanged.notify_all();
+        {
+            std::unique_lock lock(demandMutex);
+            assert(demandChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+                return secondDemandReturned &&
+                    demandCache.GetState(refusedKey) == RemoteImageState::Failed;
+            }));
+        }
+        assert(demandCache.RequestTrustedArtwork(capacityKey) ==
+               RemoteImageRequestResult::Queued);
+        {
+            std::unique_lock lock(demandMutex);
+            assert(demandChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+                return demandCalls == 3 &&
+                    demandCache.GetState(capacityKey) == RemoteImageState::Failed;
+            }));
+        }
+        const auto demandStats = demandCache.GetStats();
+        assert(demandStats.entries <= demandLimits.maximumEntries);
+        assert(demandStats.queuedOrLoading == 0);
+        assert(demandStats.pendingCapacityRejections == 1);
+        assert(demandStats.trustedArtworkHits == 1);
+        demandCache.Shutdown();
+    }
+
+    {
+        std::mutex shutdownMutex;
+        std::condition_variable_any shutdownChanged;
+        bool shutdownDemandEntered = false;
+        RemoteImageCache shutdownCache(
+            {}, {}, {},
+            [&](std::wstring_view, const std::stop_token token) {
+                std::unique_lock lock(shutdownMutex);
+                shutdownDemandEntered = true;
+                shutdownChanged.notify_all();
+                (void)shutdownChanged.wait(lock, token, [] { return false; });
+                return false;
+            });
+        const auto shutdownKey = RemoteImageCache::TrustedArtworkKey(
+            L"shutdown-artwork", L"tile", L"artwork.shutdown");
+        assert(shutdownCache.RequestTrustedArtwork(shutdownKey) ==
+               RemoteImageRequestResult::Queued);
+        {
+            std::unique_lock lock(shutdownMutex);
+            assert(shutdownChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+                return shutdownDemandEntered;
+            }));
+        }
+        const auto shutdownStarted = std::chrono::steady_clock::now();
+        shutdownCache.Shutdown();
+        assert(std::chrono::steady_clock::now() - shutdownStarted <
+               std::chrono::seconds(1));
+        assert(shutdownCache.RequestTrustedArtwork(shutdownKey) ==
+               RemoteImageRequestResult::ShuttingDown);
+    }
+
     std::mutex artworkMutex;
     std::condition_variable artworkCompleted;
     int artworkFetches = 0;
@@ -640,7 +789,7 @@ int main() {
             image.mimeType = L"image/png";
             return RemoteImageFetchResult{S_OK, std::move(image), {}};
         },
-        [&](std::wstring_view key) {
+        [&](std::wstring_view key, std::stop_token) {
             assert(key.starts_with(L"wrail-artwork\x1f"));
             constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
             const auto widgetEnd = key.find(L'\x1f', prefix.size());
@@ -747,7 +896,7 @@ int main() {
             image.mimeType = L"image/png";
             return RemoteImageFetchResult{S_OK, std::move(image), {}};
         },
-        [](std::wstring_view) { return true; });
+        [](std::wstring_view, std::stop_token) { return true; });
     const auto failedRevision =
         L"wrail-artwork\x1fplaynite-library\x1ftile.artwork\x1f"
         L"library.art.11111111111111111111111111111111";

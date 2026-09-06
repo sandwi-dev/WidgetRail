@@ -989,7 +989,9 @@ public:
                 if (window_) PostMessageW(window_, kImageReadyMessage, 0, 0);
             },
             widgetrail::RemoteImageCache::FetchFunction{},
-            [this](std::wstring_view source) {
+            [this](
+                std::wstring_view source,
+                const std::stop_token stopToken) {
                 constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
                 const auto widgetSeparator = source.find(L'\x1f', prefix.size());
                 const auto handleSeparator = source.rfind(L'\x1f');
@@ -999,7 +1001,8 @@ public:
                 const auto widgetId = source.substr(
                     prefix.size(), widgetSeparator - prefix.size());
                 const auto handle = source.substr(handleSeparator + 1);
-                return bridge_.RequestArtwork(widgetId, handle).value_or(false);
+                return bridge_.RequestArtwork(
+                    widgetId, handle, stopToken).value_or(false);
             },
             std::move(decodeDiagnostic));
         declarativeRenderer_ = std::make_unique<widgetrail::DeclarativeRenderer>(

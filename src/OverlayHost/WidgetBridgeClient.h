@@ -3,6 +3,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -10,8 +11,10 @@
 #include <mutex>
 #include <optional>
 #include <span>
+#include <stop_token>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -711,6 +714,61 @@ private:
     std::optional<PlatformAppearance> current_;
 };
 
+class StoppableRecursiveMutex final {
+public:
+    void lock() {
+        std::unique_lock lock(stateMutex_);
+        const auto current = std::this_thread::get_id();
+        available_.wait(lock, [&] {
+            return recursion_ == 0 || owner_ == current;
+        });
+        owner_ = current;
+        ++recursion_;
+    }
+
+    [[nodiscard]] bool lock(const std::stop_token token) {
+        std::unique_lock lock(stateMutex_);
+        const auto current = std::this_thread::get_id();
+        if (!available_.wait(lock, token, [&] {
+                return recursion_ == 0 || owner_ == current;
+            })) {
+            return false;
+        }
+        owner_ = current;
+        ++recursion_;
+        return true;
+    }
+
+    [[nodiscard]] bool try_lock() {
+        std::scoped_lock lock(stateMutex_);
+        const auto current = std::this_thread::get_id();
+        if (recursion_ != 0 && owner_ != current) return false;
+        owner_ = current;
+        ++recursion_;
+        return true;
+    }
+
+    void unlock() noexcept {
+        bool notify = false;
+        {
+            std::scoped_lock lock(stateMutex_);
+            if (owner_ != std::this_thread::get_id() || recursion_ == 0)
+                std::terminate();
+            if (--recursion_ == 0) {
+                owner_ = {};
+                notify = true;
+            }
+        }
+        if (notify) available_.notify_all();
+    }
+
+private:
+    std::mutex stateMutex_;
+    std::condition_variable_any available_;
+    std::thread::id owner_{};
+    std::size_t recursion_{};
+};
+
 class WidgetBridgeClient final {
 public:
     WidgetBridgeClient() = default;
@@ -757,7 +815,8 @@ public:
         long long recoveryOriginSequence);
     [[nodiscard]] std::optional<bool> RequestArtwork(
         std::wstring_view widgetId,
-        std::wstring_view artworkHandle);
+        std::wstring_view artworkHandle,
+        std::stop_token stopToken = {});
     [[nodiscard]] std::optional<EmbeddedMediaBundle> ResolveEmbeddedMedia(
         std::wstring_view widgetId,
         std::wstring_view instanceId,
@@ -826,15 +885,33 @@ public:
     [[nodiscard]] std::vector<LocalWidgetPackageInstallResult>
         TakeLocalWidgetPackageInstallResults() noexcept;
 
+#ifdef WRAIL_WIDGET_BRIDGE_CLIENT_TESTING
+    void AdoptPipeForTesting(HANDLE pipe) noexcept {
+        pipe_ = pipe;
+        transportTainted_ = false;
+    }
+    void LockRequestGateForTesting() { requestMutex_.lock(); }
+    void UnlockRequestGateForTesting() noexcept { requestMutex_.unlock(); }
+    [[nodiscard]] bool TransportTaintedForTesting() const noexcept {
+        return transportTainted_;
+    }
+    [[nodiscard]] long long NextRequestIdForTesting() const noexcept {
+        return nextRequestId_;
+    }
+#endif
+
 private:
     [[nodiscard]] bool Launch(
         const std::wstring& installationDirectory,
         const std::wstring& installedCatalogRoot);
     [[nodiscard]] bool Connect();
     void CloseTransport() noexcept;
-    [[nodiscard]] bool WriteFrame(std::string_view utf8);
+    [[nodiscard]] bool WriteFrame(
+        std::string_view utf8,
+        HANDLE stopEvent = nullptr);
     [[nodiscard]] bool WriteProtectedWifiSecret(std::span<const wchar_t> secret);
-    [[nodiscard]] std::optional<std::string> ReadFrame();
+    [[nodiscard]] std::optional<std::string> ReadFrame(
+        HANDLE stopEvent = nullptr);
     void Fail(std::wstring message);
 
     HANDLE pipe_{INVALID_HANDLE_VALUE};
@@ -858,7 +935,7 @@ private:
     LocalWidgetPackageInstallResultQueue localPackageInstallResults_;
     PlatformAppearanceRevisionTracker appearanceChanges_;
     WidgetCatalogRevisionTracker catalogChanges_;
-    mutable std::recursive_mutex requestMutex_;
+    mutable StoppableRecursiveMutex requestMutex_;
 };
 
 } // namespace widgetrail

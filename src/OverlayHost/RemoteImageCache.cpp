@@ -316,6 +316,10 @@ RemoteImageCache::RemoteImageCache(
     if (!usesCustomFetch_)
         artworkDecoder_ = std::make_unique<ArtworkDecoderProcessOwner>(limits_);
     worker_ = std::jthread([this](std::stop_token token) { WorkerLoop(token); });
+    if (artworkRequest_) {
+        artworkDemandWorker_ = std::jthread(
+            [this](std::stop_token token) { ArtworkDemandLoop(token); });
+    }
 }
 
 RemoteImageCache::~RemoteImageCache() {
@@ -376,16 +380,10 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring ke
         }
         entries_.emplace(key, Entry{
             RemoteImageState::Loading, {}, {}, {}, {}, {}, ++useCounter_});
+        artworkDemandQueue_.push_back(std::move(key));
     }
-    if (artworkRequest_ && artworkRequest_(key))
-        return RemoteImageRequestResult::Queued;
-    const auto widgetEnd = key.find(L'\x1f', prefix.size());
-    const auto handleStart = key.rfind(L'\x1f');
-    if (widgetEnd != std::wstring::npos && handleStart != std::wstring::npos)
-        (void)FailTrustedArtwork(
-            std::wstring_view(key).substr(prefix.size(), widgetEnd - prefix.size()),
-            std::wstring_view(key).substr(handleStart + 1));
-    return RemoteImageRequestResult::InvalidUrl;
+    artworkDemandCondition_.notify_one();
+    return RemoteImageRequestResult::Queued;
 }
 
 bool RemoteImageCache::SupplyTrustedArtwork(
@@ -622,8 +620,12 @@ void RemoteImageCache::Shutdown() noexcept {
         std::scoped_lock lock(mutex_);
         if (shuttingDown_) return;
         shuttingDown_ = true;
+        artworkDemandQueue_.clear();
         queue_.clear();
     }
+    artworkDemandWorker_.request_stop();
+    artworkDemandCondition_.notify_all();
+    if (artworkDemandWorker_.joinable()) artworkDemandWorker_.join();
     worker_.request_stop();
     condition_.notify_all();
     if (worker_.joinable()) worker_.join();
@@ -730,7 +732,8 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
             url = std::move(queue_.front());
             queue_.pop_front();
             const auto found = entries_.find(url);
-            if (found == entries_.end() || found->second.state != RemoteImageState::Queued) continue;
+            if (found == entries_.end() || found->second.state != RemoteImageState::Queued)
+                continue;
             found->second.state = RemoteImageState::Loading;
         }
 
@@ -841,6 +844,48 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
         if (completion_ && !stopToken.stop_requested()) {
             try { completion_(url, finalState); }
             catch (...) { /* Client callbacks cannot terminate the cache worker. */ }
+        }
+    }
+}
+
+void RemoteImageCache::ArtworkDemandLoop(std::stop_token stopToken) {
+    while (!stopToken.stop_requested()) {
+        std::wstring key;
+        {
+            std::unique_lock lock(mutex_);
+            artworkDemandCondition_.wait(lock, [this, &stopToken] {
+                return shuttingDown_ || stopToken.stop_requested() ||
+                    !artworkDemandQueue_.empty();
+            });
+            if (shuttingDown_ || stopToken.stop_requested()) break;
+            key = std::move(artworkDemandQueue_.front());
+            artworkDemandQueue_.pop_front();
+            const auto found = entries_.find(key);
+            if (found == entries_.end() ||
+                found->second.state != RemoteImageState::Loading ||
+                !found->second.pendingBytes.empty()) {
+                continue;
+            }
+        }
+
+        bool accepted = false;
+        try {
+            accepted = artworkRequest_(key, stopToken);
+        } catch (...) {
+            accepted = false;
+        }
+        if (stopToken.stop_requested()) break;
+        if (accepted) continue;
+
+        constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
+        const auto widgetEnd = key.find(L'\x1f', prefix.size());
+        const auto handleStart = key.rfind(L'\x1f');
+        if (widgetEnd != std::wstring::npos &&
+            handleStart != std::wstring::npos && handleStart > widgetEnd) {
+            (void)FailTrustedArtwork(
+                std::wstring_view(key).substr(
+                    prefix.size(), widgetEnd - prefix.size()),
+                std::wstring_view(key).substr(handleStart + 1));
         }
     }
 }

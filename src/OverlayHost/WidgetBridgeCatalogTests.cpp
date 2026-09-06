@@ -3,15 +3,18 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <thread>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -211,6 +214,150 @@ void VerifyFrameSafeCancellationRecovery() {
     Require(recovered.frame && *recovered.frame == body &&
                 !recovered.transportTainted && recovered.error == ERROR_SUCCESS,
             "Next ordinary request did not succeed on a correctly framed replacement transport");
+}
+
+struct DuplexPipePair final {
+    HANDLE server{INVALID_HANDLE_VALUE};
+    HANDLE client{INVALID_HANDLE_VALUE};
+
+    DuplexPipePair() = default;
+    DuplexPipePair(const DuplexPipePair&) = delete;
+    DuplexPipePair& operator=(const DuplexPipePair&) = delete;
+    DuplexPipePair(DuplexPipePair&& other) noexcept
+        : server(std::exchange(other.server, INVALID_HANDLE_VALUE)),
+          client(std::exchange(other.client, INVALID_HANDLE_VALUE)) {}
+    ~DuplexPipePair() {
+        if (server != INVALID_HANDLE_VALUE) CloseHandle(server);
+        if (client != INVALID_HANDLE_VALUE) CloseHandle(client);
+    }
+};
+
+DuplexPipePair CreateOverlappedClientPipe() {
+    static std::atomic_uint32_t sequence{};
+    const auto name = L"\\\\.\\pipe\\WidgetRail-bridge-client-test-" +
+        std::to_wstring(GetCurrentProcessId()) + L"-" +
+        std::to_wstring(++sequence);
+    DuplexPipePair pair;
+    pair.server = CreateNamedPipeW(
+        name.c_str(), PIPE_ACCESS_DUPLEX,
+        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+        1, 64 * 1024, 64 * 1024, 0, nullptr);
+    Require(pair.server != INVALID_HANDLE_VALUE,
+            "Could not create deterministic WidgetBridge server pipe");
+
+    std::atomic_bool connected{};
+    std::jthread connectThread([&] {
+        connected = ConnectNamedPipe(pair.server, nullptr) != FALSE ||
+            GetLastError() == ERROR_PIPE_CONNECTED;
+    });
+    pair.client = CreateFileW(
+        name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+        OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+    connectThread.join();
+    Require(pair.client != INVALID_HANDLE_VALUE && connected,
+            "Could not connect deterministic overlapped WidgetBridge client pipe");
+    return pair;
+}
+
+std::string ReadRequiredBridgeRequest(const HANDLE server) {
+    const auto request = widgetrail::testing::ReadBridgeFrame(server);
+    Require(request.frame && !request.transportTainted &&
+                request.error == ERROR_SUCCESS,
+            "Fake WidgetBridge server did not receive a complete request");
+    return *request.frame;
+}
+
+void VerifyArtworkRequestCancellationOwnership() {
+    {
+        widgetrail::WidgetBridgeClient client;
+        client.LockRequestGateForTesting();
+        std::mutex readyMutex;
+        std::condition_variable readyCondition;
+        bool ready{};
+        std::optional<bool> result;
+        std::jthread request([&](const std::stop_token token) {
+            {
+                std::scoped_lock lock(readyMutex);
+                ready = true;
+            }
+            readyCondition.notify_one();
+            result = client.RequestArtwork(
+                L"widget.test", L"artwork.waiting-gate", token);
+        });
+        {
+            std::unique_lock lock(readyMutex);
+            Require(readyCondition.wait_for(
+                        lock, std::chrono::seconds(2), [&] { return ready; }),
+                    "Artwork request did not reach the serialized request gate");
+        }
+        request.request_stop();
+        request.join();
+        client.UnlockRequestGateForTesting();
+        Require(result == std::optional<bool>{false},
+                "Stopped artwork request did not leave the serialized request gate");
+    }
+
+    const auto verifyCancelledRead = [](const bool publishHeader) {
+        auto pipes = CreateOverlappedClientPipe();
+        widgetrail::WidgetBridgeClient client;
+        client.AdoptPipeForTesting(pipes.client);
+        pipes.client = INVALID_HANDLE_VALUE;
+
+        std::mutex serverMutex;
+        std::condition_variable serverCondition;
+        bool requestReceived{};
+        std::jthread server([&] {
+            const auto request = ReadRequiredBridgeRequest(pipes.server);
+            Require(request.find("resolve-artwork") != std::string::npos,
+                    "Fake server received the wrong WidgetBridge request kind");
+            if (publishHeader) {
+                constexpr std::string_view response =
+                    R"json({"protocolVersion":1,"type":"acknowledged","requestId":1,"payload":{}})json";
+                const std::int32_t length = static_cast<std::int32_t>(response.size());
+                WriteBytes(pipes.server, &length, sizeof(length));
+            }
+            {
+                std::scoped_lock lock(serverMutex);
+                requestReceived = true;
+            }
+            serverCondition.notify_one();
+        });
+
+        std::optional<bool> result;
+        std::jthread request([&](const std::stop_token token) {
+            result = client.RequestArtwork(
+                L"widget.test", L"artwork.cancelled", token);
+        });
+        {
+            std::unique_lock lock(serverMutex);
+            Require(serverCondition.wait_for(
+                        lock, std::chrono::seconds(2),
+                        [&] { return requestReceived; }),
+                    "Fake server did not observe the artwork request");
+        }
+        request.request_stop();
+        request.join();
+        server.join();
+        Require(result == std::optional<bool>{false} &&
+                    client.TransportTaintedForTesting(),
+                publishHeader
+                    ? "Stopping between response frame phases did not taint the transport"
+                    : "Stopping a pending artwork response did not taint the transport");
+
+        const auto requestId = client.NextRequestIdForTesting();
+        Require(!client.RequestArtwork(
+                    L"widget.test", L"artwork.must-not-reuse").has_value() &&
+                    client.NextRequestIdForTesting() == requestId,
+                "Tainted WidgetBridge transport was reused by a later artwork request");
+        const auto beforeStop = std::chrono::steady_clock::now();
+        client.Stop();
+        Require(std::chrono::steady_clock::now() - beforeStop <
+                    std::chrono::seconds(1),
+                "Cancelled artwork transport did not shut down deterministically");
+    };
+
+    verifyCancelledRead(false);
+    verifyCancelledRead(true);
 }
 
 void VerifyAtomicPresentationUpdateMaterialization() {
@@ -1129,6 +1276,7 @@ int main() {
     CHECK(manifestText.find("\"pinningSupported\": true") != std::string::npos);
 
     VerifyFrameSafeCancellationRecovery();
+    VerifyArtworkRequestCancellationOwnership();
     VerifyAtomicPresentationUpdateMaterialization();
     VerifySelectControllerInputSerializationAndPopupRaster();
     VerifyControllerShortcutLabelContract();

@@ -149,7 +149,9 @@ public:
         std::wstring_view url,
         std::stop_token stopToken,
         const RemoteImageLimits& limits)>;
-    using ArtworkRequestFunction = std::function<bool(std::wstring_view key)>;
+    using ArtworkRequestFunction = std::function<bool(
+        std::wstring_view key,
+        std::stop_token stopToken)>;
     using ArtworkDecodeDiagnosticCallback =
         std::function<void(const TrustedArtworkDecodeDiagnostic& diagnostic)>;
 
@@ -251,6 +253,7 @@ private:
         EvictionReason reason,
         bool readyOnly = false);
     void WorkerLoop(std::stop_token stopToken);
+    void ArtworkDemandLoop(std::stop_token stopToken);
     void CompleteLocked(const std::wstring& url, RemoteImageFetchResult result);
     RemoteImageLimits limits_;
     CompletionCallback completion_;
@@ -261,8 +264,11 @@ private:
     std::unique_ptr<ArtworkDecoderProcessOwner> artworkDecoder_;
     mutable std::mutex mutex_;
     std::condition_variable condition_;
+    std::condition_variable artworkDemandCondition_;
     std::unordered_map<std::wstring, Entry> entries_;
+    std::deque<std::wstring> artworkDemandQueue_;
     std::deque<std::wstring> queue_;
+    std::jthread artworkDemandWorker_;
     std::jthread worker_;
     std::size_t decodedBytes_{};
     std::size_t encodedArtworkBytes_{};

@@ -283,7 +283,7 @@ void BackgroundImageFitAndDiagnosticsUseOneBoundedOwner() {
 
     std::vector<std::wstring> diagnosticRecords;
     widgetrail::RemoteImageCache pendingArtwork(
-        {}, {}, {}, [](std::wstring_view) { return true; });
+        {}, {}, {}, [](std::wstring_view, std::stop_token) { return true; });
     DeclarativeRenderer diagnosticRenderer{
         d2d.Get(), write.Get(), &pendingArtwork,
         [&](const std::wstring_view record) {
@@ -1476,11 +1476,17 @@ void BackgroundSurfacePreservesForegroundAuthority() {
               canvas.Get(), D2D1::RenderTargetProperties(),
               target.ReleaseAndGetAddressOf())),
         "create render target for background-surface painting");
+    std::mutex requestMutex;
+    std::condition_variable requestChanged;
     std::vector<std::wstring> requestedArtwork;
     widgetrail::RemoteImageCache cache(
         {}, {}, {},
-        [&](const std::wstring_view key) {
-            requestedArtwork.emplace_back(key);
+        [&](const std::wstring_view key, std::stop_token) {
+            {
+                std::scoped_lock lock(requestMutex);
+                requestedArtwork.emplace_back(key);
+            }
+            requestChanged.notify_all();
             return true;
         });
     DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
@@ -1539,10 +1545,15 @@ void BackgroundSurfacePreservesForegroundAuthority() {
               result.accessibilityRegions.begin(), result.accessibilityRegions.end(),
               [](const auto& region) { return region.nodeId == L"background"; }),
         "BackgroundSurface contributes no duplicate accessibility semantic");
-    Check(requestedArtwork.size() == 1U && requestedArtwork.front() ==
-              widgetrail::RemoteImageCache::TrustedArtworkKey(
-                  L"background-widget", L"background", L"gallery.background"),
-        "ordinary rendering requests the exact trusted background behind its foreground child");
+    {
+        std::unique_lock lock(requestMutex);
+        Check(requestChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+            return requestedArtwork.size() == 1U;
+        }) && requestedArtwork.front() ==
+                  widgetrail::RemoteImageCache::TrustedArtworkKey(
+                      L"background-widget", L"background", L"gallery.background"),
+            "ordinary rendering requests the exact trusted background behind its foreground child");
+    }
     cache.Shutdown();
 }
 
@@ -4972,6 +4983,164 @@ void OffscreenScrollArtworkDoesNotEnterRemoteCache() {
     cache.Shutdown();
 }
 
+void TrustedArtworkDemandDoesNotBlockTileRender() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "create D2D factory for asynchronous trusted artwork demand");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
+        "create DirectWrite factory for asynchronous trusted artwork demand");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "create WIC factory for asynchronous trusted artwork demand");
+    ComPtr<IWICBitmap> canvas;
+    Check(SUCCEEDED(wic->CreateBitmap(
+        240, 120, GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+        "create WIC canvas for asynchronous trusted artwork demand");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+        canvas.Get(), D2D1::RenderTargetProperties(),
+        target.ReleaseAndGetAddressOf())),
+        "create render target for asynchronous trusted artwork demand");
+
+    std::mutex demandMutex;
+    std::condition_variable demandChanged;
+    bool demandEntered = false;
+    bool releaseAcknowledgement = false;
+    bool acknowledgementReturned = false;
+    bool artworkReady = false;
+    widgetrail::RemoteImageCache cache(
+        {},
+        [&](std::wstring_view, const widgetrail::RemoteImageState state) {
+            {
+                std::scoped_lock lock(demandMutex);
+                artworkReady = state == widgetrail::RemoteImageState::Ready;
+            }
+            demandChanged.notify_all();
+        },
+        [](std::wstring_view, std::stop_token,
+           const widgetrail::RemoteImageLimits&) {
+            widgetrail::RemoteDecodedImage image;
+            image.width = 1;
+            image.height = 1;
+            image.stride = 4;
+            image.premultipliedBgra = {0x20, 0x30, 0x40, 0xFF};
+            image.mimeType = L"image/png";
+            return widgetrail::RemoteImageFetchResult{S_OK, std::move(image), {}};
+        },
+        [&](std::wstring_view, const std::stop_token token) {
+            std::unique_lock lock(demandMutex);
+            demandEntered = true;
+            demandChanged.notify_all();
+            (void)demandChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+                return releaseAcknowledgement || token.stop_requested();
+            });
+            acknowledgementReturned = true;
+            demandChanged.notify_all();
+            return !token.stop_requested();
+        });
+    DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
+
+    WidgetSnapshot snapshot;
+    snapshot.sequence = 1;
+    snapshot.instanceId = L"async-artwork.runtime";
+    snapshot.activeInputScopeId = L"async-artwork.root";
+    snapshot.initialFocusId = L"async-artwork.tile";
+    snapshot.root = Node(L"async-artwork.root", L"stack");
+    snapshot.root.inputScopeId = snapshot.activeInputScopeId;
+    auto tile = Node(L"async-artwork.tile", L"actionSurface");
+    tile.actionId = L"open";
+    tile.accessibilityLabel = L"Open asynchronous artwork tile";
+    tile.actionSurfaceOrientation = L"horizontal";
+    tile.baseStyle = {
+        {L"width", Length(220)},
+        {L"height", Length(88)},
+        {L"padding", LengthList(L"8px")},
+    };
+    auto artwork = Node(L"async-artwork.tile.artwork", L"image");
+    artwork.artworkHandle = L"artwork.async-tile";
+    artwork.imageFit = L"contain";
+    artwork.baseStyle = {
+        {L"width", Length(64)},
+        {L"height", Length(64)},
+        {L"flex-shrink", Number(0)},
+    };
+    auto label = Node(L"async-artwork.tile.label", L"text");
+    label.text = L"Tile remains immediately navigable";
+    tile.children = {std::move(artwork), std::move(label)};
+    snapshot.root.children = {std::move(tile)};
+
+    widgetrail::DeclarativeRenderOptions options;
+    options.artworkWidgetId = L"async-artwork";
+    options.collectAccessibility = true;
+    target->BeginDraw();
+    const auto pending = renderer.Render(
+        target.Get(), snapshot, snapshot.initialFocusId,
+        {0.0F, 0.0F, 240.0F, 120.0F}, options);
+    Check(SUCCEEDED(target->EndDraw()),
+        "pending trusted artwork keeps Direct2D state balanced");
+    {
+        std::unique_lock lock(demandMutex);
+        Check(demandChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+            return demandEntered;
+        }), "trusted artwork demand reaches the owned worker");
+        Check(!acknowledgementReturned,
+            "tile render returns while trusted artwork acknowledgement is held");
+    }
+    const auto key = widgetrail::RemoteImageCache::TrustedArtworkKey(
+        L"async-artwork", L"async-artwork.tile.artwork", L"artwork.async-tile");
+    Check(cache.GetState(key) == widgetrail::RemoteImageState::Loading &&
+          pending.focusRects.contains(L"async-artwork.tile") &&
+          pending.navigationRects.contains(L"async-artwork.tile") &&
+          pending.accessibilityRegions.end() != std::find_if(
+              pending.accessibilityRegions.begin(),
+              pending.accessibilityRegions.end(),
+              [](const auto& region) {
+                  return region.nodeId == L"async-artwork.tile";
+              }),
+        "pending artwork preserves focus navigation and accessibility authority");
+
+    {
+        std::scoped_lock lock(demandMutex);
+        releaseAcknowledgement = true;
+    }
+    demandChanged.notify_all();
+    {
+        std::unique_lock lock(demandMutex);
+        Check(demandChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+            return acknowledgementReturned;
+        }), "trusted artwork acknowledgement returns on the owned worker");
+    }
+    constexpr std::wstring_view trustedPngBase64 =
+        L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+        L"AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
+    Check(cache.SupplyTrustedArtwork(
+        L"async-artwork", L"artwork.async-tile", L"image/png",
+        std::wstring(trustedPngBase64)),
+        "released trusted artwork completion retains exact current authority");
+    {
+        std::unique_lock lock(demandMutex);
+        Check(demandChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+            return artworkReady;
+        }), "released trusted artwork completes through the existing decoder owner");
+    }
+    target->BeginDraw();
+    const auto ready = renderer.Render(
+        target.Get(), snapshot, snapshot.initialFocusId,
+        {0.0F, 0.0F, 240.0F, 120.0F}, options);
+    Check(SUCCEEDED(target->EndDraw()) && ready.succeeded &&
+          renderer.GetImageBitmapCacheStats().creates == 1,
+        "current completion creates exactly one render-target bitmap");
+    cache.Shutdown();
+}
+
 void TrustedArtworkTerminalFallbackIsStable() {
     using Microsoft::WRL::ComPtr;
     ComPtr<ID2D1Factory> d2d;
@@ -5038,8 +5207,12 @@ void TrustedArtworkTerminalFallbackIsStable() {
             image.mimeType = L"image/png";
             return widgetrail::RemoteImageFetchResult{S_OK, std::move(image), {}};
         },
-        [&](const std::wstring_view key) {
-            requested.emplace_back(key);
+        [&](const std::wstring_view key, std::stop_token) {
+            {
+                std::scoped_lock lock(transitionMutex);
+                requested.emplace_back(key);
+            }
+            transitionCompleted.notify_all();
             return true;
         });
 
@@ -5120,8 +5293,12 @@ void TrustedArtworkTerminalFallbackIsStable() {
     };
     const auto launcherPending = render(playniteLibrary, L"playnite-library");
     const auto gamesPending = render(gamesApps, L"games-apps");
-    Check(requested.size() == 6,
-        "distinct handles request once per widget while repeated same-handle nodes reuse admission");
+    {
+        std::unique_lock lock(transitionMutex);
+        Check(transitionCompleted.wait_for(lock, std::chrono::seconds(2), [&] {
+            return requested.size() == 6;
+        }), "distinct handles request once per widget while repeated same-handle nodes reuse admission");
+    }
 
     const auto resolve = [&](const std::wstring_view widgetId) {
         Check(cache.SupplyTrustedArtwork(
@@ -5527,6 +5704,7 @@ int main() {
     IncrementalPresentationPlanningRetainsBoundedWork();
     RealDirect2DSmoke();
     OffscreenScrollArtworkDoesNotEnterRemoteCache();
+    TrustedArtworkDemandDoesNotBlockTileRender();
     TrustedArtworkTerminalFallbackIsStable();
     ContentMeasurementUsesResponsiveTaffyGeometry();
     MediaViewportUsesFinalDeclarativeGeometry();
