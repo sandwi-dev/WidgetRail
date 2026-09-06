@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <limits>
@@ -351,6 +352,26 @@ struct FocusPresentationSelection final {
         node.baseStyle.contains(std::wstring{property});
 }
 
+[[nodiscard]] NativeImageFit EffectiveImageFit(
+    const WidgetNode& node,
+    const NativeRenderStyle& style,
+    const bool focused,
+    const bool pressed) {
+    if (HasComputedProperty(node, L"object-fit", focused, pressed))
+        return style.imageFit();
+    return ExplicitImageFit(node).value_or(style.imageFit());
+}
+
+[[nodiscard]] std::wstring_view ImageFitName(const NativeImageFit fit) noexcept {
+    switch (fit) {
+    case NativeImageFit::Cover: return L"cover";
+    case NativeImageFit::Contain: return L"contain";
+    case NativeImageFit::Fill: return L"fill";
+    case NativeImageFit::None: return L"none";
+    }
+    return L"contain";
+}
+
 [[nodiscard]] NativeTextAlign ResolveButtonContentAlignment(
     const WidgetNode& node,
     const NativeRenderStyle& style,
@@ -636,6 +657,8 @@ struct DeclarativeRenderer::RenderPass final {
             desired.artworkHandle = selection.artworkHandle;
         }
         if (desired.imageFit.empty()) desired.imageFit = L"cover";
+        desired.imageFit = ImageFitName(
+            EffectiveImageFit(desired, style, false, false));
         result.compositorBackground = ComputedCompositorBackground{
             options.artworkAuthorityId, snapshot->instanceId, surface.id,
             focusedId, desired.imageSource, desired.artworkHandle,
@@ -2934,13 +2957,8 @@ struct DeclarativeRenderer::RenderPass final {
                 destination,
                 {0.0F, 0.0F, imageSize.width, imageSize.height}}
             : [&] {
-                auto fit = style.imageFit();
-                if (!HasComputedProperty(
-                        imageNode, L"object-fit", focused,
-                        imageNode.id == pressedId)) {
-                    if (const auto explicitFit = ExplicitImageFit(imageNode))
-                        fit = *explicitFit;
-                }
+                const auto fit = EffectiveImageFit(
+                    imageNode, style, focused, imageNode.id == pressedId);
                 return DeclarativeRenderer::ComputeImagePlacement(
                     {imageSize.width, imageSize.height}, destination, fit,
                     style.objectPosition());
@@ -2950,6 +2968,21 @@ struct DeclarativeRenderer::RenderPass final {
             std::clamp(opacity, 0.0F, 1.0F),
             D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
             D2DRect(placement.source));
+        if (owner->ArtworkRenderDiagnosticsEnabled() &&
+            !imageNode.artworkHandle.empty()) {
+            const auto nodeKey = NarrowStableId(imageNode.id);
+            const auto shown = presentation.find(nodeKey);
+            owner->ReportArtworkRenderDiagnostic(
+                imageNode,
+                options.artworkWidgetId,
+                L"draw",
+                L"bitmap",
+                {imageSize.width, imageSize.height},
+                placement.destination,
+                placement.source,
+                shown != presentation.end() ? shown->second.visibleBox : destination,
+                opacity);
+        }
     }
 
     void DrawBackgroundSurfaceOverlays(
@@ -3213,12 +3246,40 @@ struct DeclarativeRenderer::RenderPass final {
                     node, style,
                     Inset(rect, std::min(rect.width, rect.height) * 0.32F),
                     opacity * 0.75F, L"play");
+                if (owner->ArtworkRenderDiagnosticsEnabled() &&
+                    !node.artworkHandle.empty()) {
+                    const auto shown = presentation.find(NarrowStableId(node.id));
+                    owner->ReportArtworkRenderDiagnostic(
+                        node, options.artworkWidgetId,
+                        L"fallback", L"trusted-unavailable", {}, rect, {},
+                        shown != presentation.end() ? shown->second.visibleBox : rect,
+                        opacity);
+                }
             } else if (drawFailureFallback &&
                        presentationState == ImagePresentationState::Failed) {
                 DrawSemanticIcon(
                     node, style,
                     Inset(rect, std::min(rect.width, rect.height) * 0.32F),
                     opacity * 0.65F, L"warning");
+                if (owner->ArtworkRenderDiagnosticsEnabled() &&
+                    !node.artworkHandle.empty()) {
+                    const auto shown = presentation.find(NarrowStableId(node.id));
+                    owner->ReportArtworkRenderDiagnostic(
+                        node, options.artworkWidgetId,
+                        L"fallback", L"failed", {}, rect, {},
+                        shown != presentation.end() ? shown->second.visibleBox : rect,
+                        opacity);
+                }
+            } else {
+                if (owner->ArtworkRenderDiagnosticsEnabled() &&
+                    !node.artworkHandle.empty()) {
+                    const auto shown = presentation.find(NarrowStableId(node.id));
+                    owner->ReportArtworkRenderDiagnostic(
+                        node, options.artworkWidgetId,
+                        L"draw", L"unavailable", {}, rect, {},
+                        shown != presentation.end() ? shown->second.visibleBox : rect,
+                        opacity);
+                }
             }
             return false;
         }
@@ -4218,10 +4279,77 @@ struct DeclarativeRenderer::RenderPass final {
 DeclarativeRenderer::DeclarativeRenderer(
     ID2D1Factory* d2dFactory,
     IDWriteFactory* writeFactory,
-    RemoteImageCache* imageCache) noexcept
+    RemoteImageCache* imageCache,
+    ArtworkRenderDiagnosticCallback artworkRenderDiagnostic) noexcept
     : d2dFactory_(d2dFactory),
       writeFactory_(writeFactory),
-      imageCache_(imageCache) {}
+      imageCache_(imageCache),
+      artworkRenderDiagnostic_(std::move(artworkRenderDiagnostic)) {}
+
+void DeclarativeRenderer::ReportArtworkRenderDiagnostic(
+    const WidgetNode& node,
+    const std::wstring_view artworkWidgetId,
+    const std::wstring_view stage,
+    const std::wstring_view disposition,
+    const Size bitmapSize,
+    const Rect destination,
+    const Rect source,
+    const Rect clip,
+    const float opacity) noexcept {
+    if (!artworkRenderDiagnostic_ || node.artworkHandle.empty() ||
+        artworkDiagnosticKeyCount_ >= maximumArtworkDiagnosticRecords_) return;
+
+    try {
+        const auto resourceKey = RemoteImageCache::TrustedArtworkKey(
+            artworkWidgetId, node.id, node.artworkHandle);
+        const auto resourceHash = RemoteImageCache::OpaqueDiagnosticHash(resourceKey);
+        auto fingerprint = RemoteImageCache::OpaqueDiagnosticHash(node.id);
+        const auto mix = [&](const std::uint64_t value) {
+            fingerprint ^= value;
+            fingerprint *= 1099511628211ULL;
+        };
+        mix(RemoteImageCache::OpaqueDiagnosticHash(node.artworkHandle));
+        mix(resourceHash);
+        mix(RemoteImageCache::OpaqueDiagnosticHash(stage));
+        mix(RemoteImageCache::OpaqueDiagnosticHash(disposition));
+        mix(std::bit_cast<std::uint32_t>(bitmapSize.width));
+        mix(std::bit_cast<std::uint32_t>(bitmapSize.height));
+        for (const auto value : {
+                 destination.x, destination.y, destination.width,
+                 destination.height, source.x, source.y, source.width,
+                 source.height, clip.x, clip.y, clip.width, clip.height,
+                 opacity}) {
+            mix(std::bit_cast<std::uint32_t>(value));
+        }
+        const auto recordedEnd = artworkDiagnosticKeys_.begin() +
+            static_cast<std::ptrdiff_t>(artworkDiagnosticKeyCount_);
+        if (std::find(
+                artworkDiagnosticKeys_.begin(), recordedEnd, fingerprint) !=
+                recordedEnd) return;
+        artworkDiagnosticKeys_[artworkDiagnosticKeyCount_++] = fingerprint;
+
+        const auto rect = [](const Rect value) {
+            return std::to_wstring(value.x) + L"," + std::to_wstring(value.y) +
+                L"," + std::to_wstring(value.width) + L"," +
+                std::to_wstring(value.height);
+        };
+        artworkRenderDiagnostic_(
+            L"stage=" + std::wstring{stage} +
+            L" node=" + node.id +
+            L" resource-hash=" + std::to_wstring(resourceHash) +
+            L" handle-hash=" + std::to_wstring(
+                RemoteImageCache::OpaqueDiagnosticHash(node.artworkHandle)) +
+            L" disposition=" + std::wstring{disposition} +
+            L" bitmap=" + std::to_wstring(bitmapSize.width) + L"x" +
+                std::to_wstring(bitmapSize.height) +
+            L" destination=" + rect(destination) +
+            L" source=" + rect(source) +
+            L" clip=" + rect(clip) +
+            L" opacity=" + std::to_wstring(opacity));
+    } catch (...) {
+        // Diagnostics cannot own renderer or frame lifetime.
+    }
+}
 
 ComPtr<ID2D1Bitmap> DeclarativeRenderer::ResolveCompositorBackgroundBitmap(
     ID2D1RenderTarget* const renderTarget,
@@ -5322,6 +5450,12 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         existing->second.lastUse = ++bitmapAccessClock_;
         ++bitmapHits_;
         presentationState = ImagePresentationState::Ready;
+        if (ArtworkRenderDiagnosticsEnabled()) {
+            const auto bitmapSize = existing->second.bitmap->GetSize();
+            ReportArtworkRenderDiagnostic(
+                node, artworkWidgetId, L"gpu", L"hit",
+                {bitmapSize.width, bitmapSize.height});
+        }
         return existing->second.bitmap;
     }
     const auto state = imageCache_->GetState(source);
@@ -5359,12 +5493,19 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     const auto result = imageCache_->CreateBitmap(
         renderTarget, source, bitmap.ReleaseAndGetAddressOf());
     if (FAILED(result) || !bitmap) {
+        if (ArtworkRenderDiagnosticsEnabled())
+            ReportArtworkRenderDiagnostic(
+                node, artworkWidgetId, L"gpu", L"create-failed");
         pass.Add(node.id, L"image_bitmap", L"Ready image could not create a render-target bitmap.");
         return {};
     }
     ++bitmapCreates_;
     presentationState = ImagePresentationState::Ready;
     const auto pixelSize = bitmap->GetPixelSize();
+    if (ArtworkRenderDiagnosticsEnabled())
+        ReportArtworkRenderDiagnostic(
+            node, artworkWidgetId, L"gpu", L"created",
+            {static_cast<float>(pixelSize.width), static_cast<float>(pixelSize.height)});
     const auto byteCount64 = static_cast<std::uint64_t>(pixelSize.width) *
         static_cast<std::uint64_t>(pixelSize.height) * 4ULL;
     if (byteCount64 <= kMaximumBitmapEntryBytes) {

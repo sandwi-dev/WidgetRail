@@ -897,7 +897,6 @@ slider:focused {
 .wrail-background-surface {
   overflow: clip;
   background: rgba(18, 18, 20, 0.96);
-  object-fit: cover;
   object-position: center;
 }
 .wrail-tile__artwork {

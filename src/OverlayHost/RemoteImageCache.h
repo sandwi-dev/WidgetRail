@@ -4,6 +4,7 @@
 #include <d2d1.h>
 #include <wrl/client.h>
 
+#include <array>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -83,6 +84,22 @@ struct RemoteImageFetchResult {
     [[nodiscard]] bool succeeded() const noexcept { return SUCCEEDED(result); }
 };
 
+enum class TrustedArtworkContentType {
+    Unknown,
+    Jpeg,
+    Png,
+    WebP,
+};
+
+struct TrustedArtworkDecodeDiagnostic final {
+    std::uint64_t resourceHash{};
+    std::uint64_t handleHash{};
+    TrustedArtworkContentType contentType{TrustedArtworkContentType::Unknown};
+    UINT32 width{};
+    UINT32 height{};
+    bool hasVisibleAlpha{};
+};
+
 struct RemoteImageCacheStats {
     std::size_t entries{};
     std::size_t decodedBytes{};
@@ -116,12 +133,15 @@ public:
         std::stop_token stopToken,
         const RemoteImageLimits& limits)>;
     using ArtworkRequestFunction = std::function<bool(std::wstring_view key)>;
+    using ArtworkDecodeDiagnosticCallback =
+        std::function<void(const TrustedArtworkDecodeDiagnostic& diagnostic)>;
 
     explicit RemoteImageCache(
         RemoteImageLimits limits = {},
         CompletionCallback completion = {},
         FetchFunction fetch = {},
-        ArtworkRequestFunction artworkRequest = {});
+        ArtworkRequestFunction artworkRequest = {},
+        ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic = {});
     ~RemoteImageCache();
 
     RemoteImageCache(const RemoteImageCache&) = delete;
@@ -160,6 +180,8 @@ public:
         std::wstring_view widgetId,
         std::wstring_view nodeId,
         std::wstring_view artworkHandle);
+    [[nodiscard]] static std::uint64_t OpaqueDiagnosticHash(
+        std::wstring_view value) noexcept;
 
     /// Creates a render-target-owned bitmap from a ready CPU cache entry.
     /// Returns E_PENDING while queued/loading and HRESULT_FROM_WIN32(ERROR_NOT_FOUND)
@@ -212,6 +234,7 @@ private:
     bool usesCustomFetch_{};
     FetchFunction fetch_;
     ArtworkRequestFunction artworkRequest_;
+    ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic_;
     std::unique_ptr<ArtworkDecoderProcessOwner> artworkDecoder_;
     mutable std::mutex mutex_;
     std::condition_variable condition_;
@@ -227,6 +250,10 @@ private:
     std::uint64_t supersededEntries_{};
     std::uint64_t countCapacityRejections_{};
     std::uint64_t pendingCapacityRejections_{};
+    static constexpr std::size_t maximumArtworkDiagnosticRecords_{64};
+    std::array<std::uint64_t, maximumArtworkDiagnosticRecords_>
+        artworkDiagnosticKeys_{};
+    std::size_t artworkDiagnosticKeyCount_{};
     bool shuttingDown_{};
 };
 
