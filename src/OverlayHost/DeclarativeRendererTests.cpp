@@ -1698,6 +1698,67 @@ void ControllerScrollFollowsFocusAndRestoresState() {
     }), "invalid native scroll axis fails closed with an error");
 }
 
+void FocusEntryPreparationIsGeometryOnlyAndStateIsolated() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"focus-entry-preparation.instance";
+    snapshot.activeInputScopeId = L"focus-entry-preparation.scope";
+    snapshot.root = Node(L"focus-entry-preparation.scroll", L"scroll");
+    snapshot.root.inputScopeId = snapshot.activeInputScopeId;
+    snapshot.root.scrollAxis = L"vertical";
+    for (int index = 0; index < 8; ++index) {
+        auto button = Node(
+            (L"focus-entry-preparation.item-" + std::to_wstring(index)).c_str(),
+            L"button");
+        button.text = index == 7 ? L"Utilities" : L"Section";
+        button.actionId = button.id;
+        button.baseStyle = {
+            {L"height", Length(44)},
+            {L"min-height", Length(44)},
+            {L"flex-shrink", Number(0)},
+            {L"transition-duration", Duration(100)},
+        };
+        button.focusedStyle = {{L"translate-x", Length(8)}};
+        snapshot.root.children.push_back(std::move(button));
+    }
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    widgetrail::DeclarativeRenderOptions initialOptions;
+    initialOptions.animationTimestampMilliseconds = 0;
+    const auto initial = renderer.Render(
+        nullptr, snapshot, L"focus-entry-preparation.item-0",
+        {0.0F, 0.0F, 240.0F, 100.0F}, initialOptions);
+    Near(initial.scrollOffsets.at(L"focus-entry-preparation.scroll"), 0.0F,
+         "initial focus owns the committed leading scroll position");
+
+    widgetrail::DeclarativeRenderOptions preparationOptions;
+    preparationOptions.animationTimestampMilliseconds = 50;
+    preparationOptions.collectAccessibility = true;
+    const auto preparation = renderer.PrepareFocusEntry(
+        snapshot, L"focus-entry-preparation.item-7",
+        {0.0F, 0.0F, 240.0F, 100.0F}, preparationOptions);
+    Check(preparation.succeeded &&
+              preparation.focusRects.contains(L"focus-entry-preparation.item-7") &&
+              preparation.scrollOffsets.at(L"focus-entry-preparation.scroll") > 0.0F,
+          "preparation resolves final focus geometry and cloned scroll follow");
+    Check(preparation.accessibilityRegions.empty() &&
+              !preparation.compositorBackground &&
+              !preparation.backgroundSurfaceAnimationDamage &&
+              !preparation.backgroundSurfaceSettleWake,
+          "preparation publishes no accessibility or compositor resource state");
+
+    widgetrail::DeclarativeRenderOptions verificationOptions;
+    verificationOptions.animationTimestampMilliseconds = 50;
+    verificationOptions.suppressFocusedDescendantFollow = true;
+    const auto afterPreparation = renderer.Render(
+        nullptr, snapshot, L"focus-entry-preparation.item-0",
+        {0.0F, 0.0F, 240.0F, 100.0F}, verificationOptions);
+    Near(afterPreparation.scrollOffsets.at(L"focus-entry-preparation.scroll"), 0.0F,
+         "preparation cannot mutate the live scroll owner");
+    Near(afterPreparation.elementRects.at(L"focus-entry-preparation.item-0").x,
+         initial.elementRects.at(L"focus-entry-preparation.item-0").x,
+         "preparation cannot retarget the live motion timeline");
+}
+
 void CursorCollectionPreservesKeyedViewportAnchor() {
     WidgetSnapshot snapshot;
     snapshot.instanceId = L"cursor.collection@1";
@@ -5187,6 +5248,7 @@ int main() {
     TranslatedFocusConvergesInsideScrollViewport();
     ClippedControlsAreNotFocusCandidates();
     ControllerScrollFollowsFocusAndRestoresState();
+    FocusEntryPreparationIsGeometryOnlyAndStateIsolated();
     CursorCollectionPreservesKeyedViewportAnchor();
     VirtualCollectionWindowKeepsNativeWorkBounded();
     WholeWidgetScrollRevealsAudioMixerControls();

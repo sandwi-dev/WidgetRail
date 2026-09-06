@@ -763,20 +763,56 @@ void TestOneShotFocusGroupEntryHostContract() {
           "a request-only checkpoint forces a coherent render before consumption");
 
     const auto renderBegin = source.find(
-        "auto result = declarativeRenderer_->Render(");
+        "const std::wstring provisionalRenderedFocusId = renderedFocusId;");
     const auto renderEnd = source.find(
         "if (inertRetainedSnapshot)", renderBegin);
     Check(renderBegin != std::string::npos && renderEnd != std::string::npos &&
               renderBegin < renderEnd,
           "focus-group entry has one bounded successful-render section");
     const auto render = source.substr(renderBegin, renderEnd - renderBegin);
-    const auto succeeded = render.find("if (result.succeeded)");
-    const auto consume = render.find("ConsumeFocusGroupEntryRequest(", succeeded);
-    const auto move = render.find("interactionSession_.MoveFocus(", consume);
-    Check(succeeded != std::string::npos && consume != std::string::npos &&
-              move != std::string::npos && succeeded < consume && consume < move &&
-              render.find("inertRetainedSnapshot", succeeded) < consume,
-          "exact-current non-retained render consumes and applies one resolved target");
+    const auto candidatePreparation = render.find("PrepareFocusEntry(");
+    const auto candidatePreview = render.find(
+        "PreviewFocusGroupEntryRequest(", candidatePreparation);
+    const auto finalPreparation = render.find(
+        "PrepareFocusEntry(", candidatePreparation + 1);
+    const auto finalPreview = render.find(
+        "PreviewFocusGroupEntryRequest(", finalPreparation);
+    const auto projection = render.find(
+        "const widgetrail::accessibility::ProjectionKey projectionKey", finalPreview);
+    const auto actualRender = render.find(
+        "declarativeRenderer_->Render(", projection);
+    const auto duplicateActualRender = render.find(
+        "declarativeRenderer_->Render(", actualRender + 1);
+    const auto succeeded = render.find(
+        "if (result.succeeded && focusGroupEntryPrepared", actualRender);
+    const auto commit = render.find(
+        "CommitPreparedFocusGroupEntryRequest(", succeeded);
+    const auto move = render.find("interactionSession_.MoveFocus(", commit);
+    const auto semanticPublication = render.find(
+        "if (result.succeeded)", move);
+    Check(candidatePreparation != std::string::npos &&
+              candidatePreview != std::string::npos &&
+              finalPreparation != std::string::npos &&
+              finalPreview != std::string::npos &&
+              projection != std::string::npos && actualRender != std::string::npos &&
+              duplicateActualRender == std::string::npos &&
+              succeeded != std::string::npos && commit != std::string::npos &&
+              move != std::string::npos && semanticPublication != std::string::npos &&
+              candidatePreparation < candidatePreview &&
+              candidatePreview < finalPreparation && finalPreparation < finalPreview &&
+              finalPreview < projection && projection < actualRender &&
+              actualRender < succeeded && succeeded < commit && commit < move &&
+              move < semanticPublication,
+          "candidate and final focus preparation settle before exactly one actual raster, then commit before semantic publication");
+    const auto committedFocus = render.substr(commit, semanticPublication - commit);
+    Check(committedFocus.find("false, false") != std::string::npos &&
+              committedFocus.find("InvalidateRect(") == std::string::npos,
+          "the already-rendered focus target commits without retiring presentation state or scheduling a fallback frame");
+    Check(render.find("state=preparation-retired", candidatePreparation) <
+              actualRender &&
+              render.find("state=settlement-retired", finalPreparation) <
+              actualRender,
+          "failed or unstable preparation retires before the only target-backed raster");
 
     const auto pinnedProjection = source.find(
         "candidate.focusGroupEntryRequest.reset();");
