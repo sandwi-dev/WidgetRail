@@ -1660,6 +1660,40 @@ int main() {
           rememberedGroup->root.children[1].initialChildFocusId == L"controls.play");
 
     error.clear();
+    const auto focusGroupEntry = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":44,"sequence":2,
+            "widgetInstanceId":"focus-entry.instance",
+            "activeInputScopeId":"root","initialFocusId":"entry",
+            "focusGroupEntryRequest":{"requestId":7,"groupId":"controls"},
+            "root":{"id":"root","kind":"stack","inputScopeId":"root","children":[
+                {"id":"entry","kind":"button","text":"Entry","actionId":"entry"},
+                {"id":"controls","kind":"row","initialChildFocusId":"controls.play","children":[
+                    {"id":"controls.play","kind":"button","text":"Play","actionId":"play"}
+                ]}
+            ]}
+        }
+    })json", error);
+    CHECK(focusGroupEntry && error.empty() &&
+          focusGroupEntry->focusGroupEntryRequest &&
+          focusGroupEntry->focusGroupEntryRequest->requestId == 7 &&
+          focusGroupEntry->focusGroupEntryRequest->groupId == L"controls");
+
+    for (const std::string_view malformedRequest : {
+        R"json("focusGroupEntryRequest":{"requestId":0,"groupId":"controls"})json",
+        R"json("focusGroupEntryRequest":{"requestId":9007199254740992,"groupId":"controls"})json",
+        R"json("focusGroupEntryRequest":{"requestId":7,"groupId":"entry"})json",
+        R"json("focusGroupEntryRequest":{"requestId":7,"groupId":"dialog"})json"}) {
+        std::string invalid{R"json({"snapshot":{"protocolVersion":44,"sequence":2,"widgetInstanceId":"focus-entry.invalid","activeInputScopeId":"root",)json"};
+        invalid.append(malformedRequest);
+        invalid.append(
+            R"json(,"root":{"id":"root","kind":"stack","inputScopeId":"root","children":[{"id":"entry","kind":"button","text":"Entry","actionId":"entry"},{"id":"controls","kind":"row","initialChildFocusId":"controls.play","children":[{"id":"controls.play","kind":"button","text":"Play","actionId":"play"}]},{"id":"dialog","kind":"stack","inputScopeId":"dialog","initialChildFocusId":"dialog.ok","children":[{"id":"dialog.ok","kind":"button","text":"OK","actionId":"ok"}]}]}}})json");
+        error.clear();
+        CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(invalid, error) &&
+              !error.empty());
+    }
+
+    error.clear();
     CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "protocolVersion":33,"sequence":1,

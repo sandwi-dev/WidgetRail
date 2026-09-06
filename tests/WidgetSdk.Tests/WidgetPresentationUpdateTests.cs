@@ -16,11 +16,77 @@ internal static class WidgetPresentationUpdateTests
         TransactionKindsRetainExactAuthority();
         KeyedStructureAndSubtreeReplacement();
         FallbacksAreDeterministic();
+        FocusGroupEntryChangesForceCheckpoints();
         MalformedAndOversizedFailClosed();
         IntermediateStructureBoundsFailClosed();
         PropertyCoalescingIsBounded();
         DifferIsTrustTierNeutral();
         return Task.CompletedTask;
+    }
+
+    private static void FocusGroupEntryChangesForceCheckpoints()
+    {
+        var baseSnapshot = Snapshot(30, "old");
+        var group = new ViewNode
+        {
+            Id = "controls",
+            Kind = ViewNodeKind.Row,
+            InitialChildFocusId = "controls.first",
+            Children =
+            [
+                new ViewNode
+                {
+                    Id = "controls.first",
+                    Kind = ViewNodeKind.Button,
+                    Text = "First",
+                    ActionId = "controls.first.activate",
+                },
+            ],
+        };
+        var previous = baseSnapshot with
+        {
+            ProtocolVersion = ProtocolConstants.FocusGroupEntryRequestVersion,
+            Root = baseSnapshot.Root with
+            {
+                Children = baseSnapshot.Root.Children.Append(group).ToArray(),
+            },
+        };
+        var requested = previous with
+        {
+            Sequence = 31,
+            FocusGroupEntryRequest = new() { RequestId = 1, GroupId = "controls" },
+        };
+        Equal("focus_group_entry_request_changed", WidgetPresentationDiff.Create(
+            previous, requested, Generation, 30,
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate).FallbackReason);
+
+        var compatible = requested with
+        {
+            Sequence = 32,
+            Root = requested.Root with
+            {
+                Children = requested.Root.Children.Select(node => node.Id == "text.0"
+                    ? node with { Text = "new" }
+                    : node).ToArray(),
+            },
+        };
+        var publication = WidgetPresentationDiff.Create(
+            requested, compatible, Generation, 31,
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
+        True(publication.Update is not null,
+            "An identical pending request may follow a compatible newer sequence.");
+
+        var omitted = compatible with
+        {
+            Sequence = 33,
+            FocusGroupEntryRequest = null,
+        };
+        Equal("focus_group_entry_request_changed", WidgetPresentationDiff.Create(
+            compatible, omitted, Generation, 32,
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate).FallbackReason);
     }
 
     private static void TransactionKindsRetainExactAuthority()

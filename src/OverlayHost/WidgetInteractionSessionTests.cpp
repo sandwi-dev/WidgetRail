@@ -566,6 +566,160 @@ void RememberedGroupsUseExplicitAndGeometricEntryOwners() {
           "runtime or package retirement clears ordinary group memory");
 }
 
+void OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority() {
+    using namespace widgetrail::input;
+    Check(IsFocusGroupEntryAdmissionEligible({true, true, false, false}),
+          "visible ordinary widget input remains eligible with an unrelated click-through pin");
+    Check(!IsFocusGroupEntryAdmissionEligible({false, true, false, false}),
+          "a late snapshot while hidden cannot queue focus entry");
+    Check(!IsFocusGroupEntryAdmissionEligible({true, false, false, false}) &&
+              !IsFocusGroupEntryAdmissionEligible({true, true, true, false}) &&
+              !IsFocusGroupEntryAdmissionEligible({true, true, false, true}),
+          "tray modal and pinned-controller owners reject ordinary group entry");
+    widgetrail::WidgetSnapshot snapshot;
+    snapshot.sequence = 101;
+    snapshot.instanceId = L"entry.instance";
+    snapshot.activeInputScopeId = L"entry.root";
+    snapshot.root.id = L"entry.root";
+    snapshot.root.kind = L"stack";
+    snapshot.root.inputScopeId = L"entry.root";
+    widgetrail::WidgetNode group;
+    group.id = L"entry.group";
+    group.kind = L"row";
+    group.initialChildFocusId = L"entry.first";
+    group.children = {Button(L"entry.first"), Button(L"entry.remembered")};
+    snapshot.root.children = {group};
+    snapshot.focusGroupEntryRequest =
+        widgetrail::FocusGroupEntryRequest{17, L"entry.group"};
+
+    widgetrail::RenderResult render;
+    render.succeeded = true;
+    AddRenderTarget(render, L"entry.first", {0.0F, 0.0F, 80.0F, 30.0F});
+    AddRenderTarget(render, L"entry.remembered", {90.0F, 0.0F, 80.0F, 30.0F});
+    render.focusScopes[L"entry.first"] = L"entry.root";
+    render.focusScopes[L"entry.remembered"] = L"entry.root";
+
+    WidgetInteractionSession session;
+    session.SetFocus(L"entry.widget", snapshot, L"entry.remembered");
+    auto authority = Authority(
+        snapshot, L"entry.widget", L"runtime-a", L"presentation-a");
+    Check(session.ObserveFocusGroupEntryRequest(authority, true) ==
+              FocusGroupEntryObservation::Pending,
+          "fresh request becomes the one bounded pending group entry");
+
+    auto successor = snapshot;
+    successor.sequence++;
+    authority = Authority(
+        successor, L"entry.widget", L"runtime-a", L"presentation-a");
+    Check(session.ObserveFocusGroupEntryRequest(authority, true) ==
+              FocusGroupEntryObservation::Pending,
+          "identical compatible request follows a newer sequence without replay");
+    const auto applied = session.ConsumeFocusGroupEntryRequest(authority, render);
+    Check(applied.consumed && applied.target == L"entry.remembered",
+          "successful exact-current render resolves existing group memory once");
+    Check(!session.ConsumeFocusGroupEntryRequest(authority, render).consumed,
+          "consumed request cannot apply twice");
+    Check(session.ObserveFocusGroupEntryRequest(authority, true) ==
+              FocusGroupEntryObservation::Retired,
+          "same runtime and instance reject the consumed request ID");
+
+    successor.focusGroupEntryRequest =
+        widgetrail::FocusGroupEntryRequest{18, L"entry.group"};
+    authority = Authority(
+        successor, L"entry.widget", L"runtime-a", L"presentation-a");
+    Check(session.ObserveFocusGroupEntryRequest(authority, true) ==
+              FocusGroupEntryObservation::Pending,
+          "a higher request ID arms the next one-shot entry");
+    auto changedScope = successor;
+    changedScope.activeInputScopeId = L"dialog";
+    auto changedScopeAuthority = Authority(
+        changedScope, L"entry.widget", L"runtime-a", L"presentation-a");
+    Check(session.ObserveFocusGroupEntryRequest(changedScopeAuthority, true) ==
+              FocusGroupEntryObservation::Retired,
+          "scope replacement terminally retires pending entry");
+    Check(session.ObserveFocusGroupEntryRequest(authority, true) ==
+              FocusGroupEntryObservation::Retired,
+          "returning to the old scope cannot resurrect the consumed ID");
+
+    successor.focusGroupEntryRequest =
+        widgetrail::FocusGroupEntryRequest{19, L"entry.group"};
+    authority = Authority(
+        successor, L"entry.widget", L"runtime-a", L"presentation-a");
+    Check(session.ObserveFocusGroupEntryRequest(authority, false) ==
+              FocusGroupEntryObservation::Retired,
+          "hidden tray pinned or modal admission terminally retires the request");
+    Check(session.ObserveFocusGroupEntryRequest(authority, true) ==
+              FocusGroupEntryObservation::Retired,
+          "an ineligible admission cannot steal focus on reopen");
+
+    successor.focusGroupEntryRequest =
+        widgetrail::FocusGroupEntryRequest{20, L"entry.group"};
+    authority = Authority(
+        successor, L"entry.widget", L"runtime-a", L"presentation-a");
+    Check(session.ObserveFocusGroupEntryRequest(authority, true) ==
+              FocusGroupEntryObservation::Pending,
+          "a later request arms under exact presentation authority");
+    const auto replacedPresentation = Authority(
+        successor, L"entry.widget", L"runtime-a", L"presentation-b");
+    Check(session.ObserveFocusGroupEntryRequest(replacedPresentation, true) ==
+              FocusGroupEntryObservation::Retired,
+          "presentation replacement terminally retires pending entry");
+    Check(session.ObserveFocusGroupEntryRequest(authority, true) ==
+              FocusGroupEntryObservation::Retired,
+          "presentation rollback cannot resurrect the consumed ID");
+
+    successor.focusGroupEntryRequest =
+        widgetrail::FocusGroupEntryRequest{21, L"entry.group"};
+    authority = Authority(
+        successor, L"entry.widget", L"runtime-a", L"presentation-b");
+    Check(session.ObserveFocusGroupEntryRequest(authority, true) ==
+              FocusGroupEntryObservation::Pending,
+          "a new request can follow presentation retirement");
+    auto omitted = successor;
+    omitted.focusGroupEntryRequest.reset();
+    const auto omittedAuthority = Authority(
+        omitted, L"entry.widget", L"runtime-a", L"presentation-b");
+    Check(session.ObserveFocusGroupEntryRequest(omittedAuthority, true) ==
+              FocusGroupEntryObservation::Retired,
+          "request omission terminally retires pending entry");
+    Check(session.ObserveFocusGroupEntryRequest(authority, true) ==
+              FocusGroupEntryObservation::Retired,
+          "an omitted request ID cannot replay when reintroduced");
+
+    successor.focusGroupEntryRequest =
+        widgetrail::FocusGroupEntryRequest{22, L"entry.group"};
+    authority = Authority(
+        successor, L"entry.widget", L"runtime-a", L"presentation-b");
+    Check(session.ObserveFocusGroupEntryRequest(authority, true) ==
+              FocusGroupEntryObservation::Pending,
+          "a new exact group target arms once");
+    auto retargeted = successor;
+    retargeted.focusGroupEntryRequest =
+        widgetrail::FocusGroupEntryRequest{22, L"entry.other"};
+    const auto retargetedAuthority = Authority(
+        retargeted, L"entry.widget", L"runtime-a", L"presentation-b");
+    Check(session.ObserveFocusGroupEntryRequest(retargetedAuthority, true) ==
+              FocusGroupEntryObservation::Retired,
+          "same-ID retargeting terminally retires rather than redirects");
+
+    auto restarted = successor;
+    restarted.focusGroupEntryRequest =
+        widgetrail::FocusGroupEntryRequest{1, L"entry.group"};
+    auto restartedAuthority = Authority(
+        restarted, L"entry.widget", L"runtime-b", L"presentation-b");
+    Check(session.ObserveFocusGroupEntryRequest(restartedAuthority, true) ==
+              FocusGroupEntryObservation::Pending,
+          "fresh runtime owns an independent request high-water mark");
+    session.ForgetRuntime(L"entry.instance");
+    Check(session.ObserveFocusGroupEntryRequest(restartedAuthority, true) ==
+              FocusGroupEntryObservation::Pending,
+          "runtime retirement removes its bounded high-water entry");
+    session.ResetFocusGroupEntryRequests();
+    Check(session.ObserveFocusGroupEntryRequest(restartedAuthority, true) ==
+              FocusGroupEntryObservation::Pending,
+          "Bridge-session replacement clears request tracking");
+}
+
 void ResponsiveGridScrollOwnsDirectionalPriority() {
     using namespace widgetrail::input;
     for (const float pixelScale : {1.0F, 1.5F}) {
@@ -1423,6 +1577,7 @@ int main() {
     PinnedViewReturnUsesExistingFocusMemory();
     ResponsiveFocusHandoffUsesInteractionOwner();
     RememberedGroupsUseExplicitAndGeometricEntryOwners();
+    OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority();
     ResponsiveGridScrollOwnsDirectionalPriority();
     FreeScrollAndRetainedRefreshLifecycle();
     ExactSliderRequestAuthorityAndRollback();

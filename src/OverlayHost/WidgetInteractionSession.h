@@ -134,6 +134,30 @@ struct FocusMutation final {
     bool changed{};
 };
 
+enum class FocusGroupEntryObservation {
+    None,
+    Pending,
+    Retired,
+};
+
+struct FocusGroupEntryAdmissionContext final {
+    bool overlayVisible{};
+    bool ordinaryWidgetOwnsInput{};
+    bool modalActive{};
+    bool pinnedControllerOwnsInput{};
+};
+
+[[nodiscard]] constexpr bool IsFocusGroupEntryAdmissionEligible(
+    const FocusGroupEntryAdmissionContext& context) noexcept {
+    return context.overlayVisible && context.ordinaryWidgetOwnsInput &&
+        !context.modalActive && !context.pinnedControllerOwnsInput;
+}
+
+struct FocusGroupEntryApplication final {
+    bool consumed{};
+    std::optional<std::wstring> target;
+};
+
 enum class DirectionalFocusDisposition {
     MissingVisibleFocus,
     VisibleRecovery,
@@ -392,6 +416,13 @@ public:
         std::wstring_view widgetId,
         const WidgetSnapshot& snapshot) const;
     void ForgetWidget(std::wstring_view widgetId);
+    [[nodiscard]] FocusGroupEntryObservation ObserveFocusGroupEntryRequest(
+        const WidgetInteractionAuthority& authority,
+        bool ordinaryWidgetInputEligible);
+    [[nodiscard]] FocusGroupEntryApplication ConsumeFocusGroupEntryRequest(
+        const WidgetInteractionAuthority& authority,
+        const RenderResult& renderResult);
+    void ResetFocusGroupEntryRequests() noexcept;
 
     [[nodiscard]] RightStickScrollUpdate SampleRightStick(
         short x,
@@ -534,6 +565,28 @@ public:
         std::wstring_view reason);
 
 private:
+    struct FocusGroupEntryHighWater final {
+        std::wstring widgetId;
+        std::wstring widgetInstanceId;
+        std::wstring runtimeGeneration;
+        long long requestId{};
+    };
+    struct PendingFocusGroupEntry final {
+        std::wstring widgetId;
+        std::wstring widgetInstanceId;
+        std::wstring runtimeGeneration;
+        std::wstring presentationGeneration;
+        std::wstring inputScopeId;
+        std::wstring groupId;
+        long long requestId{};
+        long long snapshotSequence{};
+    };
+    [[nodiscard]] static bool SameFocusGroupEntryRuntime(
+        const FocusGroupEntryHighWater&,
+        const WidgetInteractionAuthority&) noexcept;
+    [[nodiscard]] static bool SameFocusGroupEntryRuntime(
+        const PendingFocusGroupEntry&,
+        const WidgetInteractionAuthority&) noexcept;
     [[nodiscard]] static SliderInputDescriptor SliderDescriptor(
         const WidgetSnapshot& snapshot,
         const WidgetNode& node) noexcept;
@@ -600,6 +653,8 @@ private:
     std::wstring focusedElementId_;
     WidgetSurfaceFocusMemory focusMemory_;
     WidgetFocusGroupMemory focusGroupMemory_;
+    std::vector<FocusGroupEntryHighWater> focusGroupEntryHighWater_;
+    std::optional<PendingFocusGroupEntry> pendingFocusGroupEntry_;
     SliderInteractionState sliders_;
     PressedInteractionState pressed_;
     std::optional<SelectPopupBinding> selectPopup_;

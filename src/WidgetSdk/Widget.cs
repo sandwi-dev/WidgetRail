@@ -25,6 +25,12 @@ public sealed record WidgetView(
     public EmbeddedMediaSession? EmbeddedMediaSession { get; init; }
 
     /// <summary>
+    /// Optional one-shot host request to enter an authored remembered-child
+    /// focus group. Authors must advance RequestId for each new request.
+    /// </summary>
+    public FocusGroupEntryRequest? FocusGroupEntryRequest { get; init; }
+
+    /// <summary>
     /// Creates one bounded pinned layout. Omitting <paramref name="root"/>
     /// preserves the protocol-v20 size-profile behavior.
     /// </summary>
@@ -64,6 +70,7 @@ public sealed record WidgetView(
             WidgetInstanceId = widgetInstanceId,
             ActiveInputScopeId = ActiveInputScopeId ?? RootScopeId(Root),
             InitialFocusId = InitialFocusId,
+            FocusGroupEntryRequest = FocusGroupEntryRequest,
             QuickActions = QuickActions?.ToArray() ?? [],
             Surface = Surface,
             PinnedLayouts = PinnedLayouts?.ToArray() ?? [],

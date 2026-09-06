@@ -719,6 +719,74 @@ void TestAcceptedWidgetOwnedFocusMemoryHostContract() {
           "widget hide remembers exact focus, clears only live focus, and restores on exact Hidden-to-Widget authority before presentation");
 }
 
+void TestOneShotFocusGroupEntryHostContract() {
+    const auto source = ReadSource(
+        fs::path{__FILE__}.parent_path() / "main.cpp");
+    const auto admissionBegin = source.find(
+        "const auto currentWidget = state_.surface() == widgetrail::Surface::Widget");
+    const auto admissionEnd = source.find(
+        "if (newerRefreshRequested)", admissionBegin);
+    Check(admissionBegin != std::string::npos &&
+              admissionEnd != std::string::npos &&
+              admissionBegin < admissionEnd,
+          "focus-group entry has one bounded ordinary admission section");
+    const auto admission = source.substr(
+        admissionBegin, admissionEnd - admissionBegin);
+    const auto eligibilityBegin = admission.find(
+        "IsFocusGroupEntryAdmissionEligible({");
+    const auto eligibilityEnd = admission.find("});", eligibilityBegin);
+    Check(eligibilityBegin != std::string::npos &&
+              eligibilityEnd != std::string::npos &&
+              eligibilityBegin < eligibilityEnd,
+          "focus-group entry eligibility has one bounded host call");
+    const auto eligibility = admission.substr(
+        eligibilityBegin, eligibilityEnd - eligibilityBegin);
+    Check(eligibility.find("IsWindowVisible(window_) != FALSE") != std::string::npos &&
+              eligibility.find("WidgetOwnsInputFocus(event.widgetId)") != std::string::npos &&
+              eligibility.find("textEntryModal_.active()") != std::string::npos &&
+              eligibility.find("pinnedSurfaceCoordinator_.controllerFocused()") !=
+                  std::string::npos &&
+              eligibility.find("pinnedSurfaceCoordinator_.pinned()") ==
+                  std::string::npos,
+          "hidden tray modal and pinned input retire entry without rejecting an unrelated click-through pin");
+    const auto observe = admission.find("ObserveFocusGroupEntryRequest(");
+    const auto noRasterBarrier = admission.find(
+        "if (focusGroupEntryPending)", observe);
+    const auto noRasterAttempt = admission.find(
+        "TryApplyNoRasterWidgetPresentation(", noRasterBarrier);
+    Check(observe != std::string::npos &&
+              noRasterBarrier != std::string::npos &&
+              noRasterAttempt != std::string::npos &&
+              observe < noRasterBarrier && noRasterBarrier < noRasterAttempt &&
+              admission.find("pendingWidgetPresentationImpact_.reset();",
+                  noRasterBarrier) < noRasterAttempt,
+          "a request-only checkpoint forces a coherent render before consumption");
+
+    const auto renderBegin = source.find(
+        "auto result = declarativeRenderer_->Render(");
+    const auto renderEnd = source.find(
+        "if (inertRetainedSnapshot)", renderBegin);
+    Check(renderBegin != std::string::npos && renderEnd != std::string::npos &&
+              renderBegin < renderEnd,
+          "focus-group entry has one bounded successful-render section");
+    const auto render = source.substr(renderBegin, renderEnd - renderBegin);
+    const auto succeeded = render.find("if (result.succeeded)");
+    const auto consume = render.find("ConsumeFocusGroupEntryRequest(", succeeded);
+    const auto move = render.find("interactionSession_.MoveFocus(", consume);
+    Check(succeeded != std::string::npos && consume != std::string::npos &&
+              move != std::string::npos && succeeded < consume && consume < move &&
+              render.find("inertRetainedSnapshot", succeeded) < consume,
+          "exact-current non-retained render consumes and applies one resolved target");
+
+    const auto pinnedProjection = source.find(
+        "candidate.focusGroupEntryRequest.reset();");
+    const auto bridgeRetirement = source.find(
+        "interactionSession_.ResetFocusGroupEntryRequests();");
+    Check(pinnedProjection != std::string::npos &&
+              bridgeRetirement != std::string::npos,
+          "pinned projection and Bridge-session replacement cannot replay ordinary entry");
+}
+
 void TestPinnedViewReturnsToPriorOverlayFocusContract() {
     const auto source = ReadSource(
         fs::path{__FILE__}.parent_path() / "main.cpp");
@@ -1713,6 +1781,7 @@ int wmain(const int argc, wchar_t** argv) {
         TestWidgetContextActionHostContract();
         TestAcceptedOverlayFullscreenMediaHostContract();
         TestAcceptedWidgetOwnedFocusMemoryHostContract();
+        TestOneShotFocusGroupEntryHostContract();
         TestPinnedViewReturnsToPriorOverlayFocusContract();
         TestAcceptedHiddenBridgeControlPlaneContract();
         TestSelectActivationRoutingContract();

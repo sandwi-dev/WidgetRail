@@ -72,6 +72,8 @@ internal static class WidgetPresentationDiff
             return Checkpoint("pinned_layout_catalog_changed");
         if (!SameJson(previous.EmbeddedMediaSession, current.EmbeddedMediaSession))
             return Checkpoint("embedded_media_changed");
+        if (!SameJson(previous.FocusGroupEntryRequest, current.FocusGroupEntryRequest))
+            return Checkpoint("focus_group_entry_request_changed");
 
         var operations = new List<PresentationUpdateOperation>();
         AddDocumentChanges(previous, current, operations);

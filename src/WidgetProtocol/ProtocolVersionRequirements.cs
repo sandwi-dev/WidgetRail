@@ -25,6 +25,13 @@ internal sealed class ProtocolVersionRequirements
         var requirements = new List<ProtocolVersionRequirement>();
         var nodes = 0;
 
+        if (snapshot.FocusGroupEntryRequest is not null)
+            Add(
+                "focus-group-entry-request",
+                ProtocolConstants.FocusGroupEntryRequestVersion,
+                "$.focusGroupEntryRequest",
+                $"Focus-group entry requests require protocol version {ProtocolConstants.FocusGroupEntryRequestVersion} or later.");
+
         if (snapshot.Surface is not null)
         {
             Add(

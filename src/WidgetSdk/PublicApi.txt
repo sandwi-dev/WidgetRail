@@ -2040,6 +2040,7 @@ property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.Con
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.WidgetActionEvent.Phase { get; set; }
 property WidgetRail.WidgetProtocol.EmbeddedMediaSession WidgetRail.WidgetSdk.MediaViewportElement.Session { get; set; }
 property WidgetRail.WidgetProtocol.EmbeddedMediaSession? WidgetRail.WidgetSdk.WidgetView.EmbeddedMediaSession { get; set; }
+property WidgetRail.WidgetProtocol.FocusGroupEntryRequest? WidgetRail.WidgetSdk.WidgetView.FocusGroupEntryRequest { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ActionSurfaceElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ButtonElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ScrubberElement.FocusNeighbors { get; set; }

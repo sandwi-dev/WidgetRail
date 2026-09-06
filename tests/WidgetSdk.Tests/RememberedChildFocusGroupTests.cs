@@ -7,8 +7,73 @@ internal static class RememberedChildFocusGroupTests
     {
         SharedContainerApiOwnsTheContract();
         ProtocolV33RoundTripsAndValidates();
+        OneShotEntryRequestsAreVersionedAndScoped();
         InvalidGroupsFailClosed();
         return Task.CompletedTask;
+    }
+
+    private static void OneShotEntryRequestsAreVersionedAndScoped()
+    {
+        var group = UI.Row("controls",
+                UI.Button("Play", "play", "controls.play"),
+                UI.Button("Queue", "queue", "controls.queue"))
+            .RememberChildFocus("controls.play");
+        var snapshot = new WidgetView(UI.Stack("root", group))
+        {
+            FocusGroupEntryRequest = new()
+            {
+                RequestId = 7,
+                GroupId = "controls",
+            },
+        }.CreateSnapshot("focus-entry.instance", 1);
+
+        Equal(ProtocolConstants.FocusGroupEntryRequestVersion, snapshot.ProtocolVersion);
+        Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        Equal(7L, snapshot.FocusGroupEntryRequest!.RequestId);
+        Equal("controls", snapshot.FocusGroupEntryRequest.GroupId);
+        var json = System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(snapshot));
+        True(json.Contains(
+            "\"focusGroupEntryRequest\":{\"requestId\":7,\"groupId\":\"controls\"}",
+            StringComparison.Ordinal));
+
+        Error(snapshot with
+        {
+            ProtocolVersion = ProtocolConstants.FocusGroupEntryRequestVersion - 1,
+        }, "feature_requires_version");
+        Error(snapshot with
+        {
+            FocusGroupEntryRequest = snapshot.FocusGroupEntryRequest with { RequestId = 0 },
+        }, "out_of_range");
+        Error(snapshot with
+        {
+            FocusGroupEntryRequest = snapshot.FocusGroupEntryRequest with
+            {
+                RequestId = ProtocolConstants.MaximumFocusGroupEntryRequestId + 1,
+            },
+        }, "out_of_range");
+        Error(snapshot with
+        {
+            FocusGroupEntryRequest = snapshot.FocusGroupEntryRequest with
+            {
+                GroupId = "controls.play",
+            },
+        }, "invalid_focus_group");
+
+        var dialogGroup = RawNode("dialog", ViewNodeKind.Stack) with
+        {
+            InputScopeId = "dialog",
+            InitialChildFocusId = "dialog.ok",
+            Children = [RawButton("dialog.ok")],
+        };
+        var outside = snapshot with
+        {
+            Root = snapshot.Root with
+            {
+                Children = snapshot.Root.Children.Append(dialogGroup).ToArray(),
+            },
+            FocusGroupEntryRequest = new() { RequestId = 8, GroupId = "dialog" },
+        };
+        Error(outside, "focus_group_outside_active_scope");
     }
 
     private static void SharedContainerApiOwnsTheContract()

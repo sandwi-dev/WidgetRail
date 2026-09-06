@@ -495,12 +495,18 @@ struct EmbeddedMediaBundle final {
     std::vector<EmbeddedMediaResource> resources;
 };
 
+struct FocusGroupEntryRequest final {
+    long long requestId{};
+    std::wstring groupId;
+};
+
 struct WidgetSnapshot final {
     int protocolVersion{1};
     long long sequence{};
     std::wstring instanceId;
     std::wstring activeInputScopeId;
     std::wstring initialFocusId;
+    std::optional<FocusGroupEntryRequest> focusGroupEntryRequest;
     std::vector<WidgetQuickAction> quickActions;
     std::optional<WidgetSurfaceHints> surface;
     std::vector<WidgetPinnedLayout> pinnedLayouts;

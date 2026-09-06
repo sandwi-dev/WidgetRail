@@ -1422,6 +1422,36 @@ void ValidateRememberedChildFocusGroups(
     }
 }
 
+void ValidateFocusGroupEntryRequest(const WidgetSnapshot& snapshot) {
+    if (!snapshot.focusGroupEntryRequest) return;
+    if (snapshot.protocolVersion <
+            protocol_contract::FocusGroupEntryRequestVersion)
+        throw winrt::hresult_invalid_argument(
+            L"Focus-group entry requests require protocol version 44.");
+    const auto& request = *snapshot.focusGroupEntryRequest;
+    const WidgetNode* match{};
+    std::size_t matches{};
+    const auto rootScope = snapshot.root.inputScopeId.empty()
+        ? std::wstring_view(snapshot.root.id)
+        : std::wstring_view(snapshot.root.inputScopeId);
+    const auto visit = [&](const auto& self, const WidgetNode& node,
+                           const std::wstring_view inheritedScope) -> void {
+        const auto scope = node.inputScopeId.empty()
+            ? inheritedScope : std::wstring_view(node.inputScopeId);
+        if (node.id == request.groupId &&
+            scope == snapshot.activeInputScopeId) {
+            ++matches;
+            match = &node;
+        }
+        for (const auto& child : node.children) self(self, child, scope);
+    };
+    visit(visit, snapshot.root, rootScope);
+    if (matches != 1U || !match || match->initialChildFocusId.empty() ||
+        !IsFocusEntryContainer(*match))
+        throw winrt::hresult_invalid_argument(
+            L"Focus-group entry request authority is invalid.");
+}
+
 void ValidatePosterTiles(const WidgetNode& root, const int protocolVersion) {
     const auto visit = [&](const auto& self, const WidgetNode& node) -> void {
         if (!node.actionSurfacePresentation.empty() &&
@@ -1549,6 +1579,27 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     snapshot.activeInputScopeId =
         std::wstring(std::wstring_view(source.GetNamedString(L"activeInputScopeId")));
     snapshot.initialFocusId = OptionalString(source, L"initialFocusId");
+    if (source.HasKey(L"focusGroupEntryRequest")) {
+        const auto request = source.GetNamedObject(L"focusGroupEntryRequest");
+        if (!HasNoUnknownProperties(request, {L"requestId", L"groupId"}) ||
+            !request.HasKey(L"requestId") || !request.HasKey(L"groupId") ||
+            request.GetNamedValue(L"requestId").ValueType() !=
+                JsonValueType::Number) {
+            throw winrt::hresult_invalid_argument(
+                L"Focus-group entry request shape is invalid.");
+        }
+        const double requestId = request.GetNamedNumber(L"requestId");
+        const auto groupId = std::wstring(std::wstring_view(
+            request.GetNamedString(L"groupId")));
+        if (!std::isfinite(requestId) || std::floor(requestId) != requestId ||
+            requestId < 1.0 || requestId > static_cast<double>(
+                protocol_contract::MaximumFocusGroupEntryRequestId) ||
+            !IsIdentifier(groupId))
+            throw winrt::hresult_invalid_argument(
+                L"Focus-group entry request identity is invalid.");
+        snapshot.focusGroupEntryRequest = FocusGroupEntryRequest{
+            static_cast<long long>(requestId), groupId};
+    }
     const auto parseSurface = [](const JsonObject& hints) {
         if (!HasNoUnknownProperties(hints,
                 {L"mode", L"appearance", L"widthMode", L"heightMode", L"preferredWidth",
@@ -1895,6 +1946,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     ValidateControllerShortcutLabels(snapshot.root, snapshot.protocolVersion);
     ValidateFocusPresentations(snapshot.root, snapshot.protocolVersion);
     ValidateRememberedChildFocusGroups(snapshot.root, snapshot.protocolVersion);
+    ValidateFocusGroupEntryRequest(snapshot);
     const auto validateContextActions = [&](const auto& self,
                                             const WidgetNode& node) -> void {
         if (!node.contextActions.empty() &&
@@ -2041,7 +2093,7 @@ bool ValidateWidgetDocumentStructure(
     std::wstring& error) {
     if (!HasNoUnknownProperties(document,
             {L"protocolVersion", L"sequence", L"widgetInstanceId",
-             L"activeInputScopeId", L"initialFocusId", L"quickActions",
+             L"activeInputScopeId", L"initialFocusId", L"focusGroupEntryRequest", L"quickActions",
              L"surface", L"pinnedLayouts", L"embeddedMediaSession", L"root"}) ||
         !document.HasKey(L"root") ||
         document.GetNamedValue(L"root").ValueType() != JsonValueType::Object) {

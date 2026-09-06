@@ -507,6 +507,12 @@ public sealed record ViewSnapshot
     /// <summary>The public ID of the one input surface currently accepting open-widget input.</summary>
     public required string ActiveInputScopeId { get; init; }
     public string? InitialFocusId { get; init; }
+    /// <summary>
+    /// Optional protocol-v44 one-shot request to enter an authored
+    /// remembered-child focus group. The host consumes each positive request
+    /// ID at most once for the current widget runtime and instance.
+    /// </summary>
+    public FocusGroupEntryRequest? FocusGroupEntryRequest { get; init; }
     public IReadOnlyList<WidgetQuickAction> QuickActions { get; init; } = [];
     /// <summary>Versioned, host-clamped sizing hints for this exact view.</summary>
     public WidgetSurfaceHints? Surface { get; init; }
@@ -522,6 +528,12 @@ public sealed record ViewSnapshot
     /// </summary>
     public EmbeddedMediaSession? EmbeddedMediaSession { get; init; }
     public required ViewNode Root { get; init; }
+}
+
+public sealed record FocusGroupEntryRequest
+{
+    public required long RequestId { get; init; }
+    public required string GroupId { get; init; }
 }
 
 public enum EmbeddedMediaCommand
