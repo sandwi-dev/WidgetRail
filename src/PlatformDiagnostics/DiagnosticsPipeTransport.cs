@@ -309,6 +309,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         ValidateArea(snapshot.Consent);
         ValidateArea(snapshot.Overlay);
         ValidateArea(snapshot.Guide);
+        ValidateBridgeArtworkMemory(snapshot.BridgeArtworkMemory);
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var worker in snapshot.Workers)
         {
@@ -411,6 +412,21 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
             area.Label.IndexOfAny(['\r', '\n']) >= 0 ||
             string.IsNullOrWhiteSpace(area.Summary) || area.Summary.Length > 256 ||
             area.Summary.IndexOfAny(['\r', '\n']) >= 0)
+            throw new PlatformDiagnosticsException("invalid_snapshot");
+    }
+
+    private static void ValidateBridgeArtworkMemory(
+        PlatformBridgeArtworkMemoryDiagnostic? artwork)
+    {
+        if (artwork is null) return;
+        if (artwork.Requests < 0 || artwork.Completed < 0 || artwork.Failed < 0 ||
+            artwork.InFlight < 0 || artwork.MaximumInFlight < artwork.InFlight ||
+            artwork.MaximumInFlight > artwork.Requests ||
+            artwork.Completed > artwork.Requests || artwork.Failed > artwork.Requests ||
+            artwork.RawBytes < 0 || artwork.Base64Characters < 0 ||
+            artwork.ManagedHeapBytes < 0 || artwork.LargeObjectHeapBytes < 0 ||
+            artwork.AllocatedBytesPerSecond < 0 || artwork.Gen2Collections < 0 ||
+            artwork.PrivateBytes < 0 || artwork.WorkingSetBytes < 0)
             throw new PlatformDiagnosticsException("invalid_snapshot");
     }
 

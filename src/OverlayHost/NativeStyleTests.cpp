@@ -53,6 +53,7 @@ int main() {
         std::cerr << "Default max-lines must keep text visible\n";
         std::abort();
     }
+    assert(style720.overflowWrap() == NativeOverflowWrap::Normal);
     Near(640, *style720.widthPx());
     Near(180, *style720.heightPx());
     Near(500, *style720.minWidthPx());
@@ -70,6 +71,20 @@ int main() {
     Near(-150, style720.translateYPx());
     Near(0x20 / 255.0F, style720.background()->red);
     Near(0x80 / 255.0F, style720.background()->alpha);
+
+    WidgetComputedStyle emergencyWrap{
+        {L"overflow-wrap", {L"keyword", L"anywhere", std::nullopt, {}}},
+    };
+    const auto emergencyWrapStyle = NativeStyleAdapter::Adapt(
+        emergencyWrap, context720);
+    assert(emergencyWrapStyle.style.overflowWrap() == NativeOverflowWrap::Anywhere);
+    assert(emergencyWrapStyle.diagnostics.empty());
+    WidgetComputedStyle invalidWrap{
+        {L"overflow-wrap", {L"keyword", L"sometimes", std::nullopt, {}}},
+    };
+    const auto invalidWrapStyle = NativeStyleAdapter::Adapt(invalidWrap, context720);
+    assert(invalidWrapStyle.style.overflowWrap() == NativeOverflowWrap::Normal);
+    assert(invalidWrapStyle.diagnostics.size() == 1);
 
     WidgetComputedStyle uniformBorder{
         {L"border-width", Length(2, L"px")},

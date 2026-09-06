@@ -4637,6 +4637,16 @@ void OffscreenScrollArtworkDoesNotEnterRemoteCache() {
         "120-DIP scroll viewport exposes exactly two complete and one partial artwork row");
     Check(cache.GetStats().entries == visibleArtwork,
         "remote cache queues only artwork intersecting its presented visible box");
+    const auto bitmapStats = renderer.GetImageBitmapCacheStats();
+    Check(bitmapStats.visibleArtworkObservations == visibleArtwork &&
+          bitmapStats.clippedArtworkObservations == artwork.size() - visibleArtwork,
+        "renderer attributes visible and clipped artwork observations separately");
+    Check(bitmapStats.requestedPaintPixels > 0 &&
+          bitmapStats.maximumRequestedPaintPixels > 0 &&
+          bitmapStats.maximumRequestedPaintWidth > 0 &&
+          bitmapStats.maximumRequestedPaintHeight > 0 &&
+          bitmapStats.requestedPaintPixels >= bitmapStats.maximumRequestedPaintPixels,
+        "renderer attributes bounded requested paint geometry without retaining identities");
     Check(result.navigationRects.size() == buttonCount,
         "offscreen leading-image buttons remain in the logical navigation graph");
     cache.Shutdown();

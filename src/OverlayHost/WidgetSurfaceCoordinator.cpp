@@ -468,6 +468,10 @@ bool WidgetSurfaceCoordinator::ToggleInteractionMode() {
         : InteractionMode::Focusable);
 }
 
+ImageBitmapCacheStats WidgetSurfaceCoordinator::GetImageBitmapCacheStats() const noexcept {
+    return renderer_ ? renderer_->GetImageBitmapCacheStats() : ImageBitmapCacheStats{};
+}
+
 bool WidgetSurfaceCoordinator::EnterControllerFocus() {
     if (!pinned() || !overlayVisible_ ||
         policy_.interactionMode() != InteractionMode::Focusable) return false;

@@ -7,6 +7,7 @@ using WidgetRail.PlatformDiagnostics;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bound worker receives a validated sanitized snapshot", AuthenticatedRoundTrip),
+    ("Artwork memory metrics remain typed bounded and optional across the pipe", ArtworkMemoryRoundTrip),
     ("Authenticated worker retries only the exact recovery confirmation token", AuthenticatedRecoveryRetry),
     ("Trusted worker inspects and clears only exact widget local data", WidgetLocalDataRoundTrip),
     ("Trusted worker uninstalls only an exact path-free package identity", WidgetPackageUninstallRoundTrip),
@@ -50,6 +51,29 @@ static async Task AuthenticatedRoundTrip()
     Assert.Equal(11L, observed.Revision);
     Assert.Equal(PlatformDiagnosticState.Healthy, observed.Catalog.State);
     Assert.Equal("audio-mixer", observed.Workers.Single().WidgetId);
+}
+
+static async Task ArtworkMemoryRoundTrip()
+{
+    var maximum = new PlatformBridgeArtworkMemoryDiagnostic(
+        long.MaxValue, long.MaxValue, long.MaxValue, long.MaxValue, long.MaxValue,
+        long.MaxValue, long.MaxValue, long.MaxValue, long.MaxValue, long.MaxValue,
+        long.MaxValue, long.MaxValue, long.MaxValue);
+    await using (var harness = new DiagnosticsHarness(_ => ValueTask.FromResult(
+                     HealthySnapshot(12) with { BridgeArtworkMemory = maximum })))
+    {
+        var observed = await harness.Client.GetSnapshotAsync();
+        Assert.Equal(maximum, observed.BridgeArtworkMemory);
+        Assert.True(observed.Bridge.Summary.Length <= 256);
+    }
+
+    await using (var harness = new DiagnosticsHarness(_ => ValueTask.FromResult(
+                     HealthySnapshot(13))))
+    {
+        var observed = await harness.Client.GetSnapshotAsync();
+        Assert.Equal<PlatformBridgeArtworkMemoryDiagnostic?>(
+            null, observed.BridgeArtworkMemory);
+    }
 }
 
 static async Task AuthenticatedRecoveryRetry()
@@ -647,6 +671,31 @@ static async Task InvalidSnapshotFailsClosed()
     await using var harness = new DiagnosticsHarness(_ => ValueTask.FromResult(invalid));
     await Assert.ThrowsAsync<PlatformDiagnosticsException>(
         () => harness.Client.GetSnapshotAsync().AsTask());
+
+    foreach (var invalidSnapshot in new[]
+             {
+                 HealthySnapshot(14) with
+                 {
+                     BridgeArtworkMemory = new PlatformBridgeArtworkMemoryDiagnostic(
+                         1, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0),
+                 },
+                 HealthySnapshot(15) with
+                 {
+                     BridgeArtworkMemory = new PlatformBridgeArtworkMemoryDiagnostic(
+                         1, 0, 0, 0, 1, -1, 0, 0, 0, 0, 0, 0, 0),
+                 },
+                 HealthySnapshot(16) with { SchemaVersion = 2 },
+                 HealthySnapshot(17) with
+                 {
+                     SchemaVersion = PlatformDiagnosticsSnapshot.CurrentSchemaVersion + 1,
+                 },
+             })
+    {
+        await using var invalidHarness = new DiagnosticsHarness(
+            _ => ValueTask.FromResult(invalidSnapshot));
+        await Assert.ThrowsAsync<PlatformDiagnosticsException>(
+            () => invalidHarness.Client.GetSnapshotAsync().AsTask());
+    }
 }
 
 static PlatformDiagnosticsSnapshot HealthySnapshot(long revision) => new(

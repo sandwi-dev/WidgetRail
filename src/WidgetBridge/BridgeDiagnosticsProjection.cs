@@ -24,7 +24,8 @@ internal sealed record BridgeDiagnosticsReadModel(
     bool CatalogRetainedLastGood,
     bool InstalledCatalogPending,
     BridgeAppearanceDiagnostic Appearance,
-    bool ProvidersConfigured);
+    bool ProvidersConfigured,
+    BridgeArtworkMemorySnapshot Artwork);
 
 internal interface IBridgeDiagnosticsSource
 {
@@ -37,7 +38,8 @@ internal sealed class WidgetBridgeDiagnosticsSource(
     BridgeCatalogMonitor? catalogMonitor,
     PlatformAppearanceService? appearance,
     ConsentStore? consentStore,
-    bool providersConfigured) : IBridgeDiagnosticsSource
+    bool providersConfigured,
+    BridgeArtworkMemoryDiagnostics artwork) : IBridgeDiagnosticsSource
 {
     public BridgeDiagnosticsReadModel Capture()
     {
@@ -57,7 +59,8 @@ internal sealed class WidgetBridgeDiagnosticsSource(
                 appearance is not null,
                 appearance?.Current.Revision ?? 0,
                 appearanceErrors),
-            providersConfigured);
+            providersConfigured,
+            artwork.Capture());
     }
 
     public async ValueTask<BridgeConsentDiagnostic> ReadConsentAsync(
@@ -145,7 +148,6 @@ internal sealed class BridgeDiagnosticsProjection(
               "(user-configured count limit)"
             : $"{Math.Max(0, residency.ApplicationWorkers)} " +
               "(no application-worker count limit)";
-
         return new PlatformDiagnosticsSnapshot(
             PlatformDiagnosticsSnapshot.CurrentSchemaVersion,
             Interlocked.Increment(ref _revision),
@@ -170,6 +172,20 @@ internal sealed class BridgeDiagnosticsProjection(
             workers)
         {
             AuthorityRecoveries = await recoveryTask.ConfigureAwait(false),
+            BridgeArtworkMemory = new PlatformBridgeArtworkMemoryDiagnostic(
+                input.Artwork.Requests,
+                input.Artwork.Completed,
+                input.Artwork.Failed,
+                input.Artwork.InFlight,
+                input.Artwork.MaximumInFlight,
+                input.Artwork.RawBytes,
+                input.Artwork.Base64Characters,
+                input.Artwork.ManagedHeapBytes,
+                input.Artwork.LargeObjectHeapBytes,
+                input.Artwork.AllocatedBytesPerSecond,
+                input.Artwork.Gen2Collections,
+                input.Artwork.PrivateBytes,
+                input.Artwork.WorkingSetBytes),
         };
     }
 

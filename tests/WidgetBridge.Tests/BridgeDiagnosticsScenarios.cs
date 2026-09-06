@@ -6,6 +6,55 @@ using WidgetRail.WidgetRuntime;
 
 internal static class BridgeDiagnosticsScenarios
 {
+    internal static async Task ArtworkMemoryCountersAreBoundedAndConcurrent()
+    {
+        var diagnostics = new BridgeArtworkMemoryDiagnostics();
+        var leases = await Task.WhenAll(Enumerable.Range(0, 32).Select(_ => Task.Run(() =>
+        {
+            var lease = diagnostics.BeginRequest();
+            diagnostics.RecordPayload(1024, 1368);
+            BridgeArtworkMemoryDiagnostics.MarkSucceeded(lease);
+            return lease;
+        })));
+        foreach (var lease in leases) lease.Dispose();
+        using (diagnostics.BeginRequest())
+        {
+            diagnostics.RecordPayload(7, 12);
+        }
+
+        var snapshot = diagnostics.Capture();
+        Equal(33L, snapshot.Requests, "Artwork request accounting lost a concurrent update.");
+        Equal(32L, snapshot.Completed, "Artwork completion accounting lost an update.");
+        Equal(1L, snapshot.Failed, "Failed artwork requests were not counted exactly once.");
+        Equal(0L, snapshot.InFlight, "Artwork in-flight accounting did not drain.");
+        Equal(32L, snapshot.MaximumInFlight,
+            "Artwork peak concurrency did not retain the bounded high-water mark.");
+        Equal(32L * 1024L + 7L, snapshot.RawBytes, "Raw artwork bytes did not roll up exactly.");
+        Equal(32L * 1368L + 12L, snapshot.Base64Characters,
+            "Base64 character accounting did not roll up exactly.");
+        Require(snapshot.ManagedHeapBytes >= 0 && snapshot.LargeObjectHeapBytes >= 0 &&
+                snapshot.AllocatedBytesPerSecond >= 0 && snapshot.Gen2Collections >= 0 &&
+                snapshot.PrivateBytes >= 0 && snapshot.WorkingSetBytes >= 0,
+            "Process memory accounting produced a negative diagnostic.");
+        Equal(long.MaxValue, BridgeArtworkMemoryDiagnostics.AddSaturated(
+            long.MaxValue - 2, 9), "Artwork counters did not saturate fail-closed.");
+        var serialized = JsonSerializer.Serialize(snapshot);
+        Require(!serialized.Contains("widget", StringComparison.OrdinalIgnoreCase) &&
+                !serialized.Contains("handle", StringComparison.OrdinalIgnoreCase) &&
+                !serialized.Contains("path", StringComparison.OrdinalIgnoreCase),
+            "Artwork memory diagnostics acquired a private or high-cardinality identity field.");
+
+        diagnostics.Reset();
+        var reset = diagnostics.Capture();
+        Equal(0L, reset.Requests, "Artwork diagnostic reset retained request history.");
+        Equal(0L, reset.Completed, "Artwork diagnostic reset retained completion history.");
+        Equal(0L, reset.Failed, "Artwork diagnostic reset retained failure history.");
+        Equal(0L, reset.RawBytes, "Artwork diagnostic reset retained payload history.");
+        Equal(0L, reset.Base64Characters,
+            "Artwork diagnostic reset retained Base64 history.");
+        Equal(0L, reset.InFlight, "Artwork diagnostic reset retained in-flight work.");
+    }
+
     internal static async Task ProjectionIsBoundedSanitizedAndReadOnly()
     {
         const string token = "0123456789ABCDEF0123456789ABCDEF";
@@ -47,6 +96,18 @@ internal static class BridgeDiagnosticsScenarios
         Contains("application workers 1 (no application-worker count limit)",
             first.Bridge.Summary,
             "Uncapped application-worker accounting was not reported truthfully.");
+        Require(first.Bridge.Summary.Length <= 256,
+            "Bridge diagnostics exceeded the bounded transport summary contract.");
+        var artwork = first.BridgeArtworkMemory ?? throw new InvalidOperationException(
+            "Bounded artwork memory diagnostics were absent from the Bridge projection.");
+        Equal(0L, artwork.Requests,
+            "Artwork request accounting changed while projecting diagnostics.");
+        Equal(0L, artwork.InFlight,
+            "Artwork in-flight accounting changed while projecting diagnostics.");
+        Equal(0L, artwork.RawBytes,
+            "Artwork raw-byte accounting changed while projecting diagnostics.");
+        Equal(0L, artwork.Base64Characters,
+            "Artwork Base64 accounting changed while projecting diagnostics.");
         Equal(1, first.Workers.Count,
             "Malformed worker input was not omitted from the bounded projection.");
         Equal("Safe widget", first.Workers[0].WidgetName,
@@ -225,7 +286,9 @@ internal static class BridgeDiagnosticsScenarios
         CatalogRetainedLastGood: false,
         InstalledCatalogPending: false,
         new BridgeAppearanceDiagnostic(false, 0, 0),
-        ProvidersConfigured: true);
+        ProvidersConfigured: true,
+        new BridgeArtworkMemorySnapshot(
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
 
     private static BridgeCatalog Catalog(
         string? isolationKey = null,

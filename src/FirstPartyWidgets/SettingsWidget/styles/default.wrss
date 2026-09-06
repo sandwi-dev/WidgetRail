@@ -53,6 +53,20 @@
 }
 .settings-status.is-busy { color: var(--warning); }
 
+.diagnostic-area {
+  width: 100%;
+  min-width: 0px;
+  max-lines: 8;
+  overflow-wrap: anywhere;
+}
+
+.diagnostic-metric {
+  width: 100%;
+  min-width: 0px;
+  max-lines: 2;
+  overflow-wrap: anywhere;
+}
+
 .category-card,
 .setting-row,
 .wrail-switch,

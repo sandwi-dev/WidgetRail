@@ -16,6 +16,53 @@ public sealed class PackageRuntimeTests
         Kind: WidgetAppLibraryKind.Game,
         Sort: WidgetAppLibrarySortOrder.DisplayName);
 
+    [TestMethod]
+    public void ArtworkMemoryCountersRollUpResetSaturateAndStayIdentityFree()
+    {
+        var counters = new PlayniteArtworkMemoryCounters();
+        Parallel.For(0, 32, _ => counters.Record(new(
+            PlayniteArtworkMemoryEventKind.Store,
+            PlayniteArtworkRole.Cover,
+            Bytes: 1024)));
+        Parallel.For(0, 32, _ => counters.Record(new(
+            PlayniteArtworkMemoryEventKind.Hit,
+            PlayniteArtworkRole.Cover,
+            Bytes: 1024)));
+        counters.Record(new(
+            PlayniteArtworkMemoryEventKind.BackgroundToCoverFallback,
+            PlayniteArtworkRole.Background));
+        counters.Record(new(
+            PlayniteArtworkMemoryEventKind.Miss,
+            PlayniteArtworkRole.Neutral));
+        counters.Record(new(
+            PlayniteArtworkMemoryEventKind.Eviction,
+            PlayniteArtworkRole.Cover,
+            Bytes: 1024));
+        var snapshot = counters.Capture();
+        Assert.AreEqual(31L, snapshot.Entries);
+        Assert.AreEqual(31L * 1024L, snapshot.CurrentBytes);
+        Assert.AreEqual(32L * 1024L, snapshot.HighWaterBytes);
+        Assert.AreEqual(32L, snapshot.Hits);
+        Assert.AreEqual(1L, snapshot.Misses);
+        Assert.AreEqual(1L, snapshot.BackgroundToCoverFallbacks);
+        Assert.AreEqual(1L, snapshot.Evictions);
+        Assert.AreEqual(65L, snapshot.CoverEvents);
+        Assert.AreEqual(1L, snapshot.BackgroundEvents);
+        Assert.AreEqual(1L, snapshot.NeutralEvents);
+        Assert.AreEqual(long.MaxValue,
+            PlayniteArtworkMemoryCounters.AddSaturated(long.MaxValue - 1, 2));
+        var properties = typeof(PlayniteArtworkMemorySnapshot).GetProperties()
+            .Select(property => property.Name).ToArray();
+        Assert.IsFalse(properties.Any(name =>
+            name.Contains("game", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("title", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("handle", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("path", StringComparison.OrdinalIgnoreCase)));
+
+        counters.Reset();
+        Assert.AreEqual(default, counters.Capture());
+    }
+
     [TestMethod, Timeout(30_000)]
     public async Task PackageServiceTraversesTenThousandAndPagesThirtyTwoOrSixtyFour()
     {

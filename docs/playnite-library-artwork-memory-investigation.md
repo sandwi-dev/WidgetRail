@@ -418,6 +418,136 @@ byte-budget, and request-supersession changes. Then set separate budgets for the
 application, bridge, decoded CPU cache, renderer bitmap cache, pinned renderer,
 and total warm/idle footprint.
 
+## WIDGE-161 attributed counter contract
+
+WIDGE-161 adds measurement only; it does not change cache limits, transport,
+decode size, rendering, cursor behavior, or lifecycle policy. The counters use
+bounded aggregate categories and never retain a package path, token, title,
+game ID, artwork handle, encoded content, or request identifier.
+
+| Owner | Gauge or monotonic unit |
+| --- | --- |
+| Playnite application | encoded entry count, current encoded bytes, high-water bytes, cache hits/misses, background-to-cover fallback count, evictions, and bounded cover/background/neutral role-event counts |
+| WidgetBridge | artwork requests/completions/failures, current and peak in-flight requests, raw bytes, Base64 characters, managed heap bytes, LOH bytes when the runtime reports them, allocation bytes/second between observations, Gen2 collection count, process private bytes, and working-set bytes |
+| native decoded cache | current encoded and decoded bytes, ready/pending/failed entries, request/hit/supply/stale-completion counts, evictions, total ready source pixels, and maximum source dimensions |
+| ordinary and pinned renderers | independent bitmap bytes/entries/hits/creates/evictions, visible versus fully clipped artwork observations, cumulative requested paint pixels, and maximum requested paint pixels |
+
+Application and Bridge diagnostics saturate rather than wrap. Current entries,
+bytes, and in-flight work are gauges; high-water and event totals are monotonic
+for the process lifetime. Native cache and renderer counts are process-lifetime
+monotonic counters beside the existing bounded current gauges. A cache entry or
+bitmap estimate is tracked ownership, not an OS/GPU residency measurement.
+
+`scripts/Measure-ArtworkMemory.ps1` records timestamped process private and
+working-set bytes for explicit PID/opaque-role pairs. It performs no process
+discovery, launch, interaction, dump, GC, or content capture. Use a fresh output
+file at each of these named checkpoints; the tool atomically rejects an existing
+path and never overwrites prior evidence: `cold-start`, `stable-home`,
+`slow-navigation`, `rapid-home`, `browse`, `focus-thrash`, `hide-reopen`, the
+three idle checkpoints, and `repeat-traversal`. The reviewer/user performs the
+real overlay actions and supplies only the process identities they consent to
+measure. Correlate each CSV checkpoint with the bounded application, Bridge,
+and host aggregate lines, then report steady, peak, and post-idle values
+separately.
+
+This implementation task cannot produce the observed live-package run because
+its authority explicitly excludes installation, launch, live private tracing,
+and product-process mutation. The measurement run therefore remains the manual
+gate before any remediation ticket selects retention, transport, decode-size,
+or cache-budget policy. Process totals alone must not be described as a leak.
+
+## WIDGE-161 observed run and reviewer closure — 2026-09-06
+
+Reviewer-owned measurement and disposition record. The accepted implementation
+chain is `61ed0d27`, `2620bca2`, and `77c3c479`, based on accepted `338df6a4`.
+Playnite Library `0.2.53` supplies application counters; the final host supplies
+typed diagnostics schema 3 and the accepted Diagnostics wrapping correction.
+The user physically confirmed that diagnostics load and all displayed rows are
+readable and reachable by scrolling. No debugger, forced GC, dump, or memory
+policy change was used.
+
+The first candidate's Bridge summary exceeded the existing 256-character
+transport limit. Its process/native/application samples remain valid, but it
+provided no Bridge managed-heap readings. `77c3c479` fixes that with a typed
+payload, not a larger summary limit or truncation. Its new process session must
+not be joined to the previous process's cumulative counters.
+
+In the corrected session, the user navigated Playnite before taking the first
+diagnostics screenshots. These are post-navigation observations, not cold-start
+measurements. At that point all 59 artwork requests had completed, with zero
+failures/in flight and a peak of one in flight. Cumulative payload was
+45,607,540 raw bytes and 60,810,124 Base64 characters; neither is a current
+retained-cache gauge.
+
+| Bridge measurement | Earlier post-idle screenshot | Later idle screenshot |
+| --- | ---: | ---: |
+| Managed heap bytes | 1,505,426,408 | 59,790,936 |
+| Large-object heap bytes | 1,488,820,456 | 104,516,984 |
+| Private bytes | 1,595,846,656 | 208,777,216 |
+| Working-set bytes | 760,664,064 | 253,325,312 |
+| Gen2 collections | 6 | 7 |
+
+The same Bridge PID and start time were verified across the decrease. Managed
+heap fell about 96%, so most of the earlier large footprint was reclaimable by
+that point. This does not identify its allocation types or exact retention
+paths, or exclude smaller leaks. `GetTotalMemory(false)` is not a forced live
+object census; the LOH value is from the reported GC. Allocation rate is an
+average between diagnostics reads, not proof of a continuous idle rate.
+
+The user must hide the overlay to reply. Logs distinguish navigation, hiding,
+and Settings visits; screenshots after a Settings refresh are not simultaneous
+with hidden process samples. During a sampled 134-second portion of a roughly
+six-minute hidden interval, Bridge private bytes varied by only 32 KiB and its
+working set was unchanged. The later large decrease coincided with another
+Gen2 collection; its precise trigger was not measured. No exact 10-, 15-, or
+30-minute continuous-idle claim is made.
+
+The earlier run's sampled private-byte peaks were approximately 556/722/694 MiB
+(host/Bridge/application) during slow Home, 594/1340/1238 MiB during rapid Home,
+and 583/1887/1368 MiB during Browse. Some windows include closing/hidden time;
+the slow sampler ended about seven seconds before the last movement. Native
+Browse counters recorded 196,755,456 decoded bytes and 99,210,720 bitmap bytes,
+with byte-pressure evictions; those are ownership estimates, not GPU residency.
+Application logging is throttled and event-driven, so its latest byte gauge is
+not necessarily a synchronized end-of-phase sample.
+
+**Instrumentation cost review:** application memory lines are limited to one
+per second of activity under the existing approximately 64 KiB file bound.
+Bridge heap/process reads occur when diagnostics is requested, not on a new
+background timer. Native W161 fields added about 125 KB to 176 existing
+presentation records in the corrected session (about 709 characters each),
+under the existing 4 MiB-per-file rotation policy. No log growth occurred in a
+bounded hidden check; Bridge/application/decoder CPU deltas were zero at the
+process-counter resolution. Native host CPU was nonzero, but no baseline A/B
+comparison attributes it to W161. Current-snapshot handle traversal, temporary
+sets and a cache scan add real work on the render thread when the existing
+diagnostic key changes; exact frame-time overhead remains unmeasured.
+
+Focused evidence includes diagnostics pipe 18/18, Bridge diagnostics 2/2,
+artwork counters 1/1, styling 26/26, style projection 1/1, native text 81 checks,
+native style and trusted-artwork/renderer checks, and a coherent Release.
+Settings remains 59/61 with two unchanged switch-glyph expectations explicitly
+waived. Playnite remains 20/22 with the previously recorded retirement-fixture
+threshold expectations waived. These aggregates are not fully green, and no
+assertions were weakened to close this ticket.
+
+**Closure boundary:** WIDGE-161 delivers the bounded measurement capability,
+accepted diagnostics UI, observed navigation/idle evidence and an actionable
+follow-up. Exact allocation-type/root attribution, controlled repeated warm
+traversals, the remaining extended-idle matrix, active-frame instrumentation
+overhead and remediation belong to WIDGE-162, not an assertion that memory is
+already optimized. WIDGE-162 must investigate transient allocation/copy cost
+and retained owners before choosing transport/cache/decode changes; do not
+respond to the peak with blind cache-ceiling changes or periodic forced GC.
+The user explicitly requests keeping W161 instrumentation only through W162's
+measurements: remove the temporary memory counters, verbose log fields and
+measurement-only collection/display plumbing as W162's final delivery step.
+Preserve ordinary diagnostics correctness, the text-wrapping fix and archived
+evidence; verify the resulting non-instrumented runtime before closing W162.
+The raw CSVs/screenshots and timestamped caveats are retained in the local
+reviewer evidence set `widge161-measurement-20260906T0438Z` and linked Plane
+milestones; this repository records only the aggregate technical findings.
+
 ## Open questions that require profiling
 
 - Which managed types retain most of the bridge's private commitment after a
@@ -434,9 +564,10 @@ and total warm/idle footprint.
 - Can the pinned renderer share or more aggressively release device bitmaps
   without harming pinned-surface return latency?
 
-Until those are answered, describe the problem as **confirmed excessive
-retention, offscreen load amplification, and byte-pressure churn, with a
-possible but unproven additional leak**.
+The original source findings above remain historical context. The WIDGE-161
+run demonstrates substantial post-navigation allocation/retention pressure and
+byte-pressure churn, followed by large reclamation in the same process. It
+does not establish a permanent leak or a complete optimized memory budget.
 
 ## Related documentation
 

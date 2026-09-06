@@ -108,6 +108,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Worker request diagnostics are bounded developer-only records", WorkerRequestDiagnosticsAreBounded),
     ("Current worker validator diagnostics persist and correlate across the Bridge", WorkerValidatorDiagnosticsPersistAndCorrelate),
     ("Diagnostics projection is bounded sanitized and read only", BridgeDiagnosticsScenarios.ProjectionIsBoundedSanitizedAndReadOnly),
+    ("Artwork memory diagnostics are bounded concurrent and private", BridgeDiagnosticsScenarios.ArtworkMemoryCountersAreBoundedAndConcurrent),
     ("Diagnostics partial failures malformed input and deadline are closed", BridgeDiagnosticsScenarios.PartialFailureMalformedInputAndDeadlineAreClosed),
     ("Authority recovery projection is exact bounded and cancellation safe", BridgeDiagnosticsScenarios.RecoveryRetryIsExactBoundedAndCancellationSafe),
     ("User theme layers override widget selectors", UserThemeOverridesWidgetStyles),
@@ -131,6 +132,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Admitted registry invalidation reaches the client event queue", AdmittedRegistryInvalidationReachesClientEventQueue),
     ("Protocol-v37 poster and ordinary action surfaces resolve bridge render roles", ActionSurfaceRenderRole),
     ("Protocol-v15 text entries resolve one closed bridge render role", TextEntryRenderRole),
+    ("Overflow wrapping crosses the generic Bridge render-style boundary", OverflowWrapRenderStyle),
     ("Protocol-v41 Select nodes resolve bridge render roles", SelectRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
     ("Late action failures retain worker generation", ActionFailureIsGenerationOwned),
@@ -1587,6 +1589,13 @@ static async Task TrustedArtworkDemandIsExact()
         Assert.Equal("image/png", artwork.Payload.GetProperty("contentType").GetString());
         Assert.Equal(png, artwork.Payload.GetProperty("contentBase64").GetString());
         Assert.Equal(1, backend.AppLibraryIconCalls);
+        var artworkMemory = server.ArtworkMemoryDiagnostics;
+        Assert.Equal(1L, artworkMemory.Requests);
+        Assert.Equal(1L, artworkMemory.Completed);
+        Assert.Equal(0L, artworkMemory.Failed);
+        Assert.Equal(0L, artworkMemory.InFlight);
+        Assert.Equal(Convert.FromBase64String(png).Length, artworkMemory.RawBytes);
+        Assert.Equal(png.Length, artworkMemory.Base64Characters);
 
         var staleStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1640,6 +1649,10 @@ static async Task TrustedArtworkDemandIsExact()
         _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
         Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
         Assert.Equal(2, backend.AppLibraryIconCalls);
+        artworkMemory = server.ArtworkMemoryDiagnostics;
+        Assert.Equal(2L, artworkMemory.Requests);
+        Assert.Equal(1L, artworkMemory.Completed);
+        Assert.Equal(1L, artworkMemory.Failed);
 
         var forged = await client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
@@ -1649,6 +1662,9 @@ static async Task TrustedArtworkDemandIsExact()
         _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
         Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
         Assert.Equal(2, backend.AppLibraryIconCalls);
+        artworkMemory = server.ArtworkMemoryDiagnostics;
+        Assert.Equal(3L, artworkMemory.Requests);
+        Assert.Equal(2L, artworkMemory.Failed);
 
         var blockedStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1677,6 +1693,14 @@ static async Task TrustedArtworkDemandIsExact()
         releaseBlocked.TrySetResult();
         await blockedFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(3, backend.AppLibraryIconCalls);
+        await WaitUntilAsync(
+            () => server.ArtworkMemoryDiagnostics.InFlight == 0,
+            TimeSpan.FromSeconds(2));
+        artworkMemory = server.ArtworkMemoryDiagnostics;
+        Assert.Equal(4L, artworkMemory.Requests);
+        Assert.Equal(1L, artworkMemory.Completed);
+        Assert.Equal(3L, artworkMemory.Failed);
+        Assert.Equal(0L, artworkMemory.InFlight);
     }
     finally
     {
@@ -4723,6 +4747,23 @@ static Task TextEntryRenderRole()
         BridgeRenderStyleResolver.Resolve(unknown, compiled.Theme));
     Assert.Equal("Unsupported view node kind '999'.", exception.Message);
     Assert.Equal(ProtocolConstants.TextEntryVersion, snapshot.ProtocolVersion);
+    return Task.CompletedTask;
+}
+
+static Task OverflowWrapRenderStyle()
+{
+    var snapshot = new WidgetView(UI.Text("Diagnostic", "diagnostic"))
+        .CreateSnapshot("bridge.overflow-wrap", 1);
+    var parsed = WrssParser.Parse(
+        "text { max-lines: 8; overflow-wrap: anywhere; }", "overflow-wrap.wrss");
+    Assert.Equal(0, parsed.Diagnostics.Count(diagnostic =>
+        diagnostic.Severity == WrssDiagnosticSeverity.Error));
+    var compiled = WrssThemeCompiler.Compile([parsed.Document]);
+    Assert.True(compiled.IsValid, "Overflow-wrap WRSS fixture did not compile.");
+    var styles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
+    Assert.Equal("anywhere", styles["diagnostic"].Base["overflow-wrap"].Text);
+    Assert.Equal(WrssValueKind.Keyword,
+        styles["diagnostic"].Base["overflow-wrap"].Kind);
     return Task.CompletedTask;
 }
 

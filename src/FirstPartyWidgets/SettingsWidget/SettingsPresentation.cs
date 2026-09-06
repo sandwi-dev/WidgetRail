@@ -350,7 +350,72 @@ internal static class SettingsPresentation
             $"{area.Label} diagnostic: {area.State}; {area.Summary}").Classes(
                 area.State == PlatformDiagnosticState.Healthy
                     ? "diagnostic-ok"
-                    : "diagnostic-error")));
+                    : "diagnostic-error").AddClasses("diagnostic-area")));
+        if (diagnostics.BridgeArtworkMemory is { } artwork)
+        {
+            children.Add(UI.CodeText(
+                    $"Artwork requests: {artwork.Requests}",
+                    "diagnostics.artwork.requests",
+                    $"Bridge artwork requests {artwork.Requests}")
+                .AddClasses("diagnostic-line", "diagnostic-metric"));
+            children.Add(UI.CodeText(
+                    $"Artwork completions: {artwork.Completed}; failures: {artwork.Failed}",
+                    "diagnostics.artwork.terminals",
+                    $"Bridge artwork completions {artwork.Completed}; failures {artwork.Failed}")
+                .AddClasses("diagnostic-line", "diagnostic-metric"));
+            children.Add(UI.CodeText(
+                    $"Artwork in flight: {artwork.InFlight}; peak: {artwork.MaximumInFlight}",
+                    "diagnostics.artwork.inflight",
+                    $"Bridge artwork in flight {artwork.InFlight}; peak {artwork.MaximumInFlight}")
+                .AddClasses("diagnostic-line", "diagnostic-metric"));
+            children.Add(UI.CodeText(
+                    $"Artwork payload: {artwork.RawBytes} raw bytes",
+                    "diagnostics.artwork.raw-bytes",
+                    $"Bridge artwork payload {artwork.RawBytes} raw bytes")
+                .AddClasses("diagnostic-line", "diagnostic-metric"));
+            children.Add(UI.CodeText(
+                    $"Artwork encoding: {artwork.Base64Characters} Base64 characters",
+                    "diagnostics.artwork.base64",
+                    $"Bridge artwork encoding {artwork.Base64Characters} Base64 characters")
+                .AddClasses("diagnostic-line", "diagnostic-metric"));
+            children.Add(UI.CodeText(
+                    $"Managed heap: {artwork.ManagedHeapBytes} bytes",
+                    "diagnostics.artwork.managed-heap",
+                    $"Bridge managed heap {artwork.ManagedHeapBytes} bytes")
+                .AddClasses("diagnostic-line", "diagnostic-metric"));
+            children.Add(UI.CodeText(
+                    $"Large object heap: {artwork.LargeObjectHeapBytes} bytes",
+                    "diagnostics.artwork.loh",
+                    $"Bridge large object heap {artwork.LargeObjectHeapBytes} bytes")
+                .AddClasses("diagnostic-line", "diagnostic-metric"));
+            children.Add(UI.CodeText(
+                    $"Allocation rate: {artwork.AllocatedBytesPerSecond} bytes/second",
+                    "diagnostics.artwork.allocation-rate",
+                    $"Bridge allocation rate {artwork.AllocatedBytesPerSecond} bytes per second")
+                .AddClasses("diagnostic-line", "diagnostic-metric"));
+            children.Add(UI.CodeText(
+                    $"Gen2 collections: {artwork.Gen2Collections}",
+                    "diagnostics.artwork.gen2",
+                    $"Bridge generation 2 collections {artwork.Gen2Collections}")
+                .AddClasses("diagnostic-line", "diagnostic-metric"));
+            children.Add(UI.CodeText(
+                    $"Private memory: {artwork.PrivateBytes} bytes",
+                    "diagnostics.artwork.private-bytes",
+                    $"Bridge private memory {artwork.PrivateBytes} bytes")
+                .AddClasses("diagnostic-line", "diagnostic-metric"));
+            children.Add(UI.CodeText(
+                    $"Working set: {artwork.WorkingSetBytes} bytes",
+                    "diagnostics.artwork.working-set",
+                    $"Bridge working set {artwork.WorkingSetBytes} bytes")
+                .AddClasses("diagnostic-line", "diagnostic-metric"));
+        }
+        else
+        {
+            children.Add(UI.CodeText(
+                    "Artwork memory: not reported by this Bridge build",
+                    "diagnostics.artwork.unavailable", "Bridge artwork memory diagnostics unavailable")
+                .AddClasses("diagnostic-line", "diagnostic-metric"));
+        }
         children.Add(UI.Text(
             $"Workers: {runningWorkers}/{diagnostics.Workers.Count} running; " +
             $"{failedWorkers} with a recorded failure",
