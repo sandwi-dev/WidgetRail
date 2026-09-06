@@ -319,13 +319,14 @@ ExactReadResult ReadExact(
                 const HANDLE waits[]{ready.get(), stopEvent};
                 const DWORD wait = WaitForMultipleObjects(
                     stopEvent ? 2U : 1U, waits, FALSE, INFINITE);
-                if (stopEvent && wait == WAIT_OBJECT_0 + 1U) {
+                if (wait != WAIT_OBJECT_0) {
+                    const DWORD waitError = wait == WAIT_FAILED
+                        ? GetLastError() : ERROR_OPERATION_ABORTED;
                     (void)CancelIoEx(pipe, &operation);
                     (void)GetOverlappedResult(pipe, &operation, &count, TRUE);
-                    return {completed, ERROR_OPERATION_ABORTED};
+                    return {completed, waitError};
                 }
-                if (wait != WAIT_OBJECT_0 ||
-                    !GetOverlappedResult(pipe, &operation, &count, FALSE)) {
+                if (!GetOverlappedResult(pipe, &operation, &count, FALSE)) {
                     return {completed, GetLastError()};
                 }
             } else if (!GetOverlappedResult(
@@ -389,13 +390,14 @@ ExactReadResult WriteExact(
             const HANDLE waits[]{ready.get(), stopEvent};
             const DWORD wait = WaitForMultipleObjects(
                 stopEvent ? 2U : 1U, waits, FALSE, INFINITE);
-            if (stopEvent && wait == WAIT_OBJECT_0 + 1U) {
+            if (wait != WAIT_OBJECT_0) {
+                const DWORD waitError = wait == WAIT_FAILED
+                    ? GetLastError() : ERROR_OPERATION_ABORTED;
                 (void)CancelIoEx(pipe, &operation);
                 (void)GetOverlappedResult(pipe, &operation, &count, TRUE);
-                return {completed, ERROR_OPERATION_ABORTED};
+                return {completed, waitError};
             }
-            if (wait != WAIT_OBJECT_0 ||
-                !GetOverlappedResult(pipe, &operation, &count, FALSE)) {
+            if (!GetOverlappedResult(pipe, &operation, &count, FALSE)) {
                 return {completed, GetLastError()};
             }
         } else if (!GetOverlappedResult(pipe, &operation, &count, FALSE)) {
@@ -4838,6 +4840,7 @@ bool WidgetBridgeClient::WriteProtectedWifiSecret(
 bool WidgetBridgeClient::WriteFrame(
     const std::string_view utf8,
     const HANDLE stopEvent) {
+    if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_) return false;
     if (utf8.empty() || utf8.size() > kMaximumFrameBytes ||
         utf8.size() > static_cast<std::size_t>((std::numeric_limits<std::int32_t>::max)())) {
         Fail(L"Outgoing WidgetBridge frame has an invalid size.");
@@ -4861,6 +4864,7 @@ bool WidgetBridgeClient::WriteFrame(
 
 std::optional<std::string> WidgetBridgeClient::ReadFrame(
     const HANDLE stopEvent) {
+    if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_) return std::nullopt;
     auto result = ReadFrameFromPipe(pipe_, true, stopEvent);
     if (result.frame) return std::move(result.frame);
     transportTainted_ = result.transportTainted;
@@ -4914,7 +4918,7 @@ WidgetBridgeClient::lastRequestFailureCategory() const noexcept {
 bool WidgetBridgeClient::PumpEvents() {
     std::unique_lock lock(requestMutex_, std::try_to_lock);
     if (!lock.owns_lock()) return false;
-    if (pipe_ == INVALID_HANDLE_VALUE) return false;
+    if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_) return false;
     bool consumed = false;
     try {
         for (int count = 0; count < 16; ++count) {

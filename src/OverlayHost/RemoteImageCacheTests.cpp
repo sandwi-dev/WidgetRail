@@ -674,15 +674,15 @@ int main() {
                 return demandCalls == 1;
             }));
         }
-        assert(demandCache.SupplyTrustedArtwork(
-            L"async-artwork", L"artwork.async-a", L"image/png",
-            trustedPngBase64));
         assert(demandCache.RequestTrustedArtwork(firstKey) ==
                RemoteImageRequestResult::AlreadyTracked);
         assert(demandCache.RequestTrustedArtwork(refusedKey) ==
                RemoteImageRequestResult::Queued);
         assert(demandCache.RequestTrustedArtwork(capacityKey) ==
                RemoteImageRequestResult::CapacityExceeded);
+        assert(demandCache.SupplyTrustedArtwork(
+            L"async-artwork", L"artwork.async-a", L"image/png",
+            trustedPngBase64));
         {
             std::unique_lock lock(demandMutex);
             assert(demandChanged.wait_for(lock, std::chrono::seconds(2), [&] {

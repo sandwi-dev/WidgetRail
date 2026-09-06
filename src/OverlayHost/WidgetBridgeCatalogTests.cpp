@@ -349,6 +349,18 @@ void VerifyArtworkRequestCancellationOwnership() {
                     L"widget.test", L"artwork.must-not-reuse").has_value() &&
                     client.NextRequestIdForTesting() == requestId,
                 "Tainted WidgetBridge transport was reused by a later artwork request");
+        const auto beforeOrdinaryRequest = std::chrono::steady_clock::now();
+        Require(!client.ListWidgets().has_value() &&
+                    std::chrono::steady_clock::now() - beforeOrdinaryRequest <
+                        std::chrono::seconds(1),
+                "Ordinary WidgetBridge request did not fail closed on tainted framing");
+        DWORD available{};
+        Require(PeekNamedPipe(
+                    pipes.server, nullptr, 0, nullptr, &available, nullptr) != FALSE &&
+                    available == 0,
+                "Ordinary WidgetBridge request dispatched bytes on tainted framing");
+        Require(!client.PumpEvents(),
+                "WidgetBridge event pump consumed a tainted transport");
         const auto beforeStop = std::chrono::steady_clock::now();
         client.Stop();
         Require(std::chrono::steady_clock::now() - beforeStop <
