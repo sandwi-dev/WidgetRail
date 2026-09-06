@@ -7,8 +7,97 @@ internal static class WidgetNavigatorTests
     {
         await RoutesRestoreFocusAndCancelStaleWorkAsync();
         await NestedBackIsScopedAndLifecycleOwnedAsync();
+        await SharedRootsSeparatePageAndNestedLifetimesAsync();
+        await ActionAwarePushCapturesActualDispatchFocusAsync();
         await ScopeComposesEveryContainerAndRejectsLeafRootsAsync();
         CapacityAndAuthoringConflictsFailClosed();
+    }
+
+    private static async Task SharedRootsSeparatePageAndNestedLifetimesAsync()
+    {
+        var options = new WidgetNavigatorOptions<Route>
+        {
+            SharedRootScopeId = "navigation.root",
+            RootRoutes = [Route.Player, Route.Library],
+            RouteScopeIds = new Dictionary<Route, string>
+            {
+                [Route.Detail] = "navigation.detail",
+            },
+        };
+        using var widget = new NavigationWidget(options: options);
+        await WidgetTestHost.InitializeAsync(widget);
+
+        var player = widget.Navigation.Value;
+        Equal("navigation.root", player.InputScopeId);
+        var playerPageLifetime = player.RootRouteCancellationToken;
+        var playerRouteLifetime = player.RouteCancellationToken;
+
+        Equal(WidgetNavigationResult.Changed,
+            widget.Navigation.Push(Route.Detail, "player.play"));
+        True(playerRouteLifetime.IsCancellationRequested,
+            "Pushing a nested route did not retire root-route work.");
+        False(playerPageLifetime.IsCancellationRequested,
+            "Pushing a nested route canceled the owning root page.");
+        Equal("navigation.detail", widget.Navigation.Value.InputScopeId);
+        Equal(playerPageLifetime, widget.Navigation.Value.RootRouteCancellationToken);
+
+        var detailLifetime = widget.Navigation.Value.RouteCancellationToken;
+        Equal(WidgetNavigationResult.Changed,
+            widget.Navigation.SwitchRoot(Route.Library, "library.first"));
+        True(detailLifetime.IsCancellationRequested,
+            "Switching roots did not retire nested route work.");
+        True(playerPageLifetime.IsCancellationRequested,
+            "Switching roots did not retire the departed page.");
+        var library = widget.Navigation.Value;
+        Equal("navigation.root", library.InputScopeId);
+        Equal("library.first", library.InitialFocusId!);
+        False(library.RootRouteCancellationToken.IsCancellationRequested,
+            "The successor root page began with a canceled lifetime.");
+
+        var libraryPageLifetime = library.RootRouteCancellationToken;
+        Equal(WidgetNavigationResult.Changed,
+            widget.Navigation.SwitchRoot(Route.Player, "player.play", "library.queue"));
+        True(libraryPageLifetime.IsCancellationRequested,
+            "Leaving the library did not cancel its page lifetime.");
+        Equal("navigation.root", widget.Navigation.Value.InputScopeId);
+
+        Equal(WidgetNavigationResult.Changed,
+            widget.Navigation.SwitchRoot(Route.Library, "library.first", "player.queue"));
+        Equal("library.queue", widget.Navigation.Value.InitialFocusId!);
+
+        Equal(WidgetNavigationResult.Changed,
+            widget.Navigation.NavigateRoot(Route.Player));
+        True(widget.Navigation.Value.InitialFocusId is null,
+            "Persistent-header root activation published a focus override.");
+
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    private static async Task ActionAwarePushCapturesActualDispatchFocusAsync()
+    {
+        using var widget = new NavigationWidget();
+        await WidgetTestHost.InitializeAsync(widget);
+        var action = new WidgetActionEvent(
+            "player.options", "player.root", ControllerButton.Y)
+        {
+            FocusedElementId = "player.queue",
+        };
+        Equal(WidgetNavigationResult.Changed,
+            widget.Navigation.PushFromAction(Route.Detail, action));
+        Equal(WidgetNavigationResult.Changed, widget.Navigation.Back());
+        Equal("player.queue", widget.Navigation.Value.InitialFocusId!);
+
+        var missing = new WidgetActionEvent(
+            "player.options", "player.root", ControllerButton.Y);
+        Throws<ArgumentException>(() =>
+            widget.Navigation.PushFromAction(Route.Detail, missing));
+        Equal(WidgetNavigationResult.Changed,
+            widget.Navigation.PushFromAction(
+                Route.Detail, missing, returnFocusOverrideId: "player.play"));
+        Equal(WidgetNavigationResult.Changed, widget.Navigation.Back());
+        Equal("player.play", widget.Navigation.Value.InitialFocusId!);
+
+        await WidgetTestHost.DestroyAsync(widget);
     }
 
     private static async Task RoutesRestoreFocusAndCancelStaleWorkAsync()
@@ -193,9 +282,13 @@ internal static class WidgetNavigatorTests
     {
         internal NavigationWidget(
             int maximumDepth = WidgetNavigator<Route>.DefaultMaximumDepth,
-            int maximumRoutes = WidgetNavigator<Route>.DefaultMaximumRoutes) =>
-            Navigation = CreateNavigator(
-                "navigation", Route.Player, maximumDepth, maximumRoutes);
+            int maximumRoutes = WidgetNavigator<Route>.DefaultMaximumRoutes,
+            WidgetNavigatorOptions<Route>? options = null) =>
+            Navigation = options is null
+                ? CreateNavigator(
+                    "navigation", Route.Player, maximumDepth, maximumRoutes)
+                : CreateNavigatorWithOptions(
+                    "navigation", Route.Player, options, maximumDepth, maximumRoutes);
 
         internal WidgetNavigator<Route> Navigation { get; }
 

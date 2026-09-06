@@ -97,6 +97,13 @@ public sealed record WidgetActionEvent(
 {
     /// <summary>Bounded host-committed text. Raw/intermediate input is never exposed.</summary>
     public string? CommittedText { get; init; }
+
+    /// <summary>
+    /// The focusable element that owned controller focus when this action was
+    /// dispatched. This remains distinct from <see cref="SourceElementId"/>,
+    /// which identifies the node that declared the action or shortcut.
+    /// </summary>
+    public string? FocusedElementId { get; init; }
 }
 
 public enum ControllerInputContext
@@ -745,7 +752,10 @@ public abstract partial class Widget
                     input.Sequence,
                     input.MonotonicTimestampMicroseconds,
                     requested,
-                    inputScopeId)));
+                    inputScopeId)
+                {
+                    FocusedElementId = input.FocusedElementId,
+                }));
             }
             if (input.Button == ControllerButton.A &&
                 input.Phase == ControllerEventPhase.Pressed &&
@@ -760,7 +770,10 @@ public abstract partial class Widget
                     input.Phase,
                     input.Sequence,
                     input.MonotonicTimestampMicroseconds,
-                    InputScopeId: inputScopeId)));
+                    InputScopeId: inputScopeId)
+                {
+                    FocusedElementId = input.FocusedElementId,
+                }));
             }
 
             // A always belongs to focused activation and never falls back to a
@@ -778,7 +791,10 @@ public abstract partial class Widget
                 input.Phase,
                 input.Sequence,
                 input.MonotonicTimestampMicroseconds,
-                InputScopeId: inputScopeId)));
+                InputScopeId: inputScopeId)
+            {
+                FocusedElementId = input.FocusedElementId,
+            }));
         }
 
         return ValueTask.FromResult(false);

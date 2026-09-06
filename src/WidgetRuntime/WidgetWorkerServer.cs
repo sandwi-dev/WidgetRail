@@ -533,6 +533,10 @@ internal sealed class WidgetWorkerServer
             (actionScope.Length > 128 ||
              !actionScope.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.')))
             throw new WidgetProtocolViolationException("Action input scope ID is invalid.");
+        if (action.FocusedElementId is { } focusedElementId &&
+            (focusedElementId.Length is 0 or > 128 ||
+             !focusedElementId.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.')))
+            throw new WidgetProtocolViolationException("Action focused element ID is invalid.");
         if (action.CommittedText is { } committed &&
             (committed.Length > ProtocolConstants.MaximumTextEntryLength ||
              committed.Any(char.IsControl)))

@@ -9,6 +9,29 @@ public enum WidgetNavigationResult
     Unchanged,
     CannotGoBack,
     RejectedCapacity,
+    RejectedConflict,
+}
+
+/// <summary>
+/// Optional authored scope policy for a navigator. Omitting options preserves
+/// the generated per-route scopes used by existing widgets.
+/// </summary>
+public sealed class WidgetNavigatorOptions<TRoute> where TRoute : notnull
+{
+    /// <summary>
+    /// Stable scope shared only by routes listed in <see cref="RootRoutes"/>
+    /// while they are selected as root frames.
+    /// </summary>
+    public string? SharedRootScopeId { get; init; }
+
+    /// <summary>Routes that participate in the optional shared root scope.</summary>
+    public IReadOnlyCollection<TRoute> RootRoutes { get; init; } = [];
+
+    /// <summary>
+    /// Optional stable scopes for routes that do not use the shared root scope.
+    /// </summary>
+    public IReadOnlyDictionary<TRoute, string> RouteScopeIds { get; init; } =
+        new Dictionary<TRoute, string>();
 }
 
 /// <summary>
@@ -25,6 +48,12 @@ public sealed record WidgetNavigationSnapshot<TRoute>(
     CancellationToken RouteCancellationToken) where TRoute : notnull
 {
     public bool CanGoBack => Depth > 0;
+
+    /// <summary>
+    /// Lifetime of work owned by the selected root page. Unlike route work,
+    /// this remains active while a nested route is pushed above that page.
+    /// </summary>
+    public CancellationToken RootRouteCancellationToken { get; init; }
 }
 
 /// <summary>
@@ -48,10 +77,16 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     private readonly IEqualityComparer<TRoute> _comparer;
     private readonly Dictionary<TRoute, string> _scopeIds;
     private readonly Dictionary<TRoute, string> _focusMemory;
+    private readonly HashSet<TRoute> _knownRoutes;
+    private readonly HashSet<TRoute> _rootRoutes;
+    private readonly HashSet<string> _reservedScopeIds = new(StringComparer.Ordinal);
+    private string? _sharedRootScopeId;
+    private readonly bool _usesAuthoredScopePolicy;
     private readonly List<Frame> _stack = [];
     private readonly CancellationToken _widgetLifetime;
     private readonly Action _invalidate;
     private CancellationTokenRegistration _widgetLifetimeRegistration;
+    private CancellationTokenSource _rootRouteLifetime;
     private CancellationTokenSource _routeLifetime;
     private WidgetNavigationSnapshot<TRoute> _snapshot;
     private int _nextScopeOrdinal;
@@ -64,7 +99,8 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
         int maximumRoutes,
         IEqualityComparer<TRoute>? comparer,
         CancellationToken widgetLifetime,
-        Action invalidate)
+        Action invalidate,
+        WidgetNavigatorOptions<TRoute>? options = null)
     {
         StableIdentifier.Validate(id, nameof(id));
         ArgumentNullException.ThrowIfNull(initialRoute);
@@ -82,11 +118,21 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
         _comparer = comparer ?? EqualityComparer<TRoute>.Default;
         _scopeIds = new(_comparer);
         _focusMemory = new(_comparer);
+        _knownRoutes = new(_comparer);
+        _rootRoutes = new(_comparer);
         _widgetLifetime = widgetLifetime;
         _invalidate = invalidate;
+        _usesAuthoredScopePolicy = options is not null;
+        CopyAndValidateOptions(options);
+        _knownRoutes.Add(initialRoute);
+        if (_knownRoutes.Count > maximumRoutes)
+            throw new ArgumentOutOfRangeException(nameof(options),
+                "Authored routes exceed the navigator route bound.");
+        _rootRouteLifetime = CancellationTokenSource.CreateLinkedTokenSource(widgetLifetime);
         _routeLifetime = CancellationTokenSource.CreateLinkedTokenSource(widgetLifetime);
 
-        var scopeId = CreateScopeId(initialRoute);
+        if (!TryGetOrCreateScopeId(initialRoute, rootFrame: true, out var scopeId))
+            throw new ArgumentOutOfRangeException(nameof(options));
         _stack.Add(new(initialRoute, scopeId, null));
         _snapshot = CreateSnapshot(null, 0);
         _widgetLifetimeRegistration = widgetLifetime.UnsafeRegister(
@@ -107,7 +153,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     {
         ArgumentNullException.ThrowIfNull(route);
         ValidateOptionalFocus(sourceFocusId);
-        CancellationTokenSource? previousLifetime = null;
+        RetiredLifetimes retired = default;
         lock (_gate)
         {
             ThrowIfDisposed();
@@ -118,16 +164,84 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
                 RememberFocus(current.Route, sourceFocusId);
                 return WidgetNavigationResult.Unchanged;
             }
-            if (!TryGetOrCreateScopeId(route, out var scopeId))
+            if (!TryGetOrCreateScopeId(route, rootFrame: true, out var scopeId))
                 return WidgetNavigationResult.RejectedCapacity;
 
             RememberFocus(current.Route, sourceFocusId);
+            var rootChanged = !_comparer.Equals(root.Route, route);
             _stack.Clear();
             _stack.Add(new(route, scopeId, null));
             _focusMemory.TryGetValue(route, out var restoredFocus);
-            previousLifetime = Advance(restoredFocus);
+            retired = Advance(restoredFocus, rootChanged);
         }
-        Publish(previousLifetime);
+        Publish(retired);
+        return WidgetNavigationResult.Changed;
+    }
+
+    /// <summary>
+    /// Selects a root destination without publishing a focus override. This is
+    /// intended for persistent navigation controls whose logical focus should
+    /// remain selected while sibling page content changes.
+    /// </summary>
+    public WidgetNavigationResult NavigateRoot(TRoute route)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+        RetiredLifetimes retired = default;
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            var root = _stack[0];
+            if (_stack.Count == 1 && _comparer.Equals(root.Route, route))
+                return WidgetNavigationResult.Unchanged;
+            if (!TryGetOrCreateScopeId(route, rootFrame: true, out var scopeId))
+                return WidgetNavigationResult.RejectedCapacity;
+
+            var rootChanged = !_comparer.Equals(root.Route, route);
+            _stack.Clear();
+            _stack.Add(new(route, scopeId, null));
+            retired = Advance(restoredFocus: null, replaceRootLifetime: rootChanged);
+        }
+        Publish(retired);
+        return WidgetNavigationResult.Changed;
+    }
+
+    /// <summary>
+    /// Selects a sibling root destination, remembers an optional content focus
+    /// for the page being left, and enters the destination's remembered focus
+    /// or its authored focusable fallback.
+    /// </summary>
+    public WidgetNavigationResult SwitchRoot(
+        TRoute route,
+        string defaultFocusId,
+        string? sourceContentFocusId = null)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+        StableIdentifier.Validate(defaultFocusId, nameof(defaultFocusId));
+        ValidateOptionalFocus(sourceContentFocusId);
+        RetiredLifetimes retired = default;
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            var current = _stack[^1];
+            var root = _stack[0];
+            if (_stack.Count == 1 && _comparer.Equals(root.Route, route))
+            {
+                RememberFocus(current.Route, sourceContentFocusId);
+                return WidgetNavigationResult.Unchanged;
+            }
+            if (!TryGetOrCreateScopeId(route, rootFrame: true, out var scopeId))
+                return WidgetNavigationResult.RejectedCapacity;
+
+            RememberFocus(current.Route, sourceContentFocusId);
+            var rootChanged = !_comparer.Equals(root.Route, route);
+            _stack.Clear();
+            _stack.Add(new(route, scopeId, null));
+            var restoredFocus = _focusMemory.TryGetValue(route, out var remembered)
+                ? remembered
+                : defaultFocusId;
+            retired = Advance(restoredFocus, rootChanged);
+        }
+        Publish(retired);
         return WidgetNavigationResult.Changed;
     }
 
@@ -139,21 +253,24 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     {
         ArgumentNullException.ThrowIfNull(route);
         ValidateOptionalFocus(sourceFocusId);
-        CancellationTokenSource? previousLifetime = null;
+        RetiredLifetimes retired = default;
         lock (_gate)
         {
             ThrowIfDisposed();
             if (_stack.Count - 1 >= _maximumDepth)
                 return WidgetNavigationResult.RejectedCapacity;
-            if (!TryGetOrCreateScopeId(route, out var scopeId))
+            if (!TryGetOrCreateScopeId(route, rootFrame: false, out var scopeId))
                 return WidgetNavigationResult.RejectedCapacity;
+            if (_usesAuthoredScopePolicy && _stack.Any(frame =>
+                    string.Equals(frame.InputScopeId, scopeId, StringComparison.Ordinal)))
+                return WidgetNavigationResult.RejectedConflict;
 
             RememberFocus(_stack[^1].Route, sourceFocusId);
             _stack.Add(new(route, scopeId, sourceFocusId));
             _focusMemory.TryGetValue(route, out var restoredFocus);
-            previousLifetime = Advance(restoredFocus);
+            retired = Advance(restoredFocus, replaceRootLifetime: false);
         }
-        Publish(previousLifetime);
+        Publish(retired);
         return WidgetNavigationResult.Changed;
     }
 
@@ -164,7 +281,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     public WidgetNavigationResult Back(string? sourceFocusId = null)
     {
         ValidateOptionalFocus(sourceFocusId);
-        CancellationTokenSource? previousLifetime = null;
+        RetiredLifetimes retired = default;
         lock (_gate)
         {
             ThrowIfDisposed();
@@ -173,9 +290,9 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             var removed = _stack[^1];
             RememberFocus(removed.Route, sourceFocusId);
             _stack.RemoveAt(_stack.Count - 1);
-            previousLifetime = Advance(removed.ReturnFocusId);
+            retired = Advance(removed.ReturnFocusId, replaceRootLifetime: false);
         }
-        Publish(previousLifetime);
+        Publish(retired);
         return WidgetNavigationResult.Changed;
     }
 
@@ -187,7 +304,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     {
         ArgumentNullException.ThrowIfNull(action);
         ValidateOptionalFocus(sourceFocusId);
-        CancellationTokenSource? previousLifetime = null;
+        RetiredLifetimes retired = default;
         lock (_gate)
         {
             ThrowIfDisposed();
@@ -200,10 +317,29 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             var removed = _stack[^1];
             RememberFocus(removed.Route, sourceFocusId);
             _stack.RemoveAt(_stack.Count - 1);
-            previousLifetime = Advance(removed.ReturnFocusId);
+            retired = Advance(removed.ReturnFocusId, replaceRootLifetime: false);
         }
-        Publish(previousLifetime);
+        Publish(retired);
         return true;
+    }
+
+    /// <summary>
+    /// Pushes a nested route and captures the element that actually held focus
+    /// when a controller action was dispatched. The action declaration owner
+    /// remains available separately through <see cref="WidgetActionEvent.SourceElementId"/>.
+    /// </summary>
+    public WidgetNavigationResult PushFromAction(
+        TRoute route,
+        WidgetActionEvent action,
+        string? returnFocusOverrideId = null)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        var returnFocusId = returnFocusOverrideId ?? action.FocusedElementId;
+        if (returnFocusId is null)
+            throw new ArgumentException(
+                "Action-aware navigation requires an actual focused element or an explicit return-focus override.",
+                nameof(action));
+        return Push(route, returnFocusId);
     }
 
     /// <summary>
@@ -264,18 +400,20 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
 
     public void Dispose()
     {
-        CancellationTokenSource? lifetime;
+        CancellationTokenSource? routeLifetime;
+        CancellationTokenSource? rootLifetime;
         CancellationTokenRegistration registration;
         lock (_gate)
         {
             if (_disposed) return;
             _disposed = true;
-            lifetime = _routeLifetime;
+            routeLifetime = _routeLifetime;
+            rootLifetime = _rootRouteLifetime;
             registration = _widgetLifetimeRegistration;
             _widgetLifetimeRegistration = default;
         }
         registration.Dispose();
-        CancelAndDispose(lifetime);
+        CancelAndDisposeAll(new RetiredLifetimes(routeLifetime, rootLifetime));
     }
 
     private ContainerElement ApplyScope(
@@ -331,13 +469,25 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
         };
     }
 
-    private CancellationTokenSource Advance(string? restoredFocus)
+    private readonly record struct RetiredLifetimes(
+        CancellationTokenSource? Route,
+        CancellationTokenSource? Root);
+
+    private RetiredLifetimes Advance(
+        string? restoredFocus,
+        bool replaceRootLifetime)
     {
-        var previous = _routeLifetime;
+        var previousRoute = _routeLifetime;
+        CancellationTokenSource? previousRoot = null;
+        if (replaceRootLifetime)
+        {
+            previousRoot = _rootRouteLifetime;
+            _rootRouteLifetime = CancellationTokenSource.CreateLinkedTokenSource(_widgetLifetime);
+        }
         _routeLifetime = CancellationTokenSource.CreateLinkedTokenSource(_widgetLifetime);
         var revision = checked(_snapshot.Revision + 1);
         _snapshot = CreateSnapshot(restoredFocus, revision);
-        return previous;
+        return new(previousRoute, previousRoot);
     }
 
     private WidgetNavigationSnapshot<TRoute> CreateSnapshot(
@@ -353,26 +503,89 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             initialFocusId,
             _stack.Count > 1 ? _backActionId : null,
             revision,
-            _routeLifetime.Token);
+            _routeLifetime.Token)
+        {
+            RootRouteCancellationToken = _rootRouteLifetime.Token,
+        };
     }
 
-    private bool TryGetOrCreateScopeId(TRoute route, out string scopeId)
+    private bool TryGetOrCreateScopeId(
+        TRoute route,
+        bool rootFrame,
+        out string scopeId)
     {
+        if (rootFrame && _sharedRootScopeId is not null && _rootRoutes.Contains(route))
+        {
+            scopeId = _sharedRootScopeId;
+            return true;
+        }
         if (_scopeIds.TryGetValue(route, out scopeId!)) return true;
-        if (_scopeIds.Count >= _maximumRoutes)
+        if (!_knownRoutes.Contains(route) && _knownRoutes.Count >= _maximumRoutes)
         {
             scopeId = string.Empty;
             return false;
         }
+        _knownRoutes.Add(route);
         scopeId = CreateScopeId(route);
         return true;
     }
 
     private string CreateScopeId(TRoute route)
     {
-        var scopeId = StableIdentifier.Child(_id, $"scope-{_nextScopeOrdinal++}");
+        string scopeId;
+        do
+        {
+            scopeId = StableIdentifier.Child(_id, $"scope-{_nextScopeOrdinal++}");
+        }
+        while (_reservedScopeIds.Contains(scopeId));
         _scopeIds.Add(route, scopeId);
+        _reservedScopeIds.Add(scopeId);
         return scopeId;
+    }
+
+    private void CopyAndValidateOptions(WidgetNavigatorOptions<TRoute>? options)
+    {
+        if (options is null) return;
+        ArgumentNullException.ThrowIfNull(options.RootRoutes);
+        ArgumentNullException.ThrowIfNull(options.RouteScopeIds);
+
+        if (options.SharedRootScopeId is not null)
+        {
+            StableIdentifier.Validate(
+                options.SharedRootScopeId, nameof(options.SharedRootScopeId));
+            _sharedRootScopeId = options.SharedRootScopeId;
+            _reservedScopeIds.Add(options.SharedRootScopeId);
+        }
+
+        foreach (var route in options.RootRoutes)
+        {
+            ArgumentNullException.ThrowIfNull(route);
+            _rootRoutes.Add(route);
+            _knownRoutes.Add(route);
+        }
+        if (_sharedRootScopeId is not null && _rootRoutes.Count == 0)
+            throw new ArgumentException(
+                "A shared root scope requires at least one authored root route.",
+                nameof(options));
+        if (_sharedRootScopeId is null && _rootRoutes.Count != 0)
+            throw new ArgumentException(
+                "Authored root routes require a shared root scope.",
+                nameof(options));
+
+        foreach (var (route, scopeId) in options.RouteScopeIds)
+        {
+            ArgumentNullException.ThrowIfNull(route);
+            StableIdentifier.Validate(scopeId, nameof(options.RouteScopeIds));
+            if (_sharedRootScopeId is not null && _rootRoutes.Contains(route))
+                throw new ArgumentException(
+                    "A shared root route cannot also declare a route scope.",
+                    nameof(options));
+            if (!_reservedScopeIds.Add(scopeId))
+                throw new ArgumentException(
+                    "Navigator scope IDs must be unique.", nameof(options));
+            _scopeIds.Add(route, scopeId);
+            _knownRoutes.Add(route);
+        }
     }
 
     private void RememberFocus(TRoute route, string? focusId)
@@ -380,11 +593,11 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
         if (focusId is not null) _focusMemory[route] = focusId;
     }
 
-    private void Publish(CancellationTokenSource previousLifetime)
+    private void Publish(RetiredLifetimes retired)
     {
         try
         {
-            CancelAndDispose(previousLifetime);
+            CancelAndDisposeAll(retired);
         }
         finally
         {
@@ -396,14 +609,28 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
 
     private void OwnerCanceled()
     {
-        CancellationTokenSource? lifetime;
+        CancellationTokenSource? routeLifetime;
+        CancellationTokenSource? rootLifetime;
         lock (_gate)
         {
             if (_disposed) return;
             _disposed = true;
-            lifetime = _routeLifetime;
+            routeLifetime = _routeLifetime;
+            rootLifetime = _rootRouteLifetime;
         }
-        CancelAndDispose(lifetime);
+        CancelAndDisposeAll(new RetiredLifetimes(routeLifetime, rootLifetime));
+    }
+
+    private static void CancelAndDisposeAll(RetiredLifetimes lifetimes)
+    {
+        try
+        {
+            if (lifetimes.Route is not null) CancelAndDispose(lifetimes.Route);
+        }
+        finally
+        {
+            if (lifetimes.Root is not null) CancelAndDispose(lifetimes.Root);
+        }
     }
 
     private static void CancelAndDispose(CancellationTokenSource lifetime)
@@ -441,4 +668,26 @@ public abstract partial class Widget
             {
                 if (LifecycleState != WidgetLifecycleState.Destroying) Invalidate();
             });
+
+    /// <summary>
+    /// Creates a navigator with an optional shared root scope and authored
+    /// route scopes. Existing widgets can continue using
+    /// <see cref="CreateNavigator{TRoute}(string, TRoute, int, int, IEqualityComparer{TRoute}?)"/>
+    /// with unchanged generated-scope behavior.
+    /// </summary>
+    protected WidgetNavigator<TRoute> CreateNavigatorWithOptions<TRoute>(
+        string id,
+        TRoute initialRoute,
+        WidgetNavigatorOptions<TRoute> options,
+        int maximumDepth = WidgetNavigator<TRoute>.DefaultMaximumDepth,
+        int maximumRoutes = WidgetNavigator<TRoute>.DefaultMaximumRoutes,
+        IEqualityComparer<TRoute>? comparer = null) where TRoute : notnull
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return new(id, initialRoute, maximumDepth, maximumRoutes, comparer,
+            WidgetLifetimeToken, () =>
+            {
+                if (LifecycleState != WidgetLifecycleState.Destroying) Invalidate();
+            }, options);
+    }
 }

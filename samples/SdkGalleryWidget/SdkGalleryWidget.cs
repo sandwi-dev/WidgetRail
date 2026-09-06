@@ -6,6 +6,16 @@ namespace WidgetRail.Samples.SdkGalleryWidget;
 
 public enum GalleryPage { Overview, Controls, Tiles, Backgrounds, Utilities }
 public enum GalleryModal { None, Picker, ActionSheet }
+public enum GalleryRoute
+{
+    Overview,
+    Controls,
+    Tiles,
+    Backgrounds,
+    Utilities,
+    Picker,
+    ActionSheet,
+}
 
 /// <summary>
 /// Copyable, capability-free reference for the public controller-first SDK.
@@ -40,22 +50,35 @@ public sealed class SdkGalleryWidget : Widget
         new("gallery.tab.backgrounds", "Backgrounds", "gallery.tab.backgrounds", WidgetGlyph.Music),
         new("gallery.tab.utilities", "Utilities", "gallery.tab.utilities", WidgetGlyph.Warning),
     ];
-    private readonly WidgetNavigator<GalleryModal> _navigation;
-    private GalleryPage _page = GalleryPage.Overview;
-    private GalleryPage? _modalReturnFocusPage;
+    private static readonly GalleryRoute[] RootRoutes =
+    [
+        GalleryRoute.Overview,
+        GalleryRoute.Controls,
+        GalleryRoute.Tiles,
+        GalleryRoute.Backgrounds,
+        GalleryRoute.Utilities,
+    ];
+    private static readonly HashSet<string> NavigationHeaderFocusIds =
+        CreateNavigationHeaderFocusIds();
+    private readonly WidgetNavigator<GalleryRoute> _navigation;
     private bool _compactMode = true;
     private string _density = "Comfortable";
     private TimeSpan _position = TimeSpan.FromSeconds(74);
     private bool _showToast;
     private int _toastGeneration;
 
-    public SdkGalleryWidget() => _navigation = CreateNavigator(
+    public SdkGalleryWidget() => _navigation = CreateNavigatorWithOptions(
         Ids.Id("navigation"),
-        GalleryModal.None);
+        GalleryRoute.Overview,
+        new WidgetNavigatorOptions<GalleryRoute>
+        {
+            SharedRootScopeId = Ids.Id("root-scope"),
+            RootRoutes = RootRoutes,
+        });
 
-    public GalleryPage Page => _page;
-    public GalleryModal Modal => _navigation.Value.Route;
-    public WidgetNavigationSnapshot<GalleryModal> Navigation => _navigation.Value;
+    public GalleryPage Page => PageFor(_navigation.Value.RootRoute);
+    public GalleryModal Modal => ModalFor(_navigation.Value.Route);
+    public WidgetNavigationSnapshot<GalleryRoute> Navigation => _navigation.Value;
     public bool CompactMode => _compactMode;
     public string Density => _density;
     public TimeSpan Position => _position;
@@ -64,21 +87,28 @@ public sealed class SdkGalleryWidget : Widget
     public override WidgetView Render()
     {
         var navigation = _navigation.Value;
-        WidgetElement body = navigation.Route == GalleryModal.None
+        var page = PageFor(navigation.RootRoute);
+        WidgetElement body = navigation.Depth == 0
             ? UI.NavigationShell(
                 "gallery.shell",
-                TabId(_page),
-                NavigationContentEntryFocus(_page),
-                PageContent(_page),
+                TabId(page),
+                NavigationContentEntryFocus(page),
+                PageContent(page),
                 Destinations)
             : ModalContent(navigation);
         var rootContent = UI.Stack("gallery.root.content",
             Header(),
-            body)
+            body,
+            navigation.Depth == 0 ? RootNavigationHints() : UI.Spacer("gallery.modal.hints-spacer"))
             .Classes("gallery-root");
 
-        if (navigation.Route == GalleryModal.None)
-            rootContent = _navigation.Scope(navigation, rootContent);
+        if (navigation.Depth == 0)
+        {
+            rootContent = _navigation.Scope(navigation, rootContent)
+                .Shortcut(ControllerButton.LeftBumper, "gallery.page.previous")
+                .Shortcut(ControllerButton.RightBumper, "gallery.page.next")
+                .Shortcut(ControllerButton.Y, "gallery.route.actions");
+        }
 
         if (_showToast)
         {
@@ -133,35 +163,41 @@ public sealed class SdkGalleryWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (_navigation.TryHandleBack(action))
-        {
-            _modalReturnFocusPage = _page;
+        if (_navigation.TryHandleBack(action, action.FocusedElementId))
             return ValueTask.CompletedTask;
-        }
 
         switch (action.ActionId)
         {
             case "gallery.tab.overview":
-                SetPage(GalleryPage.Overview);
+                ActivatePage(GalleryRoute.Overview);
                 return ValueTask.CompletedTask;
             case "gallery.tab.controls":
-                SetPage(GalleryPage.Controls);
+                ActivatePage(GalleryRoute.Controls);
                 return ValueTask.CompletedTask;
             case "gallery.tab.tiles":
-                SetPage(GalleryPage.Tiles);
+                ActivatePage(GalleryRoute.Tiles);
                 return ValueTask.CompletedTask;
             case "gallery.tab.backgrounds":
-                SetPage(GalleryPage.Backgrounds);
+                ActivatePage(GalleryRoute.Backgrounds);
                 return ValueTask.CompletedTask;
             case "gallery.tab.utilities":
-                SetPage(GalleryPage.Utilities);
+                ActivatePage(GalleryRoute.Utilities);
+                return ValueTask.CompletedTask;
+            case "gallery.page.previous":
+                SwitchPage(-1, action);
+                return ValueTask.CompletedTask;
+            case "gallery.page.next":
+                SwitchPage(1, action);
+                return ValueTask.CompletedTask;
+            case "gallery.route.actions":
+                _navigation.PushFromAction(GalleryRoute.ActionSheet, action);
                 return ValueTask.CompletedTask;
             case "gallery.compact.toggle": _compactMode = !_compactMode; break;
             case "gallery.picker.open":
-                OpenModal(GalleryModal.Picker, action.SourceElementId);
+                _navigation.PushFromAction(GalleryRoute.Picker, action);
                 return ValueTask.CompletedTask;
             case "gallery.sheet.open":
-                OpenModal(GalleryModal.ActionSheet, action.SourceElementId);
+                _navigation.PushFromAction(GalleryRoute.ActionSheet, action);
                 return ValueTask.CompletedTask;
             case "gallery.density.compact":
                 SelectDensity("Compact", action.SourceElementId);
@@ -523,10 +559,10 @@ public sealed class SdkGalleryWidget : Widget
             .AddClasses("gallery-background-demo-surface", "gallery-background-demo-surface--missing"))
         .AddClasses("gallery-page", "gallery-backgrounds-page");
 
-    private StackElement ModalContent(WidgetNavigationSnapshot<GalleryModal> navigation) =>
+    private StackElement ModalContent(WidgetNavigationSnapshot<GalleryRoute> navigation) =>
         _navigation.Scope(navigation, navigation.Route switch
         {
-            GalleryModal.Picker => UI.Picker(
+            GalleryRoute.Picker => UI.Picker(
                 "Choose density",
                 "gallery.picker",
                 navigation.InputScopeId,
@@ -540,7 +576,7 @@ public sealed class SdkGalleryWidget : Widget
                         IsSelected: _density == "Spacious"),
                 ],
                 "B closes this nested scope and restores the main gallery."),
-            GalleryModal.ActionSheet => UI.ActionSheet(
+            GalleryRoute.ActionSheet => UI.ActionSheet(
                 "Example actions",
                 "gallery.sheet",
                 navigation.InputScopeId,
@@ -555,16 +591,22 @@ public sealed class SdkGalleryWidget : Widget
             _ => throw new InvalidOperationException("No modal is active."),
         });
 
-    private string InitialFocus(WidgetNavigationSnapshot<GalleryModal> navigation) =>
+    private string? InitialFocus(WidgetNavigationSnapshot<GalleryRoute> navigation) =>
         navigation.Route switch
         {
-            GalleryModal.Picker => navigation.InitialFocusId ??
+            GalleryRoute.Picker => navigation.InitialFocusId ??
                 $"gallery.density.{_density.ToLowerInvariant()}",
-            GalleryModal.ActionSheet => navigation.InitialFocusId ?? "gallery.sheet.pin",
-            _ when _modalReturnFocusPage == _page =>
-                navigation.InitialFocusId ?? PageInitialFocus(_page),
-            _ => PageInitialFocus(_page),
+            GalleryRoute.ActionSheet => navigation.InitialFocusId ?? "gallery.sheet.pin",
+            _ when navigation.Revision == 0 => PageInitialFocus(PageFor(navigation.RootRoute)),
+            _ => navigation.InitialFocusId,
         };
+
+    private static RowElement RootNavigationHints() => UI.Row(
+        "gallery.section.hints",
+        UI.ControllerHint(ControllerButton.LeftBumper, "Previous section", "gallery.hint.section.previous"),
+        UI.ControllerHint(ControllerButton.RightBumper, "Next section", "gallery.hint.section.next"),
+        UI.ControllerHint(ControllerButton.Y, "Example actions", "gallery.hint.section.actions"))
+        .Classes("gallery-controller-hints", "gallery-section-hints");
 
     private static string NavigationContentEntryFocus(GalleryPage page) =>
         page == GalleryPage.Backgrounds
@@ -580,16 +622,27 @@ public sealed class SdkGalleryWidget : Widget
         _ => "gallery.utilities.toast-button",
     };
 
-    private void SetPage(GalleryPage page)
+    private void ActivatePage(GalleryRoute route)
     {
-        if (_page == page) return;
-        _modalReturnFocusPage = null;
-        _page = page;
-        Invalidate();
+        _ = _navigation.NavigateRoot(route);
     }
 
-    private void OpenModal(GalleryModal modal, string sourceFocusId) =>
-        _navigation.Push(modal, sourceFocusId);
+    private void SwitchPage(int offset, WidgetActionEvent action)
+    {
+        var current = Array.IndexOf(RootRoutes, _navigation.Value.RootRoute);
+        if (current < 0)
+            throw new InvalidOperationException("The current Gallery root route is not registered.");
+        var destination = RootRoutes[(current + offset + RootRoutes.Length) % RootRoutes.Length];
+        var focused = action.FocusedElementId;
+        var departingContentFocus = focused is not null &&
+            !NavigationHeaderFocusIds.Contains(focused)
+                ? focused
+                : null;
+        _ = _navigation.SwitchRoot(
+            destination,
+            PageInitialFocus(PageFor(destination)),
+            departingContentFocus);
+    }
 
     private void SelectDensity(string density, string sourceFocusId)
     {
@@ -599,12 +652,7 @@ public sealed class SdkGalleryWidget : Widget
     }
 
     private WidgetNavigationResult BackToPage(string? sourceFocusId)
-    {
-        var result = _navigation.Back(sourceFocusId);
-        if (result == WidgetNavigationResult.Changed)
-            _modalReturnFocusPage = _page;
-        return result;
-    }
+        => _navigation.Back(sourceFocusId);
 
     private void ShowToast()
     {
@@ -634,6 +682,35 @@ public sealed class SdkGalleryWidget : Widget
         GalleryPage.Backgrounds => "gallery.tab.backgrounds",
         _ => "gallery.tab.utilities",
     };
+
+    private static GalleryPage PageFor(GalleryRoute route) => route switch
+    {
+        GalleryRoute.Overview => GalleryPage.Overview,
+        GalleryRoute.Controls => GalleryPage.Controls,
+        GalleryRoute.Tiles => GalleryPage.Tiles,
+        GalleryRoute.Backgrounds => GalleryPage.Backgrounds,
+        GalleryRoute.Utilities => GalleryPage.Utilities,
+        _ => throw new InvalidOperationException("A nested Gallery route cannot be rendered as a root page."),
+    };
+
+    private static GalleryModal ModalFor(GalleryRoute route) => route switch
+    {
+        GalleryRoute.Picker => GalleryModal.Picker,
+        GalleryRoute.ActionSheet => GalleryModal.ActionSheet,
+        _ => GalleryModal.None,
+    };
+
+    private static HashSet<string> CreateNavigationHeaderFocusIds()
+    {
+        var ids = WidgetIds.Scope("gallery.shell");
+        return Destinations
+            .SelectMany(destination => new[]
+            {
+                ids.KeyedId("compact", destination.Id),
+                ids.KeyedId("rail", destination.Id),
+            })
+            .ToHashSet(StringComparer.Ordinal);
+    }
 
     private string DensityClass() =>
         $"gallery-density-preview--{_density.ToLowerInvariant()}";

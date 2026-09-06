@@ -3431,7 +3431,9 @@ static async Task FocusedShortcutResolves()
     var handled = await widget.OnControllerInputAsync(OpenInput(
         ControllerButton.RightBumper, "play", 1, "root"));
     Assert.True(handled, "Expected focused shortcut to resolve.");
-    Assert.Equal("next", (await widget.NextActionAsync()).ActionId);
+    var action = await widget.NextActionAsync();
+    Assert.Equal("next", action.ActionId);
+    Assert.Equal("play", action.FocusedElementId);
 
     var ignored = await widget.OnControllerInputAsync(OpenInput(
         ControllerButton.LeftTrigger, "play", 1, "root"));
@@ -3457,6 +3459,7 @@ static async Task FocusedRowShortcutsResolve()
     var ancestor = await widget.NextActionAsync();
     Assert.Equal("group.options", ancestor.ActionId);
     Assert.Equal("nested.group", ancestor.SourceElementId);
+    Assert.Equal("nested", ancestor.FocusedElementId);
     Assert.True(!await widget.OnControllerInputAsync(OpenInput(
         ControllerButton.X, null, 1, "root")),
         "Focusless input must not guess between row-local shortcuts.");
@@ -3482,6 +3485,7 @@ static async Task FocusedButtonActivates()
     var action = await widget.NextActionAsync();
     Assert.Equal("play", action.ActionId);
     Assert.Equal("play", action.SourceElementId);
+    Assert.Equal("play", action.FocusedElementId);
     Assert.Equal(12L, action.Sequence);
 }
 

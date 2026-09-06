@@ -90,6 +90,7 @@ ctor WidgetRail.WidgetSdk.WidgetModelSnapshot<TState>(TState Value, long Revisio
 ctor WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>(TState Previous, TState Current, TResult Result, long Revision, bool Changed)
 ctor WidgetRail.WidgetSdk.WidgetModelUpdate<TState>(TState Previous, TState Current, long Revision, bool Changed)
 ctor WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>(TRoute Route, TRoute RootRoute, int Depth, string InputScopeId, string? InitialFocusId, string? BackActionId, long Revision, System.Threading.CancellationToken RouteCancellationToken)
+ctor WidgetRail.WidgetSdk.WidgetNavigatorOptions<TRoute>()
 ctor WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails(long Revision, WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsState State, WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity Connectivity, WidgetRail.WidgetSdk.WidgetNetworkTransportKind Transport, System.Collections.Generic.IReadOnlyList<string> IpAddresses, System.Collections.Generic.IReadOnlyList<string> DefaultGateways, System.Collections.Generic.IReadOnlyList<string> DnsServers)
 ctor WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsChanged(long Revision)
 ctor WidgetRail.WidgetSdk.WidgetNetworkStatus(WidgetRail.WidgetSdk.WidgetNetworkConnectivity Connectivity, WidgetRail.WidgetSdk.WidgetNetworkTransportKind Transport, WidgetRail.WidgetSdk.WidgetNetworkWirelessAvailability WirelessAvailability, WidgetRail.WidgetSdk.WidgetNetworkDetailsAccess DetailsAccess, WidgetRail.WidgetSdk.WidgetNetworkConnectionAttemptState ConnectionAttemptState, string? AttemptProfileId, string? ActiveProfileId, string? ActiveProfileName, int? SignalPercent)
@@ -293,6 +294,7 @@ enum WidgetRail.WidgetSdk.WidgetMediaSessionCommand.TogglePlayPause = WidgetRail
 enum WidgetRail.WidgetSdk.WidgetNavigationResult.CannotGoBack = WidgetRail.WidgetSdk.WidgetNavigationResult.CannotGoBack
 enum WidgetRail.WidgetSdk.WidgetNavigationResult.Changed = WidgetRail.WidgetSdk.WidgetNavigationResult.Changed
 enum WidgetRail.WidgetSdk.WidgetNavigationResult.RejectedCapacity = WidgetRail.WidgetSdk.WidgetNavigationResult.RejectedCapacity
+enum WidgetRail.WidgetSdk.WidgetNavigationResult.RejectedConflict = WidgetRail.WidgetSdk.WidgetNavigationResult.RejectedConflict
 enum WidgetRail.WidgetSdk.WidgetNavigationResult.Unchanged = WidgetRail.WidgetSdk.WidgetNavigationResult.Unchanged
 enum WidgetRail.WidgetSdk.WidgetNetworkConnectionAttemptState.Connecting = WidgetRail.WidgetSdk.WidgetNetworkConnectionAttemptState.Connecting
 enum WidgetRail.WidgetSdk.WidgetNetworkConnectionAttemptState.Failed = WidgetRail.WidgetSdk.WidgetNetworkConnectionAttemptState.Failed
@@ -1091,7 +1093,9 @@ method WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.GetHashCode() -> in
 method WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Back(string? sourceFocusId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Navigate(TRoute route, string? sourceFocusId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
+method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.NavigateRoot(TRoute route) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Push(TRoute route, string? sourceFocusId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
+method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.PushFromAction(TRoute route, WidgetRail.WidgetSdk.WidgetActionEvent action, string? returnFocusOverrideId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.ContainerElement root) -> WidgetRail.WidgetSdk.ContainerElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.GridElement root) -> WidgetRail.WidgetSdk.GridElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.RowElement root) -> WidgetRail.WidgetSdk.RowElement
@@ -1104,6 +1108,7 @@ method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.W
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, WidgetRail.WidgetSdk.ScrollElement root) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, WidgetRail.WidgetSdk.StackElement root) -> WidgetRail.WidgetSdk.StackElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, WidgetRail.WidgetSdk.WidgetElement root) -> WidgetRail.WidgetSdk.ContainerElement
+method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.SwitchRoot(TRoute route, string defaultFocusId, string? sourceContentFocusId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.TryHandleBack(WidgetRail.WidgetSdk.WidgetActionEvent action, string? sourceFocusId = null) -> bool
 method WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.<Clone>$() -> WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails
 method WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.Deconstruct(out long Revision, out WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsState State, out WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity Connectivity, out WidgetRail.WidgetSdk.WidgetNetworkTransportKind Transport, out System.Collections.Generic.IReadOnlyList<string> IpAddresses, out System.Collections.Generic.IReadOnlyList<string> DefaultGateways, out System.Collections.Generic.IReadOnlyList<string> DnsServers) -> void
@@ -1926,6 +1931,8 @@ method virtual WidgetRail.WidgetSdk.WidgetTimedMutation.Dispose() -> void
 method virtual WidgetRail.WidgetSdk.WidgetView.Equals(WidgetRail.WidgetSdk.WidgetView? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetWifiRadio.Equals(WidgetRail.WidgetSdk.WidgetWifiRadio? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetWifiRadioChanged.Equals(WidgetRail.WidgetSdk.WidgetWifiRadioChanged? other) -> bool
+property System.Collections.Generic.IReadOnlyCollection<TRoute> WidgetRail.WidgetSdk.WidgetNavigatorOptions<TRoute>.RootRoutes { get; set; }
+property System.Collections.Generic.IReadOnlyDictionary<TRoute,string> WidgetRail.WidgetSdk.WidgetNavigatorOptions<TRoute>.RouteScopeIds { get; set; }
 property System.Collections.Generic.IReadOnlyDictionary<string,string> WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.Headers { get; set; }
 property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Items { get; set; }
@@ -1992,6 +1999,7 @@ property System.Func<WidgetRail.WidgetSdk.WidgetCollectionCursor?,WidgetRail.Wid
 property System.Func<int,int,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetPage<TItem>>> WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.LoadPage { get; set; }
 property System.ReadOnlyMemory<byte> WidgetRail.WidgetSdk.WidgetEncodedArtwork.Bytes { get; }
 property System.Threading.CancellationToken WidgetRail.WidgetSdk.PinnedLayoutHandle.SelectionCancellationToken { get; }
+property System.Threading.CancellationToken WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.RootRouteCancellationToken { get; set; }
 property System.Threading.CancellationToken WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.RouteCancellationToken { get; set; }
 property System.Threading.CancellationToken WidgetRail.WidgetSdk.WidgetOperationContext.CancellationToken { get; }
 property System.Threading.Tasks.Task WidgetRail.WidgetSdk.WidgetScenarioOperationInvocation<TRequest,TResponse>.CancellationObserved { get; }
@@ -2556,6 +2564,7 @@ property string? WidgetRail.WidgetSdk.SliderElement.FocusPersistenceId { get; se
 property string? WidgetRail.WidgetSdk.TextElement.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.TextEntryElement.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetActionEvent.CommittedText { get; set; }
+property string? WidgetRail.WidgetSdk.WidgetActionEvent.FocusedElementId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetActionEvent.InputScopeId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetAppLibraryCursorRequest.Cursor { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetAppLibraryMetadata.Description { get; set; }
@@ -2574,6 +2583,7 @@ property string? WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.BearerSecretS
 property string? WidgetRail.WidgetSdk.WidgetMediaSession.ArtworkPngBase64 { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.BackActionId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.InitialFocusId { get; set; }
+property string? WidgetRail.WidgetSdk.WidgetNavigatorOptions<TRoute>.SharedRootScopeId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetNetworkStatus.ActiveProfileId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetNetworkStatus.ActiveProfileName { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetNetworkStatus.AttemptProfileId { get; set; }
@@ -2761,6 +2771,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetModel<TState>
 type sealed class WidgetRail.WidgetSdk.WidgetModelChangedEventArgs<TState> : System.EventArgs
 type sealed class WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> : System.IEquatable<WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>>
 type sealed class WidgetRail.WidgetSdk.WidgetNavigator<TRoute> : System.IDisposable
+type sealed class WidgetRail.WidgetSdk.WidgetNavigatorOptions<TRoute>
 type sealed class WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails : System.IEquatable<WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails>
 type sealed class WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsChanged : System.IEquatable<WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsChanged>
 type sealed class WidgetRail.WidgetSdk.WidgetNetworkService

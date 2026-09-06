@@ -2733,7 +2733,7 @@ static async Task RuntimeScopedShortcutRouting()
         "Nested surface shortcut was not accepted.");
     await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(2));
     var updatedNested = await client.GetSnapshotAsync();
-    Assert.Equal("nested", Find(updatedNested.Root, "scoped-action").Text);
+    Assert.Equal("nested:nested-focus", Find(updatedNested.Root, "scoped-action").Text);
 
     Assert.True(await client.SendControllerInputAsync(OpenInput(
         updatedNested, ControllerButton.B, null)),
@@ -3404,7 +3404,9 @@ file sealed class TestWidget : Widget
         }
         else if (action.ActionId == "nested")
         {
-            _scopedAction = action.ActionId;
+            _scopedAction = action.FocusedElementId is null
+                ? action.ActionId
+                : $"{action.ActionId}:{action.FocusedElementId}";
             Invalidate();
         }
         else if (action.ActionId == "nested-close")
