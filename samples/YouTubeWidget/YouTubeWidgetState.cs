@@ -327,7 +327,7 @@ internal sealed record YouTubeWidgetState
 
     public YouTubeRoute Route { get; init; } = YouTubeRoute.Setup;
     public YouTubeRoute PlayerSettingsReturnRoute { get; init; } = YouTubeRoute.Player;
-    public YouTubeRoute SetupReturnRoute { get; init; } = YouTubeRoute.Search;
+    public YouTubeRoute? SetupReturnRoute { get; init; }
     public string? SetupReturnFocusId { get; init; }
     public string? RootInitialFocusId { get; init; }
     public YouTubeSetupState Setup { get; init; } = YouTubeSetupState.Initial;
@@ -453,12 +453,14 @@ internal sealed record YouTubeWidgetState
         Setup = Setup with { Error = null },
     };
 
-    public YouTubeWidgetState WithSetupReturnRoute() => this with
-    {
-        Route = SetupReturnRoute,
-        RootFocusGroupId = null,
-        RootInitialFocusId = SetupReturnFocusId,
-    };
+    public YouTubeWidgetState WithSetupReturnRoute() => SetupReturnRoute is { } route
+        ? this with
+        {
+            Route = route,
+            RootFocusGroupId = null,
+            RootInitialFocusId = SetupReturnFocusId,
+        }
+        : this;
 
     public YouTubeWidgetState WithConfigurationSummary(bool configured) => this with
     {
@@ -510,6 +512,12 @@ internal sealed record YouTubeWidgetState
     {
         Setup = Setup with { Configured = false, Busy = false },
         Search = Search with { QueryDraft = string.Empty, ActiveQuery = string.Empty },
+        SetupReturnRoute = SetupReturnRoute == YouTubeRoute.Search
+            ? Playback.VideoId is null ? YouTubeRoute.Link : YouTubeRoute.Player
+            : SetupReturnRoute,
+        SetupReturnFocusId = SetupReturnRoute == YouTubeRoute.Search
+            ? null
+            : SetupReturnFocusId,
     };
 
     public YouTubeWidgetState WithSetupFailure(WidgetCommandError error) => this with

@@ -195,6 +195,13 @@ public sealed partial class YouTubeVideoWidget
         var setup = state.Setup;
         var configured = setup.Configured;
         var busy = setup.Busy;
+        var hasReturnRoute = state.SetupReturnRoute is not null;
+        var routeActionId = hasReturnRoute ? SetupBackActionId : LinkRouteActionId;
+        var routeActionLabel = hasReturnRoute
+            ? state.SetupReturnRoute is YouTubeRoute.Link or YouTubeRoute.Player
+                ? "Back to player"
+                : "Back to Discover"
+            : "Play a link";
         var keyEntry = UI.SensitiveTextEntry(
                 configured ? "Enter a replacement Google API key" : "Enter your Google API key",
                 SetupKeyActionId,
@@ -202,14 +209,8 @@ public sealed partial class YouTubeVideoWidget
                 96)
             .Disabled(busy)
             .FocusUp("youtube.setup.console")
-            .FocusDown(configured ? "youtube.setup.delete" : LinkRouteActionId)
+            .FocusDown(configured ? "youtube.setup.delete" : routeActionId)
             .Classes("youtube-entry");
-        var routeActionId = configured ? SetupBackActionId : LinkRouteActionId;
-        var routeActionLabel = configured
-            ? state.SetupReturnRoute is YouTubeRoute.Link or YouTubeRoute.Player
-                ? "Back to player"
-                : "Back to Discover"
-            : "Play a link";
         var children = new List<WidgetElement>
         {
             UI.Row("youtube.setup.appbar",
@@ -389,7 +390,7 @@ public sealed partial class YouTubeVideoWidget
     private WidgetView RenderLinkPlayer(YouTubeWidgetState state)
     {
         var view = RenderPlayer(state);
-        return view with { InitialFocusId = "youtube.link" };
+        return view with { InitialFocusId = state.RootInitialFocusId ?? "youtube.link" };
     }
 
     private WidgetView RenderPlayerSettings(YouTubeWidgetState state)
@@ -521,7 +522,7 @@ public sealed partial class YouTubeVideoWidget
     {
         var root = UI.Stack("youtube.application.root", content)
             .InputScope("youtube.application.root").Classes("youtube-root");
-        if (state.Route == YouTubeRoute.Setup && state.Setup.Configured)
+        if (state.Route == YouTubeRoute.Setup && state.SetupReturnRoute is not null)
             root = root.Shortcut(ControllerButton.B, SetupBackActionId);
         return new WidgetView(root, initialFocus,
             ActiveInputScopeId: "youtube.application.root", Surface: new WidgetSurfaceHints
@@ -718,21 +719,18 @@ public sealed partial class YouTubeVideoWidget
         var trailingHints = configured
             ? UI.Row(
                     "youtube.section.trailing-hints",
-                    UI.ControllerHint(
-                        ControllerButton.RightBumper,
-                        "Next section",
-                        "youtube.section.next.hint"),
-                    UI.ControllerHint(
-                        ControllerButton.Y,
-                        "Settings",
-                        "youtube.section.settings.hint"))
+                    UI.Text("RB", "youtube.section.next.hint",
+                            "Right bumper, next section")
+                        .Classes("wrail-controller-hint__key"),
+                    UI.Text("Y", "youtube.section.settings.hint",
+                            "Y button, Settings")
+                        .Classes("wrail-controller-hint__key"))
                 .Classes("youtube-section-trailing-hints")
             : UI.Row(
                     "youtube.section.trailing-hints",
-                    UI.ControllerHint(
-                        ControllerButton.Y,
-                        "Settings",
-                        "youtube.section.settings.hint"))
+                    UI.Text("Y", "youtube.section.settings.hint",
+                            "Y button, Settings")
+                        .Classes("wrail-controller-hint__key"))
                 .Classes("youtube-section-trailing-hints");
         var shell = UI.NavigationShell(
             "youtube.sections",
@@ -743,16 +741,22 @@ public sealed partial class YouTubeVideoWidget
             expandedPane: null,
             expandedPaneEntryFocusId: null,
             compactLeadingAdornment: configured
-                ? UI.ControllerHint(
-                    ControllerButton.LeftBumper,
-                    "Previous section",
-                    "youtube.section.previous.hint")
+                ? UI.Text("LB", "youtube.section.previous.hint",
+                        "Left bumper, previous section")
+                    .Classes("wrail-controller-hint__key")
                 : null,
             compactTrailingAdornment: trailingHints);
-        var root = UI.Stack(RootScopeId, shell)
+        var expandedSettingsHint = UI.Row(
+                "youtube.section.expanded-settings-hint",
+                UI.ControllerHint(
+                    ControllerButton.Y,
+                    "Settings",
+                    "youtube.section.expanded-settings"))
+            .VisibleWhen(ResponsiveVisibility.ExpandedOnly)
+            .Classes("youtube-section-expanded-hint");
+        var root = UI.Stack(RootScopeId, expandedSettingsHint, shell)
             .InputScope(RootScopeId)
-            .Shortcut(ControllerButton.Y, SetupRouteActionId,
-                label: "Settings")
+            .Shortcut(ControllerButton.Y, SetupRouteActionId)
             .Classes("youtube-root");
         return configured
             ? root
