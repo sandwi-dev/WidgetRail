@@ -201,22 +201,26 @@ public static class ViewSnapshotValidator
                     $"Focus-group entry request ID must be between 1 and {ProtocolConstants.MaximumFocusGroupEntryRequestId}.");
             CheckIdentifier(groupEntry.GroupId, "$.focusGroupEntryRequest.groupId",
                 "focus group ID", ProtocolValidationIdentifierKind.ElementReference);
-            if (!ids.TryGetValue(groupEntry.GroupId, out var group))
-                AddIdentifier("$.focusGroupEntryRequest.groupId", "invalid_focus_group",
-                    "Focus-group entry must name an authored remembered-child focus group.",
-                    ProtocolValidationIdentifierKind.ElementReference,
-                    ProtocolValidationIdentifierState.Missing, groupEntry.GroupId);
-            else if (group.Node.InitialChildFocusId is null)
-                AddIdentifier("$.focusGroupEntryRequest.groupId", "invalid_focus_group",
-                    "Focus-group entry must name an authored remembered-child focus group.",
-                    ProtocolValidationIdentifierKind.ElementReference,
-                    ProtocolValidationIdentifierState.NotFocusable, groupEntry.GroupId);
-            else if (!hasActiveScope ||
-                     !string.Equals(group.ScopeKey, activeScopeKey, StringComparison.Ordinal))
-                AddIdentifier("$.focusGroupEntryRequest.groupId", "focus_group_outside_active_scope",
-                    "Focus-group entry must belong to the active input scope.",
-                    ProtocolValidationIdentifierKind.ElementReference,
-                    ProtocolValidationIdentifierState.OutsideActiveScope, groupEntry.GroupId);
+            if (groupEntry.GroupId is { } groupId &&
+                ProtocolValidationIdentifierContext.IsSafeIdentifier(groupId))
+            {
+                if (!ids.TryGetValue(groupId, out var group))
+                    AddIdentifier("$.focusGroupEntryRequest.groupId", "invalid_focus_group",
+                        "Focus-group entry must name an authored remembered-child focus group.",
+                        ProtocolValidationIdentifierKind.ElementReference,
+                        ProtocolValidationIdentifierState.Missing, groupId);
+                else if (group.Node.InitialChildFocusId is null)
+                    AddIdentifier("$.focusGroupEntryRequest.groupId", "invalid_focus_group",
+                        "Focus-group entry must name an authored remembered-child focus group.",
+                        ProtocolValidationIdentifierKind.ElementReference,
+                        ProtocolValidationIdentifierState.NotFocusable, groupId);
+                else if (!hasActiveScope ||
+                         !string.Equals(group.ScopeKey, activeScopeKey, StringComparison.Ordinal))
+                    AddIdentifier("$.focusGroupEntryRequest.groupId", "focus_group_outside_active_scope",
+                        "Focus-group entry must belong to the active input scope.",
+                        ProtocolValidationIdentifierKind.ElementReference,
+                        ProtocolValidationIdentifierState.OutsideActiveScope, groupId);
+            }
         }
 
         var quickActions = snapshot.QuickActions ?? [];

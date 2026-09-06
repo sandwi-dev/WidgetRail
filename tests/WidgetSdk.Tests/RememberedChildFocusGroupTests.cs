@@ -58,6 +58,39 @@ internal static class RememberedChildFocusGroupTests
                 GroupId = "controls.play",
             },
         }, "invalid_focus_group");
+        foreach (var malformedGroupId in new string?[] { null, string.Empty })
+        {
+            var errors = ViewSnapshotValidator.Validate(snapshot with
+            {
+                FocusGroupEntryRequest = snapshot.FocusGroupEntryRequest with
+                {
+                    GroupId = malformedGroupId!,
+                },
+            });
+            True(errors.Any(error =>
+                error.Path == "$.focusGroupEntryRequest.groupId" &&
+                error.Code == "required"));
+        }
+        foreach (var malformedJsonValue in new[] { "null", "\"\"" })
+        {
+            var malformedJson = json.Replace(
+                "\"groupId\":\"controls\"",
+                $"\"groupId\":{malformedJsonValue}",
+                StringComparison.Ordinal);
+            try
+            {
+                _ = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(malformedJson));
+            }
+            catch (ProtocolValidationException exception)
+            {
+                True(exception.Errors.Any(error =>
+                    error.Path == "$.focusGroupEntryRequest.groupId" &&
+                    error.Code == "required"));
+                continue;
+            }
+            throw new InvalidOperationException(
+                "Malformed focus-group entry JSON bypassed protocol validation.");
+        }
 
         var dialogGroup = RawNode("dialog", ViewNodeKind.Stack) with
         {
