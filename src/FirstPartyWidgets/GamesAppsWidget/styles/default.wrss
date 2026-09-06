@@ -77,6 +77,23 @@
   flex-shrink: 0;
 }
 
+.games-section-bumper-key {
+  min-width: 30px;
+  min-height: 26px;
+  padding: 3px 6px;
+  align: center;
+  justify: center;
+  flex-grow: 0;
+  flex-shrink: 0;
+}
+
+.games-section-bumper-label {
+  width: 100%;
+  min-width: 0px;
+  max-lines: 1;
+  text-align: center;
+}
+
 .games-section-body {
   width: 100%;
   min-width: 0px;
@@ -109,7 +126,6 @@
 }
 
 .games-app-tile {
-  width: 100%;
   min-width: 0px;
   min-height: 78px;
   gap: 10px;
@@ -122,6 +138,7 @@
   corner-radius: 9px;
   flex-grow: 0;
   flex-shrink: 0;
+  overflow: clip;
   transition-duration: 90ms;
   transition-easing: ease-out;
 }
@@ -160,6 +177,7 @@
   gap: 2px;
   flex-grow: 1;
   flex-shrink: 1;
+  overflow: clip;
 }
 
 .games-app-tile-title {

@@ -80,12 +80,12 @@ internal static class GamesAppsPresentation
             entry,
             pageContent,
             Destinations(state),
-            compactLeadingAdornment: UI.ControllerHint(
-                ControllerButton.LeftBumper,
+            compactLeadingAdornment: SectionBumperBadge(
+                "LB",
                 "Previous section",
                 "games.section.previous.hint"),
-            compactTrailingAdornment: UI.ControllerHint(
-                ControllerButton.RightBumper,
+            compactTrailingAdornment: SectionBumperBadge(
+                "RB",
                 "Next section",
                 "games.section.next.hint"));
         var header = RenderHeader(state, parts.CompactNavigation);
@@ -148,12 +148,12 @@ internal static class GamesAppsPresentation
             .Classes("games-header-summary");
         var expandedBumpers = UI.Row(
                 "games.section.expanded-hints",
-                UI.ControllerHint(
-                    ControllerButton.LeftBumper,
+                SectionBumperBadge(
+                    "LB",
                     "Previous section",
                     "games.section.expanded.previous"),
-                UI.ControllerHint(
-                    ControllerButton.RightBumper,
+                SectionBumperBadge(
+                    "RB",
                     "Next section",
                     "games.section.expanded.next"))
             .VisibleWhen(ResponsiveVisibility.ExpandedOnly)
@@ -177,6 +177,15 @@ internal static class GamesAppsPresentation
         return UI.Stack("games.header", children.ToArray())
             .Classes("games-header");
     }
+
+    private static RowElement SectionBumperBadge(
+        string text,
+        string accessibilityLabel,
+        string id) => UI.Row(
+            id,
+            UI.Text(text, id + ".label", $"{text}, {accessibilityLabel}")
+                .Classes("games-section-bumper-label"))
+        .Classes("wrail-controller-hint__key", "games-section-bumper-key");
 
     private static WidgetElement RenderLibraryContent(GamesAppsPresentationState state)
     {
