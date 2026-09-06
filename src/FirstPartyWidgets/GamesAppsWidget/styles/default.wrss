@@ -152,7 +152,7 @@
 .games-app-tile-artwork.is-fallback {
   padding: 12px;
   color: var(--text-muted);
-  background: var(--surface-subtle);
+  background: var(--surface-subtle, rgba(39, 39, 36, 0.92));
 }
 
 .games-app-tile-content {
@@ -204,7 +204,7 @@
 
 .games-page-action:focused {
   color: var(--text);
-  background: var(--surface-active);
+  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: 2px;
   outline-offset: -2px;
