@@ -1,11 +1,12 @@
 .youtube-root { width: 100vw; min-width: 0px; gap: 12px; padding: 14px 16px; background: var(--surface); color: var(--text); overflow: clip; }
+.youtube-player-page, .youtube-search-root { width: 100%; min-width: 0px; min-height: 0px; gap: 12px; flex-grow: 1; flex-shrink: 1; overflow: clip; }
+.youtube-section-trailing-hints { min-width: 0px; align: center; justify: end; gap: 4px; flex-shrink: 0; }
 .youtube-appbar { width: 100%; min-width: 0px; min-height: 58px; align: center; gap: 12px; flex-shrink: 0; }
 .youtube-appbar-copy { min-width: 0px; gap: 1px; flex-grow: 1; }
 .youtube-route-actions { align: center; justify: end; gap: 8px; flex-shrink: 0; }
 .youtube-route-button { min-height: 38px; padding: 7px 12px; color: var(--text-muted); background: transparent; border-color: var(--text-subdued); border-width: 1px; corner-radius: 8px; }
 .youtube-route-button:focused { color: var(--text); background: var(--surface-raised); outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 .youtube-route-button:disabled { color: var(--text-subdued); border-color: var(--surface-muted); opacity: 0.72; }
-.youtube-player-back { min-height: 42px; flex-shrink: 0; }
 .youtube-header { min-width: 0px; }
 .youtube-eyebrow { color: #ff5f5f; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; max-lines: 1; }
 .youtube-title { color: var(--text); font-size: 24px; font-weight: 600; max-lines: 1; }

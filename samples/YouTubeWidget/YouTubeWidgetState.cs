@@ -14,6 +14,12 @@ internal enum YouTubeRoute
     Captions,
 }
 
+internal enum YouTubeRootSection
+{
+    Discover,
+    Player,
+}
+
 /// <summary>The control that initiated the in-flight playback command.</summary>
 internal enum PendingMediaControl
 {
@@ -321,9 +327,18 @@ internal sealed record YouTubeWidgetState
 
     public YouTubeRoute Route { get; init; } = YouTubeRoute.Setup;
     public YouTubeRoute PlayerSettingsReturnRoute { get; init; } = YouTubeRoute.Player;
+    public YouTubeRoute SetupReturnRoute { get; init; } = YouTubeRoute.Search;
+    public string? SetupReturnFocusId { get; init; }
+    public string? RootInitialFocusId { get; init; }
     public YouTubeSetupState Setup { get; init; } = YouTubeSetupState.Initial;
     public YouTubeSearchState Search { get; init; } = YouTubeSearchState.Initial;
     public YouTubePlaybackState Playback { get; init; } = YouTubePlaybackState.Initial;
+    public long RootFocusRequestId { get; init; }
+    public string? RootFocusGroupId { get; init; }
+
+    public YouTubeRootSection RootSection => Route == YouTubeRoute.Search
+        ? YouTubeRootSection.Discover
+        : YouTubeRootSection.Player;
 
     /// <summary>Whether this route actually renders the live native transport.</summary>
     public bool RendersLiveTransport =>
@@ -369,7 +384,49 @@ internal sealed record YouTubeWidgetState
     // Leaving the Player route no longer has to retire a fullscreen flag: the
     // host drops its own activation as soon as the admitted snapshot stops
     // declaring the capability for this exact surface.
-    public YouTubeWidgetState WithRoute(YouTubeRoute route) => this with { Route = route };
+    public YouTubeWidgetState WithRoute(YouTubeRoute route) => this with
+    {
+        Route = route,
+        RootFocusGroupId = null,
+        RootInitialFocusId = null,
+    };
+
+    public YouTubeWidgetState WithRootSection(
+        YouTubeRootSection section,
+        string? focusGroupId = null)
+    {
+        var route = section == YouTubeRootSection.Discover
+            ? YouTubeRoute.Search
+            : Playback.VideoId is null ? YouTubeRoute.Link : YouTubeRoute.Player;
+        if (RootSection == section && RendersLiveTransport ==
+            (section == YouTubeRootSection.Player))
+            return this;
+        if (focusGroupId is null)
+            return this with
+            {
+                Route = route,
+                RootFocusGroupId = null,
+                RootInitialFocusId = null,
+            };
+        if (RootFocusRequestId >= ProtocolConstants.MaximumFocusGroupEntryRequestId)
+            return this;
+        return this with
+        {
+            Route = route,
+            RootFocusRequestId = RootFocusRequestId + 1,
+            RootFocusGroupId = focusGroupId,
+            RootInitialFocusId = null,
+        };
+    }
+
+    public FocusGroupEntryRequest? RootFocusGroupEntryRequest =>
+        RootFocusGroupId is { } groupId
+            ? new FocusGroupEntryRequest
+            {
+                RequestId = RootFocusRequestId,
+                GroupId = groupId,
+            }
+            : null;
 
     public YouTubeWidgetState WithPlayerSettingsRoute() => this with
     {
@@ -382,10 +439,25 @@ internal sealed record YouTubeWidgetState
         WithRoute(Setup.Configured ? YouTubeRoute.Search : YouTubeRoute.Setup);
 
     /// <summary>Opening setup deliberately clears the last failure it reported.</summary>
-    public YouTubeWidgetState WithSetupRoute() => this with
+    public YouTubeWidgetState WithSetupRoute(string? returnFocusId = null) => this with
     {
         Route = YouTubeRoute.Setup,
+        SetupReturnRoute = Route is YouTubeRoute.Search or YouTubeRoute.Link or YouTubeRoute.Player
+            ? Route
+            : SetupReturnRoute,
+        SetupReturnFocusId = Route is YouTubeRoute.Search or YouTubeRoute.Link or YouTubeRoute.Player
+            ? returnFocusId
+            : SetupReturnFocusId,
+        RootFocusGroupId = null,
+        RootInitialFocusId = null,
         Setup = Setup with { Error = null },
+    };
+
+    public YouTubeWidgetState WithSetupReturnRoute() => this with
+    {
+        Route = SetupReturnRoute,
+        RootFocusGroupId = null,
+        RootInitialFocusId = SetupReturnFocusId,
     };
 
     public YouTubeWidgetState WithConfigurationSummary(bool configured) => this with
@@ -468,12 +540,17 @@ internal sealed record YouTubeWidgetState
     public YouTubeWidgetState WithSelectedResult(
         string returnFocusId,
         string videoId,
-        long sequence) => this with
+        long sequence,
+        string playerFocusGroupId)
     {
-        Search = Search with { ReturnFocusId = returnFocusId },
-        Route = YouTubeRoute.Player,
-        Playback = Playback.WithSelectedVideo(videoId, sequence),
-    };
+        var selected = this with
+        {
+            Search = Search with { ReturnFocusId = returnFocusId },
+            Playback = Playback.WithSelectedVideo(videoId, sequence),
+        };
+        return selected.WithRootSection(
+            YouTubeRootSection.Player, playerFocusGroupId);
+    }
 
     public YouTubeWidgetState WithPlayback(
         Func<YouTubePlaybackState, YouTubePlaybackState> transition) => this with

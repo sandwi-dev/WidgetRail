@@ -48,6 +48,9 @@ public sealed partial class YouTubeVideoWidget : Widget
         var busyControl = playback.BusyControl;
         var transportActionsAvailable = state.CanDeclareTransportAction(IsActive);
         var controlsUnavailable = !transportActionsAvailable;
+        var playerEntryFocusId = transportActionsAvailable
+            ? "youtube.playback.toggle"
+            : "youtube.link";
         var showFullscreenAction = state.RendersLiveTransport && videoId is not null;
         var fullscreenActionEnabled = showFullscreenAction && error is null && !mediaLoading;
         var captionsActionEnabled = showFullscreenAction && transportActionsAvailable;
@@ -60,7 +63,6 @@ public sealed partial class YouTubeVideoWidget : Widget
                 LinkActionId,
                 "youtube.link",
                 ProtocolConstants.MaximumTextEntryLength)
-            .FocusUp("youtube.player.back")
             .FocusDown("youtube.controls")
             .Classes("youtube-link", playback.Link.Length == 0 ? "is-empty" : "has-value");
         var playing = playback.PlaybackSemantic == EmbeddedMediaPlaybackState.Playing;
@@ -135,9 +137,6 @@ public sealed partial class YouTubeVideoWidget : Widget
                         RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
                 ]
                 : null;
-        var back = UI.Button("Back", BackActionId, "youtube.player.back")
-            .FocusDown("youtube.link")
-            .Classes("youtube-route-button", "youtube-player-back");
         var headerActions = new List<WidgetElement>
         {
             UI.Text(status, "youtube.status")
@@ -158,11 +157,10 @@ public sealed partial class YouTubeVideoWidget : Widget
                     .Classes("youtube-time", "is-end"))
             .Classes("youtube-timeline-group"));
         transportControls.Add(volumeControl);
-        var root = UI.Stack(
-                "youtube.root",
+        var page = UI.Stack(
+                PlayerFocusGroupId,
                 UI.Row(
                         "youtube.header",
-                        back,
                         UI.Stack("youtube.player.heading-copy",
                             UI.Text("YOUTUBE", "youtube.eyebrow").Classes("youtube-eyebrow"),
                             UI.Text(videoId is null ? "Play a link" : "Now playing", "youtube.title")
@@ -180,13 +178,13 @@ public sealed partial class YouTubeVideoWidget : Widget
                                     .Classes("youtube-controls"))
                             .Classes("youtube-control-deck", videoId is null ? "is-unavailable" : "is-ready"))
                     .Classes("youtube-player-shell"))
-            .InputScope("youtube.root")
-            .Classes("youtube-root");
+            .RememberChildFocus(playerEntryFocusId)
+            .Classes("youtube-player-page");
+        var root = RootSectionShell(state, page, playerEntryFocusId);
         if (transportActionsAvailable)
         {
             root = root
                 .Shortcut(ControllerButton.X, ToggleActionId, label: "Play or pause")
-                .Shortcut(ControllerButton.Y, EnterFullscreenActionId, label: "Fullscreen")
                 .Shortcut(ControllerButton.LeftTrigger, SeekBackwardActionId,
                     repeatPolicy: ControllerActionRepeatPolicy.WhileHeld,
                     label: "Seek backward 10 seconds")
@@ -196,9 +194,10 @@ public sealed partial class YouTubeVideoWidget : Widget
         }
         return new WidgetView(
             root,
-            InitialFocusId: "youtube.playback.toggle",
+            InitialFocusId: state.RootInitialFocusId ??
+                playerEntryFocusId,
             QuickActions: quickActions,
-            ActiveInputScopeId: "youtube.root",
+            ActiveInputScopeId: RootScopeId,
             Surface: new WidgetSurfaceHints
             {
                 Mode = WidgetSurfaceMode.Standard,
@@ -207,7 +206,10 @@ public sealed partial class YouTubeVideoWidget : Widget
                 MinimumWidth = 420,
                 MinimumHeight = 540,
             })
-        { EmbeddedMediaSession = media };
+        {
+            EmbeddedMediaSession = media,
+            FocusGroupEntryRequest = state.RootFocusGroupEntryRequest,
+        };
     }
 
     private static EmbeddedMediaSession CreateMediaSession(
@@ -359,7 +361,8 @@ public sealed partial class YouTubeVideoWidget : Widget
             case YouTubePlaybackIntent.SelectResult when
                 request.ReturnFocusId is { } returnFocusId &&
                 request.VideoId is { } selectedVideoId:
-                next = state.WithSelectedResult(returnFocusId, selectedVideoId, sequence);
+                next = state.WithSelectedResult(
+                    returnFocusId, selectedVideoId, sequence, PlayerFocusGroupId);
                 break;
             default:
                 var preferenceIntent = request.Intent is

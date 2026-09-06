@@ -16,9 +16,14 @@ public sealed partial class YouTubeVideoWidget
     private const string SetupOpenConsoleActionId = "youtube.setup.console";
     private const string SetupDeleteActionId = "youtube.setup.delete";
     private const string SetupRouteActionId = "youtube.setup.open";
+    private const string SetupBackActionId = "youtube.setup.back";
     private const string LinkRouteActionId = "youtube.link.open";
     private const string SearchRouteActionId = "youtube.search.open-route";
-    private const string BackActionId = "youtube.back";
+    private const string PreviousSectionActionId = "youtube.section.previous";
+    private const string NextSectionActionId = "youtube.section.next";
+    private const string RootScopeId = "youtube.root";
+    private const string SearchFocusGroupId = "youtube.search.page";
+    private const string PlayerFocusGroupId = "youtube.player.page";
     private const string ConfigurationKey = "youtube.configuration";
     private const string SetupCommandKey = "youtube.configure";
     private readonly IYouTubeApplicationService _application;
@@ -33,6 +38,11 @@ public sealed partial class YouTubeVideoWidget
         YouTubePlaybackRequest,
         EmbeddedMediaPlaybackEvent,
         string> _playbackCommand;
+    private static readonly YouTubeRootSection[] RootSections =
+    [
+        YouTubeRootSection.Discover,
+        YouTubeRootSection.Player,
+    ];
 
     public YouTubeVideoWidget() : this(
         new UnavailableYouTubeApplicationService(), TimeProvider.System) { }
@@ -155,9 +165,9 @@ public sealed partial class YouTubeVideoWidget
         catch (OperationCanceledException) when (shutdownToken.IsCancellationRequested) { }
     }
 
-    // These are flat lateral routes with established public scope IDs, not a
-    // nested Back stack. Keeping route state in the model preserves exact
-    // action/scope authority; WidgetNavigator would generate different scopes.
+    // Root selection remains in the immutable widget model. Discover and Player
+    // share one authored input scope; nested configuration/player dialogs keep
+    // their own scopes rather than mirroring route state in WidgetNavigator.
     private WidgetView RenderApplication(YouTubeWidgetState state)
     {
         if (!state.Setup.ConfigurationKnown)
@@ -194,14 +204,19 @@ public sealed partial class YouTubeVideoWidget
             .FocusUp("youtube.setup.console")
             .FocusDown(configured ? "youtube.setup.delete" : LinkRouteActionId)
             .Classes("youtube-entry");
-        var routeActionId = configured ? SearchRouteActionId : LinkRouteActionId;
-        var routeActionLabel = configured ? "Back to search" : "Play a link";
+        var routeActionId = configured ? SetupBackActionId : LinkRouteActionId;
+        var routeActionLabel = configured
+            ? state.SetupReturnRoute is YouTubeRoute.Link or YouTubeRoute.Player
+                ? "Back to player"
+                : "Back to Discover"
+            : "Play a link";
         var children = new List<WidgetElement>
         {
             UI.Row("youtube.setup.appbar",
                     UI.Stack("youtube.setup.heading-copy",
                         UI.Text("YOUTUBE", "youtube.setup.eyebrow").Classes("youtube-eyebrow"),
-                        UI.Text("Search setup", "youtube.setup.title").Classes("youtube-title"))
+                        UI.Text(configured ? "Settings" : "Search setup", "youtube.setup.title")
+                            .Classes("youtube-title"))
                         .Classes("youtube-appbar-copy"),
                     UI.Button(routeActionLabel, routeActionId, routeActionId)
                         .Disabled(busy).Classes("youtube-route-button"))
@@ -247,7 +262,7 @@ public sealed partial class YouTubeVideoWidget
                     UI.Text("Remove the saved key to disconnect search. Link playback remains available.",
                         "youtube.setup.manage-help").Classes("youtube-copy"),
                     UI.Button("Delete saved API key", SetupDeleteActionId, "youtube.setup.delete")
-                        .Disabled(busy).FocusUp("youtube.setup.key").FocusDown(SearchRouteActionId)
+                        .Disabled(busy).FocusUp("youtube.setup.key").FocusDown(SetupBackActionId)
                         .Classes("youtube-danger"))
                 .Classes("youtube-card", "youtube-setup-manage"));
         return ApplicationView(state,
@@ -260,22 +275,20 @@ public sealed partial class YouTubeVideoWidget
         var search = state.Search;
         var draft = search.QueryDraft;
         var snapshot = _searchResults.Snapshot;
+        var resultsEntry = SearchResultsEntry(snapshot);
         var query = UI.TextEntry(draft, "Search public YouTube videos", SearchCommitActionId,
                 "youtube.search.query", 96)
-            .FocusRight(SearchSubmitActionId).Classes("youtube-entry", "youtube-search-entry");
-        var header = UI.Row("youtube.search.header",
-                UI.Stack("youtube.search.heading-copy",
-                    UI.Text("YOUTUBE", "youtube.search.eyebrow").Classes("youtube-eyebrow"),
-                    UI.Text("Discover", "youtube.search.title").Classes("youtube-title"))
-                    .Classes("youtube-appbar-copy"),
-                UI.Row("youtube.search.routes",
-                    UI.Button("Play a link", LinkRouteActionId, LinkRouteActionId)
-                        .Classes("youtube-route-button"),
-                    UI.Button("Setup", SetupRouteActionId, "youtube.search.setup")
-                        .Classes("youtube-route-button"))
-                    .RememberChildFocus(LinkRouteActionId)
-                    .Classes("youtube-route-actions"))
-            .Classes("youtube-appbar");
+            .FocusRight(SearchSubmitActionId)
+            .Classes("youtube-entry", "youtube-search-entry");
+        var submit = UI.Button("Search", SearchSubmitActionId, SearchSubmitActionId)
+            .Disabled(string.IsNullOrWhiteSpace(draft) || _searchResults.IsBusy)
+            .FocusLeft("youtube.search.query")
+            .Classes("youtube-primary", "youtube-search-submit");
+        if (resultsEntry is not null)
+        {
+            query = query.FocusDown(resultsEntry);
+            submit = submit.FocusDown(resultsEntry);
+        }
         var searchTask = UI.Stack("youtube.search.task-card",
                 UI.Text("SEARCH PUBLIC VIDEOS", "youtube.search.task-label")
                     .Classes("youtube-section-label"),
@@ -283,19 +296,13 @@ public sealed partial class YouTubeVideoWidget
                     .Classes("youtube-section-copy"),
                 UI.Row("youtube.search.controls",
                         query,
-                        UI.Button("Search", SearchSubmitActionId, SearchSubmitActionId)
-                            .Disabled(string.IsNullOrWhiteSpace(draft) || _searchResults.IsBusy)
-                            .FocusLeft("youtube.search.query").Classes("youtube-primary", "youtube-search-submit"))
+                        submit)
                     .RememberChildFocus("youtube.search.query")
                     .Classes("youtube-search-controls"))
             .Classes("youtube-card", "youtube-search-task");
-        WidgetElement content;
+        WidgetElement? content;
         if (snapshot.Status == WidgetPagedResourceStatus.NotLoaded)
-            content = UI.Stack("youtube.search.empty-start",
-                    UI.Text("Ready to discover", "youtube.search.empty-title").Classes("youtube-card-title"),
-                    UI.Text("Enter a query above. Results load only when you choose Search.",
-                        "youtube.search.help").Classes("youtube-section-copy"))
-                .Classes("youtube-state-card", "is-empty");
+            content = null;
         else if (snapshot.Status == WidgetPagedResourceStatus.Loading && snapshot.Items.Count == 0)
             content = UI.Stack("youtube.search.loading",
                     UI.LoadingIndicator("youtube.search.loading.indicator", "Searching YouTube"),
@@ -309,7 +316,9 @@ public sealed partial class YouTubeVideoWidget
                         .Classes("youtube-card-title"),
                     UI.Text(snapshot.Error?.Message ?? "YouTube search failed.", "youtube.search.error.text")
                         .Classes("youtube-status", "is-error"),
-                    UI.Button("Try again", SearchRetryActionId, SearchRetryActionId).Classes("youtube-primary"))
+                    UI.Button("Try again", SearchRetryActionId, SearchRetryActionId)
+                        .FocusUp("youtube.search.query")
+                        .Classes("youtube-primary"))
                 .Classes("youtube-state-card", "is-error");
         else if (snapshot.Items.Count == 0)
             content = UI.Stack("youtube.search.no-results",
@@ -319,28 +328,38 @@ public sealed partial class YouTubeVideoWidget
                 .Classes("youtube-state-card", "is-empty");
         else
         {
-            var rows = snapshot.Items.Select(item => _searchResults.PresentItem(item,
-                UI.Row("youtube.result.row." + item.VideoId,
-                    UI.Image(item.ThumbnailUrl, "youtube.result.image." + item.VideoId,
-                        $"Thumbnail for {item.Title}", ImageFit.Cover).Classes("youtube-result-image"),
-                    UI.Stack("youtube.result.copy." + item.VideoId,
-                        UI.Text(item.Title, "youtube.result.title." + item.VideoId).Classes("youtube-result-title"),
-                        UI.Text($"{item.Channel} · {item.Duration}", "youtube.result.meta." + item.VideoId)
-                            .Classes("youtube-result-meta"),
-                        UI.Button("Play", SearchOpenActionId, ResultFocusId(item.VideoId))
-                            .Classes("youtube-result-action"))
-                    .Classes("youtube-result-copy"))
-                .Classes("youtube-result-row"))).ToArray();
+            var rows = snapshot.Items.Select((item, index) =>
+            {
+                var play = UI.Button("Play", SearchOpenActionId, ResultFocusId(item.VideoId))
+                    .Classes("youtube-result-action");
+                if (index == 0) play = play.FocusUp("youtube.search.query");
+                return _searchResults.PresentItem(item,
+                    UI.Row("youtube.result.row." + item.VideoId,
+                        UI.Image(item.ThumbnailUrl, "youtube.result.image." + item.VideoId,
+                            $"Thumbnail for {item.Title}", ImageFit.Cover).Classes("youtube-result-image"),
+                        UI.Stack("youtube.result.copy." + item.VideoId,
+                            UI.Text(item.Title, "youtube.result.title." + item.VideoId)
+                                .Classes("youtube-result-title"),
+                            UI.Text($"{item.Channel} · {item.Duration}",
+                                    "youtube.result.meta." + item.VideoId)
+                                .Classes("youtube-result-meta"),
+                            play)
+                        .Classes("youtube-result-copy"))
+                    .Classes("youtube-result-row"));
+            }).ToArray();
             content = _searchResults.Present(UI.VerticalScroll(SearchScrollId, rows))
                 .Classes("youtube-results");
         }
-        var children = new List<WidgetElement> { header, searchTask };
+        var children = new List<WidgetElement> { searchTask };
         if (NowPlayingRow(state.Playback) is { } nowPlaying) children.Add(nowPlaying);
-        children.Add(content);
-        var root = UI.Stack("youtube.search.root", children.ToArray())
-            .InputScope("youtube.search.root").Classes("youtube-root", "youtube-search-root");
-        return new WidgetView(root, SearchInitialFocus(search, snapshot),
-            ActiveInputScopeId: "youtube.search.root", Surface: new WidgetSurfaceHints
+        if (content is not null) children.Add(content);
+        var page = UI.Stack(SearchFocusGroupId, children.ToArray())
+            .RememberChildFocus("youtube.search.query")
+            .Classes("youtube-search-root");
+        var root = RootSectionShell(state, page, "youtube.search.query");
+        return new WidgetView(root,
+            state.RootInitialFocusId ?? SearchInitialFocus(search, snapshot),
+            ActiveInputScopeId: RootScopeId, Surface: new WidgetSurfaceHints
         {
             Mode = WidgetSurfaceMode.Standard,
             WidthMode = WidgetSurfaceAxisMode.Preferred,
@@ -352,7 +371,10 @@ public sealed partial class YouTubeVideoWidget
             MinimumWidth = 420,
             MinimumHeight = 420,
         })
-        { EmbeddedMediaSession = ParkedMediaSession(state.Playback) };
+        {
+            EmbeddedMediaSession = ParkedMediaSession(state.Playback),
+            FocusGroupEntryRequest = state.RootFocusGroupEntryRequest,
+        };
     }
 
     private static WidgetElement? NowPlayingRow(YouTubePlaybackState playback)
@@ -499,6 +521,8 @@ public sealed partial class YouTubeVideoWidget
     {
         var root = UI.Stack("youtube.application.root", content)
             .InputScope("youtube.application.root").Classes("youtube-root");
+        if (state.Route == YouTubeRoute.Setup && state.Setup.Configured)
+            root = root.Shortcut(ControllerButton.B, SetupBackActionId);
         return new WidgetView(root, initialFocus,
             ActiveInputScopeId: "youtube.application.root", Surface: new WidgetSurfaceHints
         {
@@ -538,13 +562,24 @@ public sealed partial class YouTubeVideoWidget
                 _setupCommand.Run(new(YouTubeSetupOperation.Delete));
                 return true;
             case SetupRouteActionId:
-                _model.Update(state => state.WithSetupRoute());
+                _model.Update(state => state.WithSetupRoute(action.FocusedElementId));
+                return true;
+            case SetupBackActionId:
+                _model.Update(state => state.WithSetupReturnRoute());
                 return true;
             case SearchRouteActionId:
-                _model.Update(state => state.WithConfiguredRoute());
+                _model.Update(state => state.Setup.Configured
+                    ? state.WithRootSection(YouTubeRootSection.Discover)
+                    : state.WithSetupRoute());
                 return true;
             case LinkRouteActionId:
-                _model.Update(state => state.WithRoute(YouTubeRoute.Link));
+                _model.Update(state => state.WithRootSection(YouTubeRootSection.Player));
+                return true;
+            case PreviousSectionActionId:
+                SwitchRootSection(-1);
+                return true;
+            case NextSectionActionId:
+                SwitchRootSection(1);
                 return true;
             case CaptionsActionId when _model.Value.RendersLiveTransport:
                 _model.Update(state => state.WithPlayerSettingsRoute());
@@ -570,10 +605,8 @@ public sealed partial class YouTubeVideoWidget
                         context.CancellationToken));
                 return true;
             case "youtube.player.return":
-                _model.Update(state => state.WithRoute(YouTubeRoute.Player));
-                return true;
-            case BackActionId:
-                _model.Update(state => state.WithConfiguredRoute());
+                _model.Update(state => state.WithRootSection(
+                    YouTubeRootSection.Player, PlayerFocusGroupId));
                 return true;
             case SearchCommitActionId when action.CommittedText is { } query:
                 _model.Update(state => state.WithQueryDraft(query));
@@ -638,6 +671,96 @@ public sealed partial class YouTubeVideoWidget
             ReturnFocusId: sourceId,
             VideoId: item.VideoId));
         return true;
+    }
+
+    private void SwitchRootSection(int offset)
+    {
+        _model.Update(state =>
+        {
+            if (!state.Setup.Configured) return state;
+            var current = Array.IndexOf(RootSections, state.RootSection);
+            if (current < 0)
+                throw new InvalidOperationException(
+                    "The current YouTube root section is not registered.");
+            var destination = RootSections[
+                (current + offset + RootSections.Length) % RootSections.Length];
+            var groupId = destination == YouTubeRootSection.Discover
+                ? SearchFocusGroupId
+                : PlayerFocusGroupId;
+            return state.WithRootSection(destination, groupId);
+        });
+    }
+
+    private static string? SearchResultsEntry(
+        WidgetCursorResourceSnapshot<YouTubeSearchItem> snapshot) => snapshot.Status switch
+    {
+        WidgetPagedResourceStatus.Error when snapshot.Items.Count == 0 => SearchRetryActionId,
+        _ when snapshot.Items.Count != 0 => ResultFocusId(snapshot.Items[0].VideoId),
+        _ => null,
+    };
+
+    private static StackElement RootSectionShell(
+        YouTubeWidgetState state,
+        WidgetElement content,
+        string contentEntryFocusId)
+    {
+        var selected = state.RootSection == YouTubeRootSection.Discover
+            ? "youtube.section.discover"
+            : "youtube.section.player";
+        var configured = state.Setup.Configured;
+        NavigationShellDestination[] destinations =
+        [
+            new("youtube.section.discover", "Discover", SearchRouteActionId,
+                WidgetGlyph.Connection, IsDisabled: !configured),
+            new("youtube.section.player", "Player", LinkRouteActionId,
+                WidgetGlyph.Play),
+        ];
+        var trailingHints = configured
+            ? UI.Row(
+                    "youtube.section.trailing-hints",
+                    UI.ControllerHint(
+                        ControllerButton.RightBumper,
+                        "Next section",
+                        "youtube.section.next.hint"),
+                    UI.ControllerHint(
+                        ControllerButton.Y,
+                        "Settings",
+                        "youtube.section.settings.hint"))
+                .Classes("youtube-section-trailing-hints")
+            : UI.Row(
+                    "youtube.section.trailing-hints",
+                    UI.ControllerHint(
+                        ControllerButton.Y,
+                        "Settings",
+                        "youtube.section.settings.hint"))
+                .Classes("youtube-section-trailing-hints");
+        var shell = UI.NavigationShell(
+            "youtube.sections",
+            selected,
+            contentEntryFocusId,
+            content,
+            destinations,
+            expandedPane: null,
+            expandedPaneEntryFocusId: null,
+            compactLeadingAdornment: configured
+                ? UI.ControllerHint(
+                    ControllerButton.LeftBumper,
+                    "Previous section",
+                    "youtube.section.previous.hint")
+                : null,
+            compactTrailingAdornment: trailingHints);
+        var root = UI.Stack(RootScopeId, shell)
+            .InputScope(RootScopeId)
+            .Shortcut(ControllerButton.Y, SetupRouteActionId,
+                label: "Settings")
+            .Classes("youtube-root");
+        return configured
+            ? root
+                .Shortcut(ControllerButton.LeftBumper, PreviousSectionActionId,
+                    label: "Previous section")
+                .Shortcut(ControllerButton.RightBumper, NextSectionActionId,
+                    label: "Next section")
+            : root;
     }
 
     private async ValueTask<WidgetCursorPage<YouTubeSearchItem>> LoadSearchPageAsync(
