@@ -415,6 +415,12 @@ escape its subtree's clipped bounds.
 The stable default class is `.wrail-background-surface`. Keep foreground text
 contrast explicit in the widget theme and provide complete accessible names on
 the foreground controls and content; the background itself is not announced.
+The capability-free [SDK Gallery Backgrounds page](../samples/SdkGalleryWidget/README.md)
+is the copyable packaged reference: three distinct PNGs embedded in the widget
+assembly under stable manifest-resource names prove
+Cover, Contain, Fill, root and nested ownership, focus replacement/retention,
+and a missing-handle fallback without provider, network, cache, or local-path
+dependencies.
 
 ### Focus-driven background artwork (protocol v39)
 

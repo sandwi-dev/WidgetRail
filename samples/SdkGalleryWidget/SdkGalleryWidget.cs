@@ -1,11 +1,11 @@
+using System.Buffers.Binary;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.SdkGalleryWidget;
 
-public enum GalleryPage { Overview, Controls, Tiles, Utilities }
+public enum GalleryPage { Overview, Controls, Tiles, Backgrounds, Utilities }
 public enum GalleryModal { None, Picker, ActionSheet }
-public readonly record struct GalleryRoute(GalleryPage Page, GalleryModal Modal);
 
 /// <summary>
 /// Copyable, capability-free reference for the public controller-first SDK.
@@ -13,21 +13,36 @@ public readonly record struct GalleryRoute(GalleryPage Page, GalleryModal Modal)
 /// </summary>
 public sealed class SdkGalleryWidget : Widget
 {
-    private const string SampleArtworkHandle = "gallery.artwork.sample-png";
-    private const string SampleWebPArtworkHandle = "gallery.artwork.sample-webp";
-    private static readonly byte[] SampleArtworkBytes = Convert.FromBase64String(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xh8ftQAAAABJRU5ErkJggg==");
-    private static readonly byte[] SampleWebPArtworkBytes = Convert.FromBase64String(
-        "UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAAdQmWZ0qf+BiOh/AAA=");
+    public const string DefaultBackgroundArtworkHandle = "gallery.artwork.background.default";
+    public const string WarmBackgroundArtworkHandle = "gallery.artwork.background.warm";
+    public const string CoolBackgroundArtworkHandle = "gallery.artwork.background.cool";
+    public const string MissingBackgroundArtworkHandle = "gallery.artwork.background.missing";
+    private const string SampleArtworkHandle = DefaultBackgroundArtworkHandle;
+    private const string SampleWebPArtworkHandle = "gallery.artwork.sample-webp-512-v1";
+    private const string SampleWebPArtworkResource =
+        "WidgetRail.Samples.SdkGalleryWidget.Assets.sample-webp.webp";
+    private static readonly IReadOnlyDictionary<string, string> PackagedPngFiles =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [DefaultBackgroundArtworkHandle] =
+                "WidgetRail.Samples.SdkGalleryWidget.Assets.background-default.png",
+            [WarmBackgroundArtworkHandle] =
+                "WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-warm.png",
+            [CoolBackgroundArtworkHandle] =
+                "WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-cool.png",
+        };
     private static readonly WidgetIdScope Ids = WidgetIds.Scope("gallery");
     private static readonly NavigationShellDestination[] Destinations =
     [
         new("gallery.tab.overview", "Overview", "gallery.tab.overview", WidgetGlyph.Play),
         new("gallery.tab.controls", "Controls", "gallery.tab.controls", WidgetGlyph.Settings),
         new("gallery.tab.tiles", "Tiles", "gallery.tab.tiles", WidgetGlyph.Connection),
+        new("gallery.tab.backgrounds", "Backgrounds", "gallery.tab.backgrounds", WidgetGlyph.Music),
         new("gallery.tab.utilities", "Utilities", "gallery.tab.utilities", WidgetGlyph.Warning),
     ];
-    private readonly WidgetNavigator<GalleryRoute> _navigation;
+    private readonly WidgetNavigator<GalleryModal> _navigation;
+    private GalleryPage _page = GalleryPage.Overview;
+    private GalleryPage? _modalReturnFocusPage;
     private bool _compactMode = true;
     private string _density = "Comfortable";
     private TimeSpan _position = TimeSpan.FromSeconds(74);
@@ -36,11 +51,11 @@ public sealed class SdkGalleryWidget : Widget
 
     public SdkGalleryWidget() => _navigation = CreateNavigator(
         Ids.Id("navigation"),
-        new GalleryRoute(GalleryPage.Overview, GalleryModal.None));
+        GalleryModal.None);
 
-    public GalleryPage Page => _navigation.Value.Route.Page;
-    public GalleryModal Modal => _navigation.Value.Route.Modal;
-    public WidgetNavigationSnapshot<GalleryRoute> Navigation => _navigation.Value;
+    public GalleryPage Page => _page;
+    public GalleryModal Modal => _navigation.Value.Route;
+    public WidgetNavigationSnapshot<GalleryModal> Navigation => _navigation.Value;
     public bool CompactMode => _compactMode;
     public string Density => _density;
     public TimeSpan Position => _position;
@@ -49,12 +64,12 @@ public sealed class SdkGalleryWidget : Widget
     public override WidgetView Render()
     {
         var navigation = _navigation.Value;
-        WidgetElement body = navigation.Route.Modal == GalleryModal.None
+        WidgetElement body = navigation.Route == GalleryModal.None
             ? UI.NavigationShell(
                 "gallery.shell",
-                TabId(navigation.Route.Page),
-                ContentEntryFocus(navigation),
-                PageContent(navigation.Route.Page),
+                TabId(_page),
+                NavigationContentEntryFocus(_page),
+                PageContent(_page),
                 Destinations)
             : ModalContent(navigation);
         var rootContent = UI.Stack("gallery.root.content",
@@ -62,7 +77,7 @@ public sealed class SdkGalleryWidget : Widget
             body)
             .Classes("gallery-root");
 
-        if (navigation.Route.Modal == GalleryModal.None)
+        if (navigation.Route == GalleryModal.None)
             rootContent = _navigation.Scope(navigation, rootContent);
 
         if (_showToast)
@@ -86,8 +101,9 @@ public sealed class SdkGalleryWidget : Widget
                 rootContent,
                 "gallery.root",
                 BackgroundSurfaceArtwork.FromHandle(
-                    new WidgetArtworkHandle(SampleArtworkHandle)))
-            .Classes("gallery-root-background");
+                    new WidgetArtworkHandle(DefaultBackgroundArtworkHandle), ImageFit.Cover))
+            .UseFocusedDescendantArtwork()
+            .AddClasses("gallery-root-background");
 
         return new WidgetView(
             root,
@@ -118,21 +134,27 @@ public sealed class SdkGalleryWidget : Widget
         cancellationToken.ThrowIfCancellationRequested();
 
         if (_navigation.TryHandleBack(action))
+        {
+            _modalReturnFocusPage = _page;
             return ValueTask.CompletedTask;
+        }
 
         switch (action.ActionId)
         {
             case "gallery.tab.overview":
-                SetPage(GalleryPage.Overview, action.SourceElementId);
+                SetPage(GalleryPage.Overview);
                 return ValueTask.CompletedTask;
             case "gallery.tab.controls":
-                SetPage(GalleryPage.Controls, action.SourceElementId);
+                SetPage(GalleryPage.Controls);
                 return ValueTask.CompletedTask;
             case "gallery.tab.tiles":
-                SetPage(GalleryPage.Tiles, action.SourceElementId);
+                SetPage(GalleryPage.Tiles);
+                return ValueTask.CompletedTask;
+            case "gallery.tab.backgrounds":
+                SetPage(GalleryPage.Backgrounds);
                 return ValueTask.CompletedTask;
             case "gallery.tab.utilities":
-                SetPage(GalleryPage.Utilities, action.SourceElementId);
+                SetPage(GalleryPage.Utilities);
                 return ValueTask.CompletedTask;
             case "gallery.compact.toggle": _compactMode = !_compactMode; break;
             case "gallery.picker.open":
@@ -167,7 +189,7 @@ public sealed class SdkGalleryWidget : Widget
                 ShowToast();
                 return ValueTask.CompletedTask;
             case "gallery.sheet.remove":
-                _navigation.Back(action.SourceElementId);
+                BackToPage(action.SourceElementId);
                 ShowToast();
                 return ValueTask.CompletedTask;
             default:
@@ -183,15 +205,12 @@ public sealed class SdkGalleryWidget : Widget
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (PackagedPngFiles.TryGetValue(handle.Value, out var resourceName))
+            return ValueTask.FromResult(ResolvePackagedPng(resourceName));
         return ValueTask.FromResult<WidgetEncodedArtwork?>(
-            handle.Value switch
-            {
-                SampleArtworkHandle => new WidgetEncodedArtwork(
-                    WidgetArtworkContentType.Png, SampleArtworkBytes),
-                SampleWebPArtworkHandle => new WidgetEncodedArtwork(
-                    WidgetArtworkContentType.WebP, SampleWebPArtworkBytes),
-                _ => null,
-            });
+            handle.Value == SampleWebPArtworkHandle
+                ? ResolvePackagedWebP(SampleWebPArtworkResource)
+                : null);
     }
 
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
@@ -220,6 +239,7 @@ public sealed class SdkGalleryWidget : Widget
             GalleryPage.Overview => OverviewPage(),
             GalleryPage.Controls => ControlsPage(),
             GalleryPage.Tiles => TilesPage(),
+            GalleryPage.Backgrounds => BackgroundsPage(),
             _ => UtilitiesPage(),
         }).Classes("gallery-page-scroll");
 
@@ -253,7 +273,13 @@ public sealed class SdkGalleryWidget : Widget
             "Nothing selected",
             "Empty states keep one clear recovery action and no decorative focus stops.",
             "gallery.overview.empty",
-            new ComponentAction("Populate example", "gallery.empty.populate", WidgetGlyph.Play)))
+            new ComponentAction("Populate example", "gallery.empty.populate", WidgetGlyph.Play)),
+        UI.Row("gallery.overview.hints",
+            UI.ControllerHint(ControllerButton.DPadRight, "Navigate", "gallery.hint.navigate"),
+            UI.ControllerHint(ControllerButton.A, "Select", "gallery.hint.select"),
+            UI.ControllerHint(ControllerButton.B, "Back", "gallery.hint.back"),
+            UI.ControllerHint(ControllerButton.RightStick, "Scroll", "gallery.hint.scroll"))
+            .Classes("gallery-controller-hints"))
         .AddClasses("gallery-page");
 
     private StackElement ControlsPage() => UI.Stack("gallery.controls",
@@ -289,6 +315,28 @@ public sealed class SdkGalleryWidget : Widget
             ],
             "gallery.controls.density",
             "Presentation density"),
+        UI.Card("gallery.controls.density-preview", CardVariant.Transparent,
+            UI.Text(DensitySummary(), "gallery.controls.density-preview.title"),
+            UI.Text(
+                "The same repeated content changes geometry without changing focus IDs.",
+                "gallery.controls.density-preview.description"),
+            UI.Row("gallery.controls.density-preview.row-one",
+                UI.StatusBadge("Alpha", StatusTone.Info,
+                    "gallery.controls.density-preview.alpha"),
+                UI.StatusBadge("Beta", StatusTone.Success,
+                    "gallery.controls.density-preview.beta"),
+                UI.StatusBadge("Gamma", StatusTone.Warning,
+                    "gallery.controls.density-preview.gamma"))
+                .Classes("gallery-density-preview-row", DensityRowClass()),
+            UI.Row("gallery.controls.density-preview.row-two",
+                UI.StatusBadge("Delta", StatusTone.Info,
+                    "gallery.controls.density-preview.delta"),
+                UI.StatusBadge("Epsilon", StatusTone.Success,
+                    "gallery.controls.density-preview.epsilon"),
+                UI.StatusBadge("Zeta", StatusTone.Warning,
+                    "gallery.controls.density-preview.zeta"))
+                .Classes("gallery-density-preview-row", DensityRowClass()))
+            .AddClasses("gallery-density-preview", DensityClass()),
         UI.Row("gallery.controls.openers",
             UI.Button("Choose density", "gallery.picker.open", "gallery.picker.open")
                 .Icon(WidgetGlyph.Settings).Classes("gallery-wide-action"),
@@ -345,7 +393,7 @@ public sealed class SdkGalleryWidget : Widget
                         UI.Text("Sample Game", "gallery.app.presentation.title"),
                         UI.Text("Ready from the community library",
                             "gallery.app.presentation.detail"))),
-                UI.Tile(
+                UI.PosterTile(
                     "WebP First Frame",
                     "Ready",
                     "gallery.app.open",
@@ -354,7 +402,11 @@ public sealed class SdkGalleryWidget : Widget
                     metadata: "Bounded encoded artwork",
                     artwork: TileArtwork.FromHandle(
                         new WidgetArtworkHandle(SampleWebPArtworkHandle),
-                        "Provider-neutral encoded WebP artwork")),
+                        "Provider-neutral encoded WebP artwork"))
+                    .PresentOnFocus(UI.Stack("gallery.webp.presentation",
+                        UI.Text("Embedded WebP", "gallery.webp.presentation.title"),
+                        UI.Text("A visible 512 by 512 package resource with bounded encoded bytes.",
+                            "gallery.webp.presentation.detail"))),
                 UI.PosterTile(
                     "A deliberately longer poster title that demonstrates bounded two-line copy",
                     "Available",
@@ -364,7 +416,11 @@ public sealed class SdkGalleryWidget : Widget
                     metadata: "Provider-neutral poster",
                     artwork: TileArtwork.FromHandle(
                         new WidgetArtworkHandle(SampleArtworkHandle),
-                        "Provider-neutral poster artwork"))),
+                        "Provider-neutral poster artwork"))
+                    .PresentOnFocus(UI.Stack("gallery.poster.presentation",
+                        UI.Text("PosterTile", "gallery.poster.presentation.title"),
+                        UI.Text("Portrait artwork, bounded two-line copy, and one complete action target.",
+                            "gallery.poster.presentation.detail")))),
                 UI.Stack("gallery.tiles.presentation.default",
                     UI.Text("Choose a tile", "gallery.tiles.presentation.default.title"),
                     UI.Text("Focused details appear here without another widget render.",
@@ -380,7 +436,10 @@ public sealed class SdkGalleryWidget : Widget
             "gallery.utilities.header",
             description: "Use semantic components instead of custom drawing or focus hacks."),
         UI.Card("gallery.utilities.code-card", CardVariant.Subtle,
-            UI.Text("Copyable command", "gallery.utilities.code-title"),
+            UI.Text("Presentational command", "gallery.utilities.code-title"),
+            UI.Text(
+                "CodeText is nonfocusable and does not provide a clipboard action.",
+                "gallery.utilities.code-description"),
             UI.CodeText(
                 "dotnet run --project tools/WrailCli/WrailCli.csproj -- render <assembly> --type <widget-type>",
                 "gallery.utilities.code",
@@ -397,8 +456,75 @@ public sealed class SdkGalleryWidget : Widget
             .Icon(WidgetGlyph.Check).Classes("gallery-utilities-toast-button"))
         .AddClasses("gallery-page");
 
-    private StackElement ModalContent(WidgetNavigationSnapshot<GalleryRoute> navigation) =>
-        _navigation.Scope(navigation, navigation.Route.Modal switch
+    private StackElement BackgroundsPage() => UI.Stack("gallery.backgrounds",
+        UI.SectionHeader(
+            "Background surfaces",
+            "gallery.backgrounds.header",
+            description: "Sealed package artwork proves default, focus-driven, nested, fit, and fallback behavior."),
+        UI.Card("gallery.backgrounds.focus-card", CardVariant.Subtle,
+            UI.Text("Root focus replacement and retention", "gallery.backgrounds.focus-title"),
+            UI.Text(
+                "Move across the row: warm and cool replace the root artwork; Retain keeps the last accepted artwork.",
+                "gallery.backgrounds.focus-description"),
+            UI.Row("gallery.backgrounds.focus-row",
+                UI.Button("Warm artwork", "gallery.toast.show", "gallery.backgrounds.warm")
+                    .Classes("gallery-background-button")
+                    .FocusBackground(new WidgetArtworkHandle(WarmBackgroundArtworkHandle)),
+                UI.Button("Retain artwork", "gallery.toast.show", "gallery.backgrounds.retain")
+                    .Classes("gallery-background-button"),
+                UI.Button("Cool artwork", "gallery.toast.show", "gallery.backgrounds.cool")
+                    .Classes("gallery-background-button")
+                    .FocusBackground(new WidgetArtworkHandle(CoolBackgroundArtworkHandle)))
+                .RememberChildFocus("gallery.backgrounds.warm")
+                .Classes("gallery-background-focus-row"))
+            .AddClasses("gallery-background-demo-card"),
+        UI.BackgroundSurface(
+                UI.Card("gallery.backgrounds.cover.card", CardVariant.Transparent,
+                    UI.Text("Cover", "gallery.backgrounds.cover.title"),
+                    UI.Text("Cover fills every edge and crops overflow when aspect ratios differ.",
+                        "gallery.backgrounds.cover.description")),
+                "gallery.backgrounds.cover.surface",
+                BackgroundSurfaceArtwork.FromHandle(
+                    new WidgetArtworkHandle(DefaultBackgroundArtworkHandle), ImageFit.Cover))
+            .AddClasses("gallery-background-demo-surface", "gallery-background-fit-surface",
+                "gallery-background-demo-surface--cover"),
+        UI.BackgroundSurface(
+                UI.Card("gallery.backgrounds.contain.card", CardVariant.Transparent,
+                    UI.Text("Contain", "gallery.backgrounds.contain.title"),
+                    UI.Text("Contain preserves the whole image and may leave unused space.",
+                        "gallery.backgrounds.contain.description"),
+                    UI.Button("Focus nested artwork", "gallery.toast.show", "gallery.backgrounds.contain.focus")
+                        .Classes("gallery-background-button")
+                        .FocusBackground(new WidgetArtworkHandle(WarmBackgroundArtworkHandle))),
+                "gallery.backgrounds.contain.surface",
+                BackgroundSurfaceArtwork.FromHandle(
+                    new WidgetArtworkHandle(DefaultBackgroundArtworkHandle), ImageFit.Contain))
+            .UseFocusedDescendantArtwork()
+            .AddClasses("gallery-background-demo-surface", "gallery-background-fit-surface",
+                "gallery-background-demo-surface--contain"),
+        UI.BackgroundSurface(
+                UI.Card("gallery.backgrounds.fill.card", CardVariant.Transparent,
+                    UI.Text("Fill", "gallery.backgrounds.fill.title"),
+                    UI.Text("Fill stretches the sealed default artwork to the bounded sample region.",
+                        "gallery.backgrounds.fill.description")),
+                "gallery.backgrounds.fill.surface",
+                BackgroundSurfaceArtwork.FromHandle(
+                    new WidgetArtworkHandle(DefaultBackgroundArtworkHandle), ImageFit.Fill))
+            .AddClasses("gallery-background-demo-surface", "gallery-background-fit-surface",
+                "gallery-background-demo-surface--fill"),
+        UI.BackgroundSurface(
+                UI.Card("gallery.backgrounds.missing.card", CardVariant.Transparent,
+                    UI.Text("Missing artwork fallback", "gallery.backgrounds.missing.title"),
+                    UI.Text("An unresolved handle leaves the semantic foreground readable and actionable.",
+                        "gallery.backgrounds.missing.description")),
+                "gallery.backgrounds.missing.surface",
+                BackgroundSurfaceArtwork.FromHandle(
+                    new WidgetArtworkHandle(MissingBackgroundArtworkHandle), ImageFit.Cover))
+            .AddClasses("gallery-background-demo-surface", "gallery-background-demo-surface--missing"))
+        .AddClasses("gallery-page", "gallery-backgrounds-page");
+
+    private StackElement ModalContent(WidgetNavigationSnapshot<GalleryModal> navigation) =>
+        _navigation.Scope(navigation, navigation.Route switch
         {
             GalleryModal.Picker => UI.Picker(
                 "Choose density",
@@ -429,34 +555,55 @@ public sealed class SdkGalleryWidget : Widget
             _ => throw new InvalidOperationException("No modal is active."),
         });
 
-    private string InitialFocus(WidgetNavigationSnapshot<GalleryRoute> navigation) =>
-        navigation.InitialFocusId ?? ContentEntryFocus(navigation);
-
-    private string ContentEntryFocus(WidgetNavigationSnapshot<GalleryRoute> navigation) =>
-        navigation.Route.Modal switch
+    private string InitialFocus(WidgetNavigationSnapshot<GalleryModal> navigation) =>
+        navigation.Route switch
         {
-            GalleryModal.Picker => $"gallery.density.{_density.ToLowerInvariant()}",
-            GalleryModal.ActionSheet => "gallery.sheet.pin",
-            _ => navigation.Route.Page switch
-            {
-                GalleryPage.Overview => "gallery.refresh",
-                GalleryPage.Controls => "gallery.controls.compact.action",
-                GalleryPage.Tiles => "gallery.media",
-                _ => "gallery.utilities.toast-button",
-            },
+            GalleryModal.Picker => navigation.InitialFocusId ??
+                $"gallery.density.{_density.ToLowerInvariant()}",
+            GalleryModal.ActionSheet => navigation.InitialFocusId ?? "gallery.sheet.pin",
+            _ when _modalReturnFocusPage == _page =>
+                navigation.InitialFocusId ?? PageInitialFocus(_page),
+            _ => PageInitialFocus(_page),
         };
 
-    private void SetPage(GalleryPage page, string sourceFocusId) =>
-        _navigation.Navigate(new GalleryRoute(page, GalleryModal.None), sourceFocusId);
+    private static string NavigationContentEntryFocus(GalleryPage page) =>
+        page == GalleryPage.Backgrounds
+            ? "gallery.backgrounds.focus-row"
+            : PageInitialFocus(page);
+
+    private static string PageInitialFocus(GalleryPage page) => page switch
+    {
+        GalleryPage.Overview => "gallery.refresh",
+        GalleryPage.Controls => "gallery.controls.compact.action",
+        GalleryPage.Tiles => "gallery.media",
+        GalleryPage.Backgrounds => "gallery.backgrounds.warm",
+        _ => "gallery.utilities.toast-button",
+    };
+
+    private void SetPage(GalleryPage page)
+    {
+        if (_page == page) return;
+        _modalReturnFocusPage = null;
+        _page = page;
+        Invalidate();
+    }
 
     private void OpenModal(GalleryModal modal, string sourceFocusId) =>
-        _navigation.Push(new GalleryRoute(Page, modal), sourceFocusId);
+        _navigation.Push(modal, sourceFocusId);
 
     private void SelectDensity(string density, string sourceFocusId)
     {
         _density = density;
-        if (_navigation.Back(sourceFocusId) != WidgetNavigationResult.Changed)
+        if (BackToPage(sourceFocusId) != WidgetNavigationResult.Changed)
             Invalidate();
+    }
+
+    private WidgetNavigationResult BackToPage(string? sourceFocusId)
+    {
+        var result = _navigation.Back(sourceFocusId);
+        if (result == WidgetNavigationResult.Changed)
+            _modalReturnFocusPage = _page;
+        return result;
     }
 
     private void ShowToast()
@@ -484,6 +631,51 @@ public sealed class SdkGalleryWidget : Widget
         GalleryPage.Overview => "gallery.tab.overview",
         GalleryPage.Controls => "gallery.tab.controls",
         GalleryPage.Tiles => "gallery.tab.tiles",
+        GalleryPage.Backgrounds => "gallery.tab.backgrounds",
         _ => "gallery.tab.utilities",
     };
+
+    private string DensityClass() =>
+        $"gallery-density-preview--{_density.ToLowerInvariant()}";
+
+    private string DensityRowClass() =>
+        $"gallery-density-preview-row--{_density.ToLowerInvariant()}";
+
+    private string DensitySummary() => _density switch
+    {
+        "Compact" => "Compact · 4 DIP row gap · 6 DIP panel padding",
+        "Spacious" => "Spacious · 20 DIP row gap · 24 DIP panel padding",
+        _ => "Comfortable · 12 DIP row gap · 14 DIP panel padding",
+    };
+
+    private static WidgetEncodedArtwork? ResolvePackagedPng(string resourceName)
+    {
+        using var stream = typeof(SdkGalleryWidget).Assembly
+            .GetManifestResourceStream(resourceName);
+        if (stream is null || !stream.CanSeek ||
+            stream.Length is <= 0 or > ProtocolConstants.MaximumEncodedArtworkBytes)
+            return null;
+        var bytes = new byte[checked((int)stream.Length)];
+        stream.ReadExactly(bytes);
+        return bytes.Length >= 24 && bytes.AsSpan(0, 8).SequenceEqual(
+            new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })
+                ? new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes)
+                : null;
+    }
+
+    private static WidgetEncodedArtwork? ResolvePackagedWebP(string resourceName)
+    {
+        using var stream = typeof(SdkGalleryWidget).Assembly
+            .GetManifestResourceStream(resourceName);
+        if (stream is null || !stream.CanSeek ||
+            stream.Length is < 20 or > ProtocolConstants.MaximumEncodedArtworkBytes)
+            return null;
+        var bytes = new byte[checked((int)stream.Length)];
+        stream.ReadExactly(bytes);
+        return bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) &&
+               bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8) &&
+               BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4, 4)) == bytes.Length - 8
+            ? new WidgetEncodedArtwork(WidgetArtworkContentType.WebP, bytes)
+            : null;
+    }
 }

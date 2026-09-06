@@ -16,6 +16,7 @@ using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetStyling;
 using WidgetRail.WindowsCommunityProvider;
 using WidgetRail.Samples.BackgroundSurfaceWidget;
+using WidgetRail.Samples.SdkGalleryWidget;
 
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
@@ -45,6 +46,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Protected Wi-Fi production dispatch clears one exact secret owner", ProtectedWifiProductionDispatchIsZeroed),
     ("Trusted artwork demand is exact current and lazy through the production bridge", TrustedArtworkDemandIsExact),
     ("Packaged BackgroundSurface artwork crosses the worker and Bridge boundary", BackgroundSurfaceArtworkCrossesBridge),
+    ("SDK Gallery sealed backgrounds cross the worker and Bridge boundary", SdkGalleryBackgroundArtworkCrossesBridge),
     ("Two provider-neutral media adapters resolve through one sealed contract", EmbeddedMediaAssetsAreProviderNeutral),
     ("Built embedded media sample completes the typed playback loop", BuiltEmbeddedMediaSampleCompletesPlaybackLoop),
     ("Request dispatcher preserves FIFO and predecessor failure", RequestDispatcherOwnsWidgetOrdering),
@@ -175,6 +177,8 @@ static async Task<int> RunWorkerAsync(string[] arguments)
             ? new VirtualCollectionBridgeWidget()
             : string.Equals(instance, "background-surface-test.instance", StringComparison.Ordinal)
                 ? new BackgroundSurfaceTestWidget()
+                : string.Equals(instance, "sdk-gallery-background.instance", StringComparison.Ordinal)
+                    ? new SdkGalleryWidget()
                 : new BridgeTestWidget(instance));
 }
 
@@ -219,6 +223,69 @@ static async Task BackgroundSurfaceArtworkCrossesBridge()
         var bytes = Convert.FromBase64String(
             artwork.Payload.GetProperty("contentBase64").GetString()!);
         Assert.SequenceEqual(BackgroundSurfaceTestWidget.ArtworkBytes.ToArray(), bytes);
+    }
+}
+
+static async Task SdkGalleryBackgroundArtworkCrossesBridge()
+{
+    await using var harness = await BridgeHarness.StartAsync(
+        instanceId: "sdk-gallery-background.instance",
+        maximumBytes: BridgeProtocol.DefaultMaximumMessageBytes);
+    var lifecycle = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
+    Assert.True(lifecycle.Type == BridgeMessageTypes.Acknowledged,
+        $"SDK Gallery lifecycle failed: {lifecycle.Payload.GetRawText()}");
+
+    var initialResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, initialResponse.Type);
+    var initial = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        initialResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal(SdkGalleryWidget.DefaultBackgroundArtworkHandle, initial.Root.ArtworkHandle);
+    Assert.Equal(ImageFit.Cover, initial.Root.ImageFit);
+    Assert.Equal(true, initial.Root.UsesFocusedDescendantArtwork);
+    await AssertGalleryArtworkAsync(
+        SdkGalleryWidget.DefaultBackgroundArtworkHandle, 2_241_830,
+        "DBEE1BA7FFF3ABC765F684D3AC666E34DA5CC68575C19DBAF9B64A4CA8405297");
+
+    var backgroundsTab = FindNode(initial.Root, "gallery.shell.compact").Children.Single(node =>
+        node.ActionId == "gallery.tab.backgrounds");
+    var action = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest("test-widget", new WidgetActionEvent(
+            "gallery.tab.backgrounds", backgroundsTab.Id)));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, action.Type);
+    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+    var backgroundsResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var backgrounds = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        backgroundsResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal(0, ViewSnapshotValidator.Validate(backgrounds).Count);
+    Assert.Equal(ImageFit.Contain,
+        FindNode(backgrounds.Root, "gallery.backgrounds.contain.surface").ImageFit);
+    Assert.Equal(ImageFit.Fill,
+        FindNode(backgrounds.Root, "gallery.backgrounds.fill.surface").ImageFit);
+    await AssertGalleryArtworkAsync(
+        SdkGalleryWidget.WarmBackgroundArtworkHandle, 2_295_973,
+        "502D596BCBB590EAF24C7FC34ED81DE81B616E4F562F36118112E971BB38D247");
+    await AssertGalleryArtworkAsync(
+        SdkGalleryWidget.CoolBackgroundArtworkHandle, 2_417_019,
+        "B317048E3A6A455350A1C3A19FDDFF13371CE8C6F112CDEA1B80BC2879341711");
+
+    async Task AssertGalleryArtworkAsync(string handle, int expectedLength, string expectedHash)
+    {
+        var acknowledged = await harness.Client.RequestAsync(
+            BridgeMessageTypes.ResolveArtwork,
+            new BridgeArtworkRequest("test-widget", handle));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, acknowledged.Type);
+        var artwork = await harness.Client.ReadEventAsync(BridgeMessageTypes.Artwork);
+        Assert.Equal(handle, artwork.Payload.GetProperty("artworkHandle").GetString());
+        Assert.Equal("image/png", artwork.Payload.GetProperty("contentType").GetString());
+        var actual = Convert.FromBase64String(
+            artwork.Payload.GetProperty("contentBase64").GetString()!);
+        Assert.Equal(expectedLength, actual.Length);
+        Assert.Equal(expectedHash, Convert.ToHexString(SHA256.HashData(actual)));
     }
 }
 
@@ -5985,7 +6052,8 @@ file sealed class BridgeHarness : IAsyncDisposable
         WidgetResidencyPolicy? residencyPolicy = null,
         string instanceId = "test.instance",
         string? workerDiagnosticRoot = null,
-        Action<BridgeWidgetRequestDiagnostic>? requestDiagnosticSink = null)
+        Action<BridgeWidgetRequestDiagnostic>? requestDiagnosticSink = null,
+        int maximumBytes = 64 * 1024)
     {
         var temporary = TemporaryCatalog.Create(
             instanceId: instanceId, residencyPolicy: residencyPolicy);
@@ -5998,7 +6066,7 @@ file sealed class BridgeHarness : IAsyncDisposable
             var server = new WidgetBridgeServer(
                 pipeName,
                 catalog,
-                64 * 1024,
+                maximumBytes,
                 appearance?.Service,
                 consentStore: null,
                 platformBackend: null,
@@ -6009,7 +6077,7 @@ file sealed class BridgeHarness : IAsyncDisposable
                 requestDiagnosticSink: requestDiagnosticSink,
                 workerDiagnosticRoot: workerDiagnosticRoot);
             var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
-            var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
+            var client = await BridgeTestClient.ConnectAsync(pipeName, maximumBytes);
             return new BridgeHarness(temporary, appearance, server, client, serverTask);
         }
         catch

@@ -82,7 +82,11 @@ Copy-Item -LiteralPath $manifestPath -Destination (Join-Path $stagingRoot 'manif
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
     -Destination (Join-Path $stagingRoot 'styles\default.wrss') -Force
 
-$expectedFiles = @('manifest.json', 'payload\SdkGalleryWidget.dll', 'styles\default.wrss')
+$expectedFiles = @(
+    'manifest.json',
+    'payload\SdkGalleryWidget.dll',
+    'styles\default.wrss'
+)
 $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEach-Object {
     [System.IO.Path]::GetRelativePath($stagingRoot, $_.FullName)
 })
