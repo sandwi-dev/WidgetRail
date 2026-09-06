@@ -88,7 +88,6 @@
 }
 
 .games-section-bumper-label {
-  width: 100%;
   min-width: 0px;
   max-lines: 1;
   text-align: center;
