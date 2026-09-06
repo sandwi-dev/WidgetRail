@@ -634,6 +634,13 @@ scope and Back shortcut. The default maximum depth is eight (16 hard maximum)
 and the route-identity table is bounded at 32. Omitting navigator options keeps
 the existing generated-scope and focus behavior exactly.
 
+`UI.NavigationShell` also has an additive compact-adornment overload for small,
+input-inert hints placed directly before and after its compact destination items.
+The original overload and expanded rail/body are unchanged. Adornments may use
+presentational stacks, rows, text, icons, images, progress, or loading elements;
+actions, focus, scopes, shortcuts, scrolling, and interactive descendants are
+rejected.
+
 All open-widget actions produced by the standard router carry the current
 `WidgetActionEvent.InputScopeId`, including A activation, focused/root
 shortcuts, and Slider changes. Validate it for nested manual routing; never

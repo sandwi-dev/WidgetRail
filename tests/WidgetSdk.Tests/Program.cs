@@ -103,6 +103,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Widget navigation owns bounded routes scopes focus Back and cancellation", WidgetNavigatorTests.Run),
     ("Navigation shells share responsive content and preserve controller traversal", NavigationShellTests.ComposesOneResponsiveContentTree),
     ("Navigation shells wire compact and expanded focus graphs", NavigationShellTests.PreservesControllerTraversal),
+    ("Navigation shell compact adornments are input inert and additive", NavigationShellTests.CompactAdornmentsAreInputInertAndAdditive),
     ("Navigation shells reject ambiguous or unbounded destinations", NavigationShellTests.ValidatesAuthoringBounds),
     ("Focus persistence negotiates v13 without changing legacy snapshots", NavigationShellTests.FocusPersistenceIsOptionalAndVersioned),
     ("Default controller routing resolves dashboard quick actions", DashboardInputResolves),

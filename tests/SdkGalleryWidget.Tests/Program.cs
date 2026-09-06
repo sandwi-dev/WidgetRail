@@ -60,7 +60,7 @@ static async Task PageCoverage()
     Assert.Equal(ResponsiveVisibility.CompactOnly, compactNavigation.VisibleWhen);
     Assert.Equal(ResponsiveVisibility.ExpandedOnly, expandedNavigation.VisibleWhen);
     Assert.Equal(1, Nodes(overview.Root).Count(node => node.Id == "gallery.page-scroll"));
-    Assert.Equal(5, compactNavigation.Children.Count);
+    Assert.Equal(5, compactNavigation.Children.Count(node => node.ActionId is not null));
     Assert.Equal(5, expandedNavigation.Children.Count);
     Assert.Equal("gallery.tab.overview",
         compactNavigation.Children.Single(node => node.IsSelected == true).ActionId);
@@ -457,7 +457,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.13", manifest.Version);
+    Assert.Equal("0.1.14", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);

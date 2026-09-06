@@ -87,12 +87,7 @@ public sealed class SdkGalleryWidget : Widget
         var navigation = _navigation.Value;
         var page = PageFor(navigation.RootRoute);
         WidgetElement body = navigation.Depth == 0
-            ? UI.NavigationShell(
-                "gallery.shell",
-                TabId(page),
-                NavigationContentEntryFocus(page),
-                PageContent(page),
-                Destinations)
+            ? RootNavigation(page)
             : ModalContent(navigation);
         var rootContent = UI.Stack("gallery.root.content",
             Header(),
@@ -148,7 +143,7 @@ public sealed class SdkGalleryWidget : Widget
             {
                 Mode = WidgetSurfaceMode.Standard,
                 PreferredWidth = 760,
-                PreferredHeight = 540,
+                PreferredHeight = 600,
                 MinimumWidth = 320,
                 MinimumHeight = 280,
             })
@@ -282,6 +277,26 @@ public sealed class SdkGalleryWidget : Widget
         return UI.VerticalScroll("gallery.page-scroll", content)
             .Classes("gallery-page-scroll");
     }
+
+    private StackElement RootNavigation(GalleryPage page) =>
+        UI.NavigationShell(
+            "gallery.shell",
+            TabId(page),
+            NavigationContentEntryFocus(page),
+            PageContent(page),
+            Destinations,
+            expandedPane: null,
+            expandedPaneEntryFocusId: null,
+            compactLeadingAdornment: UI.Text(
+                    "LB",
+                    "gallery.hint.section.previous",
+                    "LB, Previous section")
+                .Classes("wrail-controller-hint__key"),
+            compactTrailingAdornment: UI.Text(
+                    "RB",
+                    "gallery.hint.section.next",
+                    "RB, Next section")
+                .Classes("wrail-controller-hint__key"));
 
     private StackElement OverviewPage() => UI.Stack("gallery.overview",
         UI.SectionHeader(
@@ -607,8 +622,6 @@ public sealed class SdkGalleryWidget : Widget
 
     private static RowElement RootNavigationHints() => UI.Row(
         "gallery.section.hints",
-        UI.ControllerHint(ControllerButton.LeftBumper, "Previous section", "gallery.hint.section.previous"),
-        UI.ControllerHint(ControllerButton.RightBumper, "Next section", "gallery.hint.section.next"),
         UI.ControllerHint(ControllerButton.Y, "Example actions", "gallery.hint.section.actions"))
         .Classes("gallery-controller-hints", "gallery-section-hints");
 

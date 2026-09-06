@@ -59,6 +59,61 @@ internal static class NavigationShellTests
         return Task.CompletedTask;
     }
 
+    internal static Task CompactAdornmentsAreInputInertAndAdditive()
+    {
+        var legacy = new WidgetView(CreateShell())
+            .CreateSnapshot("navigation.legacy", 1);
+        var adornedShell = UI.NavigationShell(
+            "shell",
+            "library",
+            "page.open",
+            Content(),
+            Destinations(),
+            UI.Stack("pane", UI.Button("Play", "play", "pane.play")),
+            "pane.play",
+            UI.ControllerHint(ControllerButton.LeftBumper, "Previous", "hint.previous"),
+            UI.ControllerHint(ControllerButton.RightBumper, "Next", "hint.next"));
+        var adorned = new WidgetView(adornedShell, "page.open")
+            .CreateSnapshot("navigation.adorned", 1);
+
+        Equal(0, ViewSnapshotValidator.Validate(adorned).Count);
+        var legacyCompact = Find(legacy.Root, "shell.compact").Children;
+        var adornedCompact = Find(adorned.Root, "shell.compact").Children;
+        Equal(legacyCompact.Count + 2, adornedCompact.Count);
+        Equal("hint.previous", adornedCompact[0].Id);
+        Equal("hint.next", adornedCompact[^1].Id);
+        for (var index = 0; index < legacyCompact.Count; index++)
+        {
+            Equal(legacyCompact[index].Id, adornedCompact[index + 1].Id);
+            Equal(legacyCompact[index].ActionId, adornedCompact[index + 1].ActionId);
+            Equal(legacyCompact[index].Focus, adornedCompact[index + 1].Focus);
+        }
+
+        var legacyRail = Find(legacy.Root, "shell.rail").Children;
+        var adornedRail = Find(adorned.Root, "shell.rail").Children;
+        Equal(legacyRail.Count, adornedRail.Count);
+        for (var index = 0; index < legacyRail.Count; index++)
+        {
+            Equal(legacyRail[index].Id, adornedRail[index].Id);
+            Equal(legacyRail[index].ActionId, adornedRail[index].ActionId);
+            Equal(legacyRail[index].Focus, adornedRail[index].Focus);
+        }
+
+        Throws<ArgumentException>(() => UI.NavigationShell(
+            "interactive-adornment",
+            "library",
+            "page.open",
+            Content(),
+            Destinations(),
+            expandedPane: null,
+            expandedPaneEntryFocusId: null,
+            compactLeadingAdornment: UI.Stack(
+                "interactive-hint",
+                UI.Button("Open", "open", "interactive-hint.open")),
+            compactTrailingAdornment: null));
+        return Task.CompletedTask;
+    }
+
     internal static Task ValidatesAuthoringBounds()
     {
         var destinations = Destinations();

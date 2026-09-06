@@ -46,7 +46,32 @@ public static partial class UI
         WidgetElement content,
         IReadOnlyList<NavigationShellDestination> destinations,
         WidgetElement? expandedPane = null,
-        string? expandedPaneEntryFocusId = null)
+        string? expandedPaneEntryFocusId = null) => NavigationShell(
+            id,
+            selectedDestinationId,
+            contentEntryFocusId,
+            content,
+            destinations,
+            expandedPane,
+            expandedPaneEntryFocusId,
+            compactLeadingAdornment: null,
+            compactTrailingAdornment: null);
+
+    /// <summary>
+    /// Composes the same navigation shell with optional input-inert adornments
+    /// placed directly before and after the compact destination items. Expanded
+    /// rail and body composition are unchanged.
+    /// </summary>
+    public static StackElement NavigationShell(
+        string id,
+        string selectedDestinationId,
+        string contentEntryFocusId,
+        WidgetElement content,
+        IReadOnlyList<NavigationShellDestination> destinations,
+        WidgetElement? expandedPane,
+        string? expandedPaneEntryFocusId,
+        WidgetElement? compactLeadingAdornment,
+        WidgetElement? compactTrailingAdornment)
     {
         StableIdentifier.Validate(id, nameof(id));
         StableIdentifier.Validate(selectedDestinationId, nameof(selectedDestinationId));
@@ -68,6 +93,10 @@ public static partial class UI
             StableIdentifier.Validate(expandedPaneEntryFocusId,
                 nameof(expandedPaneEntryFocusId));
         }
+        ValidateCompactAdornment(
+            compactLeadingAdornment, nameof(compactLeadingAdornment));
+        ValidateCompactAdornment(
+            compactTrailingAdornment, nameof(compactTrailingAdornment));
 
         var destinationIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var destination in destinations)
@@ -162,7 +191,14 @@ public static partial class UI
             };
         }
 
-        var compact = new RowElement(ids.Id("compact"), compactButtons)
+        var compactChildren = new List<WidgetElement>(destinations.Count + 2);
+        if (compactLeadingAdornment is not null)
+            compactChildren.Add(compactLeadingAdornment);
+        compactChildren.AddRange(compactButtons);
+        if (compactTrailingAdornment is not null)
+            compactChildren.Add(compactTrailingAdornment);
+
+        var compact = new RowElement(ids.Id("compact"), compactChildren)
         {
             StyleClasses = ["wrail-navigation-shell__compact"],
         }.VisibleWhen(ResponsiveVisibility.CompactOnly);
@@ -195,5 +231,35 @@ public static partial class UI
         {
             StyleClasses = ["wrail-navigation-shell"],
         };
+    }
+
+    private static void ValidateCompactAdornment(
+        WidgetElement? adornment,
+        string parameterName)
+    {
+        if (adornment is null) return;
+        var pending = new Stack<ViewNode>();
+        pending.Push(adornment.ToProtocolNode());
+        while (pending.TryPop(out var node))
+        {
+            if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or
+                ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.Spacer or
+                ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator) ||
+                node.ActionId is not null || node.ValueChangedActionId is not null ||
+                (node.ContextActions?.Count ?? 0) != 0 ||
+                (node.SelectOptions?.Count ?? 0) != 0 || node.Focus is not null ||
+                node.FocusPersistenceId is not null || node.InputScopeId is not null ||
+                node.InitialChildFocusId is not null ||
+                (node.Shortcuts?.Count ?? 0) != 0 || node.ScrollAxis is not null ||
+                node.ScrollNearStartActionId is not null ||
+                node.ScrollNearEndActionId is not null ||
+                node.CollectionAnchorKey is not null ||
+                node.CollectionItemKey is not null)
+                throw new ArgumentException(
+                    "Compact navigation adornments must be input-inert presentational content.",
+                    parameterName);
+            foreach (var child in node.Children)
+                pending.Push(child);
+        }
     }
 }
