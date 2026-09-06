@@ -39,7 +39,10 @@ dependencies. The root owns the default Cover image and
 focused-descendant replacement; nested surfaces separately demonstrate
 all three fit policies: Cover fills and may crop, Contain preserves the whole
 image with possible unused space, and Fill stretches to the authored bounds.
-The replacement row is one remembered-child focus group. Focusing the
+All three use the same 1536 by 1024 artwork in identical fixed 150-DIP-high,
+bordered regions so their different treatment is directly comparable. The
+replacement row is one remembered-child focus group, and shell entry targets
+that group rather than bypassing it. Focusing the
 unadorned **Retain artwork** button deliberately keeps the last accepted root
 image. An unknown handle demonstrates that the same semantic foreground remains
 usable when artwork cannot resolve.
@@ -48,20 +51,22 @@ The Tiles page embeds a visible 512 by 512 WebP resource inside the sample
 assembly and keeps it independent of process working directories, just like the
 PNG fixtures. WebP and PosterTile publish distinct `PresentOnFocus` fragments.
 The Controls page applies Compact, Comfortable, and Spacious classes to a
-bounded preview without changing the Select focus identity. Overview includes
+two-row repeated-content preview, with explicit current gap and padding values,
+without changing the Select focus identity. Overview includes
 presentational controller hints for navigation, A Select, B Back, and
-right-stick scrolling. Repeated destination changes normalize only stale
-header-focus memory to the newly activated logical destination; ordinary page
-content focus memory remains owned by `WidgetNavigator`.
+right-stick scrolling. Top-level pages are explicit view state under one stable
+root input scope, so the same header element remains valid while its page is
+selected. `WidgetNavigator` owns only nested Picker and ActionSheet routes,
+their exact-scope B action, return focus, and cancellation.
 
-`WidgetIds.Scope("gallery")` builds the validated navigation ID. One
-`WidgetNavigator<GalleryRoute>` owns root destinations, nested
-Picker/ActionSheet routes, stable input scopes, exact-scope B, remembered return
-focus, and route-lifetime cancellation. It does not keep parallel page/modal,
-focus-return, responsive-destination, or scope-string fields. The focused suite
-proves one shared content subtree, distinct compact/expanded controls,
-controller traversal, selected-state accessibility, authoring bounds, and that
-leaving a route cancels its token before the replacement view is published.
+`WidgetIds.Scope("gallery")` builds the validated navigation ID. One explicit
+`GalleryPage` value selects the shared-shell content without replacing its root
+scope. One `WidgetNavigator<GalleryModal>` owns nested Picker/ActionSheet routes,
+exact-scope B, remembered return focus, and route-lifetime cancellation. The
+focused suite proves one shared content subtree, distinct compact/expanded
+controls, stable root scope across page selection, selected-state accessibility,
+authoring bounds, and that opening or leaving a nested route cancels its token
+before the replacement view is published.
 
 The sample has no permissions, custom executable worker, native provider, or
 host-only escape hatch. Its manifest selects `dotnet-worker`, so an installed

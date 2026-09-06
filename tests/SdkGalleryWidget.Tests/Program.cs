@@ -13,7 +13,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Toast feedback adds no focus or action target", ToastDoesNotTakeFocus),
     ("Trusted artwork preserves provider-neutral encoded bytes", TrustedArtwork),
     ("Background gallery proves package artwork fits focus ownership and fallback", BackgroundGallery),
-    ("Repeated header activation retains the exact logical destination", HeaderFocusDoesNotDrift),
+    ("Top-level pages retain one root scope and exact header identities", TopLevelPagesShareRootScope),
     ("Manifest and project use the generic capability-free community path", PackageContract),
     ("Gallery WRSS is valid, responsive, and theme-token based", StyleContract),
 };
@@ -147,8 +147,14 @@ static async Task ControlState()
     Assert.Equal(3, density.SelectOptions.Count);
     Assert.Equal("gallery.density.comfortable",
         density.SelectOptions.Single(option => option.IsSelected).ActionId);
-    Assert.True(Find(switched, "gallery.controls.density-preview").StyleClasses.Contains(
+    var comfortablePreview = Find(switched, "gallery.controls.density-preview");
+    Assert.True(comfortablePreview.StyleClasses.Contains(
         "gallery-density-preview--comfortable", StringComparer.Ordinal));
+    Assert.Equal(2, comfortablePreview.Children.Count(node =>
+        node.StyleClasses.Contains("gallery-density-preview-row", StringComparer.Ordinal)));
+    Assert.Equal(
+        "Comfortable · 12 DIP row gap · 14 DIP panel padding",
+        Find(switched, "gallery.controls.density-preview.title").Text);
     await widget.OnActionAsync(new WidgetActionEvent(
         "gallery.density.spacious", density.Id));
     var spacious = Snapshot(widget, 2);
@@ -156,8 +162,12 @@ static async Task ControlState()
     Assert.Equal(density.Id, Find(spacious, "gallery.controls.density").Id);
     Assert.True(Find(spacious, "gallery.controls.density-preview").StyleClasses.Contains(
         "gallery-density-preview--spacious", StringComparer.Ordinal));
-    Assert.Equal("Spacious density",
+    Assert.Equal("Spacious · 20 DIP row gap · 24 DIP panel padding",
         Find(spacious, "gallery.controls.density-preview.title").Text);
+    Assert.True(Find(spacious, "gallery.controls.density-preview.row-one").StyleClasses
+        .Contains("gallery-density-preview-row--spacious", StringComparer.Ordinal));
+    Assert.Equal(3, Find(spacious, "gallery.controls.density-preview.row-one").Children.Count);
+    Assert.Equal(3, Find(spacious, "gallery.controls.density-preview.row-two").Children.Count);
 
     await widget.OnActionAsync(new WidgetActionEvent(
         "gallery.scrub", "gallery.scrubber.slider", RequestedValue: 150_000));
@@ -247,7 +257,9 @@ static async Task TrustedArtwork()
     Assert.True(artwork.Bytes.Span[..8].SequenceEqual(
         new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }));
     var webPHandle = Find(snapshot, "gallery.webp.artwork").ArtworkHandle;
-    Assert.Equal("gallery.artwork.sample-webp", webPHandle);
+    Assert.Equal("gallery.artwork.sample-webp-512-v1", webPHandle);
+    Assert.False(string.Equals("gallery.artwork.sample-webp", webPHandle,
+        StringComparison.Ordinal), "Changed WebP bytes reused the stale artwork handle.");
     var webP = await widget.OnResolveArtworkAsync(new WidgetArtworkHandle(webPHandle!));
     Assert.True(webP is not null);
     Assert.Equal(WidgetArtworkContentType.WebP, webP!.ContentType);
@@ -283,6 +295,12 @@ static async Task BackgroundGallery()
         node => node.Kind == ViewNodeKind.BackgroundSurface));
     Assert.Equal("gallery.backgrounds.warm",
         Find(backgrounds, "gallery.backgrounds.focus-row").InitialChildFocusId);
+    var compactBackgrounds = Find(backgrounds, "gallery.shell.compact").Children
+        .Single(node => node.ActionId == "gallery.tab.backgrounds");
+    var railBackgrounds = Find(backgrounds, "gallery.shell.rail").Children
+        .Single(node => node.ActionId == "gallery.tab.backgrounds");
+    Assert.Equal("gallery.backgrounds.focus-row", compactBackgrounds.Focus?.Down);
+    Assert.Equal("gallery.backgrounds.focus-row", railBackgrounds.Focus?.Right);
     Assert.Equal(SdkGalleryWidget.WarmBackgroundArtworkHandle,
         Find(backgrounds, "gallery.backgrounds.warm").FocusBackgroundArtworkHandle);
     Assert.Equal<string?>(null,
@@ -292,12 +310,16 @@ static async Task BackgroundGallery()
 
     var cover = Find(backgrounds, "gallery.backgrounds.cover.surface");
     Assert.Equal(ImageFit.Cover, cover.ImageFit);
+    Assert.Equal(SdkGalleryWidget.DefaultBackgroundArtworkHandle, cover.ArtworkHandle);
+    Assert.True(cover.StyleClasses.Contains(
+        "gallery-background-fit-surface", StringComparer.Ordinal));
     Assert.Equal(
         "Cover fills every edge and crops overflow when aspect ratios differ.",
         Find(backgrounds, "gallery.backgrounds.cover.description").Text);
 
     var contain = Find(backgrounds, "gallery.backgrounds.contain.surface");
     Assert.Equal(ImageFit.Contain, contain.ImageFit);
+    Assert.Equal(SdkGalleryWidget.DefaultBackgroundArtworkHandle, contain.ArtworkHandle);
     Assert.Equal(
         "Contain preserves the whole image and may leave unused space.",
         Find(backgrounds, "gallery.backgrounds.contain.description").Text);
@@ -306,8 +328,13 @@ static async Task BackgroundGallery()
         Find(backgrounds, "gallery.backgrounds.contain.focus").FocusBackgroundArtworkHandle);
     Assert.True(contain.StyleClasses.SequenceEqual(
         ["wrail-background-surface", "gallery-background-demo-surface",
+         "gallery-background-fit-surface",
          "gallery-background-demo-surface--contain"]));
-    Assert.Equal(ImageFit.Fill, Find(backgrounds, "gallery.backgrounds.fill.surface").ImageFit);
+    var fill = Find(backgrounds, "gallery.backgrounds.fill.surface");
+    Assert.Equal(ImageFit.Fill, fill.ImageFit);
+    Assert.Equal(SdkGalleryWidget.DefaultBackgroundArtworkHandle, fill.ArtworkHandle);
+    Assert.True(fill.StyleClasses.Contains(
+        "gallery-background-fit-surface", StringComparer.Ordinal));
     Assert.Equal(
         "Fill stretches the sealed warm artwork to the bounded sample region.",
         Find(backgrounds, "gallery.backgrounds.fill.description").Text);
@@ -351,25 +378,38 @@ static async Task BackgroundGallery()
         "A nested BackgroundSurface survived after its exact page left the tree.");
 }
 
-static async Task HeaderFocusDoesNotDrift()
+static async Task TopLevelPagesShareRootScope()
 {
     foreach (var presentation in new[] { "gallery.shell.compact", "gallery.shell.rail" })
     {
         var widget = new SdkGalleryWidget();
         var overview = Snapshot(widget, 1);
+        var rootScope = overview.ActiveInputScopeId;
+        var rootLifetime = widget.Navigation.RouteCancellationToken;
         var controlsSource = HeaderAction(overview, presentation, "gallery.tab.controls");
         await ActFrom(widget, "gallery.tab.controls", controlsSource.Id);
 
         var controls = Snapshot(widget, 2);
+        Assert.Equal(rootScope, controls.ActiveInputScopeId);
+        Assert.False(rootLifetime.IsCancellationRequested,
+            "Top-level page selection replaced the root route lifetime.");
+        Assert.Equal(controlsSource.Id,
+            HeaderAction(controls, presentation, "gallery.tab.controls").Id);
         var tilesSource = HeaderAction(controls, presentation, "gallery.tab.tiles");
         await ActFrom(widget, "gallery.tab.tiles", tilesSource.Id);
 
         var tiles = Snapshot(widget, 3);
+        Assert.Equal(rootScope, tiles.ActiveInputScopeId);
+        Assert.Equal(tilesSource.Id,
+            HeaderAction(tiles, presentation, "gallery.tab.tiles").Id);
         var controlsReturn = HeaderAction(tiles, presentation, "gallery.tab.controls");
         await ActFrom(widget, "gallery.tab.controls", controlsReturn.Id);
 
         var returned = Snapshot(widget, 4);
-        Assert.Equal(controlsReturn.Id, returned.InitialFocusId);
+        Assert.Equal(rootScope, returned.ActiveInputScopeId);
+        Assert.False(rootLifetime.IsCancellationRequested);
+        Assert.Equal(controlsReturn.Id,
+            HeaderAction(returned, presentation, "gallery.tab.controls").Id);
         Assert.Equal(controlsReturn.FocusPersistenceId,
             Find(returned, controlsReturn.Id).FocusPersistenceId);
         Assert.Equal("gallery.tab.controls",
@@ -384,7 +424,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.7", manifest.Version);
+    Assert.Equal("0.1.8", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);
@@ -456,12 +496,27 @@ static Task StyleContract()
     var spaciousDensity = compiled.Theme.Resolve(new WrssElement(
         "stack", StyleClasses: new HashSet<string>(
             ["gallery-density-preview", "gallery-density-preview--spacious"])))!;
-    Assert.Equal("7px", compactDensity.Get("padding")?.Text);
-    Assert.Equal("12px", comfortableDensity.Get("padding")?.Text);
-    Assert.Equal("18px", spaciousDensity.Get("padding")?.Text);
+    Assert.Equal("6px", compactDensity.Get("padding")?.Text);
+    Assert.Equal("14px", comfortableDensity.Get("padding")?.Text);
+    Assert.Equal("24px", spaciousDensity.Get("padding")?.Text);
     Assert.False(string.Equals(
         compactDensity.Get("gap")?.Text, spaciousDensity.Get("gap")?.Text,
         StringComparison.Ordinal));
+    var compactDensityRow = compiled.Theme.Resolve(new WrssElement(
+        "row", StyleClasses: new HashSet<string>(
+            ["gallery-density-preview-row", "gallery-density-preview-row--compact"])))!;
+    var spaciousDensityRow = compiled.Theme.Resolve(new WrssElement(
+        "row", StyleClasses: new HashSet<string>(
+            ["gallery-density-preview-row", "gallery-density-preview-row--spacious"])))!;
+    Assert.Equal("4px", compactDensityRow.Get("gap")?.Text);
+    Assert.Equal("20px", spaciousDensityRow.Get("gap")?.Text);
+    var fitSurface = compiled.Theme.Resolve(new WrssElement(
+        "background-surface", StyleClasses: new HashSet<string>(
+            ["gallery-background-demo-surface", "gallery-background-fit-surface"])))!;
+    Assert.Equal("150px", fitSurface.Get("height")?.Text);
+    Assert.Equal("150px", fitSurface.Get("min-height")?.Text);
+    Assert.Equal("150px", fitSurface.Get("max-height")?.Text);
+    Assert.Equal("2px", fitSurface.Get("border-width")?.Text);
     Assert.False(source.Contains("wrail-navigation-shell", StringComparison.Ordinal),
         "The sample must inherit the platform navigation recipe instead of rebuilding it.");
     Assert.Equal("rgba(8, 12, 18, 0.68)", root.Get("background")?.Text);
