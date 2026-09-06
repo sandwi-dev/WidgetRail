@@ -17,7 +17,7 @@ public sealed record FocusPresentationSurfaceElement : WidgetElement
         Content = content ?? throw new ArgumentNullException(nameof(content));
         DefaultPresentation = defaultPresentation ??
             throw new ArgumentNullException(nameof(defaultPresentation));
-        StyleClasses = ["wrail-focus-presentation-surface"];
+        RequiredStyleClasses = ["wrail-focus-presentation-surface"];
     }
 
     public WidgetElement Content { get; init; }

@@ -4,7 +4,30 @@ namespace WidgetRail.WidgetSdk;
 
 public abstract record WidgetElement(string Id)
 {
-    public IReadOnlyList<string> StyleClasses { get; init; } = [];
+    private IReadOnlyList<string> _authorStyleClasses = StyleClassOwnership.EmptyClasses;
+    private IReadOnlyList<string> _requiredStyleClasses = StyleClassOwnership.EmptyClasses;
+
+    /// <summary>
+    /// The deterministic union of SDK-owned semantic classes and author-owned
+    /// classes. SDK semantic classes are intrinsic and cannot be replaced.
+    /// </summary>
+    public IReadOnlyList<string> StyleClasses
+    {
+        get => StyleClassOwnership.Combine(RequiredStyleClasses, _authorStyleClasses);
+        init => _authorStyleClasses = StyleClassOwnership.Freeze(value, nameof(value));
+    }
+
+    internal IReadOnlyList<string> RequiredStyleClasses
+    {
+        get => _requiredStyleClasses;
+        init => _requiredStyleClasses = StyleClassOwnership.Freeze(value, nameof(value));
+    }
+    internal IReadOnlyList<string> AuthorStyleClasses
+    {
+        get => _authorStyleClasses;
+        init => _authorStyleClasses = value ??
+            throw new ArgumentNullException(nameof(value));
+    }
     internal abstract ViewNode ToProtocolNode();
 
     protected static string RequireId(string id)
@@ -139,7 +162,8 @@ public sealed record CollectionItemElement : WidgetElement
         StableIdentifier.Validate(key.Value, nameof(key));
         Child = child;
         Key = key;
-        StyleClasses = child.StyleClasses;
+        RequiredStyleClasses = child.RequiredStyleClasses;
+        AuthorStyleClasses = child.AuthorStyleClasses;
     }
 
     public WidgetElement Child { get; init; }
@@ -164,7 +188,8 @@ public sealed record FocusBackgroundElement : WidgetElement
         StableIdentifier.Validate(artwork.Value, nameof(artwork));
         Child = child;
         Artwork = artwork;
-        StyleClasses = child.StyleClasses;
+        RequiredStyleClasses = child.RequiredStyleClasses;
+        AuthorStyleClasses = child.AuthorStyleClasses;
     }
 
     public WidgetElement Child { get; init; }
@@ -188,7 +213,8 @@ public sealed record FocusPresentationElement : WidgetElement
     {
         Child = child;
         Presentation = presentation ?? throw new ArgumentNullException(nameof(presentation));
-        StyleClasses = child.StyleClasses;
+        RequiredStyleClasses = child.RequiredStyleClasses;
+        AuthorStyleClasses = child.AuthorStyleClasses;
     }
 
     public WidgetElement Child { get; init; }
@@ -214,7 +240,8 @@ public sealed record ResponsiveBranchElement : WidgetElement
             throw new ArgumentOutOfRangeException(nameof(visibility));
         Child = child;
         Visibility = visibility;
-        StyleClasses = child.StyleClasses;
+        RequiredStyleClasses = child.RequiredStyleClasses;
+        AuthorStyleClasses = child.AuthorStyleClasses;
     }
 
     public WidgetElement Child { get; init; }
@@ -546,7 +573,7 @@ public sealed record SelectElement : WidgetElement
         if (accessibilityLabel is not null)
             ValidateSelectText(accessibilityLabel, nameof(accessibilityLabel));
         AccessibilityLabel = accessibilityLabel;
-        StyleClasses = ["wrail-select"];
+        RequiredStyleClasses = ["wrail-select"];
     }
 
     public string Label { get; init; }
@@ -906,6 +933,8 @@ public sealed record IconElement : WidgetElement
 /// </summary>
 public sealed record LoadingIndicatorElement : WidgetElement
 {
+    private LoadingIndicatorSize _size;
+
     internal LoadingIndicatorElement(
         string id,
         string accessibilityLabel,
@@ -914,12 +943,30 @@ public sealed record LoadingIndicatorElement : WidgetElement
         AccessibilityLabel = string.IsNullOrWhiteSpace(accessibilityLabel)
             ? throw new ArgumentException("A loading indicator requires an accessibility label.", nameof(accessibilityLabel))
             : accessibilityLabel;
-        if (!Enum.IsDefined(size)) throw new ArgumentOutOfRangeException(nameof(size));
         Size = size;
     }
 
     public string AccessibilityLabel { get; init; }
-    public LoadingIndicatorSize Size { get; init; }
+    public LoadingIndicatorSize Size
+    {
+        get => _size;
+        init
+        {
+            if (!Enum.IsDefined(value))
+                throw new ArgumentOutOfRangeException(nameof(value));
+            _size = value;
+            RequiredStyleClasses =
+            [
+                "loading-indicator",
+                value switch
+                {
+                    LoadingIndicatorSize.Compact => "loading-indicator-compact",
+                    LoadingIndicatorSize.Large => "loading-indicator-large",
+                    _ => "loading-indicator-standard",
+                },
+            ];
+        }
+    }
 
     internal override ViewNode ToProtocolNode() => new()
     {
@@ -927,18 +974,6 @@ public sealed record LoadingIndicatorElement : WidgetElement
         Kind = ViewNodeKind.LoadingIndicator,
         AccessibilityLabel = AccessibilityLabel,
         IndicatorSize = Size,
-        StyleClasses =
-        [
-            "loading-indicator",
-            Size switch
-            {
-                LoadingIndicatorSize.Compact => "loading-indicator-compact",
-                LoadingIndicatorSize.Large => "loading-indicator-large",
-                _ => "loading-indicator-standard",
-            },
-            .. StyleClasses.Where(item =>
-                !string.Equals(item, "loading-indicator", StringComparison.Ordinal) &&
-                !item.StartsWith("loading-indicator-", StringComparison.Ordinal)),
-        ],
+        StyleClasses = StyleClasses,
     };
 }

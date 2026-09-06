@@ -880,7 +880,12 @@ or `ResponsiveGrid` when only placement, not hierarchy, changes.
 | `UI.ActionSheet(...)`, `UI.Picker(...)` | bounded nested list | Host-owned vertical Scroll, stable option IDs, and scope-owned B. |
 | `UI.ControllerHint(...)` | display-only input hint | Does not bind a shortcut; use it only when a visible hint is useful. |
 
-All nodes can use `.Classes("name", ...)`. Buttons additionally provide
+All nodes can use `.Classes("name", ...)` to replace author-owned classes and
+`.AddClasses("variant")` to append them. SDK composites keep their intrinsic
+`wrail-*` root, state, and generated part classes through either operation;
+primitives with no intrinsic semantics still replace their complete authored
+list. Valid author classes may also use a `wrail-*` name; required ownership is
+stored intrinsically by the component rather than inferred from the name. Buttons additionally provide
 `.FocusUp/Down/Left/Right(id)`, `.Disabled(...)`, `.Selected(...)`,
 `.Busy(...)`, `.Icon(...)`, `.LeadingInlinePng(...)`, and `.Shortcut(...)`.
 `LeadingInlinePng` keeps trusted broker-projected artwork inside the complete
@@ -1611,6 +1616,13 @@ Attach semantic classes in C# and ship `styles/default.wrss`:
 UI.Button("Play", "toggle", "player.play")
     .Classes("transport", "primary")
 ```
+
+`Classes(...)` replaces only the author-owned portion of the class list.
+Required classes emitted by SDK composites are always serialized first and
+cannot be removed; `AddClasses(...)` appends author variants with ordinal
+deduplication. `Classes(...)`, `AddClasses(...)`, and direct `StyleClasses`
+initialization retain each authored token's first occurrence, including valid
+`wrail-*` names.
 
 ```css
 :root {

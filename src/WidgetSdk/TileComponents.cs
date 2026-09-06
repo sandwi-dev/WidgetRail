@@ -127,7 +127,7 @@ public sealed record ActionSurfaceElement : WidgetElement
         AccessibilityLabel = accessibilityLabel;
         Orientation = orientation;
         Children = children.ToArray();
-        StyleClasses = ["wrail-action-surface"];
+        RequiredStyleClasses = ["wrail-action-surface"];
     }
 
     public string ActionId { get; init; }
@@ -365,23 +365,23 @@ public static partial class UI
         {
             new TextElement(StableIdentifier.Child(id, "title"), title, title)
             {
-                StyleClasses = ["wrail-tile__title"],
+                RequiredStyleClasses = ["wrail-tile__title"],
             },
         };
         if (subtitle is not null)
             copy.Add(new TextElement(StableIdentifier.Child(id, "subtitle"), subtitle, subtitle)
             {
-                StyleClasses = ["wrail-tile__subtitle"],
+                RequiredStyleClasses = ["wrail-tile__subtitle"],
             });
         if (metadata is not null)
             copy.Add(new TextElement(StableIdentifier.Child(id, "metadata"), metadata, metadata)
             {
-                StyleClasses = ["wrail-tile__metadata"],
+                RequiredStyleClasses = ["wrail-tile__metadata"],
             });
         copy.Add(new TextElement(
             StableIdentifier.Child(id, "state"), stateLabel, $"State: {stateLabel}")
         {
-            StyleClasses = ["wrail-tile__state"],
+            RequiredStyleClasses = ["wrail-tile__state"],
         });
 
         var children = new List<WidgetElement>();
@@ -390,12 +390,12 @@ public static partial class UI
             WidgetElement leading = BuildTileArtworkElement(id, artwork);
             children.Add(leading with
             {
-                StyleClasses = ["wrail-tile__artwork"],
+                RequiredStyleClasses = ["wrail-tile__artwork"],
             });
         }
         children.Add(new StackElement(StableIdentifier.Child(id, "content"), copy)
         {
-            StyleClasses = ["wrail-tile__content"],
+            RequiredStyleClasses = ["wrail-tile__content"],
         });
 
         var spoken = accessibilityLabel ?? string.Join(", ",
@@ -404,7 +404,7 @@ public static partial class UI
         ValidateTileText(spoken, nameof(accessibilityLabel), ProtocolConstants.MaximumStringLength);
         return new ActionSurfaceElement(id, action, spoken, orientation, children)
         {
-            StyleClasses = ["wrail-action-surface", "wrail-tile"],
+            RequiredStyleClasses = ["wrail-action-surface", "wrail-tile"],
         };
     }
 
@@ -442,11 +442,11 @@ public static partial class UI
             copy.Add(new TextElement(
                 StableIdentifier.Child(id, "subtitle"), subtitle, subtitle)
             {
-                StyleClasses = ["wrail-poster-tile__subtitle"],
+                RequiredStyleClasses = ["wrail-poster-tile__subtitle"],
             });
         copy.Add(new TextElement(StableIdentifier.Child(id, "title"), title, title)
         {
-            StyleClasses = ["wrail-poster-tile__title"],
+            RequiredStyleClasses = ["wrail-poster-tile__title"],
         });
 
         var details = new List<WidgetElement>();
@@ -454,32 +454,32 @@ public static partial class UI
             details.Add(new TextElement(
                 StableIdentifier.Child(id, "metadata"), metadata, metadata)
             {
-                StyleClasses = ["wrail-poster-tile__metadata"],
+                RequiredStyleClasses = ["wrail-poster-tile__metadata"],
             });
         details.Add(new TextElement(
             StableIdentifier.Child(id, "state"), stateLabel, $"State: {stateLabel}")
         {
-            StyleClasses = ["wrail-poster-tile__state"],
+            RequiredStyleClasses = ["wrail-poster-tile__state"],
         });
         copy.Add(new RowElement(StableIdentifier.Child(id, "details"), details)
         {
-            StyleClasses = ["wrail-poster-tile__details"],
+            RequiredStyleClasses = ["wrail-poster-tile__details"],
         });
 
         var content = new StackElement(StableIdentifier.Child(id, "content"), copy)
         {
-            StyleClasses = ["wrail-poster-tile__content"],
+            RequiredStyleClasses = ["wrail-poster-tile__content"],
         };
         var scrim = new StackElement(
             StableIdentifier.Child(id, "scrim"), [content])
         {
-            StyleClasses = ["wrail-poster-tile__scrim"],
+            RequiredStyleClasses = ["wrail-poster-tile__scrim"],
         };
         var children = new List<WidgetElement>();
         if (artwork is not null)
             children.Add(BuildTileArtworkElement(id, artwork) with
             {
-                StyleClasses = ["wrail-poster-tile__artwork"],
+                RequiredStyleClasses = ["wrail-poster-tile__artwork"],
             });
         children.Add(scrim);
 
@@ -491,7 +491,7 @@ public static partial class UI
             id, action, spoken, ActionSurfaceOrientation.Vertical, children)
         {
             Presentation = ActionSurfacePresentation.Poster,
-            StyleClasses = ["wrail-action-surface", "wrail-poster-tile"],
+            RequiredStyleClasses = ["wrail-action-surface", "wrail-poster-tile"],
         };
     }
 

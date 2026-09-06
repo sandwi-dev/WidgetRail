@@ -76,6 +76,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Composite child IDs enforce protocol boundaries eagerly", CompositeChildIdsValidateEagerly),
     ("Protocol rejects unsafe or unbounded WRSS style classes", RawStyleClassesAreValidated),
     ("Style helpers eagerly enforce WRSS class contracts", StyleExtensionsValidateClasses),
+    ("SDK semantic style classes are intrinsic and author classes remain composable",
+        SemanticStyleClassOwnershipTests.Run),
     ("Undefined protocol enums are rejected before renderer transport", UndefinedProtocolEnumsAreRejected),
     ("Interaction states reject invalid node combinations", InvalidInteractionStatesAreRejected),
     ("Unknown protocol JSON fields are rejected", UnknownFieldsAreRejected),
@@ -2841,10 +2843,10 @@ static Task RawStyleClassesAreValidated()
 static Task StyleExtensionsValidateClasses()
 {
     var explicitClasses = UI.Stack("classes.explicit")
-        .Classes("wrail-icon-button--large", "_private2");
+        .Classes("large-control", "_private2");
     Assert.True(
         explicitClasses.StyleClasses.SequenceEqual(
-            new[] { "wrail-icon-button--large", "_private2" }, StringComparer.Ordinal),
+            new[] { "large-control", "_private2" }, StringComparer.Ordinal),
         "Classes must preserve explicit class order.");
 
     var appended = UI.Stack("classes.appended")
@@ -2858,10 +2860,18 @@ static Task StyleExtensionsValidateClasses()
         Assert.Throws<ArgumentException>(() => UI.Stack("classes.invalid").Classes(invalid));
     Assert.Throws<ArgumentException>(() => UI.Stack("classes.long").Classes(
         new string('a', ProtocolConstants.MaximumStyleClassLength + 1)));
-    Assert.Throws<ArgumentException>(() => UI.Stack("classes.duplicate").Classes("same", "same"));
+    Assert.True(
+        UI.Stack("classes.duplicate").Classes("same", "same").StyleClasses
+            .SequenceEqual(["same"], StringComparer.Ordinal),
+        "Classes must retain only the first occurrence of a repeated author class.");
     Assert.Throws<ArgumentNullException>(() => UI.Stack("classes.null-array").Classes((string[])null!));
     Assert.Throws<ArgumentException>(() => UI.Stack("classes.null-item").Classes("valid", null!));
     Assert.Throws<ArgumentException>(() => UI.Stack("classes.null-addition").AddClasses(null!));
+    Assert.True(
+        UI.Stack("classes.wrail-author").Classes(
+                "wrail-icon-button--large", "wrail-icon-button--large")
+            .StyleClasses.SequenceEqual(["wrail-icon-button--large"], StringComparer.Ordinal),
+        "Valid authored wrail-* classes must remain available and deduplicate ordinally.");
 
     var maximum = Enumerable.Range(0, ProtocolConstants.MaximumStyleClassCount)
         .Select(index => $"class-{index}")

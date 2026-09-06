@@ -187,9 +187,13 @@ semantic classes. They do not add worker code, polling, or a new native node:
   hints in a Row or Stack appropriate to the current surface width rather than
   assuming one unbroken desktop-width footer.
 
-Use `.AddClasses(...)` to add widget-specific styling while preserving and
-deduplicating required component classes. `.Classes(...)` remains the explicit
-replacement API for compatibility and low-level primitives.
+Use `.Classes(...)` to replace the widget-specific classes on any element, or
+`.AddClasses(...)` to append widget-specific variants. SDK-required component
+classes are intrinsic: neither API can remove them, and adding an already-owned
+semantic class is an idempotent no-op. On low-level primitives with no SDK
+semantics, `.Classes(...)` still replaces the complete authored class list.
+Any valid class identifier, including a `wrail-*` name, may be author-supplied;
+intrinsic ownership is enforced by the element rather than by a namespace ban.
 
 ### Generated child-ID contract
 

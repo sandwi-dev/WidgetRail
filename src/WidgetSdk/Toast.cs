@@ -49,7 +49,7 @@ public sealed record ToastElement : WidgetElement
         Tone = tone;
         Duration = duration;
         Glyph = glyph;
-        StyleClasses = ["wrail-toast", $"wrail-toast--{Token(tone)}"];
+        RequiredStyleClasses = ["wrail-toast", $"wrail-toast--{Token(tone)}"];
     }
 
     public string Title { get; }
@@ -85,7 +85,7 @@ public sealed record ToastElement : WidgetElement
                 resolvedGlyph,
                 $"{Tone} notification")
             {
-                StyleClasses = ["wrail-toast__icon", $"wrail-toast__icon--{tone}"],
+                RequiredStyleClasses = ["wrail-toast__icon", $"wrail-toast__icon--{tone}"],
             });
         }
 
@@ -94,20 +94,21 @@ public sealed record ToastElement : WidgetElement
             [
                 new TextElement(StableIdentifier.Child(Id, "title"), Title, Title)
                 {
-                    StyleClasses = ["wrail-toast__title"],
+                    RequiredStyleClasses = ["wrail-toast__title"],
                 },
                 new TextElement(StableIdentifier.Child(Id, "message"), Message, Message)
                 {
-                    StyleClasses = ["wrail-toast__message"],
+                    RequiredStyleClasses = ["wrail-toast__message"],
                 },
             ])
         {
-            StyleClasses = ["wrail-toast__copy"],
+            RequiredStyleClasses = ["wrail-toast__copy"],
         });
 
         return new RowElement(Id, children)
         {
-            StyleClasses = StyleClasses,
+            RequiredStyleClasses = RequiredStyleClasses,
+            AuthorStyleClasses = AuthorStyleClasses,
         }.ToProtocolNode();
     }
 

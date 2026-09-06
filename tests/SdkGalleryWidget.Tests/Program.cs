@@ -309,8 +309,13 @@ static async Task TrustedArtwork()
     Assert.True(artworkHandle is not null);
     Assert.Equal(ProtocolConstants.FocusAssociatedPresentationVersion, snapshot.ProtocolVersion);
     Assert.Equal(ViewNodeKind.BackgroundSurface, snapshot.Root.Kind);
+    Assert.True(snapshot.Root.StyleClasses.SequenceEqual(
+        ["wrail-background-surface", "gallery-root-background"]));
     Assert.Equal("gallery.root.content", snapshot.Root.Children.Single().Id);
-    Assert.Equal(ViewNodeKind.BackgroundSurface, Find(snapshot, "gallery.tiles.surface").Kind);
+    var nestedBackground = Find(snapshot, "gallery.tiles.surface");
+    Assert.Equal(ViewNodeKind.BackgroundSurface, nestedBackground.Kind);
+    Assert.True(nestedBackground.StyleClasses.SequenceEqual(
+        ["wrail-background-surface", "gallery-nested-background"]));
     var artwork = await widget.OnResolveArtworkAsync(new WidgetArtworkHandle(artworkHandle!));
     Assert.True(artwork is not null);
     Assert.Equal(WidgetArtworkContentType.Png, artwork!.ContentType);

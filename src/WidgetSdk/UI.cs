@@ -116,7 +116,7 @@ public static partial class UI
             AccessibilityLabel = $"Decrease {label}",
             IsDisabled = canDecrement ? null : true,
             FocusNeighbors = new FocusNeighbors(Right: incrementId),
-            StyleClasses =
+            RequiredStyleClasses =
             [
                 "wrail-stepper__button",
                 "wrail-stepper__button--decrement",
@@ -127,7 +127,7 @@ public static partial class UI
             AccessibilityLabel = $"Increase {label}",
             IsDisabled = canIncrement ? null : true,
             FocusNeighbors = new FocusNeighbors(Left: decrementId),
-            StyleClasses =
+            RequiredStyleClasses =
             [
                 "wrail-stepper__button",
                 "wrail-stepper__button--increment",
@@ -137,17 +137,17 @@ public static partial class UI
         [
             new TextElement(labelId, label, label)
             {
-                StyleClasses = ["wrail-stepper__label"],
+                RequiredStyleClasses = ["wrail-stepper__label"],
             },
             decrement,
             new TextElement(valueId, value, $"{label}: {value}")
             {
-                StyleClasses = ["wrail-stepper__value"],
+                RequiredStyleClasses = ["wrail-stepper__value"],
             },
             increment,
         ])
         {
-            StyleClasses = ["wrail-stepper"],
+            RequiredStyleClasses = ["wrail-stepper"],
         };
     }
 

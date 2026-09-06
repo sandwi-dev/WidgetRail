@@ -924,9 +924,11 @@ navigation continue through the normal host routing.
 
 The modern component helpers and their stable `wrail-*` class contracts are
 documented in [Controller UI component patterns](controller-ui-components.md).
-Use `.AddClasses(...)` to augment those semantic classes. `.Classes(...)`
-deliberately replaces the complete class list and is intended for primitives
-or authors who explicitly take over the component contract.
+Use `.Classes(...)` to replace author-owned classes or `.AddClasses(...)` to
+append an author variant. Both preserve SDK-owned semantic classes and their
+order. A primitive with no intrinsic SDK classes still treats `.Classes(...)`
+as complete replacement of its authored list. Valid authored names—including
+`wrail-*` names—remain available and do not grant intrinsic component ownership.
 
 Build and install the
 [SDK Gallery Community addon](../samples/SdkGalleryWidget/README.md) to inspect
@@ -1350,11 +1352,13 @@ cleanup bounded.
 
 ## Styling
 
-Use `.Classes("primary", "danger")` to replace the semantic WRSS classes on a
-primitive. Use `.AddClasses("widget-accent")` for SDK composites so required
-`wrail-*` hooks are preserved. Both APIs enforce the WRSS identifier grammar,
-64-character class limit, 32-class node limit, and deterministic duplicate
-policy before snapshot publication; the protocol independently revalidates
+Use `.Classes("primary", "danger")` to replace author-owned WRSS classes.
+Use `.AddClasses("widget-accent")` when incrementally composing variants. SDK
+composites retain their required `wrail-*` root, state, and part hooks through
+either API; primitives have no such intrinsic classes. Valid authored names,
+including `wrail-*` names, are permitted. Both APIs enforce the WRSS identifier
+grammar, 64-character class limit, deduplicated 32-class node limit, and
+first-occurrence ordering before snapshot publication; the protocol independently revalidates
 raw workers. The host parses no CSS; the managed bridge compiles safe WRSS and
 returns typed computed values. Read the [WRSS reference](wrss.md) for selectors,
 allowed properties, imports, safety limits, and renderer-state behavior.

@@ -161,7 +161,7 @@ public static partial class UI
                     Down: contentEntryFocusId,
                     Left: compactIds[(index - 1 + destinations.Count) % destinations.Count],
                     Right: compactIds[(index + 1) % destinations.Count]),
-                StyleClasses =
+                RequiredStyleClasses =
                 [
                     "wrail-navigation-shell__compact-item",
                     selected
@@ -181,7 +181,7 @@ public static partial class UI
                     Up: railIds[(index - 1 + destinations.Count) % destinations.Count],
                     Down: railIds[(index + 1) % destinations.Count],
                     Right: expandedEntry),
-                StyleClasses =
+                RequiredStyleClasses =
                 [
                     "wrail-navigation-shell__rail-item",
                     selected
@@ -200,11 +200,11 @@ public static partial class UI
 
         var compact = new RowElement(ids.Id("compact"), compactChildren)
         {
-            StyleClasses = ["wrail-navigation-shell__compact"],
+            RequiredStyleClasses = ["wrail-navigation-shell__compact"],
         }.VisibleWhen(ResponsiveVisibility.CompactOnly);
         var rail = new StackElement(ids.Id("rail"), railButtons)
         {
-            StyleClasses = ["wrail-navigation-shell__rail"],
+            RequiredStyleClasses = ["wrail-navigation-shell__rail"],
         }.VisibleWhen(ResponsiveVisibility.ExpandedOnly);
 
         var bodyChildren = new List<WidgetElement> { rail };
@@ -212,12 +212,12 @@ public static partial class UI
         {
             bodyChildren.Add(new StackElement(ids.Id("persistent"), [expandedPane])
             {
-                StyleClasses = ["wrail-navigation-shell__persistent"],
+                RequiredStyleClasses = ["wrail-navigation-shell__persistent"],
             }.VisibleWhen(ResponsiveVisibility.ExpandedOnly));
         }
         bodyChildren.Add(new StackElement(ids.Id("content"), [content])
         {
-            StyleClasses = ["wrail-navigation-shell__content"],
+            RequiredStyleClasses = ["wrail-navigation-shell__content"],
         });
 
         return new StackElement(id,
@@ -225,11 +225,11 @@ public static partial class UI
             compact,
             new RowElement(ids.Id("body"), bodyChildren)
             {
-                StyleClasses = ["wrail-navigation-shell__body"],
+                RequiredStyleClasses = ["wrail-navigation-shell__body"],
             },
         ])
         {
-            StyleClasses = ["wrail-navigation-shell"],
+            RequiredStyleClasses = ["wrail-navigation-shell"],
         };
     }
 

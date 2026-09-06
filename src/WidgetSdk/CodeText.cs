@@ -40,7 +40,7 @@ public static partial class UI
 
         return new TextElement(id, text, accessibilityLabel ?? text)
         {
-            StyleClasses = ["wrail-code-text"],
+            RequiredStyleClasses = ["wrail-code-text"],
         };
     }
 }

@@ -101,7 +101,7 @@ public sealed record ScrubberElement : WidgetElement
         ElapsedLabel = elapsedLabel;
         DurationLabel = durationLabel;
         ActivationActionId = activationActionId;
-        StyleClasses = ["wrail-scrubber"];
+        RequiredStyleClasses = ["wrail-scrubber"];
     }
 
     public TimeSpan Position { get; init; }
@@ -195,7 +195,7 @@ public sealed record ScrubberElement : WidgetElement
             FocusPersistenceId = FocusPersistenceId,
             ControllerInteractionMode = ControllerInteractionMode,
             FocusNeighbors = FocusNeighbors,
-            StyleClasses = ["wrail-scrubber__slider"],
+            RequiredStyleClasses = ["wrail-scrubber__slider"],
         };
 
         return new StackElement(Id,
@@ -205,19 +205,20 @@ public sealed record ScrubberElement : WidgetElement
             [
                 new TextElement(StableIdentifier.Child(Id, "elapsed"), elapsed, $"Elapsed {elapsed}")
                 {
-                    StyleClasses = ["wrail-scrubber__elapsed"],
+                    RequiredStyleClasses = ["wrail-scrubber__elapsed"],
                 },
                 new TextElement(StableIdentifier.Child(Id, "duration"), duration, $"Duration {duration}")
                 {
-                    StyleClasses = ["wrail-scrubber__duration"],
+                    RequiredStyleClasses = ["wrail-scrubber__duration"],
                 },
             ])
             {
-                StyleClasses = ["wrail-scrubber__times"],
+                RequiredStyleClasses = ["wrail-scrubber__times"],
             },
         ])
         {
-            StyleClasses = StyleClasses,
+            RequiredStyleClasses = RequiredStyleClasses,
+            AuthorStyleClasses = AuthorStyleClasses,
         }.ToProtocolNode();
     }
 
@@ -303,7 +304,7 @@ public static partial class UI
             content.Add(new IconElement(
                 StableIdentifier.Child(id, "icon"), semanticGlyph, label)
             {
-                StyleClasses = ["wrail-settings-row__icon"],
+                RequiredStyleClasses = ["wrail-settings-row__icon"],
             });
         }
 
@@ -311,7 +312,7 @@ public static partial class UI
         {
             new TextElement(StableIdentifier.Child(id, "label"), label, label)
             {
-                StyleClasses = ["wrail-settings-row__label"],
+                RequiredStyleClasses = ["wrail-settings-row__label"],
             },
         };
         if (!string.IsNullOrWhiteSpace(description))
@@ -319,12 +320,12 @@ public static partial class UI
             copy.Add(new TextElement(
                 StableIdentifier.Child(id, "description"), description, description)
             {
-                StyleClasses = ["wrail-settings-row__description"],
+                RequiredStyleClasses = ["wrail-settings-row__description"],
             });
         }
         content.Add(new StackElement(StableIdentifier.Child(id, "copy"), copy)
         {
-            StyleClasses = ["wrail-settings-row__copy"],
+            RequiredStyleClasses = ["wrail-settings-row__copy"],
         });
 
         var metadata = new List<WidgetElement>();
@@ -333,16 +334,23 @@ public static partial class UI
             metadata.Add(new TextElement(
                 StableIdentifier.Child(id, "value"), value, $"{label}: {value}")
             {
-                StyleClasses = ["wrail-settings-row__value"],
+                RequiredStyleClasses = ["wrail-settings-row__value"],
             });
         }
         if (!string.IsNullOrWhiteSpace(status))
         {
-            metadata.Add(StatusBadge(
+            var statusBadge = StatusBadge(
                 status,
                 statusTone,
-                StableIdentifier.Child(id, "status"))
-                .AddClasses("wrail-settings-row__status"));
+                StableIdentifier.Child(id, "status"));
+            metadata.Add(statusBadge with
+            {
+                RequiredStyleClasses =
+                [
+                    .. statusBadge.RequiredStyleClasses,
+                    "wrail-settings-row__status",
+                ],
+            });
         }
 
         var accessibleParts = new List<string> { label };
@@ -357,14 +365,14 @@ public static partial class UI
         {
             new RowElement(StableIdentifier.Child(id, "content"), content)
             {
-                StyleClasses = ["wrail-settings-row__content"],
+                RequiredStyleClasses = ["wrail-settings-row__content"],
             },
         };
         if (metadata.Count > 0)
         {
             children.Add(new StackElement(StableIdentifier.Child(id, "metadata"), metadata)
             {
-                StyleClasses = ["wrail-settings-row__metadata"],
+                RequiredStyleClasses = ["wrail-settings-row__metadata"],
             });
         }
         children.Add(new ButtonElement(
@@ -374,12 +382,12 @@ public static partial class UI
             Glyph = action.Glyph,
             IsDisabled = isDisabled ? true : null,
             IsBusy = isBusy ? true : null,
-            StyleClasses = ["wrail-settings-row__action"],
+            RequiredStyleClasses = ["wrail-settings-row__action"],
         });
 
         return new StackElement(id, children)
         {
-            StyleClasses = ["wrail-settings-row"],
+            RequiredStyleClasses = ["wrail-settings-row"],
         };
     }
 
@@ -437,7 +445,7 @@ public static partial class UI
                 Glyph = item.Glyph,
                 IsDisabled = item.IsDisabled ? true : null,
                 IsBusy = item.IsBusy ? true : null,
-                StyleClasses =
+                RequiredStyleClasses =
                 [
                     "wrail-action-sheet__item",
                     item.Tone == ActionSheetItemTone.Danger
@@ -454,7 +462,7 @@ public static partial class UI
         {
             new TextElement(StableIdentifier.Child(id, "title"), title, title)
             {
-                StyleClasses = ["wrail-action-sheet__title"],
+                RequiredStyleClasses = ["wrail-action-sheet__title"],
             },
         };
         if (!string.IsNullOrWhiteSpace(description))
@@ -462,20 +470,20 @@ public static partial class UI
             children.Add(new TextElement(
                 StableIdentifier.Child(id, "description"), description, description)
             {
-                StyleClasses = ["wrail-action-sheet__description"],
+                RequiredStyleClasses = ["wrail-action-sheet__description"],
             });
         }
         children.Add(new ScrollElement(
             StableIdentifier.Child(id, "list"), ScrollAxis.Vertical, buttons)
         {
-            StyleClasses = ["wrail-action-sheet__list"],
+            RequiredStyleClasses = ["wrail-action-sheet__list"],
         });
 
         return new StackElement(id, children)
         {
             InputScopeId = scopeId,
             Shortcuts = [new ControllerShortcut(ControllerButton.B, backAction)],
-            StyleClasses = ["wrail-action-sheet"],
+            RequiredStyleClasses = ["wrail-action-sheet"],
         };
     }
 
@@ -535,7 +543,7 @@ public static partial class UI
                 IsSelected = option.IsSelected ? true : null,
                 IsDisabled = option.IsDisabled ? true : null,
                 IsBusy = option.IsBusy ? true : null,
-                StyleClasses =
+                RequiredStyleClasses =
                 [
                     "wrail-picker__option",
                     option.IsSelected
@@ -552,7 +560,7 @@ public static partial class UI
         {
             new TextElement(StableIdentifier.Child(id, "title"), title, title)
             {
-                StyleClasses = ["wrail-picker__title"],
+                RequiredStyleClasses = ["wrail-picker__title"],
             },
         };
         if (!string.IsNullOrWhiteSpace(description))
@@ -560,20 +568,20 @@ public static partial class UI
             children.Add(new TextElement(
                 StableIdentifier.Child(id, "description"), description, description)
             {
-                StyleClasses = ["wrail-picker__description"],
+                RequiredStyleClasses = ["wrail-picker__description"],
             });
         }
         children.Add(new ScrollElement(
             StableIdentifier.Child(id, "options"), ScrollAxis.Vertical, buttons)
         {
-            StyleClasses = ["wrail-picker__options"],
+            RequiredStyleClasses = ["wrail-picker__options"],
         });
 
         return new StackElement(id, children)
         {
             InputScopeId = scopeId,
             Shortcuts = [new ControllerShortcut(ControllerButton.B, backAction)],
-            StyleClasses = ["wrail-picker"],
+            RequiredStyleClasses = ["wrail-picker"],
         };
     }
 
@@ -600,7 +608,7 @@ public static partial class UI
                 semanticGlyph,
                 label)
             {
-                StyleClasses = ["wrail-value-row__icon"],
+                RequiredStyleClasses = ["wrail-value-row__icon"],
             });
         }
 
@@ -608,7 +616,7 @@ public static partial class UI
         {
             new TextElement(StableIdentifier.Child(id, "label"), label, label)
             {
-                StyleClasses = ["wrail-value-row__label"],
+                RequiredStyleClasses = ["wrail-value-row__label"],
             },
         };
         if (!string.IsNullOrWhiteSpace(description))
@@ -618,13 +626,13 @@ public static partial class UI
                 description,
                 description)
             {
-                StyleClasses = ["wrail-value-row__description"],
+                RequiredStyleClasses = ["wrail-value-row__description"],
             });
         }
 
         children.Add(new StackElement(StableIdentifier.Child(id, "text"), textChildren)
         {
-            StyleClasses = ["wrail-value-row__text"],
+            RequiredStyleClasses = ["wrail-value-row__text"],
         });
         children.Add(new TextElement(
             StableIdentifier.Child(id, "value"),
@@ -633,12 +641,12 @@ public static partial class UI
                 ? $"{label}: {value}"
                 : valueAccessibilityLabel)
         {
-            StyleClasses = ["wrail-value-row__value"],
+            RequiredStyleClasses = ["wrail-value-row__value"],
         });
 
         return new RowElement(id, children)
         {
-            StyleClasses = ["wrail-value-row"],
+            RequiredStyleClasses = ["wrail-value-row"],
         };
     }
 
@@ -675,7 +683,7 @@ public static partial class UI
             IsSelected = isSelected ? true : null,
             IsDisabled = isDisabled ? true : null,
             IsBusy = isBusy ? true : null,
-            StyleClasses =
+            RequiredStyleClasses =
             [
                 "wrail-choice-row",
                 isSelected ? "wrail-choice-row--selected" : "wrail-choice-row--idle",
@@ -700,15 +708,15 @@ public static partial class UI
         [
             new TextElement(StableIdentifier.Child(id, "key"), shortName, spokenName)
             {
-                StyleClasses = ["wrail-controller-hint__key"],
+                RequiredStyleClasses = ["wrail-controller-hint__key"],
             },
             new TextElement(StableIdentifier.Child(id, "label"), label, label)
             {
-                StyleClasses = ["wrail-controller-hint__label"],
+                RequiredStyleClasses = ["wrail-controller-hint__label"],
             },
         ])
         {
-            StyleClasses = ["wrail-controller-hint"],
+            RequiredStyleClasses = ["wrail-controller-hint"],
         };
     }
 
@@ -727,7 +735,7 @@ public static partial class UI
         {
             Glyph = glyph,
             AccessibilityLabel = accessibilityLabel,
-            StyleClasses =
+            RequiredStyleClasses =
             [
                 "wrail-icon-button",
                 $"wrail-icon-button--{Token(size)}",
@@ -747,7 +755,7 @@ public static partial class UI
         EnsureDefined(variant, nameof(variant));
         return new StackElement(id, CopyChildren(children))
         {
-            StyleClasses = ["wrail-card", $"wrail-card--{Token(variant)}"],
+            RequiredStyleClasses = ["wrail-card", $"wrail-card--{Token(variant)}"],
         };
     }
 
@@ -767,43 +775,43 @@ public static partial class UI
         {
             text.Add(new TextElement(StableIdentifier.Child(id, "eyebrow"), eyebrow, eyebrow)
             {
-                StyleClasses = ["wrail-section-header__eyebrow"],
+                RequiredStyleClasses = ["wrail-section-header__eyebrow"],
             });
         }
         text.Add(new TextElement(titleId, title, title)
         {
-            StyleClasses = ["wrail-section-header__title"],
+            RequiredStyleClasses = ["wrail-section-header__title"],
         });
         if (!string.IsNullOrWhiteSpace(description))
         {
             text.Add(new TextElement(StableIdentifier.Child(id, "description"), description, description)
             {
-                StyleClasses = ["wrail-section-header__description"],
+                RequiredStyleClasses = ["wrail-section-header__description"],
             });
         }
         var content = new List<WidgetElement>
         {
             new StackElement(textId, text)
             {
-                StyleClasses = ["wrail-section-header__text"],
+                RequiredStyleClasses = ["wrail-section-header__text"],
             },
         };
         if (trailing is not null)
         {
             content.Add(new RowElement(StableIdentifier.Child(id, "trailing"), [trailing])
             {
-                StyleClasses = ["wrail-section-header__trailing"],
+                RequiredStyleClasses = ["wrail-section-header__trailing"],
             });
         }
         return new StackElement(id,
         [
             new RowElement(contentId, content)
             {
-                StyleClasses = ["wrail-section-header__content"],
+                RequiredStyleClasses = ["wrail-section-header__content"],
             },
         ])
         {
-            StyleClasses = ["wrail-section-header"],
+            RequiredStyleClasses = ["wrail-section-header"],
         };
     }
 
@@ -827,22 +835,22 @@ public static partial class UI
         {
             children.Add(new IconElement(StableIdentifier.Child(id, "icon"), resolved, $"{tone} status")
             {
-                StyleClasses = ["wrail-badge__icon", $"wrail-badge__icon--{Token(tone)}"],
+                RequiredStyleClasses = ["wrail-badge__icon", $"wrail-badge__icon--{Token(tone)}"],
             });
         }
         children.Add(new TextElement(labelId, label, label)
         {
-            StyleClasses = ["wrail-badge__label", $"wrail-badge__label--{Token(tone)}"],
+            RequiredStyleClasses = ["wrail-badge__label", $"wrail-badge__label--{Token(tone)}"],
         });
         return new RowElement(id, children)
         {
-            StyleClasses = ["wrail-badge", $"wrail-badge--{Token(tone)}"],
+            RequiredStyleClasses = ["wrail-badge", $"wrail-badge--{Token(tone)}"],
         };
     }
 
     public static SpacerElement Divider(string id) => new(id)
     {
-        StyleClasses = ["wrail-divider"],
+        RequiredStyleClasses = ["wrail-divider"],
     };
 
     public static StackElement Alert(
@@ -930,7 +938,7 @@ public static partial class UI
                     : $"{tab.Label}, {state}",
                 IsSelected = selected ? true : null,
                 IsDisabled = tab.IsDisabled ? true : null,
-                StyleClasses =
+                RequiredStyleClasses =
                 [
                     "wrail-segmented-tabs__tab",
                     selected ? "wrail-segmented-tabs__tab--selected" : "wrail-segmented-tabs__tab--idle",
@@ -944,7 +952,7 @@ public static partial class UI
 
         return new RowElement(id, buttons)
         {
-            StyleClasses = ["wrail-segmented-tabs"],
+            RequiredStyleClasses = ["wrail-segmented-tabs"],
         };
     }
 
@@ -967,7 +975,7 @@ public static partial class UI
             AccessibilityLabel = $"{label}, {state}",
             IsSelected = isOn ? true : null,
             IsDisabled = isDisabled ? true : null,
-            StyleClasses = ["wrail-switch", isOn ? "wrail-switch--on" : "wrail-switch--off"],
+            RequiredStyleClasses = ["wrail-switch", isOn ? "wrail-switch--on" : "wrail-switch--off"],
         };
     }
 
@@ -991,17 +999,17 @@ public static partial class UI
         [
             new TextElement(StableIdentifier.Child(id, "title"), title, title)
             {
-                StyleClasses = ["wrail-dialog__title"],
+                RequiredStyleClasses = ["wrail-dialog__title"],
             },
             new StackElement(StableIdentifier.Child(id, "content"), content)
             {
-                StyleClasses = ["wrail-dialog__content"],
+                RequiredStyleClasses = ["wrail-dialog__content"],
             },
         ])
         {
             InputScopeId = scopeId,
             Shortcuts = [new ControllerShortcut(ControllerButton.B, backAction)],
-            StyleClasses = ["wrail-dialog"],
+            RequiredStyleClasses = ["wrail-dialog"],
         };
     }
 
@@ -1025,7 +1033,7 @@ public static partial class UI
                 semanticGlyph,
                 iconAccessibilityLabel)
             {
-                StyleClasses = tone is null
+                RequiredStyleClasses = tone is null
                     ? [$"{componentClass}__icon"]
                     : [$"{componentClass}__icon", $"{componentClass}__icon--{tone}"],
             });
@@ -1034,11 +1042,11 @@ public static partial class UI
         [
             new TextElement(titleId, title, title)
             {
-                StyleClasses = [$"{componentClass}__title"],
+                RequiredStyleClasses = [$"{componentClass}__title"],
             },
             new TextElement(messageId, message, message)
             {
-                StyleClasses = [$"{componentClass}__message"],
+                RequiredStyleClasses = [$"{componentClass}__message"],
             },
         ]);
         if (action is not null)
@@ -1052,13 +1060,13 @@ public static partial class UI
             {
                 Glyph = action.Glyph,
                 AccessibilityLabel = action.Label,
-                StyleClasses = [$"{componentClass}__action"],
+                RequiredStyleClasses = [$"{componentClass}__action"],
             });
         }
         var classes = tone is null
             ? new[] { componentClass }
             : new[] { componentClass, $"{componentClass}--{tone}" };
-        return new StackElement(id, children) { StyleClasses = classes };
+        return new StackElement(id, children) { RequiredStyleClasses = classes };
     }
 
     private static string Token<T>(T value) where T : struct, Enum =>

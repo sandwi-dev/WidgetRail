@@ -74,7 +74,7 @@ public sealed record BackgroundSurfaceElement : WidgetElement
     {
         Content = content ?? throw new ArgumentNullException(nameof(content));
         Artwork = artwork;
-        StyleClasses = ["wrail-background-surface"];
+        RequiredStyleClasses = ["wrail-background-surface"];
     }
 
     public WidgetElement Content { get; init; }

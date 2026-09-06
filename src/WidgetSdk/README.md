@@ -13,6 +13,14 @@ neither continue emitting the package-API-1-compatible protocol-v1 snapshot.
 See [Declarative UI](../../docs/declarative-ui.md) and
 [Display and resolution](../../docs/display-and-resolution.md).
 
+SDK composites own their required `wrail-*` root, state, and generated-part
+classes intrinsically. `.Classes(...)` replaces only author-owned classes;
+`.AddClasses(...)` appends author variants. Both preserve the SDK classes and
+their deterministic order. Required classes serialize first, followed by each
+authored class's first ordinal occurrence. Primitive elements with no SDK
+semantics retain ordinary complete author-class replacement, and valid authored
+`wrail-*` names remain available.
+
 Pinned widgets reuse the same host ownership. `WidgetView.PinnedLayouts`
 accepts legacy size-only profiles and protocol-v21 declarative projections
 created with `WidgetView.PinnedLayout(...)`. A projection supplies only its

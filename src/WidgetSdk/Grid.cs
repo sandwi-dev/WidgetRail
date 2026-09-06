@@ -29,7 +29,7 @@ public sealed record GridElement : ContainerElement
                 $"Maximum columns must be between 1 and {ProtocolConstants.MaximumGridColumns}.");
         MinimumColumnWidth = minimumColumnWidth;
         MaximumColumns = maximumColumns;
-        StyleClasses = ["wrail-responsive-grid"];
+        RequiredStyleClasses = ["wrail-responsive-grid"];
     }
 
     public double MinimumColumnWidth { get; init; }
