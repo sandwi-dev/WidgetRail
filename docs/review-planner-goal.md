@@ -154,6 +154,10 @@ Implementation tasks read their assigned Plane item, work in an isolated clean w
 unrelated changes, and commit one coherent local milestone. They stage exact paths, inspect the
 staged diff, run `git diff --cached --check`, and never push or mutate reviewer-owned documents.
 
+The user explicitly authorizes commits on isolated implementation branches, including physical-first
+candidates before the user verdict or focused-test closure. This supersedes earlier instructions to
+wait for confirmation before committing. It does not authorize integration or pushing unaccepted work.
+
 A task reports every first red directly to the reviewer while continuing under the bounded
 self-correction rule below. It reports every completion, second red on the same underlying issue,
 immediate-stop boundary, blocker, or no-change result before ending its turn. The reviewer—not the
