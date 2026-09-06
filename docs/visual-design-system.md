@@ -367,6 +367,12 @@ content; `object-fit` and `object-position` control already-brokered pixels.
 There is still no `url()`, file path, network fetch, shader, arbitrary
 function, or script value.
 
+Multiline text keeps ordinary word-boundary wrapping by default with
+`overflow-wrap: normal`. Use `overflow-wrap: anywhere` only when a bounded
+surface must keep an indivisible diagnostic, identifier, or numeric token
+visible; it preserves the source string and permits an emergency line break at
+a valid text cluster. `max-lines` remains the independent content-height bound.
+
 ## Acceptance checklist
 
 - Game title/HUD remains recognizable behind every non-modal surface.

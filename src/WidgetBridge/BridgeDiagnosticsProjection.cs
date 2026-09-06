@@ -148,8 +148,6 @@ internal sealed class BridgeDiagnosticsProjection(
               "(user-configured count limit)"
             : $"{Math.Max(0, residency.ApplicationWorkers)} " +
               "(no application-worker count limit)";
-        var artwork = input.Artwork;
-
         return new PlatformDiagnosticsSnapshot(
             PlatformDiagnosticsSnapshot.CurrentSchemaVersion,
             Interlocked.Increment(ref _revision),
@@ -158,13 +156,7 @@ internal sealed class BridgeDiagnosticsProjection(
                 $"reported memory guidance " +
                 $"{Math.Max(0, residency.ApplicationAdvisoryMemoryMb)} MiB; control plane " +
                 $"{Math.Max(0, residency.ControlPlaneWorkers)} " +
-                $"({Math.Max(0, residency.ControlPlaneAdvisoryMemoryMb)} MiB reported); " +
-                $"artwork requests {artwork.Requests}, in-flight {artwork.InFlight}/" +
-                $"{artwork.MaximumInFlight}, raw {artwork.RawBytes} bytes, Base64 " +
-                $"{artwork.Base64Characters} chars, managed heap {artwork.ManagedHeapBytes} " +
-                $"bytes, LOH {artwork.LargeObjectHeapBytes} bytes, allocation rate " +
-                $"{artwork.AllocatedBytesPerSecond} B/s, Gen2 {artwork.Gen2Collections}, " +
-                $"private {artwork.PrivateBytes} bytes, working set {artwork.WorkingSetBytes} bytes"),
+                $"({Math.Max(0, residency.ControlPlaneAdvisoryMemoryMb)} MiB reported)"),
             Area("catalog", "Widget catalog", catalogState, catalogSummary),
             appearance,
             input.ProvidersConfigured
@@ -180,6 +172,20 @@ internal sealed class BridgeDiagnosticsProjection(
             workers)
         {
             AuthorityRecoveries = await recoveryTask.ConfigureAwait(false),
+            BridgeArtworkMemory = new PlatformBridgeArtworkMemoryDiagnostic(
+                input.Artwork.Requests,
+                input.Artwork.Completed,
+                input.Artwork.Failed,
+                input.Artwork.InFlight,
+                input.Artwork.MaximumInFlight,
+                input.Artwork.RawBytes,
+                input.Artwork.Base64Characters,
+                input.Artwork.ManagedHeapBytes,
+                input.Artwork.LargeObjectHeapBytes,
+                input.Artwork.AllocatedBytesPerSecond,
+                input.Artwork.Gen2Collections,
+                input.Artwork.PrivateBytes,
+                input.Artwork.WorkingSetBytes),
         };
     }
 

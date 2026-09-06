@@ -403,10 +403,11 @@ static void InvalidTypedValues()
           transition-duration: fast;
           font-weight: 555;
           background: rgb(999, 0, 0);
+          overflow-wrap: sometimes;
         }
         """);
     Assert.True(!compile.IsValid, "Invalid typed values unexpectedly compiled.");
-    Assert.Equal(5, compile.Diagnostics.Count(item => item.Code == "invalid_value"));
+    Assert.Equal(6, compile.Diagnostics.Count(item => item.Code == "invalid_value"));
 }
 
 static void DeterministicResolution()
@@ -444,6 +445,7 @@ static void MediaCardValues()
           line-height: 1.2;
           max-lines: 2;
           text-overflow: ellipsis;
+          overflow-wrap: anywhere;
           text-transform: none;
           flex-grow: 1;
           flex-shrink: 1;
@@ -471,6 +473,7 @@ static void MediaCardValues()
     Assert.Equal("2", title.Get("max-lines")!.Text);
     Assert.Equal("1.2", title.Get("line-height")!.Text);
     Assert.Equal("ellipsis", title.Get("text-overflow")!.Text);
+    Assert.Equal("anywhere", title.Get("overflow-wrap")!.Text);
 }
 
 static void ResponsiveUnits()
@@ -596,7 +599,7 @@ static void MediaSafety()
     foreach (var property in new[]
     {
         "aspect-ratio", "object-fit", "object-position", "shape", "line-height", "max-lines",
-        "text-overflow", "text-transform", "image-tint", "scrim-color", "outline-offset", "transition-easing",
+        "text-overflow", "overflow-wrap", "text-transform", "image-tint", "scrim-color", "outline-offset", "transition-easing",
         "flex-grow", "flex-shrink", "flex-basis", "flex-wrap",
     })
         Assert.True(WrssPropertyCatalog.AllowedProperties.Contains(property), $"Missing property {property}.");

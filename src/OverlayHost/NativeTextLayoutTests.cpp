@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -48,9 +49,12 @@ widgetrail::NativeRenderStyle Style(
     const float lineHeight,
     const int maximumLines,
     const float textScale = 1.0F,
-    const widgetrail::NativeTextAlign alignment = widgetrail::NativeTextAlign::Start) {
+    const widgetrail::NativeTextAlign alignment = widgetrail::NativeTextAlign::Start,
+    std::wstring fontFamily = L"Segoe UI Variable Text",
+    const widgetrail::NativeOverflowWrap overflowWrap =
+        widgetrail::NativeOverflowWrap::Normal) {
     widgetrail::WidgetComputedStyle computed{
-        {L"font-family", {L"fontFamily", L"Segoe UI Variable Text", std::nullopt, {}}},
+        {L"font-family", {L"fontFamily", std::move(fontFamily), std::nullopt, {}}},
         {L"font-size", Length(fontSize)},
         {L"font-weight", Number(500)},
         {L"line-height", Number(lineHeight)},
@@ -61,6 +65,9 @@ widgetrail::NativeRenderStyle Style(
     computed[L"text-align"] = Keyword(
         alignment == widgetrail::NativeTextAlign::Center ? L"center" :
         alignment == widgetrail::NativeTextAlign::End ? L"end" : L"start");
+    computed[L"overflow-wrap"] = Keyword(
+        overflowWrap == widgetrail::NativeOverflowWrap::Anywhere
+            ? L"anywhere" : L"normal");
     widgetrail::NativeAccessibilityPolicy accessibility;
     accessibility.textScale = textScale;
     return widgetrail::NativeStyleAdapter::Adapt(
@@ -133,6 +140,67 @@ void WrappingScaleAndAlignmentStayBounded(IDWriteFactory* factory) {
     }
 }
 
+void DiagnosticMetricRowsRemainCompleteAtMaximumScale(IDWriteFactory* factory) {
+    constexpr std::wstring_view rows[] = {
+        L"Artwork requests: 9223372036854775807",
+        L"Artwork completions: 9223372036854775807; failures: 9223372036854775807",
+        L"Artwork in flight: 9223372036854775807; peak: 9223372036854775807",
+        L"Artwork payload: 9223372036854775807 raw bytes",
+        L"Artwork encoding: 9223372036854775807 Base64 characters",
+        L"Managed heap: 9223372036854775807 bytes",
+        L"Large object heap: 9223372036854775807 bytes",
+        L"Allocation rate: 9223372036854775807 bytes/second",
+        L"Gen2 collections: 9223372036854775807",
+        L"Private memory: 9223372036854775807 bytes",
+        L"Working set: 9223372036854775807 bytes",
+    };
+    const auto style = Style(
+        13.0F, 1.4F, 2, 1.5F, widgetrail::NativeTextAlign::Start, L"Consolas",
+        widgetrail::NativeOverflowWrap::Anywhere);
+    for (const auto row : rows) {
+        const auto plan = widgetrail::CreateNativeTextLayoutPlan(
+            factory, row, style, 460.0F, 80.0F);
+        Check(plan.IsValid(),
+            "maximum-value diagnostic row creates a DirectWrite plan");
+        DWRITE_LINE_METRICS lines[2]{};
+        UINT32 actual{};
+        Check(SUCCEEDED(plan.layout->GetLineMetrics(lines, 2, &actual)),
+            "maximum-value diagnostic row exposes line metrics");
+        Check(actual > 0 && actual <= 2,
+            "maximum-value diagnostic row fits the two-line bounded row");
+        Check(std::none_of(lines, lines + actual, [](const auto& line) {
+            return line.isTrimmed;
+        }), "maximum-value diagnostic row remains complete without trimming");
+    }
+
+    const auto areaStyle = Style(
+        13.0F, 1.3F, 8, 1.5F, widgetrail::NativeTextAlign::Start,
+        L"Segoe UI Variable Text", widgetrail::NativeOverflowWrap::Anywhere);
+    constexpr std::wstring_view bridgeArea =
+        L"OK Bridge: Native host connected; application workers "
+        L"2147483647/2147483647 (user-configured count limit); reported memory "
+        L"guidance 2147483647 MiB; control plane 2147483647 "
+        L"(2147483647 MiB reported)";
+    for (const auto text : {
+             bridgeArea,
+             std::wstring_view(L"diagnostics_unavailable_diagnostics_unavailable_0123456789"),
+             std::wstring_view(L"\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE\U0001F3AE")}) {
+        const auto plan = widgetrail::CreateNativeTextLayoutPlan(
+            factory, text, areaStyle, 480.0F, 240.0F);
+        Check(plan.IsValid(), "wrapped diagnostic area creates a DirectWrite plan");
+        DWRITE_LINE_METRICS lines[8]{};
+        UINT32 actual{};
+        Check(SUCCEEDED(plan.layout->GetLineMetrics(lines, 8, &actual)),
+            "wrapped diagnostic area exposes line metrics");
+        Check(actual > 0 && actual <= 8,
+            "wrapped diagnostic area fits the eight-line content bound");
+        Check(std::none_of(lines, lines + actual, [](const auto& line) {
+            return line.isTrimmed;
+        }), "wrapped diagnostic area remains complete without trimming");
+    }
+
+}
+
 void InvalidInputsFailClosed(IDWriteFactory* factory) {
     const auto style = Style(13.0F, 1.2F, 1);
     Check(!widgetrail::CreateNativeTextLayoutPlan(
@@ -161,6 +229,7 @@ int main() {
         SectionHeaderPlanUsesFontMetricsAndContainsInk(factory.Get());
         ControlPlacementCentersTheCompletePlan(factory.Get());
         WrappingScaleAndAlignmentStayBounded(factory.Get());
+        DiagnosticMetricRowsRemainCompleteAtMaximumScale(factory.Get());
         InvalidInputsFailClosed(factory.Get());
     }
     std::cout << "NativeTextLayoutTests: " << checks << " checks passed\n";

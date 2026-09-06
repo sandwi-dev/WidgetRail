@@ -27,6 +27,7 @@ public static partial class WrssPropertyCatalog
         LineHeight,
         PositiveInteger,
         TextOverflow,
+        OverflowWrap,
         TextTransform,
         TransitionEasing,
         BoundedNumber,
@@ -90,6 +91,7 @@ public static partial class WrssPropertyCatalog
             ["line-height"] = new(PropertyType.LineHeight, 0.8, 3),
             ["max-lines"] = new(PropertyType.PositiveInteger, 1, 8),
             ["text-overflow"] = new(PropertyType.TextOverflow),
+            ["overflow-wrap"] = new(PropertyType.OverflowWrap),
             ["text-transform"] = new(PropertyType.TextTransform),
             ["transition-easing"] = new(PropertyType.TransitionEasing),
             ["flex-grow"] = new(PropertyType.BoundedNumber, 0, 8),
@@ -218,6 +220,8 @@ public static partial class WrssPropertyCatalog
                 return true;
             case PropertyType.TextOverflow:
                 return TryKeyword(value, ["clip", "ellipsis"], out computed, out error);
+            case PropertyType.OverflowWrap:
+                return TryKeyword(value, ["normal", "anywhere"], out computed, out error);
             case PropertyType.TextTransform:
                 return TryKeyword(value, ["none", "uppercase", "lowercase"], out computed, out error);
             case PropertyType.TransitionEasing:

@@ -96,9 +96,18 @@ internal static class BridgeDiagnosticsScenarios
         Contains("application workers 1 (no application-worker count limit)",
             first.Bridge.Summary,
             "Uncapped application-worker accounting was not reported truthfully.");
-        Contains("artwork requests 0, in-flight 0/0, raw 0 bytes, Base64 0 chars",
-            first.Bridge.Summary,
-            "Bounded artwork transport ownership was absent from Bridge diagnostics.");
+        Require(first.Bridge.Summary.Length <= 256,
+            "Bridge diagnostics exceeded the bounded transport summary contract.");
+        var artwork = first.BridgeArtworkMemory ?? throw new InvalidOperationException(
+            "Bounded artwork memory diagnostics were absent from the Bridge projection.");
+        Equal(0L, artwork.Requests,
+            "Artwork request accounting changed while projecting diagnostics.");
+        Equal(0L, artwork.InFlight,
+            "Artwork in-flight accounting changed while projecting diagnostics.");
+        Equal(0L, artwork.RawBytes,
+            "Artwork raw-byte accounting changed while projecting diagnostics.");
+        Equal(0L, artwork.Base64Characters,
+            "Artwork Base64 accounting changed while projecting diagnostics.");
         Equal(1, first.Workers.Count,
             "Malformed worker input was not omitted from the bounded projection.");
         Equal("Safe widget", first.Workers[0].WidgetName,

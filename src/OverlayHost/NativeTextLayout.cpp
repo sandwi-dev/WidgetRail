@@ -64,8 +64,12 @@ constexpr std::size_t kMaximumTextCharacters = 4096;
     // paragraph at the leading edge makes intrinsic height independent of the
     // maximum line budget; buttons center the complete measured plan later.
     (void)format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
-    (void)format->SetWordWrapping(
-        style.maxLines() == 1 ? DWRITE_WORD_WRAPPING_NO_WRAP : DWRITE_WORD_WRAPPING_WRAP);
+    const auto wrapping = style.maxLines() == 1
+        ? DWRITE_WORD_WRAPPING_NO_WRAP
+        : style.overflowWrap() == NativeOverflowWrap::Anywhere
+            ? DWRITE_WORD_WRAPPING_EMERGENCY_BREAK
+            : DWRITE_WORD_WRAPPING_WRAP;
+    (void)format->SetWordWrapping(wrapping);
     if (style.textOverflow() == NativeTextOverflow::Ellipsis) {
         DWRITE_TRIMMING trimming{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
         ComPtr<IDWriteInlineObject> sign;

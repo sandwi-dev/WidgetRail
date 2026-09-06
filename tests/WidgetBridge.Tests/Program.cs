@@ -132,6 +132,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Admitted registry invalidation reaches the client event queue", AdmittedRegistryInvalidationReachesClientEventQueue),
     ("Protocol-v37 poster and ordinary action surfaces resolve bridge render roles", ActionSurfaceRenderRole),
     ("Protocol-v15 text entries resolve one closed bridge render role", TextEntryRenderRole),
+    ("Overflow wrapping crosses the generic Bridge render-style boundary", OverflowWrapRenderStyle),
     ("Protocol-v41 Select nodes resolve bridge render roles", SelectRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
     ("Late action failures retain worker generation", ActionFailureIsGenerationOwned),
@@ -4746,6 +4747,23 @@ static Task TextEntryRenderRole()
         BridgeRenderStyleResolver.Resolve(unknown, compiled.Theme));
     Assert.Equal("Unsupported view node kind '999'.", exception.Message);
     Assert.Equal(ProtocolConstants.TextEntryVersion, snapshot.ProtocolVersion);
+    return Task.CompletedTask;
+}
+
+static Task OverflowWrapRenderStyle()
+{
+    var snapshot = new WidgetView(UI.Text("Diagnostic", "diagnostic"))
+        .CreateSnapshot("bridge.overflow-wrap", 1);
+    var parsed = WrssParser.Parse(
+        "text { max-lines: 8; overflow-wrap: anywhere; }", "overflow-wrap.wrss");
+    Assert.Equal(0, parsed.Diagnostics.Count(diagnostic =>
+        diagnostic.Severity == WrssDiagnosticSeverity.Error));
+    var compiled = WrssThemeCompiler.Compile([parsed.Document]);
+    Assert.True(compiled.IsValid, "Overflow-wrap WRSS fixture did not compile.");
+    var styles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
+    Assert.Equal("anywhere", styles["diagnostic"].Base["overflow-wrap"].Text);
+    Assert.Equal(WrssValueKind.Keyword,
+        styles["diagnostic"].Base["overflow-wrap"].Kind);
     return Task.CompletedTask;
 }
 

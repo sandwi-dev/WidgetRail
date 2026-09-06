@@ -227,6 +227,7 @@ struct NativeRenderStyle::Data final {
     float lineHeight{1.2F};
     int maxLines{1};
     NativeTextOverflow textOverflow{NativeTextOverflow::Clip};
+    NativeOverflowWrap overflowWrap{NativeOverflowWrap::Normal};
     NativeTextTransform textTransform{NativeTextTransform::None};
     NativeTransitionEasing transitionEasing{NativeTransitionEasing::EaseOut};
     float flexGrow{};
@@ -285,6 +286,7 @@ WRAIL_STYLE_GETTER(const std::wstring&, fontFamily, fontFamily)
 WRAIL_STYLE_GETTER(float, lineHeight, lineHeight)
 WRAIL_STYLE_GETTER(int, maxLines, maxLines)
 WRAIL_STYLE_GETTER(NativeTextOverflow, textOverflow, textOverflow)
+WRAIL_STYLE_GETTER(NativeOverflowWrap, overflowWrap, overflowWrap)
 WRAIL_STYLE_GETTER(NativeTextTransform, textTransform, textTransform)
 WRAIL_STYLE_GETTER(NativeTransitionEasing, transitionEasing, transitionEasing)
 WRAIL_STYLE_GETTER(float, flexGrow, flexGrow)
@@ -577,6 +579,9 @@ NativeStyleResult NativeStyleAdapter::Adapt(
         } else if (property == L"text-overflow") {
             if (auto item = Keyword<NativeTextOverflow>(value.text, {{L"clip", NativeTextOverflow::Clip}, {L"ellipsis", NativeTextOverflow::Ellipsis}})) data->textOverflow = *item;
             else Add(property, L"Text-overflow keyword was invalid.");
+        } else if (property == L"overflow-wrap") {
+            if (auto item = Keyword<NativeOverflowWrap>(value.text, {{L"normal", NativeOverflowWrap::Normal}, {L"anywhere", NativeOverflowWrap::Anywhere}})) data->overflowWrap = *item;
+            else Add(property, L"Overflow-wrap keyword was invalid.");
         } else if (property == L"text-transform") {
             if (auto item = Keyword<NativeTextTransform>(value.text, {{L"none", NativeTextTransform::None}, {L"uppercase", NativeTextTransform::Uppercase}, {L"lowercase", NativeTextTransform::Lowercase}})) data->textTransform = *item;
             else Add(property, L"Text-transform keyword was invalid.");

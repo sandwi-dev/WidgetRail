@@ -52,6 +52,7 @@ enum class NativeImageFit { Contain, Cover, Fill, None };
 enum class NativeObjectPosition { Center, Top, Right, Bottom, Left, TopLeft, TopRight, BottomLeft, BottomRight };
 enum class NativeShape { Rectangle, Rounded, Pill, Circle };
 enum class NativeTextOverflow { Clip, Ellipsis };
+enum class NativeOverflowWrap { Normal, Anywhere };
 enum class NativeTextTransform { None, Uppercase, Lowercase };
 enum class NativeTextAlign { Start, Center, End };
 enum class NativeTransitionEasing { Linear, EaseOut, EaseInOut, Spring };
@@ -165,6 +166,7 @@ public:
     [[nodiscard]] float lineHeight() const noexcept;
     [[nodiscard]] int maxLines() const noexcept;
     [[nodiscard]] NativeTextOverflow textOverflow() const noexcept;
+    [[nodiscard]] NativeOverflowWrap overflowWrap() const noexcept;
     [[nodiscard]] NativeTextTransform textTransform() const noexcept;
     [[nodiscard]] NativeTransitionEasing transitionEasing() const noexcept;
     [[nodiscard]] float flexGrow() const noexcept;
