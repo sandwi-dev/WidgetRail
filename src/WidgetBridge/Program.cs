@@ -74,11 +74,7 @@ internal static class Program
                 new WindowsActivityPlatformBackend(),
                 new WindowsBluetoothPlatformBackend(),
                 new WindowsMediaPlatformBackend(),
-                new WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider(
-                    cancellationToken => settingsStore.LoadAsync(cancellationToken)
-                        .GetAwaiter().GetResult().AppLibrary.EpicInstalledGamesEnabled,
-                    cancellationToken => settingsStore.LoadAsync(cancellationToken)
-                        .GetAwaiter().GetResult().AppLibrary.GogInstalledGamesEnabled),
+                new WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider(),
                 communityBackend,
                 communityBackend,
                 communityBackend);

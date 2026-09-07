@@ -30,7 +30,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Cancelled section refresh preserves committed state", SettingsPolicyScenarios.CancelledSectionRefreshPreservesCommittedState),
     ("Settings uses a bounded controller-scroll surface", ControllerScrollSurface),
     ("Nested pages own scoped B navigation", NestedScopesAndBack),
-    ("Epic and GOG installed-game discovery are explicit and persisted", GameSourcesOptIn),
+    ("Retired game-source actions cannot navigate or mutate Settings", GameSourceActionsAreRetired),
     ("Settings composites expose controller semantics", CompositeControls),
     ("Visual accessibility preferences persist through a nested controller scope", VisualAccessibilityPersistence),
     ("Scale and opacity actions persist within bounds", BoundedPersistence),
@@ -107,7 +107,7 @@ static Task RootCategories()
     Assert.Equal("settings-root", snapshot.ActiveInputScopeId);
     Assert.Equal("category.appearance", snapshot.InitialFocusId);
     Assert.SequenceEqual(
-        ["category.appearance", "category.accessibility", "category.overlay", "category.installed-widgets", "category.game-sources", "category.diagnostics", "settings.refresh", "category.reset"],
+        ["category.appearance", "category.accessibility", "category.overlay", "category.installed-widgets", "category.diagnostics", "settings.refresh", "category.reset"],
         Buttons(snapshot.Root).Select(button => button.Id));
     Assert.Valid(snapshot);
     return Task.CompletedTask;
@@ -241,41 +241,29 @@ static async Task NestedScopesAndBack()
     Assert.Equal(SettingsPage.Root, widget.CurrentPage);
 }
 
-static async Task GameSourcesOptIn()
+static async Task GameSourceActionsAreRetired()
 {
     using var temp = new TemporaryDirectory();
     var widget = Create(temp.Path);
-    await Action(widget, "open.app-library-sources");
     var initial = Snapshot(widget);
-    Assert.Equal(SettingsPage.AppLibrarySources, widget.CurrentPage);
-    Assert.Equal("app-library.sources.page", initial.ActiveInputScopeId);
-    Assert.True(Button(initial.Root, "app-library.epic.toggle").IsSelected is not true,
-        "Epic opt-in started selected.");
-    Assert.True(Button(initial.Root, "app-library.gog.toggle").IsSelected is not true,
-        "GOG opt-in started selected.");
-    Assert.HasShortcut(initial.Root, "app-library.sources.page", ControllerButton.B,
-        "back");
-
-    await Action(widget, "app-library.epic.toggle");
-    Assert.Equal(true, (await Store(temp.Path).LoadAsync())
-        .AppLibrary.EpicInstalledGamesEnabled);
-    Assert.Equal(true, Button(Snapshot(widget).Root,
-        "app-library.epic.toggle").IsSelected);
-
-    await Action(widget, "app-library.gog.toggle");
-    Assert.Equal(true, (await Store(temp.Path).LoadAsync())
-        .AppLibrary.GogInstalledGamesEnabled);
-    Assert.Equal(true, Button(Snapshot(widget).Root,
-        "app-library.gog.toggle").IsSelected);
-
-    await Action(widget, "app-library.gog.toggle");
-    Assert.Equal(false, (await Store(temp.Path).LoadAsync())
-        .AppLibrary.GogInstalledGamesEnabled);
-
-    await Action(widget, "app-library.epic.toggle");
-    Assert.Equal(false, (await Store(temp.Path).LoadAsync())
-        .AppLibrary.EpicInstalledGamesEnabled);
-    await Action(widget, "back");
+    var initialJson = JsonSerializer.Serialize(initial);
+    foreach (var actionId in new[]
+             {
+                 "open.app-library-sources",
+                 "app-library.epic.toggle",
+                 "app-library.gog.toggle",
+             })
+    {
+        await Action(widget, actionId);
+        Assert.Equal(SettingsPage.Root, widget.CurrentPage);
+        Assert.Equal(initialJson, JsonSerializer.Serialize(Snapshot(widget)));
+    }
+    Assert.True(!Nodes(initial.Root).Any(node =>
+            node.Id.Contains("app-library", StringComparison.Ordinal) ||
+            node.Id == "category.game-sources"),
+        "Retired game-source controls remained in Settings presentation or accessibility.");
+    Assert.True(!File.Exists(Store(temp.Path).Paths.SettingsFile),
+        "A retired game-source action wrote platform settings.");
     Assert.Equal(SettingsPage.Root, widget.CurrentPage);
 }
 
@@ -307,7 +295,6 @@ static async Task CompositeControls()
         buttons["motion.system"].StyleClasses);
     Assert.SequenceEqual(["wrail-switch", "wrail-switch--off"],
         buttons["motion.reduced"].StyleClasses);
-    Assert.Equal(WidgetGlyph.Check, buttons["motion.system"].Glyph);
     Assert.Equal(null, buttons["motion.reduced"].Glyph);
     Assert.Equal("motion.reduced", buttons["motion.system"].Focus!.Down);
     Assert.Equal("accessibility.visual", buttons["motion.reduced"].Focus!.Down);
@@ -326,7 +313,6 @@ static async Task VisualAccessibilityPersistence()
     Assert.Equal("contrast.system", initial.InitialFocusId);
     Assert.HasShortcut(initial.Root, "accessibility.visual.page", ControllerButton.B, "back");
     Assert.Equal(true, Button(initial.Root, "contrast.system").IsSelected);
-    Assert.Equal(WidgetGlyph.Check, Button(initial.Root, "contrast.system").Glyph);
     Assert.Equal(null, Button(initial.Root, "contrast.high").Glyph);
     Assert.Equal(null, Button(initial.Root, "bold-text.toggle").Glyph);
     Assert.Equal(null, Button(initial.Root, "transparency.reduced").Glyph);
@@ -2802,12 +2788,6 @@ file static class Assert
             actual.Appearance.WidgetSurfaceAppearanceOverrides.OrderBy(
                 pair => pair.Key,
                 StringComparer.Ordinal));
-        Equal(
-            expected.AppLibrary.EpicInstalledGamesEnabled,
-            actual.AppLibrary.EpicInstalledGamesEnabled);
-        Equal(
-            expected.AppLibrary.GogInstalledGamesEnabled,
-            actual.AppLibrary.GogInstalledGamesEnabled);
     }
 
     public static void True(bool condition, string message)

@@ -89,8 +89,7 @@ void CheckReachable(
     const float height) {
     constexpr std::wstring_view controls[] = {
         L"category.appearance", L"category.accessibility", L"category.overlay",
-        L"category.installed-widgets", L"category.game-sources",
-        L"category.diagnostics",
+        L"category.installed-widgets", L"category.diagnostics",
         L"settings.refresh", L"category.reset",
     };
     const Rect viewport{0.0F, 0.0F, width, height};

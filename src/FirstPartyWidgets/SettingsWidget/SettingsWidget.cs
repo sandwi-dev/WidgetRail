@@ -21,7 +21,6 @@ public enum SettingsPage
     Accessibility,
     AccessibilityVisual,
     Overlay,
-    AppLibrarySources,
     InstalledWidgets,
     InstalledWidgetDetails,
     InstalledWidgetVersions,
