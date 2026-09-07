@@ -655,6 +655,35 @@ public sealed record ConfirmRunningAppRequest(
 
 public sealed record ConfirmRunningAppSummary(AppLibraryItemSummary? Item);
 
+public sealed record RegisterRunningAppRequest(
+    [property: JsonRequired] string SavedId,
+    [property: JsonRequired] string Revision);
+
+public sealed record RegisterRunningAppSummary(
+    [property: JsonRequired] AppLibraryItemSummary Item,
+    [property: JsonRequired] bool AlreadyRegistered);
+
+public sealed record ForgetRunningAppRequest(
+    [property: JsonRequired] string SavedId);
+
+public sealed record RegisterRunningAppBackendRequest(
+    [property: JsonRequired] string SavedId,
+    [property: JsonRequired] string StableProviderIdentity,
+    [property: JsonRequired] string InstanceEvidence,
+    [property: JsonRequired] string ObservationRevision);
+
+public sealed record RegisterRunningAppBackendSummary(
+    [property: JsonRequired] AppLibraryBackendItemSummary Item,
+    [property: JsonRequired] bool AlreadyRegistered);
+
+public sealed record AppLibraryRegistrationStateSummary(
+    [property: JsonRequired] bool Exists,
+    [property: JsonRequired] long Revision);
+
+public sealed record AppLibraryPackageRegistrationRetirementSummary(
+    [property: JsonRequired] bool Committed,
+    [property: JsonRequired] bool CleanupPending);
+
 /// <summary>Host-only normalized observation; private identities never cross IPC.</summary>
 public sealed record RunningAppBackendObservation(
     [property: JsonIgnore] string StableProviderIdentity,
@@ -871,16 +900,19 @@ public interface IAppLibraryPlatformBrokerBackend
             new BrokerException("platform_unavailable", "App library is unavailable."));
 
     Task LaunchAppLibraryItemAsync(
+        BrokerWidgetIdentity identity,
         string appId,
         CancellationToken cancellationToken) =>
         Task.FromException(
             new BrokerException("platform_unavailable", "App launch is unavailable."));
 
     async Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
+        BrokerWidgetIdentity identity,
         string appId,
         CancellationToken cancellationToken)
     {
-        await LaunchAppLibraryItemAsync(appId, cancellationToken).ConfigureAwait(false);
+        await LaunchAppLibraryItemAsync(identity, appId, cancellationToken)
+            .ConfigureAwait(false);
         return new(AppLibraryLaunchObservationState.RequestAccepted, false, false);
     }
 
@@ -898,6 +930,43 @@ public interface IAppLibraryPlatformBrokerBackend
         CancellationToken cancellationToken) =>
         Task.FromException<RunningAppBackendObservationPage>(
             new BrokerException("platform_unavailable", "Running-app observation is unavailable."));
+
+    Task<RegisterRunningAppBackendSummary> RegisterRunningAppAsync(
+        BrokerWidgetIdentity identity,
+        RegisterRunningAppBackendRequest request,
+        CancellationToken cancellationToken) =>
+        Task.FromException<RegisterRunningAppBackendSummary>(
+            new BrokerException("platform_unavailable", "Running-app registration is unavailable."));
+
+    Task<IReadOnlyList<AppLibraryBackendItemSummary>> ResolveRegisteredRunningAppsAsync(
+        BrokerWidgetIdentity identity,
+        IReadOnlyList<string> savedIds,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AppLibraryBackendItemSummary>>([]);
+
+    Task ForgetRunningAppAsync(
+        BrokerWidgetIdentity identity,
+        string savedId,
+        CancellationToken cancellationToken) => Task.CompletedTask;
+
+    Task<AppLibraryRegistrationStateSummary> GetRunningAppRegistrationStateAsync(
+        BrokerWidgetIdentity identity,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new AppLibraryRegistrationStateSummary(false, 0));
+
+    Task ClearRunningAppRegistrationsAsync(
+        BrokerWidgetIdentity identity,
+        long expectedRevision,
+        CancellationToken cancellationToken) => Task.CompletedTask;
+
+    Task<AppLibraryPackageRegistrationRetirementSummary>
+        RetireRunningAppPackageRegistrationsAsync(
+            string packageId,
+            CancellationToken cancellationToken) =>
+        Task.FromException<AppLibraryPackageRegistrationRetirementSummary>(
+            new BrokerException(
+                "platform_unavailable",
+                "Running-app registration cleanup is unavailable."));
 }
 
 public interface IBluetoothPlatformBrokerBackend : IPlatformBrokerEventSource

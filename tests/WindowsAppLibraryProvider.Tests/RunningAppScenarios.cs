@@ -1,8 +1,112 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
 using WidgetRail.PlatformBroker;
 using WidgetRail.WindowsAppLibraryProvider;
 
 internal static class RunningAppScenarios
 {
+    internal static Task PackagedIdentityInteropIsExactWideAndBounded()
+    {
+        var method = typeof(WindowsRunningAppObserver).GetMethod(
+            "GetApplicationUserModelId",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.True(method is not null);
+        var import = method!.GetCustomAttribute<DllImportAttribute>();
+        Assert.True(import is not null);
+        Assert.Equal("GetApplicationUserModelId", import!.EntryPoint);
+        Assert.True(import.ExactSpelling);
+        Assert.Equal(CharSet.Unicode, import.CharSet);
+        Assert.Equal(typeof(char[]), method!.GetParameters()[2].ParameterType);
+
+        const string aumid = "Contoso.Package_abcd!App";
+        var buffer = (aumid + '\0').ToCharArray();
+        Assert.Equal(aumid, WindowsRunningAppObserver.NormalizePackagedIdentityBuffer(
+            buffer, checked((uint)buffer.Length)));
+        Assert.Equal<string?>(null,
+            WindowsRunningAppObserver.NormalizePackagedIdentityBuffer(
+                aumid.ToCharArray(), checked((uint)aumid.Length)));
+        Assert.Equal<string?>(null,
+            WindowsRunningAppObserver.NormalizePackagedIdentityBuffer(
+                "Contoso\0App\0".ToCharArray(), 12));
+        Assert.Equal<string?>(null,
+            WindowsRunningAppObserver.NormalizePackagedIdentityBuffer(
+                new char[131], 131));
+        return Task.CompletedTask;
+    }
+
+    internal static Task WindowShapeExcludesOnlyDesktopShell()
+    {
+        var shell = (IntPtr)41;
+        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
+            shell, shell, true, IntPtr.Zero, false, "Progman", 7, 101, 202));
+        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
+            (IntPtr)42, shell, true, IntPtr.Zero, false,
+            "Shell_TrayWnd", 7, 101, 202));
+        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
+            (IntPtr)42, shell, true, IntPtr.Zero, false,
+            "Shell_SecondaryTrayWnd", 7, 101, 202));
+        Assert.True(WindowsRunningAppObserver.HasEligibleTopLevelShape(
+            (IntPtr)42, shell, true, IntPtr.Zero, false,
+            "CabinetWClass", 7, 101, 202));
+        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
+            (IntPtr)42, shell, true, IntPtr.Zero, false, null, 7, 101, 202));
+        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
+            (IntPtr)42, shell, false, IntPtr.Zero, false,
+            "CabinetWClass", 7, 101, 202));
+        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
+            (IntPtr)42, shell, true, (IntPtr)99, false,
+            "CabinetWClass", 7, 101, 202));
+        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
+            (IntPtr)42, shell, true, IntPtr.Zero, true,
+            "CabinetWClass", 7, 101, 202));
+        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
+            (IntPtr)42, shell, true, IntPtr.Zero, false,
+            "CabinetWClass", 0, 101, 202));
+        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
+            (IntPtr)42, shell, true, IntPtr.Zero, false,
+            "CabinetWClass", 7, 202, 202));
+        Assert.True(WindowsRunningAppObserver.IsTaskbarWindowClass("Shell_TrayWnd"));
+        Assert.True(WindowsRunningAppObserver.IsTaskbarWindowClass(
+            "Shell_SecondaryTrayWnd"));
+        Assert.False(WindowsRunningAppObserver.IsTaskbarWindowClass("shell_traywnd"));
+        Assert.False(WindowsRunningAppObserver.IsTaskbarWindowClass("CabinetWClass"));
+        return Task.CompletedTask;
+    }
+
+    internal static Task WindowClassInteropIsExactWideAndBounded()
+    {
+        var method = typeof(WindowsRunningAppObserver).GetMethod(
+            "GetClassNameW",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.True(method is not null);
+        var import = method!.GetCustomAttribute<DllImportAttribute>();
+        Assert.True(import is not null);
+        Assert.Equal("GetClassNameW", import!.EntryPoint);
+        Assert.True(import.ExactSpelling);
+        Assert.Equal(CharSet.Unicode, import.CharSet);
+        Assert.Equal(typeof(char[]), method!.GetParameters()[1].ParameterType);
+        Assert.Equal(typeof(int), method.GetParameters()[2].ParameterType);
+        Assert.Equal(256, WindowsRunningAppObserver.MaximumWindowClassCharacters);
+        return Task.CompletedTask;
+    }
+
+    internal static Task NativeCallbackDefersManagedFailure()
+    {
+        var expected = new OperationCanceledException("deferred");
+        var shouldContinue = WindowsRunningAppObserver.TryVisitWindow(
+            _ => throw expected, (IntPtr)42, out var failure);
+        Assert.False(shouldContinue);
+        Assert.True(failure is not null);
+        var actual = Assert.Throws<OperationCanceledException>(() => failure!.Throw());
+        Assert.True(ReferenceEquals(expected, actual));
+
+        shouldContinue = WindowsRunningAppObserver.TryVisitWindow(
+            _ => true, (IntPtr)42, out failure);
+        Assert.True(shouldContinue);
+        Assert.True(failure is null);
+        return Task.CompletedTask;
+    }
+
     internal static async Task MapsOnlyExactCurrentRegistrations()
     {
         var source = new Source(2);

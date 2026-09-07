@@ -223,11 +223,13 @@ the widget is disabled. Package discovery
 is retired with an atomic directory move before bounded deletion, so no
 partially deleted version becomes executable. A file lock after that commit
 point is reported as pending cleanup; the next install or uninstall retries a
-bounded staging sweep. Provider-owned private secrets
-and overlay-owned private state are separate authorities and are not removed by
-package uninstall. Settings keeps **Clear local data** as a separate explicit
-confirmation; uninstall never removes credentials, provider data, themes,
-settings, or user files.
+bounded catalog staging sweep. Package-scoped portable-app registrations under
+that catalog's `broker/portable-apps` root retire in the same transaction; a
+later uninstall operation on that catalog retries pending provider cleanup.
+Provider-owned private secrets and overlay-owned private state are separate
+authorities and are not removed by package uninstall. Settings keeps **Clear
+local data** as a separate explicit confirmation; uninstall never removes
+credentials, unrelated provider data, themes, settings, or user files.
 
 ## Install from a local package
 

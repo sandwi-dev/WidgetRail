@@ -10,6 +10,10 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     private readonly List<RecentActivitySummary> _recentActivities = [];
     private readonly List<AppLibraryBackendItemSummary> _appLibrary = [];
     private readonly List<RunningAppBackendObservation> _runningApps = [];
+    private readonly Dictionary<string, Dictionary<string, AppLibraryBackendItemSummary>>
+        _registeredRunningApps = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _registeredRunningAppRevisions =
+        new(StringComparer.Ordinal);
     private long _runningAppsRevision = 1;
     private long _appLibraryRevision = 1;
     private readonly List<BluetoothDeviceSummary> _bluetoothDevices = [];
@@ -442,8 +446,131 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
             _runningApps.ToArray(), $"sim-running-{_runningAppsRevision}"));
     }
 
+    public Task<RegisterRunningAppBackendSummary> RegisterRunningAppAsync(
+        BrokerWidgetIdentity identity, RegisterRunningAppBackendRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        identity.Validate();
+        var observation = _runningApps.SingleOrDefault(item =>
+            string.Equals(item.StableProviderIdentity,
+                request.StableProviderIdentity, StringComparison.Ordinal) &&
+            string.Equals(item.InstanceEvidence,
+                request.InstanceEvidence, StringComparison.Ordinal));
+        if (observation is null || !string.Equals(
+                request.ObservationRevision,
+                $"sim-running-{_runningAppsRevision}", StringComparison.Ordinal))
+            throw new BrokerException(
+                "stale_observation", "The running-app observation is stale.");
+        var installed = _appLibrary.SingleOrDefault(item => string.Equals(
+            item.StableProviderIdentity, observation.StableProviderIdentity,
+            StringComparison.Ordinal));
+        if (installed is not null)
+            return Task.FromResult(new RegisterRunningAppBackendSummary(
+                installed, AlreadyRegistered: true));
+        var key = RegistrationAuthorityKey(identity);
+        if (!_registeredRunningApps.TryGetValue(key, out var registrations))
+            _registeredRunningApps[key] = registrations =
+                new Dictionary<string, AppLibraryBackendItemSummary>(StringComparer.Ordinal);
+        var alreadyRegistered = registrations.TryGetValue(request.SavedId, out var item);
+        item ??= new AppLibraryBackendItemSummary(
+            $"portable-{Guid.NewGuid():N}", observation.StableProviderIdentity,
+            observation.DisplayName, observation.Kind, string.Empty,
+            observation.SourceAttribution)
+        {
+            SourceIdentity = "source-portable",
+            IsLaunchable = true,
+            AvailabilityState = AppLibraryAvailabilityState.Installed,
+            AvailabilityStatusCode = "registered_portable",
+            SupportedActions = [AppLibraryAction.Launch],
+        };
+        registrations[request.SavedId] = item;
+        if (!alreadyRegistered)
+            _registeredRunningAppRevisions[key] =
+                _registeredRunningAppRevisions.GetValueOrDefault(key) + 1;
+        return Task.FromResult(new RegisterRunningAppBackendSummary(
+            item, alreadyRegistered));
+    }
+
+    public Task<IReadOnlyList<AppLibraryBackendItemSummary>>
+        ResolveRegisteredRunningAppsAsync(
+            BrokerWidgetIdentity identity, IReadOnlyList<string> savedIds,
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var key = RegistrationAuthorityKey(identity);
+        if (!_registeredRunningApps.TryGetValue(key, out var registrations))
+            return Task.FromResult<IReadOnlyList<AppLibraryBackendItemSummary>>([]);
+        return Task.FromResult<IReadOnlyList<AppLibraryBackendItemSummary>>(
+            savedIds.Where(registrations.ContainsKey)
+                .Select(savedId => registrations[savedId]).ToArray());
+    }
+
+    public Task ForgetRunningAppAsync(
+        BrokerWidgetIdentity identity, string savedId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var key = RegistrationAuthorityKey(identity);
+        if (_registeredRunningApps.TryGetValue(key, out var registrations) &&
+            registrations.Remove(savedId))
+            _registeredRunningAppRevisions[key] =
+                _registeredRunningAppRevisions.GetValueOrDefault(key) + 1;
+        return Task.CompletedTask;
+    }
+
+    public Task<AppLibraryRegistrationStateSummary> GetRunningAppRegistrationStateAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var key = RegistrationAuthorityKey(identity);
+        return Task.FromResult(new AppLibraryRegistrationStateSummary(
+            _registeredRunningApps.TryGetValue(key, out var registrations) &&
+                registrations.Count != 0,
+            _registeredRunningAppRevisions.GetValueOrDefault(key)));
+    }
+
+    public Task ClearRunningAppRegistrationsAsync(
+        BrokerWidgetIdentity identity, long expectedRevision,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var key = RegistrationAuthorityKey(identity);
+        var revision = _registeredRunningAppRevisions.GetValueOrDefault(key);
+        if (revision != expectedRevision)
+            throw new BrokerException(
+                "app_registration_conflict", "Running-app registrations changed.");
+        _registeredRunningApps.Remove(key);
+        _registeredRunningAppRevisions[key] = revision + 1;
+        return Task.CompletedTask;
+    }
+
+    public Task<AppLibraryPackageRegistrationRetirementSummary>
+        RetireRunningAppPackageRegistrationsAsync(
+            string packageId,
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var suffix = "\0" + packageId;
+        foreach (var key in _registeredRunningApps.Keys
+                     .Where(key => key.EndsWith(
+                         suffix, StringComparison.Ordinal))
+                     .ToArray())
+        {
+            _registeredRunningApps.Remove(key);
+            _registeredRunningAppRevisions.Remove(key);
+        }
+        return Task.FromResult(
+            new AppLibraryPackageRegistrationRetirementSummary(
+                Committed: true, CleanupPending: false));
+    }
+
+    private static string RegistrationAuthorityKey(BrokerWidgetIdentity identity) =>
+        identity.PublisherId + "\0" + identity.PackageId;
+
     public Task LaunchAppLibraryItemAsync(
-        string appId, CancellationToken cancellationToken)
+        BrokerWidgetIdentity identity, string appId,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         AppLibraryLaunchCalls++;
@@ -452,7 +579,8 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     }
 
     public Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
-        string appId, CancellationToken cancellationToken)
+        BrokerWidgetIdentity identity, string appId,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         AppLibraryLaunchCalls++;

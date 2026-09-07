@@ -13,6 +13,7 @@ public sealed class WidgetCatalog
     private readonly CatalogOperationLock _operationLock;
     private readonly WidgetCatalogOptions _options;
     private readonly TimeProvider _timeProvider;
+    private readonly IWidgetUninstallAuthorityParticipant? _uninstallAuthority;
 
     public WidgetCatalog(string currentUserRoot, WidgetCatalogOptions? options = null)
         : this(currentUserRoot, options, TimeProvider.System)
@@ -21,8 +22,24 @@ public sealed class WidgetCatalog
 
     internal WidgetCatalog(
         string currentUserRoot,
+        IWidgetUninstallAuthorityParticipant uninstallAuthority)
+        : this(currentUserRoot, null, TimeProvider.System, uninstallAuthority)
+    {
+    }
+
+    internal WidgetCatalog(
+        string currentUserRoot,
         WidgetCatalogOptions? options,
         TimeProvider timeProvider)
+        : this(currentUserRoot, options, timeProvider, null)
+    {
+    }
+
+    internal WidgetCatalog(
+        string currentUserRoot,
+        WidgetCatalogOptions? options,
+        TimeProvider timeProvider,
+        IWidgetUninstallAuthorityParticipant? uninstallAuthority)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(currentUserRoot);
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -31,6 +48,7 @@ public sealed class WidgetCatalog
         _options = options ?? new WidgetCatalogOptions();
         _options.Validate();
         _timeProvider = timeProvider;
+        _uninstallAuthority = uninstallAuthority;
         _stateStore = new CatalogStateStore(_root);
         _operationLock = new CatalogOperationLock(_root);
     }
@@ -52,7 +70,8 @@ public sealed class WidgetCatalog
     {
         ValidateTrustApproval(trustApproval);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
-        TryCleanupRetiredTrees();
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
         return await CreateInstaller().InstallAsync(
             packagePath,
             (inspection, token) => PreparePackageInstallUnderLockAsync(
@@ -73,7 +92,8 @@ public sealed class WidgetCatalog
     {
         ValidateTrustApproval(trustApproval);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
-        TryCleanupRetiredTrees();
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
         return await CreateInstaller().InstallAsync(
             packageStream,
             (inspection, token) => PreparePackageInstallUnderLockAsync(
@@ -89,7 +109,8 @@ public sealed class WidgetCatalog
         ArgumentNullException.ThrowIfNull(packageStream);
         ArgumentNullException.ThrowIfNull(trustedPrePublish);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
-        TryCleanupRetiredTrees();
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
         return await CreateInstaller().InstallAsync(
             packageStream,
             async (inspection, token) =>
@@ -208,6 +229,10 @@ public sealed class WidgetCatalog
         var canonicalVersion = version.ToString();
 
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await DemandNoPendingUninstallAsync(widgetId, cancellationToken)
+            .ConfigureAwait(false);
         var health = await InspectHealthAsync(cancellationToken).ConfigureAwait(false);
         var candidate = health.Candidates.SingleOrDefault(item =>
             item.Id == widgetId && item.Version == version)
@@ -237,7 +262,8 @@ public sealed class WidgetCatalog
         var stagingRoot = Path.Combine(_root, "staging");
         Directory.CreateDirectory(stagingRoot);
         FileSystemSafety.EnsureNoReparsePoints(_root, stagingRoot);
-        TryCleanupRetiredTrees();
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         var retiredDirectory = Path.Combine(
             stagingRoot, $".uninstall-version-{Guid.NewGuid():N}");
@@ -271,6 +297,10 @@ public sealed class WidgetCatalog
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
         ValidateTrustApproval(trustApproval);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await DemandNoPendingUninstallAsync(widgetId, cancellationToken)
+            .ConfigureAwait(false);
         var snapshot = await DiscoverAsync(cancellationToken);
         var selected = snapshot.Widgets.SingleOrDefault(widget => widget.Id == widgetId);
         if (selected is null)
@@ -306,6 +336,10 @@ public sealed class WidgetCatalog
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
         ArgumentNullException.ThrowIfNull(version);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await DemandNoPendingUninstallAsync(widgetId, cancellationToken)
+            .ConfigureAwait(false);
         await SetActiveVersionUnderLockAsync(widgetId, version, cancellationToken);
     }
 
@@ -316,6 +350,10 @@ public sealed class WidgetCatalog
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await DemandNoPendingUninstallAsync(widgetId, cancellationToken)
+            .ConfigureAwait(false);
         var snapshot = await DiscoverAsync(cancellationToken);
         var widget = snapshot.Widgets.SingleOrDefault(candidate => candidate.Id == widgetId)
             ?? throw new KeyNotFoundException($"Widget '{widgetId}' is not installed.");
@@ -354,6 +392,10 @@ public sealed class WidgetCatalog
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await DemandNoPendingUninstallAsync(widgetId, cancellationToken)
+            .ConfigureAwait(false);
         var snapshot = await DiscoverAsync(cancellationToken);
         var widget = snapshot.Widgets.SingleOrDefault(candidate => candidate.Id == widgetId)
             ?? throw new KeyNotFoundException($"Widget '{widgetId}' is not installed.");
@@ -366,6 +408,10 @@ public sealed class WidgetCatalog
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await DemandNoPendingUninstallAsync(widgetId, cancellationToken)
+            .ConfigureAwait(false);
         var snapshot = await DiscoverAsync(cancellationToken);
         var widget = snapshot.Widgets.SingleOrDefault(candidate => candidate.Id == widgetId)
             ?? throw new KeyNotFoundException($"Widget '{widgetId}' is not installed.");
@@ -384,6 +430,10 @@ public sealed class WidgetCatalog
         ArgumentNullException.ThrowIfNull(activeVersion);
         ArgumentException.ThrowIfNullOrWhiteSpace(confirmationToken);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await DemandNoPendingUninstallAsync(widgetId, cancellationToken)
+            .ConfigureAwait(false);
         var snapshot = await DiscoverAsync(cancellationToken);
         var widget = snapshot.Widgets.SingleOrDefault(candidate => candidate.Id == widgetId)
             ?? throw new KeyNotFoundException($"Widget '{widgetId}' is not installed.");
@@ -418,10 +468,29 @@ public sealed class WidgetCatalog
         var stagingRoot = Path.Combine(_root, "staging");
         Directory.CreateDirectory(stagingRoot);
         FileSystemSafety.EnsureNoReparsePoints(_root, stagingRoot);
-        TryCleanupRetiredTrees();
-        var retiredDirectory = Path.Combine(stagingRoot, $".uninstall-{Guid.NewGuid():N}");
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var retiredDirectory = Path.Combine(
+            stagingRoot, $".uninstall-{Guid.NewGuid():N}");
+        var markerPath = PendingWidgetUninstallStore.MarkerPath(retiredDirectory);
+        if (_uninstallAuthority is not null)
+        {
+            await PendingWidgetUninstallStore.WriteAsync(
+                markerPath,
+                new PendingWidgetUninstall(
+                    1,
+                    widgetId,
+                    widget.Versions.Select(InstalledWidgetAuthority.PublisherId)
+                        .Distinct(StringComparer.Ordinal)
+                        .Order(StringComparer.Ordinal)
+                        .ToArray()),
+                cancellationToken).ConfigureAwait(false);
+        }
         var priorState = await _stateStore.LoadAsync(cancellationToken);
         var stateMutated = false;
+        var directoryMoved = false;
+        var authorityCommitted = false;
+        var cleanupPending = false;
         try
         {
             await _stateStore.MutateAsync(
@@ -429,21 +498,63 @@ public sealed class WidgetCatalog
                 .ConfigureAwait(false);
             stateMutated = true;
             Directory.Move(packageDirectory, retiredDirectory);
-        }
-        catch
-        {
-            if (stateMutated)
+            directoryMoved = true;
+            if (_uninstallAuthority is not null)
             {
-                await _stateStore.MutateAsync(
-                    _ => priorState, CancellationToken.None)
-                    .ConfigureAwait(false);
+                var retirement = await _uninstallAuthority.RetirePackageAsync(
+                    widgetId, cancellationToken).ConfigureAwait(false);
+                if (!retirement.Committed)
+                    throw new WidgetPackageException(
+                        "registration_cleanup_failed",
+                        "Portable app registration cleanup did not commit.");
+                authorityCommitted = true;
+                cleanupPending |= retirement.CleanupPending;
+                if (!retirement.CleanupPending)
+                    cleanupPending |= !TryDeletePendingMarker(markerPath);
             }
+        }
+        catch when (!authorityCommitted)
+        {
+            var rollbackComplete = true;
+            if (directoryMoved)
+            {
+                try
+                {
+                    if (!Directory.Exists(packageDirectory) &&
+                        Directory.Exists(retiredDirectory))
+                        Directory.Move(retiredDirectory, packageDirectory);
+                }
+                catch (Exception exception) when (exception is IOException or
+                    UnauthorizedAccessException)
+                {
+                    rollbackComplete = false;
+                }
+            }
+            if (stateMutated && rollbackComplete)
+            {
+                try
+                {
+                    await _stateStore.MutateAsync(
+                        _ => priorState, CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is IOException or
+                    UnauthorizedAccessException or WidgetPackageException)
+                {
+                    rollbackComplete = false;
+                }
+            }
+            if (rollbackComplete) _ = TryDeletePendingMarker(markerPath);
+            if (!rollbackComplete)
+                throw new WidgetPackageException(
+                    "uninstall_recovery_pending",
+                    "Package uninstall requires pending recovery.");
             throw;
         }
 
         // The widget is no longer discoverable after the move. Finish bounded
         // physical cleanup without accepting cancellation at this commit point.
-        var cleanupPending = !await TryDeleteRetiredTreeAsync(retiredDirectory)
+        cleanupPending |= !await TryDeleteRetiredTreeAsync(retiredDirectory)
             .ConfigureAwait(false);
         try
         {
@@ -531,16 +642,56 @@ public sealed class WidgetCatalog
         }
     }
 
-    private void TryCleanupRetiredTrees()
+    private async Task RecoverPendingAndCleanupRetiredTreesAsync(
+        CancellationToken cancellationToken)
     {
         var stagingRoot = Path.Combine(_root, "staging");
         if (!Directory.Exists(stagingRoot)) return;
         try
         {
             FileSystemSafety.EnsureNoReparsePoints(_root, stagingRoot);
+            var markedDirectories = new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+            var pendingMarkers = PendingMarkers(stagingRoot);
+            foreach (var marker in pendingMarkers)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var retired = marker[..^".pending.json".Length];
+                markedDirectories.Add(retired);
+                var pending = await PendingWidgetUninstallStore.ReadAsync(
+                    marker, cancellationToken).ConfigureAwait(false);
+                var source = Path.Combine(_packagesRoot, pending.PackageId);
+                if (Directory.Exists(source) && !Directory.Exists(retired))
+                {
+                    _ = TryDeletePendingMarker(marker);
+                    continue;
+                }
+                if (_uninstallAuthority is null ||
+                    Directory.Exists(source) && Directory.Exists(retired))
+                    continue;
+                WidgetUninstallAuthorityCommit retirement;
+                try
+                {
+                    retirement = await _uninstallAuthority.RetirePackageAsync(
+                        pending.PackageId, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is IOException or
+                    UnauthorizedAccessException or WidgetPackageException)
+                {
+                    continue;
+                }
+                if (!retirement.Committed) continue;
+                if (!retirement.CleanupPending)
+                    _ = TryDeletePendingMarker(marker);
+                if (Directory.Exists(retired))
+                    _ = await TryDeleteRetiredTreeAsync(retired).ConfigureAwait(false);
+            }
             foreach (var retired in Directory.EnumerateDirectories(
                          stagingRoot, ".uninstall-*", SearchOption.TopDirectoryOnly).Take(16))
             {
+                if (markedDirectories.Contains(retired) ||
+                    File.Exists(PendingWidgetUninstallStore.MarkerPath(retired)))
+                    continue;
                 if (!FileSystemSafety.IsWithin(stagingRoot, retired)) continue;
                 try
                 {
@@ -556,11 +707,66 @@ public sealed class WidgetCatalog
                 }
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception exception) when (exception is IOException or
-            UnauthorizedAccessException or WidgetPackageException)
+            UnauthorizedAccessException)
         {
             // Staging cleanup is maintenance; it must not block a safe package mutation.
         }
+    }
+
+    private static bool TryDeletePendingMarker(string markerPath)
+    {
+        if (!File.Exists(markerPath)) return true;
+        try
+        {
+            if ((File.GetAttributes(markerPath) & FileAttributes.ReparsePoint) != 0)
+                return false;
+            File.Delete(markerPath);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or
+            UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private async Task DemandNoPendingUninstallAsync(
+        string packageId,
+        CancellationToken cancellationToken)
+    {
+        var stagingRoot = Path.Combine(_root, "staging");
+        if (!Directory.Exists(stagingRoot)) return;
+        foreach (var marker in PendingMarkers(stagingRoot))
+        {
+            var pending = await PendingWidgetUninstallStore.ReadAsync(
+                marker, cancellationToken).ConfigureAwait(false);
+            if (string.Equals(
+                    pending.PackageId, packageId, StringComparison.Ordinal))
+                throw new WidgetPackageException(
+                    "pending_uninstall_cleanup",
+                    $"Widget '{packageId}' has pending uninstall cleanup.");
+        }
+    }
+
+    private static IReadOnlyList<string> PendingMarkers(string stagingRoot)
+    {
+        var markers = Directory.EnumerateFiles(
+                stagingRoot,
+                ".uninstall-*.pending.json",
+                SearchOption.TopDirectoryOnly)
+            .Order(StringComparer.Ordinal)
+            .Take(PendingWidgetUninstallStore.MaximumPendingRecords + 1)
+            .ToArray();
+        if (markers.Length > PendingWidgetUninstallStore.MaximumPendingRecords)
+            throw new WidgetPackageException(
+                "pending_uninstall_capacity",
+                "Pending uninstall recovery exceeds its bound.");
+        return markers;
     }
 
     private async Task SetActiveVersionUnderLockAsync(
@@ -606,6 +812,8 @@ public sealed class WidgetCatalog
         WidgetPackageTrustApproval trustApproval,
         CancellationToken cancellationToken)
     {
+        await DemandNoPendingUninstallAsync(
+            inspection.Id, cancellationToken).ConfigureAwait(false);
         RequireFullTrustApproval(inspection.Manifest, enabling: true, trustApproval);
         var allInstalled = DiscoverInstalledVersions(cancellationToken);
         var installed = allInstalled
@@ -701,6 +909,11 @@ public sealed class WidgetCatalog
             throw new ArgumentException("Widget order cannot contain duplicate IDs.", nameof(widgetIds));
 
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
+            .ConfigureAwait(false);
+        foreach (var widgetId in widgetIds)
+            await DemandNoPendingUninstallAsync(widgetId, cancellationToken)
+                .ConfigureAwait(false);
         var snapshot = await DiscoverAsync(cancellationToken);
         var installed = snapshot.Widgets.ToDictionary(widget => widget.Id, StringComparer.Ordinal);
         var missing = widgetIds.FirstOrDefault(id => !installed.ContainsKey(id));

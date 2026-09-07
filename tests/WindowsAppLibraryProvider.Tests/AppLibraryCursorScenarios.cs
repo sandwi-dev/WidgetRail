@@ -133,6 +133,7 @@ internal static class AppLibraryCursorScenarios
             CancellationToken.None);
 
         var running = await provider.LaunchAppLibraryItemObservedAsync(
+            ProviderTestIdentity.Value,
             page.Items.Single().ProviderAppId, CancellationToken.None);
         Assert.Equal(AppLibraryLaunchObservationState.Running, running.State);
         Assert.True(running.SupportsRunning);
@@ -143,6 +144,7 @@ internal static class AppLibraryCursorScenarios
             GameLibraryLaunchEvidence.Running |
             GameLibraryLaunchEvidence.Ended);
         var ended = await provider.LaunchAppLibraryItemObservedAsync(
+            ProviderTestIdentity.Value,
             page.Items.Single().ProviderAppId, CancellationToken.None);
         Assert.Equal(AppLibraryLaunchObservationState.Ended, ended.State);
     }

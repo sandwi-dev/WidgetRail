@@ -19,7 +19,8 @@
   ],
   "optionalPermissions": [
     "system.apps.library.launch.v1",
-    "system.apps.running.read.v1"
+    "system.apps.running.read.v1",
+    "system.apps.running.register.v1"
   ],
   "residencyPolicy": {
     "schemaVersion": 1,

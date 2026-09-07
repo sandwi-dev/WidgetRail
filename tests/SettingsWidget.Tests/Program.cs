@@ -1800,6 +1800,7 @@ static async Task AppLibraryPermissionCopy()
         [PlatformCapabilities.AppLibraryReadV1], [
             PlatformCapabilities.AppLibraryLaunchV1,
             PlatformCapabilities.AppRunningReadV1,
+            PlatformCapabilities.AppRunningRegisterV1,
         ]);
     var widget = CreateWithPermissions(temp.Path, catalogRoot,
         new ConsentStore(Path.Combine(temp.Path, "consent")));
@@ -1807,7 +1808,7 @@ static async Task AppLibraryPermissionCopy()
     await Action(widget, "open.permissions");
     await Action(widget, "permission.select.0");
     var capabilities = Snapshot(widget);
-    Assert.Contains("See installed apps", Button(capabilities.Root, "capability.item.0").Text!);
+    Assert.Contains("See your app library", Button(capabilities.Root, "capability.item.0").Text!);
     await Action(widget, "capability.select.0");
     var decision = Snapshot(widget);
     var description = Text(decision.Root, "capability.description").Text!;
@@ -1816,20 +1817,33 @@ static async Task AppLibraryPermissionCopy()
     Assert.Contains("launch authority", description);
     await Action(widget, "back");
     var launchCapabilities = Snapshot(widget);
-    Assert.Contains("Launch installed apps",
+    Assert.Contains("Launch app library items",
         Button(launchCapabilities.Root, "capability.item.1").Text!);
     Assert.Contains("See visible running apps",
         Button(launchCapabilities.Root, "capability.item.2").Text!);
+    Assert.Contains("Remember running apps",
+        Button(launchCapabilities.Root, "capability.item.3").Text!);
     await Action(widget, "capability.select.1");
     var launchDecision = Snapshot(widget);
     var launchDescription = Text(launchDecision.Root, "capability.description").Text!;
     Assert.Contains("trusted host rechecks", launchDescription);
     Assert.Contains("cannot supply paths", launchDescription);
     Assert.Contains("foreground-window commands", launchDescription);
+    await Action(widget, "back");
+    await Action(widget, "capability.select.3");
+    var registerDecision = Snapshot(widget);
+    var registerDescription = Text(
+        registerDecision.Root, "capability.description").Text!;
+    Assert.Contains("explicit action", registerDescription);
+    Assert.Contains("privately stores", registerDescription);
+    Assert.Contains("file identity", registerDescription);
+    Assert.Contains("cannot supply paths", registerDescription);
+    Assert.Contains("this package's portable record", registerDescription);
     Assert.Valid(capabilities);
     Assert.Valid(decision);
     Assert.Valid(launchCapabilities);
     Assert.Valid(launchDecision);
+    Assert.Valid(registerDecision);
 }
 
 static async Task CommunityServicePermissionCopy()
