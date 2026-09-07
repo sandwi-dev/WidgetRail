@@ -1706,12 +1706,25 @@ void VisibleTargetCompensatesDelayedBackgroundBeforeSnapshot() {
     bridge.changed.notify_all();
 
     const auto lifecycleEvents = WaitEvents(coordinator, [](const auto& events) {
-        return std::any_of(events.begin(), events.end(), [](const auto& event) {
-            return event.widgetId == L"alpha" &&
-                   event.kind == WidgetSessionEventKind::LifecycleChanged &&
-                   event.lifecycle == WidgetLifecycleState::Visible;
-        });
+        const bool visibleCompensated =
+            std::any_of(events.begin(), events.end(), [](const auto& event) {
+                return event.widgetId == L"alpha" &&
+                       event.kind == WidgetSessionEventKind::LifecycleChanged &&
+                       event.lifecycle == WidgetLifecycleState::Visible;
+            });
+        const bool snapshotAdmitted =
+            std::any_of(events.begin(), events.end(), [](const auto& event) {
+                return event.widgetId == L"alpha" &&
+                       event.kind == WidgetSessionEventKind::SnapshotAdmitted &&
+                       event.lifecycle == WidgetLifecycleState::Visible;
+            });
+        return visibleCompensated && snapshotAdmitted;
     });
+    assert(std::none_of(
+        lifecycleEvents.begin(), lifecycleEvents.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::Failed;
+        }));
     assert(std::count_if(
         lifecycleEvents.begin(), lifecycleEvents.end(), [](const auto& event) {
             return event.widgetId == L"alpha" &&
