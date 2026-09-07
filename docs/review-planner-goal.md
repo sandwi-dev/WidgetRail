@@ -268,6 +268,11 @@ ancestry and scope verification. Never push an implementation worktree, dirty re
 unaccepted commits, tags, releases, or another branch; never force-push. If a prior explicit push
 request was denied, do not retry until the user explicitly renews permission.
 
+Current user override (2026-09-07): integrate accepted work into local `main`, but do not push
+for now. An upstream delivery hold must not stop independent eligible lane work. This overrides
+the recurring prompt's automatic-push instruction until the user explicitly resumes pushing;
+it does not authorize retrying a denied action or bypassing another approval boundary.
+
 ### Refresh and launch
 
 After an accepted integrated milestone changes production/runtime inputs:
