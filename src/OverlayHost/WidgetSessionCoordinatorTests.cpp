@@ -115,9 +115,13 @@ struct FakeBridge final {
     std::unordered_map<std::wstring, WidgetSnapshot> snapshots;
     std::optional<WidgetSnapshot> snapshotAfterNextRead;
     std::wstring stalledWidget;
+    std::wstring stalledLifecycleWidget;
+    WidgetLifecycleState stalledLifecycle{WidgetLifecycleState::Background};
     std::wstring ignoreCancellationWidget;
     std::wstring failingWidget;
     bool releaseStall{};
+    bool lifecycleSideEffectStarted{};
+    bool releaseLifecycleSideEffect{};
     bool startFails{};
     bool stallStart{};
     bool releaseStart{};
@@ -138,7 +142,10 @@ struct FakeBridge final {
     int snapshotCalls{};
     std::unordered_map<std::wstring, int> snapshotCallsByWidget;
     std::vector<PresentationRequest> presentationRequests;
+    std::vector<WidgetLifecycleState> presentationPhysicalLifecycles;
     int lifecycleCalls{};
+    WidgetLifecycleState physicalLifecycle{WidgetLifecycleState::Background};
+    std::vector<WidgetLifecycleState> lifecycleSideEffects;
     int restartCalls{};
     std::atomic<long long> bridgeSessionGeneration{1};
 
@@ -170,9 +177,19 @@ struct FakeBridge final {
                     token, widgetId, baseSequence, transactionKind,
                     recoveryOriginSequence);
             },
-            [this](std::stop_token, std::wstring_view, WidgetLifecycleState) {
-                std::scoped_lock lock(mutex);
+            [this](std::stop_token, std::wstring_view widgetId,
+                   const WidgetLifecycleState lifecycle) {
+                std::unique_lock lock(mutex);
                 ++lifecycleCalls;
+                if (widgetId == stalledLifecycleWidget &&
+                    lifecycle == stalledLifecycle) {
+                    lifecycleSideEffectStarted = true;
+                    changed.notify_all();
+                    changed.wait(lock, [&] { return releaseLifecycleSideEffect; });
+                }
+                physicalLifecycle = lifecycle;
+                lifecycleSideEffects.push_back(lifecycle);
+                changed.notify_all();
                 return WidgetSessionOperationResult<bool>::Success(true);
             },
             [this](std::stop_token token, std::wstring_view widgetId,
@@ -222,6 +239,7 @@ struct FakeBridge final {
             std::unique_lock lock(mutex);
             presentationRequests.push_back(
                 {baseSequence, transactionKind, recoveryOriginSequence});
+            presentationPhysicalLifecycles.push_back(physicalLifecycle);
             changed.notify_all();
             if (baseSequence == 0 && stallBaseZeroPresentation) {
                 baseZeroPresentationStarted = true;
@@ -1639,6 +1657,101 @@ void VisibleTargetSupersedesBackgroundSnapshotAndRetainsCheckpoint() {
     assert(!coordinator.Failure(L"alpha"));
 }
 
+void VisibleTargetCompensatesDelayedBackgroundBeforeSnapshot() {
+    FakeBridge bridge;
+    bridge.catalog = {
+        Descriptor(L"alpha", L"alpha.one", L"runtime-1", L"view-1"),
+    };
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 1, 592.0, 698.0);
+    bridge.snapshots[L"alpha"].documentJson = L"{}";
+    WidgetSessionCoordinator coordinator(bridge.Operations());
+    assert(coordinator.EstablishCatalog());
+    coordinator.SetLifecycleTargets({
+        {L"alpha", WidgetLifecycleState::Visible},
+    });
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.physicalLifecycle = WidgetLifecycleState::Visible;
+        bridge.stalledLifecycleWidget = L"alpha";
+        bridge.stalledLifecycle = WidgetLifecycleState::Background;
+    }
+
+    coordinator.SetLifecycleTargets({});
+    {
+        std::unique_lock lock(bridge.mutex);
+        assert(bridge.changed.wait_for(lock, 1s, [&] {
+            return bridge.lifecycleSideEffectStarted;
+        }));
+    }
+    coordinator.SetLifecycleTargets({
+        {L"alpha", WidgetLifecycleState::Visible},
+    });
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 2, 760.0, 385.0);
+    bridge.snapshots[L"alpha"].documentJson = L"{}";
+    assert(coordinator.RequestSnapshot(L"alpha"));
+    {
+        std::scoped_lock lock(bridge.mutex);
+        assert(bridge.presentationRequests.size() == 1);
+    }
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.releaseLifecycleSideEffect = true;
+    }
+    bridge.changed.notify_all();
+
+    const auto lifecycleEvents = WaitEvents(coordinator, [](const auto& events) {
+        const bool visibleCompensated =
+            std::any_of(events.begin(), events.end(), [](const auto& event) {
+                return event.widgetId == L"alpha" &&
+                       event.kind == WidgetSessionEventKind::LifecycleChanged &&
+                       event.lifecycle == WidgetLifecycleState::Visible;
+            });
+        const bool snapshotAdmitted =
+            std::any_of(events.begin(), events.end(), [](const auto& event) {
+                return event.widgetId == L"alpha" &&
+                       event.kind == WidgetSessionEventKind::SnapshotAdmitted &&
+                       event.lifecycle == WidgetLifecycleState::Visible;
+            });
+        return visibleCompensated && snapshotAdmitted;
+    });
+    assert(std::none_of(
+        lifecycleEvents.begin(), lifecycleEvents.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::Failed;
+        }));
+    assert(std::count_if(
+        lifecycleEvents.begin(), lifecycleEvents.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::StaleCompletionRejected &&
+                   event.requestKind == widgetrail::WidgetSessionRequestKind::Lifecycle &&
+                   event.lifecycle == WidgetLifecycleState::Background;
+        }) == 1);
+    {
+        std::scoped_lock lock(bridge.mutex);
+        assert((bridge.lifecycleSideEffects ==
+            std::vector{
+                WidgetLifecycleState::Background,
+                WidgetLifecycleState::Visible}));
+        assert(bridge.physicalLifecycle == WidgetLifecycleState::Visible);
+        assert(bridge.presentationPhysicalLifecycles.size() == 2);
+        assert(bridge.presentationPhysicalLifecycles.back() ==
+               WidgetLifecycleState::Visible);
+    }
+    assert(coordinator.Lifecycle(L"alpha") == WidgetLifecycleState::Visible);
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 2);
+    assert(bridge.presentationRequests.size() == 2);
+    assert(bridge.presentationRequests.back().transactionKind ==
+           WidgetPresentationTransactionKind::IncrementalUpdate);
+    assert(bridge.presentationRequests.back().baseSequence == 1);
+}
+
 void WrongLifecycleFailureCannotReplaceNewerVisibleIntent() {
     FakeBridge bridge;
     bridge.catalog = {
@@ -2515,6 +2628,7 @@ int main() {
     HideAndWorkerExitRevokePendingSnapshots();
     CancellationIgnoringLateResultsAreStale();
     VisibleTargetSupersedesBackgroundSnapshotAndRetainsCheckpoint();
+    VisibleTargetCompensatesDelayedBackgroundBeforeSnapshot();
     WrongLifecycleFailureCannotReplaceNewerVisibleIntent();
     CorrelatedAdmissionTraceIsBoundedAndSanitized();
     CoordinatorEmitsCorrelatedLifecycleAndRequestStages();
@@ -2529,5 +2643,5 @@ int main() {
     VirtualWindowAdmissionEnforcesDirectionalAuthority();
     VirtualWindowReplacementOwnsMutationAndUnknownPosition();
     VirtualWindowFreshSessionRequiresReplacement();
-    std::cout << "WidgetSessionCoordinatorTests passed (30 scenarios)\n";
+    std::cout << "WidgetSessionCoordinatorTests passed (31 scenarios)\n";
 }
