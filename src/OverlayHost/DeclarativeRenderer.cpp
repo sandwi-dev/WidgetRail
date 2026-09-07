@@ -4344,7 +4344,8 @@ struct DeclarativeRenderer::RenderPass final {
         } else if (node.kind == L"slider") {
             DrawSlider(
                 node, style, presented.contentBox, opacity, focused,
-                node.id == options.activeSliderElementId);
+                node.id == options.activeSliderElementId &&
+                    !node.isDisabled && !node.isBusy);
         } else if (node.kind == L"image") {
             const auto visibleImageRect = Intersection(
                 paintRect, presented.visibleBox);

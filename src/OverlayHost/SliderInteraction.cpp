@@ -69,6 +69,14 @@ SliderAdjustment SliderInteractionState::Adjust(
         entry->targetValue, entry->minimum, entry->maximum, entry->step, direction);
     if (!target || Near(*target, entry->targetValue, entry->maximum - entry->minimum))
         return {true};
+    if (entry->unsent && entry->recentDispatchedValues.empty() &&
+        entry->latestTargetDispatchedAt == 0 &&
+        Near(*target, entry->authoritativeValue,
+             entry->maximum - entry->minimum)) {
+        (void)CancelUnsent(*entry);
+        entry->lastAccess = ++accessClock_;
+        return {true};
+    }
     entry->targetValue = *target;
     entry->pending = true;
     entry->unsent = true;
@@ -97,6 +105,20 @@ bool SliderInteractionState::SetRequestedValue(
         entry->lastAccess = ++accessClock_;
         return true;
     }
+    if (entry->unsent && entry->recentDispatchedValues.empty() &&
+        entry->latestTargetDispatchedAt == 0 &&
+        Near(requestedValue, entry->authoritativeValue,
+             entry->maximum - entry->minimum)) {
+        (void)CancelUnsent(*entry);
+        entry->lastAccess = ++accessClock_;
+        return true;
+    }
+    if (!entry->pending &&
+        Near(requestedValue, entry->authoritativeValue,
+             entry->maximum - entry->minimum)) {
+        entry->lastAccess = ++accessClock_;
+        return true;
+    }
     entry->targetValue = requestedValue;
     entry->pending = true;
     entry->unsent = true;
@@ -116,6 +138,10 @@ std::optional<SliderDispatch> SliderInteractionState::TakePendingDispatch(
     if (!Valid(slider)) return std::nullopt;
     auto* entry = FindAndSynchronize(slider, nowMilliseconds);
     if (!entry || !entry->pending || !entry->unsent) return std::nullopt;
+    if (slider.disabled || slider.busy) {
+        (void)CancelUnsent(*entry);
+        return std::nullopt;
+    }
     if (!force && (nowMilliseconds < entry->lastAdjustment ||
         nowMilliseconds - entry->lastAdjustment < SettlementDelayMilliseconds)) {
         return std::nullopt;
@@ -414,6 +440,11 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
         }
         entry.authoritativeValue = slider.value;
         entry.snapshotSequence = std::max(entry.snapshotSequence, slider.snapshotSequence);
+        if ((slider.disabled || slider.busy) && entry.unsent) {
+            const bool visualChanged = CancelUnsent(entry);
+            if (reconciliation)
+                *reconciliation = {true, visualChanged};
+        }
         entry.lastAccess = ++accessClock_;
     }
     return &entry;
@@ -437,6 +468,20 @@ bool SliderInteractionState::MatchesRecentDispatch(
         [&](const DispatchedValue& dispatched) {
             return Near(dispatched.value, value, entry.maximum - entry.minimum);
         });
+}
+
+bool SliderInteractionState::CancelUnsent(Entry& entry) noexcept {
+    if (!entry.pending || !entry.unsent) return false;
+    const bool visualChanged = !Near(
+        entry.targetValue, entry.authoritativeValue,
+        entry.maximum - entry.minimum);
+    entry.pending = false;
+    entry.unsent = false;
+    entry.suppressingGuardedEcho = false;
+    entry.latestTargetDispatchedAt = 0;
+    entry.targetValue = entry.authoritativeValue;
+    if (visualChanged) ++presentationRevision_;
+    return visualChanged;
 }
 
 SliderInteractionState::Entry* SliderInteractionState::CreateOrSynchronize(

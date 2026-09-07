@@ -169,7 +169,8 @@ Tree BuildWidgetTree(
             node.id = source.id;
             node.name = AccessibleName(source);
             node.value = source.accessibilityValue;
-            if (source.kind == L"slider" && source.id == focusedElementId) {
+            if (source.kind == L"slider" && source.id == focusedElementId &&
+                !source.isDisabled && !source.isBusy) {
                 const auto instruction = source.id == activeSliderElementId
                     ? L"Adjustment active."
                     : source.sliderInteractionMode == L"activateToAdjust"

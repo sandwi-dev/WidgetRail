@@ -187,6 +187,7 @@ private:
     [[nodiscard]] static bool MatchesRecentDispatch(
         const Entry& entry,
         double value) noexcept;
+    [[nodiscard]] bool CancelUnsent(Entry& entry) noexcept;
     void Trim(std::wstring_view protectedKey);
 
     std::unordered_map<std::wstring, Entry> entries_;

@@ -8504,7 +8504,8 @@ private:
         const auto* focused = widgetrail::input::FindNodeInInputScope(
             snapshot, interactionSession_.focusedElementId(), snapshot.activeInputScopeId);
         const auto authority = InteractionAuthority(state_.activeWidget(), snapshot);
-        if (!focused || focused->kind != L"slider" || !authority) return {};
+        if (!focused || focused->kind != L"slider" || focused->isDisabled ||
+            focused->isBusy || !authority) return {};
         return focused->sliderInteractionMode != L"activateToAdjust" ||
                 interactionSession_.SliderAdjustmentModeActive(
                     *authority, *focused, GetTickCount64())
@@ -12145,6 +12146,8 @@ private:
                     InvalidateWidgetSliderValues(
                         *snapshot, {requestedSlider->id}, true);
                 }
+                if (requestOutcome.consumed && !exactSliderAction)
+                    continue;
                 if (!exactSliderAction ||
                     !ValidateWidgetActionRequest(*exactSliderAction, *snapshot)) {
                     if (exactSliderAction) {
@@ -13252,7 +13255,23 @@ private:
         if (admission.retainFocus) return;
         resolution = std::move(admission.resolution);
         if (resolution.target) {
+            const auto flushInstanceId = snapshot->instanceId;
+            const auto flushSequence = snapshot->sequence;
+            const std::wstring flushRuntime{authority->runtimeGeneration};
+            const std::wstring flushPresentation{
+                authority->presentationGeneration};
             flushFocusedSlider();
+            const auto* postFlushSnapshot = InteractionSnapshotFor(widgetId);
+            const auto postFlushAuthority = postFlushSnapshot
+                ? InteractionAuthority(widgetId, *postFlushSnapshot)
+                : std::nullopt;
+            if (postFlushSnapshot != snapshot || !postFlushAuthority ||
+                postFlushSnapshot->instanceId != flushInstanceId ||
+                postFlushSnapshot->sequence != flushSequence ||
+                postFlushAuthority->runtimeGeneration != flushRuntime ||
+                postFlushAuthority->presentationGeneration != flushPresentation) {
+                return;
+            }
             if (pendingFocusGroupEntry) {
                 RetirePendingFocusGroupEntryForUserIntent(
                     widgetId, *snapshot, L"directional-input");
@@ -13745,7 +13764,7 @@ private:
         const auto* focused = widgetrail::input::FindNodeInInputScope(
             *snapshot, interactionSession_.focusedElementId(), snapshot->activeInputScopeId);
         if (!focused) return false;
-        const auto interactionAuthority = InteractionAuthority(widget, *snapshot);
+        auto interactionAuthority = InteractionAuthority(widget, *snapshot);
         if (!interactionAuthority) return false;
         const bool activationRequired =
             focused->sliderInteractionMode == L"activateToAdjust";
@@ -13765,6 +13784,14 @@ private:
         case FocusedSliderButtonRoute::ExitAdjustment:
             FlushCurrentSliderAction(
                 *interactionAuthority, *focused, GetTickCount64());
+            snapshot = InteractionSnapshotFor(widget);
+            if (!snapshot) return true;
+            interactionAuthority = InteractionAuthority(widget, *snapshot);
+            focused = widgetrail::input::FindNodeInInputScope(
+                *snapshot, interactionSession_.focusedElementId(),
+                snapshot->activeInputScopeId);
+            if (!interactionAuthority || !focused || focused->kind != L"slider")
+                return true;
             (void)interactionSession_.TransitionSliderAdjustmentMode(
                 *interactionAuthority, *focused,
                 widgetrail::input::SliderAdjustmentModeTransition::Exit,

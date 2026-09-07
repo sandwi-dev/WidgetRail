@@ -974,17 +974,24 @@ InteractionReconciliation WidgetInteractionSession::Tick(
     const auto* snapshot = authority ? authority->semantics : nullptr;
     if (snapshot) result = ReconcileAdmission(*snapshot, now);
     if (authority && snapshot) {
-        const auto collectDispatches = [&](const auto& self, const WidgetNode& node) -> void {
-            if (node.kind == L"slider") {
-                const auto slider = SliderDescriptor(*snapshot, node);
-                if (const auto dispatch = sliders_.TakePendingDispatch(slider, now)) {
-                    result.sliderActionRequests.push_back(
-                        MakeSliderActionRequest(*authority, slider, *dispatch));
-                }
+        const auto* focused = FindNodeInInputScope(
+            *snapshot, focusedElementId_, snapshot->activeInputScopeId);
+        if (focused && focused->kind == L"slider" &&
+            !focused->isDisabled && !focused->isBusy) {
+            const auto slider = SliderDescriptor(*snapshot, *focused);
+            const auto priorRevision = sliders_.presentationRevision();
+            if (const auto dispatch = sliders_.TakePendingDispatch(slider, now)) {
+                result.sliderActionRequests.push_back(
+                    MakeSliderActionRequest(*authority, slider, *dispatch));
             }
-            for (const auto& child : node.children) self(self, child);
-        };
-        collectDispatches(collectDispatches, snapshot->root);
+            if (sliders_.presentationRevision() != priorRevision &&
+                std::find(
+                    result.sliderDamageNodeIds.begin(),
+                    result.sliderDamageNodeIds.end(), focused->id) ==
+                    result.sliderDamageNodeIds.end()) {
+                result.sliderDamageNodeIds.push_back(focused->id);
+            }
+        }
     }
     const auto expired = sliders_.ExpireTimedOut(now);
     if (snapshot) {
@@ -1077,11 +1084,12 @@ SliderInputOutcome WidgetInteractionSession::TakePendingSliderAction(
     const auto* exactNode = ExactSliderNode(authority, node);
     if (!exactNode) return {};
     const auto slider = SliderDescriptor(*authority.semantics, *exactNode);
+    const auto priorRevision = sliders_.presentationRevision();
     const auto dispatch = sliders_.TakePendingDispatch(slider, now, force);
     RefreshSliderDeadline();
     return {
         dispatch.has_value(),
-        false,
+        sliders_.presentationRevision() != priorRevision,
         dispatch
             ? std::optional{MakeSliderActionRequest(authority, slider, *dispatch)}
             : std::nullopt,
@@ -1337,7 +1345,8 @@ InteractionRenderPresentation WidgetInteractionSession::PrepareRenderPresentatio
     if (allowAdjustmentModePresentation) {
         const auto* focused = FindNodeInInputScope(
             snapshot, renderedFocusId, snapshot.activeInputScopeId);
-        if (focused && focused->kind == L"slider") {
+        if (focused && focused->kind == L"slider" &&
+            !focused->isDisabled && !focused->isBusy) {
             const bool activationRequired =
                 focused->sliderInteractionMode == L"activateToAdjust";
             if (!activationRequired || sliders_.AdjustmentModeActive(
