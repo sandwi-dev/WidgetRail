@@ -13,6 +13,8 @@
 #include <array>
 #include <iostream>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -76,6 +78,63 @@ void WaitForState(
     }
     Require(false, message);
 }
+
+class ArtworkRequestLog final {
+public:
+    void Push(const std::wstring_view key) {
+        {
+            std::scoped_lock lock(mutex_);
+            requests_.emplace_back(key);
+        }
+        changed_.notify_all();
+    }
+
+    void WaitForSize(const std::size_t count, const char* message) const {
+        std::unique_lock lock(mutex_);
+        Require(changed_.wait_for(
+                    lock, std::chrono::seconds(2),
+                    [&] { return requests_.size() >= count; }),
+                message);
+    }
+
+    void WaitForBack(const std::wstring_view key, const char* message) const {
+        std::unique_lock lock(mutex_);
+        Require(changed_.wait_for(
+                    lock, std::chrono::seconds(2),
+                    [&] { return !requests_.empty() && requests_.back() == key; }),
+                message);
+    }
+
+    [[nodiscard]] std::size_t size() const {
+        std::scoped_lock lock(mutex_);
+        return requests_.size();
+    }
+
+    [[nodiscard]] std::wstring front() const {
+        std::scoped_lock lock(mutex_);
+        return requests_.front();
+    }
+
+    [[nodiscard]] std::wstring back() const {
+        std::scoped_lock lock(mutex_);
+        return requests_.back();
+    }
+
+    [[nodiscard]] std::wstring at(const std::size_t index) const {
+        std::scoped_lock lock(mutex_);
+        return requests_.at(index);
+    }
+
+    [[nodiscard]] bool Contains(const std::wstring_view key) const {
+        std::scoped_lock lock(mutex_);
+        return std::ranges::find(requests_, key) != requests_.end();
+    }
+
+private:
+    mutable std::mutex mutex_;
+    mutable std::condition_variable changed_;
+    std::vector<std::wstring> requests_;
+};
 
 const std::wstring& RequireBackgroundHandle(
     const widgetrail::RenderResult& result,
@@ -260,16 +319,20 @@ int wmain() {
             target.ReleaseAndGetAddressOf())),
             "render-target creation failed");
 
-        std::vector<std::wstring> requests;
+        ArtworkRequestLog requests;
         widgetrail::RemoteImageCache cache(
             {}, {}, {},
-            [&](const std::wstring_view key) {
-                requests.emplace_back(key);
-                return true;
+            [&](const std::wstring_view key,
+                const widgetrail::TrustedArtworkDemandAuthority&,
+                std::stop_token) {
+                requests.Push(key);
+                return widgetrail::TrustedArtworkRequestDisposition::Accepted;
             });
         widgetrail::DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
         widgetrail::DeclarativeRenderOptions options;
         options.artworkWidgetId = L"widgetrail.tests.background-surface";
+        options.artworkRuntimeGeneration = L"runtime";
+        options.artworkPresentationGeneration = L"presentation";
         options.artworkAuthorityId = L"widgetrail.tests.background-surface\x1fruntime\x1fpresentation";
         options.surfaceBackground = {0.0F, 0.0F, 0.0F, 0.0F};
         std::uint64_t frameTime = 1000;
@@ -359,7 +422,11 @@ int wmain() {
                 L"background.retarget.root";
 
             widgetrail::RemoteImageCache retargetCache(
-                {}, {}, {}, [](const std::wstring_view) { return true; });
+                {}, {}, {}, [](const std::wstring_view,
+                               const widgetrail::TrustedArtworkDemandAuthority&,
+                               std::stop_token) {
+                    return widgetrail::TrustedArtworkRequestDisposition::Accepted;
+                });
             const auto admitArtwork = [&](const std::wstring_view handle,
                                           const std::wstring_view content) {
                 const auto key = widgetrail::RemoteImageCache::TrustedArtworkKey(
@@ -383,6 +450,8 @@ int wmain() {
                 d2d.Get(), write.Get(), &retargetCache};
             widgetrail::DeclarativeRenderOptions retargetOptions;
             retargetOptions.artworkWidgetId = std::wstring{retargetWidget};
+            retargetOptions.artworkRuntimeGeneration = L"retarget-runtime";
+            retargetOptions.artworkPresentationGeneration = L"retarget-presentation";
             retargetOptions.artworkAuthorityId =
                 L"widgetrail.tests.background-retarget\x1fruntime\x1fpresentation";
             retargetOptions.surfaceBackground = {0.0F, 0.0F, 0.0F, 0.0F};
@@ -697,6 +766,8 @@ int wmain() {
         // First establish the authored default as the last committed image.
         parsed->root.children[0].children[0].focusBackgroundArtworkHandle.clear();
         (void)render(L"background-surface-test.first");
+        requests.WaitForSize(1U,
+            "ordinary background request did not reach its demand owner");
         Require(requests.size() == 1U && requests.front() == defaultKey,
             "ordinary background render changed exact default artwork authority");
         Require(cache.SupplyTrustedArtwork(
@@ -740,6 +811,8 @@ int wmain() {
         parsed->root.children[0].children[0].focusBackgroundArtworkHandle =
             L"background-surface-test.focus.first";
         const auto firstPending = render(L"background-surface-test.first");
+        requests.WaitForSize(2U,
+            "focused background request did not reach its demand owner");
         Require(requests.size() == 2U && requests.back() == firstKey,
             "focused background did not request the exact focused handle");
         Require(firstPending.backgroundArtworkHandles.at(L"background-surface-test.root") ==
@@ -760,6 +833,8 @@ int wmain() {
         Require(plan && plan->work == widgetrail::IncrementalPresentationWork::PaintOnly,
             "focus-background transition did not remain paint-only");
         const auto secondPending = render(L"background-surface-test.second");
+        requests.WaitForSize(3U,
+            "second focus request did not reach its demand owner");
         Require(requests.size() == 3U && requests.back() == secondKey,
             "second focus did not request its exact artwork handle once");
         Require(secondPending.backgroundArtworkHandles.at(L"background-surface-test.root") ==
@@ -790,7 +865,7 @@ int wmain() {
         const auto supersessionPending =
             render(L"background-surface-test.supersession");
         Require(requests.size() == 3U &&
-                std::ranges::find(requests, supersessionKey) == requests.end(),
+                !requests.Contains(supersessionKey),
             "unstable latest focus started decode work before its settle deadline");
         Require(supersessionPending.backgroundArtworkHandles.at(
                     L"background-surface-test.root") ==
@@ -826,6 +901,8 @@ int wmain() {
             "ordinary focus did not retain the last ready focused artwork");
 
         const auto replacementPending = render(L"background-surface-test.replacement");
+        requests.WaitForSize(requestsBeforeOrdinary + 1U,
+            "replacement request did not reach its demand owner");
         Require(requests.size() == requestsBeforeOrdinary + 1U &&
                 requests.back() == replacementKey,
             "subsequent focused background did not request its exact handle once");
@@ -918,6 +995,8 @@ int wmain() {
             L"background-surface-test.focus.failure";
         const auto failedReplacementPending =
             render(L"background-surface-test.first");
+        requests.WaitForBack(failedReplacementKey,
+            "failed replacement request did not reach its demand owner");
         Require(requests.back() == failedReplacementKey,
             "failed replacement did not request its exact handle");
         Require(RequireBackgroundHandle(
@@ -968,6 +1047,8 @@ int wmain() {
             L"background-surface-test.root",
             L"background-surface-test.artwork.changed");
         const auto changedDefaultPending = render(L"background-surface-test.ordinary");
+        requests.WaitForBack(changedDefaultKey,
+            "changed default request did not reach its demand owner");
         Require(requests.back() == changedDefaultKey &&
                 !changedDefaultPending.backgroundArtworkHandles.contains(
                     L"background-surface-test.root"),
@@ -1133,10 +1214,12 @@ int wmain() {
             widgetrail::RemoteImageCache::TrustedArtworkKey(
                 L"widgetrail.tests.background-surface", L"nested.inner",
                 L"nested.focus");
+        requests.WaitForSize(requestCountBeforeNested + 2U,
+            "nested focus requests did not reach their demand owner");
         Require(requests.size() == requestCountBeforeNested + 2U,
             "nested focus did not preserve two independent surface owners");
-        Require(requests[requestCountBeforeNested] == expectedOuterKey &&
-                requests[requestCountBeforeNested + 1U] == expectedInnerKey,
+        Require(requests.at(requestCountBeforeNested) == expectedOuterKey &&
+                requests.at(requestCountBeforeNested + 1U) == expectedInnerKey,
             "nested BackgroundSurface did not form a hard focus-artwork boundary");
         Require(cache.SupplyTrustedArtwork(
             L"widgetrail.tests.background-surface", L"nested.outer.default",
@@ -1169,9 +1252,11 @@ int wmain() {
             L"nested.inner.default");
         const auto requestsBeforeOuterFocus = requests.size();
         const auto outerFocusPending = renderNested(L"nested.outer.action");
+        requests.WaitForSize(requestsBeforeOuterFocus + 2U,
+            "outer focus requests did not reach their demand owner");
         Require(requests.size() == requestsBeforeOuterFocus + 2U &&
-                requests[requestsBeforeOuterFocus] == outerFocusKey &&
-                requests[requestsBeforeOuterFocus + 1U] == innerDefaultKey &&
+                requests.at(requestsBeforeOuterFocus) == outerFocusKey &&
+                requests.at(requestsBeforeOuterFocus + 1U) == innerDefaultKey &&
                 RequireBackgroundHandle(
                     outerFocusPending, L"nested.outer",
                     "outer-focus pending frame omitted outer artwork") ==
@@ -1213,6 +1298,8 @@ int wmain() {
             "removing the inner surface altered the outer surface handle");
         outerContent.children.insert(outerContent.children.begin(), retainedInner);
         const auto innerReaddedPending = renderNested(L"nested.ordinary");
+        requests.WaitForBack(innerDefaultKey,
+            "re-added inner request did not reach its demand owner");
         Require(requests.back() == innerDefaultKey &&
                 !innerReaddedPending.backgroundArtworkHandles.contains(L"nested.inner") &&
                 RequireBackgroundHandle(

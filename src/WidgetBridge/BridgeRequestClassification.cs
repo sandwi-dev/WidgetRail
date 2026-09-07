@@ -149,6 +149,12 @@ internal static class BridgeRequestClassifier
         _ = BridgeRequestKey.Widget(BridgeRequestKind.GetSnapshot, request.WidgetId);
         if (!BridgeRequestKey.IsBoundedIdentifier(request.ArtworkHandle))
             throw new BridgeProtocolException("Artwork handle is invalid.");
+        if ((request.RuntimeGeneration is null) !=
+                (request.PresentationGeneration is null) ||
+            (request.RuntimeGeneration is not null &&
+             (!BridgeRequestKey.IsBoundedIdentifier(request.RuntimeGeneration) ||
+              !BridgeRequestKey.IsBoundedIdentifier(request.PresentationGeneration))))
+            throw new BridgeProtocolException("Artwork generation authority is invalid.");
         return BridgeRequestKey.Widget(BridgeRequestKind.ResolveArtwork, request.WidgetId);
     }
 

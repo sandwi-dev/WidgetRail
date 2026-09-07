@@ -3,15 +3,18 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <thread>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -211,6 +214,194 @@ void VerifyFrameSafeCancellationRecovery() {
     Require(recovered.frame && *recovered.frame == body &&
                 !recovered.transportTainted && recovered.error == ERROR_SUCCESS,
             "Next ordinary request did not succeed on a correctly framed replacement transport");
+}
+
+struct DuplexPipePair final {
+    HANDLE server{INVALID_HANDLE_VALUE};
+    HANDLE client{INVALID_HANDLE_VALUE};
+
+    DuplexPipePair() = default;
+    DuplexPipePair(const DuplexPipePair&) = delete;
+    DuplexPipePair& operator=(const DuplexPipePair&) = delete;
+    DuplexPipePair(DuplexPipePair&& other) noexcept
+        : server(std::exchange(other.server, INVALID_HANDLE_VALUE)),
+          client(std::exchange(other.client, INVALID_HANDLE_VALUE)) {}
+    ~DuplexPipePair() {
+        if (server != INVALID_HANDLE_VALUE) CloseHandle(server);
+        if (client != INVALID_HANDLE_VALUE) CloseHandle(client);
+    }
+};
+
+DuplexPipePair CreateOverlappedClientPipe() {
+    static std::atomic_uint32_t sequence{};
+    const auto name = L"\\\\.\\pipe\\WidgetRail-bridge-client-test-" +
+        std::to_wstring(GetCurrentProcessId()) + L"-" +
+        std::to_wstring(++sequence);
+    DuplexPipePair pair;
+    pair.server = CreateNamedPipeW(
+        name.c_str(), PIPE_ACCESS_DUPLEX,
+        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+        1, 64 * 1024, 64 * 1024, 0, nullptr);
+    Require(pair.server != INVALID_HANDLE_VALUE,
+            "Could not create deterministic WidgetBridge server pipe");
+
+    std::atomic_bool connected{};
+    std::jthread connectThread([&] {
+        connected = ConnectNamedPipe(pair.server, nullptr) != FALSE ||
+            GetLastError() == ERROR_PIPE_CONNECTED;
+    });
+    pair.client = CreateFileW(
+        name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+        OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+    connectThread.join();
+    Require(pair.client != INVALID_HANDLE_VALUE && connected,
+            "Could not connect deterministic overlapped WidgetBridge client pipe");
+    return pair;
+}
+
+std::string ReadRequiredBridgeRequest(const HANDLE server) {
+    const auto request = widgetrail::testing::ReadBridgeFrame(server);
+    Require(request.frame && !request.transportTainted &&
+                request.error == ERROR_SUCCESS,
+            "Fake WidgetBridge server did not receive a complete request");
+    return *request.frame;
+}
+
+void VerifyArtworkRequestCancellationOwnership() {
+    {
+        widgetrail::WidgetBridgeClient client;
+        client.LockRequestGateForTesting();
+        std::mutex readyMutex;
+        std::condition_variable readyCondition;
+        bool ready{};
+        auto result = widgetrail::WidgetArtworkRequestDisposition::TerminalFailure;
+        std::jthread request([&](const std::stop_token token) {
+            {
+                std::scoped_lock lock(readyMutex);
+                ready = true;
+            }
+            readyCondition.notify_one();
+            result = client.RequestArtwork(
+                L"widget.test", L"artwork.waiting-gate",
+                L"runtime-a", L"presentation-a", token);
+        });
+        {
+            std::unique_lock lock(readyMutex);
+            Require(readyCondition.wait_for(
+                        lock, std::chrono::seconds(2), [&] { return ready; }),
+                    "Artwork request did not reach the serialized request gate");
+        }
+        request.request_stop();
+        request.join();
+        client.UnlockRequestGateForTesting();
+        Require(result == widgetrail::WidgetArtworkRequestDisposition::Cancelled,
+                "Stopped artwork request did not leave the serialized request gate");
+    }
+
+    {
+        auto pipes = CreateOverlappedClientPipe();
+        widgetrail::WidgetBridgeClient client;
+        client.AdoptPipeForTesting(pipes.client);
+        pipes.client = INVALID_HANDLE_VALUE;
+        std::jthread server([&] {
+            const auto request = ReadRequiredBridgeRequest(pipes.server);
+            Require(request.find("\"runtimeGeneration\":\"runtime-a\"") !=
+                        std::string::npos &&
+                    request.find("\"presentationGeneration\":\"presentation-a\"") !=
+                        std::string::npos,
+                    "Artwork request omitted exact generation authority");
+            constexpr std::string_view response =
+                R"json({"protocolVersion":1,"type":"error","requestId":1,"payload":{"code":"stale_artwork_authority","message":"Artwork authority is stale or unavailable."}})json";
+            const std::int32_t length = static_cast<std::int32_t>(response.size());
+            WriteBytes(pipes.server, &length, sizeof(length));
+            WriteBytes(pipes.server, response.data(), static_cast<DWORD>(response.size()));
+        });
+        const auto result = client.RequestArtwork(
+            L"widget.test", L"artwork.replaced",
+            L"runtime-a", L"presentation-a");
+        server.join();
+        Require(result == widgetrail::WidgetArtworkRequestDisposition::OriginRetired &&
+                    !client.TransportTaintedForTesting(),
+                "Stale artwork authority did not remain a non-terminal origin retirement");
+        client.Stop();
+    }
+
+    const auto verifyCancelledRead = [](const bool publishHeader) {
+        auto pipes = CreateOverlappedClientPipe();
+        widgetrail::WidgetBridgeClient client;
+        client.AdoptPipeForTesting(pipes.client);
+        pipes.client = INVALID_HANDLE_VALUE;
+
+        std::mutex serverMutex;
+        std::condition_variable serverCondition;
+        bool requestReceived{};
+        std::jthread server([&] {
+            const auto request = ReadRequiredBridgeRequest(pipes.server);
+            Require(request.find("resolve-artwork") != std::string::npos,
+                    "Fake server received the wrong WidgetBridge request kind");
+            if (publishHeader) {
+                constexpr std::string_view response =
+                    R"json({"protocolVersion":1,"type":"acknowledged","requestId":1,"payload":{}})json";
+                const std::int32_t length = static_cast<std::int32_t>(response.size());
+                WriteBytes(pipes.server, &length, sizeof(length));
+            }
+            {
+                std::scoped_lock lock(serverMutex);
+                requestReceived = true;
+            }
+            serverCondition.notify_one();
+        });
+
+        auto result = widgetrail::WidgetArtworkRequestDisposition::TerminalFailure;
+        std::jthread request([&](const std::stop_token token) {
+            result = client.RequestArtwork(
+                L"widget.test", L"artwork.cancelled",
+                L"runtime-a", L"presentation-a", token);
+        });
+        {
+            std::unique_lock lock(serverMutex);
+            Require(serverCondition.wait_for(
+                        lock, std::chrono::seconds(2),
+                        [&] { return requestReceived; }),
+                    "Fake server did not observe the artwork request");
+        }
+        request.request_stop();
+        request.join();
+        server.join();
+        Require(result == widgetrail::WidgetArtworkRequestDisposition::Cancelled &&
+                    client.TransportTaintedForTesting(),
+                publishHeader
+                    ? "Stopping between response frame phases did not taint the transport"
+                    : "Stopping a pending artwork response did not taint the transport");
+
+        const auto requestId = client.NextRequestIdForTesting();
+        Require(client.RequestArtwork(
+                    L"widget.test", L"artwork.must-not-reuse",
+                    L"runtime-a", L"presentation-a") ==
+                    widgetrail::WidgetArtworkRequestDisposition::TerminalFailure &&
+                    client.NextRequestIdForTesting() == requestId,
+                "Tainted WidgetBridge transport was reused by a later artwork request");
+        const auto beforeOrdinaryRequest = std::chrono::steady_clock::now();
+        Require(!client.ListWidgets().has_value() &&
+                    std::chrono::steady_clock::now() - beforeOrdinaryRequest <
+                        std::chrono::seconds(1),
+                "Ordinary WidgetBridge request did not fail closed on tainted framing");
+        DWORD available{};
+        Require(PeekNamedPipe(
+                    pipes.server, nullptr, 0, nullptr, &available, nullptr) != FALSE &&
+                    available == 0,
+                "Ordinary WidgetBridge request dispatched bytes on tainted framing");
+        Require(!client.PumpEvents(),
+                "WidgetBridge event pump consumed a tainted transport");
+        const auto beforeStop = std::chrono::steady_clock::now();
+        client.Stop();
+        Require(std::chrono::steady_clock::now() - beforeStop <
+                    std::chrono::seconds(1),
+                "Cancelled artwork transport did not shut down deterministically");
+    };
+
+    verifyCancelledRead(false);
+    verifyCancelledRead(true);
 }
 
 void VerifyAtomicPresentationUpdateMaterialization() {
@@ -1129,6 +1320,7 @@ int main() {
     CHECK(manifestText.find("\"pinningSupported\": true") != std::string::npos);
 
     VerifyFrameSafeCancellationRecovery();
+    VerifyArtworkRequestCancellationOwnership();
     VerifyAtomicPresentationUpdateMaterialization();
     VerifySelectControllerInputSerializationAndPopupRaster();
     VerifyControllerShortcutLabelContract();
@@ -1984,18 +2176,20 @@ int main() {
     error.clear();
     const auto artwork = widgetrail::testing::ParseWidgetArtworkResultEvent(R"json({
         "type":"artwork","requestId":0,
-        "payload":{"widgetId":"games-apps","artworkHandle":"gallery.artwork.cover","contentType":"image/jpeg","contentBase64":"/9j/2Q=="}
+        "payload":{"widgetId":"games-apps","artworkHandle":"gallery.artwork.cover","runtimeGeneration":"runtime-a","presentationGeneration":"presentation-a","contentType":"image/jpeg","contentBase64":"/9j/2Q=="}
     })json", error);
     CHECK(artwork && error.empty());
     CHECK(artwork->widgetId == L"games-apps");
     CHECK(artwork->artworkHandle == L"gallery.artwork.cover");
+    CHECK(artwork->runtimeGeneration == L"runtime-a");
+    CHECK(artwork->presentationGeneration == L"presentation-a");
     CHECK(artwork->contentType == L"image/jpeg");
     CHECK(artwork->contentBase64 == L"/9j/2Q==");
 
     error.clear();
     const auto webpArtwork = widgetrail::testing::ParseWidgetArtworkResultEvent(R"json({
         "type":"artwork","requestId":0,
-        "payload":{"widgetId":"gallery","artworkHandle":"gallery.artwork.webp","contentType":"image/webp","contentBase64":"UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAAdQmWZ0qf+BiOh/AAA="}
+        "payload":{"widgetId":"gallery","artworkHandle":"gallery.artwork.webp","runtimeGeneration":"runtime-b","presentationGeneration":"presentation-b","contentType":"image/webp","contentBase64":"UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAAdQmWZ0qf+BiOh/AAA="}
     })json", error);
     CHECK(webpArtwork && error.empty());
     CHECK(webpArtwork->contentType == L"image/webp");
@@ -2065,14 +2259,17 @@ int main() {
         auto suffix = std::to_wstring(index);
         suffix.insert(suffix.begin(), 32 - suffix.size(), L'0');
         CHECK(artworkResults.Push({
-            L"games-apps", L"library.art." + suffix, L"AAAA"}));
+            L"games-apps", L"library.art." + suffix,
+            L"runtime-a", L"presentation-a", L"image/png", L"AAAA"}));
     }
     CHECK(artworkResults.Push({
-        L"games-apps", L"library.art.00000000000000000000000000000000", L"BBBB"}));
+        L"games-apps", L"library.art.00000000000000000000000000000000",
+        L"runtime-a", L"presentation-a", L"image/png", L"BBBB"}));
     CHECK(artworkResults.size() ==
            widgetrail::WidgetArtworkResultQueue::MaximumResults);
     CHECK(!artworkResults.Push({
-        L"games-apps", L"library.art.ffffffffffffffffffffffffffffffff", L"CCCC"}));
+        L"games-apps", L"library.art.ffffffffffffffffffffffffffffffff",
+        L"runtime-a", L"presentation-a", L"image/png", L"CCCC"}));
 
     widgetrail::WidgetActionFailureQueue actionFailures;
     for (int index = 0; index <= 16; ++index) {

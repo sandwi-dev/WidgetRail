@@ -168,6 +168,8 @@ struct WidgetSurfacePaintTrace final {
     bool declarativeRenderSucceeded{}, admittedContentPresented{};
     std::size_t navigationNodeCount{};
     std::optional<RenderDiagnostic> currentFirstRenderDiagnostic;
+    std::wstring artworkRuntimeGeneration;
+    std::wstring artworkPresentationGeneration;
     bool hostCanvasTransparent{};
     bool hostChromeVisible{};
     bool hostBorderVisible{};
@@ -287,6 +289,8 @@ public:
                     ? std::nullopt
                     : std::optional<RenderDiagnostic>{
                           lastRenderResult_.diagnostics.front()},
+                lastArtworkRuntimeGenerationForTesting_,
+                lastArtworkPresentationGenerationForTesting_,
                 lastHostCanvasTransparentForTesting_,
                 lastHostChromeVisibleForTesting_,
                 lastHostBorderVisibleForTesting_,
@@ -449,6 +453,8 @@ private:
     bool lastHostBorderUsesFocusColorForTesting_{};
     float lastHostBorderDipForTesting_{};
     declarative::Rect lastContentViewportForTesting_{};
+    std::wstring lastArtworkRuntimeGenerationForTesting_;
+    std::wstring lastArtworkPresentationGenerationForTesting_;
 #endif
     struct PendingPinnedResizeDiagnostic final {
         std::optional<SIZE> previousClientExtent;

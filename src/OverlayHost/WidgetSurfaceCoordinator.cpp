@@ -2608,9 +2608,16 @@ void WidgetSurfaceCoordinator::Paint() {
     options.pressedElementId =
         std::move(sliderPresentation.pressedElementId);
     options.artworkWidgetId = admission_->widgetId;
+    options.artworkRuntimeGeneration = admission_->runtimeGeneration;
+    options.artworkPresentationGeneration = admission_->presentationGeneration;
     options.artworkAuthorityId = admission_->widgetId + L"\x1f" +
         admission_->runtimeGeneration + L"\x1f" +
         admission_->presentationGeneration;
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+    lastArtworkRuntimeGenerationForTesting_ = options.artworkRuntimeGeneration;
+    lastArtworkPresentationGenerationForTesting_ =
+        options.artworkPresentationGeneration;
+#endif
     const input::WidgetInteractionAuthority authority{
         admission_->widgetId,
         &selectedSnapshot,
