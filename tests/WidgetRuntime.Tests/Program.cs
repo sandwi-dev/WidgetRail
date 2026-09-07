@@ -2669,13 +2669,45 @@ static async Task BrokerAdapterBindsGestureContext()
     server.GrantDashboardGestureAuthority(
         PlatformCapabilities.MediaSessionsControlV1,
         PlatformCapabilities.MediaSessionControl,
-        41,
+        42,
+        6,
+        TimeSpan.FromSeconds(2));
+    var activationStarted = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseActivation = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    ((IDashboardGestureActivatingCapabilityClient)adapter).SetDashboardGestureActivator(
+        async (_, _, _, cancellationToken) =>
+        {
+            activationStarted.TrySetResult();
+            await releaseActivation.Task.WaitAsync(cancellationToken);
+            return true;
+        });
+    Task<WidgetCapabilityAcknowledgement> inFlight;
+    using (WidgetActionInvocationContext.Enter(new WidgetActionInvocationState(501)))
+    using (WidgetCapabilityInvocationContext.Enter(new(42, 6)))
+    {
+        inFlight = adapter.InvokeAsync(
+            WidgetMediaCapabilities.Control,
+            new ControlWidgetMediaSessionRequest(
+                "media-1", WidgetMediaSessionCommand.Next)).AsTask();
+        await activationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+    releaseActivation.TrySetResult();
+    Assert.True((await inFlight).Acknowledged,
+        "Ordinary in-flight gesture work was rejected after action scope exit.");
+    Assert.Equal(2, backend.MediaControlCalls);
+
+    server.GrantDashboardGestureAuthority(
+        PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl,
+        43,
         5,
         TimeSpan.FromSeconds(2));
     var releaseBackground = new TaskCompletionSource(
         TaskCreationOptions.RunContinuationsAsynchronously);
     Task leakedInvocation;
-    using (WidgetCapabilityInvocationContext.Enter(new(41, 5)))
+    using (WidgetCapabilityInvocationContext.Enter(new(43, 5)))
     {
         leakedInvocation = Task.Run(async () =>
         {
@@ -2688,7 +2720,7 @@ static async Task BrokerAdapterBindsGestureContext()
     }
     releaseBackground.SetResult();
     await Assert.ThrowsAsync<WidgetCapabilityException>(() => leakedInvocation);
-    Assert.Equal(1, backend.MediaControlCalls);
+    Assert.Equal(2, backend.MediaControlCalls);
     await transport.DisposeAsync();
     await serverTask.WaitAsync(TimeSpan.FromSeconds(3));
 }
@@ -2764,6 +2796,24 @@ static async Task BrokerAdapterBindsCloseActionContext()
     release.TrySetResult();
     await Assert.ThrowsAsync<WidgetCapabilityException>(() => leaked);
     Assert.Equal(1, Volatile.Read(ref effects));
+    Assert.Equal(1, backend.AppLibraryLaunchCalls);
+
+    var ordinaryRelease = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    Task<WidgetAppLibraryPage> ordinaryRead;
+    using (WidgetActionInvocationContext.Enter(new WidgetActionInvocationState(93)))
+    {
+        ordinaryRead = Task.Run(async () =>
+        {
+            await ordinaryRelease.Task;
+            return await adapter.InvokeAsync(
+                WidgetAppLibraryCapabilities.GetPage,
+                new WidgetAppLibraryCursorRequest(
+                    new WidgetAppLibraryQuery(), null, null, 1));
+        });
+    }
+    ordinaryRelease.TrySetResult();
+    Assert.Equal(1, (await ordinaryRead).Items.Count);
     Assert.Equal(1, backend.AppLibraryLaunchCalls);
 
     var ordinary = await adapter.InvokeAsync(

@@ -39,7 +39,7 @@ internal sealed class BrokerWidgetCapabilityClient :
         ArgumentNullException.ThrowIfNull(request);
         var actionContext = WidgetActionInvocationContext.Current;
         var closeOnLaunch = IsCloseOnLaunch(operation, request);
-        if (actionContext is { IsActive: false })
+        if (closeOnLaunch && actionContext is { IsActive: false })
             throw CapabilityFailure("stale_action_context");
         using var closeRequest = closeOnLaunch
             ? actionContext?.TryBeginCloseRequest()
@@ -70,7 +70,7 @@ internal sealed class BrokerWidgetCapabilityClient :
                 // the request to ordinary lifecycle authority.
                 if (activated) activatedGesture = gesture;
             }
-            if (actionContext is { IsActive: false })
+            if (closeOnLaunch && actionContext is { IsActive: false })
                 throw CapabilityFailure("stale_action_context");
             response = await _client.RequestWithActionAsync(
                 operation.CapabilityId,
