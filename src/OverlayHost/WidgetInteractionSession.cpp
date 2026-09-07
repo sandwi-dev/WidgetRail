@@ -1139,6 +1139,15 @@ bool WidgetInteractionSession::SliderAdjustmentModeActive(
     return sliders_.AdjustmentModeActive(slider);
 }
 
+std::optional<double> WidgetInteractionSession::SliderPresentationValue(
+    const WidgetInteractionAuthority& authority,
+    const WidgetNode& node) const {
+    const auto* exactNode = ExactSliderNode(authority, node);
+    if (!exactNode) return std::nullopt;
+    return sliders_.PresentationValue(
+        SliderDescriptor(*authority.semantics, *exactNode));
+}
+
 bool WidgetInteractionSession::TransitionSliderAdjustmentMode(
     const WidgetInteractionAuthority& authority,
     const WidgetNode& node,

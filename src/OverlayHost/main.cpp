@@ -1823,12 +1823,14 @@ private:
     }
 
     void PumpBridgeEvents(const bool controllerTick) {
+        const auto pumpStarted = GetTickCount64();
         // This order is an authority contract: drain transport frames before
         // dispatching failures, input, resources, terminals, revisions,
         // presentation demand, action feedback, and host effects. The hidden
         // control-plane timer fills these queues but deliberately does not
         // consume them until a visible or pinned presentation tick.
         (void)bridge_.PumpEvents();
+        const auto transportCompleted = GetTickCount64();
         for (auto& failure : bridge_.TakeRuntimeFailures()) {
             if (!sessions_.Contains(failure.widgetId)) {
                 AppendDiagnostic(
@@ -1850,8 +1852,10 @@ private:
                     widgetrail::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
             }
         }
+        const auto controllerStarted = GetTickCount64();
         if (controllerTick && state_.surface() != widgetrail::Surface::Hidden)
             PollController();
+        const auto controllerCompleted = GetTickCount64();
         for (auto& artwork : bridge_.TakeArtworkResults()) {
             const widgetrail::TrustedArtworkDemandAuthority authority{
                 artwork.widgetId,
@@ -1984,6 +1988,23 @@ private:
             }
         }
         RecordPinnedSurfaceWorkCounters();
+        const auto pumpCompleted = GetTickCount64();
+        if (controllerTick && sliderInputDiagnosticActive_ &&
+            pumpCompleted - pumpStarted >
+                3 * kVisibleControllerTimerMilliseconds) {
+            AppendActionCorrelation(
+                L"stage=slider-host-pump-slow total-ms=" +
+                    std::to_wstring(pumpCompleted - pumpStarted) +
+                L" transport-ms=" +
+                    std::to_wstring(transportCompleted - pumpStarted) +
+                L" pre-controller-ms=" +
+                    std::to_wstring(controllerStarted - transportCompleted) +
+                L" controller-ms=" +
+                    std::to_wstring(controllerCompleted - controllerStarted) +
+                L" post-controller-ms=" +
+                    std::to_wstring(pumpCompleted - controllerCompleted),
+                DiagnosticSeverity::Debug);
+        }
     }
 
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
@@ -6651,6 +6672,10 @@ private:
                 sessions_.RefreshState(event.widgetId) ==
                     widgetrail::WidgetRefreshState::RefreshRequested;
             const bool selectPopupWasOpen = interactionSession_.selectPopup().has_value();
+            const bool traceSliderReconciliation =
+                SliderAdjustmentDiagnosticActive();
+            const auto sliderDeadlineBefore =
+                interactionSession_.sliderReconcileDeadline();
             const auto interactionReconciliation =
                 interactionSession_.ReconcileAdmission(
                     *current,
@@ -6660,6 +6685,20 @@ private:
                         ? std::wstring_view{interactionSession_.focusedElementId()}
                         : std::wstring_view{},
                     GetTickCount64());
+            if (traceSliderReconciliation) {
+                AppendActionCorrelation(
+                    L"stage=slider-snapshot-reconcile sequence=" +
+                    std::to_wstring(current->sequence) +
+                    L" deadline-before=" +
+                    std::to_wstring(sliderDeadlineBefore) +
+                    L" deadline-after=" + std::to_wstring(
+                        interactionReconciliation.nextDeadline) +
+                    L" damage-count=" + std::to_wstring(
+                        interactionReconciliation.sliderDamageNodeIds.size()) +
+                    L" dispatch-count=" + std::to_wstring(
+                        interactionReconciliation.sliderActionRequests.size()),
+                    DiagnosticSeverity::Debug);
+            }
             const auto& reconciledSliderNodes =
                 interactionReconciliation.sliderDamageNodeIds;
             pendingWidgetPresentationImpact_ =
@@ -10954,6 +10993,74 @@ private:
         }
     }
 
+    [[nodiscard]] bool SliderAdjustmentDiagnosticActive() {
+        if (state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget) return false;
+        const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
+        if (!snapshot) return false;
+        const auto authority = InteractionAuthority(state_.activeWidget(), *snapshot);
+        const auto* focused = widgetrail::input::FindNodeInInputScope(
+            *snapshot, interactionSession_.focusedElementId(),
+            snapshot->activeInputScopeId);
+        return authority && focused && focused->kind == L"slider" &&
+            interactionSession_.SliderAdjustmentModeActive(*authority, *focused);
+    }
+
+    void TraceSliderControllerSample(
+        const WidgetRailOverlayPlatformControllerFrame& frame,
+        const ULONGLONG now) {
+        if (!SliderAdjustmentDiagnosticActive()) {
+            sliderInputDiagnosticActive_ = false;
+            lastSliderControllerSampleAt_ = 0;
+            lastSliderControllerDpadButtons_ = 0;
+            lastSliderControllerConnected_.reset();
+            return;
+        }
+
+        constexpr WORD dpadMask = XINPUT_GAMEPAD_DPAD_LEFT |
+            XINPUT_GAMEPAD_DPAD_RIGHT | XINPUT_GAMEPAD_DPAD_UP |
+            XINPUT_GAMEPAD_DPAD_DOWN;
+        const WORD rawDpad = frame.state.buttons & dpadMask;
+        const bool connected = frame.connected != WRAIL_OVERLAY_PLATFORM_FALSE;
+        const auto event = DecodeNavigation(frame.dpadNavigation);
+        const auto gap = lastSliderControllerSampleAt_ == 0
+            ? 0 : now - lastSliderControllerSampleAt_;
+        const bool transition = !sliderInputDiagnosticActive_ ||
+            rawDpad != lastSliderControllerDpadButtons_ ||
+            !lastSliderControllerConnected_ ||
+            *lastSliderControllerConnected_ != connected;
+        const bool slowSample = lastSliderControllerSampleAt_ != 0 &&
+            gap > 3 * kVisibleControllerTimerMilliseconds;
+        if (transition || slowSample || event) {
+            const auto direction = !event ? L"none" :
+                event->direction == widgetrail::input::NavigationDirection::Left
+                    ? L"left" :
+                event->direction == widgetrail::input::NavigationDirection::Right
+                    ? L"right" :
+                event->direction == widgetrail::input::NavigationDirection::Up
+                    ? L"up" : L"down";
+            const auto phase = !event ? L"none" :
+                event->phase == widgetrail::input::NavigationEventPhase::Repeated
+                    ? L"repeated" : L"pressed";
+            AppendActionCorrelation(
+                L"stage=slider-input-sample tick=" + std::to_wstring(now) +
+                L" gap-ms=" + std::to_wstring(gap) +
+                L" connected=" + (connected ? L"1" : L"0") +
+                L" foreground-exclusive=" +
+                    (frame.foregroundExclusive != WRAIL_OVERLAY_PLATFORM_FALSE
+                        ? L"1" : L"0") +
+                L" read-path=" + std::to_wstring(
+                    static_cast<int>(frame.readPath)) +
+                L" raw-dpad=" + std::to_wstring(rawDpad) +
+                L" event=" + direction + L" phase=" + phase,
+                DiagnosticSeverity::Debug);
+        }
+        sliderInputDiagnosticActive_ = true;
+        lastSliderControllerSampleAt_ = now;
+        lastSliderControllerDpadButtons_ = rawDpad;
+        lastSliderControllerConnected_ = connected;
+    }
+
     void PollController() {
         const ULONGLONG now = GetTickCount64();
         const bool foregroundOwned = IsOverlayProcessForeground();
@@ -10981,6 +11088,7 @@ private:
         const WORD buttons = frame.state.buttons;
         const WORD pressed = frame.pressedButtons;
         const WORD released = frame.releasedButtons;
+        TraceSliderControllerSample(frame, now);
         constexpr WORD repeatRecoveryChord =
             XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
         if (!connected || !foregroundOwned ||
@@ -11595,7 +11703,10 @@ private:
             if (stickDirection) DispatchStickNavigation(*stickDirection);
             if (dpadDirection) DispatchStickNavigation(*dpadDirection);
         }
+        const auto sliderDeadlineBefore =
+            interactionSession_.sliderReconcileDeadline();
         if (interactionSession_.SliderReconcileDue(now)) {
+            const bool traceSliderPump = SliderAdjustmentDiagnosticActive();
             const widgetrail::WidgetSnapshot* currentSnapshot{};
             std::optional<widgetrail::input::WidgetInteractionAuthority>
                 currentAuthority;
@@ -11608,6 +11719,31 @@ private:
             const auto tick = interactionSession_.Tick(
                 currentAuthority ? &*currentAuthority : nullptr,
                 interactionSession_.focusedElementId(), now);
+            if (traceSliderPump) {
+                std::wstring dispatchTarget = L"none";
+                std::uint64_t dispatchGeneration{};
+                if (!tick.sliderActionRequests.empty()) {
+                    const auto& request = tick.sliderActionRequests.front();
+                    if (request.requestedValue)
+                        dispatchTarget = std::to_wstring(*request.requestedValue);
+                    dispatchGeneration = request.sliderIntentGeneration;
+                }
+                AppendActionCorrelation(
+                    L"stage=slider-pump tick=" + std::to_wstring(now) +
+                    L" deadline-before=" +
+                        std::to_wstring(sliderDeadlineBefore) +
+                    L" overdue-ms=" + std::to_wstring(
+                        now >= sliderDeadlineBefore
+                            ? now - sliderDeadlineBefore : 0) +
+                    L" dispatch-count=" + std::to_wstring(
+                        tick.sliderActionRequests.size()) +
+                    L" target=" + dispatchTarget +
+                    L" intent-generation=" +
+                        std::to_wstring(dispatchGeneration) +
+                    L" deadline-after=" +
+                        std::to_wstring(tick.nextDeadline),
+                    DiagnosticSeverity::Debug);
+            }
             if (currentSnapshot && !tick.sliderDamageNodeIds.empty()) {
                     InvalidateWidgetSliderValues(
                         *currentSnapshot, tick.sliderDamageNodeIds, false);
@@ -13068,8 +13204,34 @@ private:
         if (route == widgetrail::input::FocusedDirectionRoute::Consume) return;
         if (route == widgetrail::input::FocusedDirectionRoute::SliderAdjustment) {
             if (!interactionAuthority) return;
+            const auto projectedBefore =
+                interactionSession_.SliderPresentationValue(
+                    *interactionAuthority, *focused);
+            const auto now = GetTickCount64();
             const auto adjustment = interactionSession_.AdjustSlider(
-                *interactionAuthority, *focused, direction, GetTickCount64());
+                *interactionAuthority, *focused, direction, now);
+            const auto projectedAfter =
+                interactionSession_.SliderPresentationValue(
+                    *interactionAuthority, *focused);
+            AppendActionCorrelation(
+                L"stage=slider-step tick=" + std::to_wstring(now) +
+                L" direction=" +
+                    (direction == widgetrail::input::NavigationDirection::Left
+                        ? L"left" : L"right") +
+                L" phase=" +
+                    (phase == widgetrail::input::NavigationEventPhase::Repeated
+                        ? L"repeated" : L"pressed") +
+                L" snapshot=" + std::to_wstring(snapshot->sequence) +
+                L" authoritative=" + std::to_wstring(focused->value) +
+                L" projected-before=" +
+                    (projectedBefore ? std::to_wstring(*projectedBefore) : L"none") +
+                L" projected-after=" +
+                    (projectedAfter ? std::to_wstring(*projectedAfter) : L"none") +
+                L" consumed=" + (adjustment.consumed ? L"1" : L"0") +
+                L" visual=" + (adjustment.visualChanged ? L"1" : L"0") +
+                L" deadline-after=" +
+                    std::to_wstring(adjustment.nextDeadline),
+                DiagnosticSeverity::Debug);
             if (adjustment.visualChanged) {
                 // The host-owned thumb moves immediately; the latest absolute
                 // value is dispatched only after the shared trailing settle.
@@ -17880,6 +18042,10 @@ private:
     std::optional<HeldActionAuthority> heldActionAuthority_;
     int lastHeldRepeatVerdict_{-1};
     widgetrail::input::WidgetInteractionSession interactionSession_;
+    bool sliderInputDiagnosticActive_{};
+    ULONGLONG lastSliderControllerSampleAt_{};
+    WORD lastSliderControllerDpadButtons_{};
+    std::optional<bool> lastSliderControllerConnected_;
     std::wstring rightStickDropSignature_;
     std::uint64_t rightStickDropCount_{};
     std::optional<bool> lastForegroundOwnership_;
