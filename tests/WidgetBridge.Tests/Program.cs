@@ -83,6 +83,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Client registry restart reserves one generation and cleans failed restore", BridgeClientRegistryScenarios.RestartReservationAndRestoreFailureAreClosed),
     ("Client registry replacement retires before exact host mutation", BridgeClientRegistryScenarios.ManagedReplacementRetiresBeforeMutation),
     ("Trusted local-data management clears one exact retired generation", BridgeClientRegistryScenarios.LocalDataManagementIsExactAndDocumentBlind),
+    ("Catalog retirement cancels a real running-registration request lease",
+        BridgeClientRegistryScenarios.CatalogRetirementCancelsRegistrationLease),
     ("Client registry commits lifecycle and first snapshot as one generation", BridgeClientRegistryScenarios.LifecycleAndFirstSnapshotAreAtomic),
     ("Client registry publication admission serializes replacement", BridgeClientRegistryScenarios.PublicationAdmissionSerializesReplacement),
     ("Client registry notification lane bounds and balances admission", BridgeClientRegistryScenarios.NotificationLaneBoundsAndBalancesAdmission),
@@ -151,6 +153,18 @@ if (testPrefixIndex >= 0)
     tests = tests.Where(test => test.Name.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
     if (tests.Length == 0)
         throw new ArgumentException($"No WidgetBridge tests matched prefix '{prefix}'.");
+}
+
+if (args.Contains("--widge-193-only", StringComparer.Ordinal))
+{
+    var selected = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "Installed worker local data clears after exact retirement and preserves its neighbor",
+        "Disabled package uninstall is exact revisioned and preserves private data",
+        "Trusted local-data management clears one exact retired generation",
+        "Catalog retirement cancels a real running-registration request lease",
+    };
+    tests = tests.Where(test => selected.Contains(test.Name)).ToArray();
 }
 
 var failures = new List<string>();
@@ -2406,8 +2420,7 @@ static async Task InstalledWorkerLocalDataClearIsExact()
     var privateRoot = Path.Combine(temporary.Path, "private-state");
     var backend = new WindowsCommunityPlatformBackend(privateRoot);
     var simulator = new SimulatedPlatformBrokerBackend();
-    await using var composite = new CompositePlatformBrokerBackend(
-        simulator, simulator, privateState: backend);
+    var registrations = new BridgeRegistrationBackend();
     var selectedConfigured = load.Catalog.GetConfigured(selected.Manifest.Id);
     var neighborConfigured = load.Catalog.GetConfigured(neighbor.Manifest.Id);
     Assert.Equal(InstalledWidgetInstanceIdentity.Derive(
@@ -2421,6 +2434,10 @@ static async Task InstalledWorkerLocalDataClearIsExact()
     var neighborIdentity = new BrokerWidgetIdentity(
         neighborConfigured.PackageId, neighborConfigured.PublisherId,
         neighborConfigured.InstanceId);
+    registrations.Seed(selectedIdentity);
+    registrations.Seed(neighborIdentity);
+    await using var composite = new CompositePlatformBrokerBackend(
+        simulator, simulator, appLibrary: registrations, privateState: backend);
     var encoded = Convert.ToBase64String("{\"schemaVersion\":1}"u8);
     await backend.WritePrivateStateAsync(
         selectedIdentity, new WritePrivateStateRequest(encoded, null), CancellationToken.None);
@@ -2473,9 +2490,15 @@ static async Task InstalledWorkerLocalDataClearIsExact()
         Assert.False((await backend.ReadPrivateStateAsync(
             selectedIdentity, CancellationToken.None)).Exists,
             "Selected installed state survived clear.");
+        Assert.False((await registrations.GetRunningAppRegistrationStateAsync(
+            selectedIdentity, CancellationToken.None)).Exists,
+            "Selected portable registrations survived local-data clear.");
         Assert.True((await backend.ReadPrivateStateAsync(
             neighborIdentity, CancellationToken.None)).Exists,
             "Neighbor installed state changed during clear.");
+        Assert.True((await registrations.GetRunningAppRegistrationStateAsync(
+            neighborIdentity, CancellationToken.None)).Exists,
+            "Neighbor portable registrations changed during local-data clear.");
 
         await catalog.SetEnabledAsync(selected.Manifest.Id, true);
         var reenabled = await BridgeCatalog.LoadWithInstalledAsync(
@@ -2523,11 +2546,15 @@ static async Task InstalledPackageUninstallIsExact()
 
     var load = await BridgeCatalog.LoadWithInstalledAsync(
         trusted.Path, catalogRoot, Environment.ProcessPath!);
+    var appLibrary = new BridgeRegistrationBackend();
+    var simulator = new SimulatedPlatformBrokerBackend();
+    await using var composite = new CompositePlatformBrokerBackend(
+        simulator, simulator, appLibrary: appLibrary);
     await using var monitor = new BridgeCatalogMonitor(
         trusted.Path, catalogRoot, Environment.ProcessPath!, load.Catalog);
     await using var server = new WidgetBridgeServer(
         $"wrail-bridge-uninstall-{Guid.NewGuid():N}", load.Catalog, 64 * 1024,
-        catalogMonitor: monitor);
+        platformBackend: composite, catalogMonitor: monitor);
 
     var inspection = await server.InspectWidgetPackageUninstallAsync(selected.Manifest.Id);
     Assert.True(inspection.CanUninstall && inspection.ConfirmationToken is not null,
@@ -2535,6 +2562,16 @@ static async Task InstalledPackageUninstallIsExact()
     Assert.Equal(2, inspection.VersionCount);
     Assert.True(!inspection.ConfirmationToken!.Contains(catalogRoot,
         StringComparison.OrdinalIgnoreCase), "Confirmation token exposed a path.");
+    var uninstallIdentity = new BrokerWidgetIdentity(
+        inspection.WidgetId, inspection.PublisherId,
+        InstalledWidgetInstanceIdentity.Derive(
+            inspection.WidgetId, inspection.ActiveVersion));
+    var olderUninstallIdentity = new BrokerWidgetIdentity(
+        inspection.WidgetId, "unsigned." + new string('e', 64),
+        InstalledWidgetInstanceIdentity.Derive(
+            inspection.WidgetId, "1.0.0"));
+    appLibrary.Seed(uninstallIdentity);
+    appLibrary.Seed(olderUninstallIdentity);
 
     var forged = await server.UninstallWidgetPackageAsync(
         inspection.WidgetId, "forged.publisher", inspection.ActiveVersion,
@@ -2557,6 +2594,19 @@ static async Task InstalledPackageUninstallIsExact()
             item.Id == selected.Manifest.Id),
             "Resident refusal removed the selected package.");
     }
+    appLibrary.FailRetirement = true;
+    var cleanupFailed = await server.UninstallWidgetPackageAsync(
+        inspection.WidgetId, inspection.PublisherId, inspection.ActiveVersion,
+        inspection.ConfirmationToken);
+    Assert.Equal(PlatformWidgetPackageUninstallStatus.RecoveryPending,
+        cleanupFailed.Status);
+    Assert.True((await catalog.DiscoverAsync()).Widgets.Any(item =>
+        item.Id == selected.Manifest.Id),
+        "Provider precommit failure did not roll the disabled package back.");
+    Assert.True((await appLibrary.GetRunningAppRegistrationStateAsync(
+        uninstallIdentity, CancellationToken.None)).Exists,
+        "Provider precommit failure removed registration authority.");
+    appLibrary.FailRetirement = false;
     var result = await server.UninstallWidgetPackageAsync(
         inspection.WidgetId, inspection.PublisherId, inspection.ActiveVersion,
         inspection.ConfirmationToken);
@@ -2567,6 +2617,12 @@ static async Task InstalledPackageUninstallIsExact()
     Assert.True((await catalog.DiscoverAsync()).Widgets.Any(item => item.Id == neighbor.Manifest.Id),
         "Exact uninstall changed the neighbor.");
     Assert.Equal("retained", await File.ReadAllTextAsync(privateState));
+    Assert.False((await appLibrary.GetRunningAppRegistrationStateAsync(
+        uninstallIdentity, CancellationToken.None)).Exists,
+        "Exact package uninstall retained package-owned portable registrations.");
+    Assert.False((await appLibrary.GetRunningAppRegistrationStateAsync(
+        olderUninstallIdentity, CancellationToken.None)).Exists,
+        "Exact package uninstall retained an older publisher generation.");
 
     var stale = await server.UninstallWidgetPackageAsync(
         inspection.WidgetId, inspection.PublisherId, inspection.ActiveVersion,
@@ -6456,6 +6512,67 @@ file sealed class RawBridgeConnection : IAsyncDisposable
     }
 
     public ValueTask DisposeAsync() => _pipe.DisposeAsync();
+}
+
+file sealed class BridgeRegistrationBackend : IAppLibraryPlatformBrokerBackend
+{
+    private readonly Dictionary<string, long> _revisions =
+        new(StringComparer.Ordinal);
+
+    internal void Seed(BrokerWidgetIdentity identity)
+    {
+        identity.Validate();
+        _revisions[Key(identity)] = 1;
+    }
+
+    internal bool FailRetirement { get; set; }
+
+    public Task<AppLibraryRegistrationStateSummary>
+        GetRunningAppRegistrationStateAsync(
+            BrokerWidgetIdentity identity,
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var exists = _revisions.TryGetValue(Key(identity), out var revision);
+        return Task.FromResult(new AppLibraryRegistrationStateSummary(
+            exists, exists ? revision : 0));
+    }
+
+    public Task ClearRunningAppRegistrationsAsync(
+        BrokerWidgetIdentity identity,
+        long expectedRevision,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var key = Key(identity);
+        if (!_revisions.TryGetValue(key, out var revision) ||
+            revision != expectedRevision)
+            throw new BrokerException(
+                "app_registration_conflict", "Synthetic registration conflict.");
+        _revisions.Remove(key);
+        return Task.CompletedTask;
+    }
+
+    public Task<AppLibraryPackageRegistrationRetirementSummary>
+        RetireRunningAppPackageRegistrationsAsync(
+            string packageId,
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (FailRetirement)
+            throw new BrokerException(
+                "registration_store_unavailable",
+                "Synthetic registration cleanup failure.");
+        var suffix = "\0" + packageId;
+        foreach (var key in _revisions.Keys.Where(key => key.EndsWith(
+                     suffix, StringComparison.Ordinal)).ToArray())
+            _revisions.Remove(key);
+        return Task.FromResult(
+            new AppLibraryPackageRegistrationRetirementSummary(true, false));
+    }
+
+    private static string Key(BrokerWidgetIdentity identity) =>
+        identity.PublisherId + "\0" + identity.PackageId;
 }
 
 file sealed class ProtectedWifiNetworkBackend :

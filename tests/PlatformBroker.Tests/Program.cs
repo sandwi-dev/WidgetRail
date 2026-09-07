@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Buffers.Binary;
 using WidgetRail.PlatformBroker;
 
-var tests = new (string Name, Func<Task> Run)[]
+var allTests = new (string Name, Func<Task> Run)[]
 {
     ("Capability vocabulary is closed and versioned", CapabilityVocabularyIsClosed),
     ("Composite backend keeps provider event domains separated", CompositeProviderDomainsAreSeparated),
@@ -24,6 +24,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("App library enumeration is opaque paged consent and lifecycle gated", AppLibraryContracts),
     ("Running app observation is separately consented opaque and stale-safe",
         RunningAppContracts),
+    ("Running app registration is explicit durable scoped and forgettable",
+        RunningAppRegistrationContracts),
     ("App library cursors and registrations stay bounded across ten thousand items",
         AppLibraryCursorBounds),
     ("App artwork handles are generation-bound lazy and bounded", AppLibraryIconsAreBounded),
@@ -61,6 +63,17 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pipe consent deletion fails closed", PipeDeletedConsentRevokesLiveSubscription),
     ("Pipe disposal revokes and completes promptly", PipeDisposalIsBounded),
 };
+
+var runningRegistrationOnly =
+    args.Contains("--running-registration-only", StringComparer.Ordinal);
+var tests = runningRegistrationOnly
+    ? allTests.Where(test => test.Name is
+        "Capability vocabulary is closed and versioned" or
+        "Running app observation is separately consented opaque and stale-safe" or
+        "Running app registration is explicit durable scoped and forgettable" or
+        "App library cursors and registrations stay bounded across ten thousand items")
+        .ToArray()
+    : allTests;
 
 var failures = 0;
 foreach (var (name, run) in tests)
@@ -344,7 +357,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(27, PlatformCapabilities.All.Count);
+    Assert.Equal(28, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -1282,6 +1295,106 @@ static async Task RunningAppContracts()
         PlatformCapabilities.AppRunningConfirm, new { savedId, revision }));
     Assert.True(stale.Succeeded, stale.ErrorCode ?? "stale confirmation failed");
     Assert.Equal(JsonValueKind.Null, stale.Payload!.Value.GetProperty("item").ValueKind);
+}
+
+static async Task RunningAppRegistrationContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var otherIdentity = new BrokerWidgetIdentity(
+        "dev.test.other", "dev.test", "default");
+    var store = new ConsentStore(temp.Path);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetRunningAppBackend([
+        new("portable-current", "portable-instance", "Portable App",
+            AppLibraryKind.Application, "Portable"),
+    ]);
+    foreach (var capability in new[]
+             {
+                 PlatformCapabilities.AppRunningReadV1,
+                 PlatformCapabilities.AppRunningRegisterV1,
+                 PlatformCapabilities.AppLibraryReadV1,
+                 PlatformCapabilities.AppLibraryLaunchV1,
+             })
+    {
+        await store.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+        await store.SetDecisionAsync(otherIdentity, capability, ConsentDecision.Grant);
+    }
+
+    await using var broker = Broker(
+        identity, store, backend,
+        PlatformCapabilities.AppRunningReadV1,
+        PlatformCapabilities.AppRunningRegisterV1,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryLaunchV1);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var observed = await broker.HandleAsync(Request(
+        identity, PlatformCapabilities.AppRunningReadV1,
+        PlatformCapabilities.AppRunningList, new { }));
+    Assert.True(observed.Succeeded, observed.ErrorCode ?? "observation failed");
+    var savedId = observed.Payload!.Value.GetProperty("items")[0]
+        .GetProperty("savedId").GetString()!;
+    var revision = observed.Payload.Value.GetProperty("revision").GetString()!;
+
+    var registered = await broker.HandleAsync(Request(
+        identity, PlatformCapabilities.AppRunningRegisterV1,
+        PlatformCapabilities.AppRunningRegister, new { savedId, revision }));
+    Assert.True(registered.Succeeded, registered.ErrorCode ?? "registration failed");
+    Assert.Equal(savedId, registered.Payload!.Value.GetProperty("item")
+        .GetProperty("savedId").GetString());
+    Assert.Equal(false, registered.Payload.Value.GetProperty("alreadyRegistered")
+        .GetBoolean());
+    Assert.True(!registered.Payload.Value.GetRawText().Contains(
+        "portable-instance", StringComparison.Ordinal));
+
+    var repeated = await broker.HandleAsync(Request(
+        identity, PlatformCapabilities.AppRunningRegisterV1,
+        PlatformCapabilities.AppRunningRegister, new { savedId, revision }));
+    Assert.True(repeated.Succeeded, repeated.ErrorCode ?? "repeat registration failed");
+    Assert.Equal(true, repeated.Payload!.Value.GetProperty("alreadyRegistered")
+        .GetBoolean());
+
+    var resolved = await broker.HandleAsync(Request(
+        identity, PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryResolveSaved,
+        new ResolveSavedAppLibraryItemsRequest([savedId])));
+    Assert.True(resolved.Succeeded, resolved.ErrorCode ?? "resolution failed");
+    Assert.Equal(1, resolved.Payload!.Value.GetProperty("items").GetArrayLength());
+    var publicAppId = resolved.Payload.Value.GetProperty("items")[0]
+        .GetProperty("appId").GetString()!;
+    var launch = await broker.HandleAsync(Request(
+        identity, PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new LaunchAppLibraryItemRequest(publicAppId)));
+    Assert.True(launch.Succeeded, launch.ErrorCode ?? "launch failed");
+
+    await using var other = Broker(
+        otherIdentity, store, backend,
+        PlatformCapabilities.AppRunningReadV1,
+        PlatformCapabilities.AppRunningRegisterV1,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryLaunchV1);
+    other.SetLifecycle(BrokerLifecycleState.Interactive);
+    var isolated = await other.HandleAsync(Request(
+        otherIdentity, PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryResolveSaved,
+        new ResolveSavedAppLibraryItemsRequest([savedId])));
+    Assert.True(isolated.Succeeded, isolated.ErrorCode ?? "isolated resolution failed");
+    Assert.Equal(0, isolated.Payload!.Value.GetProperty("items").GetArrayLength());
+
+    var forgotten = await broker.HandleAsync(Request(
+        identity, PlatformCapabilities.AppRunningRegisterV1,
+        PlatformCapabilities.AppRunningForget, new { savedId }));
+    Assert.True(forgotten.Succeeded, forgotten.ErrorCode ?? "forget failed");
+    var forgottenAgain = await broker.HandleAsync(Request(
+        identity, PlatformCapabilities.AppRunningRegisterV1,
+        PlatformCapabilities.AppRunningForget, new { savedId }));
+    Assert.True(forgottenAgain.Succeeded, forgottenAgain.ErrorCode ?? "repeat forget failed");
+    var missing = await broker.HandleAsync(Request(
+        identity, PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryResolveSaved,
+        new ResolveSavedAppLibraryItemsRequest([savedId])));
+    Assert.Equal(0, missing.Payload!.Value.GetProperty("items").GetArrayLength());
 }
 
 static async Task AppLibraryCursorBounds()

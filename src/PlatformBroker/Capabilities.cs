@@ -71,6 +71,7 @@ public static class PlatformCapabilities
     public const string RecentActivityReadV1 = "system.activity.recent.read.v1";
     public const string AppLibraryReadV1 = "system.apps.library.read.v1";
     public const string AppRunningReadV1 = "system.apps.running.read.v1";
+    public const string AppRunningRegisterV1 = "system.apps.running.register.v1";
     public const string AppLibraryLaunchV1 = "system.apps.library.launch.v1";
     public const string MediaSessionsReadV1 = "system.media.sessions.read.v1";
     public const string MediaSessionsControlV1 = "system.media.sessions.control.v1";
@@ -111,6 +112,8 @@ public static class PlatformCapabilities
     public const string AppLibraryResolveSaved = "apps.library.resolve-saved";
     public const string AppRunningList = "apps.running.list";
     public const string AppRunningConfirm = "apps.running.confirm";
+    public const string AppRunningRegister = "apps.running.register";
+    public const string AppRunningForget = "apps.running.forget";
     public const string AppLibraryLaunch = "apps.library.launch";
     internal const string AppLibraryLaunchObserved = "apps.library.launch-observed";
     public const string MediaSessionsGet = "media.sessions.get";
@@ -188,6 +191,10 @@ public static class PlatformCapabilities
             [AppRunningReadV1] = new(AppRunningReadV1, 1,
                 BrokerCapabilityKind.Read,
                 Set(AppRunningList, AppRunningConfirm), Set()),
+            [AppRunningRegisterV1] = new(AppRunningRegisterV1, 1,
+                BrokerCapabilityKind.Control,
+                Set(AppRunningRegister, AppRunningForget), Set(),
+                AllowsDashboardGesture: false),
             [AppLibraryLaunchV1] = new(AppLibraryLaunchV1, 1,
                 BrokerCapabilityKind.Control,
                 Set(AppLibraryLaunch, AppLibraryLaunchObserved), Set(),

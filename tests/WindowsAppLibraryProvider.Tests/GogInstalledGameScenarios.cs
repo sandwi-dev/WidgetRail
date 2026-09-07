@@ -59,7 +59,7 @@ internal static class GogInstalledGameScenarios
             "GOG installed evidence received backend launch admission.");
         var reads = registry.ReadCount;
         await ThrowsBroker(() => provider.LaunchAppLibraryItemAsync(
-                page.Items[0].ProviderAppId, default),
+                ProviderTestIdentity.Value, page.Items[0].ProviderAppId, default),
             "GOG installed evidence crossed the provider launch boundary.");
         Equal(reads, registry.ReadCount,
             "Denied GOG launch re-read trusted registration evidence.");
@@ -119,7 +119,7 @@ internal static class GogInstalledGameScenarios
 
         var reads = registry.ReadCount;
         await ThrowsBroker(() => provider.LaunchAppLibraryItemAsync(
-                alpha.ProviderAppId, default),
+                ProviderTestIdentity.Value, alpha.ProviderAppId, default),
             "GOG installed evidence unexpectedly authorized launch.");
         Equal(reads, registry.ReadCount,
             "Denied GOG launch crossed into exact registration reading.");
@@ -134,7 +134,7 @@ internal static class GogInstalledGameScenarios
 
         fixture.Rewrite("200", "Beta replacement");
         await ThrowsBroker(() => provider.LaunchAppLibraryItemAsync(
-                beta.ProviderAppId, default),
+                ProviderTestIdentity.Value, beta.ProviderAppId, default),
             "Replaced GOG registration unexpectedly gained launch authority.");
 
         registry.Available = false;
@@ -144,7 +144,7 @@ internal static class GogInstalledGameScenarios
         Equal("source_unavailable", unavailable.Sources.Single().StatusCode,
             "Unavailable GOG status was not projected.");
         await ThrowsBroker(() => provider.LaunchAppLibraryItemAsync(
-                beta.ProviderAppId, default),
+                ProviderTestIdentity.Value, beta.ProviderAppId, default),
             "Unavailable GOG display truth retained launch authority.");
     }
 

@@ -50,6 +50,8 @@ The current closed capability set is:
 | `system.network.bluetooth.manage.v1` | `OpenBluetoothDeviceSettingsAsync(deviceId)` after validating one current opaque device ID; opens the Windows-owned Bluetooth Settings surface without placing the native ID in a URI | Interactive only |
 | `system.activity.recent.read.v1` | `HostServices.RecentActivity.GetRecentAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
 | `system.apps.library.read.v1` | `HostServices.AppLibrary.QueryAsync(query, cursor, direction, limit, refresh)` and `ResolveSavedAsync(savedIds)` for bounded cursor pages, sanitized names/source labels, conservative kinds, short-lived launch IDs, authority-scoped durable SavedIds, and up to 16 observation-only source-health rows bound to the page revision | Visible or Interactive |
+| `system.apps.running.read.v1` | `HostServices.AppLibrary.ObserveRunningAsync()` and `ConfirmRunningAsync(savedId, revision)` for bounded privacy-safe current-window observations; no path, process, window, command line, or launch authority | Visible or Interactive |
+| `system.apps.running.register.v1` | `RegisterRunningAsync(savedId, revision)` and `ForgetRunningAsync(savedId)` for explicit package-owned portable-app registration and removal | Interactive only; never dashboard gesture authority |
 | `system.apps.library.launch.v1` | `HostServices.AppLibrary.LaunchAsync(appId)` for one current broker-issued app ID | Interactive only; never dashboard gesture authority |
 | `system.media.sessions.read.v1` | `HostServices.Media.GetSessionsAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
 | `system.media.sessions.control.v1` | `HostServices.Media.ControlAsync` for one broker-issued session ID | Interactive, or one exact declared dashboard gesture while Visible |
@@ -218,6 +220,23 @@ most 128 characters; callers must not parse or persist them as durable state.
 The broker retains only bounded current launch/artwork windows while the trusted
 provider owns the normalized catalog, so neither widget IPC nor the capability
 domain materializes the complete library.
+
+An explicit portable-app registration uses three separate capabilities. The
+read capability produces a bounded observation and revision but stores
+nothing. While Interactive, `system.apps.running.register.v1` may register only
+one exact current observation from that revision, or idempotently forget one
+SavedId previously registered by the same authenticated publisher/package.
+The provider privately persists the canonical executable path and Windows file
+identity, never the arguments or a shell command. A later
+`ResolveSavedAsync` omits the record unless the same path still names the same
+file identity; replacement requires another current observation and explicit
+registration. Launch remains separately consented and rechecks that authority
+again before starting the exact executable with no arguments, Shell verb, or
+elevation and with its containing directory as the working directory.
+Installed catalog identity always takes precedence and is never converted into
+or removed as a portable record. Each package has an explicit 64-record bound;
+capacity failure is visible and forgetting a record reclaims one slot—there is
+no silent eviction.
 
 Launch requires Interactive even if the widget has already listed the item.
 The broker validates the opaque ID and the trusted owning source revalidates its

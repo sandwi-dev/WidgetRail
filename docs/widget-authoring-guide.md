@@ -1965,12 +1965,41 @@ remain unsupported. See the
 
 For an optional **Add running app** route, declare
 `system.apps.running.read.v1`, call `ObserveRunningAsync` only when the user
-opens or refreshes that route, and retain its revision only in memory. Before
-persisting a selected SavedId, call `ConfirmRunningAsync(savedId, revision)` and
-accept only the returned current item. This capability exposes no process,
-window, path, command, package, or provider identity and is not launch
-authority; launch still requires fresh SavedId resolution plus the separate
-launch grant.
+opens or refreshes that route, and retain its revision only in memory.
+`ConfirmRunningAsync(savedId, revision)` is a read-only exact-current check; it
+does not remember a portable executable. To offer an explicit **Remember**
+action, separately declare and obtain consent for
+`system.apps.running.register.v1`, require Interactive lifecycle, and call:
+
+```csharp
+var observation = await HostServices.AppLibrary.ObserveRunningAsync(
+    cancellationToken);
+var candidate = observation.Items.FirstOrDefault();
+if (candidate is not null)
+{
+    var registered = await HostServices.AppLibrary.RegisterRunningAsync(
+        candidate.SavedId,
+        observation.Revision,
+        cancellationToken);
+    // Persist only registered.Item.SavedId in package-private state.
+}
+
+// A user-owned Forget action is safe to repeat.
+await HostServices.AppLibrary.ForgetRunningAsync(savedId, cancellationToken);
+```
+
+Registration re-observes the exact process instance and either returns the
+current installed-catalog item or stores one provider-private portable record
+for this publisher/package. The widget never receives a process ID, window,
+path, file identity, command, or working directory. `ForgetRunningAsync` is
+idempotent, cannot remove installed catalog authority, and cannot address
+another package's records. Portable records are capped at 64 with explicit
+capacity failure and no eviction. After restart, use `ResolveSavedAsync`; it
+omits missing, moved, or replaced executables. Launch still requires the
+separate launch grant and a fresh resolved AppId. The host then rechecks the
+canonical path and Windows file identity once more and starts only that exact
+executable, with no arguments, Shell execution, elevation, or provider-specific
+command behavior.
 
 Use `UI.TextEntry(value, placeholder, action, id, maximumLength)` when a
 controller-first surface needs bounded text. Activating it opens the host-owned

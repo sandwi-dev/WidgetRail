@@ -416,6 +416,7 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
         PlatformCapabilities.AppLibraryReadV1 => "See installed apps",
         PlatformCapabilities.AppRunningReadV1 => "See visible running apps",
+        PlatformCapabilities.AppRunningRegisterV1 => "Remember running apps",
         PlatformCapabilities.AppLibraryLaunchV1 => "Launch installed apps",
         PlatformCapabilities.MediaSessionsReadV1 => "See Windows media sessions",
         PlatformCapabilities.MediaSessionsControlV1 => "Control media playback",
@@ -491,6 +492,11 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.AppRunningReadV1 =>
             "On request, see visible applications that exactly match the installed catalog. " +
             "Widgets receive only names, kinds, sources, and opaque saved IDs—never process or window identity.",
+        PlatformCapabilities.AppRunningRegisterV1 =>
+            "After an explicit action, remember one exact visible application for this widget package. " +
+            "The trusted provider privately stores and later rechecks its executable path and Windows file identity; " +
+            "widgets receive only an opaque saved ID and cannot supply paths, arguments, working directories, or elevation. " +
+            "Forgetting removes only this package's portable record; installed catalog entries are unchanged.",
         PlatformCapabilities.AppLibraryLaunchV1 =>
             "Launch one selected Start Menu registration by its opaque ID while the widget is interactive. " +
             "The trusted host rechecks the exact registration before asking Windows to open it; widgets cannot " +

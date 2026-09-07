@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
@@ -7,7 +8,9 @@ namespace WidgetRail.WindowsAppLibraryProvider;
 
 internal sealed record WindowsRunningAppObservation(
     string RegistrationIdentity,
-    string InstanceEvidence);
+    string InstanceEvidence,
+    string DisplayName = "",
+    WindowsExecutableAuthority? PortableAuthority = null);
 
 internal interface IWindowsRunningAppObserver
 {
@@ -33,6 +36,8 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
         ["OverlayHost.exe", "WidgetWorkerHost.exe", "WidgetBridge.exe", "wrail.exe"],
         StringComparer.OrdinalIgnoreCase);
     private readonly IWindowsRunningWindowReader _windows;
+    private static readonly IWindowsExecutableAuthorityReader ExecutableAuthority =
+        new WindowsExecutableAuthorityReader();
 
     internal WindowsRunningAppObserver() : this(new NativeWindowReader()) { }
 
@@ -69,13 +74,22 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
             processId == 0 || processId == Environment.ProcessId)
             return null;
         using var process = OpenProcess(ProcessQueryLimitedInformation, false, processId);
-        if (process.IsInvalid || IsElevated(process)) return null;
-        var identity = PackagedIdentity(process) ?? ExecutableIdentity(process);
+        if (process.IsInvalid || !IsSameUserSessionNonElevated(process, processId))
+            return null;
+        var packagedIdentity = PackagedIdentity(process);
+        var executable = packagedIdentity is null ? ExecutableIdentity(process) : null;
+        var identity = packagedIdentity ?? executable?.Identity;
         if (identity is null ||
             !GetProcessTimes(process, out var created, out _, out _, out _)) return null;
         var instance = Convert.ToHexString(SHA256.HashData(Encoding.ASCII.GetBytes(
             $"{processId:X8}:{created:X16}:{identity}")));
-        return new(identity, instance);
+        return new(
+            identity,
+            instance,
+            executable is null
+                ? string.Empty
+                : Path.GetFileNameWithoutExtension(executable.Authority.CanonicalPath),
+            executable?.Authority);
     }
 
     private static string? PackagedIdentity(SafeProcessHandle process)
@@ -90,7 +104,7 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
         return aumid is null ? null : WindowsAppsFolderApplicationSource.IdentityFor(aumid);
     }
 
-    private static string? ExecutableIdentity(SafeProcessHandle process)
+    private static ExecutableObservation? ExecutableIdentity(SafeProcessHandle process)
     {
         var length = 32_768u;
         var path = new StringBuilder((int)length);
@@ -98,19 +112,46 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
             return null;
         var fullPath = Path.GetFullPath(path.ToString());
         if (ExcludedProcesses.Contains(Path.GetFileName(fullPath))) return null;
-        return WindowsStartMenuApplicationSource.IdentityForExecutable(fullPath);
+        var authority = ExecutableAuthority.ReadExact(fullPath);
+        return authority is null ? null : new ExecutableObservation(
+            WindowsStartMenuApplicationSource.IdentityForExecutable(
+                authority.CanonicalPath), authority);
     }
 
-    private static bool IsElevated(SafeProcessHandle process)
+    private static bool IsSameUserSessionNonElevated(
+        SafeProcessHandle process,
+        uint processId)
     {
-        if (!OpenProcessToken(process, TokenQuery, out var token)) return true;
+        if (!ProcessIdToSessionId(processId, out var processSession) ||
+            !ProcessIdToSessionId((uint)Environment.ProcessId, out var currentSession) ||
+            processSession != currentSession)
+            return false;
+        if (!OpenProcessToken(process, TokenQuery, out var token)) return false;
         using (token)
         {
-            return !GetTokenInformation(token, TokenElevation, out var elevation,
-                       Marshal.SizeOf<TokenElevationInfo>(), out _) ||
-                elevation.TokenIsElevated != 0;
+            if (!GetTokenInformation(token, TokenElevation, out var elevation,
+                    Marshal.SizeOf<TokenElevationInfo>(), out _) ||
+                elevation.TokenIsElevated != 0)
+                return false;
+            try
+            {
+                using var processIdentity = new WindowsIdentity(token.DangerousGetHandle());
+                using var currentIdentity = WindowsIdentity.GetCurrent();
+                var currentUser = currentIdentity.User;
+                return processIdentity.User is not null && currentUser is not null &&
+                    processIdentity.User.Equals(currentUser);
+            }
+            catch (Exception exception) when (exception is ArgumentException or
+                System.Security.SecurityException or UnauthorizedAccessException)
+            {
+                return false;
+            }
         }
     }
+
+    private sealed record ExecutableObservation(
+        string Identity,
+        WindowsExecutableAuthority Authority);
 
     private static bool IsCloaked(IntPtr window) =>
         DwmGetWindowAttribute(window, DwmwaCloaked, out var cloaked, sizeof(int)) == 0 &&
@@ -143,6 +184,9 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     private static extern IntPtr GetWindow(IntPtr window, uint command);
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ProcessIdToSessionId(uint processId, out uint sessionId);
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(
         IntPtr window, int attribute, out int value, int size);

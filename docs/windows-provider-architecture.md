@@ -442,6 +442,38 @@ resolver accepts at most 64 unique SavedIds, refreshes the provider, preserves
 request order, omits unavailable registrations, and returns fresh launch IDs.
 Another widget authority cannot correlate or resolve those SavedIds.
 
+The running-app observer also supports an explicit portable-registration lane.
+It admits only visible top-level windows whose process is in the current user
+session and is not elevated. Packaged or installed identities retain the normal
+catalog owner. For an otherwise unmatched `.exe` or `.com`, the provider opens
+the executable, captures its canonical handle path plus volume/file ID, and
+keeps that authority host-private. Registration re-runs the bounded observation
+and requires the exact observation revision and process-instance evidence.
+
+Portable records are stored in canonical package-scoped provider documents
+under LocalAppData, with adjacent exclusive locking, atomic replacement, strict
+duplicate/unmapped-property rejection, a 2 MiB document limit, and at most 64
+records. There is no silent eviction. The durable authority is
+publisher/package rather than a worker instance, so a worker restart keeps its
+records. An unsigned content-generation replacement receives its distinct
+verified publisher authority and cannot inherit the old generation's records;
+restoring those exact reviewed bytes restores that exact authority. Another
+package cannot query, forget, clear, or launch them. Settings local-data
+clearing removes only the current authority under revision confirmation. Exact
+package uninstall instead retires the package-grouped store for every installed
+or pruned publisher generation before its catalog commit. Its bounded staging
+marker makes interrupted cleanup idempotently resumable and blocks only
+recreation of that same package until recovery completes.
+
+Resolution and launch each recapture the canonical path and volume/file ID.
+A moved, missing, or replaced executable is omitted until the user registers a
+fresh exact observation; re-registration keeps the same SavedId while rotating
+the private authority. The file ID proves file replacement, not content
+integrity. Launch uses `UseShellExecute=false`, an empty argument list, no verb
+or elevation, and the executable's containing directory as its explicit
+working directory. Installed catalog registrations always take precedence and
+are never persisted or forgotten through the portable lane.
+
 Launch is a separate Interactive-only capability. The provider resolves a
 current opaque ID and re-enumerates the exact source on its STA lane. A
 shortcut requires exactly one unchanged scope, target identity, full path, and

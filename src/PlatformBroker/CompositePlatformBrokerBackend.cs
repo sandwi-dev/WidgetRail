@@ -154,12 +154,49 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
             _appLibrary.ObserveRunningAppsAsync(cancellationToken);
 
     public Task LaunchAppLibraryItemAsync(
-        string appId, CancellationToken cancellationToken) =>
-        _appLibrary.LaunchAppLibraryItemAsync(appId, cancellationToken);
+        BrokerWidgetIdentity identity, string appId,
+        CancellationToken cancellationToken) =>
+        _appLibrary.LaunchAppLibraryItemAsync(identity, appId, cancellationToken);
 
     public Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
-        string appId, CancellationToken cancellationToken) =>
-        _appLibrary.LaunchAppLibraryItemObservedAsync(appId, cancellationToken);
+        BrokerWidgetIdentity identity, string appId,
+        CancellationToken cancellationToken) =>
+        _appLibrary.LaunchAppLibraryItemObservedAsync(
+            identity, appId, cancellationToken);
+
+    public Task<RegisterRunningAppBackendSummary> RegisterRunningAppAsync(
+        BrokerWidgetIdentity identity, RegisterRunningAppBackendRequest request,
+        CancellationToken cancellationToken) =>
+        _appLibrary.RegisterRunningAppAsync(identity, request, cancellationToken);
+
+    public Task<IReadOnlyList<AppLibraryBackendItemSummary>>
+        ResolveRegisteredRunningAppsAsync(
+            BrokerWidgetIdentity identity, IReadOnlyList<string> savedIds,
+            CancellationToken cancellationToken) =>
+            _appLibrary.ResolveRegisteredRunningAppsAsync(
+                identity, savedIds, cancellationToken);
+
+    public Task ForgetRunningAppAsync(
+        BrokerWidgetIdentity identity, string savedId,
+        CancellationToken cancellationToken) =>
+        _appLibrary.ForgetRunningAppAsync(identity, savedId, cancellationToken);
+
+    public Task<AppLibraryRegistrationStateSummary> GetRunningAppRegistrationStateAsync(
+        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
+        _appLibrary.GetRunningAppRegistrationStateAsync(identity, cancellationToken);
+
+    public Task ClearRunningAppRegistrationsAsync(
+        BrokerWidgetIdentity identity, long expectedRevision,
+        CancellationToken cancellationToken) =>
+        _appLibrary.ClearRunningAppRegistrationsAsync(
+            identity, expectedRevision, cancellationToken);
+
+    public Task<AppLibraryPackageRegistrationRetirementSummary>
+        RetireRunningAppPackageRegistrationsAsync(
+            string packageId,
+            CancellationToken cancellationToken) =>
+        _appLibrary.RetireRunningAppPackageRegistrationsAsync(
+            packageId, cancellationToken);
 
     public Task<IReadOnlyList<MediaSessionSummary>> GetMediaSessionsAsync(
         CancellationToken cancellationToken) =>
@@ -384,7 +421,8 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
                 new BrokerException("platform_unavailable", "App library is unavailable."));
 
         public Task LaunchAppLibraryItemAsync(
-            string appId, CancellationToken cancellationToken) =>
+            BrokerWidgetIdentity identity, string appId,
+            CancellationToken cancellationToken) =>
             Task.FromException(
                 new BrokerException("platform_unavailable", "App launch is unavailable."));
     }

@@ -7,12 +7,15 @@ ctor WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse(WidgetRail.WidgetSdk.W
 ctor WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest(string NetworkId)
 ctor WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest(string SessionId, WidgetRail.WidgetSdk.WidgetMediaSessionCommand Command)
 ctor WidgetRail.WidgetSdk.ControllerInputEvent(WidgetRail.WidgetProtocol.ControllerButton Button, WidgetRail.WidgetProtocol.ControllerEventPhase Phase, WidgetRail.WidgetSdk.ControllerInputContext Context, string? FocusedElementId = null, long Sequence = 0, long MonotonicTimestampMicroseconds = 0, string? ActiveInputScopeId = null, long SnapshotSequence = 0, double? RequestedValue = null, WidgetRail.WidgetSdk.ControllerInputOrigin Origin = WidgetRail.WidgetSdk.ControllerInputOrigin.PhysicalController)
+ctor WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest(string SavedId)
 ctor WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest(string AppId)
 ctor WidgetRail.WidgetSdk.NavigationShellDestination(string Id, string Label, string ActionId, WidgetRail.WidgetProtocol.WidgetGlyph Glyph, string? AccessibilityLabel = null, bool IsDisabled = false)
 ctor WidgetRail.WidgetSdk.NavigationShellParts(WidgetRail.WidgetSdk.WidgetElement CompactNavigation, WidgetRail.WidgetSdk.WidgetElement Body)
 ctor WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest(string DeviceId)
 ctor WidgetRail.WidgetSdk.PairWidgetBluetoothDeviceRequest(string DeviceId)
 ctor WidgetRail.WidgetSdk.PickerOption(string Id, string Label, string ActionId, bool IsSelected = false, WidgetRail.WidgetProtocol.WidgetGlyph? Glyph = null, string? AccessibilityLabel = null, bool IsDisabled = false, bool IsBusy = false)
+ctor WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest(string SavedId, string Revision)
+ctor WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse(WidgetRail.WidgetSdk.WidgetAppLibraryItem Item, bool AlreadyRegistered)
 ctor WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest(System.Collections.Generic.IReadOnlyList<string> SavedIds)
 ctor WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryItem> Items)
 ctor WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest(string Slot, string Secret)
@@ -536,6 +539,11 @@ method WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.Equals(WidgetRail.Wi
 method WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.ToString() -> string
+method WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest.<Clone>$() -> WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest
+method WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest.Deconstruct(out string SavedId) -> void
+method WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest.GetHashCode() -> int
+method WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest.ToString() -> string
 method WidgetRail.WidgetSdk.GridElement.Equals(WidgetRail.WidgetSdk.ContainerElement? other) -> bool
 method WidgetRail.WidgetSdk.GridElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.GridElement.GetHashCode() -> int
@@ -596,6 +604,16 @@ method WidgetRail.WidgetSdk.ProgressElement.Equals(WidgetRail.WidgetSdk.WidgetEl
 method WidgetRail.WidgetSdk.ProgressElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ProgressElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ProgressElement.ToString() -> string
+method WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest.<Clone>$() -> WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest
+method WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest.Deconstruct(out string SavedId, out string Revision) -> void
+method WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest.GetHashCode() -> int
+method WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest.ToString() -> string
+method WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse.<Clone>$() -> WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse
+method WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse.Deconstruct(out WidgetRail.WidgetSdk.WidgetAppLibraryItem Item, out bool AlreadyRegistered) -> void
+method WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse.GetHashCode() -> int
+method WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse.ToString() -> string
 method WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest.<Clone>$() -> WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest
 method WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest.Deconstruct(out System.Collections.Generic.IReadOnlyList<string> SavedIds) -> void
 method WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest.Equals(object? obj) -> bool
@@ -836,11 +854,13 @@ method WidgetRail.WidgetSdk.WidgetAppLibraryQuery.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetAppLibraryQuery.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetAppLibraryQuery.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetAppLibraryService.ConfirmRunningAsync(string savedId, string revision, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetAppLibraryItem?>
+method WidgetRail.WidgetSdk.WidgetAppLibraryService.ForgetRunningAsync(string savedId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetAppLibraryService.LaunchAsync(string appId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetAppLibraryService.LaunchAsync(string appId, WidgetRail.WidgetSdk.WidgetAppLaunchOverlayBehavior overlayBehavior, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetAppLibraryService.LaunchObservedAsync(string appId, WidgetRail.WidgetSdk.WidgetAppLaunchOverlayBehavior overlayBehavior, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetAppLaunchObservation>
 method WidgetRail.WidgetSdk.WidgetAppLibraryService.ObserveRunningAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetRunningAppObservation>
 method WidgetRail.WidgetSdk.WidgetAppLibraryService.QueryAsync(WidgetRail.WidgetSdk.WidgetAppLibraryQuery query, WidgetRail.WidgetSdk.WidgetCollectionCursor? cursor = null, WidgetRail.WidgetSdk.WidgetCursorDirection? direction = null, int limit = 64, bool refresh = false, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetAppLibraryPage>
+method WidgetRail.WidgetSdk.WidgetAppLibraryService.RegisterRunningAsync(string savedId, string revision, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse>
 method WidgetRail.WidgetSdk.WidgetAppLibraryService.ResolveSavedAsync(System.Collections.Generic.IReadOnlyList<string> savedIds, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryItem>>
 method WidgetRail.WidgetSdk.WidgetAppLibrarySource.<Clone>$() -> WidgetRail.WidgetSdk.WidgetAppLibrarySource
 method WidgetRail.WidgetSdk.WidgetAppLibrarySource.Deconstruct(out string SourceId, out string DisplayName, out WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth Health, out long Revision, out string StatusCode) -> void
@@ -1418,6 +1438,8 @@ method static WidgetRail.WidgetSdk.FocusPresentationElement.op_Equality(WidgetRa
 method static WidgetRail.WidgetSdk.FocusPresentationElement.op_Inequality(WidgetRail.WidgetSdk.FocusPresentationElement? left, WidgetRail.WidgetSdk.FocusPresentationElement? right) -> bool
 method static WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.op_Equality(WidgetRail.WidgetSdk.FocusPresentationSurfaceElement? left, WidgetRail.WidgetSdk.FocusPresentationSurfaceElement? right) -> bool
 method static WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.op_Inequality(WidgetRail.WidgetSdk.FocusPresentationSurfaceElement? left, WidgetRail.WidgetSdk.FocusPresentationSurfaceElement? right) -> bool
+method static WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest.op_Equality(WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest? left, WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest? right) -> bool
+method static WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest.op_Inequality(WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest? left, WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest? right) -> bool
 method static WidgetRail.WidgetSdk.GridElement.op_Equality(WidgetRail.WidgetSdk.GridElement? left, WidgetRail.WidgetSdk.GridElement? right) -> bool
 method static WidgetRail.WidgetSdk.GridElement.op_Inequality(WidgetRail.WidgetSdk.GridElement? left, WidgetRail.WidgetSdk.GridElement? right) -> bool
 method static WidgetRail.WidgetSdk.IconElement.op_Equality(WidgetRail.WidgetSdk.IconElement? left, WidgetRail.WidgetSdk.IconElement? right) -> bool
@@ -1443,6 +1465,10 @@ method static WidgetRail.WidgetSdk.PickerOption.op_Equality(WidgetRail.WidgetSdk
 method static WidgetRail.WidgetSdk.PickerOption.op_Inequality(WidgetRail.WidgetSdk.PickerOption? left, WidgetRail.WidgetSdk.PickerOption? right) -> bool
 method static WidgetRail.WidgetSdk.ProgressElement.op_Equality(WidgetRail.WidgetSdk.ProgressElement? left, WidgetRail.WidgetSdk.ProgressElement? right) -> bool
 method static WidgetRail.WidgetSdk.ProgressElement.op_Inequality(WidgetRail.WidgetSdk.ProgressElement? left, WidgetRail.WidgetSdk.ProgressElement? right) -> bool
+method static WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest.op_Equality(WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest? left, WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest? right) -> bool
+method static WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest.op_Inequality(WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest? left, WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest? right) -> bool
+method static WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse.op_Equality(WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse? left, WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse? right) -> bool
+method static WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse.op_Inequality(WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse? left, WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse? right) -> bool
 method static WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest.op_Equality(WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest? left, WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest? right) -> bool
 method static WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest.op_Inequality(WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest? left, WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest? right) -> bool
 method static WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse.op_Equality(WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse? left, WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse? right) -> bool
@@ -1785,6 +1811,7 @@ method virtual WidgetRail.WidgetSdk.FocusPresentationElement.<Clone>$() -> Widge
 method virtual WidgetRail.WidgetSdk.FocusPresentationElement.Equals(WidgetRail.WidgetSdk.FocusPresentationElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.<Clone>$() -> WidgetRail.WidgetSdk.FocusPresentationSurfaceElement
 method virtual WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.Equals(WidgetRail.WidgetSdk.FocusPresentationSurfaceElement? other) -> bool
+method virtual WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest.Equals(WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.GridElement.<Clone>$() -> WidgetRail.WidgetSdk.GridElement
 method virtual WidgetRail.WidgetSdk.GridElement.Equals(WidgetRail.WidgetSdk.GridElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.IWidgetCapabilityClient.SubscribeAsync<TPayload>(WidgetRail.WidgetSdk.WidgetCapabilityEvent<TPayload?> platformEvent, System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<TPayload?>
@@ -1804,6 +1831,8 @@ method virtual WidgetRail.WidgetSdk.PairWidgetBluetoothDeviceRequest.Equals(Widg
 method virtual WidgetRail.WidgetSdk.PickerOption.Equals(WidgetRail.WidgetSdk.PickerOption? other) -> bool
 method virtual WidgetRail.WidgetSdk.ProgressElement.<Clone>$() -> WidgetRail.WidgetSdk.ProgressElement
 method virtual WidgetRail.WidgetSdk.ProgressElement.Equals(WidgetRail.WidgetSdk.ProgressElement? other) -> bool
+method virtual WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest.Equals(WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest? other) -> bool
+method virtual WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse.Equals(WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse? other) -> bool
 method virtual WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest.Equals(WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse.Equals(WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse? other) -> bool
 method virtual WidgetRail.WidgetSdk.ResponsiveBranchElement.<Clone>$() -> WidgetRail.WidgetSdk.ResponsiveBranchElement
@@ -2100,6 +2129,7 @@ property WidgetRail.WidgetSdk.WidgetAppLibraryArtworkSet WidgetRail.WidgetSdk.Wi
 property WidgetRail.WidgetSdk.WidgetAppLibraryAvailability WidgetRail.WidgetSdk.WidgetAppLibraryPresentation.Availability { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibraryAvailabilityState WidgetRail.WidgetSdk.WidgetAppLibraryAvailability.State { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibraryCapabilitySet WidgetRail.WidgetSdk.WidgetAppLibraryPresentation.Capabilities { get; set; }
+property WidgetRail.WidgetSdk.WidgetAppLibraryItem WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse.Item { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibraryItem? WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse.Item { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibraryKind WidgetRail.WidgetSdk.WidgetAppLibraryPresentation.Kind { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibraryKind WidgetRail.WidgetSdk.WidgetRunningAppCandidate.Kind { get; set; }
@@ -2204,6 +2234,7 @@ property bool WidgetRail.WidgetSdk.PickerOption.IsBusy { get; set; }
 property bool WidgetRail.WidgetSdk.PickerOption.IsDisabled { get; set; }
 property bool WidgetRail.WidgetSdk.PickerOption.IsSelected { get; set; }
 property bool WidgetRail.WidgetSdk.PinnedLayoutHandle.IsSelected { get; }
+property bool WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse.AlreadyRegistered { get; set; }
 property bool WidgetRail.WidgetSdk.SegmentedTab.IsDisabled { get; set; }
 property bool WidgetRail.WidgetSdk.SelectOption.IsBusy { get; set; }
 property bool WidgetRail.WidgetSdk.SelectOption.IsDisabled { get; set; }
@@ -2391,9 +2422,11 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.ConfirmWidgetRunningAppRequest,WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.ConfirmRunning { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.ConnectAvailableWifi { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetMediaCapabilities.Control { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.ForgetRunning { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.Launch { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.OpenBluetoothDeviceSettings { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.PairWidgetBluetoothDeviceRequest,WidgetRail.WidgetSdk.WidgetBluetoothPairingResult> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.PairBluetoothDevice { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest,WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.RegisterRunning { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest,WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.ResolveSaved { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.Save { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SetInputMuted { get; }
@@ -2440,6 +2473,7 @@ property string WidgetRail.WidgetSdk.ConfirmWidgetRunningAppRequest.Revision { g
 property string WidgetRail.WidgetSdk.ConfirmWidgetRunningAppRequest.SavedId { get; set; }
 property string WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.NetworkId { get; set; }
 property string WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.SessionId { get; set; }
+property string WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest.SavedId { get; set; }
 property string WidgetRail.WidgetSdk.IconElement.AccessibilityLabel { get; set; }
 property string WidgetRail.WidgetSdk.ImageElement.AccessibilityLabel { get; set; }
 property string WidgetRail.WidgetSdk.ImageElement.Source { get; set; }
@@ -2455,6 +2489,8 @@ property string WidgetRail.WidgetSdk.PickerOption.Id { get; set; }
 property string WidgetRail.WidgetSdk.PickerOption.Label { get; set; }
 property string WidgetRail.WidgetSdk.PinnedLayoutHandle.Id { get; }
 property string WidgetRail.WidgetSdk.PinnedLayoutHandle.Name { get; }
+property string WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest.Revision { get; set; }
+property string WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest.SavedId { get; set; }
 property string WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest.Secret { get; set; }
 property string WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest.Slot { get; set; }
 property string WidgetRail.WidgetSdk.ScrubberElement.AccessibilityLabel { get; set; }
@@ -2689,6 +2725,7 @@ type sealed class WidgetRail.WidgetSdk.ControllerInputEvent : System.IEquatable<
 type sealed class WidgetRail.WidgetSdk.FocusBackgroundElement : System.IEquatable<WidgetRail.WidgetSdk.FocusBackgroundElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.FocusPresentationElement : System.IEquatable<WidgetRail.WidgetSdk.FocusPresentationElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.FocusPresentationSurfaceElement : System.IEquatable<WidgetRail.WidgetSdk.FocusPresentationSurfaceElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest : System.IEquatable<WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest>
 type sealed class WidgetRail.WidgetSdk.GridElement : System.IEquatable<WidgetRail.WidgetSdk.ContainerElement>, System.IEquatable<WidgetRail.WidgetSdk.GridElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.ContainerElement
 type sealed class WidgetRail.WidgetSdk.IconElement : System.IEquatable<WidgetRail.WidgetSdk.IconElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.ImageElement : System.IEquatable<WidgetRail.WidgetSdk.ImageElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
@@ -2702,6 +2739,8 @@ type sealed class WidgetRail.WidgetSdk.PairWidgetBluetoothDeviceRequest : System
 type sealed class WidgetRail.WidgetSdk.PickerOption : System.IEquatable<WidgetRail.WidgetSdk.PickerOption>
 type sealed class WidgetRail.WidgetSdk.PinnedLayoutHandle
 type sealed class WidgetRail.WidgetSdk.ProgressElement : System.IEquatable<WidgetRail.WidgetSdk.ProgressElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest : System.IEquatable<WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest>
+type sealed class WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse : System.IEquatable<WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse>
 type sealed class WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest : System.IEquatable<WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest>
 type sealed class WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse : System.IEquatable<WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse>
 type sealed class WidgetRail.WidgetSdk.ResponsiveBranchElement : System.IEquatable<WidgetRail.WidgetSdk.ResponsiveBranchElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement

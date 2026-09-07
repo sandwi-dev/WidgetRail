@@ -23,6 +23,9 @@ public sealed class WindowsAppLibraryProvider :
     private readonly IReadOnlyDictionary<string, IGameLibrarySource> _sourcesByIdentity;
     private readonly IShellStaExecutor _shellSta;
     private readonly IWindowsRunningAppObserver _runningApps;
+    private readonly IWindowsPortableAppStore _portableStore;
+    private readonly IWindowsExecutableAuthorityReader _executableAuthority;
+    private readonly IWindowsPortableAppLauncher _portableLauncher;
     private readonly TimeSpan _terminalDrainDeadline;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly SemaphoreSlim _artworkGate = new(4, 4);
@@ -37,6 +40,10 @@ public sealed class WindowsAppLibraryProvider :
     private IReadOnlyList<AppLibrarySourceSummary> _sourceObservations = [];
     private Dictionary<string, GameLibrarySourceItem> _registrationsByOpaqueId =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _portableIdsByAuthority =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PortableLaunchRegistration>
+        _portableLaunchByOpaqueId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string?> _iconsByRevalidationKey =
         new(StringComparer.Ordinal);
     private TaskCompletionSource? _terminalCompletion;
@@ -185,6 +192,21 @@ public sealed class WindowsAppLibraryProvider :
         IReadOnlyList<IGameLibrarySource> sources,
         IShellStaExecutor shellSta,
         IWindowsRunningAppObserver runningApps,
+        TimeSpan terminalDrainDeadline) : this(
+            sources, shellSta, runningApps,
+            new WindowsPortableAppStore(DefaultPortableStoreRoot()),
+            new WindowsExecutableAuthorityReader(),
+            new WindowsPortableAppLauncher(), terminalDrainDeadline)
+    {
+    }
+
+    internal WindowsAppLibraryProvider(
+        IReadOnlyList<IGameLibrarySource> sources,
+        IShellStaExecutor shellSta,
+        IWindowsRunningAppObserver runningApps,
+        IWindowsPortableAppStore portableStore,
+        IWindowsExecutableAuthorityReader executableAuthority,
+        IWindowsPortableAppLauncher portableLauncher,
         TimeSpan terminalDrainDeadline)
     {
         ArgumentNullException.ThrowIfNull(sources);
@@ -204,10 +226,25 @@ public sealed class WindowsAppLibraryProvider :
             source => source.SourceIdentity, StringComparer.Ordinal);
         _shellSta = shellSta ?? throw new ArgumentNullException(nameof(shellSta));
         _runningApps = runningApps ?? throw new ArgumentNullException(nameof(runningApps));
+        _portableStore = portableStore ?? throw new ArgumentNullException(nameof(portableStore));
+        _executableAuthority = executableAuthority ??
+            throw new ArgumentNullException(nameof(executableAuthority));
+        _portableLauncher = portableLauncher ??
+            throw new ArgumentNullException(nameof(portableLauncher));
         if (terminalDrainDeadline <= TimeSpan.Zero ||
             terminalDrainDeadline > TerminalDrainDeadline)
             throw new ArgumentOutOfRangeException(nameof(terminalDrainDeadline));
         _terminalDrainDeadline = terminalDrainDeadline;
+    }
+
+    private static string DefaultPortableStoreRoot()
+    {
+        var localData = Environment.GetFolderPath(
+            Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrWhiteSpace(localData))
+            throw new BrokerException(
+                "platform_unavailable", "Portable app registration storage is unavailable.");
+        return Path.Combine(localData, "WidgetRail", "broker", "portable-apps");
     }
 
     public async Task<RunningAppBackendObservationPage> ObserveRunningAppsAsync(
@@ -237,16 +274,27 @@ public sealed class WindowsAppLibraryProvider :
             catalogRevision = _catalogRevision;
             registrations = _registrationsByOpaqueId.Values.ToArray();
         }
+        var observedWindows = _runningApps.Observe(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return BuildRunningPage(
+            catalogRevision, registrations, observedWindows, cancellationToken);
+    }
+
+    private RunningAppBackendObservationPage BuildRunningPage(
+        long catalogRevision,
+        IReadOnlyList<GameLibrarySourceItem> registrations,
+        IReadOnlyList<WindowsRunningAppObservation> observedWindows,
+        CancellationToken cancellationToken)
+    {
         var byIdentity = registrations
             .GroupBy(item => item.StableIdentity, StringComparer.OrdinalIgnoreCase)
             .Where(group => group.Count() == 1)
             .ToDictionary(group => group.Key, group => group.Single(),
                 StringComparer.OrdinalIgnoreCase);
-        var observedWindows = _runningApps.Observe(cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
         var observations = observedWindows
-            .Where(item => byIdentity.ContainsKey(item.RegistrationIdentity))
             .GroupBy(item => item.RegistrationIdentity, StringComparer.OrdinalIgnoreCase)
+            .Where(group => byIdentity.ContainsKey(group.Key) ||
+                group.Any(item => item.PortableAuthority is not null))
             .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
             .Take(64)
             .ToArray();
@@ -255,23 +303,42 @@ public sealed class WindowsAppLibraryProvider :
         foreach (var group in observations)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var expected = byIdentity[group.Key];
-            var source = _sourcesByIdentity[expected.SourceIdentity];
-            var exact = source.ResolveExact(expected, cancellationToken);
-            if (exact is null || !string.Equals(exact.StableIdentity,
-                    expected.StableIdentity, StringComparison.OrdinalIgnoreCase))
-                continue;
-            var displayName = SanitizeDisplayName(exact.DisplayName);
-            if (displayName is null) continue;
             var instances = group.Select(item => item.InstanceEvidence)
                 .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
             if (instances.Length == 0) continue;
-            revisionEvidence.Append(exact.StableIdentity).Append('\0')
+            if (byIdentity.TryGetValue(group.Key, out var expected))
+            {
+                var source = _sourcesByIdentity[expected.SourceIdentity];
+                var exact = source.ResolveExact(expected, cancellationToken);
+                if (exact is null || !string.Equals(exact.StableIdentity,
+                        expected.StableIdentity, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var displayName = SanitizeDisplayName(exact.DisplayName);
+                if (displayName is null) continue;
+                revisionEvidence.Append(exact.StableIdentity).Append('\0')
+                    .AppendJoin(',', instances).Append('\0');
+                result.Add(new RunningAppBackendObservation(
+                    exact.StableIdentity, instances[0],
+                    displayName, ToBrokerKind(exact.Kind),
+                    exact.Attribution));
+                continue;
+            }
+
+            var portable = group
+                .Where(item => item.PortableAuthority is not null)
+                .OrderBy(item => item.InstanceEvidence, StringComparer.Ordinal)
+                .FirstOrDefault();
+            var portableDisplayName = SanitizeDisplayName(portable?.DisplayName);
+            if (portable?.PortableAuthority is null || portableDisplayName is null)
+                continue;
+            revisionEvidence.Append(portable.RegistrationIdentity).Append('\0')
                 .AppendJoin(',', instances).Append('\0');
             result.Add(new RunningAppBackendObservation(
-                exact.StableIdentity, instances[0],
-                displayName, ToBrokerKind(exact.Kind),
-                exact.Attribution));
+                portable.RegistrationIdentity,
+                portable.InstanceEvidence,
+                portableDisplayName,
+                AppLibraryKind.Application,
+                "Portable"));
         }
         lock (_stateGate)
         {
@@ -468,15 +535,254 @@ public sealed class WindowsAppLibraryProvider :
     private static string ArtworkRevision(string revalidationKey) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(revalidationKey)));
 
-    public async Task LaunchAppLibraryItemAsync(
-        string appId, CancellationToken cancellationToken)
+    public async Task<RegisterRunningAppBackendSummary> RegisterRunningAppAsync(
+        BrokerWidgetIdentity identity,
+        RegisterRunningAppBackendRequest request,
+        CancellationToken cancellationToken)
     {
-        _ = await LaunchAppLibraryItemObservedAsync(appId, cancellationToken)
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(request);
+        identity.Validate();
+        WindowsPortableAppStore.ValidateStableIdentity(
+            request.StableProviderIdentity, "invalid_payload");
+        await GetAppsAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = await EnterObservationOperationAsync(cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            var candidate = await _shellSta.RunAsync(
+                token => ResolveRunningRegistrationCandidate(request, token),
+                operation.Token).ConfigureAwait(false);
+            operation.Token.ThrowIfCancellationRequested();
+            if (candidate.InstalledItem is not null)
+                return new RegisterRunningAppBackendSummary(
+                    candidate.InstalledItem, true);
+
+            var mutation = await _portableStore.UpsertAsync(
+                identity, candidate.Portable!, operation.Token).ConfigureAwait(false);
+            operation.Token.ThrowIfCancellationRequested();
+            return new RegisterRunningAppBackendSummary(
+                PortableBackendItem(
+                    GetPortableAppId(identity, candidate.Portable!),
+                    candidate.Portable!),
+                AlreadyRegistered: !mutation.Changed);
+        }
+        finally
+        {
+            operation.Release(_observationGate);
+        }
+    }
+
+    public async Task<IReadOnlyList<AppLibraryBackendItemSummary>>
+        ResolveRegisteredRunningAppsAsync(
+            BrokerWidgetIdentity identity,
+            IReadOnlyList<string> savedIds,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(savedIds);
+        identity.Validate();
+        if (savedIds.Count > WindowsPortableAppStore.MaximumRegistrations ||
+            savedIds.Distinct(StringComparer.Ordinal).Count() != savedIds.Count)
+            throw new BrokerException(
+                "invalid_payload", "Saved app identifiers are invalid.");
+        await GetAppsAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = await EnterObservationOperationAsync(cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            var snapshot = await _portableStore.ReadAsync(identity, operation.Token)
+                .ConfigureAwait(false);
+            var bySavedId = snapshot.Items.ToDictionary(
+                item => item.SavedId, StringComparer.Ordinal);
+            var result = new List<AppLibraryBackendItemSummary>(savedIds.Count);
+            foreach (var savedId in savedIds)
+            {
+                operation.Token.ThrowIfCancellationRequested();
+                if (!bySavedId.TryGetValue(savedId, out var registration)) continue;
+                if (TryInstalledBackendItem(registration.StableIdentity) is { } installed)
+                {
+                    result.Add(installed);
+                    continue;
+                }
+                var current = _executableAuthority.ReadExact(
+                    registration.ExecutablePath);
+                if (!SameAuthority(registration, current)) continue;
+                result.Add(PortableBackendItem(
+                    GetPortableAppId(identity, registration), registration));
+            }
+            return result.AsReadOnly();
+        }
+        finally
+        {
+            operation.Release(_observationGate);
+        }
+    }
+
+    public async Task ForgetRunningAppAsync(
+        BrokerWidgetIdentity identity,
+        string savedId,
+        CancellationToken cancellationToken)
+    {
+        using var operation = await EnterObservationOperationAsync(cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            var mutation = await _portableStore.RemoveAsync(
+                identity, savedId, operation.Token).ConfigureAwait(false);
+            if (!mutation.Changed) return;
+            lock (_stateGate)
+            {
+                var authorityPrefix = PortableAuthorityKey(identity, string.Empty);
+                foreach (var key in _portableIdsByAuthority.Keys
+                             .Where(key => key.StartsWith(
+                                 authorityPrefix, StringComparison.OrdinalIgnoreCase))
+                             .ToArray())
+                {
+                    var appId = _portableIdsByAuthority[key];
+                    if (_portableLaunchByOpaqueId.TryGetValue(appId, out var launch) &&
+                        string.Equals(launch.SavedId, savedId, StringComparison.Ordinal))
+                    {
+                        _portableIdsByAuthority.Remove(key);
+                        _portableLaunchByOpaqueId.Remove(appId);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            operation.Release(_observationGate);
+        }
+    }
+
+    public async Task<AppLibraryRegistrationStateSummary>
+        GetRunningAppRegistrationStateAsync(
+            BrokerWidgetIdentity identity,
+            CancellationToken cancellationToken)
+    {
+        var snapshot = await _portableStore.ReadAsync(identity, cancellationToken)
+            .ConfigureAwait(false);
+        return new(snapshot.Items.Count != 0, snapshot.Revision);
+    }
+
+    public async Task ClearRunningAppRegistrationsAsync(
+        BrokerWidgetIdentity identity,
+        long expectedRevision,
+        CancellationToken cancellationToken)
+    {
+        await _portableStore.ClearAsync(identity, expectedRevision, cancellationToken)
+            .ConfigureAwait(false);
+        lock (_stateGate)
+        {
+            var authorityPrefix = PortableAuthorityKey(identity, string.Empty);
+            foreach (var key in _portableIdsByAuthority.Keys
+                         .Where(key => key.StartsWith(
+                             authorityPrefix, StringComparison.OrdinalIgnoreCase))
+                         .ToArray())
+            {
+                var appId = _portableIdsByAuthority[key];
+                _portableIdsByAuthority.Remove(key);
+                _portableLaunchByOpaqueId.Remove(appId);
+            }
+        }
+    }
+
+    public async Task<AppLibraryPackageRegistrationRetirementSummary>
+        RetireRunningAppPackageRegistrationsAsync(
+            string packageId,
+            CancellationToken cancellationToken)
+    {
+        var result = await _portableStore.RetirePackageAsync(
+            packageId, cancellationToken).ConfigureAwait(false);
+        lock (_stateGate)
+        {
+            foreach (var key in _portableIdsByAuthority.Keys
+                         .Where(key => key.Contains(
+                             "\0" + packageId + "\0", StringComparison.Ordinal))
+                         .ToArray())
+            {
+                var appId = _portableIdsByAuthority[key];
+                _portableIdsByAuthority.Remove(key);
+                _portableLaunchByOpaqueId.Remove(appId);
+            }
+        }
+        return new(result.Committed, result.CleanupPending);
+    }
+
+    private RunningRegistrationCandidate ResolveRunningRegistrationCandidate(
+        RegisterRunningAppBackendRequest request,
+        CancellationToken cancellationToken)
+    {
+        long catalogRevision;
+        KeyValuePair<string, GameLibrarySourceItem>[] registrations;
+        lock (_stateGate)
+        {
+            catalogRevision = _catalogRevision;
+            registrations = _registrationsByOpaqueId.ToArray();
+        }
+        var observedWindows = _runningApps.Observe(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        var page = BuildRunningPage(
+            catalogRevision, registrations.Select(entry => entry.Value).ToArray(),
+            observedWindows, cancellationToken);
+        if (!string.Equals(
+                page.Revision, request.ObservationRevision, StringComparison.Ordinal))
+            throw new BrokerException(
+                "stale_observation", "The running-app observation is stale.");
+        var observed = page.Items.SingleOrDefault(item =>
+            string.Equals(item.StableProviderIdentity,
+                request.StableProviderIdentity, StringComparison.Ordinal) &&
+            string.Equals(item.InstanceEvidence,
+                request.InstanceEvidence, StringComparison.Ordinal));
+        if (observed is null)
+            throw new BrokerException(
+                "stale_observation", "The running app is no longer current.");
+
+        var installed = registrations.SingleOrDefault(entry => string.Equals(
+            entry.Value.StableIdentity, request.StableProviderIdentity,
+            StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(installed.Key))
+            return new(BackendItem(installed.Key, installed.Value), null);
+
+        var raw = observedWindows.SingleOrDefault(item =>
+            string.Equals(item.RegistrationIdentity,
+                request.StableProviderIdentity, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(item.InstanceEvidence,
+                request.InstanceEvidence, StringComparison.Ordinal));
+        if (raw?.PortableAuthority is null)
+            throw new BrokerException(
+                "app_not_supported", "This running app cannot be registered.");
+        var current = _executableAuthority.ReadExact(raw.PortableAuthority.CanonicalPath);
+        if (current is null ||
+            !string.Equals(
+                WindowsStartMenuApplicationSource.IdentityForExecutable(
+                    current.CanonicalPath),
+                request.StableProviderIdentity,
+                StringComparison.OrdinalIgnoreCase) ||
+            current.FileIdentity != raw.PortableAuthority.FileIdentity)
+            throw new BrokerException(
+                "stale_observation", "The running app executable changed.");
+        return new(null, new PortableAppRegistration(
+            request.SavedId,
+            request.StableProviderIdentity,
+            observed.DisplayName,
+            current.CanonicalPath,
+            current.FileIdentity));
+    }
+
+    public async Task LaunchAppLibraryItemAsync(
+        BrokerWidgetIdentity identity,
+        string appId,
+        CancellationToken cancellationToken)
+    {
+        _ = await LaunchAppLibraryItemObservedAsync(identity, appId, cancellationToken)
             .ConfigureAwait(false);
     }
 
     public async Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
-        string appId, CancellationToken cancellationToken)
+        BrokerWidgetIdentity identity,
+        string appId,
+        CancellationToken cancellationToken)
     {
         ThrowIfTerminating();
         if (string.IsNullOrWhiteSpace(appId) || appId.Length > 128)
@@ -486,6 +792,31 @@ public sealed class WindowsAppLibraryProvider :
             .ConfigureAwait(false);
         try
         {
+            PortableLaunchRegistration? portable;
+            lock (_stateGate)
+                _portableLaunchByOpaqueId.TryGetValue(appId, out portable);
+            if (portable is not null)
+            {
+                if (!string.Equals(
+                        portable.AuthorityKey, PortableAuthorityKey(identity, string.Empty),
+                        StringComparison.OrdinalIgnoreCase))
+                    throw AppUnavailable();
+                var snapshot = await _portableStore.ReadAsync(identity, operation.Token)
+                    .ConfigureAwait(false);
+                var registration = snapshot.Items.SingleOrDefault(item =>
+                    string.Equals(item.SavedId, portable.SavedId, StringComparison.Ordinal) &&
+                    string.Equals(item.StableIdentity, portable.StableIdentity,
+                        StringComparison.OrdinalIgnoreCase));
+                var current = registration is null ? null :
+                    _executableAuthority.ReadExact(registration.ExecutablePath);
+                if (registration is null || !SameAuthority(registration, current))
+                    throw AppUnavailable();
+                operation.Token.ThrowIfCancellationRequested();
+                _portableLauncher.Launch(current!, operation.Token);
+                return new AppLibraryLaunchObservationSummary(
+                    AppLibraryLaunchObservationState.RequestAccepted, false, false);
+            }
+
             GameLibrarySourceItem? registered;
             lock (_stateGate)
                 _registrationsByOpaqueId.TryGetValue(appId, out registered);
@@ -748,6 +1079,89 @@ public sealed class WindowsAppLibraryProvider :
 
     private static BrokerException AppUnavailable() =>
         new("app_not_found", "The selected app is no longer available.");
+
+    private AppLibraryBackendItemSummary? TryInstalledBackendItem(
+        string stableIdentity)
+    {
+        lock (_stateGate)
+        {
+            var installed = _registrationsByOpaqueId.SingleOrDefault(entry =>
+                string.Equals(entry.Value.StableIdentity, stableIdentity,
+                    StringComparison.OrdinalIgnoreCase));
+            return string.IsNullOrEmpty(installed.Key)
+                ? null
+                : BackendItem(installed.Key, installed.Value);
+        }
+    }
+
+    private static AppLibraryBackendItemSummary BackendItem(
+        string appId,
+        GameLibrarySourceItem registration) => new(
+        appId,
+        registration.StableIdentity,
+        registration.DisplayName,
+        ToBrokerKind(registration.Kind),
+        ArtworkRevision(registration.ArtworkRevision),
+        registration.Attribution)
+    {
+        SourceIdentity = registration.SourceIdentity,
+        IsLaunchable = registration.SupportedActions.HasFlag(
+            GameLibrarySourceActions.Launch),
+    };
+
+    private static AppLibraryBackendItemSummary PortableBackendItem(
+        string appId,
+        PortableAppRegistration registration) => new(
+        appId,
+        registration.StableIdentity,
+        registration.DisplayName,
+        AppLibraryKind.Application,
+        string.Empty,
+        "Portable")
+    {
+        SourceIdentity = "source-portable",
+        IsLaunchable = true,
+        AvailabilityState = AppLibraryAvailabilityState.Installed,
+        AvailabilityStatusCode = "registered_portable",
+        SupportedActions = [AppLibraryAction.Launch],
+    };
+
+    private string GetPortableAppId(
+        BrokerWidgetIdentity identity,
+        PortableAppRegistration registration)
+    {
+        var key = PortableAuthorityKey(identity, registration.StableIdentity);
+        lock (_stateGate)
+        {
+            if (!_portableIdsByAuthority.TryGetValue(key, out var appId))
+            {
+                appId = "app-" + Guid.NewGuid().ToString("N");
+                _portableIdsByAuthority[key] = appId;
+            }
+            _portableLaunchByOpaqueId[appId] = new(
+                PortableAuthorityKey(identity, string.Empty),
+                registration.SavedId,
+                registration.StableIdentity);
+            return appId;
+        }
+    }
+
+    private static string PortableAuthorityKey(
+        BrokerWidgetIdentity identity,
+        string stableIdentity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        identity.Validate();
+        return identity.PublisherId + "\0" + identity.PackageId + "\0" + stableIdentity;
+    }
+
+    private static bool SameAuthority(
+        PortableAppRegistration registration,
+        WindowsExecutableAuthority? current) =>
+        current is not null &&
+        string.Equals(registration.ExecutablePath, current.CanonicalPath,
+            StringComparison.OrdinalIgnoreCase) &&
+        registration.FileIdentity == current.FileIdentity;
 
     private async Task<ProviderOperation> EnterOperationAsync(
         CancellationToken cancellationToken)
@@ -1033,4 +1447,13 @@ public sealed class WindowsAppLibraryProvider :
     private sealed record Candidate(
         GameLibrarySourceItem Registration,
         string? DisplayName);
+
+    private sealed record RunningRegistrationCandidate(
+        AppLibraryBackendItemSummary? InstalledItem,
+        PortableAppRegistration? Portable);
+
+    private sealed record PortableLaunchRegistration(
+        string AuthorityKey,
+        string SavedId,
+        string StableIdentity);
 }
