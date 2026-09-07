@@ -444,8 +444,11 @@ Another widget authority cannot correlate or resolve those SavedIds.
 
 The running-app observer also supports an explicit portable-registration lane.
 It admits only visible top-level windows whose process is in the current user
-session and is not elevated. Packaged or installed identities retain the normal
-catalog owner. For an otherwise unmatched local DOS-drive `.exe`, the provider
+session and belongs to the current user. An elevated instance remains eligible
+when Windows permits the same bounded limited-information inspection; its token,
+arguments, and elevation are neither retained nor reproduced. Packaged or
+installed identities retain the normal catalog owner. For an otherwise unmatched
+local DOS-drive `.exe`, the provider
 rejects relative, UNC, device, remote-drive, reparse, and canonical-alias paths,
 then captures its canonical handle path plus volume/file ID. The caller-visible
 path envelope is at most 32,762 characters so the private extended-DOS native
@@ -481,6 +484,11 @@ objects from being renamed, deleted, or rewritten between the final identity
 check and process creation; Windows is not asked to launch by handle. Launch
 uses `UseShellExecute=false`, an empty argument list, no verb or elevation, and
 the executable's containing directory as its explicit working directory.
+If that exact direct launch returns `ERROR_ELEVATION_REQUIRED`, the provider
+retries the same held-authority executable once through Shell `open` so Windows
+can present its standard consent UI. It never supplies `runas`, arguments, or a
+different executable. Cancellation is reported as a sanitized failure and is
+never converted into launch success.
 Installed catalog registrations always take precedence and are never persisted
 or forgotten through the portable lane, even when their executable is not
 eligible for new portable registration.

@@ -164,12 +164,34 @@ internal static class PortableRegistrationScenarios
         Assert.Equal(1, launcher.Calls);
         Assert.Equal(0, authority.ActiveLeases);
         Assert.Equal(path, launcher.Last?.CanonicalPath);
+        launcher.Failure = new System.ComponentModel.Win32Exception(
+            1223, "private cancellation detail");
+        var canceled = await ThrowsBroker(
+            "elevation_cancelled",
+            () => restarted.LaunchAppLibraryItemAsync(
+                identity, restored[0].ProviderAppId, CancellationToken.None));
+        Assert.Equal(
+            "Administrator approval was canceled and the app was not opened.",
+            canceled.Message);
+        Assert.False(canceled.Message.Contains("private", StringComparison.Ordinal));
+        launcher.Failure = new System.ComponentModel.Win32Exception(
+            740, "private elevation detail");
+        var required = await ThrowsBroker(
+            "elevation_required",
+            () => restarted.LaunchAppLibraryItemAsync(
+                identity, restored[0].ProviderAppId, CancellationToken.None));
+        Assert.Equal(
+            "This app requires administrator approval and was not opened.",
+            required.Message);
+        Assert.False(required.Message.Contains("private", StringComparison.Ordinal));
+        launcher.Failure = null;
         Assert.Equal(Path.GetDirectoryName(path), launcher.Last?.WorkingDirectory);
         await ThrowsBroker(
             "app_not_found",
             () => restarted.LaunchAppLibraryItemAsync(
                 otherIdentity, restored[0].ProviderAppId, CancellationToken.None));
 
+        var callsBeforeReplacement = launcher.Calls;
         var replacedAuthority = Authority(path, 2);
         authority.Current = replacedAuthority;
         observer.Set(replacedAuthority, "instance-two");
@@ -179,6 +201,7 @@ internal static class PortableRegistrationScenarios
             "app_not_found",
             () => restarted.LaunchAppLibraryItemAsync(
                 identity, restored[0].ProviderAppId, CancellationToken.None));
+        Assert.Equal(callsBeforeReplacement, launcher.Calls);
 
         var replacedObservation = await restarted.ObserveRunningAppsAsync(
             CancellationToken.None);
@@ -195,7 +218,7 @@ internal static class PortableRegistrationScenarios
         Assert.Equal(1, revalidated.Count);
         await restarted.LaunchAppLibraryItemAsync(
             identity, revalidated[0].ProviderAppId, CancellationToken.None);
-        Assert.Equal(2, launcher.Calls);
+        Assert.Equal(callsBeforeReplacement + 1, launcher.Calls);
         Assert.Equal(0, authority.ActiveLeases);
         Assert.Equal(replacedAuthority.FileIdentity, launcher.Last?.FileIdentity);
 
@@ -346,7 +369,8 @@ internal static class PortableRegistrationScenarios
     internal static Task LaunchShapeIsExact()
     {
         var path = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "Portable.exe"));
-        var start = WindowsPortableAppLauncher.CreateStartInfo(Authority(path, 1));
+        var authority = Authority(path, 1);
+        var start = WindowsPortableAppLauncher.CreateStartInfo(authority);
         Assert.Equal(path, start.FileName);
         Assert.Equal(Path.GetDirectoryName(path), start.WorkingDirectory);
         Assert.False(start.UseShellExecute);
@@ -354,6 +378,58 @@ internal static class PortableRegistrationScenarios
         Assert.Equal(string.Empty, start.Arguments);
         Assert.Equal(0, start.ArgumentList.Count);
         Assert.Equal(string.Empty, start.Verb);
+
+        var consent = WindowsPortableAppLauncher.CreateShellConsentStartInfo(authority);
+        Assert.Equal(path, consent.FileName);
+        Assert.Equal(Path.GetDirectoryName(path), consent.WorkingDirectory);
+        Assert.True(consent.UseShellExecute);
+        Assert.False(consent.ErrorDialog);
+        Assert.Equal(string.Empty, consent.Arguments);
+        Assert.Equal(0, consent.ArgumentList.Count);
+        Assert.Equal("open", consent.Verb);
+
+        var normalAttempts = new List<System.Diagnostics.ProcessStartInfo>();
+        new WindowsPortableAppLauncher(info =>
+        {
+            normalAttempts.Add(info);
+            return true;
+        }).Launch(authority, CancellationToken.None);
+        Assert.Equal(1, normalAttempts.Count);
+        Assert.False(normalAttempts[0].UseShellExecute);
+
+        var consentAttempts = new List<System.Diagnostics.ProcessStartInfo>();
+        new WindowsPortableAppLauncher(info =>
+        {
+            consentAttempts.Add(info);
+            if (consentAttempts.Count == 1)
+                throw new System.ComponentModel.Win32Exception(740);
+            return true;
+        }).Launch(authority, CancellationToken.None);
+        Assert.Equal(2, consentAttempts.Count);
+        Assert.False(consentAttempts[0].UseShellExecute);
+        Assert.True(consentAttempts[1].UseShellExecute);
+        Assert.Equal("open", consentAttempts[1].Verb);
+
+        var canceledAttempts = 0;
+        var canceled = Assert.Throws<System.ComponentModel.Win32Exception>(() =>
+            new WindowsPortableAppLauncher(_ =>
+            {
+                canceledAttempts++;
+                throw new System.ComponentModel.Win32Exception(
+                    canceledAttempts == 1 ? 740 : 1223);
+            }).Launch(authority, CancellationToken.None));
+        Assert.Equal(1223, canceled.NativeErrorCode);
+        Assert.Equal(2, canceledAttempts);
+
+        var deniedAttempts = 0;
+        var denied = Assert.Throws<System.ComponentModel.Win32Exception>(() =>
+            new WindowsPortableAppLauncher(_ =>
+            {
+                deniedAttempts++;
+                throw new System.ComponentModel.Win32Exception(5);
+            }).Launch(authority, CancellationToken.None));
+        Assert.Equal(5, denied.NativeErrorCode);
+        Assert.Equal(1, deniedAttempts);
         return Task.CompletedTask;
     }
 
@@ -379,7 +455,7 @@ internal static class PortableRegistrationScenarios
             Path.GetFullPath(Path.Combine(root, identity + ".exe")),
             new WindowsExecutableFileIdentity(9, fileId, fileId + 100));
 
-    private static async Task ThrowsBroker(string code, Func<Task> action)
+    private static async Task<BrokerException> ThrowsBroker(string code, Func<Task> action)
     {
         try
         {
@@ -389,6 +465,7 @@ internal static class PortableRegistrationScenarios
         catch (BrokerException exception)
         {
             Assert.Equal(code, exception.Code);
+            return exception;
         }
     }
 
@@ -468,6 +545,7 @@ internal static class PortableRegistrationScenarios
         internal int Calls { get; private set; }
         internal WindowsExecutableAuthority? Last { get; private set; }
         internal Func<bool>? LeaseIsActive { get; set; }
+        internal Exception? Failure { get; set; }
 
         public void Launch(
             WindowsExecutableAuthority authority,
@@ -477,6 +555,7 @@ internal static class PortableRegistrationScenarios
             Assert.True(LeaseIsActive?.Invoke() ?? true);
             Calls++;
             Last = authority;
+            if (Failure is not null) throw Failure;
         }
     }
 

@@ -73,6 +73,8 @@ var tests = new (string Name, Func<Task> Run)[]
         UnavailableAndStaleNeverLaunch),
     ("Confirmed launches move the exact curated app to recent-first", SuccessfulLaunchOrdersRecentFirst),
     ("Failed launch keeps curated order and actionable focus", FailedLaunchKeepsOrder),
+    ("Elevation launch outcomes keep the library and explain the result",
+        ElevationLaunchOutcomesAreExplained),
     ("Curated membership survives widget lifecycle reactivation", CurationSurvivesReactivation),
     ("First activation performs one saved-library session reconciliation", InitialActivationReconcilesOnce),
     ("Persisted later selection keeps first curated row as entry focus",
@@ -2126,6 +2128,38 @@ static async Task FailedLaunchKeepsOrder()
     Assert.True(Nodes(failed.Root).Single(node => node.Id == "games.toast")
         .StyleClasses.Contains("wrail-toast--danger", StringComparer.Ordinal));
     await Background(widget);
+}
+
+static async Task ElevationLaunchOutcomesAreExplained()
+{
+    foreach (var (code, expected) in new[]
+    {
+        ("elevation_cancelled", "Administrator approval was canceled"),
+        ("elevation_required", "requires administrator approval"),
+    })
+    {
+        var fake = new FakeAppLibraryHost
+        {
+            Pages = { [0] = Page([App("opaque-a", "Alpha")], null) },
+            LaunchException = new WidgetCapabilityException(code, "private elevation detail"),
+        };
+        var widget = Create(fake);
+        await Interactive(widget);
+        await AddFromCatalog(widget, "Alpha");
+        await BackToLibrary(widget);
+        var alpha = ActionSurfaces(Snapshot(widget, 49).Root)
+            .Single(tile => TileTitle(tile) == "Alpha");
+
+        await widget.OnActionAsync(new("games.launch", alpha.Id));
+
+        var failed = Snapshot(widget, 50);
+        Assert.Equal(GamesAppsViewState.Ready, widget.ViewState);
+        Assert.Equal(1, widget.Items.Count);
+        Assert.Contains(expected, Text(failed.Root, "games.toast.message").Text!);
+        Assert.False(System.Text.Json.JsonSerializer.Serialize(failed)
+            .Contains("private elevation detail", StringComparison.Ordinal));
+        await Background(widget);
+    }
 }
 
 static async Task CurationSurvivesReactivation()

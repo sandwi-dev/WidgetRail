@@ -328,6 +328,14 @@ internal sealed class WindowsExecutableAuthorityReader : IWindowsExecutableAutho
 
 internal sealed class WindowsPortableAppLauncher : IWindowsPortableAppLauncher
 {
+    private const int ErrorElevationRequired = 740;
+    private readonly Func<ProcessStartInfo, bool> _start;
+
+    internal WindowsPortableAppLauncher() : this(StartProcess) { }
+
+    internal WindowsPortableAppLauncher(Func<ProcessStartInfo, bool> start) =>
+        _start = start ?? throw new ArgumentNullException(nameof(start));
+
     public void Launch(
         WindowsExecutableAuthority authority,
         CancellationToken cancellationToken)
@@ -335,9 +343,16 @@ internal sealed class WindowsPortableAppLauncher : IWindowsPortableAppLauncher
         ArgumentNullException.ThrowIfNull(authority);
         cancellationToken.ThrowIfCancellationRequested();
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
-        using var process = Process.Start(CreateStartInfo(authority));
-        if (process is null)
-            throw new Win32Exception("Windows did not accept the executable launch request.");
+        try
+        {
+            Start(CreateStartInfo(authority));
+        }
+        catch (Win32Exception exception) when (
+            exception.NativeErrorCode == ErrorElevationRequired)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Start(CreateShellConsentStartInfo(authority));
+        }
     }
 
     internal static ProcessStartInfo CreateStartInfo(WindowsExecutableAuthority authority)
@@ -350,5 +365,32 @@ internal sealed class WindowsPortableAppLauncher : IWindowsPortableAppLauncher
             UseShellExecute = false,
             ErrorDialog = false,
         };
+    }
+
+    internal static ProcessStartInfo CreateShellConsentStartInfo(
+        WindowsExecutableAuthority authority)
+    {
+        ArgumentNullException.ThrowIfNull(authority);
+        return new ProcessStartInfo
+        {
+            FileName = authority.CanonicalPath,
+            WorkingDirectory = authority.WorkingDirectory,
+            UseShellExecute = true,
+            ErrorDialog = false,
+            Verb = "open",
+        };
+    }
+
+    private void Start(ProcessStartInfo startInfo)
+    {
+        if (!_start(startInfo))
+            throw new Win32Exception(
+                "Windows did not accept the executable launch request.");
+    }
+
+    private static bool StartProcess(ProcessStartInfo startInfo)
+    {
+        using var process = Process.Start(startInfo);
+        return process is not null;
     }
 }
