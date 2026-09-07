@@ -3,6 +3,77 @@ using WidgetRail.WindowsAppLibraryProvider;
 
 internal static class PortableRegistrationScenarios
 {
+    internal static Task ExecutableAuthorityIsLocalAndLeased()
+    {
+        Assert.False(WindowsExecutableAuthorityReader.TryNormalizeLocalExecutablePath(
+            @"\\server\share\Portable.exe", out _));
+        Assert.False(WindowsExecutableAuthorityReader.TryNormalizeLocalExecutablePath(
+            @"\\?\C:\Portable.exe", out _));
+        Assert.False(WindowsExecutableAuthorityReader.TryNormalizeLocalExecutablePath(
+            @"\\.\C:\Portable.exe", out _));
+        Assert.False(WindowsExecutableAuthorityReader.TryNormalizeLocalExecutablePath(
+            @"C:\Portable.com", out _));
+        Assert.False(WindowsExecutableAuthorityReader.TryNormalizeLocalExecutablePath(
+            "Portable.exe", out _));
+        Assert.False(WindowsExecutableAuthorityReader.TryNormalizeLocalExecutablePath(
+            @".\Portable.exe", out _));
+        Assert.False(WindowsExecutableAuthorityReader.TryNormalizeLocalExecutablePath(
+            @"C:Portable.exe", out _));
+        var remaining =
+            WindowsExecutableAuthorityReader.MaximumExecutablePathCharacters - 7;
+        var components = new List<string>();
+        while (remaining > 200)
+        {
+            components.Add(new string('a', 200));
+            remaining -= 201;
+        }
+        components.Add(new string('a', remaining));
+        var maximum = @"C:\" + string.Join('\\', components) + ".exe";
+        Assert.True(WindowsExecutableAuthorityReader.TryNormalizeLocalExecutablePath(
+            maximum, out _));
+        Assert.False(WindowsExecutableAuthorityReader.TryNormalizeLocalExecutablePath(
+            maximum[..^4] + "x.exe", out _));
+        if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
+
+        using var temp = new PortableTemporaryDirectory();
+        var applicationDirectory = Path.Combine(temp.Path, "application");
+        Directory.CreateDirectory(applicationDirectory);
+        var path = Path.Combine(applicationDirectory, "Portable.exe");
+        File.WriteAllBytes(path, [0x4d, 0x5a]);
+        var reader = new WindowsExecutableAuthorityReader();
+        using (var lease = reader.AcquireExact(path))
+        {
+            Assert.True(lease is not null);
+            Assert.Equal(Path.GetFullPath(path), lease!.Authority.CanonicalPath);
+            Assert.Throws<IOException>(() =>
+                File.Open(path, FileMode.Open, FileAccess.Write, FileShare.Read).Dispose());
+            Assert.Throws<IOException>(() => Directory.Move(
+                applicationDirectory, applicationDirectory + ".moved"));
+        }
+        var moved = applicationDirectory + ".moved";
+        Directory.Move(applicationDirectory, moved);
+        Directory.Move(moved, applicationDirectory);
+
+        var fileLink = Path.Combine(temp.Path, "PortableLink.exe");
+        File.CreateSymbolicLink(fileLink, path);
+        Assert.True(reader.AcquireExact(fileLink) is null);
+        var directoryLink = Path.Combine(temp.Path, "application-link");
+        Directory.CreateSymbolicLink(directoryLink, applicationDirectory);
+        Assert.True(reader.AcquireExact(
+            Path.Combine(directoryLink, "Portable.exe")) is null);
+
+        var longDirectory = temp.Path;
+        for (var index = 0; index < 3; ++index)
+            longDirectory = Path.Combine(longDirectory, new string((char)('a' + index), 80));
+        Directory.CreateDirectory(longDirectory);
+        var longExecutable = Path.Combine(longDirectory, "LongPortable.exe");
+        File.WriteAllBytes(longExecutable, [0x4d, 0x5a]);
+        Assert.True(longExecutable.Length > 260);
+        using var longLease = reader.AcquireExact(longExecutable);
+        Assert.True(longLease is not null);
+        return Task.CompletedTask;
+    }
+
     internal static async Task RegistrationPersistsAndLaunchRevalidates()
     {
         using var temp = new PortableTemporaryDirectory();
@@ -12,6 +83,7 @@ internal static class PortableRegistrationScenarios
         observer.Set(firstAuthority, "instance-one");
         var authority = new AuthorityReader(firstAuthority);
         var launcher = new Launcher();
+        launcher.LeaseIsActive = () => authority.ActiveLeases == 1;
         var storeRoot = Path.Combine(temp.Path, "registrations");
         var identity = new BrokerWidgetIdentity(
             "dev.test.portable", "dev.test", "one");
@@ -23,6 +95,7 @@ internal static class PortableRegistrationScenarios
         var observed = await provider.ObserveRunningAppsAsync(CancellationToken.None);
         Assert.Equal(1, observed.Items.Count);
         var candidate = observed.Items.Single();
+        observer.SetDuplicate(firstAuthority, "instance-one");
         await ThrowsBroker(
             "stale_observation",
             () => provider.RegisterRunningAppAsync(
@@ -58,6 +131,22 @@ internal static class PortableRegistrationScenarios
             CancellationToken.None);
         Assert.True(repeated.AlreadyRegistered);
 
+        observer.SetConflicting(
+            firstAuthority, firstAuthority with
+            {
+                FileIdentity = new WindowsExecutableFileIdentity(7, 99, 199),
+            },
+            "instance-one");
+        await ThrowsBroker(
+            "stale_observation",
+            () => provider.RegisterRunningAppAsync(
+                identity,
+                new RegisterRunningAppBackendRequest(
+                    "saved-portable", candidate.StableProviderIdentity,
+                    candidate.InstanceEvidence, observed.Revision),
+                CancellationToken.None));
+        observer.SetDuplicate(firstAuthority, "instance-one");
+
         await using var restarted = Provider(
             observer, new WindowsPortableAppStore(storeRoot), authority, launcher);
         var restored = await restarted.ResolveRegisteredRunningAppsAsync(
@@ -70,6 +159,7 @@ internal static class PortableRegistrationScenarios
         await restarted.LaunchAppLibraryItemAsync(
             identity, restored[0].ProviderAppId, CancellationToken.None);
         Assert.Equal(1, launcher.Calls);
+        Assert.Equal(0, authority.ActiveLeases);
         Assert.Equal(path, launcher.Last?.CanonicalPath);
         Assert.Equal(Path.GetDirectoryName(path), launcher.Last?.WorkingDirectory);
         await ThrowsBroker(
@@ -103,6 +193,7 @@ internal static class PortableRegistrationScenarios
         await restarted.LaunchAppLibraryItemAsync(
             identity, revalidated[0].ProviderAppId, CancellationToken.None);
         Assert.Equal(2, launcher.Calls);
+        Assert.Equal(0, authority.ActiveLeases);
         Assert.Equal(replacedAuthority.FileIdentity, launcher.Last?.FileIdentity);
 
         authority.Current = null;
@@ -311,6 +402,26 @@ internal static class PortableRegistrationScenarios
                 StableIdentity, instance, "Portable App", authority)];
         }
 
+        internal void SetDuplicate(
+            WindowsExecutableAuthority authority,
+            string instance)
+        {
+            Set(authority, instance);
+            _values = [_values[0], _values[0]];
+        }
+
+        internal void SetConflicting(
+            WindowsExecutableAuthority first,
+            WindowsExecutableAuthority second,
+            string instance)
+        {
+            Set(first, instance);
+            _values = [
+                _values[0],
+                new(StableIdentity, instance, "Portable App", second),
+            ];
+        }
+
         public IReadOnlyList<WindowsRunningAppObservation> Observe(
             CancellationToken cancellationToken)
         {
@@ -323,24 +434,44 @@ internal static class PortableRegistrationScenarios
         IWindowsExecutableAuthorityReader
     {
         internal WindowsExecutableAuthority? Current { get; set; } = current;
+        internal int ActiveLeases { get; private set; }
 
-        public WindowsExecutableAuthority? ReadExact(string path) =>
-            Current is not null && string.Equals(
-                path, Current.CanonicalPath, StringComparison.OrdinalIgnoreCase)
-                ? Current
-                : null;
+        public IWindowsExecutableAuthorityLease? AcquireExact(string path)
+        {
+            if (Current is null || !string.Equals(
+                    path, Current.CanonicalPath, StringComparison.OrdinalIgnoreCase))
+                return null;
+            ActiveLeases++;
+            return new Lease(this, Current);
+        }
+
+        private sealed class Lease(
+            AuthorityReader owner,
+            WindowsExecutableAuthority authority) : IWindowsExecutableAuthorityLease
+        {
+            private AuthorityReader? _owner = owner;
+            public WindowsExecutableAuthority Authority { get; } = authority;
+
+            public void Dispose()
+            {
+                var current = Interlocked.Exchange(ref _owner, null);
+                if (current is not null) current.ActiveLeases--;
+            }
+        }
     }
 
     private sealed class Launcher : IWindowsPortableAppLauncher
     {
         internal int Calls { get; private set; }
         internal WindowsExecutableAuthority? Last { get; private set; }
+        internal Func<bool>? LeaseIsActive { get; set; }
 
         public void Launch(
             WindowsExecutableAuthority authority,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            Assert.True(LeaseIsActive?.Invoke() ?? true);
             Calls++;
             Last = authority;
         }

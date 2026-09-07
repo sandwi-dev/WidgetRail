@@ -26,6 +26,8 @@ var allTests = new (string Name, Func<Task> Run)[]
         RunningAppContracts),
     ("Running app registration is explicit durable scoped and forgettable",
         RunningAppRegistrationContracts),
+    ("Running app registration retains only the bounded launch window",
+        RunningAppRegistrationLaunchWindowIsBounded),
     ("App library cursors and registrations stay bounded across ten thousand items",
         AppLibraryCursorBounds),
     ("App artwork handles are generation-bound lazy and bounded", AppLibraryIconsAreBounded),
@@ -71,6 +73,7 @@ var tests = runningRegistrationOnly
         "Capability vocabulary is closed and versioned" or
         "Running app observation is separately consented opaque and stale-safe" or
         "Running app registration is explicit durable scoped and forgettable" or
+        "Running app registration retains only the bounded launch window" or
         "App library cursors and registrations stay bounded across ten thousand items")
         .ToArray()
     : allTests;
@@ -1395,6 +1398,70 @@ static async Task RunningAppRegistrationContracts()
         PlatformCapabilities.AppLibraryResolveSaved,
         new ResolveSavedAppLibraryItemsRequest([savedId])));
     Assert.Equal(0, missing.Payload!.Value.GetProperty("items").GetArrayLength());
+}
+
+static async Task RunningAppRegistrationLaunchWindowIsBounded()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var backend = new SimulatedPlatformBrokerBackend();
+    foreach (var capability in new[]
+             {
+                 PlatformCapabilities.AppRunningReadV1,
+                 PlatformCapabilities.AppRunningRegisterV1,
+                 PlatformCapabilities.AppLibraryLaunchV1,
+             })
+        await store.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+    await using var broker = Broker(
+        identity, store, backend,
+        PlatformCapabilities.AppRunningReadV1,
+        PlatformCapabilities.AppRunningRegisterV1,
+        PlatformCapabilities.AppLibraryLaunchV1);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+
+    var projectedIds = new List<string>();
+    for (var index = 0; index <= 256; index++)
+    {
+        var stable = $"stable-installed-{index:D3}";
+        backend.SetAppLibraryBackend([
+            new($"provider-installed-{index:D3}", stable, $"Installed {index:D3}",
+                AppLibraryKind.Application),
+        ]);
+        backend.SetRunningAppBackend([
+            new(stable, $"instance-{index:D3}", $"Installed {index:D3}",
+                AppLibraryKind.Application, "Windows"),
+        ]);
+        var observed = await broker.HandleAsync(Request(
+            identity, PlatformCapabilities.AppRunningReadV1,
+            PlatformCapabilities.AppRunningList, new { }));
+        Assert.True(observed.Succeeded, observed.ErrorCode ?? "observation failed");
+        var item = observed.Payload!.Value.GetProperty("items")[0];
+        var registered = await broker.HandleAsync(Request(
+            identity, PlatformCapabilities.AppRunningRegisterV1,
+            PlatformCapabilities.AppRunningRegister,
+            new
+            {
+                savedId = item.GetProperty("savedId").GetString(),
+                revision = observed.Payload.Value.GetProperty("revision").GetString(),
+            }));
+        Assert.True(registered.Succeeded, registered.ErrorCode ?? "registration failed");
+        Assert.True(registered.Payload!.Value.GetProperty("alreadyRegistered").GetBoolean());
+        projectedIds.Add(registered.Payload.Value.GetProperty("item")
+            .GetProperty("appId").GetString()!);
+    }
+
+    var retired = await broker.HandleAsync(Request(
+        identity, PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new LaunchAppLibraryItemRequest(projectedIds[0])));
+    Assert.Equal("app_not_found", retired.ErrorCode);
+    var current = await broker.HandleAsync(Request(
+        identity, PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new LaunchAppLibraryItemRequest(projectedIds[^1])));
+    Assert.True(current.Succeeded, current.ErrorCode ?? "newest launch authority was retired");
+    Assert.Equal(1, backend.AppLibraryLaunchCalls);
 }
 
 static async Task AppLibraryCursorBounds()

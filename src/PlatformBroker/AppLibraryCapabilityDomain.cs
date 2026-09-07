@@ -167,8 +167,10 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
                     _savedIdIssuer.Issue(_identity, validated.StableProviderIdentity),
                     request.SavedId, StringComparison.Ordinal))
                 throw InvalidItem();
+            var projected = ProjectItem(validated, []);
+            TrimLaunchWindow();
             return new RegisterRunningAppSummary(
-                ProjectItem(validated, []), registered.AlreadyRegistered);
+                projected, registered.AlreadyRegistered);
         }
         finally
         {

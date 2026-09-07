@@ -226,13 +226,14 @@ read capability produces a bounded observation and revision but stores
 nothing. While Interactive, `system.apps.running.register.v1` may register only
 one exact current observation from that revision, or idempotently forget one
 SavedId previously registered by the same authenticated publisher/package.
-The provider privately persists the canonical executable path and Windows file
-identity, never the arguments or a shell command. A later
+The provider privately persists the canonical local `.exe` path and Windows
+file identity, never the arguments or a shell command. A later
 `ResolveSavedAsync` omits the record unless the same path still names the same
 file identity; replacement requires another current observation and explicit
 registration. Launch remains separately consented and rechecks that authority
-again before starting the exact executable with no arguments, Shell verb, or
-elevation and with its containing directory as the working directory.
+again under a short-lived retained path/file lease before starting the exact
+executable with no arguments, Shell verb, or elevation and with its containing
+directory as the working directory.
 Installed catalog identity always takes precedence and is never converted into
 or removed as a portable record. Each package has an explicit 64-record bound;
 capacity failure is visible and forgetting a record reclaims one slot—there is

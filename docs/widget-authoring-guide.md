@@ -1990,16 +1990,19 @@ await HostServices.AppLibrary.ForgetRunningAsync(savedId, cancellationToken);
 
 Registration re-observes the exact process instance and either returns the
 current installed-catalog item or stores one provider-private portable record
-for this publisher/package. The widget never receives a process ID, window,
-path, file identity, command, or working directory. `ForgetRunningAsync` is
+for this publisher/package. New portable records accept only a local ordinary
+`.exe`; relative, UNC, device, remote-drive, reparse, and alias paths fail
+closed. The widget never receives a process ID, window, path, file identity,
+command, or working directory. `ForgetRunningAsync` is
 idempotent, cannot remove installed catalog authority, and cannot address
 another package's records. Portable records are capped at 64 with explicit
 capacity failure and no eviction. After restart, use `ResolveSavedAsync`; it
 omits missing, moved, or replaced executables. Launch still requires the
 separate launch grant and a fresh resolved AppId. The host then rechecks the
-canonical path and Windows file identity once more and starts only that exact
-executable, with no arguments, Shell execution, elevation, or provider-specific
-command behavior.
+canonical path and Windows file identity under a short-lived retained path/file
+lease and starts only that exact executable, with no arguments, Shell execution,
+elevation, or provider-specific command behavior. This file-identity contract
+does not claim content hashing or signature verification.
 
 Use `UI.TextEntry(value, placeholder, action, id, maximumLength)` when a
 controller-first surface needs bounded text. Activating it opens the host-owned

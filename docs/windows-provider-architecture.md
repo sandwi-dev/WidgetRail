@@ -445,10 +445,14 @@ Another widget authority cannot correlate or resolve those SavedIds.
 The running-app observer also supports an explicit portable-registration lane.
 It admits only visible top-level windows whose process is in the current user
 session and is not elevated. Packaged or installed identities retain the normal
-catalog owner. For an otherwise unmatched `.exe` or `.com`, the provider opens
-the executable, captures its canonical handle path plus volume/file ID, and
-keeps that authority host-private. Registration re-runs the bounded observation
-and requires the exact observation revision and process-instance evidence.
+catalog owner. For an otherwise unmatched local DOS-drive `.exe`, the provider
+rejects relative, UNC, device, remote-drive, reparse, and canonical-alias paths,
+then captures its canonical handle path plus volume/file ID. The caller-visible
+path envelope is at most 32,762 characters so the private extended-DOS native
+form, prefix, and terminator remain inside the bounded Windows buffer. Actual
+files remain subject to Windows component and volume limits. Registration
+re-runs the bounded observation and requires the exact observation revision and
+process-instance evidence.
 
 Portable records are stored in canonical package-scoped provider documents
 under LocalAppData, with adjacent exclusive locking, atomic replacement, strict
@@ -469,10 +473,15 @@ Resolution and launch each recapture the canonical path and volume/file ID.
 A moved, missing, or replaced executable is omitted until the user registers a
 fresh exact observation; re-registration keeps the same SavedId while rotating
 the private authority. The file ID proves file replacement, not content
-integrity. Launch uses `UseShellExecute=false`, an empty argument list, no verb
-or elevation, and the executable's containing directory as its explicit
-working directory. Installed catalog registrations always take precedence and
-are never persisted or forgotten through the portable lane.
+integrity. During launch the provider retains non-reparse directory and file
+handles across the path-based `Process.Start` call, preventing those namespace
+objects from being renamed, deleted, or rewritten between the final identity
+check and process creation; Windows is not asked to launch by handle. Launch
+uses `UseShellExecute=false`, an empty argument list, no verb or elevation, and
+the executable's containing directory as its explicit working directory.
+Installed catalog registrations always take precedence and are never persisted
+or forgotten through the portable lane, even when their executable is not
+eligible for new portable registration.
 
 Launch is a separate Interactive-only capability. The provider resolves a
 current opaque ID and re-enumerates the exact source on its STA lane. A

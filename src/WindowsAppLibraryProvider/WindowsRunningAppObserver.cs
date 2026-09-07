@@ -88,7 +88,7 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
             instance,
             executable is null
                 ? string.Empty
-                : Path.GetFileNameWithoutExtension(executable.Authority.CanonicalPath),
+                : executable.DisplayName,
             executable?.Authority);
     }
 
@@ -112,10 +112,13 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
             return null;
         var fullPath = Path.GetFullPath(path.ToString());
         if (ExcludedProcesses.Contains(Path.GetFileName(fullPath))) return null;
-        var authority = ExecutableAuthority.ReadExact(fullPath);
-        return authority is null ? null : new ExecutableObservation(
+        using var lease = ExecutableAuthority.AcquireExact(fullPath);
+        var authority = lease?.Authority;
+        return new ExecutableObservation(
             WindowsStartMenuApplicationSource.IdentityForExecutable(
-                authority.CanonicalPath), authority);
+                fullPath),
+            Path.GetFileNameWithoutExtension(fullPath),
+            authority);
     }
 
     private static bool IsSameUserSessionNonElevated(
@@ -151,7 +154,8 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
 
     private sealed record ExecutableObservation(
         string Identity,
-        WindowsExecutableAuthority Authority);
+        string DisplayName,
+        WindowsExecutableAuthority? Authority);
 
     private static bool IsCloaked(IntPtr window) =>
         DwmGetWindowAttribute(window, DwmwaCloaked, out var cloaked, sizeof(int)) == 0 &&

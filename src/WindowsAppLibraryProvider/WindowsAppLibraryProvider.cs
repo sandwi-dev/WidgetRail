@@ -605,9 +605,9 @@ public sealed class WindowsAppLibraryProvider :
                     result.Add(installed);
                     continue;
                 }
-                var current = _executableAuthority.ReadExact(
+                using var current = _executableAuthority.AcquireExact(
                     registration.ExecutablePath);
-                if (!SameAuthority(registration, current)) continue;
+                if (!SameAuthority(registration, current?.Authority)) continue;
                 result.Add(PortableBackendItem(
                     GetPortableAppId(identity, registration), registration));
             }
@@ -744,30 +744,40 @@ public sealed class WindowsAppLibraryProvider :
         if (!string.IsNullOrEmpty(installed.Key))
             return new(BackendItem(installed.Key, installed.Value), null);
 
-        var raw = observedWindows.SingleOrDefault(item =>
-            string.Equals(item.RegistrationIdentity,
-                request.StableProviderIdentity, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(item.InstanceEvidence,
-                request.InstanceEvidence, StringComparison.Ordinal));
-        if (raw?.PortableAuthority is null)
+        var rawMatches = observedWindows.Where(item =>
+                string.Equals(item.RegistrationIdentity,
+                    request.StableProviderIdentity, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(item.InstanceEvidence,
+                    request.InstanceEvidence, StringComparison.Ordinal))
+            .ToArray();
+        var authorities = rawMatches
+            .Select(item => item.PortableAuthority)
+            .Distinct()
+            .ToArray();
+        if (authorities.Length == 0 || authorities.All(authority => authority is null))
             throw new BrokerException(
                 "app_not_supported", "This running app cannot be registered.");
-        var current = _executableAuthority.ReadExact(raw.PortableAuthority.CanonicalPath);
+        if (authorities.Length != 1 || authorities[0] is null)
+            throw new BrokerException(
+                "stale_observation", "The running app executable changed.");
+        var observedAuthority = authorities[0]!;
+        using var current = _executableAuthority.AcquireExact(
+            observedAuthority.CanonicalPath);
         if (current is null ||
             !string.Equals(
                 WindowsStartMenuApplicationSource.IdentityForExecutable(
-                    current.CanonicalPath),
+                    current.Authority.CanonicalPath),
                 request.StableProviderIdentity,
                 StringComparison.OrdinalIgnoreCase) ||
-            current.FileIdentity != raw.PortableAuthority.FileIdentity)
+            current.Authority.FileIdentity != observedAuthority.FileIdentity)
             throw new BrokerException(
                 "stale_observation", "The running app executable changed.");
         return new(null, new PortableAppRegistration(
             request.SavedId,
             request.StableProviderIdentity,
             observed.DisplayName,
-            current.CanonicalPath,
-            current.FileIdentity));
+            current.Authority.CanonicalPath,
+            current.Authority.FileIdentity));
     }
 
     public async Task LaunchAppLibraryItemAsync(
@@ -807,12 +817,13 @@ public sealed class WindowsAppLibraryProvider :
                     string.Equals(item.SavedId, portable.SavedId, StringComparison.Ordinal) &&
                     string.Equals(item.StableIdentity, portable.StableIdentity,
                         StringComparison.OrdinalIgnoreCase));
-                var current = registration is null ? null :
-                    _executableAuthority.ReadExact(registration.ExecutablePath);
-                if (registration is null || !SameAuthority(registration, current))
+                using var current = registration is null ? null :
+                    _executableAuthority.AcquireExact(registration.ExecutablePath);
+                if (registration is null ||
+                    !SameAuthority(registration, current?.Authority))
                     throw AppUnavailable();
                 operation.Token.ThrowIfCancellationRequested();
-                _portableLauncher.Launch(current!, operation.Token);
+                _portableLauncher.Launch(current!.Authority, operation.Token);
                 return new AppLibraryLaunchObservationSummary(
                     AppLibraryLaunchObservationState.RequestAccepted, false, false);
             }

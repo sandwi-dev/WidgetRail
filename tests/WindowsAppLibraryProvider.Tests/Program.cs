@@ -109,6 +109,8 @@ var allTests = new (string Name, Func<Task> Run)[]
         RunningAppScenarios.CooperativeObservationDrainsBeforeSourceDisposal),
     ("Portable running registration persists scopes and revalidates launch",
         PortableRegistrationScenarios.RegistrationPersistsAndLaunchRevalidates),
+    ("Portable executable authority is local and retained through launch",
+        PortableRegistrationScenarios.ExecutableAuthorityIsLocalAndLeased),
     ("Installed running registrations win and portable capacity is explicit",
         PortableRegistrationScenarios.InstalledPrecedenceAndCapacityAreExplicit),
     ("Portable executable launch has no shell arguments or elevation",
