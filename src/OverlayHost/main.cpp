@@ -1993,7 +1993,7 @@ private:
             pumpCompleted - pumpStarted >
                 3 * kVisibleControllerTimerMilliseconds) {
             AppendActionCorrelation(
-                L"stage=slider-host-pump-slow total-ms=" +
+                L"stage=widget-input-host-pump-slow total-ms=" +
                     std::to_wstring(pumpCompleted - pumpStarted) +
                 L" transport-ms=" +
                     std::to_wstring(transportCompleted - pumpStarted) +
@@ -10994,28 +10994,68 @@ private:
     }
 
     [[nodiscard]] bool SliderAdjustmentDiagnosticActive() {
-        if (state_.surface() != widgetrail::Surface::Widget ||
-            state_.focusRegion() != widgetrail::FocusRegion::Widget) return false;
+        const bool widgetInputSession =
+            state_.surface() == widgetrail::Surface::Widget &&
+            state_.focusRegion() == widgetrail::FocusRegion::Widget &&
+            !state_.activeWidget().empty();
+        if (!sliderInputDiagnosticWidgetId_.empty()) {
+            return widgetInputSession &&
+                state_.activeWidget() == sliderInputDiagnosticWidgetId_;
+        }
+        if (!widgetInputSession) return false;
+        sliderInputDiagnosticWidgetId_ = state_.activeWidget();
+        return true;
+    }
+
+    [[nodiscard]] std::wstring WidgetInputDiagnosticGateReason() {
         const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
-        if (!snapshot) return false;
+        if (!snapshot) {
+            const auto presentation = sessions_.Presentation(state_.activeWidget());
+            return presentation.snapshot
+                ? L"presentation-noncurrent-" + std::to_wstring(
+                    static_cast<int>(presentation.authority))
+                : L"presentation-missing";
+        }
         const auto authority = InteractionAuthority(state_.activeWidget(), *snapshot);
+        if (!authority) return L"interaction-authority-missing";
+        if (interactionSession_.focusedElementId().empty()) return L"focus-empty";
         const auto* focused = widgetrail::input::FindNodeInInputScope(
             *snapshot, interactionSession_.focusedElementId(),
             snapshot->activeInputScopeId);
-        return authority && focused && focused->kind == L"slider" &&
-            !focused->isDisabled && !focused->isBusy &&
-            (focused->sliderInteractionMode != L"activateToAdjust" ||
-             interactionSession_.SliderAdjustmentModeActive(*authority, *focused));
+        if (!focused) return L"focused-node-missing";
+        if (focused->isDisabled) return L"focused-node-disabled";
+        if (focused->isBusy) return L"focused-node-busy";
+        if (focused->kind == L"slider" &&
+            focused->sliderInteractionMode == L"activateToAdjust" &&
+            !interactionSession_.SliderAdjustmentModeActive(*authority, *focused)) {
+            return L"slider-mode-inactive";
+        }
+        return L"current";
     }
 
     void TraceSliderControllerSample(
         const WidgetRailOverlayPlatformControllerFrame& frame,
         const ULONGLONG now) {
         if (!SliderAdjustmentDiagnosticActive()) {
+            if (!sliderInputDiagnosticWidgetId_.empty()) {
+                AppendActionCorrelation(
+                    L"stage=widget-input-trace-stop tick=" +
+                    std::to_wstring(now) + L" widget=" +
+                    sliderInputDiagnosticWidgetId_ + L" surface=" +
+                    std::to_wstring(static_cast<int>(state_.surface())) +
+                    L" focus-region=" + std::to_wstring(
+                        static_cast<int>(state_.focusRegion())) +
+                    L" active-widget=" + std::wstring(state_.activeWidget()),
+                    DiagnosticSeverity::Debug);
+            }
             sliderInputDiagnosticActive_ = false;
             lastSliderControllerSampleAt_ = 0;
             lastSliderControllerDpadButtons_ = 0;
             lastSliderControllerConnected_.reset();
+            lastSliderInputDiagnosticGateReason_.clear();
+            lastSliderInputDiagnosticFocusId_.clear();
+            lastSliderInputDiagnosticSnapshotSequence_ = 0;
+            sliderInputDiagnosticWidgetId_.clear();
             return;
         }
 
@@ -11024,28 +11064,46 @@ private:
             XINPUT_GAMEPAD_DPAD_DOWN;
         const WORD rawDpad = frame.state.buttons & dpadMask;
         const bool connected = frame.connected != WRAIL_OVERLAY_PLATFORM_FALSE;
-        const auto event = DecodeNavigation(frame.dpadNavigation);
+        const auto stickEvent = DecodeNavigation(frame.stickNavigation);
+        const auto dpadEvent = DecodeNavigation(frame.dpadNavigation);
+        const auto gateReason = WidgetInputDiagnosticGateReason();
+        const auto presentation = sessions_.Presentation(state_.activeWidget());
+        const auto snapshotSequence = presentation.snapshot
+            ? presentation.snapshot->sequence : 0;
+        const std::wstring focusedId{interactionSession_.focusedElementId()};
         const auto gap = lastSliderControllerSampleAt_ == 0
             ? 0 : now - lastSliderControllerSampleAt_;
         const bool transition = !sliderInputDiagnosticActive_ ||
             rawDpad != lastSliderControllerDpadButtons_ ||
             !lastSliderControllerConnected_ ||
-            *lastSliderControllerConnected_ != connected;
+            *lastSliderControllerConnected_ != connected ||
+            gateReason != lastSliderInputDiagnosticGateReason_ ||
+            focusedId != lastSliderInputDiagnosticFocusId_ ||
+            snapshotSequence != lastSliderInputDiagnosticSnapshotSequence_;
         const bool slowSample = lastSliderControllerSampleAt_ != 0 &&
             gap > 3 * kVisibleControllerTimerMilliseconds;
-        if (transition || slowSample || event) {
-            const auto direction = !event ? L"none" :
+        const auto directionName = [](const auto& event) {
+            return !event ? L"none" :
                 event->direction == widgetrail::input::NavigationDirection::Left
                     ? L"left" :
                 event->direction == widgetrail::input::NavigationDirection::Right
                     ? L"right" :
                 event->direction == widgetrail::input::NavigationDirection::Up
                     ? L"up" : L"down";
-            const auto phase = !event ? L"none" :
+        };
+        const auto phaseName = [](const auto& event) {
+            return !event ? L"none" :
                 event->phase == widgetrail::input::NavigationEventPhase::Repeated
                     ? L"repeated" : L"pressed";
+        };
+        if (transition || slowSample || stickEvent || dpadEvent ||
+            frame.pressedButtons != 0 || frame.releasedButtons != 0 ||
+            frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE ||
+            frame.leftTriggerReleased != WRAIL_OVERLAY_PLATFORM_FALSE ||
+            frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE ||
+            frame.rightTriggerReleased != WRAIL_OVERLAY_PLATFORM_FALSE) {
             AppendActionCorrelation(
-                L"stage=slider-input-sample tick=" + std::to_wstring(now) +
+                L"stage=widget-input-sample tick=" + std::to_wstring(now) +
                 L" gap-ms=" + std::to_wstring(gap) +
                 L" connected=" + (connected ? L"1" : L"0") +
                 L" foreground-exclusive=" +
@@ -11053,14 +11111,51 @@ private:
                         ? L"1" : L"0") +
                 L" read-path=" + std::to_wstring(
                     static_cast<int>(frame.readPath)) +
+                L" buttons=" + std::to_wstring(frame.state.buttons) +
+                L" pressed=" + std::to_wstring(frame.pressedButtons) +
+                L" released=" + std::to_wstring(frame.releasedButtons) +
                 L" raw-dpad=" + std::to_wstring(rawDpad) +
-                L" event=" + direction + L" phase=" + phase,
+                L" left-x=" + std::to_wstring(frame.state.leftThumbX) +
+                L" left-y=" + std::to_wstring(frame.state.leftThumbY) +
+                L" stick-event=" + directionName(stickEvent) +
+                L" stick-phase=" + phaseName(stickEvent) +
+                L" dpad-event=" + directionName(dpadEvent) +
+                L" dpad-phase=" + phaseName(dpadEvent) +
+                L" presentation=" + std::to_wstring(
+                    static_cast<int>(presentation.authority)) +
+                L" snapshot=" + std::to_wstring(snapshotSequence) +
+                L" focus=" + (focusedId.empty() ? L"none" : focusedId) +
+                L" gate=" + gateReason +
+                L" render-ready=" +
+                    (lastWidgetRenderResult_.succeeded ? L"1" : L"0"),
                 DiagnosticSeverity::Debug);
         }
         sliderInputDiagnosticActive_ = true;
         lastSliderControllerSampleAt_ = now;
         lastSliderControllerDpadButtons_ = rawDpad;
         lastSliderControllerConnected_ = connected;
+        lastSliderInputDiagnosticGateReason_ = gateReason;
+        lastSliderInputDiagnosticFocusId_ = focusedId;
+        lastSliderInputDiagnosticSnapshotSequence_ = snapshotSequence;
+    }
+
+    void TraceWidgetInputRoute(
+        const std::wstring_view input,
+        const widgetrail::input::NavigationEventPhase phase,
+        const std::wstring_view outcome) {
+        if (!SliderAdjustmentDiagnosticActive()) return;
+        AppendActionCorrelation(
+            L"stage=widget-input-route input=" + std::wstring(input) +
+            L" phase=" +
+                (phase == widgetrail::input::NavigationEventPhase::Repeated
+                    ? L"repeated" : L"pressed") +
+            L" outcome=" + std::wstring(outcome) +
+            L" widget=" + std::wstring(state_.activeWidget()) +
+            L" focus=" +
+                (interactionSession_.focusedElementId().empty()
+                    ? L"none" : interactionSession_.focusedElementId()) +
+            L" gate=" + WidgetInputDiagnosticGateReason(),
+            DiagnosticSeverity::Debug);
     }
 
     void PollController() {
@@ -13144,14 +13239,26 @@ private:
             state_.focusRegion() != widgetrail::FocusRegion::Widget) return;
         const std::wstring_view widgetId = state_.activeWidget();
         const auto* snapshot = InteractionSnapshotFor(widgetId);
-        if (!snapshot) return;
+        const auto inputName = direction == widgetrail::input::NavigationDirection::Left
+            ? std::wstring_view{L"left"} :
+            direction == widgetrail::input::NavigationDirection::Right
+            ? std::wstring_view{L"right"} :
+            direction == widgetrail::input::NavigationDirection::Up
+            ? std::wstring_view{L"up"} : std::wstring_view{L"down"};
+        if (!snapshot) {
+            TraceWidgetInputRoute(inputName, phase, L"rejected-presentation-noncurrent");
+            return;
+        }
         const auto focusGroupEntryAuthority =
             InteractionAuthority(widgetId, *snapshot);
         if (focusGroupEntryAuthority &&
             interactionSession_.FocusGroupEntryRequestPending(
                 *focusGroupEntryAuthority)) {
-            if (phase != widgetrail::input::NavigationEventPhase::Pressed)
+            if (phase != widgetrail::input::NavigationEventPhase::Pressed) {
+                TraceWidgetInputRoute(
+                    inputName, phase, L"rejected-focus-group-entry-pending");
                 return;
+            }
             switch (direction) {
             case widgetrail::input::NavigationDirection::Left:
                 MoveWidgetFocus(L"left", phase);
@@ -13172,7 +13279,10 @@ private:
         }
         const auto visible = widgetrail::input::ResolveVisibleFocusTarget(
             interactionSession_.focusedElementId(), snapshot->activeInputScopeId, lastWidgetRenderResult_);
-        if (!visible) return;
+        if (!visible) {
+            TraceWidgetInputRoute(inputName, phase, L"rejected-visible-focus-missing");
+            return;
+        }
         if (*visible != interactionSession_.focusedElementId()) {
             const auto focus = interactionSession_.MoveFocus(
                 widgetId, *snapshot, *visible, true, false);
@@ -13181,7 +13291,10 @@ private:
         }
         const auto* focused = widgetrail::input::FindNodeInInputScope(
             *snapshot, interactionSession_.focusedElementId(), snapshot->activeInputScopeId);
-        if (!focused) return;
+        if (!focused) {
+            TraceWidgetInputRoute(inputName, phase, L"rejected-focused-node-missing");
+            return;
+        }
         const auto interactionAuthority = InteractionAuthority(widgetId, *snapshot);
         if (interactionSession_.selectPopup()) {
             if (!interactionAuthority || !focused->isSelect ||
@@ -13203,9 +13316,16 @@ private:
         const auto route = widgetrail::input::RouteFocusedDirection(
             focused->kind, focused->isDisabled, focused->isBusy,
             activationRequired, adjustmentActive, direction);
-        if (route == widgetrail::input::FocusedDirectionRoute::Consume) return;
+        if (route == widgetrail::input::FocusedDirectionRoute::Consume) {
+            TraceWidgetInputRoute(inputName, phase, L"consumed-by-focused-node");
+            return;
+        }
         if (route == widgetrail::input::FocusedDirectionRoute::SliderAdjustment) {
-            if (!interactionAuthority) return;
+            if (!interactionAuthority) {
+                TraceWidgetInputRoute(
+                    inputName, phase, L"rejected-interaction-authority-missing");
+                return;
+            }
             const auto projectedBefore =
                 interactionSession_.SliderPresentationValue(
                     *interactionAuthority, *focused);
@@ -13249,8 +13369,11 @@ private:
             }
             return;
         }
-        if (phase == widgetrail::input::NavigationEventPhase::Repeated && !repeatedCanNavigate)
+        if (phase == widgetrail::input::NavigationEventPhase::Repeated && !repeatedCanNavigate) {
+            TraceWidgetInputRoute(inputName, phase, L"rejected-repeat-navigation-policy");
             return;
+        }
+        TraceWidgetInputRoute(inputName, phase, L"focus-navigation");
         switch (direction) {
         case widgetrail::input::NavigationDirection::Left: MoveWidgetFocus(L"left", phase); break;
         case widgetrail::input::NavigationDirection::Right: MoveWidgetFocus(L"right", phase); break;
@@ -13373,7 +13496,11 @@ private:
         }
         const std::wstring_view widgetId = state_.activeWidget();
         const auto* snapshot = InteractionSnapshotFor(widgetId);
-        if (!snapshot) return;
+        if (!snapshot) {
+            TraceWidgetInputRoute(
+                direction, phase, L"rejected-presentation-noncurrent");
+            return;
+        }
         const auto activeScope = std::wstring_view(snapshot->activeInputScopeId);
         widgetrail::input::NavigationDirection navigationDirection =
             widgetrail::input::NavigationDirection::None;
@@ -13382,7 +13509,11 @@ private:
         else if (direction == L"up") navigationDirection = widgetrail::input::NavigationDirection::Up;
         else if (direction == L"down") navigationDirection = widgetrail::input::NavigationDirection::Down;
         const auto authority = InteractionAuthority(widgetId, *snapshot);
-        if (!authority) return;
+        if (!authority) {
+            TraceWidgetInputRoute(
+                direction, phase, L"rejected-interaction-authority-missing");
+            return;
+        }
         const auto flushFocusedSlider = [&] {
             const auto* focused = widgetrail::input::FindNodeInInputScope(
                 *snapshot, interactionSession_.focusedElementId(), activeScope);
@@ -13393,6 +13524,8 @@ private:
             interactionSession_.FocusGroupEntryRequestPending(*authority);
         if (pendingFocusGroupEntry &&
             phase != widgetrail::input::NavigationEventPhase::Pressed) {
+            TraceWidgetInputRoute(
+                direction, phase, L"rejected-focus-group-entry-pending");
             return;
         }
         auto resolution = interactionSession_.ResolveDirectionalFocus(
@@ -13408,8 +13541,13 @@ private:
                     activeScope == widgetrail::input::RootInputScope(*snapshot),
                     false,
                     false)) {
+                TraceWidgetInputRoute(
+                    direction, phase, L"missing-visible-focus-transfer-to-tray");
                 flushFocusedSlider();
                 Dispatch(widgetrail::Command::SampleWidgetBack);
+            } else {
+                TraceWidgetInputRoute(
+                    direction, phase, L"missing-visible-focus");
             }
             return;
         }
@@ -13421,7 +13559,11 @@ private:
                 DirectionalNavigation,
             GetTickCount64());
         PublishScrollPaginationOutcome(admission.pagination);
-        if (admission.retainFocus) return;
+        if (admission.retainFocus) {
+            TraceWidgetInputRoute(
+                direction, phase, L"retained-for-scroll-pagination");
+            return;
+        }
         resolution = std::move(admission.resolution);
         if (resolution.target) {
             const auto flushInstanceId = snapshot->instanceId;
@@ -13439,6 +13581,8 @@ private:
                 postFlushSnapshot->sequence != flushSequence ||
                 postFlushAuthority->runtimeGeneration != flushRuntime ||
                 postFlushAuthority->presentationGeneration != flushPresentation) {
+                TraceWidgetInputRoute(
+                    direction, phase, L"rejected-post-flush-authority-change");
                 return;
             }
             if (pendingFocusGroupEntry) {
@@ -13460,17 +13604,27 @@ private:
             }
             InvalidateWidgetFocusChange(
                 focus.priorFocus, focus.sliderDamageNodeIds);
+            TraceWidgetInputRoute(
+                direction, phase, L"focus-target-admitted");
             return;
         }
-        if (pendingFocusGroupEntry) return;
+        if (pendingFocusGroupEntry) {
+            TraceWidgetInputRoute(
+                direction, phase, L"retained-focus-group-entry");
+            return;
+        }
         if (widgetrail::input::ShouldTransferFocusToTray(
                 navigationDirection,
                 activeScope == widgetrail::input::RootInputScope(*snapshot),
                 false,
                 false)) {
+            TraceWidgetInputRoute(
+                direction, phase, L"transferred-to-tray");
             flushFocusedSlider();
             Dispatch(widgetrail::Command::SampleWidgetBack);
+            return;
         }
+        TraceWidgetInputRoute(direction, phase, L"no-focus-target");
     }
 
     static std::wstring_view ProtocolButton(const std::wstring_view button) {
@@ -14035,6 +14189,9 @@ private:
                 if (authority &&
                     interactionSession_.FocusGroupEntryRequestPending(*authority) &&
                     interactionSession_.focusedElementId().empty()) {
+                    TraceWidgetInputRoute(
+                        button, widgetrail::input::NavigationEventPhase::Pressed,
+                        L"rejected-focus-group-entry-pending");
                     return;
                 }
                 RetirePendingFocusGroupEntryForUserIntent(
@@ -14056,7 +14213,12 @@ private:
             if (authority && focused && focused->kind == L"slider")
                 FlushCurrentSliderAction(*authority, *focused, GetTickCount64());
         }
-        if (HandleFocusedSliderModeButton(button)) return;
+        if (HandleFocusedSliderModeButton(button)) {
+            TraceWidgetInputRoute(
+                button, widgetrail::input::NavigationEventPhase::Pressed,
+                L"focused-slider-mode");
+            return;
+        }
         if (button == L"A") {
             const auto selectActivation = OpenFocusedSelectPopup();
             if (selectActivation !=
@@ -14064,10 +14226,18 @@ private:
                 return;
         }
         if (button == L"B" && NonCurrentHostRootBackAuthority()) {
+            TraceWidgetInputRoute(
+                button, widgetrail::input::NavigationEventPhase::Pressed,
+                L"host-noncurrent-back");
             Dispatch(widgetrail::Command::SampleWidgetBack);
             return;
         }
-        if (HandleOverlayMediaBackButton(button)) return;
+        if (HandleOverlayMediaBackButton(button)) {
+            TraceWidgetInputRoute(
+                button, widgetrail::input::NavigationEventPhase::Pressed,
+                L"host-overlay-media-back");
+            return;
+        }
         using widgetrail::input::ControllerActionContext;
         using widgetrail::input::ControllerActionRoute;
         const auto context = state_.focusRegion() == widgetrail::FocusRegion::Tray
@@ -14075,15 +14245,27 @@ private:
             : ControllerActionContext::RootWidgetScope;
         switch (widgetrail::input::RouteControllerAction(context, button)) {
         case ControllerActionRoute::HostActivate:
+            TraceWidgetInputRoute(
+                button, widgetrail::input::NavigationEventPhase::Pressed,
+                L"host-activate");
             Dispatch(widgetrail::Command::Activate);
             return;
         case ControllerActionRoute::HostToggleReorder:
+            TraceWidgetInputRoute(
+                button, widgetrail::input::NavigationEventPhase::Pressed,
+                L"host-toggle-reorder");
             Dispatch(widgetrail::Command::ToggleReorder);
             return;
         case ControllerActionRoute::HostCloseOverlay:
+            TraceWidgetInputRoute(
+                button, widgetrail::input::NavigationEventPhase::Pressed,
+                L"host-close-overlay");
             Dispatch(widgetrail::Command::ToggleOverlay);
             return;
         case ControllerActionRoute::Widget:
+            TraceWidgetInputRoute(
+                button, widgetrail::input::NavigationEventPhase::Pressed,
+                L"widget-dispatch");
             DispatchWidgetAction(
                 button,
                 widgetrail::input::NavigationEventPhase::Pressed,
@@ -14091,7 +14273,14 @@ private:
                 physicalPress);
             return;
         case ControllerActionRoute::HostBackToDashboard:
+            TraceWidgetInputRoute(
+                button, widgetrail::input::NavigationEventPhase::Pressed,
+                L"host-back-to-dashboard");
+            return;
         case ControllerActionRoute::None:
+            TraceWidgetInputRoute(
+                button, widgetrail::input::NavigationEventPhase::Pressed,
+                L"no-route");
             return;
         }
     }
@@ -14198,8 +14387,11 @@ private:
         if (exactHeldAction &&
             (exactHeldAction->kind != HeldActionKind::Authored ||
              exactHeldAction->widgetId != widget ||
-             exactHeldAction->dashboard == interactiveWidget))
+             exactHeldAction->dashboard == interactiveWidget)) {
+            TraceWidgetInputRoute(
+                button, phase, L"rejected-held-action-context");
             return;
+        }
         const auto exactHeldDecision = exactHeldAction
             ? std::optional<widgetrail::input::AuthoredHeldActionDecision>{
                 widgetrail::input::DecideAuthoredHeldAction(
@@ -14209,8 +14401,11 @@ private:
                     HeldActionBinding(*exactHeldAction))}
             : std::nullopt;
         if (exactHeldDecision && exactHeldDecision->disposition !=
-                widgetrail::input::AuthoredHeldActionDisposition::Dispatch)
+                widgetrail::input::AuthoredHeldActionDisposition::Dispatch) {
+            TraceWidgetInputRoute(
+                button, phase, L"rejected-held-action-authority");
             return;
+        }
         if (exactActionRequest &&
             (!interactiveWidget || widget != exactActionRequest->widgetId)) {
             RejectWidgetActionRequest(
@@ -14220,6 +14415,7 @@ private:
 
         if (IsBridgeWidget(widget)) {
             if (sessions_.Failure(widget)) {
+                TraceWidgetInputRoute(button, phase, L"rejected-widget-failed");
                 if (exactActionRequest) {
                     RejectWidgetActionRequest(
                         *exactActionRequest, L"widget failed");
@@ -14236,6 +14432,8 @@ private:
                 return;
             }
             if (!SnapshotFor(widget) && exactActionRequest) {
+                TraceWidgetInputRoute(
+                    button, phase, L"rejected-admitted-snapshot-unavailable");
                 RejectWidgetActionRequest(
                     *exactActionRequest, L"admitted snapshot unavailable");
                 return;
@@ -14246,6 +14444,11 @@ private:
             const auto protocolButton = ProtocolButton(button);
             const auto* snapshot = InteractionSnapshotFor(widget);
             if (protocolButton.empty() || !snapshot) {
+                TraceWidgetInputRoute(
+                    button, phase,
+                    protocolButton.empty()
+                        ? L"rejected-protocol-button"
+                        : L"rejected-presentation-noncurrent");
                 if (exactActionRequest) {
                     RejectWidgetActionRequest(
                         *exactActionRequest, L"input authority unavailable");
@@ -14262,6 +14465,8 @@ private:
                 ? ValidateWidgetActionRequest(*exactActionRequest, *snapshot)
                 : nullptr;
             if (exactActionRequest && !requestedSlider) {
+                TraceWidgetInputRoute(
+                    button, phase, L"rejected-stale-admitted-authority");
                 RejectWidgetActionRequest(
                     *exactActionRequest, L"stale admitted authority");
                 return;
@@ -18048,6 +18253,10 @@ private:
     ULONGLONG lastSliderControllerSampleAt_{};
     WORD lastSliderControllerDpadButtons_{};
     std::optional<bool> lastSliderControllerConnected_;
+    std::wstring sliderInputDiagnosticWidgetId_;
+    std::wstring lastSliderInputDiagnosticGateReason_;
+    std::wstring lastSliderInputDiagnosticFocusId_;
+    long long lastSliderInputDiagnosticSnapshotSequence_{};
     std::wstring rightStickDropSignature_;
     std::uint64_t rightStickDropCount_{};
     std::optional<bool> lastForegroundOwnership_;
