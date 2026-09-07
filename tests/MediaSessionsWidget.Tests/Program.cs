@@ -11,6 +11,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("X and bumpers route through the selected session from any focused control", ControllerShortcutsRoute),
     ("An in-flight play command does not flash or disable sibling transports", PendingToggleKeepsSiblingControlsStable),
     ("Quick actions expose exact media control authority while visible", DashboardQuickActions),
+    ("Dynamic session selector keeps one remembered scroll at one or many sessions", DynamicSelectorKeepsOneRememberedScroll),
+    ("Session pills keep hashed focus identity and honest metadata through churn", SessionPillsKeepStableFocusIdentity),
+    ("Removed remembered selection falls back to the current session pill", RemovedRememberedSelectionFallsBack),
+    ("Session selector styles keep a bounded non-growing horizontal rail", SessionSelectorStylesStayBounded),
     ("Session selection remains stable across reorder and metadata churn", SelectionSurvivesChurn),
     ("Session selection publishes one model invalidation and suppresses repeats", SelectionInvalidatesOnce),
     ("Removed selection falls back to Windows current session", RemovedSelectionFallsBack),
@@ -224,6 +228,124 @@ static async Task DashboardQuickActions()
     await WaitUntil(() => fake.Commands.Count == 1);
     Assert.Equal(WidgetMediaSessionCommand.Next, fake.Commands[0].Command);
     await Background(widget);
+}
+
+static async Task DynamicSelectorKeepsOneRememberedScroll()
+{
+    var fake = new FakeMediaHost { Sessions = [Session("one", current: true)] };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
+
+    var single = widget.RenderSnapshot("media.selector", 1);
+    var singleScroll = Nodes(single.Root).Single(node => node.Id == "media.session-scroll");
+    var singlePill = singleScroll.Children.Single();
+    Assert.Equal(singlePill.Id, singleScroll.InitialChildFocusId);
+    Assert.True(single.ProtocolVersion >= ProtocolConstants.RememberedChildFocusGroupVersion);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(single).Count);
+
+    fake.Publish([
+        Session("one", current: true),
+        Session("two", app: "Second"),
+    ]);
+    await WaitUntil(() => widget.Sessions.Count == 2);
+    var multiple = widget.RenderSnapshot("media.selector", 2);
+    var multipleScroll = Nodes(multiple.Root).Single(node => node.Id == "media.session-scroll");
+    Assert.Equal(2, multipleScroll.Children.Count);
+    Assert.Equal(singlePill.Id, multipleScroll.InitialChildFocusId);
+    Assert.SequenceEqual(
+        single.Root.Children.Select(node => node.Id),
+        multiple.Root.Children.Select(node => node.Id));
+    Assert.Equal(0, ViewSnapshotValidator.Validate(multiple).Count);
+    await Background(widget);
+}
+
+static async Task SessionPillsKeepStableFocusIdentity()
+{
+    var fake = new FakeMediaHost
+    {
+        Sessions = [
+            Session("stable/provider:id", app: "Player", title: "Original", current: true),
+            Session("other/provider:id", app: "Second", title: "Other"),
+        ],
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.Sessions.Count == 2);
+
+    var first = widget.RenderSnapshot("media.identity", 1);
+    var pills = Nodes(first.Root).Where(node => node.ActionId == "media.select").ToArray();
+    Assert.Equal(2, pills.Length);
+    Assert.True(pills.All(node => node.Id.StartsWith("media.session.", StringComparison.Ordinal)));
+    Assert.True(pills.All(node => node.Id.Length == "media.session.".Length + 16));
+    Assert.True(pills.All(node => !node.Id.Contains("provider", StringComparison.Ordinal)));
+    Assert.True(pills.Select(node => node.Id).Distinct(StringComparer.Ordinal).Count() == 2);
+    Assert.True(pills.All(node => node.FocusPersistenceId == node.Id + ".focus"));
+    var stable = pills.Single(node => node.Text == "Player");
+    Assert.Equal("Player. Original. Press A to select", stable.AccessibilityLabel);
+
+    fake.Publish([
+        Session("other/provider:id", app: "Second renamed", title: "Other updated"),
+        Session("stable/provider:id", app: "Player renamed", title: "Updated", current: true),
+    ]);
+    await WaitUntil(() => widget.Sessions.Any(item => item.Title == "Updated"));
+    var updated = Nodes(widget.RenderSnapshot("media.identity", 2).Root)
+        .Single(node => node.ActionId == "media.select" && node.Text == "Player renamed");
+    Assert.Equal(stable.Id, updated.Id);
+    Assert.Equal(stable.FocusPersistenceId, updated.FocusPersistenceId);
+    Assert.Equal("Player renamed. Updated. Press A to select", updated.AccessibilityLabel);
+    Assert.Equal("stable/provider:id", widget.SelectedSessionId);
+    await Background(widget);
+}
+
+static async Task RemovedRememberedSelectionFallsBack()
+{
+    var fake = new FakeMediaHost
+    {
+        Sessions = [Session("one", current: true), Session("two", app: "Second")],
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.Sessions.Count == 2);
+
+    var initial = widget.RenderSnapshot("media.fallback", 1);
+    var second = Nodes(initial.Root)
+        .Single(node => node.ActionId == "media.select" && node.Text == "Second");
+    await widget.OnActionAsync(new("media.select", second.Id));
+    var selected = widget.RenderSnapshot("media.fallback", 2);
+    Assert.Equal(second.Id, Nodes(selected.Root)
+        .Single(node => node.Id == "media.session-scroll").InitialChildFocusId);
+
+    fake.Publish([Session("one", current: true, title: "Current survives")]);
+    await WaitUntil(() => widget.Sessions.Count == 1 && widget.SelectedSessionId == "one");
+    var fallback = widget.RenderSnapshot("media.fallback", 3);
+    var fallbackScroll = Nodes(fallback.Root).Single(node => node.Id == "media.session-scroll");
+    var fallbackPill = fallbackScroll.Children.Single();
+    Assert.Equal(fallbackPill.Id, fallbackScroll.InitialChildFocusId);
+    Assert.True(fallbackPill.IsSelected is true);
+    Assert.Equal("Player. Current survives. Press A to select", fallbackPill.AccessibilityLabel);
+    Assert.Equal(3, fallback.QuickActions.Count);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(fallback).Count);
+    await Background(widget);
+}
+
+static Task SessionSelectorStylesStayBounded()
+{
+    var style = File.ReadAllText(Path.Combine(ProjectDirectory(), "styles", "default.wrss"))
+        .Replace("\r\n", "\n", StringComparison.Ordinal);
+    var list = StyleBlock(style, ".media-session-list");
+    Assert.True(list.Contains("width: 100%;", StringComparison.Ordinal));
+    Assert.True(list.Contains("min-width: 0px;", StringComparison.Ordinal));
+    Assert.True(list.Contains("max-height: 46px;", StringComparison.Ordinal));
+    Assert.True(list.Contains("overflow: clip;", StringComparison.Ordinal));
+    var pill = StyleBlock(style, ".media-session-pill");
+    Assert.True(pill.Contains("width: 148px;", StringComparison.Ordinal));
+    Assert.True(pill.Contains("min-width: 148px;", StringComparison.Ordinal));
+    Assert.True(pill.Contains("max-width: 148px;", StringComparison.Ordinal));
+    Assert.True(pill.Contains("flex-grow: 0;", StringComparison.Ordinal));
+    Assert.True(pill.Contains("flex-shrink: 0;", StringComparison.Ordinal));
+    Assert.True(pill.Contains("text-overflow: ellipsis;", StringComparison.Ordinal));
+    return Task.CompletedTask;
 }
 
 static async Task SelectionSurvivesChurn()
@@ -801,6 +923,15 @@ static string ProjectDirectory()
         current = current.Parent;
     }
     throw new DirectoryNotFoundException();
+}
+
+static string StyleBlock(string style, string selector)
+{
+    var start = style.IndexOf(selector + " {", StringComparison.Ordinal);
+    Assert.True(start >= 0);
+    var end = style.IndexOf('}', start);
+    Assert.True(end > start);
+    return style[start..end];
 }
 
 file sealed class FakeMediaHost
