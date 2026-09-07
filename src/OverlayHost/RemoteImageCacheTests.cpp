@@ -738,7 +738,9 @@ int main() {
         demandCache.Shutdown();
     }
 
-    {
+    for (const auto staleDisposition : {
+             TrustedArtworkRequestDisposition::OriginRetired,
+             TrustedArtworkRequestDisposition::TerminalFailure}) {
         std::mutex replacementMutex;
         std::condition_variable replacementChanged;
         bool originAEntered = false;
@@ -758,13 +760,14 @@ int main() {
                 const TrustedArtworkDemandAuthority& authority,
                 std::stop_token) {
                 std::unique_lock lock(replacementMutex);
+                const bool firstOriginA = observedOrigins.empty();
                 observedOrigins.push_back(authority);
                 replacementChanged.notify_all();
-                if (authority == originA) {
+                if (authority == originA && firstOriginA) {
                     originAEntered = true;
                     replacementChanged.notify_all();
                     replacementChanged.wait(lock, [&] { return releaseOriginA; });
-                    return TrustedArtworkRequestDisposition::OriginRetired;
+                    return staleDisposition;
                 }
                 return TrustedArtworkRequestDisposition::Accepted;
             });
@@ -781,6 +784,12 @@ int main() {
                RemoteImageState::Missing);
         assert(replacementCache.RequestTrustedArtwork(replacementKey, originB) ==
                RemoteImageRequestResult::Queued);
+        assert(replacementCache.GetTrustedArtworkState(replacementKey, originA) ==
+               RemoteImageState::Missing);
+        assert(replacementCache.RequestTrustedArtwork(replacementKey, originA) ==
+               RemoteImageRequestResult::Queued);
+        assert(replacementCache.GetStats().entries == 1 &&
+               replacementCache.GetStats().queuedOrLoading == 1);
         {
             std::scoped_lock lock(replacementMutex);
             releaseOriginA = true;
@@ -792,12 +801,14 @@ int main() {
                 return observedOrigins.size() == 2;
             }));
         }
-        assert(observedOrigins[0] == originA && observedOrigins[1] == originB);
+        assert(observedOrigins[0] == originA && observedOrigins[1] == originA);
+        assert(replacementCache.GetState(replacementKey) ==
+               RemoteImageState::Loading);
         assert(!replacementCache.SupplyTrustedArtwork(
-            L"replacement-artwork", L"artwork.same-handle", originA,
+            L"replacement-artwork", L"artwork.same-handle", originB,
             L"image/png", trustedPngBase64));
         assert(replacementCache.SupplyTrustedArtwork(
-            L"replacement-artwork", L"artwork.same-handle", originB,
+            L"replacement-artwork", L"artwork.same-handle", originA,
             L"image/png", trustedPngBase64));
         {
             std::unique_lock lock(replacementMutex);

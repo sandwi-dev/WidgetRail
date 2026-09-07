@@ -297,6 +297,9 @@ private:
         bool readyOnly = false);
     void WorkerLoop(std::stop_token stopToken);
     void ArtworkDemandLoop(std::stop_token stopToken);
+    void CompleteArtworkDemand(
+        const ArtworkDemand& demand,
+        TrustedArtworkRequestDisposition disposition);
     void CompleteLocked(const std::wstring& url, RemoteImageFetchResult result);
     RemoteImageLimits limits_;
     CompletionCallback completion_;

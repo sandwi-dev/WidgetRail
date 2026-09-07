@@ -2266,7 +2266,10 @@ int main() {
                       widgetrail::pinned::ContentPresentation::AdmittedWidget &&
                   initialClickThroughPaint.declarativeRenderSucceeded &&
                   initialClickThroughPaint.admittedContentPresented &&
-                  initialClickThroughPaint.navigationNodeCount >= 2,
+                  initialClickThroughPaint.navigationNodeCount >= 2 &&
+                  initialClickThroughPaint.artworkRuntimeGeneration == L"runtime-1" &&
+                  initialClickThroughPaint.artworkPresentationGeneration ==
+                      L"presentation-1",
               "click-through production paint retains admitted sentinel content without a placeholder");
         Check(!FindAutomationId(surface, L"host:pinned.move") &&
                   !FindAutomationId(surface, L"widget:pin.fixture.action"),

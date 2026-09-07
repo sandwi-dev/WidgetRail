@@ -992,21 +992,39 @@ void RemoteImageCache::ArtworkDemandLoop(std::stop_token stopToken) {
         }
         if (stopToken.stop_requested()) break;
         if (disposition == TrustedArtworkRequestDisposition::Accepted) continue;
+        CompleteArtworkDemand(demand, disposition);
+    }
+}
 
-        constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
-        const auto widgetEnd = demand.key.find(L'\x1f', prefix.size());
-        const auto handleStart = demand.key.rfind(L'\x1f');
-        if (widgetEnd != std::wstring::npos &&
-            handleStart != std::wstring::npos && handleStart > widgetEnd) {
-            const auto widgetId = std::wstring_view(demand.key).substr(
-                    prefix.size(), widgetEnd - prefix.size()),
-                handle = std::wstring_view(demand.key).substr(handleStart + 1);
-            if (disposition == TrustedArtworkRequestDisposition::OriginRetired) {
-                (void)RetireTrustedArtworkDemand(widgetId, handle, demand.authority);
-            } else {
-                (void)FailTrustedArtwork(widgetId, handle, demand.authority);
-            }
+void RemoteImageCache::CompleteArtworkDemand(
+    const ArtworkDemand& demand,
+    const TrustedArtworkRequestDisposition disposition) {
+    CompletionCallback completion;
+    RemoteImageState state{};
+    {
+        std::scoped_lock lock(mutex_);
+        if (shuttingDown_) return;
+        const auto found = entries_.find(demand.key);
+        if (found == entries_.end() ||
+            found->second.state != RemoteImageState::Loading ||
+            found->second.demandGeneration != demand.generation ||
+            !found->second.demandAuthority ||
+            *found->second.demandAuthority != demand.authority) {
+            return;
         }
+        if (disposition == TrustedArtworkRequestDisposition::OriginRetired) {
+            entries_.erase(found);
+            state = RemoteImageState::Missing;
+        } else {
+            found->second.state = RemoteImageState::Failed;
+            found->second.error = L"Trusted artwork is unavailable.";
+            state = RemoteImageState::Failed;
+        }
+        completion = completion_;
+    }
+    if (completion) {
+        try { completion(demand.key, state); }
+        catch (...) { }
     }
 }
 
