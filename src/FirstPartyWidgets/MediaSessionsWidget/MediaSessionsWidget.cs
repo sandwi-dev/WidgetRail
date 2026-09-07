@@ -153,6 +153,7 @@ public sealed class MediaSessionsWidget : Widget
 
         var selected = sessions.FirstOrDefault(item =>
             string.Equals(item.SessionId, selectedId, StringComparison.Ordinal)) ?? sessions[0];
+        var selectedPill = SessionElementId(selected.SessionId);
         var pillIds = sessions.Select(item => SessionElementId(item.SessionId)).ToArray();
         var pills = new WidgetElement[sessions.Count];
         for (var index = 0; index < sessions.Count; index++)
@@ -163,6 +164,7 @@ public sealed class MediaSessionsWidget : Widget
                 .Icon(session.PlaybackStatus == WidgetMediaPlaybackStatus.Playing
                     ? WidgetGlyph.Pause : WidgetGlyph.Music,
                     $"{session.AppName}. {session.Title}. Press A to select")
+                .PersistFocusAs(id + ".focus")
                 .Selected(string.Equals(session.SessionId, selected.SessionId, StringComparison.Ordinal))
                 .FocusLeft(pillIds[Math.Max(0, index - 1)])
                 .FocusRight(pillIds[Math.Min(sessions.Count - 1, index + 1)])
@@ -176,7 +178,6 @@ public sealed class MediaSessionsWidget : Widget
         var toggleEnabled = CanToggle(selected);
         var toggleLabel = selected.PlaybackStatus == WidgetMediaPlaybackStatus.Playing
             ? "Pause" : "Play";
-        var selectedPill = SessionElementId(selected.SessionId);
         var togglePending = pending is WidgetMediaSessionCommand.TogglePlayPause or
             WidgetMediaSessionCommand.Play or WidgetMediaSessionCommand.Pause;
         var reconnectId = model.LiveUpdatesAvailable ? null : "media.retry.live";
@@ -222,7 +223,9 @@ public sealed class MediaSessionsWidget : Widget
         var content = new List<WidgetElement>
         {
                 header,
-                UI.HorizontalScroll("media.session-scroll", pills).Classes("media-session-list"),
+                UI.HorizontalScroll("media.session-scroll", pills)
+                    .RememberChildFocus(selectedPill)
+                    .Classes("media-session-list"),
                 UI.Row("media.now-playing",
                         artwork,
                         UI.Stack("media.track-details",

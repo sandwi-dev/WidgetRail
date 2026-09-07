@@ -1347,6 +1347,15 @@ revision that admitted it are still current.
 Domain projection, provider-event merge, error copy, and rollback stay explicit
 widget policy.
 
+Its changing session selector is deliberately not a `NavigationShell`: sessions
+are dynamic peers on one page, not a fixed set of application routes. One
+bounded `HorizontalScroll` owns overflow and remembered-child entry. Each
+app-name-only button keeps a hashed session element ID plus `PersistFocusAs`
+identity, and the selected session is the group's deterministic fallback when a
+remembered session disappears. Keeping the same selector at one or many
+sessions avoids a membership-count tree swap; metadata and timeline updates do
+not change selector, details, or transport focus identities.
+
 ### Optimistic commands
 
 Create one command over the model in the widget constructor:

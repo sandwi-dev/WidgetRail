@@ -32,6 +32,8 @@
 .media-status.is-error { color: var(--danger, #c98181); }
 
 .media-session-list {
+  width: 100%;
+  min-width: 0px;
   min-height: 46px;
   max-height: 46px;
   gap: 4px;
@@ -40,8 +42,9 @@
   flex-shrink: 0;
 }
 .media-session-pill {
-  min-width: 116px;
-  max-width: 176px;
+  width: 148px;
+  min-width: 148px;
+  max-width: 148px;
   min-height: 44px;
   padding: 9px 11px;
   color: var(--text-muted);
@@ -50,6 +53,8 @@
   border-width: 1px;
   corner-radius: 8px;
   font-weight: 400;
+  flex-grow: 0;
+  flex-shrink: 0;
   max-lines: 1;
   text-overflow: ellipsis;
 }
