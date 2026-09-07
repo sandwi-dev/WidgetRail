@@ -3173,6 +3173,10 @@ static async Task CatalogReloadAuthorityIsLatestWinsAndCancellable()
 
     using var failureBoundaryReached = new ManualResetEventSlim();
     using var releaseFailureBoundary = new ManualResetEventSlim();
+    var successorLoadReached = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseSuccessorLoad = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     var failureChecks = 0;
     var failureInvocation = 0;
     await using var failureMonitor = new BridgeCatalogMonitor(
@@ -3187,6 +3191,8 @@ static async Task CatalogReloadAuthorityIsLatestWinsAndCancellable()
             await Task.Yield();
             if (Interlocked.Increment(ref failureInvocation) == 1)
                 throw new IOException("obsolete load");
+            successorLoadReached.TrySetResult();
+            await releaseSuccessorLoad.Task;
             return new BridgeCatalogLoadResult(latest, []);
         },
         beforePublicationCheck: () =>
@@ -3201,10 +3207,18 @@ static async Task CatalogReloadAuthorityIsLatestWinsAndCancellable()
         "The obsolete failure did not reach the atomic publication boundary.");
     var correctedSuccessor = failureMonitor.ReloadGuaranteedForTesting();
     releaseFailureBoundary.Set();
-    var staleFailure = await obsoleteFailure.WaitAsync(TimeSpan.FromSeconds(3));
-    Assert.False(staleFailure.Published, "An obsolete throwing load published state.");
-    Assert.True(failureMonitor.DiagnosticsSnapshot().InstalledCatalogPending,
-        "An obsolete failure cleared the newer pending installed authority.");
+    try
+    {
+        var staleFailure = await obsoleteFailure.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.False(staleFailure.Published, "An obsolete throwing load published state.");
+        await successorLoadReached.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.True(failureMonitor.DiagnosticsSnapshot().InstalledCatalogPending,
+            "An obsolete failure cleared the newer pending installed authority.");
+    }
+    finally
+    {
+        releaseSuccessorLoad.TrySetResult();
+    }
     var corrected = await correctedSuccessor.WaitAsync(TimeSpan.FromSeconds(3));
     Assert.True(corrected.Published, "The corrected successor was not published.");
     Assert.Equal("Latest", corrected.Current.Widgets.Single().Name);
