@@ -437,9 +437,10 @@ FocusMutation WidgetInteractionSession::MoveFocus(
     }
     result.pressedPresentationChanged =
         retirePressedPresentation && pressed_.Clear();
-    focusMemory_.Remember(widgetId, snapshot, focusedElementId_);
-    if (!ProvisionalFocusGroupEntry(widgetId, snapshot))
+    if (!ProvisionalFocusGroupEntry(widgetId, snapshot)) {
+        focusMemory_.Remember(widgetId, snapshot, focusedElementId_);
         focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
+    }
     if (retireSliderPresentations) RefreshSliderDeadline();
     return result;
 }
@@ -449,24 +450,33 @@ void WidgetInteractionSession::ClearFocus() noexcept {
     pendingFocusGroupEntry_.reset();
 }
 
+void WidgetInteractionSession::ClearLiveFocus() noexcept {
+    focusedElementId_.clear();
+}
+
 void WidgetInteractionSession::RememberFocus(
     const std::wstring_view widgetId,
     const WidgetSnapshot& snapshot) {
+    if (ProvisionalFocusGroupEntry(widgetId, snapshot)) return;
     focusMemory_.Remember(widgetId, snapshot, focusedElementId_);
 }
 
 std::wstring WidgetInteractionSession::RestoreFocus(
     const std::wstring_view widgetId,
     const WidgetSnapshot& snapshot) {
+    if (ProvisionalFocusGroupEntry(widgetId, snapshot)) {
+        focusedElementId_.clear();
+        return {};
+    }
     focusedElementId_ = focusMemory_.Restore(widgetId, snapshot);
-    if (!ProvisionalFocusGroupEntry(widgetId, snapshot))
-        focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
+    focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
     return focusedElementId_;
 }
 
 std::wstring WidgetInteractionSession::FocusRestoreCandidate(
     const std::wstring_view widgetId,
     const WidgetSnapshot& snapshot) const {
+    if (ProvisionalFocusGroupEntry(widgetId, snapshot)) return {};
     return focusMemory_.Restore(widgetId, snapshot);
 }
 
@@ -500,7 +510,7 @@ bool WidgetInteractionSession::SameFocusGroupEntryRuntime(
 
 FocusGroupEntryObservation WidgetInteractionSession::ObserveFocusGroupEntryRequest(
     const WidgetInteractionAuthority& authority,
-    const bool ordinaryWidgetInputEligible) {
+    const FocusGroupEntryAdmission admission) {
     if (!authority.semantics || authority.widgetId.empty() ||
         authority.runtimeGeneration.empty()) {
         pendingFocusGroupEntry_.reset();
@@ -526,7 +536,7 @@ FocusGroupEntryObservation WidgetInteractionSession::ObserveFocusGroupEntryReque
         });
     if (pendingSameRuntime &&
         pendingFocusGroupEntry_->requestId == request->requestId) {
-        const bool compatible = ordinaryWidgetInputEligible &&
+        const bool compatible = admission != FocusGroupEntryAdmission::Retire &&
             pendingFocusGroupEntry_->presentationGeneration ==
                 authority.presentationGeneration &&
             pendingFocusGroupEntry_->inputScopeId == snapshot.activeInputScopeId &&
@@ -537,7 +547,9 @@ FocusGroupEntryObservation WidgetInteractionSession::ObserveFocusGroupEntryReque
             return FocusGroupEntryObservation::Retired;
         }
         pendingFocusGroupEntry_->snapshotSequence = snapshot.sequence;
-        return FocusGroupEntryObservation::Pending;
+        return admission == FocusGroupEntryAdmission::Dormant
+            ? FocusGroupEntryObservation::Dormant
+            : FocusGroupEntryObservation::Pending;
     }
     if (highWater != focusGroupEntryHighWater_.end() &&
         request->requestId <= highWater->requestId) {
@@ -552,7 +564,7 @@ FocusGroupEntryObservation WidgetInteractionSession::ObserveFocusGroupEntryReque
         highWater->requestId = request->requestId;
     }
     if (pendingSameRuntime) pendingFocusGroupEntry_.reset();
-    if (!ordinaryWidgetInputEligible)
+    if (admission != FocusGroupEntryAdmission::Active)
         return FocusGroupEntryObservation::Retired;
     pendingFocusGroupEntry_.reset();
     pendingFocusGroupEntry_ = PendingFocusGroupEntry{

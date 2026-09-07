@@ -733,7 +733,7 @@ void TestOneShotFocusGroupEntryHostContract() {
     const auto admission = source.substr(
         admissionBegin, admissionEnd - admissionBegin);
     const auto eligibilityBegin = admission.find(
-        "IsFocusGroupEntryAdmissionEligible({");
+        "ResolveFocusGroupEntryAdmission({");
     const auto eligibilityEnd = admission.find("});", eligibilityBegin);
     Check(eligibilityBegin != std::string::npos &&
               eligibilityEnd != std::string::npos &&
@@ -746,9 +746,15 @@ void TestOneShotFocusGroupEntryHostContract() {
               eligibility.find("textEntryModal_.active()") != std::string::npos &&
               eligibility.find("pinnedSurfaceCoordinator_.controllerFocused()") !=
                   std::string::npos &&
+              eligibility.find(
+                  "state_.surface() == widgetrail::Surface::Hidden") !=
+                  std::string::npos &&
+              eligibility.find(
+                  "state_.selectedWidget() == event.widgetId") !=
+                  std::string::npos &&
               eligibility.find("pinnedSurfaceCoordinator_.pinned()") ==
                   std::string::npos,
-          "hidden tray modal and pinned input retire entry without rejecting an unrelated click-through pin");
+          "only temporary hidden same-widget authority is dormant while tray modal and pinned input retire entry");
     const auto observe = admission.find("ObserveFocusGroupEntryRequest(");
     const auto noRasterBarrier = admission.find(
         "if (focusGroupEntryPending)", observe);
@@ -811,6 +817,11 @@ void TestOneShotFocusGroupEntryHostContract() {
     Check(render.find("focusGroupEntryPrepared = true;", candidatePreview) >
               candidateTargetGate,
           "targetless deferred entry remains pending instead of preparing a null target");
+    Check(render.find("focusGroupEntryWaiting = true;", candidateTargetGate) !=
+              std::string::npos &&
+              render.find("!focusGroupEntryWaiting", actualRender) !=
+                  std::string::npos,
+          "targetless pending entry suppresses final responsive and first-hit focus recovery");
     const auto committedFocus = render.substr(commit, semanticPublication - commit);
     Check(committedFocus.find("false, false") != std::string::npos &&
               committedFocus.find("InvalidateRect(") == std::string::npos,
@@ -856,13 +867,24 @@ void TestOneShotFocusGroupEntryHostContract() {
     const auto moveDirection = moveDirectionSliceAvailable
         ? source.substr(moveDirectionBegin, moveDirectionEnd - moveDirectionBegin)
         : std::string{};
+    const auto directionalResolve = moveDirection.find(
+        "ResolveDirectionalFocus(");
+    const auto directionalRetire = moveDirection.find(
+        "RetirePendingFocusGroupEntryForUserIntent(", directionalResolve);
+    const auto directionalCommit = moveDirection.find(
+        "interactionSession_.MoveFocus(", directionalRetire);
     Check(directionSliceAvailable &&
+              direction.find("FocusGroupEntryRequestPending(") !=
+                  std::string::npos &&
               direction.find(
-                  "RetirePendingFocusGroupEntryForUserIntent(") != std::string::npos &&
+                  "phase != widgetrail::input::NavigationEventPhase::Pressed") !=
+                  std::string::npos &&
               moveDirectionSliceAvailable &&
-              moveDirection.find(
-                  "RetirePendingFocusGroupEntryForUserIntent(") <
-                  moveDirection.find("ResolveDirectionalFocus(") &&
+              directionalResolve != std::string::npos &&
+              directionalRetire != std::string::npos &&
+              directionalCommit != std::string::npos &&
+              directionalResolve < directionalRetire &&
+              directionalRetire < directionalCommit &&
               direction.find("MoveWidgetFocus(") != std::string::npos &&
               actionBegin != std::string::npos && actionEnd != std::string::npos &&
               source.substr(actionBegin, actionEnd - actionBegin).find(
@@ -870,7 +892,16 @@ void TestOneShotFocusGroupEntryHostContract() {
               pointerBegin != std::string::npos && pointerEnd != std::string::npos &&
               source.substr(pointerBegin, pointerEnd - pointerBegin).find(
                   "RetirePendingFocusGroupEntryForUserIntent(") != std::string::npos,
-          "direction routes, direct geometric movement, activation, and pointer input explicitly retire deferred entry intent");
+          "fresh direction resolves one exact target before retirement and commit while activation and pointer retain explicit cancellation");
+    const auto action = source.substr(actionBegin, actionEnd - actionBegin);
+    const auto focuslessActivationGuard = action.find(
+        "interactionSession_.focusedElementId().empty()");
+    const auto activationRetire = action.find(
+        "RetirePendingFocusGroupEntryForUserIntent(");
+    Check(focuslessActivationGuard != std::string::npos &&
+              activationRetire != std::string::npos &&
+              focuslessActivationGuard < activationRetire,
+          "focusless A returns before retirement or first-hit activation");
     Check(restoreBegin != std::string::npos && restoreEnd != std::string::npos &&
               source.substr(restoreBegin, restoreEnd - restoreBegin).find(
                   "RetirePendingFocusGroupEntryForUserIntent(") == std::string::npos,
@@ -879,6 +910,17 @@ void TestOneShotFocusGroupEntryHostContract() {
               source.find("L\"ordinary-input-lost\"") != std::string::npos &&
               source.find("L\"pinned-controller-takeover\"") != std::string::npos,
           "accessibility and exact ordinary-input ownership changes retire deferred entry");
+    const auto stateTransitionBegin = source.find(
+        "template <typename Mutation>\n    void ApplyStateTransition(");
+    const auto stateTransitionEnd = source.find(
+        "void ApplyPresentation(", stateTransitionBegin);
+    const auto stateTransition = source.substr(
+        stateTransitionBegin, stateTransitionEnd - stateTransitionBegin);
+    Check(stateTransition.find("temporaryHiddenSameWidgetTransition") !=
+              std::string::npos &&
+              stateTransition.find("interactionSession_.ClearLiveFocus();") !=
+                  std::string::npos,
+          "temporary hide and reopen preserve only the same-widget pending request while clearing live focus");
     const auto responsiveBegin = source.find(
         "bool ReconcileResponsiveFocusPersistence(");
     const auto responsiveEnd = source.find(

@@ -108,6 +108,13 @@ int main() {
           "disabled button retains Invoke identity while exposing Unavailable");
     Check(tree.focusedNode == 1 && tree.nodes[1].focused,
           "logical controller focus is represented");
+    const auto focuslessTree = widgetrail::accessibility::BuildWidgetTree(
+        L"music", L"generation-1", snapshot, render, L"");
+    Check(!focuslessTree.focusedNode &&
+              std::none_of(
+                  focuslessTree.nodes.begin(), focuslessTree.nodes.end(),
+                  [](const auto& node) { return node.focused; }),
+          "focusless current presentation exposes no synthetic UIA focus");
     Check(tree.nodes[2].role == widgetrail::accessibility::Role::Slider &&
           tree.nodes[2].value == L"one minute" && !tree.nodes[2].enabled,
           "slider exposes value and busy state");
