@@ -122,6 +122,13 @@ public:
         const SliderInputDescriptor& slider,
         std::uint64_t nowMilliseconds);
 
+    /// Retires retained value/mode/history state for this exact widget
+    /// instance when its control is absent from the admitted active scope.
+    /// Off-tree entries never dispatch or request raster damage.
+    void RetireAbsent(
+        std::wstring_view widgetInstanceId,
+        const std::vector<SliderInputDescriptor>& currentSliders) noexcept;
+
     /// Cancels only the exact current slider request. Used by typed action
     /// failure/denial paths; unrelated and stale results cannot alter it.
     [[nodiscard]] bool CancelPending(

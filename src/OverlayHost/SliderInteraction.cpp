@@ -153,9 +153,36 @@ SliderReconciliation SliderInteractionState::Reconcile(
     const SliderInputDescriptor& slider,
     const std::uint64_t nowMilliseconds) {
     if (!Valid(slider)) return {};
+    if (!entries_.contains(Key(slider))) return {};
     const auto result = ApplyUpdate(
         slider, UpdateEvent{UpdateKind::SnapshotAdmission}, nowMilliseconds);
     return {result.stateChanged, result.visualChanged};
+}
+
+void SliderInteractionState::RetireAbsent(
+    const std::wstring_view widgetInstanceId,
+    const std::vector<SliderInputDescriptor>& currentSliders) noexcept {
+    if (widgetInstanceId.empty()) return;
+    for (auto item = entries_.begin(); item != entries_.end();) {
+        auto& entry = item->second;
+        if (entry.widgetInstanceId != widgetInstanceId) {
+            ++item;
+            continue;
+        }
+        const bool retained = std::any_of(
+            currentSliders.begin(), currentSliders.end(),
+            [&](const SliderInputDescriptor& slider) {
+                return entry.inputScopeId == slider.inputScopeId &&
+                    entry.nodeId == slider.nodeId;
+            });
+        if (retained) {
+            ++item;
+            continue;
+        }
+        (void)ApplyUpdate(
+            entry, nullptr, UpdateEvent{UpdateKind::RetireValue}, 0);
+        item = entries_.erase(item);
+    }
 }
 
 bool SliderInteractionState::CancelPending(

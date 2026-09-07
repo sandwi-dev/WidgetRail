@@ -915,14 +915,22 @@ InteractionReconciliation WidgetInteractionSession::ReconcileAdmission(
     const std::wstring_view focusedElementId,
     const std::uint64_t now) {
     InteractionReconciliation result;
+    std::vector<SliderInputDescriptor> currentSliders;
     const auto visit = [&](const auto& self, const WidgetNode& node) -> void {
-        if (node.kind == L"slider" &&
-            sliders_.Reconcile(SliderDescriptor(snapshot, node), now).visualChanged) {
-            result.sliderDamageNodeIds.push_back(node.id);
+        if (node.kind == L"slider") {
+            const auto* exact = FindNodeInInputScope(
+                snapshot, node.id, snapshot.activeInputScopeId);
+            if (exact == &node) {
+                const auto slider = SliderDescriptor(snapshot, node);
+                currentSliders.push_back(slider);
+                if (sliders_.Reconcile(slider, now).visualChanged)
+                    result.sliderDamageNodeIds.push_back(node.id);
+            }
         }
         for (const auto& child : node.children) self(self, child);
     };
     visit(visit, snapshot.root);
+    sliders_.RetireAbsent(snapshot.instanceId, currentSliders);
     if (!focusedElementId.empty()) {
         sliders_.RetainAdjustmentMode(
             snapshot.instanceId, snapshot.activeInputScopeId, focusedElementId);
