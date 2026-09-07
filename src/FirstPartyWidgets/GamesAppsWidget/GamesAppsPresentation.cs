@@ -89,6 +89,7 @@ internal static class GamesAppsPresentation
                 "Next section",
                 "games.section.next.hint"));
         var header = RenderHeader(state, parts.CompactNavigation);
+        var initialFocus = InitialFocusId(state, entry);
         var root = UI.Stack(
                 "games.root",
                 header,
@@ -100,7 +101,7 @@ internal static class GamesAppsPresentation
             .Shortcut(ControllerButton.Y,
                 RefreshActionId, "Refresh current section")
             .Classes("games-apps-widget");
-        return new WidgetView(root, entry, Surface: LibrarySurface);
+        return new WidgetView(root, initialFocus, Surface: LibrarySurface);
     }
 
     internal static string FocusGroupId(GamesAppsPage page) => page switch
@@ -318,8 +319,7 @@ internal static class GamesAppsPresentation
                     state.LibraryMutationBusy ||
                     state.LifecycleState != WidgetLifecycleState.Interactive,
                 busy: isOpening,
-                selected: string.Equals(
-                    state.SelectedAppId, item.AppId, StringComparison.Ordinal))
+                selected: false)
             .Shortcut(ControllerButton.X, "Remove", actionId: "games.remove")
             .AddClasses(GamesAppsAppLibraryPresentation.Kind(item) == WidgetAppLibraryKind.Game
                 ? "is-game"
@@ -520,6 +520,20 @@ internal static class GamesAppsPresentation
         var selected = state.Items.FirstOrDefault(item => string.Equals(
             item.AppId, state.SelectedAppId, StringComparison.Ordinal)) ?? state.Items[0];
         return CatalogElementId(selected.SavedId);
+    }
+
+    private static string InitialFocusId(
+        GamesAppsPresentationState state,
+        string contentEntryFocusId)
+    {
+        if (state.Navigation.RootRoute != GamesAppsPage.Library)
+            return contentEntryFocusId;
+        var firstSavedId = state.LibrarySavedIds.FirstOrDefault(savedId =>
+            state.Items.Any(item => string.Equals(
+                item.SavedId, savedId, StringComparison.Ordinal)));
+        return firstSavedId is null
+            ? contentEntryFocusId
+            : LibraryElementId(firstSavedId);
     }
 
     private static string LoadingEntryId(GamesAppsPage page) => page switch
