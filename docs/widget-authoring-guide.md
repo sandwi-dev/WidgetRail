@@ -837,6 +837,41 @@ both parts in the same input scope because generated navigation focus links
 target descendants in `Body`. Let navigation absorb constrained-width shrink;
 do not add fixed or percentage header heights.
 
+When an asynchronously entered destination has no real focusable content yet,
+pass an explicit unavailable entry instead of inventing a focusable loading
+button:
+
+```csharp
+var contentEntry = pageIsLoading
+    ? NavigationShellContentEntry.Unavailable
+    : NavigationShellContentEntry.Available("library.content.first");
+
+var parts = UI.NavigationShellParts(
+    id: "library.shell",
+    selectedDestinationId: "library",
+    contentEntry: contentEntry,
+    content: pageIsLoading
+        ? UI.LoadingIndicator("library.loading", "Loading library")
+        : BuildLibraryContent(),
+    destinations: destinations);
+```
+
+`Unavailable` omits the compact `Down` and expanded-rail `Right` links that
+would otherwise name missing content. An independently available
+`expandedPaneEntryFocusId` remains reachable from the expanded rail. Publish
+`Available(focusId)` as soon as the real target exists. This value controls only
+shell composition: it does not create a route, focus request, focus memory, or
+loading state. Keep those responsibilities in `WidgetNavigator`, the host, and
+the widget's immutable render state respectively.
+
+Keep the navigator's same entry request published while the destination moves
+from unavailable loading content to its real remembered-focus group. Protocol
+v45 hosts retain that request without focusing loading UI, then resolve the
+remembered child or authored initial child once real content is ready. A newer
+deliberate navigation, activation, pointer, or accessibility choice cancels the
+pending entry so late content cannot steal focus; automatic layout and reopen
+reconciliation do not cancel it.
+
 The shell accepts two to eight destinations. Destination IDs describe logical
 destinations; compact and rail element IDs are generated separately. Action IDs
 describe routing intent and may be shared when the handler distinguishes
@@ -884,8 +919,8 @@ or `ResponsiveGrid` when only placement, not hierarchy, changes.
 | --- | --- | --- |
 | `UI.Stack(id, children)` | vertical container | Can start an input scope and own shortcuts. |
 | `UI.Row(id, children)` | horizontal container | Can start an input scope and own shortcuts. |
-| `UI.NavigationShell(id, selectedDestinationId, contentEntryFocusId, content, destinations, expandedPane?, expandedPaneEntryFocusId?)` | compact tabs or expanded rail around one shared page subtree | Protocol 13; two to eight stable destinations with shell-owned explicit focus persistence. Action IDs need not be unique. |
-| `UI.NavigationShellParts(id, selectedDestinationId, contentEntryFocusId, content, destinations, expandedPane?, expandedPaneEntryFocusId?, compactLeadingAdornment?, compactTrailingAdornment?)` | named compact navigation and shell body for an author-owned outer header | Same protocol/tree owners as `NavigationShell`; keep `Body` below the header rather than beside it. |
+| `UI.NavigationShell(id, selectedDestinationId, contentEntryFocusId or contentEntry, content, destinations, expandedPane?, expandedPaneEntryFocusId?)` | compact tabs or expanded rail around one shared page subtree | Protocol 13; two to eight stable destinations with shell-owned explicit focus persistence. Use `NavigationShellContentEntry.Unavailable` only while no real content target exists. Action IDs need not be unique. |
+| `UI.NavigationShellParts(id, selectedDestinationId, contentEntryFocusId or contentEntry, content, destinations, expandedPane?, expandedPaneEntryFocusId?, compactLeadingAdornment?, compactTrailingAdornment?)` | named compact navigation and shell body for an author-owned outer header | Same protocol/tree owners as `NavigationShell`; keep `Body` below the header rather than beside it. |
 | `element.VisibleWhen(mode)` / `UI.ResponsiveBranch(mode, element)` | host-resolved conditional subtree | Protocol 9; use distinct compact/expanded branch IDs and keep the root unconditional. |
 | `UI.ResponsiveGrid(id, minimumColumnWidth, maximumColumns?, children)` | responsive row-major Grid | Protocol 8; host derives bounded columns from final logical width. |
 | `UI.VerticalScroll(id, children)` | vertical Scroll | Protocol 2; host-owned focus-follow offset. |

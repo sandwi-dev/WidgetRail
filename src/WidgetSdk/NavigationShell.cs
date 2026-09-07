@@ -15,6 +15,29 @@ public sealed record NavigationShellDestination(
     bool IsDisabled = false);
 
 /// <summary>
+/// Declares whether a navigation shell's content currently has a direct focus
+/// entry target. The default value is <see cref="Unavailable"/>.
+/// </summary>
+public readonly struct NavigationShellContentEntry
+{
+    private readonly string? _focusId;
+
+    private NavigationShellContentEntry(string focusId) => _focusId = focusId;
+
+    /// <summary>Content has no direct focus entry target in this render.</summary>
+    public static NavigationShellContentEntry Unavailable => default;
+
+    /// <summary>Content has the specified direct focus entry target.</summary>
+    public static NavigationShellContentEntry Available(string focusId)
+    {
+        StableIdentifier.Validate(focusId, nameof(focusId));
+        return new NavigationShellContentEntry(focusId);
+    }
+
+    internal string? FocusId => _focusId;
+}
+
+/// <summary>
 /// The two immutable layout parts of a navigation shell. Authors may place the
 /// compact navigation in a custom header while keeping the shell-owned body
 /// directly below it.
@@ -67,6 +90,28 @@ public static partial class UI
             compactTrailingAdornment: null);
 
     /// <summary>
+    /// Composes a navigation shell whose content entry may be unavailable in
+    /// the current render, such as while the destination is loading.
+    /// </summary>
+    public static StackElement NavigationShell(
+        string id,
+        string selectedDestinationId,
+        NavigationShellContentEntry contentEntry,
+        WidgetElement content,
+        IReadOnlyList<NavigationShellDestination> destinations,
+        WidgetElement? expandedPane = null,
+        string? expandedPaneEntryFocusId = null) => NavigationShell(
+            id,
+            selectedDestinationId,
+            contentEntry,
+            content,
+            destinations,
+            expandedPane,
+            expandedPaneEntryFocusId,
+            compactLeadingAdornment: null,
+            compactTrailingAdornment: null);
+
+    /// <summary>
     /// Composes the same navigation shell with optional input-inert adornments
     /// placed directly before and after the compact destination items. Expanded
     /// rail and body composition are unchanged.
@@ -82,10 +127,38 @@ public static partial class UI
         WidgetElement? compactLeadingAdornment,
         WidgetElement? compactTrailingAdornment)
     {
+        StableIdentifier.Validate(contentEntryFocusId, nameof(contentEntryFocusId));
+        return NavigationShell(
+            id,
+            selectedDestinationId,
+            NavigationShellContentEntry.Available(contentEntryFocusId),
+            content,
+            destinations,
+            expandedPane,
+            expandedPaneEntryFocusId,
+            compactLeadingAdornment,
+            compactTrailingAdornment);
+    }
+
+    /// <summary>
+    /// Composes the same navigation shell with an explicitly available or
+    /// unavailable content entry and optional input-inert adornments.
+    /// </summary>
+    public static StackElement NavigationShell(
+        string id,
+        string selectedDestinationId,
+        NavigationShellContentEntry contentEntry,
+        WidgetElement content,
+        IReadOnlyList<NavigationShellDestination> destinations,
+        WidgetElement? expandedPane,
+        string? expandedPaneEntryFocusId,
+        WidgetElement? compactLeadingAdornment,
+        WidgetElement? compactTrailingAdornment)
+    {
         var parts = NavigationShellParts(
             id,
             selectedDestinationId,
-            contentEntryFocusId,
+            contentEntry,
             content,
             destinations,
             expandedPane,
@@ -117,9 +190,36 @@ public static partial class UI
         WidgetElement? compactLeadingAdornment = null,
         WidgetElement? compactTrailingAdornment = null)
     {
+        StableIdentifier.Validate(contentEntryFocusId, nameof(contentEntryFocusId));
+        return NavigationShellParts(
+            id,
+            selectedDestinationId,
+            NavigationShellContentEntry.Available(contentEntryFocusId),
+            content,
+            destinations,
+            expandedPane,
+            expandedPaneEntryFocusId,
+            compactLeadingAdornment,
+            compactTrailingAdornment);
+    }
+
+    /// <summary>
+    /// Builds named shell parts whose content entry may be unavailable in the
+    /// current render.
+    /// </summary>
+    public static NavigationShellParts NavigationShellParts(
+        string id,
+        string selectedDestinationId,
+        NavigationShellContentEntry contentEntry,
+        WidgetElement content,
+        IReadOnlyList<NavigationShellDestination> destinations,
+        WidgetElement? expandedPane = null,
+        string? expandedPaneEntryFocusId = null,
+        WidgetElement? compactLeadingAdornment = null,
+        WidgetElement? compactTrailingAdornment = null)
+    {
         StableIdentifier.Validate(id, nameof(id));
         StableIdentifier.Validate(selectedDestinationId, nameof(selectedDestinationId));
-        StableIdentifier.Validate(contentEntryFocusId, nameof(contentEntryFocusId));
         ArgumentNullException.ThrowIfNull(content);
         ArgumentNullException.ThrowIfNull(destinations);
         if (destinations.Count is < 2 or > MaximumNavigationShellDestinations)
@@ -182,6 +282,7 @@ public static partial class UI
 
         var compactButtons = new ButtonElement[destinations.Count];
         var railButtons = new ButtonElement[destinations.Count];
+        var contentEntryFocusId = contentEntry.FocusId;
         var expandedEntry = expandedPaneEntryFocusId ?? contentEntryFocusId;
         for (var index = 0; index < destinations.Count; index++)
         {

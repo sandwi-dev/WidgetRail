@@ -773,6 +773,8 @@ void TestOneShotFocusGroupEntryHostContract() {
     const auto candidatePreparation = render.find("PrepareFocusEntry(");
     const auto candidatePreview = render.find(
         "PreviewFocusGroupEntryRequest(", candidatePreparation);
+    const auto candidateTargetGate = render.find(
+        "if (preview.target)", candidatePreview);
     const auto finalPreparation = render.find(
         "PrepareFocusEntry(", candidatePreparation + 1);
     const auto finalPreview = render.find(
@@ -792,6 +794,7 @@ void TestOneShotFocusGroupEntryHostContract() {
         "if (result.succeeded)", move);
     Check(candidatePreparation != std::string::npos &&
               candidatePreview != std::string::npos &&
+              candidateTargetGate != std::string::npos &&
               finalPreparation != std::string::npos &&
               finalPreview != std::string::npos &&
               projection != std::string::npos && actualRender != std::string::npos &&
@@ -799,11 +802,15 @@ void TestOneShotFocusGroupEntryHostContract() {
               succeeded != std::string::npos && commit != std::string::npos &&
               move != std::string::npos && semanticPublication != std::string::npos &&
               candidatePreparation < candidatePreview &&
-              candidatePreview < finalPreparation && finalPreparation < finalPreview &&
+              candidatePreview < candidateTargetGate &&
+              candidateTargetGate < finalPreparation && finalPreparation < finalPreview &&
               finalPreview < projection && projection < actualRender &&
               actualRender < succeeded && succeeded < commit && commit < move &&
               move < semanticPublication,
           "candidate and final focus preparation settle before exactly one actual raster, then commit before semantic publication");
+    Check(render.find("focusGroupEntryPrepared = true;", candidatePreview) >
+              candidateTargetGate,
+          "targetless deferred entry remains pending instead of preparing a null target");
     const auto committedFocus = render.substr(commit, semanticPublication - commit);
     Check(committedFocus.find("false, false") != std::string::npos &&
               committedFocus.find("InvalidateRect(") == std::string::npos,
@@ -821,6 +828,67 @@ void TestOneShotFocusGroupEntryHostContract() {
     Check(pinnedProjection != std::string::npos &&
               bridgeRetirement != std::string::npos,
           "pinned projection and Bridge-session replacement cannot replay ordinary entry");
+
+    const auto directionBegin = source.find("void HandleWidgetDirection(");
+    const auto directionEnd = source.find(
+        "void RefreshCurrentBridgeSnapshot", directionBegin);
+    const auto moveDirectionBegin = source.find("void MoveWidgetFocus(");
+    const auto moveDirectionEnd = source.find(
+        "bool AuthoredHeldActionAdmissible", moveDirectionBegin);
+    const auto actionBegin = source.find("void DispatchControllerAction(");
+    const auto actionEnd = source.find(
+        "void AttemptOverlayFullscreenMediaEntry", actionBegin);
+    const auto pointerBegin = source.find("void HandlePointerActivation(");
+    const auto pointerEnd = source.find("void Draw", pointerBegin);
+    const auto restoreBegin = source.find("void RestoreFocusForActiveSurface(");
+    const auto restoreEnd = source.find(
+        "void ReturnPinnedControllerFocusToOverlay", restoreBegin);
+    const bool directionSliceAvailable =
+        directionBegin != std::string::npos && directionEnd != std::string::npos &&
+        directionBegin < directionEnd;
+    const bool moveDirectionSliceAvailable =
+        moveDirectionBegin != std::string::npos &&
+        moveDirectionEnd != std::string::npos &&
+        moveDirectionBegin < moveDirectionEnd;
+    const auto direction = directionSliceAvailable
+        ? source.substr(directionBegin, directionEnd - directionBegin)
+        : std::string{};
+    const auto moveDirection = moveDirectionSliceAvailable
+        ? source.substr(moveDirectionBegin, moveDirectionEnd - moveDirectionBegin)
+        : std::string{};
+    Check(directionSliceAvailable &&
+              direction.find(
+                  "RetirePendingFocusGroupEntryForUserIntent(") != std::string::npos &&
+              moveDirectionSliceAvailable &&
+              moveDirection.find(
+                  "RetirePendingFocusGroupEntryForUserIntent(") <
+                  moveDirection.find("ResolveDirectionalFocus(") &&
+              direction.find("MoveWidgetFocus(") != std::string::npos &&
+              actionBegin != std::string::npos && actionEnd != std::string::npos &&
+              source.substr(actionBegin, actionEnd - actionBegin).find(
+                  "RetirePendingFocusGroupEntryForUserIntent(") != std::string::npos &&
+              pointerBegin != std::string::npos && pointerEnd != std::string::npos &&
+              source.substr(pointerBegin, pointerEnd - pointerBegin).find(
+                  "RetirePendingFocusGroupEntryForUserIntent(") != std::string::npos,
+          "direction routes, direct geometric movement, activation, and pointer input explicitly retire deferred entry intent");
+    Check(restoreBegin != std::string::npos && restoreEnd != std::string::npos &&
+              source.substr(restoreBegin, restoreEnd - restoreBegin).find(
+                  "RetirePendingFocusGroupEntryForUserIntent(") == std::string::npos,
+          "automatic focus restoration cannot cancel deferred entry intent");
+    Check(source.find("L\"accessibility-action\"") != std::string::npos &&
+              source.find("L\"ordinary-input-lost\"") != std::string::npos &&
+              source.find("L\"pinned-controller-takeover\"") != std::string::npos,
+          "accessibility and exact ordinary-input ownership changes retire deferred entry");
+    const auto responsiveBegin = source.find(
+        "bool ReconcileResponsiveFocusPersistence(");
+    const auto responsiveEnd = source.find(
+        "std::optional<widgetrail::input::WidgetInteractionAuthority>",
+        responsiveBegin);
+    Check(responsiveBegin != std::string::npos &&
+              responsiveEnd != std::string::npos &&
+              source.substr(responsiveBegin, responsiveEnd - responsiveBegin).find(
+                  "RetirePendingFocusGroupEntryForUserIntent(") == std::string::npos,
+          "automatic responsive focus normalization cannot cancel deferred entry intent");
 }
 
 void TestPinnedViewReturnsToPriorOverlayFocusContract() {

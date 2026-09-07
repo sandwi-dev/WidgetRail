@@ -8,8 +8,90 @@ internal static class RememberedChildFocusGroupTests
         SharedContainerApiOwnsTheContract();
         ProtocolV33RoundTripsAndValidates();
         OneShotEntryRequestsAreVersionedAndScoped();
+        DeferredEntryRequiresV45AndARealContainer();
         InvalidGroupsFailClosed();
         return Task.CompletedTask;
+    }
+
+    private static void DeferredEntryRequiresV45AndARealContainer()
+    {
+        var loadingGroup = UI.Row(
+            "content", UI.Text("Loading", "content.loading"));
+        var snapshot = new WidgetView(
+            UI.Stack("root",
+                UI.Button("Header", "header.activate", "header"),
+                loadingGroup),
+            "header")
+        {
+            FocusGroupEntryRequest = new()
+            {
+                RequestId = 9,
+                GroupId = "content",
+            },
+        }.CreateSnapshot("deferred-entry.instance", 1);
+
+        Equal(ProtocolConstants.DeferredFocusGroupEntryVersion, snapshot.ProtocolVersion);
+        Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        Error(snapshot with
+        {
+            ProtocolVersion = ProtocolConstants.FocusGroupEntryRequestVersion,
+        }, "feature_requires_version");
+        Error(snapshot with
+        {
+            ProtocolVersion = ProtocolConstants.FocusGroupEntryRequestVersion,
+        }, "invalid_focus_group");
+
+        var nonContainer = snapshot with
+        {
+            Root = snapshot.Root with
+            {
+                Children =
+                [
+                    snapshot.Root.Children[0],
+                    RawButton("content"),
+                ],
+            },
+        };
+        Error(nonContainer, "invalid_focus_group");
+
+        var invalidReady = snapshot with
+        {
+            Root = snapshot.Root with
+            {
+                Children =
+                [
+                    snapshot.Root.Children[0],
+                    RawNode("content", ViewNodeKind.Row) with
+                    {
+                        InitialChildFocusId = "content.missing",
+                        Children = [RawButton("content.first")],
+                    },
+                ],
+            },
+        };
+        Error(invalidReady, "invalid_initial_child_focus");
+
+        var nullRootRequirements = ProtocolVersionRequirements.Calculate(snapshot with
+        {
+            Root = null!,
+        });
+        Equal(ProtocolConstants.FocusGroupEntryRequestVersion,
+            nullRootRequirements.RequiredVersion);
+
+        ViewNode overDepth = snapshot.Root.Children.Single(node => node.Id == "content");
+        for (var depth = 0; depth < ProtocolConstants.MaximumTreeDepth; depth++)
+        {
+            overDepth = RawNode($"depth.{depth}", ViewNodeKind.Stack) with
+            {
+                Children = [overDepth],
+            };
+        }
+        var boundedRequirements = ProtocolVersionRequirements.Calculate(snapshot with
+        {
+            Root = overDepth,
+        });
+        Equal(ProtocolConstants.FocusGroupEntryRequestVersion,
+            boundedRequirements.RequiredVersion);
     }
 
     private static void OneShotEntryRequestsAreVersionedAndScoped()

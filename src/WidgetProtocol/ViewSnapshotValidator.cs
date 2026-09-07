@@ -209,9 +209,17 @@ public static class ViewSnapshotValidator
                         "Focus-group entry must name an authored remembered-child focus group.",
                         ProtocolValidationIdentifierKind.ElementReference,
                         ProtocolValidationIdentifierState.Missing, groupId);
-                else if (group.Node.InitialChildFocusId is null)
+                else if (group.Node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or
+                             ViewNodeKind.Scroll or ViewNodeKind.Grid))
                     AddIdentifier("$.focusGroupEntryRequest.groupId", "invalid_focus_group",
-                        "Focus-group entry must name an authored remembered-child focus group.",
+                        "Focus-group entry must name a child-owning layout container.",
+                        ProtocolValidationIdentifierKind.ElementReference,
+                        ProtocolValidationIdentifierState.NotFocusable, groupId);
+                else if (group.Node.InitialChildFocusId is null &&
+                         snapshot.ProtocolVersion <
+                             ProtocolConstants.DeferredFocusGroupEntryVersion)
+                    AddIdentifier("$.focusGroupEntryRequest.groupId", "invalid_focus_group",
+                        "Focus-group entry without ready content requires the deferred-entry protocol version.",
                         ProtocolValidationIdentifierKind.ElementReference,
                         ProtocolValidationIdentifierState.NotFocusable, groupId);
                 else if (!hasActiveScope ||

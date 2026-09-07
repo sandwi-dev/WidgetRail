@@ -26,11 +26,13 @@ internal sealed class ProtocolVersionRequirements
         var nodes = 0;
 
         if (snapshot.FocusGroupEntryRequest is not null)
+        {
             Add(
                 "focus-group-entry-request",
                 ProtocolConstants.FocusGroupEntryRequestVersion,
                 "$.focusGroupEntryRequest",
                 $"Focus-group entry requests require protocol version {ProtocolConstants.FocusGroupEntryRequestVersion} or later.");
+        }
 
         if (snapshot.Surface is not null)
         {
@@ -85,13 +87,17 @@ internal sealed class ProtocolVersionRequirements
                 "$.embeddedMediaSession",
                 $"Embedded media sessions require protocol version {ProtocolConstants.EmbeddedMediaSessionVersion} or later.");
 
-        Visit(snapshot.Root, "$.root", 1);
+        Visit(snapshot.Root, "$.root", 1,
+            snapshot.Root?.InputScopeId ?? snapshot.Root?.Id ?? string.Empty,
+            inferDeferredFocusGroupEntry: true);
         var pinnedLayouts = snapshot.PinnedLayouts ?? [];
         for (var index = 0; index < Math.Min(
                  pinnedLayouts.Count, ProtocolConstants.MaximumPinnedPresentationLayoutCount); index++)
         {
             if (pinnedLayouts[index]?.Root is { } pinnedRoot)
-                Visit(pinnedRoot, $"$.pinnedLayouts[{index}].root", 1);
+                Visit(pinnedRoot, $"$.pinnedLayouts[{index}].root", 1,
+                    pinnedRoot.InputScopeId ?? pinnedRoot.Id,
+                    inferDeferredFocusGroupEntry: false);
         }
 
         var quickActions = snapshot.QuickActions ?? [];
@@ -113,13 +119,30 @@ internal sealed class ProtocolVersionRequirements
 
         return new(requirements);
 
-        void Visit(ViewNode? node, string path, int depth)
+        void Visit(
+            ViewNode? node,
+            string path,
+            int depth,
+            string inheritedScope,
+            bool inferDeferredFocusGroupEntry)
         {
             if (node is null) return;
             nodes++;
             if (nodes > ProtocolConstants.MaximumNodeCount ||
                 depth > ProtocolConstants.MaximumTreeDepth)
                 return;
+
+            var scope = node.InputScopeId ?? inheritedScope;
+            if (inferDeferredFocusGroupEntry &&
+                snapshot.FocusGroupEntryRequest is { } groupEntry &&
+                string.Equals(node.Id, groupEntry.GroupId, StringComparison.Ordinal) &&
+                string.Equals(scope, snapshot.ActiveInputScopeId, StringComparison.Ordinal) &&
+                node.InitialChildFocusId is null)
+                Add(
+                    "deferred-focus-group-entry",
+                    ProtocolConstants.DeferredFocusGroupEntryVersion,
+                    "$.focusGroupEntryRequest",
+                    $"Deferred focus-group entry requires protocol version {ProtocolConstants.DeferredFocusGroupEntryVersion} or later.");
 
             if (node.VisibleWhen is not null)
                 Add(
@@ -339,11 +362,14 @@ internal sealed class ProtocolVersionRequirements
 
             var children = node.Children ?? [];
             if (node.FocusPresentation is not null)
-                Visit(node.FocusPresentation, $"{path}.focusPresentation", depth + 1);
+                Visit(node.FocusPresentation, $"{path}.focusPresentation", depth + 1,
+                    scope, inferDeferredFocusGroupEntry);
             if (node.DefaultFocusPresentation is not null)
-                Visit(node.DefaultFocusPresentation, $"{path}.defaultFocusPresentation", depth + 1);
+                Visit(node.DefaultFocusPresentation, $"{path}.defaultFocusPresentation", depth + 1,
+                    scope, inferDeferredFocusGroupEntry);
             for (var index = 0; index < children.Count; index++)
-                Visit(children[index], $"{path}.children[{index}]", depth + 1);
+                Visit(children[index], $"{path}.children[{index}]", depth + 1,
+                    scope, inferDeferredFocusGroupEntry);
         }
 
         void Add(string feature, int version, string path, string message) =>

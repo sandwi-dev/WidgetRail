@@ -87,6 +87,104 @@ internal static class NavigationShellTests
         return Task.CompletedTask;
     }
 
+    internal static Task TypedAvailableEntryMatchesLegacyOutput()
+    {
+        var legacy = UI.NavigationShell(
+            "shell",
+            "library",
+            "page.open",
+            Content(),
+            Destinations(),
+            UI.Stack("pane", UI.Button("Play", "play", "pane.play")),
+            "pane.play",
+            UI.ControllerHint(ControllerButton.LeftBumper, "Previous", "hint.previous"),
+            UI.ControllerHint(ControllerButton.RightBumper, "Next", "hint.next"));
+        var typed = UI.NavigationShell(
+            "shell",
+            "library",
+            NavigationShellContentEntry.Available("page.open"),
+            Content(),
+            Destinations(),
+            UI.Stack("pane", UI.Button("Play", "play", "pane.play")),
+            "pane.play",
+            UI.ControllerHint(ControllerButton.LeftBumper, "Previous", "hint.previous"),
+            UI.ControllerHint(ControllerButton.RightBumper, "Next", "hint.next"));
+
+        var legacySnapshot = new WidgetView(legacy, "page.open")
+            .CreateSnapshot("navigation.available", 1);
+        var typedSnapshot = new WidgetView(typed, "page.open")
+            .CreateSnapshot("navigation.available", 1);
+        True(SnapshotJson.Serialize(legacySnapshot).AsSpan()
+                .SequenceEqual(SnapshotJson.Serialize(typedSnapshot)),
+            "An available typed content entry must preserve legacy serialized output.");
+        return Task.CompletedTask;
+    }
+
+    internal static Task UnavailableEntryOmitsOnlyMissingContentEdges()
+    {
+        var unavailableShell = UI.NavigationShell(
+            "shell",
+            "library",
+            NavigationShellContentEntry.Unavailable,
+            UI.Stack("page.content", UI.LoadingIndicator("page.loading", "Loading")),
+            Destinations());
+        var unavailableSnapshot = new WidgetView(unavailableShell)
+            .CreateSnapshot("navigation.unavailable", 1);
+        Equal(0, ViewSnapshotValidator.Validate(unavailableSnapshot).Count);
+        var unavailable = unavailableSnapshot.Root;
+        var compact = Find(unavailable, "shell.compact").Children;
+        var rail = Find(unavailable, "shell.rail").Children;
+
+        for (var index = 0; index < compact.Count; index++)
+        {
+            Equal(null, compact[index].Focus!.Down);
+            Equal(compact[(index - 1 + compact.Count) % compact.Count].Id,
+                compact[index].Focus!.Left);
+            Equal(compact[(index + 1) % compact.Count].Id,
+                compact[index].Focus!.Right);
+            Equal(null, rail[index].Focus!.Right);
+            Equal(rail[(index - 1 + rail.Count) % rail.Count].Id,
+                rail[index].Focus!.Up);
+            Equal(rail[(index + 1) % rail.Count].Id,
+                rail[index].Focus!.Down);
+            True(!string.IsNullOrWhiteSpace(compact[index].FocusPersistenceId),
+                "Unavailable content must preserve logical destination focus persistence.");
+        }
+
+        var withPane = UI.NavigationShellParts(
+            "shell",
+            "library",
+            NavigationShellContentEntry.Unavailable,
+            UI.Stack("page.content", UI.LoadingIndicator("page.loading", "Loading")),
+            Destinations(),
+            UI.Stack("pane", UI.Button("Play", "play", "pane.play")),
+            "pane.play");
+        var paneCompact = withPane.CompactNavigation.ToProtocolNode().Children;
+        var paneRail = Find(withPane.Body.ToProtocolNode(), "shell.rail").Children;
+        True(paneCompact.All(node => node.Focus!.Down is null),
+            "An unavailable content entry must not author compact Down edges.");
+        True(paneRail.All(node => node.Focus!.Right == "pane.play"),
+            "An independently available expanded pane must remain reachable.");
+        return Task.CompletedTask;
+    }
+
+    internal static Task ContentEntryValueValidatesAvailableIdentifiers()
+    {
+        Throws<ArgumentException>(() => NavigationShellContentEntry.Available(""));
+        Throws<ArgumentException>(() => NavigationShellContentEntry.Available("bad id"));
+        Throws<ArgumentException>(() => UI.NavigationShell(
+            "shell", "library", (string)null!, Content(), Destinations()));
+
+        var defaultEntry = default(NavigationShellContentEntry);
+        var shell = UI.NavigationShell(
+            "shell", "library", defaultEntry,
+            UI.Stack("page.content", UI.LoadingIndicator("page.loading", "Loading")),
+            Destinations()).ToProtocolNode();
+        True(Find(shell, "shell.compact").Children.All(node => node.Focus!.Down is null),
+            "The default content-entry value must be unambiguously unavailable.");
+        return Task.CompletedTask;
+    }
+
     internal static Task ComposesOneResponsiveContentTree()
     {
         var shell = CreateShell();
