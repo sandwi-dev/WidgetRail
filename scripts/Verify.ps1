@@ -144,16 +144,18 @@ try {
         throw 'Native toolchain provenance output exceeded its configured limit.'
     }
     $nativeToolchain = $nativeToolchainResult.text | ConvertFrom-Json
+    $selectedStepIdsForProvenance = [Collections.Generic.List[string]]::new()
+    if ($stepSelectionExplicit) {
+        foreach ($step in $eligibleSteps) {
+            $selectedStepIdsForProvenance.Add([string]$step.id)
+        }
+    }
     $provenance = [ordered]@{
         schemaVersion = 2
         runId = $runId
         configuration = $Configuration
         lane = $Lane
-        selectedStepIds = if ($stepSelectionExplicit) {
-            @($eligibleSteps | ForEach-Object { $_.id })
-        } else {
-            @()
-        }
+        selectedStepIds = $selectedStepIdsForProvenance
         startedUtc = $startedUtc.ToString('O')
         repositoryCommit = $gitCommit.text
         repositoryDirty = -not [string]::IsNullOrEmpty($dirtyText)

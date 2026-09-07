@@ -158,6 +158,11 @@ Assert-SelectionRejected {
     Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane managed `
         -RequestedStepIds @('overlay-declarative-layout-tests') -ExplicitSelection
 } "incompatible with lane 'managed'"
+Assert-SelectionRejected {
+    Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all `
+        -RequestedStepIds @('platform-broker-tests', 'PLATFORM-BROKER-TESTS') `
+        -ExplicitSelection
+} 'Unknown verification step ID: PLATFORM-BROKER-TESTS'
 
 $crossLaneFixture = @(
     [pscustomobject]@{ id = 'native-owner'; lane = 'native' },
@@ -180,6 +185,34 @@ $forwardPrerequisiteFixture = @(
 Assert-SelectionRejected {
     Resolve-VerificationStepSelection -Steps $forwardPrerequisiteFixture -Lane all
 } 'must appear earlier in the manifest'
+$mixedCasePrerequisiteFixture = @(
+    [pscustomobject]@{ id = 'alpha'; lane = 'managed' },
+    [pscustomobject]@{
+        id = 'consumer'
+        lane = 'managed'
+        requiresStepIds = @('ALPHA')
+    })
+Assert-SelectionRejected {
+    Resolve-VerificationStepSelection -Steps $mixedCasePrerequisiteFixture -Lane all
+} "requires unknown step 'ALPHA'"
+
+foreach ($selectedCount in 0, 1, 3) {
+    $selectedIds = [Collections.Generic.List[string]]::new()
+    for ($index = 0; $index -lt $selectedCount; $index++) {
+        $selectedIds.Add("step-$index")
+    }
+    $serialized = [ordered]@{ selectedStepIds = $selectedIds } |
+        ConvertTo-Json -Compress
+    $json = [Text.Json.JsonDocument]::Parse($serialized)
+    try {
+        $selectedProperty = $json.RootElement.GetProperty('selectedStepIds')
+        if ($selectedProperty.ValueKind -ne [Text.Json.JsonValueKind]::Array -or
+            $selectedProperty.GetArrayLength() -ne $selectedCount) {
+            throw "Selected step IDs did not serialize as a $selectedCount-item JSON array."
+        }
+    }
+    finally { $json.Dispose() }
+}
 
 $launcherPath = Join-Path $PSScriptRoot 'Invoke-VerificationChild.ps1'
 if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {

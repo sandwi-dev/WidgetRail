@@ -406,8 +406,10 @@ function Resolve-VerificationStepSelection {
         throw 'Verification step manifest must contain between 1 and 128 steps.'
     }
 
-    $stepsById = @{}
-    $stepIndexes = @{}
+    $stepsById = [Collections.Generic.Dictionary[string, object]]::new(
+        [StringComparer]::Ordinal)
+    $stepIndexes = [Collections.Generic.Dictionary[string, int]]::new(
+        [StringComparer]::Ordinal)
     for ($index = 0; $index -lt $Steps.Count; $index++) {
         $step = $Steps[$index]
         $id = [string]$step.id
@@ -417,8 +419,8 @@ function Resolve-VerificationStepSelection {
         if ($stepsById.ContainsKey($id)) {
             throw "Verification step ID '$id' is duplicated in the manifest."
         }
-        $stepsById[$id] = $step
-        $stepIndexes[$id] = $index
+        $stepsById.Add($id, $step)
+        $stepIndexes.Add($id, $index)
 
         $runByDefaultProperty = $step.PSObject.Properties['runByDefault']
         if ($null -ne $runByDefaultProperty -and
