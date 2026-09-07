@@ -17,6 +17,8 @@ public sealed class WindowsAppLibraryProvider :
 {
     internal const int MaximumApps = 10_000;
     internal const int MaximumDisplayNameLength = 120;
+    private const int ErrorElevationRequired = 740;
+    private const int ErrorCancelled = 1223;
     private static readonly TimeSpan TerminalDrainDeadline = TimeSpan.FromSeconds(5);
 
     private readonly IReadOnlyList<IGameLibrarySource> _sources;
@@ -877,6 +879,22 @@ public sealed class WindowsAppLibraryProvider :
         {
             throw new BrokerException(
                 "platform_unavailable", "Windows Shell app launch is unavailable.", exception);
+        }
+        catch (System.ComponentModel.Win32Exception exception) when (
+            exception.NativeErrorCode == ErrorCancelled)
+        {
+            throw new BrokerException(
+                "elevation_cancelled",
+                "Administrator approval was canceled and the app was not opened.",
+                exception);
+        }
+        catch (System.ComponentModel.Win32Exception exception) when (
+            exception.NativeErrorCode == ErrorElevationRequired)
+        {
+            throw new BrokerException(
+                "elevation_required",
+                "This app requires administrator approval and was not opened.",
+                exception);
         }
         catch (Exception exception) when (exception is IOException or
             UnauthorizedAccessException or System.Security.SecurityException or

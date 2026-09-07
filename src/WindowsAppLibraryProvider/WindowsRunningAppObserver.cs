@@ -29,7 +29,6 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     internal const int MaximumTopLevelWindowVisits = 256;
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const uint TokenQuery = 0x0008;
-    private const int TokenElevation = 20;
     private const uint GwOwner = 4;
     private const int DwmwaCloaked = 14;
     private const int ErrorInsufficientBuffer = 122;
@@ -83,7 +82,7 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
                 (uint)Environment.ProcessId))
             return null;
         using var process = OpenProcess(ProcessQueryLimitedInformation, false, processId);
-        if (process.IsInvalid || !IsSameUserSessionNonElevated(process, processId))
+        if (process.IsInvalid || !IsSameUserAndSession(process, processId))
             return null;
         var packagedIdentity = PackagedIdentity(process);
         var executable = packagedIdentity is null ? ExecutableIdentity(process) : null;
@@ -169,7 +168,7 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
             authority);
     }
 
-    private static bool IsSameUserSessionNonElevated(
+    private static bool IsSameUserAndSession(
         SafeProcessHandle process,
         uint processId)
     {
@@ -180,10 +179,6 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
         if (!OpenProcessToken(process, TokenQuery, out var token)) return false;
         using (token)
         {
-            if (!GetTokenInformation(token, TokenElevation, out var elevation,
-                    Marshal.SizeOf<TokenElevationInfo>(), out _) ||
-                elevation.TokenIsElevated != 0)
-                return false;
             try
             {
                 using var processIdentity = new WindowsIdentity(token.DangerousGetHandle());
@@ -248,9 +243,6 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
         }
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct TokenElevationInfo { internal int TokenIsElevated; }
-
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr parameter);
@@ -294,10 +286,4 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool OpenProcessToken(
         SafeProcessHandle process, uint desiredAccess, out SafeAccessTokenHandle token);
-    [DllImport("advapi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetTokenInformation(
-        SafeAccessTokenHandle token, int informationClass,
-        out TokenElevationInfo information,
-        int informationLength, out int returnLength);
 }

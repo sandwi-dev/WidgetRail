@@ -245,6 +245,14 @@ file identity, or retained process handle. The host visits at most 256 top-level
 windows before all eligibility filters and returns at most 64 deduplicated
 candidates.
 
+The observer may include an elevated same-user, same-session application when
+Windows permits its bounded limited-information inspection. Elevation, tokens,
+arguments, and process handles are not retained. Portable launch first uses the
+ordinary non-Shell path with no arguments or elevation request. Only when Windows
+reports that the exact validated executable requires elevation does the provider
+retry it once through Shell `open`, allowing Windows to display its standard UAC
+consent. Canceling that consent leaves the app unopened and the library usable.
+
 An exact current installed match keeps the ordinary confirmation and SavedId
 CAS path and does not need registration permission. An unmatched supported
 ordinary `.exe` additionally needs optional

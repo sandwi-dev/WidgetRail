@@ -2111,6 +2111,12 @@ public sealed class GamesAppsWidget : Widget
                     (GamesAppsViewState.ServiceUnavailable, "App library unavailable"),
                 "app_not_found" =>
                     (GamesAppsViewState.Error, "The selected app is no longer installed"),
+                "elevation_cancelled" =>
+                    (GamesAppsViewState.Error,
+                        "Administrator approval was canceled; the app was not opened"),
+                "elevation_required" =>
+                    (GamesAppsViewState.Error,
+                        "This app requires administrator approval and was not opened"),
                 _ => (GamesAppsViewState.Error, "App library request failed"),
             };
         }

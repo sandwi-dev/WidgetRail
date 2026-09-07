@@ -2023,7 +2023,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  DLV-095 adds a separate optional `system.apps.running.read.v1` grant and an
  explicit **Add running app** route to Games & Apps and Playnite Library. The
  trusted Windows provider observes visible unowned top-level application windows
- on demand, excludes owned/cloaked/background/inaccessible/elevated/overlay/
+ on demand, excludes owned/cloaked/background/inaccessible/overlay/
  worker/tool windows, and maps packaged or canonical executable identity
  one-to-one to a current normalized registration. DLV-097 bounds native work
  before eligibility filtering: at most 256 top-level callbacks and therefore at
@@ -2038,6 +2038,11 @@ themes also use non-shrinking fixed regions, a thin native Slider
  data returns `malformed_response` before either widget can project or persist
  it. Focused Release evidence passes Widget SDK 87/87, API compatibility 12/12,
  Windows app-library provider 57/57, Games & Apps 59/59, and Playnite Library 45/45.
+ Same-user/session elevated windows remain eligible when limited query access
+ succeeds; no elevated token or arguments are retained. Portable launch stays
+ direct and unelevated by default, with a one-time Shell `open` retry only after
+ Windows returns `ERROR_ELEVATION_REQUIRED`; UAC cancellation remains a
+ sanitized non-success result.
  The prior credential-free generic-AppContainer route remains the packaged
  DLV-095 evidence; no aggregate or screenshot verification ran for DLV-097.
  DLV-007 now captures Spotify rendering through one private immutable

@@ -107,6 +107,27 @@ internal static class RunningAppScenarios
         return Task.CompletedTask;
     }
 
+    internal static Task ProcessContextDoesNotRejectElevation()
+    {
+        var type = typeof(WindowsRunningAppObserver);
+        Assert.True(type.GetMethod(
+            "IsSameUserAndSession",
+            BindingFlags.NonPublic | BindingFlags.Static) is not null);
+        Assert.True(type.GetMethod(
+            "IsSameUserSessionNonElevated",
+            BindingFlags.NonPublic | BindingFlags.Static) is null);
+        Assert.True(type.GetField(
+            "TokenElevation",
+            BindingFlags.NonPublic | BindingFlags.Static) is null);
+        Assert.True(type.GetNestedType(
+            "TokenElevationInfo",
+            BindingFlags.NonPublic) is null);
+        Assert.True(type.GetMethod(
+            "GetTokenInformation",
+            BindingFlags.NonPublic | BindingFlags.Static) is null);
+        return Task.CompletedTask;
+    }
+
     internal static async Task MapsOnlyExactCurrentRegistrations()
     {
         var source = new Source(2);
