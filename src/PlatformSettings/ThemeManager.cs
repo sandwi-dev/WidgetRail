@@ -181,8 +181,8 @@ public static class ThemeLayerCompiler
         var compiled = WrssThemeCompiler.Compile(
         [
             new WrssThemeLayer(0, platform.Documents),
-            new WrssThemeLayer(100, widget.Documents),
-            new WrssThemeLayer(200, user.Documents),
+            new WrssThemeLayer(100, user.Documents),
+            new WrssThemeLayer(200, widget.Documents),
         ]);
         var diagnostics = platform.Diagnostics
             .Concat(widget.Diagnostics)

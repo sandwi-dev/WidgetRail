@@ -22,7 +22,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Theme sources reject traversal and reparse points", ThemeSourceSafety),
     ("Theme count is bounded", ThemeCountIsBounded),
     ("Theme version mutation is exact protected and bounded", ThemeVersionMutation),
-    ("Theme layers apply platform widget and user precedence", ThemeLayerPrecedence),
+    ("Theme layers apply platform global-default and widget precedence", ThemeLayerPrecedence),
     ("Invalid reload retains the last valid theme and revision", InvalidReloadRetainsLastGood),
     ("Built-in theme gives CodeText bounded Windows monospace wrapping", CodeTextThemeTests.Run),
 };
@@ -968,17 +968,29 @@ static Task ThemeLayerPrecedence()
         """);
     var widget = Package("widget.wrss", """
         :root { --choice: #222222; }
-        #special { color: var(--choice); background: #020202; }
+        button { color: var(--choice); border-color: var(--global-only); }
         """);
     var user = Package("user.wrss", """
-        :root { --choice: #333333; }
-        button { color: var(--choice); }
+        :root { --choice: #333333; --global-only: #444444; }
+        #special { color: var(--choice); opacity: 0.55; }
         """);
     var compiled = ThemeLayerCompiler.Compile(platform, widget, user);
     Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
     var style = compiled.Theme!.Resolve(new WrssElement("button", "special"));
-    Assert.Equal("#333333", style.Get("color")!.Text);
-    Assert.Equal("#020202", style.Get("background")!.Text);
+    Assert.Equal("#222222", style.Get("color")!.Text);
+    Assert.Equal("#444444", style.Get("border-color")!.Text);
+    Assert.Equal("0.55", style.Get("opacity")!.Text);
+    Assert.Equal("#010101", style.Get("background")!.Text);
+
+    var withoutWidget = ThemeLayerCompiler.Compile(
+        platform,
+        new WrssPackageResult([], []),
+        user);
+    Assert.True(withoutWidget.IsValid, Describe(withoutWidget.Diagnostics));
+    var inherited = withoutWidget.Theme!.Resolve(new WrssElement("button", "special"));
+    Assert.Equal("#333333", inherited.Get("color")!.Text);
+    Assert.Equal("0.55", inherited.Get("opacity")!.Text);
+    Assert.Equal("#010101", inherited.Get("background")!.Text);
     return Task.CompletedTask;
 }
 
@@ -1020,7 +1032,7 @@ static async Task InvalidReloadRetainsLastGood()
     var layered = recovered.Current.CompileForWidget(widget);
     Assert.True(layered.IsValid, Describe(layered.Diagnostics));
     var style = layered.Theme!.Resolve(new WrssElement("button"));
-    Assert.Equal("#abcdef", style.Get("color")!.Text);
+    Assert.Equal("#000000", style.Get("color")!.Text);
     Assert.Equal("#0a0b0c", style.Get("background")!.Text);
 }
 

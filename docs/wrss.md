@@ -33,9 +33,21 @@ most 64 ASCII characters, begins with a letter or underscore, and then uses
 only letters, digits, underscores, or hyphens. The SDK checks the same grammar
 eagerly, and the protocol revalidates untrusted/raw snapshots.
 
-Specificity is deterministic: ID, then classes/pseudo-states, then semantic role. Equal specificity is resolved by document, rule, and declaration order. Imported documents appear before their importer. Resolved property maps enumerate keys in ordinal order.
+Specificity is deterministic within one style layer: ID, then
+classes/pseudo-states, then semantic role. Equal specificity is resolved by
+document, rule, and declaration order. Imported documents appear before their
+importer. Across the complete product cascade, built-in platform styles supply
+the base, the selected global theme supplies defaults, and explicit
+widget-package styles win. Resolved property maps enumerate keys in ordinal
+order.
 
-Variables are declared in `:root`. `var(--token)` and `var(--token, fallback)` support forward references; missing variables and cycles prevent theme publication. Host semantic tokens such as `--accent`, `--surface`, `--text`, `--text-muted`, and `--focus` have safe defaults and can be overridden by a valid theme.
+Variables are declared in `:root`. `var(--token)` and `var(--token, fallback)`
+support forward references; missing variables and cycles prevent theme
+publication. Host semantic tokens such as `--accent`, `--surface`, `--text`,
+`--text-muted`, and `--focus` have safe defaults. A selected global theme
+overrides those defaults, and an explicit widget-package definition overrides
+the global value. When a widget omits a token, its declarations inherit the
+selected theme or host default.
 
 ## Property allowlist
 

@@ -111,7 +111,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Artwork memory diagnostics are bounded concurrent and private", BridgeDiagnosticsScenarios.ArtworkMemoryCountersAreBoundedAndConcurrent),
     ("Diagnostics partial failures malformed input and deadline are closed", BridgeDiagnosticsScenarios.PartialFailureMalformedInputAndDeadlineAreClosed),
     ("Authority recovery projection is exact bounded and cancellation safe", BridgeDiagnosticsScenarios.RecoveryRetryIsExactBoundedAndCancellationSafe),
-    ("User theme layers override widget selectors", UserThemeOverridesWidgetStyles),
+    ("Widget styles override global theme defaults", WidgetStylesOverrideGlobalThemeDefaults),
     ("Appearance reload publishes revisions and retains last good state", AppearanceReloadIsLastGood),
     ("Widget lifecycle is explicit, lazy, and idempotent through the bridge", LifecycleIsExplicit),
     ("Suspend-when-hidden blocks work and serves only a cached view", SuspendWhenHiddenIsLogical),
@@ -3414,20 +3414,31 @@ static async Task PlatformAppearanceIsLazy()
     Assert.Equal(0, harness.Server.RunningWorkerCount);
 }
 
-static async Task UserThemeOverridesWidgetStyles()
+static async Task WidgetStylesOverrideGlobalThemeDefaults()
 {
     await using var harness = await BridgeHarness.StartAsync(withAppearance: true);
     var response = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
     Assert.Equal(BridgeMessageTypes.Snapshot, response.Type);
     var button = response.Payload.GetProperty("renderStyles").GetProperty("button").GetProperty("base");
-    Assert.Equal("#2468ac", button.GetProperty("color").GetProperty("text").GetString());
-    Assert.Equal(0.55D, button.GetProperty("opacity").GetProperty("number").GetDouble());
+    Assert.Equal("#ffffff", button.GetProperty("color").GetProperty("text").GetString());
+    Assert.Equal(0.8D, button.GetProperty("opacity").GetProperty("number").GetDouble());
+    Assert.Equal("7px", button.GetProperty("corner-radius").GetProperty("text").GetString());
 }
 
 static async Task AppearanceReloadIsLastGood()
 {
     await using var harness = await BridgeHarness.StartAsync(withAppearance: true);
+    var widgetSource = WrssParser.Parse(
+        "button { color: #abcdef; }", "widget.wrss");
+    var widgetPackage = new WrssPackageResult(
+        [widgetSource.Document], widgetSource.Diagnostics);
+    var initialWidgetStyle = harness.Appearance!.Service
+        .ResolveWidgetTheme("test-widget", widgetPackage)
+        .Resolve(new WrssElement("button"));
+    Assert.Equal("#abcdef", initialWidgetStyle.Get("color")!.Text);
+    Assert.Equal("0.55", initialWidgetStyle.Get("opacity")!.Text);
+
     var before = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     var revision = before.Payload.GetProperty("revision").GetInt64();
     Assert.Equal(0, harness.Server.RunningWorkerCount);
@@ -3438,8 +3449,14 @@ static async Task AppearanceReloadIsLastGood()
     Assert.Equal(revision, invalid.Current.Revision);
     var retained = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(revision, retained.Payload.GetProperty("revision").GetInt64());
+    var retainedWidgetStyle = harness.Appearance.Service
+        .ResolveWidgetTheme("test-widget", widgetPackage)
+        .Resolve(new WrssElement("button"));
+    Assert.Equal("#abcdef", retainedWidgetStyle.Get("color")!.Text);
+    Assert.Equal("0.55", retainedWidgetStyle.Get("opacity")!.Text);
 
-    await harness.Appearance.WriteThemeAsync("title { color: #abcdef; } button { color: #13579b; }");
+    await harness.Appearance.WriteThemeAsync(
+        "title { color: #abcdef; } button { color: #13579b; opacity: 0.72; }");
     var valid = await harness.Appearance.Service.ReloadNowAsync();
     Assert.True(valid.Published, "Valid appearance reload did not publish.");
     var changed = await harness.Client.ReadEventAsync(BridgeMessageTypes.AppearanceChanged);
@@ -3448,6 +3465,11 @@ static async Task AppearanceReloadIsLastGood()
     Assert.Equal(valid.Current.Revision, after.Payload.GetProperty("revision").GetInt64());
     Assert.Equal("#abcdef", after.Payload.GetProperty("shellStyles").GetProperty("title")
         .GetProperty("color").GetProperty("text").GetString());
+    var refreshedWidgetStyle = harness.Appearance.Service
+        .ResolveWidgetTheme("test-widget", widgetPackage)
+        .Resolve(new WrssElement("button"));
+    Assert.Equal("#abcdef", refreshedWidgetStyle.Get("color")!.Text);
+    Assert.Equal("0.72", refreshedWidgetStyle.Get("opacity")!.Text);
     Assert.Equal(0, harness.Server.RunningWorkerCount);
 }
 
@@ -6203,7 +6225,8 @@ file sealed class TemporaryAppearance : IAsyncDisposable
         await File.WriteAllTextAsync(Path.Combine(themeDirectory, "theme.json"),
             "{\"schemaVersion\":1,\"id\":\"dev.example.bridge\",\"name\":\"Bridge Test\",\"version\":\"1.0.0\",\"entryFile\":\"theme.wrss\"}");
         await File.WriteAllTextAsync(themeFile,
-            "button { color: #2468ac; opacity: 0.55; } title { color: #fedcba; }");
+            "button { color: #2468ac; opacity: 0.55; corner-radius: 7px; } " +
+            "title { color: #fedcba; }");
         var store = new PlatformSettingsStore(paths);
         await store.ReplaceAsync(new PlatformSettingsDocument
         {

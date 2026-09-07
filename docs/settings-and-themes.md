@@ -386,22 +386,22 @@ letting destructive intent and accent resolve to the same value.
 ### Layer priority beats selector specificity
 
 `ThemeLayerCompiler` resolves each property by layer priority first and only
-then by specificity. A base rule in the user layer therefore defeats a
-pseudo-state rule in the platform layer for the same property:
+then by specificity. An explicit widget-package rule therefore defeats a
+global-theme rule for the same property even when the global selector is more
+specific. A global theme should provide defaults and semantic tokens rather
+than attempt to override a widget's authored presentation:
 
 ```css
-/* Wrong: this also wins over the platform's button:focused rule, so focused
-   buttons lose their surface change. */
+/* A widget that explicitly owns button background keeps this value. */
 button { background: rgba(19, 24, 41, 0.98); }
 ```
 
-Do not declare a property in a themed base rule when the platform layer varies
-that property per state — `background`, `color`, `border-color`, `outline-*`,
-`opacity`, and `scale`. Retune those through `:root` tokens, which flow into
-every platform rule including its state variants. Properties the platform never
-varies per state, such as `corner-radius`, `letter-spacing`, `text-transform`,
-and `font-weight`, are safe to override directly. When a themed rule must set a
-state-varied property, restate it for every affected pseudo-state.
+Within one layer, selector specificity and source order retain their ordinary
+meaning. A widget that directly overrides a state-varied property such as
+`background`, `color`, `border-color`, `outline-*`, `opacity`, or `scale` owns
+the required focused, pressed, selected, disabled, and busy variants too.
+Prefer semantic `:root` tokens when a consistent value should flow through the
+platform's complete state treatment.
 
 Run `wrail theme preview <directory>` to confirm the result: it prints computed
 `:focused` and `:selected` roles from the real built-in-plus-user cascade.
@@ -484,18 +484,26 @@ plain import order. The implemented managed precedence, from lowest to highest,
 is:
 
 1. built-in platform theme;
-2. the widget package's own WRSS; and
-3. the selected user theme.
+2. the selected global user theme; and
+3. the widget package's own WRSS.
 
 Layer precedence must be deterministic and stronger than selector specificity:
-a widget ID selector cannot defeat a user-theme semantic-role rule. Specificity
-and source order continue to resolve conflicts *within* one layer. This
-behavior has a regression test.
+a widget-package base rule defeats a more-specific global-theme rule for the
+same property. Specificity and source order continue to resolve conflicts
+*within* one layer. A global or platform declaration still supplies every
+property the widget omits. This behavior has a regression test.
 
 The bridge uses this cascade when computing every widget snapshot. It caches a
 widget's layered theme by global revision and clears the cache only after a
-valid appearance publication. Consequently, user semantic rules override even
-a more-specific widget ID rule without giving native code a CSS parser.
+valid appearance publication. Consequently, a theme switch refreshes inherited
+defaults without replacing explicit widget-package values or giving native code
+a CSS parser.
+
+Custom properties follow the same order as declarations. A widget-package
+`:root` definition is explicit and wins over the selected global theme. When
+the widget omits that definition, `var(--token)` inherits the selected theme or
+the built-in host default. This keeps global themes useful as defaults without
+silently restyling a component the widget author deliberately owns.
 
 The bridge also resolves bounded typed shell roles for canvas, backdrop, panel,
 tray, tray-item states, title, body, hint, and status. The native host requests
