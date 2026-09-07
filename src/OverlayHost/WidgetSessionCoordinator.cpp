@@ -372,15 +372,20 @@ void WidgetSessionCoordinator::SetLifecycleTargets(
         }
         const auto current = lifecycleStates_.find(widgetId);
         const auto refreshState = RefreshState(widgetId);
+        const bool compensationRequired =
+            HasConflictingLifecycleRequest(widgetId, state);
         if (current != lifecycleStates_.end() && current->second == state &&
-            refreshState != WidgetRefreshState::RefreshRequested) {
+            refreshState != WidgetRefreshState::RefreshRequested &&
+            !compensationRequired) {
             EmitLifecycleDecision(
                 widgetCorrelationId, widgetId, state, RequestKind::Lifecycle,
                 WidgetSessionTraceAction::Skipped,
                 WidgetSessionTraceReason::AlreadyCurrent);
             continue;
         }
-        const auto requestKind = refreshState == WidgetRefreshState::RefreshRequested
+        const auto requestKind = compensationRequired
+            ? RequestKind::Lifecycle
+            : refreshState == WidgetRefreshState::RefreshRequested
             ? (current != lifecycleStates_.end() && current->second == state
                 ? RequestKind::Snapshot
                 : RequestKind::Establish)
@@ -980,6 +985,22 @@ bool WidgetSessionCoordinator::HasPending(
             [&](const auto& entry) {
                 return entry.second.kind == kind && entry.second.widgetId == widgetId;
             });
+}
+
+bool WidgetSessionCoordinator::HasConflictingLifecycleRequest(
+    const std::wstring_view widgetId,
+    const WidgetLifecycleState lifecycle) const noexcept {
+    const auto conflicts = [&](const Request& request) {
+        return request.kind == RequestKind::Lifecycle &&
+               request.widgetId == widgetId &&
+               request.lifecycle != lifecycle;
+    };
+    std::scoped_lock lock(queueMutex_);
+    return std::any_of(pending_.begin(), pending_.end(), conflicts) ||
+        (inFlight_ && conflicts(*inFlight_)) ||
+        std::any_of(completed_.begin(), completed_.end(), [&](const Completion& completion) {
+            return conflicts(completion.request);
+        });
 }
 
 bool WidgetSessionCoordinator::IsPresentationChanging(const RequestKind kind) noexcept {

@@ -348,6 +348,9 @@ private:
 
     [[nodiscard]] QueueResult Queue(Request request);
     [[nodiscard]] bool HasPending(RequestKind kind, std::wstring_view widgetId) const noexcept;
+    [[nodiscard]] bool HasConflictingLifecycleRequest(
+        std::wstring_view widgetId,
+        WidgetLifecycleState lifecycle) const noexcept;
     [[nodiscard]] static bool IsPresentationChanging(RequestKind kind) noexcept;
     [[nodiscard]] static bool SamePresentationAuthority(
         const Request& left,
