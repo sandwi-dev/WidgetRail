@@ -61,8 +61,12 @@ internal static class GamesAppsPresentation
             state.ViewState != GamesAppsViewState.Ready)
             return RenderState(state);
 
-        var entry = ContentEntryFocusId(state);
-        var content = state.ViewState == GamesAppsViewState.Ready
+        var contentReady = state.ViewState == GamesAppsViewState.Ready;
+        var entry = contentReady ? ContentEntryFocusId(state) : null;
+        var contentEntry = entry is null
+            ? NavigationShellContentEntry.Unavailable
+            : NavigationShellContentEntry.Available(entry);
+        var content = contentReady
             ? page switch
             {
                 GamesAppsPage.Library => RenderLibraryContent(state),
@@ -70,14 +74,15 @@ internal static class GamesAppsPresentation
                 GamesAppsPage.Running => RenderCatalogContent(state, running: true),
                 _ => throw new InvalidOperationException("The Games & Apps root is unsupported."),
             }
-            : RenderRouteProgress(state, entry);
+            : RenderRouteProgress(state);
         var pageContent = UI.Stack(FocusGroupId(page), content)
-            .RememberChildFocus(entry)
             .Classes("games-page", PageClass(page));
+        if (entry is not null)
+            pageContent = pageContent.RememberChildFocus(entry);
         var parts = UI.NavigationShellParts(
             "games.sections",
             DestinationId(page),
-            entry,
+            contentEntry,
             pageContent,
             Destinations(state),
             compactLeadingAdornment: SectionBumperBadge(
@@ -89,7 +94,7 @@ internal static class GamesAppsPresentation
                 "Next section",
                 "games.section.next.hint"));
         var header = RenderHeader(state, parts.CompactNavigation);
-        var initialFocus = InitialFocusId(state, entry);
+        var initialFocus = entry is null ? null : InitialFocusId(state, entry);
         var root = UI.Stack(
                 "games.root",
                 header,
@@ -264,32 +269,19 @@ internal static class GamesAppsPresentation
                 : "games-catalog-scroll");
     }
 
-    private static WidgetElement RenderRouteProgress(
-        GamesAppsPresentationState state,
-        string entry)
+    private static WidgetElement RenderRouteProgress(GamesAppsPresentationState state)
     {
         var page = state.Navigation.RootRoute;
         var label = page == GamesAppsPage.Running
             ? "Checking running apps"
             : "Loading applications";
-        return UI.Card(
+        return UI.Row(
                 "games.route.progress",
-                CardVariant.Subtle,
                 UI.LoadingIndicator("games.route.loading", label)
                     .Classes("games-state-loading"),
                 UI.Text(label, "games.route.progress.title", label)
-                    .Classes("games-state-title"),
-                UI.IconButton(
-                        WidgetGlyph.Refresh,
-                        RefreshActionId,
-                        entry,
-                        label,
-                        IconButtonVariant.Quiet,
-                        IconButtonSize.Small)
-                    .Busy()
-                    .Disabled()
-                    .AddClasses("games-route-progress-action"))
-            .AddClasses("games-state-surface", "games-route-progress");
+                    .Classes("games-route-progress-label"))
+            .Classes("games-route-progress");
     }
 
     private static ActionSurfaceElement LibraryTile(
@@ -500,8 +492,6 @@ internal static class GamesAppsPresentation
     private static string ContentEntryFocusId(GamesAppsPresentationState state)
     {
         var page = state.Navigation.RootRoute;
-        if (state.ViewState != GamesAppsViewState.Ready)
-            return LoadingEntryId(page);
         if (page == GamesAppsPage.Library)
         {
             var selectedLibraryItem = state.Items.FirstOrDefault(item => string.Equals(
@@ -535,13 +525,6 @@ internal static class GamesAppsPresentation
             ? contentEntryFocusId
             : LibraryElementId(firstSavedId);
     }
-
-    private static string LoadingEntryId(GamesAppsPage page) => page switch
-    {
-        GamesAppsPage.Catalog => "games.catalog.loading",
-        GamesAppsPage.Running => "games.running.loading",
-        _ => "games.state.action",
-    };
 
     private static string DestinationId(GamesAppsPage page) => page switch
     {

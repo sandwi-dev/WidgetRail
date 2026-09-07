@@ -261,12 +261,32 @@
   flex-shrink: 1;
 }
 
-.games-state-progress,
-.games-route-progress {
+.games-state-progress {
   gap: 8px;
   padding: 18px;
   align: center;
   justify: center;
+}
+
+.games-route-progress {
+  gap: 8px;
+  padding: 8px 2px;
+  align: center;
+  justify: center;
+  min-width: 0px;
+  min-height: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+}
+
+.games-route-progress-label {
+  min-width: 0px;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.25;
+  max-lines: 1;
+  text-overflow: ellipsis;
 }
 
 .games-state-loading,
@@ -306,12 +326,5 @@
   min-width: 176px;
   min-height: 48px;
   padding: 10px 14px;
-  flex-shrink: 0;
-}
-
-.games-route-progress-action {
-  width: 44px;
-  height: 44px;
-  flex-grow: 0;
   flex-shrink: 0;
 }

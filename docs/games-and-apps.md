@@ -116,7 +116,12 @@ explicit game-library source, not a guess based on process or executable names.
 - Permission denied, lifecycle denied, provider unavailable, healthy empty,
   and generic failure states use the shared Card, EmptyState, and Alert
   hierarchy. Recovery remains controller reachable through one explicit retry
-  action, while loading is non-focusable and cannot strand controller focus.
+  action. A first visit to Add apps or Running publishes its page-entry request
+  immediately but keeps the content entry unavailable until real content exists;
+  its compact loading indicator and text are non-focusable and the temporary
+  page does not claim remembered child focus. Once Ready, the real default and
+  remembered content group become available to that same request. Same-route
+  refresh retains the existing rows and focus while reporting progress.
 - A failed fresh authority refresh retains the display-only Library with an
   explicit unavailable status; it never promotes stale rows to launchable.
   Initial activation, reactivation, and explicit Y refresh keep that last-good
