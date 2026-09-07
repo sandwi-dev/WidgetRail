@@ -18,8 +18,6 @@ internal enum SettingsPreferenceKind
     ReducedTransparency,
     AnimateWidgetSwitching,
     WidgetSurfaceAppearance,
-    EpicInstalledGames,
-    GogInstalledGames,
     Theme,
 }
 
@@ -29,26 +27,8 @@ internal readonly record struct SettingsPreferenceMutation(
     string? ThemeId = null,
     string? ThemeVersion = null)
 {
-    public PlatformSettingsDocument Apply(PlatformSettingsDocument current) => Kind switch
-    {
-        SettingsPreferenceKind.EpicInstalledGames => current with
-        {
-            AppLibrary = current.AppLibrary with
-            {
-                EpicInstalledGamesEnabled =
-                    !current.AppLibrary.EpicInstalledGamesEnabled,
-            },
-        },
-        SettingsPreferenceKind.GogInstalledGames => current with
-        {
-            AppLibrary = current.AppLibrary with
-            {
-                GogInstalledGamesEnabled =
-                    !current.AppLibrary.GogInstalledGamesEnabled,
-            },
-        },
-        _ => current with { Appearance = Apply(current.Appearance) },
-    };
+    public PlatformSettingsDocument Apply(PlatformSettingsDocument current) =>
+        current with { Appearance = Apply(current.Appearance) };
 
     private AppearanceSettings Apply(AppearanceSettings appearance) => Kind switch
     {
@@ -205,12 +185,6 @@ internal static class SettingsPreferencePolicy
             "surface-appearance.cycle" => new(
                 SettingsPreferenceKind.WidgetSurfaceAppearance,
                 "Widget surface preference saved"),
-            "app-library.epic.toggle" => new(
-                SettingsPreferenceKind.EpicInstalledGames,
-                "Epic installed-game discovery preference saved"),
-            "app-library.gog.toggle" => new(
-                SettingsPreferenceKind.GogInstalledGames,
-                "GOG installed-game discovery preference saved"),
             _ => default,
         };
         return mutation.SuccessStatus is not null;

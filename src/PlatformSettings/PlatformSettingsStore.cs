@@ -33,7 +33,7 @@ public sealed class PlatformSettingsStore
         try
         {
             StrictJson.RejectDuplicateProperties(bytes);
-            var currentBytes = RetireSchemaOneLauncherExperience(bytes);
+            var currentBytes = RetireObsoleteSettings(bytes);
             var document = JsonSerializer.Deserialize<PlatformSettingsDocument>(currentBytes, JsonOptions)
                 ?? throw new JsonException("Settings document was null.");
             Validate(document);
@@ -200,24 +200,26 @@ public sealed class PlatformSettingsStore
     }
 
     /// <summary>
-    /// Pre-release schema 1 carried one now-removed launcher-presentation selection.
-    /// Retire only that property and advance the overlay-owned document in memory;
-    /// the next successful mutation persists schema 2. Remove this tombstone when
-    /// schema 1 settings are no longer an accepted local-development input.
+    /// Supported old schemas carried now-retired launcher-presentation and
+    /// installed-game source preferences. Retire only those known properties and
+    /// advance the overlay-owned document in memory; the next successful normal
+    /// mutation persists the current schema.
     /// </summary>
-    private static byte[] RetireSchemaOneLauncherExperience(byte[] bytes)
+    private static byte[] RetireObsoleteSettings(byte[] bytes)
     {
         using var document = JsonDocument.Parse(bytes);
         if (document.RootElement.ValueKind != JsonValueKind.Object ||
             !document.RootElement.TryGetProperty("schemaVersion", out var schemaVersion) ||
             schemaVersion.ValueKind != JsonValueKind.Number ||
             !schemaVersion.TryGetInt32(out var version) ||
-            version != 1)
+            version is not 1 and not 2)
             return bytes;
 
         var root = JsonNode.Parse(bytes)?.AsObject()
             ?? throw new JsonException("Settings document was null.");
-        root.Remove("launcherExperience");
+        if (version == 1)
+            root.Remove("launcherExperience");
+        root.Remove("appLibrary");
         root["schemaVersion"] = PlatformSettingsDocument.CurrentSchemaVersion;
         return JsonSerializer.SerializeToUtf8Bytes(root);
     }

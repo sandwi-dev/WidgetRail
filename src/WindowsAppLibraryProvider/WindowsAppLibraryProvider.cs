@@ -43,9 +43,16 @@ public sealed class WindowsAppLibraryProvider :
     private long _catalogRevision;
 
     public WindowsAppLibraryProvider() : this(
-        _ => false,
-        _ => false)
+        AutomaticInstalledSourceDiscovery,
+        AutomaticInstalledSourceDiscovery)
     {
+    }
+
+    internal static bool AutomaticInstalledSourceDiscovery(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return true;
     }
 
     internal WindowsAppLibraryProvider(

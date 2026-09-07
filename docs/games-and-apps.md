@@ -291,7 +291,8 @@ launch.
 The current provider merges bounded trusted Windows sources: current-user/
 all-user Start Menu Programs shortcuts, the current user's Shell `AppsFolder`
 namespace, installed Microsoft/Xbox package registrations, and registered Steam
-libraries, plus separately enabled local Epic and GOG installed registrations. It:
+libraries, plus automatically discovered local Epic and GOG installed
+registrations when their supported local data exists. It:
 
 - treats Windows-installed and Steam libraries as ordinary implementations of
   one private source contract, with source-owned discovery, exact resolution,
@@ -315,13 +316,13 @@ libraries, plus separately enabled local Epic and GOG installed registrations. I
   plus sanitized name, classifies those registrations as games, and prefers an
   exact duplicate registration with current trusted local artwork before the
   deterministic manifest-path tie-break;
-- when enabled in **Settings > Game sources**, reads at most 4,096 bounded
-  `.item` files only from Epic's fixed ProgramData installed-manifest directory;
+- reads at most 4,096 bounded `.item` files only from Epic's fixed ProgramData
+  installed-manifest directory when that directory exists;
   unknown format versions, duplicate identities, unsafe/reparse paths, partial
   writes, unsupported application records, and missing exact executables fail
   closed without exposing manifest fields;
-- when separately enabled on the same page, reads at most 4,096 machine-wide
-  registrations from GOG's fixed 32-bit and 64-bit registry roots and requires
+- reads at most 4,096 machine-wide registrations from GOG's fixed 32-bit and
+  64-bit registry roots when those registrations exist and requires
   the matching bounded `goggame-<product-id>.info` file under an existing,
   non-reparse install root; a malformed or duplicate product ID, unsafe path,
   partial file read, or mismatched product/name is isolated as unavailable or
@@ -372,8 +373,9 @@ product IDs, paths, and info-file bytes never enter widget IPC or private state.
 
 - Discovery covers bounded Start Menu `.lnk`, current-user AppsFolder/AUMID,
   installed Microsoft/Xbox package registrations with explicit game evidence,
-  registered Steam manifests, and explicitly enabled installed-only Epic
-  manifests and GOG registrations. Other launcher catalogs are not integrated; package
+  registered Steam manifests, and installed-only Epic manifests and GOG
+  registrations discovered automatically from their supported local data. Other
+  launcher catalogs are not integrated; package
   registration is not a promise that every alias,
   launcher-owned game, account-owned title, or machine policy will be visible.
 - Curation is durable for the package, but deduplication across launchers,

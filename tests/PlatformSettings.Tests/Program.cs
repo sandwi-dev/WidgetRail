@@ -8,7 +8,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing settings use safe appearance defaults", DefaultsAreSafe),
     ("Default paths use only the WidgetRail local state root", DefaultPathsUseWidgetRail),
     ("Settings round trip through strict canonical JSON", SettingsRoundTrip),
-    ("Schema-one settings retire launcher selection and preserve unrelated state", LegacyAccessibilityDefaults),
+    ("Schema-one settings retire obsolete selections and preserve unrelated state", LegacySchemaOneRetiresObsoleteSettings),
+    ("Schema-two source preferences retire read-only until a normal write", SchemaTwoRetiresSourcePreferences),
     ("Malformed duplicate unknown and oversized settings fail closed", StrictSettingsFailClosed),
     ("Settings ranges and enums are enforced", SettingsRangesAreEnforced),
     ("Failed mutations preserve the prior atomic document", FailedMutationPreservesState),
@@ -63,7 +64,7 @@ static Task DefaultsAreSafe()
     async Task VerifyAsync()
     {
         var settings = await store.LoadAsync();
-        Assert.Equal(2, settings.SchemaVersion);
+        Assert.Equal(3, settings.SchemaVersion);
         Assert.Equal(ThemeIdentity.BuiltInDefault, settings.Appearance.ThemeId);
         Assert.Equal(ThemeIdentity.BuiltInDefaultVersion, settings.Appearance.ThemeVersion);
         Assert.Equal(1D, settings.Appearance.InterfaceScale);
@@ -74,8 +75,6 @@ static Task DefaultsAreSafe()
         Assert.Equal(false, settings.Appearance.BoldText);
         Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
         Assert.Equal(false, settings.Appearance.AnimateWidgetSwitching);
-        Assert.Equal(false, settings.AppLibrary.EpicInstalledGamesEnabled);
-        Assert.Equal(false, settings.AppLibrary.GogInstalledGamesEnabled);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
     }
 }
@@ -86,11 +85,6 @@ static async Task SettingsRoundTrip()
     var store = Store(temp.Path);
     var updated = await store.UpdateAsync(current => current with
     {
-        AppLibrary = current.AppLibrary with
-        {
-            EpicInstalledGamesEnabled = true,
-            GogInstalledGamesEnabled = true,
-        },
         Appearance = current.Appearance with
         {
             ThemeId = "dev.example.slate",
@@ -107,14 +101,12 @@ static async Task SettingsRoundTrip()
     });
     Assert.Equal("dev.example.slate", updated.Appearance.ThemeId);
     Assert.Equal("1.2.3", updated.Appearance.ThemeVersion);
-    Assert.Equal(true, updated.AppLibrary.EpicInstalledGamesEnabled);
-    Assert.Equal(true, updated.AppLibrary.GogInstalledGamesEnabled);
     Assert.Equal(true, updated.Appearance.AnimateWidgetSwitching);
     var reloaded = await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync();
     Assert.DocumentEqual(updated, reloaded);
     Assert.Equal(true, reloaded.Appearance.AnimateWidgetSwitching);
     var source = await File.ReadAllTextAsync(store.Paths.SettingsFile);
-    Assert.Contains("\"schemaVersion\": 2", source);
+    Assert.Contains("\"schemaVersion\": 3", source);
     Assert.Contains("\"motion\": \"reduced\"", source);
     Assert.Contains("\"contrast\": \"high\"", source);
     Assert.Contains("\"boldText\": true", source);
@@ -129,37 +121,83 @@ static async Task SettingsRoundTrip()
     Assert.Equal(false, resetReloaded.Appearance.AnimateWidgetSwitching);
 }
 
-static async Task LegacyAccessibilityDefaults()
+static async Task LegacySchemaOneRetiresObsoleteSettings()
 {
     using var temp = new TemporaryDirectory();
     var paths = new PlatformSettingsPaths(temp.Path);
     Directory.CreateDirectory(temp.Path);
-    await File.WriteAllTextAsync(paths.SettingsFile, SettingsJson(extra:
+    var original = SettingsJson(extra:
         ",\"appLibrary\":{\"epicInstalledGamesEnabled\":true," +
         "\"gogInstalledGamesEnabled\":false}," +
         "\"launcherExperience\":{\"useGlobalAppearance\":false," +
         "\"selectedId\":\"dev.example.launcher\",\"selectedVersion\":\"1.2.3\"," +
-        "\"lastGoodId\":\"dev.example.launcher\",\"lastGoodVersion\":\"1.2.3\"}"));
+        "\"lastGoodId\":\"dev.example.launcher\",\"lastGoodVersion\":\"1.2.3\"}",
+        appearanceExtra:
+        ",\"contrast\":\"high\",\"boldText\":true," +
+        "\"transparency\":\"reduced\",\"animateWidgetSwitching\":true," +
+        "\"widgetSurfaceAppearance\":\"solid\"," +
+        "\"widgetSurfaceAppearanceOverrides\":{\"dev.example.one\":\"transparent\"}");
+    await File.WriteAllTextAsync(paths.SettingsFile, original);
     var store = new PlatformSettingsStore(paths);
     var loaded = await store.LoadAsync();
-    Assert.Equal(2, loaded.SchemaVersion);
-    Assert.Equal(ContrastPreference.System, loaded.Appearance.Contrast);
-    Assert.Equal(false, loaded.Appearance.BoldText);
-    Assert.Equal(TransparencyPreference.Full, loaded.Appearance.Transparency);
-    Assert.Equal(false, loaded.Appearance.AnimateWidgetSwitching);
-    Assert.Equal(true, loaded.AppLibrary.EpicInstalledGamesEnabled);
-    Assert.Equal(false, loaded.AppLibrary.GogInstalledGamesEnabled);
+    Assert.Equal(3, loaded.SchemaVersion);
+    Assert.Equal(ContrastPreference.High, loaded.Appearance.Contrast);
+    Assert.Equal(true, loaded.Appearance.BoldText);
+    Assert.Equal(TransparencyPreference.Reduced, loaded.Appearance.Transparency);
+    Assert.Equal(true, loaded.Appearance.AnimateWidgetSwitching);
+    Assert.Equal(WidgetSurfaceAppearanceOverride.Solid,
+        loaded.Appearance.WidgetSurfaceAppearance);
+    Assert.Equal(WidgetSurfaceAppearanceOverride.Transparent,
+        loaded.Appearance.WidgetSurfaceAppearanceOverrides["dev.example.one"]);
+    Assert.Equal(original, await File.ReadAllTextAsync(paths.SettingsFile));
 
     var updated = await store.UpdateAsync(current => current with
     {
         Appearance = current.Appearance with { TextScale = 1.1 },
     });
     Assert.Equal(1.1, updated.Appearance.TextScale);
-    Assert.Equal(true, updated.AppLibrary.EpicInstalledGamesEnabled);
     var persisted = await File.ReadAllTextAsync(paths.SettingsFile);
-    Assert.Contains("\"schemaVersion\": 2", persisted);
+    Assert.Contains("\"schemaVersion\": 3", persisted);
     Assert.True(!persisted.Contains("launcherExperience", StringComparison.Ordinal),
         "The retired launcher selection remained in the current settings schema.");
+    Assert.True(!persisted.Contains("appLibrary", StringComparison.Ordinal),
+        "The retired source preferences remained in the current settings schema.");
+}
+
+static async Task SchemaTwoRetiresSourcePreferences()
+{
+    using var temp = new TemporaryDirectory();
+    var paths = new PlatformSettingsPaths(temp.Path);
+    Directory.CreateDirectory(temp.Path);
+    var original = SettingsJson(
+        schemaVersion: 2,
+        textScale: "1.2",
+        extra:
+        ",\"appLibrary\":{\"epicInstalledGamesEnabled\":false," +
+        "\"gogInstalledGamesEnabled\":true}",
+        appearanceExtra:
+        ",\"widgetSurfaceAppearance\":\"theme\"," +
+        "\"widgetSurfaceAppearanceOverrides\":{\"dev.example.two\":\"solid\"}");
+    await File.WriteAllTextAsync(paths.SettingsFile, original);
+    var store = new PlatformSettingsStore(paths);
+
+    var loaded = await store.LoadAsync();
+    Assert.Equal(3, loaded.SchemaVersion);
+    Assert.Equal(1.2, loaded.Appearance.TextScale);
+    Assert.Equal(WidgetSurfaceAppearanceOverride.Theme,
+        loaded.Appearance.WidgetSurfaceAppearance);
+    Assert.Equal(WidgetSurfaceAppearanceOverride.Solid,
+        loaded.Appearance.WidgetSurfaceAppearanceOverrides["dev.example.two"]);
+    Assert.Equal(original, await File.ReadAllTextAsync(paths.SettingsFile));
+
+    await store.UpdateAsync(current => current with
+    {
+        Appearance = current.Appearance with { InterfaceScale = 1.1 },
+    });
+    var persisted = await File.ReadAllTextAsync(paths.SettingsFile);
+    Assert.Contains("\"schemaVersion\": 3", persisted);
+    Assert.True(!persisted.Contains("appLibrary", StringComparison.Ordinal),
+        "A successful normal write retained retired source preferences.");
 }
 
 static async Task StrictSettingsFailClosed()
@@ -208,7 +246,7 @@ static async Task SettingsRangesAreEnforced()
         SettingsJson(appearanceExtra: ",\"contrast\":\"future\""),
         SettingsJson(appearanceExtra: ",\"transparency\":\"future\""),
         SettingsJson(appearanceExtra: ",\"boldText\":1"),
-        SettingsJson(schemaVersion: 3),
+        SettingsJson(schemaVersion: 4),
     })
     {
         await File.WriteAllTextAsync(paths.SettingsFile, source);
@@ -1126,12 +1164,6 @@ file static class Assert
             actual.Appearance.WidgetSurfaceAppearanceOverrides.OrderBy(
                 pair => pair.Key,
                 StringComparer.Ordinal));
-        Equal(
-            expected.AppLibrary.EpicInstalledGamesEnabled,
-            actual.AppLibrary.EpicInstalledGamesEnabled);
-        Equal(
-            expected.AppLibrary.GogInstalledGamesEnabled,
-            actual.AppLibrary.GogInstalledGamesEnabled);
     }
 
     public static void True(bool condition, string message)

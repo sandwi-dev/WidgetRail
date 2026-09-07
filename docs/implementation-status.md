@@ -5804,3 +5804,18 @@ tests it, executes an isolated semantic preview, applies the existing WIDGE-66
 adapter conformance harness, validates it, and inspects its packed inventory.
 No provider SDK, credentials, network, browser automation, native-host branch,
 protocol revision, or duplicate runtime lifecycle implementation is involved.
+
+### WIDGE-115 — automatic installed Epic and GOG discovery
+
+The Settings widget no longer exposes a **Game sources** category or Epic/GOG
+enablement switches. Platform-settings schema 3 retires those obsolete source
+preferences from supported schema-1 and schema-2 documents in memory, preserves
+all unrelated settings, and writes the clean current schema only with the next
+successful normal settings mutation.
+
+The trusted Windows app-library provider now composes Epic and GOG discovery
+automatically when their supported local installation evidence exists. Existing
+bounds, source health, exact-current authority, and failure isolation remain in
+force. Epic retains its exact revalidated launch path. GOG remains discoverable
+but deliberately non-launchable, with truthful **Play unavailable** presentation;
+no new provider command or package-specific host behavior was introduced.

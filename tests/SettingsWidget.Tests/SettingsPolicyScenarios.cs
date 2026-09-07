@@ -45,6 +45,9 @@ internal static class SettingsPolicyScenarios
         Require(!SettingsNavigationPolicy.TryResolve(
                 "capability.grant", SettingsPage.Root, SettingsPage.Permissions, out _),
             "Ordinary navigation admitted a privileged capability action.");
+        Require(!SettingsNavigationPolicy.TryResolve(
+                "open.app-library-sources", SettingsPage.Root, SettingsPage.Permissions, out _),
+            "Navigation admitted the retired Game Sources page.");
 
         Require(SettingsPreferencePolicy.TryCreate("text.increase", out var increase),
             "Text preference was not admitted.");
@@ -61,6 +64,9 @@ internal static class SettingsPolicyScenarios
             "Ordinary preferences admitted privileged recovery.");
         Require(!SettingsPreferencePolicy.TryCreate("capability.grant", out _),
             "Ordinary preferences admitted a capability decision.");
+        Require(!SettingsPreferencePolicy.TryCreate("app-library.epic.toggle", out _) &&
+                !SettingsPreferencePolicy.TryCreate("app-library.gog.toggle", out _),
+            "Ordinary preferences admitted a retired game-source action.");
         Require(!SettingsPreferencePolicy.TryCreate("unknown", out _),
             "Ordinary preferences admitted an unknown action.");
         return Task.CompletedTask;
@@ -429,14 +435,6 @@ internal static class SettingsPolicyScenarios
                 .SequenceEqual(actual.Appearance.WidgetSurfaceAppearanceOverrides.OrderBy(
                     pair => pair.Key,
                     StringComparer.Ordinal)),
-            message);
-        Equal(
-            expected.AppLibrary.EpicInstalledGamesEnabled,
-            actual.AppLibrary.EpicInstalledGamesEnabled,
-            message);
-        Equal(
-            expected.AppLibrary.GogInstalledGamesEnabled,
-            actual.AppLibrary.GogInstalledGamesEnabled,
             message);
     }
 

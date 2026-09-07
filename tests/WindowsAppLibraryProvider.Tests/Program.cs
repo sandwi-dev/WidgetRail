@@ -2,8 +2,10 @@ using System.Text.Json;
 using WidgetRail.PlatformBroker;
 using WidgetRail.WindowsAppLibraryProvider;
 
-var tests = new (string Name, Func<Task> Run)[]
+var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Production composition automatically admits installed Epic and GOG sources",
+        AutomaticInstalledSources),
     ("Catalog is lazy cached and refreshable", LazyAndRefreshable),
     ("Duplicate registrations prefer current-user entries", DeduplicatesByInternalIdentity),
     ("Distinct applications with the same display name remain distinct", PreservesNameCollisions),
@@ -129,6 +131,26 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Shell STA watchdog permanently poisons a stalled lane", ShellStaWatchdogPoisons),
 };
 
+var installedSourcePolicyOnly =
+    args.Contains("--installed-source-policy-only", StringComparer.Ordinal);
+var installedSourceTests = new HashSet<string>(StringComparer.Ordinal)
+{
+    "Production composition automatically admits installed Epic and GOG sources",
+    "Epic discovery is explicitly disabled without manifest reads",
+    "Epic manifests remain opaque bounded and constrained",
+    "Epic corrupt duplicate unsafe and partial records fail closed",
+    "Epic generations and launch authority are exact",
+    "GOG disabled empty and cancellation states are explicit",
+    "GOG installed registrations are opaque distinct and non-launchable",
+    "GOG malformed duplicate and mixed registrations fail closed",
+    "GOG refreshed evidence remains non-authorizing",
+    "Installed sources share one normalized exact-authority contract",
+    "Source failure preserves another source and its own last-good records",
+};
+var tests = installedSourcePolicyOnly
+    ? allTests.Where(test => installedSourceTests.Contains(test.Name)).ToArray()
+    : allTests;
+
 var failures = 0;
 foreach (var (name, run) in tests)
 {
@@ -144,6 +166,17 @@ foreach (var (name, run) in tests)
     }
 }
 if (failures != 0) Environment.Exit(1);
+
+static Task AutomaticInstalledSources()
+{
+    Assert.True(WindowsAppLibraryProvider.AutomaticInstalledSourceDiscovery(
+        CancellationToken.None));
+    using var cancelled = new CancellationTokenSource();
+    cancelled.Cancel();
+    Assert.Throws<OperationCanceledException>(() =>
+        WindowsAppLibraryProvider.AutomaticInstalledSourceDiscovery(cancelled.Token));
+    return Task.CompletedTask;
+}
 Console.WriteLine($"WindowsAppLibraryProvider.Tests passed ({tests.Length} tests)");
 
 static async Task<IReadOnlyList<AppLibraryBackendItemSummary>> QueryFirst(
