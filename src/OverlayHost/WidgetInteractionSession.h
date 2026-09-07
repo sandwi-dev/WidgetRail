@@ -161,7 +161,7 @@ struct FocusGroupEntryAdmissionContext final {
         !context.modalActive && !context.pinnedControllerOwnsInput) {
         return FocusGroupEntryAdmission::Active;
     }
-    if (!context.overlayVisible && context.temporarilyHiddenSameWidget &&
+    if (context.temporarilyHiddenSameWidget &&
         !context.modalActive && !context.pinnedControllerOwnsInput) {
         return FocusGroupEntryAdmission::Dormant;
     }

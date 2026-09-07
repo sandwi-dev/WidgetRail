@@ -573,7 +573,10 @@ void OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority() {
           "visible ordinary widget input remains eligible with an unrelated click-through pin");
     Check(ResolveFocusGroupEntryAdmission({false, true, false, false, true}) ==
               FocusGroupEntryAdmission::Dormant,
-          "temporary hidden same-widget context preserves an existing request dormant");
+          "already-hidden same-widget context preserves an existing request dormant");
+    Check(ResolveFocusGroupEntryAdmission({true, false, false, false, true}) ==
+              FocusGroupEntryAdmission::Dormant,
+          "logical Hidden preserves the same-widget request during visible close animation");
     Check(ResolveFocusGroupEntryAdmission({false, true, false, false, false}) ==
               FocusGroupEntryAdmission::Retire,
           "a late snapshot while hidden cannot queue focus entry");
