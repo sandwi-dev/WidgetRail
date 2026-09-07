@@ -3911,7 +3911,8 @@ struct DeclarativeRenderer::RenderPass final {
         const NativeRenderStyle& style,
         const Rect rect,
         const float opacity,
-        const bool focused) {
+        const bool focused,
+        const bool adjustmentActive) {
         if (!target || rect.width <= 0.0F || rect.height <= 0.0F) return;
         const auto overrideValue = options.sliderValueOverrides.find(node.id);
         const auto presentedValue = overrideValue == options.sliderValueOverrides.end()
@@ -3937,8 +3938,8 @@ struct DeclarativeRenderer::RenderPass final {
         // Keep the controller hit target at 44 DIP while painting a restrained
         // track inside it. The target size is an interaction contract, not a
         // reason to turn the whole control into a heavy filled pill.
-        const auto thumbRadius = focused ? 8.0F : 6.5F;
-        const auto trackHeight = focused ? 6.0F : 4.5F;
+        const auto thumbRadius = adjustmentActive ? 9.5F : focused ? 8.0F : 6.5F;
+        const auto trackHeight = adjustmentActive ? 8.0F : focused ? 6.0F : 4.5F;
         const auto trackInset = thumbRadius + 2.0F;
         const Rect track{
             rect.x + trackInset,
@@ -3946,7 +3947,10 @@ struct DeclarativeRenderer::RenderPass final {
             std::max(0.0F, rect.width - trackInset * 2.0F),
             trackHeight,
         };
-        const auto accent = style.foreground().value_or(kDefaultAccent);
+        const auto accent = adjustmentActive
+            ? style.outlineColor().value_or(
+                style.foreground().value_or(kDefaultFocus))
+            : style.foreground().value_or(kDefaultAccent);
         auto trackBrush = Brush(target, WithOpacity(
             style.background().value_or(kDefaultTrack), opacity));
         if (trackBrush) target->FillRoundedRectangle(
@@ -3975,6 +3979,11 @@ struct DeclarativeRenderer::RenderPass final {
             target->DrawEllipse(
                 D2D1::Ellipse(center, busyRadius, busyRadius),
                 accentBrush.Get(), 2.0F);
+        }
+        if (adjustmentActive) {
+            target->DrawEllipse(
+                D2D1::Ellipse(center, thumbRadius + 4.0F, thumbRadius + 4.0F),
+                accentBrush.Get(), 2.5F);
         }
     }
 
@@ -4333,7 +4342,9 @@ struct DeclarativeRenderer::RenderPass final {
         } else if (node.kind == L"progress") {
             DrawProgress(node, style, presented.contentBox, opacity);
         } else if (node.kind == L"slider") {
-            DrawSlider(node, style, presented.contentBox, opacity, focused);
+            DrawSlider(
+                node, style, presented.contentBox, opacity, focused,
+                node.id == options.activeSliderElementId);
         } else if (node.kind == L"image") {
             const auto visibleImageRect = Intersection(
                 paintRect, presented.visibleBox);

@@ -689,6 +689,7 @@ bool WidgetSurfaceCoordinator::HandleFocusedSliderModeButton(
         RequestPaint();
         return true;
     case FocusedSliderButtonRoute::ExitAdjustment:
+        (void)PumpSliderInteraction(now, true);
         (void)sliderInteraction_.TransitionSliderAdjustmentMode(
             authority, *focused,
             input::SliderAdjustmentModeTransition::Exit, now);
@@ -698,6 +699,68 @@ bool WidgetSurfaceCoordinator::HandleFocusedSliderModeButton(
         return false;
     }
     return false;
+}
+
+bool WidgetSurfaceCoordinator::PumpSliderInteraction(
+    const std::uint64_t now,
+    const bool forceDispatch) {
+    if (!controllerFocused_ || !pinned() || compactMediaPresentation()) return false;
+    const auto& snapshot = SelectedSnapshot();
+    const input::WidgetInteractionAuthority authority{
+        admission_->widgetId, &snapshot, admission_->runtimeGeneration,
+        admission_->presentationGeneration, false};
+    auto reconciliation = sliderInteraction_.Tick(&authority, now);
+    if (forceDispatch) {
+        const auto* focused = input::FindNodeInInputScope(
+            snapshot, focusedElementId_, snapshot.activeInputScopeId);
+        if (focused && focused->kind == L"slider") {
+            auto forced = sliderInteraction_.TakePendingSliderAction(
+                authority, *focused, now, true);
+            if (forced.actionRequest)
+                reconciliation.sliderActionRequests.push_back(
+                    std::move(*forced.actionRequest));
+        }
+    }
+    bool queued{};
+    for (auto& request : reconciliation.sliderActionRequests) {
+        const auto protocolButton = request.sliderDirection ==
+                input::NavigationDirection::Left
+            ? L"dPadLeft" : L"dPadRight";
+        const auto nodeId = request.sourceElementId;
+        const auto requestedValue = request.requestedValue;
+        queued = QueueResolvedInput(
+            nodeId, protocolButton,
+            ControllerInputOrigin::PhysicalController,
+            requestedValue, std::move(request)) || queued;
+    }
+    if (!reconciliation.sliderDamageNodeIds.empty()) {
+        PublishAccessibility();
+        RequestPaint();
+    }
+    return queued;
+}
+
+bool WidgetSurfaceCoordinator::FlushSliderBeforeFocusDeparture(
+    const input::NavigationDirection direction,
+    const std::uint64_t now) {
+    if (!controllerFocused_ || !pinned() || compactMediaPresentation()) return false;
+    const auto& snapshot = SelectedSnapshot();
+    const auto* focused = input::FindNodeInInputScope(
+        snapshot, focusedElementId_, snapshot.activeInputScopeId);
+    if (!focused || focused->kind != L"slider") return false;
+    const input::WidgetInteractionAuthority authority{
+        admission_->widgetId, &snapshot, admission_->runtimeGeneration,
+        admission_->presentationGeneration, false};
+    const bool activationRequired =
+        focused->sliderInteractionMode == L"activateToAdjust";
+    const bool adjustmentActive = activationRequired &&
+        sliderInteraction_.SliderAdjustmentModeActive(authority, *focused, now);
+    const auto route = input::RouteFocusedDirection(
+        focused->kind, focused->isDisabled, focused->isBusy,
+        activationRequired, adjustmentActive, direction);
+    return route == input::FocusedDirectionRoute::FocusNavigation
+        ? PumpSliderInteraction(now, true)
+        : false;
 }
 
 bool WidgetSurfaceCoordinator::HandleFocusedSelectButton(
@@ -884,7 +947,7 @@ bool WidgetSurfaceCoordinator::RecordPaginationOutcome(
     return notify;
 }
 
-void WidgetSurfaceCoordinator::QueueResolvedInput(
+bool WidgetSurfaceCoordinator::QueueResolvedInput(
     std::wstring nodeId,
     std::wstring protocolButton,
     const ControllerInputOrigin origin,
@@ -892,15 +955,28 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
     std::optional<input::WidgetInteractionActionRequest> sliderActionRequest,
     std::optional<input::WidgetInteractionActionRequest> selectActionRequest) {
     if (!pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
-        nodeId.empty() || protocolButton.empty()) return;
+        nodeId.empty() || protocolButton.empty()) return false;
     if (inputRequests_.size() >= kMaximumPendingInputRequests) {
+        if (sliderActionRequest) {
+            const auto rollback = sliderInteraction_.CancelSliderAction(
+                *sliderActionRequest, GetTickCount64());
+            if (rollback.visualChanged && window_) RequestPaint();
+        }
         SetActionFeedback(L"Pinned input queue is busy. Try again.", true);
-        return;
+        return false;
     }
     const auto& snapshot = SelectedSnapshot();
     const auto* node = input::FindNodeInInputScope(
         snapshot, nodeId, snapshot.activeInputScopeId);
-    if (!node || node->isDisabled || node->isBusy) return;
+    if (!node || node->isDisabled || node->isBusy) {
+        if (sliderActionRequest) {
+            const auto rollback = sliderInteraction_.CancelSliderAction(
+                *sliderActionRequest, GetTickCount64());
+            if (rollback.visualChanged && window_) RequestPaint();
+            SetActionFeedback(L"Pinned slider is unavailable.", true);
+        }
+        return false;
+    }
     if (sliderActionRequest &&
         (node->kind != L"slider" ||
          (protocolButton != L"dPadLeft" && protocolButton != L"dPadRight") ||
@@ -918,7 +994,7 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
                 *sliderActionRequest, GetTickCount64()).visualChanged && window_) {
             RequestPaint();
         }
-        return;
+        return false;
     }
     if (selectActionRequest &&
         (!node->isSelect || protocolButton != L"a" ||
@@ -933,7 +1009,7 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
              [&](const WidgetSelectOption& option) {
                  return option.actionId == selectActionRequest->actionId &&
                      !option.isDisabled && !option.isBusy;
-             }))) return;
+              }))) return false;
     inputRequests_.push_back({
         admission_->widgetId,
         admission_->runtimeGeneration,
@@ -949,6 +1025,7 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
         origin,
     });
     NotifyOwner();
+    return true;
 }
 
 bool WidgetSurfaceCoordinator::QueueFocusedInput(
@@ -960,8 +1037,8 @@ bool WidgetSurfaceCoordinator::QueueFocusedInput(
     const auto* node = input::FindNodeInInputScope(
         snapshot, focusedElementId_, snapshot.activeInputScopeId);
     if (!node || node->isDisabled || node->isBusy) return false;
-    QueueResolvedInput(focusedElementId_, std::wstring(protocolButton), origin,
-                       requestedValue);
+    (void)QueueResolvedInput(
+        focusedElementId_, std::wstring(protocolButton), origin, requestedValue);
     return true;
 }
 
@@ -1094,11 +1171,8 @@ void WidgetSurfaceCoordinator::RejectInputRequest(
         snapshot.instanceId != request.sliderActionRequest->widgetInstanceId ||
         admission_->presentationGeneration !=
             request.sliderActionRequest->presentationGeneration) return;
-    const input::WidgetInteractionAuthority authority{
-        admission_->widgetId, &snapshot, admission_->runtimeGeneration,
-        admission_->presentationGeneration, false};
     if (sliderInteraction_.CancelSliderAction(
-            authority, *node, now).visualChanged && window_) {
+            *request.sliderActionRequest, now).visualChanged && window_) {
         RequestPaint();
     }
 }
@@ -2604,9 +2678,11 @@ void WidgetSurfaceCoordinator::Paint() {
         GetTickCount64(), controllerFocused_, controllerFocused_,
         controllerFocused_);
     options.sliderValueOverrides =
-        std::move(sliderPresentation.sliderValueOverrides);
+        sliderPresentation.sliderValueOverrides;
     options.pressedElementId =
-        std::move(sliderPresentation.pressedElementId);
+        sliderPresentation.pressedElementId;
+    options.activeSliderElementId =
+        sliderPresentation.activeSliderElementId;
     options.artworkWidgetId = admission_->widgetId;
     options.artworkRuntimeGeneration = admission_->runtimeGeneration;
     options.artworkPresentationGeneration = admission_->presentationGeneration;
@@ -3054,6 +3130,13 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
         if (controllerFocused_) tree.focusedNode = tree.nodes.size() - 1;
     } else if (policy_.interactionMode() == InteractionMode::Focusable &&
         lastRenderResult_.succeeded) {
+        const auto sliderPresentation =
+            sliderInteraction_.PrepareRenderPresentation(
+                snapshot,
+                controllerFocused_ ? std::wstring_view{focusedElementId_}
+                                   : std::wstring_view{},
+                GetTickCount64(), controllerFocused_, controllerFocused_,
+                controllerFocused_);
         std::optional<accessibility::SelectPopupAccessibility> selectPopup;
         if (sliderInteraction_.selectPopup()) {
             const auto& binding = *sliderInteraction_.selectPopup();
@@ -3079,8 +3162,10 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
             admission_->widgetId, admission_->runtimeGeneration,
             snapshot, lastRenderResult_,
             controllerFocused_ ? std::wstring_view{focusedElementId_}
-                               : std::wstring_view{}, {},
-            selectPopup ? &*selectPopup : nullptr);
+                               : std::wstring_view{},
+            sliderPresentation.sliderValueOverrides,
+            selectPopup ? &*selectPopup : nullptr,
+            sliderPresentation.activeSliderElementId);
         const std::size_t offset = tree.nodes.size();
         for (auto& node : widgetTree.nodes) {
             if (node.parent) *node.parent += offset;

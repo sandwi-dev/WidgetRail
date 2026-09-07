@@ -150,3 +150,10 @@ only for the exact physically held controller action, cancels it on focus or
 surface changes, and reconciles it when a new snapshot arrives. The other
 semantic states remain available to styling, accessibility, and controller
 routing.
+
+Slider adjustment activity is host interaction state, not a new WRSS
+pseudo-state and not a synthetic `:pressed` state. The renderer reuses the
+resolved focused `outline-color` for the active track/thumb treatment and adds
+a thicker geometric thumb halo, so selected adjustment remains visible in high
+contrast and without relying on color alone. Existing `slider:focused` rules
+continue to own the theme color.

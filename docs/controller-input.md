@@ -337,6 +337,27 @@ keeps analog/D-pad repeat responsive without converting a stale rendered value
 into a series of incorrect relative writes. Deactivation cancels the consumer
 and clears all pending values.
 
+The native full-widget and pinned-surface interaction owner presents every
+actual controller step immediately, then emits only the latest absolute value
+after a 150 ms trailing quiet period. A final A/B adjustment-mode exit or
+geometric focus departure attempts that exact-current value first; an explicit
+admission failure rolls the optimistic value back, reports bounded feedback,
+and does not trap navigation. UI Automation `RangeValue.SetValue` remains one
+immediate absolute request. Equal or clamped controller samples do not extend
+the quiet period.
+
+Snapshots remain authoritative, but they do not identify the action request
+that caused them. The host therefore keeps at most 16 recent sent values only
+as a lossy reconciliation hint. A newer snapshot that exactly repeats one of
+those values may be held behind the latest presented target until that sent
+value's fixed two-second guard expires; every newer snapshot still updates the
+latest observed authoritative value, and expiry reconciles it without waiting
+for another snapshot. Snapshot traffic never renews a guard. Capacity never
+throttles input or transport: the oldest hint is discarded, so an unusually
+late result beyond the retained history can still be presented. Eliminating
+that bounded ambiguity would require a correlated response contract rather
+than native value inference.
+
 ### Analog hysteresis and repeat
 
 The native navigator engages a left-stick direction at magnitude 15,000 and

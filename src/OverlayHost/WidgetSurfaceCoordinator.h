@@ -219,6 +219,12 @@ public:
     [[nodiscard]] bool HandleFocusedSliderModeButton(
         std::wstring_view protocolButton,
         std::uint64_t now);
+    [[nodiscard]] bool PumpSliderInteraction(
+        std::uint64_t now,
+        bool forceDispatch = false);
+    [[nodiscard]] bool FlushSliderBeforeFocusDeparture(
+        input::NavigationDirection direction,
+        std::uint64_t now);
     [[nodiscard]] bool HandleFocusedSelectButton(
         std::wstring_view protocolButton,
         ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController);
@@ -391,7 +397,7 @@ private:
     [[nodiscard]] surface_appearance::Mode EffectiveSurfaceAppearance() const noexcept;
     [[nodiscard]] bool SaveCurrentState(std::wstring& error);
     void HandleAccessibilityActions();
-    void QueueResolvedInput(
+    bool QueueResolvedInput(
         std::wstring nodeId,
         std::wstring protocolButton,
         ControllerInputOrigin origin,

@@ -95,7 +95,8 @@ Tree BuildWidgetTree(
     const RenderResult& render,
     const std::wstring_view focusedElementId,
     const std::map<std::wstring, double, std::less<>>& presentedSliderValues,
-    const SelectPopupAccessibility* selectPopup) {
+    const SelectPopupAccessibility* selectPopup,
+    const std::wstring_view activeSliderElementId) {
     Tree tree{
         std::move(widgetId),
         std::move(runtimeGeneration),
@@ -168,6 +169,15 @@ Tree BuildWidgetTree(
             node.id = source.id;
             node.name = AccessibleName(source);
             node.value = source.accessibilityValue;
+            if (source.kind == L"slider" && source.id == focusedElementId) {
+                const auto instruction = source.id == activeSliderElementId
+                    ? L"Adjustment active."
+                    : source.sliderInteractionMode == L"activateToAdjust"
+                        ? L"Press A to adjust."
+                        : L"Adjustment active.";
+                if (!node.value.empty()) node.value.append(L" ");
+                node.value.append(instruction);
+            }
             node.actionId = source.actionId;
             node.valueChangedActionId = source.valueChangedActionId;
             node.bounds = region->second;

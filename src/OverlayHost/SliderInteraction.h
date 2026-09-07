@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -29,7 +30,12 @@ struct SliderInputDescriptor final {
 
 struct SliderAdjustment final {
     bool consumed{};
-    std::optional<double> requestedValue;
+};
+
+struct SliderDispatch final {
+    double requestedValue{};
+    std::uint64_t intentGeneration{};
+    NavigationDirection direction{NavigationDirection::None};
 };
 
 struct SliderReconciliation final {
@@ -50,6 +56,8 @@ struct SliderPresentationIdentity final {
 class SliderInteractionState final {
 public:
     static constexpr std::size_t MaximumEntries = 256;
+    static constexpr std::size_t MaximumRecentDispatchedValues = 16;
+    static constexpr std::uint64_t SettlementDelayMilliseconds = 150;
     static constexpr std::uint64_t PendingTimeoutMilliseconds = 2'000;
 
     [[nodiscard]] SliderAdjustment Adjust(
@@ -64,6 +72,14 @@ public:
         const SliderInputDescriptor& slider,
         double requestedValue,
         std::uint64_t nowMilliseconds);
+
+    /// Takes the latest unsettled value once its trailing quiet period has
+    /// elapsed. A forced take is used only while the exact current authority
+    /// still owns a final A/B or focus-departure flush.
+    [[nodiscard]] std::optional<SliderDispatch> TakePendingDispatch(
+        const SliderInputDescriptor& slider,
+        std::uint64_t nowMilliseconds,
+        bool force = false);
 
     [[nodiscard]] bool EnterAdjustmentMode(
         const SliderInputDescriptor& slider,
@@ -119,12 +135,19 @@ public:
         std::uint64_t nowMilliseconds);
     [[nodiscard]] bool CancelPending(
         const SliderPresentationIdentity& identity,
+        std::uint64_t intentGeneration,
         std::uint64_t nowMilliseconds);
 
     void ForgetWidget(std::wstring_view widgetInstanceId) noexcept;
     [[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
 
 private:
+    struct DispatchedValue final {
+        double value{};
+        std::uint64_t intentGeneration{};
+        std::uint64_t dispatchedAt{};
+    };
+
     struct Entry final {
         double minimum{};
         double maximum{};
@@ -142,6 +165,12 @@ private:
         bool pending{};
         bool activationRequired{};
         bool adjustmentActive{};
+        bool unsent{};
+        bool suppressingGuardedEcho{};
+        std::uint64_t latestTargetDispatchedAt{};
+        std::uint64_t nextIntentGeneration{};
+        NavigationDirection latestDirection{NavigationDirection::None};
+        std::deque<DispatchedValue> recentDispatchedValues;
     };
 
     [[nodiscard]] static bool Valid(const SliderInputDescriptor& slider) noexcept;
@@ -154,6 +183,10 @@ private:
     [[nodiscard]] Entry* CreateOrSynchronize(
         const SliderInputDescriptor& slider,
         std::uint64_t nowMilliseconds);
+    static void ExpireDispatchHistory(Entry& entry, std::uint64_t nowMilliseconds);
+    [[nodiscard]] static bool MatchesRecentDispatch(
+        const Entry& entry,
+        double value) noexcept;
     void Trim(std::wstring_view protectedKey);
 
     std::unordered_map<std::wstring, Entry> entries_;

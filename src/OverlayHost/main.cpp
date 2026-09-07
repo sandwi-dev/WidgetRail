@@ -1949,26 +1949,9 @@ private:
                     failure.widgetId);
                 continue;
             }
-            const auto* failureSnapshot = SnapshotFor(failure.widgetId);
-            const auto* failureDescriptor =
-                sessions_.FindDescriptor(failure.widgetId);
-            if (failureSnapshot && failureDescriptor) {
-                const auto& presentationSnapshot = *failureSnapshot;
-                const auto* source = widgetrail::input::FindNodeInInputScope(
-                    presentationSnapshot, failure.sourceElementId,
-                    presentationSnapshot.activeInputScopeId);
-                const auto authority = InteractionAuthority(
-                    failure.widgetId, presentationSnapshot);
-                if (source && source->kind == L"slider" &&
-                    source->valueChangedActionId == failure.actionId &&
-                    authority &&
-                    interactionSession_.CancelSliderAction(
-                        *authority, *source,
-                        GetTickCount64()).visualChanged) {
-                    InvalidateWidgetSliderValues(
-                        presentationSnapshot, {source->id}, false);
-                }
-            }
+            // Completion failures carry source/action identity but no slider
+            // intent generation. They can provide feedback, but cannot safely
+            // roll back or consume one value from the bounded local history.
             AppendDiagnostic(
                 L"Widget action failed: widget=" + failure.widgetId +
                 L" generation=" + failure.runtimeGeneration +
@@ -8135,7 +8118,8 @@ private:
             const auto presentationTime = GetTickCount64();
             interactionPresentation = interactionSession_.PrepareRenderPresentation(
                 *snapshot, interactionSession_.focusedElementId(),
-                presentationTime, false, false, false);
+                presentationTime, false, false,
+                state_.focusRegion() == widgetrail::FocusRegion::Widget);
             const auto policy = appearanceState_.current()
                 ? CurrentAccessibilityPolicy()
                 : widgetrail::NativeAccessibilityPolicy{};
@@ -8170,7 +8154,8 @@ private:
                         ? std::wstring_view{interactionSession_.focusedElementId()}
                         : std::wstring_view{},
                     interactionPresentation.sliderValueOverrides,
-                    selectPopup ? &*selectPopup : nullptr);
+                    selectPopup ? &*selectPopup : nullptr,
+                    interactionPresentation.activeSliderElementId);
             }
         }
 
@@ -8500,6 +8485,7 @@ private:
         std::wstring presentationGeneration;
         std::wstring focusId;
         std::wstring pressedElementId;
+        std::wstring activeSliderElementId;
         long long snapshotSequence{};
         std::uint64_t sliderPresentationRevision{};
         long long appearanceRevision{};
@@ -8509,20 +8495,20 @@ private:
         std::optional<widgetrail::OverlayPlacement> contentPlacement;
     };
 
-    [[nodiscard]] bool CurrentSliderAdjustmentVisualActive(
+    [[nodiscard]] std::wstring CurrentActiveSliderElementId(
         const widgetrail::WidgetSnapshot& snapshot) {
         if (state_.focusRegion() != widgetrail::FocusRegion::Widget ||
             interactionSession_.focusedElementId().empty()) {
-            return false;
+            return {};
         }
         const auto* focused = widgetrail::input::FindNodeInInputScope(
             snapshot, interactionSession_.focusedElementId(), snapshot.activeInputScopeId);
         const auto authority = InteractionAuthority(state_.activeWidget(), snapshot);
-        return focused && focused->kind == L"slider" &&
-            focused->sliderInteractionMode == L"activateToAdjust" &&
-            authority &&
-            interactionSession_.SliderAdjustmentModeActive(
-                *authority, *focused, GetTickCount64());
+        if (!focused || focused->kind != L"slider" || !authority) return {};
+        return focused->sliderInteractionMode != L"activateToAdjust" ||
+                interactionSession_.SliderAdjustmentModeActive(
+                    *authority, *focused, GetTickCount64())
+            ? focused->id : std::wstring{};
     }
 
     [[nodiscard]] bool CanRetainCommittedWidgetPixels(
@@ -8544,10 +8530,8 @@ private:
             false,
         });
         std::wstring livePressedElement{interactionPresentation.pressedElementId};
-        if (livePressedElement.empty() &&
-            CurrentSliderAdjustmentVisualActive(snapshot)) {
-            livePressedElement = interactionSession_.focusedElementId();
-        }
+        const auto liveActiveSliderElement =
+            CurrentActiveSliderElementId(snapshot);
         const std::wstring_view liveFocus =
             state_.focusRegion() == widgetrail::FocusRegion::Widget
                 ? interactionPresentation.focusedElementId
@@ -8570,6 +8554,7 @@ private:
             committed.snapshotSequence != snapshot.sequence ||
             committed.focusId != liveFocus ||
             committed.pressedElementId != livePressedElement ||
+            committed.activeSliderElementId != liveActiveSliderElement ||
             committed.sliderPresentationRevision !=
                 interactionPresentation.sliderPresentationRevision ||
             committed.appearanceRevision != appearanceRevision ||
@@ -11372,6 +11357,8 @@ private:
             return;
         }
         if (pinnedSurfaceCoordinator_.controllerFocused()) {
+            if (pinnedSurfaceCoordinator_.PumpSliderInteraction(now))
+                DrainPinnedSurfaceInputs();
             if (pinnedSurfaceCoordinator_.compactMediaPresentation()) {
                 const auto moveCompactFocus = [&](
                     const widgetrail::input::StickNavigationEvent& event) {
@@ -11484,6 +11471,10 @@ private:
             // pinned surface, exactly as they are in the full widget, so both
             // adjust a selected activation-first slider.
             const auto movePinnedFocus = [&](const widgetrail::input::StickNavigationEvent& event) {
+                if (pinnedSurfaceCoordinator_.FlushSliderBeforeFocusDeparture(
+                        event.direction, now)) {
+                    DrainPinnedSurfaceInputs();
+                }
                 (void)pinnedSurfaceCoordinator_.MoveControllerFocus(
                     event.direction, true);
             };
@@ -11503,6 +11494,8 @@ private:
                            widgetrail::pinned::ControllerCommand::Exit &&
                        !pinnedSurfaceCoordinator_.HandleFocusedSelectButton(
                            L"b", widgetrail::ControllerInputOrigin::PhysicalController)) {
+                if (pinnedSurfaceCoordinator_.PumpSliderInteraction(now, true))
+                    DrainPinnedSurfaceInputs();
                 ReturnPinnedControllerFocusToOverlay(now);
             }
             const auto queuePinnedButton = [&](const bool pressedNow,
@@ -11587,15 +11580,31 @@ private:
 
         if (interactionSession_.SliderReconcileDue(now)) {
             const widgetrail::WidgetSnapshot* currentSnapshot{};
+            std::optional<widgetrail::input::WidgetInteractionAuthority>
+                currentAuthority;
             if (state_.surface() == widgetrail::Surface::Widget) {
                 currentSnapshot = InteractionSnapshotFor(state_.activeWidget());
+                if (currentSnapshot)
+                    currentAuthority = InteractionAuthority(
+                        state_.activeWidget(), *currentSnapshot);
             }
-            const auto tick = interactionSession_.Tick(currentSnapshot, now);
+            const auto tick = interactionSession_.Tick(
+                currentAuthority ? &*currentAuthority : nullptr, now);
             if (currentSnapshot && !tick.sliderDamageNodeIds.empty()) {
                     InvalidateWidgetSliderValues(
                         *currentSnapshot, tick.sliderDamageNodeIds, false);
             }
+            for (const auto& request : tick.sliderActionRequests) {
+                DispatchWidgetAction(
+                    request.sliderDirection ==
+                            widgetrail::input::NavigationDirection::Left
+                        ? L"DPadLeft" : L"DPadRight",
+                    widgetrail::input::NavigationEventPhase::Pressed,
+                    request);
+            }
         }
+        if (pinnedSurfaceCoordinator_.PumpSliderInteraction(now))
+            DrainPinnedSurfaceInputs();
         const auto stickDirection = DecodeNavigation(frame.stickNavigation);
         const auto dpadDirection = DecodeNavigation(frame.dpadNavigation);
         const bool rightStickMoving = HandleRightStickFreeScroll(frame, now);
@@ -12673,6 +12682,21 @@ private:
             L" state=retired reason=" + std::wstring{reason});
     }
 
+    void FlushCurrentSliderAction(
+        const widgetrail::input::WidgetInteractionAuthority& authority,
+        const widgetrail::WidgetNode& node,
+        const std::uint64_t now) {
+        const auto flush = interactionSession_.TakePendingSliderAction(
+            authority, node, now, true);
+        if (!flush.actionRequest) return;
+        DispatchWidgetAction(
+            flush.actionRequest->sliderDirection ==
+                    widgetrail::input::NavigationDirection::Left
+                ? L"DPadLeft" : L"DPadRight",
+            widgetrail::input::NavigationEventPhase::Pressed,
+            flush.actionRequest);
+    }
+
     [[nodiscard]] const widgetrail::WidgetNode* ValidateWidgetActionRequest(
         const widgetrail::input::WidgetInteractionActionRequest& request,
         const widgetrail::WidgetSnapshot& snapshot) {
@@ -13038,11 +13062,13 @@ private:
             if (!interactionAuthority) return;
             const auto adjustment = interactionSession_.AdjustSlider(
                 *interactionAuthority, *focused, direction, GetTickCount64());
-            if (adjustment.actionRequest) {
-                // Paint the host-owned target before the synchronous worker
-                // acknowledgement so controller feedback never waits on IPC.
+            if (adjustment.visualChanged) {
+                // The host-owned thumb moves immediately; the latest absolute
+                // value is dispatched only after the shared trailing settle.
                 InvalidateWidgetSliderValues(
                     *snapshot, {focused->id}, true);
+            }
+            if (adjustment.actionRequest) {
                 const auto button = direction == widgetrail::input::NavigationDirection::Left
                     ? std::wstring_view{L"DPadLeft"}
                     : std::wstring_view{L"DPadRight"};
@@ -13185,6 +13211,12 @@ private:
         else if (direction == L"down") navigationDirection = widgetrail::input::NavigationDirection::Down;
         const auto authority = InteractionAuthority(widgetId, *snapshot);
         if (!authority) return;
+        const auto flushFocusedSlider = [&] {
+            const auto* focused = widgetrail::input::FindNodeInInputScope(
+                *snapshot, interactionSession_.focusedElementId(), activeScope);
+            if (focused && focused->kind == L"slider")
+                FlushCurrentSliderAction(*authority, *focused, GetTickCount64());
+        };
         const bool pendingFocusGroupEntry =
             interactionSession_.FocusGroupEntryRequestPending(*authority);
         if (pendingFocusGroupEntry &&
@@ -13204,6 +13236,7 @@ private:
                     activeScope == widgetrail::input::RootInputScope(*snapshot),
                     false,
                     false)) {
+                flushFocusedSlider();
                 Dispatch(widgetrail::Command::SampleWidgetBack);
             }
             return;
@@ -13219,6 +13252,7 @@ private:
         if (admission.retainFocus) return;
         resolution = std::move(admission.resolution);
         if (resolution.target) {
+            flushFocusedSlider();
             if (pendingFocusGroupEntry) {
                 RetirePendingFocusGroupEntryForUserIntent(
                     widgetId, *snapshot, L"directional-input");
@@ -13246,6 +13280,7 @@ private:
                 activeScope == widgetrail::input::RootInputScope(*snapshot),
                 false,
                 false)) {
+            flushFocusedSlider();
             Dispatch(widgetrail::Command::SampleWidgetBack);
         }
     }
@@ -13728,6 +13763,8 @@ private:
             InvalidateRect(window_, nullptr, FALSE);
             return true;
         case FocusedSliderButtonRoute::ExitAdjustment:
+            FlushCurrentSliderAction(
+                *interactionAuthority, *focused, GetTickCount64());
             (void)interactionSession_.TransitionSliderAdjustmentMode(
                 *interactionAuthority, *focused,
                 widgetrail::input::SliderAdjustmentModeTransition::Exit,
@@ -13806,7 +13843,22 @@ private:
                 }
                 RetirePendingFocusGroupEntryForUserIntent(
                     state_.activeWidget(), *snapshot, L"activation");
-            }
+                }
+        }
+        if (button == L"B" &&
+            state_.surface() == widgetrail::Surface::Widget &&
+            state_.focusRegion() == widgetrail::FocusRegion::Widget) {
+            const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
+            const auto authority = snapshot
+                ? InteractionAuthority(state_.activeWidget(), *snapshot)
+                : std::nullopt;
+            const auto* focused = snapshot
+                ? widgetrail::input::FindNodeInInputScope(
+                    *snapshot, interactionSession_.focusedElementId(),
+                    snapshot->activeInputScopeId)
+                : nullptr;
+            if (authority && focused && focused->kind == L"slider")
+                FlushCurrentSliderAction(*authority, *focused, GetTickCount64());
         }
         if (HandleFocusedSliderModeButton(button)) return;
         if (button == L"A") {
@@ -17170,6 +17222,8 @@ private:
                     interactionPresentation.sliderValueOverrides;
                 options.pressedElementId =
                     interactionPresentation.pressedElementId;
+                options.activeSliderElementId =
+                    interactionPresentation.activeSliderElementId;
                 if (focusGroupEntryPrepared && preparedFocusGroupEntryTarget) {
                     const auto validation =
                         declarativeRenderer_->PrepareFocusEntry(
@@ -17197,6 +17251,8 @@ private:
                             interactionPresentation.sliderValueOverrides;
                         options.pressedElementId =
                             interactionPresentation.pressedElementId;
+                        options.activeSliderElementId =
+                            interactionPresentation.activeSliderElementId;
                         AppendDiagnostic(
                             L"Focus-group entry request widget=" +
                             std::wstring{renderedWidget} +
@@ -17647,6 +17703,7 @@ private:
                         descriptor ? descriptor->presentationGeneration : std::wstring{},
                         std::wstring{renderedFocusId},
                         options.pressedElementId,
+                        options.activeSliderElementId,
                         snapshot->sequence,
                         interactionPresentation.sliderPresentationRevision,
                         appearanceState_.current()
@@ -17672,7 +17729,8 @@ private:
                             ? std::wstring_view{interactionSession_.focusedElementId()}
                             : std::wstring_view{},
                         options.sliderValueOverrides,
-                        selectPopup ? &*selectPopup : nullptr);
+                        selectPopup ? &*selectPopup : nullptr,
+                        interactionPresentation.activeSliderElementId);
                     ++widgetAccessibilityRevision_;
                     widgetAccessibilityProjection_.Published(projectionKey);
                 }

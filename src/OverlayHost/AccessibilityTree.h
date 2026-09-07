@@ -163,6 +163,7 @@ struct SelectPopupAccessibility final {
     const RenderResult& render,
     std::wstring_view focusedElementId,
     const std::map<std::wstring, double, std::less<>>& presentedSliderValues = {},
-    const SelectPopupAccessibility* selectPopup = nullptr);
+    const SelectPopupAccessibility* selectPopup = nullptr,
+    std::wstring_view activeSliderElementId = {});
 
 } // namespace widgetrail::accessibility

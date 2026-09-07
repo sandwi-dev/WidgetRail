@@ -59,23 +59,26 @@ SliderAdjustment SliderInteractionState::Adjust(
     const std::uint64_t nowMilliseconds) {
     if (direction != NavigationDirection::Left && direction != NavigationDirection::Right)
         return {};
-    if (!Valid(slider)) return {true, std::nullopt};
+    if (!Valid(slider)) return {true};
     auto* entry = CreateOrSynchronize(slider, nowMilliseconds);
-    if (!entry) return {true, std::nullopt};
+    if (!entry) return {true};
     if (entry->activationRequired && !entry->adjustmentActive)
-        return {false, std::nullopt};
-    if (slider.disabled || slider.busy) return {true, std::nullopt};
+        return {false};
+    if (slider.disabled || slider.busy) return {true};
     const auto target = StepTarget(
         entry->targetValue, entry->minimum, entry->maximum, entry->step, direction);
     if (!target || Near(*target, entry->targetValue, entry->maximum - entry->minimum))
-        return {true, std::nullopt};
+        return {true};
     entry->targetValue = *target;
     entry->pending = true;
+    entry->unsent = true;
+    entry->suppressingGuardedEcho = false;
+    entry->latestDirection = direction;
     entry->adjustmentSnapshotSequence = slider.snapshotSequence;
     entry->lastAdjustment = nowMilliseconds;
     entry->lastAccess = ++accessClock_;
     ++presentationRevision_;
-    return {true, *target};
+    return {true};
 }
 
 bool SliderInteractionState::SetRequestedValue(
@@ -91,22 +94,43 @@ bool SliderInteractionState::SetRequestedValue(
     if (!entry) return false;
     if (entry->pending &&
         Near(requestedValue, entry->targetValue, entry->maximum - entry->minimum)) {
-        entry->lastAdjustment = nowMilliseconds;
         entry->lastAccess = ++accessClock_;
-        return true;
-    }
-    if (!entry->pending &&
-        Near(requestedValue, entry->authoritativeValue,
-             entry->maximum - entry->minimum)) {
         return true;
     }
     entry->targetValue = requestedValue;
     entry->pending = true;
+    entry->unsent = true;
+    entry->suppressingGuardedEcho = false;
+    entry->latestDirection = NavigationDirection::None;
     entry->adjustmentSnapshotSequence = slider.snapshotSequence;
     entry->lastAdjustment = nowMilliseconds;
     entry->lastAccess = ++accessClock_;
     ++presentationRevision_;
     return true;
+}
+
+std::optional<SliderDispatch> SliderInteractionState::TakePendingDispatch(
+    const SliderInputDescriptor& slider,
+    const std::uint64_t nowMilliseconds,
+    const bool force) {
+    if (!Valid(slider)) return std::nullopt;
+    auto* entry = FindAndSynchronize(slider, nowMilliseconds);
+    if (!entry || !entry->pending || !entry->unsent) return std::nullopt;
+    if (!force && (nowMilliseconds < entry->lastAdjustment ||
+        nowMilliseconds - entry->lastAdjustment < SettlementDelayMilliseconds)) {
+        return std::nullopt;
+    }
+    ExpireDispatchHistory(*entry, nowMilliseconds);
+    const auto generation = ++entry->nextIntentGeneration;
+    entry->unsent = false;
+    entry->latestTargetDispatchedAt = nowMilliseconds;
+    entry->recentDispatchedValues.push_back({
+        entry->targetValue, generation, nowMilliseconds});
+    if (entry->recentDispatchedValues.size() > MaximumRecentDispatchedValues)
+        entry->recentDispatchedValues.pop_front();
+    entry->lastAccess = ++accessClock_;
+    return SliderDispatch{
+        entry->targetValue, generation, entry->latestDirection};
 }
 
 bool SliderInteractionState::EnterAdjustmentMode(
@@ -116,6 +140,7 @@ bool SliderInteractionState::EnterAdjustmentMode(
     auto* entry = CreateOrSynchronize(slider, nowMilliseconds);
     if (!entry || slider.disabled || slider.busy) return false;
     RetainAdjustmentMode(slider.widgetInstanceId, slider.inputScopeId, slider.nodeId);
+    if (!entry->adjustmentActive) ++presentationRevision_;
     entry->adjustmentActive = true;
     entry->lastAccess = ++accessClock_;
     return true;
@@ -128,6 +153,7 @@ bool SliderInteractionState::ExitAdjustmentMode(
     auto* entry = FindAndSynchronize(slider, nowMilliseconds);
     if (!entry || !entry->adjustmentActive) return false;
     entry->adjustmentActive = false;
+    ++presentationRevision_;
     entry->lastAccess = ++accessClock_;
     return true;
 }
@@ -155,8 +181,22 @@ SliderInteractionState::NextReconcileDeadline() const noexcept {
     std::optional<std::uint64_t> deadline;
     for (const auto& [_, entry] : entries_) {
         if (!entry.pending) continue;
-        const auto candidate = entry.lastAdjustment + PendingTimeoutMilliseconds + 1;
-        if (!deadline || candidate < *deadline) deadline = candidate;
+        if (entry.unsent) {
+            const auto candidate = entry.lastAdjustment + SettlementDelayMilliseconds;
+            if (!deadline || candidate < *deadline) deadline = candidate;
+        } else if (entry.suppressingGuardedEcho) {
+            for (const auto& dispatched : entry.recentDispatchedValues) {
+                if (!Near(dispatched.value, entry.authoritativeValue,
+                          entry.maximum - entry.minimum)) continue;
+                const auto candidate = dispatched.dispatchedAt +
+                    PendingTimeoutMilliseconds + 1;
+                if (!deadline || candidate < *deadline) deadline = candidate;
+            }
+        } else if (entry.latestTargetDispatchedAt != 0) {
+            const auto candidate = entry.latestTargetDispatchedAt +
+                PendingTimeoutMilliseconds + 1;
+            if (!deadline || candidate < *deadline) deadline = candidate;
+        }
     }
     return deadline;
 }
@@ -165,13 +205,24 @@ std::vector<SliderPresentationIdentity> SliderInteractionState::ExpireTimedOut(
     const std::uint64_t nowMilliseconds) {
     std::vector<SliderPresentationIdentity> changed;
     for (auto& [_, entry] : entries_) {
-        if (!entry.pending || nowMilliseconds < entry.lastAdjustment ||
-            nowMilliseconds - entry.lastAdjustment <= PendingTimeoutMilliseconds) {
-            continue;
-        }
+        ExpireDispatchHistory(entry, nowMilliseconds);
+        if (!entry.pending || entry.unsent) continue;
+        const bool guardStillApplies = entry.suppressingGuardedEcho &&
+            MatchesRecentDispatch(entry, entry.authoritativeValue);
+        const bool targetStillAwaiting = !entry.suppressingGuardedEcho &&
+            entry.latestTargetDispatchedAt != 0 &&
+            nowMilliseconds >= entry.latestTargetDispatchedAt &&
+            nowMilliseconds - entry.latestTargetDispatchedAt <=
+                PendingTimeoutMilliseconds;
+        if (guardStillApplies || targetStillAwaiting) continue;
+        const bool visualChanged = !Near(
+            entry.targetValue, entry.authoritativeValue,
+            entry.maximum - entry.minimum);
         entry.pending = false;
+        entry.suppressingGuardedEcho = false;
+        entry.latestTargetDispatchedAt = 0;
         entry.targetValue = entry.authoritativeValue;
-        changed.push_back(Identity(entry));
+        if (visualChanged) changed.push_back(Identity(entry));
     }
     // The visible/current tree is reconciled first through Reconcile(). What
     // remains here is private off-tree state, so retiring it must not advance
@@ -198,11 +249,12 @@ bool SliderInteractionState::CancelPending(
         std::wstring{slider.nodeId},
         std::wstring{slider.valueChangedActionId},
         slider.snapshotSequence,
-    }, nowMilliseconds);
+    }, 0, nowMilliseconds);
 }
 
 bool SliderInteractionState::CancelPending(
     const SliderPresentationIdentity& identity,
+    const std::uint64_t intentGeneration,
     const std::uint64_t nowMilliseconds) {
     if (identity.widgetInstanceId.empty() || identity.inputScopeId.empty() ||
         identity.nodeId.empty() || identity.valueChangedActionId.empty() ||
@@ -217,11 +269,27 @@ bool SliderInteractionState::CancelPending(
     const auto position = entries_.find(key);
     if (position == entries_.end()) return false;
     auto& entry = position->second;
-    if (!entry.pending || entry.actionId != identity.valueChangedActionId ||
-        entry.snapshotSequence != identity.snapshotSequence) {
+    if (!entry.pending || entry.actionId != identity.valueChangedActionId) {
         return false;
     }
+    if (intentGeneration == 0 &&
+        entry.snapshotSequence != identity.snapshotSequence) return false;
+    if (intentGeneration != 0) {
+        const auto dispatched = std::find_if(
+            entry.recentDispatchedValues.begin(),
+            entry.recentDispatchedValues.end(),
+            [&](const DispatchedValue& value) {
+                return value.intentGeneration == intentGeneration;
+            });
+        if (dispatched == entry.recentDispatchedValues.end()) return false;
+        entry.recentDispatchedValues.erase(dispatched);
+        if (entry.unsent || intentGeneration != entry.nextIntentGeneration)
+            return false;
+    }
     entry.pending = false;
+    entry.unsent = false;
+    entry.suppressingGuardedEcho = false;
+    entry.latestTargetDispatchedAt = 0;
     entry.targetValue = entry.authoritativeValue;
     entry.lastAccess = ++accessClock_;
     entry.lastAdjustment = nowMilliseconds;
@@ -237,6 +305,27 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
     const auto position = entries_.find(key);
     if (position == entries_.end()) return nullptr;
     auto& entry = position->second;
+    ExpireDispatchHistory(entry, nowMilliseconds);
+    if (entry.pending && !entry.unsent) {
+        const bool guardStillApplies = entry.suppressingGuardedEcho &&
+            MatchesRecentDispatch(entry, entry.authoritativeValue);
+        const bool targetStillAwaiting = !entry.suppressingGuardedEcho &&
+            entry.latestTargetDispatchedAt != 0 &&
+            nowMilliseconds >= entry.latestTargetDispatchedAt &&
+            nowMilliseconds - entry.latestTargetDispatchedAt <=
+                PendingTimeoutMilliseconds;
+        if (!guardStillApplies && !targetStillAwaiting) {
+            const bool visualChanged = !Near(
+                entry.targetValue, entry.authoritativeValue,
+                entry.maximum - entry.minimum);
+            entry.pending = false;
+            entry.suppressingGuardedEcho = false;
+            entry.latestTargetDispatchedAt = 0;
+            entry.targetValue = entry.authoritativeValue;
+            if (visualChanged) ++presentationRevision_;
+            if (reconciliation) *reconciliation = {true, visualChanged};
+        }
+    }
     if (slider.snapshotSequence < entry.snapshotSequence) {
         // The host processes snapshots and controller input on one UI thread,
         // so a sequence regression cannot be an in-flight stale read. Workers
@@ -276,30 +365,50 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
             if (reconciliation) *reconciliation = {true, true};
         }
     } else {
-        const bool newerPendingSnapshot = entry.pending &&
-            slider.snapshotSequence > entry.adjustmentSnapshotSequence;
-        const bool timedOut = entry.pending &&
-            nowMilliseconds >= entry.lastAdjustment &&
-            nowMilliseconds - entry.lastAdjustment > PendingTimeoutMilliseconds;
+        const bool newerSnapshot = slider.snapshotSequence > entry.snapshotSequence;
+        const bool newerPendingSnapshot = entry.pending && newerSnapshot;
         const bool matchesOptimisticTarget = newerPendingSnapshot && Near(
             slider.value, entry.targetValue, slider.maximum - slider.minimum);
         const bool repeatsPriorAuthority = newerPendingSnapshot && Near(
             slider.value, entry.authoritativeValue,
             slider.maximum - slider.minimum);
+        const bool matchesRecentDispatch = newerPendingSnapshot &&
+            MatchesRecentDispatch(entry, slider.value);
         // Snapshot sequence is a render serial, not action acknowledgement.
         // A newer render that repeats the prior provider value keeps the latest
         // host-owned target visible. Value evidence settles only when it
         // confirms that target or provides a genuinely different correction.
-        const bool authoritativeCorrection =
-            newerPendingSnapshot && !matchesOptimisticTarget &&
-            !repeatsPriorAuthority;
-        if (matchesOptimisticTarget || authoritativeCorrection || timedOut) {
+        const bool authoritativeCorrection = newerPendingSnapshot &&
+            !entry.unsent && !matchesOptimisticTarget &&
+            !repeatsPriorAuthority && !matchesRecentDispatch;
+        if (matchesOptimisticTarget && !entry.unsent) {
+            entry.pending = false;
+            entry.unsent = false;
+            entry.suppressingGuardedEcho = false;
+            entry.latestTargetDispatchedAt = 0;
+            entry.targetValue = slider.value;
+            if (reconciliation) *reconciliation = {true, false};
+        } else if (authoritativeCorrection) {
             const bool visualChanged = !Near(
                 slider.value, entry.targetValue, slider.maximum - slider.minimum);
             entry.pending = false;
+            entry.unsent = false;
+            entry.suppressingGuardedEcho = false;
+            entry.latestTargetDispatchedAt = 0;
             entry.targetValue = slider.value;
+            entry.recentDispatchedValues.clear();
             if (visualChanged) ++presentationRevision_;
             if (reconciliation) *reconciliation = {true, visualChanged};
+        } else if (!entry.pending && newerSnapshot &&
+                   !Near(slider.value, entry.targetValue,
+                         slider.maximum - slider.minimum) &&
+                   MatchesRecentDispatch(entry, slider.value)) {
+            // Equality with a recently sent value is bounded stale-echo
+            // evidence, not an acknowledgement. Keep the confirmed target
+            // presented until this value's immutable guard expires.
+            entry.pending = true;
+            entry.suppressingGuardedEcho = true;
+            if (reconciliation) *reconciliation = {true, false};
         } else if (!entry.pending) {
             entry.targetValue = slider.value;
         }
@@ -308,6 +417,26 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
         entry.lastAccess = ++accessClock_;
     }
     return &entry;
+}
+
+void SliderInteractionState::ExpireDispatchHistory(
+    Entry& entry,
+    const std::uint64_t nowMilliseconds) {
+    std::erase_if(entry.recentDispatchedValues, [&](const DispatchedValue& value) {
+        return nowMilliseconds >= value.dispatchedAt &&
+            nowMilliseconds - value.dispatchedAt > PendingTimeoutMilliseconds;
+    });
+}
+
+bool SliderInteractionState::MatchesRecentDispatch(
+    const Entry& entry,
+    const double value) noexcept {
+    return std::any_of(
+        entry.recentDispatchedValues.begin(),
+        entry.recentDispatchedValues.end(),
+        [&](const DispatchedValue& dispatched) {
+            return Near(dispatched.value, value, entry.maximum - entry.minimum);
+        });
 }
 
 SliderInteractionState::Entry* SliderInteractionState::CreateOrSynchronize(
@@ -408,21 +537,34 @@ void SliderInteractionState::RetainAdjustmentMode(
         descriptor.nodeId = nodeId;
         retained = Key(descriptor);
     }
+    bool changed{};
     for (auto& [key, entry] : entries_) {
-        if (key != retained) entry.adjustmentActive = false;
+        if (key != retained && entry.adjustmentActive) {
+            entry.adjustmentActive = false;
+            changed = true;
+        }
     }
+    if (changed) ++presentationRevision_;
 }
 
 std::vector<SliderPresentationIdentity> SliderInteractionState::DeactivateAll() {
     std::vector<SliderPresentationIdentity> changed;
+    bool presentationChanged{};
     for (auto& [_, entry] : entries_) {
+        presentationChanged = presentationChanged || entry.adjustmentActive;
         entry.adjustmentActive = false;
-        if (!entry.pending) continue;
+        const bool pending = entry.pending;
+        presentationChanged = presentationChanged || pending;
         entry.pending = false;
+        entry.unsent = false;
+        entry.suppressingGuardedEcho = false;
+        entry.latestTargetDispatchedAt = 0;
+        entry.recentDispatchedValues.clear();
+        if (!pending) continue;
         entry.targetValue = entry.authoritativeValue;
         changed.push_back(Identity(entry));
     }
-    if (!changed.empty()) ++presentationRevision_;
+    if (presentationChanged) ++presentationRevision_;
     return changed;
 }
 

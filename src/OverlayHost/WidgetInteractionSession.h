@@ -239,12 +239,6 @@ struct InteractionVisualRetirement final {
     bool pressedPresentationChanged{};
 };
 
-struct InteractionReconciliation final {
-    std::vector<std::wstring> sliderDamageNodeIds;
-    bool pressedPresentationChanged{};
-    std::uint64_t nextDeadline{};
-};
-
 struct WidgetInteractionActionRequest final {
     std::wstring widgetId;
     std::wstring widgetInstanceId;
@@ -255,6 +249,15 @@ struct WidgetInteractionActionRequest final {
     std::wstring actionId;
     long long snapshotSequence{};
     std::optional<double> requestedValue;
+    std::uint64_t sliderIntentGeneration{};
+    NavigationDirection sliderDirection{NavigationDirection::None};
+};
+
+struct InteractionReconciliation final {
+    std::vector<std::wstring> sliderDamageNodeIds;
+    std::vector<WidgetInteractionActionRequest> sliderActionRequests;
+    bool pressedPresentationChanged{};
+    std::uint64_t nextDeadline{};
 };
 
 struct SelectPopupAction final {
@@ -318,6 +321,7 @@ enum class SliderAdjustmentModeTransition {
 struct InteractionRenderPresentation final {
     std::map<std::wstring, double, std::less<>> sliderValueOverrides;
     std::wstring pressedElementId;
+    std::wstring activeSliderElementId;
     std::uint64_t sliderPresentationRevision{};
 };
 
@@ -486,6 +490,9 @@ public:
     [[nodiscard]] bool ReconcilePressedPresentation(
         const WidgetSnapshot& snapshot) noexcept;
     [[nodiscard]] InteractionReconciliation Tick(
+        const WidgetInteractionAuthority* authority,
+        std::uint64_t now);
+    [[nodiscard]] InteractionReconciliation Tick(
         const WidgetSnapshot* snapshot,
         std::uint64_t now);
 
@@ -499,6 +506,11 @@ public:
         const WidgetNode& node,
         double value,
         std::uint64_t now);
+    [[nodiscard]] SliderInputOutcome TakePendingSliderAction(
+        const WidgetInteractionAuthority& authority,
+        const WidgetNode& node,
+        std::uint64_t now,
+        bool force);
     [[nodiscard]] SliderInputOutcome CancelSliderAction(
         const WidgetInteractionAuthority& authority,
         const WidgetNode& node,
@@ -633,6 +645,10 @@ private:
     [[nodiscard]] static std::vector<std::wstring> CurrentSliderNodeIds(
         const WidgetSnapshot& snapshot,
         const std::vector<SliderPresentationIdentity>& identities);
+    [[nodiscard]] static WidgetInteractionActionRequest MakeSliderActionRequest(
+        const WidgetInteractionAuthority& authority,
+        const SliderInputDescriptor& slider,
+        const SliderDispatch& dispatch);
     void RefreshSliderDeadline() noexcept;
 
     enum class ScrollPaginationPrefetchStatus {

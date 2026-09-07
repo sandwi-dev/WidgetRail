@@ -311,6 +311,9 @@ struct DeclarativeRenderOptions final {
     /// Exact focused/actionable node held by a physical controller press. The
     /// host owns this transient state; widget snapshots remain immutable.
     std::wstring pressedElementId;
+    /// Exact focused slider whose value is currently controller-adjustable.
+    /// This is deliberately distinct from a momentary pressed presentation.
+    std::wstring activeSliderElementId;
     /// Current bridge widget ID used only to bind lazy opaque artwork demand.
     std::wstring artworkWidgetId;
     std::wstring artworkRuntimeGeneration;
