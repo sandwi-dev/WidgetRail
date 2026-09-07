@@ -112,6 +112,9 @@ struct BackgroundSurfaceSettleWake final {
 
 struct ComputedCompositorBackground final {
     std::wstring authorityId;
+    std::wstring artworkWidgetId;
+    std::wstring artworkRuntimeGeneration;
+    std::wstring artworkPresentationGeneration;
     std::wstring widgetInstanceId;
     std::wstring nodeId;
     std::wstring focusedElementId;
@@ -310,6 +313,8 @@ struct DeclarativeRenderOptions final {
     std::wstring pressedElementId;
     /// Current bridge widget ID used only to bind lazy opaque artwork demand.
     std::wstring artworkWidgetId;
+    std::wstring artworkRuntimeGeneration;
+    std::wstring artworkPresentationGeneration;
     /// Exact runtime/presentation authority for host-retained focused
     /// BackgroundSurface selection. Empty preserves test/source compatibility.
     std::wstring artworkAuthorityId;

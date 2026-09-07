@@ -288,14 +288,55 @@ struct ExactReadResult final {
     DWORD error{};
 };
 
-ExactReadResult ReadExact(const HANDLE pipe, void* destination, const DWORD length) {
+ExactReadResult ReadExact(
+    const HANDLE pipe,
+    void* destination,
+    const DWORD length,
+    const bool overlapped,
+    const HANDLE stopEvent = nullptr) {
     auto* output = static_cast<std::byte*>(destination);
     DWORD completed = 0;
     while (completed < length) {
         DWORD count = 0;
-        if (!ReadFile(pipe, output + completed, length - completed, &count, nullptr) || count == 0) {
-            return {completed, GetLastError()};
+        if (!overlapped) {
+            if (!ReadFile(
+                    pipe, output + completed, length - completed,
+                    &count, nullptr) || count == 0) {
+                return {completed, GetLastError()};
+            }
+        } else {
+            if (stopEvent && WaitForSingleObject(stopEvent, 0) == WAIT_OBJECT_0)
+                return {completed, ERROR_OPERATION_ABORTED};
+            winrt::handle ready{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+            if (!ready) return {completed, GetLastError()};
+            OVERLAPPED operation{};
+            operation.hEvent = ready.get();
+            if (!ReadFile(
+                    pipe, output + completed, length - completed,
+                    nullptr, &operation)) {
+                const DWORD started = GetLastError();
+                if (started != ERROR_IO_PENDING) return {completed, started};
+                const HANDLE waits[]{ready.get(), stopEvent};
+                const DWORD wait = WaitForMultipleObjects(
+                    stopEvent ? 2U : 1U, waits, FALSE, INFINITE);
+                if (wait != WAIT_OBJECT_0) {
+                    const DWORD waitError = wait == WAIT_FAILED
+                        ? GetLastError() : ERROR_OPERATION_ABORTED;
+                    (void)CancelIoEx(pipe, &operation);
+                    (void)GetOverlappedResult(pipe, &operation, &count, TRUE);
+                    return {completed, waitError};
+                }
+                if (!GetOverlappedResult(pipe, &operation, &count, FALSE)) {
+                    return {completed, GetLastError()};
+                }
+            } else if (!GetOverlappedResult(
+                           pipe, &operation, &count, FALSE)) {
+                return {completed, GetLastError()};
+            }
+            if (stopEvent && WaitForSingleObject(stopEvent, 0) == WAIT_OBJECT_0)
+                return {completed, ERROR_OPERATION_ABORTED};
         }
+        if (count == 0) return {completed, ERROR_BROKEN_PIPE};
         completed += count;
     }
     return {completed, ERROR_SUCCESS};
@@ -307,31 +348,67 @@ struct FrameReadResult final {
     DWORD error{};
 };
 
-FrameReadResult ReadFrameFromPipe(const HANDLE pipe) {
+FrameReadResult ReadFrameFromPipe(
+    const HANDLE pipe,
+    const bool overlapped = false,
+    const HANDLE stopEvent = nullptr) {
     std::int32_t length = 0;
-    const auto header = ReadExact(pipe, &length, sizeof(length));
+    const auto header = ReadExact(
+        pipe, &length, sizeof(length), overlapped, stopEvent);
     if (header.completed != sizeof(length))
         return {std::nullopt, true, header.error};
     if (length <= 0 || static_cast<DWORD>(length) > kMaximumFrameBytes)
         return {std::nullopt, true, ERROR_INVALID_DATA};
     std::string body(static_cast<std::size_t>(length), '\0');
-    const auto payload = ReadExact(pipe, body.data(), static_cast<DWORD>(length));
+    const auto payload = ReadExact(
+        pipe, body.data(), static_cast<DWORD>(length), overlapped, stopEvent);
     if (payload.completed != static_cast<DWORD>(length))
         return {std::nullopt, true, payload.error};
     return {std::move(body), false, ERROR_SUCCESS};
 }
 
-bool WriteExact(const HANDLE pipe, const void* source, const DWORD length) {
+ExactReadResult WriteExact(
+    const HANDLE pipe,
+    const void* source,
+    const DWORD length,
+    const HANDLE stopEvent = nullptr) {
     const auto* input = static_cast<const std::byte*>(source);
     DWORD completed = 0;
     while (completed < length) {
+        if (stopEvent && WaitForSingleObject(stopEvent, 0) == WAIT_OBJECT_0)
+            return {completed, ERROR_OPERATION_ABORTED};
+        winrt::handle ready{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+        if (!ready) return {completed, GetLastError()};
+        OVERLAPPED operation{};
+        operation.hEvent = ready.get();
         DWORD count = 0;
-        if (!WriteFile(pipe, input + completed, length - completed, &count, nullptr) || count == 0) {
-            return false;
+        if (!WriteFile(
+                pipe, input + completed, length - completed,
+                nullptr, &operation)) {
+            const DWORD started = GetLastError();
+            if (started != ERROR_IO_PENDING) return {completed, started};
+            const HANDLE waits[]{ready.get(), stopEvent};
+            const DWORD wait = WaitForMultipleObjects(
+                stopEvent ? 2U : 1U, waits, FALSE, INFINITE);
+            if (wait != WAIT_OBJECT_0) {
+                const DWORD waitError = wait == WAIT_FAILED
+                    ? GetLastError() : ERROR_OPERATION_ABORTED;
+                (void)CancelIoEx(pipe, &operation);
+                (void)GetOverlappedResult(pipe, &operation, &count, TRUE);
+                return {completed, waitError};
+            }
+            if (!GetOverlappedResult(pipe, &operation, &count, FALSE)) {
+                return {completed, GetLastError()};
+            }
+        } else if (!GetOverlappedResult(pipe, &operation, &count, FALSE)) {
+            return {completed, GetLastError()};
         }
+        if (stopEvent && WaitForSingleObject(stopEvent, 0) == WAIT_OBJECT_0)
+            return {completed, ERROR_OPERATION_ABORTED};
+        if (count == 0) return {completed, ERROR_BROKEN_PIPE};
         completed += count;
     }
-    return true;
+    return {completed, ERROR_SUCCESS};
 }
 
 std::wstring OptionalString(const JsonObject& object, const wchar_t* name) {
@@ -2435,21 +2512,26 @@ bool HandleAsyncEvent(
     }
     if (type == L"artwork") {
         if (!artworkResults || !HasOnlyProperties(
-                payload, {L"widgetId", L"artworkHandle", L"contentType", L"contentBase64"})) {
+                payload, {L"widgetId", L"artworkHandle", L"runtimeGeneration",
+                          L"presentationGeneration", L"contentType", L"contentBase64"})) {
             status = L"WidgetBridge artwork event has an invalid payload.";
             return false;
         }
         const auto handle = OptionalString(payload, L"artworkHandle");
+        const auto runtimeGeneration = OptionalString(payload, L"runtimeGeneration");
+        const auto presentationGeneration = OptionalString(payload, L"presentationGeneration");
         const auto contentType = OptionalString(payload, L"contentType");
         const auto content = OptionalString(payload, L"contentBase64");
         constexpr std::size_t maximumEncodedCharacters =
             ((8U * 1024U * 1024U + 2U) / 3U) * 4U;
         const bool unavailable = contentType.empty() && content.empty();
-        if (!IsIdentifier(handle) ||
+        if (!IsIdentifier(handle) || !IsIdentifier(runtimeGeneration) ||
+            !IsIdentifier(presentationGeneration) ||
             (!unavailable && contentType != L"image/png" && contentType != L"image/jpeg" &&
              contentType != L"image/webp") ||
             content.size() > maximumEncodedCharacters ||
-            !artworkResults->Push({widgetId, handle, contentType, content})) {
+            !artworkResults->Push({widgetId, handle, runtimeGeneration,
+                                   presentationGeneration, contentType, content})) {
             status = L"WidgetBridge artwork event could not be queued.";
             return false;
         }
@@ -3262,7 +3344,9 @@ bool WidgetArtworkResultQueue::Push(WidgetArtworkResult result) {
     const auto existing = std::find_if(
         queued_.begin(), queued_.end(), [&](const WidgetArtworkResult& item) {
             return item.widgetId == result.widgetId &&
-                   item.artworkHandle == result.artworkHandle;
+                   item.artworkHandle == result.artworkHandle &&
+                   item.runtimeGeneration == result.runtimeGeneration &&
+                   item.presentationGeneration == result.presentationGeneration;
         });
     if (existing != queued_.end()) *existing = std::move(result);
     else {
@@ -3479,7 +3563,7 @@ bool WidgetBridgeClient::Connect() {
         [&]() {
             const HANDLE pipe = CreateFileW(
                 fullName.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
-                OPEN_EXISTING, 0, nullptr);
+                OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
             return WidgetBridgePipeConnectAttempt{
                 .pipe = pipe,
                 .error = pipe == INVALID_HANDLE_VALUE ? GetLastError() : ERROR_SUCCESS,
@@ -4104,18 +4188,36 @@ std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
     return std::nullopt;
 }
 
-std::optional<bool> WidgetBridgeClient::RequestArtwork(
+WidgetArtworkRequestDisposition WidgetBridgeClient::RequestArtwork(
     const std::wstring_view widgetId,
-    const std::wstring_view artworkHandle) {
-    std::scoped_lock lock(requestMutex_);
-    if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() ||
+    const std::wstring_view artworkHandle,
+    const std::wstring_view runtimeGeneration,
+    const std::wstring_view presentationGeneration,
+    const std::stop_token stopToken) {
+    if (!requestMutex_.lock(stopToken)) return WidgetArtworkRequestDisposition::Cancelled;
+    const std::lock_guard lock(requestMutex_, std::adopt_lock);
+    if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_ || widgetId.empty() ||
         widgetId.size() > kMaximumIdentifierLength || !IsIdentifier(widgetId) ||
-        !IsIdentifier(artworkHandle)) return std::nullopt;
+        !IsIdentifier(artworkHandle) || !IsIdentifier(runtimeGeneration) ||
+        !IsIdentifier(presentationGeneration))
+        return WidgetArtworkRequestDisposition::TerminalFailure;
+    winrt::handle stopEvent{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+    if (!stopEvent) return WidgetArtworkRequestDisposition::TerminalFailure;
+    std::stop_callback signalStop{
+        stopToken,
+        [event = stopEvent.get()] {
+            (void)SetEvent(event);
+        }};
+    if (stopToken.stop_requested()) return WidgetArtworkRequestDisposition::Cancelled;
     try {
         JsonObject payload;
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
         payload.Insert(L"artworkHandle",
                        JsonValue::CreateStringValue(winrt::hstring(artworkHandle)));
+        payload.Insert(L"runtimeGeneration",
+                       JsonValue::CreateStringValue(winrt::hstring(runtimeGeneration)));
+        payload.Insert(L"presentationGeneration",
+                       JsonValue::CreateStringValue(winrt::hstring(presentationGeneration)));
         const long long requestId = ++nextRequestId_;
         JsonObject envelope;
         envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
@@ -4123,8 +4225,17 @@ std::optional<bool> WidgetBridgeClient::RequestArtwork(
         envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
             static_cast<double>(requestId)));
         envelope.Insert(L"payload", payload);
-        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
-        while (const auto frame = ReadFrame()) {
+        if (!WriteFrame(
+                winrt::to_string(envelope.Stringify()), stopEvent.get())) {
+            return stopToken.stop_requested()
+                ? WidgetArtworkRequestDisposition::Cancelled
+                : WidgetArtworkRequestDisposition::TerminalFailure;
+        }
+        while (const auto frame = ReadFrame(stopEvent.get())) {
+            if (stopToken.stop_requested()) {
+                transportTainted_ = true;
+                return WidgetArtworkRequestDisposition::Cancelled;
+            }
             const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
             const auto responseId = static_cast<long long>(
                 response.GetNamedNumber(L"requestId"));
@@ -4133,16 +4244,32 @@ std::optional<bool> WidgetBridgeClient::RequestArtwork(
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
                                       appearanceChanges_, catalogChanges_, status, &artworkResults_,
                                       &localPackageInstallResults_))
-                    return std::nullopt;
+                    return WidgetArtworkRequestDisposition::TerminalFailure;
                 continue;
             }
-            if (responseId != requestId ||
-                response.GetNamedString(L"type") != L"acknowledged") return std::nullopt;
-            return true;
+            if (responseId != requestId)
+                return WidgetArtworkRequestDisposition::TerminalFailure;
+            const auto type = response.GetNamedString(L"type");
+            if (type == L"error") {
+                const auto responsePayload = response.GetNamedObject(L"payload");
+                if (OptionalString(responsePayload, L"code") ==
+                    L"stale_artwork_authority") {
+                    return WidgetArtworkRequestDisposition::OriginRetired;
+                }
+                Fail(SafeBridgeError(response));
+                return WidgetArtworkRequestDisposition::TerminalFailure;
+            }
+            if (type != L"acknowledged")
+                return WidgetArtworkRequestDisposition::TerminalFailure;
+            return WidgetArtworkRequestDisposition::Accepted;
+        }
+        if (stopToken.stop_requested()) {
+            transportTainted_ = true;
+            return WidgetArtworkRequestDisposition::Cancelled;
         }
     } catch (const winrt::hresult_error&) {
     }
-    return std::nullopt;
+    return WidgetArtworkRequestDisposition::TerminalFailure;
 }
 
 std::optional<EmbeddedMediaBundle> WidgetBridgeClient::ResolveEmbeddedMedia(
@@ -4726,25 +4853,38 @@ bool WidgetBridgeClient::WriteProtectedWifiSecret(
     if (!frame) return false;
     const auto bytes = frame->bytes();
     const std::int32_t length = static_cast<std::int32_t>(bytes.size());
-    if (!WriteExact(pipe_, &length, sizeof(length)) ||
-        !WriteExact(pipe_, bytes.data(), static_cast<DWORD>(bytes.size()))) {
+    const auto header = WriteExact(pipe_, &length, sizeof(length));
+    const auto payload = header.error == ERROR_SUCCESS
+        ? WriteExact(pipe_, bytes.data(), static_cast<DWORD>(bytes.size()))
+        : ExactReadResult{};
+    if (header.error != ERROR_SUCCESS || payload.error != ERROR_SUCCESS) {
         transportTainted_ = true;
-        Fail(Win32Message(L"WriteFile(WidgetBridge protected Wi-Fi)", GetLastError()));
+        Fail(Win32Message(
+            L"WriteFile(WidgetBridge protected Wi-Fi)",
+            header.error != ERROR_SUCCESS ? header.error : payload.error));
         return false;
     }
     return true;
 }
 
-bool WidgetBridgeClient::WriteFrame(const std::string_view utf8) {
+bool WidgetBridgeClient::WriteFrame(
+    const std::string_view utf8,
+    const HANDLE stopEvent) {
+    if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_) return false;
     if (utf8.empty() || utf8.size() > kMaximumFrameBytes ||
         utf8.size() > static_cast<std::size_t>((std::numeric_limits<std::int32_t>::max)())) {
         Fail(L"Outgoing WidgetBridge frame has an invalid size.");
         return false;
     }
     const std::int32_t length = static_cast<std::int32_t>(utf8.size());
-    if (!WriteExact(pipe_, &length, sizeof(length)) ||
-        !WriteExact(pipe_, utf8.data(), static_cast<DWORD>(utf8.size()))) {
-        const DWORD error = GetLastError();
+    const auto header = WriteExact(pipe_, &length, sizeof(length), stopEvent);
+    const auto payload = header.error == ERROR_SUCCESS
+        ? WriteExact(
+            pipe_, utf8.data(), static_cast<DWORD>(utf8.size()), stopEvent)
+        : ExactReadResult{};
+    if (header.error != ERROR_SUCCESS || payload.error != ERROR_SUCCESS) {
+        const DWORD error = header.error != ERROR_SUCCESS
+            ? header.error : payload.error;
         transportTainted_ = true;
         Fail(Win32Message(L"WriteFile(WidgetBridge)", error));
         return false;
@@ -4752,8 +4892,10 @@ bool WidgetBridgeClient::WriteFrame(const std::string_view utf8) {
     return true;
 }
 
-std::optional<std::string> WidgetBridgeClient::ReadFrame() {
-    auto result = ReadFrameFromPipe(pipe_);
+std::optional<std::string> WidgetBridgeClient::ReadFrame(
+    const HANDLE stopEvent) {
+    if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_) return std::nullopt;
+    auto result = ReadFrameFromPipe(pipe_, true, stopEvent);
     if (result.frame) return std::move(result.frame);
     transportTainted_ = result.transportTainted;
     if (result.error == ERROR_INVALID_DATA) {
@@ -4806,7 +4948,7 @@ WidgetBridgeClient::lastRequestFailureCategory() const noexcept {
 bool WidgetBridgeClient::PumpEvents() {
     std::unique_lock lock(requestMutex_, std::try_to_lock);
     if (!lock.owns_lock()) return false;
-    if (pipe_ == INVALID_HANDLE_VALUE) return false;
+    if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_) return false;
     bool consumed = false;
     try {
         for (int count = 0; count < 16; ++count) {
