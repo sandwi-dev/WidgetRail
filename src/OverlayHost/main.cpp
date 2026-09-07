@@ -6652,7 +6652,14 @@ private:
                     widgetrail::WidgetRefreshState::RefreshRequested;
             const bool selectPopupWasOpen = interactionSession_.selectPopup().has_value();
             const auto interactionReconciliation =
-                interactionSession_.ReconcileAdmission(*current, GetTickCount64());
+                interactionSession_.ReconcileAdmission(
+                    *current,
+                    state_.surface() == widgetrail::Surface::Widget &&
+                            state_.focusRegion() == widgetrail::FocusRegion::Widget &&
+                            state_.activeWidget() == event.widgetId
+                        ? std::wstring_view{interactionSession_.focusedElementId()}
+                        : std::wstring_view{},
+                    GetTickCount64());
             const auto& reconciledSliderNodes =
                 interactionReconciliation.sliderDamageNodeIds;
             pendingWidgetPresentationImpact_ =
@@ -8115,10 +8122,9 @@ private:
         std::optional<widgetrail::accessibility::ProjectionKey> projectionKey;
         widgetrail::input::InteractionRenderPresentation interactionPresentation;
         if (accessibilityActive_) {
-            const auto presentationTime = GetTickCount64();
             interactionPresentation = interactionSession_.PrepareRenderPresentation(
                 *snapshot, interactionSession_.focusedElementId(),
-                presentationTime, false, false,
+                false,
                 state_.focusRegion() == widgetrail::FocusRegion::Widget);
             const auto policy = appearanceState_.current()
                 ? CurrentAccessibilityPolicy()
@@ -8508,7 +8514,7 @@ private:
             focused->isBusy || !authority) return {};
         return focused->sliderInteractionMode != L"activateToAdjust" ||
                 interactionSession_.SliderAdjustmentModeActive(
-                    *authority, *focused, GetTickCount64())
+                    *authority, *focused)
             ? focused->id : std::wstring{};
     }
 
@@ -13055,7 +13061,7 @@ private:
             focused->sliderInteractionMode == L"activateToAdjust";
         const bool adjustmentActive = activationRequired && interactionAuthority &&
             interactionSession_.SliderAdjustmentModeActive(
-                *interactionAuthority, *focused, GetTickCount64());
+                *interactionAuthority, *focused);
         const auto route = widgetrail::input::RouteFocusedDirection(
             focused->kind, focused->isDisabled, focused->isBusy,
             activationRequired, adjustmentActive, direction);
@@ -13769,7 +13775,7 @@ private:
             focused->sliderInteractionMode == L"activateToAdjust";
         const bool adjustmentActive = activationRequired &&
             interactionSession_.SliderAdjustmentModeActive(
-                *interactionAuthority, *focused, GetTickCount64());
+                *interactionAuthority, *focused);
         using widgetrail::input::FocusedSliderButtonRoute;
         switch (widgetrail::input::RouteFocusedSliderButton(
             focused->kind, activationRequired, adjustmentActive, button)) {
@@ -17240,8 +17246,7 @@ private:
 
                 auto interactionPresentation =
                     interactionSession_.PrepareRenderPresentation(
-                        *snapshot, renderedFocusId, presentationTime,
-                        !inertRetainedSnapshot, !inertRetainedSnapshot,
+                        *snapshot, renderedFocusId, !inertRetainedSnapshot,
                         !inertRetainedSnapshot &&
                             state_.focusRegion() == widgetrail::FocusRegion::Widget);
                 options.sliderValueOverrides =
@@ -17268,8 +17273,7 @@ private:
                         renderedFocusId = provisionalRenderedFocusId;
                         interactionPresentation =
                             interactionSession_.PrepareRenderPresentation(
-                                *snapshot, renderedFocusId, presentationTime,
-                                !inertRetainedSnapshot, !inertRetainedSnapshot,
+                                *snapshot, renderedFocusId, !inertRetainedSnapshot,
                                 !inertRetainedSnapshot &&
                                     state_.focusRegion() ==
                                         widgetrail::FocusRegion::Widget);

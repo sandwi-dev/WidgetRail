@@ -486,15 +486,13 @@ public:
     void ForgetRuntime(std::wstring_view widgetInstanceId) noexcept;
     [[nodiscard]] InteractionReconciliation ReconcileAdmission(
         const WidgetSnapshot& snapshot,
+        std::wstring_view focusedElementId,
         std::uint64_t now);
     [[nodiscard]] bool ReconcilePressedPresentation(
         const WidgetSnapshot& snapshot) noexcept;
     [[nodiscard]] InteractionReconciliation Tick(
         const WidgetInteractionAuthority* authority,
         std::wstring_view focusedElementId,
-        std::uint64_t now);
-    [[nodiscard]] InteractionReconciliation Tick(
-        const WidgetSnapshot* snapshot,
         std::uint64_t now);
 
     [[nodiscard]] SliderInputOutcome AdjustSlider(
@@ -521,8 +519,7 @@ public:
         std::uint64_t now);
     [[nodiscard]] bool SliderAdjustmentModeActive(
         const WidgetInteractionAuthority& authority,
-        const WidgetNode& node,
-        std::uint64_t now);
+        const WidgetNode& node) const;
     [[nodiscard]] SelectActivationResult OpenSelectPopup(
         const WidgetInteractionAuthority& authority,
         const WidgetNode& node);
@@ -557,10 +554,8 @@ public:
     [[nodiscard]] InteractionRenderPresentation PrepareRenderPresentation(
         const WidgetSnapshot& snapshot,
         std::wstring_view renderedFocusId,
-        std::uint64_t now,
-        bool retainAdjustmentMode,
         bool allowPressedPresentation,
-        bool allowAdjustmentModePresentation);
+        bool allowAdjustmentModePresentation) const;
 
     [[nodiscard]] std::uint64_t sliderPresentationRevision() const noexcept {
         return sliders_.presentationRevision();

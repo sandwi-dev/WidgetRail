@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace widgetrail::input {
@@ -90,11 +91,10 @@ public:
         std::uint64_t nowMilliseconds);
 
     [[nodiscard]] bool AdjustmentModeActive(
-        const SliderInputDescriptor& slider,
-        std::uint64_t nowMilliseconds);
+        const SliderInputDescriptor& slider) const;
 
     /// Clears edit state everywhere except the currently focused exact slider.
-    /// Pending optimistic values remain available for reconciliation.
+    /// Optimistic value state remains available for reconciliation.
     void RetainAdjustmentMode(
         std::wstring_view widgetInstanceId,
         std::wstring_view inputScopeId,
@@ -112,14 +112,8 @@ public:
 
     [[nodiscard]] std::optional<std::uint64_t> NextReconcileDeadline() const noexcept;
 
-    /// Clears timed-out entries. Callers paint only identities still present in
-    /// the current admitted tree; retired/off-tree entries need no raster work.
-    [[nodiscard]] std::vector<SliderPresentationIdentity> ExpireTimedOut(
-        std::uint64_t nowMilliseconds);
-
     [[nodiscard]] std::optional<double> PresentationValue(
-        const SliderInputDescriptor& slider,
-        std::uint64_t nowMilliseconds);
+        const SliderInputDescriptor& slider) const;
 
     /// Reconciles one exact slider against a newer authoritative snapshot or
     /// the bounded timeout. visualChanged is false for an acknowledgement that
@@ -128,7 +122,7 @@ public:
         const SliderInputDescriptor& slider,
         std::uint64_t nowMilliseconds);
 
-    /// Cancels only the exact pending slider request. Used by typed action
+    /// Cancels only the exact current slider request. Used by typed action
     /// failure/denial paths; unrelated and stale results cannot alter it.
     [[nodiscard]] bool CancelPending(
         const SliderInputDescriptor& slider,
@@ -142,52 +136,112 @@ public:
     [[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
 
 private:
+    struct AuthoritativeValue final {};
+    struct SettlingValue final {
+        double target{};
+        std::uint64_t lastActualChange{};
+        NavigationDirection direction{NavigationDirection::None};
+    };
     struct DispatchedValue final {
+        double target{};
+        std::uint64_t intentGeneration{};
+        std::uint64_t expiresAt{};
+    };
+    struct GuardedEchoValue final {
+        double presentedValue{};
+        std::uint64_t guardUntil{};
+    };
+    using ValueState = std::variant<
+        AuthoritativeValue, SettlingValue, DispatchedValue, GuardedEchoValue>;
+
+    enum class AdjustmentMode {
+        Inactive,
+        Active,
+    };
+
+    struct RecentSentValue final {
         double value{};
         std::uint64_t intentGeneration{};
-        std::uint64_t dispatchedAt{};
+        std::uint64_t expiresAt{};
+    };
+
+    enum class UpdateKind {
+        StepInput,
+        AbsoluteInput,
+        SnapshotAdmission,
+        PumpDue,
+        SynchronousReject,
+        RetireValue,
+        EnterAdjustment,
+        ExitAdjustment,
+    };
+
+    struct UpdateEvent final {
+        UpdateKind kind{UpdateKind::SnapshotAdmission};
+        NavigationDirection direction{NavigationDirection::None};
+        std::optional<double> absoluteValue;
+        std::uint64_t intentGeneration{};
+        bool force{};
+    };
+
+    struct UpdateResult final {
+        bool consumed{};
+        bool stateChanged{};
+        bool visualChanged{};
+        std::optional<SliderDispatch> dispatch;
     };
 
     struct Entry final {
         double minimum{};
         double maximum{};
         double step{};
-        double authoritativeValue{};
-        double targetValue{};
+        double latestObservedValue{};
         long long snapshotSequence{};
-        long long adjustmentSnapshotSequence{};
         std::wstring actionId;
         std::wstring widgetInstanceId;
         std::wstring inputScopeId;
         std::wstring nodeId;
-        std::uint64_t lastAdjustment{};
         std::uint64_t lastAccess{};
-        bool pending{};
         bool activationRequired{};
-        bool adjustmentActive{};
-        bool unsent{};
-        bool suppressingGuardedEcho{};
-        std::uint64_t latestTargetDispatchedAt{};
+        AdjustmentMode adjustmentMode{AdjustmentMode::Inactive};
+        ValueState valueState{AuthoritativeValue{}};
         std::uint64_t nextIntentGeneration{};
-        NavigationDirection latestDirection{NavigationDirection::None};
-        std::deque<DispatchedValue> recentDispatchedValues;
+        std::deque<RecentSentValue> recentSentValues;
     };
 
     [[nodiscard]] static bool Valid(const SliderInputDescriptor& slider) noexcept;
     [[nodiscard]] static std::wstring Key(const SliderInputDescriptor& slider);
     [[nodiscard]] static SliderPresentationIdentity Identity(const Entry& entry);
-    [[nodiscard]] Entry* FindAndSynchronize(
+    [[nodiscard]] Entry* AcquireForUpdate(
+        const SliderInputDescriptor& slider);
+    [[nodiscard]] const Entry* FindCurrentEntry(
+        const SliderInputDescriptor& slider) const;
+    [[nodiscard]] UpdateResult ApplyUpdate(
         const SliderInputDescriptor& slider,
-        std::uint64_t nowMilliseconds,
-        SliderReconciliation* reconciliation = nullptr);
-    [[nodiscard]] Entry* CreateOrSynchronize(
-        const SliderInputDescriptor& slider,
+        UpdateEvent event,
         std::uint64_t nowMilliseconds);
-    static void ExpireDispatchHistory(Entry& entry, std::uint64_t nowMilliseconds);
-    [[nodiscard]] static bool MatchesRecentDispatch(
+    [[nodiscard]] UpdateResult ApplyUpdate(
+        Entry& entry,
+        const SliderInputDescriptor* slider,
+        UpdateEvent event,
+        std::uint64_t nowMilliseconds);
+    [[nodiscard]] static std::optional<double> PresentedValue(
+        const Entry& entry) noexcept;
+    [[nodiscard]] static bool MatchesRecentSentValue(
         const Entry& entry,
         double value) noexcept;
-    [[nodiscard]] bool CancelUnsent(Entry& entry) noexcept;
+    [[nodiscard]] static std::optional<std::uint64_t> GuardExpiryForValue(
+        const Entry& entry,
+        double value) noexcept;
+    static void PruneRecentSentValues(
+        Entry& entry,
+        std::uint64_t nowMilliseconds);
+    [[nodiscard]] static std::uint64_t DeadlineAfter(
+        std::uint64_t start,
+        std::uint64_t delay) noexcept;
+    [[nodiscard]] static bool HasSentDifferentValue(
+        const Entry& entry,
+        double value) noexcept;
     void Trim(std::wstring_view protectedKey);
 
     std::unordered_map<std::wstring, Entry> entries_;

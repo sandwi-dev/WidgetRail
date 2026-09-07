@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <type_traits>
+#include <utility>
 
 namespace widgetrail::input {
 namespace {
@@ -27,8 +29,6 @@ std::optional<double> StepTarget(
     if (!std::isfinite(position)) return std::nullopt;
     constexpr auto floatGridUlps = 4.0;
     constexpr auto maximumNearGridFraction = 1e-4;
-    // Absorb float-to-double residue without treating a meaningful fraction of
-    // one step as on-grid.
     const auto gridTolerance = std::min(
         maximumNearGridFraction,
         floatGridUlps * static_cast<double>(std::numeric_limits<float>::epsilon()) *
@@ -57,78 +57,28 @@ SliderAdjustment SliderInteractionState::Adjust(
     const SliderInputDescriptor& slider,
     const NavigationDirection direction,
     const std::uint64_t nowMilliseconds) {
-    if (direction != NavigationDirection::Left && direction != NavigationDirection::Right)
-        return {};
+    if (direction != NavigationDirection::Left &&
+        direction != NavigationDirection::Right) return {};
     if (!Valid(slider)) return {true};
-    auto* entry = CreateOrSynchronize(slider, nowMilliseconds);
-    if (!entry) return {true};
-    if (entry->activationRequired && !entry->adjustmentActive)
-        return {false};
-    if (slider.disabled || slider.busy) return {true};
-    const auto target = StepTarget(
-        entry->targetValue, entry->minimum, entry->maximum, entry->step, direction);
-    if (!target || Near(*target, entry->targetValue, entry->maximum - entry->minimum))
-        return {true};
-    if (entry->unsent && entry->recentDispatchedValues.empty() &&
-        entry->latestTargetDispatchedAt == 0 &&
-        Near(*target, entry->authoritativeValue,
-             entry->maximum - entry->minimum)) {
-        (void)CancelUnsent(*entry);
-        entry->lastAccess = ++accessClock_;
-        return {true};
-    }
-    entry->targetValue = *target;
-    entry->pending = true;
-    entry->unsent = true;
-    entry->suppressingGuardedEcho = false;
-    entry->latestDirection = direction;
-    entry->adjustmentSnapshotSequence = slider.snapshotSequence;
-    entry->lastAdjustment = nowMilliseconds;
-    entry->lastAccess = ++accessClock_;
-    ++presentationRevision_;
-    return {true};
+    const auto result = ApplyUpdate(
+        slider, UpdateEvent{UpdateKind::StepInput, direction}, nowMilliseconds);
+    return {result.consumed};
 }
 
 bool SliderInteractionState::SetRequestedValue(
     const SliderInputDescriptor& slider,
     const double requestedValue,
     const std::uint64_t nowMilliseconds) {
-    if (!Valid(slider) || slider.disabled || slider.busy ||
-        !std::isfinite(requestedValue) || requestedValue < slider.minimum ||
-        requestedValue > slider.maximum) {
+    if (!Valid(slider) || !std::isfinite(requestedValue) ||
+        requestedValue < slider.minimum || requestedValue > slider.maximum)
         return false;
-    }
-    auto* entry = CreateOrSynchronize(slider, nowMilliseconds);
-    if (!entry) return false;
-    if (entry->pending &&
-        Near(requestedValue, entry->targetValue, entry->maximum - entry->minimum)) {
-        entry->lastAccess = ++accessClock_;
-        return true;
-    }
-    if (entry->unsent && entry->recentDispatchedValues.empty() &&
-        entry->latestTargetDispatchedAt == 0 &&
-        Near(requestedValue, entry->authoritativeValue,
-             entry->maximum - entry->minimum)) {
-        (void)CancelUnsent(*entry);
-        entry->lastAccess = ++accessClock_;
-        return true;
-    }
-    if (!entry->pending &&
-        Near(requestedValue, entry->authoritativeValue,
-             entry->maximum - entry->minimum)) {
-        entry->lastAccess = ++accessClock_;
-        return true;
-    }
-    entry->targetValue = requestedValue;
-    entry->pending = true;
-    entry->unsent = true;
-    entry->suppressingGuardedEcho = false;
-    entry->latestDirection = NavigationDirection::None;
-    entry->adjustmentSnapshotSequence = slider.snapshotSequence;
-    entry->lastAdjustment = nowMilliseconds;
-    entry->lastAccess = ++accessClock_;
-    ++presentationRevision_;
-    return true;
+    return ApplyUpdate(
+        slider,
+        UpdateEvent{
+            UpdateKind::AbsoluteInput,
+            NavigationDirection::None,
+            requestedValue},
+        nowMilliseconds).consumed;
 }
 
 std::optional<SliderDispatch> SliderInteractionState::TakePendingDispatch(
@@ -136,146 +86,84 @@ std::optional<SliderDispatch> SliderInteractionState::TakePendingDispatch(
     const std::uint64_t nowMilliseconds,
     const bool force) {
     if (!Valid(slider)) return std::nullopt;
-    auto* entry = FindAndSynchronize(slider, nowMilliseconds);
-    if (!entry || !entry->pending || !entry->unsent) return std::nullopt;
-    if (slider.disabled || slider.busy) {
-        (void)CancelUnsent(*entry);
-        return std::nullopt;
-    }
-    if (!force && (nowMilliseconds < entry->lastAdjustment ||
-        nowMilliseconds - entry->lastAdjustment < SettlementDelayMilliseconds)) {
-        return std::nullopt;
-    }
-    ExpireDispatchHistory(*entry, nowMilliseconds);
-    const auto generation = ++entry->nextIntentGeneration;
-    entry->unsent = false;
-    entry->latestTargetDispatchedAt = nowMilliseconds;
-    entry->recentDispatchedValues.push_back({
-        entry->targetValue, generation, nowMilliseconds});
-    if (entry->recentDispatchedValues.size() > MaximumRecentDispatchedValues)
-        entry->recentDispatchedValues.pop_front();
-    entry->lastAccess = ++accessClock_;
-    return SliderDispatch{
-        entry->targetValue, generation, entry->latestDirection};
+    return ApplyUpdate(
+        slider,
+        UpdateEvent{
+            UpdateKind::PumpDue,
+            NavigationDirection::None,
+            std::nullopt,
+            0,
+            force},
+        nowMilliseconds).dispatch;
 }
 
 bool SliderInteractionState::EnterAdjustmentMode(
     const SliderInputDescriptor& slider,
     const std::uint64_t nowMilliseconds) {
     if (!Valid(slider) || !slider.activationRequired) return false;
-    auto* entry = CreateOrSynchronize(slider, nowMilliseconds);
-    if (!entry || slider.disabled || slider.busy) return false;
     RetainAdjustmentMode(slider.widgetInstanceId, slider.inputScopeId, slider.nodeId);
-    if (!entry->adjustmentActive) ++presentationRevision_;
-    entry->adjustmentActive = true;
-    entry->lastAccess = ++accessClock_;
-    return true;
+    return ApplyUpdate(
+        slider, UpdateEvent{UpdateKind::EnterAdjustment}, nowMilliseconds).consumed;
 }
 
 bool SliderInteractionState::ExitAdjustmentMode(
     const SliderInputDescriptor& slider,
     const std::uint64_t nowMilliseconds) {
     if (!Valid(slider) || !slider.activationRequired) return false;
-    auto* entry = FindAndSynchronize(slider, nowMilliseconds);
-    if (!entry || !entry->adjustmentActive) return false;
-    entry->adjustmentActive = false;
-    ++presentationRevision_;
-    entry->lastAccess = ++accessClock_;
-    return true;
+    return ApplyUpdate(
+        slider, UpdateEvent{UpdateKind::ExitAdjustment}, nowMilliseconds).consumed;
 }
 
 bool SliderInteractionState::AdjustmentModeActive(
-    const SliderInputDescriptor& slider,
-    const std::uint64_t nowMilliseconds) {
-    if (!Valid(slider) || !slider.activationRequired) return false;
-    const auto* entry = FindAndSynchronize(slider, nowMilliseconds);
-    return entry && entry->adjustmentActive;
+    const SliderInputDescriptor& slider) const {
+    const auto* entry = FindCurrentEntry(slider);
+    return entry && entry->activationRequired &&
+        entry->adjustmentMode == AdjustmentMode::Active;
 }
 
 std::optional<double> SliderInteractionState::PresentationValue(
-    const SliderInputDescriptor& slider,
-    const std::uint64_t nowMilliseconds) {
-    if (!Valid(slider)) return std::nullopt;
-    const auto* entry = FindAndSynchronize(slider, nowMilliseconds);
-    return entry && entry->pending
-        ? std::optional{entry->targetValue}
-        : std::nullopt;
+    const SliderInputDescriptor& slider) const {
+    const auto* entry = FindCurrentEntry(slider);
+    return entry ? PresentedValue(*entry) : std::nullopt;
 }
 
 std::optional<std::uint64_t>
 SliderInteractionState::NextReconcileDeadline() const noexcept {
     std::optional<std::uint64_t> deadline;
+    const auto consider = [&](const std::uint64_t candidate) {
+        if (!deadline || candidate < *deadline) deadline = candidate;
+    };
     for (const auto& [_, entry] : entries_) {
-        if (!entry.pending) continue;
-        if (entry.unsent) {
-            const auto candidate = entry.lastAdjustment + SettlementDelayMilliseconds;
-            if (!deadline || candidate < *deadline) deadline = candidate;
-        } else if (entry.suppressingGuardedEcho) {
-            for (const auto& dispatched : entry.recentDispatchedValues) {
-                if (!Near(dispatched.value, entry.authoritativeValue,
-                          entry.maximum - entry.minimum)) continue;
-                const auto candidate = dispatched.dispatchedAt +
-                    PendingTimeoutMilliseconds + 1;
-                if (!deadline || candidate < *deadline) deadline = candidate;
+        std::visit([&](const auto& state) {
+            using T = std::decay_t<decltype(state)>;
+            if constexpr (std::is_same_v<T, SettlingValue>) {
+                consider(DeadlineAfter(
+                    state.lastActualChange, SettlementDelayMilliseconds));
+            } else if constexpr (std::is_same_v<T, DispatchedValue>) {
+                consider(state.expiresAt);
+            } else if constexpr (std::is_same_v<T, GuardedEchoValue>) {
+                consider(state.guardUntil);
             }
-        } else if (entry.latestTargetDispatchedAt != 0) {
-            const auto candidate = entry.latestTargetDispatchedAt +
-                PendingTimeoutMilliseconds + 1;
-            if (!deadline || candidate < *deadline) deadline = candidate;
-        }
+        }, entry.valueState);
     }
     return deadline;
-}
-
-std::vector<SliderPresentationIdentity> SliderInteractionState::ExpireTimedOut(
-    const std::uint64_t nowMilliseconds) {
-    std::vector<SliderPresentationIdentity> changed;
-    for (auto& [_, entry] : entries_) {
-        ExpireDispatchHistory(entry, nowMilliseconds);
-        if (!entry.pending || entry.unsent) continue;
-        const bool guardStillApplies = entry.suppressingGuardedEcho &&
-            MatchesRecentDispatch(entry, entry.authoritativeValue);
-        const bool targetStillAwaiting = !entry.suppressingGuardedEcho &&
-            entry.latestTargetDispatchedAt != 0 &&
-            nowMilliseconds >= entry.latestTargetDispatchedAt &&
-            nowMilliseconds - entry.latestTargetDispatchedAt <=
-                PendingTimeoutMilliseconds;
-        if (guardStillApplies || targetStillAwaiting) continue;
-        const bool visualChanged = !Near(
-            entry.targetValue, entry.authoritativeValue,
-            entry.maximum - entry.minimum);
-        entry.pending = false;
-        entry.suppressingGuardedEcho = false;
-        entry.latestTargetDispatchedAt = 0;
-        entry.targetValue = entry.authoritativeValue;
-        if (visualChanged) changed.push_back(Identity(entry));
-    }
-    // The visible/current tree is reconciled first through Reconcile(). What
-    // remains here is private off-tree state, so retiring it must not advance
-    // the host-visible presentation revision or schedule unrelated raster work.
-    return changed;
 }
 
 SliderReconciliation SliderInteractionState::Reconcile(
     const SliderInputDescriptor& slider,
     const std::uint64_t nowMilliseconds) {
-    SliderReconciliation reconciliation;
-    if (Valid(slider))
-        (void)FindAndSynchronize(slider, nowMilliseconds, &reconciliation);
-    return reconciliation;
+    if (!Valid(slider)) return {};
+    const auto result = ApplyUpdate(
+        slider, UpdateEvent{UpdateKind::SnapshotAdmission}, nowMilliseconds);
+    return {result.stateChanged, result.visualChanged};
 }
 
 bool SliderInteractionState::CancelPending(
     const SliderInputDescriptor& slider,
     const std::uint64_t nowMilliseconds) {
     if (!Valid(slider)) return false;
-    return CancelPending(SliderPresentationIdentity{
-        std::wstring{slider.widgetInstanceId},
-        std::wstring{slider.inputScopeId},
-        std::wstring{slider.nodeId},
-        std::wstring{slider.valueChangedActionId},
-        slider.snapshotSequence,
-    }, 0, nowMilliseconds);
+    return ApplyUpdate(
+        slider, UpdateEvent{UpdateKind::SynchronousReject}, nowMilliseconds).consumed;
 }
 
 bool SliderInteractionState::CancelPending(
@@ -284,9 +172,7 @@ bool SliderInteractionState::CancelPending(
     const std::uint64_t nowMilliseconds) {
     if (identity.widgetInstanceId.empty() || identity.inputScopeId.empty() ||
         identity.nodeId.empty() || identity.valueChangedActionId.empty() ||
-        identity.snapshotSequence <= 0) {
-        return false;
-    }
+        identity.snapshotSequence <= 0) return false;
     std::wstring key{identity.widgetInstanceId};
     key.push_back(L'\x1f');
     key.append(identity.inputScopeId);
@@ -295,214 +181,378 @@ bool SliderInteractionState::CancelPending(
     const auto position = entries_.find(key);
     if (position == entries_.end()) return false;
     auto& entry = position->second;
-    if (!entry.pending || entry.actionId != identity.valueChangedActionId) {
-        return false;
-    }
-    if (intentGeneration == 0 &&
-        entry.snapshotSequence != identity.snapshotSequence) return false;
-    if (intentGeneration != 0) {
-        const auto dispatched = std::find_if(
-            entry.recentDispatchedValues.begin(),
-            entry.recentDispatchedValues.end(),
-            [&](const DispatchedValue& value) {
-                return value.intentGeneration == intentGeneration;
-            });
-        if (dispatched == entry.recentDispatchedValues.end()) return false;
-        entry.recentDispatchedValues.erase(dispatched);
-        if (entry.unsent || intentGeneration != entry.nextIntentGeneration)
-            return false;
-    }
-    entry.pending = false;
-    entry.unsent = false;
-    entry.suppressingGuardedEcho = false;
-    entry.latestTargetDispatchedAt = 0;
-    entry.targetValue = entry.authoritativeValue;
-    entry.lastAccess = ++accessClock_;
-    entry.lastAdjustment = nowMilliseconds;
-    ++presentationRevision_;
-    return true;
+    if (entry.actionId != identity.valueChangedActionId ||
+        (intentGeneration == 0 &&
+         entry.snapshotSequence != identity.snapshotSequence)) return false;
+    return ApplyUpdate(
+        entry, nullptr,
+        UpdateEvent{
+            UpdateKind::SynchronousReject,
+            NavigationDirection::None,
+            std::nullopt,
+            intentGeneration},
+        nowMilliseconds).consumed;
 }
 
-SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
-    const SliderInputDescriptor& slider,
-    const std::uint64_t nowMilliseconds,
-    SliderReconciliation* const reconciliation) {
+SliderInteractionState::Entry* SliderInteractionState::AcquireForUpdate(
+    const SliderInputDescriptor& slider) {
     const auto key = Key(slider);
-    const auto position = entries_.find(key);
-    if (position == entries_.end()) return nullptr;
+    auto position = entries_.find(key);
+    if (position == entries_.end()) {
+        Entry entry;
+        entry.minimum = slider.minimum;
+        entry.maximum = slider.maximum;
+        entry.step = slider.step;
+        entry.latestObservedValue = slider.value;
+        entry.snapshotSequence = slider.snapshotSequence;
+        entry.actionId = slider.valueChangedActionId;
+        entry.widgetInstanceId = slider.widgetInstanceId;
+        entry.inputScopeId = slider.inputScopeId;
+        entry.nodeId = slider.nodeId;
+        entry.lastAccess = ++accessClock_;
+        entry.activationRequired = slider.activationRequired;
+        position = entries_.try_emplace(key, std::move(entry)).first;
+        Trim(key);
+        position = entries_.find(key);
+        return position == entries_.end() ? nullptr : &position->second;
+    }
+
     auto& entry = position->second;
-    ExpireDispatchHistory(entry, nowMilliseconds);
-    if (entry.pending && !entry.unsent) {
-        const bool guardStillApplies = entry.suppressingGuardedEcho &&
-            MatchesRecentDispatch(entry, entry.authoritativeValue);
-        const bool targetStillAwaiting = !entry.suppressingGuardedEcho &&
-            entry.latestTargetDispatchedAt != 0 &&
-            nowMilliseconds >= entry.latestTargetDispatchedAt &&
-            nowMilliseconds - entry.latestTargetDispatchedAt <=
-                PendingTimeoutMilliseconds;
-        if (!guardStillApplies && !targetStillAwaiting) {
-            const bool visualChanged = !Near(
-                entry.targetValue, entry.authoritativeValue,
-                entry.maximum - entry.minimum);
-            entry.pending = false;
-            entry.suppressingGuardedEcho = false;
-            entry.latestTargetDispatchedAt = 0;
-            entry.targetValue = entry.authoritativeValue;
-            if (visualChanged) ++presentationRevision_;
-            if (reconciliation) *reconciliation = {true, visualChanged};
-        }
-    }
-    if (slider.snapshotSequence < entry.snapshotSequence) {
-        // The host processes snapshots and controller input on one UI thread,
-        // so a sequence regression cannot be an in-flight stale read. Workers
-        // legitimately restart with the same installed instance ID and reset
-        // their sequence; treat that as a fresh authoritative session.
-        const bool presentationChanged = entry.pending;
-        entry = {
-            slider.minimum, slider.maximum, slider.step, slider.value, slider.value,
-            slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
-            std::wstring{slider.widgetInstanceId},
-            std::wstring{slider.inputScopeId}, std::wstring{slider.nodeId},
-            0, ++accessClock_, false, slider.activationRequired, false,
-        };
-        if (presentationChanged) {
-            ++presentationRevision_;
-            if (reconciliation) *reconciliation = {true, true};
-        }
-        return &entry;
-    }
     const bool sameContract =
+        slider.snapshotSequence >= entry.snapshotSequence &&
         Near(entry.minimum, slider.minimum, slider.maximum - slider.minimum) &&
         Near(entry.maximum, slider.maximum, slider.maximum - slider.minimum) &&
         Near(entry.step, slider.step, slider.maximum - slider.minimum) &&
         entry.actionId == slider.valueChangedActionId &&
         entry.activationRequired == slider.activationRequired;
     if (!sameContract) {
-        const bool presentationChanged = entry.pending;
-        entry = {
-            slider.minimum, slider.maximum, slider.step, slider.value, slider.value,
-            slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
-            std::wstring{slider.widgetInstanceId},
-            std::wstring{slider.inputScopeId}, std::wstring{slider.nodeId},
-            0, ++accessClock_, false, slider.activationRequired, false,
-        };
-        if (presentationChanged) {
-            ++presentationRevision_;
-            if (reconciliation) *reconciliation = {true, true};
-        }
-    } else {
-        const bool newerSnapshot = slider.snapshotSequence > entry.snapshotSequence;
-        const bool newerPendingSnapshot = entry.pending && newerSnapshot;
-        const bool matchesOptimisticTarget = newerPendingSnapshot && Near(
-            slider.value, entry.targetValue, slider.maximum - slider.minimum);
-        const bool repeatsPriorAuthority = newerPendingSnapshot && Near(
-            slider.value, entry.authoritativeValue,
-            slider.maximum - slider.minimum);
-        const bool matchesRecentDispatch = newerPendingSnapshot &&
-            MatchesRecentDispatch(entry, slider.value);
-        // Snapshot sequence is a render serial, not action acknowledgement.
-        // A newer render that repeats the prior provider value keeps the latest
-        // host-owned target visible. Value evidence settles only when it
-        // confirms that target or provides a genuinely different correction.
-        const bool authoritativeCorrection = newerPendingSnapshot &&
-            !entry.unsent && !matchesOptimisticTarget &&
-            !repeatsPriorAuthority && !matchesRecentDispatch;
-        if (matchesOptimisticTarget && !entry.unsent) {
-            entry.pending = false;
-            entry.unsent = false;
-            entry.suppressingGuardedEcho = false;
-            entry.latestTargetDispatchedAt = 0;
-            entry.targetValue = slider.value;
-            if (reconciliation) *reconciliation = {true, false};
-        } else if (authoritativeCorrection) {
-            const bool visualChanged = !Near(
-                slider.value, entry.targetValue, slider.maximum - slider.minimum);
-            entry.pending = false;
-            entry.unsent = false;
-            entry.suppressingGuardedEcho = false;
-            entry.latestTargetDispatchedAt = 0;
-            entry.targetValue = slider.value;
-            entry.recentDispatchedValues.clear();
-            if (visualChanged) ++presentationRevision_;
-            if (reconciliation) *reconciliation = {true, visualChanged};
-        } else if (!entry.pending && newerSnapshot &&
-                   !Near(slider.value, entry.targetValue,
-                         slider.maximum - slider.minimum) &&
-                   MatchesRecentDispatch(entry, slider.value)) {
-            // Equality with a recently sent value is bounded stale-echo
-            // evidence, not an acknowledgement. Keep the confirmed target
-            // presented until this value's immutable guard expires.
-            entry.pending = true;
-            entry.suppressingGuardedEcho = true;
-            if (reconciliation) *reconciliation = {true, false};
-        } else if (!entry.pending) {
-            entry.targetValue = slider.value;
-        }
-        entry.authoritativeValue = slider.value;
-        entry.snapshotSequence = std::max(entry.snapshotSequence, slider.snapshotSequence);
-        if ((slider.disabled || slider.busy) && entry.unsent) {
-            const bool visualChanged = CancelUnsent(entry);
-            if (reconciliation)
-                *reconciliation = {true, visualChanged};
-        }
-        entry.lastAccess = ++accessClock_;
+        const bool presentationChanged =
+            PresentedValue(entry).has_value() ||
+            entry.adjustmentMode == AdjustmentMode::Active;
+        entry.minimum = slider.minimum;
+        entry.maximum = slider.maximum;
+        entry.step = slider.step;
+        entry.latestObservedValue = slider.value;
+        entry.snapshotSequence = slider.snapshotSequence;
+        entry.actionId = slider.valueChangedActionId;
+        entry.widgetInstanceId = slider.widgetInstanceId;
+        entry.inputScopeId = slider.inputScopeId;
+        entry.nodeId = slider.nodeId;
+        entry.activationRequired = slider.activationRequired;
+        entry.adjustmentMode = AdjustmentMode::Inactive;
+        entry.valueState = AuthoritativeValue{};
+        entry.nextIntentGeneration = 0;
+        entry.recentSentValues.clear();
+        if (presentationChanged) ++presentationRevision_;
     }
+    entry.lastAccess = ++accessClock_;
     return &entry;
 }
 
-void SliderInteractionState::ExpireDispatchHistory(
+const SliderInteractionState::Entry* SliderInteractionState::FindCurrentEntry(
+    const SliderInputDescriptor& slider) const {
+    if (!Valid(slider)) return nullptr;
+    const auto position = entries_.find(Key(slider));
+    if (position == entries_.end()) return nullptr;
+    const auto& entry = position->second;
+    const bool exact = entry.snapshotSequence == slider.snapshotSequence &&
+        Near(entry.minimum, slider.minimum, slider.maximum - slider.minimum) &&
+        Near(entry.maximum, slider.maximum, slider.maximum - slider.minimum) &&
+        Near(entry.step, slider.step, slider.maximum - slider.minimum) &&
+        entry.actionId == slider.valueChangedActionId &&
+        entry.activationRequired == slider.activationRequired;
+    return exact ? &entry : nullptr;
+}
+
+SliderInteractionState::UpdateResult SliderInteractionState::ApplyUpdate(
+    const SliderInputDescriptor& slider,
+    const UpdateEvent event,
+    const std::uint64_t nowMilliseconds) {
+    auto* entry = AcquireForUpdate(slider);
+    return entry
+        ? ApplyUpdate(*entry, &slider, event, nowMilliseconds)
+        : UpdateResult{};
+}
+
+SliderInteractionState::UpdateResult SliderInteractionState::ApplyUpdate(
+    Entry& entry,
+    const SliderInputDescriptor* slider,
+    const UpdateEvent event,
+    const std::uint64_t nowMilliseconds) {
+    UpdateResult result;
+    const auto beforeProjected = PresentedValue(entry);
+    const auto beforeObserved = entry.latestObservedValue;
+    const auto beforeMode = entry.adjustmentMode;
+    bool valueStateChanged{};
+    const auto transition = [&](ValueState state) {
+        entry.valueState = std::move(state);
+        valueStateChanged = true;
+    };
+
+    double priorObserved = entry.latestObservedValue;
+    bool newerSnapshot{};
+    if (slider && slider->snapshotSequence > entry.snapshotSequence) {
+        newerSnapshot = true;
+        priorObserved = entry.latestObservedValue;
+        entry.latestObservedValue = slider->value;
+        entry.snapshotSequence = slider->snapshotSequence;
+    }
+
+    PruneRecentSentValues(entry, nowMilliseconds);
+    if (const auto* dispatched = std::get_if<DispatchedValue>(&entry.valueState);
+        dispatched && nowMilliseconds >= dispatched->expiresAt) {
+        transition(AuthoritativeValue{});
+    } else if (const auto* guarded = std::get_if<GuardedEchoValue>(&entry.valueState);
+               guarded && nowMilliseconds >= guarded->guardUntil) {
+        transition(AuthoritativeValue{});
+    }
+
+    if (newerSnapshot) {
+        if (std::holds_alternative<AuthoritativeValue>(entry.valueState)) {
+            if (!Near(entry.latestObservedValue, priorObserved,
+                      entry.maximum - entry.minimum)) {
+                if (const auto guard = GuardExpiryForValue(
+                        entry, entry.latestObservedValue)) {
+                    transition(GuardedEchoValue{priorObserved, *guard});
+                } else {
+                    entry.recentSentValues.clear();
+                }
+            }
+        } else if (std::holds_alternative<SettlingValue>(entry.valueState)) {
+            if (slider->disabled || slider->busy)
+                transition(AuthoritativeValue{});
+        } else if (const auto* dispatched =
+                       std::get_if<DispatchedValue>(&entry.valueState)) {
+            if (Near(entry.latestObservedValue, dispatched->target,
+                     entry.maximum - entry.minimum)) {
+                transition(AuthoritativeValue{});
+            } else if (!Near(entry.latestObservedValue, priorObserved,
+                             entry.maximum - entry.minimum) &&
+                       !MatchesRecentSentValue(entry, entry.latestObservedValue)) {
+                entry.recentSentValues.clear();
+                transition(AuthoritativeValue{});
+            }
+        } else if (const auto* guarded =
+                       std::get_if<GuardedEchoValue>(&entry.valueState)) {
+            if (Near(entry.latestObservedValue, guarded->presentedValue,
+                     entry.maximum - entry.minimum)) {
+                transition(AuthoritativeValue{});
+            } else if (!Near(entry.latestObservedValue, priorObserved,
+                             entry.maximum - entry.minimum)) {
+                if (const auto guard = GuardExpiryForValue(
+                        entry, entry.latestObservedValue)) {
+                    transition(GuardedEchoValue{
+                        guarded->presentedValue, *guard});
+                } else {
+                    entry.recentSentValues.clear();
+                    transition(AuthoritativeValue{});
+                }
+            }
+        }
+    }
+
+    switch (event.kind) {
+    case UpdateKind::StepInput: {
+        result.consumed = true;
+        if (!slider || slider->disabled || slider->busy) break;
+        if (entry.activationRequired &&
+            entry.adjustmentMode != AdjustmentMode::Active) {
+            result.consumed = false;
+            break;
+        }
+        const auto current = PresentedValue(entry).value_or(
+            entry.latestObservedValue);
+        const auto target = StepTarget(
+            current, entry.minimum, entry.maximum, entry.step, event.direction);
+        if (!target || Near(*target, current, entry.maximum - entry.minimum)) break;
+        if (std::holds_alternative<SettlingValue>(entry.valueState) &&
+            Near(*target, entry.latestObservedValue,
+                 entry.maximum - entry.minimum) &&
+            !HasSentDifferentValue(entry, *target)) {
+            transition(AuthoritativeValue{});
+        } else {
+            transition(SettlingValue{*target, nowMilliseconds, event.direction});
+        }
+        break;
+    }
+    case UpdateKind::AbsoluteInput: {
+        if (!slider || !event.absoluteValue || slider->disabled || slider->busy)
+            break;
+        result.consumed = true;
+        const auto current = PresentedValue(entry).value_or(
+            entry.latestObservedValue);
+        if (Near(*event.absoluteValue, current, entry.maximum - entry.minimum))
+            break;
+        if (std::holds_alternative<SettlingValue>(entry.valueState) &&
+            Near(*event.absoluteValue, entry.latestObservedValue,
+                 entry.maximum - entry.minimum) &&
+            !HasSentDifferentValue(entry, *event.absoluteValue)) {
+            transition(AuthoritativeValue{});
+        } else {
+            transition(SettlingValue{
+                *event.absoluteValue, nowMilliseconds,
+                NavigationDirection::None});
+        }
+        break;
+    }
+    case UpdateKind::PumpDue: {
+        auto* settling = std::get_if<SettlingValue>(&entry.valueState);
+        if (!settling) break;
+        if (!slider || slider->disabled || slider->busy) {
+            transition(AuthoritativeValue{});
+            break;
+        }
+        if (!event.force && nowMilliseconds < DeadlineAfter(
+                settling->lastActualChange, SettlementDelayMilliseconds)) break;
+        const auto generation = ++entry.nextIntentGeneration;
+        const auto expiresAt = DeadlineAfter(
+            nowMilliseconds, PendingTimeoutMilliseconds);
+        const auto dispatch = SliderDispatch{
+            settling->target, generation, settling->direction};
+        entry.recentSentValues.push_back({
+            settling->target, generation, expiresAt});
+        if (entry.recentSentValues.size() > MaximumRecentDispatchedValues)
+            entry.recentSentValues.pop_front();
+        transition(DispatchedValue{
+            settling->target, generation, expiresAt});
+        result.consumed = true;
+        result.dispatch = dispatch;
+        break;
+    }
+    case UpdateKind::SynchronousReject: {
+        if (event.intentGeneration == 0) {
+            if (!std::holds_alternative<AuthoritativeValue>(entry.valueState)) {
+                entry.recentSentValues.clear();
+                transition(AuthoritativeValue{});
+                result.consumed = true;
+            }
+            break;
+        }
+        const auto rejected = std::find_if(
+            entry.recentSentValues.begin(), entry.recentSentValues.end(),
+            [&](const RecentSentValue& sent) {
+                return sent.intentGeneration == event.intentGeneration;
+            });
+        if (rejected == entry.recentSentValues.end()) break;
+        entry.recentSentValues.erase(rejected);
+        result.consumed = true;
+        if (const auto* dispatched =
+                std::get_if<DispatchedValue>(&entry.valueState);
+            dispatched && dispatched->intentGeneration == event.intentGeneration) {
+            transition(AuthoritativeValue{});
+        } else if (const auto* guarded =
+                       std::get_if<GuardedEchoValue>(&entry.valueState)) {
+            if (const auto guard = GuardExpiryForValue(
+                    entry, entry.latestObservedValue)) {
+                transition(GuardedEchoValue{
+                    guarded->presentedValue, *guard});
+            } else {
+                transition(AuthoritativeValue{});
+            }
+        }
+        break;
+    }
+    case UpdateKind::RetireValue:
+        result.consumed = !std::holds_alternative<AuthoritativeValue>(
+            entry.valueState) || !entry.recentSentValues.empty() ||
+            entry.adjustmentMode == AdjustmentMode::Active;
+        entry.recentSentValues.clear();
+        transition(AuthoritativeValue{});
+        entry.adjustmentMode = AdjustmentMode::Inactive;
+        break;
+    case UpdateKind::EnterAdjustment:
+        if (slider && entry.activationRequired && !slider->disabled &&
+            !slider->busy && entry.adjustmentMode == AdjustmentMode::Inactive) {
+            entry.adjustmentMode = AdjustmentMode::Active;
+            result.consumed = true;
+        }
+        break;
+    case UpdateKind::ExitAdjustment:
+        if (entry.adjustmentMode == AdjustmentMode::Active) {
+            entry.adjustmentMode = AdjustmentMode::Inactive;
+            result.consumed = true;
+        }
+        break;
+    case UpdateKind::SnapshotAdmission:
+        break;
+    }
+
+    const auto afterProjected = PresentedValue(entry);
+    const auto afterObserved = entry.latestObservedValue;
+    const bool valueVisualChanged =
+        (beforeProjected.has_value() || afterProjected.has_value()) &&
+        !Near(
+            beforeProjected.value_or(beforeObserved),
+            afterProjected.value_or(afterObserved),
+            entry.maximum - entry.minimum);
+    const bool modeChanged = beforeMode != entry.adjustmentMode;
+    result.stateChanged = valueStateChanged || modeChanged;
+    result.visualChanged = valueVisualChanged || modeChanged;
+    if (result.visualChanged) ++presentationRevision_;
+    entry.lastAccess = ++accessClock_;
+    return result;
+}
+
+std::optional<double> SliderInteractionState::PresentedValue(
+    const Entry& entry) noexcept {
+    return std::visit([](const auto& state) -> std::optional<double> {
+        using T = std::decay_t<decltype(state)>;
+        if constexpr (std::is_same_v<T, SettlingValue> ||
+                      std::is_same_v<T, DispatchedValue>) {
+            return state.target;
+        } else if constexpr (std::is_same_v<T, GuardedEchoValue>) {
+            return state.presentedValue;
+        } else {
+            return std::nullopt;
+        }
+    }, entry.valueState);
+}
+
+bool SliderInteractionState::MatchesRecentSentValue(
+    const Entry& entry,
+    const double value) noexcept {
+    return GuardExpiryForValue(entry, value).has_value();
+}
+
+std::optional<std::uint64_t> SliderInteractionState::GuardExpiryForValue(
+    const Entry& entry,
+    const double value) noexcept {
+    std::optional<std::uint64_t> expiry;
+    for (const auto& sent : entry.recentSentValues) {
+        if (!Near(sent.value, value, entry.maximum - entry.minimum)) continue;
+        if (!expiry || sent.expiresAt > *expiry) expiry = sent.expiresAt;
+    }
+    return expiry;
+}
+
+void SliderInteractionState::PruneRecentSentValues(
     Entry& entry,
     const std::uint64_t nowMilliseconds) {
-    std::erase_if(entry.recentDispatchedValues, [&](const DispatchedValue& value) {
-        return nowMilliseconds >= value.dispatchedAt &&
-            nowMilliseconds - value.dispatchedAt > PendingTimeoutMilliseconds;
+    std::erase_if(entry.recentSentValues, [&](const RecentSentValue& sent) {
+        return nowMilliseconds >= sent.expiresAt;
     });
 }
 
-bool SliderInteractionState::MatchesRecentDispatch(
+std::uint64_t SliderInteractionState::DeadlineAfter(
+    const std::uint64_t start,
+    const std::uint64_t delay) noexcept {
+    return start > std::numeric_limits<std::uint64_t>::max() - delay
+        ? std::numeric_limits<std::uint64_t>::max()
+        : start + delay;
+}
+
+bool SliderInteractionState::HasSentDifferentValue(
     const Entry& entry,
     const double value) noexcept {
     return std::any_of(
-        entry.recentDispatchedValues.begin(),
-        entry.recentDispatchedValues.end(),
-        [&](const DispatchedValue& dispatched) {
-            return Near(dispatched.value, value, entry.maximum - entry.minimum);
+        entry.recentSentValues.begin(), entry.recentSentValues.end(),
+        [&](const RecentSentValue& sent) {
+            return !Near(sent.value, value, entry.maximum - entry.minimum);
         });
 }
 
-bool SliderInteractionState::CancelUnsent(Entry& entry) noexcept {
-    if (!entry.pending || !entry.unsent) return false;
-    const bool visualChanged = !Near(
-        entry.targetValue, entry.authoritativeValue,
-        entry.maximum - entry.minimum);
-    entry.pending = false;
-    entry.unsent = false;
-    entry.suppressingGuardedEcho = false;
-    entry.latestTargetDispatchedAt = 0;
-    entry.targetValue = entry.authoritativeValue;
-    if (visualChanged) ++presentationRevision_;
-    return visualChanged;
-}
-
-SliderInteractionState::Entry* SliderInteractionState::CreateOrSynchronize(
-    const SliderInputDescriptor& slider,
-    const std::uint64_t nowMilliseconds) {
-    const auto key = Key(slider);
-    if (auto* existing = FindAndSynchronize(slider, nowMilliseconds)) return existing;
-    auto [position, inserted] = entries_.try_emplace(key, Entry{
-        slider.minimum, slider.maximum, slider.step, slider.value, slider.value,
-        slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
-        std::wstring{slider.widgetInstanceId},
-        std::wstring{slider.inputScopeId}, std::wstring{slider.nodeId},
-        0, ++accessClock_, false, slider.activationRequired, false,
-    });
-    (void)inserted;
-    Trim(key);
-    const auto retained = entries_.find(key);
-    return retained == entries_.end() ? nullptr : &retained->second;
-}
-
-bool SliderInteractionState::Valid(const SliderInputDescriptor& slider) noexcept {
+bool SliderInteractionState::Valid(
+    const SliderInputDescriptor& slider) noexcept {
     const auto range = slider.maximum - slider.minimum;
     return !slider.widgetInstanceId.empty() && !slider.inputScopeId.empty() &&
         !slider.nodeId.empty() && !slider.valueChangedActionId.empty() &&
@@ -510,11 +560,12 @@ bool SliderInteractionState::Valid(const SliderInputDescriptor& slider) noexcept
         std::isfinite(slider.maximum) && std::isfinite(slider.value) &&
         std::isfinite(slider.step) && slider.minimum < slider.maximum &&
         slider.value >= slider.minimum && slider.value <= slider.maximum &&
-        std::isfinite(range) && range > 0.0 &&
-        slider.step > 0.0 && slider.step <= range;
+        std::isfinite(range) && range > 0.0 && slider.step > 0.0 &&
+        slider.step <= range;
 }
 
-std::wstring SliderInteractionState::Key(const SliderInputDescriptor& slider) {
+std::wstring SliderInteractionState::Key(
+    const SliderInputDescriptor& slider) {
     std::wstring key{slider.widgetInstanceId};
     key.push_back(L'\x1f');
     key.append(slider.inputScopeId);
@@ -523,7 +574,8 @@ std::wstring SliderInteractionState::Key(const SliderInputDescriptor& slider) {
     return key;
 }
 
-SliderPresentationIdentity SliderInteractionState::Identity(const Entry& entry) {
+SliderPresentationIdentity SliderInteractionState::Identity(
+    const Entry& entry) {
     return {
         entry.widgetInstanceId,
         entry.inputScopeId,
@@ -537,36 +589,42 @@ void SliderInteractionState::Trim(const std::wstring_view protectedKey) {
     if (entries_.size() <= MaximumEntries) return;
     auto oldest = entries_.end();
     for (auto item = entries_.begin(); item != entries_.end(); ++item) {
-        if (item->first == protectedKey || item->second.pending) continue;
-        if (oldest == entries_.end() || item->second.lastAccess < oldest->second.lastAccess)
-            oldest = item;
+        const bool transient =
+            !std::holds_alternative<AuthoritativeValue>(item->second.valueState) ||
+            item->second.adjustmentMode == AdjustmentMode::Active;
+        if (item->first == protectedKey || transient) continue;
+        if (oldest == entries_.end() ||
+            item->second.lastAccess < oldest->second.lastAccess) oldest = item;
     }
-    // More than MaximumEntries simultaneous pending sliders is only possible
-    // through adversarial synthetic input. Stay hard bounded while preserving
-    // the just-adjusted entry and evicting the oldest pending entry as a last
-    // resort.
     if (oldest == entries_.end()) {
         for (auto item = entries_.begin(); item != entries_.end(); ++item) {
             if (item->first == protectedKey) continue;
-            if (oldest == entries_.end() || item->second.lastAccess < oldest->second.lastAccess)
-                oldest = item;
+            if (oldest == entries_.end() ||
+                item->second.lastAccess < oldest->second.lastAccess) oldest = item;
         }
     }
     if (oldest != entries_.end()) {
-        if (oldest->second.pending) ++presentationRevision_;
+        if (PresentedValue(oldest->second).has_value() ||
+            oldest->second.adjustmentMode == AdjustmentMode::Active)
+            ++presentationRevision_;
         entries_.erase(oldest);
     }
 }
 
-void SliderInteractionState::ForgetWidget(const std::wstring_view widgetInstanceId) noexcept {
+void SliderInteractionState::ForgetWidget(
+    const std::wstring_view widgetInstanceId) noexcept {
     if (widgetInstanceId.empty()) return;
     std::wstring prefix{widgetInstanceId};
     prefix.push_back(L'\x1f');
     const bool presentationChanged = std::any_of(
-        entries_.begin(), entries_.end(), [&](const auto& entry) {
-            return entry.first.starts_with(prefix) && entry.second.pending;
+        entries_.begin(), entries_.end(), [&](const auto& item) {
+            return item.first.starts_with(prefix) &&
+                (PresentedValue(item.second).has_value() ||
+                 item.second.adjustmentMode == AdjustmentMode::Active);
         });
-    std::erase_if(entries_, [&](const auto& entry) { return entry.first.starts_with(prefix); });
+    std::erase_if(entries_, [&](const auto& item) {
+        return item.first.starts_with(prefix);
+    });
     if (presentationChanged) ++presentationRevision_;
 }
 
@@ -582,34 +640,22 @@ void SliderInteractionState::RetainAdjustmentMode(
         descriptor.nodeId = nodeId;
         retained = Key(descriptor);
     }
-    bool changed{};
     for (auto& [key, entry] : entries_) {
-        if (key != retained && entry.adjustmentActive) {
-            entry.adjustmentActive = false;
-            changed = true;
-        }
+        if (key == retained || entry.adjustmentMode == AdjustmentMode::Inactive)
+            continue;
+        (void)ApplyUpdate(
+            entry, nullptr, UpdateEvent{UpdateKind::ExitAdjustment}, 0);
     }
-    if (changed) ++presentationRevision_;
 }
 
 std::vector<SliderPresentationIdentity> SliderInteractionState::DeactivateAll() {
     std::vector<SliderPresentationIdentity> changed;
-    bool presentationChanged{};
     for (auto& [_, entry] : entries_) {
-        presentationChanged = presentationChanged || entry.adjustmentActive;
-        entry.adjustmentActive = false;
-        const bool pending = entry.pending;
-        presentationChanged = presentationChanged || pending;
-        entry.pending = false;
-        entry.unsent = false;
-        entry.suppressingGuardedEcho = false;
-        entry.latestTargetDispatchedAt = 0;
-        entry.recentDispatchedValues.clear();
-        if (!pending) continue;
-        entry.targetValue = entry.authoritativeValue;
-        changed.push_back(Identity(entry));
+        const bool hadPresentedOverride = PresentedValue(entry).has_value();
+        (void)ApplyUpdate(
+            entry, nullptr, UpdateEvent{UpdateKind::RetireValue}, 0);
+        if (hadPresentedOverride) changed.push_back(Identity(entry));
     }
-    if (presentationChanged) ++presentationRevision_;
     return changed;
 }
 

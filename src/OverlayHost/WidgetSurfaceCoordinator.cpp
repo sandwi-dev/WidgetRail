@@ -403,7 +403,10 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         RetireSliderInteraction();
     } else {
         (void)sliderInteraction_.ReconcileAdmission(
-            selectedSnapshot, GetTickCount64());
+            selectedSnapshot,
+            controllerFocused_ ? std::wstring_view{focusedElementId_}
+                               : std::wstring_view{},
+            GetTickCount64());
     }
     std::vector<WidgetSurfaceInputRequest> retainedInputRequests;
     retainedInputRequests.reserve(inputRequests_.size());
@@ -561,7 +564,7 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
             focused->sliderInteractionMode == L"activateToAdjust";
         const bool adjustmentActive = activationRequired &&
             sliderInteraction_.SliderAdjustmentModeActive(
-                authority, *focused, GetTickCount64());
+                authority, *focused);
         const auto route = input::RouteFocusedDirection(
             focused->kind, focused->isDisabled, focused->isBusy,
             activationRequired, adjustmentActive, direction);
@@ -677,7 +680,7 @@ bool WidgetSurfaceCoordinator::HandleFocusedSliderModeButton(
     const bool activationRequired =
         focused->sliderInteractionMode == L"activateToAdjust";
     const bool adjustmentActive = activationRequired &&
-        sliderInteraction_.SliderAdjustmentModeActive(authority, *focused, now);
+        sliderInteraction_.SliderAdjustmentModeActive(authority, *focused);
     using input::FocusedSliderButtonRoute;
     switch (input::RouteFocusedSliderButton(
         focused->kind, activationRequired, adjustmentActive,
@@ -755,7 +758,7 @@ bool WidgetSurfaceCoordinator::FlushSliderBeforeFocusDeparture(
     const bool activationRequired =
         focused->sliderInteractionMode == L"activateToAdjust";
     const bool adjustmentActive = activationRequired &&
-        sliderInteraction_.SliderAdjustmentModeActive(authority, *focused, now);
+        sliderInteraction_.SliderAdjustmentModeActive(authority, *focused);
     const auto route = input::RouteFocusedDirection(
         focused->kind, focused->isDisabled, focused->isBusy,
         activationRequired, adjustmentActive, direction);
@@ -925,6 +928,7 @@ void WidgetSurfaceCoordinator::TransitionPinnedFocus(
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
 bool WidgetSurfaceCoordinator::SliderAdjustmentActiveForTesting(
     const std::wstring_view nodeId, const std::uint64_t now) {
+    (void)now;
     if (!admission_) return false;
     const auto& snapshot = SelectedSnapshot();
     const auto* node = input::FindNodeInInputScope(
@@ -933,7 +937,7 @@ bool WidgetSurfaceCoordinator::SliderAdjustmentActiveForTesting(
     const input::WidgetInteractionAuthority authority{
         admission_->widgetId, &snapshot, admission_->runtimeGeneration,
         admission_->presentationGeneration, false};
-    return sliderInteraction_.SliderAdjustmentModeActive(authority, *node, now);
+    return sliderInteraction_.SliderAdjustmentModeActive(authority, *node);
 }
 #endif
 
@@ -2676,8 +2680,7 @@ void WidgetSurfaceCoordinator::Paint() {
         selectedSnapshot,
         controllerFocused_ ? std::wstring_view{focusedElementId_}
                            : std::wstring_view{},
-        GetTickCount64(), controllerFocused_, controllerFocused_,
-        controllerFocused_);
+        controllerFocused_, controllerFocused_);
     options.sliderValueOverrides =
         sliderPresentation.sliderValueOverrides;
     options.pressedElementId =
@@ -3136,8 +3139,7 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
                 snapshot,
                 controllerFocused_ ? std::wstring_view{focusedElementId_}
                                    : std::wstring_view{},
-                GetTickCount64(), controllerFocused_, controllerFocused_,
-                controllerFocused_);
+                controllerFocused_, controllerFocused_);
         std::optional<accessibility::SelectPopupAccessibility> selectPopup;
         if (sliderInteraction_.selectPopup()) {
             const auto& binding = *sliderInteraction_.selectPopup();

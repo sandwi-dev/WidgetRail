@@ -409,6 +409,8 @@ void WidgetInteractionSession::SetFocus(
     const WidgetSnapshot& snapshot,
     const std::wstring_view target) {
     focusedElementId_ = target;
+    sliders_.RetainAdjustmentMode(
+        snapshot.instanceId, snapshot.activeInputScopeId, focusedElementId_);
     focusMemory_.Remember(widgetId, snapshot, focusedElementId_);
     focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
 }
@@ -431,6 +433,8 @@ FocusMutation WidgetInteractionSession::MoveFocus(
     const bool retirePressedPresentation) {
     auto result = SurfaceInteractionTransactions::MoveFocus(
         focusedElementId_, target);
+    sliders_.RetainAdjustmentMode(
+        snapshot.instanceId, snapshot.activeInputScopeId, focusedElementId_);
     if (retireSliderPresentations) {
         result.sliderDamageNodeIds = CurrentSliderNodeIds(
             snapshot, sliders_.DeactivateAll());
@@ -447,11 +451,13 @@ FocusMutation WidgetInteractionSession::MoveFocus(
 
 void WidgetInteractionSession::ClearFocus() noexcept {
     focusedElementId_.clear();
+    sliders_.RetainAdjustmentMode({}, {}, {});
     pendingFocusGroupEntry_.reset();
 }
 
 void WidgetInteractionSession::ClearLiveFocus() noexcept {
     focusedElementId_.clear();
+    sliders_.RetainAdjustmentMode({}, {}, {});
 }
 
 void WidgetInteractionSession::RememberFocus(
@@ -466,9 +472,12 @@ std::wstring WidgetInteractionSession::RestoreFocus(
     const WidgetSnapshot& snapshot) {
     if (ProvisionalFocusGroupEntry(widgetId, snapshot)) {
         focusedElementId_.clear();
+        sliders_.RetainAdjustmentMode({}, {}, {});
         return {};
     }
     focusedElementId_ = focusMemory_.Restore(widgetId, snapshot);
+    sliders_.RetainAdjustmentMode(
+        snapshot.instanceId, snapshot.activeInputScopeId, focusedElementId_);
     focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
     return focusedElementId_;
 }
@@ -903,6 +912,7 @@ void WidgetInteractionSession::ForgetRuntime(
 
 InteractionReconciliation WidgetInteractionSession::ReconcileAdmission(
     const WidgetSnapshot& snapshot,
+    const std::wstring_view focusedElementId,
     const std::uint64_t now) {
     InteractionReconciliation result;
     const auto visit = [&](const auto& self, const WidgetNode& node) -> void {
@@ -913,6 +923,10 @@ InteractionReconciliation WidgetInteractionSession::ReconcileAdmission(
         for (const auto& child : node.children) self(self, child);
     };
     visit(visit, snapshot.root);
+    if (!focusedElementId.empty()) {
+        sliders_.RetainAdjustmentMode(
+            snapshot.instanceId, snapshot.activeInputScopeId, focusedElementId);
+    }
     if (selectPopup_) {
         const auto* node = FindNodeInInputScope(
             snapshot, selectPopup_->openerElementId, snapshot.activeInputScopeId);
@@ -973,7 +987,8 @@ InteractionReconciliation WidgetInteractionSession::Tick(
     const std::uint64_t now) {
     InteractionReconciliation result;
     const auto* snapshot = authority ? authority->semantics : nullptr;
-    if (snapshot) result = ReconcileAdmission(*snapshot, now);
+    if (snapshot) result = ReconcileAdmission(*snapshot, focusedElementId, now);
+    else (void)sliders_.DeactivateAll();
     if (authority && snapshot) {
         const auto* focused = FindNodeInInputScope(
             *snapshot, focusedElementId, snapshot->activeInputScopeId);
@@ -991,38 +1006,6 @@ InteractionReconciliation WidgetInteractionSession::Tick(
                     result.sliderDamageNodeIds.end(), focused->id) ==
                     result.sliderDamageNodeIds.end()) {
                 result.sliderDamageNodeIds.push_back(focused->id);
-            }
-        }
-    }
-    const auto expired = sliders_.ExpireTimedOut(now);
-    if (snapshot) {
-        for (auto& nodeId : CurrentSliderNodeIds(*snapshot, expired)) {
-            if (std::find(
-                    result.sliderDamageNodeIds.begin(),
-                    result.sliderDamageNodeIds.end(), nodeId) ==
-                result.sliderDamageNodeIds.end()) {
-                result.sliderDamageNodeIds.push_back(std::move(nodeId));
-            }
-        }
-    }
-    RefreshSliderDeadline();
-    result.nextDeadline = sliderReconcileAt_;
-    return result;
-}
-
-InteractionReconciliation WidgetInteractionSession::Tick(
-    const WidgetSnapshot* snapshot,
-    const std::uint64_t now) {
-    InteractionReconciliation result;
-    if (snapshot) result = ReconcileAdmission(*snapshot, now);
-    const auto expired = sliders_.ExpireTimedOut(now);
-    if (snapshot) {
-        for (auto& nodeId : CurrentSliderNodeIds(*snapshot, expired)) {
-            if (std::find(
-                    result.sliderDamageNodeIds.begin(),
-                    result.sliderDamageNodeIds.end(), nodeId) ==
-                result.sliderDamageNodeIds.end()) {
-                result.sliderDamageNodeIds.push_back(std::move(nodeId));
             }
         }
     }
@@ -1141,12 +1124,11 @@ SliderInputOutcome WidgetInteractionSession::CancelSliderAction(
 
 bool WidgetInteractionSession::SliderAdjustmentModeActive(
     const WidgetInteractionAuthority& authority,
-    const WidgetNode& node,
-    const std::uint64_t now) {
+    const WidgetNode& node) const {
     const auto* exactNode = ExactSliderNode(authority, node);
     if (!exactNode) return false;
     const auto slider = SliderDescriptor(*authority.semantics, *exactNode);
-    return sliders_.AdjustmentModeActive(slider, now);
+    return sliders_.AdjustmentModeActive(slider);
 }
 
 bool WidgetInteractionSession::TransitionSliderAdjustmentMode(
@@ -1320,19 +1302,13 @@ bool WidgetInteractionSession::TransitionPressedPresentation(
 InteractionRenderPresentation WidgetInteractionSession::PrepareRenderPresentation(
     const WidgetSnapshot& snapshot,
     const std::wstring_view renderedFocusId,
-    const std::uint64_t now,
-    const bool retainAdjustmentMode,
     const bool allowPressedPresentation,
-    const bool allowAdjustmentModePresentation) {
-    if (retainAdjustmentMode) {
-        sliders_.RetainAdjustmentMode(
-            snapshot.instanceId, snapshot.activeInputScopeId, renderedFocusId);
-    }
+    const bool allowAdjustmentModePresentation) const {
     InteractionRenderPresentation result;
     const auto collect = [&](const auto& self, const WidgetNode& node) -> void {
         if (node.kind == L"slider") {
             if (const auto value = sliders_.PresentationValue(
-                    SliderDescriptor(snapshot, node), now)) {
+                    SliderDescriptor(snapshot, node))) {
                 result.sliderValueOverrides.emplace(node.id, *value);
             }
         }
@@ -1351,13 +1327,12 @@ InteractionRenderPresentation WidgetInteractionSession::PrepareRenderPresentatio
             const bool activationRequired =
                 focused->sliderInteractionMode == L"activateToAdjust";
             if (!activationRequired || sliders_.AdjustmentModeActive(
-                    SliderDescriptor(snapshot, *focused), now)) {
+                    SliderDescriptor(snapshot, *focused))) {
                 result.activeSliderElementId = focused->id;
             }
         }
     }
     result.sliderPresentationRevision = sliders_.presentationRevision();
-    RefreshSliderDeadline();
     return result;
 }
 
