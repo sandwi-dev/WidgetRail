@@ -255,15 +255,20 @@ finalized into the visible library. The provider retains the canonical local
 path and file identity privately; relaunch uses no prior arguments and sets the
 working directory to the executable's containing directory.
 
-The private library records only opaque SavedIds for completed registration
-flows and pending cleanup. A missing resolution is not proof that provider state
-is absent: a moved, missing, or replaced executable is deliberately omitted.
-Games & Apps therefore clears an unresolved pending intent only after the
-package-scoped idempotent Forget operation succeeds. Denial, cancellation, or
-an ambiguous response retains concise cleanup-pending status for Refresh/Y or
-Add retry. Removing a registered portable entry forgets provider state before
-the private library row; if the second save fails, the retained row becomes
-non-launchable and remains available for idempotent cleanup. Installed entries
+The private library records only opaque SavedIds. A pending ID absent from the
+saved library is an add/recovery intent; a pending ID that overlaps an existing
+saved registration receipt is a removal/cleanup intent. Add intents resolve
+first, but a missing resolution is not proof that provider state is absent: a
+moved, missing, or replaced executable is deliberately omitted. Games & Apps
+therefore clears an unresolved add intent only after the package-scoped
+idempotent Forget operation succeeds. Removal intents do not depend on
+resolution and proceed directly through that same Forget boundary.
+
+Denial, cancellation, or an ambiguous response retains concise cleanup-failed
+status for the existing Refresh/Y path or an exact Add retry. Removing a
+registered portable entry saves its removal intent before forgetting provider
+state; if the final library save fails, the retained row becomes non-launchable
+and Refresh/Y completes idempotent cleanup after restart. Installed entries
 continue to add and remove without the registration grant. No cross-store
 atomicity is claimed, and no display/source label is used as registration
 authority.

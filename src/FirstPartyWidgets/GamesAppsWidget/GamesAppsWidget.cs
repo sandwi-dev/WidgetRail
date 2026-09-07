@@ -511,7 +511,7 @@ public sealed class GamesAppsWidget : Widget
                     desiredState.ExcludedGameSavedIds,
                     desiredState.SelectedSavedId,
                     commandLifetime.Token, persistenceCandidates,
-                    requiredGeneration: null,
+                    requiredGeneration: requiresForget ? null : generation,
                     baselineOverride: baseline,
                     revisionOverride: revision,
                     desiredState.RunningRegistrationSavedIds,
@@ -1003,58 +1003,68 @@ public sealed class GamesAppsWidget : Widget
         if (pending.Count == 0)
             return new PendingRegistrationRecovery(state, revision, CleanupPending: false);
 
-        IReadOnlyList<WidgetAppLibraryItem> resolved;
-        try
-        {
-            resolved = GamesAppsLibraryPolicy.NormalizeResolved(
-                await HostServices.AppLibrary.ResolveSavedAsync(pending, cancellationToken)
-                    .ConfigureAwait(false),
-                pending);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception)
-        {
-            return new PendingRegistrationRecovery(state, revision, CleanupPending: true);
-        }
-
-        var bySavedId = resolved.ToDictionary(item => item.SavedId, StringComparer.Ordinal);
         var desired = state;
         var changed = false;
         var cleanupPending = false;
-        foreach (var savedId in pending)
+        var removalPending = pending.Where(savedId =>
+                state.SavedIds.Contains(savedId, StringComparer.Ordinal) &&
+                state.RunningRegistrationSavedIds.Contains(savedId, StringComparer.Ordinal))
+            .ToArray();
+        foreach (var savedId in removalPending)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var removalPending = desired.SavedIds.Contains(savedId, StringComparer.Ordinal) &&
-                                 desired.RunningRegistrationSavedIds.Contains(
-                                     savedId, StringComparer.Ordinal);
-            if (removalPending)
+            if (LifecycleState != WidgetLifecycleState.Interactive)
             {
-                if (LifecycleState != WidgetLifecycleState.Interactive)
-                {
-                    cleanupPending = true;
-                    continue;
-                }
-                try
-                {
-                    await HostServices.AppLibrary.ForgetRunningAsync(savedId, cancellationToken)
-                        .ConfigureAwait(false);
-                    desired = GamesAppsLibraryPolicy.CompleteRunningRegistrationRemoval(
-                        desired, savedId);
-                    changed = true;
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception)
-                {
-                    cleanupPending = true;
-                }
+                cleanupPending = true;
                 continue;
             }
+            try
+            {
+                await HostServices.AppLibrary.ForgetRunningAsync(savedId, cancellationToken)
+                    .ConfigureAwait(false);
+                desired = GamesAppsLibraryPolicy.CompleteRunningRegistrationRemoval(
+                    desired, savedId);
+                changed = true;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                cleanupPending = true;
+            }
+        }
+
+        var addPending = pending.Except(removalPending, StringComparer.Ordinal).ToArray();
+        IReadOnlyList<WidgetAppLibraryItem> resolved = [];
+        var resolutionAvailable = addPending.Length == 0;
+        if (addPending.Length != 0)
+        {
+            try
+            {
+                resolved = GamesAppsLibraryPolicy.NormalizeResolved(
+                    await HostServices.AppLibrary.ResolveSavedAsync(
+                            addPending, cancellationToken)
+                        .ConfigureAwait(false),
+                    addPending);
+                resolutionAvailable = true;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                cleanupPending = true;
+            }
+        }
+
+        var bySavedId = resolved.ToDictionary(item => item.SavedId, StringComparer.Ordinal);
+        foreach (var savedId in addPending)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!resolutionAvailable) continue;
             if (bySavedId.TryGetValue(savedId, out var item))
             {
                 var completed = GamesAppsLibraryPolicy.CompleteRunningRegistration(
@@ -1688,10 +1698,11 @@ public sealed class GamesAppsWidget : Widget
         lock (_gate)
             finalized = _persistedLibraryState.SavedIds.Contains(
                             item.SavedId, StringComparer.Ordinal) &&
-                        _persistedLibraryState.RunningRegistrationSavedIds.Contains(
-                            item.SavedId, StringComparer.Ordinal) &&
-                        !_persistedLibraryState.PendingRunningRegistrationSavedIds.Contains(
-                            item.SavedId, StringComparer.Ordinal);
+                        (!registerOwned ||
+                         _persistedLibraryState.RunningRegistrationSavedIds.Contains(
+                             item.SavedId, StringComparer.Ordinal) &&
+                         !_persistedLibraryState.PendingRunningRegistrationSavedIds.Contains(
+                             item.SavedId, StringComparer.Ordinal));
         if (finalized)
         {
             lock (_gate) _status =

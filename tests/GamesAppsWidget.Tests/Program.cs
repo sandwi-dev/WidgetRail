@@ -50,6 +50,8 @@ var tests = new (string Name, Func<Task> Run)[]
         ResolvedPendingRegistrationFinalizes),
     ("Unresolved pending registration is forgotten before its intent clears",
         UnresolvedPendingRegistrationForgetsBeforeClear),
+    ("Pending removal cleanup does not depend on saved-item resolution",
+        PendingRemovalIgnoresResolveFailure),
     ("Denied pending cleanup remains retryable across a fresh widget instance",
         DeniedPendingCleanupSurvivesRestart),
     ("Leaving during portable registration retains its durable recovery intent",
@@ -183,6 +185,15 @@ static async Task RunningAppRouteConfirmsCurrentIdentity()
         item.SavedId == "saved-running").AppId);
     Assert.Equal(0, fake.RunningRegistrations.Count);
     Assert.Equal(0, fake.ForgottenRunningApps.Count);
+    Assert.Contains("Added Visible app to your library",
+        Text(Snapshot(widget, 919).Root, "games.toast.message").Text!);
+    using (var persisted = System.Text.Json.JsonDocument.Parse(fake.PrivateState.Json!))
+    {
+        Assert.Equal(0, persisted.RootElement
+            .GetProperty("RunningRegistrationSavedIds").GetArrayLength());
+        Assert.Equal(0, persisted.RootElement
+            .GetProperty("PendingRunningRegistrationSavedIds").GetArrayLength());
+    }
     await Background(widget);
 }
 
@@ -262,6 +273,37 @@ static async Task UnresolvedPendingRegistrationForgetsBeforeClear()
         fake.ForgottenRunningApps.Select(request => request.SavedId));
     using var recovered = System.Text.Json.JsonDocument.Parse(state.Json!);
     Assert.Equal(0, recovered.RootElement
+        .GetProperty("PendingRunningRegistrationSavedIds").GetArrayLength());
+    await Background(widget);
+}
+
+static async Task PendingRemovalIgnoresResolveFailure()
+{
+    var item = InstalledItem(
+        "portable-current", "saved-portable", "Portable app",
+        WidgetAppLibraryKind.Application, "source-portable", "Portable");
+    var state = RunningRegistrationState(
+        item.SavedId, pending: false, item, removalPending: true);
+    var fake = new FakeAppLibraryHost
+    {
+        PrivateState = state,
+        ResolveException = new WidgetCapabilityException(
+            "platform_unavailable", "resolution unavailable"),
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+                          fake.ForgottenRunningApps.Count == 1);
+
+    Assert.Equal(1, fake.ResolveRequests.Count);
+    Assert.SequenceEqual(["saved-portable"],
+        fake.ForgottenRunningApps.Select(request => request.SavedId));
+    Assert.Equal(0, fake.RunningRegistrations.Count);
+    using var cleaned = System.Text.Json.JsonDocument.Parse(state.Json!);
+    Assert.Equal(0, cleaned.RootElement.GetProperty("SavedIds").GetArrayLength());
+    Assert.Equal(0, cleaned.RootElement
+        .GetProperty("RunningRegistrationSavedIds").GetArrayLength());
+    Assert.Equal(0, cleaned.RootElement
         .GetProperty("PendingRunningRegistrationSavedIds").GetArrayLength());
     await Background(widget);
 }
@@ -3684,7 +3726,8 @@ static WidgetTestPrivateState RunningRegistrationState(
     string savedId,
     bool pending,
     WidgetAppLibraryItem? item = null,
-    long revision = 1)
+    long revision = 1,
+    bool removalPending = false)
 {
     var json = System.Text.Json.JsonSerializer.Serialize(new
     {
@@ -3705,7 +3748,9 @@ static WidgetTestPrivateState RunningRegistrationState(
                 },
             },
         RunningRegistrationSavedIds = pending ? Array.Empty<string>() : new[] { savedId },
-        PendingRunningRegistrationSavedIds = pending ? new[] { savedId } : Array.Empty<string>(),
+        PendingRunningRegistrationSavedIds = pending || removalPending
+            ? new[] { savedId }
+            : Array.Empty<string>(),
     });
     return new WidgetTestPrivateState(json, revision);
 }
