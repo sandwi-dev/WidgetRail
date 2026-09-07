@@ -70,6 +70,28 @@ internal static class RememberedChildFocusGroupTests
             },
         };
         Error(invalidReady, "invalid_initial_child_focus");
+
+        var nullRootRequirements = ProtocolVersionRequirements.Calculate(snapshot with
+        {
+            Root = null!,
+        });
+        Equal(ProtocolConstants.FocusGroupEntryRequestVersion,
+            nullRootRequirements.RequiredVersion);
+
+        ViewNode overDepth = snapshot.Root.Children.Single(node => node.Id == "content");
+        for (var depth = 0; depth < ProtocolConstants.MaximumTreeDepth; depth++)
+        {
+            overDepth = RawNode($"depth.{depth}", ViewNodeKind.Stack) with
+            {
+                Children = [overDepth],
+            };
+        }
+        var boundedRequirements = ProtocolVersionRequirements.Calculate(snapshot with
+        {
+            Root = overDepth,
+        });
+        Equal(ProtocolConstants.FocusGroupEntryRequestVersion,
+            boundedRequirements.RequiredVersion);
     }
 
     private static void OneShotEntryRequestsAreVersionedAndScoped()

@@ -832,6 +832,9 @@ void TestOneShotFocusGroupEntryHostContract() {
     const auto directionBegin = source.find("void HandleWidgetDirection(");
     const auto directionEnd = source.find(
         "void RefreshCurrentBridgeSnapshot", directionBegin);
+    const auto moveDirectionBegin = source.find("void MoveWidgetFocus(");
+    const auto moveDirectionEnd = source.find(
+        "bool AuthoredHeldActionAdmissible", moveDirectionBegin);
     const auto actionBegin = source.find("void DispatchControllerAction(");
     const auto actionEnd = source.find(
         "void AttemptOverlayFullscreenMediaEntry", actionBegin);
@@ -840,16 +843,34 @@ void TestOneShotFocusGroupEntryHostContract() {
     const auto restoreBegin = source.find("void RestoreFocusForActiveSurface(");
     const auto restoreEnd = source.find(
         "void ReturnPinnedControllerFocusToOverlay", restoreBegin);
-    Check(directionBegin != std::string::npos && directionEnd != std::string::npos &&
-              source.substr(directionBegin, directionEnd - directionBegin).find(
+    const bool directionSliceAvailable =
+        directionBegin != std::string::npos && directionEnd != std::string::npos &&
+        directionBegin < directionEnd;
+    const bool moveDirectionSliceAvailable =
+        moveDirectionBegin != std::string::npos &&
+        moveDirectionEnd != std::string::npos &&
+        moveDirectionBegin < moveDirectionEnd;
+    const auto direction = directionSliceAvailable
+        ? source.substr(directionBegin, directionEnd - directionBegin)
+        : std::string{};
+    const auto moveDirection = moveDirectionSliceAvailable
+        ? source.substr(moveDirectionBegin, moveDirectionEnd - moveDirectionBegin)
+        : std::string{};
+    Check(directionSliceAvailable &&
+              direction.find(
                   "RetirePendingFocusGroupEntryForUserIntent(") != std::string::npos &&
+              moveDirectionSliceAvailable &&
+              moveDirection.find(
+                  "RetirePendingFocusGroupEntryForUserIntent(") <
+                  moveDirection.find("ResolveDirectionalFocus(") &&
+              direction.find("MoveWidgetFocus(") != std::string::npos &&
               actionBegin != std::string::npos && actionEnd != std::string::npos &&
               source.substr(actionBegin, actionEnd - actionBegin).find(
                   "RetirePendingFocusGroupEntryForUserIntent(") != std::string::npos &&
               pointerBegin != std::string::npos && pointerEnd != std::string::npos &&
               source.substr(pointerBegin, pointerEnd - pointerBegin).find(
                   "RetirePendingFocusGroupEntryForUserIntent(") != std::string::npos,
-          "direction activation and pointer input explicitly retire deferred entry intent");
+          "direction routes, direct geometric movement, activation, and pointer input explicitly retire deferred entry intent");
     Check(restoreBegin != std::string::npos && restoreEnd != std::string::npos &&
               source.substr(restoreBegin, restoreEnd - restoreBegin).find(
                   "RetirePendingFocusGroupEntryForUserIntent(") == std::string::npos,
