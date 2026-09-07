@@ -142,6 +142,10 @@ explicit game-library source, not a guess based on process or executable names.
   A same-worker reactivation preserves the current Library, Add apps, or Running
   root and restarts only that root's existing read operation. A newly created
   worker still begins at Library; no route is added to durable private state.
+  When Add apps is already showing a Ready page beyond the first, reactivation
+  retains that exact bounded page, rows, and focus instead of replacing it with
+  an automatic page-one query. Explicit Y refresh keeps its existing page-one
+  refresh behavior.
 
 ## Managed responsibility map
 

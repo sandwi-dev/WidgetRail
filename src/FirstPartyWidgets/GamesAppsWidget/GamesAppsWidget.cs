@@ -474,6 +474,15 @@ public sealed class GamesAppsWidget : Widget
         StopActiveRun();
         if (Page == GamesAppsPage.Catalog)
         {
+            bool retainLaterPage;
+            lock (_gate)
+                retainLaterPage = _viewState == GamesAppsViewState.Ready &&
+                    _catalog.CanLoadPrevious;
+            if (retainLaterPage)
+            {
+                Invalidate();
+                return;
+            }
             OpenCatalog(
                 enterRememberedContent: false,
                 force: true,
