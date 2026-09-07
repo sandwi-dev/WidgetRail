@@ -79,7 +79,8 @@ internal static class Program
                 new WindowsActivityPlatformBackend(),
                 new WindowsBluetoothPlatformBackend(),
                 new WindowsMediaPlatformBackend(),
-                new WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider(),
+                new WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider(
+                    installedCatalogRoot),
                 communityBackend,
                 communityBackend,
                 communityBackend);

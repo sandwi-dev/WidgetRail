@@ -5,3 +5,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("WidgetBridge")]
 [assembly: InternalsVisibleTo("WidgetBridge.Tests")]
 [assembly: InternalsVisibleTo("BundledWidgetPackageSeal")]
+[assembly: InternalsVisibleTo("wrail")]

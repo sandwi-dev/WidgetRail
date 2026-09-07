@@ -15,6 +15,7 @@
     <AssemblyMetadata Include="ControllerWidgetTemplateVersion" Value="$(ControllerWidgetTemplateVersion)" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\PlatformBroker\PlatformBroker.csproj" />
     <ProjectReference Include="..\..\src\WidgetCatalog\WidgetCatalog.csproj" />
     <ProjectReference Include="..\..\src\PlatformSettings\PlatformSettings.csproj" />
     <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
@@ -22,6 +23,12 @@
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />
     <ProjectReference Include="..\..\src\WidgetRuntime\WidgetRuntime.csproj" />
     <ProjectReference Include="..\..\src\WidgetApplicationRuntime\WidgetApplicationRuntime.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Shared\WindowsPortableAppRegistrationContracts.cs"
+             Link="Internal\WindowsPortableAppRegistrationContracts.cs" />
+    <Compile Include="..\..\src\WindowsAppLibraryProvider\WindowsPortableAppStore.cs"
+             Link="Internal\WindowsPortableAppStore.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\templates\ControllerWidget\**\*">

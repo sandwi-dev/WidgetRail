@@ -8,11 +8,13 @@ using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
 using WidgetRail.WrailCli;
+using WidgetRail.PlatformBroker;
 using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetRuntime;
 using WidgetRail.WidgetSdk;
+using WidgetRail.WindowsAppLibraryProvider;
 using WidgetRail.EmbeddedMediaAdapterConformance;
 
 if (args is ["--dev-persistent-grandchild", ..])
@@ -2161,10 +2163,13 @@ static async Task UninstallWorkflow()
 {
     using var temp = new TemporaryDirectory();
     var catalog = Path.Combine(temp.Path, "catalog");
+    var neighborCatalog = Path.Combine(temp.Path, "neighbor-catalog");
     foreach (var version in new[] { "1.0.0", "2.0.0" })
     {
         var package = await CreatePackedPackageAsync(temp.Path, "dev.test.uninstall", version);
         Assert.Equal(0, (await RunCli("install", package, "--catalog", catalog)).Code);
+        Assert.Equal(0, (await RunCli(
+            "install", package, "--catalog", neighborCatalog)).Code);
     }
     Assert.Equal(0, (await RunCli("enable", "dev.test.uninstall", "--catalog", catalog)).Code);
     var blocked = await RunCli("uninstall", "dev.test.uninstall", "--catalog", catalog);
@@ -2172,6 +2177,24 @@ static async Task UninstallWorkflow()
     Assert.Contains("Disable it before uninstalling", blocked.Error);
 
     Assert.Equal(0, (await RunCli("disable", "dev.test.uninstall", "--catalog", catalog)).Code);
+    var identity = new BrokerWidgetIdentity(
+        "dev.test.uninstall", "dev.test", "uninstall-test");
+    var selectedStoreRoot = WindowsPortableAppRegistrationPaths.ForCatalogRoot(catalog);
+    var neighborStoreRoot = WindowsPortableAppRegistrationPaths.ForCatalogRoot(neighborCatalog);
+    Assert.Equal(
+        Path.Combine(Path.GetFullPath(catalog), "broker", "portable-apps"),
+        selectedStoreRoot);
+    Assert.True(!string.Equals(
+        selectedStoreRoot, neighborStoreRoot, StringComparison.OrdinalIgnoreCase),
+        "Distinct catalog roots shared portable registration storage.");
+    var selectedStore = new WindowsPortableAppStore(selectedStoreRoot);
+    var neighborStore = new WindowsPortableAppStore(neighborStoreRoot);
+    var registration = new PortableAppRegistration(
+        "saved-uninstall", "stable-uninstall", "Uninstall Test",
+        Path.GetFullPath(Path.Combine(temp.Path, "UninstallTest.exe")),
+        new WindowsExecutableFileIdentity(7, 11, 13));
+    _ = await selectedStore.UpsertAsync(identity, registration, CancellationToken.None);
+    _ = await neighborStore.UpsertAsync(identity, registration, CancellationToken.None);
     var removed = await RunCli("uninstall", "dev.test.uninstall", "--catalog", catalog);
     Assert.Equal(0, removed.Code);
     Assert.Contains("Uninstalled dev.test.uninstall (2 versions: 2.0.0, 1.0.0)", removed.Output);
@@ -2180,6 +2203,26 @@ static async Task UninstallWorkflow()
         "CLI uninstall retained package files.");
     Assert.True(!Directory.EnumerateDirectories(Path.Combine(catalog, "staging"), ".uninstall-*").Any(),
         "CLI uninstall retained retired package files.");
+    Assert.Equal(0, (await selectedStore.ReadAsync(
+        identity, CancellationToken.None)).Items.Count);
+    Assert.Equal(1, (await neighborStore.ReadAsync(
+        identity, CancellationToken.None)).Items.Count);
+    Assert.True(Directory.Exists(Path.Combine(
+        neighborCatalog, "packages", "dev.test.uninstall")),
+        "Selected-catalog uninstall retired the neighbor package.");
+
+    var neighborRemoved = await RunCli(
+        "uninstall", "dev.test.uninstall", "--catalog", neighborCatalog);
+    Assert.Equal(0, neighborRemoved.Code);
+    Assert.Equal(0, (await neighborStore.ReadAsync(
+        identity, CancellationToken.None)).Items.Count);
+
+    var noStorePackage = await CreatePackedPackageAsync(
+        temp.Path, "dev.test.no-store", "1.0.0");
+    Assert.Equal(0, (await RunCli(
+        "install", noStorePackage, "--catalog", catalog)).Code);
+    Assert.Equal(0, (await RunCli(
+        "uninstall", "dev.test.no-store", "--catalog", catalog)).Code);
 
     var missing = await RunCli("uninstall", "dev.test.uninstall", "--catalog", catalog);
     Assert.Equal(1, missing.Code);

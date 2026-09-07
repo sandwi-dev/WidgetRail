@@ -5,7 +5,7 @@ using System.Text;
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetProtocol;
 
-var tests = new (string Name, Func<Task> Run)[]
+var allTests = new (string Name, Func<Task> Run)[]
 {
     ("Install and discovery are deterministic across IDs and versions", InstallAndDiscover),
     ("Enable and order state persists atomically", StatePersists),
@@ -14,6 +14,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Concurrent first installs serialize before enablement", ConcurrentFirstInstallsAreSafe),
     ("Concurrent rollbacks are linearizable", ConcurrentRollbacksAreLinearizable),
     ("Uninstall is disabled-only and removes every immutable version", UninstallRemovesAllVersions),
+    ("Pending uninstall recovery retires authority before same-package reuse",
+        PendingUninstallRecoveryIsCommitBound),
     ("Missing pinned versions fail closed", MissingPinnedVersionFailsClosed),
     ("Independent catalog clients serialize state mutations", ConcurrentStatePersists),
     ("Lock-free discovery coexists with atomic state replacement", ConcurrentDiscoveryAndMutation),
@@ -43,6 +45,13 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bounded reads reject bytes beyond a reported length", BoundedReadsRejectMisreportedLengths),
     ("Integrity hashing rejects early EOF and trailing bytes", IntegrityHashingRequiresExactLength),
 };
+
+var tests = args.Contains("--widge-193-only", StringComparer.Ordinal)
+    ? allTests.Where(test => test.Name is
+        "Uninstall is disabled-only and removes every immutable version" or
+        "Pending uninstall recovery retires authority before same-package reuse")
+        .ToArray()
+    : allTests;
 
 var failures = new List<string>();
 foreach (var test in tests)
@@ -295,6 +304,134 @@ static async Task UninstallRemovesAllVersions()
     Assert.True(!state.Contains("dev.test.remove", StringComparison.Ordinal),
         "Uninstall retained catalog state for the removed widget.");
     await Assert.ThrowsAsync<KeyNotFoundException>(() => catalog.UninstallAsync("dev.test.remove"));
+}
+
+static async Task PendingUninstallRecoveryIsCommitBound()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    var participant = new TestUninstallAuthorityParticipant(root)
+        { FailBeforeCommit = true };
+    var catalog = new WidgetCatalog(
+        root, null, TimeProvider.System, participant);
+    await catalog.InstallAsync(CreatePackage(
+        temp.Path, "dev.test.pending", "dev.test", "1.0.0"));
+    var inspection = await catalog.InspectUninstallAsync("dev.test.pending");
+    var failed = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        catalog.UninstallConfirmedAsync(
+            inspection.Id, inspection.PublisherId,
+            inspection.ActiveVersion, inspection.ConfirmationToken));
+    Assert.Equal("registration_cleanup_failed", failed.Code);
+    Assert.Equal("dev.test.pending",
+        (await catalog.DiscoverAsync()).Widgets.Single().Id);
+    Assert.True(Directory.Exists(Path.Combine(
+        root, "packages", "dev.test.pending")),
+        "Precommit registration failure did not roll the package directory back.");
+
+    participant.FailBeforeCommit = false;
+    inspection = await catalog.InspectUninstallAsync("dev.test.pending");
+    var removed = await catalog.UninstallConfirmedAsync(
+        inspection.Id, inspection.PublisherId,
+        inspection.ActiveVersion, inspection.ConfirmationToken);
+    Assert.True(!removed.CleanupPending,
+        "Committed pending-uninstall fixture unexpectedly retained cleanup.");
+    Assert.Equal(2, participant.Calls);
+    Assert.True(!Directory.EnumerateFileSystemEntries(
+            Path.Combine(root, "staging")).Any(),
+        "Committed uninstall retained marker or staged package evidence.");
+
+    var recoveryRoot = Path.Combine(temp.Path, "recovery-catalog");
+    var legacy = new WidgetCatalog(recoveryRoot);
+    var archiveV1 = CreatePackage(
+        temp.Path, "dev.test.recovery", "dev.test", "1.0.0");
+    await legacy.InstallAsync(archiveV1);
+    var recoveredWidget = (await legacy.DiscoverAsync()).Widgets.Single();
+    await File.WriteAllTextAsync(
+        Path.Combine(recoveryRoot, "catalog-state.json"),
+        "{\"version\":2,\"widgets\":[]}");
+    var staging = Path.Combine(recoveryRoot, "staging");
+    Directory.CreateDirectory(staging);
+    var retired = Path.Combine(staging, ".uninstall-recovery");
+    var marker = PendingWidgetUninstallStore.MarkerPath(retired);
+    await PendingWidgetUninstallStore.WriteAsync(
+        marker,
+        new PendingWidgetUninstall(
+            1,
+            recoveredWidget.Id,
+            recoveredWidget.Versions.Select(InstalledWidgetAuthority.PublisherId)
+                .ToArray()),
+        CancellationToken.None);
+    Directory.Move(
+        Path.Combine(recoveryRoot, "packages", recoveredWidget.Id), retired);
+
+    var archiveV2 = CreatePackage(
+        temp.Path, recoveredWidget.Id, "dev.test", "2.0.0");
+    var blocked = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        new WidgetCatalog(recoveryRoot).InstallAsync(archiveV2));
+    Assert.Equal("pending_uninstall_cleanup", blocked.Code);
+    Assert.True(File.Exists(marker) && Directory.Exists(retired),
+        "A caller without a cleanup participant erased pending evidence.");
+
+    var recoveryParticipant = new TestUninstallAuthorityParticipant(recoveryRoot);
+    var recoveryCatalog = new WidgetCatalog(
+        recoveryRoot, null, TimeProvider.System, recoveryParticipant);
+    var fresh = await recoveryCatalog.InstallAsync(archiveV2);
+    Assert.Equal("2.0.0", fresh.Version.ToString());
+    Assert.Equal(1, recoveryParticipant.Calls);
+    Assert.True(!File.Exists(marker) && !Directory.Exists(retired),
+        "Pending recovery did not retire marker and staged content.");
+
+    var preStageRoot = Path.Combine(temp.Path, "prestage-catalog");
+    var preStageCatalog = new WidgetCatalog(preStageRoot);
+    await preStageCatalog.InstallAsync(CreatePackage(
+        temp.Path, "dev.test.prestage", "dev.test", "1.0.0"));
+    var preStageWidget = (await preStageCatalog.DiscoverAsync()).Widgets.Single();
+    var preStageDirectory = Path.Combine(
+        preStageRoot, "staging", ".uninstall-prestage");
+    Directory.CreateDirectory(Path.GetDirectoryName(preStageDirectory)!);
+    var preStageMarker = PendingWidgetUninstallStore.MarkerPath(preStageDirectory);
+    await PendingWidgetUninstallStore.WriteAsync(
+        preStageMarker,
+        new PendingWidgetUninstall(
+            1,
+            preStageWidget.Id,
+            preStageWidget.Versions.Select(InstalledWidgetAuthority.PublisherId)
+                .ToArray()),
+        CancellationToken.None);
+    var preStageRecovery = new WidgetCatalog(
+        preStageRoot, null, TimeProvider.System,
+        new TestUninstallAuthorityParticipant(preStageRoot));
+    await preStageRecovery.InstallAsync(CreatePackage(
+        temp.Path, "dev.test.unrelated", "dev.test", "1.0.0"));
+    Assert.True(!File.Exists(preStageMarker),
+        "Pre-stage recovery retained an abandoned pending marker.");
+    Assert.True(Directory.Exists(Path.Combine(
+        preStageRoot, "packages", preStageWidget.Id)),
+        "Pre-stage recovery removed the still-installed source package.");
+
+    var pendingRoot = Path.Combine(temp.Path, "postcommit-catalog");
+    var pendingParticipant = new TestUninstallAuthorityParticipant(pendingRoot)
+        { CleanupPending = true };
+    var pendingCatalog = new WidgetCatalog(
+        pendingRoot, null, TimeProvider.System, pendingParticipant);
+    await pendingCatalog.InstallAsync(CreatePackage(
+        temp.Path, "dev.test.postcommit", "dev.test", "1.0.0"));
+    var pendingInspection = await pendingCatalog.InspectUninstallAsync(
+        "dev.test.postcommit");
+    var pendingResult = await pendingCatalog.UninstallConfirmedAsync(
+        pendingInspection.Id, pendingInspection.PublisherId,
+        pendingInspection.ActiveVersion, pendingInspection.ConfirmationToken);
+    Assert.True(pendingResult.CleanupPending,
+        "Postcommit provider cleanup did not retain CleanupPending.");
+    Assert.Equal(1, Directory.EnumerateFiles(
+        Path.Combine(pendingRoot, "staging"),
+        ".uninstall-*.pending.json", SearchOption.TopDirectoryOnly).Count());
+    pendingParticipant.CleanupPending = false;
+    await pendingCatalog.InstallAsync(CreatePackage(
+        temp.Path, "dev.test.after-pending", "dev.test", "1.0.0"));
+    Assert.Equal(0, Directory.EnumerateFiles(
+        Path.Combine(pendingRoot, "staging"),
+        ".uninstall-*.pending.json", SearchOption.TopDirectoryOnly).Count());
 }
 
 static async Task ConcurrentStatePersists()
@@ -1211,6 +1348,40 @@ file sealed class NonSeekableReadStream(byte[] content) : Stream
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
     public override void SetLength(long value) => throw new NotSupportedException();
     public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+
+file sealed class TestUninstallAuthorityParticipant(string catalogRoot) :
+    IWidgetUninstallAuthorityParticipant
+{
+    internal bool FailBeforeCommit { get; set; }
+    internal bool CleanupPending { get; set; }
+    internal int Calls { get; private set; }
+
+    public async Task<WidgetUninstallAuthorityCommit> RetirePackageAsync(
+        string packageId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Calls++;
+        var staging = Path.Combine(catalogRoot, "staging");
+        var marker = Directory.EnumerateFiles(
+            staging, ".uninstall-*.pending.json", SearchOption.TopDirectoryOnly)
+            .Single();
+        var pending = await PendingWidgetUninstallStore.ReadAsync(
+            marker, cancellationToken);
+        Assert.Equal(packageId, pending.PackageId);
+        Assert.True(pending.PublisherAuthorities.Count > 0,
+            "Pending uninstall omitted verified publisher authorities.");
+        var retired = marker[..^".pending.json".Length];
+        Assert.True(Directory.Exists(retired) ||
+                    !Directory.Exists(Path.Combine(catalogRoot, "packages", packageId)),
+            "Authority retirement ran before package staging.");
+        if (FailBeforeCommit)
+            throw new WidgetPackageException(
+                "registration_cleanup_failed",
+                "Synthetic precommit registration cleanup failure.");
+        return new WidgetUninstallAuthorityCommit(true, CleanupPending);
+    }
 }
 
 file static class Assert

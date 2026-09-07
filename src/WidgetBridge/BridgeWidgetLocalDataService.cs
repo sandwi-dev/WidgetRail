@@ -14,7 +14,8 @@ namespace WidgetRail.WidgetBridge;
 internal sealed class BridgeWidgetLocalDataService(
     BridgeClientRegistry registry,
     IPrivateStatePlatformBrokerBackend? backend,
-    BridgeCatalogMonitor? catalogMonitor = null)
+    BridgeCatalogMonitor? catalogMonitor = null,
+    IAppLibraryPlatformBrokerBackend? appLibrary = null)
 {
     internal async ValueTask<PlatformWidgetLocalDataInspection> InspectAsync(
         string widgetId,
@@ -35,15 +36,18 @@ internal sealed class BridgeWidgetLocalDataService(
 
         try
         {
-            var state = await backend.ReadPrivateStateAsync(
-                Identity(target.Configured), cancellationToken).ConfigureAwait(false);
+            var identity = Identity(target.Configured);
+            var state = await ReadStateAsync(identity, cancellationToken)
+                .ConfigureAwait(false);
             return new PlatformWidgetLocalDataInspection(
                 target.Configured.Id,
                 BridgeDiagnosticsProjection.SafeLabel(
                     target.Configured.Name, target.Configured.Id),
                 state.Exists,
                 state.Exists ? "local_data_present" : "no_local_data",
-                state.Exists ? ConfirmationToken(target.Configured, state.Revision) : null);
+                state.Exists ? ConfirmationToken(
+                    target.Configured, state.PrivateRevision,
+                    state.AppRegistrationRevision) : null);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -74,10 +78,10 @@ internal sealed class BridgeWidgetLocalDataService(
                 widgetId,
                 async (configured, operationCancellation) =>
                 {
-                    PrivateStateSnapshotSummary state;
+                    LocalDataState state;
                     try
                     {
-                        state = await backend.ReadPrivateStateAsync(
+                        state = await ReadStateAsync(
                             Identity(configured), operationCancellation).ConfigureAwait(false);
                     }
                     catch (Exception exception) when (exception is BrokerException or IOException or
@@ -90,16 +94,17 @@ internal sealed class BridgeWidgetLocalDataService(
                     if (!state.Exists)
                         return Result(PlatformWidgetLocalDataClearStatus.NoState, "no_local_data");
                     if (!CryptographicOperations.FixedTimeEquals(
-                            Convert.FromHexString(ConfirmationToken(configured, state.Revision)),
+                            Convert.FromHexString(ConfirmationToken(
+                                configured, state.PrivateRevision,
+                                state.AppRegistrationRevision)),
                             Convert.FromHexString(confirmationToken)))
                         return Result(PlatformWidgetLocalDataClearStatus.Stale,
                             "confirmation_stale");
                     try
                     {
-                        await backend.ClearPrivateStateAsync(
-                            Identity(configured),
-                            new ClearPrivateStateRequest(state.Revision),
-                            operationCancellation).ConfigureAwait(false);
+                        await ClearStateAsync(
+                            Identity(configured), state, operationCancellation)
+                            .ConfigureAwait(false);
                         return Result(PlatformWidgetLocalDataClearStatus.Cleared, "cleared");
                     }
                     catch (Exception exception) when (exception is BrokerException or IOException or
@@ -138,18 +143,19 @@ internal sealed class BridgeWidgetLocalDataService(
                     configured.WorkerFingerprint, StringComparison.Ordinal))
                 return Result(PlatformWidgetLocalDataClearStatus.Stale,
                     "confirmation_stale");
-            var state = await backend!.ReadPrivateStateAsync(
-                Identity(current.Configured), cancellationToken).ConfigureAwait(false);
+            var identity = Identity(current.Configured);
+            var state = await ReadStateAsync(identity, cancellationToken)
+                .ConfigureAwait(false);
             if (!state.Exists)
                 return Result(PlatformWidgetLocalDataClearStatus.NoState, "no_local_data");
             if (!CryptographicOperations.FixedTimeEquals(
-                    Convert.FromHexString(ConfirmationToken(current.Configured, state.Revision)),
+                    Convert.FromHexString(ConfirmationToken(
+                        current.Configured, state.PrivateRevision,
+                        state.AppRegistrationRevision)),
                     Convert.FromHexString(confirmationToken)))
                 return Result(PlatformWidgetLocalDataClearStatus.Stale,
                     "confirmation_stale");
-            await backend.ClearPrivateStateAsync(
-                Identity(current.Configured), new ClearPrivateStateRequest(state.Revision),
-                cancellationToken).ConfigureAwait(false);
+            await ClearStateAsync(identity, state, cancellationToken).ConfigureAwait(false);
             return Result(PlatformWidgetLocalDataClearStatus.Cleared, "cleared");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -206,7 +212,43 @@ internal sealed class BridgeWidgetLocalDataService(
     private static BrokerWidgetIdentity Identity(ConfiguredWidget configured) => new(
         configured.PackageId, configured.PublisherId, configured.InstanceId);
 
-    private static string ConfirmationToken(ConfiguredWidget configured, long revision)
+    private async Task<LocalDataState> ReadStateAsync(
+        BrokerWidgetIdentity identity,
+        CancellationToken cancellationToken)
+    {
+        var privateState = await backend!.ReadPrivateStateAsync(
+            identity, cancellationToken).ConfigureAwait(false);
+        var registrations = appLibrary is null
+            ? new AppLibraryRegistrationStateSummary(false, 0)
+            : await appLibrary.GetRunningAppRegistrationStateAsync(
+                identity, cancellationToken).ConfigureAwait(false);
+        return new(
+            privateState.Exists || registrations.Exists,
+            privateState.Exists,
+            privateState.Revision,
+            registrations.Exists,
+            registrations.Revision);
+    }
+
+    private async Task ClearStateAsync(
+        BrokerWidgetIdentity identity,
+        LocalDataState state,
+        CancellationToken cancellationToken)
+    {
+        if (state.AppRegistrationsExist && appLibrary is not null)
+            await appLibrary.ClearRunningAppRegistrationsAsync(
+                identity, state.AppRegistrationRevision, cancellationToken)
+                .ConfigureAwait(false);
+        if (state.PrivateStateExists)
+            await backend!.ClearPrivateStateAsync(
+                identity, new ClearPrivateStateRequest(state.PrivateRevision),
+                cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string ConfirmationToken(
+        ConfiguredWidget configured,
+        long privateRevision,
+        long appRegistrationRevision)
     {
         var material = Encoding.UTF8.GetBytes(string.Join('\n',
             configured.Id,
@@ -214,7 +256,8 @@ internal sealed class BridgeWidgetLocalDataService(
             configured.PublisherId,
             configured.InstanceId,
             configured.WorkerFingerprint,
-            revision.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            privateRevision.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            appRegistrationRevision.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         return Convert.ToHexString(SHA256.HashData(material));
     }
 
@@ -226,6 +269,13 @@ internal sealed class BridgeWidgetLocalDataService(
     private readonly record struct LocalDataTarget(
         ConfiguredWidget Configured,
         bool HasRuntimeRegistration);
+
+    private readonly record struct LocalDataState(
+        bool Exists,
+        bool PrivateStateExists,
+        long PrivateRevision,
+        bool AppRegistrationsExist,
+        long AppRegistrationRevision);
 
     private static PlatformWidgetLocalDataInspection Unavailable(string id, string code) =>
         new(id, id, false, code, null);

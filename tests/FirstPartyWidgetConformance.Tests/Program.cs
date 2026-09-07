@@ -4099,19 +4099,22 @@ file sealed class InstalledGogBoundaryBackend(
         inner.QueryAppLibraryAsync(request, cancellationToken);
 
     public Task LaunchAppLibraryItemAsync(
+        BrokerWidgetIdentity identity,
         string appId,
         CancellationToken cancellationToken)
     {
         LaunchCount++;
-        return inner.LaunchAppLibraryItemAsync(appId, cancellationToken);
+        return inner.LaunchAppLibraryItemAsync(identity, appId, cancellationToken);
     }
 
     public Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
+        BrokerWidgetIdentity identity,
         string appId,
         CancellationToken cancellationToken)
     {
         LaunchCount++;
-        return inner.LaunchAppLibraryItemObservedAsync(appId, cancellationToken);
+        return inner.LaunchAppLibraryItemObservedAsync(
+            identity, appId, cancellationToken);
     }
 
     public Task<AppLibraryIconSummary> GetAppLibraryIconAsync(
@@ -4143,19 +4146,21 @@ file sealed class InstalledOfflineAppLibraryBackend(
     }
 
     public Task LaunchAppLibraryItemAsync(
+        BrokerWidgetIdentity identity,
         string appId,
         CancellationToken cancellationToken)
     {
         LaunchCount++;
-        return inner.LaunchAppLibraryItemAsync(appId, cancellationToken);
+        return inner.LaunchAppLibraryItemAsync(identity, appId, cancellationToken);
     }
 
     public async Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
+        BrokerWidgetIdentity identity,
         string appId,
         CancellationToken cancellationToken)
     {
         LaunchCount++;
-        await inner.LaunchAppLibraryItemAsync(appId, cancellationToken)
+        await inner.LaunchAppLibraryItemAsync(identity, appId, cancellationToken)
             .ConfigureAwait(false);
         return new(AppLibraryLaunchObservationState.LauncherStarted,
             SupportsRunning: false,

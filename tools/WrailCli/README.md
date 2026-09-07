@@ -174,11 +174,13 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   command.
 - `uninstall <widget-id>` requires the widget to be disabled, atomically
   retires the package ID from discovery, removes all of its immutable versions,
-  and removes/reindexes its catalog-state entry. If a retiring worker still
-  locks files, the command reports cleanup pending and a later install or
-  uninstall retries the bounded staging cleanup. It does not enumerate or
-  purge provider-owned secrets; a widget must clear known secret slots through
-  its public host service before uninstall when that behavior is desired.
+  removes/reindexes its catalog-state entry, and retires that catalog's
+  package-scoped portable-app registrations. Each `--catalog` root has its own
+  `broker/portable-apps` store. If physical cleanup remains, the command reports
+  cleanup pending and a later uninstall operation on this catalog retries it.
+  It does not enumerate or purge provider-owned secrets; a widget must clear
+  known secret slots through its public host service before uninstall when that
+  behavior is desired.
 - `repair list` is the bounded, data-only recovery view for a catalog that
   normal validation cannot load. It reads only canonical package/version
   directory names and validated catalog state; it never parses a candidate

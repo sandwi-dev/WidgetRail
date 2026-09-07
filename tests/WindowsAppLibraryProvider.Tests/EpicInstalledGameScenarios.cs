@@ -111,7 +111,7 @@ internal static class EpicInstalledGameScenarios
         var selected = first.Items[0];
         File.Delete(manifest);
         await ThrowsBroker(() => provider.LaunchAppLibraryItemAsync(
-                selected.ProviderAppId, default),
+                ProviderTestIdentity.Value, selected.ProviderAppId, default),
             "Removed Epic manifest still authorized launch.");
         Equal(0, launcher.Count, "Stale Epic authority reached the launcher.");
 
@@ -131,7 +131,7 @@ internal static class EpicInstalledGameScenarios
         Equal("source_unavailable", unavailable.Sources.Single().StatusCode,
             "Unavailable Epic source status was not projected.");
         await ThrowsBroker(() => provider.LaunchAppLibraryItemAsync(
-                beta.ProviderAppId, default),
+                ProviderTestIdentity.Value, beta.ProviderAppId, default),
             "Unavailable last-good Epic display retained launch authority.");
     }
 

@@ -102,19 +102,23 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         _authorityRecovery = new BridgeAuthorityRecoveryProjection(
             AppContainerAuthorityRecoveryService.Default);
         _localData = new BridgeWidgetLocalDataService(
-            _registry, _platformBackend, _catalogMonitor);
-        _packageUninstall = new BridgeWidgetPackageUninstallService(
-            _catalogMonitor is null
-                ? null
+            _registry, _platformBackend, _catalogMonitor, _platformBackend);
+        var packageCatalog = _catalogMonitor is null
+            ? null
+            : _platformBackend is null
+                ? new WidgetRail.WidgetCatalog.WidgetCatalog(
+                    _catalogMonitor.InstalledCatalogRoot)
                 : new WidgetRail.WidgetCatalog.WidgetCatalog(
-                    _catalogMonitor.InstalledCatalogRoot),
+                    _catalogMonitor.InstalledCatalogRoot,
+                    new BridgeWidgetUninstallAuthorityParticipant(_platformBackend));
+        _packageUninstall = new BridgeWidgetPackageUninstallService(
+            packageCatalog,
             _catalogMonitor);
         _localPackageImport = _catalogMonitor is null
             ? null
             : new BridgeLocalWidgetPackageImportService(
                 _registry,
-                new WidgetRail.WidgetCatalog.WidgetCatalog(
-                    _catalogMonitor.InstalledCatalogRoot),
+                packageCatalog!,
                 _catalogMonitor,
                 result => SendEventAsync(
                     BridgeMessageTypes.LocalWidgetPackageInstallCompleted,

@@ -545,6 +545,28 @@ static async Task AppLibraryPlatformService()
                         WidgetAppLibraryKind.Application,
                         "source-windows", "Windows")));
             })
+        .WithHandler(
+            WidgetAppLibraryCapabilities.RegisterRunning,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal("saved-running", request.SavedId);
+                Assert.Equal("running-revision", request.Revision);
+                return ValueTask.FromResult(new RegisterWidgetRunningAppResponse(
+                    InstalledAppLibraryItem(
+                        "app-portable", request.SavedId, "Visible app",
+                        WidgetAppLibraryKind.Application,
+                        "source-portable", "Portable"),
+                    AlreadyRegistered: false));
+            })
+        .WithHandler(
+            WidgetAppLibraryCapabilities.ForgetRunning,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal("saved-running", request.SavedId);
+                return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+            })
         .Build();
     var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
 
@@ -609,6 +631,12 @@ static async Task AppLibraryPlatformService()
     var confirmed = await widget.AppLibrary.ConfirmRunningAsync(
         running.Items[0].SavedId, running.Revision);
     Assert.Equal("app-current", confirmed?.AppId);
+    var registered = await widget.AppLibrary.RegisterRunningAsync(
+        running.Items[0].SavedId, running.Revision);
+    Assert.Equal("app-portable", registered.Item.AppId);
+    Assert.Equal("saved-running", registered.Item.SavedId);
+    Assert.Equal(false, registered.AlreadyRegistered);
+    await widget.AppLibrary.ForgetRunningAsync(running.Items[0].SavedId);
     var validConfirmation = InstalledAppLibraryItem(
         "app-current", "saved-running", "Visible app",
         WidgetAppLibraryKind.Application, "source-windows", "Windows");
@@ -707,6 +735,15 @@ static async Task AppLibraryPlatformService()
     Assert.Throws<ArgumentException>(() =>
         widget.AppLibrary.ConfirmRunningAsync("not-saved", "revision")
             .GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() =>
+        widget.AppLibrary.RegisterRunningAsync("not-saved", "revision")
+            .GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() =>
+        widget.AppLibrary.RegisterRunningAsync("saved-running", "")
+            .GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() =>
+        widget.AppLibrary.ForgetRunningAsync("not-saved")
+            .GetAwaiter().GetResult());
 
     var malformed = WidgetTestHost.Attach(
         new CapabilityWidget(),
@@ -749,6 +786,22 @@ static async Task AppLibraryPlatformService()
             .Build());
     Assert.Throws<WidgetCapabilityException>(() =>
         malformedRunning.AppLibrary.ObserveRunningAsync().GetAwaiter().GetResult());
+
+    var malformedRegistration = WidgetTestHost.Attach(
+        new CapabilityWidget(),
+        new WidgetTestHostServicesBuilder()
+            .WithResponse(
+                WidgetAppLibraryCapabilities.RegisterRunning,
+                new RegisterWidgetRunningAppResponse(
+                    InstalledAppLibraryItem(
+                        "app-current", "saved-other", "Wrong app",
+                        WidgetAppLibraryKind.Application,
+                        "source-portable", "Portable"), false))
+            .Build());
+    Assert.Throws<WidgetCapabilityException>(() =>
+        malformedRegistration.AppLibrary.RegisterRunningAsync(
+                "saved-running", "running-revision")
+            .GetAwaiter().GetResult());
 }
 
 static WidgetAppLibraryItem RichAppLibraryItem(string appId, string savedId) =>

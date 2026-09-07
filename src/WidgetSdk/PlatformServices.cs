@@ -633,6 +633,17 @@ public sealed record ConfirmWidgetRunningAppRequest(
 
 public sealed record ConfirmWidgetRunningAppResponse(WidgetAppLibraryItem? Item);
 
+public sealed record RegisterWidgetRunningAppRequest(
+    [property: JsonRequired] string SavedId,
+    [property: JsonRequired] string Revision);
+
+public sealed record RegisterWidgetRunningAppResponse(
+    [property: JsonRequired] WidgetAppLibraryItem Item,
+    [property: JsonRequired] bool AlreadyRegistered);
+
+public sealed record ForgetWidgetRunningAppRequest(
+    [property: JsonRequired] string SavedId);
+
 public sealed record LaunchWidgetAppLibraryItemRequest(
     [property: JsonRequired] string AppId)
 {
@@ -859,6 +870,14 @@ public static class WidgetAppLibraryCapabilities
     public static WidgetCapabilityOperation<ConfirmWidgetRunningAppRequest,
         ConfirmWidgetRunningAppResponse> ConfirmRunning { get; } =
         new("system.apps.running.read.v1", "apps.running.confirm");
+
+    public static WidgetCapabilityOperation<RegisterWidgetRunningAppRequest,
+        RegisterWidgetRunningAppResponse> RegisterRunning { get; } =
+        new("system.apps.running.register.v1", "apps.running.register");
+
+    public static WidgetCapabilityOperation<ForgetWidgetRunningAppRequest,
+        WidgetCapabilityAcknowledgement> ForgetRunning { get; } =
+        new("system.apps.running.register.v1", "apps.running.forget");
 
     public static WidgetCapabilityOperation<LaunchWidgetAppLibraryItemRequest,
         WidgetCapabilityAcknowledgement> Launch { get; } =
@@ -1495,6 +1514,50 @@ public sealed class WidgetAppLibraryService
             !string.Equals(response.Item.SavedId, savedId, StringComparison.Ordinal))
             throw MalformedRunningObservation();
         return response.Item;
+    }
+
+    /// <summary>
+    /// Registers one exact current running-app observation as a package-owned
+    /// durable launch record. The operation never exposes its executable or
+    /// process identity to the widget.
+    /// </summary>
+    public async ValueTask<RegisterWidgetRunningAppResponse> RegisterRunningAsync(
+        string savedId,
+        string revision,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsValidSavedId(savedId))
+            throw new ArgumentException("Saved app identifier is invalid.", nameof(savedId));
+        if (revision is not { Length: > 0 and <= 128 })
+            throw new ArgumentException("Observation revision is invalid.", nameof(revision));
+        var response = await _client.InvokeAsync(
+            WidgetAppLibraryCapabilities.RegisterRunning,
+            new RegisterWidgetRunningAppRequest(savedId, revision),
+            cancellationToken).ConfigureAwait(false);
+        if (response?.Item is null || !IsValidAppLibraryItem(response.Item) ||
+            !string.Equals(response.Item.SavedId, savedId, StringComparison.Ordinal))
+            throw MalformedRunningObservation();
+        return response;
+    }
+
+    /// <summary>
+    /// Idempotently forgets one package-owned portable application record.
+    /// Installed catalog registrations and another package's records are never
+    /// affected.
+    /// </summary>
+    public async ValueTask ForgetRunningAsync(
+        string savedId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsValidSavedId(savedId))
+            throw new ArgumentException("Saved app identifier is invalid.", nameof(savedId));
+        var response = await _client.InvokeAsync(
+            WidgetAppLibraryCapabilities.ForgetRunning,
+            new ForgetWidgetRunningAppRequest(savedId), cancellationToken)
+            .ConfigureAwait(false);
+        if (response is null || !response.Acknowledged)
+            throw new WidgetCapabilityException(
+                "malformed_response", "The app library provider returned an invalid acknowledgement.");
     }
 
     private static bool IsDisplayValue(string? value, int maximum) =>

@@ -1,4 +1,5 @@
 using WidgetRail.PlatformDiagnostics;
+using WidgetRail.PlatformBroker;
 using WidgetRail.WidgetCatalog;
 
 namespace WidgetRail.WidgetBridge;
@@ -99,7 +100,10 @@ internal sealed class BridgeWidgetPackageUninstallService(
                     PlatformWidgetPackageUninstallStatus.Stale, exception.Code),
                 "widget_enabled" => Result(
                     PlatformWidgetPackageUninstallStatus.Refused, exception.Code),
-                "active_version_missing" or "catalog_state_invalid" => Result(
+                "active_version_missing" or "catalog_state_invalid" or
+                    "registration_cleanup_failed" or
+                    "uninstall_recovery_pending" or
+                    "pending_uninstall_cleanup" => Result(
                     PlatformWidgetPackageUninstallStatus.RecoveryPending, exception.Code),
                 _ => Result(PlatformWidgetPackageUninstallStatus.Refused,
                     BridgeDiagnosticsProjection.SafeCode(exception.Code)),
@@ -124,4 +128,29 @@ internal sealed class BridgeWidgetPackageUninstallService(
     private static PlatformWidgetPackageUninstallResult Result(
         PlatformWidgetPackageUninstallStatus status,
         string code) => new(status, BridgeDiagnosticsProjection.SafeCode(code));
+}
+
+internal sealed class BridgeWidgetUninstallAuthorityParticipant(
+    IAppLibraryPlatformBrokerBackend appLibrary) :
+    IWidgetUninstallAuthorityParticipant
+{
+    public async Task<WidgetUninstallAuthorityCommit> RetirePackageAsync(
+        string packageId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await appLibrary.RetireRunningAppPackageRegistrationsAsync(
+                packageId, cancellationToken).ConfigureAwait(false);
+            return new(result.Committed, result.CleanupPending);
+        }
+        catch (Exception exception) when (exception is BrokerException or
+            IOException or UnauthorizedAccessException)
+        {
+            throw new WidgetPackageException(
+                "registration_cleanup_failed",
+                "Portable app registration cleanup failed.",
+                exception);
+        }
+    }
 }

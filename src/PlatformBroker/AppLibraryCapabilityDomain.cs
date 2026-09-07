@@ -46,6 +46,10 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
                 await ObserveRunningAsync(payload, cancellationToken).ConfigureAwait(false)),
             PlatformCapabilities.AppRunningConfirm => BrokerJson.ToElement(
                 await ConfirmRunningAsync(payload, cancellationToken).ConfigureAwait(false)),
+            PlatformCapabilities.AppRunningRegister => BrokerJson.ToElement(
+                await RegisterRunningAsync(payload, cancellationToken).ConfigureAwait(false)),
+            PlatformCapabilities.AppRunningForget =>
+                await ForgetRunningAsync(payload, cancellationToken).ConfigureAwait(false),
             PlatformCapabilities.AppLibraryLaunch =>
                 await LaunchAsync(payload, observed: false, cancellationToken)
                     .ConfigureAwait(false),
@@ -125,6 +129,76 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             ContractValidation.DisplayName(item.SourceAttribution);
         }
         return page with { Items = page.Items.ToArray() };
+    }
+
+    private async Task<RegisterRunningAppSummary> RegisterRunningAsync(
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<RegisterRunningAppRequest>(payload);
+        ValidateSavedIds([request.SavedId], 1);
+        if (request.Revision is not { Length: > 0 and <= 128 })
+            throw new BrokerException("invalid_payload", "Running-app revision is invalid.");
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var observed = ValidateRunningPage(await _backend.ObserveRunningAppsAsync(
+                cancellationToken).ConfigureAwait(false));
+            if (!string.Equals(request.Revision, observed.Revision, StringComparison.Ordinal))
+                throw new BrokerException(
+                    "stale_observation", "The running-app observation is stale.");
+            var match = observed.Items.SingleOrDefault(item => string.Equals(
+                _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
+                request.SavedId, StringComparison.Ordinal));
+            if (match is null)
+                throw new BrokerException(
+                    "app_not_found", "The selected running app is no longer available.");
+            var registered = await _backend.RegisterRunningAppAsync(
+                _identity,
+                new RegisterRunningAppBackendRequest(
+                    request.SavedId, match.StableProviderIdentity,
+                    match.InstanceEvidence, observed.Revision),
+                cancellationToken).ConfigureAwait(false);
+            if (registered?.Item is null)
+                throw InvalidItem();
+            var validated = ValidatePage(new AppLibraryBackendCursorPage(
+                [registered.Item], null, null, "registered"), 1).Items.Single();
+            if (!string.Equals(
+                    _savedIdIssuer.Issue(_identity, validated.StableProviderIdentity),
+                    request.SavedId, StringComparison.Ordinal))
+                throw InvalidItem();
+            var projected = ProjectItem(validated, []);
+            TrimLaunchWindow();
+            return new RegisterRunningAppSummary(
+                projected, registered.AlreadyRegistered);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<JsonElement> ForgetRunningAsync(
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<ForgetRunningAppRequest>(payload);
+        ValidateSavedIds([request.SavedId], 1);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _backend.ForgetRunningAppAsync(
+                _identity, request.SavedId, cancellationToken).ConfigureAwait(false);
+            _launchByPublicId.Clear();
+            _publicIdsByBackendId.Clear();
+            _launchRecency.Clear();
+            _launchNodes.Clear();
+            return BrokerCapabilityDomains.Acknowledged();
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     private async Task<AppLibraryCursorPageSummary> QueryAsync(
@@ -244,6 +318,27 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
                 cursor = page.After;
             }
 
+            var unresolved = request.SavedIds
+                .Where(savedId => !matches.ContainsKey(savedId)).ToArray();
+            if (unresolved.Length != 0)
+            {
+                var registered = await _backend.ResolveRegisteredRunningAppsAsync(
+                    _identity, unresolved, cancellationToken).ConfigureAwait(false);
+                if (registered is null || registered.Count > unresolved.Length)
+                    throw InvalidItem();
+                var validated = ValidatePage(new AppLibraryBackendCursorPage(
+                    registered, null, null, "registered"), unresolved.Length);
+                foreach (var item in validated.Items)
+                {
+                    var savedId = _savedIdIssuer.Issue(
+                        _identity, item.StableProviderIdentity);
+                    if (!unresolved.Contains(savedId, StringComparer.Ordinal) ||
+                        matches.ContainsKey(savedId))
+                        throw InvalidItem();
+                    matches[savedId] = item;
+                }
+            }
+
             var matchedItems = request.SavedIds.Where(matches.ContainsKey)
                 .Select(savedId => matches[savedId]).ToArray();
             var projected = ProjectPage(new AppLibraryBackendCursorPage(
@@ -272,11 +367,13 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             if (!observed)
             {
                 await _backend.LaunchAppLibraryItemAsync(
-                    registration.BackendAppId, cancellationToken).ConfigureAwait(false);
+                    _identity, registration.BackendAppId, cancellationToken)
+                    .ConfigureAwait(false);
                 return BrokerCapabilityDomains.Acknowledged();
             }
             var result = await _backend.LaunchAppLibraryItemObservedAsync(
-                registration.BackendAppId, cancellationToken).ConfigureAwait(false);
+                _identity, registration.BackendAppId, cancellationToken)
+                .ConfigureAwait(false);
             if (!Enum.IsDefined(result.State) ||
                 result.State == AppLibraryLaunchObservationState.Running &&
                     !result.SupportsRunning ||
@@ -299,26 +396,32 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             new Dictionary<string, string>(StringComparer.Ordinal);
         var projected = new AppLibraryItemSummary[page.Items.Count];
         for (var index = 0; index < page.Items.Count; index++)
-        {
-            var item = page.Items[index];
-            if (!_publicIdsByBackendId.TryGetValue(item.ProviderAppId, out var publicId))
-            {
-                publicId = "app-" + Guid.NewGuid().ToString("N");
-                _publicIdsByBackendId[item.ProviderAppId] = publicId;
-            }
-            if (item.IsLaunchable) TouchLaunch(publicId, item.ProviderAppId);
-            projected[index] = new AppLibraryItemSummary(
-                publicId,
-                _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
-                CreatePresentation(item,
-                    artworkHandles.GetValueOrDefault(item.ProviderAppId), page.Sources));
-        }
+            projected[index] = ProjectItem(
+                page.Items[index], page.Sources,
+                artworkHandles.GetValueOrDefault(page.Items[index].ProviderAppId));
         TrimLaunchWindow();
         return new AppLibraryCursorPageSummary(
             projected, page.Before, page.After, page.Revision)
         {
             Sources = page.Sources.ToArray(),
         };
+    }
+
+    private AppLibraryItemSummary ProjectItem(
+        AppLibraryBackendItemSummary item,
+        IReadOnlyList<AppLibrarySourceSummary> sources,
+        string? artworkHandle = null)
+    {
+        if (!_publicIdsByBackendId.TryGetValue(item.ProviderAppId, out var publicId))
+        {
+            publicId = "app-" + Guid.NewGuid().ToString("N");
+            _publicIdsByBackendId[item.ProviderAppId] = publicId;
+        }
+        if (item.IsLaunchable) TouchLaunch(publicId, item.ProviderAppId);
+        return new AppLibraryItemSummary(
+            publicId,
+            _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
+            CreatePresentation(item, artworkHandle, sources));
     }
 
     private static AppLibraryItemPresentation CreatePresentation(

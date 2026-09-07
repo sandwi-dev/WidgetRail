@@ -1011,7 +1011,8 @@ internal static class BridgeClientRegistryScenarios
         await fixture.SetLifecycleAsync(selected.Id, WidgetLifecycleState.Visible);
         await fixture.SetLifecycleAsync(neighbor.Id, WidgetLifecycleState.Visible);
         var backend = new RegistryPrivateStateBackend(selected, neighbor);
-        var service = new BridgeWidgetLocalDataService(fixture.Registry, backend);
+        var service = new BridgeWidgetLocalDataService(
+            fixture.Registry, backend, appLibrary: backend);
 
         var inspection = await service.InspectAsync(selected.Id, CancellationToken.None);
         RegistryAssert.True(inspection.Exists && inspection.ConfirmationToken is not null,
@@ -1021,8 +1022,12 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(PlatformWidgetLocalDataClearStatus.Cleared, result.Status);
         RegistryAssert.True(!backend.Exists(selected.PackageId),
             "Selected state survived a successful exact clear.");
+        RegistryAssert.True(!backend.RegistrationExists(selected.PackageId),
+            "Selected portable registrations survived a successful exact clear.");
         RegistryAssert.True(backend.Exists(neighbor.PackageId),
             "Neighbor state changed during selected clear.");
+        RegistryAssert.True(backend.RegistrationExists(neighbor.PackageId),
+            "Neighbor portable registrations changed during selected clear.");
         RegistryAssert.Equal(1, fixture.Clients[0].DisposeCount);
         RegistryAssert.Equal(0, fixture.Clients[1].DisposeCount);
         RegistryAssert.Equal(3, fixture.Clients.Count);
@@ -1034,6 +1039,103 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(PlatformWidgetLocalDataClearStatus.Stale, stale.Status);
         RegistryAssert.True(backend.Exists(neighbor.PackageId),
             "A stale confirmation cleared current neighbor state.");
+    }
+
+    internal static async Task CatalogRetirementCancelsRegistrationLease()
+    {
+        var configured = Widget("registration-lease", worker: 'r', catalog: 'r') with
+        {
+            DeclaredCapabilities =
+            [
+                PlatformCapabilities.AppRunningReadV1,
+                PlatformCapabilities.AppRunningRegisterV1,
+            ],
+        };
+        var root = Path.Combine(
+            Path.GetTempPath(), "WidgetRail-W193-Bridge-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var identity = new BrokerWidgetIdentity(
+                configured.PackageId, configured.PublisherId, configured.InstanceId);
+            var consent = new ConsentStore(root);
+            await consent.SetDecisionAsync(
+                identity, PlatformCapabilities.AppRunningReadV1, ConsentDecision.Grant);
+            await consent.SetDecisionAsync(
+                identity, PlatformCapabilities.AppRunningRegisterV1, ConsentDecision.Grant);
+            var registration = new BlockingRegistrationBackend();
+            var simulator = new SimulatedPlatformBrokerBackend();
+            await using var composite = new CompositePlatformBrokerBackend(
+                simulator, simulator, appLibrary: registration);
+            BrokerWidgetProcessCompanion? companion = null;
+            await using var fixture = new RegistryFixture(
+                Catalog(configured),
+                configure: (_, client) =>
+                {
+                    companion = new BrokerWidgetProcessCompanion(
+                        configured.PackageId,
+                        configured.PublisherId,
+                        configured.InstanceId,
+                        configured.DeclaredCapabilities,
+                        consent,
+                        composite,
+                        new WidgetProcessCompanionContext(
+                            WidgetWorkerIsolationPolicy.HostTrustedJobOnly, null, null));
+                    client.OnDisposeAsync = companion.DisposeAsync;
+                });
+            await fixture.SetLifecycleAsync(
+                configured.Id, WidgetLifecycleState.Interactive);
+            await companion!.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+            var arguments = companion.WorkerArguments.ToArray();
+            string Argument(string name)
+            {
+                var index = Array.IndexOf(arguments, name);
+                RegistryAssert.True(index >= 0 && index + 1 < arguments.Length,
+                    $"Broker companion omitted {name}.");
+                return arguments[index + 1];
+            }
+
+            using var serverCancellation = new CancellationTokenSource();
+            var server = companion.RunAsync(serverCancellation.Token);
+            await using var brokerClient = new BrokerPipeClient(
+                Argument("--broker-pipe"), identity, Argument("--broker-nonce"));
+            await brokerClient.ConnectAsync();
+            var observed = await brokerClient.RequestAsync(
+                PlatformCapabilities.AppRunningReadV1,
+                PlatformCapabilities.AppRunningList,
+                new { });
+            RegistryAssert.True(observed.Succeeded,
+                "Running observation did not reach the real broker request owner.");
+            var item = observed.Payload!.Value.GetProperty("items")[0];
+            var request = brokerClient.RequestAsync(
+                PlatformCapabilities.AppRunningRegisterV1,
+                PlatformCapabilities.AppRunningRegister,
+                new
+                {
+                    savedId = item.GetProperty("savedId").GetString(),
+                    revision = observed.Payload.Value.GetProperty("revision").GetString(),
+                });
+            await registration.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            RegistryAssert.True(
+                fixture.Registry.ApplyCatalog(Catalog(), revision: 1),
+                "Catalog removal did not retire the registration owner.");
+            await fixture.Clients.Single().Disposed.WaitAsync(TimeSpan.FromSeconds(2));
+            await registration.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            try { _ = await request.WaitAsync(TimeSpan.FromSeconds(2)); }
+            catch (Exception exception) when (exception is BrokerException or
+                OperationCanceledException or EndOfStreamException or IOException) { }
+            RegistryAssert.Equal(0, registration.Committed);
+            serverCancellation.Cancel();
+            try { await server.WaitAsync(TimeSpan.FromSeconds(2)); }
+            catch (Exception exception) when (exception is OperationCanceledException or
+                EndOfStreamException or IOException or ObjectDisposedException) { }
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); }
+            catch (Exception exception) when (exception is IOException or
+                UnauthorizedAccessException) { }
+        }
     }
 
     internal static async Task RestartReservationAndRestoreFailureAreClosed()
@@ -1654,17 +1756,65 @@ internal static class BridgeClientRegistryScenarios
     private static string Fingerprint(char value) => new(value, 64);
 }
 
+internal sealed class BlockingRegistrationBackend : IAppLibraryPlatformBrokerBackend
+{
+    internal TaskCompletionSource Started { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource Cancelled { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal int Committed { get; private set; }
+
+    public Task<RunningAppBackendObservationPage> ObserveRunningAppsAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new RunningAppBackendObservationPage(
+            [new("portable-running", "process-instance", "Portable running",
+                AppLibraryKind.Application, "Portable")],
+            "running-revision"));
+    }
+
+    public async Task<RegisterRunningAppBackendSummary> RegisterRunningAppAsync(
+        BrokerWidgetIdentity identity,
+        RegisterRunningAppBackendRequest request,
+        CancellationToken cancellationToken)
+    {
+        Started.TrySetResult();
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                .ConfigureAwait(false);
+            Committed++;
+            throw new InvalidOperationException("Blocked registration unexpectedly resumed.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Cancelled.TrySetResult();
+            throw;
+        }
+    }
+}
+
 internal sealed class RegistryPrivateStateBackend(
     ConfiguredWidget first,
-    ConfiguredWidget second) : IPrivateStatePlatformBrokerBackend
+    ConfiguredWidget second) :
+    IPrivateStatePlatformBrokerBackend,
+    IAppLibraryPlatformBrokerBackend
 {
     private readonly Dictionary<string, (bool Exists, long Revision)> _state = new()
     {
         [first.PackageId] = (true, 3),
         [second.PackageId] = (true, 7),
     };
+    private readonly Dictionary<string, (bool Exists, long Revision)> _registrations = new()
+    {
+        [first.PackageId] = (true, 5),
+        [second.PackageId] = (true, 11),
+    };
 
     internal bool Exists(string packageId) => _state[packageId].Exists;
+    internal bool RegistrationExists(string packageId) =>
+        _registrations[packageId].Exists;
     internal void Advance(string packageId)
     {
         var current = _state[packageId];
@@ -1694,6 +1844,31 @@ internal sealed class RegistryPrivateStateBackend(
             throw new BrokerException("private_state_conflict", "Synthetic conflict.");
         _state[identity.PackageId] = (false, current.Revision + 1);
         return Task.FromResult(new PrivateStateMutationSummary(current.Revision + 1));
+    }
+
+    public Task<AppLibraryRegistrationStateSummary>
+        GetRunningAppRegistrationStateAsync(
+            BrokerWidgetIdentity identity,
+            CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var current = _registrations[identity.PackageId];
+        return Task.FromResult(new AppLibraryRegistrationStateSummary(
+            current.Exists, current.Revision));
+    }
+
+    public Task ClearRunningAppRegistrationsAsync(
+        BrokerWidgetIdentity identity,
+        long expectedRevision,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var current = _registrations[identity.PackageId];
+        if (current.Revision != expectedRevision)
+            throw new BrokerException(
+                "app_registration_conflict", "Synthetic registration conflict.");
+        _registrations[identity.PackageId] = (false, current.Revision + 1);
+        return Task.CompletedTask;
     }
 }
 
@@ -1862,6 +2037,7 @@ internal sealed class RegistryTestClient(
     internal int FailSnapshots { get; set; }
     internal Exception? SnapshotFailure { get; set; }
     internal Action? OnDisposeStarted { get; set; }
+    internal Func<ValueTask>? OnDisposeAsync { get; set; }
     internal Task SnapshotEntered => _snapshotEntered.Task;
     internal Task Disposed => _disposed.Task;
     internal Task DisposeEntered => _disposeEntered.Task;
@@ -2014,6 +2190,8 @@ internal sealed class RegistryTestClient(
             _disposeEntered.TrySetResult();
             try
             {
+                if (OnDisposeAsync is not null)
+                    await OnDisposeAsync().ConfigureAwait(false);
                 if (BlockDispose)
                     await _disposeRelease.Task.ConfigureAwait(false);
                 if (DisposeFailure is { } failure)

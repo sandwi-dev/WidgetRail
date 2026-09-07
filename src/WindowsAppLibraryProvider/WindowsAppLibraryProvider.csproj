@@ -9,4 +9,8 @@
   <ItemGroup>
     <ProjectReference Include="..\PlatformBroker\PlatformBroker.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\WindowsPortableAppRegistrationContracts.cs"
+             Link="Internal\WindowsPortableAppRegistrationContracts.cs" />
+  </ItemGroup>
 </Project>

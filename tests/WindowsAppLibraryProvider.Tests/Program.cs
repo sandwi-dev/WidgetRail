@@ -107,6 +107,16 @@ var allTests = new (string Name, Func<Task> Run)[]
         RunningAppScenarios.CancellationIgnoringObservationCannotPublish),
     ("Cooperative running observation drains before source disposal",
         RunningAppScenarios.CooperativeObservationDrainsBeforeSourceDisposal),
+    ("Portable running registration persists scopes and revalidates launch",
+        PortableRegistrationScenarios.RegistrationPersistsAndLaunchRevalidates),
+    ("Portable executable authority is local and retained through launch",
+        PortableRegistrationScenarios.ExecutableAuthorityIsLocalAndLeased),
+    ("Installed running registrations win and portable capacity is explicit",
+        PortableRegistrationScenarios.InstalledPrecedenceAndCapacityAreExplicit),
+    ("Portable executable launch has no shell arguments or elevation",
+        PortableRegistrationScenarios.LaunchShapeIsExact),
+    ("Package retirement covers generations and canceled waiters cannot recreate",
+        PortableRegistrationScenarios.PackageRetirementIsCompleteAndWaitersStayRetired),
     ("Composite shutdown disposes provider-owned normalized sources",
         ProviderLifetimeScenarios.CompositeDisposesOwnedSources),
     ("Concurrent provider disposal cleans every source exactly once",
@@ -133,6 +143,8 @@ var allTests = new (string Name, Func<Task> Run)[]
 
 var installedSourcePolicyOnly =
     args.Contains("--installed-source-policy-only", StringComparer.Ordinal);
+var runningRegistrationOnly =
+    args.Contains("--running-registration-only", StringComparer.Ordinal);
 var installedSourceTests = new HashSet<string>(StringComparer.Ordinal)
 {
     "Production composition automatically admits installed Epic and GOG sources",
@@ -149,6 +161,11 @@ var installedSourceTests = new HashSet<string>(StringComparer.Ordinal)
 };
 var tests = installedSourcePolicyOnly
     ? allTests.Where(test => installedSourceTests.Contains(test.Name)).ToArray()
+    : runningRegistrationOnly
+        ? allTests.Where(test => test.Name.Contains(
+            "running", StringComparison.OrdinalIgnoreCase) ||
+            test.Name.Contains("Portable", StringComparison.Ordinal) ||
+            test.Name.Contains("Package retirement", StringComparison.Ordinal)).ToArray()
     : allTests;
 
 var failures = 0;
@@ -211,7 +228,8 @@ static async Task DeduplicatesByInternalIdentity()
     var provider = new WindowsAppLibraryProvider(source, launcher);
     var item = (await provider.GetAppsAsync()).Single();
     Assert.Equal("My Name", item.DisplayName);
-    await provider.LaunchAppLibraryItemAsync(item.AppId, CancellationToken.None);
+    await provider.LaunchAppLibraryItemAsync(
+        ProviderTestIdentity.Value, item.AppId, CancellationToken.None);
     Assert.Equal(@"C:\User\Same.lnk", launcher.Paths.Single());
 }
 
@@ -225,7 +243,7 @@ static async Task LaunchEvidenceIsAdapterBound()
     var app = (await provider.GetAppsAsync()).Single();
 
     var result = await provider.LaunchAppLibraryItemObservedAsync(
-        app.AppId, CancellationToken.None);
+        ProviderTestIdentity.Value, app.AppId, CancellationToken.None);
 
     Assert.Equal(AppLibraryLaunchObservationState.LauncherStarted, result.State);
     Assert.True(!result.SupportsRunning);
@@ -360,13 +378,15 @@ static async Task SteamLaunchRevalidatesManifest()
         new FakeSource(), new FakeAppsFolderSource(), steam: steam, steamLauncher: launcher);
     var appId = (await provider.GetAppsAsync()).Single().AppId;
 
-    await provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None);
+    await provider.LaunchAppLibraryItemAsync(
+        ProviderTestIdentity.Value, appId, CancellationToken.None);
     Assert.Equal("570", launcher.AppIds.Single());
     Assert.Equal(1, steam.ExactReadCalls);
 
     steam.Items = [registration with { RevalidationKey = "acf-changed" }];
     var exception = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None));
+        provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value, appId, CancellationToken.None));
     Assert.Equal("app_not_found", exception.Code);
     Assert.Equal(1, launcher.AppIds.Count);
 }
@@ -619,7 +639,8 @@ static async Task LaunchRevalidatesExactShortcut()
     var provider = new WindowsAppLibraryProvider(source, launcher);
     var appId = (await provider.GetAppsAsync()).Single().AppId;
 
-    await provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None);
+    await provider.LaunchAppLibraryItemAsync(
+        ProviderTestIdentity.Value, appId, CancellationToken.None);
     Assert.Equal(2, source.Calls);
     Assert.Equal(1, source.EnumerateCalls);
     Assert.Equal(1, source.ExactReadCalls);
@@ -627,7 +648,8 @@ static async Task LaunchRevalidatesExactShortcut()
 
     source.Items = [Reg("replacement-target", "Game", StartMenuScope.CurrentUser, shortcut)];
     var replaced = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None));
+        provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value, appId, CancellationToken.None));
     Assert.Equal("app_not_found", replaced.Code);
     Assert.Equal(1, launcher.Paths.Count);
 
@@ -635,18 +657,21 @@ static async Task LaunchRevalidatesExactShortcut()
         "target-one", "Game", StartMenuScope.CurrentUser, shortcut,
         revalidationKey: "replacement-link-content")];
     var replacedLink = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None));
+        provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value, appId, CancellationToken.None));
     Assert.Equal("app_not_found", replacedLink.Code);
     Assert.Equal(1, launcher.Paths.Count);
 
     source.Items = [Reg("target-one", "Game", StartMenuScope.CurrentUser, @"C:\Moved\Game.lnk")];
     var moved = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None));
+        provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value, appId, CancellationToken.None));
     Assert.Equal("app_not_found", moved.Code);
     Assert.Equal(1, launcher.Paths.Count);
 
     var unknown = await Assert.ThrowsAsync<BrokerException>(() =>
         provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value,
             "app-00000000000000000000000000000000", CancellationToken.None));
     Assert.Equal("app_not_found", unknown.Code);
     Assert.Equal(5, source.Calls);
@@ -675,20 +700,23 @@ static async Task PackagedLaunchRevalidatesExactAumid()
     var provider = CreateMerged(new FakeSource(), apps, packagedLauncher: launcher);
     var appId = (await provider.GetAppsAsync()).Single().AppId;
 
-    await provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None);
+    await provider.LaunchAppLibraryItemAsync(
+        ProviderTestIdentity.Value, appId, CancellationToken.None);
     Assert.Equal(1, apps.ExactReadCalls);
     Assert.Equal(1, apps.EnumerateCalls);
     Assert.Equal(aumid, launcher.Aumids.Single());
 
     apps.Items = [AppReg("Contoso.Replacement_abcd!Main", "Packaged Game")];
     var missing = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None));
+        provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value, appId, CancellationToken.None));
     Assert.Equal("app_not_found", missing.Code);
     Assert.Equal(1, launcher.Aumids.Count);
 
     apps.Items = [AppReg(aumid, "Packaged Game", "different-revalidation")];
     var changed = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None));
+        provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value, appId, CancellationToken.None));
     Assert.Equal("app_not_found", changed.Code);
     Assert.Equal(1, launcher.Aumids.Count);
 }
@@ -702,7 +730,8 @@ static async Task ShellFailureIsSanitized()
     var appId = (await provider.GetAppsAsync()).Single().AppId;
 
     var failure = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None));
+        provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value, appId, CancellationToken.None));
     Assert.Equal("launch_failed", failure.Code);
     Assert.False(failure.Message.Contains("private", StringComparison.OrdinalIgnoreCase));
     Assert.False(failure.Message.Contains(".lnk", StringComparison.OrdinalIgnoreCase));
@@ -714,16 +743,19 @@ static async Task ResolvesOnlyCurrentIds()
     var launcher = new FakeShellLauncher();
     var provider = new WindowsAppLibraryProvider(source, launcher);
     var id = (await provider.GetAppsAsync()).Single().AppId;
-    await provider.LaunchAppLibraryItemAsync(id, CancellationToken.None);
+    await provider.LaunchAppLibraryItemAsync(
+        ProviderTestIdentity.Value, id, CancellationToken.None);
     Assert.Equal(@"C:\One.lnk", launcher.Paths.Single());
     var unknown = await Assert.ThrowsAsync<BrokerException>(() =>
         provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value,
             "app-00000000000000000000000000000000", CancellationToken.None));
     Assert.Equal("app_not_found", unknown.Code);
     source.Items = [];
     await provider.RefreshAsync();
     var stale = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.LaunchAppLibraryItemAsync(id, CancellationToken.None));
+        provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value, id, CancellationToken.None));
     Assert.Equal("app_not_found", stale.Code);
 }
 
@@ -737,7 +769,8 @@ static async Task CancellationIsAtomic()
     cancellation.Cancel();
     await Assert.ThrowsAsync<OperationCanceledException>(() => scan);
     var missing = await Assert.ThrowsAsync<BrokerException>(() =>
-        provider.LaunchAppLibraryItemAsync("app-anything", CancellationToken.None));
+        provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value, "app-anything", CancellationToken.None));
     Assert.Equal("app_not_found", missing.Code);
 }
 
@@ -1204,6 +1237,12 @@ file sealed class FakeIconSource(byte[]? png) : IWindowsAppIconSource
         AppsFolderAumids.Add(aumid);
         return png is null ? null : Convert.ToBase64String(png);
     }
+}
+
+internal static class ProviderTestIdentity
+{
+    internal static BrokerWidgetIdentity Value { get; } =
+        new("dev.test.provider", "dev.test", "default");
 }
 
 internal static class Assert
