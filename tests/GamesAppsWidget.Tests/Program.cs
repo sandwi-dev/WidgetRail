@@ -22,6 +22,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Concurrent exclusion wins catalog reconciliation through bounded CAS", ConcurrentExclusionWins),
     ("Concurrent display removal wins background reconciliation through bounded CAS", ConcurrentDisplayRemovalWins),
     ("Library mutation reconciliation and CAS policy is render independent", LibraryPolicyIsRenderIndependent),
+    ("Registration CAS capacity rejects without losing exact recovery ownership",
+        RegistrationMergeCapacityRetainsRecoveryOwnership),
     ("Legacy unsupported and invalid schemas reset atomically before fresh reconciliation", LegacySchemasResetAtomically),
     ("Bounded exclusion storage refuses removal without losing membership", FullExclusionSetRefusesRemoval),
     ("Worst-case display projection remains inside private-state bounds", ProjectedStateIsBounded),
@@ -466,6 +468,9 @@ static async Task DeniedPortableRemovalRetainsState()
     Assert.SequenceEqual([item.SavedId], retained.RootElement
         .GetProperty("RunningRegistrationSavedIds").EnumerateArray()
         .Select(value => value.GetString()!));
+    Assert.SequenceEqual([item.SavedId], retained.RootElement
+        .GetProperty("PendingRunningRegistrationSavedIds").EnumerateArray()
+        .Select(value => value.GetString()!));
     Assert.True(ActionSurfaces(Snapshot(widget, 927).Root).Single(candidate =>
         candidate.ActionId == "games.launch").IsDisabled is not true);
     await Background(widget);
@@ -477,7 +482,7 @@ static async Task PortableRemovalSaveFailureWithdrawsLaunch()
         "portable-current", "saved-portable", "Portable app",
         WidgetAppLibraryKind.Application, "source-portable", "Portable");
     var state = RunningRegistrationState(
-        item.SavedId, pending: false, item, revision: long.MaxValue);
+        item.SavedId, pending: false, item, revision: long.MaxValue - 1);
     var fake = RegisteredPortableLibraryHost(state, item);
     var widget = Create(fake);
     await Interactive(widget);
@@ -491,12 +496,29 @@ static async Task PortableRemovalSaveFailureWithdrawsLaunch()
     using var retained = System.Text.Json.JsonDocument.Parse(state.Json!);
     Assert.SequenceEqual([item.SavedId], retained.RootElement
         .GetProperty("SavedIds").EnumerateArray().Select(value => value.GetString()!));
+    Assert.SequenceEqual([item.SavedId], retained.RootElement
+        .GetProperty("PendingRunningRegistrationSavedIds").EnumerateArray()
+        .Select(value => value.GetString()!));
     var cleanup = ActionSurfaces(Snapshot(widget, 929).Root).Single(candidate =>
         candidate.ActionId == "games.launch");
     Assert.True(cleanup.IsDisabled is true);
     Assert.True(cleanup.AccessibilityLabel?.Contains(
         "Checking availability", StringComparison.Ordinal) == true);
     await Background(widget);
+
+    var recoveryState = new WidgetTestPrivateState(state.Json!, 1);
+    var recoveryHost = RegisteredPortableLibraryHost(recoveryState, item);
+    var recovered = Create(recoveryHost);
+    await Interactive(recovered);
+    await WaitUntil(() => recovered.ViewState == GamesAppsViewState.Ready &&
+                          recoveryHost.ForgottenRunningApps.Count == 1);
+    using var cleaned = System.Text.Json.JsonDocument.Parse(recoveryState.Json!);
+    Assert.Equal(0, cleaned.RootElement.GetProperty("SavedIds").GetArrayLength());
+    Assert.Equal(0, cleaned.RootElement
+        .GetProperty("RunningRegistrationSavedIds").GetArrayLength());
+    Assert.Equal(0, cleaned.RootElement
+        .GetProperty("PendingRunningRegistrationSavedIds").GetArrayLength());
+    await Background(recovered);
 }
 
 static async Task MalformedRunningConfirmationPreservesLibrary()
@@ -3306,6 +3328,73 @@ static async Task LibraryPolicyIsRenderIndependent()
     Assert.True(committed is not null);
     Assert.SequenceEqual([beta.SavedId, game.SavedId], committed!.SavedIds);
     Assert.False(committed.SavedIds.Contains(alpha.SavedId, StringComparer.Ordinal));
+}
+
+static async Task RegistrationMergeCapacityRetainsRecoveryOwnership()
+{
+    const string requested = "saved-requested";
+    var baselinePending = Enumerable.Range(0, GamesAppsLibraryPolicy.MaximumCuratedItems - 1)
+        .Select(index => $"pending-{index:D2}").ToArray();
+    var baseline = new GamesAppsLibraryState(3, [], null)
+    {
+        PendingRunningRegistrationSavedIds = baselinePending,
+    };
+    var begin = GamesAppsLibraryPolicy.BeginRunningRegistration(baseline, requested);
+    Assert.True(begin.Accepted);
+    Assert.True(begin.State.PendingRunningRegistrationSavedIds.Contains(
+        requested, StringComparer.Ordinal));
+    var latestPending = new GamesAppsLibraryState(3, [], null)
+    {
+        PendingRunningRegistrationSavedIds = Enumerable.Range(
+                0, GamesAppsLibraryPolicy.MaximumCuratedItems)
+            .Select(index => $"latest-pending-{index:D2}").ToArray(),
+    };
+    var writes = 0;
+    ValueTask<WidgetPrivateStateMutation> WritePending(
+        GamesAppsLibraryState _, long __, CancellationToken ___)
+    {
+        writes++;
+        return ValueTask.FromException<WidgetPrivateStateMutation>(
+            new WidgetCapabilityException("state_conflict", "conflict"));
+    }
+    ValueTask<WidgetPrivateStateValue<GamesAppsLibraryState>> ReadPending(
+        CancellationToken _) => ValueTask.FromResult(
+        new WidgetPrivateStateValue<GamesAppsLibraryState>(true, latestPending, 9));
+    var pendingResult = await GamesAppsLibraryStore.SaveAsync(
+        WritePending, ReadPending, baseline, begin.State, 1, CancellationToken.None);
+    Assert.Equal(GamesAppsLibrarySaveStatus.Rejected, pendingResult.Status);
+    Assert.Equal(1, writes);
+    Assert.Equal(GamesAppsLibraryPolicy.MaximumCuratedItems,
+        pendingResult.State.PendingRunningRegistrationSavedIds.Count);
+    Assert.False(pendingResult.State.PendingRunningRegistrationSavedIds.Contains(
+        requested, StringComparer.Ordinal));
+
+    var completionBaseline = new GamesAppsLibraryState(3, [], null)
+    {
+        PendingRunningRegistrationSavedIds = [requested],
+    };
+    var item = InstalledItem(
+        "portable-current", requested, "Portable app",
+        WidgetAppLibraryKind.Application, "source-portable", "Portable");
+    var completion = GamesAppsLibraryPolicy.CompleteRunningRegistration(
+        completionBaseline, item, []);
+    Assert.True(completion.Accepted);
+    var latestSavedIds = Enumerable.Range(0, GamesAppsLibraryPolicy.MaximumCuratedItems)
+        .Select(index => $"saved-latest-{index:D2}").ToArray();
+    var completionLatest = new GamesAppsLibraryState(
+        3, latestSavedIds, latestSavedIds[0])
+    {
+        PendingRunningRegistrationSavedIds = [requested],
+    };
+    var merged = GamesAppsLibraryPolicy.Merge(
+        completionBaseline, completion.State, completionLatest);
+    Assert.False(merged.Accepted);
+    Assert.Equal(GamesAppsLibraryPolicy.MaximumCuratedItems, merged.State.SavedIds.Count);
+    Assert.False(merged.State.SavedIds.Contains(requested, StringComparer.Ordinal));
+    Assert.False(merged.State.RunningRegistrationSavedIds.Contains(
+        requested, StringComparer.Ordinal));
+    Assert.True(merged.State.PendingRunningRegistrationSavedIds.Contains(
+        requested, StringComparer.Ordinal));
 }
 
 static Task CatalogPolicyOwnsNavigation()

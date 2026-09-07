@@ -424,6 +424,54 @@ public sealed class GamesAppsWidget : Widget
             }
             if (requiresForget)
             {
+                var marker = GamesAppsLibraryPolicy.BeginRunningRegistrationRemoval(
+                    baseline, item!.SavedId);
+                if (!marker.Accepted)
+                {
+                    ShowToast("App not removed",
+                        "Running-app cleanup capacity is full", ToastTone.Danger);
+                    return;
+                }
+                var markerPersistence = await PersistLibraryAsync(
+                        marker.State.SavedIds,
+                        marker.State.AutoGameSavedIds,
+                        marker.State.ExcludedGameSavedIds,
+                        marker.State.SelectedSavedId,
+                        commandLifetime.Token,
+                        candidateItems,
+                        generation,
+                        baseline,
+                        revision,
+                        marker.State.RunningRegistrationSavedIds,
+                        marker.State.PendingRunningRegistrationSavedIds)
+                    .ConfigureAwait(false);
+                bool markerRetained;
+                lock (_gate)
+                {
+                    markerRetained = _persistedLibraryState
+                        .PendingRunningRegistrationSavedIds.Contains(
+                            item.SavedId, StringComparer.Ordinal);
+                    if (markerRetained)
+                    {
+                        baseline = _persistedLibraryState;
+                        revision = _stateRevision;
+                        desiredState = GamesAppsLibraryPolicy
+                            .CompleteRunningRegistrationRemoval(
+                                baseline, item.SavedId);
+                    }
+                }
+                if (!markerRetained)
+                {
+                    ShowToast("App not removed",
+                        markerPersistence.Rejected
+                            ? "The library changed; retry Remove"
+                            : "The cleanup marker could not be saved",
+                        ToastTone.Danger);
+                    return;
+                }
+                if (Page != GamesAppsPage.Library ||
+                    Interlocked.Read(ref _generation) != generation)
+                    return;
                 try
                 {
                     await HostServices.AppLibrary.ForgetRunningAsync(
@@ -453,18 +501,32 @@ public sealed class GamesAppsWidget : Widget
                     return;
                 }
             }
+            var persistenceCandidates = requiresForget
+                ? candidateItems.Where(candidate => !string.Equals(
+                    candidate.SavedId, item!.SavedId, StringComparison.Ordinal)).ToArray()
+                : candidateItems;
             var persistence = await PersistLibraryAsync(
                     desiredState.SavedIds,
                     desiredState.AutoGameSavedIds,
                     desiredState.ExcludedGameSavedIds,
                     desiredState.SelectedSavedId,
-                    commandLifetime.Token, candidateItems,
-                    generation, baseline, revision,
+                    commandLifetime.Token, persistenceCandidates,
+                    requiredGeneration: null,
+                    baselineOverride: baseline,
+                    revisionOverride: revision,
                     desiredState.RunningRegistrationSavedIds,
                     desiredState.PendingRunningRegistrationSavedIds)
                 .ConfigureAwait(false);
             commandLifetime.Token.ThrowIfCancellationRequested();
-            if (persistence.Saved)
+            bool removalCommitted;
+            lock (_gate)
+                removalCommitted = !_persistedLibraryState.SavedIds.Contains(
+                                       item!.SavedId, StringComparer.Ordinal) &&
+                                   !_persistedLibraryState.RunningRegistrationSavedIds.Contains(
+                                       item.SavedId, StringComparer.Ordinal) &&
+                                   !_persistedLibraryState.PendingRunningRegistrationSavedIds.Contains(
+                                       item.SavedId, StringComparer.Ordinal);
+            if (removalCommitted)
             {
                 lock (_gate) _status = toastMessage;
             }
@@ -477,16 +539,16 @@ public sealed class GamesAppsWidget : Widget
                 Invalidate();
             }
             ShowToast(
-                persistence.Saved ? "Library updated" :
+                removalCommitted ? "Library updated" :
                     requiresForget ? "Library cleanup pending" : "Library not saved",
-                persistence.Saved
+                removalCommitted
                     ? toastMessage
                     : requiresForget
                         ? "The app registration was removed; retry Remove to finish library cleanup"
                     : persistence.Rejected
                         ? "Add a previously excluded game back before removing another"
                         : "The durable library could not be updated",
-                persistence.Saved ? ToastTone.Success : ToastTone.Danger);
+                removalCommitted ? ToastTone.Success : ToastTone.Danger);
         }
         catch (OperationCanceledException) when (commandLifetime.IsCancellationRequested)
         {
@@ -965,6 +1027,34 @@ public sealed class GamesAppsWidget : Widget
         foreach (var savedId in pending)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var removalPending = desired.SavedIds.Contains(savedId, StringComparer.Ordinal) &&
+                                 desired.RunningRegistrationSavedIds.Contains(
+                                     savedId, StringComparer.Ordinal);
+            if (removalPending)
+            {
+                if (LifecycleState != WidgetLifecycleState.Interactive)
+                {
+                    cleanupPending = true;
+                    continue;
+                }
+                try
+                {
+                    await HostServices.AppLibrary.ForgetRunningAsync(savedId, cancellationToken)
+                        .ConfigureAwait(false);
+                    desired = GamesAppsLibraryPolicy.CompleteRunningRegistrationRemoval(
+                        desired, savedId);
+                    changed = true;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception)
+                {
+                    cleanupPending = true;
+                }
+                continue;
+            }
             if (bySavedId.TryGetValue(savedId, out var item))
             {
                 var completed = GamesAppsLibraryPolicy.CompleteRunningRegistration(
@@ -1504,7 +1594,11 @@ public sealed class GamesAppsWidget : Widget
                     pendingRunningRegistrationSavedIds:
                         pendingMutation.State.PendingRunningRegistrationSavedIds)
                 .ConfigureAwait(false);
-            if (!pending.Saved)
+            bool pendingRetained;
+            lock (_gate)
+                pendingRetained = _persistedLibraryState.PendingRunningRegistrationSavedIds
+                    .Contains(savedId, StringComparer.Ordinal);
+            if (!pendingRetained)
             {
                 ShowToast("App not added",
                     "The registration was not started because its recovery marker could not be saved",
@@ -1590,7 +1684,15 @@ public sealed class GamesAppsWidget : Widget
                 pendingRunningRegistrationSavedIds:
                     mutation.State.PendingRunningRegistrationSavedIds)
             .ConfigureAwait(false);
-        if (persistence.Saved)
+        bool finalized;
+        lock (_gate)
+            finalized = _persistedLibraryState.SavedIds.Contains(
+                            item.SavedId, StringComparer.Ordinal) &&
+                        _persistedLibraryState.RunningRegistrationSavedIds.Contains(
+                            item.SavedId, StringComparer.Ordinal) &&
+                        !_persistedLibraryState.PendingRunningRegistrationSavedIds.Contains(
+                            item.SavedId, StringComparer.Ordinal);
+        if (finalized)
         {
             lock (_gate) _status =
                 $"Added {GamesAppsAppLibraryPresentation.DisplayName(item)} to your library";

@@ -172,6 +172,8 @@ internal static class GamesAppsLibraryPolicy
             if (mergedSaved.Count < MaximumCuratedItems &&
                 !mergedSaved.Contains(id, StringComparer.Ordinal))
                 mergedSaved.Add(id);
+        if (addedSaved.Any(id => !mergedSaved.Contains(id, StringComparer.Ordinal)))
+            return new GamesAppsLibraryMergeResult(latest, Accepted: false);
 
         var mergedAutomatic = MergeListByDelta(
             baseline.AutoGameSavedIds, desired.AutoGameSavedIds,
@@ -199,8 +201,18 @@ internal static class GamesAppsLibraryPolicy
                 baseline.PendingRunningRegistrationSavedIds,
                 desired.PendingRunningRegistrationSavedIds,
                 latest.PendingRunningRegistrationSavedIds,
-                MaximumCuratedItems)
-            .Where(id => !mergedSavedSet.Contains(id)).ToArray();
+                MaximumCuratedItems);
+        var requestedRegistrationAdditions = desired.RunningRegistrationSavedIds
+            .Where(id => !baseline.RunningRegistrationSavedIds.Contains(
+                id, StringComparer.Ordinal)).ToArray();
+        var requestedPendingAdditions = desired.PendingRunningRegistrationSavedIds
+            .Where(id => !baseline.PendingRunningRegistrationSavedIds.Contains(
+                id, StringComparer.Ordinal)).ToArray();
+        if (requestedRegistrationAdditions.Any(id =>
+                !mergedRunningRegistrations.Contains(id, StringComparer.Ordinal)) ||
+            requestedPendingAdditions.Any(id =>
+                !mergedPendingRegistrations.Contains(id, StringComparer.Ordinal)))
+            return new GamesAppsLibraryMergeResult(latest, Accepted: false);
         var selected = !string.Equals(
                 baseline.SelectedSavedId, desired.SelectedSavedId, StringComparison.Ordinal)
             ? desired.SelectedSavedId
@@ -365,6 +377,54 @@ internal static class GamesAppsLibraryPolicy
         };
     }
 
+    internal static GamesAppsLibraryMutation BeginRunningRegistrationRemoval(
+        GamesAppsLibraryState persisted,
+        string savedId)
+    {
+        var state = Normalize(persisted);
+        if (!state.SavedIds.Contains(savedId, StringComparer.Ordinal) ||
+            !state.RunningRegistrationSavedIds.Contains(savedId, StringComparer.Ordinal))
+            return new GamesAppsLibraryMutation(state, GamesAppsLibraryMutationRejection.None);
+        if (state.PendingRunningRegistrationSavedIds.Contains(savedId, StringComparer.Ordinal))
+            return new GamesAppsLibraryMutation(state, GamesAppsLibraryMutationRejection.None);
+        if (state.PendingRunningRegistrationSavedIds.Count >= MaximumCuratedItems)
+            return new GamesAppsLibraryMutation(
+                state, GamesAppsLibraryMutationRejection.LibraryFull);
+        return new GamesAppsLibraryMutation(
+            state with
+            {
+                PendingRunningRegistrationSavedIds =
+                    state.PendingRunningRegistrationSavedIds.Append(savedId).ToArray(),
+            },
+            GamesAppsLibraryMutationRejection.None);
+    }
+
+    internal static GamesAppsLibraryState CompleteRunningRegistrationRemoval(
+        GamesAppsLibraryState persisted,
+        string savedId)
+    {
+        var state = Normalize(persisted);
+        var saved = state.SavedIds.Where(id => !string.Equals(
+            id, savedId, StringComparison.Ordinal)).ToArray();
+        return state with
+        {
+            SavedIds = saved,
+            SelectedSavedId = string.Equals(
+                state.SelectedSavedId, savedId, StringComparison.Ordinal)
+                ? saved.FirstOrDefault()
+                : state.SelectedSavedId,
+            AutoGameSavedIds = state.AutoGameSavedIds.Where(id => !string.Equals(
+                id, savedId, StringComparison.Ordinal)).ToArray(),
+            DisplayItems = state.DisplayItems.Where(item => !string.Equals(
+                item.SavedId, savedId, StringComparison.Ordinal)).ToArray(),
+            RunningRegistrationSavedIds = state.RunningRegistrationSavedIds
+                .Where(id => !string.Equals(id, savedId, StringComparison.Ordinal)).ToArray(),
+            PendingRunningRegistrationSavedIds =
+                state.PendingRunningRegistrationSavedIds.Where(id => !string.Equals(
+                    id, savedId, StringComparison.Ordinal)).ToArray(),
+        };
+    }
+
     internal static IReadOnlyList<GamesAppsPersistedDisplayItem> BuildDisplayItems(
         GamesAppsLibraryState baseline,
         IReadOnlyList<WidgetAppLibraryItem>? candidates,
@@ -455,7 +515,8 @@ internal static class GamesAppsLibraryPolicy
                 !saved.Contains(id) || !registered.Add(id))) return false;
         var pending = new HashSet<string>(StringComparer.Ordinal);
         if (state.PendingRunningRegistrationSavedIds.Any(id =>
-                !IsOpaqueId(id) || saved.Contains(id) || !pending.Add(id))) return false;
+                !IsOpaqueId(id) || !pending.Add(id) ||
+                saved.Contains(id) && !registered.Contains(id))) return false;
 
         var displayed = new HashSet<string>(StringComparer.Ordinal);
         return state.DisplayItems.All(item => item is not null &&
