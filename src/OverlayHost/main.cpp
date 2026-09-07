@@ -11003,7 +11003,9 @@ private:
             *snapshot, interactionSession_.focusedElementId(),
             snapshot->activeInputScopeId);
         return authority && focused && focused->kind == L"slider" &&
-            interactionSession_.SliderAdjustmentModeActive(*authority, *focused);
+            !focused->isDisabled && !focused->isBusy &&
+            (focused->sliderInteractionMode != L"activateToAdjust" ||
+             interactionSession_.SliderAdjustmentModeActive(*authority, *focused));
     }
 
     void TraceSliderControllerSample(
