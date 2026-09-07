@@ -51,6 +51,10 @@ public sealed class GamesAppsWidget : Widget
     ];
 
     private sealed record LibraryPersistenceResult(bool Saved, bool Rejected);
+    private sealed record PendingRegistrationRecovery(
+        GamesAppsLibraryState State,
+        long Revision,
+        bool CleanupPending);
 
     private readonly object _gate = new();
     private readonly WidgetNavigator<GamesAppsPage> _navigation;
@@ -210,20 +214,25 @@ public sealed class GamesAppsWidget : Widget
                 SwitchRoot(1);
                 return;
             case "games.toggle-curation":
-                string? catalogAppId = null;
+                string? catalogItemId = null;
                 lock (_gate)
                 {
                     if (Page is GamesAppsPage.Catalog or GamesAppsPage.Running)
-                        catalogAppId = _items.FirstOrDefault(item => string.Equals(
-                            GamesAppsPresentation.CatalogElementId(item.SavedId), action.SourceElementId,
-                            StringComparison.Ordinal))?.AppId;
+                    {
+                        var item = _items.FirstOrDefault(candidate => string.Equals(
+                            GamesAppsPresentation.CatalogElementId(candidate.SavedId),
+                            action.SourceElementId, StringComparison.Ordinal));
+                        catalogItemId = Page == GamesAppsPage.Running
+                            ? item?.SavedId
+                            : item?.AppId;
+                    }
                 }
-                if (catalogAppId is not null)
+                if (catalogItemId is not null)
                 {
                     if (Page == GamesAppsPage.Running)
-                        await AddRunningAsync(catalogAppId, cancellationToken).ConfigureAwait(false);
+                        await AddRunningAsync(catalogItemId, cancellationToken).ConfigureAwait(false);
                     else
-                        await ToggleCuratedAsync(catalogAppId, cancellationToken).ConfigureAwait(false);
+                        await ToggleCuratedAsync(catalogItemId, cancellationToken).ConfigureAwait(false);
                 }
                 return;
             case "games.remove":
@@ -381,6 +390,7 @@ public sealed class GamesAppsWidget : Widget
             GamesAppsLibraryState desiredState;
             IReadOnlyList<WidgetAppLibraryItem> candidateItems;
             string toastMessage;
+            bool requiresForget;
             var rejected = false;
             lock (_gate)
             {
@@ -399,6 +409,8 @@ public sealed class GamesAppsWidget : Widget
                     ResolveCuratedItemsLocked().Select(candidate => candidate.SavedId).ToArray());
                 desiredState = mutation.State;
                 rejected = !mutation.Accepted;
+                requiresForget = baseline.RunningRegistrationSavedIds.Contains(
+                    item.SavedId, StringComparer.Ordinal);
                 toastMessage = rejected
                     ? "Add a previously excluded game back before removing another"
                     : $"Removed {GamesAppsAppLibraryPresentation.DisplayName(item)}";
@@ -410,23 +422,67 @@ public sealed class GamesAppsWidget : Widget
                 ShowToast("Library unchanged", toastMessage, ToastTone.Warning);
                 return;
             }
+            if (requiresForget)
+            {
+                try
+                {
+                    await HostServices.AppLibrary.ForgetRunningAsync(
+                            item!.SavedId, commandLifetime.Token)
+                        .ConfigureAwait(false);
+                    lock (_gate)
+                    {
+                        _resolvedSavedIds.Remove(item.SavedId);
+                        var projection = GamesAppsLibraryPolicy.Project(
+                            baseline,
+                            candidateItems.Where(candidate => !string.Equals(
+                                candidate.SavedId, item.SavedId,
+                                StringComparison.Ordinal)).ToArray());
+                        _libraryItems = projection.Items;
+                        if (Page == GamesAppsPage.Library) _items = _libraryItems;
+                    }
+                    Invalidate();
+                }
+                catch (OperationCanceledException) when (commandLifetime.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    ShowToast("App not removed",
+                        RunningRegistrationError(exception), ToastTone.Danger);
+                    return;
+                }
+            }
             var persistence = await PersistLibraryAsync(
                     desiredState.SavedIds,
                     desiredState.AutoGameSavedIds,
                     desiredState.ExcludedGameSavedIds,
                     desiredState.SelectedSavedId,
                     commandLifetime.Token, candidateItems,
-                    generation, baseline, revision)
+                    generation, baseline, revision,
+                    desiredState.RunningRegistrationSavedIds,
+                    desiredState.PendingRunningRegistrationSavedIds)
                 .ConfigureAwait(false);
             commandLifetime.Token.ThrowIfCancellationRequested();
             if (persistence.Saved)
             {
                 lock (_gate) _status = toastMessage;
             }
+            else if (requiresForget)
+            {
+                lock (_gate)
+                {
+                    _status = "Registration removed · library cleanup pending";
+                }
+                Invalidate();
+            }
             ShowToast(
-                persistence.Saved ? "Library updated" : "Library not saved",
+                persistence.Saved ? "Library updated" :
+                    requiresForget ? "Library cleanup pending" : "Library not saved",
                 persistence.Saved
                     ? toastMessage
+                    : requiresForget
+                        ? "The app registration was removed; retry Remove to finish library cleanup"
                     : persistence.Rejected
                         ? "Add a previously excluded game back before removing another"
                         : "The durable library could not be updated",
@@ -728,12 +784,17 @@ public sealed class GamesAppsWidget : Widget
                     cancellationToken: cancellationToken).ConfigureAwait(false);
             var state = GamesAppsLibraryPolicy.Normalize(
                 persisted.Exists ? persisted.Value : null);
+            var pendingRecovery = await RecoverPendingRunningRegistrationsAsync(
+                    state, persisted.Revision, cancellationToken)
+                .ConfigureAwait(false);
+            state = pendingRecovery.State;
+            var persistedRevision = pendingRecovery.Revision;
             if (state.DisplayItems.Count != 0)
             {
                 lock (_gate)
                 {
                     if (Interlocked.Read(ref _generation) != generation) return;
-                    ApplyPersistedStateLocked(state, persisted.Revision);
+                    ApplyPersistedStateLocked(state, persistedRevision);
                     _hasLibrarySnapshot = true;
                     if (Page == GamesAppsPage.Library)
                     {
@@ -762,7 +823,7 @@ public sealed class GamesAppsWidget : Widget
                 lock (_gate)
                 {
                     if (Interlocked.Read(ref _generation) != generation) return;
-                    ApplyPersistedStateLocked(state, persisted.Revision, fallback);
+                    ApplyPersistedStateLocked(state, persistedRevision, fallback);
                     _hasLibrarySnapshot = true;
                     if (Page == GamesAppsPage.Library)
                     {
@@ -781,14 +842,14 @@ public sealed class GamesAppsWidget : Widget
                     string.Equals(item.AppId, _selectedAppId, StringComparison.Ordinal))?.SavedId;
 
             var preliminary = GamesAppsLibraryPolicy.Reconcile(
-                persisted.Exists ? persisted.Value : null, catalog, liveSelectedSavedId);
+                persisted.Exists ? state : null, catalog, liveSelectedSavedId);
             var detailedItems = await ResolveCuratedDetailsAsync(
                 preliminary.VisibleItems,
                 preliminary.State.SavedIds,
                 cancellationToken).ConfigureAwait(false);
             var authoritativeItems = detailedItems;
             var reconciliation = GamesAppsLibraryPolicy.Reconcile(
-                persisted.Exists ? persisted.Value : null,
+                persisted.Exists ? state : null,
                 authoritativeItems,
                 liveSelectedSavedId);
             var desiredState = reconciliation.State;
@@ -804,7 +865,7 @@ public sealed class GamesAppsWidget : Widget
                         authoritativeItems,
                         generation,
                         state,
-                        persisted.Revision)
+                        persistedRevision)
                     .ConfigureAwait(false);
             }
             else
@@ -814,7 +875,7 @@ public sealed class GamesAppsWidget : Widget
                 {
                     if (Interlocked.Read(ref _generation) != generation) return;
                     ApplyPersistedStateLocked(
-                        desiredState, persisted.Revision, reconciliation.VisibleItems);
+                        desiredState, persistedRevision, reconciliation.VisibleItems);
                 }
                 persistence = new LibraryPersistenceResult(Saved: true, Rejected: false);
             }
@@ -825,7 +886,7 @@ public sealed class GamesAppsWidget : Widget
             {
                 if (Interlocked.Read(ref _generation) != generation) return;
                 if (!persistence.Saved && !persistence.Rejected)
-                    ApplyPersistedStateLocked(state, persisted.Revision, authoritativeItems);
+                    ApplyPersistedStateLocked(state, persistedRevision, authoritativeItems);
                 _hasLibrarySnapshot = true;
                 if (Page == GamesAppsPage.Library)
                 {
@@ -836,6 +897,8 @@ public sealed class GamesAppsWidget : Widget
                         : persistence.Rejected
                             ? "Game exclusion storage is full"
                             : LibraryStatusLocked() + " · saving failed";
+                    if (pendingRecovery.CleanupPending)
+                        _status += " · running-app cleanup failed; retry";
                 }
                 committedAddedGames = persistence.Saved
                     ? reconciliation.AddedGameSavedIds.Count(id =>
@@ -865,6 +928,109 @@ public sealed class GamesAppsWidget : Widget
         catch (Exception exception)
         {
             ApplyError(exception, generation);
+        }
+    }
+
+    private async Task<PendingRegistrationRecovery>
+        RecoverPendingRunningRegistrationsAsync(
+            GamesAppsLibraryState state,
+            long revision,
+            CancellationToken cancellationToken)
+    {
+        var pending = state.PendingRunningRegistrationSavedIds;
+        if (pending.Count == 0)
+            return new PendingRegistrationRecovery(state, revision, CleanupPending: false);
+
+        IReadOnlyList<WidgetAppLibraryItem> resolved;
+        try
+        {
+            resolved = GamesAppsLibraryPolicy.NormalizeResolved(
+                await HostServices.AppLibrary.ResolveSavedAsync(pending, cancellationToken)
+                    .ConfigureAwait(false),
+                pending);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return new PendingRegistrationRecovery(state, revision, CleanupPending: true);
+        }
+
+        var bySavedId = resolved.ToDictionary(item => item.SavedId, StringComparer.Ordinal);
+        var desired = state;
+        var changed = false;
+        var cleanupPending = false;
+        foreach (var savedId in pending)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (bySavedId.TryGetValue(savedId, out var item))
+            {
+                var completed = GamesAppsLibraryPolicy.CompleteRunningRegistration(
+                    desired, item, desired.SavedIds);
+                if (completed.Accepted)
+                {
+                    desired = completed.State;
+                    changed = true;
+                    continue;
+                }
+            }
+
+            if (LifecycleState != WidgetLifecycleState.Interactive)
+            {
+                cleanupPending = true;
+                continue;
+            }
+            try
+            {
+                await HostServices.AppLibrary.ForgetRunningAsync(savedId, cancellationToken)
+                    .ConfigureAwait(false);
+                desired = GamesAppsLibraryPolicy.ClearPendingRunningRegistration(
+                    desired, savedId);
+                changed = true;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                cleanupPending = true;
+            }
+        }
+
+        if (!changed)
+            return new PendingRegistrationRecovery(state, revision, cleanupPending);
+        desired = desired with
+        {
+            DisplayItems = GamesAppsLibraryPolicy.BuildDisplayItems(
+                state, resolved, desired),
+        };
+        try
+        {
+            var save = await GamesAppsLibraryStore.SaveAsync(
+                    (value, expectedRevision, token) =>
+                        HostServices.PrivateState.WriteAsync(
+                            value, expectedRevision, cancellationToken: token),
+                    token => HostServices.PrivateState.ReadAsync<GamesAppsLibraryState>(
+                        cancellationToken: token),
+                    state,
+                    desired,
+                    revision,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return new PendingRegistrationRecovery(
+                save.State, save.Revision,
+                cleanupPending || save.Status != GamesAppsLibrarySaveStatus.Saved);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return new PendingRegistrationRecovery(state, revision, CleanupPending: true);
         }
     }
 
@@ -1265,27 +1431,179 @@ public sealed class GamesAppsWidget : Widget
 
     private async Task AddRunningAsync(string savedId, CancellationToken cancellationToken)
     {
-        string? revision;
+        if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, ActiveCancellationToken);
+        var acquired = false;
+        try
+        {
+            acquired = await _commandGate.WaitAsync(0, commandLifetime.Token)
+                .ConfigureAwait(false);
+            if (!acquired || LifecycleState != WidgetLifecycleState.Interactive) return;
+
+            string? observationRevision;
+            lock (_gate)
+            {
+                if (Page != GamesAppsPage.Running ||
+                    _libraryItems.Any(item => item.SavedId == savedId)) return;
+                observationRevision = _runningRevision;
+                _libraryMutationBusy = observationRevision is not null;
+            }
+            if (observationRevision is null) return;
+            Invalidate();
+
+            var confirmed = await HostServices.AppLibrary.ConfirmRunningAsync(
+                    savedId, observationRevision, commandLifetime.Token)
+                .ConfigureAwait(false);
+            commandLifetime.Token.ThrowIfCancellationRequested();
+            if (confirmed is not null)
+            {
+                await PersistRunningAdditionAsync(
+                        confirmed, registerOwned: false, commandLifetime.Token)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            GamesAppsLibraryState baseline;
+            long stateRevision;
+            IReadOnlyList<WidgetAppLibraryItem> candidates;
+            lock (_gate)
+            {
+                if (Page != GamesAppsPage.Running ||
+                    !string.Equals(_runningRevision, observationRevision,
+                        StringComparison.Ordinal))
+                {
+                    ShowToast("App changed", "Refresh running apps and try again",
+                        ToastTone.Warning);
+                    return;
+                }
+                baseline = _persistedLibraryState;
+                stateRevision = _stateRevision;
+                candidates = _libraryItems.ToArray();
+            }
+            var pendingMutation = GamesAppsLibraryPolicy.BeginRunningRegistration(
+                baseline, savedId);
+            if (!pendingMutation.Accepted)
+            {
+                ShowToast("Library unchanged",
+                    $"Your library can hold {MaximumCuratedItems} items",
+                    ToastTone.Warning);
+                return;
+            }
+            var pending = await PersistLibraryAsync(
+                    pendingMutation.State.SavedIds,
+                    pendingMutation.State.AutoGameSavedIds,
+                    pendingMutation.State.ExcludedGameSavedIds,
+                    pendingMutation.State.SelectedSavedId,
+                    commandLifetime.Token,
+                    candidates,
+                    baselineOverride: baseline,
+                    revisionOverride: stateRevision,
+                    runningRegistrationSavedIds:
+                        pendingMutation.State.RunningRegistrationSavedIds,
+                    pendingRunningRegistrationSavedIds:
+                        pendingMutation.State.PendingRunningRegistrationSavedIds)
+                .ConfigureAwait(false);
+            if (!pending.Saved)
+            {
+                ShowToast("App not added",
+                    "The registration was not started because its recovery marker could not be saved",
+                    ToastTone.Danger);
+                return;
+            }
+
+            var registered = await HostServices.AppLibrary.RegisterRunningAsync(
+                    savedId, observationRevision, commandLifetime.Token)
+                .ConfigureAwait(false);
+            commandLifetime.Token.ThrowIfCancellationRequested();
+            await PersistRunningAdditionAsync(
+                    registered.Item, registerOwned: true, commandLifetime.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (commandLifetime.IsCancellationRequested)
+        {
+            if (cancellationToken.IsCancellationRequested) throw;
+        }
+        catch (WidgetCapabilityException exception) when (
+            exception.ErrorCode == "malformed_response")
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            var message = RunningRegistrationError(exception);
+            ShowToast("App not added", message, ToastTone.Danger);
+        }
+        finally
+        {
+            if (acquired)
+            {
+                lock (_gate) _libraryMutationBusy = false;
+                _commandGate.Release();
+                Invalidate();
+            }
+        }
+    }
+
+    private async Task PersistRunningAdditionAsync(
+        WidgetAppLibraryItem item,
+        bool registerOwned,
+        CancellationToken cancellationToken)
+    {
+        GamesAppsLibraryState baseline;
+        long stateRevision;
+        IReadOnlyList<WidgetAppLibraryItem> candidates;
+        GamesAppsLibraryMutation mutation;
         lock (_gate)
         {
-            if (Page != GamesAppsPage.Running ||
-                _libraryItems.Any(item => item.SavedId == savedId)) return;
-            revision = _runningRevision;
+            baseline = _persistedLibraryState;
+            stateRevision = _stateRevision;
+            mutation = registerOwned
+                ? GamesAppsLibraryPolicy.CompleteRunningRegistration(
+                    baseline, item,
+                    ResolveCuratedItemsLocked().Select(candidate => candidate.SavedId).ToArray())
+                : GamesAppsLibraryPolicy.Toggle(
+                    baseline, item,
+                    _libraryItems.Any(candidate => string.Equals(
+                        candidate.SavedId, item.SavedId, StringComparison.Ordinal)),
+                    ResolveCuratedItemsLocked().Select(candidate => candidate.SavedId).ToArray());
+            candidates = _libraryItems.Append(item)
+                .DistinctBy(candidate => candidate.SavedId, StringComparer.Ordinal).ToArray();
         }
-        if (revision is null) return;
-        var current = await HostServices.AppLibrary.ConfirmRunningAsync(
-            savedId, revision, cancellationToken).ConfigureAwait(false);
-        if (current is null)
+        if (!mutation.Accepted)
         {
-            ShowToast("App changed", "Refresh running apps and try again", ToastTone.Warning);
+            ShowToast("Library unchanged",
+                $"Your library can hold {MaximumCuratedItems} items", ToastTone.Warning);
             return;
         }
-        lock (_gate)
+        var persistence = await PersistLibraryAsync(
+                mutation.State.SavedIds,
+                mutation.State.AutoGameSavedIds,
+                mutation.State.ExcludedGameSavedIds,
+                mutation.State.SelectedSavedId,
+                cancellationToken,
+                candidates,
+                baselineOverride: baseline,
+                revisionOverride: stateRevision,
+                runningRegistrationSavedIds:
+                    mutation.State.RunningRegistrationSavedIds,
+                pendingRunningRegistrationSavedIds:
+                    mutation.State.PendingRunningRegistrationSavedIds)
+            .ConfigureAwait(false);
+        if (persistence.Saved)
         {
-            if (Page != GamesAppsPage.Running || _runningRevision != revision) return;
-            _items = _items.Select(item => item.SavedId == savedId ? current : item).ToArray();
+            lock (_gate) _status =
+                $"Added {GamesAppsAppLibraryPresentation.DisplayName(item)} to your library";
+            ShowToast("Library updated",
+                $"Added {GamesAppsAppLibraryPresentation.DisplayName(item)} to your library",
+                ToastTone.Success);
         }
-        await ToggleCuratedAsync(current.AppId, cancellationToken).ConfigureAwait(false);
+        else
+        {
+            ShowToast("Registration recovery pending",
+                "The app registration was retained and will be reconciled when you retry",
+                ToastTone.Warning);
+        }
     }
 
     private void LoadMore()
@@ -1500,7 +1818,9 @@ public sealed class GamesAppsWidget : Widget
         IReadOnlyList<WidgetAppLibraryItem>? candidateItems = null,
         long? requiredGeneration = null,
         GamesAppsLibraryState? baselineOverride = null,
-        long? revisionOverride = null)
+        long? revisionOverride = null,
+        IReadOnlyList<string>? runningRegistrationSavedIds = null,
+        IReadOnlyList<string>? pendingRunningRegistrationSavedIds = null)
     {
         long revision;
         GamesAppsLibraryState baseline;
@@ -1514,6 +1834,10 @@ public sealed class GamesAppsWidget : Widget
             {
                 AutoGameSavedIds = autoGameSavedIds,
                 ExcludedGameSavedIds = excludedGameSavedIds,
+                RunningRegistrationSavedIds = runningRegistrationSavedIds ??
+                    baseline.RunningRegistrationSavedIds,
+                PendingRunningRegistrationSavedIds = pendingRunningRegistrationSavedIds ??
+                    baseline.PendingRunningRegistrationSavedIds,
                 DisplayItems = GamesAppsLibraryPolicy.BuildDisplayItems(
                     baseline,
                     candidateItems,
@@ -1521,6 +1845,11 @@ public sealed class GamesAppsWidget : Widget
                     {
                         AutoGameSavedIds = autoGameSavedIds,
                         ExcludedGameSavedIds = excludedGameSavedIds,
+                        RunningRegistrationSavedIds = runningRegistrationSavedIds ??
+                            baseline.RunningRegistrationSavedIds,
+                        PendingRunningRegistrationSavedIds =
+                            pendingRunningRegistrationSavedIds ??
+                            baseline.PendingRunningRegistrationSavedIds,
                     }),
             });
         try
@@ -1673,6 +2002,26 @@ public sealed class GamesAppsWidget : Widget
             };
         }
         return (GamesAppsViewState.Error, "App library request failed");
+    }
+
+    private static string RunningRegistrationError(Exception exception)
+    {
+        if (exception is WidgetCapabilityException capability)
+        {
+            return capability.ErrorCode switch
+            {
+                "permission_denied" or "capability_not_declared" or "capability_revoked" =>
+                    "Allow Add running apps in Settings > Permissions, then retry",
+                "lifecycle_denied" => "Enter Games & Apps, then retry",
+                "stale_observation" or "app_not_found" =>
+                    "Refresh running apps and try again",
+                "app_not_supported" => "This running app cannot be saved for later",
+                "registration_capacity" =>
+                    "Remove a saved portable app before registering another",
+                _ => "The app registration outcome is pending recovery",
+            };
+        }
+        return "The app registration outcome is pending recovery";
     }
 
     private static string CatalogStatus(

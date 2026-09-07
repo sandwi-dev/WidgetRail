@@ -238,17 +238,35 @@ await HostServices.AppLibrary.LaunchAsync(
 ```
 
 `system.apps.running.read.v1` is a separate optional read grant. **Add running
-app** performs one on-demand observation and returns only visible programs that
-the trusted host maps exactly to one current installed registration. The widget
-receives a sanitized name, kind/source label, opaque SavedId, and short-lived
-revision—never a PID, HWND, path, command, AUMID, package identity, or retained
-process handle. The host visits at most 256 top-level windows before all
-eligibility filters and returns at most 64 deduplicated candidates. Adding
-rechecks both the observation revision and current registration, and validates
-the complete confirmed item with the ordinary app-library rules before the
-existing bounded SavedId CAS mutation; malformed confirmation leaves every
-existing row and the durable store unchanged. Denial leaves the ordinary
-Catalog usable.
+app** performs one on-demand observation of supported visible programs. The
+widget receives a sanitized name, kind/source label, opaque SavedId, and
+short-lived revision—never a PID, HWND, path, command, AUMID, package identity,
+file identity, or retained process handle. The host visits at most 256 top-level
+windows before all eligibility filters and returns at most 64 deduplicated
+candidates.
+
+An exact current installed match keeps the ordinary confirmation and SavedId
+CAS path and does not need registration permission. An unmatched supported
+ordinary `.exe` additionally needs optional
+`system.apps.running.register.v1`: Games & Apps durably records a bounded opaque
+pending intent, then the trusted provider revalidates that exact observation and
+stores a package-owned launch registration. Only a successful response is
+finalized into the visible library. The provider retains the canonical local
+path and file identity privately; relaunch uses no prior arguments and sets the
+working directory to the executable's containing directory.
+
+The private library records only opaque SavedIds for completed registration
+flows and pending cleanup. A missing resolution is not proof that provider state
+is absent: a moved, missing, or replaced executable is deliberately omitted.
+Games & Apps therefore clears an unresolved pending intent only after the
+package-scoped idempotent Forget operation succeeds. Denial, cancellation, or
+an ambiguous response retains concise cleanup-pending status for Refresh/Y or
+Add retry. Removing a registered portable entry forgets provider state before
+the private library row; if the second save fails, the retained row becomes
+non-launchable and remains available for idempotent cleanup. Installed entries
+continue to add and remove without the registration grant. No cross-store
+atomicity is claimed, and no display/source label is used as registration
+authority.
 
 `QueryAsync` accepts a bounded installed/kind/source/sort query, an optional
 opaque cursor with its direction, and a page size of 1–64. It returns

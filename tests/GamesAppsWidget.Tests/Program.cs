@@ -38,6 +38,26 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog add remove and section navigation retain a user-owned library", CuratesLibrary),
     ("Running app route confirms current opaque identity before durable add",
         RunningAppRouteConfirmsCurrentIdentity),
+    ("Portable running add persists intent before one registration and finalizes ownership",
+        PortableRunningAddIsOrderedAndSingleFlight),
+    ("Already-registered portable running app finalizes one ownership receipt",
+        AlreadyRegisteredPortableFinalizesOnce),
+    ("A stale portable registration attempt retains its durable recovery intent",
+        StaleRegistrationRetainsPendingIntent),
+    ("Resolved pending registration finalizes without destructive cleanup",
+        ResolvedPendingRegistrationFinalizes),
+    ("Unresolved pending registration is forgotten before its intent clears",
+        UnresolvedPendingRegistrationForgetsBeforeClear),
+    ("Denied pending cleanup remains retryable across a fresh widget instance",
+        DeniedPendingCleanupSurvivesRestart),
+    ("Leaving during portable registration retains its durable recovery intent",
+        BackgroundDuringRegistrationRetainsPendingIntent),
+    ("Portable library removal forgets registration before private-state removal",
+        PortableRemovalForgetsBeforeStateRemoval),
+    ("Denied portable removal retains the exact saved row and ownership receipt",
+        DeniedPortableRemovalRetainsState),
+    ("Forgotten portable registration with failed state save becomes a disabled cleanup row",
+        PortableRemovalSaveFailureWithdrawsLaunch),
     ("Malformed running confirmation cannot mutate the durable library",
         MalformedRunningConfirmationPreservesLibrary),
     ("Catalog removal preserves unrelated rows through restart failure and CAS", CatalogRemovalPreservesLibraryContinuity),
@@ -159,6 +179,323 @@ static async Task RunningAppRouteConfirmsCurrentIdentity()
         item.SavedId == "saved-running"));
     Assert.Equal("app-current", widget.CuratedItems.Single(item =>
         item.SavedId == "saved-running").AppId);
+    Assert.Equal(0, fake.RunningRegistrations.Count);
+    Assert.Equal(0, fake.ForgottenRunningApps.Count);
+    await Background(widget);
+}
+
+static async Task PortableRunningAddIsOrderedAndSingleFlight()
+{
+    var registrationStarted = NewSignal();
+    var registration = new TaskCompletionSource<RegisterWidgetRunningAppResponse>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var portable = InstalledItem(
+        "portable-current", "saved-portable", "Portable app",
+        WidgetAppLibraryKind.Application, "source-portable", "Portable");
+    var fake = new FakeAppLibraryHost
+    {
+        RunningObservation = new([
+            new("saved-portable", "Portable app", WidgetAppLibraryKind.Application,
+                "Portable"),
+        ], "running-revision"),
+        ConfirmRunningHandler = _ => null,
+    };
+    fake.RegisterRunningHandler = (request, cancellationToken) =>
+    {
+        using var persisted = System.Text.Json.JsonDocument.Parse(fake.PrivateState.Json!);
+        Assert.SequenceEqual([request.SavedId], persisted.RootElement
+            .GetProperty("PendingRunningRegistrationSavedIds").EnumerateArray()
+            .Select(item => item.GetString()!));
+        Assert.Equal(0, persisted.RootElement.GetProperty("SavedIds").GetArrayLength());
+        registrationStarted.TrySetResult();
+        return new ValueTask<RegisterWidgetRunningAppResponse>(
+            registration.Task.WaitAsync(cancellationToken));
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    await widget.OnActionAsync(new("games.open-running", "games.open-running"));
+    await WaitUntil(() => widget.Page == GamesAppsPage.Running &&
+                          widget.ViewState == GamesAppsViewState.Ready);
+    var tile = ActionSurfaces(Snapshot(widget, 920).Root).Single(candidate =>
+        candidate.ActionId == "games.toggle-curation");
+    var first = widget.OnActionAsync(new("games.toggle-curation", tile.Id)).AsTask();
+    await registrationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await widget.OnActionAsync(new("games.toggle-curation", tile.Id));
+    Assert.Equal(1, fake.RunningRegistrations.Count);
+    registration.SetResult(new RegisterWidgetRunningAppResponse(portable, false));
+    await first.WaitAsync(TimeSpan.FromSeconds(2));
+    await WaitUntil(() => widget.CuratedItems.Any(item =>
+        item.SavedId == portable.SavedId));
+
+    using var committed = System.Text.Json.JsonDocument.Parse(fake.PrivateState.Json!);
+    Assert.SequenceEqual([portable.SavedId], committed.RootElement
+        .GetProperty("SavedIds").EnumerateArray().Select(item => item.GetString()!));
+    Assert.SequenceEqual([portable.SavedId], committed.RootElement
+        .GetProperty("RunningRegistrationSavedIds").EnumerateArray()
+        .Select(item => item.GetString()!));
+    Assert.Equal(0, committed.RootElement
+        .GetProperty("PendingRunningRegistrationSavedIds").GetArrayLength());
+    Assert.Equal("running-revision", fake.RunningRegistrations.Single().Revision);
+    await Background(widget);
+}
+
+static async Task UnresolvedPendingRegistrationForgetsBeforeClear()
+{
+    var state = RunningRegistrationState("saved-pending", pending: true);
+    var fake = new FakeAppLibraryHost { PrivateState = state };
+    fake.ForgetRunningHandler = (request, _) =>
+    {
+        using var persisted = System.Text.Json.JsonDocument.Parse(state.Json!);
+        Assert.True(persisted.RootElement
+            .GetProperty("PendingRunningRegistrationSavedIds").EnumerateArray()
+            .Any(item => item.GetString() == request.SavedId));
+        return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+
+    Assert.SequenceEqual(["saved-pending"],
+        fake.ForgottenRunningApps.Select(request => request.SavedId));
+    using var recovered = System.Text.Json.JsonDocument.Parse(state.Json!);
+    Assert.Equal(0, recovered.RootElement
+        .GetProperty("PendingRunningRegistrationSavedIds").GetArrayLength());
+    await Background(widget);
+}
+
+static async Task AlreadyRegisteredPortableFinalizesOnce()
+{
+    var item = InstalledItem(
+        "portable-current", "saved-portable", "Portable app",
+        WidgetAppLibraryKind.Application, "source-portable", "Portable");
+    var fake = PortableRunningHost(item);
+    fake.RegisterRunningHandler = (_, _) => ValueTask.FromResult(
+        new RegisterWidgetRunningAppResponse(item, AlreadyRegistered: true));
+    var widget = Create(fake);
+    await AddFirstRunningTile(widget, 924);
+
+    Assert.Equal(1, fake.RunningRegistrations.Count);
+    using var persisted = System.Text.Json.JsonDocument.Parse(fake.PrivateState.Json!);
+    Assert.SequenceEqual([item.SavedId], persisted.RootElement
+        .GetProperty("RunningRegistrationSavedIds").EnumerateArray()
+        .Select(value => value.GetString()!));
+    Assert.Equal(0, persisted.RootElement
+        .GetProperty("PendingRunningRegistrationSavedIds").GetArrayLength());
+    await Background(widget);
+}
+
+static async Task StaleRegistrationRetainsPendingIntent()
+{
+    var item = InstalledItem(
+        "portable-current", "saved-portable", "Portable app",
+        WidgetAppLibraryKind.Application, "source-portable", "Portable");
+    var fake = PortableRunningHost(item);
+    fake.RegisterRunningHandler = (_, _) =>
+        ValueTask.FromException<RegisterWidgetRunningAppResponse>(
+            new WidgetCapabilityException("stale_observation", "stale"));
+    var widget = Create(fake);
+    await AddFirstRunningTile(widget, 925);
+
+    using var persisted = System.Text.Json.JsonDocument.Parse(fake.PrivateState.Json!);
+    Assert.SequenceEqual([item.SavedId], persisted.RootElement
+        .GetProperty("PendingRunningRegistrationSavedIds").EnumerateArray()
+        .Select(value => value.GetString()!));
+    Assert.Equal(0, persisted.RootElement.GetProperty("SavedIds").GetArrayLength());
+    Assert.Equal(1, fake.RunningRegistrations.Count);
+    await Background(widget);
+}
+
+static async Task ResolvedPendingRegistrationFinalizes()
+{
+    var item = InstalledItem(
+        "portable-current", "saved-portable", "Portable app",
+        WidgetAppLibraryKind.Application, "source-portable", "Portable");
+    var state = RunningRegistrationState(item.SavedId, pending: true);
+    var fake = new FakeAppLibraryHost { PrivateState = state };
+    fake.ResolveHandler = (request, _) => ValueTask.FromResult(
+        new ResolveSavedWidgetAppLibraryItemsResponse(
+            request.SavedIds.Contains(item.SavedId, StringComparer.Ordinal) ? [item] : []));
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+                          widget.CuratedItems.Any(value => value.SavedId == item.SavedId));
+
+    Assert.Equal(0, fake.ForgottenRunningApps.Count);
+    using var persisted = System.Text.Json.JsonDocument.Parse(state.Json!);
+    Assert.SequenceEqual([item.SavedId], persisted.RootElement
+        .GetProperty("SavedIds").EnumerateArray().Select(value => value.GetString()!));
+    Assert.SequenceEqual([item.SavedId], persisted.RootElement
+        .GetProperty("RunningRegistrationSavedIds").EnumerateArray()
+        .Select(value => value.GetString()!));
+    Assert.Equal(0, persisted.RootElement
+        .GetProperty("PendingRunningRegistrationSavedIds").GetArrayLength());
+    await Background(widget);
+}
+
+static async Task DeniedPendingCleanupSurvivesRestart()
+{
+    var state = RunningRegistrationState("saved-pending", pending: true);
+    var denied = new FakeAppLibraryHost { PrivateState = state };
+    denied.ForgetRunningHandler = (_, _) =>
+        ValueTask.FromException<WidgetCapabilityAcknowledgement>(
+            new WidgetCapabilityException("permission_denied", "denied"));
+    var first = Create(denied);
+    await Interactive(first);
+    await WaitUntil(() => first.ViewState == GamesAppsViewState.Ready);
+    Assert.Contains("cleanup failed",
+        Text(Snapshot(first, 923).Root, "games.status").Text!);
+    using (var retained = System.Text.Json.JsonDocument.Parse(state.Json!))
+        Assert.SequenceEqual(["saved-pending"], retained.RootElement
+            .GetProperty("PendingRunningRegistrationSavedIds").EnumerateArray()
+            .Select(item => item.GetString()!));
+    await Background(first);
+
+    var recovered = new FakeAppLibraryHost { PrivateState = state };
+    var second = Create(recovered);
+    await Interactive(second);
+    await WaitUntil(() => second.ViewState == GamesAppsViewState.Ready &&
+                          recovered.ForgottenRunningApps.Count == 1);
+    using var committed = System.Text.Json.JsonDocument.Parse(state.Json!);
+    Assert.Equal(0, committed.RootElement
+        .GetProperty("PendingRunningRegistrationSavedIds").GetArrayLength());
+    await Background(second);
+}
+
+static async Task BackgroundDuringRegistrationRetainsPendingIntent()
+{
+    var registrationStarted = NewSignal();
+    var cancellationObserved = NewSignal();
+    var fake = new FakeAppLibraryHost
+    {
+        RunningObservation = new([
+            new("saved-portable", "Portable app", WidgetAppLibraryKind.Application,
+                "Portable"),
+        ], "running-revision"),
+        ConfirmRunningHandler = _ => null,
+    };
+    fake.RegisterRunningHandler = async (_, cancellationToken) =>
+    {
+        registrationStarted.TrySetResult();
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("Registration should have been canceled.");
+        }
+        catch (OperationCanceledException)
+        {
+            cancellationObserved.TrySetResult();
+            throw;
+        }
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    await widget.OnActionAsync(new("games.open-running", "games.open-running"));
+    await WaitUntil(() => widget.Page == GamesAppsPage.Running &&
+                          widget.ViewState == GamesAppsViewState.Ready);
+    var tile = ActionSurfaces(Snapshot(widget, 921).Root).Single(candidate =>
+        candidate.ActionId == "games.toggle-curation");
+    var add = widget.OnActionAsync(new("games.toggle-curation", tile.Id)).AsTask();
+    await registrationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await Background(widget);
+    await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await add.WaitAsync(TimeSpan.FromSeconds(2));
+    using var retained = System.Text.Json.JsonDocument.Parse(fake.PrivateState.Json!);
+    Assert.SequenceEqual(["saved-portable"], retained.RootElement
+        .GetProperty("PendingRunningRegistrationSavedIds").EnumerateArray()
+        .Select(item => item.GetString()!));
+    Assert.Equal(0, retained.RootElement.GetProperty("SavedIds").GetArrayLength());
+}
+
+static async Task PortableRemovalForgetsBeforeStateRemoval()
+{
+    var item = InstalledItem(
+        "portable-current", "saved-portable", "Portable app",
+        WidgetAppLibraryKind.Application, "source-portable", "Portable");
+    var state = RunningRegistrationState(item.SavedId, pending: false, item);
+    var fake = new FakeAppLibraryHost { PrivateState = state };
+    fake.ResolveHandler = (request, _) => ValueTask.FromResult(
+        new ResolveSavedWidgetAppLibraryItemsResponse(
+            request.SavedIds.Contains(item.SavedId, StringComparer.Ordinal) ? [item] : []));
+    fake.ForgetRunningHandler = (request, _) =>
+    {
+        using var persisted = System.Text.Json.JsonDocument.Parse(state.Json!);
+        Assert.True(persisted.RootElement.GetProperty("SavedIds").EnumerateArray()
+            .Any(candidate => candidate.GetString() == request.SavedId));
+        return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+                          widget.CuratedItems.Count == 1);
+    var tile = ActionSurfaces(Snapshot(widget, 922).Root).Single(candidate =>
+        candidate.ActionId == "games.launch");
+    await widget.OnActionAsync(new("games.remove", tile.Id));
+
+    Assert.SequenceEqual([item.SavedId],
+        fake.ForgottenRunningApps.Select(request => request.SavedId));
+    using var removed = System.Text.Json.JsonDocument.Parse(state.Json!);
+    Assert.Equal(0, removed.RootElement.GetProperty("SavedIds").GetArrayLength());
+    Assert.Equal(0, removed.RootElement
+        .GetProperty("RunningRegistrationSavedIds").GetArrayLength());
+    await Background(widget);
+}
+
+static async Task DeniedPortableRemovalRetainsState()
+{
+    var item = InstalledItem(
+        "portable-current", "saved-portable", "Portable app",
+        WidgetAppLibraryKind.Application, "source-portable", "Portable");
+    var state = RunningRegistrationState(item.SavedId, pending: false, item);
+    var fake = RegisteredPortableLibraryHost(state, item);
+    fake.ForgetRunningHandler = (_, _) =>
+        ValueTask.FromException<WidgetCapabilityAcknowledgement>(
+            new WidgetCapabilityException("permission_denied", "denied"));
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+                          widget.CuratedItems.Count == 1);
+    var tile = ActionSurfaces(Snapshot(widget, 926).Root).Single(candidate =>
+        candidate.ActionId == "games.launch");
+    await widget.OnActionAsync(new("games.remove", tile.Id));
+
+    using var retained = System.Text.Json.JsonDocument.Parse(state.Json!);
+    Assert.SequenceEqual([item.SavedId], retained.RootElement
+        .GetProperty("SavedIds").EnumerateArray().Select(value => value.GetString()!));
+    Assert.SequenceEqual([item.SavedId], retained.RootElement
+        .GetProperty("RunningRegistrationSavedIds").EnumerateArray()
+        .Select(value => value.GetString()!));
+    Assert.True(ActionSurfaces(Snapshot(widget, 927).Root).Single(candidate =>
+        candidate.ActionId == "games.launch").IsDisabled is not true);
+    await Background(widget);
+}
+
+static async Task PortableRemovalSaveFailureWithdrawsLaunch()
+{
+    var item = InstalledItem(
+        "portable-current", "saved-portable", "Portable app",
+        WidgetAppLibraryKind.Application, "source-portable", "Portable");
+    var state = RunningRegistrationState(
+        item.SavedId, pending: false, item, revision: long.MaxValue);
+    var fake = RegisteredPortableLibraryHost(state, item);
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+                          widget.CuratedItems.Count == 1);
+    var tile = ActionSurfaces(Snapshot(widget, 928).Root).Single(candidate =>
+        candidate.ActionId == "games.launch");
+    await widget.OnActionAsync(new("games.remove", tile.Id));
+
+    Assert.Equal(1, fake.ForgottenRunningApps.Count);
+    using var retained = System.Text.Json.JsonDocument.Parse(state.Json!);
+    Assert.SequenceEqual([item.SavedId], retained.RootElement
+        .GetProperty("SavedIds").EnumerateArray().Select(value => value.GetString()!));
+    var cleanup = ActionSurfaces(Snapshot(widget, 929).Root).Single(candidate =>
+        candidate.ActionId == "games.launch");
+    Assert.True(cleanup.IsDisabled is true);
+    Assert.True(cleanup.AccessibilityLabel?.Contains(
+        "Checking availability", StringComparison.Ordinal) == true);
     await Background(widget);
 }
 
@@ -3127,6 +3464,7 @@ static Task PackageValidates()
     Assert.SequenceEqual([
         "system.apps.library.launch.v1",
         "system.apps.running.read.v1",
+        "system.apps.running.register.v1",
     ], manifest.OptionalPermissions);
     var package = WrssPackageLoader.Load("styles/default.wrss", new WrssFileSourceProvider(root));
     var compiled = WrssThemeCompiler.Compile(package);
@@ -3219,6 +3557,68 @@ static WidgetTestPrivateState SavedState(params string[] savedIds)
     return new WidgetTestPrivateState(
         $"{{\"Version\":3,\"SavedIds\":[{ids}],\"SelectedSavedId\":\"{selected}\"," +
         "\"AutoGameSavedIds\":[],\"ExcludedGameSavedIds\":[],\"DisplayItems\":[]}", 1);
+}
+
+static FakeAppLibraryHost PortableRunningHost(WidgetAppLibraryItem item) => new()
+{
+    RunningObservation = new([
+        new(item.SavedId, item.Presentation.DisplayName,
+            WidgetAppLibraryKind.Application, "Portable"),
+    ], "running-revision"),
+    ConfirmRunningHandler = _ => null,
+};
+
+static FakeAppLibraryHost RegisteredPortableLibraryHost(
+    WidgetTestPrivateState state,
+    WidgetAppLibraryItem item)
+{
+    var fake = new FakeAppLibraryHost { PrivateState = state };
+    fake.ResolveHandler = (request, _) => ValueTask.FromResult(
+        new ResolveSavedWidgetAppLibraryItemsResponse(
+            request.SavedIds.Contains(item.SavedId, StringComparer.Ordinal) ? [item] : []));
+    return fake;
+}
+
+static async Task AddFirstRunningTile(GamesAppsWidget widget, long sequence)
+{
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    await widget.OnActionAsync(new("games.open-running", "games.open-running"));
+    await WaitUntil(() => widget.Page == GamesAppsPage.Running &&
+                          widget.ViewState == GamesAppsViewState.Ready);
+    var tile = ActionSurfaces(Snapshot(widget, sequence).Root).Single(candidate =>
+        candidate.ActionId == "games.toggle-curation");
+    await widget.OnActionAsync(new("games.toggle-curation", tile.Id));
+}
+
+static WidgetTestPrivateState RunningRegistrationState(
+    string savedId,
+    bool pending,
+    WidgetAppLibraryItem? item = null,
+    long revision = 1)
+{
+    var json = System.Text.Json.JsonSerializer.Serialize(new
+    {
+        Version = 3,
+        SavedIds = pending ? Array.Empty<string>() : new[] { savedId },
+        SelectedSavedId = pending ? null : savedId,
+        AutoGameSavedIds = Array.Empty<string>(),
+        ExcludedGameSavedIds = Array.Empty<string>(),
+        DisplayItems = pending || item is null
+            ? Array.Empty<object>()
+            : new object[]
+            {
+                new
+                {
+                    SavedId = savedId,
+                    DisplayName = item.Presentation.DisplayName,
+                    Kind = item.Presentation.Kind,
+                },
+            },
+        RunningRegistrationSavedIds = pending ? Array.Empty<string>() : new[] { savedId },
+        PendingRunningRegistrationSavedIds = pending ? new[] { savedId } : Array.Empty<string>(),
+    });
+    return new WidgetTestPrivateState(json, revision);
 }
 
 static WidgetTestPrivateState ProjectedState(
@@ -3453,6 +3853,12 @@ file sealed class FakeAppLibraryHost
     public Func<ConfirmWidgetRunningAppRequest, WidgetAppLibraryItem?>?
         ConfirmRunningHandler { get; set; }
     public List<ConfirmWidgetRunningAppRequest> RunningConfirmations { get; } = [];
+    public Func<RegisterWidgetRunningAppRequest, CancellationToken,
+        ValueTask<RegisterWidgetRunningAppResponse>>? RegisterRunningHandler { get; set; }
+    public Func<ForgetWidgetRunningAppRequest, CancellationToken,
+        ValueTask<WidgetCapabilityAcknowledgement>>? ForgetRunningHandler { get; set; }
+    public List<RegisterWidgetRunningAppRequest> RunningRegistrations { get; } = [];
+    public List<ForgetWidgetRunningAppRequest> ForgottenRunningApps { get; } = [];
     public WidgetTestPrivateState PrivateState { get; init; } = new();
 
     public WidgetHostServices Build() => new WidgetTestHostServicesBuilder()
@@ -3474,6 +3880,26 @@ file sealed class FakeAppLibraryHost
                 RunningConfirmations.Add(request);
                 return ValueTask.FromResult(new ConfirmWidgetRunningAppResponse(
                     ConfirmRunningHandler?.Invoke(request)));
+            })
+        .WithHandler(WidgetAppLibraryCapabilities.RegisterRunning,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                RunningRegistrations.Add(request);
+                if (RegisterRunningHandler is not null)
+                    return RegisterRunningHandler(request, cancellationToken);
+                return ValueTask.FromException<RegisterWidgetRunningAppResponse>(
+                    new WidgetCapabilityException(
+                        "app_not_supported", "No portable registration fixture was configured."));
+            })
+        .WithHandler(WidgetAppLibraryCapabilities.ForgetRunning,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ForgottenRunningApps.Add(request);
+                if (ForgetRunningHandler is not null)
+                    return ForgetRunningHandler(request, cancellationToken);
+                return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
             })
         .WithPrivateState(PrivateState)
         .Build();
