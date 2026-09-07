@@ -864,6 +864,14 @@ shell composition: it does not create a route, focus request, focus memory, or
 loading state. Keep those responsibilities in `WidgetNavigator`, the host, and
 the widget's immutable render state respectively.
 
+Keep the navigator's same entry request published while the destination moves
+from unavailable loading content to its real remembered-focus group. Protocol
+v45 hosts retain that request without focusing loading UI, then resolve the
+remembered child or authored initial child once real content is ready. A newer
+deliberate navigation, activation, pointer, or accessibility choice cancels the
+pending entry so late content cannot steal focus; automatic layout and reopen
+reconciliation do not cancel it.
+
 The shell accepts two to eight destinations. Destination IDs describe logical
 destinations; compact and rail element IDs are generated separately. Action IDs
 describe routing intent and may be shared when the handler distinguishes

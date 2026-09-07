@@ -5628,6 +5628,7 @@ private:
         const auto priorPresentedExtent = PresentedPresentationExtentDip();
         const std::wstring priorSelected(state_.selectedWidget());
         const std::wstring priorActive(state_.activeWidget());
+        const auto* priorSnapshot = InteractionSnapshotFor(priorActive);
         const auto priorDesiredLifecycle = widgetrail::DesiredWidgetLifecycle(
             priorSurface, priorFocusRegion, priorSelected, priorActive,
             IsBridgeWidget(priorSelected), IsBridgeWidget(priorActive));
@@ -5664,6 +5665,14 @@ private:
             const auto retired = interactionSession_.RetirePresentations();
             if (retired.pressedPresentationChanged)
                 InvalidateRect(window_, nullptr, FALSE);
+        }
+        if (priorSurface == widgetrail::Surface::Widget &&
+            priorFocusRegion == widgetrail::FocusRegion::Widget &&
+            (state_.surface() != widgetrail::Surface::Widget ||
+             state_.focusRegion() != widgetrail::FocusRegion::Widget ||
+             priorActive != state_.activeWidget()) && priorSnapshot) {
+            RetirePendingFocusGroupEntryForUserIntent(
+                priorActive, *priorSnapshot, L"ordinary-input-lost");
         }
         if (!performanceState_ &&
             (before.order != state_.persistent().order ||
@@ -9393,6 +9402,8 @@ private:
                         Dispatch(widgetrail::Command::Activate);
                     }
                     ClearFreeScrollReentry(L"pointer-focus");
+                    RetirePendingFocusGroupEntryForUserIntent(
+                        widget, *snapshot, L"pointer");
                     ObserveScrollPaginationFocusIntent(
                         widget, *snapshot,
                         interactionSession_.focusedElementId(), hit->id,
@@ -9761,8 +9772,18 @@ private:
             }
             if (pinnedSurfaceCoordinator_.ToggleInteractionMode()) {
                 if (pinnedSurfaceCoordinator_.interactionMode() ==
-                    widgetrail::pinned::InteractionMode::Focusable)
-                    (void)pinnedSurfaceCoordinator_.EnterControllerFocus();
+                    widgetrail::pinned::InteractionMode::Focusable) {
+                    if (pinnedSurfaceCoordinator_.EnterControllerFocus() &&
+                        state_.surface() == widgetrail::Surface::Widget) {
+                        const auto* snapshot = InteractionSnapshotFor(
+                            state_.activeWidget());
+                        if (snapshot) {
+                            RetirePendingFocusGroupEntryForUserIntent(
+                                state_.activeWidget(), *snapshot,
+                                L"pinned-controller-takeover");
+                        }
+                    }
+                }
                 lastActionWidgetId_ = widgetId;
                 lastActionMessage_ =
                     pinnedSurfaceCoordinator_.interactionMode() ==
@@ -11462,6 +11483,15 @@ private:
                 (void)pinnedSurfaceCoordinator_.SetInteractionMode(
                     widgetrail::pinned::InteractionMode::Focusable);
             if (pinnedSurfaceCoordinator_.EnterControllerFocus()) {
+                if (state_.surface() == widgetrail::Surface::Widget) {
+                    const auto* snapshot = InteractionSnapshotFor(
+                        state_.activeWidget());
+                    if (snapshot) {
+                        RetirePendingFocusGroupEntryForUserIntent(
+                            state_.activeWidget(), *snapshot,
+                            L"pinned-controller-takeover");
+                    }
+                }
                 (void)interactionSession_.TransitionPressedPresentation(
                     widgetrail::input::PressedInputTransition::Clear);
                 lastActionWidgetId_ =
@@ -11783,6 +11813,8 @@ private:
                         : nullptr;
                     if (!select || !select->isSelect || select->isDisabled ||
                         select->isBusy) continue;
+                    RetirePendingFocusGroupEntryForUserIntent(
+                        request.widgetId, *snapshot, L"accessibility-expand");
                     if (interactionSession_.focusedElementId() != select->id)
                         (void)interactionSession_.MoveFocus(
                             request.widgetId, *snapshot, select->id);
@@ -11974,6 +12006,8 @@ private:
                                  request.widgetId);
                 continue;
             }
+            RetirePendingFocusGroupEntryForUserIntent(
+                request.widgetId, *snapshot, L"accessibility-action");
 
             if (resolved->kind == widgetrail::accessibility::ActionKind::Focus) {
                 if (state_.focusRegion() == widgetrail::FocusRegion::Tray)
@@ -12563,6 +12597,18 @@ private:
         };
     }
 
+    void RetirePendingFocusGroupEntryForUserIntent(
+        const std::wstring_view widgetId,
+        const widgetrail::WidgetSnapshot& snapshot,
+        const std::wstring_view reason) {
+        const auto authority = InteractionAuthority(widgetId, snapshot);
+        if (!authority ||
+            !interactionSession_.RetireFocusGroupEntryRequest(*authority)) return;
+        AppendDiagnostic(
+            L"Focus-group entry request widget=" + std::wstring{widgetId} +
+            L" state=retired reason=" + std::wstring{reason});
+    }
+
     [[nodiscard]] const widgetrail::WidgetNode* ValidateWidgetActionRequest(
         const widgetrail::input::WidgetInteractionActionRequest& request,
         const widgetrail::WidgetSnapshot& snapshot) {
@@ -12865,6 +12911,10 @@ private:
         const std::wstring_view widgetId = state_.activeWidget();
         const auto* snapshot = InteractionSnapshotFor(widgetId);
         if (!snapshot) return;
+        if (phase == widgetrail::input::NavigationEventPhase::Pressed) {
+            RetirePendingFocusGroupEntryForUserIntent(
+                widgetId, *snapshot, L"directional-input");
+        }
         const auto visible = widgetrail::input::ResolveVisibleFocusTarget(
             interactionSession_.focusedElementId(), snapshot->activeInputScopeId, lastWidgetRenderResult_);
         if (!visible) return;
@@ -13644,6 +13694,15 @@ private:
             textEntryModal_.HandleController(button);
             return;
         }
+        if (button == L"A" &&
+            state_.surface() == widgetrail::Surface::Widget &&
+            state_.focusRegion() == widgetrail::FocusRegion::Widget) {
+            const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
+            if (snapshot) {
+                RetirePendingFocusGroupEntryForUserIntent(
+                    state_.activeWidget(), *snapshot, L"activation");
+            }
+        }
         if (HandleFocusedSliderModeButton(button)) return;
         if (button == L"A") {
             const auto selectActivation = OpenFocusedSelectPopup();
@@ -13839,6 +13898,11 @@ private:
                         *exactActionRequest, L"input authority unavailable");
                 }
                 return;
+            }
+            if (!exactHeldAction && interactiveWidget &&
+                phase == widgetrail::input::NavigationEventPhase::Pressed) {
+                RetirePendingFocusGroupEntryForUserIntent(
+                    widget, *snapshot, L"activation");
             }
             const bool isOpen = interactiveWidget;
             const auto* requestedSlider = exactActionRequest
@@ -16967,9 +17031,11 @@ private:
                                 *focusGroupEntryAuthority, preparation)
                             : widgetrail::input::FocusGroupEntryPreview{};
                         if (preview.current) {
-                            focusGroupEntryPrepared = true;
-                            preparedFocusGroupEntryTarget = preview.target;
-                            if (preview.target) renderedFocusId = *preview.target;
+                            if (preview.target) {
+                                focusGroupEntryPrepared = true;
+                                preparedFocusGroupEntryTarget = preview.target;
+                                renderedFocusId = *preview.target;
+                            }
                         } else {
                             (void)interactionSession_.RetireFocusGroupEntryRequest(
                                 *focusGroupEntryAuthority);

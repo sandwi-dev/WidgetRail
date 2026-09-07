@@ -753,6 +753,94 @@ void OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority() {
           "a snapshot without a request cannot invent preparation authority");
 }
 
+void DeferredFocusGroupEntryWaitsForReadyContent() {
+    using namespace widgetrail::input;
+    widgetrail::WidgetSnapshot ready;
+    ready.sequence = 1;
+    ready.instanceId = L"deferred.instance";
+    ready.activeInputScopeId = L"deferred.root";
+    ready.root.id = L"deferred.root";
+    ready.root.kind = L"stack";
+    ready.root.inputScopeId = L"deferred.root";
+    auto header = Button(L"deferred.header");
+    widgetrail::WidgetNode group;
+    group.id = L"deferred.group";
+    group.kind = L"row";
+    group.initialChildFocusId = L"deferred.first";
+    group.children = {Button(L"deferred.first"), Button(L"deferred.remembered")};
+    ready.root.children = {header, group};
+
+    WidgetInteractionSession session;
+    session.SetFocus(L"deferred.widget", ready, L"deferred.remembered");
+
+    auto loading = ready;
+    loading.sequence = 2;
+    loading.focusGroupEntryRequest =
+        widgetrail::FocusGroupEntryRequest{41, L"deferred.group"};
+    loading.root.children[1].initialChildFocusId.clear();
+    widgetrail::WidgetNode loadingText;
+    loadingText.id = L"deferred.loading";
+    loadingText.kind = L"text";
+    loadingText.text = L"Loading";
+    loading.root.children[1].children = {loadingText};
+    auto loadingAuthority = Authority(
+        loading, L"deferred.widget", L"runtime-a", L"presentation-a");
+    widgetrail::RenderResult loadingRender;
+    loadingRender.succeeded = true;
+    AddRenderTarget(
+        loadingRender, L"deferred.header", {0.0F, 0.0F, 80.0F, 30.0F});
+    loadingRender.focusScopes[L"deferred.header"] = L"deferred.root";
+    Check(session.ObserveFocusGroupEntryRequest(loadingAuthority, true) ==
+              FocusGroupEntryObservation::Pending,
+          "deferred request is observed before content becomes focusable");
+    const auto waiting = session.PreviewFocusGroupEntryRequest(
+        loadingAuthority, loadingRender);
+    Check(waiting.current && !waiting.target,
+          "spinner-only group retains exact pending request without a target");
+    Check(!session.CommitPreparedFocusGroupEntryRequest(
+              loadingAuthority, waiting.target).consumed &&
+              session.FocusGroupEntryRequestPending(loadingAuthority),
+          "targetless preparation cannot consume deferred entry");
+    (void)session.MoveFocus(
+        L"deferred.widget", loading, L"deferred.header");
+
+    auto successor = ready;
+    successor.sequence = 3;
+    successor.focusGroupEntryRequest = loading.focusGroupEntryRequest;
+    auto successorAuthority = Authority(
+        successor, L"deferred.widget", L"runtime-a", L"presentation-a");
+    widgetrail::RenderResult readyRender;
+    readyRender.succeeded = true;
+    AddRenderTarget(
+        readyRender, L"deferred.first", {0.0F, 40.0F, 80.0F, 30.0F});
+    AddRenderTarget(
+        readyRender, L"deferred.remembered", {90.0F, 40.0F, 80.0F, 30.0F});
+    readyRender.focusScopes[L"deferred.first"] = L"deferred.root";
+    readyRender.focusScopes[L"deferred.remembered"] = L"deferred.root";
+    Check(session.ObserveFocusGroupEntryRequest(successorAuthority, true) ==
+              FocusGroupEntryObservation::Pending,
+          "compatible Ready snapshot retains the original pending request");
+    const auto remembered = session.PreviewFocusGroupEntryRequest(
+        successorAuthority, readyRender);
+    Check(remembered.current && remembered.target == L"deferred.remembered",
+          "automatic provisional focus did not overwrite remembered child memory");
+    Check(session.CommitPreparedFocusGroupEntryRequest(
+              successorAuthority, remembered.target).consumed,
+          "Ready remembered child consumes deferred request once");
+
+    WidgetInteractionSession fresh;
+    Check(fresh.ObserveFocusGroupEntryRequest(successorAuthority, true) ==
+              FocusGroupEntryObservation::Pending &&
+              fresh.PreviewFocusGroupEntryRequest(
+                  successorAuthority, readyRender).target == L"deferred.first",
+          "first Ready visit falls back to the authored initial child");
+    Check(fresh.RetireFocusGroupEntryRequest(successorAuthority),
+          "deliberate user intent retires pending deferred entry");
+    Check(!fresh.PreviewFocusGroupEntryRequest(
+              successorAuthority, readyRender).current,
+          "retired deferred request cannot steal focus on late Ready");
+}
+
 void ProvisionalOrdinalRestorePreservesRequestedGroupMemory() {
     using namespace widgetrail::input;
     widgetrail::WidgetSnapshot page;
@@ -1685,6 +1773,7 @@ int main() {
     ResponsiveFocusHandoffUsesInteractionOwner();
     RememberedGroupsUseExplicitAndGeometricEntryOwners();
     OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority();
+    DeferredFocusGroupEntryWaitsForReadyContent();
     ProvisionalOrdinalRestorePreservesRequestedGroupMemory();
     ResponsiveGridScrollOwnsDirectionalPriority();
     FreeScrollAndRetainedRefreshLifecycle();

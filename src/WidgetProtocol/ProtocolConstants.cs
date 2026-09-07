@@ -9,7 +9,7 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 44;
+    public const int CurrentVersion = 45;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
@@ -53,6 +53,7 @@ public static class ProtocolConstants
     public const int EmbeddedMediaSessionVersion = 42;
     public const int ControllerShortcutLabelVersion = 43;
     public const int FocusGroupEntryRequestVersion = 44;
+    public const int DeferredFocusGroupEntryVersion = 45;
     public const long MaximumFocusGroupEntryRequestId = 9_007_199_254_740_991;
     public const int MaximumFocusPresentationNodes = 64;
     public const int MaximumFocusPresentationDepth = 8;

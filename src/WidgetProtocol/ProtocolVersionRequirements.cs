@@ -26,11 +26,22 @@ internal sealed class ProtocolVersionRequirements
         var nodes = 0;
 
         if (snapshot.FocusGroupEntryRequest is not null)
+        {
             Add(
                 "focus-group-entry-request",
                 ProtocolConstants.FocusGroupEntryRequestVersion,
                 "$.focusGroupEntryRequest",
                 $"Focus-group entry requests require protocol version {ProtocolConstants.FocusGroupEntryRequestVersion} or later.");
+            if (IsDeferredRequestedGroup(
+                    snapshot.Root,
+                    snapshot.Root.InputScopeId ?? snapshot.Root.Id,
+                    snapshot.FocusGroupEntryRequest.GroupId))
+                Add(
+                    "deferred-focus-group-entry",
+                    ProtocolConstants.DeferredFocusGroupEntryVersion,
+                    "$.focusGroupEntryRequest",
+                    $"Deferred focus-group entry requires protocol version {ProtocolConstants.DeferredFocusGroupEntryVersion} or later.");
+        }
 
         if (snapshot.Surface is not null)
         {
@@ -112,6 +123,20 @@ internal sealed class ProtocolVersionRequirements
         }
 
         return new(requirements);
+
+        bool IsDeferredRequestedGroup(
+            ViewNode? node,
+            string inheritedScope,
+            string? groupId)
+        {
+            if (node is null || string.IsNullOrEmpty(groupId)) return false;
+            var scope = node.InputScopeId ?? inheritedScope;
+            if (string.Equals(node.Id, groupId, StringComparison.Ordinal) &&
+                string.Equals(scope, snapshot.ActiveInputScopeId, StringComparison.Ordinal))
+                return node.InitialChildFocusId is null;
+            return (node.Children ?? []).Any(child =>
+                IsDeferredRequestedGroup(child, scope, groupId));
+        }
 
         void Visit(ViewNode? node, string path, int depth)
         {

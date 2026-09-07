@@ -438,7 +438,8 @@ FocusMutation WidgetInteractionSession::MoveFocus(
     result.pressedPresentationChanged =
         retirePressedPresentation && pressed_.Clear();
     focusMemory_.Remember(widgetId, snapshot, focusedElementId_);
-    focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
+    if (!ProvisionalFocusGroupEntry(widgetId, snapshot))
+        focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
     if (retireSliderPresentations) RefreshSliderDeadline();
     return result;
 }
@@ -458,17 +459,7 @@ std::wstring WidgetInteractionSession::RestoreFocus(
     const std::wstring_view widgetId,
     const WidgetSnapshot& snapshot) {
     focusedElementId_ = focusMemory_.Restore(widgetId, snapshot);
-    const bool provisionalGroupEntry = pendingFocusGroupEntry_ &&
-        pendingFocusGroupEntry_->widgetId == widgetId &&
-        pendingFocusGroupEntry_->widgetInstanceId == snapshot.instanceId &&
-        pendingFocusGroupEntry_->inputScopeId == snapshot.activeInputScopeId &&
-        snapshot.focusGroupEntryRequest &&
-        pendingFocusGroupEntry_->requestId ==
-            snapshot.focusGroupEntryRequest->requestId &&
-        pendingFocusGroupEntry_->groupId ==
-            snapshot.focusGroupEntryRequest->groupId &&
-        snapshot.sequence >= pendingFocusGroupEntry_->snapshotSequence;
-    if (!provisionalGroupEntry)
+    if (!ProvisionalFocusGroupEntry(widgetId, snapshot))
         focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
     return focusedElementId_;
 }
@@ -578,8 +569,9 @@ FocusGroupEntryApplication WidgetInteractionSession::ConsumeFocusGroupEntryReque
     const RenderResult& renderResult) {
     if (!pendingFocusGroupEntry_) return {};
     const auto preview = PreviewFocusGroupEntryRequest(authority, renderResult);
+    if (!preview.current || !preview.target) return {};
     pendingFocusGroupEntry_.reset();
-    return {preview.current, preview.target};
+    return {true, preview.target};
 }
 
 FocusGroupEntryPreview WidgetInteractionSession::PreviewFocusGroupEntryRequest(
@@ -607,6 +599,7 @@ WidgetInteractionSession::CommitPreparedFocusGroupEntryRequest(
         !ExactFocusGroupEntryRequest(*pendingFocusGroupEntry_, authority)) {
         return {};
     }
+    if (!target) return {};
     pendingFocusGroupEntry_.reset();
     return {true, target};
 }
@@ -646,6 +639,21 @@ bool WidgetInteractionSession::ExactFocusGroupEntryRequest(
 void WidgetInteractionSession::ResetFocusGroupEntryRequests() noexcept {
     pendingFocusGroupEntry_.reset();
     focusGroupEntryHighWater_.clear();
+}
+
+bool WidgetInteractionSession::ProvisionalFocusGroupEntry(
+    const std::wstring_view widgetId,
+    const WidgetSnapshot& snapshot) const noexcept {
+    return pendingFocusGroupEntry_ &&
+        pendingFocusGroupEntry_->widgetId == widgetId &&
+        pendingFocusGroupEntry_->widgetInstanceId == snapshot.instanceId &&
+        pendingFocusGroupEntry_->inputScopeId == snapshot.activeInputScopeId &&
+        snapshot.focusGroupEntryRequest &&
+        pendingFocusGroupEntry_->requestId ==
+            snapshot.focusGroupEntryRequest->requestId &&
+        pendingFocusGroupEntry_->groupId ==
+            snapshot.focusGroupEntryRequest->groupId &&
+        snapshot.sequence >= pendingFocusGroupEntry_->snapshotSequence;
 }
 
 RightStickScrollUpdate FreeScrollInteractionState::SampleRightStick(

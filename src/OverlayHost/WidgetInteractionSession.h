@@ -605,6 +605,9 @@ private:
     [[nodiscard]] static bool ExactFocusGroupEntryRequest(
         const PendingFocusGroupEntry&,
         const WidgetInteractionAuthority&) noexcept;
+    [[nodiscard]] bool ProvisionalFocusGroupEntry(
+        std::wstring_view widgetId,
+        const WidgetSnapshot& snapshot) const noexcept;
     [[nodiscard]] static SliderInputDescriptor SliderDescriptor(
         const WidgetSnapshot& snapshot,
         const WidgetNode& node) noexcept;

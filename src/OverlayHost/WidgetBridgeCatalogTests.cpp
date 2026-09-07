@@ -1679,6 +1679,40 @@ int main() {
           focusGroupEntry->focusGroupEntryRequest->requestId == 7 &&
           focusGroupEntry->focusGroupEntryRequest->groupId == L"controls");
 
+    error.clear();
+    const auto deferredFocusGroupEntry =
+        widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":45,"sequence":3,
+            "widgetInstanceId":"focus-entry.deferred",
+            "activeInputScopeId":"root","initialFocusId":"entry",
+            "focusGroupEntryRequest":{"requestId":8,"groupId":"content"},
+            "root":{"id":"root","kind":"stack","inputScopeId":"root","children":[
+                {"id":"entry","kind":"button","text":"Entry","actionId":"entry"},
+                {"id":"content","kind":"row","children":[
+                    {"id":"content.loading","kind":"text","text":"Loading"}
+                ]}
+            ]}
+        }
+    })json", error);
+    CHECK(deferredFocusGroupEntry && error.empty() &&
+          deferredFocusGroupEntry->focusGroupEntryRequest &&
+          deferredFocusGroupEntry->root.children[1].initialChildFocusId.empty());
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":44,"sequence":3,
+            "widgetInstanceId":"focus-entry.deferred-old",
+            "activeInputScopeId":"root","initialFocusId":"entry",
+            "focusGroupEntryRequest":{"requestId":8,"groupId":"content"},
+            "root":{"id":"root","kind":"stack","inputScopeId":"root","children":[
+                {"id":"entry","kind":"button","text":"Entry","actionId":"entry"},
+                {"id":"content","kind":"row","children":[]}
+            ]}
+        }
+    })json", error) && !error.empty());
+
     for (const std::string_view malformedRequest : {
         R"json("focusGroupEntryRequest":{"requestId":0,"groupId":"controls"})json",
         R"json("focusGroupEntryRequest":{"requestId":9007199254740992,"groupId":"controls"})json",

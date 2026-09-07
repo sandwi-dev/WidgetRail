@@ -1446,8 +1446,10 @@ void ValidateFocusGroupEntryRequest(const WidgetSnapshot& snapshot) {
         for (const auto& child : node.children) self(self, child, scope);
     };
     visit(visit, snapshot.root, rootScope);
-    if (matches != 1U || !match || match->initialChildFocusId.empty() ||
-        !IsFocusEntryContainer(*match))
+    if (matches != 1U || !match || !IsFocusEntryContainer(*match) ||
+        (match->initialChildFocusId.empty() &&
+         snapshot.protocolVersion <
+             protocol_contract::DeferredFocusGroupEntryVersion))
         throw winrt::hresult_invalid_argument(
             L"Focus-group entry request authority is invalid.");
 }
