@@ -33,6 +33,7 @@ internal static class MessageTypes
     public const string DashboardGestureActivationResult = "dashboard-gesture-activation-result";
     public const string Acknowledged = "acknowledged";
     public const string Invalidated = "invalidated";
+    public const string ActionTerminal = "action-terminal";
     public const string ControllerActionFailed = "controller-action-failed";
     public const string Error = "error";
     public const string Stop = "stop";
@@ -53,6 +54,7 @@ internal sealed record RuntimeEnvelope
 }
 
 internal sealed record HelloPayload(string WidgetInstanceId, string SessionNonce);
+internal sealed record HelloAcceptedPayload(bool SupportsActionTerminals = false);
 internal sealed record WidgetLifecyclePayload(WidgetLifecycleState State);
 internal sealed record RenderPayload
 {
@@ -75,6 +77,9 @@ internal sealed record WidgetRuntimePresentation(
     WidgetRail.WidgetProtocol.PresentationUpdateBatch? Update);
 internal sealed record InvalidationPayload(long Revision);
 internal sealed record ActionAdmissionPayload(WidgetOperationAdmission Admission);
+internal sealed record ActionTerminalPayload(
+    long ExecutionId,
+    WidgetActionExecutionOutcome Outcome);
 internal sealed record ControllerActionFailurePayload(
     string ActionId,
     string SourceElementId,

@@ -37,6 +37,16 @@ internal sealed class BrokerWidgetCapabilityClient :
     {
         ArgumentNullException.ThrowIfNull(operation);
         ArgumentNullException.ThrowIfNull(request);
+        var actionContext = WidgetActionInvocationContext.Current;
+        var closeOnLaunch = IsCloseOnLaunch(operation, request);
+        if (closeOnLaunch && actionContext is { IsActive: false })
+            throw CapabilityFailure("stale_action_context");
+        using var closeRequest = closeOnLaunch
+            ? actionContext?.TryBeginCloseRequest()
+            : null;
+        if (actionContext is not null && closeOnLaunch &&
+            closeRequest is null)
+            throw CapabilityFailure("stale_action_context");
         BrokerResponseEnvelope response;
         try
         {
@@ -60,12 +70,15 @@ internal sealed class BrokerWidgetCapabilityClient :
                 // the request to ordinary lifecycle authority.
                 if (activated) activatedGesture = gesture;
             }
-            response = await _client.RequestWithGestureAsync(
+            if (closeOnLaunch && actionContext is { IsActive: false })
+                throw CapabilityFailure("stale_action_context");
+            response = await _client.RequestWithActionAsync(
                 operation.CapabilityId,
                 operation.OperationId,
                 request,
                 activatedGesture?.InputSequence,
                 activatedGesture?.SnapshotSequence,
+                closeRequest?.ExecutionId,
                 cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -87,6 +100,14 @@ internal sealed class BrokerWidgetCapabilityClient :
             throw CapabilityFailure("malformed_response");
         return Deserialize<TResponse>(payload, "malformed_response");
     }
+
+    private static bool IsCloseOnLaunch<TRequest, TResponse>(
+        WidgetCapabilityOperation<TRequest, TResponse> operation,
+        TRequest request) =>
+        request is LaunchWidgetAppLibraryItemRequest { CloseOverlayOnSuccess: true } &&
+        operation.CapabilityId == PlatformCapabilities.AppLibraryLaunchV1 &&
+        operation.OperationId is (PlatformCapabilities.AppLibraryLaunch or
+            PlatformCapabilities.AppLibraryLaunchObserved);
 
     public async ValueTask<IWidgetCapabilitySubscription<TPayload>> OpenSubscriptionAsync<TPayload>(
         WidgetCapabilityEvent<TPayload> platformEvent,

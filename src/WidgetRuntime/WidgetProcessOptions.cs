@@ -42,6 +42,11 @@ public interface IWidgetProcessCompanionSession : IAsyncDisposable
         CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
 
+internal interface IWidgetActionEffectCoordinator
+{
+    void CompleteAction(WidgetActionExecutionTerminal terminal);
+}
+
 /// <summary>
 /// Host-only authority for the exact content exposed to one isolated worker
 /// session. Implementations retain their byte and namespace locks until the

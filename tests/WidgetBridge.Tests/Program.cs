@@ -66,6 +66,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Installed widget residency policies reach the generic supervisor", InstalledResidencyPolicyIsCarried),
     ("Known installed capabilities load lazily and unknown capabilities fail closed", InstalledCapabilityDeclarationsAreClosed),
     ("Bridge alone synthesizes private state authority for capability-free workers", PrivateStateAuthorityIsHostSynthesized),
+    ("Action-bound app launch closes only after exact successful terminal", ActionBoundLaunchCloseIsTerminalExact),
     ("Installed worker local data clears after exact retirement and preserves its neighbor", InstalledWorkerLocalDataClearIsExact),
     ("Disabled package uninstall is exact revisioned and preserves private data", InstalledPackageUninstallIsExact),
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
@@ -165,6 +166,7 @@ if (args.Contains("--widge-193-only", StringComparer.Ordinal))
         "Disabled package uninstall is exact revisioned and preserves private data",
         "Trusted local-data management clears one exact retired generation",
         "Catalog retirement cancels a real running-registration request lease",
+        "Action-bound app launch closes only after exact successful terminal",
     };
     tests = tests.Where(test => selected.Contains(test.Name)).ToArray();
 }
@@ -2545,6 +2547,140 @@ static async Task PrivateStateAuthorityIsHostSynthesized()
         [PlatformCapabilities.PrivateStateV1],
         new ConsentStore(Path.Combine(temporary.Path, "forged")),
         new SimulatedPlatformBrokerBackend(), context));
+}
+
+static async Task ActionBoundLaunchCloseIsTerminalExact()
+{
+    using var temporary = new TemporaryDirectory("wrail-bridge-action-close");
+    var identity = new BrokerWidgetIdentity(
+        "dev.example.action-close", "dev.example", "default");
+    var consent = new ConsentStore(temporary.Path);
+    await consent.SetDecisionAsync(
+        identity, PlatformCapabilities.AppLibraryReadV1, ConsentDecision.Grant);
+    await consent.SetDecisionAsync(
+        identity, PlatformCapabilities.AppLibraryLaunchV1, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibraryBackend([
+        new AppLibraryBackendItemSummary(
+            "provider-app", "stable-app", "Test App", AppLibraryKind.Application),
+    ]);
+    var effects = new List<BrokerHostEffect>();
+    var context = new WidgetProcessCompanionContext(
+        WidgetWorkerIsolationPolicy.HostTrustedJobOnly, null, null);
+    await using var companion = new BrokerWidgetProcessCompanion(
+        identity.PackageId,
+        identity.PublisherId,
+        identity.InstanceId,
+        [PlatformCapabilities.AppLibraryReadV1, PlatformCapabilities.AppLibraryLaunchV1],
+        consent,
+        backend,
+        context,
+        hostEffectSink: effects.Add);
+    await companion.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+    using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    var server = companion.RunAsync(lifetime.Token);
+    var arguments = companion.WorkerArguments;
+    string Argument(string name) => arguments[Array.IndexOf(arguments.ToArray(), name) + 1];
+    await using var client = new BrokerPipeClient(
+        Argument("--broker-pipe"), identity, Argument("--broker-nonce"));
+    await client.ConnectAsync(lifetime.Token);
+
+    var page = await client.RequestAsync(
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new AppLibraryBackendCursorRequest(new AppLibraryBackendQuery(), null, null, 1),
+        lifetime.Token);
+    var appId = page.Payload!.Value.GetProperty("items")[0]
+        .GetProperty("appId").GetString()!;
+    async Task<BrokerResponseEnvelope> Launch(long? executionId) => executionId is null
+        ? await client.RequestAsync(
+            PlatformCapabilities.AppLibraryLaunchV1,
+            PlatformCapabilities.AppLibraryLaunch,
+            new LaunchAppLibraryItemRequest(appId) { CloseOverlayOnSuccess = true },
+            lifetime.Token)
+        : await client.RequestWithActionAsync(
+            PlatformCapabilities.AppLibraryLaunchV1,
+            PlatformCapabilities.AppLibraryLaunch,
+            new LaunchAppLibraryItemRequest(appId) { CloseOverlayOnSuccess = true },
+            null,
+            null,
+            executionId,
+            lifetime.Token);
+
+    Assert.True((await Launch(1)).Succeeded,
+        "First action-bound launch was not acknowledged.");
+    Assert.Equal(0, effects.Count);
+    Assert.True((await Launch(1)).Succeeded,
+        "Duplicate action-bound launch was not acknowledged.");
+    Assert.Equal(0, effects.Count);
+    ((IWidgetActionEffectCoordinator)companion).CompleteAction(
+        new WidgetActionExecutionTerminal(1, WidgetActionExecutionOutcome.Succeeded));
+    Assert.Equal(1, effects.Count);
+    ((IWidgetActionEffectCoordinator)companion).CompleteAction(
+        new WidgetActionExecutionTerminal(1, WidgetActionExecutionOutcome.Succeeded));
+    Assert.Equal(1, effects.Count);
+
+    Assert.True((await Launch(2)).Succeeded,
+        "Failure-terminal launch setup was not acknowledged.");
+    ((IWidgetActionEffectCoordinator)companion).CompleteAction(
+        new WidgetActionExecutionTerminal(2, WidgetActionExecutionOutcome.Failed));
+    Assert.Equal(1, effects.Count);
+
+    Assert.True((await Launch(3)).Succeeded,
+        "Lifecycle-cancellation launch setup was not acknowledged.");
+    await companion.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    ((IWidgetActionEffectCoordinator)companion).CompleteAction(
+        new WidgetActionExecutionTerminal(3, WidgetActionExecutionOutcome.Succeeded));
+    Assert.Equal(1, effects.Count);
+
+    await companion.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+    ((IWidgetActionEffectCoordinator)companion).CompleteAction(
+        new WidgetActionExecutionTerminal(4, WidgetActionExecutionOutcome.Succeeded));
+    var callsBeforeStale = backend.AppLibraryLaunchCalls;
+    var stale = await Launch(4);
+    Assert.True(!stale.Succeeded,
+        "A terminal action execution was readmitted to the broker.");
+    Assert.Equal("stale_action_context", stale.ErrorCode);
+    Assert.Equal(callsBeforeStale, backend.AppLibraryLaunchCalls);
+
+    var lateStarted = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseLate = new TaskCompletionSource<AppLibraryLaunchObservationSummary>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    backend.AppLibraryObservedLaunchHandler = (_, _) =>
+    {
+        lateStarted.TrySetResult();
+        return releaseLate.Task;
+    };
+    var late = client.RequestWithActionAsync(
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunchObserved,
+        new LaunchAppLibraryItemRequest(appId) { CloseOverlayOnSuccess = true },
+        null,
+        null,
+        5,
+        lifetime.Token);
+    await lateStarted.Task.WaitAsync(lifetime.Token);
+    await companion.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    await companion.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+    releaseLate.TrySetResult(new AppLibraryLaunchObservationSummary(
+        AppLibraryLaunchObservationState.LauncherStarted, false, false));
+    Assert.True((await late).Succeeded,
+        "Cancellation-ignoring backend did not exercise late success response.");
+    ((IWidgetActionEffectCoordinator)companion).CompleteAction(
+        new WidgetActionExecutionTerminal(5, WidgetActionExecutionOutcome.Succeeded));
+    Assert.Equal(1, effects.Count);
+
+    Assert.True((await Launch(null)).Succeeded,
+        "Out-of-action launch compatibility was not acknowledged.");
+    Assert.Equal(2, effects.Count);
+    Assert.True(effects.All(effect =>
+            effect.Kind == BrokerHostEffectKind.CloseOverlayAfterAppLaunch),
+        "The coordinator published an unexpected host effect kind.");
+
+    lifetime.Cancel();
+    try { await server; }
+    catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
 }
 
 static async Task InstalledWorkerLocalDataClearIsExact()

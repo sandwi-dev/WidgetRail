@@ -1924,6 +1924,16 @@ if (LifecycleState == WidgetLifecycleState.Interactive && restored.Count != 0)
 }
 ```
 
+`CloseOnConfirmedSuccess` is action-completion-aware. An action-bound launch
+receives its provider response immediately, while the host defers automatic
+close until that exact serial action finishes successfully. Finish any durable
+widget bookkeeping before returning from the action. A failed or canceled
+action, a noninteractive lifecycle transition, or a stale runtime/lifecycle
+generation drops the deferred close. A genuine launch outside an action keeps
+the existing provider-success close behavior. Do not detach close-on-launch
+work from the action callback; inherited action context is invalid after the
+callback completes.
+
 `QueryAsync` permits 1–64 items per request and returns opaque Before/After
 cursors plus a provider revision. Supply a cursor only with its matching
 `WidgetCursorDirection`; do not parse or persist cursors as durable identity.

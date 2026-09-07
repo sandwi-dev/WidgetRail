@@ -48,6 +48,126 @@ internal static class WidgetCapabilityInvocationContext
     }
 }
 
+internal enum WidgetActionExecutionOutcome
+{
+    Succeeded,
+    Failed,
+    Canceled,
+}
+
+internal sealed record WidgetActionExecutionTerminal(
+    long ExecutionId,
+    WidgetActionExecutionOutcome Outcome);
+
+/// <summary>
+/// Private execution scope for the one action currently owned by the serial
+/// action queue. It is distinct from dashboard gesture authority and tracks
+/// only close-on-launch capability calls that must settle before a successful
+/// action terminal can release a host effect.
+/// </summary>
+internal static class WidgetActionInvocationContext
+{
+    private static readonly AsyncLocal<WidgetActionInvocationState?> CurrentValue = new();
+
+    internal static WidgetActionInvocationState? Current => CurrentValue.Value;
+
+    internal static IDisposable Enter(WidgetActionInvocationState value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        var previous = CurrentValue.Value;
+        CurrentValue.Value = value;
+        return new Scope(previous, value);
+    }
+
+    private sealed class Scope(
+        WidgetActionInvocationState? previous,
+        WidgetActionInvocationState current) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            current.Seal();
+            CurrentValue.Value = previous;
+        }
+    }
+}
+
+internal sealed class WidgetActionInvocationState(long executionId)
+{
+    private readonly object _gate = new();
+    private TaskCompletionSource? _closeRequestsDrained;
+    private int _activeCloseRequests;
+    private bool _accepting = true;
+    private bool _hadCloseRequest;
+
+    internal long ExecutionId { get; } = executionId > 0
+        ? executionId
+        : throw new ArgumentOutOfRangeException(nameof(executionId));
+
+    internal bool IsActive
+    {
+        get { lock (_gate) return _accepting; }
+    }
+
+    internal bool HadCloseRequest
+    {
+        get { lock (_gate) return _hadCloseRequest; }
+    }
+
+    internal WidgetActionCloseRequestLease? TryBeginCloseRequest()
+    {
+        lock (_gate)
+        {
+            if (!_accepting) return null;
+            _hadCloseRequest = true;
+            _activeCloseRequests++;
+            return new WidgetActionCloseRequestLease(this);
+        }
+    }
+
+    internal Task Seal()
+    {
+        lock (_gate)
+        {
+            _accepting = false;
+            if (_activeCloseRequests == 0) return Task.CompletedTask;
+            return (_closeRequestsDrained ??= new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        }
+    }
+
+    private void EndCloseRequest()
+    {
+        TaskCompletionSource? drained = null;
+        lock (_gate)
+        {
+            if (_activeCloseRequests <= 0)
+                throw new InvalidOperationException("Action close-request ownership underflowed.");
+            _activeCloseRequests--;
+            if (!_accepting && _activeCloseRequests == 0)
+                drained = _closeRequestsDrained;
+        }
+        drained?.TrySetResult();
+    }
+
+    internal sealed class WidgetActionCloseRequestLease : IDisposable
+    {
+        private WidgetActionInvocationState? _owner;
+
+        internal WidgetActionCloseRequestLease(WidgetActionInvocationState owner)
+        {
+            _owner = owner;
+            ExecutionId = owner.ExecutionId;
+        }
+
+        internal long ExecutionId { get; }
+
+        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.EndCloseRequest();
+    }
+}
+
 /// <summary>
 /// A typed, transport-neutral capability operation. Platform provider packages
 /// publish reusable instances; widget authors should not construct ad-hoc IDs.

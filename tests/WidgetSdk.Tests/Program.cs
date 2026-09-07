@@ -122,6 +122,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Slider routing is stale-safe and uses absolute requested values", SliderInputResolves),
     ("Pending slider actions coalesce latest-wins without crossing actions", SliderActionsCoalesceInOrder),
     ("Serial action diagnostics preserve exact correlation and terminal ownership", ActionDiagnosticsCorrelate),
+    ("Close-effect work alone delays a successful action terminal", CloseEffectWorkDelaysTerminal),
     ("Controller shortcut fallback stays in explicit active input surface", ScopedShortcutRouting),
     ("Public test host services are typed immutable and attach once", HostCapabilityServices),
     ("Audio and network host services use typed provider contracts", TypedPlatformServices),
@@ -3735,6 +3736,28 @@ static async Task ActionDiagnosticsCorrelate()
     await widget.SetActiveAsync(false, CancellationToken.None);
 }
 
+static async Task CloseEffectWorkDelaysTerminal()
+{
+    var widget = new CloseEffectRoutingWidget();
+    _ = widget.RenderSnapshot("close-effect.instance", 1);
+    await widget.SetActiveAsync(true, CancellationToken.None);
+    var terminal = new TaskCompletionSource<WidgetActionExecutionTerminal>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    widget.ActionTerminated += (_, value) => terminal.TrySetResult(value);
+
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.A, "close-effect.action", 1, "close-effect.root")),
+        "Close-effect action was not admitted.");
+    await widget.CloseRequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.True(!terminal.Task.IsCompleted,
+        "Action terminal passed work explicitly retained for close correctness.");
+    widget.ReleaseCloseRequest();
+    var completed = await terminal.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal(1L, completed.ExecutionId);
+    Assert.Equal(WidgetActionExecutionOutcome.Succeeded, completed.Outcome);
+    await widget.SetActiveAsync(false, CancellationToken.None);
+}
+
 static async Task ScopedShortcutRouting()
 {
     var widget = new SurfaceRoutingWidget();
@@ -3929,6 +3952,43 @@ file sealed class DiagnosticRoutingWidget : Widget
     {
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;
+    }
+}
+
+file sealed class CloseEffectRoutingWidget : Widget
+{
+    private readonly TaskCompletionSource _release = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource CloseRequestStarted { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public override WidgetView Render() => new(
+        UI.Stack(
+            "close-effect.root",
+            UI.Button("Launch", "close-effect.launch", "close-effect.action")),
+        "close-effect.action",
+        ActiveInputScopeId: "close-effect.root");
+
+    public override ValueTask OnActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var lease = WidgetActionInvocationContext.Current?.TryBeginCloseRequest()
+            ?? throw new InvalidOperationException("Action invocation context is missing.");
+        CloseRequestStarted.TrySetResult();
+        _ = ReleaseAsync(lease, cancellationToken);
+        return ValueTask.CompletedTask;
+    }
+
+    public void ReleaseCloseRequest() => _release.TrySetResult();
+
+    private async Task ReleaseAsync(
+        IDisposable lease,
+        CancellationToken cancellationToken)
+    {
+        using (lease)
+            await _release.Task.WaitAsync(cancellationToken);
     }
 }
 
