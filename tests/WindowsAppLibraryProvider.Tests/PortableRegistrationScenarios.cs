@@ -309,6 +309,87 @@ internal static class PortableRegistrationScenarios
             () => portableStore.ReadAsync(identity, CancellationToken.None));
     }
 
+    internal static async Task ArtworkDemandIsPackageScopedAndExact()
+    {
+        using var temp = new PortableTemporaryDirectory();
+        var path = Path.GetFullPath(Path.Combine(temp.Path, "Portable.exe"));
+        var firstAuthority = Authority(path, 1);
+        var observer = new MutableObserver();
+        observer.Set(firstAuthority, "instance-one");
+        var authority = new AuthorityReader(firstAuthority);
+        var expectedPng = Convert.ToBase64String(
+            WindowsAppIconSource.EncodePng([0, 0, 0, 0], 1, 1));
+        var icon = new PortableIconSource(expectedPng)
+        {
+            LeaseIsActive = () => authority.ActiveLeases == 1,
+        };
+        var store = new WindowsPortableAppStore(
+            Path.Combine(temp.Path, "registrations"));
+        var identity = new BrokerWidgetIdentity(
+            "dev.test.portable", "dev.test", "one");
+        var otherIdentity = new BrokerWidgetIdentity(
+            "dev.test.other", "dev.test", "one");
+        await using var provider = Provider(
+            observer, store, authority, new Launcher(), icon);
+
+        var observed = await provider.ObserveRunningAppsAsync(CancellationToken.None);
+        var candidate = observed.Items.Single();
+        var registered = await provider.RegisterRunningAppAsync(
+            identity,
+            new RegisterRunningAppBackendRequest(
+                "saved-portable", candidate.StableProviderIdentity,
+                candidate.InstanceEvidence, observed.Revision),
+            CancellationToken.None);
+        Assert.True(registered.Item.ArtworkRevision.Length == 64);
+        Assert.Equal(expectedPng, (await provider.GetAppLibraryIconAsync(
+            registered.Item.ProviderAppId, CancellationToken.None)).PngBase64);
+        Assert.Equal(path, icon.LastPath);
+        Assert.Equal(1, icon.Calls);
+        Assert.Equal(0, authority.ActiveLeases);
+        Assert.Equal(0, (await provider.ResolveRegisteredRunningAppsAsync(
+            otherIdentity, ["saved-portable"], CancellationToken.None)).Count);
+
+        using (var canceled = new CancellationTokenSource())
+        {
+            canceled.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() =>
+                provider.GetAppLibraryIconAsync(
+                    registered.Item.ProviderAppId, canceled.Token));
+        }
+        Assert.Equal(1, icon.Calls);
+
+        var replacementAuthority = Authority(path, 2);
+        authority.Current = replacementAuthority;
+        Assert.Equal(null, (await provider.GetAppLibraryIconAsync(
+            registered.Item.ProviderAppId, CancellationToken.None)).PngBase64);
+        Assert.Equal(1, icon.Calls);
+
+        observer.Set(replacementAuthority, "instance-two");
+        var replacementObservation = await provider.ObserveRunningAppsAsync(
+            CancellationToken.None);
+        var replacementCandidate = replacementObservation.Items.Single();
+        var replacement = await provider.RegisterRunningAppAsync(
+            identity,
+            new RegisterRunningAppBackendRequest(
+                "saved-portable", replacementCandidate.StableProviderIdentity,
+                replacementCandidate.InstanceEvidence, replacementObservation.Revision),
+            CancellationToken.None);
+        Assert.Equal(registered.Item.ProviderAppId, replacement.Item.ProviderAppId);
+        Assert.True(replacement.Item.ArtworkRevision != registered.Item.ArtworkRevision);
+
+        icon.PngBase64 = null;
+        Assert.Equal(null, (await provider.GetAppLibraryIconAsync(
+            replacement.Item.ProviderAppId, CancellationToken.None)).PngBase64);
+        Assert.Equal(2, icon.Calls);
+        Assert.Equal(0, authority.ActiveLeases);
+
+        await provider.ForgetRunningAppAsync(
+            identity, "saved-portable", CancellationToken.None);
+        Assert.Equal(null, (await provider.GetAppLibraryIconAsync(
+            replacement.Item.ProviderAppId, CancellationToken.None)).PngBase64);
+        Assert.Equal(2, icon.Calls);
+    }
+
     internal static async Task PackageRetirementIsCompleteAndWaitersStayRetired()
     {
         using var temp = new PortableTemporaryDirectory();
@@ -437,9 +518,11 @@ internal static class PortableRegistrationScenarios
         MutableObserver observer,
         IWindowsPortableAppStore store,
         IWindowsExecutableAuthorityReader authority,
-        IWindowsPortableAppLauncher launcher) => new(
+        IWindowsPortableAppLauncher launcher,
+        IWindowsAppIconSource? iconSource = null) => new(
             [new InstalledSource(null)], ImmediateSta.Instance, observer,
-            store, authority, launcher, TimeSpan.FromSeconds(5));
+            store, authority, launcher, iconSource ?? new PortableIconSource(null),
+            TimeSpan.FromSeconds(5));
 
     private static WindowsExecutableAuthority Authority(string path, ulong id) =>
         new(path, new WindowsExecutableFileIdentity(7, id, id + 100));
@@ -623,6 +706,25 @@ internal static class PortableRegistrationScenarios
         public void Dispose()
         {
             if (Directory.Exists(Path)) Directory.Delete(Path, recursive: true);
+        }
+    }
+
+    private sealed class PortableIconSource(string? pngBase64) : IWindowsAppIconSource
+    {
+        internal string? PngBase64 { get; set; } = pngBase64;
+        internal string? LastPath { get; private set; }
+        internal int Calls { get; private set; }
+        internal Func<bool>? LeaseIsActive { get; set; }
+
+        public string? TryRasterizePngBase64(
+            string shortcutPath,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.True(LeaseIsActive?.Invoke() ?? true);
+            Calls++;
+            LastPath = shortcutPath;
+            return PngBase64;
         }
     }
 }

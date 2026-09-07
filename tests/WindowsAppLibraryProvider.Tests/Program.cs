@@ -119,6 +119,8 @@ var allTests = new (string Name, Func<Task> Run)[]
         RunningAppScenarios.CooperativeObservationDrainsBeforeSourceDisposal),
     ("Portable running registration persists scopes and revalidates launch",
         PortableRegistrationScenarios.RegistrationPersistsAndLaunchRevalidates),
+    ("Portable artwork demand is package scoped and revalidates exact files",
+        PortableRegistrationScenarios.ArtworkDemandIsPackageScopedAndExact),
     ("Portable executable authority is local and retained through launch",
         PortableRegistrationScenarios.ExecutableAuthorityIsLocalAndLeased),
     ("Installed running registrations win and portable capacity is explicit",
