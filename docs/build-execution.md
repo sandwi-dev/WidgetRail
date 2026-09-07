@@ -19,10 +19,20 @@ owns each distinct `dotnet restore`, leaves NuGet auditing at its SDK defaults,
 and then publishes with `--no-restore`; it never performs a hidden restricted
 restore followed by a network retry.
 
+The supported focused entry point selects the existing native targets by their
+allowlisted manifest IDs. Focused native entries are non-default and therefore
+do not change the complete aggregate:
+
+```powershell
+.\scripts\Verify.ps1 -Configuration Release `
+    -StepId overlay-widget-surface-tests
+```
+
 After the exact project graph and native package assets have already been
-restored successfully, a focused native selector may remain in restricted
-execution by adding `-NoRestore`. That switch forbids implicit restore; missing
-assets or project restore state fail the selector instead of falling back:
+restored successfully, the lower-level native selector may remain in restricted
+execution by adding `-NoRestore`. That switch forbids implicit managed restore;
+missing assets or project restore state fail the selector instead of falling
+back:
 
 ```powershell
 pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -NoRestore -WidgetSurfaceTestsOnly
@@ -34,9 +44,11 @@ appropriate `--no-restore` or `--no-build` contract and their exact inputs were
 already restored. Run restore-bearing commands with supported network access on
 the first attempt; already-restored commands may remain restricted.
 
-`scripts\Verify.ps1` commonly selects restore-bearing managed steps. Run it in
-the same network-capable execution environment unless every selected step is an
-exact already-restored command carrying its own no-restore/no-build contract.
+`scripts\Verify.ps1` commonly selects restore-bearing managed and native steps.
+Run it in the same network-capable execution environment. A repository-level
+no-restore selection and fresh-worktree preflight are a separate planned
+contract; Stage A does not infer or inject no-restore arguments into a selected
+step.
 
 Credentials belong in supported external credential providers. Never put them
 in repository files, command examples, NuGet sources, or user/machine

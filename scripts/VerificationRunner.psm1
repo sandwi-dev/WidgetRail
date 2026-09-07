@@ -393,6 +393,123 @@ function Get-RemainingVerificationTimeout {
     [Math]::Min($RequestedSeconds, [int]$remainingSeconds)
 }
 
+function Resolve-VerificationStepSelection {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][object[]]$Steps,
+        [Parameter(Mandatory)][ValidateSet('all', 'managed', 'native')][string]$Lane,
+        [AllowNull()][string[]]$RequestedStepIds,
+        [switch]$ExplicitSelection
+    )
+
+    if ($Steps.Count -lt 1 -or $Steps.Count -gt 128) {
+        throw 'Verification step manifest must contain between 1 and 128 steps.'
+    }
+
+    $stepsById = @{}
+    $stepIndexes = @{}
+    for ($index = 0; $index -lt $Steps.Count; $index++) {
+        $step = $Steps[$index]
+        $id = [string]$step.id
+        if ([string]::IsNullOrWhiteSpace($id)) {
+            throw 'Verification step IDs cannot be empty.'
+        }
+        if ($stepsById.ContainsKey($id)) {
+            throw "Verification step ID '$id' is duplicated in the manifest."
+        }
+        $stepsById[$id] = $step
+        $stepIndexes[$id] = $index
+
+        $runByDefaultProperty = $step.PSObject.Properties['runByDefault']
+        if ($null -ne $runByDefaultProperty -and
+            $runByDefaultProperty.Value -isnot [bool]) {
+            throw "Verification step '$id' has an invalid runByDefault value."
+        }
+    }
+
+    foreach ($step in $Steps) {
+        $id = [string]$step.id
+        $requirementsProperty = $step.PSObject.Properties['requiresStepIds']
+        if ($null -eq $requirementsProperty) { continue }
+        $requirements = @($requirementsProperty.Value)
+        if ($requirements.Count -gt 8) {
+            throw "Verification step '$id' has too many prerequisites."
+        }
+        $seenRequirements = [Collections.Generic.HashSet[string]]::new(
+            [StringComparer]::Ordinal)
+        foreach ($rawRequirement in $requirements) {
+            $requirement = [string]$rawRequirement
+            if ([string]::IsNullOrWhiteSpace($requirement) -or
+                -not $seenRequirements.Add($requirement)) {
+                throw "Verification step '$id' has an invalid prerequisite."
+            }
+            if (-not $stepsById.ContainsKey($requirement)) {
+                throw "Verification step '$id' requires unknown step '$requirement'."
+            }
+            if ($stepIndexes[$requirement] -ge $stepIndexes[$id]) {
+                throw "Verification step '$id' prerequisite '$requirement' must appear earlier in the manifest."
+            }
+        }
+    }
+
+    if (-not $ExplicitSelection) {
+        $defaults = @($Steps | Where-Object {
+            $runByDefaultProperty = $_.PSObject.Properties['runByDefault']
+            ($null -eq $runByDefaultProperty -or [bool]$runByDefaultProperty.Value) -and
+            ($Lane -eq 'all' -or $_.lane -eq $Lane)
+        })
+        if ($defaults.Count -eq 0) {
+            throw 'No default verification steps match the selected lane.'
+        }
+        return $defaults
+    }
+
+    $requested = @($RequestedStepIds)
+    if ($requested.Count -eq 0 -or
+        @($requested | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -ne 0) {
+        throw 'Explicit verification step selection cannot be empty.'
+    }
+
+    $selectedIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($id in $requested) {
+        if (-not $selectedIds.Add($id)) {
+            throw "Verification step ID '$id' was selected more than once."
+        }
+        if (-not $stepsById.ContainsKey($id)) {
+            throw "Unknown verification step ID: $id"
+        }
+        if ($Lane -ne 'all' -and $stepsById[$id].lane -ne $Lane) {
+            throw "Verification step '$id' is incompatible with lane '$Lane'."
+        }
+    }
+
+    for ($pass = 0; $pass -lt $Steps.Count; $pass++) {
+        $changed = $false
+        foreach ($step in $Steps) {
+            if (-not $selectedIds.Contains([string]$step.id)) { continue }
+            $requirementsProperty = $step.PSObject.Properties['requiresStepIds']
+            if ($null -eq $requirementsProperty) { continue }
+            foreach ($rawRequirement in @($requirementsProperty.Value)) {
+                $requirement = [string]$rawRequirement
+                if ($Lane -ne 'all' -and $stepsById[$requirement].lane -ne $Lane) {
+                    throw "Verification step '$($step.id)' prerequisite '$requirement' is incompatible with lane '$Lane'."
+                }
+                if ($selectedIds.Add($requirement)) { $changed = $true }
+            }
+        }
+        if (-not $changed) { break }
+        if ($pass -eq $Steps.Count - 1) {
+            throw 'Verification step prerequisite expansion did not converge.'
+        }
+    }
+
+    $selected = @($Steps | Where-Object { $selectedIds.Contains([string]$_.id) })
+    if ($selected.Count -eq 0) {
+        throw 'No verification steps match the selected IDs and lane.'
+    }
+    return $selected
+}
+
 function Enter-RepositoryVerificationLease {
     [CmdletBinding()]
     param(
@@ -522,4 +639,5 @@ function Get-VerificationEvidenceEligibility {
 
 Export-ModuleMember -Function Invoke-BoundedVerificationProcess, Write-VerificationJUnit, `
     Get-RemainingVerificationTimeout, Enter-RepositoryVerificationLease, `
-    Exit-RepositoryVerificationLease, Get-VerificationEvidenceEligibility
+    Exit-RepositoryVerificationLease, Get-VerificationEvidenceEligibility, `
+    Resolve-VerificationStepSelection

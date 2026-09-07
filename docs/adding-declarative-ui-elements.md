@@ -537,14 +537,14 @@ dotnet run --project tests/SdkGalleryWidget.Tests/SdkGalleryWidget.Tests.csproj 
   --configuration Release
 
 # Native focused selectors: use the smallest owners touched by the element.
-pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -WidgetBridgeCatalogTestsOnly
-pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -DeclarativeRendererTestsOnly
-pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -WidgetInteractionTestsOnly
-pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -WidgetSurfaceTestsOnly
-pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -PinnedSurfaceTestsOnly
-pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -AccessibilityTreeTestsOnly
-pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -AccessibilityEventsTestsOnly
-pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -ControllerGuideTestsOnly
+.\scripts\Verify.ps1 -Configuration Release -StepId overlay-widget-bridge-catalog-tests
+.\scripts\Verify.ps1 -Configuration Release -StepId overlay-declarative-renderer-tests
+.\scripts\Verify.ps1 -Configuration Release -StepId overlay-widget-interaction-tests
+.\scripts\Verify.ps1 -Configuration Release -StepId overlay-widget-surface-tests
+.\scripts\Verify.ps1 -Configuration Release -StepId overlay-pinned-surface-tests
+.\scripts\Verify.ps1 -Configuration Release -StepId overlay-accessibility-tree-tests
+.\scripts\Verify.ps1 -Configuration Release -StepId overlay-accessibility-events-tests
+.\scripts\Verify.ps1 -Configuration Release -StepId overlay-controller-guide-tests
 
 # Final production compilation after focused owners are green.
 pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -SkipTests
