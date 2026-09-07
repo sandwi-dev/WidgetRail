@@ -28,13 +28,20 @@ explicit game-library source, not a guess based on process or executable names.
   bounded current catalog. Entries classified `Game` by the trusted provider
   are appended automatically; `Application` and `Unknown` remain opt-in.
   Reactivation shows the last-good Library immediately while a lifecycle-owned
-  reconciliation refreshes it in the background. Y requests the same bounded
-  refresh explicitly.
-- **Add applications** opens a nested Catalog backed by a vertical controller
-  Scroll; A toggles the focused entry in/out of the Library and B returns.
-  Next/Previous page controls retain at most 32 application rows in any one
-  semantic snapshot while the trusted catalog is traversed through bounded
-  opaque cursor pages.
+  reconciliation refreshes it in the background. The compact header refresh
+  action and visible Y hint refresh the current section without replacing
+  usable last-good content.
+- **Library**, **Add apps**, and **Running** are flat sibling sections backed by
+  one SDK `WidgetNavigator` and one responsive `NavigationShellParts` content
+  subtree. LB/RB switches sections and enters the destination's remembered
+  content group; selecting a visible destination with A retains header focus.
+  Root B remains host-owned and returns to the tray instead of creating an
+  artificial nested Back history.
+- **Add apps** uses bounded opaque cursor pages. A toggles the focused entry
+  in or out of the Library. Visible Previous/Next page controls retain at most
+  32 application rows in any one semantic snapshot while LB/RB remains reserved
+  for section switching. **Running** observes visible installed applications and
+  revalidates the exact revision-bound identity before A adds it.
   Library X removes the focused entry. Removing a Game records its exact
   authority-scoped SavedId as an exclusion, so the same identity stays absent
   after restart, disappearance, and reappearance. Adding it explicitly clears
@@ -46,15 +53,19 @@ explicit game-library source, not a guess based on process or executable names.
   The bounded display projection is canonical before validation, including
   trimming whitespace exposed by the 20-rune truncation boundary; one long
   label therefore cannot invalidate and reset an otherwise valid Library.
-- Both surfaces use stable hashed UI IDs; widget snapshots contain only display
+- All three sections use stable hashed UI IDs; widget snapshots contain only display
   names, conservative kinds, broker-issued short-lived AppIds, and
   authority-scoped SavedIds. Resolved Library entries may also contain a
   bounded 48 by 48 PNG icon rasterized by the trusted provider; Catalog
   discovery remains text-only. Provider launch tokens stay inside the host and
   last only for the current provider snapshot.
-- Library Up/Down selects one full-width application row. The icon and complete
-  two-line name are rendered inside the same focus target, so its outline never
-  lands on an inner text fragment. A resolves that row's stable SavedId again
+- Each section presents icon-led action surfaces in a responsive grid: one
+  column at compact widths and up to three when logical-DIP space permits. The
+  fixed 56-DIP Contain artwork/fallback, title, and concise kind/source remain
+  inside the same focus target, so the outline never lands on an inner fragment.
+  Routine ready state remains accessible without repeating a visible READY line;
+  Checking, Opening, Included, and Unavailable remain visible when meaningful.
+  Library A resolves that row's stable SavedId again
   and launches only the resulting current AppId while the widget is Interactive.
   After confirmed provider success, that item moves to
   the front and the new order is persisted; failure preserves order and
@@ -91,7 +102,7 @@ explicit game-library source, not a guess based on process or executable names.
   native host accepts it only for the current widget and runtime generation.
   Enqueueing, timeout, stale generation, denial, or failure leaves the overlay
   visible with focus and an actionable status.
-- Catalog `Next page` requests another bounded page and moves selection to its
+- Add apps `Next page` requests another bounded page and moves selection to its
   first item; `Previous page` follows the provider's exact reverse cursor. The
   widget renders only the current 32-row page, so a large provider catalog
   cannot overflow the 2,048-node snapshot budget. The
@@ -109,8 +120,9 @@ explicit game-library source, not a guess based on process or executable names.
 - A failed fresh authority refresh retains the display-only Library with an
   explicit unavailable status; it never promotes stale rows to launchable.
   Initial activation, reactivation, and explicit Y refresh keep that last-good
-  Library tree in place while reconciliation runs, including exactly one
-  reachable **Add applications** action. Background work may change status or
+  Library tree in place while reconciliation runs. The persistent Add apps and
+  Running destinations replace navigation buttons formerly appended after the
+  last Library row. Background work may change status or
   disable a row while its authority is checked, but it does not replace a Ready
   Library with a transient loading tree.
   Moving to Background cancels the active load lifetime and rejects even a
@@ -127,12 +139,13 @@ implemented the private-state compare-and-swap loop, called providers, admitted
 actions, and owned lifecycle cancellation. It also mirrored the committed
 schema in three mutable membership/provenance/exclusion lists.
 
-The current implementation has four deliberately narrow internal seams:
+The current implementation has five deliberately narrow internal seams:
 
 | Responsibility | Owner | May not own |
 | --- | --- | --- |
-| Active lifetime, action admission, provider calls, current AppId launch admission, one state lock, one command semaphore, publication/invalidation | `GamesAppsWidget` | A second lifecycle/state coordinator |
-| Library, Catalog, loading, empty, and failure tree composition from one immutable input value; stable hashed element IDs | `GamesAppsPresentation` | Host services, locks, persistence, or provider calls |
+| Flat Library/Add apps/Running root selection, shared input scope, remembered content entry, root-route cancellation, and focus restoration | `WidgetNavigator<GamesAppsPage>` | Provider, persistence, or duplicated `_page` state |
+| Active lifetime, action admission, provider calls, current AppId launch admission, one state lock, one command semaphore, publication/invalidation | `GamesAppsWidget` | A second lifecycle or route coordinator |
+| Library, Add apps, Running, loading, empty, and failure tree composition from one immutable input value; stable hashed element IDs | `GamesAppsPresentation` | Host services, locks, persistence, or provider calls |
 | Current Catalog page plus opaque forward/reverse cursors as bounded immutable transitions | `GamesAppsCatalogPolicy` | Library membership, private state, or cursor parsing |
 | Schema-v3 normalization, add/remove/order/exclusion policy, display projection, trusted-Game reconciliation, conflict merge, and the two-attempt CAS transaction | `GamesAppsLibraryPolicy` and `GamesAppsLibraryStore` | Rendering, lifecycle, launch, or ambient host-service ownership |
 
@@ -147,11 +160,13 @@ framework or a new persistence schema.
 
 ## Responsive and accessibility envelope
 
-The surface is a single bounded vertical controller hierarchy. The header and
-section hierarchy stay fixed while the Library or Catalog Scroll owns the
-remaining height; focused rows are revealed by the host's shared Scroll
-geometry. The package has no monitor-resolution branch or widget-local focus
-offset.
+The surface retains its bounded 820 by 600 DIP preferred and 420 by 300 DIP
+minimum envelope. One compact title/count/refresh header and the responsive
+navigation shell remain fixed while exactly one route-local vertical Scroll owns
+the remaining height. Its approximately 240-DIP minimum grid columns reflow from
+one to at most three without changing item order, identity, or focus memory.
+Focused tiles are revealed by the host's shared Scroll geometry. The package has
+no monitor-resolution branch, artwork-sized layout, or widget-local focus offset.
 
 Deterministic coverage uses compact 560×420, standard 880×520, and wide
 1120×620 logical surfaces. The compact accessibility profile combines 150%
@@ -159,13 +174,13 @@ text scaling with a 144-DPI pixel-scale render, while standard/default coverage
 starts at 100%. Root/content/Scroll minimum heights are zero, so short surfaces
 yield space to the focus-follow Scroll instead of clipping the header or an
 essential action. Names are sanitized to 120 characters and remain a two-line,
-ellipsis-bounded part of the one focusable Tile. High-contrast captures and
+ellipsis-bounded part of one focusable action surface. High-contrast captures and
 semantic labels provide non-color state evidence; physical display,
 controller, and assistive-technology sign-off remains manual release evidence.
-The Library and Catalog now request a safe 600-DIP preferred height, up from the
-430-DIP Library baseline. That adds more than two normal 78-DIP row pitches when
-the host safe area allows it; the existing minimums and Scroll behavior still
-bound compact and 150% layouts.
+The shared root sections request the same safe 600-DIP preferred height. The
+existing minimums and Scroll behavior continue to bound compact and 150%
+layouts, while additional width increases useful columns rather than stretching
+or cropping provider icons.
 
 ## Public SDK contract
 
