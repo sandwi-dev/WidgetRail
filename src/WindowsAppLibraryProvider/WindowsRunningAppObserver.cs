@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
@@ -32,6 +33,7 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     private const uint GwOwner = 4;
     private const int DwmwaCloaked = 14;
     private const int ErrorInsufficientBuffer = 122;
+    internal const int MaximumWindowClassCharacters = 256;
     private static readonly HashSet<string> ExcludedProcesses = new(
         ["OverlayHost.exe", "WidgetWorkerHost.exe", "WidgetBridge.exe", "wrail.exe"],
         StringComparer.OrdinalIgnoreCase);
@@ -69,9 +71,16 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
 
     private static WindowsRunningAppObservation? InspectWindow(IntPtr window)
     {
-        if (!IsWindowVisible(window) || GetWindow(window, GwOwner) != IntPtr.Zero ||
-            IsCloaked(window) || GetWindowThreadProcessId(window, out var processId) == 0 ||
-            processId == 0 || processId == Environment.ProcessId)
+        if (!HasEligibleTopLevelShape(
+                window,
+                GetShellWindow(),
+                IsWindowVisible(window),
+                GetWindow(window, GwOwner),
+                IsCloaked(window),
+                WindowClassName(window),
+                GetWindowThreadProcessId(window, out var processId),
+                processId,
+                (uint)Environment.ProcessId))
             return null;
         using var process = OpenProcess(ProcessQueryLimitedInformation, false, processId);
         if (process.IsInvalid || !IsSameUserSessionNonElevated(process, processId))
@@ -97,11 +106,50 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
         uint length = 0;
         var status = GetApplicationUserModelId(process, ref length, null);
         if (status != ErrorInsufficientBuffer || length is 0 or > 130) return null;
-        var value = new StringBuilder((int)length);
+        var value = new char[length];
         status = GetApplicationUserModelId(process, ref length, value);
-        var aumid = status == 0 ? WindowsAppsFolderApplicationSource.NormalizeAumid(
-            value.ToString()) : null;
+        if (status != 0) return null;
+        var aumid = NormalizePackagedIdentityBuffer(value, length);
         return aumid is null ? null : WindowsAppsFolderApplicationSource.IdentityFor(aumid);
+    }
+
+    internal static string? NormalizePackagedIdentityBuffer(char[] value, uint length)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        if (length is 0 or > 130 || length > value.Length ||
+            value[length - 1] != '\0' ||
+            Array.IndexOf(value, '\0', 0, checked((int)length - 1)) >= 0)
+            return null;
+        return WindowsAppsFolderApplicationSource.NormalizeAumid(
+            new string(value, 0, checked((int)length - 1)));
+    }
+
+    internal static bool HasEligibleTopLevelShape(
+        IntPtr window,
+        IntPtr shellWindow,
+        bool visible,
+        IntPtr owner,
+        bool cloaked,
+        string? windowClass,
+        uint threadId,
+        uint processId,
+        uint currentProcessId) =>
+        window != IntPtr.Zero && window != shellWindow && visible && windowClass is not null &&
+        owner == IntPtr.Zero && !cloaked && !IsTaskbarWindowClass(windowClass) &&
+        threadId != 0 && processId != 0 &&
+        processId != currentProcessId;
+
+    internal static bool IsTaskbarWindowClass(string? windowClass) =>
+        string.Equals(windowClass, "Shell_TrayWnd", StringComparison.Ordinal) ||
+        string.Equals(windowClass, "Shell_SecondaryTrayWnd", StringComparison.Ordinal);
+
+    private static string? WindowClassName(IntPtr window)
+    {
+        var buffer = new char[MaximumWindowClassCharacters];
+        var length = GetClassNameW(window, buffer, buffer.Length);
+        return length is > 0 and < MaximumWindowClassCharacters
+            ? new string(buffer, 0, length)
+            : null;
     }
 
     private static ExecutableObservation? ExecutableIdentity(SafeProcessHandle process)
@@ -168,11 +216,36 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
         public void Enumerate(Func<IntPtr, bool> visitor)
         {
             ArgumentNullException.ThrowIfNull(visitor);
-            _ = EnumWindows((window, _) => visitor(window), IntPtr.Zero);
+            ExceptionDispatchInfo? failure = null;
+            _ = EnumWindows((window, _) =>
+            {
+                var shouldContinue = TryVisitWindow(visitor, window, out var visitFailure);
+                failure = visitFailure;
+                return shouldContinue;
+            }, IntPtr.Zero);
+            failure?.Throw();
         }
 
         public WindowsRunningAppObservation? Inspect(IntPtr window) =>
             InspectWindow(window);
+    }
+
+    internal static bool TryVisitWindow(
+        Func<IntPtr, bool> visitor,
+        IntPtr window,
+        out ExceptionDispatchInfo? failure)
+    {
+        ArgumentNullException.ThrowIfNull(visitor);
+        try
+        {
+            failure = null;
+            return visitor(window);
+        }
+        catch (Exception exception)
+        {
+            failure = ExceptionDispatchInfo.Capture(exception);
+            return false;
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -186,6 +259,12 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")]
     private static extern IntPtr GetWindow(IntPtr window, uint command);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetShellWindow();
+    [DllImport("user32.dll", EntryPoint = "GetClassNameW",
+        ExactSpelling = true, CharSet = CharSet.Unicode)]
+    private static extern int GetClassNameW(
+        IntPtr window, [Out] char[] className, int maximumCount);
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -206,9 +285,11 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     private static extern bool GetProcessTimes(
         SafeProcessHandle process, out long creation, out long exit,
         out long kernel, out long user);
-    [DllImport("kernel32.dll")]
+    [DllImport("kernel32.dll", EntryPoint = "GetApplicationUserModelId",
+        ExactSpelling = true, CharSet = CharSet.Unicode)]
     private static extern int GetApplicationUserModelId(
-        SafeProcessHandle process, ref uint length, StringBuilder? applicationUserModelId);
+        SafeProcessHandle process, ref uint length,
+        [Out] char[]? applicationUserModelId);
     [DllImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool OpenProcessToken(
