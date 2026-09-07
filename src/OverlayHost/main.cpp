@@ -11358,8 +11358,6 @@ private:
             return;
         }
         if (pinnedSurfaceCoordinator_.controllerFocused()) {
-            if (pinnedSurfaceCoordinator_.PumpSliderInteraction(now))
-                DrainPinnedSurfaceInputs();
             if (pinnedSurfaceCoordinator_.compactMediaPresentation()) {
                 const auto moveCompactFocus = [&](
                     const widgetrail::input::StickNavigationEvent& event) {
@@ -11483,6 +11481,8 @@ private:
                 movePinnedFocus(*direction);
             if (const auto direction = DecodeNavigation(frame.dpadNavigation))
                 movePinnedFocus(*direction);
+            if (pinnedSurfaceCoordinator_.PumpSliderInteraction(now))
+                DrainPinnedSurfaceInputs();
             if (pinnedControllerCommand == widgetrail::pinned::ControllerCommand::Activate) {
                 if (!pinnedSurfaceCoordinator_.HandleFocusedSelectButton(L"a") &&
                     !pinnedSurfaceCoordinator_.HandleFocusedSliderModeButton(
@@ -11579,6 +11579,16 @@ private:
         releaseButton(XINPUT_GAMEPAD_RIGHT_THUMB, L"rightStick");
         releaseButton(XINPUT_GAMEPAD_START, L"menu");
 
+        const auto stickDirection = DecodeNavigation(frame.stickNavigation);
+        const auto dpadDirection = DecodeNavigation(frame.dpadNavigation);
+        const bool rightStickMoving = HandleRightStickFreeScroll(frame, now);
+        const auto reentryDirection = stickDirection ? stickDirection : dpadDirection;
+        const bool reentryConsumed = !rightStickMoving && reentryDirection &&
+            ConsumeFreeScrollReentry(*reentryDirection);
+        if (!rightStickMoving && !reentryConsumed) {
+            if (stickDirection) DispatchStickNavigation(*stickDirection);
+            if (dpadDirection) DispatchStickNavigation(*dpadDirection);
+        }
         if (interactionSession_.SliderReconcileDue(now)) {
             const widgetrail::WidgetSnapshot* currentSnapshot{};
             std::optional<widgetrail::input::WidgetInteractionAuthority>
@@ -11604,18 +11614,6 @@ private:
                     widgetrail::input::NavigationEventPhase::Pressed,
                     request);
             }
-        }
-        if (pinnedSurfaceCoordinator_.PumpSliderInteraction(now))
-            DrainPinnedSurfaceInputs();
-        const auto stickDirection = DecodeNavigation(frame.stickNavigation);
-        const auto dpadDirection = DecodeNavigation(frame.dpadNavigation);
-        const bool rightStickMoving = HandleRightStickFreeScroll(frame, now);
-        const auto reentryDirection = stickDirection ? stickDirection : dpadDirection;
-        const bool reentryConsumed = !rightStickMoving && reentryDirection &&
-            ConsumeFreeScrollReentry(*reentryDirection);
-        if (!rightStickMoving && !reentryConsumed) {
-            if (stickDirection) DispatchStickNavigation(*stickDirection);
-            if (dpadDirection) DispatchStickNavigation(*dpadDirection);
         }
 
         if (pressed & XINPUT_GAMEPAD_A) {
