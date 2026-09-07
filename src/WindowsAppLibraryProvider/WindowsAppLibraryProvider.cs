@@ -28,6 +28,7 @@ public sealed class WindowsAppLibraryProvider :
     private readonly IWindowsPortableAppStore _portableStore;
     private readonly IWindowsExecutableAuthorityReader _executableAuthority;
     private readonly IWindowsPortableAppLauncher _portableLauncher;
+    private readonly IWindowsAppIconSource _portableIconSource;
     private readonly TimeSpan _terminalDrainDeadline;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly SemaphoreSlim _artworkGate = new(4, 4);
@@ -65,6 +66,7 @@ public sealed class WindowsAppLibraryProvider :
             WindowsPortableAppRegistrationPaths.ForCatalogRoot(installedCatalogRoot)),
         new WindowsExecutableAuthorityReader(),
         new WindowsPortableAppLauncher(),
+        new WindowsAppIconSource(),
         TerminalDrainDeadline)
     {
     }
@@ -212,7 +214,8 @@ public sealed class WindowsAppLibraryProvider :
                 WindowsPortableAppRegistrationPaths.ForCatalogRoot(
                     DefaultInstalledCatalogRoot())),
             new WindowsExecutableAuthorityReader(),
-            new WindowsPortableAppLauncher(), terminalDrainDeadline)
+            new WindowsPortableAppLauncher(), new WindowsAppIconSource(),
+            terminalDrainDeadline)
     {
     }
 
@@ -223,6 +226,20 @@ public sealed class WindowsAppLibraryProvider :
         IWindowsPortableAppStore portableStore,
         IWindowsExecutableAuthorityReader executableAuthority,
         IWindowsPortableAppLauncher portableLauncher,
+        TimeSpan terminalDrainDeadline) : this(
+        sources, shellSta, runningApps, portableStore, executableAuthority,
+        portableLauncher, new WindowsAppIconSource(), terminalDrainDeadline)
+    {
+    }
+
+    internal WindowsAppLibraryProvider(
+        IReadOnlyList<IGameLibrarySource> sources,
+        IShellStaExecutor shellSta,
+        IWindowsRunningAppObserver runningApps,
+        IWindowsPortableAppStore portableStore,
+        IWindowsExecutableAuthorityReader executableAuthority,
+        IWindowsPortableAppLauncher portableLauncher,
+        IWindowsAppIconSource portableIconSource,
         TimeSpan terminalDrainDeadline)
     {
         ArgumentNullException.ThrowIfNull(sources);
@@ -247,6 +264,8 @@ public sealed class WindowsAppLibraryProvider :
             throw new ArgumentNullException(nameof(executableAuthority));
         _portableLauncher = portableLauncher ??
             throw new ArgumentNullException(nameof(portableLauncher));
+        _portableIconSource = portableIconSource ??
+            throw new ArgumentNullException(nameof(portableIconSource));
         if (terminalDrainDeadline <= TimeSpan.Zero ||
             terminalDrainDeadline > TerminalDrainDeadline)
             throw new ArgumentOutOfRangeException(nameof(terminalDrainDeadline));
@@ -922,6 +941,14 @@ public sealed class WindowsAppLibraryProvider :
             .ConfigureAwait(false);
         try
         {
+            PortableLaunchRegistration? portable;
+            lock (_stateGate)
+                _portableLaunchByOpaqueId.TryGetValue(appId, out portable);
+            if (portable is not null)
+                return new AppLibraryIconSummary(
+                    await ResolvePortableIconAsync(appId, portable, operation.Token)
+                        .ConfigureAwait(false));
+
             GameLibrarySourceItem? registration;
             lock (_stateGate)
                 _registrationsByOpaqueId.TryGetValue(appId, out registration);
@@ -981,6 +1008,43 @@ public sealed class WindowsAppLibraryProvider :
         finally
         {
             operation.Release(_artworkGate);
+        }
+    }
+
+    private async Task<string?> ResolvePortableIconAsync(
+        string appId,
+        PortableLaunchRegistration portable,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = await _portableStore.ReadAsync(
+            portable.Identity, cancellationToken).ConfigureAwait(false);
+        var registration = snapshot.Items.SingleOrDefault(item =>
+            string.Equals(item.SavedId, portable.SavedId, StringComparison.Ordinal) &&
+            string.Equals(item.StableIdentity, portable.StableIdentity,
+                StringComparison.OrdinalIgnoreCase));
+        if (registration is null || !string.Equals(
+                PortableArtworkRevision(registration), portable.ArtworkRevision,
+                StringComparison.Ordinal))
+            return null;
+
+        var png = await _shellSta.RunAsync(
+            token =>
+            {
+                using var current = _executableAuthority.AcquireExact(
+                    registration.ExecutablePath);
+                if (!SameAuthority(registration, current?.Authority)) return null;
+                token.ThrowIfCancellationRequested();
+                return _portableIconSource.TryRasterizePngBase64(
+                    current!.Authority.CanonicalPath, token);
+            }, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_stateGate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return _portableLaunchByOpaqueId.TryGetValue(appId, out var current) &&
+                current == portable
+                    ? png
+                    : null;
         }
     }
 
@@ -1159,7 +1223,7 @@ public sealed class WindowsAppLibraryProvider :
         registration.StableIdentity,
         registration.DisplayName,
         AppLibraryKind.Application,
-        string.Empty,
+        PortableArtworkRevision(registration),
         "Portable")
     {
         SourceIdentity = "source-portable",
@@ -1183,11 +1247,21 @@ public sealed class WindowsAppLibraryProvider :
             }
             _portableLaunchByOpaqueId[appId] = new(
                 PortableAuthorityKey(identity, string.Empty),
+                identity,
                 registration.SavedId,
-                registration.StableIdentity);
+                registration.StableIdentity,
+                PortableArtworkRevision(registration));
             return appId;
         }
     }
+
+    private static string PortableArtworkRevision(
+        PortableAppRegistration registration) => ArtworkRevision(string.Join(
+        '\0',
+        registration.StableIdentity,
+        registration.FileIdentity.VolumeSerialNumber.ToString("X16", CultureInfo.InvariantCulture),
+        registration.FileIdentity.FileIdLow.ToString("X16", CultureInfo.InvariantCulture),
+        registration.FileIdentity.FileIdHigh.ToString("X16", CultureInfo.InvariantCulture)));
 
     private static string PortableAuthorityKey(
         BrokerWidgetIdentity identity,
@@ -1497,6 +1571,8 @@ public sealed class WindowsAppLibraryProvider :
 
     private sealed record PortableLaunchRegistration(
         string AuthorityKey,
+        BrokerWidgetIdentity Identity,
         string SavedId,
-        string StableIdentity);
+        string StableIdentity,
+        string ArtworkRevision);
 }

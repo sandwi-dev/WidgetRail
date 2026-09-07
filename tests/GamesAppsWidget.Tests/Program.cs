@@ -201,12 +201,14 @@ static async Task RunningAppRouteConfirmsCurrentIdentity()
 
 static async Task PortableRunningAddIsOrderedAndSingleFlight()
 {
+    const string artworkHandle = "library.art.99999999999999999999999999999999";
     var registrationStarted = NewSignal();
     var registration = new TaskCompletionSource<RegisterWidgetRunningAppResponse>(
         TaskCreationOptions.RunContinuationsAsynchronously);
     var portable = InstalledItem(
         "portable-current", "saved-portable", "Portable app",
-        WidgetAppLibraryKind.Application, "source-portable", "Portable");
+        WidgetAppLibraryKind.Application, "source-portable", "Portable",
+        artworkHandle);
     var fake = new FakeAppLibraryHost
     {
         RunningObservation = new([
@@ -252,6 +254,11 @@ static async Task PortableRunningAddIsOrderedAndSingleFlight()
     Assert.Equal(0, committed.RootElement
         .GetProperty("PendingRunningRegistrationSavedIds").GetArrayLength());
     Assert.Equal("running-revision", fake.RunningRegistrations.Single().Revision);
+    await BackToLibrary(widget);
+    var committedTile = ActionSurfaces(Snapshot(widget, 921).Root).Single(candidate =>
+        candidate.ActionId == "games.launch" && TileTitle(candidate) == "Portable app");
+    Assert.Equal(artworkHandle, Nodes(committedTile).Single(node =>
+        node.Id == committedTile.Id + ".artwork").ArtworkHandle);
     await Background(widget);
 }
 
