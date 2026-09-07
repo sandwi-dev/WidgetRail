@@ -765,7 +765,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             await currentSession.WriteAsync(new RuntimeEnvelope
             {
                 Type = MessageTypes.HelloAccepted,
-                Payload = RuntimeJson.ToElement(new { }),
+                Payload = RuntimeJson.ToElement(new HelloAcceptedPayload(
+                    SupportsActionTerminals: true)),
             }, phaseToken).ConfigureAwait(false);
             currentSession.MarkHandshakeCompleted();
             if (_testHooks?.AfterHandshakeAsync is { } afterHandshake)
@@ -920,6 +921,21 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                             actionFailure.ActionId, actionFailure.SourceElementId,
                             actionFailure.Message));
                     }
+                    continue;
+                }
+
+                if (message.Type == MessageTypes.ActionTerminal)
+                {
+                    if (message.RequestId != 0)
+                        throw new WidgetProtocolViolationException(
+                            "Action terminals cannot have request IDs.");
+                    var payload = RuntimeJson.FromElement<ActionTerminalPayload>(message.Payload);
+                    if (payload.ExecutionId <= 0 || !Enum.IsDefined(payload.Outcome))
+                        throw new WidgetProtocolViolationException(
+                            "Action terminal metadata is invalid.");
+                    if (session.Companion is IWidgetActionEffectCoordinator coordinator)
+                        coordinator.CompleteAction(new WidgetActionExecutionTerminal(
+                            payload.ExecutionId, payload.Outcome));
                     continue;
                 }
 

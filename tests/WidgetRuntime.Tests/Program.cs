@@ -158,6 +158,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Dormant dashboard reservations expire on a host-owned monotonic clock", DormantDashboardReservationExpires),
     ("Custom async dashboard handlers can activate authority without blocking the pipe reader", CustomDashboardHandlerActivatesWithoutDeadlock),
     ("Broker adapter attaches gesture sequences only inside the queued invocation scope", BrokerAdapterBindsGestureContext),
+    ("Broker adapter binds close effects only to an active action execution", BrokerAdapterBindsCloseActionContext),
+    ("Executed action terminals reach only the current companion", ActionTerminalsReachCompanion),
     ("Rapid controller inputs acknowledge quickly and execute in order", RapidControllerInputsAreQueued),
     ("Runtime shortcut fallback respects explicit active input surface", RuntimeScopedShortcutRouting),
     ("Queued controller work cancels on deactivation", ControllerQueueCancelsOnDeactivation),
@@ -2691,6 +2693,114 @@ static async Task BrokerAdapterBindsGestureContext()
     await serverTask.WaitAsync(TimeSpan.FromSeconds(3));
 }
 
+static async Task BrokerAdapterBindsCloseActionContext()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = new BrokerWidgetIdentity(
+        "dev.runtime.action-close", "dev.runtime", "default");
+    var consent = new ConsentStore(temp.Path);
+    await consent.SetDecisionAsync(
+        identity, PlatformCapabilities.AppLibraryReadV1, ConsentDecision.Grant);
+    await consent.SetDecisionAsync(
+        identity, PlatformCapabilities.AppLibraryLaunchV1, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibraryBackend([
+        new AppLibraryBackendItemSummary(
+            "provider-app", "stable-app", "Test App", AppLibraryKind.Application),
+    ]);
+    var effects = 0;
+    var pipeName = $"wrail-runtime-action-close-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(
+        pipeName,
+        identity,
+        [PlatformCapabilities.AppLibraryReadV1, PlatformCapabilities.AppLibraryLaunchV1],
+        consent,
+        backend,
+        hostEffectSink: _ => Interlocked.Increment(ref effects));
+    server.SetLifecycle(BrokerLifecycleState.Interactive);
+    var serverTask = server.RunAsync();
+    await using var transport = new BrokerPipeClient(
+        pipeName, identity, server.ChannelNonce);
+    await transport.ConnectAsync();
+    var adapter = new BrokerWidgetCapabilityClient(transport);
+    var page = await transport.RequestAsync(
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new AppLibraryBackendCursorRequest(
+            new AppLibraryBackendQuery(), null, null, 1));
+    var appId = page.Payload!.Value.GetProperty("items")[0]
+        .GetProperty("appId").GetString()!;
+
+    var active = new WidgetActionInvocationState(91);
+    using (WidgetActionInvocationContext.Enter(active))
+    {
+        var response = await adapter.InvokeAsync(
+            WidgetAppLibraryCapabilities.Launch,
+            new LaunchWidgetAppLibraryItemRequest(appId)
+            {
+                CloseOverlayOnSuccess = true,
+            });
+        Assert.True(response.Acknowledged, "Active action launch was not acknowledged.");
+    }
+    Assert.Equal(1, Volatile.Read(ref effects));
+
+    var release = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    Task leaked;
+    var stale = new WidgetActionInvocationState(92);
+    using (WidgetActionInvocationContext.Enter(stale))
+    {
+        leaked = Task.Run(async () =>
+        {
+            await release.Task;
+            await adapter.InvokeAsync(
+                WidgetAppLibraryCapabilities.Launch,
+                new LaunchWidgetAppLibraryItemRequest(appId)
+                {
+                    CloseOverlayOnSuccess = true,
+                });
+        });
+    }
+    release.TrySetResult();
+    await Assert.ThrowsAsync<WidgetCapabilityException>(() => leaked);
+    Assert.Equal(1, Volatile.Read(ref effects));
+    Assert.Equal(1, backend.AppLibraryLaunchCalls);
+
+    var ordinary = await adapter.InvokeAsync(
+        WidgetAppLibraryCapabilities.Launch,
+        new LaunchWidgetAppLibraryItemRequest(appId)
+        {
+            CloseOverlayOnSuccess = true,
+        });
+    Assert.True(ordinary.Acknowledged, "Out-of-action launch compatibility regressed.");
+    Assert.Equal(2, Volatile.Read(ref effects));
+    Assert.Equal(2, backend.AppLibraryLaunchCalls);
+
+    await transport.DisposeAsync();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(3));
+}
+
+static async Task ActionTerminalsReachCompanion()
+{
+    var companion = new ProbeCompanionSession();
+    await using var client = CreateClient(
+        maximumRestarts: 0,
+        companionFactory: _ => companion);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+
+    await client.SendActionAsync(new WidgetActionEvent("close-terminal", "button"));
+    var succeeded = await companion.ActionTerminals.Reader.ReadAsync().AsTask()
+        .WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal(1L, succeeded.ExecutionId);
+    Assert.Equal(WidgetActionExecutionOutcome.Succeeded, succeeded.Outcome);
+
+    await client.SendActionAsync(new WidgetActionEvent("close-terminal-fail", "button"));
+    var failed = await companion.ActionTerminals.Reader.ReadAsync().AsTask()
+        .WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal(2L, failed.ExecutionId);
+    Assert.Equal(WidgetActionExecutionOutcome.Failed, failed.Outcome);
+}
+
 static async Task ControllerQueueCancelsOnDeactivation()
 {
     await using var client = CreateClient();
@@ -3390,6 +3500,15 @@ file sealed class TestWidget : Widget
             await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
             throw new InvalidOperationException("intentional queued action failure");
         }
+        else if (action.ActionId is "close-terminal" or "close-terminal-fail")
+        {
+            using var closeRequest = WidgetActionInvocationContext.Current
+                ?.TryBeginCloseRequest()
+                ?? throw new InvalidOperationException(
+                    "Close-terminal fixture has no action execution context.");
+            if (action.ActionId == "close-terminal-fail")
+                throw new InvalidOperationException("intentional close-terminal failure");
+        }
         else if (action.ActionId == "committed-text")
         {
             _committedTextStatus = action.CommittedText is { } committed
@@ -3981,7 +4100,9 @@ file sealed class HangingDestroyWidget : Widget
         await Task.Delay(Timeout.InfiniteTimeSpan, CancellationToken.None);
 }
 
-file sealed class ProbeCompanionSession : IWidgetProcessCompanionSession
+file sealed class ProbeCompanionSession :
+    IWidgetProcessCompanionSession,
+    IWidgetActionEffectCoordinator
 {
     public IReadOnlyList<string> WorkerArguments { get; } = [];
     public List<WidgetLifecycleState> LifecycleStates { get; } = [];
@@ -3991,6 +4112,9 @@ file sealed class ProbeCompanionSession : IWidgetProcessCompanionSession
     public List<WidgetDashboardGestureAuthority> GrantedAuthorities { get; } = [];
     public List<DateTimeOffset> GrantTimes { get; } = [];
     public List<long> RevokedInputSequences { get; } = [];
+    public System.Threading.Channels.Channel<WidgetActionExecutionTerminal>
+        ActionTerminals { get; } = System.Threading.Channels.Channel.CreateUnbounded<
+            WidgetActionExecutionTerminal>();
 
     public void BindWorkerProcess(int processId) => BoundWorkerProcessId = processId;
 
@@ -4028,6 +4152,9 @@ file sealed class ProbeCompanionSession : IWidgetProcessCompanionSession
         RevokedInputSequences.Add(inputSequence);
         return Task.CompletedTask;
     }
+
+    void IWidgetActionEffectCoordinator.CompleteAction(
+        WidgetActionExecutionTerminal terminal) => ActionTerminals.Writer.TryWrite(terminal);
 
     public ValueTask DisposeAsync()
     {

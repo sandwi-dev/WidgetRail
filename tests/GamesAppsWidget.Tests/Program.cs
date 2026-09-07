@@ -72,6 +72,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unavailable and stale resolutions never authorize launch",
         UnavailableAndStaleNeverLaunch),
     ("Confirmed launches move the exact curated app to recent-first", SuccessfulLaunchOrdersRecentFirst),
+    ("Confirmed launch with failed recents save stays open and truthful", LaunchSaveFailureIsTruthful),
     ("Failed launch keeps curated order and actionable focus", FailedLaunchKeepsOrder),
     ("Elevation launch outcomes keep the library and explain the result",
         ElevationLaunchOutcomesAreExplained),
@@ -2094,10 +2095,62 @@ static async Task SuccessfulLaunchOrdersRecentFirst()
     await widget.OnActionAsync(new("games.launch", beta.Id));
     Assert.SequenceEqual(["opaque-b", "opaque-a"],
         widget.CuratedItems.Select(item => item.AppId));
+    using (var persisted = System.Text.Json.JsonDocument.Parse(fake.PrivateState.Json!))
+        Assert.SequenceEqual(["saved-opaque-b", "saved-opaque-a"],
+            persisted.RootElement.GetProperty("SavedIds").EnumerateArray()
+                .Select(item => item.GetString()!));
     var reordered = Snapshot(widget, 46);
     Assert.Equal(beta.Id,
         Nodes(reordered.Root).Single(node => node.Id == "games.library.page")
             .InitialChildFocusId);
+    await Background(widget);
+}
+
+static async Task LaunchSaveFailureIsTruthful()
+{
+    var alpha = App("opaque-a", "Alpha");
+    var beta = App("opaque-b", "Beta");
+    var seeded = ProjectedState(
+        alpha.SavedId,
+        (alpha.SavedId, "Alpha", WidgetAppLibraryKind.Application),
+        (beta.SavedId, "Beta", WidgetAppLibraryKind.Application));
+    var exhausted = new WidgetTestPrivateState(seeded.Json, long.MaxValue);
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([alpha, beta], null) },
+        PrivateState = exhausted,
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+                          widget.CuratedItems.Count == 2);
+
+    var betaTile = ActionSurfaces(Snapshot(widget, 420).Root)
+        .Single(tile => TileTitle(tile) == "Beta");
+    var failed = false;
+    try { await widget.OnActionAsync(new("games.launch", betaTile.Id)); }
+    catch (Exception) { failed = true; }
+    Assert.True(failed,
+        "A launched-but-unsaved action did not reject automatic close completion.");
+
+    Assert.SequenceEqual(["opaque-a", "opaque-b"],
+        widget.CuratedItems.Select(item => item.AppId));
+    Assert.SequenceEqual(["opaque-b", "opaque-a"],
+        widget.Items.Select(item => item.AppId));
+    Assert.SequenceEqual(["opaque-b"], fake.LaunchedIds);
+    Assert.Equal(long.MaxValue, exhausted.Revision);
+    var warning = Snapshot(widget, 421);
+    Assert.SequenceEqual(["Beta", "Alpha"], ActionSurfaces(warning.Root)
+        .Where(tile => tile.ActionId == "games.launch")
+        .Select(tile => TileTitle(tile)!));
+    using (var durable = System.Text.Json.JsonDocument.Parse(exhausted.Json!))
+        Assert.SequenceEqual(["saved-opaque-a", "saved-opaque-b"],
+            durable.RootElement.GetProperty("SavedIds").EnumerateArray()
+                .Select(item => item.GetString()!));
+    Assert.Contains("Opened Beta, but recent order was not saved",
+        Text(warning.Root, "games.toast.message").Text!);
+    Assert.True(Nodes(warning.Root).Single(node => node.Id == "games.toast")
+        .StyleClasses.Contains("wrail-toast--warning", StringComparer.Ordinal));
     await Background(widget);
 }
 

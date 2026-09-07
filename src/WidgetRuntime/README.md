@@ -130,6 +130,13 @@ at a time, preserving cross-ingress order. Saturation or `Background` rejects
 immediately; entering Background cancels current work, drops pending items, and
 drains cooperative execution before deactivation completes. Later failures
 raise `WidgetProcessClient.ActionFailed` without crashing the worker.
+The current host negotiates private action-terminal notifications at handshake.
+Close-on-confirmed app launches are the only capability work retained through
+that terminal boundary: their provider response remains immediate, while one
+runtime-scoped deferred close is released only by the matching successful
+action terminal. Failure, cancellation, lifecycle exit, replacement, and stale
+inherited action context drop it. Older runtime-v2 peers that do not negotiate
+the notification keep their existing checkpoint compatibility.
 `ControllerActionFailed`, the `controller-action-failed` notification type, and
 empty protocol-v1 acknowledgement payloads remain accepted compatibility
 surfaces. The bridge also retains its protocol-v1 `controllerActionFailed`

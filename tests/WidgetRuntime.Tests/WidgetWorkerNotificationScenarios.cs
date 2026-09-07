@@ -308,6 +308,10 @@ internal static class WidgetWorkerNotificationScenarios
             lane.EnqueueActionFailure(Failure("failure.one")));
         NotificationAssert.Equal(
             WidgetWorkerNotificationLane.Admission.Enqueued,
+            lane.EnqueueActionTerminal(new ActionTerminalPayload(
+                1, WidgetActionExecutionOutcome.Succeeded)));
+        NotificationAssert.Equal(
+            WidgetWorkerNotificationLane.Admission.Enqueued,
             lane.EnqueueInvalidation(2));
         NotificationAssert.Equal(
             WidgetWorkerNotificationLane.Admission.Enqueued,
@@ -327,6 +331,7 @@ internal static class WidgetWorkerNotificationScenarios
             {
                 "invalidated:1",
                 "failure:failure.one",
+                "terminal:1:Succeeded",
                 "failure:failure.two",
                 "invalidated:3",
             },
@@ -508,6 +513,9 @@ internal static class WidgetWorkerNotificationScenarios
                 $"invalidated:{RuntimeJson.FromElement<InvalidationPayload>(envelope.Payload).Revision}",
             MessageTypes.ControllerActionFailed =>
                 $"failure:{RuntimeJson.FromElement<ControllerActionFailurePayload>(envelope.Payload).ActionId}",
+            MessageTypes.ActionTerminal =>
+                $"terminal:{RuntimeJson.FromElement<ActionTerminalPayload>(envelope.Payload).ExecutionId}:" +
+                RuntimeJson.FromElement<ActionTerminalPayload>(envelope.Payload).Outcome,
             _ => throw new InvalidOperationException(
                 $"Unexpected notification type '{envelope.Type}'."),
         };

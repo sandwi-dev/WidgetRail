@@ -1566,6 +1566,7 @@ static async Task AppLaunchHostEffectIsSuccessBound()
             "provider-app", "stable-app", "Test App", AppLibraryKind.Application),
     ]);
     var effects = 0;
+    long? actionIntent = null;
     var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var secondPublished = new TaskCompletionSource(
         TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1582,15 +1583,22 @@ static async Task AppLaunchHostEffectIsSuccessBound()
         [PlatformCapabilities.AppLibraryReadV1, PlatformCapabilities.AppLibraryLaunchV1],
         store,
         backend,
-        options,
-        new string('H', 64),
-        hostEffectSink: effect =>
+        appLibraryArtworkRegistry: null,
+        options: options,
+        channelNonce: new string('H', 64),
+        contextualHostEffectSink: (effect, executionId, _) =>
         {
             if (effect.Kind != BrokerHostEffectKind.CloseOverlayAfterAppLaunch) return;
+            if (executionId is not null)
+            {
+                actionIntent = executionId;
+                return;
+            }
             var count = Interlocked.Increment(ref effects);
             published.TrySetResult();
             if (count == 2) secondPublished.TrySetResult();
-        });
+        },
+        actionExecutionAdmission: executionId => executionId > 0 ? 1L : null);
     server.SetLifecycle(BrokerLifecycleState.Interactive);
     var serverTask = server.RunAsync();
     await using var client = new BrokerPipeClient(
@@ -1618,6 +1626,17 @@ static async Task AppLaunchHostEffectIsSuccessBound()
         new LaunchAppLibraryItemRequest(appId) { CloseOverlayOnSuccess = true });
     Assert.True(close.Succeeded);
     await published.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    Assert.Equal(1, Volatile.Read(ref effects));
+
+    var actionClose = await client.RequestWithActionAsync(
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new LaunchAppLibraryItemRequest(appId) { CloseOverlayOnSuccess = true },
+        null,
+        null,
+        73);
+    Assert.True(actionClose.Succeeded);
+    Assert.Equal(73L, actionIntent);
     Assert.Equal(1, Volatile.Read(ref effects));
 
     var acceptedOnly = await client.RequestAsync(

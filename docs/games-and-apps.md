@@ -97,11 +97,14 @@ explicit game-library source, not a guess based on process or executable names.
   title is identical; no title matching occurs.
   Auto-added entries that cease to be classified Game are hidden, while an
   explicitly added Application or Unknown entry remains user-owned.
-- A successful launch requests `CloseOnConfirmedSuccess`. The broker emits the
-  host effect only after the exact trusted provider call succeeds, and the
-  native host accepts it only for the current widget and runtime generation.
-  Enqueueing, timeout, stale generation, denial, or failure leaves the overlay
-  visible with focus and an actionable status.
+- A launch requests `CloseOnConfirmedSuccess`, but provider success alone does
+  not close the overlay. The runtime privately binds that request to the exact
+  serial action execution; Games & Apps first commits the selected SavedId as
+  recent-first, then the action terminal releases one deferred close effect.
+  If the app opened but the state write did not commit, the overlay stays open
+  and reports that the app opened but recent order was not saved. Enqueueing,
+  timeout, stale action or lifecycle generation, denial, cancellation, launch
+  failure, or save failure never releases the close effect.
 - Add apps `Next page` requests another bounded page and moves selection to its
   first item; `Previous page` follows the provider's exact reverse cursor. The
   widget renders only the current 32-row page, so a large provider catalog

@@ -87,6 +87,7 @@ internal sealed record BrokerPipeEnvelope
     [JsonRequired] public required string Type { get; init; }
     [JsonRequired] public required long CorrelationId { get; init; }
     [JsonRequired] public required JsonElement Payload { get; init; }
+    public long? ActionExecutionId { get; init; }
 }
 
 internal sealed record BrokerPipeHello(
@@ -227,7 +228,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
     private readonly string? _isolatedClientAppContainerSid;
     private readonly PlatformCapabilityBroker _broker;
     private readonly ConsentChangeMonitor _consentMonitor;
-    private readonly Action<BrokerHostEffect>? _hostEffectSink;
+    private readonly Action<BrokerHostEffect, long?, long?>? _hostEffectSink;
+    private readonly Func<long, long?>? _actionExecutionAdmission;
     private readonly Action<BrokerCapabilityDiagnostic>? _diagnosticSink;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _writeGate = new(1, 1);
@@ -264,7 +266,9 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             isolatedClientAppContainerSid,
             hostGrantedCapabilities,
             hostEffectSink,
-            diagnosticSink: null)
+            diagnosticSink: null,
+            contextualHostEffectSink: null,
+            actionExecutionAdmission: null)
     {
     }
 
@@ -280,7 +284,9 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         string? isolatedClientAppContainerSid = null,
         IEnumerable<string>? hostGrantedCapabilities = null,
         Action<BrokerHostEffect>? hostEffectSink = null,
-        Action<BrokerCapabilityDiagnostic>? diagnosticSink = null)
+        Action<BrokerCapabilityDiagnostic>? diagnosticSink = null,
+        Action<BrokerHostEffect, long?, long?>? contextualHostEffectSink = null,
+        Func<long, long?>? actionExecutionAdmission = null)
     {
         BrokerPipeNames.Validate(pipeName);
         BrokerPipeNames.ValidateAppContainerSid(isolatedClientAppContainerSid);
@@ -292,7 +298,10 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         _declaredCapabilities = new HashSet<string>(declaredCapabilities, StringComparer.Ordinal);
         _hostGrantedCapabilities = new HashSet<string>(
             hostGrantedCapabilities ?? [], StringComparer.Ordinal);
-        _hostEffectSink = hostEffectSink;
+        _hostEffectSink = contextualHostEffectSink ?? (hostEffectSink is null
+            ? null
+            : (effect, _, _) => hostEffectSink(effect));
+        _actionExecutionAdmission = actionExecutionAdmission;
         _diagnosticSink = diagnosticSink;
         _options = options ?? new BrokerPipeTransportOptions();
         _options.Validate();
@@ -475,7 +484,9 @@ public sealed class BrokerPipeServer : IAsyncDisposable
 
     private void StartRequest(BrokerPipeEnvelope message, CancellationToken cancellationToken)
     {
-        if (message.CorrelationId <= 0 || _requests.Count >= _options.MaximumInFlightRequests)
+        if (message.CorrelationId <= 0 ||
+            message.ActionExecutionId is <= 0 ||
+            _requests.Count >= _options.MaximumInFlightRequests)
         {
             _ = SendErrorSafeAsync(message.CorrelationId, "request_limit", cancellationToken);
             return;
@@ -493,6 +504,18 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             _ = SendErrorSafeAsync(message.CorrelationId, "identity_mismatch", cancellationToken);
             return;
         }
+        long? actionLifecycleGeneration = null;
+        if (message.ActionExecutionId is { } executionId &&
+            _actionExecutionAdmission is not null)
+        {
+            actionLifecycleGeneration = _actionExecutionAdmission(executionId);
+            if (actionLifecycleGeneration is null)
+            {
+                _ = SendErrorSafeAsync(
+                    message.CorrelationId, "stale_action_context", cancellationToken);
+                return;
+            }
+        }
         var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken, _lifetime.Token);
         requestCancellation.CancelAfter(
@@ -504,7 +527,12 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             return;
         }
         var taskId = Interlocked.Increment(ref _taskId);
-        var task = RunRequestAsync(message.CorrelationId, requestBytes, requestCancellation);
+        var task = RunRequestAsync(
+            message.CorrelationId,
+            requestBytes,
+            message.ActionExecutionId,
+            actionLifecycleGeneration,
+            requestCancellation);
         _requestTasks[taskId] = task;
         _ = task.ContinueWith(completedTask =>
         {
@@ -518,6 +546,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
     private async Task RunRequestAsync(
         long correlationId,
         byte[] requestBytes,
+        long? actionExecutionId,
+        long? actionLifecycleGeneration,
         CancellationTokenSource requestCancellation)
     {
         var request = BrokerJson.ParseRequest(requestBytes);
@@ -531,9 +561,16 @@ public sealed class BrokerPipeServer : IAsyncDisposable
                 "request",
                 response.Succeeded ? null : response.ErrorCode ?? "broker_rejected");
             _ = BrokerJson.SerializeResponse(response);
+            var effect = response.Succeeded
+                ? ConfirmedHostEffect(requestBytes, response)
+                : null;
+            if (effect is not null && actionExecutionId is not null)
+                PublishHostEffect(
+                    effect, actionExecutionId, actionLifecycleGeneration);
             await SendAsync(BrokerPipeMessageTypes.Response, correlationId, response, _lifetime.Token)
                 .ConfigureAwait(false);
-            if (response.Succeeded) PublishConfirmedHostEffect(requestBytes, response);
+            if (effect is not null && actionExecutionId is null)
+                PublishHostEffect(effect, actionExecutionId, lifecycleGeneration: null);
         }
         catch (OperationCanceledException)
         {
@@ -549,26 +586,34 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         }
     }
 
-    private void PublishConfirmedHostEffect(
+    private BrokerHostEffect? ConfirmedHostEffect(
         byte[] requestBytes,
         BrokerResponseEnvelope response)
     {
-        if (_hostEffectSink is null) return;
         var request = BrokerJson.ParseRequest(requestBytes);
         if (request.Operation is not (PlatformCapabilities.AppLibraryLaunch or
-            PlatformCapabilities.AppLibraryLaunchObserved)) return;
+            PlatformCapabilities.AppLibraryLaunchObserved)) return null;
         var launch = BrokerJson.ParsePayload<LaunchAppLibraryItemRequest>(request.Payload);
-        if (!launch.CloseOverlayOnSuccess) return;
+        if (!launch.CloseOverlayOnSuccess) return null;
         if (request.Operation == PlatformCapabilities.AppLibraryLaunchObserved)
         {
-            if (response.Payload is not { } payload) return;
+            if (response.Payload is not { } payload) return null;
             var observation = BrokerJson.ParsePayload<AppLibraryLaunchObservationSummary>(payload);
-            if (observation.State == AppLibraryLaunchObservationState.RequestAccepted) return;
+            if (observation.State == AppLibraryLaunchObservationState.RequestAccepted)
+                return null;
         }
+        return new BrokerHostEffect(BrokerHostEffectKind.CloseOverlayAfterAppLaunch);
+    }
+
+    private void PublishHostEffect(
+        BrokerHostEffect effect,
+        long? actionExecutionId,
+        long? lifecycleGeneration)
+    {
+        if (_hostEffectSink is null) return;
         try
         {
-            _hostEffectSink(new BrokerHostEffect(
-                BrokerHostEffectKind.CloseOverlayAfterAppLaunch));
+            _hostEffectSink(effect, actionExecutionId, lifecycleGeneration);
         }
         catch (Exception)
         {
@@ -863,6 +908,23 @@ public sealed class BrokerPipeClient : IAsyncDisposable
         long? gestureInputSequence,
         long? gestureSnapshotSequence,
         CancellationToken cancellationToken = default) =>
+        RequestWithActionAsync(
+            capabilityId,
+            operation,
+            payload,
+            gestureInputSequence,
+            gestureSnapshotSequence,
+            actionExecutionId: null,
+            cancellationToken);
+
+    internal Task<BrokerResponseEnvelope> RequestWithActionAsync<T>(
+        string capabilityId,
+        string operation,
+        T payload,
+        long? gestureInputSequence,
+        long? gestureSnapshotSequence,
+        long? actionExecutionId,
+        CancellationToken cancellationToken = default) =>
         SendRequestEnvelopeAsync(new BrokerRequestEnvelope(
             BrokerJson.ProtocolVersion,
             0,
@@ -871,11 +933,12 @@ public sealed class BrokerPipeClient : IAsyncDisposable
             operation,
             BrokerPipeJson.Element(payload),
             gestureInputSequence,
-            gestureSnapshotSequence), cancellationToken);
+            gestureSnapshotSequence), cancellationToken, actionExecutionId);
 
     internal async Task<BrokerResponseEnvelope> SendRequestEnvelopeAsync(
         BrokerRequestEnvelope source,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        long? actionExecutionId = null)
     {
         var correlation = NextCorrelation();
         var request = source with { RequestId = correlation };
@@ -884,7 +947,8 @@ public sealed class BrokerPipeClient : IAsyncDisposable
             request,
             cancellationToken,
             sendCancellation: true,
-            requestTimeout: BrokerPipeRequestTimeoutPolicy.Resolve(_options, request))
+            requestTimeout: BrokerPipeRequestTimeoutPolicy.Resolve(_options, request),
+            actionExecutionId: actionExecutionId)
             .ConfigureAwait(false);
         if (response.Type == BrokerPipeMessageTypes.Error)
         {
@@ -948,7 +1012,8 @@ public sealed class BrokerPipeClient : IAsyncDisposable
         T payload,
         CancellationToken cancellationToken,
         bool sendCancellation = false,
-        TimeSpan? requestTimeout = null)
+        TimeSpan? requestTimeout = null,
+        long? actionExecutionId = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var correlation = type == BrokerPipeMessageTypes.Request && payload is BrokerRequestEnvelope request
@@ -960,7 +1025,9 @@ public sealed class BrokerPipeClient : IAsyncDisposable
             throw new InvalidOperationException("Duplicate broker correlation ID.");
         try
         {
-            await WriteAsync(type, correlation, payload, cancellationToken).ConfigureAwait(false);
+            await WriteAsync(
+                type, correlation, payload, cancellationToken, actionExecutionId)
+                .ConfigureAwait(false);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken, _lifetime.Token);
             timeout.CancelAfter(requestTimeout ?? _options.RequestTimeout);
@@ -1046,7 +1113,11 @@ public sealed class BrokerPipeClient : IAsyncDisposable
     }
 
     private async Task WriteAsync<T>(
-        string type, long correlationId, T payload, CancellationToken cancellationToken)
+        string type,
+        long correlationId,
+        T payload,
+        CancellationToken cancellationToken,
+        long? actionExecutionId = null)
     {
         var channel = _channel ?? throw new InvalidOperationException("Broker client is not connected.");
         await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -1058,6 +1129,7 @@ public sealed class BrokerPipeClient : IAsyncDisposable
                 Type = type,
                 CorrelationId = correlationId,
                 Payload = BrokerPipeJson.Element(payload),
+                ActionExecutionId = actionExecutionId,
             }, cancellationToken).ConfigureAwait(false);
         }
         finally { _writeGate.Release(); }

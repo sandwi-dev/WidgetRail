@@ -3,6 +3,8 @@ namespace WidgetRail.WidgetRuntime;
 internal sealed class WidgetWorkerNotificationLane
 {
     private const int MaximumQueuedActionFailures = 8;
+    private const int MaximumQueuedActionTerminals =
+        WidgetRail.WidgetSdk.Widget.ActionQueueCapacity + 1;
     private readonly object _gate = new();
     private readonly LinkedList<RuntimeEnvelope> _queue = new();
     private readonly SemaphoreSlim _available = new(0);
@@ -13,6 +15,7 @@ internal sealed class WidgetWorkerNotificationLane
     private Exception? _terminalFailure;
     private long _latestInvalidationRevision = long.MinValue;
     private int _queuedActionFailures;
+    private int _queuedActionTerminals;
     private bool _closed;
 
     internal WidgetWorkerNotificationLane(
@@ -85,6 +88,37 @@ internal sealed class WidgetWorkerNotificationLane
                     Payload = RuntimeJson.ToElement(failure),
                 });
                 _queuedActionFailures++;
+                if (release) _available.Release();
+                return Admission.Enqueued;
+            }
+        }
+        if (release) _available.Release();
+        return Admission.RejectedFull;
+    }
+
+    internal Admission EnqueueActionTerminal(ActionTerminalPayload terminal)
+    {
+        ArgumentNullException.ThrowIfNull(terminal);
+        var release = false;
+        lock (_gate)
+        {
+            if (_closed) return Admission.RejectedClosed;
+            if (_queuedActionTerminals >= MaximumQueuedActionTerminals)
+            {
+                _closed = true;
+                _terminalFailure = new IOException(
+                    "The bounded worker action-terminal notification queue is full.");
+                release = true;
+            }
+            else
+            {
+                release = _queue.Count == 0;
+                _queue.AddLast(new RuntimeEnvelope
+                {
+                    Type = MessageTypes.ActionTerminal,
+                    Payload = RuntimeJson.ToElement(terminal),
+                });
+                _queuedActionTerminals++;
                 if (release) _available.Release();
                 return Admission.Enqueued;
             }
@@ -168,8 +202,10 @@ internal sealed class WidgetWorkerNotificationLane
             _queue.RemoveFirst();
             if (ReferenceEquals(first, _queuedInvalidation))
                 _queuedInvalidation = null;
-            else
+            else if (first.Value.Type == MessageTypes.ControllerActionFailed)
                 _queuedActionFailures--;
+            else if (first.Value.Type == MessageTypes.ActionTerminal)
+                _queuedActionTerminals--;
             envelope = first.Value;
             return true;
         }

@@ -24,6 +24,7 @@ internal sealed class WidgetWorkerServer
     private CancellationToken _runCancellation;
     private long _sequence;
     private long _dashboardGestureActivationId;
+    private bool _actionTerminalsEnabled;
 
     public WidgetWorkerServer(
         Widget widget,
@@ -84,11 +85,14 @@ internal sealed class WidgetWorkerServer
         var acceptance = await _channel.ReadAsync(cancellationToken).ConfigureAwait(false);
         if (acceptance.Type != MessageTypes.HelloAccepted || acceptance.RequestId != 0)
             throw new WidgetProtocolViolationException("Host did not accept the worker handshake.");
+        _actionTerminalsEnabled = RuntimeJson.FromElement<HelloAcceptedPayload>(
+            acceptance.Payload).SupportsActionTerminals;
 
         notifications = new WidgetWorkerNotificationLane(SendAsync, cancellationToken);
         _notificationLane = notifications;
         _widget.Invalidated += OnInvalidated;
         _widget.ActionFailed += OnActionFailed;
+        _widget.ActionTerminated += OnActionTerminated;
         try
         {
             await _widget.InitializeAsync(cancellationToken).ConfigureAwait(false);
@@ -275,6 +279,7 @@ internal sealed class WidgetWorkerServer
                     {
                         _widget.Invalidated -= OnInvalidated;
                         _widget.ActionFailed -= OnActionFailed;
+                        _widget.ActionTerminated -= OnActionTerminated;
                     }
                 }
             }
@@ -490,6 +495,14 @@ internal sealed class WidgetWorkerServer
                 args.Action.ActionId,
                 args.Action.SourceElementId,
                 "Action failed."));
+    }
+
+    private void OnActionTerminated(object? sender, WidgetActionExecutionTerminal terminal)
+    {
+        _ = sender;
+        if (!_actionTerminalsEnabled) return;
+        _ = GetNotificationLane().EnqueueActionTerminal(
+            new ActionTerminalPayload(terminal.ExecutionId, terminal.Outcome));
     }
 
     private WidgetWorkerNotificationLane GetNotificationLane() =>

@@ -51,6 +51,10 @@ public sealed class GamesAppsWidget : Widget
     ];
 
     private sealed record LibraryPersistenceResult(bool Saved, bool Rejected);
+    private sealed class PostLaunchPersistenceException(string displayName) : Exception
+    {
+        internal string DisplayName { get; } = displayName;
+    }
     private sealed record PendingRegistrationRecovery(
         GamesAppsLibraryState State,
         long Revision,
@@ -1844,21 +1848,37 @@ public sealed class GamesAppsWidget : Widget
                 _launchingAppId = null;
                 _status = $"Opened {GamesAppsAppLibraryPresentation.DisplayName(selected)}";
             }
-            ShowToast("Application opened",
-                $"Opened {GamesAppsAppLibraryPresentation.DisplayName(selected)}",
-                ToastTone.Success);
-            await PersistLibraryAsync(
+            var persistence = await PersistLibraryAsync(
                 persistedOrder,
                 persistedAutoGames,
                 persistedExclusions,
                 selected.SavedId,
                 commandLifetime.Token,
                 persistenceCandidates).ConfigureAwait(false);
+            if (!persistence.Saved)
+                throw new PostLaunchPersistenceException(
+                    GamesAppsAppLibraryPresentation.DisplayName(selected));
+            ShowToast("Application opened",
+                $"Opened {GamesAppsAppLibraryPresentation.DisplayName(selected)}",
+                ToastTone.Success);
         }
         catch (OperationCanceledException) when (commandLifetime.IsCancellationRequested)
         {
             lock (_gate) _launchingAppId = null;
             if (cancellationToken.IsCancellationRequested) throw;
+        }
+        catch (PostLaunchPersistenceException exception)
+        {
+            lock (_gate)
+            {
+                _launchingAppId = null;
+                _status = $"Opened {exception.DisplayName}, but recent order was not saved";
+            }
+            ShowToast(
+                "Application opened",
+                $"Opened {exception.DisplayName}, but recent order was not saved",
+                ToastTone.Warning);
+            throw;
         }
         catch (Exception exception)
         {

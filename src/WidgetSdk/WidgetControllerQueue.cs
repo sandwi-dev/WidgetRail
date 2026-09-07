@@ -32,6 +32,9 @@ public abstract partial class Widget
 
     private readonly object _actionQueueLock = new();
     private ActionQueueState? _actionQueue;
+    private long _actionExecutionSequence;
+
+    internal event EventHandler<WidgetActionExecutionTerminal>? ActionTerminated;
 
     /// <summary>
     /// Raised when an accepted action later fails. Admission acknowledgement is
@@ -177,23 +180,33 @@ public abstract partial class Widget
                     queue.Active = queued;
                 }
 
-                using var invocation = WidgetCapabilityInvocationContext.Enter(
-                    queued.GestureContext);
+                var executionId = Interlocked.Increment(ref _actionExecutionSequence);
+                if (executionId <= 0)
+                    throw new InvalidOperationException("Action execution identity exhausted.");
+                var actionInvocation = new WidgetActionInvocationState(executionId);
                 ObserveActionDiagnostic(queued.Action, "dequeue", "started");
+                WidgetActionExecutionOutcome outcome;
+                Exception? failure = null;
+                var stop = false;
                 try
                 {
-                    await OnActionAsync(queued.Action, queue.Lifetime).ConfigureAwait(false);
-                    ObserveActionDiagnostic(queued.Action, "terminal", "succeeded");
+                    using (WidgetCapabilityInvocationContext.Enter(queued.GestureContext))
+                    using (WidgetActionInvocationContext.Enter(actionInvocation))
+                        await OnActionAsync(queued.Action, queue.Lifetime).ConfigureAwait(false);
+                    await actionInvocation.Seal().WaitAsync(queue.Lifetime).ConfigureAwait(false);
+                    outcome = WidgetActionExecutionOutcome.Succeeded;
                 }
                 catch (OperationCanceledException) when (queue.Lifetime.IsCancellationRequested)
                 {
-                    ObserveActionDiagnostic(queued.Action, "terminal", "canceled");
-                    return;
+                    _ = actionInvocation.Seal();
+                    outcome = WidgetActionExecutionOutcome.Canceled;
+                    stop = true;
                 }
                 catch (Exception exception)
                 {
-                    ObserveActionDiagnostic(queued.Action, "terminal", "failed");
-                    ReportActionFailure(queued.Action, exception);
+                    _ = actionInvocation.Seal();
+                    outcome = WidgetActionExecutionOutcome.Failed;
+                    failure = exception;
                 }
                 finally
                 {
@@ -202,6 +215,16 @@ public abstract partial class Widget
                         if (ReferenceEquals(queue.Active, queued)) queue.Active = null;
                     }
                 }
+                ObserveActionDiagnostic(queued.Action, "terminal", outcome switch
+                {
+                    WidgetActionExecutionOutcome.Succeeded => "succeeded",
+                    WidgetActionExecutionOutcome.Canceled => "canceled",
+                    _ => "failed",
+                });
+                if (actionInvocation.HadCloseRequest)
+                    ReportActionTerminal(new WidgetActionExecutionTerminal(executionId, outcome));
+                if (failure is not null) ReportActionFailure(queued.Action, failure);
+                if (stop) return;
             }
         }
         catch (OperationCanceledException) when (queue.Lifetime.IsCancellationRequested)
@@ -243,6 +266,17 @@ public abstract partial class Widget
         InvokeFailureHandlers(
             ControllerActionFailed,
             new WidgetControllerActionFailedEventArgs(diagnosticAction, exception));
+    }
+
+    private void ReportActionTerminal(WidgetActionExecutionTerminal terminal)
+    {
+        var handlers = ActionTerminated?.GetInvocationList();
+        if (handlers is null) return;
+        foreach (var candidate in handlers)
+        {
+            try { ((EventHandler<WidgetActionExecutionTerminal>)candidate)(this, terminal); }
+            catch { }
+        }
     }
 
     private static string AdmissionCode(WidgetOperationAdmission admission) => admission switch
