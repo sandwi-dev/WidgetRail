@@ -25,17 +25,17 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Legacy unsupported and invalid schemas reset atomically before fresh reconciliation", LegacySchemasResetAtomically),
     ("Bounded exclusion storage refuses removal without losing membership", FullExclusionSetRefusesRemoval),
     ("Worst-case display projection remains inside private-state bounds", ProjectedStateIsBounded),
-    ("Empty add catalog returns to the library without a dead end", EmptyCatalogReturnsToLibrary),
+    ("Empty add catalog remains an actionable selected section", EmptyCatalogRemainsSelected),
     ("Shared state surfaces keep loading empty and failure controller-safe", SharedStateSurfaces),
-    ("Library starts curated and catalog is a bounded vertical controller picker", RendersControllerStrip),
-    ("One saved app uses one full-width icon-led focus target", OneAppUsesCompactTile),
+    ("Library starts curated and catalog is a bounded responsive controller grid", RendersControllerStrip),
+    ("One saved app remains one icon-led focus target", OneAppUsesCompactTile),
     ("Resolved application pixels replace the semantic fallback icon", ResolvedIconRenders),
     ("Game and application artwork survives refresh and warm restart", ArtworkSurvivesRefreshAndWarmRestart),
-    ("Many saved apps retain a compact vertical focus list", ManyAppsUseCompactRail),
+    ("Many saved apps retain one bounded responsive focus grid", ManyAppsUseCompactRail),
     ("Maximum curated long names remain bounded and controller reachable", MaximumLongLibraryIsBounded),
     ("Library feedback uses a non-focusable lifecycle-bound toast", ToastFeedbackIsLifecycleBound),
     ("Library feedback expiry is fake-time latest-wins", ToastFeedbackExpiryIsLatestWins),
-    ("Catalog add remove and B navigation retain a user-owned library", CuratesLibrary),
+    ("Catalog add remove and section navigation retain a user-owned library", CuratesLibrary),
     ("Running app route confirms current opaque identity before durable add",
         RunningAppRouteConfirmsCurrentIdentity),
     ("Malformed running confirmation cannot mutate the durable library",
@@ -55,6 +55,18 @@ var tests = new (string Name, Func<Task> Run)[]
         PersistedLaterSelectionKeepsFirstEntryFocus),
     ("Reactivation retains the ready session snapshot without broker work", ReactivationReusesCachedLibrary),
     ("Top Refresh exclusively requests full reconciliation and retains last-good", ExplicitRefreshReconcilesCachedLibrary),
+    ("Cross-route load publishes unavailable content and a one-second large spinner",
+        CrossRouteLoadingIsBounded),
+    ("Cross-route failure keeps the same one-second loading contract",
+        CrossRouteFailureIsBounded),
+    ("Header A and bumper selection enter the same remembered content group",
+        HeaderAndBumperEnterRememberedContent),
+    ("Newer route selection rejects a canceled stale page completion",
+        RouteSwitchRejectsStaleCompletion),
+    ("Warm Catalog and Running roots retain Ready content during refresh",
+        WarmActiveRootsRetainReadyContent),
+    ("Warm later Catalog page retains its exact bounded window",
+        WarmLaterCatalogPageIsRetained),
     ("Fast cold load completes without publishing loading state", FastColdLoadDoesNotFlashLoading),
     ("Slow cold load publishes an honest delayed loading state", SlowColdLoadShowsDelayedLoading),
     ("Curated SavedIds survive a fresh widget worker instance", CurationSurvivesNewInstance),
@@ -65,7 +77,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Background rejects a cancellation-ignoring fresh-worker resolution", WarmStartRejectsLateResolution),
     ("Catalog pages stay bounded and restore focus in both directions", LoadsMore),
     ("Catalog navigation policy owns bounded forward and reverse transitions", CatalogPolicyOwnsNavigation),
-    ("Rapid repeated load more is one busy controller command", LoadMoreIsSingleFlight),
+    ("Load more publishes one busy disabled controller command", LoadMoreIsSingleFlight),
     ("Large cursor catalogs retain only one bounded semantic page", LargeCatalogRetainsOneBoundedPage),
     ("Rapid repeated launch cannot duplicate a Shell launch", LaunchIsSingleFlight),
     ("Leaving the widget cancels in-flight page work", BackgroundCancelsPageWork),
@@ -241,7 +253,7 @@ static async Task AutoCuratesTrustedGames()
     Assert.Contains("Added 2 trusted games", Text(notice.Root, "games.toast.message").Text!);
     Assert.False(Nodes(notice.Root).Single(node => node.Id == "games.toast").IsFocusable);
 
-    await widget.OnActionAsync(new("games.retry", "games.root"));
+    await RefreshCurrentRouteAndWait(widget);
     Assert.Equal(2, fake.PageRequests.Count);
     Assert.Equal(1L, state.Revision);
     Assert.SequenceEqual(["game-a", "game-b"],
@@ -415,7 +427,7 @@ static async Task RefreshAppendsGames()
         App("fresh-b", "Beta", WidgetAppLibraryKind.Game) with { SavedId = "saved-b" },
         App("fresh-c", "Gamma", WidgetAppLibraryKind.Game) with { SavedId = "saved-c" },
     ], null);
-    await widget.OnActionAsync(new("games.retry", "games.root"));
+    await RefreshCurrentRouteAndWait(widget);
 
     Assert.SequenceEqual(["fresh-b", "fresh-a", "fresh-c"],
         widget.CuratedItems.Select(item => item.AppId));
@@ -452,13 +464,13 @@ static async Task DisappearanceRetainsOrder()
         App("fresh-a", "Alpha", WidgetAppLibraryKind.Game) with { SavedId = "saved-a" },
         App("fresh-c", "Gamma", WidgetAppLibraryKind.Game) with { SavedId = "saved-c" },
     ], null);
-    await widget.OnActionAsync(new("games.retry", "games.root"));
+    await RefreshCurrentRouteAndWait(widget);
     Assert.SequenceEqual(["Beta", "Alpha", "Gamma"],
         widget.CuratedItems.Select(item => item.Presentation.DisplayName));
     var absent = Snapshot(widget, 219);
     var staleBeta = ActionSurfaces(absent.Root).Single(tile => TileTitle(tile) == "Beta");
     Assert.True(staleBeta.IsDisabled == true);
-    Assert.Equal("Checking…", Text(absent.Root, staleBeta.Id + ".state").Text);
+    Assert.Equal("Checking availability", Text(absent.Root, staleBeta.Id + ".state").Text);
     Assert.Equal(beta.Id, staleBeta.Id);
     Assert.Equal(beta.Id, absent.InitialFocusId);
 
@@ -467,7 +479,7 @@ static async Task DisappearanceRetainsOrder()
         App("fresh-b", "Beta", WidgetAppLibraryKind.Game) with { SavedId = "saved-b" },
         App("fresh-c", "Gamma", WidgetAppLibraryKind.Game) with { SavedId = "saved-c" },
     ], null);
-    await widget.OnActionAsync(new("games.retry", "games.root"));
+    await RefreshCurrentRouteAndWait(widget);
     Assert.SequenceEqual(["fresh-b", "fresh-a", "fresh-c"],
         widget.CuratedItems.Select(item => item.AppId));
     Assert.Equal(beta.Id, ActionSurfaces(Snapshot(widget, 209).Root)
@@ -512,7 +524,7 @@ static async Task ExclusionSurvivesReappearance()
             SavedId = "saved-game",
         },
     ], null);
-    await second.OnActionAsync(new("games.retry", "games.root"));
+    await RefreshCurrentRouteAndWait(second);
     Assert.Equal(0, second.CuratedItems.Count);
     Assert.False(Nodes(Snapshot(second, 207).Root).Any(node => node.Id == "games.toast"));
     await AddFromCatalog(second, "Game");
@@ -549,7 +561,7 @@ static async Task IdentityReplacementIsNewGame()
         App("application", "Utility"),
         App("unknown", "Mystery", WidgetAppLibraryKind.Unknown),
     ], null);
-    await widget.OnActionAsync(new("games.retry", "games.root"));
+    await RefreshCurrentRouteAndWait(widget);
     Assert.SequenceEqual(["Same title", "Same title"],
         widget.CuratedItems.Select(item => item.Presentation.DisplayName));
     Assert.False(widget.CuratedItems.Any(item => item.AppId is "application" or "unknown"));
@@ -603,7 +615,7 @@ static async Task ReclassificationPreservesOptIn()
         Assert.Equal(WidgetAppLibraryKind.Game, request.Query.Kind);
         return ValueTask.FromResult(Page([], null));
     };
-    await widget.OnActionAsync(new("games.retry", "games.root"));
+    await RefreshCurrentRouteAndWait(widget);
     Assert.SequenceEqual(["application-now-unknown"],
         widget.CuratedItems.Select(item => item.AppId));
     Assert.SequenceEqual(["saved-game", "saved-application"],
@@ -622,7 +634,7 @@ static async Task ReclassificationPreservesOptIn()
             SavedId = "saved-application",
         },
     ], null);
-    await widget.OnActionAsync(new("games.retry", "games.root"));
+    await RefreshCurrentRouteAndWait(widget);
     Assert.SequenceEqual(["game-again", "application-now-unknown"],
         widget.CuratedItems.Select(item => item.AppId));
     await Background(widget);
@@ -865,7 +877,7 @@ static Task ProjectedStateIsBounded()
     return Task.CompletedTask;
 }
 
-static async Task EmptyCatalogReturnsToLibrary()
+static async Task EmptyCatalogRemainsSelected()
 {
     var fake = new FakeAppLibraryHost
     {
@@ -875,13 +887,15 @@ static async Task EmptyCatalogReturnsToLibrary()
     await Interactive(widget);
     await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
     await widget.OnActionAsync(new("games.open-catalog", "games.open-catalog"));
-    await WaitUntil(() => widget.Page == GamesAppsPage.Library &&
+    await WaitUntil(() => widget.Page == GamesAppsPage.Catalog &&
         widget.ViewState == GamesAppsViewState.Ready && fake.PageRequests.Count == 2);
 
     var snapshot = Snapshot(widget, 2);
-    Assert.True(Buttons(snapshot.Root).Any(button => button.ActionId == "games.open-catalog"));
-    Assert.False(Nodes(snapshot.Root).Any(node => node.Id == "games.catalog"));
-    Assert.Contains("No additional", Text(snapshot.Root, "games.status").Text!);
+    Assert.Equal("games-apps", snapshot.ActiveInputScopeId);
+    Assert.True(Buttons(snapshot.Root).Any(button =>
+        button.ActionId == "games.refresh-catalog"));
+    Assert.True(Nodes(snapshot.Root).Any(node => node.Id == "games.catalog.empty"));
+    Assert.Contains("No applications", Text(snapshot.Root, "games.catalog.empty.title").Text!);
     Assert.Valid(snapshot);
     await Background(widget);
 }
@@ -914,7 +928,7 @@ static async Task SharedStateSurfaces()
     Assert.True(emptySurface.StyleClasses.Contains("wrail-empty-state", StringComparer.Ordinal));
     var add = Buttons(emptySurface).Single(button => button.ActionId == "games.open-catalog");
     Assert.Equal(add.Id, empty.InitialFocusId);
-    Assert.Equal("Add applications", add.Text);
+    Assert.Equal("Add apps", add.Text);
     Assert.Valid(empty);
     await Background(loadingWidget);
 
@@ -956,8 +970,8 @@ static async Task RendersControllerStrip()
     var snapshot = Snapshot(widget, 3);
     Assert.Equal(WidgetSurfaceMode.Standard, snapshot.Surface!.Mode);
     Assert.Equal(420d, snapshot.Surface.MinimumWidth);
-    Assert.Equal(280d, snapshot.Surface.PreferredHeight);
-    Assert.Equal(250d, snapshot.Surface.MinimumHeight);
+    Assert.Equal(600d, snapshot.Surface.PreferredHeight);
+    Assert.Equal(300d, snapshot.Surface.MinimumHeight);
     Assert.True(snapshot.Surface.PreferredWidth > snapshot.Surface.MinimumWidth);
     Assert.True(snapshot.Surface.PreferredHeight > snapshot.Surface.MinimumHeight);
     Assert.Equal("games-apps", snapshot.ActiveInputScopeId);
@@ -967,21 +981,26 @@ static async Task RendersControllerStrip()
     await OpenCatalog(widget);
     snapshot = Snapshot(widget, 4);
     Assert.Equal(600d, snapshot.Surface!.PreferredHeight);
-    Assert.Equal(320d, snapshot.Surface.MinimumHeight);
-    Assert.Equal("games.catalog", snapshot.ActiveInputScopeId);
-    var catalogScope = Nodes(snapshot.Root).Single(node => node.Id == "games.catalog");
-    Assert.True(catalogScope.Shortcuts.Any(shortcut =>
-        shortcut.Button == ControllerButton.B && shortcut.ActionId == "back"));
-    var scroll = Nodes(snapshot.Root).Single(node => node.Id == "games.library.scroll");
+    Assert.Equal(300d, snapshot.Surface.MinimumHeight);
+    Assert.Equal("games-apps", snapshot.ActiveInputScopeId);
+    Assert.True(snapshot.Root.Shortcuts.Any(shortcut =>
+        shortcut.Button == ControllerButton.LeftBumper &&
+        shortcut.ActionId == "games.section.previous"));
+    Assert.True(snapshot.Root.Shortcuts.Any(shortcut =>
+        shortcut.Button == ControllerButton.RightBumper &&
+        shortcut.ActionId == "games.section.next"));
+    var scroll = Nodes(snapshot.Root).Single(node => node.Id == "games.catalog.scroll");
     Assert.Equal(ViewNodeKind.Scroll, scroll.Kind);
     Assert.Equal(ScrollAxis.Vertical, scroll.ScrollAxis);
     var tiles = ActionSurfaces(scroll)
         .Where(tile => tile.ActionId == "games.toggle-curation").ToArray();
     Assert.Equal(3, tiles.Length);
-    Assert.Equal(tiles[0].Id, tiles[0].Focus!.Left);
-    Assert.Equal(tiles[0].Id, tiles[0].Focus!.Right);
-    Assert.Equal(tiles[1].Id, tiles[0].Focus!.Down);
-    Assert.Equal(tiles[0].Id, snapshot.InitialFocusId);
+    Assert.True(tiles.All(tile => tile.IsFocusable));
+    Assert.Equal("games.catalog.page", snapshot.FocusGroupEntryRequest!.GroupId);
+    Assert.Equal(tiles[0].Id,
+        Nodes(snapshot.Root).Single(node => node.Id == "games.catalog.page")
+            .InitialChildFocusId);
+    Assert.Equal<string?>(null, snapshot.InitialFocusId);
     var json = System.Text.Json.JsonSerializer.Serialize(snapshot);
     Assert.False(json.Contains("private-one", StringComparison.Ordinal));
     Assert.False(json.Contains(".lnk", StringComparison.OrdinalIgnoreCase));
@@ -1010,9 +1029,10 @@ static async Task OneAppUsesCompactTile()
     var artwork = Nodes(launch).Single(node => node.Id == launch.Id + ".artwork");
     Assert.Equal(WidgetGlyph.Play, artwork.Glyph);
     Assert.True(artwork.ImageSource is null);
-    Assert.Equal(launch.Id, launch.Focus!.Left);
-    Assert.Equal(launch.Id, launch.Focus.Right);
-    Assert.Equal("games.open-catalog", launch.Focus.Down);
+    Assert.Equal("games.library.page", snapshot.FocusGroupEntryRequest!.GroupId);
+    Assert.Equal(launch.Id,
+        Nodes(snapshot.Root).Single(node => node.Id == "games.library.page")
+            .InitialChildFocusId);
     Assert.Valid(snapshot);
     await Background(widget);
 }
@@ -1037,7 +1057,7 @@ static async Task ResolvedIconRenders()
     Assert.True(artwork.ImageSource is null);
     Assert.Equal(ImageFit.Contain, artwork.ImageFit);
     Assert.True(artwork.Glyph is null);
-    Assert.Equal(ProtocolConstants.CursorCollectionVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.ControllerShortcutLabelVersion, snapshot.ProtocolVersion);
     Assert.Valid(snapshot);
     await Background(widget);
 }
@@ -1155,13 +1175,17 @@ static async Task ManyAppsUseCompactRail()
     Assert.Equal(600d, snapshot.Surface!.PreferredHeight);
     Assert.Equal(300d, snapshot.Surface.MinimumHeight);
     var scroll = Nodes(snapshot.Root).Single(node => node.Id == "games.library.scroll");
+    var grid = Nodes(scroll).Single(node => node.Id == "games.library.grid");
+    Assert.Equal(ViewNodeKind.Grid, grid.Kind);
     var launches = ActionSurfaces(scroll).Where(tile => tile.ActionId == "games.launch").ToArray();
     Assert.Equal(8, launches.Length);
     Assert.True(launches.All(launch => Nodes(launch).Single(node =>
         node.Id == launch.Id + ".artwork").Glyph == WidgetGlyph.Play));
-    for (var index = 1; index < launches.Length; index++)
-        Assert.Equal(launches[index - 1].Id, launches[index].Focus!.Up);
-    Assert.Equal("games.open-catalog", launches[^1].Focus!.Down);
+    Assert.True(launches.All(launch => launch.IsFocusable));
+    Assert.Equal("games.library.page", snapshot.FocusGroupEntryRequest!.GroupId);
+    Assert.Equal(launches[^1].Id,
+        Nodes(snapshot.Root).Single(node => node.Id == "games.library.page")
+            .InitialChildFocusId);
     Assert.Equal(ScrollAxis.Vertical, scroll.ScrollAxis);
     Assert.Valid(snapshot);
     await Background(widget);
@@ -1194,8 +1218,10 @@ static async Task MaximumLongLibraryIsBounded()
     Assert.Equal(64, launches.Length);
     Assert.True(launches.All(tile => TileTitle(tile)!.Length == 120));
     Assert.True(Nodes(snapshot.Root).Count() < ProtocolConstants.MaximumNodeCount);
-    Assert.Equal(launches[0].Id, snapshot.InitialFocusId);
-    Assert.Equal("games.open-catalog", launches[^1].Focus!.Down);
+    Assert.True(launches.All(tile => tile.IsFocusable));
+    Assert.Equal(launches[0].Id,
+        Nodes(snapshot.Root).Single(node => node.Id == "games.library.page")
+            .InitialChildFocusId);
     Assert.True(Buttons(snapshot.Root).Any(button =>
         button.ActionId == "games.open-catalog"));
     Assert.Valid(snapshot);
@@ -1217,7 +1243,9 @@ static async Task ToastFeedbackIsLifecycleBound()
     Assert.Equal(ViewNodeKind.Row, toast.Kind);
     Assert.False(Nodes(toast).Any(node => node.IsFocusable));
     var alpha = ActionSurfaces(feedback.Root).Single(tile => TileTitle(tile) == "Alpha");
-    Assert.Equal(alpha.Id, feedback.InitialFocusId);
+    Assert.Equal(alpha.Id,
+        Nodes(feedback.Root).Single(node => node.Id == "games.catalog.page")
+            .InitialChildFocusId);
     Assert.Contains("Added Alpha", Text(feedback.Root, "games.toast.message").Text!);
 
     await Background(widget);
@@ -1235,7 +1263,11 @@ static async Task ToastFeedbackExpiryIsLatestWins()
     };
     var widget = CreateWithTimeProvider(fake, clock);
     await Interactive(widget);
-    await AddFromCatalog(widget, "Alpha");
+    var addAlpha = AddFromCatalog(widget, "Alpha");
+    await WaitUntil(() => widget.Page == GamesAppsPage.Catalog &&
+        widget.ViewState == GamesAppsViewState.Loading);
+    clock.Advance(TimeSpan.FromSeconds(1));
+    await addAlpha;
     clock.Advance(TimeSpan.FromSeconds(4));
     await AddFromCatalog(widget, "Beta");
 
@@ -1306,8 +1338,7 @@ static async Task CuratesLibrary()
         .Single(tile => TileTitle(tile) == "Beta")
         .IsSelected == true);
 
-    await widget.OnActionAsync(new("back", "games.catalog"));
-    Assert.Equal(GamesAppsPage.Library, widget.Page);
+    await BackToLibrary(widget);
     var library = Snapshot(widget, 42);
     Assert.Equal("games-apps", library.ActiveInputScopeId);
     Assert.False(Nodes(library.Root).Single(node => node.Id == "games.root").Shortcuts
@@ -1478,15 +1509,16 @@ static async Task FailedRemovalRollsBack()
     var alpha = ActionSurfaces(Snapshot(widget, 348).Root).Single(tile =>
         tile.ActionId == "games.toggle-curation" && TileTitle(tile) == "Alpha");
     await widget.OnActionAsync(new("games.toggle-curation", alpha.Id));
+    var failedMutation = Snapshot(widget, 349);
+    Assert.Contains("durable library could not be updated",
+        Text(failedMutation.Root, "games.toast.message").Text!);
     await BackToLibrary(widget);
 
-    var rolledBack = AssertReadyLibrary(widget, 349, "Alpha", "Beta");
+    var rolledBack = AssertReadyLibrary(widget, 350, "Alpha", "Beta");
     Assert.Equal(beforeJson, state.Json);
     Assert.True(ActionSurfaces(rolledBack.Root)
         .Where(tile => tile.ActionId == "games.launch")
         .All(tile => tile.IsDisabled != true));
-    Assert.Contains("durable library could not be updated",
-        Text(rolledBack.Root, "games.toast.message").Text!);
     await Background(widget);
 }
 
@@ -1514,21 +1546,27 @@ static async Task RemovalSelectsNearestRow()
     var library = Snapshot(widget, 234);
     Assert.Equal("opaque-c", widget.SelectedAppId);
     Assert.Equal(ActionSurfaces(library.Root).Single(tile =>
-        TileTitle(tile) == "Alpha").Id, library.InitialFocusId);
+        TileTitle(tile) == "Gamma").Id,
+        Nodes(library.Root).Single(node => node.Id == "games.library.page")
+            .InitialChildFocusId);
     var beta = ActionSurfaces(library.Root)
         .Single(tile => TileTitle(tile) == "Beta");
     await widget.OnActionAsync(new("games.remove", beta.Id));
     var afterBeta = Snapshot(widget, 235);
     Assert.Equal("opaque-c", widget.SelectedAppId);
     Assert.Equal(ActionSurfaces(afterBeta.Root).Single(tile =>
-        TileTitle(tile) == "Alpha").Id, afterBeta.InitialFocusId);
+        TileTitle(tile) == "Gamma").Id,
+        Nodes(afterBeta.Root).Single(node => node.Id == "games.library.page")
+            .InitialChildFocusId);
 
     var gamma = ActionSurfaces(afterBeta.Root).Single(tile => TileTitle(tile) == "Gamma");
     await widget.OnActionAsync(new("games.remove", gamma.Id));
     var afterGamma = Snapshot(widget, 236);
     Assert.Equal("opaque-a", widget.SelectedAppId);
     Assert.Equal(ActionSurfaces(afterGamma.Root).Single(tile =>
-        TileTitle(tile) == "Alpha").Id, afterGamma.InitialFocusId);
+        TileTitle(tile) == "Alpha").Id,
+        Nodes(afterGamma.Root).Single(node => node.Id == "games.library.page")
+            .InitialChildFocusId);
     Assert.Valid(afterGamma);
     await Background(widget);
 }
@@ -1550,7 +1588,6 @@ static async Task LaunchesSelectedApp()
     Assert.SequenceEqual(["opaque-b"], fake.LaunchedIds);
     Assert.Equal("opaque-b", widget.SelectedAppId);
     var opened = Snapshot(widget, 5);
-    Assert.Contains("Opened Beta", Text(opened.Root, "games.status").Text!);
     Assert.Contains("Opened Beta", Text(opened.Root, "games.toast.message").Text!);
     await Background(widget);
 }
@@ -1647,7 +1684,10 @@ static async Task SuccessfulLaunchOrdersRecentFirst()
     await widget.OnActionAsync(new("games.launch", beta.Id));
     Assert.SequenceEqual(["opaque-b", "opaque-a"],
         widget.CuratedItems.Select(item => item.AppId));
-    Assert.Equal(beta.Id, Snapshot(widget, 46).InitialFocusId);
+    var reordered = Snapshot(widget, 46);
+    Assert.Equal(beta.Id,
+        Nodes(reordered.Root).Single(node => node.Id == "games.library.page")
+            .InitialChildFocusId);
     await Background(widget);
 }
 
@@ -1674,10 +1714,14 @@ static async Task FailedLaunchKeepsOrder()
     var failed = Snapshot(widget, 48);
     var alpha = ActionSurfaces(failed.Root).Single(tile => TileTitle(tile) == "Alpha");
     var selectedBeta = ActionSurfaces(failed.Root).Single(tile => TileTitle(tile) == "Beta");
-    Assert.Equal(alpha.Id, failed.InitialFocusId);
     Assert.Equal("opaque-b", widget.SelectedAppId);
-    Assert.True(selectedBeta.IsSelected == true);
-    Assert.Contains("App library unavailable", Text(failed.Root, "games.status").Text!);
+    Assert.True(alpha.IsDisabled != true);
+    Assert.True(selectedBeta.IsSelected != true);
+    Assert.Equal(selectedBeta.Id,
+        Nodes(failed.Root).Single(node => node.Id == "games.library.page")
+            .InitialChildFocusId);
+    Assert.Contains("App library unavailable",
+        Text(failed.Root, "games.toast.message").Text!);
     Assert.True(Nodes(failed.Root).Single(node => node.Id == "games.toast")
         .StyleClasses.Contains("wrail-toast--danger", StringComparer.Ordinal));
     await Background(widget);
@@ -1760,7 +1804,7 @@ static async Task PersistedLaterSelectionKeepsFirstEntryFocus()
     Assert.SequenceEqual(["saved-a", "saved-b"],
         widget.CuratedItems.Select(item => item.SavedId));
     Assert.Equal("opaque-b", widget.SelectedAppId);
-    Assert.True(beta.IsSelected == true);
+    Assert.True(beta.IsSelected != true);
     Assert.Equal(alpha.Id, restored.InitialFocusId);
 
     await widget.OnActionAsync(new("games.launch", beta.Id));
@@ -1866,6 +1910,7 @@ static async Task ExplicitRefreshReconcilesCachedLibrary()
     refreshPage.SetException(new WidgetCapabilityException(
         "platform_unavailable", "fixture catalog failure"));
     await refresh;
+    await WaitForCurrentRouteRefresh(widget);
     var failed = AssertReadyLibrary(widget, 351, "Alpha");
     var failedTile = ActionSurfaces(failed.Root).Single(row => TileTitle(row) == "Alpha");
     Assert.Equal(focusBefore, failed.InitialFocusId);
@@ -1889,8 +1934,8 @@ static async Task ExplicitRefreshReconcilesCachedLibrary()
     fake.Pages[0] = Page([updated], null);
     fake.ResolveException = null;
     fake.ReadHandler = (_, _) => ValueTask.FromResult(Page([updated], null));
-    await widget.OnActionAsync(new(
-        "games.refresh-catalog", "games.refresh-catalog"));
+    await RefreshCurrentRouteAndWait(
+        widget, "games.refresh-catalog", "games.refresh-catalog");
 
     Assert.Equal(initialCatalogRequests + 2, fake.CatalogRequests.Count);
     Assert.True(fake.CatalogRequests.Skip(1).All(request => request.Refresh));
@@ -1904,6 +1949,314 @@ static async Task ExplicitRefreshReconcilesCachedLibrary()
         Nodes(recoveredTile).Single(node => node.Id == recoveredTile.Id + ".artwork")
             .ArtworkHandle);
     Assert.Valid(recovered);
+    await Background(widget);
+}
+
+static async Task CrossRouteLoadingIsBounded()
+{
+    var clock = new ManualTimerTimeProvider();
+    var started = NewSignal();
+    var completion = new TaskCompletionSource<WidgetAppLibraryPage>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([App("library", "Library app")], null) },
+    };
+    var widget = CreateWithTimeProvider(fake, clock);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    fake.ReadHandler = (_, token) => new ValueTask<WidgetAppLibraryPage>(
+        AwaitPage(completion.Task, started, token));
+
+    var library = Snapshot(widget, 600);
+    var catalogHeader = CompactDestination(library, "games.open-catalog");
+    await widget.OnActionAsync(new(catalogHeader.ActionId!, catalogHeader.Id));
+    await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+    var loading = Snapshot(widget, 601);
+    Assert.Equal(GamesAppsPage.Catalog, widget.Page);
+    Assert.Equal(GamesAppsViewState.Loading, widget.ViewState);
+    Assert.Equal("games.catalog.page", loading.FocusGroupEntryRequest!.GroupId);
+    Assert.Equal<string?>(null,
+        Nodes(loading.Root).Single(node => node.Id == "games.catalog.page")
+            .InitialChildFocusId);
+    var progress = Nodes(loading.Root).Single(node => node.Id == "games.route.progress");
+    var indicator = Nodes(progress).Single(node => node.Id == "games.route.loading");
+    Assert.Equal(ViewNodeKind.LoadingIndicator, indicator.Kind);
+    Assert.Equal(LoadingIndicatorSize.Large, indicator.IndicatorSize);
+    Assert.Equal("Loading applications", indicator.AccessibilityLabel);
+    Assert.False(Nodes(progress).Any(node => node.Text is not null));
+    Assert.False(Nodes(progress).Any(node => node.IsFocusable));
+
+    completion.SetResult(Page([App("catalog", "Catalog app")], null));
+    await Task.Yield();
+    Assert.Equal(GamesAppsViewState.Loading, widget.ViewState);
+    clock.Advance(TimeSpan.FromMilliseconds(999));
+    await Task.Yield();
+    Assert.Equal(GamesAppsViewState.Loading, widget.ViewState);
+    clock.Advance(TimeSpan.FromMilliseconds(1));
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+
+    var ready = Snapshot(widget, 602);
+    var catalogTile = ActionSurfaces(ready.Root).Single(tile =>
+        TileTitle(tile) == "Catalog app");
+    Assert.Equal("games.catalog.page", ready.FocusGroupEntryRequest!.GroupId);
+    Assert.Equal(catalogTile.Id,
+        Nodes(ready.Root).Single(node => node.Id == "games.catalog.page")
+            .InitialChildFocusId);
+    Assert.False(Nodes(ready.Root).Any(node => node.Id == "games.route.loading"));
+    Assert.Valid(ready);
+    await Background(widget);
+}
+
+static async Task CrossRouteFailureIsBounded()
+{
+    var clock = new ManualTimerTimeProvider();
+    var started = NewSignal();
+    var completion = new TaskCompletionSource<WidgetAppLibraryPage>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([App("library", "Library app")], null) },
+    };
+    var widget = CreateWithTimeProvider(fake, clock);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    fake.ReadHandler = (_, token) => new ValueTask<WidgetAppLibraryPage>(
+        AwaitPage(completion.Task, started, token));
+
+    await widget.OnActionAsync(new("games.open-catalog", "games.open-catalog"));
+    await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    completion.SetException(new WidgetCapabilityException(
+        "platform_unavailable", "private provider detail"));
+    await Task.Yield();
+    Assert.Equal(GamesAppsViewState.Loading, widget.ViewState);
+    clock.Advance(TimeSpan.FromMilliseconds(999));
+    await Task.Yield();
+    Assert.Equal(GamesAppsViewState.Loading, widget.ViewState);
+    clock.Advance(TimeSpan.FromMilliseconds(1));
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+
+    var failed = Snapshot(widget, 603);
+    Assert.Equal(GamesAppsPage.Catalog, widget.Page);
+    Assert.True(Nodes(failed.Root).Any(node => node.Id == "games.catalog.empty"));
+    Assert.True(Nodes(failed.Root).Any(node => node.Id == "games.toast"));
+    Assert.False(System.Text.Json.JsonSerializer.Serialize(failed)
+        .Contains("private provider detail", StringComparison.Ordinal));
+    Assert.Valid(failed);
+    await Background(widget);
+}
+
+static async Task HeaderAndBumperEnterRememberedContent()
+{
+    var clock = new ManualTimerTimeProvider();
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([App("catalog", "Catalog app")], null) },
+    };
+    var widget = CreateWithTimeProvider(fake, clock);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+
+    var library = Snapshot(widget, 604);
+    var catalogHeader = CompactDestination(library, "games.open-catalog");
+    await widget.OnActionAsync(new(catalogHeader.ActionId!, catalogHeader.Id));
+    var headerRequest = Snapshot(widget, 605).FocusGroupEntryRequest!;
+    clock.Advance(TimeSpan.FromSeconds(1));
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    var headerReady = Snapshot(widget, 606);
+    var headerTile = ActionSurfaces(headerReady.Root).Single(tile =>
+        TileTitle(tile) == "Catalog app");
+    Assert.Equal("games.catalog.page", headerRequest.GroupId);
+    Assert.Equal(headerTile.Id,
+        Nodes(headerReady.Root).Single(node => node.Id == headerRequest.GroupId)
+            .InitialChildFocusId);
+
+    await widget.OnActionAsync(new("games.open-library", "games.open-library"));
+    Assert.Equal(GamesAppsPage.Library, widget.Page);
+    await widget.OnActionAsync(new("games.section.next", "games.root"));
+    var bumperRequest = Snapshot(widget, 607).FocusGroupEntryRequest!;
+    Assert.Equal(headerRequest.GroupId, bumperRequest.GroupId);
+    Assert.True(bumperRequest.RequestId > headerRequest.RequestId);
+    clock.Advance(TimeSpan.FromSeconds(1));
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    var bumperReady = Snapshot(widget, 608);
+    Assert.Equal(headerTile.Id,
+        Nodes(bumperReady.Root).Single(node => node.Id == bumperRequest.GroupId)
+            .InitialChildFocusId);
+    Assert.Valid(bumperReady);
+    await Background(widget);
+}
+
+static async Task RouteSwitchRejectsStaleCompletion()
+{
+    var clock = new ManualTimerTimeProvider();
+    var catalogStarted = NewSignal();
+    var catalogCanceled = NewSignal();
+    var catalogCompletion = new TaskCompletionSource<WidgetAppLibraryPage>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var runningStarted = NewSignal();
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([App("library", "Library app")], null) },
+        RunningObservation = new([
+            new("saved-running", "Running app", WidgetAppLibraryKind.Application,
+                "Windows"),
+        ], "running-revision"),
+    };
+    var widget = CreateWithTimeProvider(fake, clock);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    fake.ReadHandler = (_, token) =>
+    {
+        catalogStarted.TrySetResult();
+        return new ValueTask<WidgetAppLibraryPage>(IgnorePageCancellation(
+            token, catalogCanceled, catalogCompletion.Task));
+    };
+    fake.ObserveRunningHandler = token =>
+    {
+        token.ThrowIfCancellationRequested();
+        runningStarted.TrySetResult();
+        return ValueTask.FromResult(fake.RunningObservation);
+    };
+
+    await widget.OnActionAsync(new("games.open-catalog", "games.open-catalog"));
+    await catalogStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await widget.OnActionAsync(new("games.open-running", "games.open-running"));
+    await catalogCanceled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    var switched = Snapshot(widget, 609);
+    Assert.Equal(GamesAppsPage.Running, widget.Page);
+    Assert.Equal("games.running.page", switched.FocusGroupEntryRequest!.GroupId);
+    Assert.Equal(GamesAppsViewState.Loading, widget.ViewState);
+
+    catalogCompletion.SetResult(Page([App("stale", "Stale catalog app")], null));
+    await runningStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    clock.Advance(TimeSpan.FromSeconds(1));
+    await WaitUntil(() => widget.Page == GamesAppsPage.Running &&
+        widget.ViewState == GamesAppsViewState.Ready);
+    var ready = Snapshot(widget, 610);
+    Assert.SequenceEqual(["saved-running"], widget.Items.Select(item => item.AppId));
+    Assert.False(Nodes(ready.Root).Any(node =>
+        string.Equals(node.Text, "Stale catalog app", StringComparison.Ordinal)));
+    Assert.Equal("games.running.page", ready.FocusGroupEntryRequest!.GroupId);
+    Assert.Valid(ready);
+    await Background(widget);
+}
+
+static async Task WarmActiveRootsRetainReadyContent()
+{
+    var catalogClock = new ManualTimerTimeProvider();
+    var catalogFake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([App("catalog", "Catalog app")], null) },
+    };
+    var catalogWidget = CreateWithTimeProvider(catalogFake, catalogClock);
+    await Interactive(catalogWidget);
+    await WaitUntil(() => catalogWidget.ViewState == GamesAppsViewState.Ready);
+    await catalogWidget.OnActionAsync(new("games.open-catalog", "games.open-catalog"));
+    catalogClock.Advance(TimeSpan.FromSeconds(1));
+    await WaitUntil(() => catalogWidget.Page == GamesAppsPage.Catalog &&
+        catalogWidget.ViewState == GamesAppsViewState.Ready);
+    var catalogBefore = Snapshot(catalogWidget, 611);
+    var catalogTile = ActionSurfaces(catalogBefore.Root).Single(tile =>
+        TileTitle(tile) == "Catalog app");
+    var catalogRefreshStarted = NewSignal();
+    var catalogRefresh = new TaskCompletionSource<WidgetAppLibraryPage>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    catalogFake.ReadHandler = (_, token) => new ValueTask<WidgetAppLibraryPage>(
+        AwaitPage(catalogRefresh.Task, catalogRefreshStarted, token));
+    await Background(catalogWidget);
+    await Interactive(catalogWidget);
+    await catalogRefreshStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    var catalogDuring = Snapshot(catalogWidget, 612);
+    Assert.Equal(GamesAppsPage.Catalog, catalogWidget.Page);
+    Assert.Equal(GamesAppsViewState.Ready, catalogWidget.ViewState);
+    Assert.Equal(catalogTile.Id, ActionSurfaces(catalogDuring.Root).Single().Id);
+    Assert.False(Nodes(catalogDuring.Root).Any(node => node.Id == "games.route.loading"));
+    catalogRefresh.SetResult(Page([App("updated", "Updated catalog app")], null));
+    await WaitUntil(() => catalogWidget.Items.Any(item => item.AppId == "updated"));
+    Assert.True(ActionSurfaces(Snapshot(catalogWidget, 613).Root).Any(tile =>
+        TileTitle(tile) == "Updated catalog app"));
+    await Background(catalogWidget);
+
+    var runningClock = new ManualTimerTimeProvider();
+    var runningFake = new FakeAppLibraryHost
+    {
+        RunningObservation = new([
+            new("saved-running", "Running app", WidgetAppLibraryKind.Application,
+                "Windows"),
+        ], "running-revision"),
+    };
+    var runningWidget = CreateWithTimeProvider(runningFake, runningClock);
+    await Interactive(runningWidget);
+    await WaitUntil(() => runningWidget.ViewState == GamesAppsViewState.Ready);
+    await runningWidget.OnActionAsync(new("games.open-running", "games.open-running"));
+    runningClock.Advance(TimeSpan.FromSeconds(1));
+    await WaitUntil(() => runningWidget.Page == GamesAppsPage.Running &&
+        runningWidget.ViewState == GamesAppsViewState.Ready);
+    var runningBefore = Snapshot(runningWidget, 614);
+    var runningTile = ActionSurfaces(runningBefore.Root).Single();
+    var runningRefreshStarted = NewSignal();
+    var runningRefresh = new TaskCompletionSource<WidgetRunningAppObservation>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    runningFake.ObserveRunningHandler = async token =>
+    {
+        runningRefreshStarted.TrySetResult();
+        return await runningRefresh.Task.WaitAsync(token);
+    };
+    await Background(runningWidget);
+    await Interactive(runningWidget);
+    await runningRefreshStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    var runningDuring = Snapshot(runningWidget, 615);
+    Assert.Equal(GamesAppsPage.Running, runningWidget.Page);
+    Assert.Equal(GamesAppsViewState.Ready, runningWidget.ViewState);
+    Assert.Equal(runningTile.Id, ActionSurfaces(runningDuring.Root).Single().Id);
+    Assert.False(Nodes(runningDuring.Root).Any(node => node.Id == "games.route.loading"));
+    runningRefresh.SetResult(new([
+        new("saved-updated", "Updated running app", WidgetAppLibraryKind.Application,
+            "Windows"),
+    ], "updated-revision"));
+    await WaitUntil(() => runningWidget.Items.Any(item => item.AppId == "saved-updated"));
+    Assert.True(ActionSurfaces(Snapshot(runningWidget, 616).Root).Any(tile =>
+        TileTitle(tile) == "Updated running app"));
+    await Background(runningWidget);
+}
+
+static async Task WarmLaterCatalogPageIsRetained()
+{
+    var clock = new ManualTimerTimeProvider();
+    var fake = new FakeAppLibraryHost
+    {
+        Pages =
+        {
+            [0] = Page([App("first", "First page")], GamesAppsWidget.PageSize),
+            [GamesAppsWidget.PageSize] = Page([App("later", "Later page")], null),
+        },
+    };
+    var widget = CreateWithTimeProvider(fake, clock);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    await widget.OnActionAsync(new("games.open-catalog", "games.open-catalog"));
+    clock.Advance(TimeSpan.FromSeconds(1));
+    await WaitUntil(() => widget.Page == GamesAppsPage.Catalog &&
+        widget.ViewState == GamesAppsViewState.Ready);
+    await widget.OnActionAsync(new("games.load-more", "games.load-more"));
+    await WaitUntil(() => widget.Items.Any(item => item.AppId == "later"));
+    var before = Snapshot(widget, 617);
+    var laterTile = ActionSurfaces(before.Root).Single(tile => TileTitle(tile) == "Later page");
+    var requestsBefore = fake.CatalogRequests.Count;
+
+    await Background(widget);
+    await Interactive(widget);
+    var retained = Snapshot(widget, 618);
+    Assert.Equal(GamesAppsPage.Catalog, widget.Page);
+    Assert.Equal(GamesAppsViewState.Ready, widget.ViewState);
+    Assert.SequenceEqual(["later"], widget.Items.Select(item => item.AppId));
+    Assert.Equal(requestsBefore, fake.CatalogRequests.Count);
+    Assert.Equal(laterTile.Id, ActionSurfaces(retained.Root).Single().Id);
+    Assert.Equal(before.InitialFocusId, retained.InitialFocusId);
+    Assert.True(Buttons(retained.Root).Any(button => button.Id == "games.previous-page"));
+    Assert.Valid(retained);
     await Background(widget);
 }
 
@@ -2093,7 +2446,10 @@ static async Task WarmStartPrecedesAuthorityResolution()
     var warmBeta = ActionSurfaces(warm.Root).Single(tile => TileTitle(tile) == "Beta");
     Assert.True(warmBeta.IsDisabled != true);
     Assert.Equal(warmBeta.Id, warm.InitialFocusId);
-    Assert.Contains("2 saved", Text(warm.Root, "games.status").Text!);
+    var countBadge = Nodes(warm.Root).Single(node => node.Id == "games.header.count");
+    var countLabel = Text(countBadge, "games.header.count.label");
+    Assert.Equal("2 saved", countLabel.Text);
+    Assert.Equal("2 saved", countLabel.AccessibilityLabel);
 
     discovery.SetResult(Page(resolvedItems, null));
     await WaitUntil(() => widget.CuratedItems.All(item =>
@@ -2181,6 +2537,7 @@ static async Task LoadsMore()
     await OpenCatalog(widget);
     Assert.True(Buttons(Snapshot(widget, 6).Root).Any(button => button.Id == "games.load-more"));
     await widget.OnActionAsync(new("games.load-more", "games.load-more"));
+    await WaitUntil(() => widget.SelectedAppId == "three" && !widget.HasNextPage);
     Assert.Equal(2, widget.Items.Count);
     Assert.Equal("three", widget.SelectedAppId);
     Assert.False(widget.HasNextPage);
@@ -2189,17 +2546,27 @@ static async Task LoadsMore()
     Assert.Equal(2, ActionSurfaces(snapshot.Root)
         .Count(tile => tile.ActionId == "games.toggle-curation"));
     var previous = Buttons(snapshot.Root).Single(button => button.Id == "games.previous-page");
-    Assert.Equal(ActionSurfaces(snapshot.Root).First(tile =>
-        tile.ActionId == "games.toggle-curation").Id, previous.Focus!.Down);
-    Assert.Equal(ActionSurfaces(snapshot.Root).Single(tile => TileTitle(tile) == "Three").Id,
-        snapshot.InitialFocusId);
+    Assert.True(previous.IsFocusable);
+    Assert.Equal(previous.Id,
+        Nodes(snapshot.Root).Single(node => node.Id == "games.catalog.page")
+            .InitialChildFocusId);
+    var three = ActionSurfaces(snapshot.Root).Single(tile => TileTitle(tile) == "Three");
+    Assert.Equal(GamesAppsPresentation.CatalogElementId("saved-three"), three.Id);
+    Assert.Equal("three", widget.SelectedAppId);
+    Assert.Equal("games.catalog.page", snapshot.FocusGroupEntryRequest!.GroupId);
+    Assert.Equal<string?>(null, snapshot.InitialFocusId);
     Assert.Valid(snapshot);
 
     await widget.OnActionAsync(new("games.previous-page", previous.Id));
+    await WaitUntil(() => widget.SelectedAppId == "one" && widget.HasNextPage);
     var restored = Snapshot(widget, 237);
     Assert.Equal(2, widget.Items.Count);
-    Assert.Equal(ActionSurfaces(restored.Root).Single(tile => TileTitle(tile) == "One").Id,
-        restored.InitialFocusId);
+    var one = ActionSurfaces(restored.Root).Single(tile => TileTitle(tile) == "One");
+    Assert.Equal(GamesAppsPresentation.CatalogElementId("saved-one"), one.Id);
+    Assert.Equal(one.Id,
+        Nodes(restored.Root).Single(node => node.Id == "games.catalog.page")
+            .InitialChildFocusId);
+    Assert.Equal<string?>(null, restored.InitialFocusId);
     Assert.True(Buttons(restored.Root).Any(button => button.Id == "games.load-more"));
     Assert.False(Buttons(restored.Root).Any(button => button.Id == "games.previous-page"));
     Assert.Valid(restored);
@@ -2237,10 +2604,10 @@ static async Task LoadMoreIsSingleFlight()
         .Where(tile => tile.ActionId == "games.toggle-curation")
         .All(tile => tile.IsDisabled == true));
 
-    await widget.OnActionAsync(new("games.load-more", "games.load-more"));
     Assert.Equal(1, fake.PageRequests.Count(request => request.Offset == 32));
     release.TrySetResult(Page([App("two", "Two")], null));
     await first;
+    await WaitUntil(() => widget.Items.Any(item => item.AppId == "two"));
     Assert.Equal(1, widget.Items.Count);
     await Background(widget);
 }
@@ -2321,7 +2688,8 @@ static async Task LaunchIsSingleFlight()
     Assert.Equal("opaque-a", widget.SelectedAppId);
     release.TrySetResult(new WidgetCapabilityAcknowledgement(true));
     await first;
-    Assert.Contains("Opened Alpha", Text(Snapshot(widget, 12).Root, "games.status").Text!);
+    Assert.Contains("Opened Alpha",
+        Text(Snapshot(widget, 12).Root, "games.toast.message").Text!);
     await Background(widget);
 }
 
@@ -2367,7 +2735,7 @@ static async Task LaunchDenialKeepsLibrary()
     Assert.Equal(GamesAppsViewState.Ready, widget.ViewState);
     Assert.Equal(1, widget.Items.Count);
     Assert.Contains("Allow Games & Apps access in Settings",
-        Text(denied.Root, "games.status").Text!);
+        Text(denied.Root, "games.toast.message").Text!);
     Assert.False(System.Text.Json.JsonSerializer.Serialize(denied)
         .Contains("private detail", StringComparison.Ordinal));
     await Background(widget);
@@ -2378,7 +2746,7 @@ static async Task FailureStates()
     foreach (var (exception, expectedStatus) in new (Exception, string)[]
     {
         (new WidgetCapabilityException("permission_denied", "denied"),
-            "Allow Games & Apps access in Settings"),
+            "Allow Games & Apps in Settings"),
         (new WidgetCapabilityException("lifecycle_denied", "paused"),
             "App library is paused"),
         (new WidgetCapabilityException("platform_unavailable", "private path"),
@@ -2393,7 +2761,9 @@ static async Task FailureStates()
         Assert.Equal(GamesAppsPage.Library, widget.Page);
         Assert.Equal(1, fake.PageRequests.Count);
         var snapshot = Snapshot(widget, 8);
-        Assert.Contains(expectedStatus, Text(snapshot.Root, "games.status").Text!);
+        Assert.True(Nodes(snapshot.Root).Any(node =>
+            node.Text?.Contains(expectedStatus, StringComparison.Ordinal) == true),
+            $"Expected the sanitized state presentation to contain '{expectedStatus}'.");
         Assert.True(Buttons(snapshot.Root).Any(button =>
             button.ActionId == "games.retry"));
         Assert.False(System.Text.Json.JsonSerializer.Serialize(snapshot)
@@ -2429,8 +2799,8 @@ static async Task SubsequentFailureKeepsLastGood()
         "platform_unavailable", "private catalog detail");
     fake.ResolveException = new WidgetCapabilityException(
         "platform_unavailable", "private resolver detail");
-    await widget.OnActionAsync(new(
-        "games.refresh-catalog", "games.refresh-catalog"));
+    await RefreshCurrentRouteAndWait(
+        widget, "games.refresh-catalog", "games.refresh-catalog");
 
     Assert.SequenceEqual(["b", "a"], widget.CuratedItems.Select(item => item.AppId));
     var snapshot = Snapshot(widget, 216);
@@ -2471,7 +2841,7 @@ static async Task RetryRecoversTransientFailure()
 
     fake.ReadException = null;
     fake.ResolveException = null;
-    await widget.OnActionAsync(new(retry.ActionId!, retry.Id));
+    await RefreshCurrentRouteAndWait(widget, retry.ActionId!, retry.Id);
 
     Assert.Equal(GamesAppsViewState.Ready, widget.ViewState);
     Assert.SequenceEqual(["opaque-a"], widget.CuratedItems.Select(item => item.AppId));
@@ -2676,8 +3046,8 @@ static Task ResponsibilitySplitContract()
 
     var alpha = App("presented", "Presented");
     var view = GamesAppsPresentation.Render(new GamesAppsPresentationState(
+        LibraryNavigationSnapshot(),
         GamesAppsViewState.Ready,
-        GamesAppsPage.Library,
         "1 saved",
         [alpha],
         [alpha.SavedId],
@@ -2699,8 +3069,8 @@ static Task PurePresentationIsDeterministic()
 {
     var alpha = App("deterministic", "Deterministic");
     var presentation = new GamesAppsPresentationState(
+        LibraryNavigationSnapshot(),
         GamesAppsViewState.Ready,
-        GamesAppsPage.Library,
         "1 saved",
         [alpha],
         [alpha.SavedId],
@@ -2724,6 +3094,16 @@ static Task PurePresentationIsDeterministic()
     Assert.Valid(second);
     return Task.CompletedTask;
 }
+
+static WidgetNavigationSnapshot<GamesAppsPage> LibraryNavigationSnapshot() => new(
+    GamesAppsPage.Library,
+    GamesAppsPage.Library,
+    Depth: 0,
+    InputScopeId: "games-apps",
+    InitialFocusId: null,
+    BackActionId: null,
+    Revision: 0,
+    RouteCancellationToken: CancellationToken.None);
 
 static void AssertSourceContains(string source, string value) =>
     Assert.True(source.Contains(value, StringComparison.Ordinal),
@@ -2751,7 +3131,10 @@ static Task PackageValidates()
     var contentStyle = compiled.Theme.Resolve(new WrssElement(
         "stack", StyleClasses: new HashSet<string>(["games-content"])))!;
     var scrollStyle = compiled.Theme.Resolve(new WrssElement(
-        "scroll", StyleClasses: new HashSet<string>(["games-library-scroll"])))!;
+        "scroll", StyleClasses: new HashSet<string>(
+            ["games-page-scroll", "games-library-scroll"])))!;
+    var routeProgress = compiled.Theme.Resolve(new WrssElement(
+        "stack", StyleClasses: new HashSet<string>(["games-route-progress"])))!;
     Assert.Equal("0", stateTitle.Get("flex-shrink")?.Text);
     Assert.Equal("center", stateTitle.Get("text-align")?.Text);
     Assert.Equal("0", stateHelp.Get("flex-shrink")?.Text);
@@ -2761,6 +3144,9 @@ static Task PackageValidates()
     Assert.Equal("1", contentStyle.Get("flex-grow")?.Text);
     Assert.Equal("0px", scrollStyle.Get("min-height")?.Text);
     Assert.Equal("1", scrollStyle.Get("flex-grow")?.Text);
+    Assert.Equal("center", routeProgress.Get("align")?.Text);
+    Assert.Equal("center", routeProgress.Get("justify")?.Text);
+    Assert.Equal("1", routeProgress.Get("flex-grow")?.Text);
     return Task.CompletedTask;
 }
 
@@ -2880,9 +3266,34 @@ static async Task AddFromOpenCatalog(GamesAppsWidget widget, string displayName)
 
 static async Task BackToLibrary(GamesAppsWidget widget)
 {
-    await widget.OnActionAsync(new("back", "games.catalog"));
+    await widget.OnActionAsync(new("games.open-library", "games.open-library"));
     Assert.Equal(GamesAppsPage.Library, widget.Page);
 }
+
+static async Task RefreshCurrentRouteAndWait(
+    GamesAppsWidget widget,
+    string actionId = "games.retry",
+    string sourceElementId = "games.root")
+{
+    await widget.OnActionAsync(new(actionId, sourceElementId));
+    await WaitForCurrentRouteRefresh(widget);
+}
+
+static async Task WaitForCurrentRouteRefresh(GamesAppsWidget widget)
+{
+    await WaitUntil(() =>
+    {
+        if (widget.ViewState is GamesAppsViewState.Initial or GamesAppsViewState.Loading)
+            return false;
+        var refresh = Buttons(Snapshot(widget, 99_991).Root).FirstOrDefault(button =>
+            button.Id == "games.refresh-catalog");
+        return refresh is null || refresh.IsBusy != true;
+    });
+}
+
+static ViewNode CompactDestination(ViewSnapshot snapshot, string actionId) =>
+    Buttons(Nodes(snapshot.Root).Single(node => node.Id == "games.sections.compact"))
+        .Single(button => button.ActionId == actionId);
 
 static async Task Visible(GamesAppsWidget widget) =>
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
@@ -2907,7 +3318,9 @@ static ViewSnapshot AssertReadyLibrary(
     Assert.SequenceEqual(expectedTitles, ActionSurfaces(snapshot.Root)
         .Where(tile => tile.ActionId == "games.launch")
         .Select(tile => TileTitle(tile)!));
-    Assert.Equal(1, Buttons(snapshot.Root).Count(button =>
+    Assert.Equal("games.open-catalog",
+        CompactDestination(snapshot, "games.open-catalog").ActionId);
+    Assert.Equal(2, Buttons(snapshot.Root).Count(button =>
         button.ActionId == "games.open-catalog"));
     Assert.Valid(snapshot);
     return snapshot;
@@ -3024,6 +3437,8 @@ file sealed class FakeAppLibraryHost
         ValueTask<ResolveSavedWidgetAppLibraryItemsResponse>>? ResolveHandler { get; set; }
     public Func<LaunchWidgetAppLibraryItemRequest, CancellationToken,
         ValueTask<WidgetCapabilityAcknowledgement>>? LaunchHandler { get; set; }
+    public Func<CancellationToken, ValueTask<WidgetRunningAppObservation>>?
+        ObserveRunningHandler { get; set; }
     public WidgetRunningAppObservation RunningObservation { get; set; } =
         new([], "running-empty");
     public Func<ConfirmWidgetRunningAppRequest, WidgetAppLibraryItem?>?
@@ -3039,6 +3454,8 @@ file sealed class FakeAppLibraryHost
             (_, cancellationToken) =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (ObserveRunningHandler is not null)
+                    return ObserveRunningHandler(cancellationToken);
                 return ValueTask.FromResult(RunningObservation);
             })
         .WithHandler(WidgetAppLibraryCapabilities.ConfirmRunning,

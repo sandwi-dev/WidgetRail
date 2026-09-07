@@ -33,8 +33,8 @@ explicit game-library source, not a guess based on process or executable names.
   usable last-good content.
 - **Library**, **Add apps**, and **Running** are flat sibling sections backed by
   one SDK `WidgetNavigator` and one responsive `NavigationShellParts` content
-  subtree. LB/RB switches sections and enters the destination's remembered
-  content group; selecting a visible destination with A retains header focus.
+  subtree. LB/RB and A selection of a different section both enter the
+  destination's remembered content group after its content becomes available.
   Root B remains host-owned and returns to the tray instead of creating an
   artificial nested Back history.
 - **Add apps** uses bounded opaque cursor pages. A toggles the focused entry
