@@ -491,6 +491,7 @@ public:
         const WidgetSnapshot& snapshot) noexcept;
     [[nodiscard]] InteractionReconciliation Tick(
         const WidgetInteractionAuthority* authority,
+        std::wstring_view focusedElementId,
         std::uint64_t now);
     [[nodiscard]] InteractionReconciliation Tick(
         const WidgetSnapshot* snapshot,

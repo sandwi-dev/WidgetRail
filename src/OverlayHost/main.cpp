@@ -11590,7 +11590,8 @@ private:
                         state_.activeWidget(), *currentSnapshot);
             }
             const auto tick = interactionSession_.Tick(
-                currentAuthority ? &*currentAuthority : nullptr, now);
+                currentAuthority ? &*currentAuthority : nullptr,
+                interactionSession_.focusedElementId(), now);
             if (currentSnapshot && !tick.sliderDamageNodeIds.empty()) {
                     InvalidateWidgetSliderValues(
                         *currentSnapshot, tick.sliderDamageNodeIds, false);

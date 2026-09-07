@@ -709,7 +709,8 @@ bool WidgetSurfaceCoordinator::PumpSliderInteraction(
     const input::WidgetInteractionAuthority authority{
         admission_->widgetId, &snapshot, admission_->runtimeGeneration,
         admission_->presentationGeneration, false};
-    auto reconciliation = sliderInteraction_.Tick(&authority, now);
+    auto reconciliation = sliderInteraction_.Tick(
+        &authority, focusedElementId_, now);
     if (forceDispatch) {
         const auto* focused = input::FindNodeInInputScope(
             snapshot, focusedElementId_, snapshot.activeInputScopeId);

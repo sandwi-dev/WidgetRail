@@ -969,13 +969,14 @@ bool WidgetInteractionSession::ReconcilePressedPresentation(
 
 InteractionReconciliation WidgetInteractionSession::Tick(
     const WidgetInteractionAuthority* authority,
+    const std::wstring_view focusedElementId,
     const std::uint64_t now) {
     InteractionReconciliation result;
     const auto* snapshot = authority ? authority->semantics : nullptr;
     if (snapshot) result = ReconcileAdmission(*snapshot, now);
     if (authority && snapshot) {
         const auto* focused = FindNodeInInputScope(
-            *snapshot, focusedElementId_, snapshot->activeInputScopeId);
+            *snapshot, focusedElementId, snapshot->activeInputScopeId);
         if (focused && focused->kind == L"slider" &&
             !focused->isDisabled && !focused->isBusy) {
             const auto slider = SliderDescriptor(*snapshot, *focused);
