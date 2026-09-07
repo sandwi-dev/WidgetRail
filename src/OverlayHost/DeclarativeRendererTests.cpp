@@ -283,7 +283,11 @@ void BackgroundImageFitAndDiagnosticsUseOneBoundedOwner() {
 
     std::vector<std::wstring> diagnosticRecords;
     widgetrail::RemoteImageCache pendingArtwork(
-        {}, {}, {}, [](std::wstring_view, std::stop_token) { return true; });
+        {}, {}, {}, [](std::wstring_view,
+                       const widgetrail::TrustedArtworkDemandAuthority&,
+                       std::stop_token) {
+            return widgetrail::TrustedArtworkRequestDisposition::Accepted;
+        });
     DeclarativeRenderer diagnosticRenderer{
         d2d.Get(), write.Get(), &pendingArtwork,
         [&](const std::wstring_view record) {
@@ -301,6 +305,8 @@ void BackgroundImageFitAndDiagnosticsUseOneBoundedOwner() {
     };
     widgetrail::DeclarativeRenderOptions diagnosticOptions;
     diagnosticOptions.artworkWidgetId = L"diagnostic-widget";
+    diagnosticOptions.artworkRuntimeGeneration = L"diagnostic-runtime";
+    diagnosticOptions.artworkPresentationGeneration = L"diagnostic-presentation";
     const auto renderDiagnostic = [&] {
         target->BeginDraw();
         (void)diagnosticRenderer.Render(
@@ -1481,13 +1487,15 @@ void BackgroundSurfacePreservesForegroundAuthority() {
     std::vector<std::wstring> requestedArtwork;
     widgetrail::RemoteImageCache cache(
         {}, {}, {},
-        [&](const std::wstring_view key, std::stop_token) {
+        [&](const std::wstring_view key,
+            const widgetrail::TrustedArtworkDemandAuthority&,
+            std::stop_token) {
             {
                 std::scoped_lock lock(requestMutex);
                 requestedArtwork.emplace_back(key);
             }
             requestChanged.notify_all();
-            return true;
+            return widgetrail::TrustedArtworkRequestDisposition::Accepted;
         });
     DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
 
@@ -1522,6 +1530,8 @@ void BackgroundSurfacePreservesForegroundAuthority() {
     widgetrail::DeclarativeRenderOptions options;
     options.collectAccessibility = true;
     options.artworkWidgetId = L"background-widget";
+    options.artworkRuntimeGeneration = L"background-runtime";
+    options.artworkPresentationGeneration = L"background-presentation";
     target->BeginDraw();
     const auto result = renderer.Render(
         target.Get(), snapshot, L"background.open",
@@ -5016,6 +5026,7 @@ void TrustedArtworkDemandDoesNotBlockTileRender() {
     bool releaseAcknowledgement = false;
     bool acknowledgementReturned = false;
     bool artworkReady = false;
+    std::optional<widgetrail::TrustedArtworkDemandAuthority> observedAuthority;
     widgetrail::RemoteImageCache cache(
         {},
         [&](std::wstring_view, const widgetrail::RemoteImageState state) {
@@ -5035,8 +5046,11 @@ void TrustedArtworkDemandDoesNotBlockTileRender() {
             image.mimeType = L"image/png";
             return widgetrail::RemoteImageFetchResult{S_OK, std::move(image), {}};
         },
-        [&](std::wstring_view, const std::stop_token token) {
+        [&](std::wstring_view,
+            const widgetrail::TrustedArtworkDemandAuthority& authority,
+            const std::stop_token token) {
             std::unique_lock lock(demandMutex);
+            observedAuthority = authority;
             demandEntered = true;
             demandChanged.notify_all();
             (void)demandChanged.wait_for(lock, std::chrono::seconds(2), [&] {
@@ -5044,7 +5058,9 @@ void TrustedArtworkDemandDoesNotBlockTileRender() {
             });
             acknowledgementReturned = true;
             demandChanged.notify_all();
-            return !token.stop_requested();
+            return token.stop_requested()
+                ? widgetrail::TrustedArtworkRequestDisposition::OriginRetired
+                : widgetrail::TrustedArtworkRequestDisposition::Accepted;
         });
     DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
 
@@ -5079,6 +5095,8 @@ void TrustedArtworkDemandDoesNotBlockTileRender() {
 
     widgetrail::DeclarativeRenderOptions options;
     options.artworkWidgetId = L"async-artwork";
+    options.artworkRuntimeGeneration = L"async-runtime";
+    options.artworkPresentationGeneration = L"async-presentation";
     options.collectAccessibility = true;
     target->BeginDraw();
     const auto pending = renderer.Render(
@@ -5093,6 +5111,10 @@ void TrustedArtworkDemandDoesNotBlockTileRender() {
         }), "trusted artwork demand reaches the owned worker");
         Check(!acknowledgementReturned,
             "tile render returns while trusted artwork acknowledgement is held");
+        Check(observedAuthority ==
+                widgetrail::TrustedArtworkDemandAuthority{
+                    L"async-artwork", L"async-runtime", L"async-presentation"},
+            "renderer demand omitted exact admitted runtime/presentation authority");
     }
     const auto key = widgetrail::RemoteImageCache::TrustedArtworkKey(
         L"async-artwork", L"async-artwork.tile.artwork", L"artwork.async-tile");
@@ -5122,7 +5144,8 @@ void TrustedArtworkDemandDoesNotBlockTileRender() {
         L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
         L"AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
     Check(cache.SupplyTrustedArtwork(
-        L"async-artwork", L"artwork.async-tile", L"image/png",
+        L"async-artwork", L"artwork.async-tile",
+        *observedAuthority, L"image/png",
         std::wstring(trustedPngBase64)),
         "released trusted artwork completion retains exact current authority");
     {
@@ -5207,13 +5230,15 @@ void TrustedArtworkTerminalFallbackIsStable() {
             image.mimeType = L"image/png";
             return widgetrail::RemoteImageFetchResult{S_OK, std::move(image), {}};
         },
-        [&](const std::wstring_view key, std::stop_token) {
+        [&](const std::wstring_view key,
+            const widgetrail::TrustedArtworkDemandAuthority&,
+            std::stop_token) {
             {
                 std::scoped_lock lock(transitionMutex);
                 requested.emplace_back(key);
             }
             transitionCompleted.notify_all();
-            return true;
+            return widgetrail::TrustedArtworkRequestDisposition::Accepted;
         });
 
     constexpr std::wstring_view availableHandle =
@@ -5282,6 +5307,8 @@ void TrustedArtworkTerminalFallbackIsStable() {
         widgetrail::DeclarativeRenderOptions options;
         options.collectAccessibility = true;
         options.artworkWidgetId = widgetId;
+        options.artworkRuntimeGeneration = L"transition-runtime";
+        options.artworkPresentationGeneration = L"transition-presentation";
         target->BeginDraw();
         target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
         auto result = renderer.Render(

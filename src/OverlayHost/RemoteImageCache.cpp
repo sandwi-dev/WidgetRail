@@ -334,16 +334,54 @@ RemoteImageRequestResult RemoteImageCache::Request(std::wstring url) {
 
 RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring key) {
     constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
+    const auto widgetEnd = key.find(L'\x1f', prefix.size());
+    if (!key.starts_with(prefix) || widgetEnd == std::wstring::npos)
+        return RemoteImageRequestResult::InvalidUrl;
+    auto widgetId = std::wstring{std::wstring_view(key).substr(
+        prefix.size(), widgetEnd - prefix.size())};
+    return RequestTrustedArtwork(
+        std::move(key),
+        {std::move(widgetId), L"legacy-runtime", L"legacy-presentation"});
+}
+
+RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(
+    std::wstring key,
+    TrustedArtworkDemandAuthority authority) {
+    constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
     if (!key.starts_with(prefix) || key.size() > 384) return RemoteImageRequestResult::InvalidUrl;
     if (!artworkRequest_) {
         std::scoped_lock lock(mutex_);
         return QueueLocked(std::move(key), false);
+    }
+    if (authority.widgetId.empty() || authority.runtimeGeneration.empty() ||
+        authority.presentationGeneration.empty()) {
+        return RemoteImageRequestResult::InvalidUrl;
+    }
+    const auto widgetEnd = key.find(L'\x1f', prefix.size());
+    if (widgetEnd == std::wstring::npos ||
+        std::wstring_view(key).substr(
+            prefix.size(), widgetEnd - prefix.size()) != authority.widgetId) {
+        return RemoteImageRequestResult::InvalidUrl;
     }
     {
         std::scoped_lock lock(mutex_);
         if (trustedArtworkRequests_ != UINT64_MAX) ++trustedArtworkRequests_;
         if (shuttingDown_) return RemoteImageRequestResult::ShuttingDown;
         if (const auto found = entries_.find(key); found != entries_.end()) {
+            if (found->second.state == RemoteImageState::Loading &&
+                found->second.demandAuthority &&
+                *found->second.demandAuthority != authority) {
+                const auto generation = ++artworkDemandGeneration_;
+                found->second.demandAuthority = authority;
+                found->second.demandGeneration = generation;
+                std::erase_if(artworkDemandQueue_, [&](const ArtworkDemand& pending) {
+                    return pending.key == key;
+                });
+                artworkDemandQueue_.push_back(
+                    ArtworkDemand{std::move(key), std::move(authority), generation});
+                artworkDemandCondition_.notify_one();
+                return RemoteImageRequestResult::Queued;
+            }
             if (trustedArtworkHits_ != UINT64_MAX) ++trustedArtworkHits_;
             found->second.lastUse = ++useCounter_;
             return RemoteImageRequestResult::AlreadyTracked;
@@ -351,7 +389,6 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring ke
         const auto handleSeparator = key.rfind(L'\x1f');
         if (handleSeparator == std::wstring::npos)
             return RemoteImageRequestResult::InvalidUrl;
-        const auto widgetEnd = key.find(L'\x1f', prefix.size());
         const auto handleSuffix = key.substr(handleSeparator);
         const bool handleIsTerminal = std::any_of(
             entries_.begin(), entries_.end(), [&](const auto& item) {
@@ -378,9 +415,13 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring ke
                 ++useCounter_});
             return RemoteImageRequestResult::AlreadyTracked;
         }
-        entries_.emplace(key, Entry{
+        const auto generation = ++artworkDemandGeneration_;
+        auto [inserted, _] = entries_.emplace(key, Entry{
             RemoteImageState::Loading, {}, {}, {}, {}, {}, ++useCounter_});
-        artworkDemandQueue_.push_back(std::move(key));
+        inserted->second.demandAuthority = authority;
+        inserted->second.demandGeneration = generation;
+        artworkDemandQueue_.push_back(
+            ArtworkDemand{std::move(key), std::move(authority), generation});
     }
     artworkDemandCondition_.notify_one();
     return RemoteImageRequestResult::Queued;
@@ -389,6 +430,29 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring ke
 bool RemoteImageCache::SupplyTrustedArtwork(
     const std::wstring_view widgetId,
     const std::wstring_view artworkHandle,
+    std::wstring contentType,
+    std::wstring contentBase64) {
+    std::optional<TrustedArtworkDemandAuthority> authority;
+    {
+        std::scoped_lock lock(mutex_);
+        const auto prefix = L"wrail-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
+        const auto suffix = L"\x1f" + std::wstring(artworkHandle);
+        const auto found = std::find_if(entries_.begin(), entries_.end(), [&](const auto& item) {
+            return item.first.starts_with(prefix) && item.first.ends_with(suffix) &&
+                item.second.state == RemoteImageState::Loading &&
+                item.second.demandAuthority.has_value();
+        });
+        if (found != entries_.end()) authority = found->second.demandAuthority;
+    }
+    return authority && SupplyTrustedArtwork(
+        widgetId, artworkHandle, *authority,
+        std::move(contentType), std::move(contentBase64));
+}
+
+bool RemoteImageCache::SupplyTrustedArtwork(
+    const std::wstring_view widgetId,
+    const std::wstring_view artworkHandle,
+    const TrustedArtworkDemandAuthority& authority,
     std::wstring contentType,
     std::wstring contentBase64) {
     auto bytes = DecodeBoundedBase64(contentBase64, limits_.maximumEncodedArtworkBytes);
@@ -406,7 +470,8 @@ bool RemoteImageCache::SupplyTrustedArtwork(
     bool supplied = false;
     for (auto& [key, entry] : entries_) {
         if (!key.starts_with(prefix) || !key.ends_with(suffix) ||
-            entry.state != RemoteImageState::Loading) continue;
+            entry.state != RemoteImageState::Loading ||
+            !entry.demandAuthority || *entry.demandAuthority != authority) continue;
         entry.pendingBytes = *bytes;
         entry.pendingMimeType = contentType;
         encodedArtworkBytes_ += entry.pendingBytes.size();
@@ -425,7 +490,8 @@ bool RemoteImageCache::SupplyTrustedArtwork(
 
 bool RemoteImageCache::FailTrustedArtwork(
     const std::wstring_view widgetId,
-    const std::wstring_view artworkHandle) {
+    const std::wstring_view artworkHandle,
+    const TrustedArtworkDemandAuthority& authority) {
     CompletionCallback completion;
     std::wstring transitionKey;
     {
@@ -436,7 +502,9 @@ bool RemoteImageCache::FailTrustedArtwork(
         bool failed = false;
         for (auto& [key, entry] : entries_) {
             if (!key.starts_with(prefix) || !key.ends_with(suffix) ||
-                entry.state != RemoteImageState::Loading) continue;
+                entry.state != RemoteImageState::Loading ||
+                (!authority.widgetId.empty() &&
+                 (!entry.demandAuthority || *entry.demandAuthority != authority))) continue;
             entry.state = RemoteImageState::Failed;
             entry.error = L"Trusted artwork is unavailable.";
             if (transitionKey.empty()) transitionKey = key;
@@ -455,6 +523,37 @@ bool RemoteImageCache::FailTrustedArtwork(
     return true;
 }
 
+bool RemoteImageCache::RetireTrustedArtworkDemand(
+    const std::wstring_view widgetId,
+    const std::wstring_view artworkHandle,
+    const TrustedArtworkDemandAuthority& authority) {
+    CompletionCallback completion;
+    std::wstring transitionKey;
+    {
+        std::scoped_lock lock(mutex_);
+        if (shuttingDown_) return false;
+        const auto prefix = L"wrail-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
+        const auto suffix = L"\x1f" + std::wstring(artworkHandle);
+        const auto found = std::find_if(entries_.begin(), entries_.end(), [&](const auto& item) {
+            return item.first.starts_with(prefix) && item.first.ends_with(suffix) &&
+                item.second.state == RemoteImageState::Loading &&
+                item.second.demandAuthority && *item.second.demandAuthority == authority;
+        });
+        if (found == entries_.end()) return false;
+        transitionKey = found->first;
+        entries_.erase(found);
+        std::erase_if(artworkDemandQueue_, [&](const ArtworkDemand& pending) {
+            return pending.key == transitionKey && pending.authority == authority;
+        });
+        completion = completion_;
+    }
+    if (completion) {
+        try { completion(transitionKey, RemoteImageState::Missing); }
+        catch (...) { }
+    }
+    return true;
+}
+
 RemoteImageRequestResult RemoteImageCache::Retry(std::wstring url) {
     if (!IsAllowedImageSource(url)) return RemoteImageRequestResult::InvalidUrl;
     std::scoped_lock lock(mutex_);
@@ -465,6 +564,20 @@ RemoteImageState RemoteImageCache::GetState(std::wstring_view url) const {
     std::scoped_lock lock(mutex_);
     const auto found = entries_.find(std::wstring(url));
     return found == entries_.end() ? RemoteImageState::Missing : found->second.state;
+}
+
+RemoteImageState RemoteImageCache::GetTrustedArtworkState(
+    const std::wstring_view key,
+    const TrustedArtworkDemandAuthority& authority) const {
+    std::scoped_lock lock(mutex_);
+    const auto found = entries_.find(std::wstring(key));
+    if (found == entries_.end()) return RemoteImageState::Missing;
+    if (found->second.state == RemoteImageState::Loading &&
+        found->second.demandAuthority &&
+        *found->second.demandAuthority != authority) {
+        return RemoteImageState::Missing;
+    }
+    return found->second.state;
 }
 
 std::wstring RemoteImageCache::GetError(std::wstring_view url) const {
@@ -850,7 +963,7 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
 
 void RemoteImageCache::ArtworkDemandLoop(std::stop_token stopToken) {
     while (!stopToken.stop_requested()) {
-        std::wstring key;
+        ArtworkDemand demand;
         {
             std::unique_lock lock(mutex_);
             artworkDemandCondition_.wait(lock, [this, &stopToken] {
@@ -858,34 +971,41 @@ void RemoteImageCache::ArtworkDemandLoop(std::stop_token stopToken) {
                     !artworkDemandQueue_.empty();
             });
             if (shuttingDown_ || stopToken.stop_requested()) break;
-            key = std::move(artworkDemandQueue_.front());
+            demand = std::move(artworkDemandQueue_.front());
             artworkDemandQueue_.pop_front();
-            const auto found = entries_.find(key);
+            const auto found = entries_.find(demand.key);
             if (found == entries_.end() ||
                 found->second.state != RemoteImageState::Loading ||
+                found->second.demandGeneration != demand.generation ||
+                !found->second.demandAuthority ||
+                *found->second.demandAuthority != demand.authority ||
                 !found->second.pendingBytes.empty()) {
                 continue;
             }
         }
 
-        bool accepted = false;
+        auto disposition = TrustedArtworkRequestDisposition::TerminalFailure;
         try {
-            accepted = artworkRequest_(key, stopToken);
+            disposition = artworkRequest_(demand.key, demand.authority, stopToken);
         } catch (...) {
-            accepted = false;
+            disposition = TrustedArtworkRequestDisposition::TerminalFailure;
         }
         if (stopToken.stop_requested()) break;
-        if (accepted) continue;
+        if (disposition == TrustedArtworkRequestDisposition::Accepted) continue;
 
         constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
-        const auto widgetEnd = key.find(L'\x1f', prefix.size());
-        const auto handleStart = key.rfind(L'\x1f');
+        const auto widgetEnd = demand.key.find(L'\x1f', prefix.size());
+        const auto handleStart = demand.key.rfind(L'\x1f');
         if (widgetEnd != std::wstring::npos &&
             handleStart != std::wstring::npos && handleStart > widgetEnd) {
-            (void)FailTrustedArtwork(
-                std::wstring_view(key).substr(
+            const auto widgetId = std::wstring_view(demand.key).substr(
                     prefix.size(), widgetEnd - prefix.size()),
-                std::wstring_view(key).substr(handleStart + 1));
+                handle = std::wstring_view(demand.key).substr(handleStart + 1);
+            if (disposition == TrustedArtworkRequestDisposition::OriginRetired) {
+                (void)RetireTrustedArtworkDemand(widgetId, handle, demand.authority);
+            } else {
+                (void)FailTrustedArtwork(widgetId, handle, demand.authority);
+            }
         }
     }
 }

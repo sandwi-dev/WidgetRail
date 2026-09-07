@@ -1153,23 +1153,31 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
     internal BridgeClientPublication<ConfiguredWidget> AdmitArtwork(
         string widgetId,
-        string artworkHandle)
+        string artworkHandle,
+        string? expectedRuntimeGeneration = null,
+        string? expectedPresentationGeneration = null)
     {
         lock (_gate)
         {
             if (_clients.TryGetValue(widgetId, out var registration) &&
                 !registration.IsRetiring &&
                 registration.CachedSnapshot is { } snapshot &&
-                ContainsArtwork(snapshot, artworkHandle))
+                ContainsArtwork(snapshot, artworkHandle) &&
+                MatchesArtworkOrigin(
+                    registration.Configured,
+                    expectedRuntimeGeneration,
+                    expectedPresentationGeneration))
                 return AdmitPublicationLocked(registration, registration.Configured);
         }
-        throw new BridgeProtocolException(
+        throw new BridgeStaleArtworkAuthorityException(
             "Artwork authority is stale or unavailable.");
     }
 
     internal async Task<BridgeClientPublication<BridgeResolvedArtwork>> ResolveArtworkAsync(
         string widgetId,
         string artworkHandle,
+        string? expectedRuntimeGeneration,
+        string? expectedPresentationGeneration,
         CancellationToken sessionCancellation,
         CancellationToken cancellationToken)
     {
@@ -1181,6 +1189,10 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         try
         {
             DemandCurrent(registration);
+            DemandArtworkOrigin(
+                registration.Configured,
+                expectedRuntimeGeneration,
+                expectedPresentationGeneration);
             if (registration.CachedSnapshot is not { } snapshot ||
                 !ContainsArtwork(snapshot, artworkHandle))
                 throw new BridgeProtocolException(
@@ -1192,6 +1204,10 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     cancellationToken)
                 .ConfigureAwait(false);
             DemandCurrent(registration);
+            DemandArtworkOrigin(
+                registration.Configured,
+                expectedRuntimeGeneration,
+                expectedPresentationGeneration);
             if (registration.CachedSnapshot is not { } current ||
                 !ContainsArtwork(current, artworkHandle))
                 throw new BridgeProtocolException(
@@ -1214,6 +1230,39 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         Contains(snapshot.Root, artworkHandle) ||
         snapshot.PinnedLayouts.Any(layout =>
             layout.Root is not null && Contains(layout.Root, artworkHandle));
+
+    private static bool MatchesArtworkOrigin(
+        ConfiguredWidget configured,
+        string? expectedRuntimeGeneration,
+        string? expectedPresentationGeneration)
+    {
+        if (expectedRuntimeGeneration is null && expectedPresentationGeneration is null)
+            return true;
+        if (expectedRuntimeGeneration is null || expectedPresentationGeneration is null)
+            return false;
+        var descriptor = configured.PublicDescriptor();
+        return string.Equals(
+                   descriptor.RuntimeGeneration,
+                   expectedRuntimeGeneration,
+                   StringComparison.Ordinal) &&
+               string.Equals(
+                   descriptor.PresentationGeneration,
+                   expectedPresentationGeneration,
+                   StringComparison.Ordinal);
+    }
+
+    private static void DemandArtworkOrigin(
+        ConfiguredWidget configured,
+        string? expectedRuntimeGeneration,
+        string? expectedPresentationGeneration)
+    {
+        if (!MatchesArtworkOrigin(
+                configured,
+                expectedRuntimeGeneration,
+                expectedPresentationGeneration))
+            throw new BridgeStaleArtworkAuthorityException(
+                "Artwork authority retired before resolution.");
+    }
 
     private static bool Contains(ViewNode node, string artworkHandle)
     {
@@ -1378,7 +1427,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
     internal BridgeClientPublication<ConfiguredWidget>? TryAdmitArtwork(
         string widgetId,
-        string expectedWorkerFingerprint)
+        string expectedWorkerFingerprint,
+        string? expectedRuntimeGeneration = null,
+        string? expectedPresentationGeneration = null)
     {
         lock (_gate)
         {
@@ -1387,7 +1438,11 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 string.Equals(
                     registration.Configured.WorkerFingerprint,
                     expectedWorkerFingerprint,
-                    StringComparison.Ordinal))
+                    StringComparison.Ordinal) &&
+                MatchesArtworkOrigin(
+                    registration.Configured,
+                    expectedRuntimeGeneration,
+                    expectedPresentationGeneration))
                 return AdmitPublicationLocked(registration, registration.Configured);
         }
         return null;

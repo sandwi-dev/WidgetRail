@@ -66,7 +66,13 @@ internal sealed record BridgePresentationRequest(
     WidgetRail.WidgetSdk.WidgetPresentationTransactionKind TransactionKind =
         WidgetRail.WidgetSdk.WidgetPresentationTransactionKind.OrdinaryCheckpoint,
     long RecoveryOriginSequence = 0);
-internal sealed record BridgeArtworkRequest(string WidgetId, string ArtworkHandle);
+// Current OverlayHost always supplies the paired generation authority. The
+// nullable pair preserves the private synchronous pre-WIDGE-192 caller shape.
+internal sealed record BridgeArtworkRequest(
+    string WidgetId,
+    string ArtworkHandle,
+    string? RuntimeGeneration = null,
+    string? PresentationGeneration = null);
 internal sealed record BridgeEmbeddedMediaRequest(
     string WidgetId,
     string InstanceId,
@@ -292,6 +298,8 @@ public sealed class BridgeProtocolException(string message, Exception? innerExce
     : Exception(message, innerException);
 
 internal sealed class BridgeStalePinnedInputAuthorityException(string message)
+    : Exception(message);
+internal sealed class BridgeStaleArtworkAuthorityException(string message)
     : Exception(message);
 
 internal sealed class BridgeStalePresentationBaseException()

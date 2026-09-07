@@ -1307,10 +1307,21 @@ static Task RequestClassificationIsClosed()
         Type = BridgeMessageTypes.ResolveArtwork,
         RequestId = 6,
         Payload = BridgeJson.ToElement(new BridgeArtworkRequest(
-            "widget-a", "library.art.0123456789abcdef0123456789abcdef")),
+            "widget-a", "library.art.0123456789abcdef0123456789abcdef",
+            "runtime-generation", "presentation-generation")),
     });
     Assert.Equal(BridgeRequestKind.ResolveArtwork, artwork.Kind);
     Assert.Equal("widget-a", artwork.WidgetId);
+    var halfPairedArtwork = BridgeRequestClassifier.Classify(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.ResolveArtwork,
+            RequestId = 7,
+            Payload = BridgeJson.ToElement(new BridgeArtworkRequest(
+                "widget-a", "library.art.0123456789abcdef0123456789abcdef",
+                "runtime-generation", null)),
+        });
+    Assert.Equal(BridgeRequestKind.Malformed, halfPairedArtwork.Kind);
+    Assert.Equal<string?>(null, halfPairedArtwork.WidgetId);
 
     var embeddedMedia = BridgeRequestClassifier.Classify(new BridgeEnvelope
     {
@@ -1557,6 +1568,15 @@ static async Task TrustedArtworkDemandIsExact()
             lifecycle.Type == BridgeMessageTypes.Acknowledged,
             $"Artwork lifecycle failed with {lifecycle.Payload.GetRawText()}; " +
             $"registrations={server.ArtworkRegistrationCount}.");
+        var initialWidgets = await client.RequestAsync(
+            BridgeMessageTypes.ListWidgets, new { });
+        var initialDescriptor = initialWidgets.Payload.GetProperty("widgets")
+            .EnumerateArray().Single(item =>
+                item.GetProperty("id").GetString() == "test-widget");
+        var initialRuntimeGeneration = initialDescriptor
+            .GetProperty("runtimeGeneration").GetString()!;
+        var initialPresentationGeneration = initialDescriptor
+            .GetProperty("presentationGeneration").GetString()!;
         var snapshotResponse = await client.RequestAsync(
             BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
         var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
@@ -1579,7 +1599,9 @@ static async Task TrustedArtworkDemandIsExact()
 
         var resolved = await client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
-            new BridgeArtworkRequest("test-widget", firstHandle));
+            new BridgeArtworkRequest(
+                "test-widget", firstHandle,
+                initialRuntimeGeneration, initialPresentationGeneration));
         Assert.Equal(BridgeMessageTypes.Acknowledged, resolved.Type);
         await iconStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         var concurrent = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
@@ -1588,6 +1610,10 @@ static async Task TrustedArtworkDemandIsExact()
         var artwork = await client.ReadEventAsync(BridgeMessageTypes.Artwork);
         Assert.Equal("image/png", artwork.Payload.GetProperty("contentType").GetString());
         Assert.Equal(png, artwork.Payload.GetProperty("contentBase64").GetString());
+        Assert.Equal(initialRuntimeGeneration,
+            artwork.Payload.GetProperty("runtimeGeneration").GetString());
+        Assert.Equal(initialPresentationGeneration,
+            artwork.Payload.GetProperty("presentationGeneration").GetString());
         Assert.Equal(1, backend.AppLibraryIconCalls);
         var artworkMemory = server.ArtworkMemoryDiagnostics;
         Assert.Equal(1L, artworkMemory.Requests);
@@ -1596,6 +1622,49 @@ static async Task TrustedArtworkDemandIsExact()
         Assert.Equal(0L, artworkMemory.InFlight);
         Assert.Equal(Convert.FromBase64String(png).Length, artworkMemory.RawBytes);
         Assert.Equal(png.Length, artworkMemory.Base64Characters);
+
+        var replacementCatalog = new BridgeCatalog([
+            catalog.GetConfigured("test-widget") with
+            {
+                WorkerFingerprint = new string('c', 64),
+                CatalogFingerprint = new string('d', 64),
+            },
+        ]);
+        server.ApplyCatalog(replacementCatalog, revision: 1, publishEvent: false);
+        await WaitUntilAsync(
+            () => server.RunningWorkerCount == 0,
+            TimeSpan.FromSeconds(3));
+        _ = await client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest(
+                "test-widget", WidgetLifecycleState.Interactive));
+        var replacementSnapshotResponse = await client.RequestAsync(
+            BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+        var replacementSnapshot = SnapshotJson.Deserialize(
+            System.Text.Encoding.UTF8.GetBytes(
+                replacementSnapshotResponse.Payload.GetProperty("snapshot").GetRawText()));
+        var replacementHandle = Flatten(replacementSnapshot.Root).Single(
+            node => node.Id == "artwork.image").ArtworkHandle!;
+        var replacementWidgets = await client.RequestAsync(
+            BridgeMessageTypes.ListWidgets, new { });
+        var replacementDescriptor = replacementWidgets.Payload.GetProperty("widgets")
+            .EnumerateArray().Single(item =>
+                item.GetProperty("id").GetString() == "test-widget");
+        var replacementRuntimeGeneration = replacementDescriptor
+            .GetProperty("runtimeGeneration").GetString()!;
+        var replacementPresentationGeneration = replacementDescriptor
+            .GetProperty("presentationGeneration").GetString()!;
+        Assert.True(initialRuntimeGeneration != replacementRuntimeGeneration,
+            "Catalog replacement did not rotate runtime authority.");
+        var staleOrigin = await client.RequestAsync(
+            BridgeMessageTypes.ResolveArtwork,
+            new BridgeArtworkRequest(
+                "test-widget", replacementHandle,
+                initialRuntimeGeneration, initialPresentationGeneration));
+        Assert.Equal(BridgeMessageTypes.Error, staleOrigin.Type);
+        Assert.Equal("stale_artwork_authority",
+            staleOrigin.Payload.GetProperty("code").GetString());
+        Assert.Equal(1, backend.AppLibraryIconCalls);
 
         var staleStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1612,7 +1681,9 @@ static async Task TrustedArtworkDemandIsExact()
         };
         var stale = await client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
-            new BridgeArtworkRequest("test-widget", firstHandle));
+            new BridgeArtworkRequest(
+                "test-widget", replacementHandle,
+                replacementRuntimeGeneration, replacementPresentationGeneration));
         Assert.Equal(BridgeMessageTypes.Acknowledged, stale.Type);
         await staleStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
@@ -1627,14 +1698,14 @@ static async Task TrustedArtworkDemandIsExact()
         ]);
         server.ApplyCatalog(
             new BridgeCatalog([]),
-            revision: 1,
+            revision: 3,
             publishEvent: false);
         releaseStale.TrySetResult();
         await staleFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
         await WaitUntilAsync(
             () => server.RunningWorkerCount == 0,
             TimeSpan.FromSeconds(3));
-        server.ApplyCatalog(catalog, revision: 2, publishEvent: false);
+        server.ApplyCatalog(catalog, revision: 4, publishEvent: false);
         _ = await client.RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
             new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
@@ -1646,25 +1717,34 @@ static async Task TrustedArtworkDemandIsExact()
             node => node.Id == "artwork.image").ArtworkHandle!;
         Assert.True(rotatedHandle != firstHandle,
             "Changed trusted artwork revision reused the prior handle.");
-        _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        var rotatedWidgets = await client.RequestAsync(
+            BridgeMessageTypes.ListWidgets, new { });
+        var rotatedDescriptor = rotatedWidgets.Payload.GetProperty("widgets")
+            .EnumerateArray().Single(item =>
+                item.GetProperty("id").GetString() == "test-widget");
+        var rotatedRuntimeGeneration = rotatedDescriptor
+            .GetProperty("runtimeGeneration").GetString()!;
+        var rotatedPresentationGeneration = rotatedDescriptor
+            .GetProperty("presentationGeneration").GetString()!;
         Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
         Assert.Equal(2, backend.AppLibraryIconCalls);
         artworkMemory = server.ArtworkMemoryDiagnostics;
-        Assert.Equal(2L, artworkMemory.Requests);
+        Assert.Equal(3L, artworkMemory.Requests);
         Assert.Equal(1L, artworkMemory.Completed);
-        Assert.Equal(1L, artworkMemory.Failed);
+        Assert.Equal(2L, artworkMemory.Failed);
 
         var forged = await client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
             new BridgeArtworkRequest(
-                "test-widget", "library.art.00000000000000000000000000000000"));
+                "test-widget", "library.art.00000000000000000000000000000000",
+                rotatedRuntimeGeneration, rotatedPresentationGeneration));
         Assert.Equal(BridgeMessageTypes.Error, forged.Type);
         _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
         Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
         Assert.Equal(2, backend.AppLibraryIconCalls);
         artworkMemory = server.ArtworkMemoryDiagnostics;
-        Assert.Equal(3L, artworkMemory.Requests);
-        Assert.Equal(2L, artworkMemory.Failed);
+        Assert.Equal(4L, artworkMemory.Requests);
+        Assert.Equal(3L, artworkMemory.Failed);
 
         var blockedStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1681,7 +1761,9 @@ static async Task TrustedArtworkDemandIsExact()
         };
         var blocked = await client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
-            new BridgeArtworkRequest("test-widget", rotatedHandle));
+            new BridgeArtworkRequest(
+                "test-widget", rotatedHandle,
+                rotatedRuntimeGeneration, rotatedPresentationGeneration));
         Assert.Equal(BridgeMessageTypes.Acknowledged, blocked.Type);
         await blockedStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         var whileBlocked = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
@@ -1697,9 +1779,9 @@ static async Task TrustedArtworkDemandIsExact()
             () => server.ArtworkMemoryDiagnostics.InFlight == 0,
             TimeSpan.FromSeconds(2));
         artworkMemory = server.ArtworkMemoryDiagnostics;
-        Assert.Equal(4L, artworkMemory.Requests);
+        Assert.Equal(5L, artworkMemory.Requests);
         Assert.Equal(1L, artworkMemory.Completed);
-        Assert.Equal(3L, artworkMemory.Failed);
+        Assert.Equal(4L, artworkMemory.Failed);
         Assert.Equal(0L, artworkMemory.InFlight);
     }
     finally

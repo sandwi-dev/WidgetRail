@@ -322,13 +322,17 @@ int wmain() {
         ArtworkRequestLog requests;
         widgetrail::RemoteImageCache cache(
             {}, {}, {},
-            [&](const std::wstring_view key, std::stop_token) {
+            [&](const std::wstring_view key,
+                const widgetrail::TrustedArtworkDemandAuthority&,
+                std::stop_token) {
                 requests.Push(key);
-                return true;
+                return widgetrail::TrustedArtworkRequestDisposition::Accepted;
             });
         widgetrail::DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
         widgetrail::DeclarativeRenderOptions options;
         options.artworkWidgetId = L"widgetrail.tests.background-surface";
+        options.artworkRuntimeGeneration = L"runtime";
+        options.artworkPresentationGeneration = L"presentation";
         options.artworkAuthorityId = L"widgetrail.tests.background-surface\x1fruntime\x1fpresentation";
         options.surfaceBackground = {0.0F, 0.0F, 0.0F, 0.0F};
         std::uint64_t frameTime = 1000;
@@ -418,7 +422,11 @@ int wmain() {
                 L"background.retarget.root";
 
             widgetrail::RemoteImageCache retargetCache(
-                {}, {}, {}, [](const std::wstring_view, std::stop_token) { return true; });
+                {}, {}, {}, [](const std::wstring_view,
+                               const widgetrail::TrustedArtworkDemandAuthority&,
+                               std::stop_token) {
+                    return widgetrail::TrustedArtworkRequestDisposition::Accepted;
+                });
             const auto admitArtwork = [&](const std::wstring_view handle,
                                           const std::wstring_view content) {
                 const auto key = widgetrail::RemoteImageCache::TrustedArtworkKey(
@@ -442,6 +450,8 @@ int wmain() {
                 d2d.Get(), write.Get(), &retargetCache};
             widgetrail::DeclarativeRenderOptions retargetOptions;
             retargetOptions.artworkWidgetId = std::wstring{retargetWidget};
+            retargetOptions.artworkRuntimeGeneration = L"retarget-runtime";
+            retargetOptions.artworkPresentationGeneration = L"retarget-presentation";
             retargetOptions.artworkAuthorityId =
                 L"widgetrail.tests.background-retarget\x1fruntime\x1fpresentation";
             retargetOptions.surfaceBackground = {0.0F, 0.0F, 0.0F, 0.0F};

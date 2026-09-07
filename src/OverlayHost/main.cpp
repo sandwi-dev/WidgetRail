@@ -991,18 +991,33 @@ public:
             widgetrail::RemoteImageCache::FetchFunction{},
             [this](
                 std::wstring_view source,
+                const widgetrail::TrustedArtworkDemandAuthority& authority,
                 const std::stop_token stopToken) {
                 constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
                 const auto widgetSeparator = source.find(L'\x1f', prefix.size());
                 const auto handleSeparator = source.rfind(L'\x1f');
                 if (!source.starts_with(prefix) || widgetSeparator == std::wstring_view::npos ||
                     handleSeparator == widgetSeparator)
-                    return false;
+                    return widgetrail::TrustedArtworkRequestDisposition::TerminalFailure;
                 const auto widgetId = source.substr(
                     prefix.size(), widgetSeparator - prefix.size());
                 const auto handle = source.substr(handleSeparator + 1);
-                return bridge_.RequestArtwork(
-                    widgetId, handle, stopToken).value_or(false);
+                if (widgetId != authority.widgetId)
+                    return widgetrail::TrustedArtworkRequestDisposition::TerminalFailure;
+                const auto disposition = bridge_.RequestArtwork(
+                    widgetId, handle, authority.runtimeGeneration,
+                    authority.presentationGeneration, stopToken);
+                switch (disposition) {
+                case widgetrail::WidgetArtworkRequestDisposition::Accepted:
+                    return widgetrail::TrustedArtworkRequestDisposition::Accepted;
+                case widgetrail::WidgetArtworkRequestDisposition::OriginRetired:
+                    return widgetrail::TrustedArtworkRequestDisposition::OriginRetired;
+                case widgetrail::WidgetArtworkRequestDisposition::Cancelled:
+                    return widgetrail::TrustedArtworkRequestDisposition::OriginRetired;
+                case widgetrail::WidgetArtworkRequestDisposition::TerminalFailure:
+                    return widgetrail::TrustedArtworkRequestDisposition::TerminalFailure;
+                }
+                return widgetrail::TrustedArtworkRequestDisposition::TerminalFailure;
             },
             std::move(decodeDiagnostic));
         declarativeRenderer_ = std::make_unique<widgetrail::DeclarativeRenderer>(
@@ -1838,17 +1853,30 @@ private:
         if (controllerTick && state_.surface() != widgetrail::Surface::Hidden)
             PollController();
         for (auto& artwork : bridge_.TakeArtworkResults()) {
+            const widgetrail::TrustedArtworkDemandAuthority authority{
+                artwork.widgetId,
+                artwork.runtimeGeneration,
+                artwork.presentationGeneration};
+            const auto* descriptor = sessions_.FindDescriptor(artwork.widgetId);
+            if (!descriptor ||
+                descriptor->runtimeGeneration != artwork.runtimeGeneration ||
+                descriptor->presentationGeneration != artwork.presentationGeneration) {
+                (void)imageCache_->RetireTrustedArtworkDemand(
+                    artwork.widgetId, artwork.artworkHandle, authority);
+                continue;
+            }
             if (artwork.contentBase64.empty())
                 (void)imageCache_->FailTrustedArtwork(
-                    artwork.widgetId, artwork.artworkHandle);
+                    artwork.widgetId, artwork.artworkHandle, authority);
             else
             {
                 if (!imageCache_->SupplyTrustedArtwork(
                         artwork.widgetId, artwork.artworkHandle,
+                        authority,
                         std::move(artwork.contentType),
                         std::move(artwork.contentBase64)))
                     (void)imageCache_->FailTrustedArtwork(
-                        artwork.widgetId, artwork.artworkHandle);
+                        artwork.widgetId, artwork.artworkHandle, authority);
             }
         }
         for (auto& result : bridge_.TakeLocalWidgetPackageInstallResults()) {
@@ -16917,6 +16945,11 @@ private:
                     options.accessibility = accessibilityPolicy;
                 options.animationTimestampMilliseconds = presentationTime;
                 options.artworkWidgetId = std::wstring{renderedWidget};
+                if (descriptor) {
+                    options.artworkRuntimeGeneration = descriptor->runtimeGeneration;
+                    options.artworkPresentationGeneration =
+                        descriptor->presentationGeneration;
+                }
                 options.compositorBackgroundAvailable =
                     compositionSurface_.available() && !inertRetainedSnapshot;
                 if (descriptor) {

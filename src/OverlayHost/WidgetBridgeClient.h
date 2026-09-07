@@ -219,8 +219,17 @@ private:
 struct WidgetArtworkResult final {
     std::wstring widgetId;
     std::wstring artworkHandle;
+    std::wstring runtimeGeneration;
+    std::wstring presentationGeneration;
     std::wstring contentType;
     std::wstring contentBase64;
+};
+
+enum class WidgetArtworkRequestDisposition {
+    Accepted,
+    OriginRetired,
+    Cancelled,
+    TerminalFailure,
 };
 
 struct LocalWidgetPackageInstallOrigin final {
@@ -813,9 +822,11 @@ public:
         long long baseSequence,
         WidgetPresentationTransactionKind transactionKind,
         long long recoveryOriginSequence);
-    [[nodiscard]] std::optional<bool> RequestArtwork(
+    [[nodiscard]] WidgetArtworkRequestDisposition RequestArtwork(
         std::wstring_view widgetId,
         std::wstring_view artworkHandle,
+        std::wstring_view runtimeGeneration,
+        std::wstring_view presentationGeneration,
         std::stop_token stopToken = {});
     [[nodiscard]] std::optional<EmbeddedMediaBundle> ResolveEmbeddedMedia(
         std::wstring_view widgetId,

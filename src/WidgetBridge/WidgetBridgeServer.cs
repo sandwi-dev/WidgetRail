@@ -387,8 +387,18 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             var artworkRequest = BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload);
             if (!BridgeRequestKey.IsBoundedIdentifier(artworkRequest.ArtworkHandle))
                 throw new BridgeProtocolException("Artwork handle is invalid.");
+            if ((artworkRequest.RuntimeGeneration is null) !=
+                    (artworkRequest.PresentationGeneration is null) ||
+                (artworkRequest.RuntimeGeneration is not null &&
+                 (!BridgeRequestKey.IsBoundedIdentifier(artworkRequest.RuntimeGeneration) ||
+                  !BridgeRequestKey.IsBoundedIdentifier(
+                      artworkRequest.PresentationGeneration))))
+                throw new BridgeProtocolException(
+                    "Artwork generation authority is invalid.");
             using (var admission = _registry.AdmitArtwork(
-                artworkRequest.WidgetId, artworkRequest.ArtworkHandle))
+                artworkRequest.WidgetId, artworkRequest.ArtworkHandle,
+                artworkRequest.RuntimeGeneration,
+                artworkRequest.PresentationGeneration))
             {
                 // The publication closes the pre-ack authority race. Resolution
                 // repeats this proof under the exact worker operation gate.
@@ -409,6 +419,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 using (var resolution = await _registry.ResolveArtworkAsync(
                     artworkRequest.WidgetId,
                     artworkRequest.ArtworkHandle,
+                    artworkRequest.RuntimeGeneration,
+                    artworkRequest.PresentationGeneration,
                     _sessionCancellation,
                     cancellationToken).ConfigureAwait(false))
                 {
@@ -451,7 +463,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             }
 
             using var artworkCompletion = _registry.TryAdmitArtwork(
-                artworkRequest.WidgetId, workerFingerprint);
+                artworkRequest.WidgetId, workerFingerprint,
+                artworkRequest.RuntimeGeneration,
+                artworkRequest.PresentationGeneration);
             if (artworkCompletion is null) break;
             await SendEventAsync(
                 BridgeMessageTypes.Artwork,
@@ -459,6 +473,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 {
                     widgetId = artworkRequest.WidgetId,
                     artworkHandle = artworkRequest.ArtworkHandle,
+                    runtimeGeneration = artworkRequest.RuntimeGeneration,
+                    presentationGeneration = artworkRequest.PresentationGeneration,
                     contentType,
                     contentBase64,
                 },
@@ -682,6 +698,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         }
         catch (Exception exception) when (exception is BridgeProtocolException or
             BridgeStalePinnedInputAuthorityException or
+            BridgeStaleArtworkAuthorityException or
             BridgeStalePresentationBaseException or JsonException)
         {
             await ReplyRequestFailureAsync(request.RequestId, exception, cancellationToken)
@@ -738,6 +755,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             {
                 BridgeStalePresentationBaseException => "stale_presentation_base",
                 BridgeStalePinnedInputAuthorityException => "stale_pinned_input_authority",
+                BridgeStaleArtworkAuthorityException => "stale_artwork_authority",
                 _ => "request_failed",
             },
             SafeMessage(exception));

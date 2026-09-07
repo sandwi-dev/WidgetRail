@@ -679,7 +679,10 @@ struct DeclarativeRenderer::RenderPass final {
         desired.imageFit = ImageFitName(
             EffectiveImageFit(desired, style, false, false));
         result.compositorBackground = ComputedCompositorBackground{
-            options.artworkAuthorityId, snapshot->instanceId, surface.id,
+            options.artworkAuthorityId, options.artworkWidgetId,
+            options.artworkRuntimeGeneration,
+            options.artworkPresentationGeneration,
+            snapshot->instanceId, surface.id,
             focusedId, desired.imageSource, desired.artworkHandle,
             desired.imageFit, bounds, style, opacity,
             snapshot->sequence, owner->bitmapResourceGeneration_};
@@ -4502,8 +4505,10 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::ResolveCompositorBackgroundBitmap(
     pass.owner = this;
     pass.target = renderTarget;
     pass.snapshot = &snapshot;
-    pass.options.artworkWidgetId = background.authorityId.substr(
-        0, background.authorityId.find(L'\x1f'));
+    pass.options.artworkWidgetId = background.artworkWidgetId;
+    pass.options.artworkRuntimeGeneration = background.artworkRuntimeGeneration;
+    pass.options.artworkPresentationGeneration =
+        background.artworkPresentationGeneration;
     auto state = ImagePresentationState::Pending;
     return GetImageBitmap(
         renderTarget, node, pass, pass.options.artworkWidgetId, state);
@@ -5610,6 +5615,10 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     ImagePresentationState& presentationState) {
     presentationState = ImagePresentationState::Failed;
     const bool trustedArtwork = !node.artworkHandle.empty() && node.imageSource.empty();
+    const TrustedArtworkDemandAuthority artworkAuthority{
+        std::wstring{artworkWidgetId},
+        pass.options.artworkRuntimeGeneration,
+        pass.options.artworkPresentationGeneration};
     std::wstring source = trustedArtwork
         ? RemoteImageCache::TrustedArtworkKey(
             artworkWidgetId, node.id, node.artworkHandle)
@@ -5636,13 +5645,16 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         }
         return existing->second.bitmap;
     }
-    const auto state = imageCache_->GetState(source);
+    const auto state = trustedArtwork
+        ? imageCache_->GetTrustedArtworkState(source, artworkAuthority)
+        : imageCache_->GetState(source);
     if (state == RemoteImageState::Missing) {
         const auto request = trustedArtwork
-            ? imageCache_->RequestTrustedArtwork(source)
+            ? imageCache_->RequestTrustedArtwork(source, artworkAuthority)
             : imageCache_->Request(source);
         if (trustedArtwork &&
-            imageCache_->GetState(source) == RemoteImageState::Failed) {
+            imageCache_->GetTrustedArtworkState(source, artworkAuthority) ==
+                RemoteImageState::Failed) {
             // A synchronous transport refusal or another node already known
             // to share this terminal handle uses the cache-owned fallback.
             presentationState = ImagePresentationState::TrustedArtworkUnavailable;
