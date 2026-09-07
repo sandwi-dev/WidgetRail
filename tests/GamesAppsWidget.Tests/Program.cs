@@ -2603,6 +2603,15 @@ static async Task LoadMoreIsSingleFlight()
     Assert.True(ActionSurfaces(busy.Root)
         .Where(tile => tile.ActionId == "games.toggle-curation")
         .All(tile => tile.IsDisabled == true));
+    var duplicateHandled = await widget.OnControllerInputAsync(new ControllerInputEvent(
+        ControllerButton.A,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.OpenWidget,
+        FocusedElementId: loadMore.Id,
+        Sequence: 2,
+        ActiveInputScopeId: busy.ActiveInputScopeId,
+        SnapshotSequence: busy.Sequence));
+    Assert.False(duplicateHandled);
 
     Assert.Equal(1, fake.PageRequests.Count(request => request.Offset == 32));
     release.TrySetResult(Page([App("two", "Two")], null));
