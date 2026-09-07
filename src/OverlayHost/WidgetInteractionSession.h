@@ -137,7 +137,14 @@ struct FocusMutation final {
 enum class FocusGroupEntryObservation {
     None,
     Pending,
+    Dormant,
     Retired,
+};
+
+enum class FocusGroupEntryAdmission {
+    Active,
+    Dormant,
+    Retire,
 };
 
 struct FocusGroupEntryAdmissionContext final {
@@ -145,12 +152,20 @@ struct FocusGroupEntryAdmissionContext final {
     bool ordinaryWidgetOwnsInput{};
     bool modalActive{};
     bool pinnedControllerOwnsInput{};
+    bool temporarilyHiddenSameWidget{};
 };
 
-[[nodiscard]] constexpr bool IsFocusGroupEntryAdmissionEligible(
+[[nodiscard]] constexpr FocusGroupEntryAdmission ResolveFocusGroupEntryAdmission(
     const FocusGroupEntryAdmissionContext& context) noexcept {
-    return context.overlayVisible && context.ordinaryWidgetOwnsInput &&
-        !context.modalActive && !context.pinnedControllerOwnsInput;
+    if (context.overlayVisible && context.ordinaryWidgetOwnsInput &&
+        !context.modalActive && !context.pinnedControllerOwnsInput) {
+        return FocusGroupEntryAdmission::Active;
+    }
+    if (!context.overlayVisible && context.temporarilyHiddenSameWidget &&
+        !context.modalActive && !context.pinnedControllerOwnsInput) {
+        return FocusGroupEntryAdmission::Dormant;
+    }
+    return FocusGroupEntryAdmission::Retire;
 }
 
 struct FocusGroupEntryApplication final {
@@ -411,6 +426,7 @@ public:
         bool retireSliderPresentations = true,
         bool retirePressedPresentation = true);
     void ClearFocus() noexcept;
+    void ClearLiveFocus() noexcept;
     void RememberFocus(
         std::wstring_view widgetId,
         const WidgetSnapshot& snapshot);
@@ -423,7 +439,7 @@ public:
     void ForgetWidget(std::wstring_view widgetId);
     [[nodiscard]] FocusGroupEntryObservation ObserveFocusGroupEntryRequest(
         const WidgetInteractionAuthority& authority,
-        bool ordinaryWidgetInputEligible);
+        FocusGroupEntryAdmission admission);
     [[nodiscard]] FocusGroupEntryApplication ConsumeFocusGroupEntryRequest(
         const WidgetInteractionAuthority& authority,
         const RenderResult& renderResult);
