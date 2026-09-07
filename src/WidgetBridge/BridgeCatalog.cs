@@ -154,8 +154,13 @@ internal sealed record BundledWidgetDefinition
     public IReadOnlyList<BridgeQuickActionDescriptor> QuickActions { get; init; } = [];
 }
 
+internal sealed record BridgeCatalogWidgetRejection(
+    string WidgetId,
+    string Code);
+
 public sealed class BridgeCatalog
 {
+    private const int MaximumWidgetDeclarations = 256;
     private readonly IReadOnlyDictionary<string, ConfiguredWidget> _configured;
     private readonly IReadOnlyList<ConfiguredWidget> _ordered;
     private readonly string _fingerprint;
@@ -180,7 +185,12 @@ public sealed class BridgeCatalog
     internal bool IsEquivalentTo(BridgeCatalog other) =>
         string.Equals(_fingerprint, other._fingerprint, StringComparison.Ordinal);
 
-    public static BridgeCatalog Load(string path)
+    public static BridgeCatalog Load(string path) => LoadCore(
+        path, isolateOptionalWidgets: false).Catalog;
+
+    private static BridgeCatalogLoadResult LoadCore(
+        string path,
+        bool isolateOptionalWidgets)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var fullPath = Path.GetFullPath(path);
@@ -205,76 +215,136 @@ public sealed class BridgeCatalog
         if (document.CatalogVersion != 1)
             throw new BridgeCatalogException("Only catalog version 1 is supported.");
         if (document.Widgets is null || document.BundledWidgets is null ||
-            document.Widgets.Count + document.BundledWidgets.Count > 256)
-            throw new BridgeCatalogException("Catalog must contain at most 256 widgets.");
+            document.Widgets.Count + document.BundledWidgets.Count > MaximumWidgetDeclarations)
+            throw new BridgeCatalogException(
+                $"Catalog must contain at most {MaximumWidgetDeclarations} widgets.");
         if (!IsSafePackageRelativePath(document.GenericWorkerExecutable, allowDirectory: false))
             throw new BridgeCatalogException("The generic worker executable path is invalid.");
 
-        var widgets = new Dictionary<string, ConfiguredWidget>(StringComparer.Ordinal);
-        var packageIds = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var source in document.Widgets)
+        var declaredWidgetIds = new HashSet<string>(StringComparer.Ordinal);
+        var declaredPackageIds = new HashSet<string>(StringComparer.Ordinal);
+        var configuredSources = new List<ConfiguredWidget>();
+        var bundledSources = new List<BundledWidgetDefinition>();
+        var rejections = new List<BridgeCatalogWidgetRejection>();
+
+        for (var index = 0; index < document.Widgets.Count; index++)
         {
+            var source = document.Widgets[index];
             ValidateIdentifier(source.Id, "widget ID");
             ValidatePackageIdentity(source.PackageId, "package ID");
-            ValidatePackageIdentity(source.PublisherId, "publisher ID");
-            ValidateIdentifier(source.InstanceId, "instance ID");
-            ValidateLabel(source.Name, "widget name");
-            if (source.WorkerArguments is null || source.WorkerArguments.Count > 64 ||
-                source.WorkerArguments.Any(argument => argument is null || argument.Length > 4096))
-                throw new BridgeCatalogException($"Widget '{source.Id}' has invalid worker arguments.");
-            if (source.DeclaredCapabilities is null || source.DeclaredCapabilities.Count > 32 ||
-                source.DeclaredCapabilities.Any(capability =>
-                    string.IsNullOrWhiteSpace(capability) || capability.Length > 128 ||
-                    !PlatformCapabilities.IsManifestDeclarable(capability)) ||
-                source.DeclaredCapabilities.Distinct(StringComparer.Ordinal).Count() !=
-                    source.DeclaredCapabilities.Count)
-                throw new BridgeCatalogException(
-                    $"Widget '{source.Id}' has invalid declared capabilities.");
-            if (source.MemoryRequestMb is <= 0)
-                throw new BridgeCatalogException(
-                    $"Widget '{source.Id}' memoryLimitMb must be a positive advisory value.");
-            if (source.ResidencyPolicy is null)
-                throw new BridgeCatalogException(
-                    $"Widget '{source.Id}' residencyPolicy cannot be null.");
-            var residencyErrors = new List<ManifestValidationError>();
-            WidgetResidencyPolicies.Validate(
-                source.ResidencyPolicy,
-                "$.residencyPolicy",
-                (path, code, message) => residencyErrors.Add(new(path, code, message)));
-            if (residencyErrors.Count != 0)
-                throw new BridgeCatalogException(
-                    $"Widget '{source.Id}' has an invalid residency policy ({residencyErrors[0].Code}).");
-            if (source.QuickActions is null || source.QuickActions.Count > 16)
-                throw new BridgeCatalogException($"Widget '{source.Id}' has too many quick actions.");
-            ValidateQuickActions(source.Id, source.QuickActions);
+            if (!declaredWidgetIds.Add(source.Id))
+                throw new BridgeCatalogException($"Widget ID '{source.Id}' is duplicated.");
+            if (!declaredPackageIds.Add(source.PackageId))
+                throw new BridgeCatalogException($"Package ID '{source.PackageId}' is duplicated.");
+            configuredSources.Add(source);
+        }
+        for (var index = 0; index < document.BundledWidgets.Count; index++)
+        {
+            var source = document.BundledWidgets[index];
+            ValidateIdentifier(source.Id, "bundled widget ID");
+            ValidatePackageIdentity(source.PackageId, "bundled package ID");
+            if (!declaredWidgetIds.Add(source.Id))
+                throw new BridgeCatalogException($"Widget ID '{source.Id}' is duplicated.");
+            if (!declaredPackageIds.Add(source.PackageId))
+                throw new BridgeCatalogException($"Package ID '{source.PackageId}' is duplicated.");
+            bundledSources.Add(source);
+        }
 
-            var executable = Path.GetFullPath(source.WorkerExecutable, directory);
-            if (!File.Exists(executable))
-                throw new BridgeCatalogException($"Worker executable for '{source.Id}' does not exist.");
-            var style = CompileTheme(source, directory);
-            var configured = WithFingerprints(source with
+        var workerHost = Path.GetFullPath(
+            document.GenericWorkerExecutable.Replace('/', Path.DirectorySeparatorChar),
+            directory);
+        if (document.BundledWidgets.Count != 0)
+            ValidateSharedWorker(directory, workerHost);
+
+        var widgets = new Dictionary<string, ConfiguredWidget>(StringComparer.Ordinal);
+        foreach (var source in configuredSources)
+        {
+            try
+            {
+                ValidatePackageIdentity(source.PublisherId, "publisher ID");
+                ValidateIdentifier(source.InstanceId, "instance ID");
+                ValidateLabel(source.Name, "widget name");
+                if (source.WorkerArguments is null || source.WorkerArguments.Count > 64 ||
+                    source.WorkerArguments.Any(argument => argument is null || argument.Length > 4096))
+                    throw new BridgeCatalogException($"Widget '{source.Id}' has invalid worker arguments.");
+                if (source.DeclaredCapabilities is null || source.DeclaredCapabilities.Count > 32 ||
+                    source.DeclaredCapabilities.Any(capability =>
+                        string.IsNullOrWhiteSpace(capability) || capability.Length > 128 ||
+                        !PlatformCapabilities.IsManifestDeclarable(capability)) ||
+                    source.DeclaredCapabilities.Distinct(StringComparer.Ordinal).Count() !=
+                        source.DeclaredCapabilities.Count)
+                    throw new BridgeCatalogException(
+                        $"Widget '{source.Id}' has invalid declared capabilities.");
+                if (source.MemoryRequestMb is <= 0)
+                    throw new BridgeCatalogException(
+                        $"Widget '{source.Id}' memoryLimitMb must be a positive advisory value.");
+                if (source.ResidencyPolicy is null)
+                    throw new BridgeCatalogException(
+                        $"Widget '{source.Id}' residencyPolicy cannot be null.");
+                var residencyErrors = new List<ManifestValidationError>();
+                WidgetResidencyPolicies.Validate(
+                    source.ResidencyPolicy,
+                    "$.residencyPolicy",
+                    (path, code, message) => residencyErrors.Add(new(path, code, message)));
+                if (residencyErrors.Count != 0)
+                    throw new BridgeCatalogException(
+                        $"Widget '{source.Id}' has an invalid residency policy ({residencyErrors[0].Code}).");
+                if (source.QuickActions is null || source.QuickActions.Count > 16)
+                    throw new BridgeCatalogException($"Widget '{source.Id}' has too many quick actions.");
+                ValidateQuickActions(source.Id, source.QuickActions);
+
+                string executable;
+                try
+                {
+                    executable = Path.GetFullPath(source.WorkerExecutable, directory);
+                }
+                catch (Exception exception) when (
+                    exception is ArgumentException or NotSupportedException)
+                {
+                    throw new BridgeCatalogException(
+                        "invalid_path",
+                        $"Worker executable path for '{source.Id}' is invalid.",
+                        exception);
+                }
+                if (!File.Exists(executable))
+                    throw new BridgeCatalogException($"Worker executable for '{source.Id}' does not exist.");
+                var style = CompileTheme(source, directory);
+                widgets.Add(source.Id, WithFingerprints(source with
                 {
                     WorkerExecutable = executable,
                     CompiledTheme = style.Theme,
                     StylePackage = style.Package,
-                });
-            if (!widgets.TryAdd(source.Id, configured))
-                throw new BridgeCatalogException($"Widget ID '{source.Id}' is duplicated.");
-            if (!packageIds.Add(source.PackageId))
-                throw new BridgeCatalogException($"Package ID '{source.PackageId}' is duplicated.");
+                }));
+            }
+            catch (Exception exception) when (
+                isolateOptionalWidgets && !IsEssentialSettings(source) &&
+                IsWidgetLocalAdmissionException(exception))
+            {
+                AddRejection(rejections, source.Id, "configured-widget", exception);
+            }
         }
-        var workerHost = Path.GetFullPath(
-            document.GenericWorkerExecutable.Replace('/', Path.DirectorySeparatorChar),
-            directory);
-        foreach (var source in document.BundledWidgets)
+        foreach (var source in bundledSources)
         {
-            var configured = LoadBundledWidget(source, directory, workerHost);
-            if (!widgets.TryAdd(configured.Id, configured))
-                throw new BridgeCatalogException($"Widget ID '{configured.Id}' is duplicated.");
-            if (!packageIds.Add(configured.PackageId))
-                throw new BridgeCatalogException($"Package ID '{configured.PackageId}' is duplicated.");
+            try
+            {
+                var configured = LoadBundledWidget(source, directory, workerHost);
+                widgets.Add(configured.Id, configured);
+            }
+            catch (Exception exception) when (
+                isolateOptionalWidgets && IsWidgetLocalAdmissionException(exception))
+            {
+                AddRejection(rejections, source.Id, "bundled-widget", exception);
+            }
         }
-        return new BridgeCatalog(widgets.Values);
+        var warnings = rejections.Take(64).Select(rejection =>
+            $"Widget '{rejection.WidgetId}' was rejected ({rejection.Code}).").ToList();
+        if (rejections.Count > warnings.Count)
+            warnings.Add(
+                $"{rejections.Count - warnings.Count} additional widget rejections were omitted from detailed logs.");
+        return new BridgeCatalogLoadResult(new BridgeCatalog(widgets.Values), warnings)
+        {
+            WidgetRejections = rejections,
+        };
     }
 
     public static Task<BridgeCatalogLoadResult> LoadWithInstalledAsync(
@@ -297,9 +367,10 @@ public sealed class BridgeCatalog
         ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
         ArgumentException.ThrowIfNullOrWhiteSpace(workerHostExecutable);
         var installedRoot = Path.GetFullPath(installedCatalogRoot);
-        var trusted = Load(trustedCatalogPath).WithSettingsCatalogRoot(installedRoot);
+        var trustedLoad = LoadTrustedObserved(trustedCatalogPath, installedRoot);
+        var trusted = trustedLoad.Catalog;
         var workerHost = Path.GetFullPath(workerHostExecutable);
-        var warnings = new List<string>();
+        var warnings = trustedLoad.Warnings.ToList();
         WidgetCatalogSnapshot installed;
         var discoveryStarted = Stopwatch.GetTimestamp();
         try
@@ -314,6 +385,7 @@ public sealed class BridgeCatalog
             return new BridgeCatalogLoadResult(
                 trusted, warnings, InstalledCatalogValid: false)
             {
+                WidgetRejections = trustedLoad.WidgetRejections,
                 InstalledCatalogObservation = new BridgeInstalledCatalogObservation(
                     Succeeded: false,
                     PackageCount: 0,
@@ -454,6 +526,7 @@ public sealed class BridgeCatalog
         return new BridgeCatalogLoadResult(
             new BridgeCatalog(combined), warnings, InstalledCatalogValid: true)
         {
+            WidgetRejections = trustedLoad.WidgetRejections,
             InstalledCatalogObservation = new BridgeInstalledCatalogObservation(
                 Succeeded: true,
                 PackageCount: installed.Widgets.Count,
@@ -469,10 +542,19 @@ public sealed class BridgeCatalog
     internal static BridgeCatalog LoadTrusted(
         string trustedCatalogPath,
         string installedCatalogRoot)
+        => LoadTrustedObserved(trustedCatalogPath, installedCatalogRoot).Catalog;
+
+    internal static BridgeCatalogLoadResult LoadTrustedObserved(
+        string trustedCatalogPath,
+        string installedCatalogRoot)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
-        return Load(trustedCatalogPath).WithSettingsCatalogRoot(
-            Path.GetFullPath(installedCatalogRoot));
+        var loaded = LoadCore(trustedCatalogPath, isolateOptionalWidgets: true);
+        return loaded with
+        {
+            Catalog = loaded.Catalog.WithSettingsCatalogRoot(
+                Path.GetFullPath(installedCatalogRoot)),
+        };
     }
 
     private BridgeCatalog WithSettingsCatalogRoot(string installedCatalogRoot)
@@ -602,6 +684,57 @@ public sealed class BridgeCatalog
     private static string BundledIsolationKey(string publisherId, string packageId) =>
         $"bundled-v1\n{publisherId}\n{packageId}";
 
+    private static bool IsEssentialSettings(ConfiguredWidget source) =>
+        string.Equals(source.Id, "settings", StringComparison.Ordinal) &&
+        string.Equals(source.PackageId, "widgetrail.firstparty.settings", StringComparison.Ordinal) &&
+        string.Equals(source.PublisherId, "widgetrail.firstparty", StringComparison.Ordinal);
+
+    private static bool IsWidgetLocalAdmissionException(Exception exception) =>
+        exception is BridgeCatalogException { Code: not "invalid_shared_worker" } or
+            IOException or UnauthorizedAccessException;
+
+    private static void AddRejection(
+        ICollection<BridgeCatalogWidgetRejection> rejections,
+        string? requestedWidgetId,
+        string fallbackWidgetId,
+        Exception exception)
+    {
+        if (rejections.Count >= MaximumWidgetDeclarations) return;
+        var widgetId = requestedWidgetId is not null && IsBridgeIdentifier(requestedWidgetId)
+            ? requestedWidgetId!
+            : fallbackWidgetId;
+        var code = exception switch
+        {
+            BridgeCatalogException catalog => catalog.Code,
+            UnauthorizedAccessException => "access_denied",
+            IOException => "io_error",
+            _ => "invalid_widget",
+        };
+        rejections.Add(new(widgetId, SafeDiagnostic(code)));
+    }
+
+    private static void ValidateSharedWorker(string catalogDirectory, string workerHost)
+    {
+        try
+        {
+            if (!File.Exists(workerHost))
+                throw new BridgeCatalogException(
+                    "invalid_shared_worker",
+                    "The shared generic worker host for bundled widgets does not exist.");
+            EnsureNoReparsePoints(catalogDirectory, workerHost, "generic worker host");
+        }
+        catch (Exception exception) when (
+            exception is BridgeCatalogException or IOException or UnauthorizedAccessException)
+        {
+            if (exception is BridgeCatalogException { Code: "invalid_shared_worker" })
+                throw;
+            throw new BridgeCatalogException(
+                "invalid_shared_worker",
+                "The shared generic worker host for bundled widgets is invalid.",
+                exception);
+        }
+    }
+
     private static ConfiguredWidget LoadBundledWidget(
         BundledWidgetDefinition source,
         string catalogDirectory,
@@ -612,26 +745,27 @@ public sealed class BridgeCatalog
         ValidateIdentifier(source.InstanceId, "bundled widget instance ID");
         if (!IsSafePackageRelativePath(source.PackageRoot, allowDirectory: true))
             throw new BridgeCatalogException(
+                "invalid_package_root",
                 $"Bundled widget '{source.Id}' has an invalid packageRoot.");
         if (source.QuickActions is null || source.QuickActions.Count > 16)
             throw new BridgeCatalogException(
+                "invalid_declaration",
                 $"Bundled widget '{source.Id}' has too many quick actions.");
         ValidateQuickActions(source.Id, source.QuickActions);
-        if (!File.Exists(workerHost))
-            throw new BridgeCatalogException(
-                $"The generic worker host for bundled widget '{source.Id}' does not exist.");
-        EnsureNoReparsePoints(catalogDirectory, workerHost, "generic worker host");
+        ValidateSharedWorker(catalogDirectory, workerHost);
 
         var packageRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(
             source.PackageRoot.Replace('/', Path.DirectorySeparatorChar),
             catalogDirectory));
         if (!Directory.Exists(packageRoot))
             throw new BridgeCatalogException(
+                "package_missing",
                 $"Package root for bundled widget '{source.Id}' does not exist.");
         EnsureNoReparsePoints(catalogDirectory, packageRoot, "bundled package root");
         var manifestPath = Path.Combine(packageRoot, "manifest.json");
         if (!File.Exists(manifestPath) || new FileInfo(manifestPath).Length > 1024 * 1024)
             throw new BridgeCatalogException(
+                "invalid_manifest",
                 $"Bundled widget '{source.Id}' is missing a bounded manifest.json.");
         EnsureNoReparsePoints(packageRoot, manifestPath, "bundled manifest");
 
@@ -645,30 +779,37 @@ public sealed class BridgeCatalog
             exception is WidgetPackageException or IOException or UnauthorizedAccessException)
         {
             throw new BridgeCatalogException(
+                "invalid_integrity",
                 $"Bundled widget '{source.Id}' sealed package inventory is invalid.", exception);
         }
         var manifest = verification.Manifest;
         var errors = WidgetManifestValidator.Validate(manifest);
         if (errors.Count != 0)
             throw new BridgeCatalogException(
+                "invalid_manifest",
                 $"Bundled widget '{source.Id}' manifest is invalid ({errors[0].Code}).");
         if (!manifest.Id.Equals(manifest.Publisher, StringComparison.Ordinal) &&
             !manifest.Id.StartsWith(manifest.Publisher + ".", StringComparison.Ordinal))
             throw new BridgeCatalogException(
+                "manifest_identity_mismatch",
                 $"Bundled widget '{source.Id}' manifest identity is outside its publisher namespace.");
         if (!string.Equals(manifest.Id, source.PackageId, StringComparison.Ordinal))
             throw new BridgeCatalogException(
+                "manifest_identity_mismatch",
                 $"Bundled widget '{source.Id}' manifest does not match its pinned package ID.");
         if (!Version.TryParse(manifest.Version, out var version) ||
             !string.Equals(version.ToString(), manifest.Version, StringComparison.Ordinal))
             throw new BridgeCatalogException(
+                "invalid_manifest_version",
                 $"Bundled widget '{source.Id}' manifest version is not canonical.");
         if (!WidgetHostCompatibility.Evaluate(manifest).IsSupported)
             throw new BridgeCatalogException(
+                "incompatible_host",
                 $"Bundled widget '{source.Id}' is incompatible with this host.");
         if (!string.Equals(manifest.Entrypoint.Runtime,
                 WidgetEntrypointRuntimes.DotNetWorker, StringComparison.Ordinal))
             throw new BridgeCatalogException(
+                "unsupported_runtime",
                 $"Bundled widget '{source.Id}' must use the sandboxed worker runtime.");
 
         var declaredCapabilities = manifest.Permissions
@@ -679,12 +820,14 @@ public sealed class BridgeCatalog
         if (declaredCapabilities.Any(capability =>
                 !PlatformCapabilities.IsManifestDeclarable(capability)))
             throw new BridgeCatalogException(
+                "unsupported_capability",
                 $"Bundled widget '{source.Id}' declares an unsupported capability.");
         var assembly = Path.GetFullPath(
             manifest.Entrypoint.Assembly!.Replace('/', Path.DirectorySeparatorChar),
             packageRoot);
         if (!IsWithin(packageRoot, assembly) || !File.Exists(assembly))
             throw new BridgeCatalogException(
+                "entrypoint_missing",
                 $"Bundled widget '{source.Id}' entrypoint is missing.");
         EnsureNoReparsePoints(packageRoot, assembly, "bundled entrypoint");
 
@@ -850,7 +993,8 @@ public sealed class BridgeCatalog
         var summary = diagnostics.Length == 0
             ? "unknown WRSS compilation error"
             : string.Join("; ", diagnostics);
-        throw new BridgeCatalogException($"Widget '{source.Id}' style is invalid: {summary}");
+        throw new BridgeCatalogException(
+            "invalid_styles", $"Widget '{source.Id}' style is invalid: {summary}");
     }
 
     private sealed record CompiledWidgetStyle(WrssPackageResult Package, WrssTheme? Theme);
@@ -947,8 +1091,25 @@ public sealed record BridgeCatalogLoadResult(
     IReadOnlyList<string> Warnings,
     bool InstalledCatalogValid = true)
 {
+    internal IReadOnlyList<BridgeCatalogWidgetRejection> WidgetRejections { get; init; } = [];
     internal BridgeInstalledCatalogObservation? InstalledCatalogObservation { get; init; }
 }
 
-public sealed class BridgeCatalogException(string message, Exception? innerException = null)
-    : Exception(message, innerException);
+public sealed class BridgeCatalogException : Exception
+{
+    public BridgeCatalogException(string message, Exception? innerException = null)
+        : this("invalid_widget", message, innerException)
+    {
+    }
+
+    internal BridgeCatalogException(
+        string code,
+        string message,
+        Exception? innerException = null)
+        : base(message, innerException)
+    {
+        Code = code;
+    }
+
+    internal string Code { get; }
+}

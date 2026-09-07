@@ -38,6 +38,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Permitted eighth worker pre-start timeout releases its exact slot", PermittedEighthWorkerPreStartTimeoutReleasesSlot),
     ("Catalog widget icons use the closed WidgetGlyph set with a safe fallback", CatalogGlyphIsClosed),
     ("Catalog rejects invalid WRSS with safe diagnostics", InvalidThemeIsRejected),
+    ("Bundled widget failures are isolated from Bridge startup and recover", BundledWidgetFailuresAreIsolated),
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
     ("Request dispatcher cleans success failure and cancellation", RequestDispatcherCleansTerminalPaths),
@@ -108,6 +109,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Worker request diagnostics are bounded developer-only records", WorkerRequestDiagnosticsAreBounded),
     ("Current worker validator diagnostics persist and correlate across the Bridge", WorkerValidatorDiagnosticsPersistAndCorrelate),
     ("Diagnostics projection is bounded sanitized and read only", BridgeDiagnosticsScenarios.ProjectionIsBoundedSanitizedAndReadOnly),
+    ("Catalog diagnostics identify bounded isolated widget failures", BridgeDiagnosticsScenarios.CatalogRejectionsAreBoundedAndActionable),
     ("Artwork memory diagnostics are bounded concurrent and private", BridgeDiagnosticsScenarios.ArtworkMemoryCountersAreBoundedAndConcurrent),
     ("Diagnostics partial failures malformed input and deadline are closed", BridgeDiagnosticsScenarios.PartialFailureMalformedInputAndDeadlineAreClosed),
     ("Authority recovery projection is exact bounded and cancellation safe", BridgeDiagnosticsScenarios.RecoveryRetryIsExactBoundedAndCancellationSafe),
@@ -1166,6 +1168,146 @@ static Task InvalidThemeIsRejected()
     Assert.True(!exception.Message.Contains(System.IO.Path.GetTempPath(), StringComparison.OrdinalIgnoreCase),
         "Catalog diagnostics must not disclose absolute package paths.");
     return Task.CompletedTask;
+}
+
+static async Task BundledWidgetFailuresAreIsolated()
+{
+    using var fixture = TemporaryBundledCatalog.Create(
+        new("dev.test.healthy", "Healthy", InvalidStyle: false),
+        new("dev.test.invalid-one", "Invalid one", InvalidStyle: true),
+        new("dev.test.invalid-two", "Invalid two", InvalidStyle: true));
+    using var installedRoot = new TemporaryDirectory("wrail-bundled-isolation-installed");
+    var initial = BridgeCatalog.LoadTrustedObserved(fixture.Path, installedRoot.Path);
+    Assert.SequenceEqual(["dev.test.healthy"],
+        initial.Catalog.Widgets.Select(widget => widget.Id));
+    Assert.SequenceEqual(["dev.test.invalid-one", "dev.test.invalid-two"],
+        initial.WidgetRejections.Select(rejection => rejection.WidgetId));
+    Assert.True(initial.WidgetRejections.All(rejection =>
+            rejection.Code == "invalid_styles"),
+        "Invalid bundled WRSS did not retain its stable rejection code.");
+    Assert.True(initial.Warnings.All(warning =>
+            !warning.Contains(fixture.Root, StringComparison.OrdinalIgnoreCase)),
+        "Bundled rejection diagnostics disclosed their local package root.");
+
+    await using var monitor = new BridgeCatalogMonitor(
+        fixture.Path,
+        installedRoot.Path,
+        fixture.WorkerPath,
+        initial.Catalog,
+        initial.Warnings,
+        installedCatalogPending: false,
+        loadCatalog: _ => Task.FromResult(
+            BridgeCatalog.LoadTrustedObserved(fixture.Path, installedRoot.Path)),
+        initialWidgetRejections: initial.WidgetRejections);
+    var pipeName = $"wrail-bundled-isolation-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(
+        pipeName, initial.Catalog, 64 * 1024, catalogMonitor: monitor);
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
+    await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
+    try
+    {
+        var listed = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        Assert.SequenceEqual(["dev.test.healthy"], listed.Payload
+            .GetProperty("widgets").EnumerateArray()
+            .Select(widget => widget.GetProperty("id").GetString()!));
+        Assert.Equal(0, server.RunningWorkerCount);
+
+        fixture.CorrectStyles("dev.test.invalid-one", "dev.test.invalid-two");
+        var recovered = await monitor.ReloadNowAsync();
+        Assert.True(recovered.Published,
+            "Corrected bundled packages did not publish a recovered catalog revision.");
+        Assert.True(!recovered.RetainedLastGood,
+            "Widget-local correction was misclassified as global last-good retention.");
+        Assert.SequenceEqual(
+            ["dev.test.healthy", "dev.test.invalid-one", "dev.test.invalid-two"],
+            recovered.Current.Widgets.Select(widget => widget.Id));
+        Assert.Equal(0, monitor.DiagnosticsSnapshot().WidgetRejections.Count);
+
+        var validCatalog = File.ReadAllBytes(fixture.Path);
+        File.WriteAllText(fixture.Path, "{");
+        var malformed = await monitor.ReloadNowAsync();
+        Assert.True(malformed.RetainedLastGood,
+            "Malformed shared catalog structure did not retain the last-good revision.");
+        Assert.SequenceEqual(
+            ["dev.test.healthy", "dev.test.invalid-one", "dev.test.invalid-two"],
+            malformed.Current.Widgets.Select(widget => widget.Id));
+        File.WriteAllBytes(fixture.Path, validCatalog);
+    }
+    finally
+    {
+        try { await client.RequestAsync(BridgeMessageTypes.Stop, new { }); }
+        catch { }
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(3));
+    }
+
+    using var duplicate = TemporaryBundledCatalog.Create(
+        new("dev.test.duplicate", "Duplicate one", InvalidStyle: true),
+        new("dev.test.duplicate", "Duplicate two", InvalidStyle: false,
+            PackageId: "dev.test.duplicate-two"));
+    Assert.Throws<BridgeCatalogException>(() =>
+        BridgeCatalog.LoadTrustedObserved(duplicate.Path, installedRoot.Path));
+
+    using var missingSharedWorker = TemporaryBundledCatalog.Create(
+        new TemporaryBundledWidgetDefinition(
+            "dev.test.shared-worker", "Shared worker", InvalidStyle: false));
+    File.Delete(missingSharedWorker.WorkerPath);
+    var sharedWorkerFailure = Assert.Throws<BridgeCatalogException>(() =>
+        BridgeCatalog.LoadTrustedObserved(
+            missingSharedWorker.Path, installedRoot.Path));
+    Assert.Equal("invalid_shared_worker", sharedWorkerFailure.Code);
+
+    using var malformedPackageDuplicate = TemporaryBundledCatalog.Create(
+        new TemporaryBundledWidgetDefinition(
+            "dev.test.cross-widget", "Bundled duplicate", InvalidStyle: false));
+    malformedPackageDuplicate.AddConfiguredDeclaration(
+        "dev.test.cross-widget", "invalid package identity");
+    Assert.Throws<BridgeCatalogException>(() =>
+        BridgeCatalog.LoadTrustedObserved(
+            malformedPackageDuplicate.Path, installedRoot.Path));
+
+    using var malformedWidgetDuplicate = TemporaryBundledCatalog.Create(
+        new TemporaryBundledWidgetDefinition(
+            "dev.test.cross-bundled", "Bundled package duplicate", InvalidStyle: false,
+            PackageId: "dev.test.cross-package"));
+    malformedWidgetDuplicate.AddConfiguredDeclaration(
+        "invalid widget identity", "dev.test.cross-package");
+    Assert.Throws<BridgeCatalogException>(() =>
+        BridgeCatalog.LoadTrustedObserved(
+            malformedWidgetDuplicate.Path, installedRoot.Path));
+
+    using var optionalConfigured = TemporaryCatalog.Create(invalidStyle: true);
+    var optional = BridgeCatalog.LoadTrustedObserved(
+        optionalConfigured.Path, installedRoot.Path);
+    Assert.Equal(0, optional.Catalog.Widgets.Count);
+    Assert.SequenceEqual(["test-widget"],
+        optional.WidgetRejections.Select(rejection => rejection.WidgetId));
+
+    using var manyInvalid = TemporaryCatalog.CreateManyInvalidStyles(
+        Enumerable.Range(0, 65).Select(index => new TemporaryWidgetDefinition(
+            $"dev.test.invalid-{index:D3}",
+            $"dev.test.invalid-{index:D3}",
+            "dev.test",
+            $"invalid.{index:D3}.instance")).ToArray());
+    var many = BridgeCatalog.LoadTrustedObserved(manyInvalid.Path, installedRoot.Path);
+    Assert.Equal(65, many.WidgetRejections.Count);
+    await using var manyMonitor = new BridgeCatalogMonitor(
+        manyInvalid.Path,
+        installedRoot.Path,
+        fixture.WorkerPath,
+        many.Catalog,
+        many.Warnings,
+        installedCatalogPending: false,
+        loadCatalog: null,
+        initialWidgetRejections: many.WidgetRejections);
+    Assert.Equal(65, manyMonitor.DiagnosticsSnapshot().WidgetRejections.Count);
+
+    using var essentialSettings = TemporaryCatalog.Create(
+        invalidStyle: true,
+        id: "settings",
+        packageId: "widgetrail.firstparty.settings",
+        publisherId: "widgetrail.firstparty");
+    Assert.Throws<BridgeCatalogException>(() =>
+        BridgeCatalog.LoadTrustedObserved(essentialSettings.Path, installedRoot.Path));
 }
 
 static Task UnsafeStylePathIsRejected()
@@ -6000,6 +6142,10 @@ file sealed class TemporaryCatalog : IDisposable
     public static TemporaryCatalog CreateMany(params TemporaryWidgetDefinition[] widgets) =>
         CreateCore(widgets, addUnknownProperty: false, invalidStyle: false, styleSource: null);
 
+    public static TemporaryCatalog CreateManyInvalidStyles(
+        params TemporaryWidgetDefinition[] widgets) =>
+        CreateCore(widgets, addUnknownProperty: false, invalidStyle: true, styleSource: null);
+
     private static TemporaryCatalog CreateCore(
         IReadOnlyList<TemporaryWidgetDefinition> widgets,
         bool addUnknownProperty,
@@ -6060,6 +6206,156 @@ file sealed class TemporaryCatalog : IDisposable
     public void Dispose()
     {
         try { Directory.Delete(_directory, recursive: true); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+}
+
+file sealed record TemporaryBundledWidgetDefinition(
+    string Id,
+    string Name,
+    bool InvalidStyle,
+    string? PackageId = null);
+
+file sealed class TemporaryBundledCatalog : IDisposable
+{
+    private readonly Dictionary<string, string> _packageRoots;
+    public string Root { get; }
+    public string Path { get; }
+    public string WorkerPath { get; }
+
+    private TemporaryBundledCatalog(
+        string root,
+        string path,
+        string workerPath,
+        Dictionary<string, string> packageRoots)
+    {
+        Root = root;
+        Path = path;
+        WorkerPath = workerPath;
+        _packageRoots = packageRoots;
+    }
+
+    public static TemporaryBundledCatalog Create(
+        params TemporaryBundledWidgetDefinition[] widgets)
+    {
+        if (widgets.Length == 0)
+            throw new ArgumentException("At least one bundled widget is required.", nameof(widgets));
+        var root = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), $"wrail-bundled-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var workerPath = System.IO.Path.Combine(root, "WidgetWorkerHost.exe");
+        File.Copy(Environment.ProcessPath ?? throw new InvalidOperationException(
+            "Test process path is unavailable."), workerPath);
+        var packageRoots = new Dictionary<string, string>(StringComparer.Ordinal);
+        var definitions = new List<object>();
+        for (var index = 0; index < widgets.Length; index++)
+        {
+            var widget = widgets[index];
+            var packageId = widget.PackageId ?? widget.Id;
+            var packageRoot = System.IO.Path.Combine(root, "packages", $"package-{index + 1}");
+            Directory.CreateDirectory(System.IO.Path.Combine(packageRoot, "payload"));
+            Directory.CreateDirectory(System.IO.Path.Combine(packageRoot, "styles"));
+            File.WriteAllBytes(
+                System.IO.Path.Combine(packageRoot, "payload", "FixtureWidget.dll"),
+                [0x57, 0x52, 0x41, 0x49, 0x4c]);
+            File.WriteAllText(
+                System.IO.Path.Combine(packageRoot, "styles", "default.wrss"),
+                widget.InvalidStyle
+                    ? "button { background: url(https://example.test/rejected.png); }"
+                    : "button { color: #ffffff; }");
+            var manifest = JsonSerializer.Serialize(new
+            {
+                manifestVersion = 1,
+                id = packageId,
+                publisher = "dev.test",
+                name = widget.Name,
+                version = "1.0.0",
+                hostApi = new { minimum = "1.0", maximumMajor = 1 },
+                entrypoint = new
+                {
+                    runtime = "dotnet-worker",
+                    assembly = "payload/FixtureWidget.dll",
+                    type = "WidgetRail.Tests.FixtureWidget",
+                },
+                presentation = new { icon = "connection" },
+                permissions = Array.Empty<string>(),
+                optionalPermissions = Array.Empty<string>(),
+                residencyPolicy = new
+                {
+                    schemaVersion = 1,
+                    mode = "unload-after-idle",
+                    idleSeconds = 120,
+                },
+                resourceRequest = new { memoryMb = 32, updateHz = 1 },
+                architectures = new[] { "x64" },
+            });
+            File.WriteAllText(System.IO.Path.Combine(packageRoot, "manifest.json"), manifest);
+            InstalledPackageIntegrity.Seal(root, packageRoot, new WidgetCatalogOptions());
+            packageRoots[widget.Id] = packageRoot;
+            definitions.Add(new
+            {
+                id = widget.Id,
+                packageId,
+                instanceId = $"{widget.Id}.instance",
+                packageRoot = System.IO.Path.GetRelativePath(root, packageRoot)
+                    .Replace(System.IO.Path.DirectorySeparatorChar, '/'),
+                icon = "connection",
+                quickActions = Array.Empty<object>(),
+            });
+        }
+        var catalogPath = System.IO.Path.Combine(root, "widget-catalog.json");
+        File.WriteAllText(catalogPath, JsonSerializer.Serialize(new
+        {
+            catalogVersion = 1,
+            genericWorkerExecutable = "WidgetWorkerHost.exe",
+            widgets = Array.Empty<object>(),
+            bundledWidgets = definitions,
+        }));
+        return new TemporaryBundledCatalog(root, catalogPath, workerPath, packageRoots);
+    }
+
+    public void CorrectStyles(params string[] widgetIds)
+    {
+        foreach (var widgetId in widgetIds)
+        {
+            var packageRoot = _packageRoots[widgetId];
+            File.Delete(System.IO.Path.Combine(packageRoot, ".wrail-integrity.json"));
+            File.WriteAllText(
+                System.IO.Path.Combine(packageRoot, "styles", "default.wrss"),
+                "button { color: #ffffff; }");
+            InstalledPackageIntegrity.Seal(Root, packageRoot, new WidgetCatalogOptions());
+        }
+    }
+
+    public void AddConfiguredDeclaration(string id, string packageId)
+    {
+        var declaration = JsonSerializer.Serialize(new
+        {
+            id,
+            packageId,
+            publisherId = "dev.test",
+            name = "Configured duplicate",
+            instanceId = "configured.duplicate.instance",
+            workerExecutable = "WidgetWorkerHost.exe",
+            workerArguments = Array.Empty<string>(),
+            declaredCapabilities = Array.Empty<string>(),
+            quickActions = Array.Empty<object>(),
+        });
+        var document = File.ReadAllText(Path);
+        var updated = document.Replace(
+            "\"widgets\":[]",
+            $"\"widgets\":[{declaration}]",
+            StringComparison.Ordinal);
+        if (string.Equals(updated, document, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Bundled catalog fixture did not contain the configured-widget insertion point.");
+        File.WriteAllText(Path, updated);
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(Root, recursive: true); }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
     }

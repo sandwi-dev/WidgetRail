@@ -25,7 +25,10 @@ internal sealed record BridgeDiagnosticsReadModel(
     bool InstalledCatalogPending,
     BridgeAppearanceDiagnostic Appearance,
     bool ProvidersConfigured,
-    BridgeArtworkMemorySnapshot Artwork);
+    BridgeArtworkMemorySnapshot Artwork)
+{
+    internal IReadOnlyList<BridgeCatalogWidgetRejection> WidgetRejections { get; init; } = [];
+}
 
 internal interface IBridgeDiagnosticsSource
 {
@@ -60,7 +63,10 @@ internal sealed class WidgetBridgeDiagnosticsSource(
                 appearance?.Current.Revision ?? 0,
                 appearanceErrors),
             providersConfigured,
-            artwork.Capture());
+            artwork.Capture())
+        {
+            WidgetRejections = catalog.WidgetRejections,
+        };
     }
 
     public async ValueTask<BridgeConsentDiagnostic> ReadConsentAsync(
@@ -131,6 +137,9 @@ internal sealed class BridgeDiagnosticsProjection(
             ? $"Revision {catalogRevision}; reload revision {diagnosticRevision} awaits reconciliation"
             : input.CatalogRetainedLastGood
             ? $"Revision {catalogRevision}; retained last good after a rejected reload"
+            : input.WidgetRejections.Count != 0
+                ? ProjectCatalogRejections(
+                    catalogRevision, catalogWarnings, input.WidgetRejections)
             : catalogWarnings == 0
                 ? $"Revision {catalogRevision}; {registry.Catalog.Widgets.Count} widgets validated"
                 : $"Revision {catalogRevision}; {catalogWarnings} bounded warnings";
@@ -219,6 +228,45 @@ internal sealed class BridgeDiagnosticsProjection(
             return Area("consent", "Permissions", PlatformDiagnosticState.Degraded,
                 $"Permission state is unavailable ({SafeCode(code)})");
         }
+    }
+
+    private static string ProjectCatalogRejections(
+        long revision,
+        int warningCount,
+        IReadOnlyList<BridgeCatalogWidgetRejection> rejections)
+    {
+        const int maximumSummaryLength = 256;
+        var summary = new StringBuilder($"Revision {revision}; rejected ");
+        var included = 0;
+        foreach (var rejection in rejections.Take(64))
+        {
+            var widgetId = IsToken(rejection.WidgetId, 128)
+                ? rejection.WidgetId
+                : "unavailable-widget";
+            var item = $"{widgetId} ({SafeCode(rejection.Code)})";
+            var separator = included == 0 ? string.Empty : ", ";
+            var remaining = rejections.Count - included - 1;
+            var otherWarnings = Math.Max(0, warningCount - rejections.Count);
+            var suffix = (remaining, otherWarnings) switch
+            {
+                (> 0, > 0) => $"; +{remaining} rejected; {otherWarnings} other warnings",
+                (> 0, _) => $"; +{remaining} rejected",
+                (_, > 0) => $"; {otherWarnings} other warnings",
+                _ => string.Empty,
+            };
+            if (summary.Length + separator.Length + item.Length + suffix.Length >
+                maximumSummaryLength)
+                break;
+            summary.Append(separator).Append(item);
+            included++;
+        }
+        var omitted = Math.Max(0, rejections.Count - included);
+        var additionalWarnings = Math.Max(0, warningCount - rejections.Count);
+        if (omitted != 0)
+            summary.Append($"; +{omitted} rejected");
+        if (additionalWarnings != 0)
+            summary.Append($"; {additionalWarnings} other warnings");
+        return summary.ToString();
     }
 
     private static PlatformDiagnosticArea Area(

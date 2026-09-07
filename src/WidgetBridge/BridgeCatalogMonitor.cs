@@ -18,7 +18,10 @@ internal readonly record struct BridgeCatalogDiagnosticSnapshot(
     long Revision,
     int DiagnosticCount,
     bool RetainedLastGood,
-    bool InstalledCatalogPending);
+    bool InstalledCatalogPending)
+{
+    internal IReadOnlyList<BridgeCatalogWidgetRejection> WidgetRejections { get; init; } = [];
+}
 
 internal readonly record struct BridgeCatalogStateSnapshot(
     BridgeCatalog Catalog,
@@ -56,6 +59,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     private long _revision;
     private bool _retainedLastGood;
     private bool _installedCatalogPending;
+    private IReadOnlyList<BridgeCatalogWidgetRejection> _widgetRejections;
     private long _reloadDemandGeneration;
     private bool _pendingForceRevision;
     private FileSystemWatcher? _trustedWatcher;
@@ -81,7 +85,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             loadCatalog: null,
             catalogLoadObserved: null,
             prepareWatchers: null,
-            beforePublicationCheck: null)
+            beforePublicationCheck: null,
+            initialWidgetRejections: null)
     {
     }
 
@@ -95,7 +100,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         Func<CancellationToken, Task<BridgeCatalogLoadResult>>? loadCatalog,
         Action<BridgeInstalledCatalogObservation>? catalogLoadObserved = null,
         Func<CancellationToken, Task>? prepareWatchers = null,
-        Action? beforePublicationCheck = null)
+        Action? beforePublicationCheck = null,
+        IReadOnlyList<BridgeCatalogWidgetRejection>? initialWidgetRejections = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trustedCatalogPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
@@ -106,6 +112,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         _current = initialCatalog ?? throw new ArgumentNullException(nameof(initialCatalog));
         _lastDiagnostics = initialDiagnostics?.Take(64).ToArray() ?? [];
         _installedCatalogPending = installedCatalogPending;
+        _widgetRejections = initialWidgetRejections?.Take(256).ToArray() ?? [];
         _catalogLoadObserved = catalogLoadObserved;
         _prepareWatchers = prepareWatchers ?? PrepareWatchersAsync;
         _beforePublicationCheck = beforePublicationCheck;
@@ -147,7 +154,10 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 _revision,
                 _lastDiagnostics.Count,
                 _retainedLastGood,
-                _installedCatalogPending);
+                _installedCatalogPending)
+            {
+                WidgetRejections = _widgetRejections,
+            };
     }
 
     internal BridgeCatalogStateSnapshot StateSnapshot()
@@ -260,6 +270,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                     _lastDiagnostics = warnings;
                     _retainedLastGood = false;
                     _installedCatalogPending = false;
+                    _widgetRejections = loaded.WidgetRejections.Take(256).ToArray();
                     if (demand.ForceRevision || !_current.IsEquivalentTo(loaded.Catalog))
                     {
                         _current = loaded.Catalog;
@@ -275,6 +286,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 {
                     _lastDiagnostics = loaded.Warnings.Take(64).ToArray();
                     _retainedLastGood = false;
+                    _widgetRejections = loaded.WidgetRejections.Take(256).ToArray();
                     if (demand.ForceRevision || _installedCatalogPending ||
                         !_current.IsEquivalentTo(loaded.Catalog))
                     {

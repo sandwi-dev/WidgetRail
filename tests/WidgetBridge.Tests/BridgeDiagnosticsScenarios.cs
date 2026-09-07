@@ -148,6 +148,67 @@ internal static class BridgeDiagnosticsScenarios
             "Pending installed-catalog authority was not described truthfully.");
     }
 
+    internal static async Task CatalogRejectionsAreBoundedAndActionable()
+    {
+        var source = new ControlledDiagnosticsSource(Model(Catalog()) with
+        {
+            CatalogDiagnosticCount = 4,
+            WidgetRejections =
+            [
+                new("dev.test.invalid-one", "invalid_styles"),
+                new("dev.test.invalid-two", "invalid_package"),
+                new(new string('x', 128), "access_denied"),
+            ],
+        });
+        var projection = new BridgeDiagnosticsProjection(
+            source,
+            () => new BridgeAuthorityRecoveryProjection(
+                new ControlledRecoveryService([])));
+
+        var diagnostics = await projection.CreateAsync(CancellationToken.None);
+        Equal(PlatformDiagnosticState.Degraded, diagnostics.Catalog.State,
+            "Isolated widget rejections did not degrade catalog diagnostics.");
+        Contains("dev.test.invalid-one (invalid_styles)", diagnostics.Catalog.Summary,
+            "Catalog diagnostics omitted the first rejected widget and stable reason.");
+        Contains("dev.test.invalid-two (invalid_package)", diagnostics.Catalog.Summary,
+            "Catalog diagnostics omitted the second rejected widget and stable reason.");
+        Contains("1 other warnings", diagnostics.Catalog.Summary,
+            "Non-widget catalog warnings disappeared from the bounded summary.");
+        Require(diagnostics.Catalog.Summary.Length <= 256,
+            "Catalog rejection diagnostics exceeded the transport summary bound.");
+        Require(!diagnostics.Catalog.Summary.Contains('\\') &&
+                !diagnostics.Catalog.Summary.Contains('\r') &&
+                !diagnostics.Catalog.Summary.Contains('\n'),
+            "Catalog rejection diagnostics exposed a path or multiline content.");
+
+        var manyRejections = Enumerable.Range(0, 65)
+            .Select(index => new BridgeCatalogWidgetRejection(
+                $"dev.test.invalid-{index:D3}", "invalid_styles"))
+            .ToArray();
+        var manySource = new ControlledDiagnosticsSource(Model(Catalog()) with
+        {
+            CatalogDiagnosticCount = 64,
+            WidgetRejections = manyRejections,
+        });
+        var manyProjection = new BridgeDiagnosticsProjection(
+            manySource,
+            () => new BridgeAuthorityRecoveryProjection(
+                new ControlledRecoveryService([])));
+        var many = await manyProjection.CreateAsync(CancellationToken.None);
+        var detailed = System.Text.RegularExpressions.Regex.Matches(
+            many.Catalog.Summary, @"dev\.test\.invalid-\d{3} \(").Count;
+        var omittedMatch = System.Text.RegularExpressions.Regex.Match(
+            many.Catalog.Summary, @"; \+(\d+) rejected");
+        Require(omittedMatch.Success,
+            "Bounded catalog diagnostics did not state the omitted rejection count.");
+        Equal(65, detailed + int.Parse(
+            omittedMatch.Groups[1].Value,
+            System.Globalization.CultureInfo.InvariantCulture),
+            "Bounded catalog diagnostics undercounted rejected widgets.");
+        Require(many.Catalog.Summary.Length <= 256,
+            "Many-rejection diagnostics exceeded the transport summary bound.");
+    }
+
     internal static async Task PartialFailureMalformedInputAndDeadlineAreClosed()
     {
         var catalog = Catalog();

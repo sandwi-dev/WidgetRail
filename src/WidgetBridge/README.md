@@ -342,6 +342,18 @@ styles. These entries use the packaged generic worker and mandatory host-owned
 AppContainer identity; a manifest or worker message cannot request Job-only
 execution.
 
+Catalog structure, the complete declared widget/package identity set, and the
+shared generic worker are validated before individual admission. Malformed
+catalogs, duplicate identities, or invalid shared worker authority fail closed;
+on reload they retain the last-good catalog. The exact trusted Settings identity
+also remains required for normal `--show` startup. Any other widget-local
+declaration, package, manifest, entrypoint, capability, integrity, path, or WRSS
+failure excludes only that widget. Healthy widgets still publish, and the
+Settings catalog diagnostic names each rejected widget with a bounded stable
+reason. A reload that makes a previously valid widget locally invalid removes
+and retires it; correcting the package admits it through the ordinary catalog
+generation path. Invalid styles are never replaced with an empty or prior theme.
+
 At startup the bridge also discovers the current-user `WidgetCatalog` and joins
 enabled, host/architecture-compatible packages in persisted order. It assigns
 each installed package an exact read-only package root, package-specific

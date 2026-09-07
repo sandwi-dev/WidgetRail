@@ -43,21 +43,26 @@ internal static class Program
                 Path.Combine(settingsPaths.RootDirectory, "overlay.log"),
                 bridgeSessionGeneration);
             var trustedCatalogStarted = Stopwatch.GetTimestamp();
-            var catalog = BridgeCatalog.LoadTrusted(catalogPath, installedCatalogRoot);
+            var trustedCatalog = BridgeCatalog.LoadTrustedObserved(
+                catalogPath, installedCatalogRoot);
+            var catalog = trustedCatalog.Catalog;
             mediaDiagnostics.RecordBridgeStartupPhase(
                 "trusted-catalog-ready",
                 (long)Stopwatch.GetElapsedTime(trustedCatalogStarted).TotalMilliseconds);
             await using var catalogMonitor = new BridgeCatalogMonitor(
                 catalogPath, installedCatalogRoot, workerHostExecutable, catalog,
-                initialDiagnostics: null,
+                initialDiagnostics: trustedCatalog.Warnings,
                 installedCatalogPending: true,
                 loadCatalog: null,
-                catalogLoadObserved: mediaDiagnostics.RecordInstalledCatalogLoad);
+                catalogLoadObserved: mediaDiagnostics.RecordInstalledCatalogLoad,
+                initialWidgetRejections: trustedCatalog.WidgetRejections);
             catalogMonitor.Diagnostics += (_, warnings) =>
             {
                 foreach (var warning in warnings)
                     Console.Error.WriteLine($"Widget catalog warning: {warning}");
             };
+            foreach (var warning in trustedCatalog.Warnings)
+                Console.Error.WriteLine($"Widget catalog warning: {warning}");
             var settingsStore = new PlatformSettingsStore(settingsPaths);
             mediaDiagnostics.RecordBridgeSessionStarted(Environment.ProcessId);
             await using var appearance = new PlatformAppearanceService(
