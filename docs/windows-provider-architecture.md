@@ -55,7 +55,7 @@ eventual widgets:
 | `system.network.bluetooth.read.v1` | Read/watch sanitized Bluetooth radio/discovery/device state; no native IDs. |
 | `system.network.bluetooth.radio.control.v1` | Request Bluetooth software radio On/Off while Interactive. |
 | `system.activity.recent.read.v1` | Read/watch bounded eligible running foreground observations as opaque IDs. |
-| `system.apps.library.read.v1` | Page sanitized Start Menu names/kinds and resolve authority-scoped durable SavedIds to current short-lived launch IDs while Visible or Interactive. |
+| `system.apps.library.read.v1` | Page sanitized app-library names/kinds and resolve authority-scoped durable SavedIds to current short-lived launch IDs while Visible or Interactive. |
 | `system.apps.library.launch.v1` | Launch one current exact provider-revalidated opaque app ID while Interactive. |
 
 Endpoint master-volume/mute, sanitized device visibility, and default-capture
@@ -454,8 +454,9 @@ files remain subject to Windows component and volume limits. Registration
 re-runs the bounded observation and requires the exact observation revision and
 process-instance evidence.
 
-Portable records are stored in canonical package-scoped provider documents
-under LocalAppData, with adjacent exclusive locking, atomic replacement, strict
+Portable records are stored in canonical package-scoped provider documents at
+`<resolved installed catalog root>/broker/portable-apps`, with adjacent
+exclusive locking, atomic replacement, strict
 duplicate/unmapped-property rejection, a 2 MiB document limit, and at most 64
 records. There is no silent eviction. The durable authority is
 publisher/package rather than a worker instance, so a worker restart keeps its
@@ -465,8 +466,9 @@ restoring those exact reviewed bytes restores that exact authority. Another
 package cannot query, forget, clear, or launch them. Settings local-data
 clearing removes only the current authority under revision confirmation. Exact
 package uninstall instead retires the package-grouped store for every installed
-or pruned publisher generation before its catalog commit. Its bounded staging
-marker makes interrupted cleanup idempotently resumable and blocks only
+or pruned publisher generation before its catalog commit. Default and explicit
+custom catalogs therefore never share portable records. The catalog's bounded
+staging marker makes interrupted cleanup idempotently resumable and blocks only
 recreation of that same package until recovery completes.
 
 Resolution and launch each recapture the canonical path and volume/file ID.

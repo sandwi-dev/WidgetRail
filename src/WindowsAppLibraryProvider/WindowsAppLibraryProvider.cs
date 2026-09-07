@@ -49,9 +49,21 @@ public sealed class WindowsAppLibraryProvider :
     private TaskCompletionSource? _terminalCompletion;
     private long _catalogRevision;
 
-    public WindowsAppLibraryProvider() : this(
-        AutomaticInstalledSourceDiscovery,
-        AutomaticInstalledSourceDiscovery)
+    public WindowsAppLibraryProvider() : this(DefaultInstalledCatalogRoot())
+    {
+    }
+
+    internal WindowsAppLibraryProvider(string installedCatalogRoot) : this(
+        CreateDefaultSources(
+            AutomaticInstalledSourceDiscovery,
+            AutomaticInstalledSourceDiscovery),
+        ShellStaExecutor.Shared,
+        new WindowsRunningAppObserver(),
+        new WindowsPortableAppStore(
+            WindowsPortableAppRegistrationPaths.ForCatalogRoot(installedCatalogRoot)),
+        new WindowsExecutableAuthorityReader(),
+        new WindowsPortableAppLauncher(),
+        TerminalDrainDeadline)
     {
     }
 
@@ -194,7 +206,9 @@ public sealed class WindowsAppLibraryProvider :
         IWindowsRunningAppObserver runningApps,
         TimeSpan terminalDrainDeadline) : this(
             sources, shellSta, runningApps,
-            new WindowsPortableAppStore(DefaultPortableStoreRoot()),
+            new WindowsPortableAppStore(
+                WindowsPortableAppRegistrationPaths.ForCatalogRoot(
+                    DefaultInstalledCatalogRoot())),
             new WindowsExecutableAuthorityReader(),
             new WindowsPortableAppLauncher(), terminalDrainDeadline)
     {
@@ -237,14 +251,14 @@ public sealed class WindowsAppLibraryProvider :
         _terminalDrainDeadline = terminalDrainDeadline;
     }
 
-    private static string DefaultPortableStoreRoot()
+    private static string DefaultInstalledCatalogRoot()
     {
         var localData = Environment.GetFolderPath(
             Environment.SpecialFolder.LocalApplicationData);
         if (string.IsNullOrWhiteSpace(localData))
             throw new BrokerException(
                 "platform_unavailable", "Portable app registration storage is unavailable.");
-        return Path.Combine(localData, "WidgetRail", "broker", "portable-apps");
+        return Path.Combine(localData, "WidgetRail", "widgets");
     }
 
     public async Task<RunningAppBackendObservationPage> ObserveRunningAppsAsync(

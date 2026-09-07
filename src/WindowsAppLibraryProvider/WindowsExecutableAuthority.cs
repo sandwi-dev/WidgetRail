@@ -5,11 +5,6 @@ using Microsoft.Win32.SafeHandles;
 
 namespace WidgetRail.WindowsAppLibraryProvider;
 
-internal sealed record WindowsExecutableFileIdentity(
-    ulong VolumeSerialNumber,
-    ulong FileIdLow,
-    ulong FileIdHigh);
-
 internal sealed record WindowsExecutableAuthority(
     string CanonicalPath,
     WindowsExecutableFileIdentity FileIdentity)
@@ -53,7 +48,8 @@ internal sealed class WindowsExecutableAuthorityLease(
 
 internal sealed class WindowsExecutableAuthorityReader : IWindowsExecutableAuthorityReader
 {
-    internal const int MaximumExecutablePathCharacters = 32_762;
+    internal const int MaximumExecutablePathCharacters =
+        WindowsPortableAppRegistrationPaths.MaximumExecutablePathCharacters;
     private const int NativeDosPathPrefixCharacters = 4;
     private const int FileAttributeTagInfoClass = 9;
     private const int FileIdInfoClass = 18;

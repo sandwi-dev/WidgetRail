@@ -1,8 +1,10 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using WidgetRail.PlatformBroker;
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WindowsAppLibraryProvider;
 using CatalogService = WidgetRail.WidgetCatalog.WidgetCatalog;
 
 namespace WidgetRail.WrailCli;
@@ -289,7 +291,10 @@ internal static class UninstallCommand
         if (parsed.Positionals.Count != 1)
             throw new CliUsageException("Usage: wrail uninstall <widget-id> [--catalog <root>]");
 
-        var catalog = new CatalogService(CatalogPath.Resolve(parsed.Option("--catalog")));
+        var catalogRoot = CatalogPath.Resolve(parsed.Option("--catalog"));
+        var catalog = new CatalogService(
+            catalogRoot,
+            new CliWidgetUninstallAuthorityParticipant(catalogRoot));
         try
         {
             var removed = await catalog.UninstallAsync(parsed.Positionals[0], cancellationToken);
@@ -299,13 +304,40 @@ internal static class UninstallCommand
                 $"{(removed.RemovedVersions.Count == 1 ? string.Empty : "s")}: {versions}).");
             if (removed.CleanupPending)
                 await output.WriteLineAsync(
-                    "Package retirement is complete; locked staging files will be retried " +
-                    "during the next install or uninstall.");
+                    "Package retirement is complete; pending cleanup will be retried " +
+                    "by a later uninstall operation on this catalog.");
             return 0;
         }
         catch (KeyNotFoundException exception)
         {
             throw new CliOperationException(exception.Message, exception);
+        }
+    }
+}
+
+internal sealed class CliWidgetUninstallAuthorityParticipant(
+    string catalogRoot) : IWidgetUninstallAuthorityParticipant
+{
+    private readonly WindowsPortableAppStore _store = new(
+        WindowsPortableAppRegistrationPaths.ForCatalogRoot(catalogRoot));
+
+    public async Task<WidgetUninstallAuthorityCommit> RetirePackageAsync(
+        string packageId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _store.RetirePackageAsync(
+                packageId, cancellationToken).ConfigureAwait(false);
+            return new(result.Committed, result.CleanupPending);
+        }
+        catch (Exception exception) when (exception is BrokerException or
+            IOException or UnauthorizedAccessException)
+        {
+            throw new WidgetPackageException(
+                "registration_cleanup_failed",
+                "Portable app registration cleanup failed.",
+                exception);
         }
     }
 }

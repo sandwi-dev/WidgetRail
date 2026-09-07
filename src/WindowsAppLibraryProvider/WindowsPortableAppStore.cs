@@ -7,42 +7,6 @@ using WidgetRail.PlatformBroker;
 
 namespace WidgetRail.WindowsAppLibraryProvider;
 
-internal sealed record PortableAppRegistration(
-    string SavedId,
-    string StableIdentity,
-    string DisplayName,
-    string ExecutablePath,
-    WindowsExecutableFileIdentity FileIdentity);
-
-internal sealed record PortableAppRegistrationSnapshot(
-    long Revision,
-    IReadOnlyList<PortableAppRegistration> Items);
-
-internal sealed record PortableAppRegistrationMutation(
-    PortableAppRegistrationSnapshot Snapshot,
-    bool Changed);
-
-internal sealed record PortableAppPackageRetirement(
-    bool Committed,
-    bool CleanupPending);
-
-internal interface IWindowsPortableAppStore
-{
-    Task<PortableAppRegistrationSnapshot> ReadAsync(
-        BrokerWidgetIdentity identity, CancellationToken cancellationToken);
-    Task<PortableAppRegistrationMutation> UpsertAsync(
-        BrokerWidgetIdentity identity, PortableAppRegistration registration,
-        CancellationToken cancellationToken);
-    Task<PortableAppRegistrationMutation> RemoveAsync(
-        BrokerWidgetIdentity identity, string savedId,
-        CancellationToken cancellationToken);
-    Task ClearAsync(
-        BrokerWidgetIdentity identity, long expectedRevision,
-        CancellationToken cancellationToken);
-    Task<PortableAppPackageRetirement> RetirePackageAsync(
-        string packageId, CancellationToken cancellationToken);
-}
-
 /// <summary>
 /// Provider-private package-scoped executable registrations. One canonical
 /// document is serialized by an in-process gate and adjacent exclusive lock;
@@ -467,7 +431,7 @@ internal sealed class WindowsPortableAppStore : IWindowsPortableAppStore
             registration.DisplayName is not { Length: > 0 and <= 120 } ||
             registration.DisplayName.Any(char.IsControl) ||
             registration.ExecutablePath is not { Length: > 0 and <=
-                WindowsExecutableAuthorityReader.MaximumExecutablePathCharacters } ||
+                WindowsPortableAppRegistrationPaths.MaximumExecutablePathCharacters } ||
             !Path.IsPathFullyQualified(registration.ExecutablePath) ||
             registration.FileIdentity is null)
             throw new BrokerException(code, "Portable app registration is invalid.");

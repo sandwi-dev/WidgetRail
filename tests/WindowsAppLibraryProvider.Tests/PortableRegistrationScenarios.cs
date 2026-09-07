@@ -36,6 +36,9 @@ internal static class PortableRegistrationScenarios
         if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
 
         using var temp = new PortableTemporaryDirectory();
+        Assert.Equal(
+            Path.Combine(Path.GetFullPath(temp.Path), "broker", "portable-apps"),
+            WindowsPortableAppRegistrationPaths.ForCatalogRoot(temp.Path));
         var applicationDirectory = Path.Combine(temp.Path, "application");
         Directory.CreateDirectory(applicationDirectory);
         var path = Path.Combine(applicationDirectory, "Portable.exe");

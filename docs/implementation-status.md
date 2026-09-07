@@ -5826,8 +5826,10 @@ The provider-neutral App Library contract now separates privacy-safe running
 observation, explicit package-owned registration/forget, and launch into three
 capabilities. Registration is Interactive-only, revalidates the exact current
 observation and process instance, and preserves installed-catalog precedence.
-Portable executable path and Windows volume/file identity remain inside a
-bounded canonical provider store; widgets retain only their opaque SavedId.
+Portable executable path and Windows volume/file identity remain inside the
+resolved catalog's bounded `broker/portable-apps` store; default and explicit
+custom catalogs do not share records, and widgets retain only their opaque
+SavedId.
 
 Resolution and launch recapture exact file authority, so missing, moved, and
 replaced executables fail closed until explicitly registered again. Launch is
@@ -5835,7 +5837,7 @@ the exact executable only, with no arguments, Shell verb, elevation, or
 provider-specific command. The 64-record package capacity has explicit failure
 and removal reclaim. Settings local-data clear remains current-authority CAS;
 package uninstall uses a durable catalog staging marker and retires every
-publisher generation in the package group before the catalog commit. A failed
+publisher generation in that catalog's package group before the catalog commit. A failed
 precommit cleanup rolls the disabled package back for retry, while postcommit
 physical cleanup reports `CleanupPending`. Stage A adds no Games & Apps product
 route; consumer adoption remains separately reviewed.

@@ -414,10 +414,10 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.NetworkBluetoothUnpairV1 => "Remove Bluetooth pairings",
         PlatformCapabilities.NetworkBluetoothManageV1 => "Open Bluetooth device settings",
         PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
-        PlatformCapabilities.AppLibraryReadV1 => "See installed apps",
+        PlatformCapabilities.AppLibraryReadV1 => "See your app library",
         PlatformCapabilities.AppRunningReadV1 => "See visible running apps",
         PlatformCapabilities.AppRunningRegisterV1 => "Remember running apps",
-        PlatformCapabilities.AppLibraryLaunchV1 => "Launch installed apps",
+        PlatformCapabilities.AppLibraryLaunchV1 => "Launch app library items",
         PlatformCapabilities.MediaSessionsReadV1 => "See Windows media sessions",
         PlatformCapabilities.MediaSessionsControlV1 => "Control media playback",
         PlatformCapabilities.PrivateSecretsV1 => "Store private connection secrets",
@@ -487,10 +487,10 @@ internal static class SettingsPermissionPresentation
             "See a bounded list of privacy-filtered running applications observed after you allow access. " +
             "Widgets receive only display names, app kinds, state, and opaque IDs—never process IDs, paths, command lines, or window handles.",
         PlatformCapabilities.AppLibraryReadV1 =>
-            "See a bounded catalog of Start Menu application names, conservative kinds, and opaque IDs. " +
+            "See a bounded app library of current installed applications and this package's explicitly remembered apps, using conservative kinds and opaque IDs. " +
             "Widgets never receive paths, shortcuts, command lines, package identities, AUMIDs, or launch authority.",
         PlatformCapabilities.AppRunningReadV1 =>
-            "On request, see visible applications that exactly match the installed catalog. " +
+            "On request, see bounded visible applications that match the current catalog or can be explicitly remembered. " +
             "Widgets receive only names, kinds, sources, and opaque saved IDs—never process or window identity.",
         PlatformCapabilities.AppRunningRegisterV1 =>
             "After an explicit action, remember one exact visible application for this widget package. " +
@@ -498,7 +498,7 @@ internal static class SettingsPermissionPresentation
             "widgets receive only an opaque saved ID and cannot supply paths, arguments, working directories, or elevation. " +
             "Forgetting removes only this package's portable record; installed catalog entries are unchanged.",
         PlatformCapabilities.AppLibraryLaunchV1 =>
-            "Launch one selected Start Menu registration by its opaque ID while the widget is interactive. " +
+            "Launch one current app-library item by its opaque ID while the widget is interactive. " +
             "The trusted host rechecks the exact registration before asking Windows to open it; widgets cannot " +
             "supply paths, arguments, working directories, elevation, or foreground-window commands.",
         PlatformCapabilities.MediaSessionsReadV1 =>

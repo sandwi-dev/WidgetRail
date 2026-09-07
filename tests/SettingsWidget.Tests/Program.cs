@@ -1808,7 +1808,7 @@ static async Task AppLibraryPermissionCopy()
     await Action(widget, "open.permissions");
     await Action(widget, "permission.select.0");
     var capabilities = Snapshot(widget);
-    Assert.Contains("See installed apps", Button(capabilities.Root, "capability.item.0").Text!);
+    Assert.Contains("See your app library", Button(capabilities.Root, "capability.item.0").Text!);
     await Action(widget, "capability.select.0");
     var decision = Snapshot(widget);
     var description = Text(decision.Root, "capability.description").Text!;
@@ -1817,7 +1817,7 @@ static async Task AppLibraryPermissionCopy()
     Assert.Contains("launch authority", description);
     await Action(widget, "back");
     var launchCapabilities = Snapshot(widget);
-    Assert.Contains("Launch installed apps",
+    Assert.Contains("Launch app library items",
         Button(launchCapabilities.Root, "capability.item.1").Text!);
     Assert.Contains("See visible running apps",
         Button(launchCapabilities.Root, "capability.item.2").Text!);
