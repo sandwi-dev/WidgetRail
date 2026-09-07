@@ -275,12 +275,10 @@ internal static class GamesAppsPresentation
         var label = page == GamesAppsPage.Running
             ? "Checking running apps"
             : "Loading applications";
-        return UI.Row(
+        return UI.Stack(
                 "games.route.progress",
-                UI.LoadingIndicator("games.route.loading", label)
-                    .Classes("games-state-loading"),
-                UI.Text(label, "games.route.progress.title", label)
-                    .Classes("games-route-progress-label"))
+                UI.LoadingIndicator(
+                    "games.route.loading", label, LoadingIndicatorSize.Large))
             .Classes("games-route-progress");
     }
 

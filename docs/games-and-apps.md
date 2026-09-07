@@ -118,10 +118,15 @@ explicit game-library source, not a guess based on process or executable names.
   hierarchy. Recovery remains controller reachable through one explicit retry
   action. A first visit to Add apps or Running publishes its page-entry request
   immediately but keeps the content entry unavailable until real content exists;
-  its compact loading indicator and text are non-focusable and the temporary
-  page does not claim remembered child focus. Once Ready, the real default and
-  remembered content group become available to that same request. Same-route
-  refresh retains the existing rows and focus while reporting progress.
+  its large centered loading indicator is non-focusable, has an accessibility
+  label but no visible copy, and the temporary page does not claim remembered
+  child focus. Once shown, that first-route indicator remains for at least one
+  second while data work proceeds immediately; route cancellation or newer
+  navigation cancels the wait. Success and visible failure publish only for the
+  still-current route. Once Ready, the real default and remembered content group
+  become available to that same request. Same-route refresh retains the existing
+  rows and focus without the minimum loading delay. Header selection and LB/RB
+  use the same remembered/default entry behavior when they change sections.
 - A failed fresh authority refresh retains the display-only Library with an
   explicit unavailable status; it never promotes stale rows to launchable.
   Initial activation, reactivation, and explicit Y refresh keep that last-good
@@ -134,6 +139,9 @@ explicit game-library source, not a guess based on process or executable names.
   cancellation-ignoring late provider result. The manifest uses
   `unload-after-idle` with a 120-second idle interval; the bridge can recreate
   the worker from its last validated snapshot when it is needed again.
+  A same-worker reactivation preserves the current Library, Add apps, or Running
+  root and restarts only that root's existing read operation. A newly created
+  worker still begins at Library; no route is added to durable private state.
 
 ## Managed responsibility map
 

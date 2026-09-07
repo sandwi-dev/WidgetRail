@@ -38,6 +38,8 @@ public sealed class GamesAppsWidget : Widget
         MaximumCuratedItems + GamesAppsLibraryPolicy.MaximumExcludedGames;
     private const string LibraryLoadOperationKey = "games.library.load";
     private const string PageLoadOperationKey = "games.page.load";
+    private static readonly TimeSpan MinimumInitialRouteLoadingDuration =
+        TimeSpan.FromSeconds(1);
     private static readonly WidgetAppLibraryQuery AllInstalledQuery = new();
     private static readonly WidgetAppLibraryQuery InstalledGamesQuery =
         new(Kind: WidgetAppLibraryKind.Game);
@@ -53,6 +55,7 @@ public sealed class GamesAppsWidget : Widget
     private readonly object _gate = new();
     private readonly WidgetNavigator<GamesAppsPage> _navigation;
     private readonly WidgetTimedMutation _toastExpiry;
+    private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _commandGate = new(1, 1);
     private IReadOnlyList<WidgetAppLibraryItem> _items = [];
     private IReadOnlyList<WidgetAppLibraryItem> _libraryItems = [];
@@ -76,6 +79,7 @@ public sealed class GamesAppsWidget : Widget
 
     internal GamesAppsWidget(TimeProvider timeProvider)
     {
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _navigation = CreateNavigatorWithOptions(
             "games.navigation",
             GamesAppsPage.Library,
@@ -86,7 +90,7 @@ public sealed class GamesAppsWidget : Widget
             });
         _toastExpiry = CreateTimedMutation(
             WidgetOperationLifetime.Active,
-            timeProvider ?? throw new ArgumentNullException(nameof(timeProvider)));
+            _timeProvider);
     }
 
     public GamesAppsViewState ViewState { get { lock (_gate) return _viewState; } }
@@ -187,16 +191,16 @@ public sealed class GamesAppsWidget : Widget
         {
             case "games.open-library":
                 if (LifecycleState == WidgetLifecycleState.Interactive)
-                    OpenLibrary(enterRememberedContent: !IsSectionHeaderAction(action));
+                    OpenLibrary(enterRememberedContent: true);
                 return;
             case "games.open-catalog":
                 OpenCatalog(
-                    enterRememberedContent: !IsSectionHeaderAction(action),
+                    enterRememberedContent: true,
                     force: false);
                 return;
             case "games.open-running":
                 OpenRunning(
-                    enterRememberedContent: !IsSectionHeaderAction(action),
+                    enterRememberedContent: true,
                     force: false);
                 return;
             case "games.section.previous":
@@ -468,6 +472,22 @@ public sealed class GamesAppsWidget : Widget
     private async ValueTask StartActiveRunAsync(CancellationToken activeLifetime)
     {
         StopActiveRun();
+        if (Page == GamesAppsPage.Catalog)
+        {
+            OpenCatalog(
+                enterRememberedContent: false,
+                force: true,
+                resumeActiveRoot: true);
+            return;
+        }
+        if (Page == GamesAppsPage.Running)
+        {
+            OpenRunning(
+                enterRememberedContent: false,
+                force: true,
+                resumeActiveRoot: true);
+            return;
+        }
         _ = _navigation.NavigateRoot(
             GamesAppsPage.Library,
             GamesAppsPresentation.FocusGroupId(GamesAppsPage.Library));
@@ -913,10 +933,6 @@ public sealed class GamesAppsWidget : Widget
             item.SavedId, liveSelectedSavedId, StringComparison.Ordinal))?.AppId ??
         items.FirstOrDefault()?.AppId;
 
-    private static bool IsSectionHeaderAction(WidgetActionEvent action) =>
-        action.SourceElementId.StartsWith("games.sections.compact-", StringComparison.Ordinal) ||
-        action.SourceElementId.StartsWith("games.sections.rail-", StringComparison.Ordinal);
-
     private void SwitchRoot(int offset)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
@@ -970,12 +986,17 @@ public sealed class GamesAppsWidget : Widget
 
     private void OpenCatalog(
         bool enterRememberedContent,
-        bool force)
+        bool force,
+        bool resumeActiveRoot = false)
     {
-        if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        if (!resumeActiveRoot && LifecycleState != WidgetLifecycleState.Interactive) return;
+        if (resumeActiveRoot && Page != GamesAppsPage.Catalog)
+            throw new InvalidOperationException(
+                "Only the current Catalog root can resume on activation.");
         if (Page == GamesAppsPage.Catalog && !force) return;
         Operations.Cancel(LibraryLoadOperationKey);
         var sameRoute = Page == GamesAppsPage.Catalog;
+        var enforceMinimumLoading = !sameRoute;
         long generation;
         lock (_gate)
         {
@@ -993,11 +1014,14 @@ public sealed class GamesAppsWidget : Widget
             _catalogRefreshBusy = false;
             _toast = null;
         }
-        _ = enterRememberedContent
-            ? _navigation.NavigateRoot(
-                GamesAppsPage.Catalog,
-                GamesAppsPresentation.FocusGroupId(GamesAppsPage.Catalog))
-            : _navigation.NavigateRoot(GamesAppsPage.Catalog);
+        if (!resumeActiveRoot)
+        {
+            _ = enterRememberedContent
+                ? _navigation.NavigateRoot(
+                    GamesAppsPage.Catalog,
+                    GamesAppsPresentation.FocusGroupId(GamesAppsPage.Catalog))
+                : _navigation.NavigateRoot(GamesAppsPage.Catalog);
+        }
         var navigation = _navigation.Value;
         Invalidate();
         SchedulePageOperation(
@@ -1006,10 +1030,12 @@ public sealed class GamesAppsWidget : Widget
             generation,
             async cancellationToken =>
             {
-                var page = await HostServices.AppLibrary.QueryAsync(
+                var page = await AwaitInitialRouteLoadingAsync(
+                    HostServices.AppLibrary.QueryAsync(
                         AllInstalledQuery, limit: PageSize, refresh: force,
-                        cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
+                        cancellationToken: cancellationToken).AsTask(),
+                    enforceMinimumLoading,
+                    cancellationToken).ConfigureAwait(false);
                 ApplyPage(page, GamesAppsCatalogPageTransition.Initial, generation);
             },
             "Catalog unavailable",
@@ -1019,12 +1045,17 @@ public sealed class GamesAppsWidget : Widget
 
     private void OpenRunning(
         bool enterRememberedContent,
-        bool force)
+        bool force,
+        bool resumeActiveRoot = false)
     {
-        if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        if (!resumeActiveRoot && LifecycleState != WidgetLifecycleState.Interactive) return;
+        if (resumeActiveRoot && Page != GamesAppsPage.Running)
+            throw new InvalidOperationException(
+                "Only the current Running root can resume on activation.");
         if (Page == GamesAppsPage.Running && !force) return;
         Operations.Cancel(LibraryLoadOperationKey);
         var sameRoute = Page == GamesAppsPage.Running;
+        var enforceMinimumLoading = !sameRoute;
         long generation;
         lock (_gate)
         {
@@ -1042,11 +1073,14 @@ public sealed class GamesAppsWidget : Widget
             _catalogRefreshBusy = false;
             _toast = null;
         }
-        _ = enterRememberedContent
-            ? _navigation.NavigateRoot(
-                GamesAppsPage.Running,
-                GamesAppsPresentation.FocusGroupId(GamesAppsPage.Running))
-            : _navigation.NavigateRoot(GamesAppsPage.Running);
+        if (!resumeActiveRoot)
+        {
+            _ = enterRememberedContent
+                ? _navigation.NavigateRoot(
+                    GamesAppsPage.Running,
+                    GamesAppsPresentation.FocusGroupId(GamesAppsPage.Running))
+                : _navigation.NavigateRoot(GamesAppsPage.Running);
+        }
         var navigation = _navigation.Value;
         Invalidate();
         SchedulePageOperation(
@@ -1055,8 +1089,10 @@ public sealed class GamesAppsWidget : Widget
             generation,
             async cancellationToken =>
             {
-                var observed = await HostServices.AppLibrary
-                    .ObserveRunningAsync(cancellationToken).ConfigureAwait(false);
+                var observed = await AwaitInitialRouteLoadingAsync(
+                    HostServices.AppLibrary.ObserveRunningAsync(cancellationToken).AsTask(),
+                    enforceMinimumLoading,
+                    cancellationToken).ConfigureAwait(false);
                 var items = observed.Items.Select(item => new WidgetAppLibraryItem(
                     item.SavedId,
                     item.SavedId,
@@ -1090,6 +1126,22 @@ public sealed class GamesAppsWidget : Widget
             "Running apps unavailable",
             "Running apps could not be checked",
             ToastTone.Warning);
+    }
+
+    private async Task<T> AwaitInitialRouteLoadingAsync<T>(
+        Task<T> load,
+        bool enforceMinimumLoading,
+        CancellationToken cancellationToken)
+    {
+        if (!enforceMinimumLoading)
+            return await load.ConfigureAwait(false);
+
+        var minimumDisplay = Task.Delay(
+            MinimumInitialRouteLoadingDuration,
+            _timeProvider,
+            cancellationToken);
+        await Task.WhenAll(load, minimumDisplay).ConfigureAwait(false);
+        return await load.ConfigureAwait(false);
     }
 
     private void SchedulePageOperation(

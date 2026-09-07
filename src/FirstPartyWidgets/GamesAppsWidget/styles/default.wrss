@@ -279,16 +279,6 @@
   flex-shrink: 1;
 }
 
-.games-route-progress-label {
-  min-width: 0px;
-  color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.25;
-  max-lines: 1;
-  text-overflow: ellipsis;
-}
-
 .games-state-loading,
 .games-state-icon {
   width: 32px;
