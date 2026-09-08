@@ -174,7 +174,11 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 }
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
     -Destination (Join-Path $stagingRoot 'styles\default.wrss') -Force
-foreach ($iconName in @('spotify-black.svg', 'spotify-green.svg', 'spotify-white.svg')) {
+foreach ($iconName in @(
+    'spotify-black.svg',
+    'spotify-full-green.svg',
+    'spotify-green.svg',
+    'spotify-white.svg')) {
     Copy-Item -LiteralPath (Join-Path $sampleRoot "assets\icons\$iconName") `
         -Destination (Join-Path $stagingRoot "assets\icons\$iconName") -Force
 }
@@ -192,6 +196,7 @@ $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEac
 $requiredFiles = @(
     'manifest.json',
     'assets\icons\spotify-black.svg',
+    'assets\icons\spotify-full-green.svg',
     'assets\icons\spotify-green.svg',
     'assets\icons\spotify-white.svg',
     'payload\SpotifyApplication.exe',

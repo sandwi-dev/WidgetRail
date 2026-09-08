@@ -10,8 +10,8 @@ internal static class SpotifyPresentation
     private const int PinnedUpNextMaximumItems = 2;
     private const string InputScope = "spotify.window";
     private const string SetupScope = "spotify.setup";
-    private static readonly WidgetIcon SpotifyBrandIcon = WidgetIcon.PackageSvg(
-        "spotify.brand.green", WidgetPackageIconColorMode.OriginalColor,
+    private static readonly WidgetIcon SpotifyFullLogo = WidgetIcon.PackageSvg(
+        "spotify.brand.full-green", WidgetPackageIconColorMode.OriginalColor,
         WidgetGlyph.Music);
     internal const string CompactPinnedLayoutId = "spotify.pinned.compact";
     internal const string UpNextPinnedLayoutId = "spotify.pinned.up-next";
@@ -250,11 +250,8 @@ internal static class SpotifyPresentation
 
     private static StackElement Header(string status, SpotifyWidgetViewState state) =>
         UI.Stack("spotify.header",
-                UI.Row("spotify.brand",
-                        UI.Icon(SpotifyBrandIcon, "spotify.brand.icon", "Spotify"),
-                        UI.Text("SPOTIFY", "spotify.eyebrow", "Spotify")
-                            .Classes("spotify-eyebrow"))
-                    .Classes("spotify-brand"),
+                UI.Icon(SpotifyFullLogo, "spotify.brand.full-logo", "Spotify")
+                    .Classes("spotify-full-logo"),
                 UI.Row("spotify.heading",
                         UI.Text("Music", "spotify.title", "Spotify music").Classes("spotify-title"),
                         UI.Text(status, "spotify.status", status).Classes("spotify-status",

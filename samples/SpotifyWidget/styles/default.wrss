@@ -68,6 +68,7 @@
 }
 
 .spotify-header { gap: 2px; flex-shrink: 0; }
+.spotify-full-logo { width: 117px; height: 32px; flex-shrink: 0; }
 .spotify-heading {
   min-width: 0px;
   gap: 4px 12px;

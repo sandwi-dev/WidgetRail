@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.spotify",
   "publisher": "widgetrail.samples",
   "name": "Spotify",
-  "version": "0.3.35",
+  "version": "0.3.36",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -22,6 +22,7 @@
   },
   "iconAssets": {
     "spotify.brand.black": { "path": "assets/icons/spotify-black.svg" },
+    "spotify.brand.full-green": { "path": "assets/icons/spotify-full-green.svg" },
     "spotify.brand.green": { "path": "assets/icons/spotify-green.svg" },
     "spotify.brand.white": { "path": "assets/icons/spotify-white.svg" }
   },
