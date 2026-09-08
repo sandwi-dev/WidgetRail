@@ -59,6 +59,9 @@ internal static class BridgeClientRegistryScenarios
         var configured = Widget("pinned-input", worker: 'i', catalog: 'i');
         var selectedActionId = "compact-quality.high";
         var selectedOptionDisabled = false;
+        var sliderMinimum = 0d;
+        var sliderMaximum = 100d;
+        var sliderStep = 5d;
         await using var fixture = new RegistryFixture(
             Catalog(configured),
             configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
@@ -116,10 +119,10 @@ internal static class BridgeClientRegistryScenarios
                                     Id = "compact.seek",
                                     Kind = ViewNodeKind.Slider,
                                     ValueChangedActionId = "compact-seek.changed",
-                                    Minimum = 0,
-                                    Maximum = 100,
+                                    Minimum = sliderMinimum,
+                                    Maximum = sliderMaximum,
                                     Value = 40,
-                                    Step = 5,
+                                    Step = sliderStep,
                                     SliderInteractionMode = SliderInteractionMode.ActivateToAdjust,
                                 },
                                 new ViewNode
@@ -204,6 +207,31 @@ internal static class BridgeClientRegistryScenarios
             RegistryAssert.True(publication.Value);
         RegistryAssert.Equal(3, client.ControllerInputs.Count);
 
+        var sliderAuthority = successor;
+        foreach (var mutate in new Action[]
+        {
+            () => sliderMinimum = 5,
+            () => sliderMaximum = 95,
+            () => sliderStep = 10,
+        })
+        {
+            mutate();
+            var changedSlider = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+            await RegistryAssert.ThrowsAsync<BridgeStalePinnedInputAuthorityException>(() =>
+                fixture.Registry.SendControllerInputAsync(
+                    configured.Id, sliderInput with
+                    {
+                        SnapshotSequence = sliderAuthority.Sequence,
+                        Sequence = 20,
+                    }, generation, CancellationToken.None, CancellationToken.None,
+                    expectedActionId: "compact-seek.changed"));
+            sliderAuthority = changedSlider;
+        }
+        sliderMinimum = 0;
+        sliderMaximum = 100;
+        sliderStep = 5;
+        sliderAuthority = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+
         var selectInput = new ControllerInputEvent(
             ControllerButton.A,
             ControllerEventPhase.Pressed,
@@ -211,7 +239,7 @@ internal static class BridgeClientRegistryScenarios
             FocusedElementId: "compact.quality",
             Sequence: 3,
             ActiveInputScopeId: "compact.root",
-            SnapshotSequence: successor.Sequence)
+            SnapshotSequence: sliderAuthority.Sequence)
         {
             PinnedLayoutId = "compact",
         };
@@ -309,6 +337,8 @@ internal static class BridgeClientRegistryScenarios
         var configured = Widget("pinned-shortcut-owner", worker: 'h', catalog: 'h');
         var ownerDisabled = false;
         var ownerBusy = false;
+        var shortcutActionId = "owner.action";
+        var shortcutRepeatPolicy = ControllerActionRepeatPolicy.WhileHeld;
         await using var fixture = new RegistryFixture(
             Catalog(configured),
             configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
@@ -360,6 +390,29 @@ internal static class BridgeClientRegistryScenarios
             RegistryAssert.True(publication.Value);
         var client = fixture.Clients.Single();
         RegistryAssert.Equal(1, client.ControllerInputs.Count);
+
+        shortcutActionId = "owner.retargeted";
+        _ = await fixture.GetSnapshotAsync(configured.Id);
+        await RegistryAssert.ThrowsAsync<BridgeStalePinnedInputAuthorityException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, input with { Sequence = 2 }, generation,
+                CancellationToken.None, CancellationToken.None,
+                expectedActionId: "owner.action"));
+
+        shortcutActionId = "owner.action";
+        var restored = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        shortcutRepeatPolicy = ControllerActionRepeatPolicy.None;
+        _ = await fixture.GetSnapshotAsync(configured.Id);
+        await RegistryAssert.ThrowsAsync<BridgeStalePinnedInputAuthorityException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, input with
+                {
+                    SnapshotSequence = restored.Sequence,
+                    Sequence = 3,
+                }, generation, CancellationToken.None, CancellationToken.None,
+                expectedActionId: "owner.action"));
+        shortcutRepeatPolicy = ControllerActionRepeatPolicy.WhileHeld;
+        _ = await fixture.GetSnapshotAsync(configured.Id);
 
         ownerDisabled = true;
         var disabled = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
@@ -416,9 +469,9 @@ internal static class BridgeClientRegistryScenarios
                     Shortcuts =
                     [
                         new ControllerShortcut(
-                            ControllerButton.X, "owner.action",
+                            ControllerButton.X, shortcutActionId,
                             ControllerEventPhase.Pressed,
-                            ControllerActionRepeatPolicy.WhileHeld),
+                            shortcutRepeatPolicy),
                     ],
                     Children =
                     [
@@ -434,6 +487,154 @@ internal static class BridgeClientRegistryScenarios
                 },
             ],
         };
+    }
+
+    internal static async Task OpenWidgetInputRetainsCompatibleCommittedAuthority()
+    {
+        var configured = Widget("open-input-refresh", worker: 'o', catalog: 'o');
+        var actionId = "open.activate";
+        var scopeId = "open.root";
+        var includeFocusedNode = true;
+        var focusedDisabled = false;
+        await using var fixture = new RegistryFixture(
+            Catalog(configured),
+            configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
+            {
+                ProtocolVersion = ProtocolConstants.CurrentVersion,
+                Sequence = sequence,
+                WidgetInstanceId = configured.InstanceId,
+                ActiveInputScopeId = scopeId,
+                InitialFocusId = includeFocusedNode ? "open.action" : null,
+                Root = new ViewNode
+                {
+                    Id = scopeId,
+                    Kind = ViewNodeKind.Stack,
+                    InputScopeId = scopeId,
+                    Children = includeFocusedNode
+                        ?
+                        [
+                            new ViewNode
+                            {
+                                Id = "open.action",
+                                Kind = ViewNodeKind.Button,
+                                ActionId = actionId,
+                                IsDisabled = focusedDisabled,
+                            },
+                            new ViewNode { Id = "open.raw", Kind = ViewNodeKind.Text },
+                        ]
+                        : [],
+                },
+            });
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Interactive);
+        var generation = configured.PublicDescriptor().RuntimeGeneration;
+        var origin = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        var compatible = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        var input = new ControllerInputEvent(
+            ControllerButton.A,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: "open.action",
+            Sequence: 1,
+            ActiveInputScopeId: "open.root",
+            SnapshotSequence: origin.Sequence);
+
+        using (var publication = await fixture.Registry.SendControllerInputAsync(
+                   configured.Id, input, generation,
+                   CancellationToken.None, CancellationToken.None,
+                   expectedActionId: "open.activate"))
+            RegistryAssert.True(publication.Value);
+        var client = fixture.Clients.Single();
+        RegistryAssert.Equal(1, client.ControllerInputs.Count);
+        RegistryAssert.Equal(compatible.Sequence,
+            client.ControllerInputs[0].SnapshotSequence);
+
+        var latest = compatible;
+        for (var index = 0; index < 17; index++)
+            latest = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, input with
+                {
+                    SnapshotSequence = compatible.Sequence,
+                    Sequence = 2,
+                }, generation, CancellationToken.None, CancellationToken.None,
+                expectedActionId: "open.activate"));
+
+        // A custom widget override remains eligible without a declarative
+        // binding only while its exact snapshot/focus/scope authority is still
+        // current. Private handler semantics cannot be compared across views.
+        using (var publication = await fixture.Registry.SendControllerInputAsync(
+                   configured.Id, input with
+                   {
+                       Button = ControllerButton.B,
+                       FocusedElementId = "open.raw",
+                       SnapshotSequence = latest.Sequence,
+                       Sequence = 3,
+                   }, generation, CancellationToken.None, CancellationToken.None))
+            RegistryAssert.True(publication.Value);
+        RegistryAssert.Equal(2, client.ControllerInputs.Count);
+        RegistryAssert.Equal(latest.Sequence,
+            client.ControllerInputs[1].SnapshotSequence);
+        var rawSuccessor = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, input with
+                {
+                    Button = ControllerButton.B,
+                    FocusedElementId = "open.raw",
+                    SnapshotSequence = latest.Sequence,
+                    Sequence = 4,
+                }, generation, CancellationToken.None, CancellationToken.None));
+
+        actionId = "open.retargeted";
+        _ = await fixture.GetSnapshotAsync(configured.Id);
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, input with
+                {
+                    SnapshotSequence = rawSuccessor.Sequence,
+                    Sequence = 5,
+                }, generation, CancellationToken.None, CancellationToken.None,
+                expectedActionId: "open.activate"));
+
+        actionId = "open.activate";
+        var restored = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        focusedDisabled = true;
+        var disabled = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, input with
+                {
+                    SnapshotSequence = restored.Sequence,
+                    Sequence = 6,
+                }, generation, CancellationToken.None, CancellationToken.None,
+                expectedActionId: "open.activate"));
+
+        focusedDisabled = false;
+        var enabled = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        includeFocusedNode = false;
+        _ = await fixture.GetSnapshotAsync(configured.Id);
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, input with
+                {
+                    SnapshotSequence = enabled.Sequence,
+                    Sequence = 7,
+                }, generation, CancellationToken.None, CancellationToken.None,
+                expectedActionId: "open.activate"));
+
+        includeFocusedNode = true;
+        var oldScope = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        scopeId = "open.replaced-root";
+        _ = await fixture.GetSnapshotAsync(configured.Id);
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, input with
+                {
+                    SnapshotSequence = oldScope.Sequence,
+                    Sequence = 8,
+                }, generation, CancellationToken.None, CancellationToken.None));
+        RegistryAssert.Equal(2, client.ControllerInputs.Count);
     }
 
     internal static async Task EmbeddedMediaRequiresExactPublicationAuthority()

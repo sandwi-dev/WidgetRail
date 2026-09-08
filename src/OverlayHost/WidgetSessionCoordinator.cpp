@@ -763,6 +763,7 @@ WidgetSessionPresentation WidgetSessionCoordinator::Presentation(
     const auto* snapshot = Snapshot(widgetId);
     if (!snapshot) return {};
     const auto id = std::wstring(widgetId);
+    const auto lifecycle = Lifecycle(id).value_or(WidgetLifecycleState::Background);
     return {
         snapshot,
         failures_.contains(id)
@@ -770,6 +771,7 @@ WidgetSessionPresentation WidgetSessionCoordinator::Presentation(
             : RefreshState(id) == WidgetRefreshState::Current
                 ? WidgetPresentationAuthority::Current
                 : WidgetPresentationAuthority::RefreshRetained,
+        lifecycle,
     };
 }
 

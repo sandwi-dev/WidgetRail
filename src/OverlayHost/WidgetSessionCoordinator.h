@@ -128,9 +128,33 @@ enum class WidgetRefreshState {
     RefreshInFlight,
 };
 
+enum class WidgetCommittedViewUse {
+    Presentation,
+    Interaction,
+};
+
 struct WidgetSessionPresentation final {
     const WidgetSnapshot* snapshot{};
     WidgetPresentationAuthority authority{WidgetPresentationAuthority::Unavailable};
+    WidgetLifecycleState lifecycle{WidgetLifecycleState::Background};
+
+    /// One admitted checkpoint remains the coherent render/input/UIA owner
+    /// while an ordinary replacement is requested or in flight. Failure and
+    /// transition-retained content deliberately remain outside this policy.
+    [[nodiscard]] bool HasCommittedViewAuthority(
+        const WidgetCommittedViewUse use =
+            WidgetCommittedViewUse::Presentation) const noexcept {
+        return snapshot &&
+            (authority == WidgetPresentationAuthority::Current ||
+             authority == WidgetPresentationAuthority::RefreshRetained) &&
+            (use == WidgetCommittedViewUse::Presentation ||
+             lifecycle == WidgetLifecycleState::Interactive);
+    }
+
+    [[nodiscard]] bool RefreshPending() const noexcept {
+        return snapshot &&
+            authority == WidgetPresentationAuthority::RefreshRetained;
+    }
 };
 
 struct WidgetSessionRuntimeChange final {

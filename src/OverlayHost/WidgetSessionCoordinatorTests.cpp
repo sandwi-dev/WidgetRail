@@ -25,6 +25,7 @@ using widgetrail::WidgetDescriptor;
 using widgetrail::WidgetAdmissionTrace;
 using widgetrail::WidgetAdmissionTraceStage;
 using widgetrail::WidgetLifecycleState;
+using widgetrail::WidgetCommittedViewUse;
 using widgetrail::WidgetPresentationAuthority;
 using widgetrail::WidgetPresentationPublication;
 using widgetrail::WidgetPresentationTransactionKind;
@@ -34,6 +35,7 @@ using widgetrail::WidgetSessionEventKind;
 using widgetrail::WidgetSessionFailureStage;
 using widgetrail::WidgetSessionOperationResult;
 using widgetrail::WidgetSessionOperations;
+using widgetrail::WidgetSessionPresentation;
 using widgetrail::WidgetSnapshot;
 using widgetrail::VirtualCollectionWindowChange;
 
@@ -1009,6 +1011,11 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
     });
     assert(coordinator.Lifecycle(L"alpha") == WidgetLifecycleState::Visible);
     assert(coordinator.RefreshState(L"alpha") == WidgetRefreshState::Current);
+    const auto current = coordinator.Presentation(L"alpha");
+    assert(current.HasCommittedViewAuthority() &&
+           !current.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::Interaction) &&
+           !current.RefreshPending());
 
     bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 2, 760.0, 385.0);
     bridge.stalledWidget = L"alpha";
@@ -1016,7 +1023,20 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
     const auto retained = coordinator.Presentation(L"alpha");
     assert(retained.snapshot && retained.snapshot->sequence == 1 &&
            retained.snapshot->surface->preferredWidth == 592.0 &&
-           retained.authority == WidgetPresentationAuthority::RefreshRetained);
+           retained.authority == WidgetPresentationAuthority::RefreshRetained &&
+           retained.HasCommittedViewAuthority() &&
+           !retained.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::Interaction) &&
+           retained.RefreshPending());
+    const WidgetSessionPresentation interactiveRetained{
+        retained.snapshot,
+        WidgetPresentationAuthority::RefreshRetained,
+        WidgetLifecycleState::Interactive,
+    };
+    assert(interactiveRetained.HasCommittedViewAuthority() &&
+           interactiveRetained.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::Interaction) &&
+           interactiveRetained.RefreshPending());
     coordinator.SetLifecycleTargets({
         {L"alpha", WidgetLifecycleState::Visible},
     });
@@ -1107,6 +1127,7 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
     const auto failed = coordinator.Presentation(L"alpha");
     assert(failed.snapshot && failed.snapshot->sequence == 4 &&
            failed.authority == WidgetPresentationAuthority::FailureRetained &&
+           !failed.HasCommittedViewAuthority() && !failed.RefreshPending() &&
            coordinator.RefreshState(L"alpha") ==
                WidgetRefreshState::RefreshRequested);
 }

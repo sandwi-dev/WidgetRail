@@ -324,7 +324,8 @@ void FocusAndSurfaceLifecycle() {
     const auto adjustment = session.AdjustSlider(
         authority, Node(snapshot, L"volume-a"),
         widgetrail::input::NavigationDirection::Right, 100);
-    Check(adjustment.actionRequest && adjustment.visualChanged,
+    Check(adjustment.consumed && adjustment.visualChanged &&
+              !adjustment.actionRequest,
           "the focused slider creates an optimistic visual before navigation");
     Check(session.TransitionPressedPresentation(
               widgetrail::input::PressedInputTransition::Begin,
@@ -1412,9 +1413,13 @@ void ExactSliderRequestAuthorityAndRollback() {
 
     const auto physical = session.AdjustSlider(
         authority, Node(snapshot, L"volume-a"), NavigationDirection::Right, 1'000);
-    Check(physical.consumed && physical.visualChanged && physical.actionRequest,
-          "physical controller adjustment captures one exact request");
-    const auto& request = *physical.actionRequest;
+    Check(physical.consumed && physical.visualChanged && !physical.actionRequest,
+          "physical controller adjustment creates one pending optimistic preview");
+    const auto dispatched = session.TakePendingSliderAction(
+        authority, Node(snapshot, L"volume-a"), 1'000, true);
+    Check(dispatched.consumed && dispatched.actionRequest,
+          "an explicit final flush captures one exact physical request");
+    const auto& request = *dispatched.actionRequest;
     Check(request.widgetId == L"fixture.widget" &&
               request.widgetInstanceId == L"fixture.instance" &&
               request.runtimeGeneration == L"runtime-7" &&
@@ -1422,7 +1427,8 @@ void ExactSliderRequestAuthorityAndRollback() {
               request.inputScopeId == L"root" &&
               request.sourceElementId == L"volume-a" &&
               request.actionId == L"volume-a.changed" &&
-              request.snapshotSequence == 41 && request.requestedValue,
+              request.snapshotSequence == 41 && request.requestedValue &&
+              request.sliderIntentGeneration != 0,
           "physical request captures every dispatch authority token");
     Near(*request.requestedValue, 0.5,
          "physical request carries the latest optimistic target");
@@ -1450,10 +1456,15 @@ void ExactSliderRequestAuthorityAndRollback() {
               request.actionId == L"volume-a.changed",
           "a captured request cannot be re-resolved from newer mutable focus");
 
-    auto wrongSequence = request;
-    ++wrongSequence.snapshotSequence;
-    Check(!session.CancelSliderAction(wrongSequence, 1'020).consumed,
-          "wrong snapshot sequence cannot retire an optimistic request");
+    auto wrongIntent = request;
+    ++wrongIntent.sliderIntentGeneration;
+    Check(!session.CancelSliderAction(wrongIntent, 1'020).consumed,
+          "wrong intent generation cannot retire a dispatched request");
+    auto staleFallback = request;
+    staleFallback.sliderIntentGeneration = 0;
+    ++staleFallback.snapshotSequence;
+    Check(!session.CancelSliderAction(staleFallback, 1'020).consumed,
+          "generation-zero cancellation retains exact snapshot fallback authority");
     auto wrongAction = request;
     wrongAction.actionId = L"volume-b.changed";
     Check(!session.CancelSliderAction(wrongAction, 1'021).consumed,
@@ -1464,7 +1475,7 @@ void ExactSliderRequestAuthorityAndRollback() {
           "wrong node identity cannot retire an optimistic request");
 
     auto presentation = session.PrepareRenderPresentation(
-        snapshot, L"volume-b", 1'023, false, true, true);
+        snapshot, L"volume-b", true, true);
     Check(presentation.sliderValueOverrides.contains(L"volume-a") &&
               presentation.sliderValueOverrides.contains(L"volume-b"),
           "failed stale rollback attempts leave both exact optimistic requests intact");
@@ -1472,7 +1483,7 @@ void ExactSliderRequestAuthorityAndRollback() {
     Check(rolledBack.consumed && rolledBack.visualChanged,
           "exact dispatch rejection retires its optimistic request");
     presentation = session.PrepareRenderPresentation(
-        snapshot, L"volume-b", 1'025, false, true, true);
+        snapshot, L"volume-b", true, true);
     Check(!presentation.sliderValueOverrides.contains(L"volume-a") &&
               presentation.sliderValueOverrides.contains(L"volume-b"),
           "rollback retires only the exact optimistic request");
@@ -1487,7 +1498,8 @@ void ExactSliderRequestAuthorityAndRollback() {
     auto replacement = snapshot;
     replacement.sequence = 42;
     replacement.root.children[2].value = 0.25;
-    const auto reconciliation = session.ReconcileAdmission(replacement, 1'040);
+    const auto reconciliation = session.ReconcileAdmission(
+        replacement, L"volume-b", 1'040);
     Check(reconciliation.sliderDamageNodeIds.empty(),
           "an authoritative acknowledgement does not repaint an already optimistic value");
 
@@ -1495,7 +1507,9 @@ void ExactSliderRequestAuthorityAndRollback() {
         Authority(replacement), Node(replacement, L"volume-a"), 0.8, 2'000);
     Check(pendingAgain.actionRequest.has_value(),
           "a replacement snapshot can establish fresh exact slider authority");
-    const auto timedOut = session.Tick(&replacement, 4'001);
+    const auto replacementAuthority = Authority(replacement);
+    const auto timedOut = session.Tick(
+        &replacementAuthority, L"volume-b", 4'001);
     Check(timedOut.sliderDamageNodeIds == std::vector<std::wstring>{L"volume-a"},
           "timeout returns only the exact current slider rollback damage");
 }
@@ -1786,7 +1800,7 @@ void AnchoredSelectPopupIsExactAndBounded() {
     compatible.sequence = 72;
     compatible.root.children.back().selectOptions[0].isSelected = false;
     compatible.root.children.back().selectOptions[1].isSelected = true;
-    auto reconciliation = session.ReconcileAdmission(compatible, 100);
+    auto reconciliation = session.ReconcileAdmission(compatible, {}, 100);
     Check(session.selectPopup() &&
               session.selectPopup()->snapshotSequence == 72 &&
               session.selectPopup()->options[1].isSelected &&

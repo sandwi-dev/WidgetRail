@@ -580,10 +580,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             var controllerRequest = BridgeJson.FromElement<BridgeControllerInputRequest>(request.Payload);
             ValidateControllerInput(controllerRequest.Input);
             if (controllerRequest.ExpectedActionId is not null &&
-                (!(controllerRequest.Input.Context == ControllerInputContext.PinnedSurface &&
-                   controllerRequest.Input.Button is
-                       (ControllerButton.DPadLeft or ControllerButton.DPadRight) &&
-                   controllerRequest.Input.RequestedValue is not null) ||
+                (controllerRequest.Input.Context is not
+                     (ControllerInputContext.OpenWidget or
+                      ControllerInputContext.PinnedSurface) ||
                  !BridgeRequestKey.IsBoundedIdentifier(
                      controllerRequest.ExpectedActionId)))
                 throw new BridgeProtocolException(

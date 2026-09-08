@@ -25,16 +25,37 @@ int main() {
     auto slider = Slider();
     auto presentationRevision = state.presentationRevision();
     auto first = state.Adjust(slider, NavigationDirection::Right, 10);
-    Check(first.consumed && first.requestedValue.has_value(), "right is consumed and dispatched");
+    Check(first.consumed, "right is consumed into a local pending preview");
     Check(state.presentationRevision() > presentationRevision,
           "first optimistic target advances the presentation revision");
     presentationRevision = state.presentationRevision();
-    Near(*first.requestedValue, 0.2, "arbitrary range snaps to next minimum-anchored step");
+    const auto firstPreview = state.PresentationValue(slider);
+    Check(firstPreview.has_value(), "first adjustment publishes a local preview");
+    Near(*firstPreview, 0.2,
+         "arbitrary range snaps to next minimum-anchored step");
     auto repeated = state.Adjust(slider, NavigationDirection::Right, 20);
     Check(state.presentationRevision() > presentationRevision,
           "repeated optimistic target advances the presentation revision");
-    Near(*repeated.requestedValue, 0.5, "repeat advances transient target, not stale snapshot");
-    Near(*state.PresentationValue(slider, 25), 0.5, "pending target drives optimistic paint");
+    Check(repeated.consumed, "repeat remains local during its trailing window");
+    const auto repeatedPreview = state.PresentationValue(slider);
+    Check(repeatedPreview.has_value(), "repeated adjustment updates the local preview");
+    Near(*repeatedPreview, 0.5,
+         "repeat advances transient target, not stale snapshot");
+    Check(!state.TakePendingDispatch(slider, 169),
+          "latest target waits for the complete 150 ms trailing window");
+    const auto trailingDeadline = state.NextReconcileDeadline();
+    Check(trailingDeadline && *trailingDeadline == 170,
+          "trailing dispatch deadline belongs to the latest actual change");
+    Check(state.SetRequestedValue(slider, 0.5, 169) &&
+              state.NextReconcileDeadline() == trailingDeadline,
+          "a no-op absolute request does not extend the trailing deadline");
+    const auto firstDispatch = state.TakePendingDispatch(slider, 170);
+    Check(firstDispatch && firstDispatch->intentGeneration != 0,
+          "trailing settlement dispatches the latest target exactly once");
+    Near(firstDispatch->requestedValue, 0.5,
+         "trailing settlement carries the latest computed target");
+    Check(!state.TakePendingDispatch(slider, 171),
+          "an already dispatched target is not emitted per poll");
 
     const auto unitSlider = [](const std::wstring_view nodeId, const double value) {
         auto result = Slider(value);
@@ -48,37 +69,51 @@ int main() {
     auto floatLeft = gridState.Adjust(
         unitSlider(L"float-left", static_cast<double>(0.32F)),
         NavigationDirection::Left, 26);
-    Check(floatLeft.requestedValue.has_value(),
-          "float-derived near-grid value dispatches on first Left");
-    Near(*floatLeft.requestedValue, 0.31,
+    Check(floatLeft.consumed,
+          "float-derived near-grid value previews on first Left");
+    const auto floatLeftPreview = gridState.PresentationValue(
+        unitSlider(L"float-left", static_cast<double>(0.32F)));
+    Check(floatLeftPreview.has_value(), "float-derived Left publishes a preview");
+    Near(*floatLeftPreview, 0.31,
          "float-derived near-grid value steps left instead of snapping in place");
     auto floatRight = gridState.Adjust(
         unitSlider(L"float-right", static_cast<double>(0.32F)),
         NavigationDirection::Right, 27);
-    Check(floatRight.requestedValue.has_value(),
-          "float-derived near-grid value dispatches on first Right");
-    Near(*floatRight.requestedValue, 0.33,
+    Check(floatRight.consumed,
+          "float-derived near-grid value previews on first Right");
+    const auto floatRightPreview = gridState.PresentationValue(
+        unitSlider(L"float-right", static_cast<double>(0.32F)));
+    Check(floatRightPreview.has_value(), "float-derived Right publishes a preview");
+    Near(*floatRightPreview, 0.33,
          "float-derived near-grid value steps right instead of snapping in place");
     auto offGridLeft = gridState.Adjust(
         unitSlider(L"off-grid-left", 0.325), NavigationDirection::Left, 28);
-    Check(offGridLeft.requestedValue.has_value(),
-          "genuine off-grid value dispatches Left");
-    Near(*offGridLeft.requestedValue, 0.32,
+    Check(offGridLeft.consumed,
+          "genuine off-grid value previews Left");
+    const auto offGridLeftPreview = gridState.PresentationValue(
+        unitSlider(L"off-grid-left", 0.325));
+    Check(offGridLeftPreview.has_value(), "off-grid Left publishes a preview");
+    Near(*offGridLeftPreview, 0.32,
          "genuine off-grid Left retains directional snap semantics");
     auto offGridRight = gridState.Adjust(
         unitSlider(L"off-grid-right", 0.325), NavigationDirection::Right, 29);
-    Check(offGridRight.requestedValue.has_value(),
-          "genuine off-grid value dispatches Right");
-    Near(*offGridRight.requestedValue, 0.33,
+    Check(offGridRight.consumed,
+          "genuine off-grid value previews Right");
+    const auto offGridRightPreview = gridState.PresentationValue(
+        unitSlider(L"off-grid-right", 0.325));
+    Check(offGridRightPreview.has_value(), "off-grid Right publishes a preview");
+    Near(*offGridRightPreview, 0.33,
          "genuine off-grid Right retains directional snap semantics");
     auto atMinimum = gridState.Adjust(
         unitSlider(L"minimum", 0.0), NavigationDirection::Left, 30);
-    Check(atMinimum.consumed && !atMinimum.requestedValue,
-          "minimum consumes Left without dispatching below the range");
+    Check(atMinimum.consumed &&
+              !gridState.PresentationValue(unitSlider(L"minimum", 0.0)),
+          "minimum consumes Left without previewing below the range");
     auto atMaximum = gridState.Adjust(
         unitSlider(L"maximum", 1.0), NavigationDirection::Right, 31);
-    Check(atMaximum.consumed && !atMaximum.requestedValue,
-          "maximum consumes Right without dispatching above the range");
+    Check(atMaximum.consumed &&
+              !gridState.PresentationValue(unitSlider(L"maximum", 1.0)),
+          "maximum consumes Right without previewing above the range");
 
     auto cancellationSlider = slider;
     cancellationSlider.nodeId = L"cancellation";
@@ -87,68 +122,143 @@ int main() {
     cancellationSlider.value = 0.0;
     cancellationSlider.step = 0.1;
     auto away = state.Adjust(cancellationSlider, NavigationDirection::Right, 26);
-    Near(*away.requestedValue, 0.1, "first adjustment leaves authoritative value");
+    Check(away.consumed, "first adjustment leaves authoritative value");
+    const auto awayPreview = state.PresentationValue(cancellationSlider);
+    Check(awayPreview.has_value(), "unsent adjustment publishes a preview");
+    Near(*awayPreview, 0.1,
+         "unsent adjustment owns a local preview");
     auto back = state.Adjust(cancellationSlider, NavigationDirection::Left, 27);
-    Near(*back.requestedValue, 0.0, "reverse adjustment can cancel to authoritative value");
-    Near(*state.PresentationValue(cancellationSlider, 28), 0.0,
-         "same-sequence render cannot falsely acknowledge a pending cancellation");
+    Check(back.consumed && !state.PresentationValue(cancellationSlider),
+          "unsent reverse adjustment cancels back to authoritative value");
+    Check(!state.TakePendingDispatch(cancellationSlider, 1'000, true),
+          "unsent away/back cancellation leaves no dispatchable work");
     cancellationSlider.snapshotSequence = 2;
-    Check(!state.PresentationValue(cancellationSlider, 29),
-          "newer matching snapshot acknowledges pending cancellation");
+    const auto cancelledReconciliation = state.Reconcile(cancellationSlider, 29);
+    Check(!cancelledReconciliation.visualChanged &&
+              !state.PresentationValue(cancellationSlider),
+          "newer snapshot keeps an unsent cancellation authoritative");
+
+    auto dispatchedSlider = cancellationSlider;
+    dispatchedSlider.nodeId = L"two-dispatched";
+    dispatchedSlider.snapshotSequence = 1;
+    dispatchedSlider.value = 0.0;
+    Check(state.Adjust(dispatchedSlider, NavigationDirection::Right, 30).consumed,
+          "first held segment creates a pending value");
+    const auto dispatchedFirst = state.TakePendingDispatch(
+        dispatchedSlider, 30, true);
+    Check(dispatchedFirst.has_value(),
+          "first held segment dispatches its exact value");
+    Near(dispatchedFirst->requestedValue, 0.1,
+         "first dispatched value preserves computed step math");
+    Check(state.Adjust(dispatchedSlider, NavigationDirection::Right, 31).consumed,
+          "continued hold advances beyond the first dispatched value");
+    const auto dispatchedSecond = state.TakePendingDispatch(
+        dispatchedSlider, 31, true);
+    Check(dispatchedSecond && dispatchedSecond->intentGeneration !=
+              dispatchedFirst->intentGeneration,
+          "second held segment dispatches a distinct latest value");
+    Near(dispatchedSecond->requestedValue, 0.2,
+         "second dispatched value preserves computed step math");
+    dispatchedSlider.snapshotSequence = 2;
+    dispatchedSlider.value = 0.1;
+    const auto olderAcknowledgement = state.Reconcile(dispatchedSlider, 32);
+    const auto newerPreview = state.PresentationValue(dispatchedSlider);
+    Check(!olderAcknowledgement.visualChanged && newerPreview.has_value(),
+          "older dispatched acknowledgement retains the newer optimistic value");
+    Near(*newerPreview, 0.2,
+         "older acknowledgement preserves the exact newer computed target");
+    dispatchedSlider.snapshotSequence = 3;
+    dispatchedSlider.value = 0.2;
+    const auto latestAcknowledgement = state.Reconcile(dispatchedSlider, 33);
+    Check(!latestAcknowledgement.visualChanged &&
+              !state.PresentationValue(dispatchedSlider),
+          "latest dispatched acknowledgement settles the optimistic value");
 
     slider.value = 0.5;
     slider.snapshotSequence = 2;
     presentationRevision = state.presentationRevision();
-    Check(!state.PresentationValue(slider, 30), "authoritative acknowledgement clears override");
+    const auto acknowledgement = state.Reconcile(slider, 172);
+    Check(!state.PresentationValue(slider),
+          "authoritative acknowledgement clears override");
+    Check(acknowledgement.stateChanged && !acknowledgement.visualChanged,
+          "matching publication settles state without repainting matching pixels");
     Check(state.presentationRevision() == presentationRevision,
           "matching acknowledgement keeps already-presented pixels unchanged");
-    slider.value = 1.0;
+    Check(state.Adjust(slider, NavigationDirection::Right, 200).consumed,
+          "a second hold after settlement starts from the admitted value");
+    const auto secondHoldPreview = state.PresentationValue(slider);
+    Check(secondHoldPreview.has_value(), "second hold publishes a fresh preview");
+    Near(*secondHoldPreview, 0.8,
+         "second hold starts from the admitted value");
+    Check(!state.TakePendingDispatch(slider, 349),
+          "second hold retains the same bounded trailing delay");
+    const auto secondHold = state.TakePendingDispatch(slider, 350);
+    Check(secondHold.has_value(),
+          "second hold dispatches after its independent settlement window");
+    Near(secondHold->requestedValue, 0.8,
+         "second hold dispatch preserves minimum-anchored step math");
+    slider.value = 0.8;
     slider.snapshotSequence = 3;
-    auto saturated = state.Adjust(slider, NavigationDirection::Right, 40);
-    Check(saturated.consumed && !saturated.requestedValue, "maximum consumes without dispatch");
+    Check(!state.Reconcile(slider, 351).visualChanged &&
+              !state.PresentationValue(slider),
+          "second hold matching publication settles without a duplicate repaint");
+    slider.value = 1.0;
+    slider.snapshotSequence = 4;
+    auto saturated = state.Adjust(slider, NavigationDirection::Right, 360);
+    Check(saturated.consumed && !state.PresentationValue(slider),
+          "maximum consumes without creating pending work");
 
     slider.busy = true;
     slider.value = 0.5;
-    slider.snapshotSequence = 4;
-    Check(state.Adjust(slider, NavigationDirection::Left, 50).consumed,
+    slider.snapshotSequence = 5;
+    Check(state.Adjust(slider, NavigationDirection::Left, 370).consumed,
           "busy slider owns horizontal input");
-    Check(!state.Adjust(slider, NavigationDirection::Left, 50).requestedValue,
-          "busy slider cannot adjust");
+    Check(!state.PresentationValue(slider), "busy slider cannot adjust");
     slider.busy = false;
     slider.disabled = true;
-    Check(!state.Adjust(slider, NavigationDirection::Left, 60).requestedValue,
-          "disabled slider cannot adjust");
+    Check(state.Adjust(slider, NavigationDirection::Left, 380).consumed &&
+              !state.PresentationValue(slider),
+          "disabled slider consumes without adjusting");
 
     auto invalid = slider;
     invalid.disabled = false;
     invalid.step = std::numeric_limits<double>::infinity();
-    Check(state.Adjust(invalid, NavigationDirection::Right, 70).consumed,
+    Check(state.Adjust(invalid, NavigationDirection::Right, 390).consumed,
           "invalid slider fails closed");
     invalid.step = 1.0;
     invalid.minimum = -std::numeric_limits<double>::max();
     invalid.maximum = std::numeric_limits<double>::max();
     invalid.value = 0.0;
-    Check(!state.Adjust(invalid, NavigationDirection::Right, 71).requestedValue,
+    Check(state.Adjust(invalid, NavigationDirection::Right, 391).consumed &&
+              !state.PresentationValue(invalid),
           "finite endpoints with an overflowing range fail closed");
 
     slider.disabled = false;
     slider.value = 0.0;
-    slider.snapshotSequence = 5;
-    (void)state.Adjust(slider, NavigationDirection::Right, 100);
+    slider.snapshotSequence = 6;
+    (void)state.Adjust(slider, NavigationDirection::Right, 500);
+    const auto expiringDispatch = state.TakePendingDispatch(slider, 650);
+    Check(expiringDispatch.has_value(),
+          "sent-request expiry begins only after an actual dispatch");
+    Near(expiringDispatch->requestedValue, 0.2,
+         "expiring dispatch carries its exact computed target");
     presentationRevision = state.presentationRevision();
-    Check(!state.PresentationValue(slider, 2'101), "stale optimistic value expires");
+    const auto expired = state.Reconcile(slider, 2'651);
+    Check(expired.visualChanged && !state.PresentationValue(slider),
+          "stale dispatched optimistic value expires through reconciliation");
     Check(state.presentationRevision() > presentationRevision,
           "optimistic timeout advances the presentation revision");
 
-    slider.snapshotSequence = 6;
-    (void)state.Adjust(slider, NavigationDirection::Right, 2'200);
+    slider.snapshotSequence = 7;
+    (void)state.Adjust(slider, NavigationDirection::Right, 2'700);
     auto restarted = slider;
     restarted.snapshotSequence = 1;
     restarted.value = -0.4;
-    const auto afterRestart = state.Adjust(restarted, NavigationDirection::Right, 2'210);
-    Check(afterRestart.requestedValue.has_value(),
+    const auto afterRestart = state.Adjust(restarted, NavigationDirection::Right, 2'710);
+    const auto restartPreview = state.PresentationValue(restarted);
+    Check(afterRestart.consumed && restartPreview.has_value(),
           "worker sequence reset starts a fresh slider session instead of wedging");
-    Near(*afterRestart.requestedValue, -0.1,
+    Near(*restartPreview, -0.1,
          "worker sequence reset uses the restarted authoritative value");
 
     SliderInteractionState lookupOnly;
@@ -156,7 +266,7 @@ int main() {
         auto unadjusted = slider;
         const auto id = L"unadjusted-" + std::to_wstring(index);
         unadjusted.nodeId = id;
-        Check(!lookupOnly.PresentationValue(unadjusted, 2'300 + index),
+        Check(!lookupOnly.PresentationValue(unadjusted),
               "unadjusted slider has no optimistic presentation value");
     }
     Check(lookupOnly.size() == 0,
@@ -164,14 +274,15 @@ int main() {
     auto active = slider;
     active.nodeId = L"active";
     const auto activeAdjustment = lookupOnly.Adjust(active, NavigationDirection::Right, 5'000);
-    Check(activeAdjustment.requestedValue.has_value(), "active slider creates transient state");
+    Check(activeAdjustment.consumed && lookupOnly.PresentationValue(active),
+          "active slider creates transient state");
     for (std::size_t index = 0; index < 2'048; ++index) {
         auto unadjusted = slider;
         const auto id = L"later-unadjusted-" + std::to_wstring(index);
         unadjusted.nodeId = id;
-        (void)lookupOnly.PresentationValue(unadjusted, 5'001 + index);
+        (void)lookupOnly.PresentationValue(unadjusted);
     }
-    Check(lookupOnly.size() == 1 && lookupOnly.PresentationValue(active, 5'100),
+    Check(lookupOnly.size() == 1 && lookupOnly.PresentationValue(active),
           "render traversal cannot evict the focused pending slider");
 
     for (std::size_t index = 0;
@@ -189,31 +300,33 @@ int main() {
     activationFirst.activationRequired = true;
     auto inactiveAdjustment = state.Adjust(
         activationFirst, NavigationDirection::Right, 4'000);
-    Check(!inactiveAdjustment.consumed && !inactiveAdjustment.requestedValue,
+    Check(!inactiveAdjustment.consumed &&
+              !state.PresentationValue(activationFirst),
           "inactive activation-first slider does not consume navigation");
     Check(state.EnterAdjustmentMode(activationFirst, 4'001),
           "A-equivalent host action enters adjustment mode");
-    Check(state.AdjustmentModeActive(activationFirst, 4'002),
+    Check(state.AdjustmentModeActive(activationFirst),
           "entered slider reports active adjustment mode");
     auto activeModeAdjustment = state.Adjust(
         activationFirst, NavigationDirection::Right, 4'003);
-    Check(activeModeAdjustment.consumed && activeModeAdjustment.requestedValue,
+    Check(activeModeAdjustment.consumed &&
+              state.PresentationValue(activationFirst),
           "active activation-first slider adjusts normally");
     Check(state.ExitAdjustmentMode(activationFirst, 4'004),
           "A/B-equivalent host action exits adjustment mode");
-    Check(!state.AdjustmentModeActive(activationFirst, 4'005),
+    Check(!state.AdjustmentModeActive(activationFirst),
           "exited slider no longer reports active adjustment mode");
     Check(!state.ExitAdjustmentMode(activationFirst, 4'006),
           "inactive B leaves adjustment state untouched");
     Check(state.EnterAdjustmentMode(activationFirst, 4'007),
           "slider can re-enter adjustment mode");
     state.RetainAdjustmentMode(L"runtime-1", L"root", L"different-focus");
-    Check(!state.AdjustmentModeActive(activationFirst, 4'008),
+    Check(!state.AdjustmentModeActive(activationFirst),
           "moving focus away clears adjustment mode");
     Check(state.EnterAdjustmentMode(activationFirst, 4'009),
           "slider can enter before global teardown");
-    state.DeactivateAll();
-    Check(!state.AdjustmentModeActive(activationFirst, 4'010),
+    (void)state.DeactivateAll();
+    Check(!state.AdjustmentModeActive(activationFirst),
           "overlay transition clears all adjustment modes");
 
     state.ForgetWidget(L"runtime-1");

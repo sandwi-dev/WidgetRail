@@ -101,6 +101,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pinned layout selection is exact current runtime generation", BridgeClientRegistryScenarios.PinnedLayoutSelectionIsGenerationBound),
     ("Pinned surface input requires exact generation layout scope and focus", BridgeClientRegistryScenarios.PinnedSurfaceInputRequiresExactAuthority),
     ("Pinned shortcut availability belongs to its declaring owner", BridgeClientRegistryScenarios.PinnedShortcutAvailabilityBelongsToDeclaringOwner),
+    ("Open widget input retains compatible committed authority across refresh", BridgeClientRegistryScenarios.OpenWidgetInputRetainsCompatibleCommittedAuthority),
     ("Embedded media resolution requires exact current publication authority", BridgeClientRegistryScenarios.EmbeddedMediaRequiresExactPublicationAuthority),
     ("Local package import origin is exact current Interactive Settings", BridgeClientRegistryScenarios.LocalPackageImportOriginIsExact),
     ("Local package import is disabled revisioned and path free", LocalPackageImportIsDisabledRevisionedAndPathFree),

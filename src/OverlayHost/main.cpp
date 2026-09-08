@@ -2979,10 +2979,7 @@ private:
         const auto sessionKey = CurrentEmbeddedMediaSessionKey(widgetId);
         return state_.surface() == widgetrail::Surface::Widget &&
             state_.activeWidget() == widgetId && snapshot && sessionKey &&
-            (presentation.authority ==
-                 widgetrail::WidgetPresentationAuthority::Current ||
-             presentation.authority ==
-                 widgetrail::WidgetPresentationAuthority::RefreshRetained) &&
+            presentation.HasCommittedViewAuthority() &&
             CommittedFullscreenPresentationCurrent(*sessionKey, snapshot->sequence);
     }
 
@@ -3932,10 +3929,7 @@ private:
         if (!descriptor) return reject(L"descriptor");
         if (!snapshot) return reject(L"snapshot");
         if (!snapshot->embeddedMediaSession) return reject(L"declaration");
-        if (presentation.authority !=
-                widgetrail::WidgetPresentationAuthority::Current &&
-            presentation.authority !=
-                widgetrail::WidgetPresentationAuthority::RefreshRetained)
+        if (!presentation.HasCommittedViewAuthority())
             return reject(L"presentation-authority");
         if (presentation.snapshot != snapshot)
             return reject(L"presentation-snapshot");
@@ -4701,10 +4695,7 @@ private:
         const auto presentation = sessions_.Presentation(
             authority.widgetId);
         const bool presentationAuthorityCurrent =
-            presentation.authority ==
-                widgetrail::WidgetPresentationAuthority::Current ||
-            presentation.authority ==
-                widgetrail::WidgetPresentationAuthority::RefreshRetained;
+            presentation.HasCommittedViewAuthority();
         if (!descriptor || !snapshot || !snapshot->embeddedMediaSession)
             return false;
         const auto declaresViewport = [](const auto& self,
@@ -6037,7 +6028,7 @@ private:
         const auto& retained = presentationTransaction_.retainedPresentation();
         const auto authority = widgetrail::ResolveWidgetContentAuthority(
             presentation.snapshot != nullptr,
-            presentation.authority == widgetrail::WidgetPresentationAuthority::Current,
+            presentation.HasCommittedViewAuthority(),
             retained.has_value());
         const widgetrail::WidgetSnapshot* snapshot = presentation.snapshot;
         std::wstring_view renderedWidget = activeWidget;
@@ -8398,8 +8389,7 @@ private:
         const auto* descriptor = sessions_.FindDescriptor(widgetId);
         const auto& committed = *committedWidgetVisualState_;
         const auto& destination = presentationTransaction_.committedDestination();
-        if (presentation.authority !=
-                widgetrail::WidgetPresentationAuthority::RefreshRetained ||
+        if (!presentation.RefreshPending() ||
             !snapshot || !descriptor || !destination ||
             committed.widgetId != widgetId ||
             committed.instanceId != snapshot->instanceId ||
@@ -8620,9 +8610,7 @@ private:
         if (state_.surface() != widgetrail::Surface::Widget) return false;
         const std::wstring_view widgetId = state_.activeWidget();
         const auto presentation = sessions_.Presentation(widgetId);
-        if (presentation.authority !=
-                widgetrail::WidgetPresentationAuthority::RefreshRetained ||
-            !presentation.snapshot) {
+        if (!presentation.RefreshPending()) {
             return false;
         }
         const auto rendered = renderedSnapshotSequences_.find(
@@ -8638,17 +8626,9 @@ private:
     [[nodiscard]] const widgetrail::WidgetSnapshot* GuideSnapshotFor(
         const std::wstring_view widgetId) noexcept {
         const auto presentation = sessions_.Presentation(widgetId);
-        if (presentation.authority == widgetrail::WidgetPresentationAuthority::Current)
-            return InteractionSnapshotFor(widgetId);
-        if (presentation.authority !=
-                widgetrail::WidgetPresentationAuthority::RefreshRetained ||
-            !presentation.snapshot ||
-            state_.surface() != widgetrail::Surface::Widget ||
-            state_.activeWidget() != widgetId ||
-            !HasExactRefreshRetainedVisualCheckpoint()) {
-            return nullptr;
-        }
-        return presentation.snapshot;
+        return presentation.HasCommittedViewAuthority()
+            ? presentation.snapshot
+            : nullptr;
     }
 
     template <typename Refresh>
@@ -8715,12 +8695,8 @@ private:
         const bool exactRetainedCheckpoint =
             wasVisible && isVisible && priorSurface == state_.surface() &&
             priorVisibleWidget == nextVisibleWidget &&
-            (priorSessionPresentation.authority ==
-                 widgetrail::WidgetPresentationAuthority::Current ||
-             priorSessionPresentation.authority ==
-                 widgetrail::WidgetPresentationAuthority::RefreshRetained) &&
-            nextSessionPresentation.authority ==
-                widgetrail::WidgetPresentationAuthority::RefreshRetained &&
+            priorSessionPresentation.HasCommittedViewAuthority() &&
+            nextSessionPresentation.RefreshPending() &&
             priorSessionPresentation.snapshot &&
             nextSessionPresentation.snapshot &&
             priorSnapshotInstance == nextSessionPresentation.snapshot->instanceId &&
@@ -8730,12 +8706,10 @@ private:
             CanRetainCommittedWidgetPixels(
                 nextVisibleWidget, *nextSessionPresentation.snapshot);
         if (exactRetainedRefresh) {
-            // Refresh changes lifecycle/input/UIA authority immediately. The
-            // admitted checkpoint remains the sole visual authority until a
-            // current admission arrives: do not clear transient host visuals,
-            // advance declarative motion, or paint a temporary inert frame.
-            ClearAccessibilityTree();
-            PublishNonCurrentHostBackAccessibility();
+            // Refresh demand does not revoke the committed interaction/UIA
+            // checkpoint. With no host-owned visual change, preserve its exact
+            // pixels and accessibility projection without advancing document
+            // or compositor work.
             return;
         }
         const auto& retainedPresentation =
@@ -11967,7 +11941,8 @@ private:
     const widgetrail::WidgetSnapshot* InteractionSnapshotFor(
         const std::wstring_view widgetId) const noexcept {
         const auto presentation = sessions_.Presentation(widgetId);
-        if (presentation.authority != widgetrail::WidgetPresentationAuthority::Current)
+        if (!presentation.HasCommittedViewAuthority(
+                widgetrail::WidgetCommittedViewUse::Interaction))
             return nullptr;
         const auto* source = presentation.snapshot;
         return source;
@@ -11990,8 +11965,7 @@ private:
 
         const std::wstring_view widgetId = state_.activeWidget();
         const auto presentation = sessions_.Presentation(widgetId);
-        if (presentation.authority ==
-            widgetrail::WidgetPresentationAuthority::Current) {
+        if (presentation.HasCommittedViewAuthority()) {
             return std::nullopt;
         }
         const auto* descriptor = sessions_.FindDescriptor(widgetId);
@@ -12225,7 +12199,9 @@ private:
                             ++controllerSequence_,
                             static_cast<long long>(GetTickCount64() * 1000),
                             L"pressed", std::nullopt,
-                            widgetrail::ControllerInputOrigin::AccessibilityAutomation);
+                            widgetrail::ControllerInputOrigin::AccessibilityAutomation,
+                            descriptor->runtimeGeneration, {}, std::nullopt,
+                            request.actionId);
                         if (!handled) {
                             AppendDiagnostic(
                                 L"Accessibility Back transport failed for " +
@@ -12420,7 +12396,11 @@ private:
                 exactSliderAction
                     ? exactSliderAction->requestedValue
                     : resolved->requestedValue,
-                widgetrail::ControllerInputOrigin::AccessibilityAutomation);
+                widgetrail::ControllerInputOrigin::AccessibilityAutomation,
+                descriptor->runtimeGeneration, {}, std::nullopt,
+                exactSliderAction
+                    ? std::wstring_view{exactSliderAction->actionId}
+                    : std::wstring_view{request.actionId});
             if (!handled) {
                 if (optimisticSliderStarted && exactSliderAction &&
                     interactionSession_.CancelSliderAction(
@@ -14590,7 +14570,13 @@ private:
                 exactActionRequest
                     ? exactActionRequest->requestedValue
                     : std::nullopt,
-                widgetrail::ControllerInputOrigin::PhysicalController);
+                widgetrail::ControllerInputOrigin::PhysicalController,
+                descriptor ? std::wstring_view{descriptor->runtimeGeneration}
+                           : std::wstring_view{},
+                {}, std::nullopt,
+                exactActionRequest
+                    ? std::wstring_view{exactActionRequest->actionId}
+                    : std::wstring_view{});
             const auto replyCode = bridge_.lastControllerInputResultCode();
             AppendActionCorrelation(
                 L"stage=host-reply sequence=" +
@@ -17456,8 +17442,7 @@ private:
                 presentationTransaction_.retainedPresentation();
             const auto contentAuthority = widgetrail::ResolveWidgetContentAuthority(
                 sessionPresentation.snapshot != nullptr,
-                sessionPresentation.authority ==
-                    widgetrail::WidgetPresentationAuthority::Current,
+                sessionPresentation.HasCommittedViewAuthority(),
                 retainedPresentation.has_value());
             const bool sessionRetainedSnapshot =
                 contentAuthority == widgetrail::WidgetContentAuthority::InertRetainedSnapshot;
@@ -17474,9 +17459,7 @@ private:
                 ? std::wstring_view{retainedPresentation->widgetId}
                 : widget;
             const auto* descriptor = sessions_.FindDescriptor(renderedWidget);
-            const bool retainedRefresh = sessionRetainedSnapshot &&
-                sessionPresentation.authority ==
-                    widgetrail::WidgetPresentationAuthority::RefreshRetained;
+            const bool retainedRefresh = sessionPresentation.RefreshPending();
             const auto freeScrollDecision = snapshot && descriptor &&
                     renderedWidget == state_.activeWidget()
                 ? widgetrail::input::SurfaceInteractionTransactions::EvaluateFreeScroll(

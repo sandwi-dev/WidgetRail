@@ -226,7 +226,7 @@ int main() {
           "first-open current content uses its admitted checkpoint directly");
     Check(widgetrail::ResolveWidgetContentAuthority(true, false, true) ==
               widgetrail::WidgetContentAuthority::InertRetainedSnapshot,
-          "refreshing or failed content retains only its own inert checkpoint");
+          "failed content retains only its own inert checkpoint");
     Check(widgetrail::ResolveWidgetContentAuthority(false, false, true) ==
               widgetrail::WidgetContentAuthority::RetainedCommittedSnapshot,
           "cold worker startup keeps the prior transition checkpoint painted");

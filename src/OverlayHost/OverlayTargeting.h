@@ -421,16 +421,16 @@ struct WidgetContentFocusSources final {
 }
 
 /// The host-generated worker-start copy must not replace already-painted
-/// widget content for a single frame. A refreshing or failed session keeps its
-/// own last-admitted checkpoint as visual-only presentation until current
-/// sequence/action authority is admitted. The transition checkpoint is used
+/// widget content for a single frame. A healthy refreshing session keeps its
+/// last-admitted checkpoint as the coherent committed render/input/UIA view;
+/// a failed session keeps only inert pixels. The transition checkpoint is used
 /// only when the destination has never admitted one; stable startup status is
 /// reserved for the first widget open with no retained content.
 [[nodiscard]] constexpr WidgetContentAuthority ResolveWidgetContentAuthority(
     const bool sessionSnapshotAvailable,
-    const bool sessionSnapshotCurrent,
+    const bool sessionSnapshotInteractive,
     const bool committedSnapshotAvailable) noexcept {
-    if (sessionSnapshotAvailable) return sessionSnapshotCurrent
+    if (sessionSnapshotAvailable) return sessionSnapshotInteractive
         ? WidgetContentAuthority::AdmittedSnapshot
         : WidgetContentAuthority::InertRetainedSnapshot;
     if (committedSnapshotAvailable)
