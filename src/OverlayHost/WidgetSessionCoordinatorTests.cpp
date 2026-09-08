@@ -1012,7 +1012,8 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
     assert(coordinator.Lifecycle(L"alpha") == WidgetLifecycleState::Visible);
     assert(coordinator.RefreshState(L"alpha") == WidgetRefreshState::Current);
     const auto current = coordinator.Presentation(L"alpha");
-    assert(current.HasCommittedViewAuthority() &&
+    assert(current.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::Presentation) &&
            !current.HasCommittedViewAuthority(
                WidgetCommittedViewUse::Interaction) &&
            current.HasCommittedViewAuthority(
@@ -1044,7 +1045,8 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
     assert(retained.snapshot && retained.snapshot->sequence == 1 &&
            retained.snapshot->surface->preferredWidth == 592.0 &&
            retained.authority == WidgetPresentationAuthority::RefreshRetained &&
-           retained.HasCommittedViewAuthority() &&
+           retained.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::Presentation) &&
            !retained.HasCommittedViewAuthority(
                WidgetCommittedViewUse::Interaction) &&
            !retained.HasCommittedViewAuthority(
@@ -1055,7 +1057,8 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
         WidgetPresentationAuthority::RefreshRetained,
         WidgetLifecycleState::Interactive,
     };
-    assert(interactiveRetained.HasCommittedViewAuthority() &&
+    assert(interactiveRetained.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::Presentation) &&
            interactiveRetained.HasCommittedViewAuthority(
                WidgetCommittedViewUse::Interaction) &&
            !interactiveRetained.HasCommittedViewAuthority(
@@ -1151,7 +1154,8 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
     const auto failed = coordinator.Presentation(L"alpha");
     assert(failed.snapshot && failed.snapshot->sequence == 4 &&
            failed.authority == WidgetPresentationAuthority::FailureRetained &&
-           !failed.HasCommittedViewAuthority() &&
+           !failed.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::Presentation) &&
            !failed.HasCommittedViewAuthority(
                WidgetCommittedViewUse::DashboardQuickAction) &&
            !failed.RefreshPending() &&
