@@ -134,6 +134,19 @@ static async Task DisconnectedLayoutContract()
     Assert.Equal("spotify.connect", snapshot.InitialFocusId);
     Assert.Equal(620d, snapshot.Surface?.MinimumWidth);
     Assert.Equal(400d, snapshot.Surface?.MinimumHeight);
+    var brand = Find(snapshot.Root, "spotify.brand.full-logo");
+    Assert.Equal(ViewNodeKind.Icon, brand.Kind);
+    Assert.Equal(WidgetGlyph.Music, brand.Glyph);
+    Assert.Equal("spotify.brand.full-green", brand.PackageIcon?.AssetId);
+    Assert.Equal(WidgetPackageIconColorMode.OriginalColor,
+        brand.PackageIcon?.ColorMode);
+    Assert.Equal("Spotify", brand.AccessibilityLabel);
+    Assert.True(!brand.IsFocusable,
+        "The decorative Spotify header wordmark must remain nonfocusable.");
+    Assert.True(!ContainsId(snapshot.Root, "spotify.eyebrow"),
+        "The retired separate Spotify brand-text node is still published.");
+    Assert.True(!ContainsText(snapshot.Root, "SPOTIFY"),
+        "The full wordmark must not duplicate a separate SPOTIFY text label.");
 
     var source = File.ReadAllText(Path.Combine(
         AppContext.BaseDirectory, "styles", "default.wrss"));
@@ -146,6 +159,11 @@ static async Task DisconnectedLayoutContract()
     var compiled = WrssThemeCompiler.Compile([parsed.Document]);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     var theme = compiled.Theme!;
+    var fullLogo = theme.Resolve(new WrssElement(
+        "icon", StyleClasses: new HashSet<string>(["spotify-full-logo"])))!;
+    Assert.Equal("117px", fullLogo.Get("width")?.Text);
+    Assert.Equal("32px", fullLogo.Get("height")?.Text);
+    Assert.Equal("0", fullLogo.Get("flex-shrink")?.Text);
     var detailStyle = theme.Resolve(new WrssElement(
         "text", StyleClasses: new HashSet<string>(["spotify-state-detail"])))!;
     Assert.Equal("100%", detailStyle.Get("width")?.Text);
@@ -2365,10 +2383,40 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.34", manifest.Version);
+    Assert.Equal("0.3.36", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
+    Assert.Equal(WidgetGlyph.Music, manifest.Presentation.Icon);
+    Assert.Equal("spotify.brand.green", manifest.Presentation.PackageIcon?.AssetId);
+    Assert.Equal(WidgetPackageIconColorMode.OriginalColor,
+        manifest.Presentation.PackageIcon?.ColorMode);
+    var expectedAssets = new Dictionary<string, (string Path, int Bytes, string Hash)>(
+        StringComparer.Ordinal)
+    {
+        ["spotify.brand.black"] = ("assets/icons/spotify-black.svg", 1242,
+            "5595AFEA0E6F009B1DD8529511204D0FD5CA035E49C85409D1697063B3C27A05"),
+        ["spotify.brand.full-green"] = ("assets/icons/spotify-full-green.svg", 4522,
+            "AB2131B5F1BA0BE90CD2F1B9F9584717158668C6755952D24C4D762331100ADC"),
+        ["spotify.brand.green"] = ("assets/icons/spotify-green.svg", 1255,
+            "EAD72F82725038389CCA09F439FDB7807640E122500C934F2500C7036BF40DBB"),
+        ["spotify.brand.white"] = ("assets/icons/spotify-white.svg", 1252,
+            "8929D148F54CEDE78F0F36CE90DF815E5EA5E5559E7FAECCAD3669302EF2DAA1"),
+    };
+    Assert.Equal(expectedAssets.Count, manifest.IconAssets.Count);
+    foreach (var (id, expected) in expectedAssets)
+    {
+        Assert.Equal(expected.Path, manifest.IconAssets[id].Path);
+        var path = Path.Combine(
+            AppContext.BaseDirectory, expected.Path.Replace('/', Path.DirectorySeparatorChar));
+        var bytes = File.ReadAllBytes(path);
+        Assert.Equal(expected.Bytes, bytes.Length);
+        Assert.Equal(expected.Hash, Convert.ToHexString(SHA256.HashData(bytes)));
+    }
+    var packageScript = File.ReadAllText(Path.Combine(
+        AppContext.BaseDirectory, "package", "Build-CommunityPackage.ps1"));
+    foreach (var expected in expectedAssets.Values)
+        Assert.Equal(2, CountOccurrences(packageScript, Path.GetFileName(expected.Path)));
     return Task.CompletedTask;
 }
 
@@ -2643,6 +2691,18 @@ static bool ContainsId(ViewNode node, string id) =>
 static bool ContainsText(ViewNode node, string text) =>
     string.Equals(node.Text, text, StringComparison.Ordinal) ||
     node.Children.Any(child => ContainsText(child, text));
+
+static int CountOccurrences(string source, string value)
+{
+    var count = 0;
+    var offset = 0;
+    while ((offset = source.IndexOf(value, offset, StringComparison.Ordinal)) >= 0)
+    {
+        count++;
+        offset += value.Length;
+    }
+    return count;
+}
 
 static bool ContainsTextFragment(ViewNode node, string text) =>
     (node.Text?.Contains(text, StringComparison.Ordinal) ?? false) ||

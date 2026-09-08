@@ -44,7 +44,7 @@ static async Task PageCoverage()
 {
     var widget = new SdkGalleryWidget();
     var overview = Snapshot(widget, 1);
-    Assert.Equal(ProtocolConstants.FocusedBackgroundArtworkVersion, overview.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.PackageSvgIconVersion, overview.ProtocolVersion);
     Assert.Equal("gallery.refresh", overview.InitialFocusId);
     Assert.Equal(widget.Navigation.InputScopeId, overview.ActiveInputScopeId);
     Assert.Equal(WidgetSurfaceMode.Standard, overview.Surface!.Mode);
@@ -58,6 +58,21 @@ static async Task PageCoverage()
     Assert.ContainsClass(overview, "wrail-icon-button");
     Assert.ContainsClass(overview, "wrail-badge");
     Assert.ContainsClass(overview, "wrail-navigation-shell");
+    var originalIcon = Find(overview, "gallery.package-icon.original");
+    Assert.Equal(WidgetGlyph.Settings, originalIcon.Glyph);
+    Assert.Equal("gallery.mark", originalIcon.PackageIcon?.AssetId);
+    Assert.Equal(WidgetPackageIconColorMode.OriginalColor,
+        originalIcon.PackageIcon?.ColorMode);
+    var tintedIcon = Find(overview, "gallery.package-icon.tinted");
+    Assert.Equal("gallery.mark", tintedIcon.PackageIcon?.AssetId);
+    Assert.Equal(WidgetPackageIconColorMode.ThemeTint,
+        tintedIcon.PackageIcon?.ColorMode);
+    Assert.True(tintedIcon.IsFocusable && tintedIcon.IsDisabled != true);
+    var disabledIcon = Find(overview, "gallery.package-icon.disabled");
+    Assert.Equal("gallery.mark", disabledIcon.PackageIcon?.AssetId);
+    Assert.Equal(WidgetPackageIconColorMode.ThemeTint,
+        disabledIcon.PackageIcon?.ColorMode);
+    Assert.True(disabledIcon.IsFocusable && disabledIcon.IsDisabled == true);
     var compactNavigation = Find(overview, "gallery.shell.compact");
     var expandedNavigation = Find(overview, "gallery.shell.rail");
     Assert.Equal(ResponsiveVisibility.CompactOnly, compactNavigation.VisibleWhen);
@@ -565,13 +580,19 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.16", manifest.Version);
+    Assert.Equal("0.1.17", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
     Assert.Equal("suspend-when-hidden", manifest.ResidencyPolicy!.Mode);
+    Assert.Equal(WidgetGlyph.Settings, manifest.Presentation.Icon);
+    Assert.Equal("gallery.mark", manifest.Presentation.PackageIcon?.AssetId);
+    Assert.Equal(WidgetPackageIconColorMode.OriginalColor,
+        manifest.Presentation.PackageIcon?.ColorMode);
+    Assert.Equal("assets/icons/gallery-mark.svg",
+        manifest.IconAssets["gallery.mark"].Path);
 
     var project = File.ReadAllText(Path.Combine(
         AppContext.BaseDirectory, "sample", "SdkGalleryWidget.csproj"));
@@ -599,6 +620,8 @@ static Task PackageContract()
         AppContext.BaseDirectory, "sample", "Build-CommunityPackage.ps1"));
     Assert.True(packageScript.Contains("$expectedFiles", StringComparison.Ordinal));
     Assert.True(packageScript.Contains("payload\\SdkGalleryWidget.dll", StringComparison.Ordinal));
+    Assert.True(packageScript.Contains("assets\\icons\\gallery-mark.svg",
+        StringComparison.Ordinal));
     Assert.False(packageScript.Contains("assets\\background-", StringComparison.Ordinal),
         "Embedded artwork must not be duplicated as loose package files.");
     Assert.True(packageScript.Contains("Assert-NoReparsePoint", StringComparison.Ordinal));
@@ -606,6 +629,11 @@ static Task PackageContract()
     Assert.True(packageScript.Contains("pack $stagingRoot --output $packagePath", StringComparison.Ordinal));
     Assert.False(packageScript.Contains("Copy-Item -Path", StringComparison.OrdinalIgnoreCase),
         "Package staging must not copy wildcard paths.");
+    var iconPath = Path.Combine(
+        AppContext.BaseDirectory, "sample", "assets", "icons", "gallery-mark.svg");
+    Assert.Equal(
+        "3680A34A41F772B56ACD9C57D2A6A34169F8E432B79DD4F432DC8AE54E2ECA1F",
+        Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(iconPath))));
     return Task.CompletedTask;
 }
 

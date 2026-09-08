@@ -16,5 +16,6 @@
     <None Include="..\..\samples\SdkGalleryWidget\styles\default.wrss" Link="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SdkGalleryWidget\SdkGalleryWidget.csproj" Link="sample\SdkGalleryWidget.csproj" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SdkGalleryWidget\Build-CommunityPackage.ps1" Link="sample\Build-CommunityPackage.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SdkGalleryWidget\assets\icons\gallery-mark.svg" Link="sample\assets\icons\gallery-mark.svg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

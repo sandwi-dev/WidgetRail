@@ -420,6 +420,7 @@ public sealed partial class YouTubeWidgetTests
         Assert.IsNull(TryFind(ready.Root, "youtube.playback.seek-backward"));
         Assert.IsNull(TryFind(ready.Root, "youtube.playback.seek-forward"));
         var fullscreen = Find(ready.Root, "youtube.player.fullscreen");
+        Assert.AreEqual(WidgetGlyph.Fullscreen, fullscreen.Glyph);
         Assert.AreEqual(YouTubeVideoWidget.EnterFullscreenActionId, fullscreen.ActionId);
         Assert.AreEqual("Fullscreen", fullscreen.AccessibilityLabel);
         var captions = Find(ready.Root, YouTubeVideoWidget.CaptionsActionId);

@@ -19,5 +19,10 @@
     <None Include="..\..\samples\SpotifyWidget\SpotifyWidget.Routes.cs" Link="source\SpotifyWidget.Routes.cs" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SpotifyWidget\SpotifyWidget.Playback.cs" Link="source\SpotifyWidget.Playback.cs" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SpotifyWidget\SpotifyWidget.Presentation.cs" Link="source\SpotifyWidget.Presentation.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SpotifyWidget\Build-CommunityPackage.ps1" Link="package\Build-CommunityPackage.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SpotifyWidget\assets\icons\spotify-black.svg" Link="assets\icons\spotify-black.svg" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SpotifyWidget\assets\icons\spotify-full-green.svg" Link="assets\icons\spotify-full-green.svg" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SpotifyWidget\assets\icons\spotify-green.svg" Link="assets\icons\spotify-green.svg" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SpotifyWidget\assets\icons\spotify-white.svg" Link="assets\icons\spotify-white.svg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
