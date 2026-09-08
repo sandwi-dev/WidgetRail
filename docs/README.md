@@ -63,6 +63,8 @@ planner and implementation turns do not spend context on closed evidence.
   cached views, lazy resume, and legacy migration.
 - [Declarative UI reference](declarative-ui.md) — elements, focus, actions,
   images, icons, state, invalidation, and protocol limits.
+- [Widget icon provenance](widget-icon-provenance.md) — repository-owned icon
+  sources and the exact supplied-vector conversion used by bundled packages.
 - [Adding a declarative UI element end to end](adding-declarative-ui-elements.md)
   — contributor decision tree, cross-boundary owner map, implementation order,
   focused gate matrix, completion checklist, and WIDGE-167 Select case study.

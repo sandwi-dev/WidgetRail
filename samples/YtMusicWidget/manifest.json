@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.ytmusic",
   "publisher": "widgetrail.samples",
   "name": "YT Music",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -13,7 +13,13 @@
     "assembly": "payload/YtMusicWidget.dll",
     "type": "WidgetRail.Samples.YtMusicWidget.YtMusicWidget"
   },
-  "presentation": { "icon": "music" },
+  "presentation": {
+    "icon": "music",
+    "packageIcon": { "assetId": "ytmusic.mark", "colorMode": "originalColor" }
+  },
+  "iconAssets": {
+    "ytmusic.mark": { "path": "assets/icons/yt-music.svg" }
+  },
   "permissions": [
     "network.loopback:13091"
   ],

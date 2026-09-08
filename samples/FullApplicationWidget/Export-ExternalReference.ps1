@@ -34,6 +34,9 @@ Copy-Item -LiteralPath (Join-Path $sampleRoot 'FullApplicationReferenceWidget.cs
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'ReferenceLibrary.cs') -Destination $sourceRoot
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
     -Destination (Join-Path $outputPath 'styles\default.wrss') -Force
+New-Item -ItemType Directory -Force -Path (Join-Path $outputPath 'assets\icons') | Out-Null
+Copy-Item -LiteralPath (Join-Path $sampleRoot 'assets\icons\full-application.svg') `
+    -Destination (Join-Path $outputPath 'assets\icons\full-application.svg') -Force
 
 @'
 {
@@ -48,7 +51,13 @@ Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
     "assembly": "payload/ExternalFullApplication.dll",
     "type": "WidgetRail.Samples.FullApplicationWidget.FullApplicationReferenceWidget"
   },
-  "presentation": { "icon": "settings" },
+  "presentation": {
+    "icon": "settings",
+    "packageIcon": { "assetId": "full-application.mark", "colorMode": "originalColor" }
+  },
+  "iconAssets": {
+    "full-application.mark": { "path": "assets/icons/full-application.svg" }
+  },
   "permissions": [],
   "optionalPermissions": [],
   "residencyPolicy": { "schemaVersion": 1, "mode": "unload-after-idle", "idleSeconds": 300 },

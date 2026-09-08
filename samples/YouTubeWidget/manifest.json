@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.youtube-video",
   "publisher": "widgetrail.samples",
   "name": "YouTube Video",
-  "version": "0.3.25",
+  "version": "0.3.26",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -13,7 +13,13 @@
     "runtime": "full-trust-application-v1",
     "executable": "payload/YouTubeApplication.exe"
   },
-  "presentation": { "icon": "play" },
+  "presentation": {
+    "icon": "play",
+    "packageIcon": { "assetId": "youtube.brand.red", "colorMode": "originalColor" }
+  },
+  "iconAssets": {
+    "youtube.brand.red": { "path": "assets/icons/youtube-red.svg" }
+  },
   "permissions": [],
   "optionalPermissions": [],
   "residencyPolicy": {

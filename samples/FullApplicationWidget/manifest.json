@@ -3,14 +3,20 @@
   "id": "widgetrail.samples.full-application",
   "publisher": "widgetrail.samples",
   "name": "Full Application Reference",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
   "entrypoint": {
     "runtime": "dotnet-worker",
     "assembly": "payload/FullApplicationWidget.dll",
     "type": "WidgetRail.Samples.FullApplicationWidget.FullApplicationReferenceWidget"
   },
-  "presentation": { "icon": "settings" },
+  "presentation": {
+    "icon": "settings",
+    "packageIcon": { "assetId": "full-application.mark", "colorMode": "originalColor" }
+  },
+  "iconAssets": {
+    "full-application.mark": { "path": "assets/icons/full-application.svg" }
+  },
   "permissions": [],
   "optionalPermissions": [],
   "residencyPolicy": { "schemaVersion": 1, "mode": "unload-after-idle", "idleSeconds": 300 },

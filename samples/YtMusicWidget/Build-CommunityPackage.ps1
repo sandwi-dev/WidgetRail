@@ -84,7 +84,8 @@ foreach ($generatedDirectory in @($stagingRoot, $publishRoot)) {
         Remove-Item -LiteralPath $generatedDirectory -Recurse -Force
     }
 }
-New-Item -ItemType Directory -Force -Path $payloadRoot, (Join-Path $stagingRoot 'styles') | Out-Null
+New-Item -ItemType Directory -Force -Path $payloadRoot, `
+    (Join-Path $stagingRoot 'styles'), (Join-Path $stagingRoot 'assets\icons') | Out-Null
 Assert-NoReparsePoint -Path $stagingRoot
 Assert-NoReparsePoint -Path $publishRoot
 
@@ -111,11 +112,14 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 }
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
     -Destination (Join-Path $stagingRoot 'styles\default.wrss') -Force
+Copy-Item -LiteralPath (Join-Path $sampleRoot 'assets\icons\yt-music.svg') `
+    -Destination (Join-Path $stagingRoot 'assets\icons\yt-music.svg') -Force
 
 # Keep the public archive closed over the reviewed runtime payload. Host-owned
 # companion state and secrets must never become package inputs.
 $expectedFiles = @(
     'manifest.json',
+    'assets\icons\yt-music.svg',
     'payload\YtMusicWidget.dll',
     'styles\default.wrss'
 )

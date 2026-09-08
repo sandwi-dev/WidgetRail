@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.audio-mixer",
   "publisher": "widgetrail.firstparty",
   "name": "Audio Mixer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -13,7 +13,13 @@
     "assembly": "payload/AudioMixerWidget.dll",
     "type": "WidgetRail.FirstPartyWidgets.AudioMixer.AudioMixerWidget"
   },
-  "presentation": { "icon": "volume" },
+  "presentation": {
+    "icon": "volume",
+    "packageIcon": { "assetId": "audio-mixer.mark", "colorMode": "originalColor" }
+  },
+  "iconAssets": {
+    "audio-mixer.mark": { "path": "assets/icons/audio-mixer.svg" }
+  },
   "permissions": [
     "system.audio.sessions.read.v1",
     "system.audio.output.read.v1"

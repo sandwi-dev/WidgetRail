@@ -70,7 +70,7 @@ foreach ($generated in @($stagingRoot, $publishRoot, $buildGraphRoot)) {
     }
 }
 New-Item -ItemType Directory -Force -Path $payloadRoot,
-    (Join-Path $stagingRoot 'styles') | Out-Null
+    (Join-Path $stagingRoot 'styles'), (Join-Path $stagingRoot 'assets\icons') | Out-Null
 
 & dotnet publish $applicationProject `
     --configuration $Configuration `
@@ -99,6 +99,8 @@ Copy-Item -LiteralPath $manifestPath `
     -Destination (Join-Path $stagingRoot 'manifest.json')
 Copy-Item -LiteralPath (Join-Path $widgetRoot 'styles\default.wrss') `
     -Destination (Join-Path $stagingRoot 'styles\default.wrss')
+Copy-Item -LiteralPath (Join-Path $widgetRoot 'assets\icons\playnite-library.svg') `
+    -Destination (Join-Path $stagingRoot 'assets\icons\playnite-library.svg')
 
 $stagingPrefix = $stagingRoot.TrimEnd(
     [System.IO.Path]::DirectorySeparatorChar) +
@@ -107,6 +109,7 @@ $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse |
     ForEach-Object { $_.FullName.Substring($stagingPrefix.Length) })
 $required = @(
     'manifest.json',
+    'assets\icons\playnite-library.svg',
     'payload\PlayniteLibraryApplication.exe',
     'payload\PlayniteLibraryApplication.dll',
     'payload\PlayniteLibraryWidget.dll',

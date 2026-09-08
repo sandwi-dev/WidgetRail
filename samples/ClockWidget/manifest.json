@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.clock",
   "publisher": "widgetrail.samples",
   "name": "Clock",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -12,6 +12,13 @@
     "runtime": "dotnet-worker",
     "assembly": "payload/ClockWidget.dll",
     "type": "WidgetRail.Samples.ClockWidget.ClockWidget"
+  },
+  "presentation": {
+    "icon": "connection",
+    "packageIcon": { "assetId": "clock.mark", "colorMode": "originalColor" }
+  },
+  "iconAssets": {
+    "clock.mark": { "path": "assets/icons/clock.svg" }
   },
   "permissions": [],
   "optionalPermissions": [],

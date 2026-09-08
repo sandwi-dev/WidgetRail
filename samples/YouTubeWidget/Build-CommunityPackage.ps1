@@ -69,7 +69,8 @@ foreach ($generatedDirectory in @($stagingRoot, $publishRoot)) {
         Remove-Item -LiteralPath $generatedDirectory -Recurse -Force
     }
 }
-New-Item -ItemType Directory -Force -Path $mediaRoot, (Join-Path $stagingRoot 'styles') | Out-Null
+New-Item -ItemType Directory -Force -Path $mediaRoot, `
+    (Join-Path $stagingRoot 'styles'), (Join-Path $stagingRoot 'assets\icons') | Out-Null
 
 & dotnet publish $applicationProject --configuration $Configuration --no-self-contained --nologo `
     --property:UseSharedCompilation=false --property:BuildInParallel=false --output $publishRoot
@@ -87,9 +88,12 @@ Copy-Item -LiteralPath (Join-Path $sampleRoot 'media\adapter.html') `
     -Destination (Join-Path $mediaRoot 'adapter.html') -Force
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\WidgetSdk\EmbeddedMediaAdapterRuntime.js') `
     -Destination (Join-Path $mediaRoot 'adapter-runtime.js') -Force
+Copy-Item -LiteralPath (Join-Path $sampleRoot 'assets\icons\youtube-red.svg') `
+    -Destination (Join-Path $stagingRoot 'assets\icons\youtube-red.svg') -Force
 
 $requiredFiles = @(
     'manifest.json',
+    'assets\icons\youtube-red.svg',
     'payload\YouTubeApplication.exe',
     'payload\YouTubeApplication.dll',
     'payload\YouTubeWidget.dll',

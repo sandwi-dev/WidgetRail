@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.games-apps",
   "publisher": "widgetrail.firstparty",
   "name": "Games & Apps",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -13,7 +13,13 @@
     "assembly": "payload/GamesAppsWidget.dll",
     "type": "WidgetRail.FirstPartyWidgets.GamesApps.GamesAppsWidget"
   },
-  "presentation": { "icon": "play" },
+  "presentation": {
+    "icon": "play",
+    "packageIcon": { "assetId": "games-apps.mark", "colorMode": "originalColor" }
+  },
+  "iconAssets": {
+    "games-apps.mark": { "path": "assets/icons/games-apps.svg" }
+  },
   "permissions": [
     "system.apps.library.read.v1"
   ],

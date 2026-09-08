@@ -1949,7 +1949,8 @@ function Publish-BundledWidgetPackage {
     }
     $payloadOutput = Join-Path $resolvedPackageRoot 'payload'
     $stylesOutput = Join-Path $resolvedPackageRoot 'styles'
-    New-Item -ItemType Directory -Force -Path $payloadOutput, $stylesOutput | Out-Null
+    $iconsOutput = Join-Path $resolvedPackageRoot 'assets\icons'
+    New-Item -ItemType Directory -Force -Path $payloadOutput, $stylesOutput, $iconsOutput | Out-Null
     $managedPublishExitCode = 0
     Invoke-SerializedManagedPublish `
         -Project (Join-Path $WidgetProject "$AssemblyName.csproj") `
@@ -1982,6 +1983,12 @@ function Publish-BundledWidgetPackage {
         -Destination (Join-Path $resolvedPackageRoot 'manifest.json') -Force
     Copy-Item -LiteralPath (Join-Path $WidgetProject 'styles\default.wrss') `
         -Destination (Join-Path $stylesOutput 'default.wrss') -Force
+    $iconFiles = @(Get-ChildItem -LiteralPath (Join-Path $WidgetProject 'assets\icons') `
+        -File -Filter '*.svg')
+    foreach ($iconFile in $iconFiles) {
+        Copy-Item -LiteralPath $iconFile.FullName `
+            -Destination (Join-Path $iconsOutput $iconFile.Name) -Force
+    }
     foreach ($requiredFile in @(
         'manifest.json',
         'styles\default.wrss',

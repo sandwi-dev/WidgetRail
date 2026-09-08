@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.network-controls",
   "publisher": "widgetrail.firstparty",
   "name": "Network Controls",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -13,7 +13,13 @@
     "assembly": "payload/NetworkControlsWidget.dll",
     "type": "WidgetRail.FirstPartyWidgets.NetworkControls.NetworkControlsWidget"
   },
-  "presentation": { "icon": "wifi" },
+  "presentation": {
+    "icon": "wifi",
+    "packageIcon": { "assetId": "network-controls.mark", "colorMode": "originalColor" }
+  },
+  "iconAssets": {
+    "network-controls.mark": { "path": "assets/icons/network-controls.svg" }
+  },
   "permissions": [
     "system.network.read.v1",
     "system.network.wifi.read.v1",

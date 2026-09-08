@@ -11,5 +11,6 @@
   <ItemGroup>
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="assets\icons\clock.svg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.media-sessions",
   "publisher": "widgetrail.firstparty",
   "name": "Now Playing",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -14,7 +14,13 @@
     "assembly": "payload/MediaSessionsWidget.dll",
     "type": "WidgetRail.FirstPartyWidgets.MediaSessions.MediaSessionsWidget"
   },
-  "presentation": { "icon": "music" },
+  "presentation": {
+    "icon": "music",
+    "packageIcon": { "assetId": "media-sessions.mark", "colorMode": "originalColor" }
+  },
+  "iconAssets": {
+    "media-sessions.mark": { "path": "assets/icons/media-sessions.svg" }
+  },
   "permissions": [
     "system.media.sessions.read.v1"
   ],
