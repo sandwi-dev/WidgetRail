@@ -11813,6 +11813,15 @@ private:
         return source;
     }
 
+    const widgetrail::WidgetSnapshot* FocusRestorationSnapshotFor(
+        const std::wstring_view widgetId) const noexcept {
+        const auto presentation = sessions_.Presentation(widgetId);
+        return presentation.HasCommittedViewAuthority(
+                   widgetrail::WidgetCommittedViewUse::Presentation)
+            ? presentation.snapshot
+            : nullptr;
+    }
+
     const widgetrail::WidgetSnapshot* DashboardActionSnapshotFor(
         const std::wstring_view widgetId) const noexcept {
         const auto presentation = sessions_.Presentation(widgetId);
@@ -11891,7 +11900,11 @@ private:
             interactionSession_.ClearFocus();
             return;
         }
-        const auto* snapshot = InteractionSnapshotFor(widgetId);
+        // Selecting the first-frame focus target precedes completion of the
+        // asynchronous Interactive lifecycle request. This does not authorize
+        // input: every action and navigation path continues to resolve through
+        // InteractionSnapshotFor.
+        const auto* snapshot = FocusRestorationSnapshotFor(widgetId);
         if (snapshot)
             (void)interactionSession_.RestoreFocus(widgetId, *snapshot);
         else

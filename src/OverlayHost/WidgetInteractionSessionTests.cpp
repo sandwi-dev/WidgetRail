@@ -1,9 +1,13 @@
 #include "WidgetInteractionSession.h"
+#include "WidgetSessionCoordinator.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string_view>
 #include <utility>
 
@@ -350,6 +354,118 @@ void FocusAndSurfaceLifecycle() {
     auto dialog = Snapshot(42, L"fixture.instance", L"dialog");
     Check(session.RestoreFocus(L"fixture.widget", dialog) == L"dialog.confirm",
           "a nested input scope restores its own focus surface");
+}
+
+void FocusRestorationPrecedesInteractiveAdmission() {
+    using namespace widgetrail;
+    using namespace widgetrail::input;
+
+    auto snapshot = Snapshot();
+    WidgetInteractionSession session;
+    session.SetFocus(L"fixture.widget", snapshot, L"volume-b");
+    session.RememberFocus(L"fixture.widget", snapshot);
+
+    const WidgetSessionPresentation visible{
+        &snapshot,
+        WidgetPresentationAuthority::Current,
+        WidgetLifecycleState::Visible,
+    };
+    Check(visible.HasCommittedViewAuthority(WidgetCommittedViewUse::Presentation) &&
+              !visible.HasCommittedViewAuthority(WidgetCommittedViewUse::Interaction),
+          "a delayed Interactive lifecycle keeps the committed presentation eligible but denies input");
+
+    session.ClearLiveFocus();
+    Check(session.RestoreFocus(L"fixture.widget", *visible.snapshot) == L"volume-b",
+          "the focus owner restores a non-first remembered target before input admission");
+
+    auto initial = Snapshot(42, L"initial.instance");
+    initial.initialFocusId = L"volume-b";
+    WidgetInteractionSession initialSession;
+    const WidgetSessionPresentation initialVisible{
+        &initial,
+        WidgetPresentationAuthority::Current,
+        WidgetLifecycleState::Visible,
+    };
+    Check(!initialVisible.HasCommittedViewAuthority(WidgetCommittedViewUse::Interaction) &&
+              initialSession.RestoreFocus(
+                  L"initial.widget", *initialVisible.snapshot) == L"volume-b",
+          "a non-first authored initial target is selected while delayed Interactive still denies input");
+
+    auto invalidRemembered = snapshot;
+    std::erase_if(
+        invalidRemembered.root.children,
+        [](const widgetrail::WidgetNode& node) {
+            return node.id == L"volume-b";
+        });
+    session.ClearLiveFocus();
+    Check(session.RestoreFocus(L"fixture.widget", invalidRemembered) == L"row.partial",
+          "a removed remembered target uses the bounded nearest-valid fallback");
+
+    const WidgetSessionPresentation interactive{
+        &snapshot,
+        WidgetPresentationAuthority::Current,
+        WidgetLifecycleState::Interactive,
+    };
+    Check(interactive.HasCommittedViewAuthority(WidgetCommittedViewUse::Interaction),
+          "the same committed snapshot admits input only after Interactive completes");
+}
+
+void HostFocusRestorationUsesPresentationAuthority() {
+    const auto path = std::filesystem::path{__FILE__}.parent_path() / "main.cpp";
+    std::ifstream input(path, std::ios::binary);
+    Check(input.is_open(), "the host focus-restoration source is available");
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    const auto source = buffer.str();
+
+    const auto helperBegin = source.find(
+        "const widgetrail::WidgetSnapshot* FocusRestorationSnapshotFor(");
+    const auto helperEnd = source.find(
+        "const widgetrail::WidgetSnapshot* DashboardActionSnapshotFor(",
+        helperBegin);
+    Check(helperBegin != std::string::npos && helperEnd != std::string::npos &&
+              helperBegin < helperEnd,
+          "the host owns one bounded focus-restoration snapshot selector");
+    const auto helper = source.substr(helperBegin, helperEnd - helperBegin);
+    Check(helper.find("WidgetCommittedViewUse::Presentation") != std::string::npos &&
+              helper.find("WidgetCommittedViewUse::Interaction") == std::string::npos,
+          "focus restoration selects committed presentation authority without granting interaction");
+
+    const auto rememberBegin = source.find(
+        "void RememberCurrentFocus(const std::wstring_view widgetId)");
+    const auto restoreBegin = source.find(
+        "void RestoreFocusForActiveSurface(const std::wstring_view widgetId)",
+        rememberBegin);
+    const auto restoreEnd = source.find(
+        "void ReturnPinnedControllerFocusToOverlay(", restoreBegin);
+    Check(rememberBegin != std::string::npos && restoreBegin != std::string::npos &&
+              restoreEnd != std::string::npos && rememberBegin < restoreBegin &&
+              restoreBegin < restoreEnd,
+          "the host focus-memory and restoration owners remain bounded");
+    const auto remember = source.substr(rememberBegin, restoreBegin - rememberBegin);
+    const auto restore = source.substr(restoreBegin, restoreEnd - restoreBegin);
+    Check(remember.find("InteractionSnapshotFor(widgetId)") != std::string::npos &&
+              remember.find("FocusRestorationSnapshotFor(widgetId)") == std::string::npos,
+          "remembering focus still requires exact Interactive input authority");
+    Check(restore.find("FocusRestorationSnapshotFor(widgetId)") != std::string::npos &&
+              restore.find("InteractionSnapshotFor(widgetId)") == std::string::npos,
+          "the active-surface restore path consumes only the presentation-authority selector");
+
+    const auto transitionBegin = source.find(
+        "template <typename Mutation>\n    void ApplyStateTransition(");
+    const auto transitionEnd = source.find(
+        "void ApplyPresentation(", transitionBegin);
+    Check(transitionBegin != std::string::npos && transitionEnd != std::string::npos &&
+              transitionBegin < transitionEnd,
+          "the host state-transition owner is available");
+    const auto transition = source.substr(
+        transitionBegin, transitionEnd - transitionBegin);
+    const auto sync = transition.find("SyncWidgetActivity(");
+    const auto restoreCall = transition.find(
+        "RestoreFocusForActiveSurface(state_.activeWidget())", sync);
+    Check(sync != std::string::npos && restoreCall != std::string::npos &&
+              sync < restoreCall,
+          "widget entry starts asynchronous lifecycle admission before selecting first-frame focus");
 }
 
 void PinnedViewReturnUsesExistingFocusMemory() {
@@ -1882,6 +1998,8 @@ void AnchoredSelectPopupIsExactAndBounded() {
 
 int main() {
     FocusAndSurfaceLifecycle();
+    FocusRestorationPrecedesInteractiveAdmission();
+    HostFocusRestorationUsesPresentationAuthority();
     PinnedViewReturnUsesExistingFocusMemory();
     ResponsiveFocusHandoffUsesInteractionOwner();
     RememberedGroupsUseExplicitAndGeometricEntryOwners();
