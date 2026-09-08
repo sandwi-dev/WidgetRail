@@ -175,7 +175,12 @@ void CheckTrayMenuCompositionHeadroom() {
     Check(tray && tray->tiles.size() == 4,
           "headroom fixture retains the full current tray catalog");
 
-    const auto& selected = tray->tiles[1].bounds;
+    const auto selectedTile = std::find_if(
+        tray->tiles.begin(), tray->tiles.end(),
+        [](const auto& tile) { return tile.slot == 1; });
+    Check(selectedTile != tray->tiles.end(),
+          "headroom fixture resolves its selected catalog identity");
+    const auto& selected = selectedTile->bounds;
     const float menuWidth = std::min(286.0F, viewportWidth - 16.0F);
     const float menuHeight = itemHeight * maximumItems;
     const float menuLeft = std::clamp(
@@ -342,6 +347,29 @@ void CheckRenderedGuideContentCentering() {
               std::string_view::npos &&
           ensureOwner.find("tray-visual-gaps=") != std::string_view::npos,
           "bounded upward expansion preserves the guide screen anchor and reports both visual gaps");
+    Check(ensureOwner.find(
+              "ComputeTrayCapacityWidth(\n                metrics->viewportWidthDip)") !=
+                  std::string_view::npos &&
+              ensureOwner.find("session.trayCapacityWidthDip = trayCapacityWidthDip") !=
+                  std::string_view::npos,
+          "fixed chrome resolves the monitor sixty-percent capacity exactly once");
+
+    const auto localLayoutBegin = source.find(
+        "ComputeCompositionTrayLayout(\n        const CompositionChromeSession& session)");
+    const auto localLayoutEnd = source.find(
+        "CurrentCompositionTrayLayout() const", localLayoutBegin);
+    Check(localLayoutBegin != std::string::npos &&
+              localLayoutEnd != std::string::npos,
+          "fixed-chrome child layout owner has a bounded source slice");
+    const std::string_view localLayoutOwner{
+        source.data() + localLayoutBegin, localLayoutEnd - localLayoutBegin};
+    Check(localLayoutOwner.find("session.trayCapacityWidthDip") !=
+              std::string_view::npos &&
+              localLayoutOwner.find("TrayWidthBasis::ExactCapacity") !=
+              std::string_view::npos &&
+              localLayoutOwner.find("ComputeTrayCapacityWidth") ==
+              std::string_view::npos,
+          "fixed-chrome child layout consumes exact capacity without applying sixty percent again");
 
     const auto stateBegin = source.find("CurrentTrayPaintState(");
     const auto stateEnd = source.find("bool RenderCompositionLayer(", stateBegin);
@@ -365,6 +393,60 @@ void CheckRenderedGuideContentCentering() {
     Check(drawOwner.find("FillColorKeyRoundedRectangle") ==
               std::string_view::npos,
           "floating tray paint reserves no outer background panel");
+
+    const auto pointerBegin = source.find("void HandlePointerActivation(");
+    const auto pointerEnd = source.find(
+        "HitTestAuthoredCompositionSurface(", pointerBegin);
+    const auto accessibilityBegin = source.find("void PublishTrayAccessibility(");
+    const auto accessibilityEnd = source.find(
+        "ReconcileResponsiveFocusPersistence(", accessibilityBegin);
+    const auto frameBegin = source.find("void DrawCurrentFrame(");
+    const auto frameEnd = source.find(
+        "struct CompositionLayerGeometry final", frameBegin);
+    const auto renderBegin = source.find("bool RenderCompositionLayer(");
+    const auto renderEnd = source.find("bool RenderCompositionFrames(", renderBegin);
+    Check(pointerBegin != std::string::npos &&
+              pointerEnd != std::string::npos &&
+              accessibilityBegin != std::string::npos &&
+              accessibilityEnd != std::string::npos &&
+              frameBegin != std::string::npos &&
+              frameEnd != std::string::npos && frameBegin < frameEnd &&
+              renderBegin != std::string::npos &&
+              renderEnd != std::string::npos && renderBegin < renderEnd,
+          "tray pointer, accessibility, and paint owners have bounded source slices");
+    const std::string_view pointerOwner{
+        source.data() + pointerBegin, pointerEnd - pointerBegin};
+    const std::string_view accessibilityOwner{
+        source.data() + accessibilityBegin,
+        accessibilityEnd - accessibilityBegin};
+    const std::string_view frameOwner{
+        source.data() + frameBegin, frameEnd - frameBegin};
+    const std::string_view renderOwner{
+        source.data() + renderBegin, renderEnd - renderBegin};
+    Check(pointerOwner.find("CurrentCompositionTrayLayout()") !=
+              std::string_view::npos &&
+              pointerOwner.find("HitTestTray(*trayLayout, trayX, trayY)") !=
+              std::string_view::npos &&
+              pointerOwner.find("HitTestTrayOverflow(\n                           *trayLayout") !=
+              std::string_view::npos,
+          "pointer routing consumes the exact current fixed-chrome tray layout");
+    Check(accessibilityOwner.find("BuildTrayTree(") != std::string_view::npos &&
+              accessibilityOwner.find("items, layout, state_.selectedSlot()") !=
+                  std::string_view::npos,
+          "accessibility consumes the supplied final tray layout authority");
+    Check(renderOwner.find("DrawCurrentFrame(") != std::string_view::npos &&
+              renderOwner.find("paintLayer, trayLayout, guideBounds") !=
+                  std::string_view::npos,
+          "composition forwards the exact tray layout to the current frame owner");
+    Check(frameOwner.find(
+              "layer == CompositionPaintLayer::Tray && trayLayout") !=
+                  std::string_view::npos &&
+              frameOwner.find(
+                  "metrics->viewportWidthDip, metrics->viewportHeightDip") !=
+                  std::string_view::npos &&
+              frameOwner.find("nullptr, nullptr, trayLayout, false") !=
+                  std::string_view::npos,
+          "the current frame tray branch paints the exact forwarded layout once");
 }
 
 void CheckFrame(
@@ -647,6 +729,43 @@ void CheckFixedChromeWindowPolicy() {
               !widgetrail::shell::SameFixedChromeSession(session, changedAppearance),
           "work-area, catalog, scale, and appearance changes rebuild fixed chrome");
 
+    const float monitorCapacity =
+        widgetrail::shell::ComputeTrayCapacityWidth(1920.0F);
+    const auto localCapacityLayout = widgetrail::shell::ComputeTrayLayout(
+        monitorCapacity, 224.0F, 15, 14,
+        widgetrail::shell::TrayBand{152.0F, 224.0F},
+        widgetrail::shell::TrayWidthBasis::ExactCapacity);
+    const auto selectedTile = localCapacityLayout
+        ? std::find_if(
+              localCapacityLayout->tiles.begin(),
+              localCapacityLayout->tiles.end(),
+              [](const auto& tile) { return tile.slot == 14; })
+        : std::vector<widgetrail::shell::TrayTileLayout>::const_iterator{};
+    Check(monitorCapacity == 1152.0F && localCapacityLayout &&
+              !localCapacityLayout->previousOverflow &&
+              !localCapacityLayout->nextOverflow &&
+              localCapacityLayout->tiles.size() == 15 &&
+              selectedTile != localCapacityLayout->tiles.end() &&
+              selectedTile->bounds.width >= 44.0F &&
+              selectedTile->bounds.width <= 64.0F &&
+              std::abs(selectedTile->bounds.width - 61.86667F) < 0.001F &&
+              std::all_of(
+                  localCapacityLayout->tiles.begin(),
+                  localCapacityLayout->tiles.end(),
+                  [&](const auto& tile) {
+                      return tile.slot < 15 &&
+                          std::count_if(
+                              localCapacityLayout->tiles.begin(),
+                              localCapacityLayout->tiles.end(),
+                              [&](const auto& candidate) {
+                                  return candidate.slot == tile.slot;
+                              }) == 1;
+                  }) &&
+              std::abs(selectedTile->bounds.x +
+                       selectedTile->bounds.width * 0.5F -
+                       monitorCapacity * 0.5F) < 0.01F,
+          "fixed chrome consumes one sixty-percent capacity with a centered cyclic selection");
+
     const wchar_t className[] = L"WidgetRail.FixedChromePolicyTests";
     WNDCLASSW windowClass{};
     windowClass.lpfnWndProc = FixedChromeTestWindowProc;
@@ -732,7 +851,12 @@ void CheckFixedChromeWindowPolicy() {
     Check(trayLayout.has_value() && trayLayout->tiles.size() == 3,
           "production tray layout exposes the target tile");
     pointerContext.layout = *trayLayout;
-    const auto& targetTile = pointerContext.layout.tiles[1].bounds;
+    const auto target = std::find_if(
+        pointerContext.layout.tiles.begin(), pointerContext.layout.tiles.end(),
+        [](const auto& tile) { return tile.slot == 1; });
+    Check(target != pointerContext.layout.tiles.end(),
+          "pointer fixture resolves the network catalog identity");
+    const auto& targetTile = target->bounds;
     POINT release{
         static_cast<LONG>(targetTile.x + targetTile.width * 0.5F),
         static_cast<LONG>(targetTile.y + targetTile.height * 0.5F),

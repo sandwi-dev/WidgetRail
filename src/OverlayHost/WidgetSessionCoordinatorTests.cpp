@@ -1015,7 +1015,27 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
     assert(current.HasCommittedViewAuthority() &&
            !current.HasCommittedViewAuthority(
                WidgetCommittedViewUse::Interaction) &&
+           current.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::DashboardQuickAction) &&
            !current.RefreshPending());
+    const WidgetSessionPresentation interactiveCurrent{
+        current.snapshot,
+        WidgetPresentationAuthority::Current,
+        WidgetLifecycleState::Interactive,
+    };
+    const WidgetSessionPresentation backgroundCurrent{
+        current.snapshot,
+        WidgetPresentationAuthority::Current,
+        WidgetLifecycleState::Background,
+    };
+    assert(interactiveCurrent.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::Interaction) &&
+           !interactiveCurrent.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::DashboardQuickAction) &&
+           !backgroundCurrent.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::Interaction) &&
+           !backgroundCurrent.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::DashboardQuickAction));
 
     bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 2, 760.0, 385.0);
     bridge.stalledWidget = L"alpha";
@@ -1027,6 +1047,8 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
            retained.HasCommittedViewAuthority() &&
            !retained.HasCommittedViewAuthority(
                WidgetCommittedViewUse::Interaction) &&
+           !retained.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::DashboardQuickAction) &&
            retained.RefreshPending());
     const WidgetSessionPresentation interactiveRetained{
         retained.snapshot,
@@ -1036,6 +1058,8 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
     assert(interactiveRetained.HasCommittedViewAuthority() &&
            interactiveRetained.HasCommittedViewAuthority(
                WidgetCommittedViewUse::Interaction) &&
+           !interactiveRetained.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::DashboardQuickAction) &&
            interactiveRetained.RefreshPending());
     coordinator.SetLifecycleTargets({
         {L"alpha", WidgetLifecycleState::Visible},
@@ -1127,7 +1151,10 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
     const auto failed = coordinator.Presentation(L"alpha");
     assert(failed.snapshot && failed.snapshot->sequence == 4 &&
            failed.authority == WidgetPresentationAuthority::FailureRetained &&
-           !failed.HasCommittedViewAuthority() && !failed.RefreshPending() &&
+           !failed.HasCommittedViewAuthority() &&
+           !failed.HasCommittedViewAuthority(
+               WidgetCommittedViewUse::DashboardQuickAction) &&
+           !failed.RefreshPending() &&
            coordinator.RefreshState(L"alpha") ==
                WidgetRefreshState::RefreshRequested);
 }

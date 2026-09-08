@@ -1,9 +1,11 @@
 #include "TrayLayout.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <set>
 #include <vector>
 
 namespace {
@@ -55,6 +57,36 @@ void CheckCompleteReachability(
           }), message);
 }
 
+const widgetrail::shell::TrayTileLayout* FindTile(
+    const widgetrail::shell::TrayLayout& layout,
+    const std::size_t slot) {
+    const auto found = std::find_if(
+        layout.tiles.begin(), layout.tiles.end(),
+        [slot](const auto& tile) { return tile.slot == slot; });
+    return found == layout.tiles.end() ? nullptr : &*found;
+}
+
+void CheckCenteredSelection(
+    const widgetrail::shell::TrayLayout& layout,
+    const float viewportWidth,
+    const std::size_t selectedSlot,
+    const char* message) {
+    const auto* selected = FindTile(layout, selectedSlot);
+    Check(selected &&
+              std::abs(
+                  selected->bounds.x + selected->bounds.width * 0.5F -
+                  viewportWidth * 0.5F) < 0.01F,
+          message);
+}
+
+void CheckUniqueProjection(
+    const widgetrail::shell::TrayLayout& layout,
+    const char* message) {
+    std::set<std::size_t> slots;
+    for (const auto& tile : layout.tiles) slots.insert(tile.slot);
+    Check(slots.size() == layout.tiles.size(), message);
+}
+
 } // namespace
 
 int main() {
@@ -66,14 +98,18 @@ int main() {
               standard->tiles.back().bounds.x +
                   standard->tiles.back().bounds.width,
           "dashboard tray publishes the tight visual control envelope centered in its band");
-    Check(standard->tiles[0].slot == 0 && standard->tiles[2].slot == 2,
-          "visible slots preserve catalog order");
+    Check(standard->tiles[0].slot == 2 && standard->tiles[1].slot == 0 &&
+              standard->tiles[2].slot == 1,
+          "visible slots preserve cyclic catalog order around the selection");
+    CheckCenteredSelection(
+        *standard, 800.0F, 0,
+        "an underfilled odd catalog keeps the selected tile at the viewport center");
     Check(standard->tiles[0].bounds.width == 64 &&
           standard->tiles[0].bounds.height == 64,
           "standard tiles retain their preferred square size");
     const auto* firstHit = widgetrail::shell::HitTestTray(
         *standard, standard->tiles[0].bounds.x, standard->tiles[0].bounds.y);
-    Check(firstHit && firstHit->slot == 0, "top-left edge is inside a tile");
+    Check(firstHit && firstHit->slot == 2, "top-left edge is inside its projected tile");
     Check(!widgetrail::shell::HitTestTray(
               *standard,
               standard->tiles[0].bounds.x + standard->tiles[0].bounds.width,
@@ -88,28 +124,50 @@ int main() {
               *standard, firstGapX, standard->tiles[0].bounds.y + 1.0F),
           "transparent space inside the tight envelope owns no pointer target");
 
-    const auto paged = widgetrail::shell::ComputeTrayLayout(300, 600, 10, 9);
-    Check(paged && paged->tiles.size() == 2, "narrow tray reserves explicit overflow controls");
-    Check(paged->tiles.front().slot == 8 && paged->tiles.back().slot == 9,
-          "selected tail slot remains visible without reordering");
-    Check(paged->previousOverflow && !paged->nextOverflow &&
-          paged->previousOverflow->hiddenCount == 8 &&
-          paged->previousOverflow->targetSlot == 7,
-          "tail window exposes every preceding item through one previous control");
+    Check(std::abs(widgetrail::shell::ComputeTrayCapacityWidth(1920.0F) -
+                   1152.0F) < 0.01F &&
+              std::abs(widgetrail::shell::ComputeTrayCapacityWidth(1280.0F) -
+                       768.0F) < 0.01F &&
+              std::abs(widgetrail::shell::ComputeTrayCapacityWidth(640.0F) -
+                       384.0F) < 0.01F,
+          "tray capacity applies sixty percent once across supported monitor widths");
+    Check(widgetrail::shell::ComputeTrayCapacityWidth(191.0F) == 191.0F &&
+              widgetrail::shell::ComputeTrayCapacityWidth(192.0F) == 192.0F,
+          "the narrow envelope remains contained at the exact overflow threshold");
+
+    const auto paged = widgetrail::shell::ComputeTrayLayout(1000, 600, 10, 9);
+    Check(paged && paged->tiles.size() == 5,
+          "overflowed tray retains a symmetric odd visible capacity");
+    Check(paged->tiles[0].slot == 7 && paged->tiles[1].slot == 8 &&
+              paged->tiles[2].slot == 9 && paged->tiles[3].slot == 0 &&
+              paged->tiles[4].slot == 1,
+          "tail selection wraps through exact cyclic catalog order");
+    Check(paged->previousOverflow && paged->nextOverflow &&
+              paged->previousOverflow->hiddenCount == 5 &&
+              paged->previousOverflow->targetSlot == 6 &&
+              paged->nextOverflow->hiddenCount == 5 &&
+              paged->nextOverflow->targetSlot == 2,
+          "both overflow controls expose the exact adjacent hidden identities");
+    CheckCenteredSelection(
+        *paged, 1000.0F, 9,
+        "overflowed tail selection remains fixed at the viewport center");
+    CheckUniqueProjection(
+        *paged, "cyclic overflow projection never duplicates a widget identity");
     const auto* previousHit = widgetrail::shell::HitTestTrayOverflow(
         *paged, paged->previousOverflow->bounds.x, paged->previousOverflow->bounds.y);
-    Check(previousHit && previousHit->targetSlot == 7,
+    Check(previousHit && previousHit->targetSlot == 6,
           "overflow hit testing uses the same visible control bounds");
 
-    const auto firstPage = widgetrail::shell::ComputeTrayLayout(300, 600, 10, 0);
-    Check(firstPage && !firstPage->previousOverflow && firstPage->nextOverflow &&
-          firstPage->nextOverflow->hiddenCount == 8 &&
-          firstPage->nextOverflow->targetSlot == 2,
-          "first window exposes the exact next off-page item");
-    const auto middlePage = widgetrail::shell::ComputeTrayLayout(300, 600, 10, 5);
+    const auto firstPage = widgetrail::shell::ComputeTrayLayout(1000, 600, 10, 0);
+    const auto middlePage = widgetrail::shell::ComputeTrayLayout(1000, 600, 10, 5);
+    Check(firstPage && firstPage->previousOverflow && firstPage->nextOverflow &&
+              firstPage->tiles.front().slot == 8 &&
+              firstPage->tiles.back().slot == 2,
+          "first selection exposes its cyclic previous and next neighbors");
     Check(middlePage && middlePage->previousOverflow && middlePage->nextOverflow &&
-          middlePage->tiles.front().slot <= 5 && middlePage->tiles.back().slot >= 5,
-          "middle selection stays visible between both overflow controls");
+              middlePage->tiles.front().slot == 3 &&
+              middlePage->tiles.back().slot == 7,
+          "middle selection retains the same fixed-center cyclic window");
 
     for (const float scaledCompactWidth : {540.0F, 432.0F, 360.0F}) {
         for (const std::size_t selected : {0U, 7U, 14U}) {
@@ -123,9 +181,13 @@ int main() {
                 [selected](const auto& tile) { return tile.slot == selected; });
             Check(selectedTile != scaled->tiles.end(),
                   "first, middle, and last selections stay visible at every scale");
-            Check((selected == 0 || scaled->previousOverflow) &&
-                  (selected == 14 || scaled->nextOverflow),
-                  "scaled compact windows expose every hidden direction");
+            Check(scaled->previousOverflow && scaled->nextOverflow,
+                  "scaled cyclic windows expose both hidden directions");
+            CheckCenteredSelection(
+                *scaled, scaledCompactWidth, selected,
+                "scaled selection retains the fixed horizontal center");
+            CheckUniqueProjection(
+                *scaled, "scaled cyclic projection retains unique identities");
             const auto insideStrip = [&](const widgetrail::declarative::Rect& bounds) {
                 return bounds.x >= scaled->stripBounds.x &&
                     bounds.y >= scaled->stripBounds.y &&
@@ -145,14 +207,35 @@ int main() {
         }
     }
 
-    const auto exactFit = widgetrail::shell::ComputeTrayLayout(262, 600, 3, 1);
-    const auto exactFitPlusOne = widgetrail::shell::ComputeTrayLayout(262, 600, 4, 1);
+    const auto exactFit = widgetrail::shell::ComputeTrayLayout(
+        262, 600, 3, 1, std::nullopt,
+        widgetrail::shell::TrayWidthBasis::ExactCapacity);
+    const auto exactFitPlusOne = widgetrail::shell::ComputeTrayLayout(
+        262, 600, 4, 1, std::nullopt,
+        widgetrail::shell::TrayWidthBasis::ExactCapacity);
     Check(exactFit && exactFit->tiles.size() == 3 &&
           !exactFit->previousOverflow && !exactFit->nextOverflow,
           "exact-fit catalog needs no overflow representation");
     Check(exactFitPlusOne && exactFitPlusOne->tiles.size() == 1 &&
           exactFitPlusOne->nextOverflow,
           "exact-fit plus one switches to an explicit reachable overflow window");
+    CheckCenteredSelection(
+        *exactFit, 262.0F, 1,
+        "an exact-capacity child surface does not apply sixty percent a second time");
+
+    const auto evenCatalog = widgetrail::shell::ComputeTrayLayout(800, 600, 4, 1);
+    Check(evenCatalog && evenCatalog->tiles.size() == 4 &&
+              !evenCatalog->previousOverflow && !evenCatalog->nextOverflow &&
+              evenCatalog->tiles[0].slot == 3 &&
+              evenCatalog->tiles[1].slot == 0 &&
+              evenCatalog->tiles[2].slot == 1 &&
+              evenCatalog->tiles[3].slot == 2,
+          "an underfilled even catalog reserves a spare position without duplication");
+    CheckCenteredSelection(
+        *evenCatalog, 800.0F, 1,
+        "an underfilled even catalog retains the selected center anchor");
+    CheckUniqueProjection(
+        *evenCatalog, "an underfilled even catalog publishes each identity once");
 
     const auto embedded = widgetrail::shell::ComputeTrayLayout(
         720, 540, 2, 1, widgetrail::shell::TrayBand{420, 510});
@@ -179,26 +262,24 @@ int main() {
         592, 698, 8, 0, productionBand(698));
     const auto wideEight = widgetrail::shell::ComputeTrayLayout(
         1052, 878, 8, 7, productionBand(878));
-    Check(compactEight && wideEight && compactEight->tiles.size() == 8 &&
-          wideEight->tiles.size() == 8 &&
-          !compactEight->previousOverflow && !compactEight->nextOverflow &&
-          !wideEight->previousOverflow && !wideEight->nextOverflow,
-          "current catalog retains one full tray capacity across widget widths");
-    Check(std::abs(
-              compactEight->stripBounds.width - wideEight->stripBounds.width) < 0.01F &&
-          std::abs(
-              (compactEight->stripBounds.x + compactEight->stripBounds.width * 0.5F) -
-              592.0F * 0.5F) < 0.01F &&
-          std::abs(
-              (wideEight->stripBounds.x + wideEight->stripBounds.width * 0.5F) -
-              1052.0F * 0.5F) < 0.01F,
-          "stable tray bounds remain centered on the shared screen anchor");
-    const auto compactNine = widgetrail::shell::ComputeTrayLayout(
-        592, 698, 9, 0, productionBand(698));
-    Check(compactNine && compactNine->tiles.size() == 9 &&
-          !compactNine->previousOverflow && !compactNine->nextOverflow &&
-          compactNine->tiles.front().bounds.width >= 44.0F,
-          "bounded catalog addition retains full capacity and controller targets");
+    Check(compactEight && wideEight && compactEight->tiles.size() == 3 &&
+              wideEight->tiles.size() == 8 &&
+              compactEight->previousOverflow && compactEight->nextOverflow &&
+              !wideEight->previousOverflow && !wideEight->nextOverflow &&
+              wideEight->tiles.front().bounds.width >= 44.0F,
+          "supported compact and wide capacities choose overflow only when required");
+    CheckCenteredSelection(
+        *compactEight, 592.0F, 0,
+        "compact monitor capacity centers the selected production identity");
+    CheckCenteredSelection(
+        *wideEight, 1052.0F, 7,
+        "wide monitor capacity centers the selected production identity");
+    const auto wideNine = widgetrail::shell::ComputeTrayLayout(
+        1920, 1080, 9, 0, productionBand(1080));
+    Check(wideNine && wideNine->tiles.size() == 9 &&
+              !wideNine->previousOverflow && !wideNine->nextOverflow &&
+              wideNine->tiles.front().bounds.width == 64.0F,
+          "sixty-percent wide capacity fits nine normal-size catalog targets");
     CheckCompleteReachability(
         592, 698, 8, 0, productionBand(698),
         "Audio Mixer compact overflow reaches the complete production catalog");
@@ -214,6 +295,16 @@ int main() {
           "below-preferred width degrades to one bounded selected tile");
     Check(compact && !compact->previousOverflow && !compact->nextOverflow,
           "sub-minimum diagnostic width avoids unreadably scaled controls");
+    const auto minimumReachable = widgetrail::shell::ComputeTrayLayout(
+        192, 240, 4, 2, widgetrail::shell::TrayBand{120, 220},
+        widgetrail::shell::TrayWidthBasis::ExactCapacity);
+    Check(minimumReachable && minimumReachable->tiles.size() == 1 &&
+              minimumReachable->previousOverflow &&
+              minimumReachable->nextOverflow,
+          "192 logical DIPs is the minimum fully reachable tray envelope");
+    CheckCenteredSelection(
+        *minimumReachable, 192.0F, 2,
+        "minimum supported tray envelope retains the fixed center selection");
     Check(!widgetrail::shell::ComputeTrayLayout(0, 600, 1, 0) &&
           !widgetrail::shell::ComputeTrayLayout(800, 600, 0, 0),
           "empty or invalid surfaces publish no tray geometry");

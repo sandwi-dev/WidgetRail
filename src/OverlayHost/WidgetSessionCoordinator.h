@@ -131,6 +131,7 @@ enum class WidgetRefreshState {
 enum class WidgetCommittedViewUse {
     Presentation,
     Interaction,
+    DashboardQuickAction,
 };
 
 struct WidgetSessionPresentation final {
@@ -138,17 +139,27 @@ struct WidgetSessionPresentation final {
     WidgetPresentationAuthority authority{WidgetPresentationAuthority::Unavailable};
     WidgetLifecycleState lifecycle{WidgetLifecycleState::Background};
 
-    /// One admitted checkpoint remains the coherent render/input/UIA owner
-    /// while an ordinary replacement is requested or in flight. Failure and
-    /// transition-retained content deliberately remain outside this policy.
+    /// One admitted checkpoint remains the coherent presentation and
+    /// Interactive input/UIA owner while an ordinary replacement is in flight.
+    /// Dashboard actions retain their existing exact Current + Visible rule.
+    /// Failure and transition-retained content remain outside this policy.
     [[nodiscard]] bool HasCommittedViewAuthority(
         const WidgetCommittedViewUse use =
             WidgetCommittedViewUse::Presentation) const noexcept {
-        return snapshot &&
-            (authority == WidgetPresentationAuthority::Current ||
-             authority == WidgetPresentationAuthority::RefreshRetained) &&
-            (use == WidgetCommittedViewUse::Presentation ||
-             lifecycle == WidgetLifecycleState::Interactive);
+        if (!snapshot) return false;
+        switch (use) {
+        case WidgetCommittedViewUse::Presentation:
+            return authority == WidgetPresentationAuthority::Current ||
+                authority == WidgetPresentationAuthority::RefreshRetained;
+        case WidgetCommittedViewUse::Interaction:
+            return (authority == WidgetPresentationAuthority::Current ||
+                    authority == WidgetPresentationAuthority::RefreshRetained) &&
+                lifecycle == WidgetLifecycleState::Interactive;
+        case WidgetCommittedViewUse::DashboardQuickAction:
+            return authority == WidgetPresentationAuthority::Current &&
+                lifecycle == WidgetLifecycleState::Visible;
+        }
+        return false;
     }
 
     [[nodiscard]] bool RefreshPending() const noexcept {

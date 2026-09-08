@@ -8587,6 +8587,9 @@ private:
     [[nodiscard]] const widgetrail::WidgetSnapshot* GuideSnapshotFor(
         const std::wstring_view widgetId) noexcept {
         const auto presentation = sessions_.Presentation(widgetId);
+        // Guide labels are informational and remain stable while an ordinary
+        // refresh retains the committed presentation. Action admission uses
+        // the stricter context-specific helpers below.
         return presentation.HasCommittedViewAuthority()
             ? presentation.snapshot
             : nullptr;
@@ -11715,6 +11718,23 @@ private:
         return source;
     }
 
+    const widgetrail::WidgetSnapshot* DashboardActionSnapshotFor(
+        const std::wstring_view widgetId) const noexcept {
+        const auto presentation = sessions_.Presentation(widgetId);
+        return presentation.HasCommittedViewAuthority(
+                   widgetrail::WidgetCommittedViewUse::DashboardQuickAction)
+            ? presentation.snapshot
+            : nullptr;
+    }
+
+    const widgetrail::WidgetSnapshot* ControllerActionSnapshotFor(
+        const std::wstring_view widgetId,
+        const bool openWidget) const noexcept {
+        return openWidget
+            ? InteractionSnapshotFor(widgetId)
+            : DashboardActionSnapshotFor(widgetId);
+    }
+
     struct HostRootBackAuthority final {
         std::wstring widgetId;
         std::wstring runtimeGeneration;
@@ -13381,7 +13401,7 @@ private:
             bail(L"not-open-widget");
             return std::nullopt;
         }
-        const auto* snapshot = InteractionSnapshotFor(widgetId);
+        const auto* snapshot = ControllerActionSnapshotFor(widgetId, !dashboard);
         const auto* descriptor = sessions_.FindDescriptor(widgetId);
         if (!snapshot || !descriptor) {
             bail(!snapshot ? L"no-snapshot" : L"no-descriptor");
@@ -13538,7 +13558,7 @@ private:
                         captured.presentationGeneration ? L"presentationGen " : L"");
             return HeldButtonAuthorityState::Retired;
         }
-        if (!InteractionSnapshotFor(widgetId) &&
+        if (!ControllerActionSnapshotFor(widgetId, !dashboard) &&
             sessions_.Presentation(widgetId).authority ==
                 widgetrail::WidgetPresentationAuthority::RefreshRetained)
             return HeldButtonAuthorityState::Deferred;
@@ -13688,8 +13708,10 @@ private:
                 L" rawRight=" + std::to_wstring(frame.state.rightTrigger) +
                 L" authority=" + std::to_wstring(static_cast<int>(authorityState)) +
                 L" snapshot=" +
-                    (InteractionSnapshotFor(heldActionAuthority_->widgetId)
-                        ? L"current" : L"absent") +
+                    (ControllerActionSnapshotFor(
+                         heldActionAuthority_->widgetId,
+                         !heldActionAuthority_->dashboard)
+                         ? L"current" : L"absent") +
                 L" presentation=" + std::to_wstring(static_cast<int>(
                     sessions_.Presentation(
                         heldActionAuthority_->widgetId).authority)) +
@@ -14008,6 +14030,7 @@ private:
 
         const bool interactiveWidget = state_.surface() == widgetrail::Surface::Widget &&
             state_.focusRegion() == widgetrail::FocusRegion::Widget;
+        const bool isOpen = interactiveWidget;
         const std::wstring_view widget = interactiveWidget
             ? state_.activeWidget()
             : state_.selectedWidget();
@@ -14060,7 +14083,7 @@ private:
                 RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widget); });
             }
             const auto protocolButton = ProtocolButton(button);
-            const auto* snapshot = InteractionSnapshotFor(widget);
+            const auto* snapshot = ControllerActionSnapshotFor(widget, isOpen);
             if (protocolButton.empty() || !snapshot) {
                 if (exactActionRequest) {
                     RejectWidgetActionRequest(
@@ -14073,7 +14096,6 @@ private:
                 RetirePendingFocusGroupEntryForUserIntent(
                     widget, *snapshot, L"activation");
             }
-            const bool isOpen = interactiveWidget;
             const auto* requestedSlider = exactActionRequest
                 ? ValidateWidgetActionRequest(*exactActionRequest, *snapshot)
                 : nullptr;
@@ -14251,7 +14273,7 @@ private:
                     InvalidateWidgetSliderValues(
                         *snapshot, {requestedSlider->id}, true);
                 }
-                snapshot = InteractionSnapshotFor(widget);
+                snapshot = ControllerActionSnapshotFor(widget, isOpen);
                 const auto unhandledContext = snapshot &&
                     std::wstring_view(snapshot->activeInputScopeId) ==
                         widgetrail::input::RootInputScope(*snapshot)
@@ -15053,6 +15075,7 @@ private:
         unsigned int trayHeight{};
         unsigned int trayMenuHeadroom{};
         unsigned int trayFocusPadding{};
+        float trayCapacityWidthDip{};
         UINT dpi{};
         std::uint64_t appearanceRevision{};
         float pixelsPerDip{};
@@ -15389,6 +15412,10 @@ private:
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot());
         if (!policyLayout) return false;
+        const float trayCapacityWidthDip =
+            widgetrail::shell::ComputeTrayCapacityWidth(
+                metrics->viewportWidthDip);
+        if (trayCapacityWidthDip <= 0.0F) return false;
 
         constexpr float kGuideHeightDip = 58.0F;
         constexpr float kGuideToTrayGapDip = 46.0F;
@@ -15396,7 +15423,7 @@ private:
             (focusOutlineWidth_ + 2.0F) * metrics->physicalPixelsPerDip)));
         const LONG trayWidth = std::max(
             1L, static_cast<LONG>(std::ceil(
-                policyLayout->stripBounds.width *
+                trayCapacityWidthDip *
                 metrics->physicalPixelsPerDip))) + focusPadding * 2;
         const LONG trayHeight = std::max(
             1L, static_cast<LONG>(std::ceil(
@@ -15439,6 +15466,7 @@ private:
         session.trayMenuHeadroom =
             static_cast<unsigned int>(trayMenuHeadroom);
         session.trayFocusPadding = static_cast<unsigned int>(focusPadding);
+        session.trayCapacityWidthDip = trayCapacityWidthDip;
         session.dpi = effectiveDpi;
         session.key = std::move(key);
         session.pixelsPerDip = metrics->physicalPixelsPerDip;
@@ -15653,10 +15681,11 @@ private:
             static_cast<float>(session.trayMenuHeadroom) /
             session.pixelsPerDip;
         auto layout = widgetrail::shell::ComputeTrayLayout(
-            metrics->viewportWidthDip, metrics->viewportHeightDip,
+            session.trayCapacityWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
             widgetrail::shell::TrayBand{
-                menuHeadroom, metrics->viewportHeightDip});
+                menuHeadroom, metrics->viewportHeightDip},
+            widgetrail::shell::TrayWidthBasis::ExactCapacity);
         if (!layout) return std::nullopt;
         const auto offset = [inset](widgetrail::declarative::Rect& bounds) {
             bounds.x += inset;

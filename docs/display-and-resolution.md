@@ -81,14 +81,30 @@ contained even for tiny or portrait inputs. At pathological sizes, content may
 clip or collapse because no useful space exists; containment is a safety
 guarantee, not a claim that a 1×1 display is usable.
 
-The tray inventory is not clipped to the tiles that fit the current widget
-extent. At compact widths the host keeps the selected stable identity visible
-and reserves named previous/next overflow controls for the adjacent off-page
-items; controller, pointer, and UI Automation consume that same layout. Moving
-between compact and wide body hints cannot move the tray or change its capacity.
-Replacing the catalog preserves the exact persisted order and one selected/
-focus owner. Catalog replacement is painted on the host UI thread before a
-later pointer message can target the new slot map.
+The tray capacity is 60 percent of the selected monitor's usable logical width,
+bounded by that work area and computed once before the fixed-chrome child
+surface is created. It is independent of the current widget extent. The child
+surface consumes that exact capacity instead of applying the percentage again.
+The selected stable identity occupies the horizontal center slot; neighboring
+identities form a cyclic window in catalog order, so cycling through the first
+or last item does not move the selection anchor. A symmetric odd number of
+slots is preferred. Small odd catalogs remain centered, while small even
+catalogs reserve one empty trailing position rather than duplicating an
+identity or stretching gaps.
+
+When the catalog exceeds the visible slots, named previous/next controls expose
+the exact adjacent hidden identities on both sides of the cyclic window.
+Painting, pointer hit testing, context-menu anchoring, and UI Automation consume
+the same final slot rectangles and identifiers. The full pointer/UIA overflow
+envelope requires at least 192 logical DIPs: one normal selected tile, two
+36-DIP overflow controls, standard gaps, and bounded padding. The supported
+640-pixel work-area matrix remains above this boundary at 200% DPI with 125%
+interface scale (256 logical DIPs). More pathological widths remain contained
+and show the selected tile, but are diagnostic safety cases rather than a claim
+of full catalog traversal. Moving between compact and wide body hints cannot
+move the tray or change its monitor-owned capacity. Replacing the catalog
+preserves the exact persisted order and one selected/focus owner; the host
+paints replacement geometry before a later pointer message can target it.
 
 ## Widget author contract
 
@@ -194,6 +210,10 @@ The native Release suite currently proves these policy/math seams:
   extent stability across identical snapshots;
 - 1280×720, portrait, offset-ultrawide, and combined 200%-DPI/125%-interface/
   150%-text surface clamping with host tray/footer/controller reservations;
+- single-application 60%-of-work-area tray capacity, exact-capacity child
+  projection, fixed-center cyclic odd/even/small-catalog geometry, unique slot
+  identities, bidirectional overflow reachability, and the explicit 192-DIP
+  full-interaction boundary;
 - 111,253 placement checks across dense logical boundaries for
   panel, widget viewport, adaptive footer, and persistent tray geometry;
 - declarative compact/clipping behavior for constrained viewports, including
