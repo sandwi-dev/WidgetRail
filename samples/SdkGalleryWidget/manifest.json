@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.sdk-gallery",
   "publisher": "widgetrail.samples",
   "name": "SDK Gallery",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -14,7 +14,16 @@
     "assembly": "payload/SdkGalleryWidget.dll",
     "type": "WidgetRail.Samples.SdkGalleryWidget.SdkGalleryWidget"
   },
-  "presentation": { "icon": "settings" },
+  "presentation": {
+    "icon": "settings",
+    "packageIcon": {
+      "assetId": "gallery.mark",
+      "colorMode": "originalColor"
+    }
+  },
+  "iconAssets": {
+    "gallery.mark": { "path": "assets/icons/gallery-mark.svg" }
+  },
   "permissions": [],
   "optionalPermissions": [],
   "residencyPolicy": {

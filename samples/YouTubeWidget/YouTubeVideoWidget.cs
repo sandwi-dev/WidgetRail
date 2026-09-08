@@ -74,7 +74,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             .FocusRight(showFullscreenAction ? FullscreenFocusId : "youtube.timeline")
             .Classes("youtube-primary", "youtube-transport-button", "youtube-play-toggle");
         var fullscreen = UI.Button("", EnterFullscreenActionId, FullscreenFocusId)
-            .Icon(WidgetGlyph.Connection, "Fullscreen")
+            .Icon(WidgetGlyph.Fullscreen, "Fullscreen")
             .Disabled(!fullscreenActionEnabled)
             .FocusUp("youtube.link")
             .FocusLeft("youtube.playback.toggle")

@@ -52,7 +52,8 @@ primary and places icon transport, timeline, and compact volume on one row. The
 native **Fullscreen** action asks
 WidgetRail to transfer the same media plane into its host-owned overlay
 fullscreen presentation; the YouTube iframe keeps its own controls, keyboard,
-and fullscreen paths disabled. Pinning remains host-owned.
+and fullscreen paths disabled. Its control uses WidgetRail's semantic Fullscreen
+glyph rather than package artwork. Pinning remains host-owned.
 
 1. Open **YouTube Video** and use LB/RB or the visible section header to choose
    **Discover** or **Player**. Use Y for search-key Settings.

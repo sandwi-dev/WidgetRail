@@ -110,6 +110,10 @@ The manifest declares no product capabilities. Network, browser, credential,
 and child-process behavior belongs to the explicitly approved full-trust
 application, while the product still owns package ingestion, authenticated
 overlay IPC, bounded snapshots, presentation, lifecycle, restart, and removal.
+The package also seals the supplied black, green, and white RGB Spotify SVG
+originals under `assets/icons`. The green original-color mark brands both the
+tray and the restrained widget header through the public `WidgetIcon` contract;
+playback actions retain their semantic host glyphs.
 
 Build and validate the standalone community package without installing it:
 

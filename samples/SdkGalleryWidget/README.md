@@ -7,6 +7,8 @@ part of the built-in tray: install it only when developing or reviewing UI.
 The five pages cover:
 
 - icon buttons, cards, section headers, status badges, alerts, and empty states;
+- a manifest-declared package SVG used unchanged for original-color tray and
+  in-widget rendering, plus theme-tinted focus and disabled-state examples;
 - switches, segmented tabs, `SettingsRow`, `Picker`, nested-B `ActionSheet`, and
   a controller-native `Scrubber`;
 - responsive `Tile` action surfaces for media and application content;

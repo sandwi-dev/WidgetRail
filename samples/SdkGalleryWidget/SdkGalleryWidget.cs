@@ -42,6 +42,10 @@ public sealed class SdkGalleryWidget : Widget
                 "WidgetRail.Samples.SdkGalleryWidget.Assets.background-focus-cool.png",
         };
     private static readonly WidgetIdScope Ids = WidgetIds.Scope("gallery");
+    private static readonly WidgetIcon GalleryOriginalIcon = WidgetIcon.PackageSvg(
+        "gallery.mark", WidgetPackageIconColorMode.OriginalColor, WidgetGlyph.Settings);
+    private static readonly WidgetIcon GalleryTintedIcon = WidgetIcon.PackageSvg(
+        "gallery.mark", WidgetPackageIconColorMode.ThemeTint, WidgetGlyph.Settings);
     private static readonly NavigationShellDestination[] Destinations =
     [
         new("gallery.tab.overview", "Overview", "gallery.tab.overview", WidgetGlyph.Play),
@@ -323,6 +327,17 @@ public sealed class SdkGalleryWidget : Widget
                         "Play preview", IconButtonVariant.Primary, IconButtonSize.Medium),
                     UI.IconButton(WidgetGlyph.Warning, "gallery.alert.acknowledge", "gallery.warning",
                         "Acknowledge warning", IconButtonVariant.Danger, IconButtonSize.Small))
+                    .Classes("gallery-overview-actions"),
+                UI.Text("Package SVG", "gallery.overview.package-icons-title"),
+                UI.Row("gallery.overview.package-icons",
+                    UI.Icon(GalleryOriginalIcon, "gallery.package-icon.original",
+                        "Original-color package icon"),
+                    UI.IconButton(GalleryTintedIcon, "gallery.refresh",
+                        "gallery.package-icon.tinted", "Theme-tinted package icon",
+                        IconButtonVariant.Primary, IconButtonSize.Medium),
+                    UI.IconButton(GalleryTintedIcon, "gallery.refresh",
+                        "gallery.package-icon.disabled", "Disabled theme-tinted package icon",
+                        IconButtonVariant.Quiet, IconButtonSize.Medium).Disabled())
                     .Classes("gallery-overview-actions"))),
         UI.Alert(
             "Responsive by default",

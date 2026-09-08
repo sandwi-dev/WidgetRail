@@ -92,7 +92,8 @@ foreach ($generatedDirectory in @(
         Remove-Item -LiteralPath $generatedDirectory -Recurse -Force
     }
 }
-New-Item -ItemType Directory -Force -Path $payloadRoot, (Join-Path $stagingRoot 'styles') | Out-Null
+New-Item -ItemType Directory -Force -Path $payloadRoot, `
+    (Join-Path $stagingRoot 'styles'), (Join-Path $stagingRoot 'assets\icons') | Out-Null
 Assert-NoReparsePoint -Path $stagingRoot
 Assert-NoReparsePoint -Path $buildGraphRoot
 Assert-NoReparsePoint -Path $applicationPublishRoot
@@ -173,6 +174,10 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 }
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
     -Destination (Join-Path $stagingRoot 'styles\default.wrss') -Force
+foreach ($iconName in @('spotify-black.svg', 'spotify-green.svg', 'spotify-white.svg')) {
+    Copy-Item -LiteralPath (Join-Path $sampleRoot "assets\icons\$iconName") `
+        -Destination (Join-Path $stagingRoot "assets\icons\$iconName") -Force
+}
 
 $stagingPrefix = $stagingRoot.TrimEnd(
     [System.IO.Path]::DirectorySeparatorChar,
@@ -186,6 +191,9 @@ $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEac
 })
 $requiredFiles = @(
     'manifest.json',
+    'assets\icons\spotify-black.svg',
+    'assets\icons\spotify-green.svg',
+    'assets\icons\spotify-white.svg',
     'payload\SpotifyApplication.exe',
     'payload\SpotifyApplication.dll',
     'payload\SpotifyApplicationBackend.dll',
