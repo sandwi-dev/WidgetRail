@@ -141,6 +141,16 @@ A prior denied push or privilege approval overrides any general standing prose. 
 rejected push, install, enablement, full-trust approval, or other privileged mutation until the user
 explicitly authorizes that exact action.
 
+User standing authorization renewed on 2026-09-08: the reviewer may replace the running WidgetRail
+overlay with the exact reviewed Release or physical-first candidate, send coordination messages to
+the implementation tasks, and perform the Plane activities described in this goal without asking
+again for each routine action. This explicitly authorizes the previously denied WIDGE-204 candidate
+swap. Verify the exact process path/PID and candidate source/artifact identity before replacement;
+prefer graceful close, then terminate only that verified overlay process if needed, and launch the
+replacement visibly. This does not waive source review, physical acceptance, scoped full-trust
+consent, the current no-push override, or unrelated destructive-action boundaries. Any new tool
+rejection must still be respected and resolved through its approval process, not bypassed.
+
 ## Implementation task model
 
 Each standing implementation task has one stable lane identity:
