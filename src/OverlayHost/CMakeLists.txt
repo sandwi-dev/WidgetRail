@@ -441,7 +441,7 @@ if(WRAIL_BUILD_TESTS)
     # Product-geometry switch coverage runs against a packaged production host
     # and a deterministic managed worker, so build.ps1 supplies those paths.
     add_executable(WidgetSwitchHostTests
-        WidgetSwitchHostTests.cpp OverlayHostTestSupport.cpp)
+        WidgetSwitchHostTests.cpp OverlayHostTestSupport.cpp TrayLayout.cpp)
     target_compile_features(WidgetSwitchHostTests PRIVATE cxx_std_20)
     target_compile_options(WidgetSwitchHostTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(WidgetSwitchHostTests PRIVATE
