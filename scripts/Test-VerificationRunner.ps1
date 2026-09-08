@@ -523,8 +523,8 @@ Write-Output "CHILD=$($child.Id)"
         throw 'Successful verification left a descendant process alive.'
     }
 
-    $childCommand = @'
-$child = Start-Process pwsh -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30' -WindowStyle Hidden -PassThru
+$childCommand = @'
+$child = Start-Process (Join-Path $env:SystemRoot 'System32\ping.exe') -ArgumentList '-n','30','127.0.0.1' -WindowStyle Hidden -PassThru
 Write-Output "CHILD=$($child.Id)"
 Wait-Process -Id $child.Id
 '@
