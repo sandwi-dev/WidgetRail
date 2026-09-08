@@ -8587,6 +8587,9 @@ private:
     [[nodiscard]] const widgetrail::WidgetSnapshot* GuideSnapshotFor(
         const std::wstring_view widgetId) noexcept {
         const auto presentation = sessions_.Presentation(widgetId);
+        // Guide labels are informational and remain stable while an ordinary
+        // refresh retains the committed presentation. Action admission uses
+        // the stricter context-specific helpers below.
         return presentation.HasCommittedViewAuthority()
             ? presentation.snapshot
             : nullptr;
@@ -11715,6 +11718,23 @@ private:
         return source;
     }
 
+    const widgetrail::WidgetSnapshot* DashboardActionSnapshotFor(
+        const std::wstring_view widgetId) const noexcept {
+        const auto presentation = sessions_.Presentation(widgetId);
+        return presentation.HasCommittedViewAuthority(
+                   widgetrail::WidgetCommittedViewUse::DashboardQuickAction)
+            ? presentation.snapshot
+            : nullptr;
+    }
+
+    const widgetrail::WidgetSnapshot* ControllerActionSnapshotFor(
+        const std::wstring_view widgetId,
+        const bool openWidget) const noexcept {
+        return openWidget
+            ? InteractionSnapshotFor(widgetId)
+            : DashboardActionSnapshotFor(widgetId);
+    }
+
     struct HostRootBackAuthority final {
         std::wstring widgetId;
         std::wstring runtimeGeneration;
@@ -13381,7 +13401,7 @@ private:
             bail(L"not-open-widget");
             return std::nullopt;
         }
-        const auto* snapshot = InteractionSnapshotFor(widgetId);
+        const auto* snapshot = ControllerActionSnapshotFor(widgetId, !dashboard);
         const auto* descriptor = sessions_.FindDescriptor(widgetId);
         if (!snapshot || !descriptor) {
             bail(!snapshot ? L"no-snapshot" : L"no-descriptor");
@@ -13538,7 +13558,7 @@ private:
                         captured.presentationGeneration ? L"presentationGen " : L"");
             return HeldButtonAuthorityState::Retired;
         }
-        if (!InteractionSnapshotFor(widgetId) &&
+        if (!ControllerActionSnapshotFor(widgetId, !dashboard) &&
             sessions_.Presentation(widgetId).authority ==
                 widgetrail::WidgetPresentationAuthority::RefreshRetained)
             return HeldButtonAuthorityState::Deferred;
@@ -13688,8 +13708,10 @@ private:
                 L" rawRight=" + std::to_wstring(frame.state.rightTrigger) +
                 L" authority=" + std::to_wstring(static_cast<int>(authorityState)) +
                 L" snapshot=" +
-                    (InteractionSnapshotFor(heldActionAuthority_->widgetId)
-                        ? L"current" : L"absent") +
+                    (ControllerActionSnapshotFor(
+                         heldActionAuthority_->widgetId,
+                         !heldActionAuthority_->dashboard)
+                         ? L"current" : L"absent") +
                 L" presentation=" + std::to_wstring(static_cast<int>(
                     sessions_.Presentation(
                         heldActionAuthority_->widgetId).authority)) +
@@ -14008,6 +14030,7 @@ private:
 
         const bool interactiveWidget = state_.surface() == widgetrail::Surface::Widget &&
             state_.focusRegion() == widgetrail::FocusRegion::Widget;
+        const bool isOpen = interactiveWidget;
         const std::wstring_view widget = interactiveWidget
             ? state_.activeWidget()
             : state_.selectedWidget();
@@ -14060,7 +14083,7 @@ private:
                 RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widget); });
             }
             const auto protocolButton = ProtocolButton(button);
-            const auto* snapshot = InteractionSnapshotFor(widget);
+            const auto* snapshot = ControllerActionSnapshotFor(widget, isOpen);
             if (protocolButton.empty() || !snapshot) {
                 if (exactActionRequest) {
                     RejectWidgetActionRequest(
@@ -14073,7 +14096,6 @@ private:
                 RetirePendingFocusGroupEntryForUserIntent(
                     widget, *snapshot, L"activation");
             }
-            const bool isOpen = interactiveWidget;
             const auto* requestedSlider = exactActionRequest
                 ? ValidateWidgetActionRequest(*exactActionRequest, *snapshot)
                 : nullptr;
@@ -14251,7 +14273,7 @@ private:
                     InvalidateWidgetSliderValues(
                         *snapshot, {requestedSlider->id}, true);
                 }
-                snapshot = InteractionSnapshotFor(widget);
+                snapshot = ControllerActionSnapshotFor(widget, isOpen);
                 const auto unhandledContext = snapshot &&
                     std::wstring_view(snapshot->activeInputScopeId) ==
                         widgetrail::input::RootInputScope(*snapshot)

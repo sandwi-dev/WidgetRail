@@ -1264,6 +1264,94 @@ void TestFullscreenShortcutDispatchContract() {
           "page-wide non-A shortcut consumes only the exact admitted fullscreen action");
 }
 
+void TestDashboardQuickActionAuthorityContract() {
+    const auto directory = fs::path{__FILE__}.parent_path();
+    const auto host = ReadSource(directory / "main.cpp");
+    const auto session = ReadSource(directory / "WidgetSessionCoordinator.h");
+
+    Check(session.find("case WidgetCommittedViewUse::DashboardQuickAction:") !=
+              std::string::npos &&
+              session.find("authority == WidgetPresentationAuthority::Current") !=
+                  std::string::npos &&
+              session.find("lifecycle == WidgetLifecycleState::Visible") !=
+                  std::string::npos,
+          "dashboard quick actions have one explicit Current and Visible session policy");
+
+    const auto interactionBegin = host.find(
+        "const widgetrail::WidgetSnapshot* InteractionSnapshotFor(");
+    const auto dashboardBegin = host.find(
+        "const widgetrail::WidgetSnapshot* DashboardActionSnapshotFor(",
+        interactionBegin);
+    const auto controllerBegin = host.find(
+        "const widgetrail::WidgetSnapshot* ControllerActionSnapshotFor(",
+        dashboardBegin);
+    const auto hostBackBegin = host.find(
+        "struct HostRootBackAuthority final", controllerBegin);
+    Check(interactionBegin != std::string::npos &&
+              dashboardBegin != std::string::npos &&
+              controllerBegin != std::string::npos &&
+              hostBackBegin != std::string::npos &&
+              interactionBegin < dashboardBegin && dashboardBegin < controllerBegin &&
+              controllerBegin < hostBackBegin,
+          "open-widget and dashboard controller snapshots have separate bounded owners");
+    const auto snapshotOwners = host.substr(
+        interactionBegin, hostBackBegin - interactionBegin);
+    Check(snapshotOwners.find("WidgetCommittedViewUse::Interaction") !=
+              std::string::npos &&
+              snapshotOwners.find("WidgetCommittedViewUse::DashboardQuickAction") !=
+                  std::string::npos &&
+              snapshotOwners.find("? InteractionSnapshotFor(widgetId)") !=
+                  std::string::npos &&
+              snapshotOwners.find(": DashboardActionSnapshotFor(widgetId)") !=
+                  std::string::npos,
+          "controller context selects the exact open or dashboard lifecycle policy");
+
+    const auto heldBegin = host.find(
+        "std::optional<HeldActionAuthority> ResolveAuthoredHeldAction(");
+    const auto heldEnd = host.find(
+        "bool MediaHeldActionAuthorityCurrent(", heldBegin);
+    Check(heldBegin != std::string::npos && heldEnd != std::string::npos &&
+              heldBegin < heldEnd,
+          "authored held actions have one bounded resolution section");
+    const auto held = host.substr(heldBegin, heldEnd - heldBegin);
+    Check(held.find("const bool dashboard =") != std::string::npos &&
+              held.find("ControllerActionSnapshotFor(widgetId, !dashboard)") !=
+                  std::string::npos &&
+              held.find("snapshot->quickActions.begin()") != std::string::npos,
+          "held dashboard actions select Visible authority before resolving bindings");
+
+    const auto dispatchBegin = host.find("void DispatchWidgetAction(");
+    const auto dispatchEnd = host.find(
+        "[[nodiscard]] widgetrail::input::TextEntryModalTheme CurrentTextEntryTheme()",
+        dispatchBegin);
+    Check(dispatchBegin != std::string::npos && dispatchEnd != std::string::npos &&
+              dispatchBegin < dispatchEnd,
+          "widget action dispatch has one bounded host section");
+    const auto dispatch = host.substr(dispatchBegin, dispatchEnd - dispatchBegin);
+    const auto context = dispatch.find("const bool isOpen = interactiveWidget;");
+    const auto snapshot = dispatch.find(
+        "ControllerActionSnapshotFor(widget, isOpen)", context);
+    const auto transport = dispatch.find("bridge_.SendControllerInput(", snapshot);
+    Check(context != std::string::npos && snapshot != std::string::npos &&
+              transport != std::string::npos && context < snapshot &&
+              snapshot < transport &&
+              dispatch.find("isOpen ? L\"openWidget\" : L\"dashboardQuickAction\"",
+                            transport) != std::string::npos,
+          "one-shot dispatch admits the context-specific snapshot before exact transport");
+
+    const auto guideBegin = host.find(
+        "const widgetrail::WidgetSnapshot* GuideSnapshotFor(");
+    const auto guideEnd = host.find("template <typename Refresh>", guideBegin);
+    Check(guideBegin != std::string::npos && guideEnd != std::string::npos &&
+              guideBegin < guideEnd,
+          "informational guide lookup has one bounded section");
+    const auto guide = host.substr(guideBegin, guideEnd - guideBegin);
+    Check(guide.find("presentation.HasCommittedViewAuthority()") !=
+              std::string::npos &&
+              guide.find("DashboardActionSnapshotFor") == std::string::npos,
+          "guide labels remain stable while action admission stays context-specific");
+}
+
 void TestAcceptedMediaBackOwnershipHostContract() {
     const auto source = ReadSource(
         fs::path{__FILE__}.parent_path() / "main.cpp");
@@ -1931,6 +2019,7 @@ int wmain(const int argc, wchar_t** argv) {
         TestPinnedViewReturnsToPriorOverlayFocusContract();
         TestAcceptedHiddenBridgeControlPlaneContract();
         TestSelectActivationRoutingContract();
+        TestDashboardQuickActionAuthorityContract();
         TestFullscreenShortcutDispatchContract();
         TestAcceptedMediaBackOwnershipHostContract();
         TestPolicyAndPlacement();
