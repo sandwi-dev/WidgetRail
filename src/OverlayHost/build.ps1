@@ -1133,6 +1133,7 @@ function Invoke-WidgetSwitchHostTests {
     $arguments = $common + @(
         (Join-Path $projectDirectory 'WidgetSwitchHostTests.cpp'),
         (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
+        (Join-Path $projectDirectory 'TrayLayout.cpp'),
         "/Fo:$widgetSwitchHostTestObjectDirectory\",
         "/Fe:$outputDirectory\WidgetSwitchHostTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -2588,6 +2589,7 @@ if (-not $SkipTests) {
     $widgetSwitchHostTestArguments = $common + @(
         (Join-Path $projectDirectory 'WidgetSwitchHostTests.cpp'),
         (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
+        (Join-Path $projectDirectory 'TrayLayout.cpp'),
         "/Fo:$widgetSwitchHostTestObjectDirectory\",
         "/Fe:$outputDirectory\WidgetSwitchHostTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
