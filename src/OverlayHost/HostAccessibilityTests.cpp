@@ -38,9 +38,9 @@ int main() {
           "overflow controls and visible tile preserve catalog reachability order");
     Check(tree.nodes[0].hostAction ==
               widgetrail::accessibility::HostAction::SelectTrayOverflow &&
-          tree.nodes[0].name == L"2 previous widgets" &&
-          tree.nodes[2].name == L"1 more widgets",
-          "overflow controls announce direction and hidden count without activation");
+          tree.nodes[0].name == L"3 previous widgets" &&
+          tree.nodes[2].name == L"3 more widgets",
+          "cyclic overflow controls announce each traversal direction's hidden catalog span");
     Check(tree.nodes[1].name == L"Performance" &&
           tree.nodes[1].role == widgetrail::accessibility::Role::ListItem &&
           tree.nodes[1].domain == widgetrail::accessibility::ElementDomain::Tray,
@@ -64,6 +64,33 @@ int main() {
                       node.bounds.height == layout->stripBounds.height;
               }),
           "removed outer tray background contributes no accessibility element or bounds");
+
+    const auto wrappedLayout = widgetrail::shell::ComputeTrayLayout(
+        240, 500, items.size(), 0);
+    Check(wrappedLayout && wrappedLayout->tiles.size() == 1 &&
+              wrappedLayout->tiles[0].slot == 0 &&
+              wrappedLayout->previousOverflow &&
+              wrappedLayout->previousOverflow->targetSlot == 3 &&
+              wrappedLayout->nextOverflow &&
+              wrappedLayout->nextOverflow->targetSlot == 1,
+          "first catalog identity retains cyclic previous and next overflow targets");
+    const auto wrappedTree = widgetrail::accessibility::BuildTrayTree(
+        items, *wrappedLayout, 0, 18);
+    Check(wrappedTree.nodes.size() == 3 &&
+              wrappedTree.nodes[0].id == L"overflow.previous" &&
+              wrappedTree.nodes[0].hostTargetId == L"gallery" &&
+              wrappedTree.nodes[1].id == L"tray.audio" &&
+              wrappedTree.nodes[1].hostTargetId == L"audio" &&
+              wrappedTree.nodes[2].id == L"overflow.next" &&
+              wrappedTree.nodes[2].hostTargetId == L"music",
+          "accessibility preserves cyclic catalog identity and unique projected IDs");
+    Check(wrappedTree.nodes[0].bounds.x ==
+                  wrappedLayout->previousOverflow->bounds.x &&
+              wrappedTree.nodes[1].bounds.x ==
+                  wrappedLayout->tiles[0].bounds.x &&
+              wrappedTree.nodes[2].bounds.x ==
+                  wrappedLayout->nextOverflow->bounds.x,
+          "cyclic accessibility controls use the exact shared layout rectangles");
 
     const widgetrail::accessibility::DashboardSemantics dashboard{
         L"Reorder widgets", {24, 10, 192, 34},
