@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.media-sessions",
   "publisher": "widgetrail.firstparty",
   "name": "Now Playing",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
