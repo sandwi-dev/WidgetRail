@@ -8334,8 +8334,12 @@ private:
         const widgetrail::WidgetSnapshot* measurementSnapshot{};
         if (state_.surface() == widgetrail::Surface::Widget) {
             const auto* admitted = SnapshotFor(state_.activeWidget());
+            const auto presentation = sessions_.Presentation(state_.activeWidget());
             measurementSnapshot = admitted
-                ? InteractionSnapshotFor(state_.activeWidget())
+                ? presentation.HasCommittedViewAuthority(
+                      widgetrail::WidgetCommittedViewUse::Presentation)
+                    ? presentation.snapshot
+                    : nullptr
                 : presentationTransaction_.retainedPresentation()
                     ? &presentationTransaction_.retainedPresentation()->snapshot
                     : nullptr;
