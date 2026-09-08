@@ -1070,6 +1070,15 @@ the renderer and WRSS. Disabled/Busy must not be used as a way to remove a
 control from controller navigation. Stable focused IDs survive those state
 changes without falling back to an unrelated control.
 
+Ordinary invalidation does not revoke a healthy Interactive committed view while
+its successor is in flight. Focus, UI Automation, and declared actions continue
+to use that exact committed checkpoint. A queued declared action may cross a
+compatible successor only when the host and Bridge revalidate its origin and
+current widget, runtime, presentation, input scope, source node, enabled/busy
+state, and action binding. A raw action override is snapshot-specific and never
+crosses to a successor. Failure or transition-retained content and any
+incompatible replacement remain inert.
+
 For a remote toggle, prefer the `WidgetOptimisticCommand` helper described
 below. Its domain callbacks should:
 

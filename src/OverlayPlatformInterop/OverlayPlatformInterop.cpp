@@ -125,7 +125,6 @@ struct WidgetRailOverlayPlatformHandle final {
     widgetrail::ForegroundTargetTracker foregroundTarget;
     std::optional<widgetrail::input::ControllerReadPath> lastReadPath;
     std::optional<bool> lastForegroundExclusive;
-    std::optional<bool> lastGameInputSampleAvailable;
 
     void Diagnostic(const std::wstring& message) noexcept {
         if (!options.diagnostic || !TryEnterCallback()) return;
@@ -232,28 +231,9 @@ struct WidgetRailOverlayPlatformHandle final {
             ComPtr<IGameInputReading> reading;
             const HRESULT result = gameInput->GetCurrentReading(
                 GameInputKindGamepad, nullptr, reading.ReleaseAndGetAddressOf());
-            if (FAILED(result) || !reading) {
-                if (!lastGameInputSampleAvailable || *lastGameInputSampleAvailable) {
-                    Diagnostic(
-                        L"Controller GameInput sample unavailable at GetCurrentReading HRESULT=" +
-                        std::to_wstring(static_cast<long long>(result)));
-                }
-                lastGameInputSampleAvailable = false;
-                return false;
-            }
+            if (FAILED(result) || !reading) return false;
             GameInputGamepadState input{};
-            if (!reading->GetGamepadState(&input)) {
-                if (!lastGameInputSampleAvailable || *lastGameInputSampleAvailable) {
-                    Diagnostic(
-                        L"Controller GameInput sample unavailable at GetGamepadState");
-                }
-                lastGameInputSampleAvailable = false;
-                return false;
-            }
-            if (lastGameInputSampleAvailable && !*lastGameInputSampleAvailable) {
-                Diagnostic(L"Controller GameInput sample recovered");
-            }
-            lastGameInputSampleAvailable = true;
+            if (!reading->GetGamepadState(&input)) return false;
             const auto has = [buttons = input.buttons](
                                  const GameInputGamepadButtons button) {
                 return (static_cast<unsigned>(buttons) &

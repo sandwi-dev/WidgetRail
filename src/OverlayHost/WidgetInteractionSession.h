@@ -520,9 +520,6 @@ public:
     [[nodiscard]] bool SliderAdjustmentModeActive(
         const WidgetInteractionAuthority& authority,
         const WidgetNode& node) const;
-    [[nodiscard]] std::optional<double> SliderPresentationValue(
-        const WidgetInteractionAuthority& authority,
-        const WidgetNode& node) const;
     [[nodiscard]] SelectActivationResult OpenSelectPopup(
         const WidgetInteractionAuthority& authority,
         const WidgetNode& node);
@@ -562,9 +559,6 @@ public:
 
     [[nodiscard]] std::uint64_t sliderPresentationRevision() const noexcept {
         return sliders_.presentationRevision();
-    }
-    [[nodiscard]] std::uint64_t sliderReconcileDeadline() const noexcept {
-        return sliderReconcileAt_;
     }
     [[nodiscard]] bool SliderReconcileDue(std::uint64_t now) const noexcept;
 

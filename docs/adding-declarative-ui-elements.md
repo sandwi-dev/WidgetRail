@@ -379,8 +379,14 @@ Bridge replacement, or host teardown unless the contract explicitly proves
 compatibility.
 
 Snapshot refresh must reconcile the transient state before rendering or action
-dispatch. Compatible state may be retained only when the exact semantic
-authority is still current.
+dispatch. For every new interactive element, define an explicit origin/current
+compatibility matrix: list the widget, instance, runtime and presentation
+generations, layout, scope, node, enabled/busy state, action binding, value or
+option identity, and any element-specific fields that must remain equal. Also
+identify which changes preserve a queued operation and which retire it. A
+declared action may cross a compatible successor only after exact current
+revalidation; a raw override remains bound to its origin snapshot. Never infer
+compatibility merely because the node ID or element kind is unchanged.
 
 ### Full-widget routing
 

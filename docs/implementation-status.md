@@ -5164,16 +5164,18 @@ widget's own retained snapshot and authored surface hints immediately while the
 same request owner establishes or refreshes current state. An already-current
 lifecycle no longer suppresses requested snapshot work.
 
-Retained refresh or failure content is visual-only. Native interaction, focus,
-quick-action, and UIA authority continue to resolve only a `Current`
-presentation. A successful current request atomically advances checkpoint and
-action authority; failure, cancellation, stale completion, and a newer demand
-arriving during an in-flight request leave the last-good checkpoint inert. The
-existing bounded queue either retains the newer demand or runs one queued
-follow-up. Hard checkpoint removal is now concentrated at explicit restart,
-widget removal/runtime or presentation-generation replacement, protocol/
-instance mismatch, and the existing explicit hard-removal API. Derived renderer
-resources and appearance refresh remain separate from semantic retention.
+Failure and transition-retained content remains visual-only. Ordinary
+invalidation of a healthy Interactive widget instead preserves the exact last
+committed view as the interaction, focus, quick-action, and UIA authority while
+one successor request is pending. A successful current request atomically
+advances checkpoint and action authority; failure, cancellation, stale
+completion, and a newer demand arriving during an in-flight request leave the
+last-good checkpoint unchanged. The existing bounded queue either retains the
+newer demand or runs one queued follow-up. Hard checkpoint removal remains
+concentrated at explicit restart, widget removal/runtime or
+presentation-generation replacement, protocol/instance mismatch, and the
+existing explicit hard-removal API. Derived renderer resources and appearance
+refresh remain separate from semantic retention.
 
 Deterministic Release evidence passes `WidgetSessionCoordinatorTests` with 19
 scenarios plus `OverlayStateTests`, `WidgetLifecycleTests`, and 305
@@ -5201,6 +5203,27 @@ No public protocol/SDK, residency policy, incremental Taffy/damage, aggregate,
 launch, capture, provider, packaging, or push work was performed. The linked
 host continuity route and physical retained-selection latency remain residual
 planner/user verification.
+
+### WIDGE-200 — committed view authority during ordinary refresh
+
+The native host now keeps a healthy Interactive committed view actionable while
+ordinary invalidation refreshes it. Focus, UI Automation, and declared actions
+continue from that committed checkpoint; a declared action may complete across
+a compatible successor only after exact origin/current widget, runtime,
+presentation, scope, node, enabled/busy, and action-binding validation. Raw
+snapshot-specific overrides remain bound to their exact snapshot. Failure,
+transition-retained content, incompatible authority, and hard retirement remain
+inert and fail closed.
+
+The production candidate was physically accepted after broad controller use.
+Focused Release evidence passed 31 WidgetSessionCoordinator scenarios,
+318 WidgetActionFeedback checks, 239 WidgetInteractionSession checks, 367
+ControllerNavigation checks, 49 FocusNavigation checks, 50 WidgetSurfaceFocus
+checks, 2,129 direct SliderInteraction checks, 29 PressedInteraction checks,
+266 AccessibilityProvider checks, plus OverlayState, WidgetLifecycle,
+TextEntryModal, committed-authority Bridge, companion Bridge, and stale
+ForceReload coverage. The coherent audited Release build completed successfully.
+
 ### Autonomous full-trust Community Playnite Library (DLV-217)
 
 Playnite Library now ships as `widgetrail.community.reference.playnite-library` through
