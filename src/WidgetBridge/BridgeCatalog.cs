@@ -22,7 +22,7 @@ public sealed record BridgeQuickActionDescriptor
 }
 
 public sealed record BridgePackageIconAssetDescriptor(
-    string AssetId,
+    [property: JsonPropertyName("id")] string AssetId,
     string SourceSha256,
     string NormalizedSha256,
     int SourceBytes,

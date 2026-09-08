@@ -1386,6 +1386,16 @@ static async Task PackageSvgIconsResolveLazily()
         "Icon-bearing descriptor omitted its package icon metadata.");
     Assert.Equal(64, descriptor.PackageContentDigest.Length);
     var metadata = descriptor.IconAssets.Single();
+    var descriptorWire = BridgeJson.ToElement(descriptor);
+    var metadataWire = descriptorWire.GetProperty("iconAssets")[0];
+    Assert.True(metadataWire.TryGetProperty("id", out var wireId) &&
+                wireId.GetString() == metadata.AssetId &&
+                !metadataWire.TryGetProperty("assetId", out _) &&
+                metadataWire.GetProperty("sourceSha256").GetString() ==
+                    metadata.SourceSha256 &&
+                metadataWire.GetProperty("normalizedSha256").GetString() ==
+                    metadata.NormalizedSha256,
+        "BridgeJson package icon metadata must retain the native strict id wire contract.");
 
     var pipeName = $"wrail-package-icon-{Guid.NewGuid():N}";
     await using var server = new WidgetBridgeServer(
