@@ -44,6 +44,83 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$hasFallbackAuthorityReplay = -not [string]::IsNullOrWhiteSpace(
+    $WidgetSwitchFallbackAuthorityReplayLog)
+$hasFallbackAuthorityReplayPosition =
+    $WidgetSwitchFallbackAuthorityReplayMarker -ne 0 -or
+    $WidgetSwitchFallbackAuthorityReplaySequence -ne 0
+if ($hasFallbackAuthorityReplay) {
+    if ($WidgetSwitchFallbackAuthorityReplayMarker -le 0 -or
+        $WidgetSwitchFallbackAuthorityReplaySequence -le 0) {
+        throw 'WidgetSwitch fallback-authority replay requires positive marker and sequence.'
+    }
+} elseif ($hasFallbackAuthorityReplayPosition) {
+    throw 'WidgetSwitch fallback-authority marker and sequence require a replay log.'
+}
+if ($WidgetSwitchFallbackAuthorityTestsOnly -and
+    ($hasFallbackAuthorityReplay -or $hasFallbackAuthorityReplayPosition)) {
+    throw 'WidgetSwitch fallback-authority selection and replay cannot be combined.'
+}
+
+$primaryTestSelectors = @(
+    [pscustomobject]@{ Name = 'SemanticChurnTestsOnly'; Selected = [bool]$SemanticChurnTestsOnly }
+    [pscustomobject]@{ Name = 'DeclarativeLayoutTestsOnly'; Selected = [bool]$DeclarativeLayoutTestsOnly }
+    [pscustomobject]@{ Name = 'DeclarativeRendererTestsOnly'; Selected = [bool]$DeclarativeRendererTestsOnly }
+    [pscustomobject]@{ Name = 'BackgroundSurfaceHostTestsOnly'; Selected = [bool]$BackgroundSurfaceHostTestsOnly }
+    [pscustomobject]@{ Name = 'AccessibilityTreeTestsOnly'; Selected = [bool]$AccessibilityTreeTestsOnly }
+    [pscustomobject]@{ Name = 'ControllerGuideTestsOnly'; Selected = [bool]$ControllerGuideTestsOnly }
+    [pscustomobject]@{ Name = 'AccessibilityEventsTestsOnly'; Selected = [bool]$AccessibilityEventsTestsOnly }
+    [pscustomobject]@{ Name = 'PinnedSurfaceTestsOnly'; Selected = [bool]$PinnedSurfaceTestsOnly }
+    [pscustomobject]@{ Name = 'PinnedPlacementTestsOnly'; Selected = [bool]$PinnedPlacementTestsOnly }
+    [pscustomobject]@{ Name = 'ProcessOwnerTestsOnly'; Selected = [bool]$ProcessOwnerTestsOnly }
+    [pscustomobject]@{ Name = 'CompositionTestsOnly'; Selected = [bool]$CompositionTestsOnly }
+    [pscustomobject]@{ Name = 'WidgetSwitchTestsOnly'; Selected = [bool]$WidgetSwitchTestsOnly }
+    [pscustomobject]@{ Name = 'PinnedSliderRouteTestsOnly'; Selected = [bool]$PinnedSliderRouteTestsOnly }
+    [pscustomobject]@{ Name = 'WidgetSwitchFallbackAuthorityTestsOnly'; Selected = [bool]$WidgetSwitchFallbackAuthorityTestsOnly }
+    [pscustomobject]@{ Name = 'WidgetSwitchFallbackAuthorityReplay'; Selected = $hasFallbackAuthorityReplay }
+    [pscustomobject]@{ Name = 'TrustedArtworkTestsOnly'; Selected = [bool]$TrustedArtworkTestsOnly }
+    [pscustomobject]@{ Name = 'WidgetSessionTestsOnly'; Selected = [bool]$WidgetSessionTestsOnly }
+    [pscustomobject]@{ Name = 'WidgetInteractionTestsOnly'; Selected = [bool]$WidgetInteractionTestsOnly }
+    [pscustomobject]@{ Name = 'WidgetBridgeCatalogTestsOnly'; Selected = [bool]$WidgetBridgeCatalogTestsOnly }
+    [pscustomobject]@{ Name = 'LocalPackageImportTestsOnly'; Selected = [bool]$LocalPackageImportTestsOnly }
+    [pscustomobject]@{ Name = 'WidgetSurfaceTestsOnly'; Selected = [bool]$WidgetSurfaceTestsOnly }
+    [pscustomobject]@{ Name = 'ColdDashboardTestsOnly'; Selected = [bool]$ColdDashboardTestsOnly }
+    [pscustomobject]@{ Name = 'TextEntryHostTestsOnly'; Selected = [bool]$TextEntryHostTestsOnly }
+    [pscustomobject]@{ Name = 'TrayAccessibilityHostTestsOnly'; Selected = [bool]$TrayAccessibilityHostTestsOnly }
+    [pscustomobject]@{ Name = 'TrayRefreshHostTestsOnly'; Selected = [bool]$TrayRefreshHostTestsOnly }
+    [pscustomobject]@{ Name = 'PlatformInteropTestsOnly'; Selected = [bool]$PlatformInteropTestsOnly }
+    [pscustomobject]@{ Name = 'WidgetActionFailureHostTestsOnly'; Selected = [bool]$WidgetActionFailureHostTestsOnly }
+    [pscustomobject]@{ Name = 'AudioMixerScrollHostTestsOnly'; Selected = [bool]$AudioMixerScrollHostTestsOnly }
+    [pscustomobject]@{ Name = 'RichMediaTestsOnly'; Selected = [bool]$RichMediaTestsOnly }
+    [pscustomobject]@{ Name = 'RichMediaContractTestsOnly'; Selected = [bool]$RichMediaContractTestsOnly }
+    [pscustomobject]@{ Name = 'RichMediaPerformanceTestsOnly'; Selected = [bool]$RichMediaPerformanceTestsOnly }
+)
+$selectedPrimaryTestSelectors = @($primaryTestSelectors | Where-Object Selected)
+if ($selectedPrimaryTestSelectors.Count -gt 1) {
+    $names = @($selectedPrimaryTestSelectors | ForEach-Object Name) -join ', '
+    throw "Native focused test selectors are mutually exclusive: $names."
+}
+if ($SkipTests -and $selectedPrimaryTestSelectors.Count -ne 0) {
+    throw "$($selectedPrimaryTestSelectors[0].Name) cannot be combined with SkipTests."
+}
+if ($WidgetSwitchGeometryOnly -and -not $WidgetSwitchTestsOnly) {
+    throw 'WidgetSwitchGeometryOnly requires WidgetSwitchTestsOnly.'
+}
+$packagingRequiredSelectors = @(
+    [pscustomobject]@{ Name = 'WidgetActionFailureHostTestsOnly'; Selected = [bool]$WidgetActionFailureHostTestsOnly }
+    [pscustomobject]@{ Name = 'AudioMixerScrollHostTestsOnly'; Selected = [bool]$AudioMixerScrollHostTestsOnly }
+    [pscustomobject]@{ Name = 'TextEntryHostTestsOnly'; Selected = [bool]$TextEntryHostTestsOnly }
+    [pscustomobject]@{ Name = 'TrayAccessibilityHostTestsOnly'; Selected = [bool]$TrayAccessibilityHostTestsOnly }
+    [pscustomobject]@{ Name = 'TrayRefreshHostTestsOnly'; Selected = [bool]$TrayRefreshHostTestsOnly }
+)
+if ($SkipPackaging) {
+    $incompatiblePackagingSelector = $packagingRequiredSelectors |
+        Where-Object Selected | Select-Object -First 1
+    if ($null -ne $incompatiblePackagingSelector) {
+        throw "$($incompatiblePackagingSelector.Name) requires packaging."
+    }
+}
+
 $projectDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $gameInputVersion = '3.5.262'
 $webView2Version = '1.0.4078.44'

@@ -31,6 +31,189 @@ $duplicateIds = @($manifest.steps | Group-Object id | Where-Object Count -ne 1)
 if ($manifest.schemaVersion -ne 1 -or $duplicateIds.Count -ne 0) {
     throw 'Verification manifest schema or step IDs are invalid.'
 }
+$expectedDefaultStepIds = @(
+    'nuget-build-execution-contract',
+    'verification-runner-selftest',
+    'performance-harness-selftest',
+    'widget-sdk-build',
+    'widget-protocol-native-parity',
+    'widget-sdk-tests',
+    'widget-sdk-compatibility-tests',
+    'widget-scenario-tests',
+    'widget-ticker-tests',
+    'yt-music-tests',
+    'youtube-widget-tests',
+    'widget-runtime-tests',
+    'widget-presentation-session-tests',
+    'worker-host-tests',
+    'wrail-cli-tests',
+    'widget-styling-tests',
+    'platform-settings-tests',
+    'widget-configuration-tests',
+    'platform-broker-tests',
+    'windows-audio-tests',
+    'windows-network-tests',
+    'windows-bluetooth-tests',
+    'windows-activity-tests',
+    'windows-app-library-tests',
+    'windows-community-tests',
+    'windows-media-tests',
+    'windows-spotify-tests',
+    'spotify-playback-host-tests',
+    'spotify-playback-client-tests',
+    'spotify-widget-tests',
+    'spotify-community-application-tests',
+    'sdk-gallery-tests',
+    'audio-mixer-tests',
+    'network-controls-tests',
+    'recent-apps-tests',
+    'games-apps-tests',
+    'playnite-library-tests',
+    'playnite-library-community-application-tests',
+    'full-application-widget-tests',
+    'media-sessions-tests',
+    'settings-widget-tests',
+    'platform-diagnostics-tests',
+    'settings-worker-build',
+    'widget-catalog-tests',
+    'documentation-tests',
+    'widget-bridge-tests',
+    'first-party-conformance-tests',
+    'overlay-native-build-tests',
+    'overlay-hidden-smoke',
+    'input-probe-build',
+    'input-probe-smoke'
+)
+$defaultSelection = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all)
+$defaultIds = @($defaultSelection | ForEach-Object { $_.id })
+if ($defaultIds.Count -ne 51 -or
+    [string]::Join("`n", $defaultIds) -cne [string]::Join("`n", $expectedDefaultStepIds)) {
+    throw 'Focused selection changed the exact 51-step default aggregate identity or order.'
+}
+$nativeDefaults = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native)
+if ([string]::Join("`n", @($nativeDefaults | ForEach-Object id)) -cne
+    [string]::Join("`n", @(
+        'overlay-native-build-tests',
+        'overlay-hidden-smoke',
+        'input-probe-build',
+        'input-probe-smoke'))) {
+    throw 'Non-default native focused selectors entered the default native lane.'
+}
+$orderedSelection = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all `
+    -RequestedStepIds @(
+        'overlay-declarative-layout-tests',
+        'platform-broker-tests',
+        'widget-sdk-tests') -ExplicitSelection)
+$orderedIds = @($orderedSelection | ForEach-Object id)
+$expectedOrderedIds = @(
+    'widget-sdk-build',
+    'widget-sdk-tests',
+    'platform-broker-tests',
+    'overlay-declarative-layout-tests')
+if ([string]::Join("`n", $orderedIds) -cne [string]::Join("`n", $expectedOrderedIds) -or
+    @($orderedIds | Group-Object | Where-Object Count -ne 1).Count -ne 0) {
+    throw 'Explicit focused selection did not expand once in manifest order.'
+}
+$nativeFocused = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native `
+    -RequestedStepIds @('overlay-declarative-layout-tests') -ExplicitSelection)
+if ($nativeFocused.Count -ne 1 -or
+    $nativeFocused[0].arguments[-1] -cne '-DeclarativeLayoutTestsOnly') {
+    throw 'Native focused selection did not resolve its exact existing selector.'
+}
+$hiddenSmoke = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native `
+    -RequestedStepIds @('overlay-hidden-smoke') -ExplicitSelection)
+if ([string]::Join("`n", @($hiddenSmoke | ForEach-Object id)) -cne
+    [string]::Join("`n", @('overlay-native-build-only', 'overlay-hidden-smoke'))) {
+    throw 'Hidden smoke selection did not resolve its build-only prerequisite.'
+}
+
+function Assert-SelectionRejected([scriptblock]$Action, [string]$ExpectedText) {
+    $message = $null
+    try { & $Action | Out-Null }
+    catch { $message = $_.Exception.Message }
+    if ($null -eq $message -or
+        -not $message.Contains($ExpectedText, [StringComparison]::Ordinal)) {
+        throw "Focused selection did not reject '$ExpectedText'."
+    }
+}
+
+Assert-SelectionRejected {
+    Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all `
+        -RequestedStepIds @() -ExplicitSelection
+} 'cannot be empty'
+Assert-SelectionRejected {
+    Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all `
+        -RequestedStepIds @(' ') -ExplicitSelection
+} 'cannot be empty'
+Assert-SelectionRejected {
+    Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all `
+        -RequestedStepIds @('platform-broker-tests', 'platform-broker-tests') `
+        -ExplicitSelection
+} 'selected more than once'
+Assert-SelectionRejected {
+    Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all `
+        -RequestedStepIds @('not-a-step') -ExplicitSelection
+} 'Unknown verification step ID'
+Assert-SelectionRejected {
+    Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane managed `
+        -RequestedStepIds @('overlay-declarative-layout-tests') -ExplicitSelection
+} "incompatible with lane 'managed'"
+Assert-SelectionRejected {
+    Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all `
+        -RequestedStepIds @('platform-broker-tests', 'PLATFORM-BROKER-TESTS') `
+        -ExplicitSelection
+} 'Unknown verification step ID: PLATFORM-BROKER-TESTS'
+
+$crossLaneFixture = @(
+    [pscustomobject]@{ id = 'native-owner'; lane = 'native' },
+    [pscustomobject]@{
+        id = 'managed-consumer'
+        lane = 'managed'
+        requiresStepIds = @('native-owner')
+    })
+Assert-SelectionRejected {
+    Resolve-VerificationStepSelection -Steps $crossLaneFixture -Lane managed `
+        -RequestedStepIds @('managed-consumer') -ExplicitSelection
+} "prerequisite 'native-owner' is incompatible"
+$forwardPrerequisiteFixture = @(
+    [pscustomobject]@{
+        id = 'first'
+        lane = 'managed'
+        requiresStepIds = @('second')
+    },
+    [pscustomobject]@{ id = 'second'; lane = 'managed' })
+Assert-SelectionRejected {
+    Resolve-VerificationStepSelection -Steps $forwardPrerequisiteFixture -Lane all
+} 'must appear earlier in the manifest'
+$mixedCasePrerequisiteFixture = @(
+    [pscustomobject]@{ id = 'alpha'; lane = 'managed' },
+    [pscustomobject]@{
+        id = 'consumer'
+        lane = 'managed'
+        requiresStepIds = @('ALPHA')
+    })
+Assert-SelectionRejected {
+    Resolve-VerificationStepSelection -Steps $mixedCasePrerequisiteFixture -Lane all
+} "requires unknown step 'ALPHA'"
+
+foreach ($selectedCount in 0, 1, 3) {
+    $selectedIds = [Collections.Generic.List[string]]::new()
+    for ($index = 0; $index -lt $selectedCount; $index++) {
+        $selectedIds.Add("step-$index")
+    }
+    $serialized = [ordered]@{ selectedStepIds = $selectedIds } |
+        ConvertTo-Json -Compress
+    $json = [Text.Json.JsonDocument]::Parse($serialized)
+    try {
+        $selectedProperty = $json.RootElement.GetProperty('selectedStepIds')
+        if ($selectedProperty.ValueKind -ne [Text.Json.JsonValueKind]::Array -or
+            $selectedProperty.GetArrayLength() -ne $selectedCount) {
+            throw "Selected step IDs did not serialize as a $selectedCount-item JSON array."
+        }
+    }
+    finally { $json.Dispose() }
+}
+
 $launcherPath = Join-Path $PSScriptRoot 'Invoke-VerificationChild.ps1'
 if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
     throw 'Verification child launcher is missing.'
@@ -96,6 +279,40 @@ if ($actionReferences.Count -eq 0 -or
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ("wrail-verification-runner-" + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
 try {
+    $nativeBuildScript = Join-Path $repositoryRoot 'src\OverlayHost\build.ps1'
+    $nativeSelectionCases = @(
+        [pscustomobject]@{
+            Id = 'native-selector-conflict'
+            Arguments = @('-NoProfile', '-File', $nativeBuildScript, '-NoRestore',
+                '-DeclarativeLayoutTestsOnly', '-DeclarativeRendererTestsOnly')
+            Expected = 'Native focused test selectors are mutually exclusive'
+        },
+        [pscustomobject]@{
+            Id = 'native-selector-modifier'
+            Arguments = @('-NoProfile', '-File', $nativeBuildScript, '-NoRestore',
+                '-WidgetSwitchGeometryOnly')
+            Expected = 'WidgetSwitchGeometryOnly requires WidgetSwitchTestsOnly'
+        },
+        [pscustomobject]@{
+            Id = 'native-selector-packaging'
+            Arguments = @('-NoProfile', '-File', $nativeBuildScript, '-NoRestore',
+                '-SkipPackaging', '-TextEntryHostTestsOnly')
+            Expected = 'TextEntryHostTestsOnly requires packaging'
+        })
+    foreach ($selectionCase in $nativeSelectionCases) {
+        $selectionResult = Invoke-BoundedVerificationProcess -Id $selectionCase.Id `
+            -Description 'native selector validation' -FilePath pwsh `
+            -ArgumentList $selectionCase.Arguments -WorkingDirectory $repositoryRoot `
+            -TimeoutSeconds 10 -OutputDirectory $temporary -SuppressReplay
+        $selectionOutput =
+            [IO.File]::ReadAllText((Join-Path $temporary $selectionResult.stdoutLog)) +
+            [IO.File]::ReadAllText((Join-Path $temporary $selectionResult.stderrLog))
+        if ($selectionResult.status -ne 'failed' -or
+            -not $selectionOutput.Contains($selectionCase.Expected, [StringComparison]::Ordinal)) {
+            throw "Native selector validation did not fail early for '$($selectionCase.Id)'."
+        }
+    }
+
     $leaseRoot = Join-Path $temporary 'lease-repository'
     New-Item -ItemType Directory -Path $leaseRoot | Out-Null
     $leaseFixturePath = Join-Path $temporary 'lease-fixture.ps1'

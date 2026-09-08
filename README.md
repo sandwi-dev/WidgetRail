@@ -81,10 +81,22 @@ The complete verification command requires Visual Studio's Desktop development w
 .\scripts\Verify.ps1 -Configuration Release
 ```
 
-Use `-StepId <stable-id>` for a focused local run. The checked-in Windows
-workflow runs managed and native lanes independently and retains the same
-evidence bundle even when a lane fails. Hardware, live-auth, real-controller,
-and physical-display gates remain explicit manual release evidence.
+Use one or more allowlisted `-StepId <stable-id>` values for a focused local
+run. Explicit selections execute once in manifest order and include only their
+declared prerequisites. Native `overlay-*-tests` entries are intentionally
+non-default, so adding focused coverage cannot change the 51-step aggregate:
+
+```powershell
+.\scripts\Verify.ps1 -Configuration Release `
+    -StepId platform-broker-tests,overlay-declarative-layout-tests
+```
+
+Empty, duplicate, unknown, lane-incompatible, or unavailable explicit
+selections fail before a target starts and retain a verification result under
+the selected output root. The checked-in Windows workflow runs managed and
+native lanes independently and retains the same evidence bundle even when a
+lane fails. Hardware, live-auth, real-controller, and physical-display gates
+remain explicit manual release evidence.
 
 ## Documentation
 

@@ -18,6 +18,7 @@ Set-StrictMode -Version Latest
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $stepManifestPath = Join-Path $PSScriptRoot 'verification-steps.json'
 Import-Module (Join-Path $PSScriptRoot 'VerificationRunner.psm1') -Force
+$stepSelectionExplicit = $PSBoundParameters.ContainsKey('StepId')
 
 function Get-CommandText([string]$file, [string[]]$arguments) {
     (@($file) + $arguments | ForEach-Object {
@@ -60,6 +61,12 @@ $provenance = $null
 $repositoryLease = $null
 $runId = $startedUtc.ToString('yyyyMMddTHHmmssZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
 try {
+    if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
+        $OutputRoot = Join-Path $repositoryRoot 'artifacts\verification'
+    }
+    $runDirectory = Join-Path ([IO.Path]::GetFullPath($OutputRoot)) $runId
+    New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
+
     if ($SkipNative -and $Lane -eq 'native') {
         throw '-SkipNative cannot be combined with -Lane native.'
     }
@@ -102,23 +109,17 @@ try {
             throw "Verification step '$($step.id)' is invalid."
         }
     }
-    if ($StepId.Count -ne 0) {
-        $unknown = @($StepId | Where-Object { $_ -notin $ids })
-        if ($unknown.Count -ne 0) { throw "Unknown verification step ID: $($unknown[0])" }
+    $eligibleSteps = @(Resolve-VerificationStepSelection -Steps $allSteps -Lane $Lane `
+        -RequestedStepIds $StepId -ExplicitSelection:$stepSelectionExplicit)
+    if ($stepSelectionExplicit) {
+        $unavailable = @($eligibleSteps | Where-Object {
+            $null -ne $_.PSObject.Properties['optionalPath'] -and
+            -not (Test-Path -LiteralPath (Join-Path $repositoryRoot $_.optionalPath))
+        })
+        if ($unavailable.Count -ne 0) {
+            throw "Selected verification step '$($unavailable[0].id)' is unavailable because its optional path is missing."
+        }
     }
-    $eligibleSteps = @($allSteps | Where-Object {
-        ($StepId.Count -eq 0 -or $_.id -in $StepId) -and
-        ($Lane -eq 'all' -or $_.lane -eq $Lane)
-    })
-    if ($eligibleSteps.Count -eq 0) {
-        throw 'No verification steps match the selected IDs and lane.'
-    }
-
-    if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
-        $OutputRoot = Join-Path $repositoryRoot 'artifacts\verification'
-    }
-    $runDirectory = Join-Path ([IO.Path]::GetFullPath($OutputRoot)) $runId
-    New-Item -ItemType Directory -Path $runDirectory -Force | Out-Null
 
     $gitStatus = Invoke-ProvenanceCommand -Id git-status -File git `
         -Arguments @('status', '--porcelain=v1', '--untracked-files=all') `
@@ -143,12 +144,18 @@ try {
         throw 'Native toolchain provenance output exceeded its configured limit.'
     }
     $nativeToolchain = $nativeToolchainResult.text | ConvertFrom-Json
+    $selectedStepIdsForProvenance = [Collections.Generic.List[string]]::new()
+    if ($stepSelectionExplicit) {
+        foreach ($step in $eligibleSteps) {
+            $selectedStepIdsForProvenance.Add([string]$step.id)
+        }
+    }
     $provenance = [ordered]@{
         schemaVersion = 2
         runId = $runId
         configuration = $Configuration
         lane = $Lane
-        selectedStepIds = @($StepId)
+        selectedStepIds = $selectedStepIdsForProvenance
         startedUtc = $startedUtc.ToString('O')
         repositoryCommit = $gitCommit.text
         repositoryDirty = -not [string]::IsNullOrEmpty($dirtyText)
@@ -176,9 +183,7 @@ try {
         artifactDigests = @()
     }
 
-    foreach ($step in $allSteps) {
-        if ($StepId.Count -ne 0 -and $step.id -notin $StepId) { continue }
-        if ($Lane -ne 'all' -and $step.lane -ne $Lane) { continue }
+    foreach ($step in $eligibleSteps) {
         if ($null -ne $step.PSObject.Properties['optionalPath'] -and
             -not (Test-Path -LiteralPath (Join-Path $repositoryRoot $step.optionalPath))) { continue }
         $timeout = Get-RemainingVerificationTimeout ([int]$step.timeoutSeconds) `
