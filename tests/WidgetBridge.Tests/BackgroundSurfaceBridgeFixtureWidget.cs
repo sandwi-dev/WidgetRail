@@ -1,17 +1,12 @@
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
-namespace WidgetRail.Samples.BackgroundSurfaceWidget;
-
-/// <summary>
-/// Capability-free isolation fixture for the generic BackgroundSurface resource and paint path.
-/// </summary>
-public sealed class BackgroundSurfaceTestWidget : Widget
+internal sealed class BackgroundSurfaceBridgeFixtureWidget : Widget
 {
-    public const string ArtworkHandle = "background-surface-test.artwork";
-    public const string FirstFocusArtworkHandle = "background-surface-test.focus.first";
-    public const string SecondFocusArtworkHandle = "background-surface-test.focus.second";
-    public static ReadOnlyMemory<byte> ArtworkBytes { get; } = Convert.FromBase64String(
+    internal const string ArtworkHandle = "background-surface-test.artwork";
+    internal const string FirstFocusArtworkHandle = "background-surface-test.focus.first";
+    internal const string SecondFocusArtworkHandle = "background-surface-test.focus.second";
+    internal static ReadOnlyMemory<byte> ArtworkBytes { get; } = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xh8ftQAAAABJRU5ErkJggg==");
 
     public override WidgetView Render() => new(

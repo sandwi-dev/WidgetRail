@@ -22,7 +22,6 @@
     <ProjectReference Include="..\..\samples\PlayniteLibraryWidget\Application\PlayniteLibraryApplication.csproj"
                       ReferenceOutputAssembly="false"
                       Condition="'$(SkipPlayniteLibraryFixture)' != 'true'" />
-    <ProjectReference Include="..\..\samples\BackgroundSurfaceWidget\BackgroundSurfaceWidget.csproj" />
     <ProjectReference Include="..\..\samples\SdkGalleryWidget\SdkGalleryWidget.csproj" />
   </ItemGroup>
 </Project>

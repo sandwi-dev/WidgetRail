@@ -15,7 +15,6 @@ using WidgetRail.WidgetRuntime;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetStyling;
 using WidgetRail.WindowsCommunityProvider;
-using WidgetRail.Samples.BackgroundSurfaceWidget;
 using WidgetRail.Samples.SdkGalleryWidget;
 
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
@@ -46,7 +45,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Protected Wi-Fi host admission is exact trusted and bounded", ProtectedWifiHostAdmissionIsExact),
     ("Protected Wi-Fi production dispatch clears one exact secret owner", ProtectedWifiProductionDispatchIsZeroed),
     ("Trusted artwork demand is exact current and lazy through the production bridge", TrustedArtworkDemandIsExact),
-    ("Packaged BackgroundSurface artwork crosses the worker and Bridge boundary", BackgroundSurfaceArtworkCrossesBridge),
+    ("Test-local BackgroundSurface artwork crosses the worker and Bridge boundary", BackgroundSurfaceArtworkCrossesBridge),
     ("SDK Gallery sealed backgrounds cross the worker and Bridge boundary", SdkGalleryBackgroundArtworkCrossesBridge),
     ("Two provider-neutral media adapters resolve through one sealed contract", EmbeddedMediaAssetsAreProviderNeutral),
     ("Built embedded media sample completes the typed playback loop", BuiltEmbeddedMediaSampleCompletesPlaybackLoop),
@@ -197,7 +196,7 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         _ => string.Equals(instance, "virtual.instance", StringComparison.Ordinal)
             ? new VirtualCollectionBridgeWidget()
             : string.Equals(instance, "background-surface-test.instance", StringComparison.Ordinal)
-                ? new BackgroundSurfaceTestWidget()
+                ? new BackgroundSurfaceBridgeFixtureWidget()
                 : string.Equals(instance, "sdk-gallery-background.instance", StringComparison.Ordinal)
                     ? new SdkGalleryWidget()
                 : new BridgeTestWidget(instance));
@@ -218,19 +217,19 @@ static async Task BackgroundSurfaceArtworkCrossesBridge()
     var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         response.Payload.GetProperty("snapshot").GetRawText()));
     Assert.Equal(ViewNodeKind.BackgroundSurface, snapshot.Root.Kind);
-    Assert.Equal(BackgroundSurfaceTestWidget.ArtworkHandle, snapshot.Root.ArtworkHandle);
+    Assert.Equal(BackgroundSurfaceBridgeFixtureWidget.ArtworkHandle, snapshot.Root.ArtworkHandle);
     Assert.Equal(ImageFit.Cover, snapshot.Root.ImageFit);
     Assert.Equal(true, snapshot.Root.UsesFocusedDescendantArtwork);
-    Assert.Equal(BackgroundSurfaceTestWidget.FirstFocusArtworkHandle,
+    Assert.Equal(BackgroundSurfaceBridgeFixtureWidget.FirstFocusArtworkHandle,
         FindNode(snapshot.Root, "background-surface-test.first").FocusBackgroundArtworkHandle);
-    Assert.Equal(BackgroundSurfaceTestWidget.SecondFocusArtworkHandle,
+    Assert.Equal(BackgroundSurfaceBridgeFixtureWidget.SecondFocusArtworkHandle,
         FindNode(snapshot.Root, "background-surface-test.second").FocusBackgroundArtworkHandle);
 
     foreach (var handle in new[]
     {
-        BackgroundSurfaceTestWidget.ArtworkHandle,
-        BackgroundSurfaceTestWidget.FirstFocusArtworkHandle,
-        BackgroundSurfaceTestWidget.SecondFocusArtworkHandle,
+        BackgroundSurfaceBridgeFixtureWidget.ArtworkHandle,
+        BackgroundSurfaceBridgeFixtureWidget.FirstFocusArtworkHandle,
+        BackgroundSurfaceBridgeFixtureWidget.SecondFocusArtworkHandle,
     })
     {
         var acknowledged = await harness.Client.RequestAsync(
@@ -243,7 +242,7 @@ static async Task BackgroundSurfaceArtworkCrossesBridge()
         Assert.Equal("image/png", artwork.Payload.GetProperty("contentType").GetString());
         var bytes = Convert.FromBase64String(
             artwork.Payload.GetProperty("contentBase64").GetString()!);
-        Assert.SequenceEqual(BackgroundSurfaceTestWidget.ArtworkBytes.ToArray(), bytes);
+        Assert.SequenceEqual(BackgroundSurfaceBridgeFixtureWidget.ArtworkBytes.ToArray(), bytes);
     }
 }
 
