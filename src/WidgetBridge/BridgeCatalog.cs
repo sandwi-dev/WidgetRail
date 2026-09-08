@@ -21,6 +21,13 @@ public sealed record BridgeQuickActionDescriptor
     public ControllerButton? ControllerButton { get; init; }
 }
 
+public sealed record BridgePackageIconAssetDescriptor(
+    string AssetId,
+    string SourceSha256,
+    string NormalizedSha256,
+    int SourceBytes,
+    int NormalizedBytes);
+
 public sealed record BridgeWidgetDescriptor
 {
     public required string Id { get; init; }
@@ -29,6 +36,9 @@ public sealed record BridgeWidgetDescriptor
     public required string RuntimeGeneration { get; init; }
     public required string PresentationGeneration { get; init; }
     public required WidgetGlyph Icon { get; init; }
+    public WidgetPackageIcon? PackageIcon { get; init; }
+    public required string PackageContentDigest { get; init; }
+    public IReadOnlyList<BridgePackageIconAssetDescriptor> IconAssets { get; init; } = [];
     public bool PinningSupported { get; init; }
     /// <summary>
     /// Trusted host policy for the bundled Network Controls credential prompt.
@@ -46,6 +56,7 @@ internal sealed record ConfiguredWidget
     public required string Name { get; init; }
     public required string InstanceId { get; init; }
     public WidgetGlyph Icon { get; init; } = WidgetGlyph.Connection;
+    public WidgetPackageIcon? PackageIcon { get; init; }
     /// <summary>Immutable declaration; native-window authority remains host-only.</summary>
     public bool PinningSupported { get; init; }
     public required string WorkerExecutable { get; init; }
@@ -109,6 +120,16 @@ internal sealed record ConfiguredWidget
     [JsonIgnore]
     public IReadOnlyDictionary<string, VerifiedPackageFile> VerifiedPackageFiles { get; init; } =
         new Dictionary<string, VerifiedPackageFile>(StringComparer.Ordinal);
+    [JsonIgnore]
+    public string PackageContentDigest { get; init; } = string.Empty;
+    [JsonIgnore]
+    public IReadOnlyDictionary<string, ResolvedPackageIconMetadata> PackageIconAssets { get; init; } =
+        new Dictionary<string, ResolvedPackageIconMetadata>(StringComparer.Ordinal);
+    [JsonIgnore]
+    public IReadOnlySet<string> DeclaredPackageIconAssetIds { get; init; } =
+        new HashSet<string>(StringComparer.Ordinal);
+    [JsonIgnore]
+    public string? PackageIconAdmissionFailure { get; init; }
 
     public BridgeWidgetDescriptor PublicDescriptor() => new()
     {
@@ -118,6 +139,16 @@ internal sealed record ConfiguredWidget
         RuntimeGeneration = WorkerFingerprint[..32].ToLowerInvariant(),
         PresentationGeneration = CatalogFingerprint[..32].ToLowerInvariant(),
         Icon = Icon,
+        PackageIcon = PackageIcon,
+        PackageContentDigest = PackageIconAssets.Count == 0
+            ? string.Empty
+            : PackageContentDigest,
+        IconAssets = PackageIconAssets.Values
+            .OrderBy(asset => asset.AssetId, StringComparer.Ordinal)
+            .Select(asset => new BridgePackageIconAssetDescriptor(
+                asset.AssetId, asset.SourceSha256, asset.NormalizedSha256,
+                asset.SourceBytes, asset.NormalizedBytes))
+            .ToArray(),
         PinningSupported = PinningSupported,
         ProtectedWifiPromptSupported =
             string.Equals(PackageId, "widgetrail.firstparty.network-controls", StringComparison.Ordinal) &&
@@ -180,6 +211,27 @@ public sealed class BridgeCatalog
         if (!_configured.TryGetValue(widgetId, out var widget))
             throw new BridgeProtocolException($"Unknown widget '{widgetId}'.");
         return widget;
+    }
+
+    internal ResolvedPackageIconPayload ResolvePackageIcon(
+        string widgetId,
+        string presentationGeneration,
+        string assetId,
+        string normalizedSha256)
+    {
+        var configured = GetConfigured(widgetId);
+        if (!string.Equals(
+                configured.CatalogFingerprint[..32], presentationGeneration,
+                StringComparison.OrdinalIgnoreCase) ||
+            !configured.PackageIconAssets.TryGetValue(assetId, out var metadata) ||
+            !string.Equals(
+                metadata.NormalizedSha256, normalizedSha256,
+                StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(configured.PackageRoot))
+            throw new BridgeStalePackageIconAuthorityException(
+                "Package icon authority is stale or unavailable.");
+        return PackageIconAssetResolver.Resolve(
+            configured.PackageRoot, metadata, configured.VerifiedPackageFiles);
     }
 
     internal bool IsEquivalentTo(BridgeCatalog other) =>
@@ -341,6 +393,11 @@ public sealed class BridgeCatalog
         if (rejections.Count > warnings.Count)
             warnings.Add(
                 $"{rejections.Count - warnings.Count} additional widget rejections were omitted from detailed logs.");
+        warnings.AddRange(widgets.Values
+            .Where(widget => widget.PackageIconAdmissionFailure is not null)
+            .OrderBy(widget => widget.Id, StringComparer.Ordinal)
+            .Select(widget =>
+                $"Widget '{SafeDiagnostic(widget.Id)}' package icon was rejected; semantic fallback remains active."));
         return new BridgeCatalogLoadResult(new BridgeCatalog(widgets.Values), warnings)
         {
             WidgetRejections = rejections,
@@ -453,6 +510,11 @@ public sealed class BridgeCatalog
                 ? "styles/default.wrss"
                 : null;
             CompiledWidgetStyle style;
+            IReadOnlyDictionary<string, ResolvedPackageIconMetadata> iconAssets;
+            var declaredIconAssetIds = (manifest.IconAssets ??
+                    new Dictionary<string, WidgetPackageIconAsset>(StringComparer.Ordinal))
+                .Keys.ToHashSet(StringComparer.Ordinal);
+            var packageIcon = manifest.Presentation.PackageIcon;
             try
             {
                 style = CompileTheme(new ConfiguredWidget
@@ -468,11 +530,21 @@ public sealed class BridgeCatalog
                     StyleFile = styleFile,
                 }, packageRoot, widget.ActiveVersion.VerifiedWrssDigests);
             }
-            catch (Exception exception) when (exception is BridgeCatalogException or IOException or UnauthorizedAccessException)
+            catch (Exception exception) when (exception is BridgeCatalogException or IOException or
+                                               UnauthorizedAccessException)
             {
                 warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' has invalid styles and was ignored.");
                 continue;
             }
+            var iconMetadata = PackageIconAssetResolver.LoadAvailableMetadata(
+                packageRoot, manifest, widget.ActiveVersion.VerifiedFiles);
+            iconAssets = iconMetadata.Available;
+            var packageIconFailure = iconMetadata.Unavailable.Values.FirstOrDefault();
+            if (packageIcon is not null && !iconAssets.ContainsKey(packageIcon.AssetId))
+                packageIcon = null;
+            if (iconMetadata.Unavailable.Count != 0)
+                warnings.Add(
+                    $"Installed widget '{SafeDiagnostic(manifest.Id)}' has {iconMetadata.Unavailable.Count} unavailable package icon asset(s); semantic fallback remains active.");
             combined.Add(WithFingerprints(new ConfiguredWidget
             {
                 Id = manifest.Id,
@@ -482,6 +554,7 @@ public sealed class BridgeCatalog
                 InstanceId = InstalledWidgetInstanceIdentity.Derive(
                     manifest.Id, manifest.Version),
                 Icon = manifest.Presentation.Icon,
+                PackageIcon = packageIcon,
                 PinningSupported = manifest.PinningSupported,
                 WorkerExecutable = executionTrust == WidgetExecutionTrust.Sandboxed
                     ? workerHost
@@ -521,6 +594,10 @@ public sealed class BridgeCatalog
                 StylePackage = style.Package,
                 PackageRoot = packageRoot,
                 VerifiedPackageFiles = widget.ActiveVersion.VerifiedFiles,
+                PackageContentDigest = widget.ActiveVersion.ContentDigest,
+                PackageIconAssets = iconAssets,
+                DeclaredPackageIconAssetIds = declaredIconAssetIds,
+                PackageIconAdmissionFailure = packageIconFailure,
             }));
         }
         return new BridgeCatalogLoadResult(
@@ -611,6 +688,9 @@ public sealed class BridgeCatalog
             workerFingerprint,
             source.Name,
             source.Icon.ToString(),
+            source.PackageIcon?.AssetId ?? string.Empty,
+            source.PackageIcon?.ColorMode.ToString() ?? string.Empty,
+            source.PackageContentDigest,
             .. source.QuickActions.SelectMany(action => new[]
             {
                 action.Id,
@@ -628,6 +708,22 @@ public sealed class BridgeCatalog
                         System.Globalization.CultureInfo.InvariantCulture),
                     file.Value.Sha256,
                 }),
+            .. source.PackageIconAssets.Values
+                .OrderBy(asset => asset.AssetId, StringComparer.Ordinal)
+                .SelectMany(asset => new[]
+                {
+                    asset.AssetId,
+                    asset.RelativePath,
+                    asset.SourceSha256,
+                    asset.NormalizedSha256,
+                    asset.SourceBytes.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture),
+                    asset.NormalizedBytes.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture),
+                }),
+            .. source.DeclaredPackageIconAssetIds
+                .Order(StringComparer.Ordinal)
+                .Select(assetId => $"declared-icon:{assetId}"),
             .. CanonicalStyle(source.StylePackage),
         ]);
         return source with
@@ -844,6 +940,18 @@ public sealed class BridgeCatalog
             WorkerExecutable = workerHost,
             StyleFile = styleFile,
         }, packageRoot, verification.WrssDigests);
+        IReadOnlyDictionary<string, ResolvedPackageIconMetadata> iconAssets;
+        var declaredIconAssetIds = (manifest.IconAssets ??
+                new Dictionary<string, WidgetPackageIconAsset>(StringComparer.Ordinal))
+            .Keys.ToHashSet(StringComparer.Ordinal);
+        var packageIcon = manifest.Presentation.PackageIcon;
+        string? packageIconFailure = null;
+        var iconMetadata = PackageIconAssetResolver.LoadAvailableMetadata(
+            packageRoot, manifest, verification.VerifiedFiles);
+        iconAssets = iconMetadata.Available;
+        if (packageIcon is not null && !iconAssets.ContainsKey(packageIcon.AssetId))
+            packageIcon = null;
+        packageIconFailure = iconMetadata.Unavailable.Values.FirstOrDefault();
         var residency = manifest.ResidencyPolicy ??
             (manifest.BackgroundPolicy == "suspend"
                 ? new WidgetResidencyPolicy { Mode = WidgetResidencyPolicies.SuspendWhenHidden }
@@ -856,6 +964,7 @@ public sealed class BridgeCatalog
             Name = manifest.Name,
             InstanceId = source.InstanceId,
             Icon = manifest.Presentation.Icon,
+            PackageIcon = packageIcon,
             PinningSupported = manifest.PinningSupported,
             WorkerExecutable = workerHost,
             WorkerArguments =
@@ -877,6 +986,10 @@ public sealed class BridgeCatalog
             StylePackage = style.Package,
             PackageRoot = packageRoot,
             VerifiedPackageFiles = verification.VerifiedFiles,
+            PackageContentDigest = verification.ContentDigest,
+            PackageIconAssets = iconAssets,
+            DeclaredPackageIconAssetIds = declaredIconAssetIds,
+            PackageIconAdmissionFailure = packageIconFailure,
         });
     }
 

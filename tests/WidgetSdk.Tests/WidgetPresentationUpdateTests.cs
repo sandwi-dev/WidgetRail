@@ -11,6 +11,7 @@ internal static class WidgetPresentationUpdateTests
     {
         PropertyNoOpAndRoundTrip();
         SelectOptionsUpdateAtomically();
+        PackageIconUpdatesAtomically();
         VirtualCollectionWindowUpdatesAtomically();
         PublicationProtocolAndVirtualReentryMatrix();
         TransactionKindsRetainExactAuthority();
@@ -22,6 +23,53 @@ internal static class WidgetPresentationUpdateTests
         PropertyCoalescingIsBounded();
         DifferIsTrustTierNeutral();
         return Task.CompletedTask;
+    }
+
+    private static void PackageIconUpdatesAtomically()
+    {
+        var before = SnapshotWithChildren(1, new ViewNode
+        {
+            Id = "icon.button",
+            Kind = ViewNodeKind.Button,
+            Text = "Play",
+            ActionId = "play",
+            Glyph = WidgetGlyph.Play,
+        }) with { ProtocolVersion = ProtocolConstants.PackageSvgIconVersion };
+        var after = before with
+        {
+            Sequence = 2,
+            Root = before.Root with
+            {
+                Children =
+                [
+                    before.Root.Children[0] with
+                    {
+                        PackageIcon = new(
+                            "controls.play", WidgetPackageIconColorMode.ThemeTint),
+                    },
+                ],
+            },
+        };
+        var publication = WidgetPresentationDiff.Create(
+            before, after, Generation, 1,
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
+        True(publication.Update?.Operations.Single().Properties?.Any(change =>
+                change.Property == PresentationProperty.PackageIcon) == true,
+            "Package icon changes were omitted from the atomic update.");
+        var admitted = PresentationUpdateMaterializer.Apply(
+            before, publication.Update!, Generation);
+        Equal(after.Root.Children[0].PackageIcon,
+            admitted.Root.Children[0].PackageIcon);
+        var impact = PresentationPropertyMetadata.Impact(
+            PresentationProperty.PackageIcon);
+        True((impact & (PresentationPropertyImpact.Resource |
+                        PresentationPropertyImpact.Paint |
+                        PresentationPropertyImpact.Accessibility)) ==
+             (PresentationPropertyImpact.Resource |
+              PresentationPropertyImpact.Paint |
+              PresentationPropertyImpact.Accessibility),
+            "Package icon update impact is incomplete.");
     }
 
     private static void FocusGroupEntryChangesForceCheckpoints()

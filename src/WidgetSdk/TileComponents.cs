@@ -15,13 +15,15 @@ public sealed class TileArtwork
         string? imageSource,
         WidgetArtworkHandle? artworkHandle,
         ImageFit imageFit,
-        string accessibilityLabel)
+        string accessibilityLabel,
+        WidgetIcon? packageIcon = null)
     {
         Glyph = glyph;
         ImageSource = imageSource;
         ArtworkHandle = artworkHandle;
         ImageFit = imageFit;
         AccessibilityLabel = ValidateLabel(accessibilityLabel, nameof(accessibilityLabel));
+        PackageIcon = packageIcon;
     }
 
     internal WidgetGlyph? Glyph { get; }
@@ -29,11 +31,23 @@ public sealed class TileArtwork
     internal WidgetArtworkHandle? ArtworkHandle { get; }
     internal ImageFit ImageFit { get; }
     internal string AccessibilityLabel { get; }
+    internal WidgetIcon? PackageIcon { get; }
 
     public static TileArtwork FromGlyph(WidgetGlyph glyph, string accessibilityLabel)
     {
         if (!Enum.IsDefined(glyph)) throw new ArgumentOutOfRangeException(nameof(glyph));
         return new TileArtwork(glyph, null, null, ImageFit.Contain, accessibilityLabel);
+    }
+
+    public static TileArtwork FromPackageSvg(
+        string assetId,
+        WidgetPackageIconColorMode colorMode,
+        WidgetGlyph fallbackGlyph,
+        string accessibilityLabel)
+    {
+        var icon = WidgetIcon.PackageSvg(assetId, colorMode, fallbackGlyph);
+        return new TileArtwork(
+            fallbackGlyph, null, null, ImageFit.Contain, accessibilityLabel, icon);
     }
 
     public static TileArtwork FromHttps(
@@ -498,7 +512,9 @@ public static partial class UI
     private static WidgetElement BuildTileArtworkElement(string id, TileArtwork artwork) =>
         artwork.Glyph is { } glyph
             ? new IconElement(
-                StableIdentifier.Child(id, "artwork"), glyph, artwork.AccessibilityLabel)
+                StableIdentifier.Child(id, "artwork"),
+                artwork.PackageIcon ?? WidgetIcon.Glyph(glyph),
+                artwork.AccessibilityLabel)
             : artwork.ArtworkHandle is { } handle
                 ? UI.Artwork(
                     handle, StableIdentifier.Child(id, "artwork"),

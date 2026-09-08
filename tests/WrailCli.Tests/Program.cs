@@ -116,6 +116,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Controller replay follows focus and shortcuts", ReplayFocusAndActions),
     ("Snapshot preview exposes cursor anchors without artwork authority", CursorPreviewIsOpaque),
     ("Pack produces reproducible catalog-valid archives", PackIsReproducible),
+    ("Pack preserves declared package SVG icon bytes and rejects unsafe assets",
+        PackagedSvgIconsAreExact),
     ("Source pack failures identify the required author action", SourcePackFailureIsActionable),
     ("Pack and install reject unlaunchable directory shapes before publication", DirectoryShapeLimitsAreEnforced),
     ("Install list disable and enable form a local distribution workflow", LocalDistributionWorkflow),
@@ -2002,6 +2004,81 @@ static async Task PackIsReproducible()
         "--output", Path.Combine(temp.Path, "ignored.wrwidget"));
     Assert.Equal(2, sourceOnlyOption.Code);
     Assert.Contains("apply only to a source project", sourceOnlyOption.Error);
+}
+
+static async Task PackagedSvgIconsAreExact()
+{
+    using var temp = new TemporaryDirectory();
+    var source = CreatePackageSource(
+        temp.Path, "dev.test.package-icons", "dev.test", "1.0.0");
+    var manifestPath = Path.Combine(source, "manifest.json");
+    var manifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(manifestPath));
+    manifest = manifest with
+    {
+        IconAssets = new Dictionary<string, WidgetPackageIconAsset>(StringComparer.Ordinal)
+        {
+            ["controls.play"] = new("assets/icons/play.svg"),
+        },
+        Presentation = manifest.Presentation with
+        {
+            PackageIcon = new(
+                "controls.play", WidgetPackageIconColorMode.ThemeTint),
+        },
+    };
+    await File.WriteAllBytesAsync(manifestPath, ManifestJson.Serialize(manifest));
+    var iconDirectory = Path.Combine(source, "assets", "icons");
+    Directory.CreateDirectory(iconDirectory);
+    var iconPath = Path.Combine(iconDirectory, "play.svg");
+    var iconBytes = Encoding.UTF8.GetBytes(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path fill=\"currentColor\" d=\"M4 2 L20 12 L4 22 Z\"/></svg>");
+    await File.WriteAllBytesAsync(iconPath, iconBytes);
+
+    var package = Path.Combine(temp.Path, "icons.wrwidget");
+    var result = await RunCli("pack", source, "--output", package);
+    Assert.Equal(0, result.Code);
+    using (var archive = ZipFile.OpenRead(package))
+    {
+        var entry = archive.GetEntry("assets/icons/play.svg") ??
+            throw new InvalidOperationException("Package omitted the declared SVG icon.");
+        await using var stream = entry.Open();
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory);
+        Assert.SequenceEqual(iconBytes, memory.ToArray());
+    }
+
+    await File.WriteAllTextAsync(iconPath,
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"><script/></svg>");
+    var rejected = await RunCli(
+        "pack", source, "--output", Path.Combine(temp.Path, "unsafe.wrwidget"));
+    Assert.True(rejected.Code != 0, "Active SVG content must fail package admission.");
+    Assert.Contains("svg_element", rejected.Error + rejected.Output);
+
+    await File.WriteAllBytesAsync(
+        iconPath, new byte[ProtocolConstants.MaximumPackageIconBytes + 1]);
+    var oversized = await RunCli(
+        "pack", source, "--output", Path.Combine(temp.Path, "oversized.wrwidget"));
+    Assert.True(oversized.Code != 0,
+        "An oversized package SVG must fail before an output package is published.");
+    Assert.Contains("icon_asset_too_large", oversized.Error + oversized.Output);
+
+    var devCommandPath = Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+        "tools", "WrailCli", "DevCommand.cs"));
+    var devSource = await File.ReadAllTextAsync(devCommandPath);
+    var readBegin = devSource.IndexOf(
+        "private static async Task<byte[]> ReadBoundedIconAssetAsync(",
+        StringComparison.Ordinal);
+    var readEnd = devSource.IndexOf(
+        "private static", readBegin + 1, StringComparison.Ordinal);
+    Assert.True(readBegin >= 0 && readEnd > readBegin,
+        "The package SVG bounded reader source owner was unavailable.");
+    var readOwner = devSource[readBegin..readEnd];
+    Assert.True(readOwner.Contains("FileShare.Read", StringComparison.Ordinal) &&
+                readOwner.Contains("stream.Length", StringComparison.Ordinal) &&
+                readOwner.Contains("ReadAsync", StringComparison.Ordinal) &&
+                readOwner.Contains("changed while it was read", StringComparison.Ordinal) &&
+                !readOwner.Contains("ReadAllBytes", StringComparison.Ordinal),
+        "Package SVG copying must hold a non-writable stream and reject truncated or grown input without unbounded allocation.");
 }
 
 static async Task SourcePackFailureIsActionable()

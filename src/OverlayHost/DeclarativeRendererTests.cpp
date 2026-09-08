@@ -1,4 +1,5 @@
 #include "DeclarativeRenderer.h"
+#include "NativeIcons.h"
 #include "RemoteImageCache.h"
 
 #include <wincodec.h>
@@ -5673,6 +5674,241 @@ void MediaViewportUsesFinalDeclarativeGeometry() {
         "the same provider-neutral viewport responds to compact layout");
 }
 
+void PackageSvgIconPaintUsesGenericRenderTargetAuthority() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "package SVG paint creates a Direct2D factory");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.GetAddressOf()))),
+        "package SVG paint creates a DirectWrite factory");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "package SVG paint creates a WIC factory");
+
+    const auto makeTarget = [&](const UINT width, const UINT height,
+                                const float dpi,
+                                ComPtr<IWICBitmap>& canvas,
+                                ComPtr<ID2D1RenderTarget>& target) {
+        Check(SUCCEEDED(wic->CreateBitmap(
+            width, height, GUID_WICPixelFormat32bppPBGRA,
+            WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+            "package SVG paint creates a WIC canvas");
+        Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+            canvas.Get(), D2D1::RenderTargetProperties(),
+            target.ReleaseAndGetAddressOf())),
+            "package SVG paint creates a generic WIC render target");
+        target->SetDpi(dpi, dpi);
+    };
+    const auto pixel = [](IWICBitmap* const canvas, const UINT x, const UINT y) {
+        std::array<BYTE, 4> result{};
+        ComPtr<IWICBitmapLock> lock;
+        const WICRect area{
+            static_cast<INT>(x), static_cast<INT>(y), 1, 1};
+        Check(SUCCEEDED(canvas->Lock(
+            &area, WICBitmapLockRead, lock.ReleaseAndGetAddressOf())),
+            "package SVG paint locks one exact output pixel");
+        UINT byteCount{};
+        BYTE* bytes{};
+        Check(SUCCEEDED(lock->GetDataPointer(&byteCount, &bytes)) &&
+              byteCount >= result.size(),
+            "package SVG paint exposes one exact output pixel");
+        std::copy_n(bytes, result.size(), result.begin());
+        return result;
+    };
+
+    const std::string svgText =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">"
+        "<path fill=\"#20c060\" d=\"M0 0 H24 V24 H0 Z\"/></svg>";
+    const std::vector<std::uint8_t> svg(svgText.begin(), svgText.end());
+    std::mutex completionMutex;
+    std::condition_variable completionChanged;
+    int terminals{};
+    int requests{};
+    std::vector<widgetrail::PackageIconDemandAuthority> observedRequests;
+    widgetrail::RemoteImageCache cache(
+        {},
+        [&](std::wstring_view, const widgetrail::RemoteImageState state) {
+            if (state != widgetrail::RemoteImageState::Ready &&
+                state != widgetrail::RemoteImageState::Failed) return;
+            {
+                std::scoped_lock lock(completionMutex);
+                ++terminals;
+            }
+            completionChanged.notify_all();
+        },
+        {}, {}, {},
+        [&](const widgetrail::PackageIconDemandAuthority& authority,
+            std::stop_token) -> widgetrail::PackageIconRequest {
+            {
+                std::scoped_lock lock(completionMutex);
+                ++requests;
+                observedRequests.push_back(authority);
+            }
+            if (authority.assetId == L"missing") return {};
+            return {
+                widgetrail::PackageIconRequestDisposition::Resolved, svg};
+        });
+    DeclarativeRenderer renderer(d2d.Get(), write.Get(), &cache);
+    widgetrail::DeclarativeRenderOptions options;
+    options.artworkWidgetId = L"dev.test.package-icon-render";
+    options.artworkRuntimeGeneration = L"runtime-a";
+    options.artworkPresentationGeneration = L"presentation-a";
+    options.packageContentDigest = std::wstring(64, L'a');
+    options.packageIconAssets = {
+        {L"mark", std::wstring(64, L'b'), std::wstring(64, L'c'),
+         svg.size(), svg.size()},
+        {L"missing", std::wstring(64, L'd'), std::wstring(64, L'e'),
+         svg.size(), svg.size()},
+    };
+    constexpr float monitorPixelsPerDip = 144.0F / 96.0F;
+    constexpr float interfaceScale = 1.25F;
+    options.pixelScale = monitorPixelsPerDip * interfaceScale;
+    const Rect destination{5.0F, 4.0F, 12.0F, 10.0F};
+    widgetrail::WidgetPackageIcon tintIcon{
+        L"mark", widgetrail::WidgetPackageIconColorMode::ThemeTint};
+
+    ComPtr<IWICBitmap> highDpiCanvas;
+    ComPtr<ID2D1RenderTarget> highDpiTarget;
+    makeTarget(96, 64, 96.0F, highDpiCanvas, highDpiTarget);
+    const auto retainedAuthority =
+        DeclarativeRenderer::ResolvePackageIconDemandAuthority(
+            tintIcon, destination, options);
+    Check(retainedAuthority && retainedAuthority->physicalWidth == 23 &&
+          retainedAuthority->physicalHeight == 19,
+        "non-96-DPI nonunit-interface retained identity resolves exact physical icon size");
+    widgetrail::icons::NativeIcon fullscreen{};
+    Check(widgetrail::icons::TryParseNativeIcon(L"fullscreen", fullscreen) &&
+          fullscreen == widgetrail::icons::NativeIcon::Fullscreen,
+        "Fullscreen protocol glyph resolves to the shared native icon owner");
+    ComPtr<ID2D1SolidColorBrush> fullscreenBrush;
+    Check(SUCCEEDED(highDpiTarget->CreateSolidColorBrush(
+        D2D1::ColorF(D2D1::ColorF::White),
+        fullscreenBrush.ReleaseAndGetAddressOf())),
+        "Fullscreen glyph creates its native brush");
+    highDpiTarget->BeginDraw();
+    highDpiTarget->Clear(D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.0F));
+    Check(widgetrail::icons::DrawNativeIcon(
+        highDpiTarget.Get(), fullscreen,
+        D2D1::RectF(4.0F, 4.0F, 20.0F, 20.0F),
+        fullscreenBrush.Get(), 2.0F),
+        "Fullscreen glyph paints through the native vector owner");
+    Check(SUCCEEDED(highDpiTarget->EndDraw()),
+        "Fullscreen native glyph draw completes");
+    Check(!renderer.PaintPackageIcon(
+        highDpiTarget.Get(), tintIcon, destination,
+        {0.8F, 0.1F, 0.2F, 0.75F}, options),
+        "first package SVG paint remains fallback while decode is pending");
+    {
+        std::unique_lock lock(completionMutex);
+        Check(completionChanged.wait_for(lock, std::chrono::seconds(3), [&] {
+            return terminals >= 1;
+        }), "package SVG alpha-mask decode reaches one terminal state");
+        Check(observedRequests.size() == 1 && retainedAuthority &&
+              observedRequests.front() == *retainedAuthority,
+            "retained readiness identity and actual paint request share one exact demand key");
+    }
+    highDpiTarget->BeginDraw();
+    highDpiTarget->Clear(D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.0F));
+    highDpiTarget->SetTransform(D2D1::Matrix3x2F::Scale(
+        options.pixelScale, options.pixelScale));
+    Check(renderer.PaintPackageIcon(
+        highDpiTarget.Get(), tintIcon, destination,
+        {0.8F, 0.1F, 0.2F, 0.75F}, options),
+        "theme-tinted package SVG paints through a generic render target");
+    Check(SUCCEEDED(highDpiTarget->EndDraw()),
+        "theme-tinted package SVG generic-target draw completes");
+    const auto tintedCenter = pixel(highDpiCanvas.Get(), 20, 18);
+    Check(tintedCenter[2] > tintedCenter[1] &&
+          tintedCenter[2] > tintedCenter[0] &&
+          tintedCenter[3] >= 180 && tintedCenter[3] <= 200,
+        "theme tint and alpha reach the destination center pixel");
+    Check(pixel(highDpiCanvas.Get(), 8, 18)[3] == 0 &&
+          pixel(highDpiCanvas.Get(), 32, 18)[3] == 0,
+        "non-96-DPI scaled package SVG remains inside its exact destination");
+
+    ComPtr<IWICBitmap> replacementCanvas;
+    ComPtr<ID2D1RenderTarget> replacementTarget;
+    makeTarget(48, 32, 96.0F, replacementCanvas, replacementTarget);
+    replacementTarget->BeginDraw();
+    replacementTarget->Clear(D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.0F));
+    replacementTarget->SetTransform(D2D1::Matrix3x2F::Scale(
+        options.pixelScale, options.pixelScale));
+    Check(renderer.PaintPackageIcon(
+        replacementTarget.Get(), tintIcon, destination,
+        {0.1F, 0.2F, 0.9F, 1.0F}, options),
+        "ready alpha mask is recreated for a replacement target");
+    Check(SUCCEEDED(replacementTarget->EndDraw()),
+        "replacement-target package SVG draw completes");
+    const auto blueCenter = pixel(replacementCanvas.Get(), 20, 17);
+    Check(blueCenter[0] > blueCenter[1] && blueCenter[0] > blueCenter[2],
+        "one decoded alpha mask accepts a new theme tint without another decode");
+    Check(requests == 1,
+        "target replacement and tint changes reuse one immutable decoded mask");
+    const auto replacementStats = renderer.GetImageBitmapCacheStats();
+    Check((replacementStats.resourceDomain ==
+               widgetrail::ImageBitmapResourceDomain::Device &&
+           replacementStats.creates == 1 &&
+           replacementStats.resourceInvalidations == 0) ||
+          (replacementStats.resourceDomain ==
+               widgetrail::ImageBitmapResourceDomain::RenderTarget &&
+           replacementStats.creates == 2 &&
+           replacementStats.resourceInvalidations == 1),
+        "replacement target reuses a shared device bitmap or retires one target-domain bitmap");
+
+    auto originalIcon = tintIcon;
+    originalIcon.colorMode = widgetrail::WidgetPackageIconColorMode::OriginalColor;
+    Check(!renderer.PaintPackageIcon(
+        replacementTarget.Get(), originalIcon, destination,
+        {1.0F, 1.0F, 1.0F, 1.0F}, options),
+        "original-color package SVG uses its distinct pending variant");
+    {
+        std::unique_lock lock(completionMutex);
+        Check(completionChanged.wait_for(lock, std::chrono::seconds(3), [&] {
+            return terminals >= 2;
+        }), "original-color package SVG decode reaches one terminal state");
+    }
+    replacementTarget->BeginDraw();
+    replacementTarget->Clear(D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.0F));
+    replacementTarget->SetTransform(D2D1::Matrix3x2F::Scale(
+        options.pixelScale, options.pixelScale));
+    Check(renderer.PaintPackageIcon(
+        replacementTarget.Get(), originalIcon, destination,
+        {1.0F, 1.0F, 1.0F, 1.0F}, options),
+        "original-color package SVG paints through the same generic target");
+    Check(SUCCEEDED(replacementTarget->EndDraw()),
+        "original-color package SVG draw completes");
+    const auto originalCenter = pixel(replacementCanvas.Get(), 20, 17);
+    Check(originalCenter[1] > originalCenter[2] &&
+          originalCenter[1] > originalCenter[0],
+        "original-color package SVG preserves its authored green pixel");
+
+    const widgetrail::WidgetPackageIcon missingIcon{
+        L"missing", widgetrail::WidgetPackageIconColorMode::ThemeTint};
+    Check(!renderer.PaintPackageIcon(
+        replacementTarget.Get(), missingIcon, destination,
+        {1.0F, 1.0F, 1.0F, 1.0F}, options),
+        "unavailable package SVG remains on semantic fallback while pending");
+    {
+        std::unique_lock lock(completionMutex);
+        Check(completionChanged.wait_for(lock, std::chrono::seconds(3), [&] {
+            return terminals >= 3;
+        }), "unavailable package SVG reaches its isolated terminal failure");
+    }
+    Check(!renderer.PaintPackageIcon(
+        replacementTarget.Get(), missingIcon, destination,
+        {1.0F, 1.0F, 1.0F, 1.0F}, options),
+        "failed package SVG remains on the semantic fallback");
+    Check(requests == 3,
+        "color, mask, and failed variants each request exactly once");
+    cache.Shutdown();
+}
+
 void BitmapRetentionPolicyIsBounded() {
     widgetrail::DeclarativeRenderer renderer(nullptr, nullptr, nullptr);
     const auto stats = renderer.GetImageBitmapCacheStats();
@@ -5735,6 +5971,7 @@ int main() {
     TrustedArtworkTerminalFallbackIsStable();
     ContentMeasurementUsesResponsiveTaffyGeometry();
     MediaViewportUsesFinalDeclarativeGeometry();
+    PackageSvgIconPaintUsesGenericRenderTargetAuthority();
     BitmapRetentionPolicyIsBounded();
     std::cout << "DeclarativeRendererTests: " << checks << " checks passed\n";
     CoUninitialize();

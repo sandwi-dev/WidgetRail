@@ -419,6 +419,7 @@ public sealed record ButtonElement : WidgetElement
     public string ActionId { get; init; }
     public string? AccessibilityLabel { get; init; }
     public WidgetGlyph? Glyph { get; init; }
+    public WidgetPackageIcon? PackageIcon { get; init; }
     public string? LeadingImageSource { get; init; }
     public string? LeadingArtworkHandle { get; init; }
     public ImageFit? LeadingImageFit { get; init; }
@@ -449,9 +450,14 @@ public sealed record ButtonElement : WidgetElement
     /// Selects a host-rendered semantic icon. Widgets cannot provide arbitrary
     /// vector paths, fonts, or executable drawing code.
     /// </summary>
-    public ButtonElement Icon(WidgetGlyph glyph, string? accessibilityLabel = null) => this with
+    public ButtonElement Icon(WidgetGlyph glyph, string? accessibilityLabel = null) =>
+        Icon(WidgetIcon.Glyph(glyph), accessibilityLabel);
+
+    /// <summary>Uses a semantic glyph or one manifest-declared package SVG.</summary>
+    public ButtonElement Icon(WidgetIcon icon, string? accessibilityLabel = null) => this with
     {
-        Glyph = glyph,
+        Glyph = WidgetIconMaterializer.Glyph(icon),
+        PackageIcon = WidgetIconMaterializer.PackageIcon(icon),
         LeadingImageSource = null,
         LeadingArtworkHandle = null,
         LeadingImageFit = null,
@@ -468,6 +474,7 @@ public sealed record ButtonElement : WidgetElement
         return this with
         {
             Glyph = null,
+            PackageIcon = null,
             LeadingImageSource = null,
             LeadingArtworkHandle = handle.Value,
             LeadingImageFit = fit,
@@ -485,6 +492,7 @@ public sealed record ButtonElement : WidgetElement
         string? accessibilityLabel = null) => this with
         {
             Glyph = null,
+            PackageIcon = null,
             LeadingImageSource = UI.CanonicalInlinePngSource(pngBase64, nameof(pngBase64)),
             LeadingArtworkHandle = null,
             LeadingImageFit = fit,
@@ -517,6 +525,7 @@ public sealed record ButtonElement : WidgetElement
         Text = Label,
         AccessibilityLabel = AccessibilityLabel,
         Glyph = Glyph,
+        PackageIcon = PackageIcon,
         ImageSource = LeadingImageSource,
         ArtworkHandle = LeadingArtworkHandle,
         ImageFit = LeadingImageFit,
@@ -611,10 +620,15 @@ public sealed record SelectElement : WidgetElement
                 option.Label,
                 option.ActionId,
                 option.IsSelected,
-                option.Glyph,
+                option.Icon?.FallbackGlyph ?? option.Glyph,
                 option.AccessibilityLabel,
                 option.IsDisabled,
-                option.IsBusy)).ToArray(),
+                option.IsBusy)
+            {
+                PackageIcon = option.Icon is null
+                    ? null
+                    : WidgetIconMaterializer.PackageIcon(option.Icon),
+            }).ToArray(),
             IsDisabled = IsDisabled,
             IsBusy = IsBusy,
             Focus = FocusNeighbors,
@@ -907,13 +921,18 @@ public sealed record ImageElement : WidgetElement
 
 public sealed record IconElement : WidgetElement
 {
-    internal IconElement(string id, WidgetGlyph glyph, string accessibilityLabel) : base(RequireId(id))
+    internal IconElement(string id, WidgetGlyph glyph, string accessibilityLabel)
+        : this(id, WidgetIcon.Glyph(glyph), accessibilityLabel) { }
+
+    internal IconElement(string id, WidgetIcon icon, string accessibilityLabel) : base(RequireId(id))
     {
-        Glyph = glyph;
+        Glyph = WidgetIconMaterializer.Glyph(icon);
+        PackageIcon = WidgetIconMaterializer.PackageIcon(icon);
         AccessibilityLabel = accessibilityLabel ?? throw new ArgumentNullException(nameof(accessibilityLabel));
     }
 
     public WidgetGlyph Glyph { get; init; }
+    public WidgetPackageIcon? PackageIcon { get; init; }
     public string AccessibilityLabel { get; init; }
 
     internal override ViewNode ToProtocolNode() => new()
@@ -921,6 +940,7 @@ public sealed record IconElement : WidgetElement
         Id = Id,
         Kind = ViewNodeKind.Icon,
         Glyph = Glyph,
+        PackageIcon = PackageIcon,
         AccessibilityLabel = AccessibilityLabel,
         StyleClasses = StyleClasses,
     };

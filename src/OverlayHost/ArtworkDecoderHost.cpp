@@ -2,6 +2,9 @@
 #include "EncodedArtworkEnvelope.h"
 
 #include <Windows.h>
+#include <d2d1_3.h>
+#include <d3d11_4.h>
+#include <dxgi1_2.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 
@@ -39,7 +42,11 @@ using namespace widgetrail::artworkdecoder;
     const std::span<const std::uint8_t> bytes) noexcept {
     if (type == ContentType::Png) return widgetrail::encoded_artwork::IsPng(bytes);
     if (type == ContentType::Jpeg) return widgetrail::encoded_artwork::IsJpeg(bytes);
-    return type == ContentType::WebP && widgetrail::encoded_artwork::IsWebP(bytes);
+    if (type == ContentType::WebP) return widgetrail::encoded_artwork::IsWebP(bytes);
+    if (type != ContentType::Svg) return false;
+    constexpr std::string_view signature{"<svg"};
+    return bytes.size() >= signature.size() &&
+        std::equal(signature.begin(), signature.end(), bytes.begin());
 }
 
 [[nodiscard]] HRESULT ValidateRequest(
@@ -51,7 +58,13 @@ using namespace widgetrail::artworkdecoder;
         header.maximumDecodedBytes < 4 ||
         header.maximumDecodedBytes > maximumDecodedBytes ||
         header.maximumPixels == 0 || header.maximumPixels > 16'777'216 ||
-        header.maximumDimension == 0 || header.maximumDimension > 4'096)
+        header.maximumDimension == 0 || header.maximumDimension > 4'096 ||
+        (header.contentType == ContentType::Svg &&
+            (header.requestedWidth == 0 || header.requestedHeight == 0 ||
+             header.requestedWidth > 512 || header.requestedHeight > 512)) ||
+        (header.contentType != ContentType::Svg &&
+            (header.requestedWidth != 0 || header.requestedHeight != 0 ||
+             header.rasterVariant != RasterVariant::OriginalColor)))
         return E_INVALIDARG;
 
     const auto encoded = std::span<const std::uint8_t>(
@@ -61,9 +74,105 @@ using namespace widgetrail::artworkdecoder;
     return S_OK;
 }
 
+[[nodiscard]] HRESULT DecodeSvg(SharedHeader& header, std::byte* const view) {
+    const auto encoded = std::span<const std::uint8_t>(
+        reinterpret_cast<const std::uint8_t*>(view + encodedOffset),
+        static_cast<std::size_t>(header.encodedBytes));
+    ComPtr<IWICImagingFactory> wic;
+    HRESULT result = CoCreateInstance(CLSID_WICImagingFactory2, nullptr,
+        CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()));
+    if (FAILED(result)) return result;
+    ComPtr<IWICStream> stream;
+    result = wic->CreateStream(stream.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result)) result = stream->InitializeFromMemory(
+        const_cast<BYTE*>(encoded.data()), static_cast<DWORD>(encoded.size()));
+
+    ComPtr<ID3D11Device> d3d;
+    D3D_FEATURE_LEVEL feature{};
+    if (SUCCEEDED(result)) result = D3D11CreateDevice(
+        nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+        nullptr, 0, D3D11_SDK_VERSION, d3d.ReleaseAndGetAddressOf(), &feature, nullptr);
+    ComPtr<IDXGIDevice> dxgi;
+    if (SUCCEEDED(result)) result = d3d.As(&dxgi);
+    D2D1_FACTORY_OPTIONS factoryOptions{};
+    ComPtr<ID2D1Factory1> factory;
+    if (SUCCEEDED(result)) result = D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory1),
+        &factoryOptions, reinterpret_cast<void**>(factory.ReleaseAndGetAddressOf()));
+    ComPtr<ID2D1Device> device;
+    if (SUCCEEDED(result)) result = factory->CreateDevice(
+        dxgi.Get(), device.ReleaseAndGetAddressOf());
+    ComPtr<ID2D1DeviceContext> baseContext;
+    if (SUCCEEDED(result)) result = device->CreateDeviceContext(
+        D2D1_DEVICE_CONTEXT_OPTIONS_NONE, baseContext.ReleaseAndGetAddressOf());
+    ComPtr<ID2D1DeviceContext5> context;
+    if (SUCCEEDED(result)) result = baseContext.As(&context);
+
+    const D2D1_SIZE_U pixelSize{header.requestedWidth, header.requestedHeight};
+    const D2D1_BITMAP_PROPERTIES1 targetProperties{
+        {DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED},
+        96.0F, 96.0F, D2D1_BITMAP_OPTIONS_TARGET, nullptr};
+    ComPtr<ID2D1Bitmap1> target;
+    if (SUCCEEDED(result)) result = context->CreateBitmap(
+        pixelSize, nullptr, 0, &targetProperties, target.ReleaseAndGetAddressOf());
+    ComPtr<ID2D1SvgDocument> document;
+    if (SUCCEEDED(result)) result = context->CreateSvgDocument(
+        stream.Get(), D2D1::SizeF(
+            static_cast<float>(header.requestedWidth),
+            static_cast<float>(header.requestedHeight)),
+        document.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result)) {
+        context->SetTarget(target.Get());
+        context->BeginDraw();
+        context->Clear(D2D1::ColorF(0, 0.0F));
+        context->DrawSvgDocument(document.Get());
+        result = context->EndDraw();
+    }
+
+    const D2D1_BITMAP_PROPERTIES1 readProperties{
+        {DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED},
+        96.0F, 96.0F,
+        D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW, nullptr};
+    ComPtr<ID2D1Bitmap1> readable;
+    if (SUCCEEDED(result)) result = context->CreateBitmap(
+        pixelSize, nullptr, 0, &readProperties, readable.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result)) result = readable->CopyFromBitmap(nullptr, target.Get(), nullptr);
+    D2D1_MAPPED_RECT mapped{};
+    if (SUCCEEDED(result)) result = readable->Map(D2D1_MAP_OPTIONS_READ, &mapped);
+    const std::uint64_t stride = static_cast<std::uint64_t>(header.requestedWidth) * 4U;
+    const std::uint64_t decoded = stride * header.requestedHeight;
+    if (SUCCEEDED(result) &&
+        (decoded > header.maximumDecodedBytes || decoded > maximumDecodedBytes ||
+         decoded > std::numeric_limits<std::uint32_t>::max()))
+        result = HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+    if (SUCCEEDED(result)) {
+        auto* destination = reinterpret_cast<std::uint8_t*>(view + decodedOffset);
+        for (UINT32 row = 0; row < header.requestedHeight; ++row) {
+            std::copy_n(mapped.bits + static_cast<std::size_t>(row) * mapped.pitch,
+                static_cast<std::size_t>(stride),
+                destination + static_cast<std::size_t>(row) * stride);
+        }
+        if (header.rasterVariant == RasterVariant::AlphaMask) {
+            for (std::size_t offset = 0; offset < decoded; offset += 4) {
+                const auto alpha = destination[offset + 3];
+                destination[offset] = alpha;
+                destination[offset + 1] = alpha;
+                destination[offset + 2] = alpha;
+            }
+        }
+        header.width = header.requestedWidth;
+        header.height = header.requestedHeight;
+        header.stride = static_cast<std::uint32_t>(stride);
+        header.decodedBytes = static_cast<std::uint32_t>(decoded);
+    }
+    if (mapped.bits) readable->Unmap();
+    return result;
+}
+
 [[nodiscard]] HRESULT Decode(SharedHeader& header, std::byte* const view) {
     const HRESULT admission = ValidateRequest(header, view);
     if (FAILED(admission)) return admission;
+    if (header.contentType == ContentType::Svg) return DecodeSvg(header, view);
 
     const auto encoded = std::span<const std::uint8_t>(
         reinterpret_cast<const std::uint8_t*>(view + encodedOffset),

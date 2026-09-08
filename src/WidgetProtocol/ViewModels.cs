@@ -34,7 +34,10 @@ public sealed record WidgetSelectOption(
     WidgetGlyph? Glyph = null,
     string? AccessibilityLabel = null,
     bool IsDisabled = false,
-    bool IsBusy = false);
+    bool IsBusy = false)
+{
+    public WidgetPackageIcon? PackageIcon { get; init; }
+}
 
 /// <summary>
 /// Selects the bounded primary layout direction for an ActionSurface. The
@@ -200,7 +203,8 @@ public enum ImageFit
 
 /// <summary>
 /// A closed set of semantic glyphs that the host maps to its native icon set.
-/// Widgets never supply SVG, font names, paths, or executable drawing payloads.
+/// Widgets may select these native glyphs or reference a separately admitted
+/// manifest SVG; they never supply inline paths, fonts, or executable drawing payloads.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetGlyph>))]
 public enum WidgetGlyph
@@ -227,7 +231,23 @@ public enum WidgetGlyph
     Ethernet,
     Rewind,
     FastForward,
+    Fullscreen,
 }
+
+/// <summary>Controls whether a declared package SVG keeps its authored colors or supplies a reusable alpha mask.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetPackageIconColorMode>))]
+public enum WidgetPackageIconColorMode
+{
+    OriginalColor,
+    ThemeTint,
+}
+
+/// <summary>
+/// References one manifest-declared static SVG by logical ID. The sibling
+/// glyph remains the semantic fallback and is required whenever this value is
+/// present. Package paths and XML never enter a widget snapshot.
+/// </summary>
+public sealed record WidgetPackageIcon(string AssetId, WidgetPackageIconColorMode ColorMode);
 
 [JsonConverter(typeof(JsonStringEnumConverter<ControllerButton>))]
 public enum ControllerButton
@@ -398,6 +418,7 @@ public sealed record ViewNode
     public string? MediaSessionId { get; init; }
     public ImageFit? ImageFit { get; init; }
     public WidgetGlyph? Glyph { get; init; }
+    public WidgetPackageIcon? PackageIcon { get; init; }
     public LoadingIndicatorSize? IndicatorSize { get; init; }
     /// <summary>
     /// Primary content direction for an ActionSurface. It is intentionally

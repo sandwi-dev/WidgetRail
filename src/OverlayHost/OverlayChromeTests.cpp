@@ -371,25 +371,69 @@ void CheckRenderedGuideContentCentering() {
               std::string_view::npos,
           "fixed-chrome child layout consumes exact capacity without applying sixty percent again");
 
+    const auto identityBegin = source.find("TrayWidgetPaintIdentity(");
+    const auto identityEnd = source.find(
+        "void ApplyTransitionWindowOpacity(", identityBegin);
     const auto stateBegin = source.find("CurrentTrayPaintState(");
     const auto stateEnd = source.find("bool RenderCompositionLayer(", stateBegin);
     const auto drawBegin = source.find("void DrawIconStrip(");
     const auto drawEnd = source.find("static std::wstring_view DisplayButton", drawBegin);
-    Check(stateBegin != std::string::npos && stateEnd != std::string::npos &&
+    Check(identityBegin != std::string::npos && identityEnd > identityBegin &&
+              stateBegin != std::string::npos && stateEnd != std::string::npos &&
               drawBegin != std::string::npos && drawEnd != std::string::npos,
           "tray visual-policy owners have bounded source slices");
     const std::string_view retainedOwner{
         source.data() + stateBegin, stateEnd - stateBegin};
+    const std::string_view identityOwner{
+        source.data() + identityBegin, identityEnd - identityBegin};
     const std::string_view drawOwner{
         source.data() + drawBegin, drawEnd - drawBegin};
     Check(retainedOwner.find(
               "selected &&\n                    state_.focusRegion() == widgetrail::FocusRegion::Tray") !=
               std::string_view::npos &&
+          retainedOwner.find("TrayWidgetPaintIdentity(") !=
+              std::string_view::npos &&
+          identityOwner.find("ResolvePackageIconDemandAuthority(") !=
+              std::string_view::npos &&
+          identityOwner.find("GetPackageIconState(") !=
+              std::string_view::npos &&
+          identityOwner.find("? L\":ready\" : L\":fallback\"") !=
+              std::string_view::npos &&
           drawOwner.find("traySelectedBrush_.Get()") != std::string_view::npos &&
+          drawOwner.find("TrayPackageIconBounds(tileLayout.bounds)") !=
+              std::string_view::npos &&
+          drawOwner.find("iconOptions.pixelScale = physicalPixelsPerDip") !=
+              std::string_view::npos &&
           drawOwner.find(
               "state_.focusRegion() == widgetrail::FocusRegion::Tray") !=
               std::string_view::npos,
           "selection and tray-owned focus remain distinct retained tile visuals");
+    const auto imageCompletionBegin = source.find(
+        "[this](const std::wstring_view source, const widgetrail::RemoteImageState state)");
+    const auto imageCompletionEnd = source.find(
+        "widgetrail::RemoteImageCache::FetchFunction{}", imageCompletionBegin);
+    const auto imageMessageBegin = source.find("case kImageReadyMessage:");
+    const auto imageMessageEnd = source.find(
+        "case kCatalogRefreshMessage:", imageMessageBegin);
+    Check(imageCompletionBegin != std::string::npos &&
+              imageCompletionEnd > imageCompletionBegin &&
+              imageMessageBegin != std::string::npos &&
+              imageMessageEnd > imageMessageBegin,
+          "image completion and message owners have bounded source slices");
+    const std::string_view completionOwner{
+        source.data() + imageCompletionBegin,
+        imageCompletionEnd - imageCompletionBegin};
+    const std::string_view messageOwner{
+        source.data() + imageMessageBegin,
+        imageMessageEnd - imageMessageBegin};
+    Check(completionOwner.find(
+              "source.starts_with(packageIconPrefix) ? 1 : 0") !=
+                  std::string_view::npos &&
+          messageOwner.find("RequiresImageReadyRepaint(") !=
+              std::string_view::npos &&
+          messageOwner.find("AdvanceCompositorBackground(GetTickCount64())") !=
+              std::string_view::npos,
+          "package icon completion preserves its scoped tray comparison alongside background advancement");
     Check(drawOwner.find("FillColorKeyRoundedRectangle") ==
               std::string_view::npos,
           "floating tray paint reserves no outer background panel");
@@ -634,10 +678,33 @@ void CheckRetainedTrayInvalidation() {
     Check(!widgetrail::shell::RequiresTrayRepaint(&reordered, provider),
           "provider, slider, scroll, and motion retain unchanged tray pixels");
 
+    auto packagePending = provider;
+    packagePending.items[1].identity =
+        L"network:connection:package:runtime-a:presentation-a:digest:mark:1:source:normalized:48x48:fallback";
+    Check(widgetrail::shell::RequiresTrayRepaint(&provider, packagePending),
+          "a package icon identity replaces the same semantic-glyph tray tile");
+    auto packageReady = packagePending;
+    packageReady.items[1].identity.replace(
+        packageReady.items[1].identity.rfind(L"fallback"), 8, L"ready");
+    Check(widgetrail::shell::RequiresTrayRepaint(&packagePending, packageReady),
+          "asynchronous package icon readiness repaints without selection movement");
+    auto packageReplacement = packageReady;
+    packageReplacement.items[1].identity.replace(
+        packageReplacement.items[1].identity.find(L"runtime-a"), 9, L"runtime-b");
+    Check(widgetrail::shell::RequiresTrayRepaint(
+              &packageReady, packageReplacement),
+          "same-glyph package replacement changes exact retained icon authority");
+
     auto appearance = provider;
     ++appearance.appearanceRevision;
     Check(widgetrail::shell::RequiresTrayRepaint(&provider, appearance),
           "appearance revision rebuilds the tray child surface");
+    Check(!widgetrail::shell::RequiresImageReadyRepaint(false, true),
+          "an independent background advance owns its ordinary image-ready wake");
+    Check(widgetrail::shell::RequiresImageReadyRepaint(false, false) &&
+              widgetrail::shell::RequiresImageReadyRepaint(true, false) &&
+              widgetrail::shell::RequiresImageReadyRepaint(true, true),
+          "a package icon completion always schedules retained tray comparison even when background advances");
 }
 
 struct FixedChromePointerTestContext final {

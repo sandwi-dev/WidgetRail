@@ -2690,6 +2690,8 @@ void WidgetSurfaceCoordinator::Paint() {
     options.artworkWidgetId = admission_->widgetId;
     options.artworkRuntimeGeneration = admission_->runtimeGeneration;
     options.artworkPresentationGeneration = admission_->presentationGeneration;
+    options.packageContentDigest = admission_->packageContentDigest;
+    options.packageIconAssets = admission_->packageIconAssets;
     options.artworkAuthorityId = admission_->widgetId + L"\x1f" +
         admission_->runtimeGeneration + L"\x1f" +
         admission_->presentationGeneration;
@@ -2790,8 +2792,9 @@ void WidgetSurfaceCoordinator::Paint() {
                         chromeBrush_.Get());
                 }
                 widgetrail::icons::NativeIcon icon{};
-                const bool hasIcon = !option.glyph.empty() &&
+                const bool hasSemanticIcon = !option.glyph.empty() &&
                     widgetrail::icons::TryParseNativeIcon(option.glyph, icon);
+                const bool hasIcon = option.packageIcon.has_value() || hasSemanticIcon;
                 const auto content = input::ComputeSelectPopupContentLayout(
                     item.bounds, option.isSelected, hasIcon, 10.0F, 8.0F);
                 if (content.checkmarkBounds) {
@@ -2809,14 +2812,21 @@ void WidgetSurfaceCoordinator::Paint() {
                 }
                 if (content.glyphBounds) {
                     const auto& bounds = *content.glyphBounds;
-                    (void)widgetrail::icons::DrawNativeIcon(
-                        renderTarget_.Get(), icon,
-                        D2D1::RectF(
-                            bounds.x, bounds.y,
-                            bounds.x + bounds.width, bounds.y + bounds.height),
-                        option.isDisabled || option.isBusy
-                            ? secondaryBrush_.Get() : textBrush_.Get(),
-                        1.7F);
+                    auto* brush = option.isDisabled || option.isBusy
+                        ? secondaryBrush_.Get() : textBrush_.Get();
+                    const auto tint = brush->GetColor();
+                    const bool painted = option.packageIcon && renderer_ &&
+                        renderer_->PaintPackageIcon(
+                            renderTarget_.Get(), *option.packageIcon, bounds,
+                            {tint.r, tint.g, tint.b, tint.a}, options);
+                    if (!painted && hasSemanticIcon) {
+                        (void)widgetrail::icons::DrawNativeIcon(
+                            renderTarget_.Get(), icon,
+                            D2D1::RectF(
+                                bounds.x, bounds.y,
+                                bounds.x + bounds.width, bounds.y + bounds.height),
+                            brush, 1.7F);
+                    }
                 }
                 const auto& labelBounds = content.labelBounds;
                 renderTarget_->DrawTextW(

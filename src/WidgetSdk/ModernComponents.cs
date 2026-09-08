@@ -11,7 +11,10 @@ public enum AlertTone { Info, Success, Warning, Danger }
 public enum ActionSheetItemTone { Default, Danger }
 
 /// <summary>A single optional action rendered by an alert or empty state.</summary>
-public sealed record ComponentAction(string Label, string ActionId, WidgetGlyph? Glyph = null);
+public sealed record ComponentAction(string Label, string ActionId, WidgetGlyph? Glyph = null)
+{
+    public WidgetIcon? Icon { get; init; }
+}
 
 /// <summary>A stable, controller-addressable option in a segmented tab row.</summary>
 public sealed record SegmentedTab(
@@ -30,7 +33,10 @@ public sealed record ActionSheetItem(
     string? AccessibilityLabel = null,
     ActionSheetItemTone Tone = ActionSheetItemTone.Default,
     bool IsDisabled = false,
-    bool IsBusy = false);
+    bool IsBusy = false)
+{
+    public WidgetIcon? Icon { get; init; }
+}
 
 /// <summary>A stable, single-select option rendered by <see cref="UI.Picker"/>.</summary>
 public sealed record PickerOption(
@@ -41,7 +47,10 @@ public sealed record PickerOption(
     WidgetGlyph? Glyph = null,
     string? AccessibilityLabel = null,
     bool IsDisabled = false,
-    bool IsBusy = false);
+    bool IsBusy = false)
+{
+    public WidgetIcon? Icon { get; init; }
+}
 
 /// <summary>A stable option in a host-owned anchored <see cref="UI.Select"/> popup.</summary>
 public sealed record SelectOption(
@@ -52,7 +61,10 @@ public sealed record SelectOption(
     WidgetGlyph? Glyph = null,
     string? AccessibilityLabel = null,
     bool IsDisabled = false,
-    bool IsBusy = false);
+    bool IsBusy = false)
+{
+    public WidgetIcon? Icon { get; init; }
+}
 
 /// <summary>
 /// A controller-native media timeline composed from the public Slider and text
@@ -290,6 +302,36 @@ public static partial class UI
         bool isDisabled = false,
         bool isBusy = false,
         WidgetGlyph? glyph = null)
+        => SettingsRowCore(
+            label, action, id, description, value, status, statusTone,
+            isDisabled, isBusy, WidgetIconMaterializer.Resolve(null, glyph));
+
+    public static StackElement SettingsRow(
+        WidgetIcon icon,
+        string label,
+        ComponentAction action,
+        string id,
+        string? description = null,
+        string? value = null,
+        string? status = null,
+        StatusTone statusTone = StatusTone.Neutral,
+        bool isDisabled = false,
+        bool isBusy = false)
+        => SettingsRowCore(
+            label, action, id, description, value, status, statusTone,
+            isDisabled, isBusy, icon);
+
+    private static StackElement SettingsRowCore(
+        string label,
+        ComponentAction action,
+        string id,
+        string? description,
+        string? value,
+        string? status,
+        StatusTone statusTone,
+        bool isDisabled,
+        bool isBusy,
+        WidgetIcon? icon)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         ArgumentNullException.ThrowIfNull(action);
@@ -299,10 +341,10 @@ public static partial class UI
         StableIdentifier.Validate(id, nameof(id));
 
         var content = new List<WidgetElement>();
-        if (glyph is { } semanticGlyph)
+        if (icon is not null)
         {
             content.Add(new IconElement(
-                StableIdentifier.Child(id, "icon"), semanticGlyph, label)
+                StableIdentifier.Child(id, "icon"), icon, label)
             {
                 RequiredStyleClasses = ["wrail-settings-row__icon"],
             });
@@ -379,7 +421,8 @@ public static partial class UI
             StableIdentifier.Child(id, "action"), action.Label, action.ActionId)
         {
             AccessibilityLabel = string.Join(". ", accessibleParts),
-            Glyph = action.Glyph,
+            Glyph = action.Icon?.FallbackGlyph ?? action.Glyph,
+            PackageIcon = action.Icon is null ? null : WidgetIconMaterializer.PackageIcon(action.Icon),
             IsDisabled = isDisabled ? true : null,
             IsBusy = isBusy ? true : null,
             RequiredStyleClasses = ["wrail-settings-row__action"],
@@ -442,7 +485,8 @@ public static partial class UI
             var button = new ButtonElement(item.Id, item.Label, item.ActionId)
             {
                 AccessibilityLabel = string.Join(", ", accessibleParts),
-                Glyph = item.Glyph,
+                Glyph = item.Icon?.FallbackGlyph ?? item.Glyph,
+                PackageIcon = item.Icon is null ? null : WidgetIconMaterializer.PackageIcon(item.Icon),
                 IsDisabled = item.IsDisabled ? true : null,
                 IsBusy = item.IsBusy ? true : null,
                 RequiredStyleClasses =
@@ -539,7 +583,9 @@ public static partial class UI
             var button = new ButtonElement(option.Id, option.Label, option.ActionId)
             {
                 AccessibilityLabel = string.Join(", ", accessibleParts),
-                Glyph = option.Glyph ?? (option.IsSelected ? WidgetGlyph.Check : null),
+                Glyph = option.Icon?.FallbackGlyph ?? option.Glyph ??
+                    (option.IsSelected ? WidgetGlyph.Check : null),
+                PackageIcon = option.Icon is null ? null : WidgetIconMaterializer.PackageIcon(option.Icon),
                 IsSelected = option.IsSelected ? true : null,
                 IsDisabled = option.IsDisabled ? true : null,
                 IsBusy = option.IsBusy ? true : null,
@@ -596,16 +642,36 @@ public static partial class UI
         string? description = null,
         WidgetGlyph? glyph = null,
         string? valueAccessibilityLabel = null)
+        => ValueRowCore(
+            label, value, id, description,
+            WidgetIconMaterializer.Resolve(null, glyph), valueAccessibilityLabel);
+
+    public static RowElement ValueRow(
+        WidgetIcon icon,
+        string label,
+        string value,
+        string id,
+        string? description = null,
+        string? valueAccessibilityLabel = null)
+        => ValueRowCore(label, value, id, description, icon, valueAccessibilityLabel);
+
+    private static RowElement ValueRowCore(
+        string label,
+        string value,
+        string id,
+        string? description,
+        WidgetIcon? icon,
+        string? valueAccessibilityLabel)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
 
         var children = new List<WidgetElement>();
-        if (glyph is { } semanticGlyph)
+        if (icon is not null)
         {
             children.Add(new IconElement(
                 StableIdentifier.Child(id, "icon"),
-                semanticGlyph,
+                icon,
                 label)
             {
                 RequiredStyleClasses = ["wrail-value-row__icon"],
@@ -664,6 +730,32 @@ public static partial class UI
         bool isBusy = false,
         WidgetGlyph? glyph = null,
         string? accessibilityLabel = null)
+        => ChoiceRowCore(
+            label, action, id, isSelected, isDisabled, isBusy,
+            WidgetIconMaterializer.Resolve(null, glyph), accessibilityLabel);
+
+    public static ButtonElement ChoiceRow(
+        WidgetIcon icon,
+        string label,
+        string action,
+        string id,
+        bool isSelected = false,
+        bool isDisabled = false,
+        bool isBusy = false,
+        string? accessibilityLabel = null)
+        => ChoiceRowCore(
+            label, action, id, isSelected, isDisabled, isBusy,
+            icon, accessibilityLabel);
+
+    private static ButtonElement ChoiceRowCore(
+        string label,
+        string action,
+        string id,
+        bool isSelected,
+        bool isDisabled,
+        bool isBusy,
+        WidgetIcon? icon,
+        string? accessibilityLabel)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         var accessibleName = string.IsNullOrWhiteSpace(accessibilityLabel)
@@ -679,7 +771,8 @@ public static partial class UI
         return new ButtonElement(id, label, action)
         {
             AccessibilityLabel = $"{accessibleName}, {string.Join(", ", states)}",
-            Glyph = glyph ?? (isSelected ? WidgetGlyph.Check : null),
+            Glyph = icon?.FallbackGlyph ?? (isSelected ? WidgetGlyph.Check : null),
+            PackageIcon = icon is null ? null : WidgetIconMaterializer.PackageIcon(icon),
             IsSelected = isSelected ? true : null,
             IsDisabled = isDisabled ? true : null,
             IsBusy = isBusy ? true : null,
@@ -727,13 +820,24 @@ public static partial class UI
         string accessibilityLabel,
         IconButtonVariant variant = IconButtonVariant.Default,
         IconButtonSize size = IconButtonSize.Medium)
+        => IconButton(
+            WidgetIcon.Glyph(glyph), action, id, accessibilityLabel, variant, size);
+
+    public static ButtonElement IconButton(
+        WidgetIcon icon,
+        string action,
+        string id,
+        string accessibilityLabel,
+        IconButtonVariant variant = IconButtonVariant.Default,
+        IconButtonSize size = IconButtonSize.Medium)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessibilityLabel);
         EnsureDefined(variant, nameof(variant));
         EnsureDefined(size, nameof(size));
         return new ButtonElement(id, string.Empty, action)
         {
-            Glyph = glyph,
+            Glyph = WidgetIconMaterializer.Glyph(icon),
+            PackageIcon = WidgetIconMaterializer.PackageIcon(icon),
             AccessibilityLabel = accessibilityLabel,
             RequiredStyleClasses =
             [
@@ -820,20 +924,39 @@ public static partial class UI
         StatusTone tone,
         string id,
         WidgetGlyph? glyph = null)
+        => StatusBadgeCore(
+            label, tone, id,
+            glyph is { } semanticGlyph
+                ? WidgetIcon.Glyph(semanticGlyph)
+                : null);
+
+    public static RowElement StatusBadge(
+        WidgetIcon icon,
+        string label,
+        StatusTone tone,
+        string id) => StatusBadgeCore(label, tone, id, icon);
+
+    private static RowElement StatusBadgeCore(
+        string label,
+        StatusTone tone,
+        string id,
+        WidgetIcon? icon)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         EnsureDefined(tone, nameof(tone));
         var labelId = StableIdentifier.Child(id, "label");
-        var semanticGlyph = glyph ?? tone switch
+        icon ??= tone switch
         {
-            StatusTone.Success => WidgetGlyph.Check,
-            StatusTone.Warning or StatusTone.Danger => WidgetGlyph.Warning,
-            _ => (WidgetGlyph?)null,
+            StatusTone.Success => WidgetIcon.Glyph(WidgetGlyph.Check),
+            StatusTone.Warning or StatusTone.Danger =>
+                WidgetIcon.Glyph(WidgetGlyph.Warning),
+            _ => null,
         };
         var children = new List<WidgetElement>();
-        if (semanticGlyph is { } resolved)
+        if (icon is not null)
         {
-            children.Add(new IconElement(StableIdentifier.Child(id, "icon"), resolved, $"{tone} status")
+            children.Add(new IconElement(
+                StableIdentifier.Child(id, "icon"), icon, $"{tone} status")
             {
                 RequiredStyleClasses = ["wrail-badge__icon", $"wrail-badge__icon--{Token(tone)}"],
             });
@@ -860,22 +983,43 @@ public static partial class UI
         string id,
         ComponentAction? action = null,
         WidgetGlyph? glyph = null)
+        => AlertCore(
+            title, message, tone, id, action,
+            glyph is { } semanticGlyph ? WidgetIcon.Glyph(semanticGlyph) : null);
+
+    public static StackElement Alert(
+        WidgetIcon icon,
+        string title,
+        string message,
+        AlertTone tone,
+        string id,
+        ComponentAction? action = null)
+        => AlertCore(title, message, tone, id, action, icon);
+
+    private static StackElement AlertCore(
+        string title,
+        string message,
+        AlertTone tone,
+        string id,
+        ComponentAction? action,
+        WidgetIcon? icon)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         EnsureDefined(tone, nameof(tone));
-        var semanticGlyph = glyph ?? tone switch
+        icon ??= tone switch
         {
-            AlertTone.Success => WidgetGlyph.Check,
-            AlertTone.Warning or AlertTone.Danger => WidgetGlyph.Warning,
-            _ => (WidgetGlyph?)null,
+            AlertTone.Success => WidgetIcon.Glyph(WidgetGlyph.Check),
+            AlertTone.Warning or AlertTone.Danger =>
+                WidgetIcon.Glyph(WidgetGlyph.Warning),
+            _ => null,
         };
         return MessageSurface(
             "wrail-alert",
             title,
             message,
             id,
-            semanticGlyph,
+            icon,
             $"{Token(tone)} alert",
             Token(tone),
             action);
@@ -887,6 +1031,23 @@ public static partial class UI
         string id,
         ComponentAction? action = null,
         WidgetGlyph glyph = WidgetGlyph.Connection)
+        => EmptyStateCore(
+            title, message, id, action, WidgetIcon.Glyph(glyph));
+
+    public static StackElement EmptyState(
+        WidgetIcon icon,
+        string title,
+        string message,
+        string id,
+        ComponentAction? action = null)
+        => EmptyStateCore(title, message, id, action, icon);
+
+    private static StackElement EmptyStateCore(
+        string title,
+        string message,
+        string id,
+        ComponentAction? action,
+        WidgetIcon icon)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
@@ -895,7 +1056,7 @@ public static partial class UI
             title,
             message,
             id,
-            glyph,
+            icon,
             "Empty state",
             null,
             action);
@@ -1018,7 +1179,7 @@ public static partial class UI
         string title,
         string message,
         string id,
-        WidgetGlyph? glyph,
+        WidgetIcon? icon,
         string iconAccessibilityLabel,
         string? tone,
         ComponentAction? action)
@@ -1026,11 +1187,11 @@ public static partial class UI
         var titleId = StableIdentifier.Child(id, "title");
         var messageId = StableIdentifier.Child(id, "message");
         var children = new List<WidgetElement>();
-        if (glyph is { } semanticGlyph)
+        if (icon is not null)
         {
             children.Add(new IconElement(
                 StableIdentifier.Child(id, "icon"),
-                semanticGlyph,
+                icon,
                 iconAccessibilityLabel)
             {
                 RequiredStyleClasses = tone is null
@@ -1058,7 +1219,8 @@ public static partial class UI
                 action.Label,
                 action.ActionId)
             {
-                Glyph = action.Glyph,
+                Glyph = action.Icon?.FallbackGlyph ?? action.Glyph,
+                PackageIcon = action.Icon is null ? null : WidgetIconMaterializer.PackageIcon(action.Icon),
                 AccessibilityLabel = action.Label,
                 RequiredStyleClasses = [$"{componentClass}__action"],
             });

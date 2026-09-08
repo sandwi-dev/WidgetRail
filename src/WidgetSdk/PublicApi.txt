@@ -478,6 +478,7 @@ method WidgetRail.WidgetSdk.ButtonElement.FocusRight(string id) -> WidgetRail.Wi
 method WidgetRail.WidgetSdk.ButtonElement.FocusUp(string id) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ButtonElement.Icon(WidgetRail.WidgetProtocol.WidgetGlyph glyph, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
+method WidgetRail.WidgetSdk.ButtonElement.Icon(WidgetRail.WidgetSdk.WidgetIcon icon, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.LeadingArtwork(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Contain, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.LeadingInlinePng(string pngBase64, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Contain, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.PersistFocusAs(string id) -> WidgetRail.WidgetSdk.ButtonElement
@@ -1053,6 +1054,10 @@ method WidgetRail.WidgetSdk.WidgetFocusTargetResult.Deconstruct(out string? Id, 
 method WidgetRail.WidgetSdk.WidgetFocusTargetResult.Equals(object obj) -> bool
 method WidgetRail.WidgetSdk.WidgetFocusTargetResult.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetFocusTargetResult.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetIcon.<Clone>$() -> WidgetRail.WidgetSdk.WidgetIcon
+method WidgetRail.WidgetSdk.WidgetIcon.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetIcon.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetIcon.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetIdScope.Id(string name) -> string
 method WidgetRail.WidgetSdk.WidgetIdScope.KeyedId(string name, string durableKey) -> string
 method WidgetRail.WidgetSdk.WidgetIdScope.Scope(string segment) -> WidgetRail.WidgetSdk.WidgetIdScope
@@ -1526,25 +1531,31 @@ method static WidgetRail.WidgetSdk.TileArtwork.FromGlyph(WidgetRail.WidgetProtoc
 method static WidgetRail.WidgetSdk.TileArtwork.FromHandle(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Cover) -> WidgetRail.WidgetSdk.TileArtwork
 method static WidgetRail.WidgetSdk.TileArtwork.FromHttps(string source, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Cover) -> WidgetRail.WidgetSdk.TileArtwork
 method static WidgetRail.WidgetSdk.TileArtwork.FromInlinePng(string pngBase64, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Cover) -> WidgetRail.WidgetSdk.TileArtwork
+method static WidgetRail.WidgetSdk.TileArtwork.FromPackageSvg(string assetId, WidgetRail.WidgetProtocol.WidgetPackageIconColorMode colorMode, WidgetRail.WidgetProtocol.WidgetGlyph fallbackGlyph, string accessibilityLabel) -> WidgetRail.WidgetSdk.TileArtwork
 method static WidgetRail.WidgetSdk.ToastElement.op_Equality(WidgetRail.WidgetSdk.ToastElement? left, WidgetRail.WidgetSdk.ToastElement? right) -> bool
 method static WidgetRail.WidgetSdk.ToastElement.op_Inequality(WidgetRail.WidgetSdk.ToastElement? left, WidgetRail.WidgetSdk.ToastElement? right) -> bool
 method static WidgetRail.WidgetSdk.UI.ActionSheet(string title, string id, string scopeId, string backAction, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.ActionSheetItem> items, string? description = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.ActionSurface(string action, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ActionSurfaceOrientation orientation, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.ActionSurfaceElement
+method static WidgetRail.WidgetSdk.UI.Alert(WidgetRail.WidgetSdk.WidgetIcon icon, string title, string message, WidgetRail.WidgetSdk.AlertTone tone, string id, WidgetRail.WidgetSdk.ComponentAction? action = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Alert(string title, string message, WidgetRail.WidgetSdk.AlertTone tone, string id, WidgetRail.WidgetSdk.ComponentAction? action = null, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Artwork(WidgetRail.WidgetSdk.WidgetArtworkHandle handle, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Cover) -> WidgetRail.WidgetSdk.ImageElement
 method static WidgetRail.WidgetSdk.UI.BackgroundSurface(WidgetRail.WidgetSdk.WidgetElement content, string id, WidgetRail.WidgetSdk.BackgroundSurfaceArtwork? artwork = null) -> WidgetRail.WidgetSdk.BackgroundSurfaceElement
 method static WidgetRail.WidgetSdk.UI.Button(string label, string action, string id) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.Card(string id, WidgetRail.WidgetSdk.CardVariant variant, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Card(string id, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.StackElement
+method static WidgetRail.WidgetSdk.UI.ChoiceRow(WidgetRail.WidgetSdk.WidgetIcon icon, string label, string action, string id, bool isSelected = false, bool isDisabled = false, bool isBusy = false, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.ChoiceRow(string label, string action, string id, bool isSelected = false, bool isDisabled = false, bool isBusy = false, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.CodeText(string text, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.TextElement
 method static WidgetRail.WidgetSdk.UI.ControllerHint(WidgetRail.WidgetProtocol.ControllerButton button, string label, string id) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.Divider(string id) -> WidgetRail.WidgetSdk.SpacerElement
+method static WidgetRail.WidgetSdk.UI.EmptyState(WidgetRail.WidgetSdk.WidgetIcon icon, string title, string message, string id, WidgetRail.WidgetSdk.ComponentAction? action = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.EmptyState(string title, string message, string id, WidgetRail.WidgetSdk.ComponentAction? action = null, WidgetRail.WidgetProtocol.WidgetGlyph glyph = WidgetRail.WidgetProtocol.WidgetGlyph.Connection) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.FocusPresentationSurface(WidgetRail.WidgetSdk.WidgetElement content, WidgetRail.WidgetSdk.WidgetElement defaultPresentation, string id) -> WidgetRail.WidgetSdk.FocusPresentationSurfaceElement
 method static WidgetRail.WidgetSdk.UI.HorizontalScroll(string id, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.ScrollElement
 method static WidgetRail.WidgetSdk.UI.Icon(WidgetRail.WidgetProtocol.WidgetGlyph glyph, string id, string accessibilityLabel) -> WidgetRail.WidgetSdk.IconElement
+method static WidgetRail.WidgetSdk.UI.Icon(WidgetRail.WidgetSdk.WidgetIcon icon, string id, string accessibilityLabel) -> WidgetRail.WidgetSdk.IconElement
 method static WidgetRail.WidgetSdk.UI.IconButton(WidgetRail.WidgetProtocol.WidgetGlyph glyph, string action, string id, string accessibilityLabel, WidgetRail.WidgetSdk.IconButtonVariant variant = WidgetRail.WidgetSdk.IconButtonVariant.Default, WidgetRail.WidgetSdk.IconButtonSize size = WidgetRail.WidgetSdk.IconButtonSize.Medium) -> WidgetRail.WidgetSdk.ButtonElement
+method static WidgetRail.WidgetSdk.UI.IconButton(WidgetRail.WidgetSdk.WidgetIcon icon, string action, string id, string accessibilityLabel, WidgetRail.WidgetSdk.IconButtonVariant variant = WidgetRail.WidgetSdk.IconButtonVariant.Default, WidgetRail.WidgetSdk.IconButtonSize size = WidgetRail.WidgetSdk.IconButtonSize.Medium) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.Image(string source, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Cover) -> WidgetRail.WidgetSdk.ImageElement
 method static WidgetRail.WidgetSdk.UI.InlinePngImage(string pngBase64, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Contain) -> WidgetRail.WidgetSdk.ImageElement
 method static WidgetRail.WidgetSdk.UI.LoadingIndicator(string id, string accessibilityLabel = "Loading", WidgetRail.WidgetProtocol.LoadingIndicatorSize size = WidgetRail.WidgetProtocol.LoadingIndicatorSize.Standard) -> WidgetRail.WidgetSdk.LoadingIndicatorElement
@@ -1568,10 +1579,12 @@ method static WidgetRail.WidgetSdk.UI.SectionHeader(string title, string id, str
 method static WidgetRail.WidgetSdk.UI.SegmentedTabs(string id, string selectedTabId, params WidgetRail.WidgetSdk.SegmentedTab[] tabs) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.Select(string label, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.SelectOption> options, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.SelectElement
 method static WidgetRail.WidgetSdk.UI.SensitiveTextEntry(string placeholder, string action, string id, int maximumLength = 96) -> WidgetRail.WidgetSdk.TextEntryElement
+method static WidgetRail.WidgetSdk.UI.SettingsRow(WidgetRail.WidgetSdk.WidgetIcon icon, string label, WidgetRail.WidgetSdk.ComponentAction action, string id, string? description = null, string? value = null, string? status = null, WidgetRail.WidgetSdk.StatusTone statusTone = WidgetRail.WidgetSdk.StatusTone.Neutral, bool isDisabled = false, bool isBusy = false) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.SettingsRow(string label, WidgetRail.WidgetSdk.ComponentAction action, string id, string? description = null, string? value = null, string? status = null, WidgetRail.WidgetSdk.StatusTone statusTone = WidgetRail.WidgetSdk.StatusTone.Neutral, bool isDisabled = false, bool isBusy = false, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Slider(double value, double minimum, double maximum, double step, string valueChangedAction, string id, string accessibilityLabel, string? accessibilityValue = null, string? activationAction = null) -> WidgetRail.WidgetSdk.SliderElement
 method static WidgetRail.WidgetSdk.UI.Spacer(string id) -> WidgetRail.WidgetSdk.SpacerElement
 method static WidgetRail.WidgetSdk.UI.Stack(string id, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.StackElement
+method static WidgetRail.WidgetSdk.UI.StatusBadge(WidgetRail.WidgetSdk.WidgetIcon icon, string label, WidgetRail.WidgetSdk.StatusTone tone, string id) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.StatusBadge(string label, WidgetRail.WidgetSdk.StatusTone tone, string id, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.Stepper(string label, string value, string decrementAction, string incrementAction, string id, bool canDecrement = true, bool canIncrement = true) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.Switch(string label, bool isOn, string action, string id, bool isDisabled = false) -> WidgetRail.WidgetSdk.ButtonElement
@@ -1579,6 +1592,8 @@ method static WidgetRail.WidgetSdk.UI.Text(string text, string id, string? acces
 method static WidgetRail.WidgetSdk.UI.TextEntry(string value, string placeholder, string action, string id, int maximumLength = 96) -> WidgetRail.WidgetSdk.TextEntryElement
 method static WidgetRail.WidgetSdk.UI.Tile(string title, string stateLabel, string action, string id, string? subtitle = null, string? metadata = null, WidgetRail.WidgetSdk.TileArtwork? artwork = null, string? accessibilityLabel = null, WidgetRail.WidgetProtocol.ActionSurfaceOrientation orientation = WidgetRail.WidgetProtocol.ActionSurfaceOrientation.Horizontal) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method static WidgetRail.WidgetSdk.UI.Toast(string title, string message, WidgetRail.WidgetSdk.ToastTone tone, string id, System.TimeSpan? duration = null, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null) -> WidgetRail.WidgetSdk.ToastElement
+method static WidgetRail.WidgetSdk.UI.ToastWithIcon(WidgetRail.WidgetSdk.WidgetIcon icon, string title, string message, WidgetRail.WidgetSdk.ToastTone tone, string id, System.TimeSpan? duration = null) -> WidgetRail.WidgetSdk.ToastElement
+method static WidgetRail.WidgetSdk.UI.ValueRow(WidgetRail.WidgetSdk.WidgetIcon icon, string label, string value, string id, string? description = null, string? valueAccessibilityLabel = null) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.ValueRow(string label, string value, string id, string? description = null, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null, string? valueAccessibilityLabel = null) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.VerticalScroll(string id, params WidgetRail.WidgetSdk.WidgetElement[] children) -> WidgetRail.WidgetSdk.ScrollElement
 method static WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.op_Equality(WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? left, WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? right) -> bool
@@ -1683,6 +1698,10 @@ method static WidgetRail.WidgetSdk.WidgetFocusTargetLookup.First(WidgetRail.Widg
 method static WidgetRail.WidgetSdk.WidgetFocusTargetLookup.Resolve(WidgetRail.WidgetSdk.WidgetElement root, string? targetId, string? activeInputScopeId = null) -> WidgetRail.WidgetSdk.WidgetFocusTargetResult
 method static WidgetRail.WidgetSdk.WidgetFocusTargetResult.op_Equality(WidgetRail.WidgetSdk.WidgetFocusTargetResult left, WidgetRail.WidgetSdk.WidgetFocusTargetResult right) -> bool
 method static WidgetRail.WidgetSdk.WidgetFocusTargetResult.op_Inequality(WidgetRail.WidgetSdk.WidgetFocusTargetResult left, WidgetRail.WidgetSdk.WidgetFocusTargetResult right) -> bool
+method static WidgetRail.WidgetSdk.WidgetIcon.Glyph(WidgetRail.WidgetProtocol.WidgetGlyph glyph) -> WidgetRail.WidgetSdk.WidgetIcon
+method static WidgetRail.WidgetSdk.WidgetIcon.PackageSvg(string assetId, WidgetRail.WidgetProtocol.WidgetPackageIconColorMode colorMode, WidgetRail.WidgetProtocol.WidgetGlyph fallbackGlyph) -> WidgetRail.WidgetSdk.WidgetIcon
+method static WidgetRail.WidgetSdk.WidgetIcon.op_Equality(WidgetRail.WidgetSdk.WidgetIcon? left, WidgetRail.WidgetSdk.WidgetIcon? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetIcon.op_Inequality(WidgetRail.WidgetSdk.WidgetIcon? left, WidgetRail.WidgetSdk.WidgetIcon? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetIds.Scope(string rootId) -> WidgetRail.WidgetSdk.WidgetIdScope
 method static WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.op_Equality(WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? left, WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.op_Inequality(WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? left, WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? right) -> bool
@@ -1926,6 +1945,7 @@ method virtual WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Equals(W
 method virtual WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetFocusTargetResult.Equals(WidgetRail.WidgetSdk.WidgetFocusTargetResult other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetIcon.Equals(WidgetRail.WidgetSdk.WidgetIcon? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.Equals(WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader.Equals(WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.Equals(WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest? other) -> bool
@@ -2106,12 +2126,15 @@ property WidgetRail.WidgetProtocol.ViewSnapshot? WidgetRail.WidgetSdk.WidgetScen
 property WidgetRail.WidgetProtocol.VirtualCollectionWindowChange WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.WindowChange { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.IconElement.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.NavigationShellDestination.Glyph { get; set; }
+property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.WidgetIcon.FallbackGlyph { get; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ActionSheetItem.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ButtonElement.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ComponentAction.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.PickerOption.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.SelectOption.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ToastElement.Glyph { get; }
+property WidgetRail.WidgetProtocol.WidgetPackageIcon? WidgetRail.WidgetSdk.ButtonElement.PackageIcon { get; set; }
+property WidgetRail.WidgetProtocol.WidgetPackageIcon? WidgetRail.WidgetSdk.IconElement.PackageIcon { get; set; }
 property WidgetRail.WidgetProtocol.WidgetSurfaceHints WidgetRail.WidgetSdk.PinnedLayoutHandle.Surface { get; }
 property WidgetRail.WidgetProtocol.WidgetSurfaceHints? WidgetRail.WidgetSdk.WidgetView.Surface { get; set; }
 property WidgetRail.WidgetSdk.ActionSheetItemTone WidgetRail.WidgetSdk.ActionSheetItem.Tone { get; set; }
@@ -2180,6 +2203,12 @@ property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.ResponsiveBranc
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetView.Root { get; set; }
 property WidgetRail.WidgetSdk.WidgetFocusTargetState WidgetRail.WidgetSdk.WidgetFocusTargetResult.State { get; set; }
 property WidgetRail.WidgetSdk.WidgetHostServices WidgetRail.WidgetSdk.WidgetScenarioDefinition.HostServices { get; }
+property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.ActionSheetItem.Icon { get; set; }
+property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.ComponentAction.Icon { get; set; }
+property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.NavigationShellDestination.Icon { get; set; }
+property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.PickerOption.Icon { get; set; }
+property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.SelectOption.Icon { get; set; }
+property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.ToastElement.Icon { get; }
 property WidgetRail.WidgetSdk.WidgetLoopbackHttpService WidgetRail.WidgetSdk.WidgetHostServices.Loopback { get; }
 property WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus WidgetRail.WidgetSdk.WidgetMediaSession.PlaybackStatus { get; set; }
 property WidgetRail.WidgetSdk.WidgetMediaService WidgetRail.WidgetSdk.WidgetHostServices.Media { get; }
@@ -2817,6 +2846,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> : Sys
 type sealed class WidgetRail.WidgetSdk.WidgetCursorViewport<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetEncodedArtwork
 type sealed class WidgetRail.WidgetSdk.WidgetHostServices
+type sealed class WidgetRail.WidgetSdk.WidgetIcon : System.IEquatable<WidgetRail.WidgetSdk.WidgetIcon>
 type sealed class WidgetRail.WidgetSdk.WidgetIdScope
 type sealed class WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs : System.IEquatable<WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs>
 type sealed class WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader : System.IEquatable<WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader>

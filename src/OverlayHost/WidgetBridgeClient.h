@@ -83,6 +83,30 @@ struct WidgetDescriptorQuickAction final {
     std::optional<std::wstring> controllerButton;
 };
 
+enum class WidgetPackageIconColorMode {
+    OriginalColor,
+    ThemeTint,
+};
+
+struct WidgetPackageIcon final {
+    std::wstring assetId;
+    WidgetPackageIconColorMode colorMode{WidgetPackageIconColorMode::OriginalColor};
+
+    friend bool operator==(const WidgetPackageIcon&, const WidgetPackageIcon&) = default;
+};
+
+struct WidgetPackageIconAsset final {
+    std::wstring id;
+    std::wstring sourceSha256;
+    std::wstring normalizedSha256;
+    std::size_t sourceBytes{};
+    std::size_t normalizedBytes{};
+
+    friend bool operator==(
+        const WidgetPackageIconAsset&,
+        const WidgetPackageIconAsset&) = default;
+};
+
 /// Public catalog data returned by WidgetBridge. Worker paths and arguments are
 /// deliberately absent from this native model.
 struct WidgetDescriptor final {
@@ -92,6 +116,9 @@ struct WidgetDescriptor final {
     std::wstring runtimeGeneration;
     std::wstring presentationGeneration;
     std::wstring icon{L"connection"};
+    std::optional<WidgetPackageIcon> packageIcon;
+    std::wstring packageContentDigest;
+    std::vector<WidgetPackageIconAsset> iconAssets;
     bool pinningSupported{};
     bool protectedWifiPromptSupported{};
     std::vector<WidgetDescriptorQuickAction> quickActions;
@@ -225,6 +252,29 @@ struct WidgetArtworkResult final {
     std::wstring contentBase64;
 };
 
+struct WidgetPackageIconResult final {
+    std::wstring widgetId;
+    std::wstring runtimeGeneration;
+    std::wstring presentationGeneration;
+    std::wstring packageContentDigest;
+    std::wstring assetId;
+    std::wstring sourceSha256;
+    std::wstring normalizedSha256;
+    std::vector<std::uint8_t> normalizedSvg;
+};
+
+enum class WidgetPackageIconResolutionDisposition {
+    Resolved,
+    OriginRetired,
+    TerminalFailure,
+};
+
+struct WidgetPackageIconResolution final {
+    WidgetPackageIconResolutionDisposition disposition{
+        WidgetPackageIconResolutionDisposition::TerminalFailure};
+    std::optional<WidgetPackageIconResult> result;
+};
+
 enum class WidgetArtworkRequestDisposition {
     Accepted,
     OriginRetired,
@@ -301,6 +351,7 @@ struct WidgetSelectOption final {
     std::wstring label;
     std::wstring actionId;
     std::wstring glyph;
+    std::optional<WidgetPackageIcon> packageIcon;
     std::wstring accessibilityLabel;
     bool isSelected{};
     bool isDisabled{};
@@ -359,6 +410,7 @@ struct WidgetNode final {
     std::wstring mediaSessionId;
     std::wstring imageFit;
     std::wstring glyph;
+    std::optional<WidgetPackageIcon> packageIcon;
     std::wstring indicatorSize;
     // Empty and "always" are equivalent. Protocol-v9 conditional values are
     // interpreted only by the native host against its compact breakpoint.
@@ -827,6 +879,15 @@ public:
         std::wstring_view artworkHandle,
         std::wstring_view runtimeGeneration,
         std::wstring_view presentationGeneration,
+        std::stop_token stopToken = {});
+    [[nodiscard]] WidgetPackageIconResolution ResolvePackageIcon(
+        std::wstring_view widgetId,
+        std::wstring_view runtimeGeneration,
+        std::wstring_view presentationGeneration,
+        std::wstring_view packageContentDigest,
+        std::wstring_view assetId,
+        std::wstring_view sourceSha256,
+        std::wstring_view normalizedSha256,
         std::stop_token stopToken = {});
     [[nodiscard]] std::optional<EmbeddedMediaBundle> ResolveEmbeddedMedia(
         std::wstring_view widgetId,

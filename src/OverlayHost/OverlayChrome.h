@@ -116,6 +116,12 @@ struct RetainedTrayState final {
     const RetainedTrayState* retained,
     const RetainedTrayState& next) noexcept;
 
+[[nodiscard]] constexpr bool RequiresImageReadyRepaint(
+    const bool currentTrayPackageIconCompleted,
+    const bool compositorBackgroundAdvanced) noexcept {
+    return currentTrayPackageIconCompleted || !compositorBackgroundAdvanced;
+}
+
 /// A color-keyed layered HWND cannot represent partially transparent pixels at
 /// its outer boundary: antialiasing blends authored chrome into the key color
 /// and turns the blend into an opaque dark fringe. Paint only the outer shell

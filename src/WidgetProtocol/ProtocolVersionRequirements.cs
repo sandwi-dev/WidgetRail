@@ -347,6 +347,20 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.InlinePngImageVersion,
                     $"{path}.imageSource",
                     $"Inline PNG images require protocol version {ProtocolConstants.InlinePngImageVersion} or later.");
+            if (node.PackageIcon is not null)
+                Add(
+                    "package-svg-icon",
+                    ProtocolConstants.PackageSvgIconVersion,
+                    $"{path}.packageIcon",
+                    $"Package SVG icons require protocol version {ProtocolConstants.PackageSvgIconVersion} or later.");
+            var selectOptions = node.SelectOptions ?? [];
+            for (var index = 0; index < selectOptions.Count; index++)
+                if (selectOptions[index]?.PackageIcon is not null)
+                    Add(
+                        "package-svg-icon",
+                        ProtocolConstants.PackageSvgIconVersion,
+                        $"{path}.selectOptions[{index}].packageIcon",
+                        $"Package SVG icons require protocol version {ProtocolConstants.PackageSvgIconVersion} or later.");
             if (node.Glyph == WidgetGlyph.RepeatOne)
                 Add(
                     "repeat-one-glyph",
@@ -359,6 +373,19 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.SemanticSeekGlyphVersion,
                     $"{path}.glyph",
                     $"Rewind and Fast Forward require protocol version {ProtocolConstants.SemanticSeekGlyphVersion} or later.");
+            if (node.Glyph == WidgetGlyph.Fullscreen)
+                Add(
+                    "fullscreen-glyph",
+                    ProtocolConstants.FullscreenGlyphVersion,
+                    $"{path}.glyph",
+                    $"Fullscreen requires protocol version {ProtocolConstants.FullscreenGlyphVersion} or later.");
+            for (var index = 0; index < selectOptions.Count; index++)
+                if (selectOptions[index]?.Glyph == WidgetGlyph.Fullscreen)
+                    Add(
+                        "fullscreen-glyph",
+                        ProtocolConstants.FullscreenGlyphVersion,
+                        $"{path}.selectOptions[{index}].glyph",
+                        $"Fullscreen requires protocol version {ProtocolConstants.FullscreenGlyphVersion} or later.");
 
             var children = node.Children ?? [];
             if (node.FocusPresentation is not null)

@@ -880,6 +880,8 @@ internal static class DevGenerationBuilder
         await File.WriteAllBytesAsync(Path.Combine(packageRoot, "manifest.json"),
             await File.ReadAllBytesAsync(manifestPath, cancellationToken), cancellationToken).ConfigureAwait(false);
         await CopyStylesAsync(source.Root, packageRoot, cancellationToken).ConfigureAwait(false);
+        await CopyIconAssetsAsync(
+            source.Root, packageRoot, manifest, cancellationToken).ConfigureAwait(false);
         var packagePath = Path.Combine(generationRoot, "widget.wrwidget");
         var packedProject = await WidgetPackagePacker.PackAsync(packageRoot, packagePath).ConfigureAwait(false);
         return new(packedProject.PackagePath, packedProject.Inspection.Manifest);
@@ -1051,6 +1053,92 @@ internal static class DevGenerationBuilder
                 16 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
             await input.CopyToAsync(target, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private static async Task CopyIconAssetsAsync(
+        string sourceRoot,
+        string packageRoot,
+        WidgetManifest manifest,
+        CancellationToken cancellationToken)
+    {
+        long total = 0;
+        foreach (var pair in (manifest.IconAssets ??
+                     new Dictionary<string, WidgetPackageIconAsset>(StringComparer.Ordinal))
+                 .OrderBy(item => item.Key, StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var source = ResolveExactSourcePath(sourceRoot, pair.Value.Path) ??
+                throw new CliOperationException(
+                    $"manifest.json: missing_icon_asset: Icon asset '{pair.Key}' is missing or has different casing: {pair.Value.Path}");
+            var bytes = await ReadBoundedIconAssetAsync(
+                source, pair.Key, cancellationToken).ConfigureAwait(false);
+            total = checked(total + bytes.Length);
+            if (total > ProtocolConstants.MaximumPackageIconAggregateBytes)
+                throw new CliOperationException(
+                    $"manifest.json: icon_assets_too_large: Declared icon assets exceed {ProtocolConstants.MaximumPackageIconAggregateBytes} bytes.");
+            try { _ = SvgIconNormalizer.Normalize(bytes); }
+            catch (WidgetPackageException exception)
+            {
+                throw new CliOperationException(
+                    $"manifest.json: {exception.Code}: Icon asset '{pair.Key}' is invalid: {exception.Message}", exception);
+            }
+            var destination = Path.GetFullPath(Path.Combine(
+                packageRoot, pair.Value.Path.Replace('/', Path.DirectorySeparatorChar)));
+            if (!IsWithin(packageRoot, destination))
+                throw new CliOperationException("Manifest icon asset path escapes the package root.");
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            await File.WriteAllBytesAsync(destination, bytes, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<byte[]> ReadBoundedIconAssetAsync(
+        string source,
+        string assetId,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(
+            source, FileMode.Open, FileAccess.Read, FileShare.Read,
+            4_096, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        if (stream.Length is < 1 or > ProtocolConstants.MaximumPackageIconBytes)
+            throw new CliOperationException(
+                $"manifest.json: icon_asset_too_large: Icon asset '{assetId}' exceeds {ProtocolConstants.MaximumPackageIconBytes} bytes.");
+        var bytes = GC.AllocateUninitializedArray<byte>(checked((int)stream.Length));
+        var read = 0;
+        while (read < bytes.Length)
+        {
+            var count = await stream.ReadAsync(
+                bytes.AsMemory(read), cancellationToken).ConfigureAwait(false);
+            if (count == 0)
+                throw new CliOperationException(
+                    $"manifest.json: icon_asset_changed: Icon asset '{assetId}' changed while it was read.");
+            read += count;
+        }
+        var extra = new byte[1];
+        if (await stream.ReadAsync(extra, cancellationToken).ConfigureAwait(false) != 0)
+            throw new CliOperationException(
+                $"manifest.json: icon_asset_changed: Icon asset '{assetId}' changed while it was read.");
+        return bytes;
+    }
+
+    private static string? ResolveExactSourcePath(string root, string relativePath)
+    {
+        var current = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        foreach (var segment in relativePath.Split('/'))
+        {
+            if (!Directory.Exists(current) ||
+                (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                return null;
+            var match = Directory.EnumerateFileSystemEntries(current)
+                .Take(1_025)
+                .SingleOrDefault(entry =>
+                    string.Equals(Path.GetFileName(entry), segment, StringComparison.Ordinal));
+            if (match is null) return null;
+            current = match;
+        }
+        return File.Exists(current) &&
+            (File.GetAttributes(current) & FileAttributes.ReparsePoint) == 0
+            ? current
+            : null;
     }
 
     private static bool IsWithin(string root, string path)

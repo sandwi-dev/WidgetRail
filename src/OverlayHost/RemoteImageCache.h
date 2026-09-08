@@ -51,6 +51,40 @@ struct TrustedArtworkDemandAuthority final {
         const TrustedArtworkDemandAuthority&) = default;
 };
 
+enum class PackageIconRasterVariant {
+    OriginalColor,
+    AlphaMask,
+};
+
+struct PackageIconDemandAuthority final {
+    std::wstring widgetId;
+    std::wstring runtimeGeneration;
+    std::wstring presentationGeneration;
+    std::wstring packageContentDigest;
+    std::wstring assetId;
+    std::wstring sourceSha256;
+    std::wstring normalizedSha256;
+    UINT32 physicalWidth{};
+    UINT32 physicalHeight{};
+    PackageIconRasterVariant rasterVariant{PackageIconRasterVariant::OriginalColor};
+
+    friend bool operator==(
+        const PackageIconDemandAuthority&,
+        const PackageIconDemandAuthority&) = default;
+};
+
+enum class PackageIconRequestDisposition {
+    Resolved,
+    OriginRetired,
+    TerminalFailure,
+};
+
+struct PackageIconRequest final {
+    PackageIconRequestDisposition disposition{
+        PackageIconRequestDisposition::TerminalFailure};
+    std::vector<std::uint8_t> normalizedSvg;
+};
+
 enum class TrustedArtworkRequestDisposition {
     Accepted,
     OriginRetired,
@@ -172,13 +206,17 @@ public:
         std::stop_token stopToken)>;
     using ArtworkDecodeDiagnosticCallback =
         std::function<void(const TrustedArtworkDecodeDiagnostic& diagnostic)>;
+    using PackageIconRequestFunction = std::function<PackageIconRequest(
+            const PackageIconDemandAuthority& authority,
+            std::stop_token stopToken)>;
 
     explicit RemoteImageCache(
         RemoteImageLimits limits = {},
         CompletionCallback completion = {},
         FetchFunction fetch = {},
         ArtworkRequestFunction artworkRequest = {},
-        ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic = {});
+        ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic = {},
+        PackageIconRequestFunction packageIconRequest = {});
     ~RemoteImageCache();
 
     RemoteImageCache(const RemoteImageCache&) = delete;
@@ -192,6 +230,9 @@ public:
     [[nodiscard]] RemoteImageRequestResult RequestTrustedArtwork(
         std::wstring key,
         TrustedArtworkDemandAuthority authority);
+    [[nodiscard]] RemoteImageRequestResult RequestPackageIcon(
+        std::wstring key,
+        PackageIconDemandAuthority authority);
     /// Supplies a correlated host-only completion for a previously requested
     /// trusted artwork key. Late, evicted, or retired keys are ignored.
     [[nodiscard]] bool SupplyTrustedArtwork(
@@ -215,6 +256,9 @@ public:
         const TrustedArtworkDemandAuthority& authority);
     [[nodiscard]] RemoteImageRequestResult Retry(std::wstring url);
     [[nodiscard]] RemoteImageState GetState(std::wstring_view url) const;
+    [[nodiscard]] RemoteImageState GetPackageIconState(
+        std::wstring_view key,
+        const PackageIconDemandAuthority& authority) const;
     [[nodiscard]] RemoteImageState GetTrustedArtworkState(
         std::wstring_view key,
         const TrustedArtworkDemandAuthority& authority) const;
@@ -240,6 +284,8 @@ public:
         std::wstring_view widgetId,
         std::wstring_view nodeId,
         std::wstring_view artworkHandle);
+    [[nodiscard]] static std::wstring PackageIconKey(
+        const PackageIconDemandAuthority& authority);
     [[nodiscard]] static std::uint64_t OpaqueDiagnosticHash(
         std::wstring_view value) noexcept;
 
@@ -280,6 +326,8 @@ private:
         std::uint64_t lastUse{};
         std::optional<TrustedArtworkDemandAuthority> demandAuthority;
         std::uint64_t demandGeneration{};
+        std::optional<PackageIconDemandAuthority> packageIconAuthority;
+        bool packageIconQueued{};
     };
 
     struct ArtworkDemand final {
@@ -307,6 +355,7 @@ private:
     FetchFunction fetch_;
     ArtworkRequestFunction artworkRequest_;
     ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic_;
+    PackageIconRequestFunction packageIconRequest_;
     std::unique_ptr<ArtworkDecoderProcessOwner> artworkDecoder_;
     mutable std::mutex mutex_;
     std::condition_variable condition_;

@@ -159,6 +159,8 @@ struct WidgetSurfaceAdmission final {
     std::vector<PinnedLayoutOption> pinnedLayouts;
     surface_appearance::Policy surfaceAppearancePolicy;
     bool compactMediaSessionAvailable{true};
+    std::wstring packageContentDigest;
+    std::vector<WidgetPackageIconAsset> packageIconAssets;
 };
 
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING

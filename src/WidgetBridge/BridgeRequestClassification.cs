@@ -1,5 +1,6 @@
 using System.Text.Json;
 using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.WidgetBridge;
 
@@ -9,6 +10,7 @@ internal enum BridgeRequestKind
     GetPlatformAppearance,
     GetSnapshot,
     ResolveArtwork,
+    ResolvePackageIcon,
     ResolveEmbeddedMedia,
     EmbeddedMediaPlaybackEvent,
     RestartWidget,
@@ -41,6 +43,7 @@ internal readonly record struct BridgeRequestKey
     {
         if (kind is BridgeRequestKind.GetSnapshot or
             BridgeRequestKind.ResolveArtwork or
+            BridgeRequestKind.ResolvePackageIcon or
             BridgeRequestKind.ResolveEmbeddedMedia or
             BridgeRequestKind.EmbeddedMediaPlaybackEvent or
             BridgeRequestKind.RestartWidget or
@@ -57,6 +60,7 @@ internal readonly record struct BridgeRequestKey
     {
         if (kind is not (BridgeRequestKind.GetSnapshot or
             BridgeRequestKind.ResolveArtwork or
+            BridgeRequestKind.ResolvePackageIcon or
             BridgeRequestKind.ResolveEmbeddedMedia or
             BridgeRequestKind.EmbeddedMediaPlaybackEvent or
             BridgeRequestKind.RestartWidget or
@@ -100,6 +104,7 @@ internal static class BridgeRequestClassifier
                     BridgeJson.FromElement<BridgePresentationRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),
                 BridgeMessageTypes.ResolveArtwork => Artwork(request.Payload),
+                BridgeMessageTypes.ResolvePackageIcon => PackageIcon(request.Payload),
                 BridgeMessageTypes.ResolveEmbeddedMedia => EmbeddedMedia(request.Payload),
                 BridgeMessageTypes.EmbeddedMediaPlaybackEvent => EmbeddedMediaEvent(request.Payload),
                 BridgeMessageTypes.RestartWidget => Widget(
@@ -157,6 +162,26 @@ internal static class BridgeRequestClassifier
             throw new BridgeProtocolException("Artwork generation authority is invalid.");
         return BridgeRequestKey.Widget(BridgeRequestKind.ResolveArtwork, request.WidgetId);
     }
+
+    private static BridgeRequestKey PackageIcon(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgePackageIconRequest>(payload);
+        var key = BridgeRequestKey.Widget(
+            BridgeRequestKind.ResolvePackageIcon, request.WidgetId);
+        if (!BridgeRequestKey.IsBoundedIdentifier(request.RuntimeGeneration) ||
+            !BridgeRequestKey.IsBoundedIdentifier(request.PresentationGeneration) ||
+            !WidgetManifestValidator.IsPackageIconAssetId(request.AssetId) ||
+            !IsSha256(request.PackageContentDigest) ||
+            !IsSha256(request.SourceSha256) ||
+            !IsSha256(request.NormalizedSha256))
+            throw new BridgeProtocolException(
+                "Package icon request authority is invalid.");
+        return key;
+    }
+
+    private static bool IsSha256(string? value) =>
+        value is { Length: 64 } && value.All(character =>
+            character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     private static BridgeRequestKey EmbeddedMedia(JsonElement payload)
     {

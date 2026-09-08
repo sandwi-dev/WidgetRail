@@ -245,17 +245,19 @@ DuplexPipePair CreateOverlappedClientPipe() {
     Require(pair.server != INVALID_HANDLE_VALUE,
             "Could not create deterministic WidgetBridge server pipe");
 
-    std::atomic_bool connected{};
-    std::jthread connectThread([&] {
-        connected = ConnectNamedPipe(pair.server, nullptr) != FALSE ||
-            GetLastError() == ERROR_PIPE_CONNECTED;
-    });
+    SetLastError(ERROR_SUCCESS);
     pair.client = CreateFileW(
         name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
         OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
-    connectThread.join();
-    Require(pair.client != INVALID_HANDLE_VALUE && connected,
-            "Could not connect deterministic overlapped WidgetBridge client pipe");
+    const DWORD clientOpenError = pair.client == INVALID_HANDLE_VALUE
+        ? GetLastError() : ERROR_SUCCESS;
+    Require(pair.client != INVALID_HANDLE_VALUE,
+            "Could not open deterministic overlapped WidgetBridge client pipe");
+    SetLastError(ERROR_SUCCESS);
+    const bool connected = ConnectNamedPipe(pair.server, nullptr) != FALSE;
+    const DWORD connectError = connected ? ERROR_SUCCESS : GetLastError();
+    Require(connected || connectError == ERROR_PIPE_CONNECTED,
+            "Could not connect deterministic WidgetBridge server pipe");
     return pair;
 }
 
@@ -1394,11 +1396,43 @@ int main() {
             "instanceId": "default.instance",
             "runtimeGeneration": "runtime-default",
             "presentationGeneration": "presentation-default",
+            "packageContentDigest": "",
+            "iconAssets": [],
             "quickActions": []
         }]
     })json", error);
     CHECK(defaultPinning && !(*defaultPinning)[0].pinningSupported);
     CHECK(defaultPinning && !(*defaultPinning)[0].protectedWifiPromptSupported);
+    CHECK(defaultPinning && (*defaultPinning)[0].packageContentDigest.empty());
+    CHECK(defaultPinning && (*defaultPinning)[0].iconAssets.empty());
+
+    error.clear();
+    const auto packageIcon = widgetrail::testing::ParseWidgetDescriptors(R"json({
+        "widgets": [{
+            "id": "dev.test.package-icon",
+            "name": "Package icon",
+            "instanceId": "package-icon.instance",
+            "runtimeGeneration": "runtime-package-icon",
+            "presentationGeneration": "presentation-package-icon",
+            "icon": "connection",
+            "packageIcon": {"assetId":"test.mark","colorMode":"themeTint"},
+            "packageContentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "iconAssets": [{
+                "id": "test.mark",
+                "sourceSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "normalizedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "sourceBytes": 123,
+                "normalizedBytes": 117
+            }],
+            "quickActions": []
+        }]
+    })json", error);
+    CHECK(packageIcon && error.empty());
+    CHECK(packageIcon->front().packageIcon.has_value());
+    CHECK(packageIcon->front().packageIcon->assetId == L"test.mark");
+    CHECK(packageIcon->front().packageIcon->colorMode ==
+          widgetrail::WidgetPackageIconColorMode::ThemeTint);
+    CHECK(packageIcon->front().iconAssets.size() == 1);
 
     error.clear();
     CHECK(!widgetrail::testing::ParseWidgetDescriptors(R"json({

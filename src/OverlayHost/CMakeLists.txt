@@ -55,7 +55,7 @@ target_compile_features(ArtworkDecoderHost PRIVATE cxx_std_20)
 target_compile_options(ArtworkDecoderHost PRIVATE /W4 /permissive- /EHsc)
 target_compile_definitions(ArtworkDecoderHost PRIVATE
     UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-target_link_libraries(ArtworkDecoderHost PRIVATE windowscodecs ole32)
+target_link_libraries(ArtworkDecoderHost PRIVATE windowscodecs ole32 d2d1 d3d11 dxgi)
 
 add_executable(OverlayHost WIN32
     main.cpp
@@ -142,7 +142,7 @@ if(WRAIL_BUILD_TESTS)
     target_compile_options(ArtworkDecoderTestHost PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(ArtworkDecoderTestHost PRIVATE
         WRAIL_ARTWORK_DECODER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-    target_link_libraries(ArtworkDecoderTestHost PRIVATE windowscodecs ole32)
+    target_link_libraries(ArtworkDecoderTestHost PRIVATE windowscodecs ole32 d2d1 d3d11 dxgi)
     add_executable(WidgetSessionCoordinatorTests
         WidgetSessionCoordinatorTests.cpp WidgetSessionCoordinator.cpp
         WidgetAdmissionTrace.cpp)

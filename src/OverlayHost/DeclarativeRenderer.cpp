@@ -2537,7 +2537,8 @@ struct DeclarativeRenderer::RenderPass final {
             return MeasureText(node, style, constraints);
         if (node.kind == L"button") {
             const bool hasLeading = !node.imageSource.empty() ||
-                !node.artworkHandle.empty() || !node.glyph.empty();
+                !node.artworkHandle.empty() || !node.glyph.empty() ||
+                node.packageIcon.has_value();
             const bool hasText = !node.text.empty();
             const bool reserveStateCue = ReservesTrailingButtonStateCue(node);
             const auto lineHeight = style.fontSizePx() * style.lineHeight();
@@ -3011,6 +3012,18 @@ struct DeclarativeRenderer::RenderPass final {
                 target, icon, D2DRect(rect), brush.Get(), 2.0F)) {
             Add(node.id, L"icon_draw", L"Semantic icon could not be drawn.");
         }
+    }
+
+    [[nodiscard]] bool DrawPackageIcon(
+        const NativeRenderStyle& style,
+        const Rect rect,
+        const float opacity,
+        const WidgetPackageIcon& icon) {
+        if (!target) return false;
+        return owner->PaintPackageIcon(
+            target, icon, rect,
+            WithOpacity(style.foreground().value_or(kDefaultText), opacity),
+            options);
     }
 
     void DrawImageBitmapLayer(
@@ -4301,7 +4314,8 @@ struct DeclarativeRenderer::RenderPass final {
         } else if (node.kind == L"button") {
             auto textRect = presented.contentBox;
             const bool hasLeading = !node.imageSource.empty() ||
-                !node.artworkHandle.empty() || !node.glyph.empty();
+                !node.artworkHandle.empty() || !node.glyph.empty() ||
+                node.packageIcon.has_value();
             const bool hasText = !node.text.empty();
             const bool reserveStateCue = ReservesTrailingButtonStateCue(node);
             const auto maximumLeadingSize =
@@ -4333,6 +4347,10 @@ struct DeclarativeRenderer::RenderPass final {
                     if (visibleImageRect.width > 0.5F && visibleImageRect.height > 0.5F)
                         DrawImage(node, style, iconRect, opacity, focused);
                 }
+                else if (node.packageIcon && DrawPackageIcon(
+                    style, iconRect, opacity, *node.packageIcon)) {
+                    // The semantic glyph remains the deterministic fallback.
+                }
                 else if (!node.glyph.empty())
                     DrawSemanticIcon(node, style, iconRect, opacity, node.glyph);
             }
@@ -4352,7 +4370,9 @@ struct DeclarativeRenderer::RenderPass final {
             if (visibleImageRect.width > 0.5F && visibleImageRect.height > 0.5F)
                 DrawImage(node, style, paintRect, opacity, focused);
         } else if (node.kind == L"icon") {
-            DrawSemanticIcon(node, style, presented.contentBox, opacity, node.glyph);
+            if (!node.packageIcon || !DrawPackageIcon(
+                    style, presented.contentBox, opacity, *node.packageIcon))
+                DrawSemanticIcon(node, style, presented.contentBox, opacity, node.glyph);
         } else if (node.kind == L"loadingIndicator") {
             const auto visibleIndicatorRect = Intersection(
                 presented.contentBox, presented.visibleBox);
@@ -5719,6 +5739,113 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
             BitmapCacheEntry{bitmap, byteCount, ++bitmapAccessClock_});
     }
     return bitmap;
+}
+
+std::optional<PackageIconDemandAuthority>
+DeclarativeRenderer::ResolvePackageIconDemandAuthority(
+    const WidgetPackageIcon& icon,
+    const Rect destination,
+    const DeclarativeRenderOptions& options) {
+    if (destination.width <= 0.0F ||
+        destination.height <= 0.0F || options.artworkWidgetId.empty() ||
+        options.packageContentDigest.empty()) return {};
+    const auto metadata = std::find_if(
+        options.packageIconAssets.begin(), options.packageIconAssets.end(),
+        [&](const WidgetPackageIconAsset& asset) { return asset.id == icon.assetId; });
+    if (metadata == options.packageIconAssets.end()) return {};
+    const auto boundedDimension = [](const float dip, const float scale) {
+        return static_cast<UINT32>(std::clamp(
+            std::ceil(std::max(1.0F, dip * std::max(0.01F, scale))),
+            1.0F, 512.0F));
+    };
+    return PackageIconDemandAuthority{
+        options.artworkWidgetId,
+        options.artworkRuntimeGeneration,
+        options.artworkPresentationGeneration,
+        options.packageContentDigest,
+        icon.assetId,
+        metadata->sourceSha256,
+        metadata->normalizedSha256,
+        boundedDimension(destination.width, options.pixelScale),
+        boundedDimension(destination.height, options.pixelScale),
+        icon.colorMode == WidgetPackageIconColorMode::ThemeTint
+            ? PackageIconRasterVariant::AlphaMask
+            : PackageIconRasterVariant::OriginalColor,
+    };
+}
+
+ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetPackageIconBitmap(
+    ID2D1RenderTarget* renderTarget,
+    const WidgetPackageIcon& icon,
+    const Rect destination,
+    const DeclarativeRenderOptions& options) {
+    if (!imageCache_ || !renderTarget ||
+        !BindBitmapResourceDomain(renderTarget)) return {};
+    const auto resolvedAuthority = ResolvePackageIconDemandAuthority(
+        icon, destination, options);
+    if (!resolvedAuthority) return {};
+    auto authority = *resolvedAuthority;
+    const auto key = RemoteImageCache::PackageIconKey(authority);
+    if (const auto existing = bitmaps_.find(key); existing != bitmaps_.end()) {
+        existing->second.lastUse = ++bitmapAccessClock_;
+        ++bitmapHits_;
+        return existing->second.bitmap;
+    }
+    const auto state = imageCache_->GetPackageIconState(key, authority);
+    if (state == RemoteImageState::Missing) {
+        const auto request = imageCache_->RequestPackageIcon(key, std::move(authority));
+        if (request == RemoteImageRequestResult::InvalidUrl ||
+            request == RemoteImageRequestResult::CapacityExceeded ||
+            request == RemoteImageRequestResult::ShuttingDown) return {};
+        return {};
+    }
+    if (state != RemoteImageState::Ready) return {};
+    ComPtr<ID2D1Bitmap> bitmap;
+    if (FAILED(imageCache_->CreateBitmap(
+            renderTarget, key, bitmap.ReleaseAndGetAddressOf())) || !bitmap) return {};
+    ++bitmapCreates_;
+    const auto pixelSize = bitmap->GetPixelSize();
+    const auto byteCount64 = static_cast<std::uint64_t>(pixelSize.width) *
+        static_cast<std::uint64_t>(pixelSize.height) * 4ULL;
+    if (byteCount64 <= kMaximumBitmapEntryBytes) {
+        const auto byteCount = static_cast<std::size_t>(byteCount64);
+        TrimBitmapCache(byteCount);
+        bitmapBytes_ += byteCount;
+        bitmaps_.emplace(key, BitmapCacheEntry{bitmap, byteCount, ++bitmapAccessClock_});
+    }
+    return bitmap;
+}
+
+bool DeclarativeRenderer::PaintPackageIcon(
+    ID2D1RenderTarget* renderTarget,
+    const WidgetPackageIcon& icon,
+    const Rect destination,
+    const NativeColor tint,
+    const DeclarativeRenderOptions& options) {
+    auto bitmap = GetPackageIconBitmap(
+        renderTarget, icon, destination, options);
+    if (!bitmap) return false;
+    const auto bitmapSize = bitmap->GetSize();
+    const auto source = D2D1::RectF(
+        0.0F, 0.0F, bitmapSize.width, bitmapSize.height);
+    const auto destinationRect = D2DRect(destination);
+    if (icon.colorMode == WidgetPackageIconColorMode::OriginalColor) {
+        renderTarget->DrawBitmap(bitmap.Get(), destinationRect,
+            std::clamp(tint.alpha, 0.0F, 1.0F),
+            D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, source);
+        return true;
+    }
+    ComPtr<ID2D1SolidColorBrush> brush;
+    if (FAILED(renderTarget->CreateSolidColorBrush(
+            D2D1::ColorF(tint.red, tint.green, tint.blue, tint.alpha),
+            brush.ReleaseAndGetAddressOf())) || !brush) return false;
+    const auto antialiasMode = renderTarget->GetAntialiasMode();
+    renderTarget->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+    renderTarget->FillOpacityMask(
+        bitmap.Get(), brush.Get(), D2D1_OPACITY_MASK_CONTENT_GRAPHICS,
+        &destinationRect, &source);
+    renderTarget->SetAntialiasMode(antialiasMode);
+    return true;
 }
 
 ImagePlacement DeclarativeRenderer::ComputeImagePlacement(

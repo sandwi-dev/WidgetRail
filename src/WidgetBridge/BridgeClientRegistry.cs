@@ -548,6 +548,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     presentation.RecoveryOriginSequence != recoveryOriginSequence)
                     throw new BridgeProtocolException(
                         "Worker returned a presentation for a different transaction kind.");
+                DemandPackageIconAuthority(
+                    registration.Configured, presentation.Snapshot);
                 registration.CommitCachedSnapshot(presentation.Snapshot);
                 ScheduleIdleUnload(registration, sessionCancellation);
             }
@@ -602,6 +604,35 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     recoveryOriginSequence != 0)))
             throw new BridgeProtocolException(
                 "Checkpoint requests cannot claim a presentation base sequence.");
+    }
+
+    internal static void DemandPackageIconAuthority(
+        ConfiguredWidget configured,
+        ViewSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(configured);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        Visit(snapshot.Root);
+        foreach (var layout in snapshot.PinnedLayouts ?? []) Visit(layout.Root);
+
+        void Visit(ViewNode? node)
+        {
+            if (node is null) return;
+            Demand(node.PackageIcon);
+            foreach (var option in node.SelectOptions ?? [])
+                if (option is not null) Demand(option.PackageIcon);
+            Visit(node.FocusPresentation);
+            Visit(node.DefaultFocusPresentation);
+            foreach (var child in node.Children ?? []) Visit(child);
+        }
+
+        void Demand(WidgetPackageIcon? icon)
+        {
+            if (icon is not null &&
+                !configured.DeclaredPackageIconAssetIds.Contains(icon.AssetId))
+                throw new BridgeProtocolException(
+                    "Snapshot references an undeclared package icon asset.");
+        }
     }
 
     internal async Task<BridgeClientPublication<WidgetLifecycleState>> SetLifecycleAsync(

@@ -946,6 +946,7 @@ InteractionReconciliation WidgetInteractionSession::ReconcileAdmission(
                 [](const WidgetSelectOption& left, const WidgetSelectOption& right) {
                     return left.id == right.id && left.actionId == right.actionId &&
                         left.label == right.label && left.glyph == right.glyph &&
+                        left.packageIcon == right.packageIcon &&
                         left.accessibilityLabel == right.accessibilityLabel &&
                         left.isDisabled == right.isDisabled && left.isBusy == right.isBusy;
                 });
@@ -1212,6 +1213,7 @@ bool WidgetInteractionSession::SelectPopupCurrent(
         [](const WidgetSelectOption& left, const WidgetSelectOption& right) {
             return left.id == right.id && left.actionId == right.actionId &&
                 left.label == right.label && left.glyph == right.glyph &&
+                left.packageIcon == right.packageIcon &&
                 left.accessibilityLabel == right.accessibilityLabel &&
                 left.isDisabled == right.isDisabled && left.isBusy == right.isBusy;
         });

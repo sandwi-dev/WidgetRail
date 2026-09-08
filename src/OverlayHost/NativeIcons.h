@@ -31,6 +31,7 @@ enum class NativeIcon : std::uint8_t {
     Ethernet,
     Rewind,
     FastForward,
+    Fullscreen,
 };
 
 struct LoadingIndicatorArc final {

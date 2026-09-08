@@ -395,6 +395,25 @@ template <std::size_t Count>
     return true;
 }
 
+[[nodiscard]] bool DrawFullscreen(
+    ID2D1RenderTarget* target,
+    ID2D1Brush* brush,
+    const Canvas& c,
+    const float stroke) noexcept {
+    const auto corner = [&](const float x, const float y,
+                            const float horizontal, const float vertical) {
+        DrawRoundLine(target, brush, c.Point(x, y),
+            c.Point(x + horizontal, y), stroke);
+        DrawRoundLine(target, brush, c.Point(x, y),
+            c.Point(x, y + vertical), stroke);
+    };
+    corner(0.16F, 0.16F, 0.24F, 0.24F);
+    corner(0.84F, 0.16F, -0.24F, 0.24F);
+    corner(0.16F, 0.84F, 0.24F, -0.24F);
+    corner(0.84F, 0.84F, -0.24F, -0.24F);
+    return true;
+}
+
 } // namespace
 
 LoadingIndicatorArc ComputeLoadingIndicatorArc(
@@ -473,6 +492,7 @@ bool TryParseNativeIcon(const std::wstring_view semanticId, NativeIcon& icon) no
         Pair{L"wifi", NativeIcon::Wifi}, Pair{L"ethernet", NativeIcon::Ethernet},
         Pair{L"rewind", NativeIcon::Rewind},
         Pair{L"fastForward", NativeIcon::FastForward},
+        Pair{L"fullscreen", NativeIcon::Fullscreen},
         Pair{L"toggle-playback", NativeIcon::Play}, Pair{L"play-pause", NativeIcon::Play},
         Pair{L"previous-track", NativeIcon::Previous}, Pair{L"next-track", NativeIcon::Next},
         Pair{L"retry", NativeIcon::Refresh}, Pair{L"repeat-mode", NativeIcon::Repeat},
@@ -520,6 +540,7 @@ bool DrawNativeIcon(
         case NativeIcon::Ethernet: return DrawEthernet(renderTarget, brush, canvas, stroke);
         case NativeIcon::Rewind: return DrawSeek(renderTarget, brush, canvas, false);
         case NativeIcon::FastForward: return DrawSeek(renderTarget, brush, canvas, true);
+        case NativeIcon::Fullscreen: return DrawFullscreen(renderTarget, brush, canvas, stroke);
         default: return false;
     }
 }

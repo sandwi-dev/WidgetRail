@@ -3,6 +3,7 @@
 #include "DeclarativeLayout.h"
 #include "DeclarativeMotion.h"
 #include "NativeStyle.h"
+#include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
 
 #include <d2d1_1.h>
@@ -22,8 +23,6 @@
 #include <vector>
 
 namespace widgetrail {
-
-class RemoteImageCache;
 
 enum class RenderDiagnosticSeverity {
     Information,
@@ -318,6 +317,8 @@ struct DeclarativeRenderOptions final {
     std::wstring artworkWidgetId;
     std::wstring artworkRuntimeGeneration;
     std::wstring artworkPresentationGeneration;
+    std::wstring packageContentDigest;
+    std::vector<WidgetPackageIconAsset> packageIconAssets;
     /// Exact runtime/presentation authority for host-retained focused
     /// BackgroundSurface selection. Empty preserves test/source compatibility.
     std::wstring artworkAuthorityId;
@@ -376,6 +377,17 @@ public:
         std::wstring_view focusedElementId,
         declarative::Rect viewport,
         const DeclarativeRenderOptions& options = {});
+    [[nodiscard]] bool PaintPackageIcon(
+        ID2D1RenderTarget* renderTarget,
+        const WidgetPackageIcon& icon,
+        declarative::Rect destination,
+        NativeColor tint,
+        const DeclarativeRenderOptions& options);
+    [[nodiscard]] static std::optional<PackageIconDemandAuthority>
+    ResolvePackageIconDemandAuthority(
+        const WidgetPackageIcon& icon,
+        declarative::Rect destination,
+        const DeclarativeRenderOptions& options);
 
     /// Computes the exact destination layout and shared focus eligibility used
     /// by Render without drawing or publishing renderer-owned state. This is a
@@ -610,6 +622,11 @@ private:
         RenderPass& pass,
         std::wstring_view artworkWidgetId,
         ImagePresentationState& presentationState);
+    [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap> GetPackageIconBitmap(
+        ID2D1RenderTarget* renderTarget,
+        const WidgetPackageIcon& icon,
+        declarative::Rect destination,
+        const DeclarativeRenderOptions& options);
     [[nodiscard]] bool EnsureSurfaceClip(
         ID2D1RenderTarget* renderTarget,
         declarative::Rect viewport,

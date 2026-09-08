@@ -248,6 +248,195 @@ int main() {
             decoder.Shutdown();
         }
 
+        const std::string packageSvgText =
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">"
+            "<path fill=\"#16a34a\" d=\"M2 12 L12 2 L22 12 L12 22 Z\"/></svg>";
+        const std::vector<std::uint8_t> packageSvg(
+            packageSvgText.begin(), packageSvgText.end());
+        {
+            RemoteImageLimits svgLimits;
+            ArtworkDecoderProcessOwner decoder(
+                svgLimits, ExecutableSibling(L"ArtworkDecoderTestHost.exe"));
+            const auto color = decoder.Decode(
+                packageSvg, L"image/svg+xml", {},
+                artworkdecoder::TestBehavior::Normal, 32, 24,
+                artworkdecoder::RasterVariant::OriginalColor);
+            assert(SUCCEEDED(color.result));
+            assert(color.image.width == 32 && color.image.height == 24);
+            assert(color.image.mimeType == L"image/svg+xml");
+            const auto mask = decoder.Decode(
+                packageSvg, L"image/svg+xml", {},
+                artworkdecoder::TestBehavior::Normal, 32, 24,
+                artworkdecoder::RasterVariant::AlphaMask);
+            assert(SUCCEEDED(mask.result));
+            assert(mask.image.width == 32 && mask.image.height == 24);
+            for (std::size_t offset = 0;
+                 offset < mask.image.premultipliedBgra.size(); offset += 4) {
+                const auto alpha = mask.image.premultipliedBgra[offset + 3];
+                assert(mask.image.premultipliedBgra[offset] == alpha);
+                assert(mask.image.premultipliedBgra[offset + 1] == alpha);
+                assert(mask.image.premultipliedBgra[offset + 2] == alpha);
+            }
+            decoder.Shutdown();
+        }
+
+        {
+            std::mutex iconMutex;
+            std::condition_variable iconChanged;
+            int iconReady{};
+            std::size_t iconRequests{};
+            RemoteImageCache iconCache(
+                defaultLimits,
+                [&](std::wstring_view, const RemoteImageState state) {
+                    {
+                        std::scoped_lock lock(iconMutex);
+                        if (state == RemoteImageState::Ready) ++iconReady;
+                    }
+                    iconChanged.notify_all();
+                },
+                {}, {}, {},
+                [&](const PackageIconDemandAuthority&, std::stop_token) {
+                    ++iconRequests;
+                    return PackageIconRequest{
+                        PackageIconRequestDisposition::Resolved, packageSvg};
+                });
+            PackageIconDemandAuthority authority{
+                L"dev.test.package-icon", L"runtime-a", L"presentation-a",
+                std::wstring(64, L'a'), L"test.mark",
+                std::wstring(64, L'b'), std::wstring(64, L'c'),
+                32, 24, PackageIconRasterVariant::AlphaMask};
+            const auto maskKey = RemoteImageCache::PackageIconKey(authority);
+            assert(iconCache.RequestPackageIcon(maskKey, authority) ==
+                   RemoteImageRequestResult::Queued);
+            {
+                std::unique_lock lock(iconMutex);
+                assert(iconChanged.wait_for(lock, std::chrono::seconds(3), [&] {
+                    return iconReady == 1;
+                }));
+            }
+            assert(iconCache.GetState(maskKey) == RemoteImageState::Ready);
+            auto mask = iconCache.GetReadyImage(maskKey);
+            assert(mask && mask->width == 32 && mask->height == 24);
+            auto replacementAuthority = authority;
+            replacementAuthority.runtimeGeneration = L"runtime-b";
+            replacementAuthority.presentationGeneration = L"presentation-b";
+            assert(RemoteImageCache::PackageIconKey(replacementAuthority) == maskKey);
+            assert(iconCache.RequestPackageIcon(maskKey, replacementAuthority) ==
+                   RemoteImageRequestResult::AlreadyTracked);
+            replacementAuthority.rasterVariant = PackageIconRasterVariant::OriginalColor;
+            const auto colorKey = RemoteImageCache::PackageIconKey(replacementAuthority);
+            assert(colorKey != maskKey);
+            assert(iconCache.RequestPackageIcon(colorKey, replacementAuthority) ==
+                   RemoteImageRequestResult::Queued);
+            {
+                std::unique_lock lock(iconMutex);
+                assert(iconChanged.wait_for(lock, std::chrono::seconds(3), [&] {
+                    return iconReady == 2;
+                }));
+            }
+            assert(iconRequests == 2);
+            iconCache.Shutdown();
+        }
+
+        {
+            std::mutex replacementMutex;
+            std::condition_variable replacementChanged;
+            bool oldRequestStarted{};
+            bool releaseOldRequest{};
+            int readyCompletions{};
+            int requests{};
+            RemoteImageCache replacementCache(
+                defaultLimits,
+                [&](std::wstring_view, const RemoteImageState state) {
+                    if (state == RemoteImageState::Ready) {
+                        {
+                            std::scoped_lock lock(replacementMutex);
+                            ++readyCompletions;
+                        }
+                        replacementChanged.notify_all();
+                    }
+                },
+                {}, {}, {},
+                [&](const PackageIconDemandAuthority& authority,
+                    std::stop_token) {
+                    std::unique_lock lock(replacementMutex);
+                    ++requests;
+                    if (authority.runtimeGeneration == L"runtime-old") {
+                        oldRequestStarted = true;
+                        replacementChanged.notify_all();
+                        replacementChanged.wait(lock, [&] {
+                            return releaseOldRequest;
+                        });
+                        return PackageIconRequest{
+                            PackageIconRequestDisposition::OriginRetired, {}};
+                    }
+                    return PackageIconRequest{
+                        PackageIconRequestDisposition::Resolved, packageSvg};
+                });
+            PackageIconDemandAuthority oldAuthority{
+                L"dev.test.package-icon-replacement", L"runtime-old",
+                L"presentation-old", std::wstring(64, L'f'), L"test.mark",
+                std::wstring(64, L'a'), std::wstring(64, L'b'),
+                32, 24, PackageIconRasterVariant::AlphaMask};
+            const auto replacementKey =
+                RemoteImageCache::PackageIconKey(oldAuthority);
+            assert(replacementCache.RequestPackageIcon(
+                       replacementKey, oldAuthority) ==
+                   RemoteImageRequestResult::Queued);
+            {
+                std::unique_lock lock(replacementMutex);
+                assert(replacementChanged.wait_for(
+                    lock, std::chrono::seconds(3), [&] {
+                        return oldRequestStarted;
+                    }));
+            }
+            auto currentAuthority = oldAuthority;
+            currentAuthority.runtimeGeneration = L"runtime-current";
+            currentAuthority.presentationGeneration = L"presentation-current";
+            assert(RemoteImageCache::PackageIconKey(currentAuthority) ==
+                   replacementKey);
+            assert(replacementCache.GetPackageIconState(
+                       replacementKey, currentAuthority) ==
+                   RemoteImageState::Missing);
+            assert(replacementCache.RequestPackageIcon(
+                       replacementKey, currentAuthority) ==
+                   RemoteImageRequestResult::Queued);
+            {
+                std::scoped_lock lock(replacementMutex);
+                releaseOldRequest = true;
+            }
+            replacementChanged.notify_all();
+            {
+                std::unique_lock lock(replacementMutex);
+                assert(replacementChanged.wait_for(
+                    lock, std::chrono::seconds(3), [&] {
+                        return readyCompletions == 1;
+                    }));
+                assert(requests == 2);
+            }
+            assert(replacementCache.GetPackageIconState(
+                       replacementKey, currentAuthority) ==
+                   RemoteImageState::Ready);
+            const auto currentImage =
+                replacementCache.GetReadyImage(replacementKey);
+            assert(currentImage && currentImage->width == 32 &&
+                   currentImage->height == 24);
+            auto laterAuthority = currentAuthority;
+            laterAuthority.runtimeGeneration = L"runtime-later";
+            laterAuthority.presentationGeneration = L"presentation-later";
+            assert(replacementCache.GetPackageIconState(
+                       replacementKey, laterAuthority) ==
+                   RemoteImageState::Ready);
+            assert(replacementCache.RequestPackageIcon(
+                       replacementKey, laterAuthority) ==
+                   RemoteImageRequestResult::AlreadyTracked);
+            {
+                std::scoped_lock lock(replacementMutex);
+                assert(requests == 2 && readyCompletions == 1);
+            }
+            replacementCache.Shutdown();
+        }
+
         auto maximumPng = EncodeWicImage(GUID_ContainerFormatPng, 1, 1);
         maximumPng.resize(defaultLimits.maximumEncodedArtworkBytes, 0);
         std::mutex nativeMutex;

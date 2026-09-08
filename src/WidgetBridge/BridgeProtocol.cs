@@ -26,6 +26,8 @@ internal static class BridgeMessageTypes
     public const string GetSnapshot = "get-snapshot";
     public const string ResolveArtwork = "resolve-artwork";
     public const string Artwork = "artwork";
+    public const string ResolvePackageIcon = "resolve-package-icon";
+    public const string PackageIcon = "package-icon";
     public const string ResolveEmbeddedMedia = "resolve-embedded-media";
     public const string EmbeddedMediaSession = "embedded-media";
     public const string EmbeddedMediaPlaybackEvent = "embedded-media-playback-event";
@@ -73,6 +75,14 @@ internal sealed record BridgeArtworkRequest(
     string ArtworkHandle,
     string? RuntimeGeneration = null,
     string? PresentationGeneration = null);
+internal sealed record BridgePackageIconRequest(
+    string WidgetId,
+    string RuntimeGeneration,
+    string PresentationGeneration,
+    string PackageContentDigest,
+    string AssetId,
+    string SourceSha256,
+    string NormalizedSha256);
 internal sealed record BridgeEmbeddedMediaRequest(
     string WidgetId,
     string InstanceId,
@@ -300,6 +310,8 @@ public sealed class BridgeProtocolException(string message, Exception? innerExce
 internal sealed class BridgeStalePinnedInputAuthorityException(string message)
     : Exception(message);
 internal sealed class BridgeStaleArtworkAuthorityException(string message)
+    : Exception(message);
+internal sealed class BridgeStalePackageIconAuthorityException(string message)
     : Exception(message);
 
 internal sealed class BridgeStalePresentationBaseException()

@@ -25,7 +25,8 @@ public sealed record ToastElement : WidgetElement
         ToastTone tone,
         TimeSpan duration,
         string id,
-        WidgetGlyph? glyph) : base(RequireId(id))
+        WidgetGlyph? glyph,
+        WidgetIcon? icon = null) : base(RequireId(id))
     {
         StableIdentifier.Validate(id, nameof(id));
         _ = StableIdentifier.Child(id, "copy");
@@ -49,6 +50,7 @@ public sealed record ToastElement : WidgetElement
         Tone = tone;
         Duration = duration;
         Glyph = glyph;
+        Icon = icon;
         RequiredStyleClasses = ["wrail-toast", $"wrail-toast--{Token(tone)}"];
     }
 
@@ -67,11 +69,12 @@ public sealed record ToastElement : WidgetElement
     public TimeSpan Duration { get; }
 
     public WidgetGlyph? Glyph { get; }
+    public WidgetIcon? Icon { get; }
 
     internal override ViewNode ToProtocolNode()
     {
         var tone = Token(Tone);
-        var semanticGlyph = Glyph ?? Tone switch
+        var semanticGlyph = Icon?.FallbackGlyph ?? Glyph ?? Tone switch
         {
             ToastTone.Success => WidgetGlyph.Check,
             ToastTone.Warning or ToastTone.Danger => WidgetGlyph.Warning,
@@ -82,7 +85,7 @@ public sealed record ToastElement : WidgetElement
         {
             children.Add(new IconElement(
                 StableIdentifier.Child(Id, "icon"),
-                resolvedGlyph,
+                Icon ?? WidgetIcon.Glyph(resolvedGlyph),
                 $"{Tone} notification")
             {
                 RequiredStyleClasses = ["wrail-toast__icon", $"wrail-toast__icon--{tone}"],
@@ -150,4 +153,20 @@ public static partial class UI
             duration ?? DefaultToastDuration,
             id,
             glyph);
+
+    /// <summary>Creates a bounded notification with a semantic or package SVG icon.</summary>
+    public static ToastElement ToastWithIcon(
+        WidgetIcon icon,
+        string title,
+        string message,
+        ToastTone tone,
+        string id,
+        TimeSpan? duration = null) => new(
+            title,
+            message,
+            tone,
+            duration ?? DefaultToastDuration,
+            id,
+            icon?.FallbackGlyph,
+            icon);
 }

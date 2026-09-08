@@ -230,6 +230,33 @@ public sealed class WidgetPackageInstaller
                 "missing_entrypoint",
                 $"Entrypoint is missing or has different casing: {entrypointPath}");
 
+        long iconBytes = 0;
+        foreach (var pair in (manifest.IconAssets ??
+                     new Dictionary<string, WidgetPackageIconAsset>(StringComparer.Ordinal))
+                 .OrderBy(item => item.Key, StringComparer.Ordinal))
+        {
+            if (!knownPaths.TryGetValue(pair.Value.Path, out var packagedIcon) ||
+                packagedIcon.IsDirectory ||
+                !string.Equals(
+                    packagedIcon.CanonicalPath, pair.Value.Path, StringComparison.Ordinal))
+                throw new WidgetPackageException(
+                    "missing_icon_asset",
+                    $"Icon asset '{pair.Key}' is missing or has different casing: {pair.Value.Path}");
+            var plannedIcon = entries.Single(entry =>
+                string.Equals(entry.RelativePath, pair.Value.Path, StringComparison.Ordinal));
+            if (plannedIcon.Entry.Length is < 1 or > ProtocolConstants.MaximumPackageIconBytes)
+                throw new WidgetPackageException(
+                    "icon_asset_too_large",
+                    $"Icon asset '{pair.Key}' exceeds {ProtocolConstants.MaximumPackageIconBytes} bytes.");
+            iconBytes = checked(iconBytes + plannedIcon.Entry.Length);
+            if (iconBytes > ProtocolConstants.MaximumPackageIconAggregateBytes)
+                throw new WidgetPackageException(
+                    "icon_assets_too_large",
+                    $"Declared icon assets exceed {ProtocolConstants.MaximumPackageIconAggregateBytes} bytes.");
+            _ = SvgIconNormalizer.Normalize(ReadEntryBounded(
+                plannedIcon.Entry, ProtocolConstants.MaximumPackageIconBytes, cancellationToken));
+        }
+
         return new PackagePlan(
             entries,
             new WidgetPackageInspection(manifest.Id, version, manifest, entries.Count, totalBytes));

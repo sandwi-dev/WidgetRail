@@ -986,7 +986,13 @@ public:
                             L" state=terminal");
                     }
                 }
-                if (window_) PostMessageW(window_, kImageReadyMessage, 0, 0);
+                if (window_) {
+                    constexpr std::wstring_view packageIconPrefix =
+                        L"wrail-package-icon\x1f";
+                    PostMessageW(
+                        window_, kImageReadyMessage,
+                        source.starts_with(packageIconPrefix) ? 1 : 0, 0);
+                }
             },
             widgetrail::RemoteImageCache::FetchFunction{},
             [this](
@@ -1019,7 +1025,38 @@ public:
                 }
                 return widgetrail::TrustedArtworkRequestDisposition::TerminalFailure;
             },
-            std::move(decodeDiagnostic));
+            std::move(decodeDiagnostic),
+            [this](
+                const widgetrail::PackageIconDemandAuthority& authority,
+                const std::stop_token stopToken)
+                -> widgetrail::PackageIconRequest {
+                auto result = bridge_.ResolvePackageIcon(
+                    authority.widgetId,
+                    authority.runtimeGeneration,
+                    authority.presentationGeneration,
+                    authority.packageContentDigest,
+                    authority.assetId,
+                    authority.sourceSha256,
+                    authority.normalizedSha256,
+                    stopToken);
+                switch (result.disposition) {
+                case widgetrail::WidgetPackageIconResolutionDisposition::Resolved:
+                    if (result.result)
+                        return {
+                            widgetrail::PackageIconRequestDisposition::Resolved,
+                            std::move(result.result->normalizedSvg)};
+                    break;
+                case widgetrail::WidgetPackageIconResolutionDisposition::OriginRetired:
+                    return {
+                        widgetrail::PackageIconRequestDisposition::OriginRetired,
+                        {}};
+                case widgetrail::WidgetPackageIconResolutionDisposition::TerminalFailure:
+                    break;
+                }
+                return {
+                    widgetrail::PackageIconRequestDisposition::TerminalFailure,
+                    {}};
+            });
         declarativeRenderer_ = std::make_unique<widgetrail::DeclarativeRenderer>(
             d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get(),
             std::move(renderDiagnostic));
@@ -2019,7 +2056,9 @@ private:
             HandlePlatformEvents();
             return 0;
         case kImageReadyMessage:
-            if (!AdvanceCompositorBackground(GetTickCount64()))
+            if (widgetrail::shell::RequiresImageReadyRepaint(
+                    wParam != 0,
+                    AdvanceCompositorBackground(GetTickCount64())))
                 InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case kCatalogRefreshMessage: {
@@ -6848,6 +6887,56 @@ private:
         return WidgetIcon(id);
     }
 
+    [[nodiscard]] static widgetrail::declarative::Rect TrayPackageIconBounds(
+        const widgetrail::declarative::Rect tileBounds) noexcept {
+        const float iconInset = std::min(15.0F, tileBounds.width * 0.24F);
+        return {
+            tileBounds.x + iconInset,
+            tileBounds.y + iconInset,
+            tileBounds.width - iconInset * 2.0F,
+            tileBounds.height - iconInset * 2.0F,
+        };
+    }
+
+    [[nodiscard]] std::wstring TrayWidgetPaintIdentity(
+        const std::wstring_view widgetId,
+        const widgetrail::declarative::Rect iconBounds,
+        const float pixelsPerDip) const {
+        std::wstring identity{widgetId};
+        identity += L":" + std::to_wstring(static_cast<int>(
+            DisplayWidgetIcon(widgetId)));
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        if (!descriptor || !descriptor->packageIcon ||
+            descriptor->packageContentDigest.empty()) return identity;
+        widgetrail::DeclarativeRenderOptions options;
+        options.pixelScale = pixelsPerDip;
+        options.artworkWidgetId = descriptor->id;
+        options.artworkRuntimeGeneration = descriptor->runtimeGeneration;
+        options.artworkPresentationGeneration = descriptor->presentationGeneration;
+        options.packageContentDigest = descriptor->packageContentDigest;
+        options.packageIconAssets = descriptor->iconAssets;
+        const auto resolvedAuthority = widgetrail::DeclarativeRenderer::
+            ResolvePackageIconDemandAuthority(
+                *descriptor->packageIcon, iconBounds, options);
+        if (!resolvedAuthority) return identity;
+        const auto& authority = *resolvedAuthority;
+        const auto state = imageCache_
+            ? imageCache_->GetPackageIconState(
+                widgetrail::RemoteImageCache::PackageIconKey(authority), authority)
+            : widgetrail::RemoteImageState::Missing;
+        identity += L":package:" + descriptor->runtimeGeneration + L":" +
+            descriptor->presentationGeneration + L":" +
+            descriptor->packageContentDigest + L":" +
+            descriptor->packageIcon->assetId + L":" +
+            std::to_wstring(static_cast<int>(descriptor->packageIcon->colorMode)) +
+            L":" + authority.sourceSha256 + L":" + authority.normalizedSha256 +
+            L":" + std::to_wstring(authority.physicalWidth) + L"x" +
+            std::to_wstring(authority.physicalHeight) +
+            (state == widgetrail::RemoteImageState::Ready
+                ? L":ready" : L":fallback");
+        return identity;
+    }
+
     void ApplyTransitionWindowOpacity(const float opacityFactor) {
         const auto factor = std::clamp(opacityFactor, 0.0F, 1.0F);
         const BYTE baseOverlayOpacity =
@@ -9612,6 +9701,8 @@ private:
                 pinnedSurface.panelHeightDip,
             };
         admission.surfaceAppearancePolicy = CurrentSurfaceAppearancePolicy();
+        admission.packageContentDigest = descriptor->packageContentDigest;
+        admission.packageIconAssets = descriptor->iconAssets;
         admission.pinnedLayouts = ResolvePinnedLayouts(*snapshot);
         const auto mediaKey = CurrentEmbeddedMediaSessionKey(widgetId);
         const auto* mediaSession = mediaKey
@@ -14881,6 +14972,7 @@ private:
         if (layer == CompositionPaintLayer::Tray && trayLayout) {
             DrawIconStrip(
                 metrics->viewportWidthDip, metrics->viewportHeightDip,
+                metrics->physicalPixelsPerDip,
                 nullptr, nullptr, trayLayout, false);
             finishUpdate();
             return;
@@ -14908,7 +15000,7 @@ private:
         } else {
             declarativeMotionActive_ = false;
             DrawDashboard(metrics->viewportWidthDip, metrics->viewportHeightDip,
-                          layer, trayLayout);
+                          metrics->physicalPixelsPerDip, layer, trayLayout);
         }
         finishUpdate();
     }
@@ -15773,11 +15865,11 @@ private:
         for (const auto& tile : layout.tiles) {
             if (tile.slot >= state_.order().size()) return std::nullopt;
             const bool selected = tile.slot == state_.selectedSlot();
+            const auto widgetId = std::wstring_view{state_.order()[tile.slot]};
             state.items.push_back({
                 relative(tile.bounds),
-                std::wstring{state_.order()[tile.slot]} + L":" +
-                    std::to_wstring(static_cast<int>(
-                        DisplayWidgetIcon(state_.order()[tile.slot]))),
+                TrayWidgetPaintIdentity(
+                    widgetId, TrayPackageIconBounds(tile.bounds), pixelsPerDip),
                 selected,
                 selected &&
                     state_.focusRegion() == widgetrail::FocusRegion::Tray,
@@ -16429,6 +16521,7 @@ private:
     void DrawIconStrip(
         const float width,
         const float height,
+        const float physicalPixelsPerDip,
         const widgetrail::OverlaySurfaceGeometry* surfaceGeometry = nullptr,
         const widgetrail::accessibility::DashboardSemantics* dashboard = nullptr,
         const widgetrail::shell::TrayLayout* frameLayout = nullptr,
@@ -16493,15 +16586,36 @@ private:
             }
 
             const std::wstring_view widget = state_.order()[slot];
-            const float iconInset = std::min(15.0F, tileSize * 0.24F);
-            (void)widgetrail::icons::DrawNativeIcon(
-                renderTarget_.Get(), DisplayWidgetIcon(widget),
-                D2D1::RectF(x + iconInset, top + iconInset,
-                            x + tileSize - iconInset, top + tileSize - iconInset),
-                slot == state_.selectedSlot()
-                    ? traySelectedTextBrush_.Get()
-                    : trayItemTextBrush_.Get(),
-                2.35F);
+            const auto iconBounds = TrayPackageIconBounds(tileLayout.bounds);
+            bool packageIconPainted{};
+            if (const auto* descriptor = sessions_.FindDescriptor(widget);
+                descriptor && descriptor->packageIcon && declarativeRenderer_) {
+                widgetrail::DeclarativeRenderOptions iconOptions;
+                iconOptions.pixelScale = physicalPixelsPerDip;
+                iconOptions.artworkWidgetId = descriptor->id;
+                iconOptions.artworkRuntimeGeneration = descriptor->runtimeGeneration;
+                iconOptions.artworkPresentationGeneration =
+                    descriptor->presentationGeneration;
+                iconOptions.packageContentDigest = descriptor->packageContentDigest;
+                iconOptions.packageIconAssets = descriptor->iconAssets;
+                const auto d2dTint = (slot == state_.selectedSlot()
+                    ? traySelectedTextBrush_ : trayItemTextBrush_)->GetColor();
+                packageIconPainted = declarativeRenderer_->PaintPackageIcon(
+                    renderTarget_.Get(), *descriptor->packageIcon, iconBounds,
+                    {d2dTint.r, d2dTint.g, d2dTint.b, d2dTint.a}, iconOptions);
+            }
+            if (!packageIconPainted) {
+                (void)widgetrail::icons::DrawNativeIcon(
+                    renderTarget_.Get(), DisplayWidgetIcon(widget),
+                    D2D1::RectF(
+                        iconBounds.x, iconBounds.y,
+                        iconBounds.x + iconBounds.width,
+                        iconBounds.y + iconBounds.height),
+                    slot == state_.selectedSlot()
+                        ? traySelectedTextBrush_.Get()
+                        : trayItemTextBrush_.Get(),
+                    2.35F);
+            }
         }
         if (layout->nextOverflow) drawOverflow(*layout->nextOverflow);
         if (const auto menu = CurrentTrayContextMenuLayout(
@@ -16623,6 +16737,7 @@ private:
 
     void DrawDashboard(
         const float width, const float height,
+        const float physicalPixelsPerDip,
         const CompositionPaintLayer layer = CompositionPaintLayer::Combined,
         const widgetrail::shell::TrayLayout* frameTrayLayout = nullptr) {
         if (!accessibilityActive_) {
@@ -16665,7 +16780,9 @@ private:
         }
         if (layer == CompositionPaintLayer::Combined ||
             layer == CompositionPaintLayer::Tray) {
-            DrawIconStrip(width, height, nullptr, &dashboard, frameTrayLayout);
+            DrawIconStrip(
+                width, height, physicalPixelsPerDip,
+                nullptr, &dashboard, frameTrayLayout);
         } else if (accessibilityActive_) {
             const auto layout = frameTrayLayout
                 ? std::optional<widgetrail::shell::TrayLayout>{*frameTrayLayout}
@@ -16908,7 +17025,10 @@ private:
         }
     }
 
-    void DrawSelectPopup(const float width, const float height) {
+    void DrawSelectPopup(
+        const float width,
+        const float height,
+        const float physicalPixelsPerDip) {
         const auto layout = CurrentSelectPopupLayout(width, height);
         const auto& popup = interactionSession_.selectPopup();
         if (!layout || !popup || layout->items.empty()) return;
@@ -16924,6 +17044,17 @@ private:
         const auto priorParagraphAlignment = hintFormat_->GetParagraphAlignment();
         const bool popupTextCentered = SUCCEEDED(hintFormat_->SetParagraphAlignment(
             DWRITE_PARAGRAPH_ALIGNMENT_CENTER));
+        widgetrail::DeclarativeRenderOptions iconOptions;
+        const auto* iconDescriptor = sessions_.FindDescriptor(state_.activeWidget());
+        if (iconDescriptor) {
+            iconOptions.pixelScale = physicalPixelsPerDip;
+            iconOptions.artworkWidgetId = iconDescriptor->id;
+            iconOptions.artworkRuntimeGeneration = iconDescriptor->runtimeGeneration;
+            iconOptions.artworkPresentationGeneration =
+                iconDescriptor->presentationGeneration;
+            iconOptions.packageContentDigest = iconDescriptor->packageContentDigest;
+            iconOptions.packageIconAssets = iconDescriptor->iconAssets;
+        }
         for (const auto& item : layout->items) {
             if (item.optionIndex >= popup->options.size()) continue;
             const auto& option = popup->options[item.optionIndex];
@@ -16938,8 +17069,9 @@ private:
                 renderTarget_->FillRoundedRectangle(selected, accentBrush_.Get());
             }
             widgetrail::icons::NativeIcon icon{};
-            const bool hasIcon = !option.glyph.empty() &&
+            const bool hasSemanticIcon = !option.glyph.empty() &&
                 widgetrail::icons::TryParseNativeIcon(option.glyph, icon);
+            const bool hasIcon = option.packageIcon.has_value() || hasSemanticIcon;
             const auto content = widgetrail::input::ComputeSelectPopupContentLayout(
                 item.bounds, option.isSelected, hasIcon, 12.0F, 10.0F);
             if (content.checkmarkBounds) {
@@ -16954,14 +17086,21 @@ private:
             }
             if (content.glyphBounds) {
                 const auto& bounds = *content.glyphBounds;
-                (void)widgetrail::icons::DrawNativeIcon(
-                    renderTarget_.Get(), icon,
-                    D2D1::RectF(
-                        bounds.x, bounds.y,
-                        bounds.x + bounds.width, bounds.y + bounds.height),
-                    option.isDisabled || option.isBusy
-                        ? secondaryBrush_.Get() : textBrush_.Get(),
-                    1.7F);
+                auto* brush = option.isDisabled || option.isBusy
+                    ? secondaryBrush_.Get() : textBrush_.Get();
+                const auto tint = brush->GetColor();
+                const bool painted = option.packageIcon && declarativeRenderer_ &&
+                    declarativeRenderer_->PaintPackageIcon(
+                        renderTarget_.Get(), *option.packageIcon, bounds,
+                        {tint.r, tint.g, tint.b, tint.a}, iconOptions);
+                if (!painted && hasSemanticIcon) {
+                    (void)widgetrail::icons::DrawNativeIcon(
+                        renderTarget_.Get(), icon,
+                        D2D1::RectF(
+                            bounds.x, bounds.y,
+                            bounds.x + bounds.width, bounds.y + bounds.height),
+                        brush, 1.7F);
+                }
             }
             const auto& labelBounds = content.labelBounds;
             DrawTextLine(
@@ -17037,8 +17176,8 @@ private:
             if (drawGuide) DrawWidgetFooter(
                 *geometry, fixedGuideBounds ? &*fixedGuideBounds : nullptr);
             if (drawTray) {
-                DrawIconStrip(width, height, &*geometry, nullptr,
-                              trayLayout);
+                DrawIconStrip(width, height, physicalPixelsPerDip,
+                              &*geometry, nullptr, trayLayout);
             } else if (accessibilityActive_ && trayLayout) {
                 PublishTrayAccessibility(*trayLayout, width, height);
             }
@@ -17183,6 +17322,8 @@ private:
                     options.artworkRuntimeGeneration = descriptor->runtimeGeneration;
                     options.artworkPresentationGeneration =
                         descriptor->presentationGeneration;
+                    options.packageContentDigest = descriptor->packageContentDigest;
+                    options.packageIconAssets = descriptor->iconAssets;
                 }
                 options.compositorBackgroundAvailable =
                     compositionSurface_.available() && !inertRetainedSnapshot;
@@ -17808,11 +17949,12 @@ private:
             if (widgetContextMenu_)
                 DrawWidgetContextMenu(width, height);
             if (interactionSession_.selectPopup())
-                DrawSelectPopup(width, height);
+                DrawSelectPopup(width, height, physicalPixelsPerDip);
             if (drawGuide) DrawWidgetFooter(
                 *geometry, fixedGuideBounds ? &*fixedGuideBounds : nullptr);
             if (drawTray) {
-                DrawIconStrip(width, height, &*geometry, nullptr,
+                DrawIconStrip(width, height, physicalPixelsPerDip,
+                              &*geometry, nullptr,
                               trayLayout ? &*trayLayout : nullptr);
             } else if (accessibilityActive_ && trayLayout) {
                 PublishTrayAccessibility(*trayLayout, width, height);
@@ -17833,7 +17975,8 @@ private:
         if (drawGuide) DrawWidgetFooter(
             *geometry, fixedGuideBounds ? &*fixedGuideBounds : nullptr);
         if (drawTray) {
-            DrawIconStrip(width, height, &*geometry, nullptr,
+            DrawIconStrip(width, height, physicalPixelsPerDip,
+                          &*geometry, nullptr,
                           trayLayout ? &*trayLayout : nullptr);
         } else if (accessibilityActive_ && trayLayout) {
             PublishTrayAccessibility(*trayLayout, width, height);

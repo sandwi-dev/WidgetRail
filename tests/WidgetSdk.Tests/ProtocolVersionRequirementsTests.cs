@@ -283,6 +283,25 @@ internal static class ProtocolVersionRequirementsTests
                 ProtocolConstants.SemanticSeekGlyphVersion,
                 Button() with { Glyph = WidgetGlyph.FastForward },
                 "$.root.children[0].glyph"),
+            NodeCase("fullscreen button", "fullscreen-glyph",
+                ProtocolConstants.FullscreenGlyphVersion,
+                Button() with { Glyph = WidgetGlyph.Fullscreen },
+                "$.root.children[0].glyph"),
+            NodeCase("fullscreen Select option", "fullscreen-glyph",
+                ProtocolConstants.FullscreenGlyphVersion,
+                new()
+                {
+                    Id = "fullscreen-select",
+                    Kind = ViewNodeKind.Select,
+                    Text = "Mode",
+                    ActionId = "mode.changed",
+                    AccessibilityLabel = "Mode",
+                    SelectOptions =
+                    [
+                        new("fullscreen", "Fullscreen", "mode.fullscreen", true,
+                            WidgetGlyph.Fullscreen),
+                    ],
+                }, "$.root.children[0].selectOptions[0].glyph"),
             NodeCase("focus persistence", "focus-persistence",
                 ProtocolConstants.FocusPersistenceVersion,
                 Button() with { FocusPersistenceId = "logical.primary" },

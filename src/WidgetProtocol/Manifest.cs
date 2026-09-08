@@ -21,10 +21,12 @@ public sealed record WidgetManifest
     /// </summary>
     public bool PinningSupported { get; init; }
     /// <summary>
-    /// Safe shell presentation metadata. Icons are semantic host glyphs, never
-    /// package paths, font names, SVG, or executable drawing content.
+    /// Safe shell presentation metadata. A semantic glyph is always retained
+    /// as fallback; an optional package icon references the declared inventory.
     /// </summary>
     public WidgetPresentation Presentation { get; init; } = new();
+    public IReadOnlyDictionary<string, WidgetPackageIconAsset> IconAssets { get; init; } =
+        new Dictionary<string, WidgetPackageIconAsset>(StringComparer.Ordinal);
     public IReadOnlyList<string> Permissions { get; init; } = [];
     public IReadOnlyList<string> OptionalPermissions { get; init; } = [];
     /// <summary>
@@ -83,7 +85,11 @@ public static class WidgetManifestTrust
             : WidgetExecutionTrust.Sandboxed;
     }
 }
-public sealed record WidgetPresentation(WidgetGlyph Icon = WidgetGlyph.Connection);
+public sealed record WidgetPresentation(WidgetGlyph Icon = WidgetGlyph.Connection)
+{
+    public WidgetPackageIcon? PackageIcon { get; init; }
+}
+public sealed record WidgetPackageIconAsset(string Path);
 public sealed record WidgetResourceRequest(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? MemoryMb = null,
     int UpdateHz = 1);
@@ -254,9 +260,40 @@ public static partial class WidgetManifestValidator
 
         if (manifest.Presentation is null)
             Add("$.presentation", "required", "Presentation cannot be null.");
-        else if (!Enum.IsDefined(manifest.Presentation.Icon))
-            Add("$.presentation.icon", "unsupported_icon",
-                "Presentation icon must use a host-defined semantic glyph.");
+        else
+        {
+            if (!Enum.IsDefined(manifest.Presentation.Icon))
+                Add("$.presentation.icon", "unsupported_icon",
+                    "Presentation icon must use a host-defined semantic glyph.");
+            ValidatePackageIcon(
+                manifest.Presentation.PackageIcon,
+                "$.presentation.packageIcon", manifest.IconAssets, Add);
+        }
+
+        var iconAssets = manifest.IconAssets ??
+            new Dictionary<string, WidgetPackageIconAsset>(StringComparer.Ordinal);
+        if (manifest.IconAssets is null)
+            Add("$.iconAssets", "required", "Icon assets cannot be null.");
+        if (iconAssets.Count > ProtocolConstants.MaximumPackageIconAssetCount)
+            Add("$.iconAssets", "too_many_icon_assets",
+                $"A package may declare at most {ProtocolConstants.MaximumPackageIconAssetCount} SVG icons.");
+        var iconPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in iconAssets.Take(ProtocolConstants.MaximumPackageIconAssetCount + 1))
+        {
+            var path = $"$.iconAssets.{pair.Key}";
+            if (!IsPackageIconAssetId(pair.Key))
+                Add(path, "invalid_icon_asset_id",
+                    "Icon asset IDs must be bounded lowercase identifiers.");
+            if (pair.Value is null || !IsRelativePackagePath(pair.Value.Path) ||
+                pair.Value.Path.Length > ProtocolConstants.MaximumPackageIconPathLength ||
+                !string.Equals(Path.GetExtension(pair.Value.Path), ".svg",
+                    StringComparison.Ordinal))
+                Add($"{path}.path", "invalid_icon_asset_path",
+                    "Icon assets require an exact-case normalized package-relative .svg path.");
+            else if (!iconPaths.Add(pair.Value.Path))
+                Add($"{path}.path", "duplicate_icon_asset_path",
+                    "Each icon asset path must be declared once.");
+        }
 
         if (manifest.BackgroundPolicy is not null &&
             !SupportedBackgroundPolicies.Contains(manifest.BackgroundPolicy))
@@ -332,6 +369,31 @@ public static partial class WidgetManifestValidator
 
         void Add(string path, string code, string message) => errors.Add(new(path, code, message));
     }
+
+    public static bool IsPackageIconAssetId(string? value) =>
+        value is { Length: >= 1 and <= ProtocolConstants.MaximumPackageIconAssetIdLength } &&
+        PackageIconAssetIdRegex().IsMatch(value);
+
+    internal static void ValidatePackageIcon(
+        WidgetPackageIcon? icon,
+        string path,
+        IReadOnlyDictionary<string, WidgetPackageIconAsset>? assets,
+        Action<string, string, string> add)
+    {
+        if (icon is null) return;
+        if (!IsPackageIconAssetId(icon.AssetId))
+            add($"{path}.assetId", "invalid_icon_asset_id",
+                "Package icon asset ID is invalid.");
+        else if (assets is null || !assets.ContainsKey(icon.AssetId))
+            add($"{path}.assetId", "undeclared_icon_asset",
+                "Package icon asset ID is not declared by this manifest.");
+        if (!Enum.IsDefined(icon.ColorMode))
+            add($"{path}.colorMode", "invalid_icon_color_mode",
+                "Package icon color mode is unsupported.");
+    }
+
+    [GeneratedRegex("^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$", RegexOptions.CultureInvariant)]
+    private static partial Regex PackageIconAssetIdRegex();
 
     private static bool IsRelativePackagePath(string? value) =>
         !string.IsNullOrWhiteSpace(value) &&

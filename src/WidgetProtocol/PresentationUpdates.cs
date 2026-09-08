@@ -46,6 +46,7 @@ public enum PresentationProperty
     MediaSessionId,
     ImageFit,
     Glyph,
+    PackageIcon,
     IndicatorSize,
     ActionSurfaceOrientation,
     ActionSurfacePresentation,
@@ -167,6 +168,10 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.ImageSource or PresentationProperty.ArtworkHandle =>
+            PresentationPropertyImpact.Resource |
+            PresentationPropertyImpact.Paint |
+            PresentationPropertyImpact.Accessibility,
+        PresentationProperty.PackageIcon =>
             PresentationPropertyImpact.Resource |
             PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Accessibility,

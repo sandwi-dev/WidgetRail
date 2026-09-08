@@ -251,6 +251,9 @@ public static partial class UI
     public static IconElement Icon(WidgetGlyph glyph, string id, string accessibilityLabel) =>
         new(id, glyph, accessibilityLabel);
 
+    public static IconElement Icon(WidgetIcon icon, string id, string accessibilityLabel) =>
+        new(id, icon, accessibilityLabel);
+
     /// <summary>
     /// Creates a non-focusable indeterminate activity indicator. The label is
     /// announced by accessibility services but is not rendered as visible text.

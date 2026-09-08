@@ -71,6 +71,7 @@ void ClosedSemanticIds() {
         Pair{L"wifi", NativeIcon::Wifi}, Pair{L"ethernet", NativeIcon::Ethernet},
         Pair{L"rewind", NativeIcon::Rewind},
         Pair{L"fastForward", NativeIcon::FastForward},
+        Pair{L"fullscreen", NativeIcon::Fullscreen},
     };
     for (const auto& [name, expectedIcon] : expected) {
         NativeIcon parsed = NativeIcon::Warning;
@@ -131,7 +132,7 @@ void RenderEveryIcon() {
         NativeIcon::Check, NativeIcon::Connection,
         NativeIcon::Volume, NativeIcon::Muted, NativeIcon::Microphone,
         NativeIcon::Wifi, NativeIcon::Ethernet,
-        NativeIcon::Rewind, NativeIcon::FastForward,
+        NativeIcon::Rewind, NativeIcon::FastForward, NativeIcon::Fullscreen,
     };
     int rewindAlpha{};
     for (const NativeIcon icon : icons) {

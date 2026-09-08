@@ -266,6 +266,43 @@ constexpr UINT32 maximumInlinePngDimension = 64;
     return encoded_artwork::Matches(contentType, bytes);
 }
 
+[[nodiscard]] bool IsBoundedNormalizedPackageSvg(
+    const std::span<const std::uint8_t> bytes) noexcept {
+    if (bytes.size() < 5 || bytes.size() > 64U * 1024U) return false;
+    const std::string_view source(
+        reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    if (!source.starts_with("<svg") || source.find("<!") != std::string_view::npos ||
+        source.find("<?") != std::string_view::npos ||
+        source.find("url(") != std::string_view::npos ||
+        source.find("javascript:") != std::string_view::npos ||
+        source.find("data:") != std::string_view::npos) return false;
+    std::size_t elements{};
+    std::size_t pathCommands{};
+    std::size_t numericTokens{};
+    std::size_t transforms{};
+    bool inNumber{};
+    for (std::size_t index = 0; index < source.size(); ++index) {
+        const char value = source[index];
+        if (value == '<' && index + 1 < source.size() &&
+            source[index + 1] != '/' && source[index + 1] != '!') {
+            if (++elements > 512) return false;
+        }
+        if (source.substr(index).starts_with("transform=\"")) {
+            if (++transforms > 256) return false;
+        }
+        const bool number = (value >= '0' && value <= '9') || value == '.' ||
+            ((value == '-' || value == '+') && index + 1 < source.size() &&
+             ((source[index + 1] >= '0' && source[index + 1] <= '9') ||
+              source[index + 1] == '.'));
+        if (number && !inNumber && ++numericTokens > 16'384) return false;
+        inNumber = number;
+        if (((value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z')) &&
+            index > 0 && source[index - 1] != '<' &&
+            source[index - 1] != '/' && ++pathCommands > 8'192) return false;
+    }
+    return true;
+}
+
 } // namespace
 
 RemoteImageCache::RemoteImageCache(
@@ -273,13 +310,15 @@ RemoteImageCache::RemoteImageCache(
     CompletionCallback completion,
     FetchFunction fetch,
     ArtworkRequestFunction artworkRequest,
-    ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic)
+    ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic,
+    PackageIconRequestFunction packageIconRequest)
     : limits_(limits),
       completion_(std::move(completion)),
       usesCustomFetch_(static_cast<bool>(fetch)),
       fetch_(fetch ? std::move(fetch) : FetchAndDecodeSource),
       artworkRequest_(std::move(artworkRequest)),
-      artworkDecodeDiagnostic_(std::move(artworkDecodeDiagnostic)) {
+      artworkDecodeDiagnostic_(std::move(artworkDecodeDiagnostic)),
+      packageIconRequest_(std::move(packageIconRequest)) {
     if (limits_.maximumEntries == 0 || limits_.maximumEntries > 1'024 ||
         limits_.maximumReadyEntries == 0 || limits_.maximumReadyEntries > 1'024 ||
         limits_.maximumPendingEntries == 0 || limits_.maximumPendingEntries > 1'024 ||
@@ -427,6 +466,61 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(
     return RemoteImageRequestResult::Queued;
 }
 
+RemoteImageRequestResult RemoteImageCache::RequestPackageIcon(
+    std::wstring key,
+    PackageIconDemandAuthority authority) {
+    constexpr std::wstring_view prefix = L"wrail-package-icon\x1f";
+    if (!packageIconRequest_ || !key.starts_with(prefix) || key.size() > 640 ||
+        authority.widgetId.empty() || authority.runtimeGeneration.empty() ||
+        authority.presentationGeneration.empty() || authority.packageContentDigest.size() != 64 ||
+        authority.assetId.empty() || authority.sourceSha256.size() != 64 ||
+        authority.normalizedSha256.size() != 64 || authority.physicalWidth == 0 ||
+        authority.physicalHeight == 0 || authority.physicalWidth > 512 ||
+        authority.physicalHeight > 512 || key != PackageIconKey(authority))
+        return RemoteImageRequestResult::InvalidUrl;
+    std::scoped_lock lock(mutex_);
+    if (shuttingDown_) return RemoteImageRequestResult::ShuttingDown;
+    if (const auto found = entries_.find(key); found != entries_.end()) {
+        found->second.lastUse = ++useCounter_;
+        if (found->second.state == RemoteImageState::Ready ||
+            found->second.state == RemoteImageState::Failed ||
+            (found->second.packageIconAuthority &&
+             *found->second.packageIconAuthority == authority))
+            return RemoteImageRequestResult::AlreadyTracked;
+        found->second.state = RemoteImageState::Queued;
+        found->second.image.reset();
+        found->second.error.clear();
+        found->second.packageIconAuthority = std::move(authority);
+        found->second.demandGeneration = ++artworkDemandGeneration_;
+        if (!found->second.packageIconQueued) {
+            found->second.packageIconQueued = true;
+            queue_.push_back(std::move(key));
+        }
+        condition_.notify_one();
+        ++supersededEntries_;
+        return RemoteImageRequestResult::Queued;
+    }
+    if (PendingCountLocked() >=
+        std::min(limits_.maximumPendingEntries, limits_.maximumEntries)) {
+        ++pendingCapacityRejections_;
+        return RemoteImageRequestResult::CapacityExceeded;
+    }
+    while (entries_.size() >= limits_.maximumEntries) {
+        if (!EvictOneLocked(key, EvictionReason::CountPressure)) {
+            ++countCapacityRejections_;
+            return RemoteImageRequestResult::CapacityExceeded;
+        }
+    }
+    auto [entry, _] = entries_.emplace(key, Entry{
+        RemoteImageState::Queued, {}, {}, {}, {}, {}, ++useCounter_});
+    entry->second.packageIconAuthority = std::move(authority);
+    entry->second.demandGeneration = ++artworkDemandGeneration_;
+    entry->second.packageIconQueued = true;
+    queue_.push_back(std::move(key));
+    condition_.notify_one();
+    return RemoteImageRequestResult::Queued;
+}
+
 bool RemoteImageCache::SupplyTrustedArtwork(
     const std::wstring_view widgetId,
     const std::wstring_view artworkHandle,
@@ -566,6 +660,20 @@ RemoteImageState RemoteImageCache::GetState(std::wstring_view url) const {
     return found == entries_.end() ? RemoteImageState::Missing : found->second.state;
 }
 
+RemoteImageState RemoteImageCache::GetPackageIconState(
+    const std::wstring_view key,
+    const PackageIconDemandAuthority& authority) const {
+    std::scoped_lock lock(mutex_);
+    const auto found = entries_.find(std::wstring(key));
+    if (found == entries_.end()) return RemoteImageState::Missing;
+    if ((found->second.state == RemoteImageState::Queued ||
+         found->second.state == RemoteImageState::Loading) &&
+        (!found->second.packageIconAuthority ||
+         *found->second.packageIconAuthority != authority))
+        return RemoteImageState::Missing;
+    return found->second.state;
+}
+
 RemoteImageState RemoteImageCache::GetTrustedArtworkState(
     const std::wstring_view key,
     const TrustedArtworkDemandAuthority& authority) const {
@@ -674,6 +782,31 @@ std::wstring RemoteImageCache::TrustedArtworkKey(
     result.append(L"resource");
     result.push_back(L'\x1f');
     result.append(artworkHandle);
+    return result;
+}
+
+std::wstring RemoteImageCache::PackageIconKey(
+    const PackageIconDemandAuthority& authority) {
+    if (authority.widgetId.empty() || authority.packageContentDigest.empty() ||
+        authority.assetId.empty() || authority.sourceSha256.empty() ||
+        authority.normalizedSha256.empty() || authority.physicalWidth == 0 ||
+        authority.physicalHeight == 0) return {};
+    std::wstring result = L"wrail-package-icon\x1f";
+    for (const auto value : {
+            std::wstring_view(authority.widgetId),
+            std::wstring_view(authority.packageContentDigest),
+            std::wstring_view(authority.assetId),
+            std::wstring_view(authority.sourceSha256),
+            std::wstring_view(authority.normalizedSha256)}) {
+        result.append(value);
+        result.push_back(L'\x1f');
+    }
+    result.append(std::to_wstring(authority.physicalWidth));
+    result.push_back(L'x');
+    result.append(std::to_wstring(authority.physicalHeight));
+    result.push_back(L'\x1f');
+    result.append(authority.rasterVariant == PackageIconRasterVariant::AlphaMask
+        ? L"mask" : L"color");
     return result;
 }
 
@@ -836,6 +969,8 @@ bool RemoteImageCache::EvictOneLocked(
 void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
     while (!stopToken.stop_requested()) {
         std::wstring url;
+        std::optional<PackageIconDemandAuthority> packageIconAuthority;
+        std::uint64_t packageIconGeneration{};
         {
             std::unique_lock lock(mutex_);
             condition_.wait(lock, [this, &stopToken] {
@@ -848,6 +983,11 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
             if (found == entries_.end() || found->second.state != RemoteImageState::Queued)
                 continue;
             found->second.state = RemoteImageState::Loading;
+            found->second.packageIconQueued = false;
+            if (found->second.packageIconAuthority) {
+                packageIconAuthority = found->second.packageIconAuthority;
+                packageIconGeneration = found->second.demandGeneration;
+            }
         }
 
         std::wstring source = url;
@@ -867,7 +1007,41 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
             }
         }
         RemoteImageFetchResult result;
-        if (!encodedArtwork.empty()) {
+        bool packageIconOriginRetired{};
+        if (packageIconAuthority) {
+            PackageIconRequest packageRequest;
+            try {
+                packageRequest = packageIconRequest_
+                    ? packageIconRequest_(*packageIconAuthority, stopToken)
+                    : PackageIconRequest{};
+            } catch (...) {
+                packageRequest = {};
+            }
+            packageIconOriginRetired = packageRequest.disposition ==
+                PackageIconRequestDisposition::OriginRetired;
+            if (packageIconOriginRetired) {
+                result = Failure(HRESULT_FROM_WIN32(ERROR_RETRY),
+                    L"Package SVG icon demand authority retired.");
+            } else if (packageRequest.disposition !=
+                           PackageIconRequestDisposition::Resolved ||
+                       !IsBoundedNormalizedPackageSvg(
+                           packageRequest.normalizedSvg)) {
+                result = Failure(HRESULT_FROM_WIN32(ERROR_INVALID_DATA),
+                    L"Package SVG icon payload was unavailable or invalid.");
+            } else if (usesCustomFetch_) {
+                result = Failure(E_NOTIMPL,
+                    L"Package SVG icons require the isolated decoder owner.");
+            } else {
+                result = artworkDecoder_->Decode(
+                    std::move(packageRequest.normalizedSvg), L"image/svg+xml", stopToken,
+                    artworkdecoder::TestBehavior::Normal,
+                    packageIconAuthority->physicalWidth,
+                    packageIconAuthority->physicalHeight,
+                    packageIconAuthority->rasterVariant == PackageIconRasterVariant::AlphaMask
+                        ? artworkdecoder::RasterVariant::AlphaMask
+                        : artworkdecoder::RasterVariant::OriginalColor);
+            }
+        } else if (!encodedArtwork.empty()) {
             if (usesCustomFetch_) {
                 source = L"data:" + encodedArtworkMime + L";base64,validated";
                 result = fetch_(source, stopToken, limits_);
@@ -894,6 +1068,20 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
         {
             std::scoped_lock lock(mutex_);
             if (shuttingDown_ || stopToken.stop_requested()) break;
+            if (packageIconAuthority) {
+                const auto found = entries_.find(url);
+                if (found == entries_.end() ||
+                    found->second.state != RemoteImageState::Loading ||
+                    found->second.demandGeneration != packageIconGeneration ||
+                    !found->second.packageIconAuthority ||
+                    *found->second.packageIconAuthority != *packageIconAuthority) {
+                    continue;
+                }
+                if (packageIconOriginRetired) {
+                    entries_.erase(found);
+                    continue;
+                }
+            }
             CompleteLocked(url, std::move(result));
             const auto found = entries_.find(url);
             if (found != entries_.end()) {

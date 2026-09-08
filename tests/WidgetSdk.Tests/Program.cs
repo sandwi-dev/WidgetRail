@@ -51,6 +51,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Button interaction states serialize deterministically", ButtonStatesRoundTrip),
     ("Text entry is host-owned bounded with protected sensitive mode", TextEntryRoundTrip),
     ("Buttons expose closed semantic icons without action-ID inference", ButtonIconsRoundTrip),
+    ("Package SVG icons retain semantic fallback and exact manifest authority",
+        PackageSvgIconTests.Run),
     ("Settings composites expose stable controller and accessibility semantics", SettingsCompositesAreSemantic),
     ("Modern composites preserve semantic classes IDs and accessibility", ModernComponentsAreSemantic),
     ("Modern controller composites preserve tab switch and dialog semantics", ModernControllerComponentsAreSemantic),
@@ -1901,17 +1903,20 @@ static Task ButtonIconsRoundTrip()
                 .Icon(WidgetGlyph.Rewind),
             UI.Button("Fast forward", "seek-forward", "fast-forward")
                 .Icon(WidgetGlyph.FastForward),
+            UI.Button("Fullscreen", "enter-fullscreen", "fullscreen")
+                .Icon(WidgetGlyph.Fullscreen),
             UI.Button("Repeat one", "repeat", "repeat-one")
                 .Icon(WidgetGlyph.RepeatOne)))
         .CreateSnapshot("test.instance", 8);
 
-    Assert.Equal(ProtocolConstants.SemanticSeekGlyphVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.FullscreenGlyphVersion, snapshot.ProtocolVersion);
     var restored = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
     Assert.Equal(WidgetGlyph.Previous, Find(restored.Root, "previous").Glyph);
     Assert.Equal("Previous track", Find(restored.Root, "previous").AccessibilityLabel);
     Assert.Equal(WidgetGlyph.Pause, Find(restored.Root, "play-pause").Glyph);
     Assert.Equal(WidgetGlyph.Rewind, Find(restored.Root, "rewind").Glyph);
     Assert.Equal(WidgetGlyph.FastForward, Find(restored.Root, "fast-forward").Glyph);
+    Assert.Equal(WidgetGlyph.Fullscreen, Find(restored.Root, "fullscreen").Glyph);
     Assert.Equal(WidgetGlyph.RepeatOne, Find(restored.Root, "repeat-one").Glyph);
 
     var legacy = snapshot with

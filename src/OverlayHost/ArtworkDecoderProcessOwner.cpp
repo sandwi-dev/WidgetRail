@@ -65,17 +65,27 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
     std::vector<std::uint8_t> bytes,
     std::wstring mimeType,
     const std::stop_token stopToken,
-    const artworkdecoder::TestBehavior testBehavior) {
+    const artworkdecoder::TestBehavior testBehavior,
+    const UINT32 requestedWidth,
+    const UINT32 requestedHeight,
+    const artworkdecoder::RasterVariant rasterVariant) {
     using namespace artworkdecoder;
     if (shuttingDown_ || stopToken.stop_requested())
         return Failure(E_ABORT, L"Trusted artwork decode was cancelled.");
     const ContentType contentType = mimeType == L"image/jpeg"
         ? ContentType::Jpeg
         : mimeType == L"image/png" ? ContentType::Png
-        : mimeType == L"image/webp" ? ContentType::WebP : ContentType::Invalid;
+        : mimeType == L"image/webp" ? ContentType::WebP
+        : mimeType == L"image/svg+xml" ? ContentType::Svg : ContentType::Invalid;
     if (contentType == ContentType::Invalid || bytes.empty() ||
         bytes.size() > limits_.maximumEncodedArtworkBytes ||
-        bytes.size() > maximumEncodedBytes)
+        bytes.size() > maximumEncodedBytes ||
+        (contentType == ContentType::Svg &&
+            (requestedWidth == 0 || requestedHeight == 0 ||
+             requestedWidth > 512 || requestedHeight > 512)) ||
+        (contentType != ContentType::Svg &&
+            (requestedWidth != 0 || requestedHeight != 0 ||
+             rasterVariant != RasterVariant::OriginalColor)))
         return Failure(E_INVALIDARG, L"Trusted artwork decode input was invalid.");
 
     std::wstring startError;
@@ -97,6 +107,9 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
     header->maximumDecodedBytes = limits_.maximumDecodedImageBytes;
     header->maximumPixels = limits_.maximumArtworkPixels;
     header->maximumDimension = limits_.maximumArtworkDimension;
+    header->requestedWidth = requestedWidth;
+    header->requestedHeight = requestedHeight;
+    header->rasterVariant = rasterVariant;
     std::memcpy(view_ + encodedOffset, bytes.data(), bytes.size());
     SecureZeroMemory(bytes.data(), bytes.size());
     ResetEvent(responseEvent_);

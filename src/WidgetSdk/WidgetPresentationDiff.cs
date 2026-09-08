@@ -383,6 +383,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.MediaSessionId, before.MediaSessionId, after.MediaSessionId);
         Add(PresentationProperty.ImageFit, before.ImageFit, after.ImageFit);
         Add(PresentationProperty.Glyph, before.Glyph, after.Glyph);
+        Add(PresentationProperty.PackageIcon, before.PackageIcon, after.PackageIcon);
         Add(PresentationProperty.IndicatorSize, before.IndicatorSize, after.IndicatorSize);
         Add(PresentationProperty.ActionSurfaceOrientation, before.ActionSurfaceOrientation, after.ActionSurfaceOrientation);
         Add(PresentationProperty.ActionSurfacePresentation, before.ActionSurfacePresentation, after.ActionSurfacePresentation);

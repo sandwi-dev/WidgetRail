@@ -12,7 +12,10 @@ public sealed record NavigationShellDestination(
     string ActionId,
     WidgetGlyph Glyph,
     string? AccessibilityLabel = null,
-    bool IsDisabled = false);
+    bool IsDisabled = false)
+{
+    public WidgetIcon? Icon { get; init; }
+}
 
 /// <summary>
 /// Declares whether a navigation shell's content currently has a direct focus
@@ -298,7 +301,10 @@ public static partial class UI
                 compactIds[index], destination.Label, destination.ActionId)
             {
                 AccessibilityLabel = $"{accessibility}, {state}",
-                Glyph = destination.Glyph,
+                Glyph = destination.Icon?.FallbackGlyph ?? destination.Glyph,
+                PackageIcon = destination.Icon is null
+                    ? null
+                    : WidgetIconMaterializer.PackageIcon(destination.Icon),
                 IsSelected = selected ? true : null,
                 IsDisabled = destination.IsDisabled ? true : null,
                 FocusPersistenceId = focusPersistenceIds[index],
@@ -318,7 +324,10 @@ public static partial class UI
                 railIds[index], destination.Label, destination.ActionId)
             {
                 AccessibilityLabel = $"{accessibility}, {state}",
-                Glyph = destination.Glyph,
+                Glyph = destination.Icon?.FallbackGlyph ?? destination.Glyph,
+                PackageIcon = destination.Icon is null
+                    ? null
+                    : WidgetIconMaterializer.PackageIcon(destination.Icon),
                 IsSelected = selected ? true : null,
                 IsDisabled = destination.IsDisabled ? true : null,
                 FocusPersistenceId = focusPersistenceIds[index],

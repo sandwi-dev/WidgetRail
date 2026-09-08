@@ -136,6 +136,8 @@ constexpr std::size_t kMaximumIdentifierLength =
     protocol_contract::MaximumCapabilityIdLength;
 constexpr std::size_t kMaximumLabelLength = 256;
 constexpr std::size_t kMaximumControllerButtonLength = 32;
+constexpr std::size_t kMaximumPackageIconAssets = 32;
+constexpr std::size_t kMaximumPackageIconAssetBytes = 64U * 1024U;
 
 bool IsCanonicalHttpsOrigin(const std::wstring_view origin) noexcept {
     if (!origin.starts_with(L"https://") || origin.size() <= 8 ||
@@ -268,11 +270,50 @@ bool IsCanonicalThemeVersion(const std::wstring_view value) noexcept {
 }
 
 bool IsWidgetGlyph(const std::wstring_view value) noexcept {
-    static constexpr std::array<std::wstring_view, 22> glyphs{
+    static constexpr std::array<std::wstring_view, 23> glyphs{
         L"music", L"play", L"pause", L"previous", L"next", L"refresh", L"shuffle",
         L"like", L"dislike", L"repeat", L"repeatOne", L"settings", L"warning", L"check", L"connection",
-        L"volume", L"muted", L"microphone", L"wifi", L"ethernet", L"rewind", L"fastForward"};
+        L"volume", L"muted", L"microphone", L"wifi", L"ethernet", L"rewind", L"fastForward",
+        L"fullscreen"};
     return std::find(glyphs.begin(), glyphs.end(), value) != glyphs.end();
+}
+
+bool IsCanonicalSha256(const std::wstring_view value) noexcept {
+    return value.size() == 64 &&
+        std::all_of(value.begin(), value.end(), [](const wchar_t character) {
+            return (character >= L'0' && character <= L'9') ||
+                (character >= L'a' && character <= L'f');
+        });
+}
+
+bool IsIdentifier(std::wstring_view value);
+
+std::optional<WidgetPackageIcon> ParsePackageIcon(
+    const JsonObject& source,
+    std::wstring& error) {
+    if (!HasOnlyProperties(source, {L"assetId", L"colorMode"}) ||
+        source.GetNamedValue(L"assetId").ValueType() != JsonValueType::String ||
+        source.GetNamedValue(L"colorMode").ValueType() != JsonValueType::String) {
+        error = L"Package icon has an invalid shape.";
+        return std::nullopt;
+    }
+    WidgetPackageIcon result;
+    result.assetId = std::wstring(std::wstring_view(source.GetNamedString(L"assetId")));
+    if (!IsIdentifier(result.assetId)) {
+        error = L"Package icon asset identity is invalid.";
+        return std::nullopt;
+    }
+    const std::wstring colorMode(
+        std::wstring_view(source.GetNamedString(L"colorMode")));
+    if (colorMode == L"originalColor")
+        result.colorMode = WidgetPackageIconColorMode::OriginalColor;
+    else if (colorMode == L"themeTint")
+        result.colorMode = WidgetPackageIconColorMode::ThemeTint;
+    else {
+        error = L"Package icon color mode is invalid.";
+        return std::nullopt;
+    }
+    return result;
 }
 
 std::wstring Quote(const std::filesystem::path& path) {
@@ -551,6 +592,96 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
                 error = L"Widget descriptor property 'icon' is not a supported WidgetGlyph.";
                 return std::nullopt;
             }
+        }
+        if (source.HasKey(L"packageIcon")) {
+            if (source.GetNamedValue(L"packageIcon").ValueType() != JsonValueType::Object) {
+                error = L"Widget descriptor property 'packageIcon' must be an object.";
+                return std::nullopt;
+            }
+            descriptor.packageIcon = ParsePackageIcon(
+                source.GetNamedObject(L"packageIcon"), error);
+            if (!descriptor.packageIcon) return std::nullopt;
+        }
+        if (source.HasKey(L"packageContentDigest")) {
+            if (source.GetNamedValue(L"packageContentDigest").ValueType() !=
+                    JsonValueType::String) {
+                error = L"Widget descriptor property 'packageContentDigest' must be a string.";
+                return std::nullopt;
+            }
+            descriptor.packageContentDigest = std::wstring(std::wstring_view(
+                source.GetNamedString(L"packageContentDigest")));
+        }
+        JsonArray iconAssets;
+        if (source.HasKey(L"iconAssets") &&
+            source.GetNamedValue(L"iconAssets").ValueType() != JsonValueType::Array) {
+            error = L"Widget descriptor iconAssets must be an array.";
+            return std::nullopt;
+        }
+        const bool hasIconAssets = source.HasKey(L"iconAssets");
+        if (hasIconAssets)
+            iconAssets = source.GetNamedArray(L"iconAssets");
+        const std::uint32_t iconAssetCount = hasIconAssets ? iconAssets.Size() : 0;
+        if (iconAssetCount > kMaximumPackageIconAssets) {
+            error = L"Widget descriptor contains too many package icon assets.";
+            return std::nullopt;
+        }
+        descriptor.iconAssets.reserve(iconAssetCount);
+        std::unordered_set<std::wstring> iconAssetIds;
+        for (std::uint32_t assetIndex = 0; assetIndex < iconAssetCount; ++assetIndex) {
+            if (iconAssets.GetAt(assetIndex).ValueType() != JsonValueType::Object) {
+                error = L"Widget descriptor contains a non-object package icon asset.";
+                return std::nullopt;
+            }
+            const auto encoded = iconAssets.GetObjectAt(assetIndex);
+            if (!HasOnlyProperties(encoded,
+                    {L"id", L"sourceSha256", L"normalizedSha256",
+                     L"sourceBytes", L"normalizedBytes"})) {
+                error = L"Widget descriptor package icon asset has an invalid shape.";
+                return std::nullopt;
+            }
+            WidgetPackageIconAsset asset;
+            if (!ReadDescriptorString(encoded, L"id", asset.id, true, error))
+                return std::nullopt;
+            if (encoded.GetNamedValue(L"sourceSha256").ValueType() != JsonValueType::String ||
+                encoded.GetNamedValue(L"normalizedSha256").ValueType() != JsonValueType::String ||
+                encoded.GetNamedValue(L"sourceBytes").ValueType() != JsonValueType::Number ||
+                encoded.GetNamedValue(L"normalizedBytes").ValueType() != JsonValueType::Number) {
+                error = L"Widget descriptor package icon metadata is invalid.";
+                return std::nullopt;
+            }
+            asset.sourceSha256 = std::wstring(std::wstring_view(
+                encoded.GetNamedString(L"sourceSha256")));
+            asset.normalizedSha256 = std::wstring(std::wstring_view(
+                encoded.GetNamedString(L"normalizedSha256")));
+            const double sourceBytes = encoded.GetNamedNumber(L"sourceBytes");
+            const double normalizedBytes = encoded.GetNamedNumber(L"normalizedBytes");
+            if (!IsCanonicalSha256(asset.sourceSha256) ||
+                !IsCanonicalSha256(asset.normalizedSha256) ||
+                !std::isfinite(sourceBytes) || std::floor(sourceBytes) != sourceBytes ||
+                sourceBytes < 1 || sourceBytes > kMaximumPackageIconAssetBytes ||
+                !std::isfinite(normalizedBytes) || std::floor(normalizedBytes) != normalizedBytes ||
+                normalizedBytes < 1 || normalizedBytes > kMaximumPackageIconAssetBytes ||
+                !iconAssetIds.insert(asset.id).second) {
+                error = L"Widget descriptor package icon metadata exceeds its bound.";
+                return std::nullopt;
+            }
+            asset.sourceBytes = static_cast<std::size_t>(sourceBytes);
+            asset.normalizedBytes = static_cast<std::size_t>(normalizedBytes);
+            descriptor.iconAssets.push_back(std::move(asset));
+        }
+        if ((!descriptor.iconAssets.empty() || descriptor.packageIcon) &&
+            !IsCanonicalSha256(descriptor.packageContentDigest)) {
+            error = L"Widget descriptor package icon content authority is invalid.";
+            return std::nullopt;
+        }
+        if (descriptor.iconAssets.empty() && !descriptor.packageContentDigest.empty()) {
+            error = L"Widget descriptor has package icon content authority without assets.";
+            return std::nullopt;
+        }
+        if (descriptor.packageIcon &&
+            !iconAssetIds.contains(descriptor.packageIcon->assetId)) {
+            error = L"Widget descriptor package icon does not reference a declared asset.";
+            return std::nullopt;
         }
         if (source.HasKey(L"pinningSupported")) {
             if (source.GetNamedValue(L"pinningSupported").ValueType() !=
@@ -860,6 +991,13 @@ std::wstring SafeBridgeError(const JsonObject& response) {
     return message;
 }
 
+std::wstring BridgeErrorCode(const JsonObject& response) {
+    if (!response.HasKey(L"payload") ||
+        response.GetNamedValue(L"payload").ValueType() != JsonValueType::Object)
+        return {};
+    return OptionalString(response.GetNamedObject(L"payload"), L"code");
+}
+
 WidgetBridgeRequestFailureCategory BridgeRequestFailureCategoryFromError(
     const JsonObject& response) {
     if (!response.HasKey(L"payload") ||
@@ -931,7 +1069,7 @@ WidgetNode ParseNode(const JsonObject& source) {
         for (std::uint32_t index = 0; index < options.Size(); ++index) {
             const auto encoded = options.GetObjectAt(index);
             if (!HasNoUnknownProperties(encoded,
-                    {L"id", L"label", L"actionId", L"isSelected", L"glyph",
+                    {L"id", L"label", L"actionId", L"isSelected", L"glyph", L"packageIcon",
                      L"accessibilityLabel", L"isDisabled", L"isBusy"}))
                 throw winrt::hresult_invalid_argument();
             WidgetSelectOption option{
@@ -939,16 +1077,26 @@ WidgetNode ParseNode(const JsonObject& source) {
                 std::wstring(std::wstring_view(encoded.GetNamedString(L"label"))),
                 std::wstring(std::wstring_view(encoded.GetNamedString(L"actionId"))),
                 OptionalString(encoded, L"glyph"),
+                std::nullopt,
                 OptionalString(encoded, L"accessibilityLabel"),
                 encoded.GetNamedBoolean(L"isSelected", false),
                 encoded.GetNamedBoolean(L"isDisabled", false),
                 encoded.GetNamedBoolean(L"isBusy", false),
             };
+            if (encoded.HasKey(L"packageIcon")) {
+                if (encoded.GetNamedValue(L"packageIcon").ValueType() != JsonValueType::Object)
+                    throw winrt::hresult_invalid_argument();
+                std::wstring packageIconError;
+                option.packageIcon = ParsePackageIcon(
+                    encoded.GetNamedObject(L"packageIcon"), packageIconError);
+                if (!option.packageIcon) throw winrt::hresult_invalid_argument();
+            }
             if (!IsIdentifier(option.id) || !IsIdentifier(option.actionId) ||
                 !IsBoundedVisibleText(option.label) ||
                 (!option.accessibilityLabel.empty() &&
                  !IsBoundedVisibleText(option.accessibilityLabel)) ||
                 (!option.glyph.empty() && !IsWidgetGlyph(option.glyph)) ||
+                (option.packageIcon.has_value() && option.glyph.empty()) ||
                 !ids.insert(option.id).second ||
                 !actionIds.insert(option.actionId).second)
                 throw winrt::hresult_invalid_argument();
@@ -1034,6 +1182,16 @@ WidgetNode ParseNode(const JsonObject& source) {
             L"MediaViewport requires an embedded media surface identity.");
     node.imageFit = OptionalString(source, L"imageFit");
     node.glyph = OptionalString(source, L"glyph");
+    if (source.HasKey(L"packageIcon")) {
+        if (source.GetNamedValue(L"packageIcon").ValueType() != JsonValueType::Object)
+            throw winrt::hresult_invalid_argument();
+        std::wstring packageIconError;
+        node.packageIcon = ParsePackageIcon(
+            source.GetNamedObject(L"packageIcon"), packageIconError);
+        if (!node.packageIcon || node.glyph.empty() ||
+            (node.kind != L"button" && node.kind != L"icon"))
+            throw winrt::hresult_invalid_argument();
+    }
     node.indicatorSize = OptionalString(source, L"indicatorSize");
     node.visibleWhen = OptionalString(source, L"visibleWhen");
     if (!node.visibleWhen.empty() && node.visibleWhen != L"always" &&
@@ -2147,13 +2305,13 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 47> properties{
+    static constexpr std::array<std::wstring_view, 48> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
         L"valueChangedActionId", L"sliderInteractionMode", L"imageSource",
         L"artworkHandle", L"focusBackgroundArtworkHandle", L"mediaSessionId",
-        L"imageFit", L"glyph", L"indicatorSize",
+        L"imageFit", L"glyph", L"packageIcon", L"indicatorSize",
         L"actionSurfaceOrientation", L"actionSurfacePresentation", L"gridMinimumColumnWidth",
         L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
         L"focusPersistenceId", L"focus", L"inputScopeId", L"initialChildFocusId",
@@ -2197,7 +2355,7 @@ bool ValidateWidgetDocumentStructure(
                  L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum",
                  L"step", L"valueChangedActionId", L"sliderInteractionMode",
                  L"imageSource", L"artworkHandle", L"focusBackgroundArtworkHandle",
-                 L"mediaSessionId", L"imageFit", L"glyph",
+                 L"mediaSessionId", L"imageFit", L"glyph", L"packageIcon",
                  L"indicatorSize", L"actionSurfaceOrientation", L"actionSurfacePresentation",
                  L"gridMinimumColumnWidth", L"gridMaximumColumns", L"isDisabled",
                  L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
@@ -2746,7 +2904,8 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         property == L"gridMaximumColumns" || property == L"minimum" ||
         property == L"maximum" || property == L"step" ||
         property == L"imageFit" ||
-        property == L"glyph" || property == L"indicatorSize" ||
+        property == L"glyph" || property == L"packageIcon" ||
+        property == L"indicatorSize" ||
         property == L"actionSurfaceOrientation" ||
         property == L"actionSurfacePresentation" ||
         property == L"scrollAxis" ||
@@ -4270,6 +4429,116 @@ WidgetArtworkRequestDisposition WidgetBridgeClient::RequestArtwork(
     } catch (const winrt::hresult_error&) {
     }
     return WidgetArtworkRequestDisposition::TerminalFailure;
+}
+
+WidgetPackageIconResolution WidgetBridgeClient::ResolvePackageIcon(
+    const std::wstring_view widgetId,
+    const std::wstring_view runtimeGeneration,
+    const std::wstring_view presentationGeneration,
+    const std::wstring_view packageContentDigest,
+    const std::wstring_view assetId,
+    const std::wstring_view sourceSha256,
+    const std::wstring_view normalizedSha256,
+    const std::stop_token stopToken) {
+    const auto terminal = [] {
+        return WidgetPackageIconResolution{
+            WidgetPackageIconResolutionDisposition::TerminalFailure, {}};
+    };
+    if (!requestMutex_.lock(stopToken)) return terminal();
+    const std::lock_guard lock(requestMutex_, std::adopt_lock);
+    if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_ ||
+        !IsIdentifier(widgetId) || !IsIdentifier(runtimeGeneration) ||
+        !IsIdentifier(presentationGeneration) || !IsIdentifier(assetId) ||
+        !IsCanonicalSha256(packageContentDigest) || !IsCanonicalSha256(sourceSha256) ||
+        !IsCanonicalSha256(normalizedSha256)) return terminal();
+    winrt::handle stopEvent{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+    if (!stopEvent) return terminal();
+    std::stop_callback signalStop{stopToken, [event = stopEvent.get()] {
+        (void)SetEvent(event);
+    }};
+    if (stopToken.stop_requested()) return terminal();
+    try {
+        JsonObject payload;
+        payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
+        payload.Insert(L"runtimeGeneration", JsonValue::CreateStringValue(
+            winrt::hstring(runtimeGeneration)));
+        payload.Insert(L"presentationGeneration", JsonValue::CreateStringValue(
+            winrt::hstring(presentationGeneration)));
+        payload.Insert(L"packageContentDigest", JsonValue::CreateStringValue(
+            winrt::hstring(packageContentDigest)));
+        payload.Insert(L"assetId", JsonValue::CreateStringValue(winrt::hstring(assetId)));
+        payload.Insert(L"sourceSha256", JsonValue::CreateStringValue(
+            winrt::hstring(sourceSha256)));
+        payload.Insert(L"normalizedSha256", JsonValue::CreateStringValue(
+            winrt::hstring(normalizedSha256)));
+        const long long requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(L"resolve-package-icon"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
+            static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()), stopEvent.get()))
+            return terminal();
+        while (const auto frame = ReadFrame(stopEvent.get())) {
+            if (stopToken.stop_requested()) {
+                transportTainted_ = true;
+                return terminal();
+            }
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            const auto responseId = static_cast<long long>(
+                response.GetNamedNumber(L"requestId"));
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
+                        appearanceChanges_, catalogChanges_, status, &artworkResults_,
+                        &localPackageInstallResults_)) return terminal();
+                continue;
+            }
+            if (responseId != requestId) return terminal();
+            const auto type = response.GetNamedString(L"type");
+            if (type == L"error") {
+                if (BridgeErrorCode(response) == L"stale_package_icon_authority")
+                    return {
+                        WidgetPackageIconResolutionDisposition::OriginRetired,
+                        {}};
+                return terminal();
+            }
+            if (type != L"package-icon") return terminal();
+            const auto encoded = response.GetNamedObject(L"payload");
+            if (!HasOnlyProperties(encoded,
+                    {L"widgetId", L"runtimeGeneration", L"presentationGeneration",
+                     L"packageContentDigest", L"assetId", L"sourceSha256",
+                     L"normalizedSha256", L"normalizedSvgBase64"}))
+                return terminal();
+            WidgetPackageIconResult result{
+                OptionalString(encoded, L"widgetId"),
+                OptionalString(encoded, L"runtimeGeneration"),
+                OptionalString(encoded, L"presentationGeneration"),
+                OptionalString(encoded, L"packageContentDigest"),
+                OptionalString(encoded, L"assetId"),
+                OptionalString(encoded, L"sourceSha256"),
+                OptionalString(encoded, L"normalizedSha256"),
+                {},
+            };
+            const auto bytes = DecodeBase64Bounded(
+                OptionalString(encoded, L"normalizedSvgBase64"),
+                kMaximumPackageIconAssetBytes);
+            if (!bytes || result.widgetId != widgetId ||
+                result.runtimeGeneration != runtimeGeneration ||
+                result.presentationGeneration != presentationGeneration ||
+                result.packageContentDigest != packageContentDigest ||
+                result.assetId != assetId || result.sourceSha256 != sourceSha256 ||
+                result.normalizedSha256 != normalizedSha256)
+                return terminal();
+            result.normalizedSvg = std::move(*bytes);
+            return {
+                WidgetPackageIconResolutionDisposition::Resolved,
+                std::move(result)};
+        }
+    } catch (const winrt::hresult_error&) {
+    }
+    return terminal();
 }
 
 std::optional<EmbeddedMediaBundle> WidgetBridgeClient::ResolveEmbeddedMedia(

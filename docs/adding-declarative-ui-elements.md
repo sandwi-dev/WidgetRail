@@ -243,6 +243,40 @@ optional parameter. Optional parameters are source-compatible but do not
 preserve the old compiled CLR signature. Keep an exact forwarding overload
 when supported already-compiled consumers require it.
 
+### Resource-bearing visual properties
+
+When a new property references package content, treat declaration, immutable
+pixels, and live consumer authority as three different owners:
+
+1. The manifest declares a bounded logical asset ID and exact package-relative
+   path. Package installation validates exact case, sealed bytes, type, count,
+   per-item size, and aggregate size.
+2. Catalog descriptors publish only bounded metadata and content digests.
+   Snapshots carry only the logical ID and a deterministic fallback—never the
+   package path or payload bytes.
+3. The host requests bytes lazily through a typed Bridge operation that does not
+   start a widget worker. Revalidate package/catalog generation before and after
+   I/O, read only the verified bounded length, reject extra/truncated/hash-changed
+   bytes, and recheck the exact current consumer before publishing completion.
+4. Decode untrusted formats in the existing bounded private process owner. Add
+   protocol fields for the admitted content type, physical output size, raster
+   variant, correlation, and every byte/dimension/complexity ceiling. Keep hard
+   deadline, process/job, poison/restart, queue, memory, and shutdown ownership.
+5. Key reusable decoded pixels by immutable package/content/asset digest,
+   physical size, and actual raster variant. Do not include focus, snapshot,
+   presentation generation, or a paint-time theme color in that key. Validate
+   those live generations separately before use.
+6. Prove semantic fallback while missing, pending, rejected, stale, or failed;
+   same-resource reuse; distinct-resource coexistence; package replacement;
+   changed-after-admission rejection; count/byte eviction; DPI variants;
+   renderer-device loss; full/pinned/chrome parity; and accessibility stability.
+
+For static SVG specifically, reject scripts, events, external references,
+embedded data, animation, filters, unsupported elements/attributes, non-finite
+geometry, malformed viewBox/transform arity, and excessive element/depth/path/
+numeric/transform/style complexity before the native backend. Editor-export IDs
+may be removed only when every reference mechanism remains prohibited.
+
 ## Bridge and native admission changes
 
 Managed validation is not a substitute for native validation. The host treats

@@ -938,13 +938,13 @@ or `ResponsiveGrid` when only placement, not hierarchy, changes.
 | `UI.Slider(value, minimum, maximum, step, valueChangedAction, id, label, value?, activation?)` | focusable value control | Protocol 3; absolute requested values and direct L/R adjustment. `.RequireControllerActivation()` opts into protocol-v10 A-to-adjust behavior. |
 | `UI.Spacer(id)` | spacer | Layout-only. |
 | `UI.Image(httpsUrl, id, alt, fit?)` | image | HTTPS only; host applies download/decode/cache limits. |
-| `UI.Icon(glyph, id, label)` | semantic icon | Closed host-rendered glyph vocabulary. |
+| `UI.Icon(glyph or WidgetIcon, id, label)` | semantic or package icon | Closed host-rendered glyph fallback; protocol v46 may resolve one declared package SVG lazily. |
 | `UI.LoadingIndicator(id, label, size?)` | indeterminate status | Protocol 5; native, nonfocusable, static under reduced motion. |
 | `UI.ActionSurface(action, id, label, orientation, children...)` | rich full-surface action | Protocol 7; one focus/pointer/action target with bounded presentational children. |
 | `UI.Tile(...)` | rich tile ActionSurface | Optional `TileArtwork`, multiline copy, visible state, one full-tile action, and protocol-v34 bounded contextual actions. |
 | `UI.PosterTile(...)` | fixed-aspect poster ActionSurface | Protocol 37; optional bounded Cover artwork fills the card behind a themeable bottom scrim and fixed copy rows while the whole poster remains one action/accessibility target. |
 | `UI.FocusPresentationSurface(content, defaultPresentation, id)` | focus-associated presentation consumer | Protocol 40; native focus selects one bounded admitted display-only fragment without worker or input authority. |
-| `UI.Toast(title, message, tone, id, duration?, glyph?)` | transient feedback | No focus or host timer; remove widget-owned state with `WidgetTimedMutation`. |
+| `UI.Toast(title, message, tone, id, duration?, glyph?)`, `UI.ToastWithIcon(icon, ...)` | transient feedback | No focus or host timer; remove widget-owned state with `WidgetTimedMutation`. The distinct package-icon factory preserves legacy `Toast(..., null)` source and CLR binding. |
 | `UI.IconButton(...)` | icon-only button | Required accessible name plus stable size/variant classes. |
 | `UI.Card(...)`, `UI.SectionHeader(...)`, `UI.Divider(...)` | nonfocusable hierarchy | Theme-respecting grouping, heading, and separator compositions. |
 | `UI.StatusBadge(...)`, `UI.Alert(...)`, `UI.EmptyState(...)` | status and recovery | Visible non-color semantics; Alert/EmptyState permit at most one recovery action. |
@@ -983,8 +983,59 @@ actions, focus, scopes, scrolling, shortcuts, or interaction state.
 
 Current semantic glyphs are `Music`, `Play`, `Pause`, `Previous`, `Next`,
 `Refresh`, `Shuffle`, `Like`, `Dislike`, `Repeat`, `Settings`, `Warning`,
-`Check`, `Connection`, `Volume`, `Muted`, `Microphone`, `Wifi`, and `Ethernet`.
-Widgets cannot supply SVG paths or icon-font names.
+`Check`, `Connection`, `Volume`, `Muted`, `Microphone`, `Wifi`, `Ethernet`,
+`Rewind`, `FastForward`, and `Fullscreen`.
+Widgets cannot submit inline SVG paths, icon-font names, external references,
+scripts, filters, animation, or drawing code. Protocol v46 allows a package to
+declare bounded static SVG files by logical ID. The widget uses `WidgetIcon`
+with a mandatory semantic fallback; snapshots and the catalog carry only that
+logical ID and verified digests, never SVG bytes.
+
+```json
+{
+  "presentation": {
+    "icon": "connection",
+    "packageIcon": { "assetId": "brand.mark", "colorMode": "originalColor" }
+  },
+  "iconAssets": {
+    "brand.mark": { "path": "assets/icons/brand.svg" },
+    "controls.play": { "path": "assets/icons/play.svg" }
+  }
+}
+```
+
+```csharp
+var play = WidgetIcon.PackageSvg(
+    "controls.play",
+    WidgetPackageIconColorMode.ThemeTint,
+    WidgetGlyph.Play);
+
+UI.Button("Play", "play", "controls.play").Icon(play);
+UI.Icon(play, "now-playing.icon", "Play");
+UI.SettingsRow(play, "Playback", new("Open", "playback.open"), "playback.row");
+UI.ToastWithIcon(play, "Ready", "Playback is available", ToastTone.Success,
+    "playback.toast");
+```
+
+The same leading `WidgetIcon` overload is available on `SettingsRow`,
+`ValueRow`, `ChoiceRow`, `StatusBadge`, `Alert`, and `EmptyState`. Their legacy
+glyph overloads and output remain unchanged. Runtime catalog admission isolates
+an unavailable icon asset to that logical ID: valid siblings remain usable and
+declared-but-unavailable references render their semantic fallback. Packaging
+and installation still reject malformed authored SVG input.
+
+Use `OriginalColor` for artwork whose authored colors carry its visual identity.
+Use `ThemeTint` for monochrome control symbols: the decoder caches a reusable
+alpha mask and the host applies the current WRSS foreground at paint time, so
+focused, disabled, high-contrast, and theme changes do not decode the SVG again.
+Both modes fall back to the mandatory `WidgetGlyph` while the asset is pending,
+invalid, unavailable, stale, or outside a resource bound. A package may declare
+at most 32 assets, each source and normalized form is limited to 64 KiB, and the
+aggregate source budget is 512 KiB. Paths are exact-case, normalized,
+package-relative `.svg` files. Packaging preserves the authored source bytes;
+normalization and rasterization happen only inside the trusted catalog/decoder
+pipeline. Keep package icon declarations published while a control remains
+visible; changing package/catalog authority retires in-flight resolution.
 
 ## Screen-reader and automation contract
 
@@ -2134,7 +2185,9 @@ scope, limits, errors, and tests. YT Music is the first migration consumer.
 | `entrypoint.runtime` | Only `dotnet-worker`. |
 | `entrypoint.assembly` | Exact-case normalized package-relative path with `/`, no traversal. |
 | `entrypoint.type` | Namespace-qualified public concrete `Widget` type with a public constructor whose parameters are all optional. |
-| `presentation.icon` | Optional closed semantic `WidgetGlyph` name, default `connection`; never a file, SVG, font, or drawing payload. |
+| `presentation.icon` | Optional closed semantic `WidgetGlyph` name, default `connection`; it remains the mandatory fallback and never contains a path or drawing payload. |
+| `presentation.packageIcon` | Optional protocol-v46 `{ assetId, colorMode }` reference to `iconAssets`; `colorMode` is `originalColor` or `themeTint`. |
+| `iconAssets` | Optional bounded map of logical icon IDs to exact-case package-relative `.svg` paths. The host validates and resolves these lazily without starting a widget worker. |
 | `permissions` | Required declarations. Required still means explicit user consent. |
 | `optionalPermissions` | Degradable declarations; may not duplicate a required ID. |
 | `residencyPolicy.schemaVersion` | `1`. Unknown versions fail validation. |

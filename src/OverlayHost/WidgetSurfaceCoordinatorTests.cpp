@@ -1086,6 +1086,16 @@ int main() {
                       widgetrail::input::NavigationDirection::Right, true),
                   "D-pad Right is consumed by active pinned slider adjustment");
             auto requests = slider.TakeInputRequests();
+            Check(requests.empty(),
+                  "active pinned adjustment waits for the settlement owner");
+            const auto settlementNow = GetTickCount64();
+            Check(slider.PumpSliderInteraction(
+                      settlementNow +
+                          widgetrail::input::SliderInteractionState::
+                              SettlementDelayMilliseconds,
+                      false),
+                  "settled pinned adjustment publishes through the ordinary pump");
+            requests = slider.TakeInputRequests();
             Check(requests.size() == 1 && requests[0].sliderActionRequest &&
                       requests[0].requestedValue == 45.0 &&
                       requests[0].sliderActionRequest->actionId ==
@@ -1511,6 +1521,16 @@ int main() {
                       widgetrail::input::NavigationDirection::Right, true),
                   "D-pad Right stays consumed by adjustment after Win32 focus loss");
             auto queued = media.TakeInputRequests();
+            Check(queued.empty(),
+                  "adjustment surviving Win32 focus loss waits for settlement");
+            const auto focusLossSettlementNow = GetTickCount64();
+            Check(media.PumpSliderInteraction(
+                      focusLossSettlementNow +
+                          widgetrail::input::SliderInteractionState::
+                              SettlementDelayMilliseconds,
+                      false),
+                  "adjustment surviving Win32 focus loss settles through the ordinary pump");
+            queued = media.TakeInputRequests();
             Check(queued.size() == 1 && queued[0].sliderActionRequest &&
                       queued[0].nodeId == timelineId &&
                       queued[0].protocolButton == L"dPadRight" &&
@@ -1545,8 +1565,22 @@ int main() {
                       widgetrail::input::NavigationDirection::Right, true),
                   "adjustment survives the busy round trip for the next step");
             auto secondStep = media.TakeInputRequests();
+            Check(secondStep.empty(),
+                  "the step after a busy round trip waits for settlement");
+            const auto secondStepSettlementNow = GetTickCount64();
+            Check(media.PumpSliderInteraction(
+                      secondStepSettlementNow +
+                          widgetrail::input::SliderInteractionState::
+                              SettlementDelayMilliseconds,
+                      false),
+                  "the step after a busy round trip settles through the ordinary pump");
+            secondStep = media.TakeInputRequests();
             Check(secondStep.size() == 1 && secondStep[0].sliderActionRequest &&
-                      secondStep[0].requestedValue == 130000.0,
+                      secondStep[0].nodeId == timelineId &&
+                      secondStep[0].protocolButton == L"dPadRight" &&
+                      secondStep[0].requestedValue == 130000.0 &&
+                      secondStep[0].sliderActionRequest->actionId == L"media.seek" &&
+                      secondStep[0].sliderActionRequest->requestedValue == 130000.0,
                   "the step after a busy round trip queues the next absolute value");
 
             // The left stick is the same directional owner as the D-pad.
@@ -1559,9 +1593,22 @@ int main() {
                       widgetrail::input::NavigationDirection::Left, true),
                   "the left stick adjusts a selected pinned slider like the D-pad");
             auto stickStep = media.TakeInputRequests();
+            Check(stickStep.empty(),
+                  "a stick step waits for settlement");
+            const auto stickStepSettlementNow = GetTickCount64();
+            Check(media.PumpSliderInteraction(
+                      stickStepSettlementNow +
+                          widgetrail::input::SliderInteractionState::
+                              SettlementDelayMilliseconds,
+                      false),
+                  "a stick step settles through the ordinary pump");
+            stickStep = media.TakeInputRequests();
             Check(stickStep.size() == 1 && stickStep[0].sliderActionRequest &&
+                      stickStep[0].nodeId == timelineId &&
                       stickStep[0].protocolButton == L"dPadLeft" &&
-                      stickStep[0].requestedValue == 125000.0,
+                      stickStep[0].requestedValue == 125000.0 &&
+                      stickStep[0].sliderActionRequest->actionId == L"media.seek" &&
+                      stickStep[0].sliderActionRequest->requestedValue == 125000.0,
                   "a stick step queues one exact absolute value change");
             Check(media.focusedElementId() == timelineId,
                   "a stick step never navigates away from the adjusting slider");

@@ -7,6 +7,8 @@ using WidgetRail.WidgetProtocol;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Package SVG icons normalize a bounded static subset and reject active content",
+        PackageSvgIconCatalogTests.Run),
     ("Install and discovery are deterministic across IDs and versions", InstallAndDiscover),
     ("Enable and order state persists atomically", StatePersists),
     ("Version pins are disabled-only and schema-one state migrates", VersionPinningAndMigration),

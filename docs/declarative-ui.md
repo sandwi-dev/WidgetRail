@@ -6,7 +6,10 @@ release evidence gate
 
 Widgets return a semantic tree from `Widget.Render()`. The host owns layout,
 pixels, focus presentation, accessibility, and controller dispatch. Widgets
-cannot submit HTML, JavaScript, SVG, font glyphs, or arbitrary drawing paths.
+cannot submit HTML, JavaScript, inline SVG, font glyphs, or arbitrary drawing
+paths. Protocol v46 package SVG icons are the bounded exception: authors refer
+to a manifest-declared logical asset through `WidgetIcon`, retain a semantic
+glyph fallback, and never place SVG bytes or paths in a snapshot.
 
 The native renderer has a bounded accessibility-geometry path for visible
 Text, Button, Slider, ActionSurface, Image, Icon, Progress, and LoadingIndicator
@@ -156,7 +159,7 @@ primary accessibility contract.
 | `UI.Tile(...)` | `actionSurface` | Controller-first tile composition with optional artwork, multiline copy, visible state, and one full-tile target. |
 | `UI.PosterTile(...)` | `actionSurface` | Protocol-v37 fixed-aspect poster composition with optional full-background Cover artwork, bounded bottom copy, and one full-tile target. |
 | `UI.FocusPresentationSurface(content, defaultPresentation, id)` | `focusPresentationSurface` | Protocol-v40 non-interactive consumer that projects one bounded admitted fragment for the exact focused descendant without invoking the worker. |
-| `UI.Toast(title, message, tone, id, duration?, glyph?)` | baseline `row`, `stack`, `text`, `icon` | Nonfocusable lifecycle-owned notification with bounded copy, tone, and duration metadata. |
+| `UI.Toast(title, message, tone, id, duration?, glyph?)`, `UI.ToastWithIcon(icon, ...)` | baseline `row`, `stack`, `text`, `icon` | Nonfocusable lifecycle-owned notification with bounded copy, tone, duration, and an unambiguous package-icon factory. |
 | `UI.IconButton(glyph, action, id, accessibilityLabel, variant?, size?)` | `button` | Accessible icon-only action with controller-safe semantic classes. |
 | `UI.SettingsRow(label, action, id, ...)` | `stack`, `row`, `text`, `button` | Responsive setting summary whose `id.action` Button is its only focus stop. |
 | `UI.ActionSheet(title, id, scopeId, backAction, items, description?)` | `stack`, `scroll`, `button` | Bounded 1–32 item nested action scope with stable item focus IDs and scope-owned B. |
@@ -500,6 +503,8 @@ short appearance/removal motion, but reduced motion must suppress or shorten it.
 Generated IDs are `id.icon` when a semantic icon is present, `id.copy`,
 `id.title`, and `id.message`; stable classes include `.wrail-toast`, the tone
 modifier, and matching `__icon`, `__copy`, `__title`, and `__message` hooks.
+Use `UI.ToastWithIcon(...)` for a `WidgetIcon`; the distinct name deliberately
+keeps the legacy fifth-argument `null` duration call unambiguous.
 
 ## Controller scroll containers
 
@@ -870,6 +875,20 @@ UI.Button("Play", "toggle", "play")
 action semantics. Supplying an accessibility label replaces the button's
 optional explicit label; otherwise the visible button text remains its name.
 Glyphs are valid only on `icon` and `button` nodes.
+
+Protocol v46 adds `WidgetIcon.PackageSvg(assetId, colorMode, fallbackGlyph)` to
+the same icon-bearing SDK slots. The wire retains `glyph` as the mandatory
+fallback and adds only `{ assetId, colorMode }` as `packageIcon`. `OriginalColor`
+preserves admitted static colors. `ThemeTint` produces one reusable alpha mask
+and applies the current WRSS foreground during painting. Missing, invalid,
+pending, stale, over-budget, or decoder-failed package icons render the semantic
+fallback without changing focus, action, layout, or accessibility authority.
+The package manifest—not the widget view—maps the logical ID to one bounded
+package-relative `.svg` file.
+Compound leading-icon slots use the same value object through the overloads
+whose first parameter is `WidgetIcon`: `SettingsRow`, `ValueRow`, `ChoiceRow`,
+`StatusBadge`, `Alert`, and `EmptyState`. This parameter order preserves every
+legacy optional/null call without overload ambiguity.
 
 ## Controller-ready setting composites
 

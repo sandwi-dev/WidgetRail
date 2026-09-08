@@ -39,7 +39,11 @@ public:
         std::wstring mimeType,
         std::stop_token stopToken,
         artworkdecoder::TestBehavior testBehavior =
-            artworkdecoder::TestBehavior::Normal);
+            artworkdecoder::TestBehavior::Normal,
+        UINT32 requestedWidth = 0,
+        UINT32 requestedHeight = 0,
+        artworkdecoder::RasterVariant rasterVariant =
+            artworkdecoder::RasterVariant::OriginalColor);
     [[nodiscard]] ArtworkDecoderProcessStats Stats() const noexcept;
     void Shutdown() noexcept;
 

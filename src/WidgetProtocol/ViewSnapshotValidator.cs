@@ -1211,6 +1211,7 @@ public static class ViewSnapshotValidator
                         "A Select option accessibility label must be bounded and control-free.");
                 if (option.Glyph is { } glyph && !Enum.IsDefined(glyph))
                     Add($"{optionPath}.glyph", "invalid_glyph", "The semantic glyph is not supported.");
+                ValidatePackageIcon(option.PackageIcon, option.Glyph, optionPath);
                 if (option.IsSelected)
                 {
                     selectedOptions++;
@@ -1288,11 +1289,16 @@ public static class ViewSnapshotValidator
                     "A background-surface image fit requires an image source or artwork handle.");
             }
             if (node.Kind is ViewNodeKind.Button &&
-                (node.ImageSource is not null || node.ArtworkHandle is not null) && node.Glyph is not null)
+                (node.ImageSource is not null || node.ArtworkHandle is not null) &&
+                (node.Glyph is not null || node.PackageIcon is not null))
                 Add(path, "multiple_leading_visuals",
-                    "A button may use either one semantic glyph or one leading image, not both.");
+                    "A button may use either one icon or one leading image, not both.");
             if (node.Glyph is not null && node.Kind is not (ViewNodeKind.Icon or ViewNodeKind.Button))
                 Add($"{path}.glyph", "glyph_not_allowed", "Semantic glyphs apply only to icon and button nodes.");
+            if (node.PackageIcon is not null && node.Kind is not (ViewNodeKind.Icon or ViewNodeKind.Button))
+                Add($"{path}.packageIcon", "package_icon_not_allowed",
+                    "Package icons apply only to icon and button nodes.");
+            ValidatePackageIcon(node.PackageIcon, node.Glyph, path);
             if (node.Kind is ViewNodeKind.Icon)
             {
                 if (node.Glyph is null)
@@ -1581,6 +1587,7 @@ public static class ViewSnapshotValidator
                     StringLength(node.ImageSource) + StringLength(node.ArtworkHandle) +
                     StringLength(node.FocusBackgroundArtworkHandle) +
                     StringLength(node.MediaSessionId) +
+                    StringLength(node.PackageIcon?.AssetId) +
                     StringLength(node.FocusPersistenceId) + StringLength(node.InputScopeId) +
                     StringLength(node.InitialChildFocusId) +
                     StringLength(node.ScrollNearStartActionId) + StringLength(node.ScrollNearEndActionId) +
@@ -1593,9 +1600,10 @@ public static class ViewSnapshotValidator
                     (node.SelectOptions?.Take(ProtocolConstants.MaximumSelectOptionCount).Sum(option =>
                         option is null ? 0 :
                             StringLength(option.Id) + StringLength(option.ActionId) +
-                            StringLength(option.Label) + StringLength(option.AccessibilityLabel)) ?? 0);
+                            StringLength(option.Label) + StringLength(option.AccessibilityLabel) +
+                            StringLength(option.PackageIcon?.AssetId)) ?? 0);
                 if (node.ImageSource is not null || node.ArtworkHandle is not null ||
-                    node.FocusBackgroundArtworkHandle is not null)
+                    node.FocusBackgroundArtworkHandle is not null || node.PackageIcon is not null)
                     aggregateResources++;
                 if (node.Children is not null)
                     foreach (var child in node.Children)
@@ -1607,6 +1615,23 @@ public static class ViewSnapshotValidator
         }
 
         static int StringLength(string? value) => value?.Length ?? 0;
+
+        void ValidatePackageIcon(
+            WidgetPackageIcon? icon,
+            WidgetGlyph? fallback,
+            string path)
+        {
+            if (icon is null) return;
+            if (!WidgetManifestValidator.IsPackageIconAssetId(icon.AssetId))
+                Add($"{path}.packageIcon.assetId", "invalid_icon_asset_id",
+                    "Package icon asset ID is invalid.");
+            if (!Enum.IsDefined(icon.ColorMode))
+                Add($"{path}.packageIcon.colorMode", "invalid_icon_color_mode",
+                    "Package icon color mode is unsupported.");
+            if (fallback is null || !Enum.IsDefined(fallback.Value))
+                Add($"{path}.glyph", "package_icon_fallback_required",
+                    "A package icon requires one supported semantic fallback glyph.");
+        }
 
         static bool IsBoundedVisibleText(string? value) =>
             !string.IsNullOrWhiteSpace(value) &&

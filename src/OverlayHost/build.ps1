@@ -404,7 +404,9 @@ function Invoke-ArtworkDecoderBuild {
         "/Fo:$objectDirectory\",
         "/Fe:$outputDirectory\$name.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @('windowscodecs.lib', 'ole32.lib')
+    ) + $libraryArguments + @(
+        'windowscodecs.lib', 'ole32.lib', 'd2d1.lib', 'd3d11.lib', 'dxgi.lib'
+    )
     & $cl $arguments
     if ($LASTEXITCODE -ne 0) {
         throw "$name build failed with exit code $LASTEXITCODE."

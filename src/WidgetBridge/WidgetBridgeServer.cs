@@ -486,6 +486,58 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             BridgeArtworkMemoryDiagnostics.MarkSucceeded(artworkDiagnostic);
             break;
         }
+        case BridgeMessageTypes.ResolvePackageIcon:
+        {
+            var iconRequest = BridgeJson.FromElement<BridgePackageIconRequest>(request.Payload);
+            if (!BridgeRequestKey.IsBoundedIdentifier(iconRequest.WidgetId) ||
+                !BridgeRequestKey.IsBoundedIdentifier(iconRequest.RuntimeGeneration) ||
+                !BridgeRequestKey.IsBoundedIdentifier(iconRequest.PresentationGeneration) ||
+                !WidgetManifestValidator.IsPackageIconAssetId(iconRequest.AssetId) ||
+                iconRequest.PackageContentDigest.Length != 64 ||
+                iconRequest.SourceSha256.Length != 64 ||
+                iconRequest.NormalizedSha256.Length != 64)
+                throw new BridgeProtocolException("Package icon request authority is invalid.");
+            var (iconCatalog, iconRevision) = _registry.CatalogSnapshot();
+            var configured = iconCatalog.GetConfigured(iconRequest.WidgetId);
+            if (!string.Equals(
+                    configured.PackageContentDigest,
+                    iconRequest.PackageContentDigest,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    configured.WorkerFingerprint[..32],
+                    iconRequest.RuntimeGeneration,
+                    StringComparison.OrdinalIgnoreCase))
+                throw new BridgeStalePackageIconAuthorityException(
+                    "Package icon content authority is stale.");
+            var icon = iconCatalog.ResolvePackageIcon(
+                iconRequest.WidgetId,
+                iconRequest.PresentationGeneration,
+                iconRequest.AssetId,
+                iconRequest.NormalizedSha256);
+            var (currentCatalog, currentRevision) = _registry.CatalogSnapshot();
+            if (currentRevision != iconRevision ||
+                !ReferenceEquals(currentCatalog, iconCatalog) ||
+                !string.Equals(icon.Metadata.SourceSha256,
+                    iconRequest.SourceSha256, StringComparison.Ordinal))
+                throw new BridgeStalePackageIconAuthorityException(
+                    "Package icon catalog authority changed during resolution.");
+            await ReplyAsync(
+                BridgeMessageTypes.PackageIcon,
+                request.RequestId,
+                new
+                {
+                    widgetId = iconRequest.WidgetId,
+                    runtimeGeneration = iconRequest.RuntimeGeneration,
+                    presentationGeneration = iconRequest.PresentationGeneration,
+                    packageContentDigest = iconRequest.PackageContentDigest,
+                    assetId = icon.Metadata.AssetId,
+                    sourceSha256 = icon.Metadata.SourceSha256,
+                    normalizedSha256 = icon.Metadata.NormalizedSha256,
+                    normalizedSvgBase64 = Convert.ToBase64String(icon.NormalizedSvg),
+                },
+                cancellationToken).ConfigureAwait(false);
+            break;
+        }
 
         case BridgeMessageTypes.ResolveEmbeddedMedia:
         {
@@ -702,6 +754,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         catch (Exception exception) when (exception is BridgeProtocolException or
             BridgeStalePinnedInputAuthorityException or
             BridgeStaleArtworkAuthorityException or
+            BridgeStalePackageIconAuthorityException or
             BridgeStalePresentationBaseException or JsonException)
         {
             await ReplyRequestFailureAsync(request.RequestId, exception, cancellationToken)
@@ -759,6 +812,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 BridgeStalePresentationBaseException => "stale_presentation_base",
                 BridgeStalePinnedInputAuthorityException => "stale_pinned_input_authority",
                 BridgeStaleArtworkAuthorityException => "stale_artwork_authority",
+                BridgeStalePackageIconAuthorityException => "stale_package_icon_authority",
                 _ => "request_failed",
             },
             SafeMessage(exception));

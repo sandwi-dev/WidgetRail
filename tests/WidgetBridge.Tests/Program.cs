@@ -40,6 +40,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bundled widget failures are isolated from Bridge startup and recover", BundledWidgetFailuresAreIsolated),
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
+    ("Package SVG icons resolve lazily with exact catalog authority and no worker",
+        PackageSvgIconsResolveLazily),
     ("Request dispatcher cleans success failure and cancellation", RequestDispatcherCleansTerminalPaths),
     ("Request classification is closed typed and fail-closed", RequestClassificationIsClosed),
     ("Protected Wi-Fi host admission is exact trusted and bounded", ProtectedWifiHostAdmissionIsExact),
@@ -1343,7 +1345,7 @@ static async Task EnumerationIsLazy()
     var widgets = response.Payload.GetProperty("widgets");
     Assert.Equal(1, widgets.GetArrayLength());
     var descriptor = widgets[0];
-    Assert.SequenceEqual(["icon", "id", "instanceId", "name", "pinningSupported", "presentationGeneration", "protectedWifiPromptSupported", "quickActions", "runtimeGeneration"],
+    Assert.SequenceEqual(["icon", "iconAssets", "id", "instanceId", "name", "packageContentDigest", "pinningSupported", "presentationGeneration", "protectedWifiPromptSupported", "quickActions", "runtimeGeneration"],
         descriptor.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("test-widget", descriptor.GetProperty("id").GetString());
     Assert.Equal("Test Widget", descriptor.GetProperty("name").GetString());
@@ -1351,6 +1353,8 @@ static async Task EnumerationIsLazy()
     Assert.Equal(32, descriptor.GetProperty("runtimeGeneration").GetString()!.Length);
     Assert.Equal(32, descriptor.GetProperty("presentationGeneration").GetString()!.Length);
     Assert.Equal("music", descriptor.GetProperty("icon").GetString());
+    Assert.Equal(0, descriptor.GetProperty("iconAssets").GetArrayLength());
+    Assert.Equal(string.Empty, descriptor.GetProperty("packageContentDigest").GetString());
     Assert.False(descriptor.GetProperty("pinningSupported").GetBoolean(),
         "Omitted manifest pinning support must project closed.");
     Assert.False(descriptor.GetProperty("protectedWifiPromptSupported").GetBoolean(),
@@ -1366,6 +1370,216 @@ static async Task EnumerationIsLazy()
     Assert.False(descriptor.TryGetProperty("workerExecutable", out _),
         "Native descriptors must not expose worker paths.");
     Assert.Equal(0, harness.Server.RunningWorkerCount);
+}
+static async Task PackageSvgIconsResolveLazily()
+{
+    using var installed = new TemporaryDirectory("wrail-package-icon-installed");
+    using var fixture = TemporaryBundledCatalog.Create(
+        new TemporaryBundledWidgetDefinition(
+            "dev.test.package-icon", "Package icon", InvalidStyle: false,
+            PackageIcon: true));
+    var loaded = BridgeCatalog.LoadTrustedObserved(fixture.Path, installed.Path);
+    var configured = loaded.Catalog.GetConfigured("dev.test.package-icon");
+    var descriptor = configured.PublicDescriptor();
+    Assert.Equal(1, descriptor.IconAssets.Count);
+    Assert.True(descriptor.PackageIcon is not null,
+        "Icon-bearing descriptor omitted its package icon metadata.");
+    Assert.Equal(64, descriptor.PackageContentDigest.Length);
+    var metadata = descriptor.IconAssets.Single();
+
+    var pipeName = $"wrail-package-icon-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(
+        pipeName, loaded.Catalog, 256 * 1024);
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
+    var client = await BridgeTestClient.ConnectAsync(pipeName, 256 * 1024);
+    try
+    {
+        var response = await client.RequestAsync(
+            BridgeMessageTypes.ResolvePackageIcon,
+            new BridgePackageIconRequest(
+                descriptor.Id,
+                descriptor.RuntimeGeneration,
+                descriptor.PresentationGeneration,
+                descriptor.PackageContentDigest,
+                metadata.AssetId,
+                metadata.SourceSha256,
+                metadata.NormalizedSha256));
+        Assert.Equal(BridgeMessageTypes.PackageIcon, response.Type);
+        Assert.Equal(descriptor.RuntimeGeneration,
+            response.Payload.GetProperty("runtimeGeneration").GetString());
+        Assert.Equal(metadata.SourceSha256,
+            response.Payload.GetProperty("sourceSha256").GetString());
+        var bytes = Convert.FromBase64String(
+            response.Payload.GetProperty("normalizedSvgBase64").GetString()!);
+        Assert.Equal(metadata.NormalizedBytes, bytes.Length);
+        Assert.Equal(metadata.NormalizedSha256,
+            Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
+        Assert.Equal(0, server.RunningWorkerCount);
+    }
+    finally
+    {
+        try { await client.RequestAsync(BridgeMessageTypes.Stop, new { }); }
+        catch { }
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(3));
+    }
+
+    using var replacement = TemporaryBundledCatalog.Create(
+        new TemporaryBundledWidgetDefinition(
+            "dev.test.package-icon", "Package icon", InvalidStyle: false,
+            PackageIcon: true,
+            PackageIconPathData: "M3 3 L21 3 L12 21 Z"));
+    var replacementCatalog = BridgeCatalog.LoadTrustedObserved(
+        replacement.Path, installed.Path).Catalog;
+    var retired = Assert.Throws<BridgeStalePackageIconAuthorityException>(() =>
+        replacementCatalog.ResolvePackageIcon(
+        descriptor.Id,
+        descriptor.PresentationGeneration,
+        metadata.AssetId,
+        metadata.NormalizedSha256));
+    Assert.Equal("stale_package_icon_authority",
+        WidgetBridgeServer.CreateRequestFailure(retired).Code);
+    var replacementDescriptor = replacementCatalog.GetConfigured(
+        descriptor.Id).PublicDescriptor();
+    Assert.True(
+        replacementDescriptor.PresentationGeneration != descriptor.PresentationGeneration &&
+        replacementDescriptor.IconAssets.Single().NormalizedSha256 !=
+            metadata.NormalizedSha256,
+        "Package replacement did not retire the prior icon authority.");
+
+    using var invalid = TemporaryBundledCatalog.Create(
+        new TemporaryBundledWidgetDefinition(
+            "dev.test.package-icon-invalid", "Invalid package icon",
+            InvalidStyle: false, PackageIcon: true,
+            PackageIconPathData: "M0 0 X1 1"));
+    var invalidLoad = BridgeCatalog.LoadTrustedObserved(invalid.Path, installed.Path);
+    var invalidDescriptor = invalidLoad.Catalog.GetConfigured(
+        "dev.test.package-icon-invalid").PublicDescriptor();
+    Assert.True(invalidDescriptor.PackageIcon is null &&
+                invalidDescriptor.IconAssets.Count == 0 &&
+                invalidDescriptor.PackageContentDigest == string.Empty,
+        "A malformed package icon did not preserve the widget's semantic fallback.");
+    Assert.True(invalidLoad.Warnings.Any(warning => warning.Contains(
+            "semantic fallback remains active", StringComparison.Ordinal)),
+        "Malformed package icon fallback did not produce a bounded safe warning.");
+
+    using var mixed = TemporaryBundledCatalog.Create(
+        new TemporaryBundledWidgetDefinition(
+            "dev.test.package-icon-mixed", "Mixed package icons",
+            InvalidStyle: false, PackageIcon: true, MixedPackageIcons: true));
+    var mixedLoad = BridgeCatalog.LoadTrustedObserved(mixed.Path, installed.Path);
+    var mixedConfigured = mixedLoad.Catalog.GetConfigured(
+        "dev.test.package-icon-mixed");
+    var mixedDescriptor = mixedConfigured.PublicDescriptor();
+    Assert.Equal(1, mixedDescriptor.IconAssets.Count);
+    Assert.Equal("test.mark", mixedDescriptor.IconAssets.Single().AssetId);
+    Assert.True(mixedDescriptor.PackageIcon?.AssetId == "test.mark" &&
+                mixedConfigured.DeclaredPackageIconAssetIds.SetEquals(
+                    ["test.mark", "test.unavailable"]),
+        "One unavailable package icon retired a valid sibling or its declared authority.");
+    var unavailable = new WidgetPackageIcon(
+        "test.unavailable", WidgetPackageIconColorMode.ThemeTint);
+    var mixedSnapshot = new ViewSnapshot
+    {
+        ProtocolVersion = ProtocolConstants.PackageSvgIconVersion,
+        Sequence = 1,
+        WidgetInstanceId = mixedConfigured.InstanceId,
+        ActiveInputScopeId = "root",
+        Root = new ViewNode
+        {
+            Id = "root",
+            Kind = ViewNodeKind.Stack,
+            Children =
+            [
+                new ViewNode
+                {
+                    Id = "action",
+                    Kind = ViewNodeKind.Button,
+                    Text = "Action",
+                    ActionId = "action.run",
+                    Glyph = WidgetGlyph.Connection,
+                    PackageIcon = unavailable,
+                },
+                new ViewNode
+                {
+                    Id = "select",
+                    Kind = ViewNodeKind.Select,
+                    Text = "Mode",
+                    ActionId = "mode.changed",
+                    AccessibilityLabel = "Mode",
+                    SelectOptions =
+                    [
+                        new WidgetSelectOption(
+                            "unavailable", "Unavailable", "mode.unavailable",
+                            true, WidgetGlyph.Connection)
+                        {
+                            PackageIcon = unavailable,
+                        },
+                    ],
+                },
+                new ViewNode
+                {
+                    Id = "presentation",
+                    Kind = ViewNodeKind.FocusPresentationSurface,
+                    FocusPresentation = new ViewNode
+                    {
+                        Id = "focus.icon",
+                        Kind = ViewNodeKind.Icon,
+                        Glyph = WidgetGlyph.Connection,
+                        PackageIcon = unavailable,
+                        AccessibilityLabel = "Unavailable focus icon",
+                    },
+                    DefaultFocusPresentation = new ViewNode
+                    {
+                        Id = "focus.default",
+                        Kind = ViewNodeKind.Text,
+                        Text = "Default",
+                    },
+                },
+            ],
+        },
+    };
+    BridgeClientRegistry.DemandPackageIconAuthority(
+        mixedConfigured, mixedSnapshot);
+    var forgedSnapshot = mixedSnapshot with
+    {
+        Root = mixedSnapshot.Root with
+        {
+            Children =
+            [
+                mixedSnapshot.Root.Children[0] with
+                {
+                    PackageIcon = new(
+                        "not.declared", WidgetPackageIconColorMode.ThemeTint),
+                },
+            ],
+        },
+    };
+    Assert.Throws<BridgeProtocolException>(() =>
+        BridgeClientRegistry.DemandPackageIconAuthority(
+            mixedConfigured, forgedSnapshot));
+    Assert.Equal("svg_element", mixedConfigured.PackageIconAdmissionFailure);
+    Assert.True(mixedLoad.Warnings.Contains(
+            "Widget 'dev.test.package-icon-mixed' package icon was rejected; semantic fallback remains active.",
+            StringComparer.Ordinal),
+        "Mixed icon fallback did not publish the exact bounded bundled-catalog warning.");
+
+    using var overAggregate = TemporaryBundledCatalog.Create(
+        new TemporaryBundledWidgetDefinition(
+            "dev.test.package-icon-aggregate", "Aggregate package icons",
+            InvalidStyle: false, PackageIcon: true,
+            OverAggregatePackageIcons: true));
+    var aggregateLoad = BridgeCatalog.LoadTrustedObserved(
+        overAggregate.Path, installed.Path);
+    var aggregateConfigured = aggregateLoad.Catalog.GetConfigured(
+        "dev.test.package-icon-aggregate");
+    var aggregateDescriptor = aggregateConfigured.PublicDescriptor();
+    Assert.True(aggregateDescriptor.PackageIcon is null &&
+                aggregateDescriptor.IconAssets.Count == 0 &&
+                aggregateDescriptor.PackageContentDigest == string.Empty &&
+                aggregateConfigured.DeclaredPackageIconAssetIds.Count == 10 &&
+                aggregateConfigured.PackageIconAdmissionFailure ==
+                    "icon_assets_too_large",
+        "Aggregate overflow exposed partial icon metadata or removed declared fallback authority.");
 }
 
 static async Task RequestDispatcherCleansTerminalPaths()
@@ -6525,7 +6739,11 @@ file sealed record TemporaryBundledWidgetDefinition(
     string Id,
     string Name,
     bool InvalidStyle,
-    string? PackageId = null);
+    string? PackageId = null,
+    bool PackageIcon = false,
+    string PackageIconPathData = "M2 12 L12 2 L22 12 L12 22 Z",
+    bool MixedPackageIcons = false,
+    bool OverAggregatePackageIcons = false);
 
 file sealed class TemporaryBundledCatalog : IDisposable
 {
@@ -6574,6 +6792,46 @@ file sealed class TemporaryBundledCatalog : IDisposable
                 widget.InvalidStyle
                     ? "button { background: url(https://example.test/rejected.png); }"
                     : "button { color: #ffffff; }");
+            if (widget.PackageIcon)
+            {
+                Directory.CreateDirectory(System.IO.Path.Combine(packageRoot, "assets"));
+                File.WriteAllText(
+                    System.IO.Path.Combine(packageRoot, "assets", "mark.svg"),
+                    $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path fill=\"currentColor\" d=\"{widget.PackageIconPathData}\"/></svg>",
+                    new System.Text.UTF8Encoding(false));
+                if (widget.MixedPackageIcons)
+                    File.WriteAllText(
+                        System.IO.Path.Combine(packageRoot, "assets", "unavailable.svg"),
+                        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"><script/></svg>",
+                        new System.Text.UTF8Encoding(false));
+                if (widget.OverAggregatePackageIcons)
+                    for (var assetIndex = 0; assetIndex < 9; assetIndex++)
+                        File.WriteAllBytes(
+                            System.IO.Path.Combine(
+                                packageRoot, "assets", $"aggregate-{assetIndex}.svg"),
+                            new byte[60 * 1024]);
+            }
+            object presentation = widget.PackageIcon
+                ? new
+                {
+                    icon = "connection",
+                    packageIcon = new { assetId = "test.mark", colorMode = "themeTint" },
+                }
+                : new { icon = "connection" };
+            var iconAssets = new Dictionary<string, object>(StringComparer.Ordinal);
+            if (widget.PackageIcon)
+                iconAssets["test.mark"] = new { path = "assets/mark.svg" };
+            if (widget.MixedPackageIcons)
+                iconAssets["test.unavailable"] = new
+                {
+                    path = "assets/unavailable.svg",
+                };
+            if (widget.OverAggregatePackageIcons)
+                for (var assetIndex = 0; assetIndex < 9; assetIndex++)
+                    iconAssets[$"test.aggregate-{assetIndex}"] = new
+                    {
+                        path = $"assets/aggregate-{assetIndex}.svg",
+                    };
             var manifest = JsonSerializer.Serialize(new
             {
                 manifestVersion = 1,
@@ -6588,7 +6846,8 @@ file sealed class TemporaryBundledCatalog : IDisposable
                     assembly = "payload/FixtureWidget.dll",
                     type = "WidgetRail.Tests.FixtureWidget",
                 },
-                presentation = new { icon = "connection" },
+                presentation,
+                iconAssets,
                 permissions = Array.Empty<string>(),
                 optionalPermissions = Array.Empty<string>(),
                 residencyPolicy = new

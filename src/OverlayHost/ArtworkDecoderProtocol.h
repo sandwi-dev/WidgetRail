@@ -8,7 +8,7 @@
 namespace widgetrail::artworkdecoder {
 
 constexpr std::uint32_t protocolMagic = 0x44524157; // WARD
-constexpr std::uint32_t protocolVersion = 2;
+constexpr std::uint32_t protocolVersion = 3;
 constexpr std::size_t maximumEncodedBytes = 8U * 1024U * 1024U;
 constexpr std::size_t maximumDecodedBytes = 64U * 1024U * 1024U;
 
@@ -23,6 +23,12 @@ enum class ContentType : std::uint32_t {
     Jpeg,
     Png,
     WebP,
+    Svg,
+};
+
+enum class RasterVariant : std::uint32_t {
+    OriginalColor,
+    AlphaMask,
 };
 
 enum class TestBehavior : std::uint32_t {
@@ -45,6 +51,9 @@ struct SharedHeader {
     std::uint64_t maximumDecodedBytes{};
     std::uint64_t maximumPixels{};
     std::uint32_t maximumDimension{};
+    std::uint32_t requestedWidth{};
+    std::uint32_t requestedHeight{};
+    RasterVariant rasterVariant{RasterVariant::OriginalColor};
     HRESULT result{E_FAIL};
     std::uint32_t width{};
     std::uint32_t height{};
