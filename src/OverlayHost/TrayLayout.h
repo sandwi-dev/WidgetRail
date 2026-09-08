@@ -13,6 +13,11 @@ struct TrayBand final {
     float bottom{};
 };
 
+enum class TrayWidthBasis {
+    MonitorUsableWidth,
+    ExactCapacity,
+};
+
 struct TrayTileLayout final {
     std::size_t slot{};
     declarative::Rect bounds;
@@ -47,7 +52,12 @@ struct TrayLayout final {
     float height,
     std::size_t widgetCount,
     std::size_t selectedSlot,
-    std::optional<TrayBand> band = std::nullopt);
+    std::optional<TrayBand> band = std::nullopt,
+    TrayWidthBasis widthBasis = TrayWidthBasis::MonitorUsableWidth);
+
+/// Resolves the tray's bounded capacity from the active monitor's usable width.
+/// Exact-capacity child surfaces must not apply this policy a second time.
+[[nodiscard]] float ComputeTrayCapacityWidth(float monitorUsableWidth) noexcept;
 
 [[nodiscard]] const TrayTileLayout* HitTestTray(
     const TrayLayout& layout, float x, float y) noexcept;

@@ -15053,6 +15053,7 @@ private:
         unsigned int trayHeight{};
         unsigned int trayMenuHeadroom{};
         unsigned int trayFocusPadding{};
+        float trayCapacityWidthDip{};
         UINT dpi{};
         std::uint64_t appearanceRevision{};
         float pixelsPerDip{};
@@ -15389,6 +15390,10 @@ private:
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot());
         if (!policyLayout) return false;
+        const float trayCapacityWidthDip =
+            widgetrail::shell::ComputeTrayCapacityWidth(
+                metrics->viewportWidthDip);
+        if (trayCapacityWidthDip <= 0.0F) return false;
 
         constexpr float kGuideHeightDip = 58.0F;
         constexpr float kGuideToTrayGapDip = 46.0F;
@@ -15396,7 +15401,7 @@ private:
             (focusOutlineWidth_ + 2.0F) * metrics->physicalPixelsPerDip)));
         const LONG trayWidth = std::max(
             1L, static_cast<LONG>(std::ceil(
-                policyLayout->stripBounds.width *
+                trayCapacityWidthDip *
                 metrics->physicalPixelsPerDip))) + focusPadding * 2;
         const LONG trayHeight = std::max(
             1L, static_cast<LONG>(std::ceil(
@@ -15439,6 +15444,7 @@ private:
         session.trayMenuHeadroom =
             static_cast<unsigned int>(trayMenuHeadroom);
         session.trayFocusPadding = static_cast<unsigned int>(focusPadding);
+        session.trayCapacityWidthDip = trayCapacityWidthDip;
         session.dpi = effectiveDpi;
         session.key = std::move(key);
         session.pixelsPerDip = metrics->physicalPixelsPerDip;
@@ -15653,10 +15659,11 @@ private:
             static_cast<float>(session.trayMenuHeadroom) /
             session.pixelsPerDip;
         auto layout = widgetrail::shell::ComputeTrayLayout(
-            metrics->viewportWidthDip, metrics->viewportHeightDip,
+            session.trayCapacityWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
             widgetrail::shell::TrayBand{
-                menuHeadroom, metrics->viewportHeightDip});
+                menuHeadroom, metrics->viewportHeightDip},
+            widgetrail::shell::TrayWidthBasis::ExactCapacity);
         if (!layout) return std::nullopt;
         const auto offset = [inset](widgetrail::declarative::Rect& bounds) {
             bounds.x += inset;
