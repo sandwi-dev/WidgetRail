@@ -11,7 +11,8 @@ public static class SpotifyPlaybackProtocol
     public const int MaximumTokenCharacters = 8_192;
     public const int MaximumPendingCommands = 64;
     public const long MaximumSeekMilliseconds = 604_800_000;
-    public const string RequiredScope = "streaming";
+    public static IReadOnlyList<string> RequiredScopes { get; } = Array.AsReadOnly(
+        ["streaming", "user-read-email", "user-read-private"]);
 }
 
 public enum SpotifyPlaybackLifecycleState
@@ -62,11 +63,11 @@ public sealed record SpotifyPlaybackPreconditions(
             GrantedScopes.Any(scope => string.IsNullOrWhiteSpace(scope) || scope.Length > 64))
             throw new SpotifyPlaybackProtocolException(
                 "invalid_scopes", "The granted Spotify scopes are invalid.");
-        if (!GrantedScopes.Contains(SpotifyPlaybackProtocol.RequiredScope,
-                StringComparer.Ordinal))
+        if (SpotifyPlaybackProtocol.RequiredScopes.Any(required =>
+                !GrantedScopes.Contains(required, StringComparer.Ordinal)))
             throw new SpotifyPlaybackProtocolException(
-                "streaming_scope_required",
-                "The Spotify streaming scope is required for local playback.");
+                "local_playback_scope_required",
+                "The Spotify local playback permissions are required.");
     }
 }
 

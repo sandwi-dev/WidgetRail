@@ -35,7 +35,9 @@ internal sealed class SpotifyApplicationService(
 
     public ValueTask<SpotifyAuthorizationSummary> GetAuthorizationAsync(
         CancellationToken cancellationToken = default) => new(
-        _backend.GetSpotifyAuthorizationAsync(_identity, cancellationToken));
+        _backend.GetSpotifyAuthorizationAsync(
+            _identity, SpotifyApplicationContract.RequiredAuthorizationScopes,
+            cancellationToken));
 
     public ValueTask<SpotifyAuthorizationSummary> ConnectAsync(
         IReadOnlyCollection<SpotifyAuthorizationScope> requestedScopes,

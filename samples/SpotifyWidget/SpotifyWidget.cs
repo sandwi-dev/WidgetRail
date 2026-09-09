@@ -41,12 +41,7 @@ public sealed class SpotifyWidget : Widget
     private static readonly TimeSpan DevicesCacheLifetime = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan OptimisticReconciliationLifetime = TimeSpan.FromSeconds(12);
     private static readonly IReadOnlyList<SpotifyAuthorizationScope> SpotifyScopes =
-    [
-        SpotifyAuthorizationScope.PlaybackStateRead,
-        SpotifyAuthorizationScope.PlaybackStateControl,
-        SpotifyAuthorizationScope.LocalPlayback,
-        SpotifyAuthorizationScope.PlaylistsRead,
-    ];
+        SpotifyApplicationContract.RequiredAuthorizationScopes;
 
     private readonly object _gate = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);

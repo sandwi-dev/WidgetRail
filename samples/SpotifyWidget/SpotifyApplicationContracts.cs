@@ -10,6 +10,14 @@ public static class SpotifyApplicationContract
     public const int MaximumCollectionPageSize = 50;
     public const int MaximumCollectionOffset = 100_000;
     public const long MaximumPositionMilliseconds = 604_800_000;
+    public static IReadOnlyList<SpotifyAuthorizationScope> RequiredAuthorizationScopes { get; } =
+        Array.AsReadOnly(
+        [
+            SpotifyAuthorizationScope.PlaybackStateRead,
+            SpotifyAuthorizationScope.PlaybackStateControl,
+            SpotifyAuthorizationScope.LocalPlayback,
+            SpotifyAuthorizationScope.PlaylistsRead,
+        ]);
 }
 
 public sealed record SpotifyConfigurationSummary(bool IsConfigured, string RedirectUri);

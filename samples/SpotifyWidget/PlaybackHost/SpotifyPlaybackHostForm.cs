@@ -109,7 +109,7 @@ internal sealed class SpotifyPlaybackHostForm : Form
                 case "set_name":
                     var name = SpotifyPlaybackProtocolCodec.DecodePayload<NamePayload>(request);
                     new SpotifyPlaybackConnectOptions(name.Name, 1,
-                        new(true, [SpotifyPlaybackProtocol.RequiredScope])).Validate();
+                        new(true, SpotifyPlaybackProtocol.RequiredScopes)).Validate();
                     SendToPage(request, name);
                     break;
                 case "set_volume":

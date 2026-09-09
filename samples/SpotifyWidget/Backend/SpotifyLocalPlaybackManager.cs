@@ -20,7 +20,11 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     internal const string DeviceName = "Spotify on Game Bar";
 
     private static readonly IReadOnlyCollection<string> RequiredScopes =
-        [WindowsSpotifyPlatformBackend.StreamingScope];
+    [
+        WindowsSpotifyPlatformBackend.StreamingScope,
+        WindowsSpotifyPlatformBackend.UserReadEmailScope,
+        WindowsSpotifyPlatformBackend.UserReadPrivateScope,
+    ];
     private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(35);
 
     private readonly string _executablePath;

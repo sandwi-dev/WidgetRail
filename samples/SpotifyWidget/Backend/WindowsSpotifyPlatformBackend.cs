@@ -20,6 +20,8 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
     public const string PlaylistReadPrivateScope = "playlist-read-private";
     public const string PlaylistReadCollaborativeScope = "playlist-read-collaborative";
     public const string StreamingScope = "streaming";
+    public const string UserReadEmailScope = "user-read-email";
+    public const string UserReadPrivateScope = "user-read-private";
 
     // Browser sign-in is an explicit user interaction and can legitimately
     // outlive the overlay window. Keep the listener bounded, but do not apply
@@ -43,6 +45,8 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         "user-library-modify",
         "user-top-read",
         StreamingScope,
+        UserReadEmailScope,
+        UserReadPrivateScope,
     };
 
     private readonly ISpotifyClientConfigurationStore _configuration;
@@ -165,7 +169,8 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         var granted = (state.AccessToken?.GrantedScopes ?? refresh?.GrantedScopes ??
             new HashSet<string>(StringComparer.Ordinal)).Order(StringComparer.Ordinal).ToArray();
         var requested = ValidateScopes(requiredScopes ?? BaseScopes);
-        var needsReconsent = granted.Length > 0 && requested.Any(scope => !granted.Contains(scope));
+        var needsReconsent = refresh is not null &&
+            requested.Any(scope => !granted.Contains(scope));
         return new(true, refresh is not null,
             state.IsAuthorizing ? "Waiting for Spotify sign-in." :
             refresh is null ? "Spotify is not connected." :
@@ -336,9 +341,19 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
 
     public Task<SpotifyAuthorizationSummary> GetSpotifyAuthorizationAsync(
         SpotifyIntegrationIdentity identity, CancellationToken cancellationToken) =>
-        ApplicationCallAsync(async () => MapAuthorization(
-            await GetAuthorizationAsync(identity, cancellationToken)
-                .ConfigureAwait(false), ApplicationBaseScopes()));
+        GetSpotifyAuthorizationAsync(identity, ApplicationBaseScopes(), cancellationToken);
+
+    public Task<SpotifyAuthorizationSummary> GetSpotifyAuthorizationAsync(
+        SpotifyIntegrationIdentity identity,
+        IReadOnlyList<SpotifyAuthorizationScope> requestedScopes,
+        CancellationToken cancellationToken) => ApplicationCallAsync(async () =>
+        {
+            var applicationScopes = ValidateApplicationScopes(requestedScopes);
+            var providerScopes = ExpandApplicationScopes(applicationScopes);
+            return MapAuthorization(
+                await GetAuthorizationAsync(identity, providerScopes, cancellationToken)
+                    .ConfigureAwait(false), applicationScopes);
+        });
 
     public Task<SpotifyAuthorizationSummary> ConnectSpotifyAsync(
         SpotifyIntegrationIdentity identity, ConnectSpotifyRequest request,
@@ -971,7 +986,8 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
     {
         SpotifyAuthorizationScope.PlaybackStateRead => [PlaybackReadScope],
         SpotifyAuthorizationScope.PlaybackStateControl => [PlaybackControlScope],
-        SpotifyAuthorizationScope.LocalPlayback => [StreamingScope],
+        SpotifyAuthorizationScope.LocalPlayback =>
+            [StreamingScope, UserReadEmailScope, UserReadPrivateScope],
         SpotifyAuthorizationScope.PlaylistsRead =>
             [PlaylistReadPrivateScope, PlaylistReadCollaborativeScope],
         SpotifyAuthorizationScope.LibraryRead => ["user-library-read"],
