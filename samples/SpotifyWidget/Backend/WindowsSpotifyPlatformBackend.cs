@@ -93,7 +93,10 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         _httpPolicy = new SpotifyHttpPolicy(
             _http, delay ?? throw new ArgumentNullException(nameof(delay)), _time);
         _localPlayback = localPlayback ?? new SpotifyLocalPlaybackManager(
-            DefaultPlaybackHostPath(), AcquireTrustedHostAccessTokenAsync);
+            DefaultPlaybackHostPath(), AcquireTrustedHostAccessTokenAsync,
+            () => new SpotifyPlaybackHostClient(
+                SpotifyPlaybackHostClientOptions.CreateDefault(DefaultPlaybackHostPath())),
+            _runtimeDiagnostics);
         var authorizedSender = new SpotifyAuthorizedRequestSender(
             SendAuthorizedRequestAsync);
         _playbackApi = new SpotifyPlaybackApi(authorizedSender);
@@ -528,12 +531,41 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         bool continuePlaying,
         CancellationToken cancellationToken)
     {
-        var started = await _localPlayback.StartAsync(identity, cancellationToken)
-            .ConfigureAwait(false);
-        await _playbackApi.TransferPlaybackAsync(
-            identity, started.SpotifyDeviceId, continuePlaying, cancellationToken)
-            .ConfigureAwait(false);
-        _localPlayback.MarkActive(identity);
+        var timestamp = Stopwatch.GetTimestamp();
+        _runtimeDiagnostics.Record("local-playback-transfer", "admitted");
+        try
+        {
+            var started = await _localPlayback.StartAsync(identity, cancellationToken)
+                .ConfigureAwait(false);
+            _runtimeDiagnostics.Record(
+                "local-playback-transfer", "device-ready",
+                elapsedMilliseconds: Math.Max(
+                    0, (long)Stopwatch.GetElapsedTime(timestamp).TotalMilliseconds));
+            await _playbackApi.TransferPlaybackAsync(
+                identity, started.SpotifyDeviceId, continuePlaying, cancellationToken)
+                .ConfigureAwait(false);
+            _localPlayback.MarkActive(identity);
+            _runtimeDiagnostics.Record(
+                "local-playback-transfer", "succeeded",
+                elapsedMilliseconds: Math.Max(
+                    0, (long)Stopwatch.GetElapsedTime(timestamp).TotalMilliseconds));
+        }
+        catch (SpotifyProviderException exception)
+        {
+            _runtimeDiagnostics.Record(
+                "local-playback-transfer", exception.Code,
+                elapsedMilliseconds: Math.Max(
+                    0, (long)Stopwatch.GetElapsedTime(timestamp).TotalMilliseconds));
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            _runtimeDiagnostics.Record(
+                "local-playback-transfer", "caller-canceled",
+                elapsedMilliseconds: Math.Max(
+                    0, (long)Stopwatch.GetElapsedTime(timestamp).TotalMilliseconds));
+            throw;
+        }
     }
 
     private async Task<string?> ResolveDeviceIdAsync(
@@ -1057,6 +1089,14 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
     private static string ApplicationMessage(string code) => code switch
     {
         "authorization_expired" => "Spotify authorization expired. Connect again.",
+        "insufficient_scope" or "authorization_scope_required" or
+            "reauthorization_required" =>
+            "Reconnect Spotify to allow playback on this PC.",
+        "premium_required" =>
+            "Spotify Premium is required for playback on this PC.",
+        "local_playback_timeout" or "host_start_timeout" or
+            "host_command_timeout" =>
+            "Spotify playback on this PC did not become ready in time.",
         "forbidden" => "Spotify did not allow this action.",
         "resource_not_found" => "Spotify has no active playback device.",
         "rate_limited" => "Spotify rate limit reached. Try again later.",

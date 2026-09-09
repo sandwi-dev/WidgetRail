@@ -89,7 +89,6 @@ internal sealed class SpotifyPlaybackHostForm : Form
                     _pendingPageResponses.Clear();
                     SendToPage(request, new { });
                     break;
-                case "activate_element":
                 case "pause":
                 case "resume":
                 case "toggle_play":

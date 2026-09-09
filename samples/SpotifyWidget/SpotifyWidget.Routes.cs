@@ -3,6 +3,15 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.SpotifyWidget;
 
+internal enum SpotifyRoute
+{
+    Queue,
+    Playlists,
+    PlaylistDetail,
+    Devices,
+    Setup,
+}
+
 internal enum SpotifyActionKind
 {
     Unknown,
@@ -18,6 +27,8 @@ internal enum SpotifyActionKind
     Playback,
     Seek,
     Navigate,
+    PreviousSection,
+    NextSection,
     PlaylistBack,
     PageRetry,
     Noop,
@@ -64,10 +75,11 @@ internal static class SpotifyRouteActionPolicy
             "spotify.next" => Playback(SpotifyPlaybackOperation.Next),
             "spotify.shuffle" => Playback(SpotifyPlaybackOperation.SetShuffle),
             "spotify.repeat" => Playback(SpotifyPlaybackOperation.SetRepeat),
-            "spotify.nav.player" => Navigate(SpotifyDestination.Player),
             "spotify.nav.queue" => Navigate(SpotifyDestination.Queue),
             "spotify.nav.playlists" => Navigate(SpotifyDestination.Playlists),
             "spotify.nav.devices" => Navigate(SpotifyDestination.Devices),
+            "spotify.nav.previous-section" => new(SpotifyActionKind.PreviousSection),
+            "spotify.nav.next-section" => new(SpotifyActionKind.NextSection),
             "spotify.playlist.back" => new(SpotifyActionKind.PlaylistBack),
             "spotify.page.retry" => new(SpotifyActionKind.PageRetry),
             "spotify.page.noop" => new(SpotifyActionKind.Noop),
@@ -99,6 +111,13 @@ internal static class SpotifyRouteActionPolicy
 
     internal static string NavigationFocusId(SpotifyDestination destination, string mode) =>
         $"spotify.nav.{mode}.{destination.ToString().ToLowerInvariant()}";
+
+    internal static SpotifyDestination Destination(SpotifyRoute route) => route switch
+    {
+        SpotifyRoute.Queue => SpotifyDestination.Queue,
+        SpotifyRoute.Devices => SpotifyDestination.Devices,
+        _ => SpotifyDestination.Playlists,
+    };
 
     internal static bool DevicesNeedLoad(
         SpotifyDevicesSummary? devices,

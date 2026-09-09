@@ -190,7 +190,6 @@ internal static class SpotifyPlaybackPage
                 case 'seek': requirePlayer(requestId, () => player.seek(Number(payload.positionMilliseconds))); break;
                 case 'previous_track': requirePlayer(requestId, () => player.previousTrack()); break;
                 case 'next_track': requirePlayer(requestId, () => player.nextTrack()); break;
-                case 'activate_element': requirePlayer(requestId, () => player.activateElement()); break;
               }
             });
           })();

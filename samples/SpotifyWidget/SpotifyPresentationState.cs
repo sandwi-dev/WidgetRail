@@ -93,15 +93,13 @@ internal sealed record SpotifyPresentationState(
     SpotifyPlaybackOperation? PendingOperation,
     string Status,
     SpotifyRefreshWarning? RefreshWarning,
-    bool ShowSetup,
     long SetupViewGeneration,
     bool SetupBusy,
-    SpotifyDestination Destination,
+    WidgetNavigationSnapshot<SpotifyRoute> Navigation,
     WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> Queue,
     SpotifyCursorPresentation<SpotifyPlaylistCollectionItem> Playlists,
     SpotifyPlaylistDetailPresentation? PlaylistDetail,
     SpotifyDevicesSummary? Devices,
     SpotifyLocalPlaybackSummary? LocalPlayback,
     bool PageLoading,
-    string? PageError,
-    string? ReadyInitialFocusId);
+    string? PageError);

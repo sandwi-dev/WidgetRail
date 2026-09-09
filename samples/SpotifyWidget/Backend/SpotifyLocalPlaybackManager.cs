@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using WidgetRail.Samples.SpotifyWidget;
 using WidgetRail.SpotifyPlayback;
 using SpotifyLocalPlaybackState =
@@ -26,6 +27,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     private readonly Func<ISpotifyPlaybackHostClient> _clientFactory;
     private readonly Func<SpotifyIntegrationIdentity, IReadOnlyCollection<string>,
         CancellationToken, Task<TrustedHostSpotifyAccessToken>> _tokenProvider;
+    private readonly ISpotifyRuntimeDiagnostics _runtimeDiagnostics;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _stateGate = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -43,18 +45,21 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
         Func<SpotifyIntegrationIdentity, IReadOnlyCollection<string>, CancellationToken,
             Task<TrustedHostSpotifyAccessToken>> tokenProvider)
         : this(executablePath, tokenProvider, () => new SpotifyPlaybackHostClient(
-            SpotifyPlaybackHostClientOptions.CreateDefault(executablePath))) { }
+            SpotifyPlaybackHostClientOptions.CreateDefault(executablePath)),
+            SpotifyRuntimeDiagnostics.None) { }
 
     internal SpotifyLocalPlaybackManager(
         string executablePath,
         Func<SpotifyIntegrationIdentity, IReadOnlyCollection<string>, CancellationToken,
             Task<TrustedHostSpotifyAccessToken>> tokenProvider,
-        Func<ISpotifyPlaybackHostClient> clientFactory)
+        Func<ISpotifyPlaybackHostClient> clientFactory,
+        ISpotifyRuntimeDiagnostics? runtimeDiagnostics = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         _executablePath = Path.GetFullPath(executablePath);
         _tokenProvider = tokenProvider ?? throw new ArgumentNullException(nameof(tokenProvider));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
+        _runtimeDiagnostics = runtimeDiagnostics ?? SpotifyRuntimeDiagnostics.None;
         _state = IsHostAvailable ? SpotifyLocalPlaybackState.Disabled :
             SpotifyLocalPlaybackState.Unavailable;
     }
@@ -87,6 +92,8 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+        var started = Stopwatch.GetTimestamp();
+        _runtimeDiagnostics.Record("local-playback-start", "admitted");
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -113,6 +120,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             {
                 initialToken = await _tokenProvider(identity, RequiredScopes, cancellationToken)
                     .ConfigureAwait(false);
+                Record("local-playback-token", "acquired", started);
             }
             catch (SpotifyProviderException exception)
                 when (exception.Code is "insufficient_scope" or "not_connected" or
@@ -138,6 +146,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             try
             {
                 await client.StartAsync(cancellationToken).ConfigureAwait(false);
+                Record("local-playback-host", "started", started);
                 var connect = client.ConnectAsync(new(
                     DeviceName,
                     _volumePercent / 100d,
@@ -150,16 +159,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 if (ReferenceEquals(first, connect)) await connect.ConfigureAwait(false);
                 var deviceId = await readyTask.ConfigureAwait(false);
                 await connect.ConfigureAwait(false);
-                try
-                {
-                    await client.SendAsync("activate_element", new { }, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (SpotifyPlaybackHostClientException)
-                {
-                    // Activation is best effort. Some WebView runtimes require a browser-native
-                    // user gesture; transfer can still succeed and surface any playback failure.
-                }
+                Record("local-playback-sdk", "ready", started);
                 SetState(identity, SpotifyLocalPlaybackState.Ready,
                     "Ready to play through this PC.", deviceId);
                 return new(deviceId, GetSummary(identity));
@@ -167,6 +167,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             catch (OperationCanceledException exception)
                 when (!cancellationToken.IsCancellationRequested)
             {
+                Record("local-playback-start", "ready-timeout", started);
                 SetState(identity, SpotifyLocalPlaybackState.Error,
                     "Spotify playback did not become ready in time.");
                 await StopClientLockedAsync().ConfigureAwait(false);
@@ -176,6 +177,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                Record("local-playback-start", "caller-canceled", started);
                 // The overlay can transition out of its interactive lifecycle while the
                 // SDK is starting. Never retain a half-started client or a terminal-looking
                 // Starting state after the caller cancels the broker operation.
@@ -186,6 +188,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             }
             catch (SpotifyPlaybackHostClientException exception)
             {
+                Record("local-playback-start", exception.Code, started);
                 var state = GetSummary(identity).State;
                 if (state is SpotifyLocalPlaybackState.Starting or
                     SpotifyLocalPlaybackState.Ready)
@@ -205,6 +208,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
+                Record("local-playback-start", "unexpected-failure", started);
                 SetState(identity, SpotifyLocalPlaybackState.Error,
                     "Spotify local playback could not be started.");
                 await StopClientLockedAsync().ConfigureAwait(false);
@@ -469,6 +473,11 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
 
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+    private void Record(string boundary, string code, long started) =>
+        _runtimeDiagnostics.Record(
+            boundary, code, elapsedMilliseconds: Math.Max(
+                0, (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds));
 
     private sealed record PageDevice(string DeviceId);
     private sealed record PageError(string Code, string Message);
