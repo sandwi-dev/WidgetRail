@@ -581,6 +581,7 @@
   border-color: transparent;
   border-width: 1px;
   corner-radius: 8px;
+  flex-wrap: nowrap;
 }
 .wrail-tile__artwork {
   width: 60px;
@@ -590,6 +591,7 @@
 }
 .wrail-tile__content {
   min-width: 0px;
+  flex-basis: 0px;
   flex-grow: 1;
   flex-shrink: 1;
   gap: 2px;

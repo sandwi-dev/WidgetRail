@@ -227,10 +227,14 @@ public sealed class SpotifyWidget : Widget
                 presentation.ViewState != SpotifyWidgetViewState.Ready)
                 return view;
             var root = _navigation.Scope(presentation.Navigation, view.Root);
+            var requestedFocus = presentation.Navigation.InitialFocusId ??
+                view.InitialFocusId;
             return view with
             {
                 Root = root,
-                InitialFocusId = presentation.Navigation.InitialFocusId ?? view.InitialFocusId,
+                InitialFocusId = ResolveCurrentFocus(
+                    root, presentation.Navigation.InputScopeId,
+                    requestedFocus, view.InitialFocusId),
                 ActiveInputScopeId = presentation.Navigation.InputScopeId,
                 FocusGroupEntryRequest = presentation.Navigation.FocusGroupEntryRequest,
             };
@@ -242,6 +246,21 @@ public sealed class SpotifyWidget : Widget
                 SpotifyRuntimeDiagnostics.Code(exception));
             throw;
         }
+    }
+
+    private static string? ResolveCurrentFocus(
+        ContainerElement root,
+        string inputScopeId,
+        string? requestedFocus,
+        string? fallbackFocus)
+    {
+        if (WidgetFocusTargetLookup.Resolve(
+                root, requestedFocus, inputScopeId).IsEnabled)
+            return requestedFocus;
+        if (WidgetFocusTargetLookup.Resolve(
+                root, fallbackFocus, inputScopeId).IsEnabled)
+            return fallbackFocus;
+        return WidgetFocusTargetLookup.First(root, inputScopeId).Id;
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)

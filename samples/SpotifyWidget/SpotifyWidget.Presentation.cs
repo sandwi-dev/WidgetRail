@@ -955,7 +955,8 @@ internal static class SpotifyPresentation
         string mode)
     {
         var items = itemPresentation.Snapshot;
-        if (items.Status == WidgetPagedResourceStatus.Loading && items.Items.Count == 0)
+        if (items.Status is (WidgetPagedResourceStatus.Loading or
+                WidgetPagedResourceStatus.NotLoaded) && items.Items.Count == 0)
             return LoadingPage($"Loading {playlist.Name}", mode);
         if (items.Error is { } itemError && items.Items.Count == 0)
             return PageFailure("Playlist unavailable", itemError.Message, mode);
