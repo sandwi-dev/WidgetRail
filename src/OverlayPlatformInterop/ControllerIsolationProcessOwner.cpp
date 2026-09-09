@@ -126,6 +126,7 @@ ChildControlChannel& ChildControlChannel::operator=(
     stopEvent_ = std::exchange(other.stopEvent_, nullptr);
     parentProcess_ = std::exchange(other.parentProcess_, nullptr);
     shared_ = std::exchange(other.shared_, nullptr);
+    admission_ = std::exchange(other.admission_, ProcessAdmission{});
     gate_ = std::move(other.gate_);
     return *this;
 }
@@ -165,19 +166,22 @@ std::optional<ChildControlChannel> ChildControlChannel::Open(
     channel.shared_ = static_cast<ControlSharedMemory*>(MapViewOfFile(
         channel.mapping_, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0,
         sizeof(ControlSharedMemory)));
-    if (!channel.shared_ || !channel.shared_->admission.authority.valid() ||
-        !ValidNonce(channel.shared_->admission.nonce) ||
-        !ExactParent(
-            channel.parentProcess_, channel.shared_->admission,
-            expectedParentFileName)) {
+    if (!channel.shared_) {
         error = L"Controller isolation parent or nonce authority was rejected.";
         channel.Close();
         return std::nullopt;
     }
+    const ProcessAdmission admission = channel.shared_->admission;
+    if (!admission.authority.valid() || !ValidNonce(admission.nonce) ||
+        !ExactParent(
+            channel.parentProcess_, admission, expectedParentFileName)) {
+        error = L"Controller isolation parent or nonce authority was rejected.";
+        channel.Close();
+        return std::nullopt;
+    }
+    channel.admission_ = admission;
     channel.gate_.emplace(
-        channel.shared_->admission.nonce,
-        channel.shared_->admission.authority,
-        1);
+        channel.admission_.nonce, channel.admission_.authority, 1);
     return channel;
 }
 
@@ -185,14 +189,21 @@ ChildWaitResult ChildControlChannel::WaitForRequest(
     const DWORD timeoutMilliseconds,
     ControlFrame& request) noexcept {
     if (!shared_ || !gate_) return ChildWaitResult::Failed;
-    const std::array waits{requestEvent_, stopEvent_, parentProcess_};
-    const auto result = WaitForMultipleObjects(
+    // Stop and parent death precede request admission when multiple objects
+    // become signaled together. A zero-time final observation closes the race
+    // at the timeout boundary without extending or retrying the deadline.
+    const std::array waits{stopEvent_, parentProcess_, requestEvent_};
+    auto result = WaitForMultipleObjects(
         static_cast<DWORD>(waits.size()), waits.data(), FALSE,
         timeoutMilliseconds);
-    if (result == WAIT_TIMEOUT) return ChildWaitResult::TimedOut;
-    if (result == WAIT_OBJECT_0 + 1) return ChildWaitResult::Stop;
-    if (result == WAIT_OBJECT_0 + 2) return ChildWaitResult::ParentExited;
-    if (result != WAIT_OBJECT_0) return ChildWaitResult::Failed;
+    if (result == WAIT_TIMEOUT) {
+        result = WaitForMultipleObjects(
+            static_cast<DWORD>(waits.size()), waits.data(), FALSE, 0);
+        if (result == WAIT_TIMEOUT) return ChildWaitResult::TimedOut;
+    }
+    if (result == WAIT_OBJECT_0) return ChildWaitResult::Stop;
+    if (result == WAIT_OBJECT_0 + 1) return ChildWaitResult::ParentExited;
+    if (result != WAIT_OBJECT_0 + 2) return ChildWaitResult::Failed;
     request = shared_->request;
     return gate_->Admit(request) == ControlFrameValidation::Accepted
         ? ChildWaitResult::Request
@@ -206,16 +217,26 @@ bool ChildControlChannel::Reply(
     const std::uint32_t processId) noexcept {
     if (!shared_) return false;
     shared_->response = MakeControlFrame(
-        kind, shared_->admission.nonce, shared_->admission.authority,
-        request.sequence);
+        kind, admission_.nonce, admission_.authority, request.sequence);
     shared_->response.status = status;
     shared_->response.processId = processId;
     MemoryBarrier();
     return SetEvent(responseEvent_) != FALSE;
 }
 
+#if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
+bool ChildControlChannel::ReplyRawForTest(
+    const ControlFrame& response) noexcept {
+    if (!shared_) return false;
+    shared_->response = response;
+    MemoryBarrier();
+    return SetEvent(responseEvent_) != FALSE;
+}
+#endif
+
 void ChildControlChannel::Close() noexcept {
     gate_.reset();
+    admission_ = {};
     if (shared_) UnmapViewOfFile(shared_);
     shared_ = nullptr;
     CloseHandleIfPresent(mapping_);
@@ -332,10 +353,17 @@ bool ControllerIsolationProcessOwner::Start(
     auto* attributes = reinterpret_cast<PPROC_THREAD_ATTRIBUTE_LIST>(
         attributeStorage.data());
     if (!InitializeProcThreadAttributeList(
-            attributes, 1, 0, &attributeBytes) ||
-        !UpdateProcThreadAttribute(
+            attributes, 1, 0, &attributeBytes)) {
+        error = L"Controller isolation restricted inheritance setup failed.";
+        for (const auto handle : inherited) (void)SetInheritable(handle, false);
+        CloseHandleIfPresent(parentProcess);
+        Stop();
+        return false;
+    }
+    if (!UpdateProcThreadAttribute(
             attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
             inherited.data(), sizeof(inherited), nullptr, nullptr)) {
+        DeleteProcThreadAttributeList(attributes);
         error = L"Controller isolation restricted inheritance setup failed.";
         for (const auto handle : inherited) (void)SetInheritable(handle, false);
         CloseHandleIfPresent(parentProcess);
@@ -379,8 +407,8 @@ bool ControllerIsolationProcessOwner::Start(
     MemoryBarrier();
     if (!SetEvent(requestEvent_) ||
         !WaitForResponse(
-            nextSequence_, timeoutMilliseconds, startupResponse_, error) ||
-        startupResponse_.kind != ControlMessageKind::HelloAccepted) {
+            ControlMessageKind::Hello, nextSequence_, timeoutMilliseconds,
+            startupResponse_, error)) {
         Stop();
         return false;
     }
@@ -402,7 +430,8 @@ bool ControllerIsolationProcessOwner::Send(
     shared_->request = MakeControlFrame(kind, nonce_, authority_, nextSequence_);
     MemoryBarrier();
     if (!SetEvent(requestEvent_) ||
-        !WaitForResponse(nextSequence_, timeoutMilliseconds, response, error)) {
+        !WaitForResponse(
+            kind, nextSequence_, timeoutMilliseconds, response, error)) {
         return false;
     }
     if (nextSequence_ == std::numeric_limits<std::uint64_t>::max())
@@ -453,7 +482,8 @@ bool ControllerIsolationProcessOwner::SendRawForTest(
     MemoryBarrier();
     return SetEvent(requestEvent_) &&
         WaitForResponse(
-            request.sequence, timeoutMilliseconds, response, error);
+            request.kind, request.sequence, timeoutMilliseconds,
+            response, error);
 }
 
 bool ControllerIsolationProcessOwner::WaitForExitForTest(
@@ -461,9 +491,23 @@ bool ControllerIsolationProcessOwner::WaitForExitForTest(
     return childProcess_ &&
         WaitForSingleObject(childProcess_, timeoutMilliseconds) == WAIT_OBJECT_0;
 }
+
+bool ControllerIsolationProcessOwner::SignalStopAndRequestForTest(
+    const ControlFrame& request) noexcept {
+    if (!shared_ || !childProcess_) return false;
+    shared_->request = request;
+    MemoryBarrier();
+    return SetEvent(stopEvent_) != FALSE &&
+        SetEvent(requestEvent_) != FALSE;
+}
+
+void ControllerIsolationProcessOwner::CorruptSharedAdmissionForTest() noexcept {
+    if (shared_) shared_->admission = {};
+}
 #endif
 
 bool ControllerIsolationProcessOwner::WaitForResponse(
+    const ControlMessageKind requestKind,
     const std::uint64_t sequence,
     const DWORD timeoutMilliseconds,
     ControlFrame& response,
@@ -486,15 +530,27 @@ bool ControllerIsolationProcessOwner::WaitForResponse(
     }
     MemoryBarrier();
     response = shared_->response;
-    if (response.magic != ControllerIsolationProtocolMagic ||
-        response.version != ControllerIsolationProtocolVersion ||
-        response.size != sizeof(ControlFrame) || response.reserved != 0 ||
-        !SameNonce(response.nonce, nonce_) ||
-        response.authority != authority_ || response.sequence != sequence) {
+    switch (ValidateControlResponse(
+        requestKind, response, nonce_, authority_, sequence)) {
+    case ControlResponseValidation::Accepted:
+        return true;
+    case ControlResponseValidation::RemoteFailure:
+        error = L"Controller isolation child terminal status " +
+            std::to_wstring(response.status) + L".";
+        return false;
+    case ControlResponseValidation::WrongResponseKind:
+        error = L"Controller isolation child response kind was rejected.";
+        return false;
+    case ControlResponseValidation::InvalidShape:
+    case ControlResponseValidation::InvalidKind:
+    case ControlResponseValidation::WrongNonce:
+    case ControlResponseValidation::WrongAuthority:
+    case ControlResponseValidation::WrongSequence:
         error = L"Controller isolation child response authority was rejected.";
         return false;
     }
-    return true;
+    error = L"Controller isolation child response validation failed.";
+    return false;
 }
 
 void ControllerIsolationProcessOwner::CloseChannelHandles() noexcept {

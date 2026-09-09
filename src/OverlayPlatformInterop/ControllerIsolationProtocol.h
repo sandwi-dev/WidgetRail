@@ -29,6 +29,10 @@ enum class ControlMessageKind : std::uint16_t {
 #if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
     TestExit = 100,
     TestHang = 101,
+    TestWrongResponseKind = 102,
+    TestUnknownResponseKind = 103,
+    TestNonzeroResponseStatus = 104,
+    TestMalformedResponse = 105,
 #endif
 };
 
@@ -69,12 +73,29 @@ enum class ControlFrameValidation {
     WrongSequence,
 };
 
+enum class ControlResponseValidation {
+    Accepted,
+    InvalidShape,
+    InvalidKind,
+    WrongNonce,
+    WrongAuthority,
+    WrongSequence,
+    WrongResponseKind,
+    RemoteFailure,
+};
+
 [[nodiscard]] bool ValidNonce(
     const ControllerIsolationNonce& nonce) noexcept;
 [[nodiscard]] bool SameNonce(
     const ControllerIsolationNonce& left,
     const ControllerIsolationNonce& right) noexcept;
 [[nodiscard]] bool ProductionMessageKind(ControlMessageKind kind) noexcept;
+[[nodiscard]] ControlResponseValidation ValidateControlResponse(
+    ControlMessageKind requestKind,
+    const ControlFrame& response,
+    const ControllerIsolationNonce& nonce,
+    const RoutingAuthority& authority,
+    std::uint64_t sequence) noexcept;
 
 class ControlSessionGate final {
 public:

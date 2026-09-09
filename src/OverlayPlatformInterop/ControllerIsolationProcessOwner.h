@@ -54,9 +54,13 @@ public:
         const ControlFrame& request,
         std::uint32_t status = 0,
         std::uint32_t processId = 0) noexcept;
+#if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
+    [[nodiscard]] bool ReplyRawForTest(
+        const ControlFrame& response) noexcept;
+#endif
 
     [[nodiscard]] const ProcessAdmission& admission() const noexcept {
-        return shared_->admission;
+        return admission_;
     }
 
 private:
@@ -68,6 +72,7 @@ private:
     HANDLE stopEvent_{};
     HANDLE parentProcess_{};
     ControlSharedMemory* shared_{};
+    ProcessAdmission admission_{};
     std::optional<ControlSessionGate> gate_;
 };
 
@@ -111,10 +116,14 @@ public:
         ControlFrame& response,
         std::wstring& error) noexcept;
     [[nodiscard]] bool WaitForExitForTest(DWORD timeoutMilliseconds) noexcept;
+    [[nodiscard]] bool SignalStopAndRequestForTest(
+        const ControlFrame& request) noexcept;
+    void CorruptSharedAdmissionForTest() noexcept;
 #endif
 
 private:
     [[nodiscard]] bool WaitForResponse(
+        ControlMessageKind requestKind,
         std::uint64_t sequence,
         DWORD timeoutMilliseconds,
         ControlFrame& response,

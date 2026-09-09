@@ -117,6 +117,28 @@ void ProtocolRejectsWrongAuthorityAndShape() {
     Check(sequenceGate.Admit(skipped) ==
               ControlFrameValidation::WrongSequence,
           "skipped or replayed sequence is rejected");
+
+    auto heartbeat = MakeControlFrame(
+        ControlMessageKind::Heartbeat, nonce, Authority(), 2);
+    auto heartbeatResponse = MakeControlFrame(
+        ControlMessageKind::Heartbeat, nonce, Authority(), 2);
+    Check(ValidateControlResponse(
+              ControlMessageKind::Heartbeat, heartbeatResponse, nonce,
+              Authority(), heartbeat.sequence) ==
+              ControlResponseValidation::Accepted,
+          "heartbeat admits only its exact successful response");
+    heartbeatResponse.kind = ControlMessageKind::Terminal;
+    Check(ValidateControlResponse(
+              ControlMessageKind::Heartbeat, heartbeatResponse, nonce,
+              Authority(), heartbeat.sequence) ==
+              ControlResponseValidation::WrongResponseKind,
+          "a successful terminal cannot impersonate a heartbeat response");
+    heartbeatResponse.status = ERROR_ACCESS_DENIED;
+    Check(ValidateControlResponse(
+              ControlMessageKind::Heartbeat, heartbeatResponse, nonce,
+              Authority(), heartbeat.sequence) ==
+              ControlResponseValidation::RemoteFailure,
+          "a nonzero terminal status remains a remote failure");
 }
 
 void DirectLaunchFailsBeforeAnyBackendAdmission() {
@@ -168,14 +190,74 @@ void WorkerDeathAndHangAreBounded() {
         Check(worker != nullptr, "failure case observes exact fake worker");
         ControlFrame response;
         std::wstring error;
-        Check(guardian.Send(
+        Check(!guardian.Send(
                   kind, ControllerIsolationStartupTimeoutMilliseconds,
                   response, error) &&
                   response.kind == ControlMessageKind::Terminal &&
-                  response.status == terminalStatus,
-              "worker death or hang becomes one bounded terminal response");
+                  response.status == terminalStatus &&
+                  error.find(std::to_wstring(terminalStatus)) !=
+                      std::wstring::npos,
+              "worker death or hang remains one bounded remote failure");
         Check(WaitForSingleObject(worker, 1'000) == WAIT_OBJECT_0,
               "worker death or hang leaves no fake child alive");
+        CloseHandle(worker);
+        guardian.Stop();
+    }
+}
+
+void InvalidResponsesNeverBecomeSuccess() {
+    const std::array cases{
+        ControlMessageKind::TestWrongResponseKind,
+        ControlMessageKind::TestUnknownResponseKind,
+        ControlMessageKind::TestNonzeroResponseStatus,
+        ControlMessageKind::TestMalformedResponse};
+    for (const auto kind : cases) {
+        auto guardian = StartedGuardian();
+        ControlFrame response;
+        std::wstring error;
+        Check(!guardian.Send(
+                  kind, ControllerIsolationStartupTimeoutMilliseconds,
+                  response, error) &&
+                  !error.empty(),
+              "wrong-kind, unknown, failed and malformed responses fail closed");
+        if (kind == ControlMessageKind::TestNonzeroResponseStatus) {
+            Check(response.status == ERROR_ACCESS_DENIED &&
+                      error.find(std::to_wstring(ERROR_ACCESS_DENIED)) !=
+                          std::wstring::npos,
+                  "remote status is preserved without relabeling success");
+        }
+        Check(guardian.WaitForExitForTest(1'000),
+              "invalid-response fake guardian terminates its session");
+        guardian.Stop();
+    }
+}
+
+void AdmissionSnapshotAndTerminalPriorityAreStable() {
+    {
+        auto guardian = StartedGuardian();
+        guardian.CorruptSharedAdmissionForTest();
+        ControlFrame response;
+        std::wstring error;
+        Check(guardian.Send(
+                  ControlMessageKind::Heartbeat,
+                  ControllerIsolationCommandTimeoutMilliseconds,
+                  response, error) &&
+                  response.kind == ControlMessageKind::Heartbeat,
+              "child uses its validated admission snapshot after open");
+        guardian.Stop();
+    }
+    {
+        auto guardian = StartedGuardian();
+        HANDLE worker = OpenProcess(
+            SYNCHRONIZE, FALSE, guardian.startupResponse().processId);
+        Check(worker != nullptr, "terminal-priority case observes exact worker");
+        const auto request =
+            guardian.NextFrameForTest(ControlMessageKind::Heartbeat);
+        Check(guardian.SignalStopAndRequestForTest(request),
+              "test signals stop and a valid request at the same boundary");
+        Check(guardian.WaitForExitForTest(1'000) &&
+                  WaitForSingleObject(worker, 1'000) == WAIT_OBJECT_0,
+              "terminal stop wins and closes the worker job");
         CloseHandle(worker);
         guardian.Stop();
     }
@@ -228,6 +310,8 @@ int main() {
     DirectLaunchFailsBeforeAnyBackendAdmission();
     HeartbeatAndOrderlyStopAreCorrelated();
     WorkerDeathAndHangAreBounded();
+    InvalidResponsesNeverBecomeSuccess();
+    AdmissionSnapshotAndTerminalPriorityAreStable();
     GuardianDeathClosesWorkerJob();
     LeaseAndTamperedFramesFailClosed();
     std::cout << "ControllerIsolationProcessTests passed (" << checks

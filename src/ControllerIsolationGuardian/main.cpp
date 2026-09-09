@@ -79,9 +79,12 @@ int wmain(const int argumentCount, wchar_t** arguments) {
                     ControllerIsolationCommandTimeoutMilliseconds,
                     workerResponse, error)) {
                 worker.Stop();
+                const auto remoteStatus = workerResponse.status != 0
+                    ? workerResponse.status
+                    : static_cast<std::uint32_t>(ERROR_TIMEOUT);
                 (void)channel->Reply(
-                    ControlMessageKind::Terminal, request, ERROR_TIMEOUT);
-                return ERROR_TIMEOUT;
+                    ControlMessageKind::Terminal, request, remoteStatus);
+                return static_cast<int>(remoteStatus);
             }
             if (!channel->Reply(
                     ControlMessageKind::Heartbeat, request, 0,
@@ -89,15 +92,49 @@ int wmain(const int argumentCount, wchar_t** arguments) {
                 return ERROR_BROKEN_PIPE;
             }
             break;
-        case ControlMessageKind::Stop:
-            (void)worker.Send(
+        case ControlMessageKind::Stop: {
+            const auto stopped = worker.Send(
                 ControlMessageKind::Stop,
                 ControllerIsolationCommandTimeoutMilliseconds,
                 workerResponse, error);
             worker.Stop();
-            (void)channel->Reply(ControlMessageKind::Terminal, request);
-            return 0;
+            const auto stopStatus = stopped
+                ? 0u
+                : (workerResponse.status != 0
+                       ? workerResponse.status
+                       : static_cast<std::uint32_t>(ERROR_PROCESS_ABORTED));
+            (void)channel->Reply(
+                ControlMessageKind::Terminal, request, stopStatus);
+            return static_cast<int>(stopStatus);
+        }
 #if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
+        case ControlMessageKind::TestWrongResponseKind:
+            (void)channel->Reply(
+                ControlMessageKind::HelloAccepted, request);
+            return 0;
+        case ControlMessageKind::TestUnknownResponseKind: {
+            auto response = MakeControlFrame(
+                static_cast<ControlMessageKind>(0x7FFF),
+                channel->admission().nonce,
+                channel->admission().authority,
+                request.sequence);
+            (void)channel->ReplyRawForTest(response);
+            return 0;
+        }
+        case ControlMessageKind::TestNonzeroResponseStatus:
+            (void)channel->Reply(
+                ControlMessageKind::Heartbeat, request, ERROR_ACCESS_DENIED);
+            return ERROR_ACCESS_DENIED;
+        case ControlMessageKind::TestMalformedResponse: {
+            auto response = MakeControlFrame(
+                ControlMessageKind::Heartbeat,
+                channel->admission().nonce,
+                channel->admission().authority,
+                request.sequence);
+            response.size = 0;
+            (void)channel->ReplyRawForTest(response);
+            return ERROR_INVALID_DATA;
+        }
         case ControlMessageKind::TestExit:
         case ControlMessageKind::TestHang: {
             const auto sent = worker.Send(

@@ -20,6 +20,20 @@ process after a bounded heartbeat and final identity recheck; whether abrupt
 process termination yields a sufficiently bounded driver-side target removal
 remains a required physical measurement and is not established by fake tests.
 
+The expected same-directory parent executable check prevents accidental or
+unconfigured helper launch; it is not a security boundary against a hostile
+process already running with the same user's process-handle or debugging
+authority. Channel admission additionally requires the private inherited
+handle set, snapshotted nonce, exact process identity and generation sequence.
+
+This milestone is prepare/neutral-only. Its 250 ms host lease deliberately
+retires the dormant worker because no physical reader or Playing session is
+connected yet. The next routing slice must move healthy closed-overlay
+forwarding under the guardian/reader lifetime, independent of OverlayHost
+heartbeats. A host lease may govern interactive containment, but host loss may
+leave containment only through the same current-neutral release barrier; it
+must never stop healthy Playing forwarding or resume a held control.
+
 Vendored file SHA-256 values:
 
 | Path | SHA-256 |

@@ -3,6 +3,55 @@
 #include <limits>
 
 namespace widgetrail::isolation {
+namespace {
+
+#if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
+[[nodiscard]] bool TestingMessageKind(const ControlMessageKind kind) noexcept {
+    switch (kind) {
+    case ControlMessageKind::TestExit:
+    case ControlMessageKind::TestHang:
+    case ControlMessageKind::TestWrongResponseKind:
+    case ControlMessageKind::TestUnknownResponseKind:
+    case ControlMessageKind::TestNonzeroResponseStatus:
+    case ControlMessageKind::TestMalformedResponse:
+        return true;
+    default:
+        return false;
+    }
+}
+#endif
+
+[[nodiscard]] bool ResponseMessageKind(
+    const ControlMessageKind kind) noexcept {
+    return kind == ControlMessageKind::HelloAccepted ||
+        kind == ControlMessageKind::Heartbeat ||
+        kind == ControlMessageKind::Terminal;
+}
+
+[[nodiscard]] ControlMessageKind ExpectedResponseKind(
+    const ControlMessageKind requestKind) noexcept {
+    switch (requestKind) {
+    case ControlMessageKind::Hello:
+        return ControlMessageKind::HelloAccepted;
+    case ControlMessageKind::Heartbeat:
+        return ControlMessageKind::Heartbeat;
+    case ControlMessageKind::Stop:
+        return ControlMessageKind::Terminal;
+#if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
+    case ControlMessageKind::TestExit:
+    case ControlMessageKind::TestHang:
+    case ControlMessageKind::TestWrongResponseKind:
+    case ControlMessageKind::TestUnknownResponseKind:
+    case ControlMessageKind::TestNonzeroResponseStatus:
+    case ControlMessageKind::TestMalformedResponse:
+        return ControlMessageKind::Terminal;
+#endif
+    default:
+        return ControlMessageKind{};
+    }
+}
+
+} // namespace
 
 bool ValidNonce(const ControllerIsolationNonce& nonce) noexcept {
     std::uint8_t combined{};
@@ -33,6 +82,10 @@ bool ProductionMessageKind(const ControlMessageKind kind) noexcept {
 #if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
     case ControlMessageKind::TestExit:
     case ControlMessageKind::TestHang:
+    case ControlMessageKind::TestWrongResponseKind:
+    case ControlMessageKind::TestUnknownResponseKind:
+    case ControlMessageKind::TestNonzeroResponseStatus:
+    case ControlMessageKind::TestMalformedResponse:
         return false;
 #endif
     }
@@ -54,8 +107,7 @@ ControlFrameValidation ControlSessionGate::Admit(
     }
     if (!ProductionMessageKind(frame.kind)) {
 #if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
-        if (frame.kind != ControlMessageKind::TestExit &&
-            frame.kind != ControlMessageKind::TestHang)
+        if (!TestingMessageKind(frame.kind))
 #endif
             return ControlFrameValidation::InvalidKind;
     }
@@ -70,6 +122,35 @@ ControlFrameValidation ControlSessionGate::Admit(
     else
         ++nextSequence_;
     return ControlFrameValidation::Accepted;
+}
+
+ControlResponseValidation ValidateControlResponse(
+    const ControlMessageKind requestKind,
+    const ControlFrame& response,
+    const ControllerIsolationNonce& nonce,
+    const RoutingAuthority& authority,
+    const std::uint64_t sequence) noexcept {
+    if (response.magic != ControllerIsolationProtocolMagic ||
+        response.version != ControllerIsolationProtocolVersion ||
+        response.size != sizeof(ControlFrame) || response.reserved != 0) {
+        return ControlResponseValidation::InvalidShape;
+    }
+    if (!ResponseMessageKind(response.kind))
+        return ControlResponseValidation::InvalidKind;
+    if (!SameNonce(response.nonce, nonce))
+        return ControlResponseValidation::WrongNonce;
+    if (response.authority != authority)
+        return ControlResponseValidation::WrongAuthority;
+    if (response.sequence != sequence)
+        return ControlResponseValidation::WrongSequence;
+    if (response.status != 0)
+        return ControlResponseValidation::RemoteFailure;
+    const auto expectedKind = ExpectedResponseKind(requestKind);
+    if (expectedKind == ControlMessageKind{} ||
+        response.kind != expectedKind) {
+        return ControlResponseValidation::WrongResponseKind;
+    }
+    return ControlResponseValidation::Accepted;
 }
 
 ControlFrame MakeControlFrame(
