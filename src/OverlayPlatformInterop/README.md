@@ -26,3 +26,32 @@ release the owner. Concurrent shutdown callers wait for that completed state.
 The legacy XInput Guide ordinal remains implemented only by
 `OverlayHost/GuideInputCompatibility.*` and is consumed privately by this
 boundary. It is not part of the public ABI.
+
+## Dormant controller-isolation worker
+
+The separately built controller-isolation worker remains disconnected from the
+live OverlayHost ABI. Its versioned private protocol requires an explicit
+`PrepareSession` command carrying exact selected-device enrollment and routing
+authority before it creates a GameInput owner or ViGEm target. `Hello` and
+`Heartbeat` never activate either backend. Preparation revalidates the exact
+GameInput device ID, root ID, container ID, normalized PnP-path digest,
+vendor/product identity, connected gamepad capability, and non-ViGEm ancestry;
+unknown ancestry fails closed. Only then may the worker create its one owned
+virtual target and delegate neutral/barrier behavior to
+`ControllerIsolationCore`.
+
+GameInput reading, device, and Guide callbacks publish fixed records into one
+preallocated bounded multi-producer queue. The worker thread is the sole
+consumer and the sole caller of the routing core and virtual output. Queue
+pressure, conflicting source timestamps, disconnect, Guide-sink pressure,
+authority mismatch, and lease expiry retire the owned target rather than drop
+or reorder transitions. Guide edges remain passive ordered signals and never
+enter the gamepad report.
+
+This is compile- and fake-test-only foundation. The present host-owned guardian
+job topology cannot keep a healthy Playing route alive across OverlayHost
+death, and therefore this path must not be enabled in the product. Guardian
+independence, a reconnect endpoint, atomic handoff from the existing live
+GameInput/Guide owner, HidHide application, and physical XInput containment are
+separate required integration work. Until that work is accepted, the existing
+OverlayPlatformInterop reader remains the only live controller owner.

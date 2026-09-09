@@ -1,11 +1,13 @@
 #include "../OverlayPlatformInterop/ControllerIsolationProcessOwner.h"
 
 #if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
+#include "../OverlayPlatformInterop/ControllerIsolationRoutingSession.h"
 #include "../OverlayPlatformInterop/ViGEmOutputAdapter.h"
 #endif
 
 #include <windows.h>
 
+#include <array>
 #include <string>
 
 namespace {
@@ -16,6 +18,55 @@ using namespace widgetrail::isolation;
 constexpr wchar_t kExpectedParent[] = L"ControllerIsolationGuardianTestHost.exe";
 #else
 constexpr wchar_t kExpectedParent[] = L"ControllerIsolationGuardian.exe";
+
+class WorkerOutput final : public ControllerIsolationOutput {
+public:
+    WorkerOutput() noexcept : adapter_(OfficialViGEmApi()) {}
+
+    bool OpenOwnedTarget() noexcept override { return adapter_.Open(); }
+    bool Submit(const GamepadState& state) noexcept override {
+        return adapter_.Submit(state);
+    }
+    void RemoveOwnedTarget() noexcept override {
+        adapter_.RemoveOwnedTarget();
+    }
+    [[nodiscard]] ViGEmAdapterStatus status() const noexcept {
+        return adapter_.status();
+    }
+
+private:
+    ViGEmOutputAdapter adapter_;
+};
+
+class PendingGuideSink final : public ControllerIsolationGuideSink {
+public:
+    bool PublishGuide(
+        const bool pressed,
+        const std::uint64_t sourceTimestampMicroseconds,
+        const std::uint64_t ingressOrdinal) noexcept override {
+        if (count_ == events_.size()) return false;
+        events_[(head_ + count_) % events_.size()] = {
+            pressed, sourceTimestampMicroseconds, ingressOrdinal};
+        ++count_;
+        return true;
+    }
+
+private:
+    struct Event final {
+        bool pressed{};
+        std::uint64_t sourceTimestampMicroseconds{};
+        std::uint64_t ingressOrdinal{};
+    };
+    std::array<Event, 32> events_{};
+    std::size_t head_{};
+    std::size_t count_{};
+};
+
+[[nodiscard]] bool Accepted(
+    const ControllerIsolationRoutingResult result) noexcept {
+    return result == ControllerIsolationRoutingResult::Applied ||
+        result == ControllerIsolationRoutingResult::Waiting;
+}
 #endif
 
 } // namespace
@@ -35,16 +86,13 @@ int wmain(const int argumentCount, wchar_t** arguments) {
     }
 
 #if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
-    // This is the first point at which the production worker may contact the
-    // driver: inherited handle, nonce, parent and session admission have all
-    // succeeded. No WidgetRail product path launches this dormant binary yet.
-    ViGEmOutputAdapter output(OfficialViGEmApi());
-    if (!output.Open()) {
-        (void)channel->Reply(
-            ControlMessageKind::Terminal, hello,
-            static_cast<std::uint32_t>(output.status()));
-        return ERROR_DEVICE_NOT_AVAILABLE;
-    }
+    // Construction is deliberately dormant. PrepareSession is the only
+    // command allowed to acquire GameInput and then create a ViGEm target.
+    auto source = CreateGameInputSelectedControllerReader();
+    WorkerOutput output;
+    PendingGuideSink guideSink;
+    if (!source) return ERROR_NOT_ENOUGH_MEMORY;
+    ControllerIsolationRoutingSession routing(*source, output, guideSink);
 #endif
 
     if (!channel->Reply(
@@ -55,19 +103,109 @@ int wmain(const int argumentCount, wchar_t** arguments) {
 
     for (;;) {
         ControlFrame request;
-        const auto wait = channel->WaitForRequest(
-            ControllerIsolationCommandTimeoutMilliseconds, request);
+        const auto timeout =
+#if defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
+            ControllerIsolationCommandTimeoutMilliseconds;
+#else
+            routing.state() == ControllerIsolationRoutingState::Disabled
+                ? ControllerIsolationCommandTimeoutMilliseconds
+                : 1U;
+#endif
+        const auto wait = channel->WaitForRequest(timeout, request);
         if (wait == ChildWaitResult::Stop ||
             wait == ChildWaitResult::ParentExited) {
+#if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
+            if (routing.state() != ControllerIsolationRoutingState::Disabled)
+                (void)routing.Stop(channel->admission().authority);
+#endif
             return 0;
         }
+#if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
+        if (wait == ChildWaitResult::TimedOut &&
+            routing.state() != ControllerIsolationRoutingState::Disabled) {
+            if (routing.Pump(GetTickCount64()) ==
+                ControllerIsolationRoutingResult::Faulted) {
+                return ERROR_DEVICE_NOT_AVAILABLE;
+            }
+            continue;
+        }
+#endif
         if (wait != ChildWaitResult::Request) return ERROR_INVALID_DATA;
         switch (request.kind) {
         case ControlMessageKind::Heartbeat:
+#if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
+            if (routing.state() != ControllerIsolationRoutingState::Disabled &&
+                !Accepted(routing.Heartbeat(request.authority, GetTickCount64()))) {
+                (void)channel->Reply(
+                    ControlMessageKind::Terminal, request,
+                    ERROR_INVALID_STATE);
+                return ERROR_INVALID_STATE;
+            }
+#endif
             if (!channel->Reply(ControlMessageKind::Heartbeat, request))
                 return ERROR_BROKEN_PIPE;
             break;
+#if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
+        case ControlMessageKind::PrepareSession: {
+            const auto result = routing.PrepareSession(
+                request.authority, request.enrollment, GetTickCount64());
+            if (!Accepted(result)) {
+                (void)channel->Reply(
+                    ControlMessageKind::Terminal, request,
+                    static_cast<std::uint32_t>(result) + 1);
+                return ERROR_DEVICE_NOT_AVAILABLE;
+            }
+            if (!channel->Reply(ControlMessageKind::PrepareSession, request))
+                return ERROR_BROKEN_PIPE;
+            break;
+        }
+        case ControlMessageKind::CommitPlaying: {
+            const auto result = routing.CommitPlaying(
+                request.authority, request.observedAtMilliseconds,
+                GetTickCount64());
+            if (!Accepted(result)) {
+                (void)channel->Reply(
+                    ControlMessageKind::Terminal, request,
+                    static_cast<std::uint32_t>(result) + 1);
+                return ERROR_INVALID_STATE;
+            }
+            if (!channel->Reply(ControlMessageKind::CommitPlaying, request))
+                return ERROR_BROKEN_PIPE;
+            break;
+        }
+        case ControlMessageKind::EnterOverlay: {
+            const auto result = routing.EnterOverlay(
+                request.authority, GetTickCount64());
+            if (!Accepted(result)) {
+                (void)channel->Reply(
+                    ControlMessageKind::Terminal, request,
+                    static_cast<std::uint32_t>(result) + 1);
+                return ERROR_INVALID_STATE;
+            }
+            if (!channel->Reply(ControlMessageKind::EnterOverlay, request))
+                return ERROR_BROKEN_PIPE;
+            break;
+        }
+        case ControlMessageKind::CloseOverlay: {
+            const auto result = routing.CloseOverlay(
+                request.authority, request.observedAtMilliseconds,
+                GetTickCount64());
+            if (!Accepted(result)) {
+                (void)channel->Reply(
+                    ControlMessageKind::Terminal, request,
+                    static_cast<std::uint32_t>(result) + 1);
+                return ERROR_INVALID_STATE;
+            }
+            if (!channel->Reply(ControlMessageKind::CloseOverlay, request))
+                return ERROR_BROKEN_PIPE;
+            break;
+        }
+#endif
         case ControlMessageKind::Stop:
+#if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
+            if (routing.state() != ControllerIsolationRoutingState::Disabled)
+                (void)routing.Stop(request.authority);
+#endif
             (void)channel->Reply(ControlMessageKind::Terminal, request);
             return 0;
 #if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)

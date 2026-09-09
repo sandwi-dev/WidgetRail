@@ -457,9 +457,14 @@ function Invoke-OverlayPlatformInteropBuild {
 function Invoke-ControllerIsolationProductionBuild {
     $workerArguments = $common + @(
         '/DWRAIL_VIGEM_NATIVE_BACKEND',
+        '/DWRAIL_GAMEINPUT_ISOLATION_READER',
         '/wd4005',
         "/I$(Join-Path $viGEmClientDirectory 'include')",
         (Join-Path $controllerIsolationWorkerDirectory 'main.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationCore.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationReader.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationRoutingSession.cpp'),
+        (Join-Path $platformDirectory 'GameInputSelectedControllerReader.cpp'),
         (Join-Path $platformDirectory 'ViGEmOutputAdapter.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationProtocol.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationProcessOwner.cpp'),
@@ -467,7 +472,8 @@ function Invoke-ControllerIsolationProductionBuild {
         "/Fo:$controllerIsolationWorkerObjectDirectory\",
         "/Fe:$outputDirectory\ControllerIsolationWorker.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @('setupapi.lib', 'bcrypt.lib')
+    ) + $libraryArguments + @(
+        'gameinput.lib', 'setupapi.lib', 'cfgmgr32.lib', 'bcrypt.lib')
     & $cl $workerArguments
     if ($LASTEXITCODE -ne 0) {
         throw "ControllerIsolationWorker build failed with exit code $LASTEXITCODE."
@@ -488,6 +494,40 @@ function Invoke-ControllerIsolationProductionBuild {
 }
 
 function Invoke-ControllerIsolationAdapterAndProcessTests {
+    $readerTestArguments = $common + @(
+        (Join-Path $platformTestDirectory 'ControllerIsolationReaderTests.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationReader.cpp'),
+        "/Fo:$controllerIsolationTestObjectDirectory\",
+        "/Fe:$outputDirectory\ControllerIsolationReaderTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $readerTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerIsolationReaderTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'ControllerIsolationReaderTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerIsolationReaderTests failed with exit code $LASTEXITCODE."
+    }
+
+    $routingTestArguments = $common + @(
+        (Join-Path $platformTestDirectory 'ControllerIsolationRoutingSessionTests.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationRoutingSession.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationReader.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationCore.cpp'),
+        "/Fo:$controllerIsolationTestObjectDirectory\",
+        "/Fe:$outputDirectory\ControllerIsolationRoutingSessionTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $routingTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerIsolationRoutingSessionTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'ControllerIsolationRoutingSessionTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerIsolationRoutingSessionTests failed with exit code $LASTEXITCODE."
+    }
+
     $adapterArguments = $common + @(
         (Join-Path $platformTestDirectory 'ViGEmOutputAdapterTests.cpp'),
         (Join-Path $platformDirectory 'ViGEmOutputAdapter.cpp'),

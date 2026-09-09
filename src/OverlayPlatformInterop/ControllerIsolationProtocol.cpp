@@ -25,6 +25,10 @@ namespace {
     const ControlMessageKind kind) noexcept {
     return kind == ControlMessageKind::HelloAccepted ||
         kind == ControlMessageKind::Heartbeat ||
+        kind == ControlMessageKind::PrepareSession ||
+        kind == ControlMessageKind::CommitPlaying ||
+        kind == ControlMessageKind::EnterOverlay ||
+        kind == ControlMessageKind::CloseOverlay ||
         kind == ControlMessageKind::Terminal;
 }
 
@@ -35,6 +39,11 @@ namespace {
         return ControlMessageKind::HelloAccepted;
     case ControlMessageKind::Heartbeat:
         return ControlMessageKind::Heartbeat;
+    case ControlMessageKind::PrepareSession:
+    case ControlMessageKind::CommitPlaying:
+    case ControlMessageKind::EnterOverlay:
+    case ControlMessageKind::CloseOverlay:
+        return requestKind;
     case ControlMessageKind::Stop:
         return ControlMessageKind::Terminal;
 #if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
@@ -78,6 +87,8 @@ bool ProductionMessageKind(const ControlMessageKind kind) noexcept {
     case ControlMessageKind::CloseOverlay:
     case ControlMessageKind::Stop:
     case ControlMessageKind::Terminal:
+    case ControlMessageKind::PrepareSession:
+    case ControlMessageKind::CommitPlaying:
         return true;
 #if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
     case ControlMessageKind::TestExit:

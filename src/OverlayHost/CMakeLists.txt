@@ -59,6 +59,10 @@ target_link_libraries(ArtworkDecoderHost PRIVATE windowscodecs ole32 d2d1 d3d11 
 
 add_executable(ControllerIsolationWorker
     ../ControllerIsolationWorker/main.cpp
+    ../OverlayPlatformInterop/ControllerIsolationCore.cpp
+    ../OverlayPlatformInterop/ControllerIsolationReader.cpp
+    ../OverlayPlatformInterop/ControllerIsolationRoutingSession.cpp
+    ../OverlayPlatformInterop/GameInputSelectedControllerReader.cpp
     ../OverlayPlatformInterop/ViGEmOutputAdapter.cpp
     ../OverlayPlatformInterop/ControllerIsolationProtocol.cpp
     ../OverlayPlatformInterop/ControllerIsolationProcessOwner.cpp
@@ -67,10 +71,15 @@ target_compile_features(ControllerIsolationWorker PRIVATE cxx_std_20)
 target_compile_options(ControllerIsolationWorker PRIVATE
     /W4 /permissive- /EHsc /wd4005)
 target_compile_definitions(ControllerIsolationWorker PRIVATE
-    WRAIL_VIGEM_NATIVE_BACKEND UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    WRAIL_VIGEM_NATIVE_BACKEND WRAIL_GAMEINPUT_ISOLATION_READER
+    UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_include_directories(ControllerIsolationWorker PRIVATE
-    ../../third_party/ViGEmClient/include)
-target_link_libraries(ControllerIsolationWorker PRIVATE setupapi bcrypt)
+    ../../third_party/ViGEmClient/include
+    "${GAMEINPUT_ROOT}/native/include")
+target_link_directories(ControllerIsolationWorker PRIVATE
+    "${GAMEINPUT_ROOT}/native/lib/x64")
+target_link_libraries(ControllerIsolationWorker PRIVATE
+    gameinput setupapi cfgmgr32 bcrypt)
 
 add_executable(ControllerIsolationGuardian
     ../ControllerIsolationGuardian/main.cpp
@@ -325,6 +334,27 @@ if(WRAIL_BUILD_TESTS)
     target_compile_definitions(ControllerIsolationCoreTests PRIVATE
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME ControllerIsolationCoreTests COMMAND ControllerIsolationCoreTests)
+
+    add_executable(ControllerIsolationReaderTests
+        ../../tests/OverlayPlatformInterop.Tests/ControllerIsolationReaderTests.cpp
+        ../OverlayPlatformInterop/ControllerIsolationReader.cpp)
+    target_compile_features(ControllerIsolationReaderTests PRIVATE cxx_std_20)
+    target_compile_options(ControllerIsolationReaderTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ControllerIsolationReaderTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME ControllerIsolationReaderTests COMMAND ControllerIsolationReaderTests)
+
+    add_executable(ControllerIsolationRoutingSessionTests
+        ../../tests/OverlayPlatformInterop.Tests/ControllerIsolationRoutingSessionTests.cpp
+        ../OverlayPlatformInterop/ControllerIsolationRoutingSession.cpp
+        ../OverlayPlatformInterop/ControllerIsolationReader.cpp
+        ../OverlayPlatformInterop/ControllerIsolationCore.cpp)
+    target_compile_features(ControllerIsolationRoutingSessionTests PRIVATE cxx_std_20)
+    target_compile_options(ControllerIsolationRoutingSessionTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ControllerIsolationRoutingSessionTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME ControllerIsolationRoutingSessionTests
+        COMMAND ControllerIsolationRoutingSessionTests)
 
     add_executable(ViGEmOutputAdapterTests
         ../../tests/OverlayPlatformInterop.Tests/ViGEmOutputAdapterTests.cpp

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ControllerIsolationCore.h"
+#include "ControllerIsolationReader.h"
 
 #include <array>
 #include <cstddef>
@@ -10,7 +10,7 @@
 namespace widgetrail::isolation {
 
 inline constexpr std::uint32_t ControllerIsolationProtocolMagic = 0x57494349;
-inline constexpr std::uint16_t ControllerIsolationProtocolVersion = 1;
+inline constexpr std::uint16_t ControllerIsolationProtocolVersion = 2;
 inline constexpr std::size_t ControllerIsolationNonceBytes = 32;
 inline constexpr std::size_t ControllerIsolationMaximumFrameBytes = 256;
 
@@ -26,6 +26,8 @@ enum class ControlMessageKind : std::uint16_t {
     CloseOverlay = 6,
     Stop = 7,
     Terminal = 8,
+    PrepareSession = 9,
+    CommitPlaying = 10,
 #if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
     TestExit = 100,
     TestHang = 101,
@@ -48,11 +50,13 @@ struct ControlFrame final {
     std::uint64_t deviceEnrollmentToken{};
     std::uint64_t observedAtMilliseconds{};
     GamepadState state{};
+    SelectedControllerEnrollment enrollment{};
     std::uint32_t status{};
     std::uint32_t processId{};
 };
 
 static_assert(sizeof(ControlFrame) <= ControllerIsolationMaximumFrameBytes);
+static_assert(sizeof(ControlFrame) == ControllerIsolationMaximumFrameBytes);
 static_assert(std::is_trivially_copyable_v<ControlFrame>);
 
 struct ProcessAdmission final {
