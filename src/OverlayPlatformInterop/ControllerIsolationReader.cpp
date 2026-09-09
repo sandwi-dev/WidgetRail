@@ -98,6 +98,33 @@ bool SelectedControllerEnrollment::valid() const noexcept {
         !knownVirtualOutput;
 }
 
+void SelectedControllerDiscovery::Observe(
+    const SelectedControllerCandidateKind kind,
+    const SelectedControllerDescriptor& descriptor) noexcept {
+    if (kind == SelectedControllerCandidateKind::KnownVirtualOutput) return;
+    if (kind == SelectedControllerCandidateKind::Unknown ||
+        !descriptor.valid()) {
+        unknownIdentity_ = true;
+        return;
+    }
+    if (physicalCount_ != 0 && selected_ == descriptor) return;
+    if (physicalCount_ == 0) selected_ = descriptor;
+    if (physicalCount_ < 2) ++physicalCount_;
+}
+
+SelectedControllerDiscoveryStatus SelectedControllerDiscovery::Resolve(
+    SelectedControllerDescriptor& descriptor) const noexcept {
+    descriptor = {};
+    if (unknownIdentity_)
+        return SelectedControllerDiscoveryStatus::UnknownIdentity;
+    if (physicalCount_ == 0)
+        return SelectedControllerDiscoveryStatus::Unavailable;
+    if (physicalCount_ != 1)
+        return SelectedControllerDiscoveryStatus::Ambiguous;
+    descriptor = selected_;
+    return SelectedControllerDiscoveryStatus::Ready;
+}
+
 ControllerIsolationReaderIngress::ControllerIsolationReaderIngress() noexcept {
     for (std::size_t index = 0; index < cells_.size(); ++index)
         cells_[index].sequence.store(index, std::memory_order_relaxed);

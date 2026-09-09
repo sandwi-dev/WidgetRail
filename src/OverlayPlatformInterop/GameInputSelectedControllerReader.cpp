@@ -237,6 +237,57 @@ public:
     return identity;
 }
 
+struct PhysicalControllerDiscoveryContext final {
+    explicit PhysicalControllerDiscoveryContext(
+        const std::uint64_t value) noexcept : enrollmentToken(value) {}
+
+    std::uint64_t enrollmentToken{};
+    std::mutex mutex;
+    SelectedControllerDiscovery discovery;
+};
+
+void CALLBACK OnPhysicalControllerDiscovery(
+    GameInputCallbackToken,
+    void* context,
+    IGameInputDevice* device,
+    std::uint64_t,
+    const GameInputDeviceStatus currentStatus,
+    GameInputDeviceStatus) noexcept {
+    if (!context || !device ||
+        (currentStatus & GameInputDeviceConnected) == 0) return;
+    auto& state = *static_cast<PhysicalControllerDiscoveryContext*>(context);
+    SelectedControllerCandidateKind candidateKind =
+        SelectedControllerCandidateKind::Unknown;
+    SelectedControllerDescriptor descriptor;
+    const GameInputDeviceInfo* info{};
+    if (SUCCEEDED(device->GetDeviceInfo(&info)) && info &&
+        (static_cast<unsigned>(info->supportedInput) &
+            static_cast<unsigned>(GameInputKindGamepad)) != 0) {
+        const auto normalized = NormalizePnpPath(info->pnpPath);
+        if (normalized) {
+            CfgMgrDeviceAncestryBackend backend;
+            const auto ancestry = ClassifyControllerDeviceAncestry(
+                *normalized, backend);
+            if (ancestry == ControllerDeviceAncestry::KnownVirtualOutput) {
+                candidateKind =
+                    SelectedControllerCandidateKind::KnownVirtualOutput;
+            } else if (ancestry == ControllerDeviceAncestry::Physical) {
+                std::array<std::uint8_t, 32> digest{};
+                if (backend.ResolveInterfaceInstanceId(
+                        *normalized, descriptor.deviceInstanceId) &&
+                    descriptor.deviceInstanceId.valid() &&
+                    HashPnpPath(*normalized, digest)) {
+                    descriptor.enrollment = IdentityFrom(
+                        *info, state.enrollmentToken, digest, false, true);
+                    candidateKind = SelectedControllerCandidateKind::Physical;
+                }
+            }
+        }
+    }
+    const std::scoped_lock lock(state.mutex);
+    state.discovery.Observe(candidateKind, descriptor);
+}
+
 class GameInputSelectedControllerReader final : public SelectedControllerSource {
 public:
     ~GameInputSelectedControllerReader() override { Stop(); }
@@ -456,38 +507,28 @@ CreateGameInputSelectedControllerReader() noexcept {
         new (std::nothrow) GameInputSelectedControllerReader());
 }
 
-bool DiscoverCurrentPhysicalController(
+SelectedControllerDiscoveryStatus DiscoverCurrentPhysicalController(
     const std::uint64_t enrollmentToken,
     SelectedControllerDescriptor& descriptor) noexcept {
     descriptor = {};
-    if (enrollmentToken == 0) return false;
+    if (enrollmentToken == 0)
+        return SelectedControllerDiscoveryStatus::UnknownIdentity;
     ComPtr<IGameInput> gameInput;
-    ComPtr<IGameInputReading> reading;
-    ComPtr<IGameInputDevice> device;
     if (FAILED(GameInputCreate(gameInput.ReleaseAndGetAddressOf())) ||
-        !gameInput || FAILED(gameInput->GetCurrentReading(
-            GameInputKindGamepad, nullptr, reading.ReleaseAndGetAddressOf())) ||
-        !reading) return false;
-    reading->GetDevice(device.ReleaseAndGetAddressOf());
-    if (!device) return false;
-    const GameInputDeviceInfo* info{};
-    if (FAILED(device->GetDeviceInfo(&info)) || !info) return false;
-    const auto normalized = NormalizePnpPath(info->pnpPath);
-    if (!normalized) return false;
-    CfgMgrDeviceAncestryBackend backend;
-    ControllerDeviceNodeIdentity instanceId;
-    if (!backend.ResolveInterfaceInstanceId(*normalized, instanceId) ||
-        !instanceId.valid() ||
-        ClassifyControllerDeviceAncestry(*normalized, backend) !=
-            ControllerDeviceAncestry::Physical) return false;
-    std::array<std::uint8_t, 32> digest{};
-    if (!HashPnpPath(*normalized, digest)) return false;
-    const bool connected =
-        (device->GetDeviceStatus() & GameInputDeviceConnected) != 0;
-    descriptor.enrollment = IdentityFrom(
-        *info, enrollmentToken, digest, false, connected);
-    descriptor.deviceInstanceId = instanceId;
-    return descriptor.valid();
+        !gameInput) return SelectedControllerDiscoveryStatus::Unavailable;
+    PhysicalControllerDiscoveryContext context(enrollmentToken);
+    GameInputCallbackToken callback{};
+    if (FAILED(gameInput->RegisterDeviceCallback(
+            nullptr, GameInputKindGamepad, GameInputDeviceConnected,
+            GameInputBlockingEnumeration, &context,
+            OnPhysicalControllerDiscovery, &callback)) || callback == 0) {
+        return SelectedControllerDiscoveryStatus::Unavailable;
+    }
+    gameInput->StopCallback(callback);
+    if (!gameInput->UnregisterCallback(callback))
+        return SelectedControllerDiscoveryStatus::UnknownIdentity;
+    const std::scoped_lock lock(context.mutex);
+    return context.discovery.Resolve(descriptor);
 }
 
 } // namespace widgetrail::isolation

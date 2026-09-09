@@ -54,6 +54,12 @@ ControllerDeviceNodeIdentity NodeIdentity(const std::wstring_view value) {
     return result;
 }
 
+SelectedControllerDescriptor Descriptor(
+    const std::uint8_t seed,
+    const std::wstring_view instanceId) {
+    return {Enrollment(seed), NodeIdentity(instanceId)};
+}
+
 struct FakeAncestryBackend final : ControllerDeviceAncestryBackend {
     bool resolveSucceeds{true};
     bool locateSucceeds{true};
@@ -180,6 +186,50 @@ void EnrollmentIsExactAndVirtualFailsClosed() {
     enrollment = Enrollment();
     enrollment.gamepadSupported = false;
     Check(!enrollment.valid(), "non-gamepad enrollment is rejected");
+}
+
+void DiscoveryRequiresExactlyOnePhysicalController() {
+    SelectedControllerDescriptor selected = Descriptor(9, L"HID\\STALE");
+    SelectedControllerDiscovery none;
+    Check(none.Resolve(selected) ==
+              SelectedControllerDiscoveryStatus::Unavailable &&
+              !selected.valid(),
+          "zero connected physical controllers is explicitly unavailable");
+
+    SelectedControllerDiscovery virtualOnly;
+    virtualOnly.Observe(
+        SelectedControllerCandidateKind::KnownVirtualOutput);
+    Check(virtualOnly.Resolve(selected) ==
+              SelectedControllerDiscoveryStatus::Unavailable &&
+              !selected.valid(),
+          "known virtual outputs are excluded rather than selected");
+
+    const auto first = Descriptor(1, L"HID\\PHYSICAL-ONE");
+    SelectedControllerDiscovery unique;
+    unique.Observe(SelectedControllerCandidateKind::Physical, first);
+    unique.Observe(SelectedControllerCandidateKind::Physical, first);
+    Check(unique.Resolve(selected) ==
+              SelectedControllerDiscoveryStatus::Ready &&
+              selected == first,
+          "one exact physical controller is selected and duplicate callbacks deduplicate");
+
+    SelectedControllerDiscovery multiple;
+    multiple.Observe(SelectedControllerCandidateKind::Physical, first);
+    multiple.Observe(
+        SelectedControllerCandidateKind::Physical,
+        Descriptor(2, L"HID\\PHYSICAL-TWO"));
+    Check(multiple.Resolve(selected) ==
+              SelectedControllerDiscoveryStatus::Ambiguous &&
+              !selected.valid(),
+          "multiple distinct physical controllers fail closed as ambiguous");
+
+    SelectedControllerDiscovery unknown;
+    unknown.Observe(SelectedControllerCandidateKind::Physical, first);
+    unknown.Observe(SelectedControllerCandidateKind::Unknown);
+    Check(unknown.Resolve(selected) ==
+              SelectedControllerDiscoveryStatus::UnknownIdentity &&
+              !selected.valid(),
+          "an unclassified connected gamepad prevents physical admission");
 }
 
 void FixedEventsPreserveAuthorityAndOrder() {
@@ -336,6 +386,7 @@ void ReservedProducerYieldsToTheSerializedConsumer() {
 int main() {
     AncestryRequiresAnExactRootedPhysicalChain();
     EnrollmentIsExactAndVirtualFailsClosed();
+    DiscoveryRequiresExactlyOnePhysicalController();
     FixedEventsPreserveAuthorityAndOrder();
     InvalidAndOverflowingInputFailsClosed();
     DistinctCallbackProducersShareOneTotalOrder();

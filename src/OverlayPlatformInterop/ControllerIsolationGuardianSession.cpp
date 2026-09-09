@@ -236,9 +236,22 @@ struct GuardianRuntime final {
             return false;
         }
         SelectedControllerDescriptor descriptor;
-        if (!DiscoverCurrentPhysicalController(
-                record.authority.leaseId, descriptor)) {
-            lastError = ERROR_DEVICE_NOT_CONNECTED;
+        const auto discovery = DiscoverCurrentPhysicalController(
+            record.authority.leaseId, descriptor);
+        if (discovery != SelectedControllerDiscoveryStatus::Ready) {
+            switch (discovery) {
+            case SelectedControllerDiscoveryStatus::Unavailable:
+                lastError = ERROR_DEVICE_NOT_CONNECTED;
+                break;
+            case SelectedControllerDiscoveryStatus::Ambiguous:
+                lastError = ERROR_MORE_DATA;
+                break;
+            case SelectedControllerDiscoveryStatus::UnknownIdentity:
+                lastError = ERROR_INVALID_DATA;
+                break;
+            case SelectedControllerDiscoveryStatus::Ready:
+                break;
+            }
             return false;
         }
         HidHideConfigurationAdapter adapter;

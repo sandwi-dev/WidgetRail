@@ -44,6 +44,12 @@ unknown ancestry fails closed. Only then may the worker create its one owned
 virtual target and delegate neutral/barrier behavior to
 `ControllerIsolationCore`.
 
+Guardian startup uses GameInput's blocking connected-device enumeration and
+admits exactly one uniquely identified physical gamepad. Known virtual outputs
+are excluded. Zero physical candidates are unavailable; multiple physical
+candidates are ambiguous; and any unclassified connected gamepad fails closed.
+All three outcomes occur before the HidHide plan is authored or applied.
+
 Physical ancestry is accepted only when Configuration Manager resolves the
 interface's exact device-instance property and the walk reaches the actual
 device-tree root returned by `CM_Locate_DevNode(nullptr)`. Missing, malformed,

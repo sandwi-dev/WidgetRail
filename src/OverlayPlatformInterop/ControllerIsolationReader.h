@@ -23,6 +23,9 @@ struct ControllerDeviceNodeIdentity final {
     [[nodiscard]] std::wstring_view view() const noexcept {
         return {value.data(), length};
     }
+    [[nodiscard]] friend bool operator==(
+        const ControllerDeviceNodeIdentity&,
+        const ControllerDeviceNodeIdentity&) noexcept = default;
 };
 
 using ControllerDeviceNodeToken = std::uintptr_t;
@@ -202,6 +205,39 @@ struct SelectedControllerDescriptor final {
     [[nodiscard]] bool valid() const noexcept {
         return enrollment.valid() && deviceInstanceId.valid();
     }
+    [[nodiscard]] friend bool operator==(
+        const SelectedControllerDescriptor&,
+        const SelectedControllerDescriptor&) noexcept = default;
+};
+
+enum class SelectedControllerCandidateKind : std::uint8_t {
+    Physical,
+    KnownVirtualOutput,
+    Unknown,
+};
+
+enum class SelectedControllerDiscoveryStatus : std::uint8_t {
+    Ready,
+    Unavailable,
+    Ambiguous,
+    UnknownIdentity,
+};
+
+// Bounded selection owner for one blocking GameInput enumeration. It retains
+// at most one exact physical descriptor and saturates at ambiguity; known
+// virtual outputs never compete with physical input.
+class SelectedControllerDiscovery final {
+public:
+    void Observe(
+        SelectedControllerCandidateKind kind,
+        const SelectedControllerDescriptor& descriptor = {}) noexcept;
+    [[nodiscard]] SelectedControllerDiscoveryStatus Resolve(
+        SelectedControllerDescriptor& descriptor) const noexcept;
+
+private:
+    SelectedControllerDescriptor selected_{};
+    std::uint8_t physicalCount_{};
+    bool unknownIdentity_{};
 };
 
 class SelectedControllerSource {
@@ -220,7 +256,8 @@ public:
 #if defined(WRAIL_GAMEINPUT_ISOLATION_READER)
 [[nodiscard]] std::unique_ptr<SelectedControllerSource>
 CreateGameInputSelectedControllerReader() noexcept;
-[[nodiscard]] bool DiscoverCurrentPhysicalController(
+[[nodiscard]] SelectedControllerDiscoveryStatus
+DiscoverCurrentPhysicalController(
     std::uint64_t enrollmentToken,
     SelectedControllerDescriptor& descriptor) noexcept;
 #endif
