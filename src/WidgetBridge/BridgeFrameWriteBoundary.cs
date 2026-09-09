@@ -28,12 +28,37 @@ internal sealed class BridgeFrameWriteBoundary
             applyWriteDeadline: false).ConfigureAwait(false);
     }
 
+    internal async Task WriteNotificationAsync<T>(
+        string type,
+        T payload,
+        CancellationToken admissionCancellation)
+    {
+        await WriteAsync(
+            (channel, cancellationToken) =>
+                channel.WriteAsync(type, 0, payload, cancellationToken),
+            admissionCancellation,
+            applyWriteDeadline: false).ConfigureAwait(false);
+    }
+
     private async Task WriteAsync(
         BridgeEnvelope envelope,
         CancellationToken admissionCancellation,
         bool applyWriteDeadline)
     {
         ArgumentNullException.ThrowIfNull(envelope);
+        await WriteAsync(
+            (channel, cancellationToken) =>
+                channel.WriteAsync(envelope, cancellationToken),
+            admissionCancellation,
+            applyWriteDeadline).ConfigureAwait(false);
+    }
+
+    private async Task WriteAsync(
+        Func<BridgeFrameChannel, CancellationToken, ValueTask> write,
+        CancellationToken admissionCancellation,
+        bool applyWriteDeadline)
+    {
+        ArgumentNullException.ThrowIfNull(write);
         var gateEntered = false;
         var sessionCancellation = _adapter.SessionCancellation;
         using var admission = CancellationTokenSource.CreateLinkedTokenSource(
@@ -52,7 +77,7 @@ internal sealed class BridgeFrameWriteBoundary
                 // this one exact frame until the host drains again. Only real
                 // session termination may interrupt it; a timeout must not
                 // retire every unrelated widget behind the shared session.
-                await channel.WriteAsync(envelope, sessionCancellation).ConfigureAwait(false);
+                await write(channel, sessionCancellation).ConfigureAwait(false);
                 return;
             }
             using var writeDeadline = _adapter.CreateDeadline(WriteDeadline) ??
@@ -64,7 +89,7 @@ internal sealed class BridgeFrameWriteBoundary
                 // serialized writer is acquired. Once the header can be
                 // emitted, only session termination or the fixed deadline may
                 // interrupt this exact frame.
-                await channel.WriteAsync(envelope, writeDeadline.Token).ConfigureAwait(false);
+                await write(channel, writeDeadline.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (
                 !sessionCancellation.IsCancellationRequested &&

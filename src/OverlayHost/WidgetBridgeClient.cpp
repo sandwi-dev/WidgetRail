@@ -2663,7 +2663,7 @@ bool HandleAsyncEvent(
         status.clear();
         return true;
     }
-    const auto widgetId = OptionalString(payload, L"widgetId");
+    auto widgetId = OptionalString(payload, L"widgetId");
     if (!IsIdentifier(widgetId)) {
         status = L"WidgetBridge asynchronous event has an invalid widget ID.";
         return false;
@@ -2675,11 +2675,11 @@ bool HandleAsyncEvent(
             status = L"WidgetBridge artwork event has an invalid payload.";
             return false;
         }
-        const auto handle = OptionalString(payload, L"artworkHandle");
-        const auto runtimeGeneration = OptionalString(payload, L"runtimeGeneration");
-        const auto presentationGeneration = OptionalString(payload, L"presentationGeneration");
-        const auto contentType = OptionalString(payload, L"contentType");
-        const auto content = OptionalString(payload, L"contentBase64");
+        auto handle = OptionalString(payload, L"artworkHandle");
+        auto runtimeGeneration = OptionalString(payload, L"runtimeGeneration");
+        auto presentationGeneration = OptionalString(payload, L"presentationGeneration");
+        auto contentType = OptionalString(payload, L"contentType");
+        auto content = OptionalString(payload, L"contentBase64");
         constexpr std::size_t maximumEncodedCharacters =
             ((8U * 1024U * 1024U + 2U) / 3U) * 4U;
         const bool unavailable = contentType.empty() && content.empty();
@@ -2688,8 +2688,10 @@ bool HandleAsyncEvent(
             (!unavailable && contentType != L"image/png" && contentType != L"image/jpeg" &&
              contentType != L"image/webp") ||
             content.size() > maximumEncodedCharacters ||
-            !artworkResults->Push({widgetId, handle, runtimeGeneration,
-                                   presentationGeneration, contentType, content})) {
+            !artworkResults->Push({std::move(widgetId), std::move(handle),
+                                   std::move(runtimeGeneration),
+                                   std::move(presentationGeneration),
+                                   std::move(contentType), std::move(content)})) {
             status = L"WidgetBridge artwork event could not be queued.";
             return false;
         }

@@ -170,6 +170,20 @@ internal sealed record BridgeHostEffect(
 internal sealed record BridgeAppearanceChanged(long Revision);
 internal sealed record BridgeCatalogChangedEvent(long Revision);
 internal sealed record BridgeError(string Code, string Message);
+internal sealed record BridgeEncodedArtworkEvent(
+    string WidgetId,
+    string ArtworkHandle,
+    string RuntimeGeneration,
+    string PresentationGeneration,
+    string ContentType,
+    ReadOnlyMemory<byte> ContentBase64);
+internal sealed record BridgeLegacyArtworkEvent(
+    string WidgetId,
+    string ArtworkHandle,
+    string RuntimeGeneration,
+    string PresentationGeneration,
+    string ContentType,
+    string ContentBase64);
 
 internal static class BridgeJson
 {
@@ -204,6 +218,31 @@ internal sealed class BridgeFrameChannel(Stream stream, int maximumMessageBytes)
     public async ValueTask WriteAsync(BridgeEnvelope envelope, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(envelope);
+        await WriteSerializedAsync(envelope, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask WriteAsync<T>(
+        string type,
+        long requestId,
+        T payload,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(type);
+        ArgumentNullException.ThrowIfNull(payload);
+        await WriteSerializedAsync(
+            new BridgeOutgoingEnvelope<T>
+            {
+                Type = type,
+                RequestId = requestId,
+                Payload = payload,
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask WriteSerializedAsync<T>(
+        T envelope,
+        CancellationToken cancellationToken)
+    {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, BridgeJson.Options);
         if (bytes.Length is <= 0 || bytes.Length > _maximumMessageBytes)
             throw new BridgeProtocolException($"Bridge message length {bytes.Length} is invalid.");
@@ -261,6 +300,14 @@ internal sealed class BridgeFrameChannel(Stream stream, int maximumMessageBytes)
             if (bytes is not null) CryptographicOperations.ZeroMemory(bytes);
         }
     }
+}
+
+internal sealed record BridgeOutgoingEnvelope<T>
+{
+    public int ProtocolVersion { get; init; } = BridgeProtocol.CurrentVersion;
+    public required string Type { get; init; }
+    public long RequestId { get; init; }
+    public required T Payload { get; init; }
 }
 
 internal sealed class BridgeProtectedWifiSecret : IDisposable

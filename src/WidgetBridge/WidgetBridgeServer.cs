@@ -414,7 +414,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
 
             var contentType = string.Empty;
-            var contentBase64 = string.Empty;
+            var legacyContentBase64 = string.Empty;
             ConfiguredWidget configured;
             string workerFingerprint;
             WidgetEncodedArtwork? workerArtwork;
@@ -436,27 +436,28 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 {
                     contentType = WidgetEncodedArtworkContract.ContentTypeValue(
                         artwork.ContentType);
-                    contentBase64 = Convert.ToBase64String(artwork.Bytes.Span);
                     _artworkDiagnostics.RecordPayload(
-                        artwork.Bytes.Length, contentBase64.Length);
+                        artwork.Bytes.Length,
+                        ((artwork.Bytes.Length + 2) / 3) * 4);
                 }
                 else if (_appLibraryArtwork is not null &&
                     AppLibraryArtworkRegistry.IsHandle(artworkRequest.ArtworkHandle))
                 {
                     var identity = new BrokerWidgetIdentity(
                         configured.PackageId, configured.PublisherId, configured.InstanceId);
-                    contentBase64 = await _appLibraryArtwork.ResolveAsync(
+                    legacyContentBase64 = await _appLibraryArtwork.ResolveAsync(
                         identity, artworkRequest.ArtworkHandle, cancellationToken)
                         .ConfigureAwait(false);
-                    if (contentBase64 is not null)
+                    if (legacyContentBase64 is not null)
                     {
                         contentType = WidgetEncodedArtworkContract.PngContentType;
                         _artworkDiagnostics.RecordPayload(
-                            DecodedBase64Length(contentBase64), contentBase64.Length);
+                            DecodedBase64Length(legacyContentBase64),
+                            legacyContentBase64.Length);
                     }
                     if (!_appLibraryArtwork.IsCurrent(identity, artworkRequest.ArtworkHandle))
-                        contentBase64 = contentType = string.Empty;
-                    contentBase64 ??= string.Empty;
+                        legacyContentBase64 = contentType = string.Empty;
+                    legacyContentBase64 ??= string.Empty;
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -471,18 +472,32 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 artworkRequest.RuntimeGeneration,
                 artworkRequest.PresentationGeneration);
             if (artworkCompletion is null) break;
-            await SendEventAsync(
-                BridgeMessageTypes.Artwork,
-                new
-                {
-                    widgetId = artworkRequest.WidgetId,
-                    artworkHandle = artworkRequest.ArtworkHandle,
-                    runtimeGeneration = artworkRequest.RuntimeGeneration,
-                    presentationGeneration = artworkRequest.PresentationGeneration,
-                    contentType,
-                    contentBase64,
-                },
-                _sessionCancellation).ConfigureAwait(false);
+            if (workerArtwork is { } encodedArtwork)
+            {
+                await SendEventAsync(
+                    BridgeMessageTypes.Artwork,
+                    new BridgeEncodedArtworkEvent(
+                        artworkRequest.WidgetId,
+                        artworkRequest.ArtworkHandle,
+                        artworkRequest.RuntimeGeneration!,
+                        artworkRequest.PresentationGeneration!,
+                        contentType,
+                        encodedArtwork.Bytes),
+                    _sessionCancellation).ConfigureAwait(false);
+            }
+            else
+            {
+                await SendEventAsync(
+                    BridgeMessageTypes.Artwork,
+                    new BridgeLegacyArtworkEvent(
+                        artworkRequest.WidgetId,
+                        artworkRequest.ArtworkHandle,
+                        artworkRequest.RuntimeGeneration!,
+                        artworkRequest.PresentationGeneration!,
+                        contentType,
+                        legacyContentBase64),
+                    _sessionCancellation).ConfigureAwait(false);
+            }
             BridgeArtworkMemoryDiagnostics.MarkSucceeded(artworkDiagnostic);
             break;
         }
@@ -1134,11 +1149,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             // their existing per-registration bounds and coalescing.
             await _notificationWriteGate.WaitAsync(admission.Token).ConfigureAwait(false);
             notificationGateEntered = true;
-            await _frameWriter.WriteNotificationAsync(new BridgeEnvelope
-            {
-                Type = type,
-                Payload = BridgeJson.ToElement(payload),
-            }, publicationCancellation).ConfigureAwait(false);
+            await _frameWriter.WriteNotificationAsync(
+                type, payload, publicationCancellation).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or
                                                OperationCanceledException or
@@ -1152,7 +1164,6 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             if (notificationGateEntered) _notificationWriteGate.Release();
         }
     }
-
     private void OnAppearanceChanged(object? sender, ThemeSnapshot snapshot) =>
         _revisionNotifications.Enqueue(
             BridgeRevisionNotificationKind.Appearance,
