@@ -151,14 +151,26 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                     DeviceName,
                     _volumePercent / 100d,
                     new(true, initialToken.GrantedScopes)), cancellationToken);
+                Record("local-playback-connect", "dispatched", started);
                 using var readyLifetime = CancellationTokenSource.CreateLinkedTokenSource(
                     cancellationToken, _lifetime.Token);
                 readyLifetime.CancelAfter(ReadyTimeout);
                 var readyTask = _ready!.Task.WaitAsync(readyLifetime.Token);
                 var first = await Task.WhenAny(connect, readyTask).ConfigureAwait(false);
-                if (ReferenceEquals(first, connect)) await connect.ConfigureAwait(false);
+                var commandAcknowledged = false;
+                if (ReferenceEquals(first, connect))
+                {
+                    await connect.ConfigureAwait(false);
+                    commandAcknowledged = true;
+                    Record("local-playback-connect", "command-acknowledged", started);
+                }
                 var deviceId = await readyTask.ConfigureAwait(false);
-                await connect.ConfigureAwait(false);
+                Record("local-playback-connect", "ready-observed", started);
+                if (!commandAcknowledged)
+                {
+                    await connect.ConfigureAwait(false);
+                    Record("local-playback-connect", "command-acknowledged", started);
+                }
                 Record("local-playback-sdk", "ready", started);
                 SetState(identity, SpotifyLocalPlaybackState.Ready,
                     "Ready to play through this PC.", deviceId);

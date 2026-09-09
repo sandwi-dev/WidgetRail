@@ -152,10 +152,21 @@ internal static class SpotifyPlaybackPage
                 case 'connect':
                   if (!sdkReady) { failure(requestId, 'sdk_not_loaded'); return; }
                   createPlayer(payload);
-                  invoke(requestId, async () => {
-                    const connected = await player.connect();
-                    if (!connected) throw new Error('connect failed');
-                  });
+                  try {
+                    const connection = player.connect();
+                    post('command_completed', requestId);
+                    Promise.resolve(connection).then(
+                      connected => {
+                        if (!connected) post('sdk_error', null, {
+                          code: 'initialization_error',
+                          message: 'Spotify playback could not connect.'
+                        });
+                      },
+                      () => post('sdk_error', null, {
+                        code: 'initialization_error',
+                        message: 'Spotify playback could not connect.'
+                      }));
+                  } catch (_) { failure(requestId, 'sdk_command_failed'); }
                   break;
                 case 'provide_token': {
                   const tokenRequestId = text(payload.tokenRequestId, 64);
