@@ -119,6 +119,13 @@ internal static class SpotifyRouteActionPolicy
         _ => SpotifyDestination.Playlists,
     };
 
+    internal static string FocusGroupId(SpotifyRoute route) => route switch
+    {
+        SpotifyRoute.Queue => "spotify.page.queue",
+        SpotifyRoute.Devices => "spotify.page.devices",
+        _ => "spotify.page.playlists",
+    };
+
     internal static bool DevicesNeedLoad(
         SpotifyDevicesSummary? devices,
         SpotifyLocalPlaybackSummary? localPlayback,

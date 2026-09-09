@@ -147,14 +147,10 @@ public sealed class SpotifyWidget : Widget
             MapError = SpotifyResourceError,
             Viewports =
             [
-                new("spotify.queue.scroll.wide", item => item.Key,
+                new("spotify.queue.scroll", item => item.Key,
                     item => SpotifyCollectionIdentity.FocusId(
-                        "spotify.queue.item", "wide", item.Key),
-                    "spotify.queue.empty.wide"),
-                new("spotify.queue.scroll.compact", item => item.Key,
-                    item => SpotifyCollectionIdentity.FocusId(
-                        "spotify.queue.item", "compact", item.Key),
-                    "spotify.queue.empty.compact"),
+                        "spotify.queue.item", "shared", item.Key),
+                    "spotify.queue.empty.shared"),
             ],
         });
         _playlists = CreateCursorResource<SpotifyPlaylistCollectionItem>(
@@ -177,17 +173,10 @@ public sealed class SpotifyWidget : Widget
             MapError = SpotifyResourceError,
             Viewports =
             [
-                new("spotify.playlists.scroll.wide", item => item.Key,
+                new("spotify.playlists.scroll", item => item.Key,
                     item => SpotifyCollectionIdentity.FocusId(
-                        "spotify.playlist.item", "wide", item.Key),
-                    "spotify.page.sparse.playlist.wide")
-                {
-                    EstimatedItemExtent = SpotifyCollectionPolicy.EstimatedItemExtent,
-                },
-                new("spotify.playlists.scroll.compact", item => item.Key,
-                    item => SpotifyCollectionIdentity.FocusId(
-                        "spotify.playlist.item", "compact", item.Key),
-                    "spotify.page.sparse.playlist.compact")
+                        "spotify.playlist.item", "shared", item.Key),
+                    "spotify.page.sparse.playlist.shared")
                 {
                     EstimatedItemExtent = SpotifyCollectionPolicy.EstimatedItemExtent,
                 },
@@ -203,17 +192,10 @@ public sealed class SpotifyWidget : Widget
             MapError = SpotifyResourceError,
             Viewports =
             [
-                new("spotify.playlist.detail.scroll.wide", item => item.Key,
+                new("spotify.playlist.detail.scroll", item => item.Key,
                     item => SpotifyCollectionIdentity.FocusId(
-                        "spotify.playlist.track", "wide", item.Key),
-                    "spotify.playlist.play.wide")
-                {
-                    EstimatedItemExtent = SpotifyCollectionPolicy.EstimatedItemExtent,
-                },
-                new("spotify.playlist.detail.scroll.compact", item => item.Key,
-                    item => SpotifyCollectionIdentity.FocusId(
-                        "spotify.playlist.track", "compact", item.Key),
-                    "spotify.playlist.play.compact")
+                        "spotify.playlist.track", "shared", item.Key),
+                    "spotify.playlist.play.shared")
                 {
                     EstimatedItemExtent = SpotifyCollectionPolicy.EstimatedItemExtent,
                 },
@@ -430,10 +412,10 @@ public sealed class SpotifyWidget : Widget
                     .ConfigureAwait(false);
                 break;
             case SpotifyActionKind.PreviousSection:
-                NavigateSection(-1, action.FocusedElementId);
+                NavigateSection(-1);
                 break;
             case SpotifyActionKind.NextSection:
-                NavigateSection(1, action.FocusedElementId);
+                NavigateSection(1);
                 break;
             case SpotifyActionKind.PlaylistBack:
                 BackFromPlaylist(action.SourceElementId);
@@ -1041,8 +1023,7 @@ public sealed class SpotifyWidget : Widget
             var playlists = SpotifyCursorPresentation<SpotifyPlaylistCollectionItem>.Capture(
                 _playlists,
                 "spotify.playlists",
-                "spotify.playlists.scroll.wide",
-                "spotify.playlists.scroll.compact");
+                "spotify.playlists.scroll");
             SpotifyPlaylistDetailPresentation? detail = null;
             if (_playlistSelection is { } selection &&
                 _playlistItemsSelectionGeneration == selection.Key.Generation)
@@ -1050,8 +1031,7 @@ public sealed class SpotifyWidget : Widget
                     SpotifyCursorPresentation<SpotifyMediaCollectionItem>.Capture(
                         _playlistItems,
                         "spotify.playlist.items",
-                        "spotify.playlist.detail.scroll.wide",
-                        "spotify.playlist.detail.scroll.compact"));
+                        "spotify.playlist.detail.scroll"));
             return new(
                 new(++_presentationCaptureSequence, playlists.Snapshot.Revision,
                     detail?.Items.Snapshot.Revision ?? 0,
@@ -1110,7 +1090,10 @@ public sealed class SpotifyWidget : Widget
         _navigation.Back(sourceElementId);
     }
 
-    private void Navigate(SpotifyRoute destination, string? sourceFocusId = null)
+    private void Navigate(
+        SpotifyRoute destination,
+        string? sourceFocusId = null,
+        string? focusGroupId = null)
     {
         if (destination is not (SpotifyRoute.Queue or SpotifyRoute.Playlists or
                 SpotifyRoute.Devices)) return;
@@ -1122,13 +1105,15 @@ public sealed class SpotifyWidget : Widget
             _pageError = null;
             _pageLoading = false;
         }
-        if (sourceFocusId is null)
+        if (focusGroupId is not null)
+            _navigation.NavigateRoot(destination, focusGroupId);
+        else if (sourceFocusId is null)
             _navigation.NavigateRoot(destination);
         else
             _navigation.Navigate(destination, sourceFocusId);
     }
 
-    private void NavigateSection(int offset, string? sourceFocusId)
+    private void NavigateSection(int offset)
     {
         var navigation = _navigation.Value;
         if (navigation.Depth != 0) return;
@@ -1140,9 +1125,10 @@ public sealed class SpotifyWidget : Widget
         ];
         var current = Array.IndexOf(sections, navigation.RootRoute);
         if (current < 0) return;
-        Navigate(
-            sections[(current + offset + sections.Length) % sections.Length],
-            sourceFocusId);
+        var destination = sections[
+            (current + offset + sections.Length) % sections.Length];
+        Navigate(destination,
+            focusGroupId: SpotifyRouteActionPolicy.FocusGroupId(destination));
         switch (_navigation.Value.RootRoute)
         {
             case SpotifyRoute.Queue:
@@ -1248,8 +1234,6 @@ public sealed class SpotifyWidget : Widget
 
     private void OpenPlaylist(WidgetCollectionItemKey key, WidgetActionEvent action)
     {
-        var mode = action.SourceElementId.Contains(".compact.", StringComparison.Ordinal)
-            ? "compact" : "wide";
         if (_navigation.Value.Route != SpotifyRoute.Playlists) return;
         lock (_gate)
         {
@@ -1262,8 +1246,7 @@ public sealed class SpotifyWidget : Widget
             var generation = checked(++_playlistSelectionGeneration);
             _pageError = null;
             _playlistSelection = new(
-                new(playlist.PlaylistId, generation), playlist, mode,
-                action.FocusedElementId ?? action.SourceElementId);
+                new(playlist.PlaylistId, generation), playlist);
             _playlistPageSource = new(_spotify, _playlistSelection.Key);
             _playlistItemsSelectionGeneration = generation;
         }

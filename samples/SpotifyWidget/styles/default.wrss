@@ -318,10 +318,11 @@
   min-height: 44px;
   flex-shrink: 0;
 }
-/* Spotify 0.2 controller shell. Expanded mode keeps transport persistent while
-   the right context pane changes; compact mode retains the rail and presents
-   one destination in the remaining width. */
-.spotify-shell {
+/* The SDK navigation shell owns responsive tabs/rail geometry. Spotify adds
+   only bounded page and persistent-player sizing. */
+.spotify-shell-body,
+.spotify-page-group {
+  width: 100%;
   min-width: 0px;
   min-height: 0px;
   flex-grow: 1;
@@ -329,54 +330,10 @@
   gap: 10px;
   overflow: clip;
 }
-.spotify-shell-wide { align: stretch; }
-.spotify-shell-compact { align: stretch; gap: 8px; }
-.spotify-navigation {
-  width: 142px;
-  flex-shrink: 0;
-  gap: 4px;
-  padding: 8px;
-  background: var(--surface-raised);
-  corner-radius: 12px;
-}
-.spotify-nav-button {
-  width: 100%;
-  min-height: 43px;
-  padding: 9px 11px;
-  justify: start;
-  gap: 9px;
-  color: var(--text-muted);
-  background: transparent;
-  border-color: transparent;
-  border-width: 1px;
-  corner-radius: 8px;
-  font-size: 12px;
-  font-weight: 400;
-  max-lines: 1;
-}
-.spotify-nav-button:selected {
-  color: var(--text);
-  background: var(--surface-active, #262623);
-}
-.spotify-nav-button:focused {
-  color: var(--text);
-  outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
-}
 .spotify-navigation-tabs {
   width: 100%;
   min-width: 0px;
   flex-shrink: 0;
-  gap: 6px;
-  padding: 6px;
-  align: center;
-}
-.spotify-nav-button-compact {
-  min-width: 104px;
-  flex-grow: 1;
-  flex-shrink: 1;
-  justify: center;
 }
 .spotify-section-trigger-hint {
   flex-shrink: 0;
@@ -391,14 +348,6 @@
   justify: center;
   background: var(--surface-active, #262623);
   corner-radius: 6px;
-}
-.spotify-context-pane,
-.spotify-compact-pane {
-  min-width: 0px;
-  min-height: 0px;
-  flex-grow: 1;
-  flex-shrink: 1;
-  overflow: clip;
 }
 .spotify-player-card.spotify-player-dock {
   width: 100%;
@@ -540,6 +489,12 @@
   gap: 6px;
   padding: 2px;
   overflow: clip;
+}
+.spotify-playlist-grid {
+  width: 100%;
+  min-width: 0px;
+  gap: 8px;
+  align: stretch;
 }
 .spotify-page-loading { align: center; justify: center; }
 .spotify-page-error { justify: center; }

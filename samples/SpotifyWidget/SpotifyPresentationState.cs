@@ -8,43 +8,35 @@ internal readonly record struct SpotifyPlaylistSelectionKey(
 
 internal sealed record SpotifyPlaylistSelection(
     SpotifyPlaylistSelectionKey Key,
-    SpotifyPlaylistSummary Playlist,
-    string Mode,
-    string ReturnFocusId);
+    SpotifyPlaylistSummary Playlist);
 
 internal sealed record SpotifyPlaylistDetailPresentation(
     SpotifyPlaylistSelection Selection,
     SpotifyCursorPresentation<SpotifyMediaCollectionItem> Items);
 
 /// <summary>
-/// One cursor snapshot and the two SDK-projected viewport shells from the same
+/// One cursor snapshot and its SDK-projected viewport shell from the same
 /// resource revision. Presentation replaces only the immutable child rows.
 /// </summary>
 internal sealed record SpotifyCursorPresentation<TItem>(
     WidgetCursorResourceSnapshot<TItem> Snapshot,
-    ScrollElement Wide,
-    ScrollElement Compact) where TItem : notnull
+    ScrollElement Viewport) where TItem : notnull
 {
-    internal ScrollElement Scroll(string mode, IReadOnlyList<WidgetElement> children) =>
-        (string.Equals(mode, "compact", StringComparison.Ordinal) ? Compact : Wide) with
-        {
-            Children = children,
-        };
+    internal ScrollElement Present(IReadOnlyList<WidgetElement> children) =>
+        Viewport with { Children = children };
 
     internal static SpotifyCursorPresentation<TItem> Capture(
         WidgetCursorResource<TItem> resource,
         string operationKey,
-        string wideScrollId,
-        string compactScrollId)
+        string scrollId)
     {
         const int maximumCaptureAttempts = 4;
         for (var attempt = 0; attempt < maximumCaptureAttempts; attempt++)
         {
             var snapshot = resource.Snapshot;
-            var wide = resource.Present(UI.VerticalScroll(wideScrollId, []));
-            var compact = resource.Present(UI.VerticalScroll(compactScrollId, []));
+            var viewport = resource.Present(UI.VerticalScroll(scrollId, []));
             if (snapshot.Revision == resource.Snapshot.Revision)
-                return new(snapshot, wide, compact);
+                return new(snapshot, viewport);
         }
 
         // A provider completion can publish Loading -> Ready and busy-state
@@ -54,8 +46,7 @@ internal sealed record SpotifyCursorPresentation<TItem>(
         var fallback = resource.Snapshot;
         return new(
             fallback,
-            FallbackScroll(wideScrollId, operationKey, fallback),
-            FallbackScroll(compactScrollId, operationKey, fallback));
+            FallbackScroll(scrollId, operationKey, fallback));
     }
 
     private static ScrollElement FallbackScroll(
