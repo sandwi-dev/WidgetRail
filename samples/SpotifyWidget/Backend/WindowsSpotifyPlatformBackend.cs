@@ -412,16 +412,20 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         CancellationToken cancellationToken) => ApplicationCallAsync(async () =>
         {
             ArgumentNullException.ThrowIfNull(request);
+            var routingGeneration = _localPlayback.BeginRoutingDecision(identity);
             if (request.DeviceId == SpotifyLocalPlaybackManager.PublicDeviceId)
             {
                 await StartAndTransferLocalPlaybackAsync(
-                    identity, request.ContinuePlaying, cancellationToken)
+                    identity, request.ContinuePlaying, routingGeneration,
+                    cancellationToken)
                     .ConfigureAwait(false);
                 return;
             }
             await _playbackApi.TransferPlaybackAsync(
                 identity, request.DeviceId,
                 request.ContinuePlaying, cancellationToken).ConfigureAwait(false);
+            _localPlayback.CompleteRoutingDecision(
+                identity, routingGeneration, local: false);
         });
 
     public Task<SpotifyQueueSummary> GetSpotifyQueueAsync(
@@ -429,20 +433,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         ApplicationCallAsync(async () =>
         {
             return await _playbackApi.GetQueueAsync(
-                identity, diagnostic: null, cancellationToken).ConfigureAwait(false);
-        });
-
-    internal Task<SpotifyQueueSummary> GetSpotifyQueueAsync(
-        SpotifyIntegrationIdentity identity,
-        long operation,
-        long generation,
-        CancellationToken cancellationToken) =>
-        ApplicationCallAsync(async () =>
-        {
-            return await _playbackApi.GetQueueAsync(
-                identity,
-                new SpotifyQueueDiagnosticContext(operation, generation),
-                cancellationToken).ConfigureAwait(false);
+                identity, cancellationToken).ConfigureAwait(false);
         });
 
     public Task AddSpotifyQueueItemAsync(
@@ -470,12 +461,17 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
             var providerIdentity = identity;
             var requestedLocalHost =
                 request.DeviceId == SpotifyLocalPlaybackManager.PublicDeviceId;
+            var routingGeneration = request.DeviceId is null
+                ? 0
+                : _localPlayback.BeginRoutingDecision(identity);
             var deviceId = await ResolveDeviceIdAsync(
                 providerIdentity, request.DeviceId, cancellationToken).ConfigureAwait(false);
             await _playbackApi.StartPlaybackAsync(
                 providerIdentity, deviceId, request.ContextUri, request.ItemUris,
                 request.Offset, request.OffsetUri, cancellationToken).ConfigureAwait(false);
-            if (requestedLocalHost) _localPlayback.MarkActive(providerIdentity);
+            if (routingGeneration != 0)
+                _localPlayback.CompleteRoutingDecision(
+                    providerIdentity, routingGeneration, requestedLocalHost);
         });
 
     public Task<SpotifyLocalPlaybackSummary> GetSpotifyLocalPlaybackAsync(
@@ -492,8 +488,11 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
             switch (command.Operation)
             {
                 case SpotifyLocalPlaybackOperation.StartAndTransfer:
+                    var routingGeneration =
+                        _localPlayback.BeginRoutingDecision(providerIdentity);
                     await StartAndTransferLocalPlaybackAsync(
-                        providerIdentity, command.ContinuePlaying!.Value, cancellationToken)
+                        providerIdentity, command.ContinuePlaying!.Value,
+                        routingGeneration, cancellationToken)
                         .ConfigureAwait(false);
                     break;
                 case SpotifyLocalPlaybackOperation.Stop:
@@ -544,6 +543,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
     private async Task StartAndTransferLocalPlaybackAsync(
         SpotifyIntegrationIdentity identity,
         bool continuePlaying,
+        long routingGeneration,
         CancellationToken cancellationToken)
     {
         var timestamp = Stopwatch.GetTimestamp();
@@ -554,7 +554,8 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
             await _playbackApi.TransferPlaybackAsync(
                 identity, started.SpotifyDeviceId, continuePlaying, cancellationToken)
                 .ConfigureAwait(false);
-            _localPlayback.MarkActive(identity);
+            _localPlayback.CompleteRoutingDecision(
+                identity, routingGeneration, local: true);
         }
         catch (SpotifyProviderException exception)
         {
@@ -608,8 +609,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
             request.RequiredScope,
             cancellationToken,
             request.JsonBody,
-            request.AdditionalRequiredScope,
-            request.QueueDiagnostic);
+            request.AdditionalRequiredScope);
 
     private async Task<SpotifyHttpResponse> SendPlayerRequestAsync(
         SpotifyIntegrationIdentity identity,
@@ -618,15 +618,11 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         string requiredScope,
         CancellationToken cancellationToken,
         string? jsonBody = null,
-        string? additionalRequiredScope = null,
-        SpotifyQueueDiagnosticContext? queueDiagnostic = null)
+        string? additionalRequiredScope = null)
     {
         ThrowIfDisposed();
         var state = StateFor(identity);
-        var started = Stopwatch.GetTimestamp();
-        RecordQueueDiagnostic(queueDiagnostic, "queue-provider-gate", "waiting", started);
         await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        RecordQueueDiagnostic(queueDiagnostic, "queue-provider-gate", "acquired", started);
         try
         {
             var configuration = await RequireConfigurationAsync(identity, cancellationToken)
@@ -636,7 +632,6 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             if (additionalRequiredScope is not null)
                 EnsureScope(token.GrantedScopes, additionalRequiredScope);
-            RecordQueueDiagnostic(queueDiagnostic, "queue-http", "attempt-1", started);
             var response = await _httpPolicy.SendAsync(
                 new SpotifyHttpRequest(
                     method, uri, Bearer(token.Value), JsonBody: jsonBody), cancellationToken)
@@ -649,28 +644,12 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             if (additionalRequiredScope is not null)
                 EnsureScope(token.GrantedScopes, additionalRequiredScope);
-            RecordQueueDiagnostic(queueDiagnostic, "queue-http", "attempt-2", started);
             return await _httpPolicy.SendAsync(
                 new SpotifyHttpRequest(
                     method, uri, Bearer(token.Value), JsonBody: jsonBody), cancellationToken)
                 .ConfigureAwait(false);
         }
         finally { state.Gate.Release(); }
-    }
-
-    private void RecordQueueDiagnostic(
-        SpotifyQueueDiagnosticContext? diagnostic,
-        string boundary,
-        string code,
-        long started)
-    {
-        if (diagnostic is not { } correlation) return;
-        _runtimeDiagnostics.Record(
-            boundary,
-            code,
-            correlation.Operation,
-            correlation.Generation,
-            Math.Max(0, (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds));
     }
 
     private async Task<SpotifyAuthorizationCallback> ReceiveAuthorizationAsync(

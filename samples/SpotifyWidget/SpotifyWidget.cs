@@ -702,11 +702,8 @@ public sealed class SpotifyWidget : Widget
         queueLifetime.CancelAfter(QueueLoadTimeout);
         try
         {
-            var queue = _spotify is ISpotifyCorrelatedQueueService correlated
-                ? await correlated.GetQueueAsync(
-                        operation, generation, queueLifetime.Token)
-                    .ConfigureAwait(false)
-                : await _spotify.GetQueueAsync(queueLifetime.Token).ConfigureAwait(false);
+            var queue = await _spotify.GetQueueAsync(queueLifetime.Token)
+                .ConfigureAwait(false);
             var occurrenceRequest = _queueOccurrences.BeginPage("queue", 0, direction);
             var items = _queueOccurrences.NormalizePage(
                 occurrenceRequest, queue.Items, []);

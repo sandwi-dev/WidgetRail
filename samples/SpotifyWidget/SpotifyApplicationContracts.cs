@@ -291,11 +291,3 @@ public interface ISpotifyApplicationService : IAsyncDisposable
         int limit,
         CancellationToken cancellationToken = default);
 }
-
-internal interface ISpotifyCorrelatedQueueService
-{
-    ValueTask<SpotifyQueueSummary> GetQueueAsync(
-        long operation,
-        long generation,
-        CancellationToken cancellationToken);
-}
