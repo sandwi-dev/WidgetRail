@@ -1,6 +1,29 @@
 # Third-party notices
 
-The native WidgetRail overlay statically links the components below.
+WidgetRail native binaries statically link the components below.
+
+## ViGEmClient 1.16.18.0
+
+Project: https://github.com/nefarius/ViGEmClient
+
+Pinned commit: 9e91a124d179bf26a878a952153042ac871da243
+
+Copyright (c) 2017-2023 Nefarius Software Solutions e.U. and Contributors.
+
+License: MIT. The complete license and byte-identical pinned native source
+closure are in `third_party/ViGEmClient`. WidgetRail links this source only into
+the dormant controller-isolation worker executable.
+
+## ViGEmClient 1.16.18.0
+
+Project: https://github.com/nefarius/ViGEmClient
+
+Commit: 9e91a124d179bf26a878a952153042ac871da243
+
+Copyright (c) 2017-2023 Nefarius Software Solutions e.U. and Contributors.
+
+License: MIT. The complete unmodified license and pinned native source closure
+are in `third_party/ViGEmClient`.
 
 ## Public Suffix List snapshot 2026-08-19
 

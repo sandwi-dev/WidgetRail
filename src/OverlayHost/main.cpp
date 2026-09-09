@@ -7413,6 +7413,15 @@ private:
             }
         }
 
+        const bool preparedIsolation = !wasVisible;
+        if (preparedIsolation &&
+            WidgetRailOverlayPlatformPrepareVisible(platform_) !=
+                WidgetRailOverlayPlatformStatus::Ok) {
+            AppendDiagnostic(
+                L"Controller isolation could not establish contained input");
+            return OverlayShowResult::Failed;
+        }
+
         ApplyTransitionWindowOpacity(overlayTransitionSample_.shellOpacity);
         const BOOL backdropPlaced = SetWindowPos(
             backdropWindow_, nullptr,
@@ -7434,6 +7443,11 @@ private:
                 overlayPlacementFlags);
         }
         if (!backdropPlaced || !overlayPlaced) {
+            if (preparedIsolation) {
+                (void)WidgetRailOverlayPlatformSetWindowState(
+                    platform_, WRAIL_OVERLAY_PLATFORM_FALSE,
+                    WRAIL_OVERLAY_PLATFORM_FALSE);
+            }
             AppendDiagnostic(L"Overlay placement failed error=" +
                              std::to_wstring(GetLastError()));
             return OverlayShowResult::Failed;
@@ -7486,6 +7500,11 @@ private:
                 ? SW_SHOWNOACTIVATE : SW_HIDE);
         }
         if (compositionSurface_.available() && !ApplyOverlayZOrder()) {
+            if (preparedIsolation) {
+                (void)WidgetRailOverlayPlatformSetWindowState(
+                    platform_, WRAIL_OVERLAY_PLATFORM_FALSE,
+                    WRAIL_OVERLAY_PLATFORM_FALSE);
+            }
             AppendDiagnostic(
                 L"Coordinated overlay Z-order placement failed error=" +
                 std::to_wstring(GetLastError()));
@@ -11013,6 +11032,8 @@ private:
     }
 
     void PollController() {
+        for (std::uint32_t isolationFrame = 0;
+             isolationFrame < 16; ++isolationFrame) {
         const ULONGLONG now = GetTickCount64();
         const bool foregroundOwned = IsOverlayProcessForeground();
         WidgetRailOverlayPlatformControllerFrame frame;
@@ -11034,6 +11055,7 @@ private:
                 textEntryModal_.UpdateControllerRepeat({}, now);
             return;
         }
+        const auto processFrame = [&]() {
         const bool connected =
             frame.connected != WRAIL_OVERLAY_PLATFORM_FALSE;
         const WORD buttons = frame.state.buttons;
@@ -11782,6 +11804,10 @@ private:
             if (declarativeRenderer_)
                 declarativeRenderer_->CancelPresentationUpdatePlan();
             InvalidateRect(window_, nullptr, FALSE);
+        }
+        };
+        processFrame();
+        if (frame.remainingFrames == 0) break;
         }
     }
 
@@ -18122,6 +18148,52 @@ private:
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+    if (__argc == 2 && __wargv[1]) {
+        std::optional<WidgetRailControllerIsolationCommand> command;
+        if (_wcsicmp(__wargv[1], L"--controller-isolation-enable") == 0)
+            command = WidgetRailControllerIsolationCommand::Enable;
+        else if (_wcsicmp(__wargv[1], L"--controller-isolation-status") == 0)
+            command = WidgetRailControllerIsolationCommand::Status;
+        else if (_wcsicmp(__wargv[1], L"--controller-isolation-disable") == 0)
+            command = WidgetRailControllerIsolationCommand::Disable;
+        else if (_wcsicmp(__wargv[1], L"--controller-isolation-recover") == 0)
+            command = WidgetRailControllerIsolationCommand::Recover;
+        if (command) {
+            WidgetRailControllerIsolationCommandResult result;
+            const auto status =
+                WidgetRailOverlayPlatformControllerIsolationCommand(
+                    *command, &result);
+            const wchar_t* state = L"failed";
+            switch (result.state) {
+            case WidgetRailControllerIsolationState::Disabled:
+                state = L"disabled"; break;
+            case WidgetRailControllerIsolationState::Prepared:
+                state = L"prepared"; break;
+            case WidgetRailControllerIsolationState::AwaitingNeutral:
+                state = L"awaiting neutral release"; break;
+            case WidgetRailControllerIsolationState::Playing:
+                state = L"playing"; break;
+            case WidgetRailControllerIsolationState::Contained:
+                state = L"overlay input contained"; break;
+            case WidgetRailControllerIsolationState::RecoveryRequired:
+                state = L"recovery required"; break;
+            case WidgetRailControllerIsolationState::Failed:
+                break;
+            }
+            std::wstring message = L"Controller isolation: ";
+            message += state;
+            if (result.message[0] != L'\0') {
+                message += L"\n\n";
+                message += result.message;
+            }
+            MessageBoxW(
+                nullptr, message.c_str(), L"WidgetRail Controller Isolation",
+                MB_OK | (status == WidgetRailOverlayPlatformStatus::Ok
+                    ? MB_ICONINFORMATION : MB_ICONERROR));
+            return status == WidgetRailOverlayPlatformStatus::Ok
+                ? EXIT_SUCCESS : EXIT_FAILURE;
+        }
+    }
     std::wstring processProfile = L"production";
     bool processOwnerProbe = false;
     for (int index = 1; index < __argc; ++index) {
