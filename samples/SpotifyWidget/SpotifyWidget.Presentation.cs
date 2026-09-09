@@ -8,8 +8,7 @@ internal static class SpotifyPresentation
     // Two authored 82-DIP rows plus the section header and gaps fit the
     // 340-DIP minimum pinned surface. A third row would require clipping.
     private const int PinnedUpNextMaximumItems = 2;
-    private const string InputScope = "spotify.window";
-    private const string SetupScope = "spotify.setup";
+    internal const string InputScope = "spotify.window";
     private static readonly WidgetIcon SpotifyFullLogo = WidgetIcon.PackageSvg(
         "spotify.brand.full-green", WidgetPackageIconColorMode.OriginalColor,
         WidgetGlyph.Music);
@@ -23,7 +22,7 @@ internal static class SpotifyPresentation
     {
         Mode = WidgetSurfaceMode.Adaptive,
         PreferredWidth = 980,
-        PreferredHeight = 560,
+        PreferredHeight = 700,
         MinimumWidth = 620,
         MinimumHeight = 400,
     };
@@ -49,7 +48,8 @@ internal static class SpotifyPresentation
         PinnedLayoutHandle compactPinnedLayout,
         PinnedLayoutHandle upNextPinnedLayout)
     {
-        var view = presentation.ShowSetup
+        var view = presentation.Navigation.Route == SpotifyRoute.Setup &&
+            presentation.ViewState != SpotifyWidgetViewState.Ready
             ? RenderSetup(
                 presentation.Status, presentation.SetupViewGeneration,
                 presentation.SetupBusy)
@@ -71,8 +71,7 @@ internal static class SpotifyPresentation
                     Header(presentation.Status, presentation.ViewState),
                     "Spotify could not be loaded",
                     "The provider returned an unexpected error. Retry without leaving the overlay."),
-                SpotifyWidgetViewState.Ready => RenderConnected(
-                    Header(presentation.Status, presentation.ViewState), presentation),
+                SpotifyWidgetViewState.Ready => RenderConnected(presentation),
                 _ => RenderLoading(Header(presentation.Status, presentation.ViewState)),
             };
         return view with
@@ -109,7 +108,6 @@ internal static class SpotifyPresentation
             var player = PlayerPanel(
                 presentation.Playback,
                 presentation.PendingOperation,
-                presentation.Destination,
                 mode,
                 pinned: true,
                 adjacentFocusId: nextItemId);
@@ -248,19 +246,24 @@ internal static class SpotifyPresentation
             .Classes("spotify-pinned-queue");
     }
 
-    private static StackElement Header(string status, SpotifyWidgetViewState state) =>
-        UI.Stack("spotify.header",
-                UI.Icon(SpotifyFullLogo, "spotify.brand.full-logo", "Spotify")
-                    .Classes("spotify-full-logo"),
+    private static StackElement Header(
+        string status,
+        SpotifyWidgetViewState state)
+    {
+        var statusText = UI.Text(status, "spotify.status", status).Classes(
+            "spotify-status",
+            state is SpotifyWidgetViewState.Error or
+                SpotifyWidgetViewState.PermissionDenied
+                ? "is-error" : state == SpotifyWidgetViewState.Ready
+                    ? "is-live" : "is-neutral");
+        return UI.Stack("spotify.header",
                 UI.Row("spotify.heading",
-                        UI.Text("Music", "spotify.title", "Spotify music").Classes("spotify-title"),
-                        UI.Text(status, "spotify.status", status).Classes("spotify-status",
-                            state is SpotifyWidgetViewState.Error or
-                                SpotifyWidgetViewState.PermissionDenied
-                                ? "is-error" : state == SpotifyWidgetViewState.Ready
-                                    ? "is-live" : "is-neutral"))
+                        UI.Icon(SpotifyFullLogo, "spotify.brand.full-logo", "Spotify")
+                            .Classes("spotify-full-logo"),
+                        statusText)
                     .Classes("spotify-heading"))
             .Classes("spotify-header");
+    }
 
     private static WidgetView RenderLoading(StackElement header) => new(
         UI.Stack("spotify.root", header,
@@ -343,91 +346,128 @@ internal static class SpotifyPresentation
         long setupViewGeneration,
         bool setupBusy)
     {
-        var instructions = UI.Stack("spotify.setup-card",
-                        UI.Text("Spotify setup", "spotify.setup-title",
-                                "Spotify developer app setup")
-                            .Classes("spotify-state-title", "spotify-setup-title"),
-                        UI.Text("1. Create an app in the Spotify developer dashboard.",
-                                "spotify.setup-step-1").Classes("spotify-setup-step"),
-                        UI.Button("Open developer dashboard", "spotify.setup.dashboard",
-                                "spotify.setup.dashboard")
-                            .Disabled(setupBusy)
-                            .FocusDown("spotify.setup.copy-redirect")
-                            .Classes("spotify-secondary", "spotify-setup-action"),
-                        UI.Text($"2. Add this exact redirect URI: {SpotifyApplicationContract.ExactRedirectUri}",
-                                "spotify.setup-step-2").Classes("spotify-setup-step"),
-                        UI.Button("Copy redirect URI", "spotify.setup.copy-redirect",
-                                "spotify.setup.copy-redirect")
-                            .Disabled(setupBusy)
-                            .FocusUp("spotify.setup.dashboard")
-                            .FocusDown("spotify.setup.client-id")
-                            .Classes("spotify-secondary", "spotify-setup-action"),
-                        UI.Text("3. Save only the public Client ID; never enter a Client Secret.",
-                                "spotify.setup-step-3").Classes("spotify-setup-step"),
-                        UI.TextEntry(string.Empty, "Enter public Spotify Client ID",
-                                "spotify.setup.client-id", "spotify.setup.client-id",
-                                SpotifyApplicationContract.MaximumClientIdInputCharacters)
-                            .Disabled(setupBusy)
-                            .FocusUp("spotify.setup.copy-redirect")
-                            .FocusDown("spotify.setup.done")
-                            .Classes("spotify-setup-input"),
-                        UI.Button("Check configuration", "spotify.setup.done",
-                                "spotify.setup.done")
-                            .Disabled(setupBusy)
-                            .FocusUp("spotify.setup.client-id")
-                            .Classes("spotify-primary", "spotify-setup-action"))
-                    .Classes("spotify-setup-card");
-        var setupScroll = UI.VerticalScroll(
-                $"spotify.setup-scroll.{setupViewGeneration}", instructions)
-            .InputScope(SetupScope)
-            .Shortcut(ControllerButton.B, "spotify.setup.close")
-            .Classes("spotify-setup-scroll");
+        var setupScroll = SetupContent(
+            setupViewGeneration, setupBusy, includeDisconnect: false);
         var root = UI.Stack("spotify.setup-root",
                 Header(status, SpotifyWidgetViewState.Unconfigured),
                 setupScroll)
             .Classes("spotify-widget", "spotify-setup");
-        return new WidgetView(root, "spotify.setup.dashboard", ActiveInputScopeId: SetupScope,
-            Surface: StandardSurface);
+        return new WidgetView(root, "spotify.setup.dashboard", Surface: StandardSurface);
     }
 
-    private static WidgetView RenderConnected(
-        StackElement header,
-        SpotifyPresentationState presentation)
+    private static ScrollElement SetupContent(
+        long setupViewGeneration,
+        bool setupBusy,
+        bool includeDisconnect)
+    {
+        var actions = new List<WidgetElement>
+        {
+            UI.Text("Spotify setup", "spotify.setup-title",
+                    "Spotify developer app setup")
+                .Classes("spotify-state-title", "spotify-setup-title"),
+            UI.Text("1. Create an app in the Spotify developer dashboard.",
+                    "spotify.setup-step-1").Classes("spotify-setup-step"),
+            UI.Button("Open developer dashboard", "spotify.setup.dashboard",
+                    "spotify.setup.dashboard")
+                .Disabled(setupBusy)
+                .FocusDown("spotify.setup.copy-redirect")
+                .Classes("spotify-secondary", "spotify-setup-action"),
+            UI.Text($"2. Add this exact redirect URI: {SpotifyApplicationContract.ExactRedirectUri}",
+                    "spotify.setup-step-2").Classes("spotify-setup-step"),
+            UI.Button("Copy redirect URI", "spotify.setup.copy-redirect",
+                    "spotify.setup.copy-redirect")
+                .Disabled(setupBusy)
+                .FocusUp("spotify.setup.dashboard")
+                .FocusDown("spotify.setup.client-id")
+                .Classes("spotify-secondary", "spotify-setup-action"),
+            UI.Text("3. Save only the public Client ID; never enter a Client Secret.",
+                    "spotify.setup-step-3").Classes("spotify-setup-step"),
+            UI.TextEntry(string.Empty, "Enter public Spotify Client ID",
+                    "spotify.setup.client-id", "spotify.setup.client-id",
+                    SpotifyApplicationContract.MaximumClientIdInputCharacters)
+                .Disabled(setupBusy)
+                .FocusUp("spotify.setup.copy-redirect")
+                .FocusDown("spotify.setup.done")
+                .Classes("spotify-setup-input"),
+            UI.Button("Check configuration", "spotify.setup.done",
+                    "spotify.setup.done")
+                .Disabled(setupBusy)
+                .FocusUp("spotify.setup.client-id")
+                .Classes("spotify-primary", "spotify-setup-action"),
+        };
+        var closeFocusUp = "spotify.setup.done";
+        if (includeDisconnect)
+        {
+            actions[^1] = ((ButtonElement)actions[^1])
+                .FocusDown("spotify.disconnect.setup");
+            actions.Add(UI.Button("Disconnect account", "spotify.disconnect",
+                    "spotify.disconnect.setup")
+                .Disabled(setupBusy)
+                .FocusUp("spotify.setup.done")
+                .FocusDown("spotify.setup.close")
+                .Classes("spotify-secondary", "spotify-setup-action", "is-quiet"));
+            closeFocusUp = "spotify.disconnect.setup";
+        }
+        else
+            actions[^1] = ((ButtonElement)actions[^1])
+                .FocusDown("spotify.setup.close");
+        actions.Add(UI.Button("Close setup", "spotify.setup.close",
+                "spotify.setup.close")
+            .FocusUp(closeFocusUp)
+            .Classes("spotify-secondary", "spotify-setup-action", "is-quiet"));
+        var instructions = UI.Stack("spotify.setup-card", actions.ToArray())
+            .Classes("spotify-setup-card");
+        return UI.VerticalScroll(
+                $"spotify.setup-scroll.{setupViewGeneration}", instructions)
+            .Classes("spotify-setup-scroll");
+    }
+
+    private static WidgetView RenderConnected(SpotifyPresentationState presentation)
     {
         var playback = presentation.Playback;
         var pending = presentation.PendingOperation;
-        var destination = presentation.Destination;
+        var route = presentation.Navigation;
+        var destination = SpotifyRouteActionPolicy.Destination(route.RootRoute);
         var playlists = presentation.Playlists;
         var playlistDetail = presentation.PlaylistDetail;
-        var wide = UI.Row("spotify.shell.wide",
-                NavigationRail(destination, "wide"),
-                UI.Stack("spotify.player.wide",
-                        PlayerPanel(playback, pending, destination, "wide"))
-                    .Classes("spotify-player-pane"),
-                UI.Stack("spotify.context.wide",
-                        DestinationPage(destination, presentation.Queue, playlists,
-                            playlistDetail, presentation.Devices, presentation.LocalPlayback,
-                            presentation.PageLoading, presentation.PageError, "wide"))
-                    .Classes("spotify-context-pane"))
-            .Classes("spotify-shell", "spotify-shell-wide")
-            .VisibleWhen(ResponsiveVisibility.ExpandedOnly);
-        var compact = UI.Row("spotify.shell.compact",
-                NavigationRail(destination, "compact"),
-                UI.Stack("spotify.context.compact",
-                        destination == SpotifyDestination.Player
-                            ? UI.VerticalScroll("spotify.player.compact.scroll",
-                                    PlayerPanel(playback, pending, destination, "compact"))
-                                .Classes("spotify-compact-player-scroll")
-                            : DestinationPage(destination, presentation.Queue, playlists,
-                                playlistDetail, presentation.Devices,
-                                presentation.LocalPlayback, presentation.PageLoading,
-                                presentation.PageError, "compact"))
-                    .Classes("spotify-compact-pane"))
-            .Classes("spotify-shell", "spotify-shell-compact")
-            .VisibleWhen(ResponsiveVisibility.CompactOnly);
+        var setup = route.Route == SpotifyRoute.Setup;
+        var page = setup
+            ? SetupContent(
+                presentation.SetupViewGeneration,
+                presentation.SetupBusy,
+                includeDisconnect: true)
+            : DestinationPage(destination, presentation.Queue, playlists,
+                playlistDetail, presentation.Devices, presentation.LocalPlayback,
+                presentation.LocalPlaybackBusy, presentation.LocalPlaybackFeedback,
+                presentation.PageLoading,
+                presentation.PageError, "shared");
+        var contentEntry = PageEntryFocusId(presentation, destination);
+        var pageGroup = UI.Stack(PageFocusGroupId(route.Route), page)
+            .RememberChildFocus(contentEntry)
+            .Classes("spotify-page-group");
+        NavigationShellDestination[] destinations =
+        [
+            new("queue", "Queue", "spotify.nav.queue", WidgetGlyph.Next,
+                IsDisabled: setup),
+            new("playlists", "Playlists", "spotify.nav.playlists", WidgetGlyph.Music,
+                IsDisabled: setup),
+            new("devices", "Devices", "spotify.nav.devices", WidgetGlyph.Connection,
+                IsDisabled: setup),
+        ];
+        var parts = UI.NavigationShellParts(
+            "spotify.nav",
+            DestinationToken(destination),
+            contentEntry,
+            pageGroup,
+            destinations,
+            compactLeadingAdornment: CompactControllerKey(
+                "LT", "Left trigger, previous section", "spotify.section.previous.hint"),
+            compactTrailingAdornment: CompactControllerKey(
+                "RT", "Right trigger, next section", "spotify.section.next.hint"));
 
+        var header = Header(presentation.Status, presentation.ViewState);
         var content = new List<WidgetElement> { header };
-        if (presentation.RefreshWarning is { } warning)
+        if (!setup && presentation.RefreshWarning is { } warning)
             content.Add(UI.Alert(
                     warning.ConsecutiveFailures ==
                         SpotifyRefreshFailurePolicy.MaximumTrackedFailures
@@ -438,18 +478,47 @@ internal static class SpotifyPresentation
                     "spotify.refresh-warning",
                     new ComponentAction("Retry now", "spotify.refresh", WidgetGlyph.Refresh))
                 .Classes("spotify-refresh-warning"));
-        content.Add(wide);
-        content.Add(compact);
+        content.Add(UI.Row(
+                "spotify.navigation.header",
+                parts.CompactNavigation
+                    .VisibleWhen(ResponsiveVisibility.Always)
+                    .AddClasses("spotify-navigation-tabs"),
+                UI.ControllerHint(
+                        ControllerButton.Y,
+                        "Settings",
+                        "spotify.navigation.settings.hint")
+                    .AddClasses("spotify-navigation-settings-hint"))
+            .Classes("spotify-navigation-header"));
+        if (!setup && presentation.LocalPlayback is
+                { State: SpotifyLocalPlaybackState.AutoplayBlocked } blockedLocalPlayback)
+            content.Add(UI.Alert(
+                    "Local playback blocked",
+                    blockedLocalPlayback.DisplayMessage ??
+                        "Spotify audio was blocked by browser autoplay policy.",
+                    AlertTone.Warning,
+                    "spotify.local.autoplay-blocked")
+                .Classes("spotify-local-feedback"));
+        content.Add(UI.Row(
+                "spotify.connected.panes",
+                PlayerPanel(
+                    playback, pending, "wide", pane: true,
+                    controlsEnabled: !setup),
+                pageGroup)
+            .Classes("spotify-connected-panes"));
         var root = UI.Stack("spotify.root", content.ToArray())
-            .InputScope(InputScope)
             .Classes("spotify-widget", "is-ready");
-        if (playlistDetail is not null && destination == SpotifyDestination.Playlists)
-            root = root.Shortcut(ControllerButton.B, "spotify.playlist.back");
-        root = ApplyPlaybackShortcuts(root, playback)
-            .Shortcut(ControllerButton.Y, "spotify.refresh", label: "Refresh");
+        if (!setup)
+            root = ApplyPlaybackShortcuts(root, playback)
+                .Shortcut(ControllerButton.Y, "spotify.setup.open", label: "Settings");
+        if (SpotifyRouteActionPolicy.CanSwitchSection(route.Route, route.Depth))
+            root = root
+                .Shortcut(ControllerButton.LeftTrigger,
+                    "spotify.nav.previous-section", label: "Previous section")
+                .Shortcut(ControllerButton.RightTrigger,
+                    "spotify.nav.next-section", label: "Next section");
 
         var quickActions = new List<WidgetQuickAction>();
-        if (playback is { IsAvailable: true })
+        if (!setup && playback is { IsAvailable: true })
         {
             var blocked = playback.DisallowedActions;
             if (!blocked.SkippingPrevious)
@@ -462,72 +531,144 @@ internal static class SpotifyPresentation
                 quickActions.Add(new(ControllerButton.RightBumper, "spotify.next",
                     "Next track"));
         }
-        var requestedPageFocus = destination == SpotifyDestination.Playlists
-            ? playlistDetail is null
-                ? playlists.Snapshot.RequestedFocusId
-                : playlistDetail.Items.Snapshot.RequestedFocusId
-            : null;
-        var requestedInitialFocus = requestedPageFocus ?? presentation.ReadyInitialFocusId;
-        if (destination == SpotifyDestination.Playlists && playlistDetail is not null &&
-            playlistDetail.Items.Snapshot.Items.Count == 0 &&
-            playlistDetail.Items.Snapshot.Status != WidgetPagedResourceStatus.Ready)
-        {
-            var mode = playlistDetail.Selection.Mode;
-            requestedInitialFocus = playlistDetail.Items.Snapshot.Error is null
-                ? NavId(SpotifyDestination.Playlists, mode)
-                : $"spotify.page.error.{mode}.action";
-        }
-        var resolvedInitialFocus = requestedInitialFocus == "spotify.play-toggle" &&
-            playback is not { IsAvailable: true, Item: not null }
-                ? "spotify.player.empty.wide.action"
-                : requestedInitialFocus;
-        return new WidgetView(root, resolvedInitialFocus, quickActions,
-            ActiveInputScopeId: InputScope, Surface: StandardSurface);
+        return new WidgetView(root, contentEntry,
+            quickActions, Surface: StandardSurface);
     }
 
-    private static WidgetElement NavigationRail(SpotifyDestination selected, string mode) =>
-        UI.Stack($"spotify.navigation.{mode}",
-                NavigationButton(SpotifyDestination.Player, selected, mode, WidgetGlyph.Music),
-                NavigationButton(SpotifyDestination.Queue, selected, mode, WidgetGlyph.Next),
-                NavigationButton(SpotifyDestination.Playlists, selected, mode, WidgetGlyph.Music),
-                NavigationButton(SpotifyDestination.Devices, selected, mode, WidgetGlyph.Connection),
-                SetupNavigationButton(mode))
-            .Classes("spotify-navigation", "spotify-navigation-rail",
-                $"spotify-navigation-{mode}");
+    private static string PageFocusGroupId(SpotifyRoute route) => route switch
+    {
+        SpotifyRoute.Queue => "spotify.page.queue",
+        SpotifyRoute.Devices => "spotify.page.devices",
+        SpotifyRoute.PlaylistDetail => "spotify.page.playlist-detail",
+        SpotifyRoute.Setup => "spotify.page.setup",
+        _ => "spotify.page.playlists",
+    };
 
-    private static ButtonElement NavigationButton(
-        SpotifyDestination destination,
-        SpotifyDestination selected,
-        string mode,
-        WidgetGlyph glyph) =>
-        UI.Button(DestinationLabel(destination), $"spotify.nav.{DestinationToken(destination)}",
-                NavId(destination, mode))
-            .Icon(glyph, $"Open {DestinationLabel(destination)}")
-            .Selected(destination == selected)
-            .PersistFocusAs($"spotify.destination.{DestinationToken(destination)}")
-            .Classes("spotify-nav-button");
+    private static string PageEntryFocusId(
+        SpotifyPresentationState presentation,
+        SpotifyDestination destination)
+    {
+        const string mode = "shared";
+        if (presentation.Navigation.Route == SpotifyRoute.Setup)
+            return presentation.SetupBusy
+                ? "spotify.setup.close"
+                : "spotify.setup.dashboard";
+        if (presentation.Navigation.Route == SpotifyRoute.PlaylistDetail &&
+            presentation.PlaylistDetail is { } detail)
+        {
+            var items = detail.Items.Snapshot;
+            if (items.Items.Count != 0 || items.Status == WidgetPagedResourceStatus.Ready)
+                return "spotify.playlist.play.shared";
+            return items.Error is null
+                ? "spotify.page.loading.shared.action"
+                : "spotify.page.error.shared.action";
+        }
+        if (destination == SpotifyDestination.Queue)
+        {
+            var queue = presentation.Queue;
+            if (queue.Items.Count != 0)
+                return SpotifyCollectionIdentity.FocusId(
+                    "spotify.queue.item", mode, queue.Items[0].Key);
+            if (queue.Status is WidgetPagedResourceStatus.Loading or
+                WidgetPagedResourceStatus.NotLoaded)
+                return "spotify.page.loading.shared.action";
+            if (queue.Error is not null || presentation.PageError is not null)
+                return "spotify.page.error.shared.action";
+            return "spotify.queue.empty.shared.action";
+        }
+        if (destination == SpotifyDestination.Playlists)
+        {
+            var items = presentation.Playlists.Snapshot;
+            if (items.Items.Count != 0)
+                return SpotifyCollectionIdentity.FocusId(
+                    "spotify.playlist.item", mode, items.Items[0].Key);
+            if (items.Status is WidgetPagedResourceStatus.Loading or
+                WidgetPagedResourceStatus.NotLoaded)
+                return "spotify.page.loading.shared.action";
+            if (items.Error is not null)
+                return "spotify.page.error.shared.action";
+            return items.HasBefore || items.HasAfter || items.RequestedFocusId is not null
+                ? "spotify.page.sparse.playlist.shared"
+                : "spotify.playlists.empty.shared.action";
+        }
+        if (presentation.PageLoading && presentation.Devices is null)
+            return "spotify.page.loading.shared.action";
+        if (presentation.PageError is not null)
+            return "spotify.page.error.shared.action";
+        if (presentation.LocalPlayback is { State: not (
+                SpotifyLocalPlaybackState.Starting or
+                SpotifyLocalPlaybackState.PremiumRequired or
+                SpotifyLocalPlaybackState.Unavailable) })
+            return "spotify.local.shared.action";
+        var remote = presentation.Devices?.Devices
+            .Select((device, index) => (device, index))
+            .FirstOrDefault(entry => !entry.device.IsLocalHost && !entry.device.IsRestricted);
+        return remote is { device: not null }
+            ? $"spotify.device.shared.{remote.Value.index}"
+            : presentation.Devices is { Devices.Count: > 0 } ||
+                presentation.LocalPlayback is not null
+                ? "spotify.devices.refresh.shared"
+                : "spotify.devices.empty.shared.action";
+    }
 
-    private static ButtonElement SetupNavigationButton(string mode) =>
-        UI.Button("Setup", "spotify.setup.open", $"spotify.setup.open.{mode}")
-            .Icon(WidgetGlyph.Settings, "Change Spotify Client ID")
-            .PersistFocusAs("spotify.setup")
-            .Classes("spotify-nav-button");
+    private static RowElement CompactControllerKey(
+        string key,
+        string accessibilityLabel,
+        string id) => UI.Row(
+            id,
+            UI.Text(key, id + ".label", accessibilityLabel)
+                .Classes("wrail-controller-hint__key", "spotify-section-trigger-key"))
+        .Classes("spotify-section-trigger-hint");
 
     private static WidgetElement PlayerPanel(
         SpotifyPlaybackSummary? playback,
         SpotifyPlaybackOperation? pending,
-        SpotifyDestination selectedDestination,
         string mode,
         bool pinned = false,
-        string? adjacentFocusId = null)
+        string? adjacentFocusId = null,
+        bool docked = false,
+        bool pane = false,
+        bool controlsEnabled = true)
     {
         if (playback is not { IsAvailable: true, Item: not null })
-            return UI.EmptyState("Nothing playing",
+        {
+            if (docked)
+            {
+                return UI.Row(
+                        $"spotify.player.empty.{mode}",
+                        UI.Icon(WidgetGlyph.Music,
+                                $"spotify.player.empty.{mode}.icon", "Nothing playing")
+                            .Classes("spotify-player-empty-icon"),
+                        UI.Stack(
+                                $"spotify.player.empty.{mode}.copy",
+                                UI.Text("Nothing playing",
+                                        $"spotify.player.empty.{mode}.title",
+                                        "Nothing playing")
+                                    .Classes("spotify-player-empty-title"),
+                                UI.Text("Choose a playlist or start Spotify on a device.",
+                                        $"spotify.player.empty.{mode}.message",
+                                        "Choose a playlist or start Spotify on a device.")
+                                    .Classes("spotify-player-empty-message"))
+                            .Classes("spotify-player-empty-copy"))
+                    .Classes("spotify-player-card", "spotify-player-dock",
+                        "spotify-player-standard", "spotify-player-empty");
+            }
+            var empty = UI.EmptyState("Nothing playing",
                     "Choose a playlist or start Spotify on a device.",
                     $"spotify.player.empty.{mode}",
-                    new ComponentAction("Refresh", "spotify.refresh", WidgetGlyph.Refresh),
-                    WidgetGlyph.Music)
-                .Classes("spotify-player-card");
+                    controlsEnabled && !pane
+                        ? new ComponentAction(
+                            "Refresh", "spotify.refresh", WidgetGlyph.Refresh)
+                        : null,
+                    WidgetGlyph.Music);
+            if (pane)
+                return empty.Classes("spotify-player-card", "spotify-player-pane",
+                    "spotify-player-standard");
+            return docked
+                ? empty.Classes("spotify-player-card", "spotify-player-dock",
+                    "spotify-player-standard")
+                : empty.Classes("spotify-player-card");
+        }
 
         var item = playback.Item;
         var duration = Math.Max(1, playback.DurationMilliseconds);
@@ -554,7 +695,7 @@ internal static class SpotifyPresentation
         var repeatId = $"{prefix}.repeat";
         var seekId = $"{prefix}.seek";
         var seekSliderId = $"{seekId}.slider";
-        var compact = mode == "compact" || pinned;
+        var compact = mode == "compact" || pinned || docked;
         WidgetElement artwork = string.IsNullOrWhiteSpace(item.ArtworkUrl)
             ? UI.Icon(WidgetGlyph.Music, placeholderId, "No artwork")
                 .Classes("spotify-artwork-placeholder",
@@ -564,9 +705,13 @@ internal static class SpotifyPresentation
                     ImageFit.Cover)
                 .Classes("spotify-artwork",
                     compact ? "spotify-compact-artwork" : "spotify-wide-artwork");
+        if (docked)
+            artwork = artwork.AddClasses(string.IsNullOrWhiteSpace(item.ArtworkUrl)
+                ? "spotify-dock-artwork-placeholder" : "spotify-dock-artwork");
         var previous = UI.IconButton(WidgetGlyph.Previous, "spotify.previous",
                 previousId, "Previous track", size: IconButtonSize.Medium)
-            .Disabled(disallowed.SkippingPrevious || pending == SpotifyPlaybackOperation.Previous)
+            .Disabled(!controlsEnabled || disallowed.SkippingPrevious ||
+                pending == SpotifyPlaybackOperation.Previous)
             .Busy(pending == SpotifyPlaybackOperation.Previous)
             .PersistFocusAs("spotify.transport.previous")
             .FocusLeft(shuffleId).FocusUp(seekSliderId).FocusRight(toggleId)
@@ -575,7 +720,8 @@ internal static class SpotifyPresentation
                 "spotify.play-toggle", toggleId,
                 playback.IsPlaying ? "Pause" : "Play", IconButtonVariant.Primary,
                 IconButtonSize.Large)
-            .Disabled(toggleBlocked || pending is SpotifyPlaybackOperation.Play or
+            .Disabled(!controlsEnabled || toggleBlocked ||
+                pending is SpotifyPlaybackOperation.Play or
                 SpotifyPlaybackOperation.Pause)
             .Busy(pending is SpotifyPlaybackOperation.Play or
                 SpotifyPlaybackOperation.Pause)
@@ -584,7 +730,8 @@ internal static class SpotifyPresentation
             .Classes("spotify-play");
         var next = UI.IconButton(WidgetGlyph.Next, "spotify.next", nextId,
                 "Next track", size: IconButtonSize.Medium)
-            .Disabled(disallowed.SkippingNext || pending == SpotifyPlaybackOperation.Next)
+            .Disabled(!controlsEnabled || disallowed.SkippingNext ||
+                pending == SpotifyPlaybackOperation.Next)
             .Busy(pending == SpotifyPlaybackOperation.Next)
             .PersistFocusAs("spotify.transport.next")
             .FocusLeft(toggleId).FocusUp(seekSliderId).FocusRight(repeatId)
@@ -592,7 +739,8 @@ internal static class SpotifyPresentation
         var shuffle = UI.IconButton(WidgetGlyph.Shuffle, "spotify.shuffle",
                 shuffleId, "Toggle shuffle", size: IconButtonSize.Small)
             .Selected(playback.ShuffleState)
-            .Disabled(disallowed.TogglingShuffle || pending == SpotifyPlaybackOperation.SetShuffle)
+            .Disabled(!controlsEnabled || disallowed.TogglingShuffle ||
+                pending == SpotifyPlaybackOperation.SetShuffle)
             .Busy(pending == SpotifyPlaybackOperation.SetShuffle)
             .PersistFocusAs("spotify.transport.shuffle")
             .FocusUp(seekSliderId).FocusRight(previousId)
@@ -601,7 +749,8 @@ internal static class SpotifyPresentation
                 repeatId, $"Repeat {playback.RepeatState.ToString().ToLowerInvariant()}",
                 size: IconButtonSize.Small)
             .Selected(playback.RepeatState != SpotifyRepeatState.Off)
-            .Disabled(RepeatUnavailable(playback) || pending == SpotifyPlaybackOperation.SetRepeat)
+            .Disabled(!controlsEnabled || RepeatUnavailable(playback) ||
+                pending == SpotifyPlaybackOperation.SetRepeat)
             .Busy(pending == SpotifyPlaybackOperation.SetRepeat)
             .PersistFocusAs("spotify.transport.repeat")
             .FocusUp(seekSliderId).FocusLeft(nextId)
@@ -609,33 +758,38 @@ internal static class SpotifyPresentation
         var seek = UI.Scrubber(TimeSpan.FromMilliseconds(position),
                 TimeSpan.FromMilliseconds(duration), TimeSpan.FromSeconds(5), "spotify.seek",
                 seekId, "Spotify playback position")
-            .Disabled(disallowed.Seeking || pending == SpotifyPlaybackOperation.Seek)
+            .Disabled(!controlsEnabled || disallowed.Seeking ||
+                pending == SpotifyPlaybackOperation.Seek)
             .Busy(pending == SpotifyPlaybackOperation.Seek)
             .PersistFocusAs("spotify.transport.seek")
             .FocusDown(toggleId)
             .RequireControllerActivation()
             .AddClasses("spotify-scrubber");
-        if (!pinned)
-            seek = seek.FocusLeft(NavId(selectedDestination, mode));
         if (adjacentFocusId is not null)
             repeat = repeat.FocusRight(adjacentFocusId);
 
-        return UI.Stack($"{prefix}.card",
-                UI.Stack(frameId, artwork).Classes("spotify-artwork-frame",
-                    compact ? "spotify-compact-artwork-frame" :
-                        "spotify-wide-artwork-frame"),
-                UI.Stack(detailsId,
-                        UI.Text(item.Title, titleId, item.Title)
-                            .Classes("spotify-track-title",
-                                compact ? "spotify-compact-track-title" :
-                                    "spotify-wide-track-title"),
-                        UI.Text(item.Subtitle, subtitleId, item.Subtitle)
-                            .Classes("spotify-track-subtitle"),
-                        UI.Text(item.ContextName ?? "Spotify", contextId,
-                                item.ContextName ?? "Spotify")
-                            .Classes("spotify-context"))
-                    .Classes("spotify-details",
-                        compact ? "spotify-compact-details" : "spotify-wide-details"),
+        var title = UI.Text(item.Title, titleId, item.Title)
+            .Classes("spotify-track-title",
+                compact ? "spotify-compact-track-title" : "spotify-wide-track-title");
+        var subtitle = UI.Text(item.Subtitle, subtitleId, item.Subtitle)
+            .Classes("spotify-track-subtitle");
+        var context = UI.Text(item.ContextName ?? "Spotify", contextId,
+                item.ContextName ?? "Spotify")
+            .Classes("spotify-context");
+        if (docked)
+        {
+            title = title.AddClasses("spotify-dock-track-title");
+            subtitle = subtitle.AddClasses("spotify-dock-track-subtitle");
+            context = context.AddClasses("spotify-dock-context");
+        }
+        var details = UI.Stack(detailsId, title, subtitle, context)
+                .Classes("spotify-details",
+                    compact ? "spotify-compact-details" : "spotify-wide-details");
+        if (docked) details = details.AddClasses("spotify-dock-details");
+        var artworkFrame = UI.Stack(frameId, artwork).Classes("spotify-artwork-frame",
+            compact ? "spotify-compact-artwork-frame" : "spotify-wide-artwork-frame");
+        if (docked) artworkFrame = artworkFrame.AddClasses("spotify-dock-artwork-frame");
+        var transport = UI.Stack($"{prefix}.transport",
                 seek.AddClasses(compact ? "spotify-compact-scrubber" :
                     "spotify-wide-scrubber"),
                 UI.Row(controlsId, shuffle, previous, toggle, next, repeat)
@@ -646,9 +800,22 @@ internal static class SpotifyPresentation
                     .Classes("spotify-attribution",
                         compact ? "spotify-compact-attribution" :
                             "spotify-wide-attribution"))
+            .Classes("spotify-player-transport");
+        if (pane) transport = transport.AddClasses("spotify-player-pane-transport");
+        if (docked)
+            return UI.Row($"{prefix}.card", artworkFrame, details, transport)
+                .Classes("spotify-player-card", "spotify-player-dock",
+                    "spotify-player-standard");
+
+        return UI.Stack($"{prefix}.card",
+                artworkFrame,
+                details,
+                transport)
             .Classes("spotify-player-card",
                 compact ? "spotify-player-card-compact" :
                     "spotify-player-card-wide",
+                pane ? "spotify-player-pane" :
+                    "spotify-player-flow",
                 pinned ? "spotify-pinned-player" : "spotify-player-standard");
     }
 
@@ -679,38 +846,27 @@ internal static class SpotifyPresentation
         SpotifyPlaylistDetailPresentation? playlistDetail,
         SpotifyDevicesSummary? devices,
         SpotifyLocalPlaybackSummary? localPlayback,
+        bool localPlaybackBusy,
+        string? localPlaybackFeedback,
         bool loading,
         string? error,
         string mode) =>
         destination switch
         {
-            SpotifyDestination.Player => PlayerOverview(mode),
             SpotifyDestination.Queue => QueuePage(queue, loading, error, mode),
             SpotifyDestination.Playlists => PlaylistsPage(playlists, playlistDetail, mode),
             SpotifyDestination.Devices => DevicesPage(devices, localPlayback,
-                loading, error, mode),
-            _ => PlayerOverview(mode),
+                localPlaybackBusy, localPlaybackFeedback, loading, error, mode),
+            _ => PlaylistsPage(playlists, playlistDetail, mode),
         };
-
-    private static WidgetElement PlayerOverview(string mode) =>
-        UI.Stack($"spotify.player-overview.{mode}",
-                UI.SectionHeader("Now playing", $"spotify.player-overview.header.{mode}",
-                    "SPOTIFY", "Playback stays available while you browse."),
-                UI.Button("Refresh playback", "spotify.refresh", $"spotify.refresh.{mode}")
-                    .Icon(WidgetGlyph.Refresh, "Refresh playback")
-                    .PersistFocusAs("spotify.player.refresh")
-                    .Classes("spotify-page-action"),
-                UI.Button("Disconnect account", "spotify.disconnect",
-                        $"spotify.disconnect.{mode}")
-                    .PersistFocusAs("spotify.player.disconnect")
-                    .Classes("spotify-page-action", "is-quiet"))
-            .Classes("spotify-page", "spotify-player-overview");
 
     private static WidgetElement QueuePage(
         WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> queue,
         bool loading, string? error, string mode)
     {
-        if (queue.Status == WidgetPagedResourceStatus.Loading && queue.Items.Count == 0)
+        if (queue.Items.Count == 0 && queue.Status is (
+                WidgetPagedResourceStatus.Loading or
+                WidgetPagedResourceStatus.NotLoaded))
             return LoadingPage("Loading queue", mode);
         if (queue.Error is { } queueError && queue.Items.Count == 0)
             return PageFailure("Queue unavailable", queueError.Message, mode);
@@ -725,22 +881,21 @@ internal static class SpotifyPresentation
                 item,
                 mode,
                 index == 0
-                    ? SpotifyCollectionIdentity.FocusId(
-                        "spotify.queue.item", mode, item.Key)
+                    ? null
                     : SpotifyCollectionIdentity.FocusId(
                         "spotify.queue.item", mode, queue.Items[index - 1].Key),
                 index == queue.Items.Count - 1
-                    ? SpotifyCollectionIdentity.FocusId(
-                        "spotify.queue.item", mode, item.Key)
+                    ? null
                     : SpotifyCollectionIdentity.FocusId(
                         "spotify.queue.item", mode, queue.Items[index + 1].Key)))
             .ToArray();
-        var scroll = UI.VerticalScroll($"spotify.queue.scroll.{mode}", rows)
+        var scroll = UI.VerticalScroll("spotify.queue.scroll", rows)
             .Classes("spotify-page-scroll") with
         { CollectionAnchorKey = queue.Anchor?.Value };
         return UI.Stack($"spotify.queue.page.{mode}",
                 UI.SectionHeader("Up next", $"spotify.queue.header.{mode}", "QUEUE",
-                    $"{queue.Items.Count} upcoming items"),
+                    $"{queue.Items.Count} upcoming items",
+                    SectionRefresh("queue", mode)),
                 scroll)
             .Classes("spotify-page");
     }
@@ -754,7 +909,9 @@ internal static class SpotifyPresentation
             return PlaylistDetail(playlistDetail.Selection.Playlist,
                 playlistDetail.Items, mode);
         var playlists = playlistPresentation.Snapshot;
-        if (playlists.Status == WidgetPagedResourceStatus.Loading && playlists.Items.Count == 0)
+        if (playlists.Items.Count == 0 && playlists.Status is (
+                WidgetPagedResourceStatus.Loading or
+                WidgetPagedResourceStatus.NotLoaded))
             return LoadingPage("Loading playlists", mode);
         if (playlists.Error is { } playlistError && playlists.Items.Count == 0)
             return PageFailure("Playlists unavailable", playlistError.Message, mode);
@@ -764,7 +921,7 @@ internal static class SpotifyPresentation
                 $"spotify.playlists.empty.{mode}",
                 new ComponentAction("Refresh", "spotify.page.retry", WidgetGlyph.Refresh),
                 WidgetGlyph.Music).Classes("spotify-page");
-        var rows = playlists.Items.Select((item, index) =>
+        var rows = playlists.Items.Select(item =>
             (Item: item, Row: UI.Tile(
                 item.Value.Name, $"{item.Value.ItemCount} items",
                 $"spotify.playlist.open.{item.Key.Value}",
@@ -774,27 +931,20 @@ internal static class SpotifyPresentation
                 $"Open playlist {item.Value.Name}")
                 .PersistFocusAs(SpotifyCollectionIdentity.FocusId(
                     "spotify.playlist.persist", "shared", item.Key))))
-            .Select((entry, index) =>
-            {
-                var row = entry.Row.FocusUp(index == 0
-                        ? entry.Row.Id
-                        : SpotifyCollectionIdentity.FocusId(
-                            "spotify.playlist.item", mode, playlists.Items[index - 1].Key))
-                    .FocusDown(index == playlists.Items.Count - 1
-                        ? entry.Row.Id
-                        : SpotifyCollectionIdentity.FocusId(
-                            "spotify.playlist.item", mode, playlists.Items[index + 1].Key));
-                return row.CollectionItem(entry.Item.Key).Classes("spotify-media-row");
-            })
+            .Select(entry =>
+                entry.Row.CollectionItem(entry.Item.Key)
+                    .Classes("spotify-media-row", "spotify-playlist-row"))
             .ToList<WidgetElement>();
         if (rows.Count == 0)
             rows.Add(SparsePagePlaceholder("playlist", mode));
-        var range = $"{playlists.Items.Count} playlists loaded";
-        var scroll = playlistPresentation.Scroll(mode, rows);
+        var grid = UI.ResponsiveGrid(
+                "spotify.playlists.grid", 280, 3, rows.ToArray())
+            .Classes("spotify-playlist-grid");
+        var scroll = playlistPresentation.Present([grid]);
         var content = new List<WidgetElement>
         {
             UI.SectionHeader("Your playlists", $"spotify.playlists.header.{mode}",
-                "LIBRARY", range),
+                "LIBRARY", trailing: SectionRefresh("playlists", mode)),
             scroll.Classes("spotify-page-scroll"),
         };
         if (playlists.Error is { } retainedError)
@@ -809,7 +959,8 @@ internal static class SpotifyPresentation
         string mode)
     {
         var items = itemPresentation.Snapshot;
-        if (items.Status == WidgetPagedResourceStatus.Loading && items.Items.Count == 0)
+        if (items.Status is (WidgetPagedResourceStatus.Loading or
+                WidgetPagedResourceStatus.NotLoaded) && items.Items.Count == 0)
             return LoadingPage($"Loading {playlist.Name}", mode);
         if (items.Error is { } itemError && items.Items.Count == 0)
             return PageFailure("Playlist unavailable", itemError.Message, mode);
@@ -833,7 +984,7 @@ internal static class SpotifyPresentation
                         : SpotifyCollectionIdentity.FocusId(
                             "spotify.playlist.track", mode, items.Items[index + 1].Key)))
             .ToList<WidgetElement>();
-        var scroll = itemPresentation.Scroll(mode, rows);
+        var scroll = itemPresentation.Present(rows);
         var loading = items.Status is WidgetPagedResourceStatus.Loading or
             WidgetPagedResourceStatus.Refreshing or
             WidgetPagedResourceStatus.LoadingAdjacent;
@@ -874,6 +1025,8 @@ internal static class SpotifyPresentation
     private static WidgetElement DevicesPage(
         SpotifyDevicesSummary? devices,
         SpotifyLocalPlaybackSummary? local,
+        bool localPlaybackBusy,
+        string? localPlaybackFeedback,
         bool loading,
         string? error,
         string mode)
@@ -883,12 +1036,14 @@ internal static class SpotifyPresentation
         var rows = new List<WidgetElement>();
         if (local is not null)
         {
-            var localActive = local.State == SpotifyLocalPlaybackState.Active;
+            var localActive = local.State is SpotifyLocalPlaybackState.Active or
+                SpotifyLocalPlaybackState.AutoplayBlocked;
             var localStarting = local.State == SpotifyLocalPlaybackState.Starting;
+            var localPending = localStarting || localPlaybackBusy;
             var localNeedsReconnect = local.State ==
                 SpotifyLocalPlaybackState.ReauthorizationRequired;
             rows.Add(UI.SettingsRow("This overlay",
-                    new ComponentAction(localActive ? "Stop" : localStarting ? "Starting…" :
+                    new ComponentAction(localActive ? "Stop" : localPending ? "Starting…" :
                         localNeedsReconnect ? "Reconnect" : "Play here",
                         localActive ? "spotify.local.stop" : localNeedsReconnect
                             ? "spotify.connect.features" : "spotify.local.start",
@@ -897,14 +1052,21 @@ internal static class SpotifyPresentation
                     $"spotify.local.{mode}",
                     local.DisplayMessage ?? "Web Playback SDK audio stays in the trusted host.",
                     local.DeviceName,
-                    LocalStateLabel(local.State),
-                    LocalStateTone(local.State),
+                    localPlaybackBusy ? "Starting" : LocalStateLabel(local.State),
+                    localPlaybackBusy ? StatusTone.Info : LocalStateTone(local.State),
                     isDisabled: local.State is SpotifyLocalPlaybackState.PremiumRequired or
-                        SpotifyLocalPlaybackState.Unavailable || localStarting,
-                    isBusy: loading || localStarting,
+                        SpotifyLocalPlaybackState.Unavailable || localPending,
+                    isBusy: localPending,
                     glyph: WidgetGlyph.Music)
                 .Classes("spotify-device-row"));
         }
+        if (localPlaybackFeedback is not null)
+            rows.Add(UI.Alert(
+                    "Local playback unavailable",
+                    localPlaybackFeedback,
+                    AlertTone.Warning,
+                    $"spotify.local.feedback.{mode}")
+                .Classes("spotify-local-feedback"));
         if (devices is not null)
         {
             rows.AddRange(devices.Devices.Select((device, index) => (device, index))
@@ -924,16 +1086,26 @@ internal static class SpotifyPresentation
                 WidgetGlyph.Connection).Classes("spotify-page");
         return UI.Stack($"spotify.devices.page.{mode}",
                 UI.SectionHeader("Playback devices", $"spotify.devices.header.{mode}",
-                    "DEVICES", "Move playback without exposing Spotify device IDs."),
+                    "DEVICES", trailing: SectionRefresh("devices", mode)),
                 UI.VerticalScroll($"spotify.devices.scroll.{mode}", rows.ToArray())
                     .Classes("spotify-page-scroll"))
             .Classes("spotify-page");
     }
 
+    private static ButtonElement SectionRefresh(string section, string mode) =>
+        UI.Button("Refresh", "spotify.refresh", $"spotify.{section}.refresh.{mode}")
+            .Icon(WidgetGlyph.Refresh, $"Refresh Spotify {section}")
+            .PersistFocusAs($"spotify.{section}.refresh")
+            .Classes("spotify-page-action", "is-quiet", "spotify-section-refresh");
+
     private static WidgetElement LoadingPage(string label, string mode) =>
         UI.Stack($"spotify.page.loading.{mode}",
                 UI.LoadingIndicator($"spotify.page.loading.indicator.{mode}", label),
-                UI.Text(label, $"spotify.page.loading.label.{mode}", label))
+                UI.Text(label, $"spotify.page.loading.label.{mode}", label),
+                UI.Button("Refresh", "spotify.page.retry",
+                        $"spotify.page.loading.{mode}.action")
+                    .Icon(WidgetGlyph.Refresh, $"Refresh {label}")
+                    .Classes("spotify-page-action", "is-quiet"))
             .Classes("spotify-page", "spotify-page-loading");
 
     private static WidgetElement PageFailure(string title, string error, string mode) =>
@@ -961,14 +1133,15 @@ internal static class SpotifyPresentation
     private static WidgetElement QueueRow(
         SpotifyMediaCollectionItem item,
         string mode,
-        string up,
-        string down)
+        string? up,
+        string? down)
     {
         var row = MediaRow(item.Value, $"spotify.queue.play.{item.Key.Value}",
                 SpotifyCollectionIdentity.FocusId("spotify.queue.item", mode, item.Key),
                 SpotifyCollectionIdentity.FocusId(
                     "spotify.queue.persist", "shared", item.Key));
-        row = row.FocusUp(up).FocusDown(down);
+        if (up is not null) row = row.FocusUp(up);
+        if (down is not null) row = row.FocusDown(down);
         return row.CollectionItem(item.Key);
     }
 
@@ -997,6 +1170,7 @@ internal static class SpotifyPresentation
         SpotifyLocalPlaybackState.Active => "Playing here",
         SpotifyLocalPlaybackState.Ready => "Ready",
         SpotifyLocalPlaybackState.Starting => "Starting",
+        SpotifyLocalPlaybackState.AutoplayBlocked => "Playback blocked",
         SpotifyLocalPlaybackState.PremiumRequired => "Premium required",
         SpotifyLocalPlaybackState.ReauthorizationRequired => "Reconnect required",
         SpotifyLocalPlaybackState.Unavailable => "Unavailable",
@@ -1009,26 +1183,15 @@ internal static class SpotifyPresentation
         SpotifyLocalPlaybackState.Active or SpotifyLocalPlaybackState.Ready =>
             StatusTone.Success,
         SpotifyLocalPlaybackState.Starting => StatusTone.Info,
+        SpotifyLocalPlaybackState.AutoplayBlocked => StatusTone.Warning,
         SpotifyLocalPlaybackState.PremiumRequired or
             SpotifyLocalPlaybackState.ReauthorizationRequired => StatusTone.Warning,
         SpotifyLocalPlaybackState.Error => StatusTone.Danger,
         _ => StatusTone.Neutral,
     };
 
-    private static string NavId(SpotifyDestination destination, string mode) =>
-        $"spotify.nav.{mode}.{DestinationToken(destination)}";
-
     private static string DestinationToken(SpotifyDestination destination) =>
         destination.ToString().ToLowerInvariant();
-
-    private static string DestinationLabel(SpotifyDestination destination) => destination switch
-    {
-        SpotifyDestination.Player => "Player",
-        SpotifyDestination.Queue => "Queue",
-        SpotifyDestination.Playlists => "Playlists",
-        SpotifyDestination.Devices => "Devices",
-        _ => "Spotify",
-    };
 
     private static WidgetElement StateCard(
         WidgetGlyph glyph,

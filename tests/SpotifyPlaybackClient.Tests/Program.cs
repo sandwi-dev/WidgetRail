@@ -66,7 +66,8 @@ static async Task PlaybackHostClientProtocol()
     var tokenCommand = client.ProvideTokenAsync(
         "token-1",
         new TrustedHostSpotifyAccessToken(
-            accessToken, DateTimeOffset.UtcNow.AddMinutes(5), ["streaming"]),
+            accessToken, DateTimeOffset.UtcNow.AddMinutes(5),
+            SpotifyPlaybackProtocol.RequiredScopes),
         default);
     var tokenWire = await process.InputChannel.ReadLineAsync(default);
     var tokenRequest = SpotifyPlaybackProtocolCodec.DecodeRequest(tokenWire);

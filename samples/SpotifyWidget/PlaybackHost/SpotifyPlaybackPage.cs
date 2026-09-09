@@ -9,7 +9,7 @@ internal static class SpotifyPlaybackPage
         <html lang="en">
         <head>
           <meta charset="utf-8">
-          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://sdk.scdn.co; connect-src https://*.spotify.com wss://*.spotify.com https://*.scdn.co wss://*.scdn.co https://*.spotifycdn.com wss://*.spotifycdn.com; media-src blob: https://*.scdn.co https://*.spotifycdn.com https://*.akamaized.net; style-src 'unsafe-inline'; img-src data:; frame-src https://*.spotify.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://sdk.scdn.co; connect-src https://*.spotify.com wss://*.spotify.com https://*.scdn.co wss://*.scdn.co https://*.spotifycdn.com wss://*.spotifycdn.com; media-src blob: https://*.scdn.co https://*.spotifycdn.com https://*.akamaized.net; style-src 'unsafe-inline'; img-src data:; frame-src https://*.spotify.com https://sdk.scdn.co; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
           <meta name="referrer" content="no-referrer">
           <title>Spotify Playback Host</title>
         </head>
@@ -99,7 +99,8 @@ internal static class SpotifyPlaybackPage
               };
             };
             const addListeners = () => {
-              player.addListener('ready', value => post('ready', null, { deviceId: text(value && value.device_id, 128) }));
+              player.addListener('ready', value =>
+                post('ready', null, { deviceId: text(value && value.device_id, 128) }));
               player.addListener('not_ready', value => post('not_ready', null, { deviceId: text(value && value.device_id, 128) }));
               player.addListener('player_state_changed', value => post('player_state_changed', null, state(value)));
               player.addListener('autoplay_failed', () => post('autoplay_failed', null));
@@ -152,10 +153,22 @@ internal static class SpotifyPlaybackPage
                 case 'connect':
                   if (!sdkReady) { failure(requestId, 'sdk_not_loaded'); return; }
                   createPlayer(payload);
-                  invoke(requestId, async () => {
-                    const connected = await player.connect();
-                    if (!connected) throw new Error('connect failed');
-                  });
+                  try {
+                    const connection = player.connect();
+                    post('command_completed', requestId);
+                    Promise.resolve(connection).then(
+                      connected => {
+                        if (connected) post('connect_succeeded', null);
+                        else post('sdk_error', null, {
+                            code: 'initialization_error',
+                            message: 'Spotify playback could not connect.'
+                          });
+                      },
+                      () => post('sdk_error', null, {
+                        code: 'initialization_error',
+                        message: 'Spotify playback could not connect.'
+                      }));
+                  } catch (_) { failure(requestId, 'sdk_command_failed'); }
                   break;
                 case 'provide_token': {
                   const tokenRequestId = text(payload.tokenRequestId, 64);
@@ -184,13 +197,13 @@ internal static class SpotifyPlaybackPage
                   query(requestId, () => player.getVolume(), 'volume', value => ({ volume: value }));
                   break;
                 case 'set_volume': requirePlayer(requestId, () => player.setVolume(Number(payload.volume))); break;
+                case 'activate_element': requirePlayer(requestId, () => player.activateElement()); break;
                 case 'pause': requirePlayer(requestId, () => player.pause()); break;
                 case 'resume': requirePlayer(requestId, () => player.resume()); break;
                 case 'toggle_play': requirePlayer(requestId, () => player.togglePlay()); break;
                 case 'seek': requirePlayer(requestId, () => player.seek(Number(payload.positionMilliseconds))); break;
                 case 'previous_track': requirePlayer(requestId, () => player.previousTrack()); break;
                 case 'next_track': requirePlayer(requestId, () => player.nextTrack()); break;
-                case 'activate_element': requirePlayer(requestId, () => player.activateElement()); break;
               }
             });
           })();

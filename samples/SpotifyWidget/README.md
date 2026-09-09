@@ -18,17 +18,17 @@ the public Client ID through the host-owned text-entry modal. No terminal or
 Client Secret is required. Choose **Connect** afterward; authorization remains
 explicit, and merely opening the widget never launches a browser.
 
-Version 0.3.3 keeps controller-first Client-ID onboarding available from the
-configured Ready navigation rail, so an existing Client ID can be replaced
-without disconnecting or using a terminal. Its Client-ID field stays within the
-public host text-entry limit while the backend independently revalidates the
-committed value. It retains the accepted vertical-rail responsive layout and its four
-controller-first destinations:
+Controller-first Client-ID onboarding remains available from Y/Settings while
+Spotify is ready, so an existing Client ID can be replaced without disconnecting
+or using a terminal. Its Client-ID field stays within the public host text-entry
+limit while the backend independently revalidates the committed value. The
+player remains visible beside three browse destinations:
 
 The project imports the shared Community-package deterministic path map, so the
 same commit produces a checkout-independent managed payload and sealed archive.
 
-- **Player** keeps artwork, projected progress, transport, shuffle, and repeat responsive without increasing Spotify polling.
+- The persistent player keeps artwork, concise metadata, projected progress,
+  transport, shuffle, and repeat visible without increasing Spotify polling.
 - **Queue** is fetched only when selected and remains cached while the widget worker lives.
 - **Playlists** lazily appends bounded keyed windows, opens a continuous detail list, and can start the playlist or an exact URI-keyed track context.
 - **Devices** transfers to Spotify devices and exposes **This overlay** through
@@ -53,16 +53,26 @@ route/actions and reconcile playback/device commands; a separate pure presenter
 accepts only one immutable snapshot. These boundaries add no provider or OAuth
 authority and preserve the package's authored IDs and controller graph.
 
-Wide surfaces use a navigation rail with a persistent player. Left from the
-inactive seek control returns to the currently selected rail destination;
-compact surfaces retain the corresponding selected rail destination and show
-one route in the remaining pane. The compact Player uses one focus-revealing
-vertical viewport so artwork, metadata, seek/times, the complete transport row,
-and attribution remain reachable at the documented 620x400 minimum. Playlist
-detail is a nested navigation entry: B returns
-to the exact playlist tile; B at a root destination remains available to the
-overlay shell. Search is intentionally absent until the SDK has a controller-
-appropriate text-entry contract.
+The destination selector is one horizontal tab row at every responsive size;
+the persistent player and selected browse page share the remaining pane. LT/RT
+switch Queue, Playlists, and Devices, including from playlist detail. Y opens
+the nested Settings route and B restores the exact prior route focus. Playlist
+detail is likewise nested: B returns to the exact playlist tile, while B at a
+root destination remains available to the overlay shell. A transport shortcut
+does not replace a still-valid browse focus merely because its separate player
+control is temporarily busy. Search is intentionally absent until the SDK has
+a controller-appropriate text-entry contract.
+
+Local playback requests only Spotify's implemented streaming and account
+eligibility scopes. After the SDK reports Ready, the package performs one
+bounded `activateElement()` command before transferring playback. WebView2
+grants ephemeral autoplay permission only to the exact trusted document and
+Spotify SDK origins. Local Play/Pause uses the correlated SDK command only while
+an exact successful local-device decision remains current; explicit remote
+selection revokes that routing and continues through the Web API. Autoplay
+denial remains a visible, recoverable state. Routine successful action, queue,
+token-delivery, and player-state traffic is intentionally not written to the
+bounded diagnostics file; concise typed failures remain available.
 
 Rendering captures one immutable presentation revision. Playlist detail is keyed
 to both its playlist ID and selection generation, so Back, rapid reselection,

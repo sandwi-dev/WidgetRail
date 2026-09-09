@@ -13,6 +13,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Page responses require a pending matching request", ResponseCorrelationContract),
     ("Page playback state rejects unsafe metadata and artwork", PageStateContract),
     ("Only the internal playback document is a trusted page source", PageSourceContract),
+    ("Autoplay permission is exact ephemeral and probe-free", AutoplayPermissionContract),
     ("Ephemeral profile is removed on clean disposal", EphemeralProfileContract),
 };
 
@@ -63,12 +64,13 @@ static Task LifecycleContract()
 static Task PreconditionsContract()
 {
     new SpotifyPlaybackConnectOptions("Game Bar", 0.5,
-        new(true, ["user-read-playback-state", "streaming"])).Validate();
+        new(true, ["user-read-playback-state", .. SpotifyPlaybackProtocol.RequiredScopes]))
+        .Validate();
     Assert.Throws<SpotifyPlaybackProtocolException>(() =>
         new SpotifyPlaybackPreconditions(false, ["streaming"]).Validate(), "premium_required");
     Assert.Throws<SpotifyPlaybackProtocolException>(() =>
         new SpotifyPlaybackPreconditions(true, ["user-read-playback-state"]).Validate(),
-        "streaming_scope_required");
+        "local_playback_scope_required");
     Assert.Throws<SpotifyPlaybackProtocolException>(() =>
         new SpotifyPlaybackConnectOptions("Game Bar", 1.1,
             new(true, ["streaming"])).Validate(), "invalid_volume");
@@ -79,7 +81,7 @@ static Task TokenLeaseContract()
 {
     const string secret = "secret-access-token";
     var lease = new SpotifyAccessTokenLease(secret,
-        DateTimeOffset.UtcNow.AddMinutes(5), ["streaming"]);
+        DateTimeOffset.UtcNow.AddMinutes(5), SpotifyPlaybackProtocol.RequiredScopes);
     lease.Validate(DateTimeOffset.UtcNow);
     Assert.True(!lease.ToString().Contains(secret, StringComparison.Ordinal));
     Assert.Throws<SpotifyPlaybackProtocolException>(() =>
@@ -87,7 +89,7 @@ static Task TokenLeaseContract()
             .Validate(DateTimeOffset.UtcNow), "expired_token");
     Assert.Throws<SpotifyPlaybackProtocolException>(() =>
         new SpotifyAccessTokenLease(secret, DateTimeOffset.UtcNow.AddMinutes(1), ["other"])
-            .Validate(DateTimeOffset.UtcNow), "streaming_scope_required");
+            .Validate(DateTimeOffset.UtcNow), "local_playback_scope_required");
     return Task.CompletedTask;
 }
 
@@ -200,6 +202,34 @@ static Task PageSourceContract()
     Assert.True(!SpotifyPlaybackPageValidator.IsTrustedSource("about:blank"));
     Assert.True(!SpotifyPlaybackPageValidator.IsTrustedSource("https://sdk.scdn.co/"));
     Assert.True(!SpotifyPlaybackPageValidator.IsTrustedSource(null));
+    return Task.CompletedTask;
+}
+
+static Task AutoplayPermissionContract()
+{
+    var html = SpotifyPlaybackPage.Html;
+    Assert.True(html.Contains("case 'activate_element':", StringComparison.Ordinal));
+    Assert.True(html.Contains("player.activateElement()", StringComparison.Ordinal));
+    Assert.True(!html.Contains("autoplay_policy", StringComparison.Ordinal));
+    Assert.True(!html.Contains("MutationObserver", StringComparison.Ordinal));
+    Assert.True(!html.Contains("permissionsPolicy", StringComparison.Ordinal));
+
+    var source = File.ReadAllText(Path.Combine(
+        AppContext.BaseDirectory, "source", "SpotifyPlaybackHostForm.cs"));
+    Assert.True(source.Contains(
+        "foreach (var origin in new[] { TopLevelOrigin, SdkOrigin })",
+        StringComparison.Ordinal));
+    Assert.True(source.Contains("CoreWebView2PermissionKind.Autoplay",
+        StringComparison.Ordinal));
+    Assert.True(source.Contains("CoreWebView2PermissionState.Allow",
+        StringComparison.Ordinal));
+    Assert.True(source.Contains("args.SavesInProfile = false",
+        StringComparison.Ordinal));
+    Assert.True(source.Contains(
+        "private static readonly Uri SdkOrigin = new(\"https://sdk.scdn.co\")",
+        StringComparison.Ordinal));
+    Assert.True(!source.Contains("Emit(\"autoplay_permission\"",
+        StringComparison.Ordinal));
     return Task.CompletedTask;
 }
 

@@ -26,14 +26,14 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Explicit connect requests the four implemented least-privilege scopes", ExplicitConnect),
     ("Ready UI exposes native controller transport and attribution", ReadyControllerUi),
     ("Ready UI publishes responsive wide and compact navigation", ResponsiveNavigation),
-    ("Responsive player fits named host envelopes and preserves focus identity", SpotifyResponsiveLayoutTests.NamedHostEnvelopesFitAndPreserveFocus),
-    ("Seek Left follows the selected responsive destination", SeekLeftFollowsResponsiveDestination),
+    ("Ready UI publishes persistent player navigation metadata and WRSS contracts", SpotifyResponsiveLayoutTests.PersistentPlayerNavigationAndMetadataContract),
+    ("LT RT and nested Y B preserve route and focus authority", SectionNavigationAndNestedFocus),
     ("Collection pages load lazily and remain cached", LazyPageLoading),
     ("Typed pinned Up Next demand survives lifecycle and transport",
         TypedPinnedUpNextDemandSurvivesLifecycleAndTransport),
     ("Queue traverses every bounded occurrence without wrapping", QueueTraversesContinuously),
     ("Playlist pages load automatically in bounded cached windows", MaximumPlaylistPageContract),
-    ("Controller edges traverse compact and expanded 12/12/5 playlist pages", ControllerPlaylistPaginationRoundTrip),
+    ("Controller prefetch preserves focus before subsequent 12/12/5 navigation", ControllerPlaylistPrefetchRoundTrip),
     ("Continuous playlist detail preserves keyed refresh and one header edge", ContinuousPlaylistDetailAnchorAndHeader),
     ("Duplicate queue occurrences keep unique exact actions", DuplicateQueueOccurrencesRouteExactly),
     ("Duplicate playlist occurrences survive paging churn and eviction", DuplicatePlaylistOccurrencesStayKeyed),
@@ -56,13 +56,18 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing playback device produces actionable guidance", MissingPlaybackDeviceGuidance),
     ("Progress is projected locally without provider polling", ProjectedProgress),
     ("Playback actions publish optimistic state and reconcile", OptimisticPlayback),
+    ("X playback keeps the stable page entry through pending and terminal",
+        PlaybackShortcutKeepsStablePageEntry),
     ("Optimistic controls survive pre-response observations and settle",
         OptimisticControlsSurvivePreResponseObservations),
     ("Optimistic controls roll back with exact terminal ownership",
         OptimisticControlsRollbackWithExactOwnership),
     ("Repeat is binary and blocks only disallowed activation",
         RepeatIsBinaryAndPreciselyAvailable),
-    ("Playback diagnostics correlate queue classification provider and pending state", PlaybackDiagnosticsCorrelate),
+    ("Spotify runtime diagnostics are quiet by default and retain typed failures",
+        PlaybackDiagnosticsAreFailureOnly),
+    ("Local playback summary observations honor the operation revision fence",
+        LocalPlaybackSummaryRevisionFence),
     ("Failed controls roll back optimistic state", FailedControlRollback),
     ("Permission denial remains an actionable UI state", PermissionDenied),
     ("Manifest declares only the generic full-trust application route", ManifestContract),
@@ -300,16 +305,12 @@ static async Task ConfiguredReadySetupAction()
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     var ready = widget.RenderSnapshot("spotify.setup.ready", 1);
-    var wide = Find(ready.Root, "spotify.setup.open.wide");
-    var compact = Find(ready.Root, "spotify.setup.open.compact");
-    Assert.Equal("spotify.setup.open", wide.ActionId);
-    Assert.Equal("spotify.setup.open", compact.ActionId);
-    Assert.Equal("spotify.setup", wide.FocusPersistenceId);
-    Assert.Equal("spotify.setup", compact.FocusPersistenceId);
-    Assert.Equal("Change Spotify Client ID", wide.AccessibilityLabel);
-    Assert.Equal("Change Spotify Client ID", compact.AccessibilityLabel);
+    AssertShortcut(ready.Root, ControllerButton.Y, "spotify.setup.open");
+    Assert.Equal("Settings",
+        Find(ready.Root, "spotify.navigation.settings.hint.label").Text);
 
-    await widget.OnActionAsync(new WidgetActionEvent(wide.ActionId!, wide.Id));
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.open", ready.Root.Id));
     var setup = widget.RenderSnapshot("spotify.setup.ready", 2);
     Assert.Equal("spotify.setup", setup.ActiveInputScopeId);
     var input = Find(setup.Root, "spotify.setup.client-id");
@@ -428,8 +429,8 @@ static async Task SetupUsesVerticalScroll()
     var scroll = FindPrefix(setup.Root, "spotify.setup-scroll.");
     Assert.Equal(ViewNodeKind.Scroll, scroll.Kind);
     Assert.Equal(ScrollAxis.Vertical, scroll.ScrollAxis);
-    Assert.Equal("spotify.setup", scroll.InputScopeId);
-    AssertShortcut(scroll, ControllerButton.B, "spotify.setup.close");
+    Assert.Equal("spotify.setup", setup.ActiveInputScopeId);
+    AssertShortcut(setup.Root, ControllerButton.B, "spotify.navigation.back");
     Assert.NotNull(Find(scroll, "spotify.setup-step-1"));
     Assert.NotNull(Find(scroll, "spotify.setup-step-2"));
     Assert.NotNull(Find(scroll, "spotify.setup-step-3"));
@@ -576,7 +577,7 @@ static async Task ReadyControllerUi()
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     var snapshot = widget.Render().CreateSnapshot("spotify.ready", 8);
-    Assert.Equal("spotify.play-toggle", snapshot.InitialFocusId);
+    Assert.Equal(PlaylistFocus("shared", "playlist-one"), snapshot.InitialFocusId);
     Assert.Equal("spotify.window", snapshot.ActiveInputScopeId);
     Assert.Equal("Spotify", Find(snapshot.Root, "spotify.attribution").Text);
     Assert.Equal(WidgetGlyph.Previous, Find(snapshot.Root, "spotify.previous").Glyph);
@@ -614,84 +615,71 @@ static async Task ResponsiveNavigation()
     var snapshot = widget.RenderSnapshot("spotify.responsive", 1);
     Assert.True(snapshot.ProtocolVersion >= ProtocolConstants.FocusPersistenceVersion,
         "Responsive navigation did not negotiate focus-persistence support.");
-    Assert.Equal(ResponsiveVisibility.ExpandedOnly,
-        Find(snapshot.Root, "spotify.shell.wide").VisibleWhen);
-    Assert.Equal(ResponsiveVisibility.CompactOnly,
-        Find(snapshot.Root, "spotify.shell.compact").VisibleWhen);
-    Assert.True(Find(snapshot.Root, "spotify.nav.wide.player").IsSelected == true,
-        "Wide player destination was not selected.");
-    Assert.True(Find(snapshot.Root, "spotify.nav.compact.player").IsSelected == true,
-        "Compact player destination was not selected.");
-    Assert.Equal("spotify.destination.player",
-        Find(snapshot.Root, "spotify.nav.wide.player").FocusPersistenceId);
-    Assert.Equal("spotify.destination.player",
-        Find(snapshot.Root, "spotify.nav.compact.player").FocusPersistenceId);
-    var compactPlayerScroll = Find(snapshot.Root, "spotify.player.compact.scroll");
-    Assert.Equal(ViewNodeKind.Scroll, compactPlayerScroll.Kind);
-    Assert.NotNull(Find(compactPlayerScroll, "spotify.player.compact.play-toggle"));
+    var compact = FindClass(snapshot.Root, "wrail-navigation-shell__compact");
+    Assert.Equal(ResponsiveVisibility.Always, compact.VisibleWhen);
+    Assert.Equal(5, compact.Children.Count);
+    Assert.SequenceEqual(new[]
+    {
+        "spotify.nav.queue", "spotify.nav.playlists", "spotify.nav.devices",
+    }, compact.Children
+        .Where(child => child.ActionId is not null)
+        .Select(child => child.ActionId!));
+    Assert.Equal<string?>(null, Find(compact, "spotify.section.previous.hint").ActionId);
+    Assert.Equal<string?>(null, Find(compact, "spotify.section.next.hint").ActionId);
+    Assert.NotNull(Find(snapshot.Root, "spotify.connected.panes"));
+    Assert.NotNull(Find(snapshot.Root, "spotify.card"));
+    Assert.Equal(1, CountId(snapshot.Root, "spotify.track-title"));
+    Assert.Equal("Small Hours", Find(snapshot.Root, "spotify.track-title").Text);
+    Assert.Equal("Northern Lines", Find(snapshot.Root, "spotify.track-subtitle").Text);
+    Assert.Equal("Night Drive", Find(snapshot.Root, "spotify.context").Text);
+    Assert.True(!ContainsAction(snapshot.Root, "spotify.nav.player"),
+        "The retired Player destination returned beside the persistent player.");
     await StopAsync(widget);
 }
 
-static async Task SeekLeftFollowsResponsiveDestination()
+static async Task SectionNavigationAndNestedFocus()
 {
     var harness = SpotifyHarness.Ready();
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    var playlists = widget.RenderSnapshot("spotify.sections", 1);
+    var playlistFocus = PlaylistFocus("shared", "playlist-one");
+    Assert.Equal(playlistFocus, playlists.InitialFocusId);
+    AssertShortcut(playlists.Root, ControllerButton.LeftTrigger,
+        "spotify.nav.previous-section");
+    AssertShortcut(playlists.Root, ControllerButton.RightTrigger,
+        "spotify.nav.next-section");
 
-    var player = widget.RenderSnapshot("spotify.seek-focus", 1);
-    AssertSeekLeft(player, "spotify.seek.slider", "spotify.nav.wide.player");
-    AssertSeekLeft(player, "spotify.player.compact.seek.slider",
-        "spotify.nav.compact.player");
-    AssertTransportEdges(player);
+    await widget.OnActionAsync(new("spotify.nav.next-section", playlistFocus));
+    Assert.Equal(SpotifyDestination.Devices, widget.Destination);
+    await widget.OnActionAsync(new("spotify.nav.previous-section",
+        "spotify.devices.refresh.shared"));
+    Assert.Equal(SpotifyDestination.Playlists, widget.Destination);
 
-    var destinations = new[]
+    await widget.OnActionAsync(new(PlaylistOpen("playlist-one"), playlistFocus));
+    var detail = widget.RenderSnapshot("spotify.detail-navigation", 2);
+    var track = TrackFocus("shared", "spotify:track:next");
+    Assert.NotNull(Find(detail.Root, track));
+    AssertShortcut(detail.Root, ControllerButton.Y, "spotify.setup.open");
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.open", "spotify.root",
+        InputScopeId: detail.ActiveInputScopeId)
     {
-        (Action: "spotify.nav.queue", Source: "spotify.nav.wide.queue", Token: "queue"),
-        (Action: "spotify.nav.playlists", Source: "spotify.nav.wide.playlists", Token: "playlists"),
-        (Action: "spotify.nav.devices", Source: "spotify.nav.wide.devices", Token: "devices"),
-    };
-    var sequence = 2L;
-    foreach (var destination in destinations)
-    {
-        await widget.OnActionAsync(new(destination.Action, destination.Source));
-        var snapshot = widget.RenderSnapshot("spotify.seek-focus", sequence++);
-        Assert.True(Find(snapshot.Root, destination.Source).IsSelected == true,
-            $"{destination.Source} was not the selected destination.");
-        AssertSeekLeft(snapshot, "spotify.seek.slider",
-            $"spotify.nav.wide.{destination.Token}");
-        AssertTransportEdges(snapshot);
-    }
-
-    harness.Playback = harness.Playback with { ProgressMilliseconds = 90_000 };
-    await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh.wide"));
-    var refreshed = widget.RenderSnapshot("spotify.seek-focus", sequence);
-    AssertSeekLeft(refreshed, "spotify.seek.slider", "spotify.nav.wide.devices");
-    AssertTransportEdges(refreshed);
-    await StopAsync(widget);
-}
-
-static void AssertSeekLeft(ViewSnapshot snapshot, string seekId, string expectedTarget)
-{
-    var seek = Find(snapshot.Root, seekId);
-    Assert.Equal(expectedTarget, seek.Focus!.Left);
-    var steps = ControllerReplay.Run(snapshot, new InputReplay
-    {
-        InitialFocusId = seekId,
-        Events = [new ReplayInputEvent { Button = ControllerButton.DPadLeft }],
+        FocusedElementId = track,
     });
-    Assert.Equal(1, steps.Count);
-    Assert.Equal(seekId, steps[0].FocusBefore);
-    Assert.Equal(expectedTarget, steps[0].FocusAfter);
-    Assert.Equal<string?>(null, steps[0].ActionId);
-}
-
-static void AssertTransportEdges(ViewSnapshot snapshot)
-{
-    Assert.Equal("spotify.play-toggle", Find(snapshot.Root, "spotify.previous").Focus!.Right);
-    Assert.Equal("spotify.previous", Find(snapshot.Root, "spotify.play-toggle").Focus!.Left);
-    Assert.Equal("spotify.next", Find(snapshot.Root, "spotify.play-toggle").Focus!.Right);
-    Assert.Equal("spotify.play-toggle", Find(snapshot.Root, "spotify.next").Focus!.Left);
-    Assert.Equal("spotify.play-toggle", Find(snapshot.Root, "spotify.seek.slider").Focus!.Down);
+    var setup = widget.RenderSnapshot("spotify.detail-setup", 3);
+    Assert.Equal("spotify.setup", setup.ActiveInputScopeId);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.navigation.back", "spotify.root",
+        Phase: ControllerEventPhase.Pressed,
+        InputScopeId: setup.ActiveInputScopeId)
+    {
+        FocusedElementId = "spotify.setup.close",
+    });
+    var returned = widget.RenderSnapshot("spotify.detail-return", 4);
+    Assert.Equal("spotify.playlist.detail", returned.ActiveInputScopeId);
+    Assert.Equal(track, returned.InitialFocusId);
+    await StopAsync(widget);
 }
 
 static async Task LazyPageLoading()
@@ -700,7 +688,7 @@ static async Task LazyPageLoading()
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     Assert.Equal(0, harness.QueueCalls);
-    Assert.Equal(0, harness.PlaylistCalls);
+    Assert.Equal(1, harness.PlaylistCalls);
 
     await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.wide.queue"));
     Assert.Equal(1, harness.QueueCalls);
@@ -712,8 +700,8 @@ static async Task LazyPageLoading()
     Assert.True(!ContainsId(queueSnapshot.Root,
         queueRow + ".metadata"),
         "Queue item rendered a redundant fourth text row.");
-    await widget.OnActionAsync(new("spotify.nav.player", "spotify.nav.wide.player"));
-    await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.wide.queue"));
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.playlists"));
+    await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.queue"));
     Assert.Equal(1, harness.QueueCalls);
 
     await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
@@ -805,7 +793,7 @@ static async Task QueueTraversesContinuously()
     await WaitUntil(() => harness.QueueCalls == 1);
 
     var snapshot = widget.RenderSnapshot("spotify.queue.continuous", 1);
-    var rows = Find(snapshot.Root, "spotify.queue.scroll.wide").Children.ToArray();
+    var rows = Find(snapshot.Root, "spotify.queue.scroll").Children.ToArray();
     Assert.Equal(50, rows.Length);
     Assert.Equal(50, rows.Select(row => row.Id).Distinct(StringComparer.Ordinal).Count());
     Assert.Equal(50, rows.Select(row => row.CollectionItemKey)
@@ -831,7 +819,7 @@ static async Task QueueTraversesContinuously()
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
     var reactivated = widget.RenderSnapshot("spotify.queue.reactivated", 2);
-    Assert.Equal(50, Find(reactivated.Root, "spotify.queue.scroll.wide").Children.Count);
+    Assert.Equal(50, Find(reactivated.Root, "spotify.queue.scroll").Children.Count);
     Assert.Equal(1, harness.QueueCalls);
     await StopAsync(widget);
 }
@@ -852,9 +840,9 @@ static async Task PlaylistDetailBack()
     Assert.True(!ContainsId(detail.Root,
         trackRow + ".metadata"),
         "Playlist track rendered a redundant fourth text row.");
-    AssertShortcut(detail.Root, ControllerButton.B, "spotify.playlist.back");
-    Assert.Equal("spotify.playlist.play.compact", detail.InitialFocusId);
-    await widget.OnActionAsync(new("spotify.playlist.back", "spotify.playlist.play.compact"));
+    AssertShortcut(detail.Root, ControllerButton.B, "spotify.navigation.back");
+    Assert.Equal("spotify.playlist.play.shared", detail.InitialFocusId);
+    await widget.OnActionAsync(new("spotify.playlist.back", "spotify.playlist.play.shared"));
     var list = widget.RenderSnapshot("spotify.playlist.list", 2);
     Assert.NotNull(Find(list.Root, PlaylistFocus("wide", "playlist-one")));
     Assert.Equal(PlaylistFocus("compact", "playlist-one"), list.InitialFocusId);
@@ -876,16 +864,16 @@ static async Task PlaylistDetailFailureRetry()
     await WaitUntil(() => harness.PlaylistDetailCalls == 1);
 
     var failure = widget.RenderSnapshot("spotify.playlist.failure", 1);
-    Assert.Equal("spotify.page.error.compact.action", failure.InitialFocusId);
+    Assert.Equal("spotify.page.error.shared.action", failure.InitialFocusId);
     Assert.NotNull(Find(failure.Root, failure.InitialFocusId!));
 
     harness.PlaylistDetailError = null;
     await widget.OnActionAsync(new("spotify.page.retry", failure.InitialFocusId!));
     await WaitUntil(() => harness.PlaylistDetailCalls == 2);
-    await WaitUntil(() => widget.Render().InitialFocusId == "spotify.playlist.play.compact");
+    await WaitUntil(() => widget.Render().InitialFocusId == "spotify.playlist.play.shared");
     var recovered = widget.RenderSnapshot("spotify.playlist.recovered", 2);
     Assert.NotNull(Find(recovered.Root, TrackFocus("compact", "spotify:track:next")));
-    Assert.Equal("spotify.playlist.play.compact", recovered.InitialFocusId);
+    Assert.Equal("spotify.playlist.play.shared", recovered.InitialFocusId);
     await StopAsync(widget);
 }
 
@@ -945,11 +933,11 @@ static async Task SupersededPlaylistDetail()
             PlaylistFocus("wide", "playlist-a")));
         await aStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
+        await widget.OnActionAsync(new("spotify.playlist.back",
+            "spotify.playlist.play.shared"));
         await widget.OnActionAsync(new(PlaylistOpen("playlist-b"),
             PlaylistFocus("compact", "playlist-b")));
         var selectingB = widget.RenderSnapshot("spotify.playlist-b-loading", 1);
-        Assert.True(ContainsText(selectingB.Root, "Loading Playlist B"),
-            "The replacement selection did not publish its own loading state.");
         Assert.True(!ContainsText(selectingB.Root, "Track A"),
             "Playlist A remained visible after selecting Playlist B.");
 
@@ -962,17 +950,17 @@ static async Task SupersededPlaylistDetail()
         await WaitForNode(widget, TrackFocus("wide", "spotify:track:b") + ".title");
         var selectedB = widget.RenderSnapshot("spotify.playlist-b", 1);
         Assert.Equal("Playlist B", Find(selectedB.Root,
-            "spotify.playlist.detail.header.wide.title").Text);
+            "spotify.playlist.detail.header.shared.title").Text);
         Assert.Equal("Track B", Find(selectedB.Root,
             TrackFocus("wide", "spotify:track:b") + ".title").Text);
-        Assert.Equal("spotify.playlist.play.compact", selectedB.InitialFocusId);
+        Assert.Equal("spotify.playlist.play.shared", selectedB.InitialFocusId);
 
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
 
         var afterLateA = widget.RenderSnapshot("spotify.playlist-b-after-a", 2);
         Assert.Equal("Playlist B", Find(afterLateA.Root,
-            "spotify.playlist.detail.header.wide.title").Text);
+            "spotify.playlist.detail.header.shared.title").Text);
         Assert.Equal("Track B", Find(afterLateA.Root,
             TrackFocus("wide", "spotify:track:b") + ".title").Text);
         Assert.True(!ContainsText(afterLateA.Root, "Track A"),
@@ -1026,7 +1014,7 @@ static async Task PlaylistDetailLifecycle()
     await WaitForNode(widget, TrackFocus("wide", "spotify:track:fresh") + ".title");
     var reactivated = widget.RenderSnapshot("spotify.playlist-reactivated", 1);
     Assert.Equal("Playlist A", Find(reactivated.Root,
-        "spotify.playlist.detail.header.wide.title").Text);
+        "spotify.playlist.detail.header.shared.title").Text);
     Assert.Equal("Fresh Track", Find(reactivated.Root,
         TrackFocus("wide", "spotify:track:fresh") + ".title").Text);
     Assert.True(!ContainsText(reactivated.Root, "Stale Track"),
@@ -1061,6 +1049,8 @@ static async Task RefreshPreservesNewerPlaylist()
     };
     var refresh = widget.OnActionAsync(new("spotify.refresh", "spotify.refresh.wide")).AsTask();
     await refreshStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    await widget.OnActionAsync(new("spotify.playlist.back",
+        "spotify.playlist.play.shared"));
     await widget.OnActionAsync(new(PlaylistOpen("playlist-b"),
         PlaylistFocus("compact", "playlist-b")));
     await WaitUntil(() => harness.PlaylistDetailRequests.Count == 2);
@@ -1071,10 +1061,10 @@ static async Task RefreshPreservesNewerPlaylist()
     await refresh.WaitAsync(TimeSpan.FromSeconds(1));
     var current = widget.RenderSnapshot("spotify.refresh-newer-playlist", 1);
     Assert.Equal("Playlist B", Find(current.Root,
-        "spotify.playlist.detail.header.wide.title").Text);
+        "spotify.playlist.detail.header.shared.title").Text);
     Assert.Equal("Track B", Find(current.Root,
         TrackFocus("wide", "spotify:track:b") + ".title").Text);
-    Assert.Equal("spotify.playlist.play.compact", current.InitialFocusId);
+    Assert.Equal("spotify.playlist.play.shared", current.InitialFocusId);
     Assert.True(!ContainsText(current.Root, "Track A"),
         "The refresh restored an older playlist-detail revision.");
     await StopAsync(widget);
@@ -1304,9 +1294,14 @@ static async Task MaximumPlaylistPageContract()
     var firstPage = widget.RenderSnapshot("spotify.maximum-playlists", 1);
     Assert.True(firstPage.ProtocolVersion >= ProtocolConstants.VirtualCollectionWindowVersion,
         "Playlist paging did not negotiate virtual-collection support.");
-    var playlistScroll = Find(firstPage.Root, "spotify.playlists.scroll.wide");
+    var playlistScroll = Find(firstPage.Root, "spotify.playlists.scroll");
     Assert.NotNull(playlistScroll.VirtualCollectionWindow);
-    Assert.Equal(12, playlistScroll.Children.Count);
+    Assert.True(CollectionRows(playlistScroll).Length is >= 1 and <= 12,
+        "Playlist presentation exceeded its current bounded window.");
+    var firstWindowCount = CollectionRows(playlistScroll).Length;
+    var firstWindow = playlistScroll.VirtualCollectionWindow!;
+    var stableEntry = firstPage.InitialFocusId;
+    var stableAnchor = playlistScroll.CollectionAnchorKey;
     Assert.Equal("spotify.playlists.cursor.after", playlistScroll.ScrollNearEndActionId);
     Assert.True(playlistScroll.ScrollNearStartActionId is null,
         "The first page must not request a previous page.");
@@ -1314,12 +1309,20 @@ static async Task MaximumPlaylistPageContract()
         "A bounded playlist snapshot must remain comfortably below the bridge limit.");
 
     await widget.OnActionAsync(new(
-        "spotify.playlists.cursor.after", "spotify.playlists.scroll.wide"));
+        "spotify.playlists.cursor.after", "spotify.playlists.scroll"));
     await WaitUntil(() => harness.PlaylistCalls == 2);
     var secondPage = widget.RenderSnapshot("spotify.second-playlists", 2);
-    Assert.Equal(24, Find(secondPage.Root, "spotify.playlists.scroll.wide").Children.Count);
+    var secondScroll = Find(secondPage.Root, "spotify.playlists.scroll");
+    var secondWindow = secondScroll.VirtualCollectionWindow!;
+    var retainedCount = CollectionRows(secondScroll).Length;
+    Assert.True(retainedCount > firstWindowCount && retainedCount <= 24,
+        "Adjacent playlist loading did not extend the bounded retained window.");
     Assert.NotNull(Find(secondPage.Root, PlaylistFocus("wide", "playlist-12")));
-    Assert.Equal(PlaylistFocus("wide", "playlist-12"), secondPage.InitialFocusId);
+    Assert.Equal(stableEntry, secondPage.InitialFocusId);
+    Assert.Equal(stableAnchor, secondScroll.CollectionAnchorKey);
+    Assert.True(secondWindow.RequestGeneration > firstWindow.RequestGeneration,
+        "Adjacent playlist loading did not publish a successor window generation.");
+    Assert.Equal(VirtualCollectionWindowChange.Append, secondWindow.Change);
     Assert.Equal(2, harness.PlaylistCalls);
     var cachedFirstPage = widget.RenderSnapshot("spotify.cached-playlists", 3);
     Assert.NotNull(Find(cachedFirstPage.Root, PlaylistFocus("wide", "playlist-0")));
@@ -1328,8 +1331,9 @@ static async Task MaximumPlaylistPageContract()
         PlaylistFocus("wide", "playlist-0")));
     await WaitUntil(() => harness.PlaylistDetailCalls == 1);
     var detailPage = widget.RenderSnapshot("spotify.maximum-playlist-detail", 4);
-    var trackScroll = Find(detailPage.Root, "spotify.playlist.detail.scroll.wide");
-    Assert.Equal(12, trackScroll.Children.Count);
+    var trackScroll = Find(detailPage.Root, "spotify.playlist.detail.scroll");
+    Assert.True(CollectionRows(trackScroll).Length is >= 1 and <= 12,
+        "Playlist-detail presentation exceeded its current bounded window.");
     Assert.Equal("spotify.playlist.items.cursor.after", trackScroll.ScrollNearEndActionId);
     Assert.True(SnapshotJson.Serialize(detailPage).Length < 400_000,
         "A bounded playlist-detail snapshot must remain comfortably below the bridge limit.");
@@ -1340,9 +1344,9 @@ static async Task MaximumPlaylistPageContract()
     await StopAsync(widget);
 }
 
-static async Task ControllerPlaylistPaginationRoundTrip()
+static async Task ControllerPlaylistPrefetchRoundTrip()
 {
-    foreach (var mode in new[] { "wide", "compact" })
+    foreach (var mode in new[] { "shared" })
     {
         var playlists = Enumerable.Range(0, 29)
             .Select(index => new SpotifyPlaylistSummary(
@@ -1368,69 +1372,67 @@ static async Task ControllerPlaylistPaginationRoundTrip()
         var focus = PlaylistFocus(mode, "playlist-0");
         long sequence = 1;
         for (var index = 0; index < 11; index++)
-            (focus, sequence, _) = await PressPlaylistDirectionAsync(
+            (focus, sequence, _) = await NavigatePlaylistDirectionAsync(
                 widget, mode, focus, sequence, down: true);
         Assert.Equal(PlaylistFocus(mode, "playlist-11"), focus);
         bool paged;
-        if (mode == "wide")
-        {
-            harness.PlaylistCompletion = new(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            harness.IgnorePlaylistCancellation = true;
-            var slowPage = PressPlaylistDirectionAsync(
-                widget, mode, focus, sequence, down: true);
-            await WaitUntil(() => harness.PlaylistCalls == 2);
-            var repeatedPage = PressPlaylistDirectionAsync(
-                widget, mode, focus, sequence, down: true);
-            Assert.Equal(2, harness.PlaylistCalls);
-            harness.PlaylistCompletion.SetResult(harness.Playlists);
-            harness.PlaylistCompletion = null;
-            (focus, sequence, paged) = await slowPage;
-            await repeatedPage;
-            var settled = widget.RenderSnapshot("spotify.repeated-page", sequence + 1);
-            Assert.True(harness.PlaylistCalls == 2,
-                "Repeated controller input did not join the in-flight page transition.");
-        }
-        else
-        {
-            (focus, sequence, paged) = await PressPlaylistDirectionAsync(
-                widget, mode, focus, sequence, down: true);
-        }
+        harness.PlaylistCompletion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.IgnorePlaylistCancellation = true;
+        var slowPage = NavigatePlaylistDirectionAsync(
+            widget, mode, focus, sequence, down: true);
+        await WaitUntil(() => harness.PlaylistCalls == 2);
+        var repeatedPage = NavigatePlaylistDirectionAsync(
+            widget, mode, focus, sequence, down: true);
+        Assert.Equal(2, harness.PlaylistCalls);
+        harness.PlaylistCompletion.SetResult(harness.Playlists);
+        harness.PlaylistCompletion = null;
+        (focus, sequence, paged) = await slowPage;
+        await repeatedPage;
+        _ = widget.RenderSnapshot("spotify.repeated-page", sequence + 1);
+        Assert.Equal(2, harness.PlaylistCalls);
         Assert.True(paged, $"{mode} controller Down did not enter page two.");
         Assert.Equal(PlaylistFocus(mode, "playlist-12"), focus);
 
         for (var index = 0; index < 11; index++)
-            (focus, sequence, _) = await PressPlaylistDirectionAsync(
+            (focus, sequence, _) = await NavigatePlaylistDirectionAsync(
                 widget, mode, focus, sequence, down: true);
-        (focus, sequence, paged) = await PressPlaylistDirectionAsync(
+        (focus, sequence, paged) = await NavigatePlaylistDirectionAsync(
             widget, mode, focus, sequence, down: true);
         Assert.True(paged, $"{mode} controller Down did not enter the five-row final page.");
         Assert.Equal(PlaylistFocus(mode, "playlist-24"), focus);
         for (var index = 0; index < 4; index++)
-            (focus, sequence, _) = await PressPlaylistDirectionAsync(
+            (focus, sequence, _) = await NavigatePlaylistDirectionAsync(
                 widget, mode, focus, sequence, down: true);
         Assert.Equal(PlaylistFocus(mode, "playlist-28"), focus);
-        Assert.Equal(focus, Find(
-            widget.RenderSnapshot("spotify.playlists.terminal", sequence).Root,
-            focus).Focus!.Down);
+        var terminalPlaylists = widget.RenderSnapshot(
+            "spotify.playlists.terminal", sequence);
+        var terminalPlaylistScroll = Find(
+            terminalPlaylists.Root, "spotify.playlists.scroll");
+        Assert.NotNull(Find(terminalPlaylistScroll, focus));
+        Assert.True(terminalPlaylistScroll.VirtualCollectionWindow?.HasAfter == false,
+            "The terminal playlist window still advertised a following page.");
+        Assert.Equal<string?>(null, terminalPlaylistScroll.ScrollNearEndActionId);
         var finalFocus = focus;
-        (finalFocus, sequence, paged) = await PressPlaylistDirectionAsync(
+        var terminalPlaylistCalls = harness.PlaylistCalls;
+        (finalFocus, sequence, paged) = await NavigatePlaylistDirectionAsync(
             widget, mode, focus, sequence, down: true);
         Assert.True(!paged && finalFocus == focus,
             $"{mode} final page exposed a nonexistent forward transition.");
+        Assert.Equal(terminalPlaylistCalls, harness.PlaylistCalls);
 
         for (var index = 0; index < 4; index++)
-            (focus, sequence, _) = await PressPlaylistDirectionAsync(
+            (focus, sequence, _) = await NavigatePlaylistDirectionAsync(
                 widget, mode, focus, sequence, down: false);
         Assert.Equal(PlaylistFocus(mode, "playlist-24"), focus);
-        (focus, sequence, paged) = await PressPlaylistDirectionAsync(
+        (focus, sequence, paged) = await NavigatePlaylistDirectionAsync(
             widget, mode, focus, sequence, down: false);
         Assert.True(!paged, $"{mode} controller Up replaced a retained adjacent row.");
         Assert.Equal(PlaylistFocus(mode, "playlist-23"), focus);
         for (var index = 0; index < 11; index++)
-            (focus, sequence, _) = await PressPlaylistDirectionAsync(
+            (focus, sequence, _) = await NavigatePlaylistDirectionAsync(
                 widget, mode, focus, sequence, down: false);
-        (focus, sequence, paged) = await PressPlaylistDirectionAsync(
+        (focus, sequence, paged) = await NavigatePlaylistDirectionAsync(
             widget, mode, focus, sequence, down: false);
         Assert.True(paged, $"{mode} controller Up did not restore cached page one.");
         Assert.Equal(PlaylistFocus(mode, "playlist-11"), focus);
@@ -1441,37 +1443,49 @@ static async Task ControllerPlaylistPaginationRoundTrip()
         await WaitUntil(() => harness.PlaylistDetailCalls == 1);
         focus = TrackFocus(mode, "spotify:track:track-0");
         for (var index = 0; index < 11; index++)
-            (focus, sequence, _) = await PressPlaylistItemDirectionAsync(
+            (focus, sequence, _) = await NavigatePlaylistItemDirectionAsync(
                 widget, mode, focus, sequence, down: true);
-        (focus, sequence, paged) = await PressPlaylistItemDirectionAsync(
+        (focus, sequence, paged) = await NavigatePlaylistItemDirectionAsync(
             widget, mode, focus, sequence, down: true);
         Assert.True(paged && focus == TrackFocus(mode, "spotify:track:track-12"),
             $"{mode} playlist-detail Down did not enter page two.");
         for (var index = 0; index < 11; index++)
-            (focus, sequence, _) = await PressPlaylistItemDirectionAsync(
+            (focus, sequence, _) = await NavigatePlaylistItemDirectionAsync(
                 widget, mode, focus, sequence, down: true);
-        (focus, sequence, paged) = await PressPlaylistItemDirectionAsync(
+        (focus, sequence, paged) = await NavigatePlaylistItemDirectionAsync(
             widget, mode, focus, sequence, down: true);
         Assert.True(paged && focus == TrackFocus(mode, "spotify:track:track-24"),
             $"{mode} playlist-detail Down did not enter the final page.");
         for (var index = 0; index < 4; index++)
-            (focus, sequence, _) = await PressPlaylistItemDirectionAsync(
+            (focus, sequence, _) = await NavigatePlaylistItemDirectionAsync(
                 widget, mode, focus, sequence, down: true);
         Assert.Equal(TrackFocus(mode, "spotify:track:track-28"), focus);
-        Assert.Equal(focus, Find(
-            widget.RenderSnapshot("spotify.playlist-detail.terminal", sequence).Root,
-            focus).Focus!.Down);
+        var terminalTracks = widget.RenderSnapshot(
+            "spotify.playlist-detail.terminal", sequence);
+        var terminalTrackScroll = Find(
+            terminalTracks.Root, "spotify.playlist.detail.scroll");
+        Assert.NotNull(Find(terminalTrackScroll, focus));
+        Assert.True(terminalTrackScroll.VirtualCollectionWindow?.HasAfter == false,
+            "The terminal playlist-detail window still advertised a following page.");
+        Assert.Equal<string?>(null, terminalTrackScroll.ScrollNearEndActionId);
+        var terminalTrackCalls = harness.PlaylistDetailCalls;
+        var terminalTrackFocus = focus;
+        (terminalTrackFocus, sequence, paged) = await NavigatePlaylistItemDirectionAsync(
+            widget, mode, focus, sequence, down: true);
+        Assert.True(!paged && terminalTrackFocus == focus,
+            $"{mode} final playlist-detail page exposed a nonexistent transition.");
+        Assert.Equal(terminalTrackCalls, harness.PlaylistDetailCalls);
         for (var index = 0; index < 4; index++)
-            (focus, sequence, _) = await PressPlaylistItemDirectionAsync(
+            (focus, sequence, _) = await NavigatePlaylistItemDirectionAsync(
                 widget, mode, focus, sequence, down: false);
-        (focus, sequence, paged) = await PressPlaylistItemDirectionAsync(
+        (focus, sequence, paged) = await NavigatePlaylistItemDirectionAsync(
             widget, mode, focus, sequence, down: false);
         Assert.True(!paged && focus == TrackFocus(mode, "spotify:track:track-23"),
             $"{mode} playlist-detail Up replaced a retained adjacent row.");
         for (var index = 0; index < 11; index++)
-            (focus, sequence, _) = await PressPlaylistItemDirectionAsync(
+            (focus, sequence, _) = await NavigatePlaylistItemDirectionAsync(
                 widget, mode, focus, sequence, down: false);
-        (focus, sequence, paged) = await PressPlaylistItemDirectionAsync(
+        (focus, sequence, paged) = await NavigatePlaylistItemDirectionAsync(
             widget, mode, focus, sequence, down: false);
         Assert.True(paged && focus == TrackFocus(mode, "spotify:track:track-11"),
             $"{mode} playlist-detail Up did not cross the evicted boundary.");
@@ -1481,27 +1495,27 @@ static async Task ControllerPlaylistPaginationRoundTrip()
 }
 
 static Task<(string Focus, long Sequence, bool Paginated)>
-    PressPlaylistDirectionAsync(
+    NavigatePlaylistDirectionAsync(
         SpotifyWidget widget,
         string mode,
         string focus,
         long sequence,
-        bool down) => PressPagedDirectionAsync(
+        bool down) => NavigatePagedDirectionAsync(
             widget,
-            $"spotify.playlists.scroll.{mode}",
+            "spotify.playlists.scroll",
             focus,
             sequence,
             down);
 
 static Task<(string Focus, long Sequence, bool Paginated)>
-    PressPlaylistItemDirectionAsync(
+    NavigatePlaylistItemDirectionAsync(
         SpotifyWidget widget,
         string mode,
         string focus,
         long sequence,
-        bool down) => PressPagedDirectionAsync(
+        bool down) => NavigatePagedDirectionAsync(
             widget,
-            $"spotify.playlist.detail.scroll.{mode}",
+            "spotify.playlist.detail.scroll",
             focus,
             sequence,
             down);
@@ -1528,20 +1542,20 @@ static async Task ContinuousPlaylistDetailAnchorAndHeader()
     await WaitUntil(() => harness.PlaylistDetailCalls == 1);
 
     await widget.OnActionAsync(new("spotify.playlist.items.cursor.after",
-        "spotify.playlist.detail.scroll.wide"));
+        "spotify.playlist.detail.scroll"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 2);
     await widget.OnActionAsync(new("spotify.playlist.items.cursor.after",
-        "spotify.playlist.detail.scroll.wide"));
+        "spotify.playlist.detail.scroll"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 3);
     await widget.OnActionAsync(new("spotify.playlist.items.cursor.before",
-        "spotify.playlist.detail.scroll.wide"));
+        "spotify.playlist.detail.scroll"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 4);
 
     var restored = widget.RenderSnapshot("spotify.header-edge", 1);
     var firstId = TrackFocus("wide", "spotify:track:track-0");
     var secondId = TrackFocus("wide", "spotify:track:track-1");
-    Assert.Equal("spotify.playlist.play.wide", Find(restored.Root, firstId).Focus?.Up);
-    Assert.Equal(firstId, Find(restored.Root, "spotify.playlist.play.wide").Focus?.Down);
+    Assert.Equal("spotify.playlist.play.shared", Find(restored.Root, firstId).Focus?.Up);
+    Assert.Equal(firstId, Find(restored.Root, "spotify.playlist.play.shared").Focus?.Down);
     var replay = ControllerReplay.Run(restored, new InputReplay
     {
         InitialFocusId = firstId,
@@ -1552,7 +1566,7 @@ static async Task ContinuousPlaylistDetailAnchorAndHeader()
             new ReplayInputEvent { Button = ControllerButton.DPadDown },
         ],
     });
-    Assert.SequenceEqual(new[] { "spotify.playlist.play.wide", firstId, secondId },
+    Assert.SequenceEqual(new[] { "spotify.playlist.play.shared", firstId, secondId },
         replay.Select(step => step.FocusAfter).ToArray());
 
     var retainedUri = "spotify:track:track-5";
@@ -1563,7 +1577,7 @@ static async Task ContinuousPlaylistDetailAnchorAndHeader()
     await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh.wide"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 5);
     var refreshed = widget.RenderSnapshot("spotify.anchor-refresh", 2);
-    var scroll = Find(refreshed.Root, "spotify.playlist.detail.scroll.wide");
+    var scroll = Find(refreshed.Root, "spotify.playlist.detail.scroll");
     Assert.Equal("media." + CollectionToken(retainedUri), scroll.CollectionAnchorKey);
     Assert.NotNull(Find(refreshed.Root, TrackFocus("wide", retainedUri)));
     await StopAsync(widget);
@@ -1592,7 +1606,7 @@ static async Task DuplicateQueueOccurrencesRouteExactly()
     await WaitUntil(() => harness.QueueCalls >= 1);
 
     var snapshot = widget.RenderSnapshot("spotify.queue.duplicates", 1);
-    var rows = Find(snapshot.Root, "spotify.queue.scroll.wide").Children.ToArray();
+    var rows = Find(snapshot.Root, "spotify.queue.scroll").Children.ToArray();
     Assert.Equal(3, rows.Length);
     Assert.Equal(3, rows.Select(row => row.CollectionItemKey).Distinct().Count());
     Assert.Equal(3, rows.Select(row => row.Id).Distinct().Count());
@@ -1602,7 +1616,7 @@ static async Task DuplicateQueueOccurrencesRouteExactly()
     Assert.Equal(repeatedUri, harness.StartedPlayback.Single().ItemUris!.Single());
     Assert.Equal(selected.CollectionItemKey,
         Find(widget.RenderSnapshot("spotify.queue.selected-duplicate", 2).Root,
-            "spotify.queue.scroll.wide").CollectionAnchorKey);
+            "spotify.queue.scroll").CollectionAnchorKey);
     await StopAsync(widget);
 }
 
@@ -1640,7 +1654,7 @@ static async Task DuplicatePlaylistOccurrencesStayKeyed()
     Assert.Equal(2, samePageKeys.Distinct().Count());
     await widget.OnActionAsync(new(
         "spotify.playlist.items.cursor.after",
-        "spotify.playlist.detail.scroll.wide"));
+        "spotify.playlist.detail.scroll"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 2);
     await WaitUntil(() => ContainsId(
         widget.RenderSnapshot("spotify.playlist.second-page-wait", 2).Root,
@@ -1656,14 +1670,14 @@ static async Task DuplicatePlaylistOccurrencesStayKeyed()
 
     await widget.OnActionAsync(new(
         "spotify.playlist.items.cursor.after",
-        "spotify.playlist.detail.scroll.wide"));
+        "spotify.playlist.detail.scroll"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 3);
     await WaitUntil(() => ContainsId(
         widget.RenderSnapshot("spotify.playlist.third-page-wait", 3).Root,
         TrackFocus("wide", "spotify:track:occurrence-24")), "third page did not commit");
     await widget.OnActionAsync(new(
         "spotify.playlist.items.cursor.before",
-        "spotify.playlist.detail.scroll.wide"));
+        "spotify.playlist.detail.scroll"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 4);
     await WaitUntil(() => ContainsId(
         widget.RenderSnapshot("spotify.playlist.reverse-wait", 3).Root,
@@ -1689,7 +1703,7 @@ static async Task DuplicatePlaylistOccurrencesStayKeyed()
         "insert refresh did not commit");
     await widget.OnActionAsync(new(
         "spotify.playlist.items.cursor.after",
-        "spotify.playlist.detail.scroll.wide"));
+        "spotify.playlist.detail.scroll"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 6);
     await WaitUntil(() => ContainsId(
         widget.RenderSnapshot("spotify.playlist.insert-second-page-wait", 4).Root,
@@ -1708,7 +1722,7 @@ static async Task DuplicatePlaylistOccurrencesStayKeyed()
         "delete refresh did not commit");
     await widget.OnActionAsync(new(
         "spotify.playlist.items.cursor.after",
-        "spotify.playlist.detail.scroll.wide"));
+        "spotify.playlist.detail.scroll"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 8);
     await WaitUntil(() => ContainsId(
         widget.RenderSnapshot("spotify.playlist.delete-second-page-wait", 5).Root,
@@ -1727,7 +1741,7 @@ static async Task DuplicatePlaylistOccurrencesStayKeyed()
     Assert.Equal(repeatedUri, harness.StartedPlayback.Single().OffsetUri);
     Assert.Equal(selected.CollectionItemKey,
         Find(widget.RenderSnapshot("spotify.playlist.duplicate-selected", 6).Root,
-            "spotify.playlist.detail.scroll.wide").CollectionAnchorKey);
+            "spotify.playlist.detail.scroll").CollectionAnchorKey);
     await StopAsync(widget);
 }
 
@@ -1742,7 +1756,7 @@ static async Task SingleTrackPlaylistHasNoSelfEdge()
     await WaitUntil(() => harness.PlaylistDetailCalls == 1);
     var snapshot = widget.RenderSnapshot("spotify.playlist.singleton", 1);
     var row = Find(snapshot.Root, TrackFocus("wide", "spotify:track:next"));
-    var play = Find(snapshot.Root, "spotify.playlist.play.wide");
+    var play = Find(snapshot.Root, "spotify.playlist.play.shared");
     Assert.Equal(row.Id, play.Focus?.Down);
     Assert.Equal(play.Id, row.Focus?.Up);
     Assert.Equal<string?>(null, row.Focus?.Down);
@@ -1789,8 +1803,9 @@ static Task OccurrenceIdentityIsBounded()
 }
 
 static ViewNode[] PlaylistDetailRows(SpotifyWidget widget, long sequence) =>
-    Find(widget.RenderSnapshot("spotify.playlist.occurrences", sequence).Root,
-        "spotify.playlist.detail.scroll.wide").Children.ToArray();
+    CollectionRows(Find(widget.RenderSnapshot(
+        "spotify.playlist.occurrences", sequence).Root,
+        "spotify.playlist.detail.scroll"));
 
 static string[] PlaylistDuplicateKeys(
     SpotifyWidget widget,
@@ -1802,7 +1817,7 @@ static string[] PlaylistDuplicateKeys(
     .ToArray();
 
 static async Task<(string Focus, long Sequence, bool Paginated)>
-    PressPagedDirectionAsync(
+    NavigatePagedDirectionAsync(
         SpotifyWidget widget,
         string scrollId,
         string focus,
@@ -1811,7 +1826,7 @@ static async Task<(string Focus, long Sequence, bool Paginated)>
 {
     var snapshot = widget.RenderSnapshot("spotify.controller-page", sequence);
     var scroll = Find(snapshot.Root, scrollId);
-    var visibleIds = scroll.Children.Select(child => child.Id).ToArray();
+    var visibleIds = CollectionRows(scroll).Select(child => child.Id).ToArray();
     var visibleIndex = Array.IndexOf(visibleIds, focus);
     Assert.True(visibleIndex >= 0,
         $"Focused row {focus} is not in the visible page for {scrollId}.");
@@ -1821,18 +1836,55 @@ static async Task<(string Focus, long Sequence, bool Paginated)>
 
     var actionId = down ? scroll.ScrollNearEndActionId : scroll.ScrollNearStartActionId;
     if (actionId is null) return (focus, sequence, false);
+    var priorWindow = scroll.VirtualCollectionWindow;
+    var priorAnchor = scroll.CollectionAnchorKey;
     await widget.OnActionAsync(new(actionId, scroll.Id));
     var replacementSequence = sequence + 1;
     await WaitUntil(() =>
     {
         var candidate = widget.RenderSnapshot("spotify.controller-page", replacementSequence);
-        if (candidate.InitialFocusId is not { } requested || requested == focus) return false;
-        return Find(candidate.Root, scrollId).Children.Any(child => child.Id == requested);
+        var candidateScroll = Find(candidate.Root, scrollId);
+        var candidateWindow = candidateScroll.VirtualCollectionWindow;
+        if (priorWindow is not null &&
+            (candidateWindow is null ||
+             candidateWindow.RequestGeneration <= priorWindow.RequestGeneration))
+            return false;
+        var candidateIds = CollectionRows(candidateScroll).Select(child => child.Id).ToArray();
+        var retainedIndex = Array.IndexOf(candidateIds, focus);
+        if (retainedIndex < 0) return false;
+        var nextIndex = retainedIndex + (down ? 1 : -1);
+        return nextIndex >= 0 && nextIndex < candidateIds.Length;
     });
     var replacement = widget.RenderSnapshot(
         "spotify.controller-page", replacementSequence);
-    var target = replacement.InitialFocusId!;
-    Assert.Equal(target, replacement.InitialFocusId);
+    var replacementScroll = Find(replacement.Root, scrollId);
+    var replacementWindow = replacementScroll.VirtualCollectionWindow;
+    var replacementRows = CollectionRows(replacementScroll);
+    var entry = replacement.InitialFocusId is { } entryId
+        ? FindEnabledInScope(replacement.Root, entryId, replacement.ActiveInputScopeId)
+        : null;
+    Assert.True(entry is not null,
+        $"Cursor prefetch published invalid scoped page entry '{replacement.InitialFocusId}'.");
+    if (priorWindow is not null)
+    {
+        Assert.NotNull(replacementWindow);
+        Assert.True(replacementWindow!.RequestGeneration > priorWindow.RequestGeneration,
+            "Cursor prefetch did not publish a successor window generation.");
+        Assert.Equal(down
+                ? VirtualCollectionWindowChange.Append
+                : VirtualCollectionWindowChange.Prepend,
+            replacementWindow.Change);
+    }
+    Assert.NotNull(replacementRows.SingleOrDefault(child => child.Id == focus));
+    if (priorAnchor is not null && replacementRows.Any(
+            child => child.CollectionItemKey == priorAnchor))
+        Assert.Equal(priorAnchor, replacementScroll.CollectionAnchorKey);
+    else
+        Assert.True(replacementScroll.CollectionAnchorKey is { } fallback &&
+                replacementRows.Any(child => child.CollectionItemKey == fallback),
+            "Cursor trimming did not publish a retained collection-anchor fallback.");
+    var retainedFocusIndex = Array.FindIndex(replacementRows, child => child.Id == focus);
+    var target = replacementRows[retainedFocusIndex + (down ? 1 : -1)].Id;
     return (target, replacementSequence, true);
 }
 
@@ -1845,7 +1897,7 @@ static async Task<bool> DispatchPagedEdgeAsync(
 {
     var snapshot = widget.RenderSnapshot("spotify.controller-edge", sequence);
     var scroll = Find(snapshot.Root, scrollId);
-    var visibleIds = scroll.Children.Select(child => child.Id).ToArray();
+    var visibleIds = CollectionRows(scroll).Select(child => child.Id).ToArray();
     var visibleIndex = Array.IndexOf(visibleIds, focus);
     if (visibleIndex < 0 ||
         (down && visibleIndex != visibleIds.Length - 1) ||
@@ -1872,14 +1924,14 @@ static async Task PagedPlaylistBackRestoresOpenedItem()
     await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
     await WaitUntil(() => harness.PlaylistCalls == 1);
     await widget.OnActionAsync(new(
-        "spotify.playlists.cursor.after", "spotify.playlists.scroll.wide"));
+        "spotify.playlists.cursor.after", "spotify.playlists.scroll"));
     await WaitUntil(() => harness.PlaylistCalls == 2);
 
     await widget.OnActionAsync(new(
         PlaylistOpen("playlist-15"), PlaylistFocus("wide", "playlist-15")));
     await WaitUntil(() => harness.PlaylistDetailCalls == 1);
     await widget.OnActionAsync(new(
-        "spotify.playlist.back", "spotify.playlist.play.wide"));
+        "spotify.playlist.back", "spotify.playlist.play.shared"));
     var restored = widget.RenderSnapshot("spotify.playlist.return-page", 1);
     Assert.Equal(PlaylistFocus("wide", "playlist-15"), restored.InitialFocusId);
     Assert.NotNull(Find(restored.Root, restored.InitialFocusId!));
@@ -1907,7 +1959,7 @@ static async Task AdjacentPlaylistFailureRetry()
         "spotify_unavailable", "Spotify could not load more tracks");
     Assert.True(await DispatchPagedEdgeAsync(
         widget,
-        "spotify.playlist.detail.scroll.wide",
+        "spotify.playlist.detail.scroll",
         TrackFocus("wide", "spotify:track:track-11"),
         sequence: 2,
         down: true),
@@ -1915,23 +1967,23 @@ static async Task AdjacentPlaylistFailureRetry()
     await WaitUntil(() => harness.PlaylistDetailCalls == 2);
     await WaitUntil(() => ContainsId(
         widget.RenderSnapshot("spotify.playlist.retained-wait", 2).Root,
-        "spotify.page.retained-error.wide.action"));
+        "spotify.page.retained-error.shared.action"));
     var retained = widget.RenderSnapshot("spotify.playlist.retained", 3);
     Assert.NotNull(Find(retained.Root, TrackFocus("wide", "spotify:track:track-0")));
-    Assert.NotNull(Find(retained.Root, "spotify.page.retained-error.wide.action"));
-    Assert.True(Find(retained.Root, "spotify.playlist.detail.scroll.wide")
+    Assert.NotNull(Find(retained.Root, "spotify.page.retained-error.shared.action"));
+    Assert.True(Find(retained.Root, "spotify.playlist.detail.scroll")
             .ScrollNearEndActionId is null,
         "A failed adjacent load remained in an automatic retry loop.");
 
     harness.PlaylistDetailError = null;
     await widget.OnActionAsync(new(
-        "spotify.page.retry", "spotify.page.retained-error.wide.action"));
+        "spotify.page.retry", "spotify.page.retained-error.shared.action"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 3);
     await WaitUntil(() => ContainsId(
         widget.RenderSnapshot("spotify.playlist.retry-wait", 4).Root,
         TrackFocus("wide", "spotify:track:track-12")));
     var recovered = widget.RenderSnapshot("spotify.playlist.retry", 5);
-    Assert.Equal(TrackFocus("wide", "spotify:track:track-12"), recovered.InitialFocusId);
+    Assert.Equal("spotify.playlist.play.shared", recovered.InitialFocusId);
     await StopAsync(widget);
 }
 
@@ -1945,14 +1997,14 @@ static async Task SparsePlaylistPage()
     await WaitUntil(() => harness.PlaylistCalls == 1);
 
     var snapshot = widget.RenderSnapshot("spotify.playlists.sparse", 1);
-    Assert.NotNull(Find(snapshot.Root, "spotify.page.sparse.playlist.wide"));
+    Assert.NotNull(Find(snapshot.Root, "spotify.page.sparse.playlist.shared"));
     Assert.Equal("spotify.playlists.cursor.after",
-        Find(snapshot.Root, "spotify.playlists.scroll.wide").ScrollNearEndActionId);
+        Find(snapshot.Root, "spotify.playlists.scroll").ScrollNearEndActionId);
     await widget.OnActionAsync(new(
-        "spotify.playlists.cursor.after", "spotify.playlists.scroll.wide"));
+        "spotify.playlists.cursor.after", "spotify.playlists.scroll"));
     await WaitUntil(() => harness.PlaylistCalls == 2);
     var next = widget.RenderSnapshot("spotify.playlists.sparse-next", 2);
-    Assert.Equal("spotify.page.sparse.playlist.wide", next.InitialFocusId);
+    Assert.Equal("spotify.page.sparse.playlist.shared", next.InitialFocusId);
     Assert.NotNull(Find(next.Root, next.InitialFocusId!));
     await StopAsync(widget);
 }
@@ -1964,10 +2016,10 @@ static async Task DeviceActions()
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     await widget.OnActionAsync(new("spotify.nav.devices", "spotify.nav.wide.devices"));
     var snapshot = widget.RenderSnapshot("spotify.devices", 1);
-    Assert.NotNull(Find(snapshot.Root, "spotify.local.wide.action"));
-    Assert.NotNull(Find(snapshot.Root, "spotify.device.wide.1"));
+    Assert.NotNull(Find(snapshot.Root, "spotify.local.shared.action"));
+    Assert.NotNull(Find(snapshot.Root, "spotify.device.shared.1"));
 
-    await widget.OnActionAsync(new("spotify.local.start", "spotify.local.wide.action"));
+    await widget.OnActionAsync(new("spotify.local.start", "spotify.local.shared.action"));
     Assert.Equal(SpotifyLocalPlaybackOperation.StartAndTransfer,
         harness.LocalCommands.Single().Operation);
     Assert.Equal(1, harness.DeviceCalls);
@@ -1980,7 +2032,7 @@ static async Task DeviceActions()
     Assert.Equal("local-placeholder", harness.StartedPlayback.Single().DeviceId);
 
     await widget.OnActionAsync(new("spotify.nav.devices", "spotify.nav.wide.devices"));
-    await widget.OnActionAsync(new("spotify.device.select.1", "spotify.device.wide.1"));
+    await widget.OnActionAsync(new("spotify.device.select.1", "spotify.device.shared.1"));
     Assert.Equal("remote-device", harness.TransferredDevices.Single());
 
     await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
@@ -2052,6 +2104,43 @@ static async Task OptimisticPlayback()
     release.SetResult();
     await action;
     Assert.Equal(SpotifyPlaybackOperation.Pause, harness.Commands[0].Operation);
+    await StopAsync(widget);
+}
+
+static async Task PlaybackShortcutKeepsStablePageEntry()
+{
+    var release = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var harness = SpotifyHarness.Ready();
+    harness.ControlWait = release.Task;
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    var before = widget.RenderSnapshot("spotify.focus.before", 1);
+    var focus = PlaylistFocus("shared", "playlist-one");
+    Assert.Equal(focus, before.InitialFocusId);
+
+    var handled = await widget.OnControllerInputAsync(new ControllerInputEvent(
+        ControllerButton.X,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.OpenWidget,
+        focus,
+        Sequence: 211050,
+        ActiveInputScopeId: before.ActiveInputScopeId,
+        SnapshotSequence: before.Sequence));
+    Assert.True(handled, "The root X shortcut was not admitted from the playlist leaf.");
+    await WaitUntil(() => harness.Commands.Count == 1);
+    var pending = widget.RenderSnapshot("spotify.focus.pending", 2);
+    Assert.Equal(focus, pending.InitialFocusId);
+    Assert.True(Find(pending.Root, "spotify.play-toggle").IsDisabled == true,
+        "The pending Play/Pause owner was not disabled.");
+
+    release.SetResult();
+    await WaitUntil(() => Find(widget.RenderSnapshot(
+            "spotify.focus.terminal", 3).Root,
+        "spotify.play-toggle").IsDisabled is not true);
+    var terminal = widget.RenderSnapshot("spotify.focus.terminal", 4);
+    Assert.Equal(focus, terminal.InitialFocusId);
+    Assert.Equal(SpotifyPlaybackOperation.Pause, harness.Commands.Single().Operation);
     await StopAsync(widget);
 }
 
@@ -2253,7 +2342,7 @@ static async Task RepeatIsBinaryAndPreciselyAvailable()
     await StopAsync(blockedWidget);
 }
 
-static async Task PlaybackDiagnosticsCorrelate()
+static async Task PlaybackDiagnosticsAreFailureOnly()
 {
     var diagnostics = new RecordingSpotifyDiagnostics();
     var harness = SpotifyHarness.Ready();
@@ -2269,32 +2358,8 @@ static async Task PlaybackDiagnosticsCorrelate()
         ActiveInputScopeId: snapshot.ActiveInputScopeId,
         SnapshotSequence: snapshot.Sequence));
     Assert.True(handled, "The correlated playback action was not admitted.");
-    await WaitUntil(() =>
-        diagnostics.Contains("action-queue-stage", "admission", 303001) &&
-        diagnostics.Contains("action-queue-result", "enqueued", 303001) &&
-        diagnostics.Contains("action-queue-stage", "terminal", 303001) &&
-        diagnostics.Contains("action-queue-result", "succeeded", 303001));
-
-    var correlated = diagnostics.ForOperation(303001);
-    Assert.True(correlated.Any(item =>
-        item.Boundary == "action-queue-stage" && item.Code == "admission"),
-        "The SDK admission did not preserve the fixed stage token.");
-    Assert.True(correlated.Any(item =>
-        item.Boundary == "action-queue-result" && item.Code == "enqueued"),
-        "The SDK admission result was not recorded.");
-    Assert.Ordered(correlated,
-        ("action-queue-stage", "dequeue"),
-        ("action-queue-result", "started"),
-        ("action-classification", "playback"),
-        ("playback-decision", "admitted"),
-        ("action-status", "optimistic"),
-        ("action-invalidation", "optimistic"),
-        ("playback-provider", "started"),
-        ("playback-provider", "succeeded"),
-        ("action-status", "provider-succeeded"),
-        ("action-invalidation", "provider-succeeded"),
-        ("action-queue-stage", "terminal"),
-        ("action-queue-result", "succeeded"));
+    await WaitUntil(() => harness.Commands.Count == 1);
+    Assert.Equal(0, diagnostics.ForOperation(303001).Count);
 
     var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     harness.ControlWait = release.Task;
@@ -2303,12 +2368,7 @@ static async Task PlaybackDiagnosticsCorrelate()
     await WaitUntil(() => harness.Commands.Count >= 2);
     await widget.OnActionAsync(new WidgetActionEvent(
         "spotify.play-toggle", "spotify.play-toggle", Sequence: 303003));
-    Assert.True(diagnostics.Contains("playback-decision", "pending", 303003),
-        "A concurrent playback action did not record the pending-operation decision.");
-    Assert.True(diagnostics.Contains("action-status", "control-unavailable", 303003),
-        "The pending decision did not correlate its resulting status.");
-    Assert.True(diagnostics.Contains("action-invalidation", "control-unavailable", 303003),
-        "The pending decision did not correlate its resulting invalidation.");
+    Assert.Equal(0, diagnostics.ForOperation(303003).Count);
     release.TrySetResult();
     await first;
 
@@ -2319,14 +2379,20 @@ static async Task PlaybackDiagnosticsCorrelate()
     Assert.True(diagnostics.Contains("playback-provider", "failed-forbidden", 303004),
         "The provider failure was not reduced to its fixed classification.");
 
+    harness.QueueError = new SpotifyApplicationException(
+        "spotify_unavailable", "private queue response");
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.nav.queue", "spotify.nav.queue", Sequence: 303005));
+    await WaitUntil(() => diagnostics.ContainsAny(
+        "queue-refresh", "failure-spotify_unavailable"));
+
     const string dynamicActionId = "provider.media.secret.with.dots";
     await widget.OnActionAsync(new WidgetActionEvent(
-        dynamicActionId, dynamicActionId, Sequence: 303005));
-    Assert.True(diagnostics.Contains("action-classification", "unknown", 303005),
-        "The dynamic action was not reduced to its local fixed classification.");
+        dynamicActionId, dynamicActionId, Sequence: 303006));
+    Assert.Equal(0, diagnostics.ForOperation(303006).Count);
 
-    diagnostics.Record("action-queue-stage", dynamicActionId, 303006);
-    diagnostics.Record("provider\nmessage", "failed", 303007);
+    diagnostics.Record("typed-boundary", dynamicActionId, 303007);
+    diagnostics.Record("provider\nmessage", "failed", 303008);
     var encoded = diagnostics.EncodedLines;
     Assert.True(encoded.Count > 0, "The shared diagnostic encoding emitted no records.");
     Assert.True(encoded.All(line =>
@@ -2335,6 +2401,68 @@ static async Task PlaybackDiagnosticsCorrelate()
             !line.Contains(providerMessage, StringComparison.Ordinal) &&
             !line.Contains("forged-log-line", StringComparison.Ordinal)),
         "A raw action identity or provider-controlled message reached encoded diagnostics.");
+    await StopAsync(widget);
+}
+
+static async Task LocalPlaybackSummaryRevisionFence()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.devices", "spotify.nav.devices"));
+    await WaitUntil(() => harness.DeviceCalls == 1 && harness.LocalPlaybackCalls == 1);
+    var ready = Find(widget.RenderSnapshot("spotify.local.ready", 1).Root,
+        "spotify.local.shared.action");
+    Assert.Equal("spotify.local.start", ready.ActionId);
+    Assert.True(ready.IsDisabled is not true && ready.IsBusy is not true,
+        "The initial Devices publication was not settled before the revision-fence test.");
+
+    var stale = new TaskCompletionSource<SpotifyLocalPlaybackSummary>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    harness.LocalPlaybackHandler = _ =>
+        new ValueTask<SpotifyLocalPlaybackSummary>(stale.Task);
+    var poll = RefreshPlaybackForTest(widget);
+    await WaitUntil(() => harness.LocalPlaybackCalls == 2);
+
+    harness.LocalControlResult = harness.LocalPlayback with
+    {
+        State = SpotifyLocalPlaybackState.Active,
+        DisplayMessage = "Playing through this PC.",
+    };
+    await widget.OnActionAsync(new("spotify.local.start", "spotify.local.shared.action"));
+    await WaitUntil(() => harness.LocalCommands.Count == 1);
+    await WaitUntil(() => string.Equals(
+            widget.Status, "Playing through this PC.", StringComparison.Ordinal),
+        "The successful local operation state was not committed before stale release.");
+    harness.LocalPlaybackHandler = _ => ValueTask.FromResult(harness.LocalControlResult!);
+    stale.SetResult(harness.LocalPlayback with
+    {
+        State = SpotifyLocalPlaybackState.Ready,
+        DisplayMessage = "Stale ready summary",
+    });
+    await poll;
+    await WaitUntil(() =>
+    {
+        var current = widget.RenderSnapshot("spotify.local.settled", 3);
+        var local = Find(current.Root, "spotify.local.shared.action");
+        return local.ActionId == "spotify.local.stop" &&
+            local.IsDisabled is not true && local.IsBusy is not true;
+    }, "The successful local operation did not settle after stale-poll retirement.");
+    var retained = widget.RenderSnapshot("spotify.local.retained", 4);
+    Assert.True(ContainsTextFragment(retained.Root, "Playing here"),
+        "A pre-operation local summary replaced the accepted operation result.");
+    Assert.True(!ContainsTextFragment(retained.Root, "Stale ready summary"),
+        "A stale local summary crossed the operation revision fence.");
+
+    harness.LocalPlaybackHandler = _ => ValueTask.FromResult(
+        harness.LocalControlResult! with
+        {
+            State = SpotifyLocalPlaybackState.AutoplayBlocked,
+            DisplayMessage = "Spotify audio was blocked by browser autoplay policy.",
+        });
+    await RefreshPlaybackForTest(widget);
+    var blocked = widget.RenderSnapshot("spotify.local.blocked", 5);
+    Assert.NotNull(Find(blocked.Root, "spotify.local.autoplay-blocked"));
     await StopAsync(widget);
 }
 
@@ -2383,7 +2511,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.36", manifest.Version);
+    Assert.Equal("0.3.50", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
@@ -2426,14 +2554,15 @@ static Task PresentationBoundaryIsPure()
         WidgetPagedResourceStatus.NotLoaded, [], null, null, null, null, null, 0);
     var playlists = new WidgetCursorResourceSnapshot<SpotifyPlaylistCollectionItem>(
         WidgetPagedResourceStatus.NotLoaded, [], null, null, null, null, null, 0);
+    var navigation = new WidgetNavigationSnapshot<SpotifyRoute>(
+        SpotifyRoute.Playlists, SpotifyRoute.Playlists, 0,
+        "spotify.window", null, null, 0, CancellationToken.None);
     var state = new SpotifyPresentationState(
         new(1, 0, 0, null), SpotifyWidgetViewState.Unconfigured, null, null,
-        "Spotify client ID required", null, false, 0, false, SpotifyDestination.Player,
+        "Spotify client ID required", null, 0, false, navigation,
         media, new SpotifyCursorPresentation<SpotifyPlaylistCollectionItem>(
-            playlists,
-            UI.VerticalScroll("spotify.playlists.scroll.wide", []),
-            UI.VerticalScroll("spotify.playlists.scroll.compact", [])),
-        null, null, null, false, null, "spotify.setup.open");
+            playlists, UI.VerticalScroll("spotify.playlists.scroll", [])),
+        null, null, null, false, null, false, null);
 
     var handles = new SpotifyPresentationHandleFixture();
     var first = SnapshotJson.Serialize(
@@ -2633,7 +2762,18 @@ static SpotifyOptimisticPlaybackReconciliation? OptimisticReconciliation(
     (SpotifyOptimisticPlaybackReconciliation?)typeof(SpotifyWidget).GetField(
         "_optimisticReconciliation",
         System.Reflection.BindingFlags.Instance |
-        System.Reflection.BindingFlags.NonPublic)!.GetValue(widget);
+    System.Reflection.BindingFlags.NonPublic)!.GetValue(widget);
+
+static Task<bool> RefreshPlaybackForTest(SpotifyWidget widget)
+{
+    var generation = (long)typeof(SpotifyWidget).GetField("_activeGeneration",
+        System.Reflection.BindingFlags.Instance |
+        System.Reflection.BindingFlags.NonPublic)!.GetValue(widget)!;
+    return (Task<bool>)typeof(SpotifyWidget).GetMethod("RefreshPlaybackAsync",
+        System.Reflection.BindingFlags.Instance |
+        System.Reflection.BindingFlags.NonPublic)!.Invoke(
+        widget, [generation, CancellationToken.None, true])!;
+}
 
 static long PendingOperationSequence(SpotifyWidget widget) =>
     (long)typeof(SpotifyWidget).GetField("_pendingOperationSequence",
@@ -2674,6 +2814,49 @@ static ViewNode Find(ViewNode node, string id)
     throw new InvalidOperationException($"Node '{id}' was not found.");
 }
 
+static ViewNode? FindEnabledInScope(
+    ViewNode node,
+    string id,
+    string? activeInputScopeId,
+    string? inheritedInputScopeId = null)
+{
+    var inputScopeId = node.InputScopeId ?? inheritedInputScopeId;
+    if (node.Id == id && inputScopeId == activeInputScopeId && node.IsDisabled is not true)
+        return node;
+    foreach (var child in node.Children)
+        if (FindEnabledInScope(child, id, activeInputScopeId, inputScopeId) is { } match)
+            return match;
+    return null;
+}
+
+static ViewNode FindClass(ViewNode node, string value)
+{
+    if (node.StyleClasses.Contains(value)) return node;
+    foreach (var child in node.Children)
+        try { return FindClass(child, value); }
+        catch (InvalidOperationException) { }
+    throw new InvalidOperationException($"Missing class '{value}'.");
+}
+
+static ViewNode[] CollectionRows(ViewNode node)
+{
+    var rows = new List<ViewNode>();
+    void Visit(ViewNode current)
+    {
+        if (current.CollectionItemKey is not null) rows.Add(current);
+        foreach (var child in current.Children) Visit(child);
+    }
+    Visit(node);
+    return rows.ToArray();
+}
+
+static int CountId(ViewNode node, string id) =>
+    (node.Id == id ? 1 : 0) + node.Children.Sum(child => CountId(child, id));
+
+static bool ContainsAction(ViewNode node, string actionId) =>
+    node.ActionId == actionId ||
+    node.Children.Any(child => ContainsAction(child, actionId));
+
 static ViewNode FindPrefix(ViewNode node, string prefix)
 {
     if (node.Id.StartsWith(prefix, StringComparison.Ordinal)) return node;
@@ -2709,13 +2892,15 @@ static bool ContainsTextFragment(ViewNode node, string text) =>
     node.Children.Any(child => ContainsTextFragment(child, text));
 
 static string PlaylistFocus(string mode, string playlistId) =>
-    $"spotify.playlist.item.{mode}.playlist.{CollectionToken(playlistId)}";
+    $"spotify.playlist.item.{SharedMode(mode)}.playlist.{CollectionToken(playlistId)}";
 
 static string TrackFocus(string mode, string uri) =>
-    $"spotify.playlist.track.{mode}.media.{CollectionToken(uri)}";
+    $"spotify.playlist.track.{SharedMode(mode)}.media.{CollectionToken(uri)}";
 
 static string QueueFocus(string mode, string uri) =>
-    $"spotify.queue.item.{mode}.media.{CollectionToken(uri)}";
+    $"spotify.queue.item.{SharedMode(mode)}.media.{CollectionToken(uri)}";
+
+static string SharedMode(string mode) => mode is "wide" or "compact" ? "shared" : mode;
 
 static string PlaylistOpen(string playlistId) =>
     $"spotify.playlist.open.playlist.{CollectionToken(playlistId)}";
@@ -2753,6 +2938,7 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
     public Exception? ConfigurationError { get; set; }
     public Exception? ControlError { get; set; }
     public Exception? StartPlaybackError { get; set; }
+    public Exception? QueueError { get; set; }
     public Task? ControlWait { get; set; }
     public TaskCompletionSource<SpotifyAuthorizationSummary>? ConnectCompletion { get; set; }
     public CancellationToken? ConnectCancellationToken { get; private set; }
@@ -2767,8 +2953,12 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
     public int PlaylistCalls { get; private set; }
     public int PlaylistDetailCalls { get; private set; }
     public int DeviceCalls { get; private set; }
+    public int LocalPlaybackCalls { get; private set; }
     public Func<CancellationToken, ValueTask<SpotifyPlaybackSummary>>?
         PlaybackHandler { get; set; }
+    public Func<CancellationToken, ValueTask<SpotifyLocalPlaybackSummary>>?
+        LocalPlaybackHandler { get; set; }
+    public SpotifyLocalPlaybackSummary? LocalControlResult { get; set; }
     public IReadOnlyList<SpotifyAuthorizationScope>? LastScopes { get; private set; }
     public List<SpotifyPlaybackCommand> Commands { get; } = [];
     public List<SpotifyLocalPlaybackCommand> LocalCommands { get; } = [];
@@ -2874,6 +3064,8 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
     {
         cancellationToken.ThrowIfCancellationRequested();
         QueueCalls++;
+        if (QueueError is not null)
+            return ValueTask.FromException<SpotifyQueueSummary>(QueueError);
         return ValueTask.FromResult(Queue);
     }
 
@@ -2967,11 +3159,14 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask<SpotifyLocalPlaybackSummary> GetLocalPlaybackAsync(
+    public async ValueTask<SpotifyLocalPlaybackSummary> GetLocalPlaybackAsync(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(LocalPlayback);
+        LocalPlaybackCalls++;
+        return LocalPlaybackHandler is null
+            ? LocalPlayback
+            : await LocalPlaybackHandler(cancellationToken).ConfigureAwait(false);
     }
 
     public ValueTask<SpotifyLocalPlaybackSummary> ControlLocalPlaybackAsync(
@@ -2980,9 +3175,10 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
     {
         cancellationToken.ThrowIfCancellationRequested();
         LocalCommands.Add(request);
-        LocalPlayback = request.Operation == SpotifyLocalPlaybackOperation.Stop
-            ? LocalPlayback with { State = SpotifyLocalPlaybackState.Disabled }
-            : LocalPlayback with { State = SpotifyLocalPlaybackState.Active };
+        LocalPlayback = LocalControlResult ??
+            (request.Operation == SpotifyLocalPlaybackOperation.Stop
+                ? LocalPlayback with { State = SpotifyLocalPlaybackState.Disabled }
+                : LocalPlayback with { State = SpotifyLocalPlaybackState.Active });
         return ValueTask.FromResult(LocalPlayback);
     }
 
@@ -3115,6 +3311,12 @@ file sealed class RecordingSpotifyDiagnostics : ISpotifyRuntimeDiagnostics
     {
         lock (_gate) return _observations.Any(item =>
             item.Boundary == boundary && item.Code == code && item.Operation == operation);
+    }
+
+    public bool ContainsAny(string boundary, string code)
+    {
+        lock (_gate) return _observations.Any(item =>
+            item.Boundary == boundary && item.Code == code);
     }
 
     public IReadOnlyList<SpotifyDiagnosticObservation> ForOperation(long operation)

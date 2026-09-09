@@ -4,12 +4,15 @@ using WidgetRail.Samples.SpotifyWidget;
 internal sealed class SpotifyApplicationDiagnostics : ISpotifyRuntimeDiagnostics
 {
     private const long MaximumBytes = 64 * 1024;
+    private static readonly UTF8Encoding Utf8 = new(false);
     private readonly object _gate = new();
     private readonly string _path;
+    private readonly string _previousPath;
 
     private SpotifyApplicationDiagnostics(string path)
     {
         _path = path;
+        _previousPath = path + ".previous";
     }
 
     internal static SpotifyApplicationDiagnostics CreateDefault()
@@ -40,10 +43,15 @@ internal sealed class SpotifyApplicationDiagnostics : ISpotifyRuntimeDiagnostics
                 var directory = Path.GetDirectoryName(_path);
                 if (directory is null) return;
                 Directory.CreateDirectory(directory);
-                if (File.Exists(_path) && new FileInfo(_path).Length >= MaximumBytes)
-                    File.WriteAllText(_path, string.Empty, new UTF8Encoding(false));
-                File.AppendAllText(
-                    _path, line + Environment.NewLine, new UTF8Encoding(false));
+                var entry = line + Environment.NewLine;
+                var entryBytes = Utf8.GetByteCount(entry);
+                if (File.Exists(_path) &&
+                    new FileInfo(_path).Length + entryBytes > MaximumBytes)
+                {
+                    if (File.Exists(_previousPath)) File.Delete(_previousPath);
+                    File.Move(_path, _previousPath);
+                }
+                File.AppendAllText(_path, entry, Utf8);
             }
         }
         catch (Exception exception) when (exception is IOException or

@@ -9,6 +9,8 @@ namespace WidgetRail.SpotifyPlaybackHost;
 internal sealed class SpotifyPlaybackHostForm : Form
 {
     private const int WsExNoActivate = 0x08000000;
+    private static readonly Uri TopLevelOrigin = new(SpotifyPlaybackPage.TopLevelUri);
+    private static readonly Uri SdkOrigin = new("https://sdk.scdn.co");
 
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
     private readonly EphemeralUserDataDirectory _userData = new();
@@ -110,7 +112,7 @@ internal sealed class SpotifyPlaybackHostForm : Form
                 case "set_name":
                     var name = SpotifyPlaybackProtocolCodec.DecodePayload<NamePayload>(request);
                     new SpotifyPlaybackConnectOptions(name.Name, 1,
-                        new(true, [SpotifyPlaybackProtocol.RequiredScope])).Validate();
+                        new(true, SpotifyPlaybackProtocol.RequiredScopes)).Validate();
                     SendToPage(request, name);
                     break;
                 case "set_volume":
@@ -181,7 +183,10 @@ internal sealed class SpotifyPlaybackHostForm : Form
             };
             core.PermissionRequested += (_, args) =>
             {
-                args.State = args.PermissionKind == CoreWebView2PermissionKind.Autoplay
+                var autoplay = args.PermissionKind == CoreWebView2PermissionKind.Autoplay;
+                var originClass = ClassifyPermissionOrigin(args.Uri);
+                var allow = autoplay && originClass is "top-level" or "exact-sdk";
+                args.State = allow
                     ? CoreWebView2PermissionState.Allow
                     : CoreWebView2PermissionState.Deny;
                 args.SavesInProfile = false;
@@ -200,6 +205,21 @@ internal sealed class SpotifyPlaybackHostForm : Form
                 });
                 Close();
             };
+            try
+            {
+                await ConfigureAutoplayPermissionAsync(core).ConfigureAwait(true);
+            }
+            catch (Exception)
+            {
+                Transition(SpotifyPlaybackSignal.InitializationError);
+                Emit("sdk_error", null, new
+                {
+                    code = "autoplay_permission_configuration_failed",
+                    message = "Spotify autoplay permission could not be configured safely."
+                });
+                Close();
+                return;
+            }
             _initialized = true;
             _sdkLoadTimeout.Start();
             core.Navigate(SpotifyPlaybackPage.TopLevelUri);
@@ -291,6 +311,9 @@ internal sealed class SpotifyPlaybackHostForm : Form
                 case "sdk_loaded":
                     _sdkLoadTimeout.Stop();
                     Transition(SpotifyPlaybackSignal.SdkLoaded);
+                    normalized = new { };
+                    break;
+                case "connect_succeeded":
                     normalized = new { };
                     break;
                 case "ready":
@@ -487,6 +510,40 @@ internal sealed class SpotifyPlaybackHostForm : Form
 
     private void Emit(string type, string? requestId, object payload) =>
         _emit(new(SpotifyPlaybackProtocol.Version, type, requestId, payload));
+
+    private static string ClassifyPermissionOrigin(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return "other";
+        if (string.Equals(uri.GetLeftPart(UriPartial.Authority),
+                TopLevelOrigin.GetLeftPart(UriPartial.Authority),
+                StringComparison.OrdinalIgnoreCase))
+            return "top-level";
+        if (string.Equals(uri.Scheme, Uri.UriSchemeHttps,
+                StringComparison.OrdinalIgnoreCase) &&
+            uri.IsDefaultPort &&
+            string.Equals(uri.Host, "sdk.scdn.co", StringComparison.OrdinalIgnoreCase))
+            return "exact-sdk";
+        if (string.Equals(uri.Scheme, Uri.UriSchemeHttps,
+                StringComparison.OrdinalIgnoreCase) &&
+            (IsDomain(uri.Host, "spotify.com") || IsDomain(uri.Host, "scdn.co") ||
+             IsDomain(uri.Host, "spotifycdn.com") ||
+             IsDomain(uri.Host, "akamaized.net")))
+            return "spotify-other";
+        return "other";
+    }
+
+    private static async Task ConfigureAutoplayPermissionAsync(CoreWebView2 core)
+    {
+        foreach (var origin in new[] { TopLevelOrigin, SdkOrigin })
+            await core.Profile.SetPermissionStateAsync(
+                CoreWebView2PermissionKind.Autoplay,
+                origin.GetLeftPart(UriPartial.Authority),
+                CoreWebView2PermissionState.Allow).ConfigureAwait(true);
+    }
+
+    private static bool IsDomain(string host, string domain) =>
+        string.Equals(host, domain, StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith('.' + domain, StringComparison.OrdinalIgnoreCase);
 
     private sealed record SeekPayload(long PositionMilliseconds);
     private sealed record NamePayload(string Name);

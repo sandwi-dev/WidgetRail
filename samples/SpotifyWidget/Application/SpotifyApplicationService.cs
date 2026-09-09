@@ -6,8 +6,7 @@ internal sealed class SpotifyApplicationService(
     WindowsSpotifyPlatformBackend backend,
     SpotifyIntegrationIdentity identity,
     ISpotifySetupActions? setupActions = null) :
-    ISpotifyApplicationService,
-    ISpotifyCorrelatedQueueService
+    ISpotifyApplicationService
 {
     private readonly WindowsSpotifyPlatformBackend _backend = backend ??
         throw new ArgumentNullException(nameof(backend));
@@ -35,7 +34,9 @@ internal sealed class SpotifyApplicationService(
 
     public ValueTask<SpotifyAuthorizationSummary> GetAuthorizationAsync(
         CancellationToken cancellationToken = default) => new(
-        _backend.GetSpotifyAuthorizationAsync(_identity, cancellationToken));
+        _backend.GetSpotifyAuthorizationAsync(
+            _identity, SpotifyApplicationContract.RequiredAuthorizationScopes,
+            cancellationToken));
 
     public ValueTask<SpotifyAuthorizationSummary> ConnectAsync(
         IReadOnlyCollection<SpotifyAuthorizationScope> requestedScopes,
@@ -70,13 +71,6 @@ internal sealed class SpotifyApplicationService(
     public ValueTask<SpotifyQueueSummary> GetQueueAsync(
         CancellationToken cancellationToken = default) => new(
         _backend.GetSpotifyQueueAsync(_identity, cancellationToken));
-
-    ValueTask<SpotifyQueueSummary> ISpotifyCorrelatedQueueService.GetQueueAsync(
-        long operation,
-        long generation,
-        CancellationToken cancellationToken) => new(
-        _backend.GetSpotifyQueueAsync(
-            _identity, operation, generation, cancellationToken));
 
     public ValueTask AddToQueueAsync(
         string uri,
