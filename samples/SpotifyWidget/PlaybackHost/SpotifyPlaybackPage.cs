@@ -9,7 +9,7 @@ internal static class SpotifyPlaybackPage
         <html lang="en">
         <head>
           <meta charset="utf-8">
-          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://sdk.scdn.co; connect-src https://*.spotify.com wss://*.spotify.com https://*.scdn.co wss://*.scdn.co https://*.spotifycdn.com wss://*.spotifycdn.com; media-src blob: https://*.scdn.co https://*.spotifycdn.com https://*.akamaized.net; style-src 'unsafe-inline'; img-src data:; frame-src https://*.spotify.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://sdk.scdn.co; connect-src https://*.spotify.com wss://*.spotify.com https://*.scdn.co wss://*.scdn.co https://*.spotifycdn.com wss://*.spotifycdn.com; media-src blob: https://*.scdn.co https://*.spotifycdn.com https://*.akamaized.net; style-src 'unsafe-inline'; img-src data:; frame-src https://*.spotify.com https://sdk.scdn.co; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
           <meta name="referrer" content="no-referrer">
           <title>Spotify Playback Host</title>
         </head>
