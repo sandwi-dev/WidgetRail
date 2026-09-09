@@ -4216,7 +4216,6 @@ struct DeclarativeRenderer::RenderPass final {
 #endif
 
         const auto visibleRect = presented.visibleBox;
-        owner->RecordArtworkObservation(node, presented.borderBox, visibleRect);
         if (node.kind == L"scroll") {
             if (const auto* box = layout.Find(narrowId);
                 box && box->scrollAxis != declarative::ScrollAxis::None) {
@@ -5426,6 +5425,12 @@ void DeclarativeRenderer::DiscardTargetResources() noexcept {
     pendingIncrementalPlan_.reset();
 }
 
+void DeclarativeRenderer::ReleaseCachedImages() noexcept {
+    ClearBitmapCache(true);
+    bitmapResourceDomain_.Reset();
+    bitmapResourceDomainIsDevice_ = false;
+}
+
 ImageBitmapCacheStats DeclarativeRenderer::GetImageBitmapCacheStats() const noexcept {
     return {
         bitmaps_.size(),
@@ -5446,40 +5451,7 @@ ImageBitmapCacheStats DeclarativeRenderer::GetImageBitmapCacheStats() const noex
             : bitmapResourceDomainIsDevice_
                 ? ImageBitmapResourceDomain::Device
                 : ImageBitmapResourceDomain::RenderTarget,
-        visibleArtworkObservations_,
-        clippedArtworkObservations_,
-        requestedPaintPixels_,
-        maximumRequestedPaintPixels_,
-        maximumRequestedPaintWidth_,
-        maximumRequestedPaintHeight_,
     };
-}
-
-void DeclarativeRenderer::RecordArtworkObservation(
-    const WidgetNode& node,
-    const declarative::Rect bounds,
-    const declarative::Rect visibleBounds) noexcept {
-    if (node.artworkHandle.empty() && node.imageSource.empty()) return;
-    const bool visible = visibleBounds.width > 0.5F && visibleBounds.height > 0.5F;
-    if (visible) {
-        if (visibleArtworkObservations_ != UINT64_MAX)
-            ++visibleArtworkObservations_;
-    } else if (clippedArtworkObservations_ != UINT64_MAX) {
-        ++clippedArtworkObservations_;
-    }
-    const auto width = static_cast<std::uint64_t>(
-        std::max(0.0F, std::ceil(bounds.width)));
-    const auto height = static_cast<std::uint64_t>(
-        std::max(0.0F, std::ceil(bounds.height)));
-    const auto pixels = width != 0 && height > UINT64_MAX / width
-        ? UINT64_MAX
-        : width * height;
-    maximumRequestedPaintPixels_ = std::max(maximumRequestedPaintPixels_, pixels);
-    maximumRequestedPaintWidth_ = std::max(maximumRequestedPaintWidth_, width);
-    maximumRequestedPaintHeight_ = std::max(maximumRequestedPaintHeight_, height);
-    requestedPaintPixels_ = requestedPaintPixels_ > UINT64_MAX - pixels
-        ? UINT64_MAX
-        : requestedPaintPixels_ + pixels;
 }
 
 bool DeclarativeRenderer::BindBitmapResourceDomain(

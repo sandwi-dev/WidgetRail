@@ -217,12 +217,6 @@ struct ImageBitmapCacheStats final {
     std::size_t maximumEntryBytes{};
     std::size_t maximumBytes{};
     ImageBitmapResourceDomain resourceDomain{ImageBitmapResourceDomain::None};
-    std::uint64_t visibleArtworkObservations{};
-    std::uint64_t clippedArtworkObservations{};
-    std::uint64_t requestedPaintPixels{};
-    std::uint64_t maximumRequestedPaintPixels{};
-    std::uint64_t maximumRequestedPaintWidth{};
-    std::uint64_t maximumRequestedPaintHeight{};
 };
 
 enum class IncrementalPresentationWork {
@@ -476,6 +470,11 @@ public:
 
     void DiscardTargetResources() noexcept;
 
+    /// Releases cached image resources when an entire presentation endpoint
+    /// is retired. Ordinary target recreation continues to use
+    /// DiscardTargetResources so a live endpoint can reuse its bounded cache.
+    void ReleaseCachedImages() noexcept;
+
     /// Cumulative bounded GPU-image activity for the existing presentation
     /// diagnostic. Transient BeginDraw context identity is deliberately absent;
     /// resource generation advances only when the underlying D2D device domain
@@ -649,11 +648,6 @@ private:
     [[nodiscard]] bool ArtworkRenderDiagnosticsEnabled() const noexcept {
         return static_cast<bool>(artworkRenderDiagnostic_);
     }
-    void RecordArtworkObservation(
-        const WidgetNode& node,
-        declarative::Rect bounds,
-        declarative::Rect visibleBounds) noexcept;
-
     ID2D1Factory* d2dFactory_{};
     IDWriteFactory* writeFactory_{};
     RemoteImageCache* imageCache_{};
@@ -680,12 +674,6 @@ private:
     std::uint64_t bitmapSupersededArtworkEvictions_{};
     std::uint64_t bitmapResourceInvalidations_{};
     std::uint64_t bitmapResourceGeneration_{};
-    std::uint64_t visibleArtworkObservations_{};
-    std::uint64_t clippedArtworkObservations_{};
-    std::uint64_t requestedPaintPixels_{};
-    std::uint64_t maximumRequestedPaintPixels_{};
-    std::uint64_t maximumRequestedPaintWidth_{};
-    std::uint64_t maximumRequestedPaintHeight_{};
     std::unordered_map<std::wstring, FocusBackgroundEntry> focusBackgrounds_;
     std::size_t focusBackgroundCompositeBytes_{};
     std::uint64_t focusBackgroundAccessClock_{};

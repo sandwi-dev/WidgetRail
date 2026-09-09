@@ -471,10 +471,6 @@ bool WidgetSurfaceCoordinator::ToggleInteractionMode() {
         : InteractionMode::Focusable);
 }
 
-ImageBitmapCacheStats WidgetSurfaceCoordinator::GetImageBitmapCacheStats() const noexcept {
-    return renderer_ ? renderer_->GetImageBitmapCacheStats() : ImageBitmapCacheStats{};
-}
-
 bool WidgetSurfaceCoordinator::EnterControllerFocus() {
     if (!pinned() || !overlayVisible_ ||
         policy_.interactionMode() != InteractionMode::Focusable) return false;
@@ -1722,6 +1718,7 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     if (retiring && IsWindow(retiring)) DestroyWindow(retiring);
     window_ = nullptr;
     ReleaseGraphicsResources();
+    if (renderer_) renderer_->ReleaseCachedImages();
     admission_.reset();
     layoutOptions_.clear();
     selectedLayoutIndex_ = 0;

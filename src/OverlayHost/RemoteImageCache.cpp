@@ -13,7 +13,6 @@
 #include <span>
 #include <stdexcept>
 #include <utility>
-#include <unordered_set>
 
 namespace widgetrail {
 namespace {
@@ -728,35 +727,6 @@ RemoteImageCacheStats RemoteImageCache::GetStats() const {
         trustedArtworkSupplies_, staleArtworkCompletions_, readySourcePixels,
         maximumSourceWidth, maximumSourceHeight,
     };
-}
-
-TrustedArtworkResidencyStats RemoteImageCache::GetTrustedArtworkResidency(
-    const std::wstring_view widgetId,
-    const std::span<const std::wstring> currentArtworkHandles) const {
-    TrustedArtworkResidencyStats result;
-    if (widgetId.empty() || currentArtworkHandles.empty()) return result;
-    const auto prefix = L"wrail-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
-    std::unordered_set<std::wstring_view> handles;
-    handles.reserve(currentArtworkHandles.size());
-    for (const auto& handle : currentArtworkHandles)
-        if (!handle.empty()) handles.insert(handle);
-    std::scoped_lock lock(mutex_);
-    for (const auto& [key, entry] : entries_) {
-        if (!key.starts_with(prefix)) continue;
-        const auto separator = key.rfind(L'\x1f');
-        if (separator == std::wstring::npos ||
-            !handles.contains(std::wstring_view(key).substr(separator + 1))) continue;
-        ++result.entries;
-        result.encodedBytes += entry.pendingBytes.size();
-        if (entry.state == RemoteImageState::Ready && entry.image) {
-            ++result.readyEntries;
-            result.decodedBytes += entry.image->premultipliedBgra.size();
-        } else if (entry.state == RemoteImageState::Queued ||
-                   entry.state == RemoteImageState::Loading) {
-            ++result.inFlightEntries;
-        }
-    }
-    return result;
 }
 
 std::shared_ptr<const RemoteDecodedImage> RemoteImageCache::GetReadyImage(
