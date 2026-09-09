@@ -44,9 +44,10 @@ ControllerIsolationRoutingSession::ControllerIsolationRoutingSession(
     SelectedControllerSource& source,
     ControllerIsolationOutput& output,
     ControllerIsolationGuideSink& guideSink,
-    RoutingBudgets budgets) noexcept
+    RoutingBudgets budgets,
+    ControllerIsolationHostInputSink* hostInputSink) noexcept
     : source_(source), output_(output), guideSink_(guideSink),
-      budgets_(budgets), core_(output, budgets) {}
+      hostInputSink_(hostInputSink), budgets_(budgets), core_(output, budgets) {}
 
 ControllerIsolationRoutingSession::~ControllerIsolationRoutingSession() {
     if (authority_.valid()) (void)Stop(authority_);
@@ -157,12 +158,30 @@ ControllerIsolationRoutingResult ControllerIsolationRoutingSession::Heartbeat(
     return Convert(result);
 }
 
+ControllerIsolationRoutingResult ControllerIsolationRoutingSession::HoldContained(
+    const RoutingAuthority& authority,
+    const std::uint64_t nowMilliseconds) noexcept {
+    if (!ExactAuthority(authority))
+        return ControllerIsolationRoutingResult::RejectedAuthority;
+    pendingTransition_.reset();
+    ordinaryDrainBarrierOrdinal_.reset();
+    const auto result = state_ == ControllerIsolationRoutingState::Playing
+        ? core_.EnterOverlay(authority, nowMilliseconds)
+        : core_.HoldOverlay(authority, nowMilliseconds);
+    if (result == CommandResult::Applied)
+        state_ = ControllerIsolationRoutingState::OverlayInteraction;
+    else if (result == CommandResult::Faulted)
+        Fail();
+    return Convert(result);
+}
+
 ControllerIsolationRoutingResult ControllerIsolationRoutingSession::Pump(
     const std::uint64_t nowMilliseconds) noexcept {
     if (state_ == ControllerIsolationRoutingState::Disabled)
         return ControllerIsolationRoutingResult::RejectedState;
     if (state_ == ControllerIsolationRoutingState::Fault)
         return ControllerIsolationRoutingResult::Faulted;
+    if (!DrainFeedback()) return ControllerIsolationRoutingResult::Faulted;
     if (pendingTransition_) {
         const auto transition = ContinueTransition(nowMilliseconds);
         if (transition == ControllerIsolationRoutingResult::Faulted)
@@ -180,15 +199,13 @@ ControllerIsolationRoutingResult ControllerIsolationRoutingSession::Pump(
         *ordinaryDrainBarrierOrdinal_, nowMilliseconds);
     if (ingress == DrainIngressResult::Faulted)
         return ControllerIsolationRoutingResult::Faulted;
+    if (ingress == DrainIngressResult::Waiting) {
+        // Never let a neutral prefix advance AwaitingNeutral while a producer
+        // still owns an unpublished suffix inside this barrier.
+        return ControllerIsolationRoutingResult::Waiting;
+    }
     if (!DrainCore(nowMilliseconds))
         return ControllerIsolationRoutingResult::Faulted;
-    if (ingress == DrainIngressResult::Waiting) {
-        const auto tick = core_.Tick(nowMilliseconds);
-        if (tick == CommandResult::Faulted) Fail();
-        return tick == CommandResult::Faulted
-            ? ControllerIsolationRoutingResult::Faulted
-            : ControllerIsolationRoutingResult::Waiting;
-    }
     ordinaryDrainBarrierOrdinal_.reset();
     if (state_ == ControllerIsolationRoutingState::AwaitingPlaying &&
         core_.mode() == RoutingMode::Playing) {
@@ -387,8 +404,13 @@ bool ControllerIsolationRoutingSession::ProcessIngressEvent(
     const auto reading = MapEvent(event);
     if (!reading) return false;
     const auto admission = core_.EnqueueReading(*reading);
-    return admission == ReadingAdmission::Accepted ||
-        admission == ReadingAdmission::Duplicate;
+    if (admission != ReadingAdmission::Accepted &&
+        admission != ReadingAdmission::Duplicate)
+        return false;
+    return !hostInputSink_ ||
+        state_ != ControllerIsolationRoutingState::OverlayInteraction ||
+        admission == ReadingAdmission::Duplicate ||
+        hostInputSink_->PublishInput(event.state, event.ingressOrdinal);
 }
 
 ControllerIsolationRoutingResult
@@ -415,16 +437,11 @@ ControllerIsolationRoutingSession::ContinueTransition(
         pending.barrierIngressOrdinal, nowMilliseconds);
     if (ingress == DrainIngressResult::Faulted)
         return ControllerIsolationRoutingResult::Faulted;
-    if (!DrainCore(nowMilliseconds))
-        return ControllerIsolationRoutingResult::Faulted;
     if (ingress == DrainIngressResult::Waiting) {
-        const auto tick = core_.Tick(nowMilliseconds);
-        if (tick == CommandResult::Faulted) {
-            Fail();
-            return ControllerIsolationRoutingResult::Faulted;
-        }
         return ControllerIsolationRoutingResult::Waiting;
     }
+    if (!DrainCore(nowMilliseconds))
+        return ControllerIsolationRoutingResult::Faulted;
 
     pendingTransition_.reset();
     if (pending.kind == PendingTransitionKind::EnterOverlay) {
@@ -465,6 +482,14 @@ ServiceControllerIsolationRoutingBeforeControlWait(
 bool ControllerIsolationRoutingSession::DrainCore(
     const std::uint64_t nowMilliseconds) noexcept {
     if (core_.Drain(nowMilliseconds) != CommandResult::Faulted) return true;
+    Fail();
+    return false;
+}
+
+bool ControllerIsolationRoutingSession::DrainFeedback() noexcept {
+    ControllerRumbleState feedback;
+    if (!output_.TakeLatestFeedback(feedback)) return true;
+    if (source_.ApplyRumble(feedback)) return true;
     Fail();
     return false;
 }

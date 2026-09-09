@@ -11,6 +11,8 @@ namespace widgetrail::isolation {
 class ControllerIsolationOutput : public VirtualOutputEffects {
 public:
     [[nodiscard]] virtual bool OpenOwnedTarget() noexcept = 0;
+    [[nodiscard]] virtual bool TakeLatestFeedback(
+        ControllerRumbleState&) noexcept { return false; }
 };
 
 class ControllerIsolationGuideSink {
@@ -19,6 +21,14 @@ public:
     [[nodiscard]] virtual bool PublishGuide(
         bool pressed,
         std::uint64_t sourceTimestampMicroseconds,
+        std::uint64_t ingressOrdinal) noexcept = 0;
+};
+
+class ControllerIsolationHostInputSink {
+public:
+    virtual ~ControllerIsolationHostInputSink() = default;
+    [[nodiscard]] virtual bool PublishInput(
+        const GamepadState& state,
         std::uint64_t ingressOrdinal) noexcept = 0;
 };
 
@@ -50,7 +60,8 @@ public:
         SelectedControllerSource& source,
         ControllerIsolationOutput& output,
         ControllerIsolationGuideSink& guideSink,
-        RoutingBudgets budgets = {}) noexcept;
+        RoutingBudgets budgets = {},
+        ControllerIsolationHostInputSink* hostInputSink = nullptr) noexcept;
     ~ControllerIsolationRoutingSession();
 
     [[nodiscard]] ControllerIsolationReaderIngress& readerIngress() noexcept {
@@ -74,6 +85,9 @@ public:
     [[nodiscard]] ControllerIsolationRoutingResult Heartbeat(
         const RoutingAuthority& authority,
         std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] ControllerIsolationRoutingResult HoldContained(
+        const RoutingAuthority& authority,
+        std::uint64_t nowMilliseconds) noexcept;
     [[nodiscard]] ControllerIsolationRoutingResult Pump(
         std::uint64_t nowMilliseconds) noexcept;
     [[nodiscard]] ControllerIsolationRoutingResult Stop(
@@ -83,6 +97,9 @@ public:
         return state_;
     }
     [[nodiscard]] RoutingFault fault() const noexcept { return core_.fault(); }
+    [[nodiscard]] GamepadState currentState() const noexcept {
+        return lastSourceState_.value_or(GamepadState{});
+    }
 
 private:
     enum class PendingTransitionKind : std::uint8_t {
@@ -114,6 +131,7 @@ private:
     [[nodiscard]] bool ProcessIngressEvent(
         const ControllerReaderEvent& event) noexcept;
     [[nodiscard]] bool DrainCore(std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] bool DrainFeedback() noexcept;
     [[nodiscard]] ControllerIsolationRoutingResult BeginTransition(
         PendingTransitionKind kind,
         std::uint64_t measuredP99ReadingIntervalMilliseconds,
@@ -129,6 +147,7 @@ private:
     SelectedControllerSource& source_;
     ControllerIsolationOutput& output_;
     ControllerIsolationGuideSink& guideSink_;
+    ControllerIsolationHostInputSink* hostInputSink_{};
     ControllerIsolationReaderIngress ingress_;
     RoutingBudgets budgets_;
     ControllerIsolationCore core_;

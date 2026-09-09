@@ -27,6 +27,8 @@ struct FakeBackend {
     std::vector<GamepadState> reports;
     std::string failAt;
     int peerTargets{3};
+    ViGEmFeedbackCallback feedback{};
+    void* feedbackContext{};
 };
 
 thread_local FakeBackend* activeBackend{};
@@ -91,11 +93,29 @@ std::uint32_t Update(
     activeBackend->reports.push_back(state);
     return Fails("update") ? FakeBackend::Failure : FakeBackend::Success;
 }
+std::uint32_t RegisterFeedback(
+    ViGEmClientHandle client, ViGEmTargetHandle target,
+    ViGEmFeedbackCallback callback, void* context) noexcept {
+    Check(client == kClient && target == kTarget && callback && context,
+          "feedback registration owns the exact target");
+    activeBackend->calls.emplace_back("register-feedback");
+    activeBackend->feedback = callback;
+    activeBackend->feedbackContext = context;
+    return Fails("register-feedback")
+        ? FakeBackend::Failure : FakeBackend::Success;
+}
+void UnregisterFeedback(ViGEmTargetHandle target) noexcept {
+    Check(target == kTarget, "feedback unregisters only the exact target");
+    activeBackend->calls.emplace_back("unregister-feedback");
+    activeBackend->feedback = nullptr;
+    activeBackend->feedbackContext = nullptr;
+}
 
 ViGEmApi Api() {
     return {
         AllocateClient, FreeClient, Connect, Disconnect, AllocateTarget,
-        FreeTarget, AddTarget, RemoveTarget, Update, FakeBackend::Success};
+        FreeTarget, AddTarget, RemoveTarget, Update,
+        RegisterFeedback, UnregisterFeedback, FakeBackend::Success};
 }
 
 void ExactLifecycleAndReportMapping() {
@@ -118,12 +138,21 @@ void ExactLifecycleAndReportMapping() {
     Check(adapter.Submit(report) && backend.reports.size() == 2 &&
               backend.reports.back() == report,
           "every fixed report field reaches the exact target unchanged");
+    backend.feedback(backend.feedbackContext, 255, 64);
+    backend.feedback(backend.feedbackContext, 128, 32);
+    ControllerRumbleState feedback;
+    Check(adapter.TakeLatestFeedback(feedback) &&
+              feedback.lowFrequency == 128.0F / 255.0F &&
+              feedback.highFrequency == 32.0F / 255.0F &&
+              !adapter.TakeLatestFeedback(feedback),
+          "feedback is latest-wins and consumed once for the selected target");
     adapter.RemoveOwnedTarget();
     adapter.RemoveOwnedTarget();
     Check(adapter.status() == ViGEmAdapterStatus::Closed &&
               backend.calls == std::vector<std::string>{
             "allocate-client", "connect", "allocate-target", "add-target",
-            "update", "update", "remove-target", "free-target",
+            "register-feedback", "update", "update", "unregister-feedback",
+            "remove-target", "free-target",
             "disconnect", "free-client"} &&
               backend.peerTargets == 3,
           "normal and repeated teardown remove only one owned target once");

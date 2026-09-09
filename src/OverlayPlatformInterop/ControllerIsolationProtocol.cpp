@@ -1,9 +1,24 @@
 #include "ControllerIsolationProtocol.h"
 
+#include <algorithm>
 #include <limits>
 
 namespace widgetrail::isolation {
 namespace {
+
+[[nodiscard]] bool ValidInputBatch(
+    const ControllerInputBatch& batch) noexcept {
+    if (batch.count > ControllerIsolationInputBatchCapacity ||
+        batch.reserved != 0 ||
+        std::ranges::any_of(
+            batch.padding, [](std::uint8_t value) { return value != 0; }))
+        return false;
+    if (batch.count == 0)
+        return batch.firstIngressOrdinal == 0 &&
+            batch.lastIngressOrdinal == 0;
+    return batch.firstIngressOrdinal != 0 &&
+        batch.lastIngressOrdinal >= batch.firstIngressOrdinal;
+}
 
 #if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
 [[nodiscard]] bool TestingMessageKind(const ControlMessageKind kind) noexcept {
@@ -29,6 +44,9 @@ namespace {
         kind == ControlMessageKind::CommitPlaying ||
         kind == ControlMessageKind::EnterOverlay ||
         kind == ControlMessageKind::CloseOverlay ||
+        kind == ControlMessageKind::QueryStatus ||
+        kind == ControlMessageKind::Recover ||
+        kind == ControlMessageKind::HoldContained ||
         kind == ControlMessageKind::Terminal;
 }
 
@@ -43,6 +61,9 @@ namespace {
     case ControlMessageKind::CommitPlaying:
     case ControlMessageKind::EnterOverlay:
     case ControlMessageKind::CloseOverlay:
+    case ControlMessageKind::QueryStatus:
+    case ControlMessageKind::Recover:
+    case ControlMessageKind::HoldContained:
         return requestKind;
     case ControlMessageKind::Stop:
         return ControlMessageKind::Terminal;
@@ -89,6 +110,9 @@ bool ProductionMessageKind(const ControlMessageKind kind) noexcept {
     case ControlMessageKind::Terminal:
     case ControlMessageKind::PrepareSession:
     case ControlMessageKind::CommitPlaying:
+    case ControlMessageKind::QueryStatus:
+    case ControlMessageKind::Recover:
+    case ControlMessageKind::HoldContained:
         return true;
 #if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
     case ControlMessageKind::TestExit:
@@ -146,6 +170,9 @@ ControlResponseValidation ValidateControlResponse(
         response.size != sizeof(ControlFrame) || response.reserved != 0) {
         return ControlResponseValidation::InvalidShape;
     }
+    if (response.kind == ControlMessageKind::Heartbeat &&
+        !ValidInputBatch(response.inputBatch))
+        return ControlResponseValidation::InvalidShape;
     if (!ResponseMessageKind(response.kind))
         return ControlResponseValidation::InvalidKind;
     if (!SameNonce(response.nonce, nonce))

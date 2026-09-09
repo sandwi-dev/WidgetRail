@@ -436,6 +436,13 @@ function Invoke-OverlayPlatformInteropBuild {
         '/LD',
         (Join-Path $platformDirectory 'OverlayPlatformInterop.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationCore.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationProtocol.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationProcessOwner.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationJournal.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationReconnect.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationGuardianLifetime.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationHostSession.cpp'),
+        (Join-Path $platformDirectory 'HidHideConfigurationAdapter.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformPlacement.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformTargeting.cpp'),
@@ -446,7 +453,8 @@ function Invoke-OverlayPlatformInteropBuild {
         "/IMPLIB:$outputDirectory\OverlayPlatformInterop.lib"
     ) + $libraryArguments + @(
         '/SUBSYSTEM:WINDOWS', 'gameinput.lib', 'user32.lib',
-        'xinput9_1_0.lib'
+        'xinput9_1_0.lib', 'bcrypt.lib', 'advapi32.lib', 'shell32.lib',
+        'ole32.lib'
     )
     & $cl $arguments
     if ($LASTEXITCODE -ne 0) {
@@ -480,13 +488,23 @@ function Invoke-ControllerIsolationProductionBuild {
     }
 
     $guardianArguments = $common + @(
+        '/DWRAIL_GAMEINPUT_ISOLATION_READER',
         (Join-Path $controllerIsolationGuardianDirectory 'main.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationProtocol.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationProcessOwner.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationCore.cpp'),
+        (Join-Path $platformDirectory 'HidHideConfigurationAdapter.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationJournal.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationReconnect.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationGuardianSession.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationReader.cpp'),
+        (Join-Path $platformDirectory 'GameInputSelectedControllerReader.cpp'),
         "/Fo:$controllerIsolationGuardianObjectDirectory\",
         "/Fe:$outputDirectory\ControllerIsolationGuardian.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @('bcrypt.lib')
+    ) + $libraryArguments + @(
+        'bcrypt.lib', 'advapi32.lib', 'gameinput.lib', 'setupapi.lib',
+        'cfgmgr32.lib')
     & $cl $guardianArguments
     if ($LASTEXITCODE -ne 0) {
         throw "ControllerIsolationGuardian build failed with exit code $LASTEXITCODE."
@@ -544,6 +562,71 @@ function Invoke-ControllerIsolationAdapterAndProcessTests {
     & (Join-Path $outputDirectory 'ViGEmOutputAdapterTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "ViGEmOutputAdapterTests failed with exit code $LASTEXITCODE."
+    }
+
+    $hidHideArguments = $common + @(
+        (Join-Path $platformTestDirectory 'HidHideConfigurationAdapterTests.cpp'),
+        (Join-Path $platformDirectory 'HidHideConfigurationAdapter.cpp'),
+        "/Fo:$controllerIsolationTestObjectDirectory\",
+        "/Fe:$outputDirectory\HidHideConfigurationAdapterTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $hidHideArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "HidHideConfigurationAdapterTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'HidHideConfigurationAdapterTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "HidHideConfigurationAdapterTests failed with exit code $LASTEXITCODE."
+    }
+
+    $journalArguments = $common + @(
+        (Join-Path $platformTestDirectory 'ControllerIsolationJournalTests.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationJournal.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationProtocol.cpp'),
+        "/Fo:$controllerIsolationTestObjectDirectory\",
+        "/Fe:$outputDirectory\ControllerIsolationJournalTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('bcrypt.lib')
+    & $cl $journalArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerIsolationJournalTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'ControllerIsolationJournalTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerIsolationJournalTests failed with exit code $LASTEXITCODE."
+    }
+
+    $reconnectArguments = $common + @(
+        (Join-Path $platformTestDirectory 'ControllerIsolationReconnectTests.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationReconnect.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationProtocol.cpp'),
+        "/Fo:$controllerIsolationTestObjectDirectory\",
+        "/Fe:$outputDirectory\ControllerIsolationReconnectTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('advapi32.lib')
+    & $cl $reconnectArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerIsolationReconnectTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'ControllerIsolationReconnectTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerIsolationReconnectTests failed with exit code $LASTEXITCODE."
+    }
+
+    $inputTransportArguments = $common + @(
+        (Join-Path $platformTestDirectory 'ControllerIsolationInputTransportTests.cpp'),
+        "/Fo:$controllerIsolationTestObjectDirectory\",
+        "/Fe:$outputDirectory\ControllerIsolationInputTransportTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $inputTransportArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerIsolationInputTransportTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'ControllerIsolationInputTransportTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerIsolationInputTransportTests failed with exit code $LASTEXITCODE."
     }
 
     $testDefinitions = @(

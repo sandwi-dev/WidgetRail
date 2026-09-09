@@ -84,12 +84,25 @@ target_link_libraries(ControllerIsolationWorker PRIVATE
 add_executable(ControllerIsolationGuardian
     ../ControllerIsolationGuardian/main.cpp
     ../OverlayPlatformInterop/ControllerIsolationProtocol.cpp
-    ../OverlayPlatformInterop/ControllerIsolationProcessOwner.cpp)
+    ../OverlayPlatformInterop/ControllerIsolationProcessOwner.cpp
+    ../OverlayPlatformInterop/ControllerIsolationCore.cpp
+    ../OverlayPlatformInterop/HidHideConfigurationAdapter.cpp
+    ../OverlayPlatformInterop/ControllerIsolationJournal.cpp
+    ../OverlayPlatformInterop/ControllerIsolationReconnect.cpp
+    ../OverlayPlatformInterop/ControllerIsolationGuardianSession.cpp
+    ../OverlayPlatformInterop/ControllerIsolationReader.cpp
+    ../OverlayPlatformInterop/GameInputSelectedControllerReader.cpp)
 target_compile_features(ControllerIsolationGuardian PRIVATE cxx_std_20)
 target_compile_options(ControllerIsolationGuardian PRIVATE /W4 /permissive- /EHsc)
 target_compile_definitions(ControllerIsolationGuardian PRIVATE
+    WRAIL_GAMEINPUT_ISOLATION_READER
     UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-target_link_libraries(ControllerIsolationGuardian PRIVATE bcrypt)
+target_include_directories(ControllerIsolationGuardian PRIVATE
+    "${GAMEINPUT_ROOT}/native/include")
+target_link_directories(ControllerIsolationGuardian PRIVATE
+    "${GAMEINPUT_ROOT}/native/lib/x64")
+target_link_libraries(ControllerIsolationGuardian PRIVATE
+    bcrypt advapi32 gameinput setupapi cfgmgr32)
 
 add_executable(OverlayHost WIN32
     main.cpp
@@ -119,6 +132,18 @@ add_executable(OverlayHost WIN32
     OverlayTransition.cpp
     DeclarativeRenderer.cpp
     GuideInputCompatibility.cpp
+    ../OverlayPlatformInterop/OverlayPlatformInterop.cpp
+    ../OverlayPlatformInterop/OverlayPlatformPolicy.cpp
+    ../OverlayPlatformInterop/OverlayPlatformPlacement.cpp
+    ../OverlayPlatformInterop/OverlayPlatformTargeting.cpp
+    ../OverlayPlatformInterop/ControllerIsolationCore.cpp
+    ../OverlayPlatformInterop/ControllerIsolationProtocol.cpp
+    ../OverlayPlatformInterop/ControllerIsolationProcessOwner.cpp
+    ../OverlayPlatformInterop/ControllerIsolationJournal.cpp
+    ../OverlayPlatformInterop/ControllerIsolationReconnect.cpp
+    ../OverlayPlatformInterop/ControllerIsolationGuardianLifetime.cpp
+    ../OverlayPlatformInterop/ControllerIsolationHostSession.cpp
+    ../OverlayPlatformInterop/HidHideConfigurationAdapter.cpp
     ControllerNavigation.cpp
     ControllerGuide.cpp
     SliderInteraction.cpp
@@ -160,6 +185,10 @@ target_link_libraries(OverlayHost PRIVATE
     shcore
     xinput9_1_0
     windowsapp
+    bcrypt
+    advapi32
+    shell32
+    ole32
     winhttp
     windowscodecs
     ole32
@@ -366,6 +395,49 @@ if(WRAIL_BUILD_TESTS)
     target_compile_definitions(ViGEmOutputAdapterTests PRIVATE
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME ViGEmOutputAdapterTests COMMAND ViGEmOutputAdapterTests)
+
+    add_executable(HidHideConfigurationAdapterTests
+        ../../tests/OverlayPlatformInterop.Tests/HidHideConfigurationAdapterTests.cpp
+        ../OverlayPlatformInterop/HidHideConfigurationAdapter.cpp)
+    target_compile_features(HidHideConfigurationAdapterTests PRIVATE cxx_std_20)
+    target_compile_options(HidHideConfigurationAdapterTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(HidHideConfigurationAdapterTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME HidHideConfigurationAdapterTests
+        COMMAND HidHideConfigurationAdapterTests)
+
+    add_executable(ControllerIsolationJournalTests
+        ../../tests/OverlayPlatformInterop.Tests/ControllerIsolationJournalTests.cpp
+        ../OverlayPlatformInterop/ControllerIsolationJournal.cpp
+        ../OverlayPlatformInterop/ControllerIsolationProtocol.cpp)
+    target_compile_features(ControllerIsolationJournalTests PRIVATE cxx_std_20)
+    target_compile_options(ControllerIsolationJournalTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ControllerIsolationJournalTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(ControllerIsolationJournalTests PRIVATE bcrypt)
+    add_test(NAME ControllerIsolationJournalTests
+        COMMAND ControllerIsolationJournalTests)
+
+    add_executable(ControllerIsolationReconnectTests
+        ../../tests/OverlayPlatformInterop.Tests/ControllerIsolationReconnectTests.cpp
+        ../OverlayPlatformInterop/ControllerIsolationReconnect.cpp
+        ../OverlayPlatformInterop/ControllerIsolationProtocol.cpp)
+    target_compile_features(ControllerIsolationReconnectTests PRIVATE cxx_std_20)
+    target_compile_options(ControllerIsolationReconnectTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ControllerIsolationReconnectTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(ControllerIsolationReconnectTests PRIVATE advapi32)
+    add_test(NAME ControllerIsolationReconnectTests
+        COMMAND ControllerIsolationReconnectTests)
+
+    add_executable(ControllerIsolationInputTransportTests
+        ../../tests/OverlayPlatformInterop.Tests/ControllerIsolationInputTransportTests.cpp)
+    target_compile_features(ControllerIsolationInputTransportTests PRIVATE cxx_std_20)
+    target_compile_options(ControllerIsolationInputTransportTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ControllerIsolationInputTransportTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME ControllerIsolationInputTransportTests
+        COMMAND ControllerIsolationInputTransportTests)
 
     add_executable(ControllerIsolationFakeWorker
         ../ControllerIsolationWorker/main.cpp

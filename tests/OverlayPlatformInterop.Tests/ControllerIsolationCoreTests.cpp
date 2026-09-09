@@ -422,6 +422,13 @@ void HidHideJournalPreservesOtherOwners() {
               restored.desired == before,
           "clean teardown restores only the journaled additions and active flag");
 
+    auto partial = before;
+    partial.applicationPaths.insert(L"controller-worker.exe");
+    const auto recovered = PlanHidHideRecovery(apply.journal, partial);
+    Check(recovered.status == HidHideRestoreStatus::Restored &&
+              recovered.desired == before,
+          "recovery removes the owned subset after a partial transaction");
+
     auto externallyExtended = apply.desired;
     externallyExtended.applicationPaths.insert(L"other-owner.exe");
     externallyExtended.deviceInstanceIds.insert(L"other-device");
@@ -451,6 +458,30 @@ void HidHideJournalPreservesOtherOwners() {
     Check(refused.status == HidHideRestoreStatus::Conflict &&
               !refused.desired,
           "missing original authority refuses restoration instead of overwriting shared state");
+
+    auto inverted = before;
+    inverted.applicationListInverted = true;
+    Check(PlanHidHideApply(
+              inverted, L"controller-worker.exe", {L"selected-device"}).status ==
+              HidHideApplyStatus::InvalidInput,
+          "inverse application policy is rejected rather than reinterpreted");
+}
+
+void StaleHostCanRecontainAwaitingNeutral() {
+    FakeOutput output;
+    const auto authority = Authority();
+    auto core = Started(output, authority, Device());
+    Check(core.EnterOverlay(authority, 1) == CommandResult::Applied,
+          "stale-host fixture enters contained interaction");
+    GamepadState held;
+    held.buttons = 0x1000;
+    const DeviceReading current{authority, Device().enrollmentToken, 2, 2, 2, held, true};
+    Check(core.CloseOverlay(authority, current, 10, 2) ==
+              CommandResult::Waiting &&
+              core.HoldOverlay(authority, 3) == CommandResult::Applied &&
+              core.mode() == RoutingMode::OverlayInteraction &&
+              output.submitted.back() == GamepadState{},
+          "uncertain host stall cancels close and keeps exact target neutral");
 }
 
 void StopIsExactAndGenerationBound() {
@@ -479,6 +510,7 @@ int main() {
     LatencyOutliersRemainAcceptanceEvidence();
     GuardianRequiresExactIdentityAndFinalRecheck();
     HidHideJournalPreservesOtherOwners();
+    StaleHostCanRecontainAwaitingNeutral();
     StopIsExactAndGenerationBound();
     std::cout << "ControllerIsolationCoreTests passed (" << checks
               << " checks)\n";

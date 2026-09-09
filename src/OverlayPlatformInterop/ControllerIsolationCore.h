@@ -175,6 +175,9 @@ public:
     [[nodiscard]] CommandResult RenewHostLease(
         const RoutingAuthority& authority,
         std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] CommandResult HoldOverlay(
+        const RoutingAuthority& authority,
+        std::uint64_t nowMilliseconds) noexcept;
     [[nodiscard]] CommandResult Tick(
         std::uint64_t nowMilliseconds,
         const std::optional<DeviceReading>& current = std::nullopt) noexcept;
@@ -297,6 +300,7 @@ struct HidHideSnapshot final {
     std::set<std::wstring> applicationPaths;
     std::set<std::wstring> deviceInstanceIds;
     bool active{};
+    bool applicationListInverted{};
 
     [[nodiscard]] friend bool operator==(
         const HidHideSnapshot&, const HidHideSnapshot&) noexcept = default;
@@ -342,6 +346,9 @@ struct HidHideRestorePlan final {
     const std::set<std::wstring>& selectedDeviceInstanceIds);
 
 [[nodiscard]] HidHideRestorePlan PlanHidHideRestore(
+    const HidHideJournal& journal,
+    const HidHideSnapshot& current);
+[[nodiscard]] HidHideRestorePlan PlanHidHideRecovery(
     const HidHideJournal& journal,
     const HidHideSnapshot& current);
 

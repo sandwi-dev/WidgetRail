@@ -327,8 +327,24 @@ public:
         return current.connected;
     }
 
+    bool ApplyRumble(const ControllerRumbleState& state) noexcept override {
+        if (!device_ ||
+            !std::isfinite(state.lowFrequency) ||
+            !std::isfinite(state.highFrequency) ||
+            !std::isfinite(state.leftTrigger) ||
+            !std::isfinite(state.rightTrigger)) return false;
+        const GameInputRumbleParams parameters{
+            std::clamp(state.lowFrequency, 0.0F, 1.0F),
+            std::clamp(state.highFrequency, 0.0F, 1.0F),
+            std::clamp(state.leftTrigger, 0.0F, 1.0F),
+            std::clamp(state.rightTrigger, 0.0F, 1.0F)};
+        device_->SetRumbleState(&parameters);
+        return (device_->GetDeviceStatus() & GameInputDeviceConnected) != 0;
+    }
+
     void Stop() noexcept override {
         accepting_.store(false, std::memory_order_release);
+        if (device_) device_->SetRumbleState(nullptr);
         if (gameInput_) {
             for (auto* token : {&readingToken_, &deviceToken_, &guideToken_}) {
                 if (*token == 0) continue;
@@ -438,6 +454,40 @@ std::unique_ptr<SelectedControllerSource>
 CreateGameInputSelectedControllerReader() noexcept {
     return std::unique_ptr<SelectedControllerSource>(
         new (std::nothrow) GameInputSelectedControllerReader());
+}
+
+bool DiscoverCurrentPhysicalController(
+    const std::uint64_t enrollmentToken,
+    SelectedControllerDescriptor& descriptor) noexcept {
+    descriptor = {};
+    if (enrollmentToken == 0) return false;
+    ComPtr<IGameInput> gameInput;
+    ComPtr<IGameInputReading> reading;
+    ComPtr<IGameInputDevice> device;
+    if (FAILED(GameInputCreate(gameInput.ReleaseAndGetAddressOf())) ||
+        !gameInput || FAILED(gameInput->GetCurrentReading(
+            GameInputKindGamepad, nullptr, reading.ReleaseAndGetAddressOf())) ||
+        !reading) return false;
+    reading->GetDevice(device.ReleaseAndGetAddressOf());
+    if (!device) return false;
+    const GameInputDeviceInfo* info{};
+    if (FAILED(device->GetDeviceInfo(&info)) || !info) return false;
+    const auto normalized = NormalizePnpPath(info->pnpPath);
+    if (!normalized) return false;
+    CfgMgrDeviceAncestryBackend backend;
+    ControllerDeviceNodeIdentity instanceId;
+    if (!backend.ResolveInterfaceInstanceId(*normalized, instanceId) ||
+        !instanceId.valid() ||
+        ClassifyControllerDeviceAncestry(*normalized, backend) !=
+            ControllerDeviceAncestry::Physical) return false;
+    std::array<std::uint8_t, 32> digest{};
+    if (!HashPnpPath(*normalized, digest)) return false;
+    const bool connected =
+        (device->GetDeviceStatus() & GameInputDeviceConnected) != 0;
+    descriptor.enrollment = IdentityFrom(
+        *info, enrollmentToken, digest, false, connected);
+    descriptor.deviceInstanceId = instanceId;
+    return descriptor.valid();
 }
 
 } // namespace widgetrail::isolation

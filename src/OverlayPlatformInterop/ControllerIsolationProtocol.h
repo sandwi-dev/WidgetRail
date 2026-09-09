@@ -10,9 +10,10 @@
 namespace widgetrail::isolation {
 
 inline constexpr std::uint32_t ControllerIsolationProtocolMagic = 0x57494349;
-inline constexpr std::uint16_t ControllerIsolationProtocolVersion = 2;
+inline constexpr std::uint16_t ControllerIsolationProtocolVersion = 3;
 inline constexpr std::size_t ControllerIsolationNonceBytes = 32;
 inline constexpr std::size_t ControllerIsolationMaximumFrameBytes = 256;
+inline constexpr std::size_t ControllerIsolationInputBatchCapacity = 8;
 
 using ControllerIsolationNonce =
     std::array<std::uint8_t, ControllerIsolationNonceBytes>;
@@ -28,6 +29,9 @@ enum class ControlMessageKind : std::uint16_t {
     Terminal = 8,
     PrepareSession = 9,
     CommitPlaying = 10,
+    QueryStatus = 11,
+    Recover = 12,
+    HoldContained = 13,
 #if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
     TestExit = 100,
     TestHang = 101,
@@ -37,6 +41,29 @@ enum class ControlMessageKind : std::uint16_t {
     TestMalformedResponse = 105,
 #endif
 };
+
+enum class ControlProgress : std::uint64_t {
+    None = 0,
+    Queued = 1,
+    PreparedNeutral = 2,
+    AwaitingNeutral = 3,
+    Playing = 4,
+    Contained = 5,
+    Terminal = 6,
+};
+
+struct ControllerInputBatch final {
+    std::uint64_t firstIngressOrdinal{};
+    std::uint64_t lastIngressOrdinal{};
+    std::uint32_t count{};
+    std::uint32_t reserved{};
+    std::array<GamepadState, ControllerIsolationInputBatchCapacity> states{};
+    std::array<std::uint8_t, 8> padding{};
+};
+
+static_assert(sizeof(ControllerInputBatch) ==
+              sizeof(SelectedControllerEnrollment));
+static_assert(std::is_trivially_copyable_v<ControllerInputBatch>);
 
 struct ControlFrame final {
     std::uint32_t magic{ControllerIsolationProtocolMagic};
@@ -50,7 +77,10 @@ struct ControlFrame final {
     std::uint64_t deviceEnrollmentToken{};
     std::uint64_t observedAtMilliseconds{};
     GamepadState state{};
-    SelectedControllerEnrollment enrollment{};
+    union {
+        SelectedControllerEnrollment enrollment{};
+        ControllerInputBatch inputBatch;
+    };
     std::uint32_t status{};
     std::uint32_t processId{};
 };

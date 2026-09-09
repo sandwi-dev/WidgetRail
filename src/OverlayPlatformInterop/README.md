@@ -1,6 +1,6 @@
 # OverlayPlatformInterop
 
-`OverlayPlatformInterop` is the version-1 native presentation-platform boundary.
+`OverlayPlatformInterop` is the version-2 native presentation-platform boundary.
 It owns the single production Microsoft GameInput instance, supported Guide
 callback, quarantined legacy Guide adapter, controller device/sample lifecycle,
 repeat and neutral priming, Guide debounce, foreground-target memory, and safe
@@ -11,7 +11,7 @@ managed input reader. Its caller supplies the one presentation HWND lifecycle,
 marshals event-availability callbacks onto that window's UI thread, and retains
 shell action and semantic focus policy. All ABI structures carry `structSize`
 and `abiVersion`; callers must require `WRAIL_OVERLAY_PLATFORM_ABI_VERSION`.
-The version-1 managed ABI uses only fixed-width `uint32_t` scalars for Boolean
+The managed ABI uses only fixed-width `uint32_t` scalars for Boolean
 fields, parameters, return values, and out values (`0` is false; `1` is true),
 and the public header asserts every managed-facing structure size and critical
 offset. Focused verification links through the generated import library and
@@ -27,10 +27,14 @@ The legacy XInput Guide ordinal remains implemented only by
 `OverlayHost/GuideInputCompatibility.*` and is consumed privately by this
 boundary. It is not part of the public ABI.
 
-## Dormant controller-isolation worker
+## Opt-in controller isolation
 
-The separately built controller-isolation worker remains disconnected from the
-live OverlayHost ABI. Its versioned private protocol requires an explicit
+Controller isolation is disabled by default. When explicitly enabled, a
+detached Guardian owns one authenticated local session, the exact HidHide
+policy delta, and a job-contained worker. The worker owns the selected physical
+GameInput controller and one ViGEm Xbox 360 target; OverlayHost consumes only
+the Guardian's bounded ordered input stream while the overlay is active. Its
+versioned private protocol requires an explicit
 `PrepareSession` command carrying exact selected-device enrollment and routing
 authority before it creates a GameInput owner or ViGEm target. `Hello` and
 `Heartbeat` never activate either backend. Preparation revalidates the exact
@@ -61,14 +65,33 @@ and a final acquire check can classify it as stuck. Current-reading samples are
 taken only while output is contained. Their exact timestamp/state forms a
 fence that retires delayed pre-fence reading callbacks while preserving every
 post-fence edge; disconnect and Guide signals are never suppressed. Worker
-control replies remain correlated until the requested transition is actually
-applied: Enter waits for its pre-barrier drain and neutral submission, while
-Commit/Close wait until the bounded neutral dwell has restored Playing.
+control replies expose transition progress without blocking the request owner:
+Enter waits for its pre-barrier drain and neutral submission, while Commit/Close
+advance through the bounded neutral dwell. Input readings are batched in order
+across worker, Guardian, and host so short button edges are not collapsed when
+the host consumes more slowly than GameInput publishes.
 
-This is compile- and fake-test-only foundation. The present host-owned guardian
-job topology cannot keep a healthy Playing route alive across OverlayHost
-death, and therefore this path must not be enabled in the product. Guardian
-independence, a reconnect endpoint, atomic handoff from the existing live
-GameInput/Guide owner, HidHide application, and physical XInput containment are
-separate required integration work. Until that work is accepted, the existing
-OverlayPlatformInterop reader remains the only live controller owner.
+The Guardian is outside the OverlayHost job and remains the sole effect owner
+for both the persistent host pipe and a separate one-shot control pipe. A pipe
+failure does not prove owner death: the Guardian keeps the virtual target
+contained until the exact authenticated host process handle signals. Only then
+may it finish the neutral barrier and resume game-facing output. Orphan recovery
+likewise requires the journaled Guardian PID, creation time, path, and SHA-256
+identity to prove that exact process has exited before restoring the recorded
+HidHide delta. Foreign HidHide applications, devices, activation state, and
+inverse-list policy are never overwritten.
+
+HidHide and ViGEmBus must already be installed. Use the exact Release
+`OverlayHost.exe` commands below; each command authenticates the same Guardian
+artifact and never starts the ordinary overlay UI:
+
+```text
+OverlayHost.exe --controller-isolation-enable
+OverlayHost.exe --controller-isolation-status
+OverlayHost.exe --controller-isolation-disable
+OverlayHost.exe --controller-isolation-recover
+```
+
+Enable is accepted only from a missing journal; an unreadable or corrupt journal
+fails closed. Disable performs the ordinary exact-delta restore. Recover is the
+explicit orphan path and cannot mutate HidHide merely because transport failed.

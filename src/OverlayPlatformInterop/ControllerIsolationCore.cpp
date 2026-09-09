@@ -150,6 +150,7 @@ CommandResult ControllerIsolationCore::Drain(
     const std::uint64_t nowMilliseconds) noexcept {
     if (mode_ == RoutingMode::Disabled) return CommandResult::RejectedState;
     if (mode_ == RoutingMode::Fault) return CommandResult::Faulted;
+    std::optional<DeviceReading> finalAwaitingNeutralReading;
     while (readingCount_ != 0) {
         DeviceReading reading = PopReading();
         if (reading.observedAtMilliseconds > nowMilliseconds ||
@@ -172,10 +173,19 @@ CommandResult ControllerIsolationCore::Drain(
                 return CommandResult::Faulted;
             }
         } else if (mode_ == RoutingMode::AwaitingNeutral) {
-            (void)ApplyAwaitingNeutral(reading, nowMilliseconds);
+            // A complete ingress barrier can contain a neutral prefix followed
+            // by a newer held reading.  Only the newest admitted reading may
+            // advance the release dwell; otherwise the prefix could resume
+            // output and forward the held suffix to the game.
+            finalAwaitingNeutralReading = reading;
         }
         // OverlayInteraction deliberately observes current state without
         // forwarding it to the game-facing target.
+    }
+    if (mode_ == RoutingMode::AwaitingNeutral &&
+        finalAwaitingNeutralReading) {
+        return ApplyAwaitingNeutral(
+            *finalAwaitingNeutralReading, nowMilliseconds);
     }
     return CommandResult::Applied;
 }
@@ -252,6 +262,27 @@ CommandResult ControllerIsolationCore::RenewHostLease(
         return CommandResult::RejectedState;
     }
     lastLeaseRenewedAtMilliseconds_ = nowMilliseconds;
+    return CommandResult::Applied;
+}
+
+CommandResult ControllerIsolationCore::HoldOverlay(
+    const RoutingAuthority& authority,
+    const std::uint64_t nowMilliseconds) noexcept {
+    if (authority != authority_) return CommandResult::RejectedAuthority;
+    if (mode_ == RoutingMode::OverlayInteraction) {
+        lastLeaseRenewedAtMilliseconds_ = nowMilliseconds;
+        return CommandResult::Applied;
+    }
+    if (mode_ != RoutingMode::AwaitingNeutral)
+        return CommandResult::RejectedState;
+    if (!SubmitNeutral()) {
+        EnterFault(RoutingFault::OutputSubmissionFailed);
+        return CommandResult::Faulted;
+    }
+    mode_ = RoutingMode::OverlayInteraction;
+    lastLeaseRenewedAtMilliseconds_ = nowMilliseconds;
+    neutralSinceMilliseconds_.reset();
+    ClearReadings();
     return CommandResult::Applied;
 }
 
@@ -432,6 +463,7 @@ HidHideApplyResult PlanHidHideApply(
     const std::wstring& workerApplicationPath,
     const std::set<std::wstring>& selectedDeviceInstanceIds) {
     if (workerApplicationPath.empty() || selectedDeviceInstanceIds.empty() ||
+        before.applicationListInverted ||
         std::ranges::any_of(selectedDeviceInstanceIds, [](const auto& value) {
             return value.empty();
         })) {
@@ -465,7 +497,9 @@ HidHideApplyResult PlanHidHideApply(
 HidHideRestorePlan PlanHidHideRestore(
     const HidHideJournal& journal,
     const HidHideSnapshot& current) {
-    if (!Includes(current.applicationPaths, journal.before.applicationPaths) ||
+    if (current.applicationListInverted !=
+            journal.before.applicationListInverted ||
+        !Includes(current.applicationPaths, journal.before.applicationPaths) ||
         !Includes(current.deviceInstanceIds, journal.before.deviceInstanceIds) ||
         !Includes(current.applicationPaths, journal.ownedApplicationPaths) ||
         !Includes(current.deviceInstanceIds, journal.ownedDeviceInstanceIds)) {
@@ -492,6 +526,34 @@ HidHideRestorePlan PlanHidHideRestore(
             : HidHideRestoreStatus::Restored,
         std::move(desired),
     };
+}
+
+HidHideRestorePlan PlanHidHideRecovery(
+    const HidHideJournal& journal,
+    const HidHideSnapshot& current) {
+    if (!Includes(current.applicationPaths, journal.before.applicationPaths) ||
+        !Includes(current.deviceInstanceIds, journal.before.deviceInstanceIds) ||
+        current.applicationListInverted !=
+            journal.before.applicationListInverted) {
+        return {HidHideRestoreStatus::Conflict, std::nullopt};
+    }
+    HidHideSnapshot desired = current;
+    for (const auto& value : journal.ownedApplicationPaths)
+        desired.applicationPaths.erase(value);
+    for (const auto& value : journal.ownedDeviceInstanceIds)
+        desired.deviceInstanceIds.erase(value);
+    const bool externalAdditions = HasExternalAdditions(
+        current.applicationPaths, journal.before.applicationPaths,
+        journal.ownedApplicationPaths) || HasExternalAdditions(
+        current.deviceInstanceIds, journal.before.deviceInstanceIds,
+        journal.ownedDeviceInstanceIds);
+    if (journal.activatedBySession && current.active && !externalAdditions)
+        desired.active = false;
+    return {
+        externalAdditions
+            ? HidHideRestoreStatus::ExternalAdditionsPreserved
+            : HidHideRestoreStatus::Restored,
+        std::move(desired)};
 }
 
 } // namespace widgetrail::isolation

@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <type_traits>
 
-inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_ABI_VERSION = 1;
+inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_ABI_VERSION = 2;
 inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_FALSE = 0;
 inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_TRUE = 1;
 
@@ -17,6 +17,7 @@ enum class WidgetRailOverlayPlatformStatus : std::uint32_t {
     NotInitialized = 3,
     ShutDown = 4,
     AllocationFailed = 5,
+    ControllerIsolationUnavailable = 6,
 };
 
 enum class WidgetRailOverlayPlatformEventKind : std::uint32_t {
@@ -51,6 +52,33 @@ enum class WidgetRailOverlayPlatformReadPath : std::uint32_t {
     None = 0,
     GameInputVisibleLease = 1,
     XInputCompatibility = 2,
+    ControllerIsolation = 3,
+};
+
+enum class WidgetRailControllerIsolationCommand : std::uint32_t {
+    Enable = 1,
+    Status = 2,
+    Disable = 3,
+    Recover = 4,
+};
+
+enum class WidgetRailControllerIsolationState : std::uint32_t {
+    Disabled = 0,
+    Prepared = 1,
+    AwaitingNeutral = 2,
+    Playing = 3,
+    Contained = 4,
+    RecoveryRequired = 5,
+    Failed = 6,
+};
+
+struct WidgetRailControllerIsolationCommandResult final {
+    std::uint32_t structSize{sizeof(WidgetRailControllerIsolationCommandResult)};
+    std::uint32_t abiVersion{WRAIL_OVERLAY_PLATFORM_ABI_VERSION};
+    WidgetRailControllerIsolationState state{
+        WidgetRailControllerIsolationState::Disabled};
+    std::uint32_t reserved{};
+    wchar_t message[512]{};
 };
 
 struct WidgetRailOverlayPlatformEvent final {
@@ -97,6 +125,7 @@ struct WidgetRailOverlayPlatformControllerFrame final {
     std::uint32_t primed{};
     WidgetRailOverlayPlatformNavigationEvent stickNavigation{};
     WidgetRailOverlayPlatformNavigationEvent dpadNavigation{};
+    std::uint32_t remainingFrames{};
 };
 
 struct WidgetRailOverlayPlatformPlacementInput final {
@@ -172,6 +201,15 @@ WidgetRailOverlayPlatformSetWindowState(
     std::uint32_t focused) noexcept;
 
 WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformPrepareVisible(
+    WidgetRailOverlayPlatformHandle* handle) noexcept;
+
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformControllerIsolationCommand(
+    WidgetRailControllerIsolationCommand command,
+    WidgetRailControllerIsolationCommandResult* result) noexcept;
+
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformDrainEvent(
     WidgetRailOverlayPlatformHandle* handle,
     std::uint64_t nowMilliseconds,
@@ -235,10 +273,11 @@ static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformControllerFrame
 static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformPlacementInput>);
 static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformPlacement>);
 static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformCreateOptions>);
+static_assert(std::is_standard_layout_v<WidgetRailControllerIsolationCommandResult>);
 static_assert(sizeof(WidgetRailOverlayPlatformEvent) == 32);
 static_assert(sizeof(WidgetRailOverlayPlatformRawControllerState) == 12);
 static_assert(sizeof(WidgetRailOverlayPlatformNavigationEvent) == 8);
-static_assert(sizeof(WidgetRailOverlayPlatformControllerFrame) == 76);
+static_assert(sizeof(WidgetRailOverlayPlatformControllerFrame) == 80);
 static_assert(sizeof(WidgetRailOverlayPlatformPlacementInput) == 48);
 static_assert(sizeof(WidgetRailOverlayPlatformPlacement) == 24);
 static_assert(sizeof(WidgetRailOverlayPlatformCreateOptions) == 32);

@@ -214,12 +214,21 @@ bool ChildControlChannel::Reply(
     const ControlMessageKind kind,
     const ControlFrame& request,
     const std::uint32_t status,
-    const std::uint32_t processId) noexcept {
+    const std::uint32_t processId,
+    const ControlProgress progress,
+    const GamepadState& state,
+    const std::uint64_t eventOrdinal,
+    const ControllerInputBatch& inputBatch) noexcept {
     if (!shared_) return false;
     shared_->response = MakeControlFrame(
         kind, admission_.nonce, admission_.authority, request.sequence);
     shared_->response.status = status;
     shared_->response.processId = processId;
+    shared_->response.observedAtMilliseconds =
+        static_cast<std::uint64_t>(progress);
+    shared_->response.state = state;
+    shared_->response.deviceEnrollmentToken = eventOrdinal;
+    shared_->response.inputBatch = inputBatch;
     MemoryBarrier();
     return SetEvent(responseEvent_) != FALSE;
 }
@@ -421,6 +430,16 @@ bool ControllerIsolationProcessOwner::Send(
     const DWORD timeoutMilliseconds,
     ControlFrame& response,
     std::wstring& error) noexcept {
+    auto request = MakeControlFrame(kind, nonce_, authority_, nextSequence_);
+    return Send(request, timeoutMilliseconds, response, error);
+}
+
+bool ControllerIsolationProcessOwner::Send(
+    const ControlFrame& request,
+    const DWORD timeoutMilliseconds,
+    ControlFrame& response,
+    std::wstring& error) noexcept {
+    const auto kind = request.kind;
     if (!shared_ || !childProcess_ || nextSequence_ == 0 ||
         kind == ControlMessageKind::Hello ||
         kind == ControlMessageKind::HelloAccepted) {
@@ -428,6 +447,10 @@ bool ControllerIsolationProcessOwner::Send(
         return false;
     }
     shared_->request = MakeControlFrame(kind, nonce_, authority_, nextSequence_);
+    shared_->request.deviceEnrollmentToken = request.deviceEnrollmentToken;
+    shared_->request.observedAtMilliseconds = request.observedAtMilliseconds;
+    shared_->request.state = request.state;
+    shared_->request.enrollment = request.enrollment;
     MemoryBarrier();
     if (!SetEvent(requestEvent_) ||
         !WaitForResponse(

@@ -1,13 +1,18 @@
 #pragma once
 
 #include "ControllerIsolationCore.h"
+#include "ControllerIsolationReader.h"
 
+#include <atomic>
 #include <cstdint>
 
 namespace widgetrail::isolation {
 
 using ViGEmClientHandle = void*;
 using ViGEmTargetHandle = void*;
+using ViGEmFeedbackCallback = void (*)(
+    void* context, std::uint8_t largeMotor,
+    std::uint8_t smallMotor) noexcept;
 
 struct ViGEmApi final {
     ViGEmClientHandle (*AllocateClient)() noexcept{};
@@ -24,6 +29,10 @@ struct ViGEmApi final {
         ViGEmClientHandle,
         ViGEmTargetHandle,
         const GamepadState&) noexcept{};
+    std::uint32_t (*RegisterFeedback)(
+        ViGEmClientHandle, ViGEmTargetHandle,
+        ViGEmFeedbackCallback, void*) noexcept{};
+    void (*UnregisterFeedback)(ViGEmTargetHandle) noexcept{};
     std::uint32_t successCode{};
 
     [[nodiscard]] bool complete() const noexcept;
@@ -54,6 +63,8 @@ public:
 
     [[nodiscard]] bool Open() noexcept;
     [[nodiscard]] bool Submit(const GamepadState& state) noexcept override;
+    [[nodiscard]] bool TakeLatestFeedback(
+        ControllerRumbleState& state) noexcept;
     void RemoveOwnedTarget() noexcept override;
 
     [[nodiscard]] ViGEmAdapterStatus status() const noexcept { return status_; }
@@ -63,14 +74,24 @@ public:
     }
 
 private:
+    static constexpr std::uint32_t FeedbackClosed = 1U << 31;
+    static constexpr std::uint32_t FeedbackCountMask = FeedbackClosed - 1;
     [[nodiscard]] bool Succeeded(std::uint32_t result) const noexcept;
     void CloseClient() noexcept;
+    static void Feedback(
+        void* context, std::uint8_t largeMotor,
+        std::uint8_t smallMotor) noexcept;
 
     const ViGEmApi& api_;
     ViGEmClientHandle client_{};
     ViGEmTargetHandle target_{};
     bool connected_{};
     bool targetAdded_{};
+    bool feedbackRegistered_{};
+    std::atomic<std::uint64_t> feedbackSequence_{};
+    std::atomic<std::uint16_t> feedbackMotors_{};
+    std::atomic<std::uint32_t> feedbackGate_{FeedbackClosed};
+    std::uint64_t consumedFeedbackSequence_{};
     ViGEmAdapterStatus status_{ViGEmAdapterStatus::Closed};
     std::uint32_t rawError_{};
 };

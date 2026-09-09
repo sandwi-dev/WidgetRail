@@ -126,6 +126,23 @@ struct FakeGuideSink final : ControllerIsolationGuideSink {
     }
 };
 
+struct HostInputEvent final {
+    GamepadState state{};
+    std::uint64_t ordinal{};
+};
+
+struct FakeHostInputSink final : ControllerIsolationHostInputSink {
+    std::vector<HostInputEvent> events;
+    bool accepts{true};
+    bool PublishInput(
+        const GamepadState& state,
+        const std::uint64_t ordinal) noexcept override {
+        if (!accepts) return false;
+        events.push_back({state, ordinal});
+        return true;
+    }
+};
+
 void Prepare(
     ControllerIsolationRoutingSession& session,
     const RoutingAuthority& authority,
@@ -432,11 +449,14 @@ void ReservedProducerDefersBarrierAndCachedNeutral() {
     Check(session.CloseOverlay(authority, 10, 24) ==
               ControllerIsolationRoutingResult::Waiting,
           "close enters its neutral wait");
+    Check(source.Publish(
+              ControllerReaderEventKind::Reading, 103, 25, {}),
+          "a neutral prefix is published inside the next drain barrier");
     session.readerIngress().PauseNextProducerForTest();
     bool secondPublished{};
     std::thread secondProducer([&] {
         secondPublished = source.Publish(
-            ControllerReaderEventKind::Reading, 103, 25, held);
+            ControllerReaderEventKind::Reading, 104, 26, held);
     });
     for (std::size_t attempt = 0;
          attempt < 10'000 &&
@@ -445,14 +465,54 @@ void ReservedProducerDefersBarrierAndCachedNeutral() {
     }
     Check(session.Pump(44) == ControllerIsolationRoutingResult::Waiting &&
               session.state() == ControllerIsolationRoutingState::AwaitingPlaying,
-          "unpublished reserved input prevents false cached-neutral resume");
+          "neutral prefix cannot resume while a held suffix is unpublished");
     session.readerIngress().ReleaseProducerForTest();
     secondProducer.join();
-    source.current = {103, 25, held, true};
+    source.current = {104, 26, held, true};
     Check(secondPublished &&
               session.Pump(45) == ControllerIsolationRoutingResult::Waiting &&
               session.state() == ControllerIsolationRoutingState::AwaitingPlaying,
-          "released post-fence held edge resets neutral waiting");
+          "completed barrier evaluates its final held reading without transient resume");
+}
+
+void PendingEnterCanBeRecontainedOnHostLoss() {
+    const auto authority = Authority();
+    FakeSource source;
+    FakeOutput output;
+    FakeGuideSink guide;
+    ControllerIsolationRoutingSession session{source, output, guide};
+    Prepare(session, authority, Enrollment(), source, output);
+    Check(session.CommitPlaying(authority, 10, 0) ==
+              ControllerIsolationRoutingResult::Waiting &&
+              session.Pump(20) == ControllerIsolationRoutingResult::Applied,
+          "host-loss fixture reaches Playing");
+    session.readerIngress().PauseNextProducerForTest();
+    bool published{};
+    GamepadState held;
+    held.buttons = 0x1000;
+    std::thread producer([&] {
+        published = source.Publish(
+            ControllerReaderEventKind::Reading, 101, 21, held);
+    });
+    for (std::size_t attempt = 0;
+         attempt < 10'000 &&
+             !session.readerIngress().ProducerPausedForTest(); ++attempt) {
+        std::this_thread::yield();
+    }
+    Check(session.EnterOverlay(authority, 21) ==
+              ControllerIsolationRoutingResult::Waiting &&
+              session.HoldContained(authority, 22) ==
+                  ControllerIsolationRoutingResult::Applied &&
+              session.state() ==
+                  ControllerIsolationRoutingState::OverlayInteraction &&
+              output.reports.back() == GamepadState{},
+          "uncertain host loss cancels queued entry and keeps output contained");
+    session.readerIngress().ReleaseProducerForTest();
+    producer.join();
+    Check(published && session.Pump(23) ==
+              ControllerIsolationRoutingResult::Applied &&
+              output.reports.back() == GamepadState{},
+          "late reserved input remains host-only after recontainment");
 }
 
 void ControlTrafficCannotStarveReadingPump() {
@@ -519,6 +579,47 @@ void StuckProducerFaultsOnlyAfterRealQueueAge() {
           "paused callback can retire after the session has failed closed");
 }
 
+void ContainedInputPreservesTapAndSustainedAnalogOrder() {
+    const auto authority = Authority();
+    FakeSource source;
+    FakeOutput output;
+    FakeGuideSink guide;
+    FakeHostInputSink host;
+    ControllerIsolationRoutingSession session{
+        source, output, guide, {}, &host};
+    Prepare(session, authority, Enrollment(), source, output);
+    Check(session.CommitPlaying(authority, 10, 0) ==
+              ControllerIsolationRoutingResult::Waiting &&
+              session.Pump(20) == ControllerIsolationRoutingResult::Applied &&
+              session.EnterOverlay(authority, 21) ==
+                  ControllerIsolationRoutingResult::Applied,
+          "host-input fixture reaches contained overlay ownership");
+    GamepadState pressed;
+    pressed.buttons = 0x1000;
+    Check(source.Publish(
+              ControllerReaderEventKind::Reading, 101, 22, pressed) &&
+              source.Publish(
+                  ControllerReaderEventKind::Reading, 102, 22, {}) &&
+              session.Pump(22) == ControllerIsolationRoutingResult::Applied,
+          "a complete short press and release enters one contained drain");
+    for (std::uint64_t index = 0; index < 48; ++index) {
+        GamepadState analog;
+        analog.leftThumbX = static_cast<std::int16_t>(index * 500 - 12'000);
+        Check(source.Publish(
+                  ControllerReaderEventKind::Reading,
+                  103 + index, 23 + index, analog) &&
+                  session.Pump(23 + index) ==
+                      ControllerIsolationRoutingResult::Applied,
+              "sustained analog changes remain admitted under slower host consumption");
+    }
+    Check(host.events.size() == 50 &&
+              host.events[0].state == pressed &&
+              host.events[1].state == GamepadState{} &&
+              host.events.front().ordinal < host.events.back().ordinal &&
+              output.reports.back() == GamepadState{},
+          "contained host stream retains press, release, and every analog state without game output");
+}
+
 } // namespace
 
 int main() {
@@ -529,8 +630,10 @@ int main() {
     LeaseDisconnectAndSinkFailuresRetireOwnedTarget();
     ConflictingSourceTimestampFailsClosed();
     ReservedProducerDefersBarrierAndCachedNeutral();
+    PendingEnterCanBeRecontainedOnHostLoss();
     ControlTrafficCannotStarveReadingPump();
     StuckProducerFaultsOnlyAfterRealQueueAge();
+    ContainedInputPreservesTapAndSustainedAnalogOrder();
     std::cout << "ControllerIsolationRoutingSessionTests passed " << checks
               << " checks.\n";
     return EXIT_SUCCESS;

@@ -1,4 +1,5 @@
 #include "../OverlayPlatformInterop/ControllerIsolationProcessOwner.h"
+#include "../OverlayPlatformInterop/ControllerIsolationGuardianSession.h"
 
 #include <windows.h>
 
@@ -32,6 +33,12 @@ std::filesystem::path SiblingWorker() {
 } // namespace
 
 int wmain(const int argumentCount, wchar_t** arguments) {
+#if !defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
+    if (argumentCount == 3 && arguments[1] && arguments[2] &&
+        _wcsicmp(arguments[1], L"--controller-isolation-session") == 0) {
+        return RunControllerIsolationGuardianSession(arguments[2]);
+    }
+#endif
     std::wstring error;
     auto channel = ChildControlChannel::Open(
         argumentCount, arguments, kExpectedParent, error);
@@ -88,7 +95,35 @@ int wmain(const int argumentCount, wchar_t** arguments) {
             }
             if (!channel->Reply(
                     ControlMessageKind::Heartbeat, request, 0,
-                    worker.processId())) {
+                    worker.processId(),
+                    static_cast<ControlProgress>(
+                        workerResponse.observedAtMilliseconds),
+                    workerResponse.state,
+                    workerResponse.deviceEnrollmentToken,
+                    workerResponse.inputBatch)) {
+                return ERROR_BROKEN_PIPE;
+            }
+            break;
+        case ControlMessageKind::PrepareSession:
+        case ControlMessageKind::CommitPlaying:
+        case ControlMessageKind::EnterOverlay:
+        case ControlMessageKind::CloseOverlay:
+        case ControlMessageKind::HoldContained:
+            if (!worker.Send(
+                    request, ControllerIsolationCommandTimeoutMilliseconds,
+                    workerResponse, error)) {
+                worker.Stop();
+                const auto remoteStatus = workerResponse.status != 0
+                    ? workerResponse.status
+                    : static_cast<std::uint32_t>(ERROR_TIMEOUT);
+                (void)channel->Reply(
+                    ControlMessageKind::Terminal, request, remoteStatus);
+                return static_cast<int>(remoteStatus);
+            }
+            if (!channel->Reply(
+                    request.kind, request, 0, worker.processId(),
+                    static_cast<ControlProgress>(
+                        workerResponse.observedAtMilliseconds))) {
                 return ERROR_BROKEN_PIPE;
             }
             break;

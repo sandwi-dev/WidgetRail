@@ -1,4 +1,5 @@
 #include "../OverlayPlatformInterop/ControllerIsolationProcessOwner.h"
+#include "../OverlayPlatformInterop/ControllerIsolationInputTransport.h"
 
 #if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
 #include "../OverlayPlatformInterop/ControllerIsolationRoutingSession.h"
@@ -27,6 +28,9 @@ public:
     bool Submit(const GamepadState& state) noexcept override {
         return adapter_.Submit(state);
     }
+    bool TakeLatestFeedback(ControllerRumbleState& state) noexcept override {
+        return adapter_.TakeLatestFeedback(state);
+    }
     void RemoveOwnedTarget() noexcept override {
         adapter_.RemoveOwnedTarget();
     }
@@ -51,6 +55,16 @@ public:
         return true;
     }
 
+    [[nodiscard]] std::uint64_t TakeNext() noexcept {
+        if (count_ == 0) return 0;
+        const auto event = events_[head_];
+        head_ = (head_ + 1) % events_.size();
+        --count_;
+        // High bit identifies release; zero is reserved for no event.
+        return event.ingressOrdinal |
+            (event.pressed ? 0ULL : (1ULL << 63));
+    }
+
 private:
     struct Event final {
         bool pressed{};
@@ -62,30 +76,48 @@ private:
     std::size_t count_{};
 };
 
+class PendingHostInputSink final : public ControllerIsolationHostInputSink {
+public:
+    bool PublishInput(
+        const GamepadState& state,
+        const std::uint64_t ingressOrdinal) noexcept override {
+        return queue_.Push(state, ingressOrdinal);
+    }
+
+    [[nodiscard]] ControllerInputBatch TakeBatch() noexcept {
+        return queue_.TakeBatch();
+    }
+
+private:
+    ControllerIsolationInputEventQueue queue_;
+};
+
 [[nodiscard]] bool Applied(
     const ControllerIsolationRoutingResult result) noexcept {
     return result == ControllerIsolationRoutingResult::Applied;
 }
 
-[[nodiscard]] bool CompleteTransition(
-    ControllerIsolationRoutingSession& routing,
-    const ControllerIsolationRoutingResult initial,
-    const ControllerIsolationRoutingState completedState) noexcept {
-    if (routing.state() == completedState) return Applied(initial);
-    if (initial != ControllerIsolationRoutingResult::Waiting) return false;
-    const auto startedAt = GetTickCount64();
-    for (;;) {
-        const auto now = GetTickCount64();
-        if (now < startedAt ||
-            now - startedAt > ControllerIsolationCommandTimeoutMilliseconds) {
-            return false;
-        }
-        const auto result =
-            ServiceControllerIsolationRoutingBeforeControlWait(routing, now);
-        if (routing.state() == completedState) return Applied(result);
-        if (result != ControllerIsolationRoutingResult::Waiting) return false;
-        Sleep(1);
+[[nodiscard]] ControlProgress Progress(
+    const ControllerIsolationRoutingState state,
+    const ControllerIsolationRoutingResult result) noexcept {
+    if (result == ControllerIsolationRoutingResult::Waiting &&
+        state == ControllerIsolationRoutingState::Playing) {
+        return ControlProgress::Queued;
     }
+    switch (state) {
+    case ControllerIsolationRoutingState::PreparedNeutral:
+        return ControlProgress::PreparedNeutral;
+    case ControllerIsolationRoutingState::AwaitingPlaying:
+        return ControlProgress::AwaitingNeutral;
+    case ControllerIsolationRoutingState::Playing:
+        return ControlProgress::Playing;
+    case ControllerIsolationRoutingState::OverlayInteraction:
+        return ControlProgress::Contained;
+    case ControllerIsolationRoutingState::Disabled:
+    case ControllerIsolationRoutingState::Fault:
+        return ControlProgress::Terminal;
+    }
+    return ControlProgress::Terminal;
 }
 #endif
 
@@ -111,8 +143,10 @@ int wmain(const int argumentCount, wchar_t** arguments) {
     auto source = CreateGameInputSelectedControllerReader();
     WorkerOutput output;
     PendingGuideSink guideSink;
+    PendingHostInputSink hostInputSink;
     if (!source) return ERROR_NOT_ENOUGH_MEMORY;
-    ControllerIsolationRoutingSession routing(*source, output, guideSink);
+    ControllerIsolationRoutingSession routing(
+        *source, output, guideSink, {}, &hostInputSink);
 #endif
 
     if (!channel->Reply(
@@ -159,7 +193,7 @@ int wmain(const int argumentCount, wchar_t** arguments) {
 #endif
         if (wait != ChildWaitResult::Request) return ERROR_INVALID_DATA;
         switch (request.kind) {
-        case ControlMessageKind::Heartbeat:
+        case ControlMessageKind::Heartbeat: {
 #if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
             if (routing.state() != ControllerIsolationRoutingState::Disabled &&
                 !Applied(routing.Heartbeat(request.authority, GetTickCount64()))) {
@@ -169,9 +203,23 @@ int wmain(const int argumentCount, wchar_t** arguments) {
                 return ERROR_INVALID_STATE;
             }
 #endif
-            if (!channel->Reply(ControlMessageKind::Heartbeat, request))
+            ControlProgress progress{ControlProgress::None};
+#if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
+            progress = Progress(
+                routing.state(), ControllerIsolationRoutingResult::Applied);
+#endif
+            if (!channel->Reply(
+                    ControlMessageKind::Heartbeat, request, 0,
+                    GetCurrentProcessId(), progress,
+#if defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
+                    {}, 0, {}))
+#else
+                    routing.currentState(), guideSink.TakeNext(),
+                    hostInputSink.TakeBatch()))
+#endif
                 return ERROR_BROKEN_PIPE;
             break;
+        }
 #if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
         case ControlMessageKind::PrepareSession: {
             const auto result = routing.PrepareSession(
@@ -182,7 +230,9 @@ int wmain(const int argumentCount, wchar_t** arguments) {
                     static_cast<std::uint32_t>(result) + 1);
                 return ERROR_DEVICE_NOT_AVAILABLE;
             }
-            if (!channel->Reply(ControlMessageKind::PrepareSession, request))
+            if (!channel->Reply(
+                    ControlMessageKind::PrepareSession, request, 0,
+                    GetCurrentProcessId(), Progress(routing.state(), result)))
                 return ERROR_BROKEN_PIPE;
             break;
         }
@@ -190,30 +240,32 @@ int wmain(const int argumentCount, wchar_t** arguments) {
             const auto result = routing.CommitPlaying(
                 request.authority, request.observedAtMilliseconds,
                 GetTickCount64());
-            if (!CompleteTransition(
-                    routing, result,
-                    ControllerIsolationRoutingState::Playing)) {
+            if (result != ControllerIsolationRoutingResult::Applied &&
+                result != ControllerIsolationRoutingResult::Waiting) {
                 (void)channel->Reply(
                     ControlMessageKind::Terminal, request,
                     static_cast<std::uint32_t>(result) + 1);
                 return ERROR_INVALID_STATE;
             }
-            if (!channel->Reply(ControlMessageKind::CommitPlaying, request))
+            if (!channel->Reply(
+                    ControlMessageKind::CommitPlaying, request, 0,
+                    GetCurrentProcessId(), Progress(routing.state(), result)))
                 return ERROR_BROKEN_PIPE;
             break;
         }
         case ControlMessageKind::EnterOverlay: {
             const auto result = routing.EnterOverlay(
                 request.authority, GetTickCount64());
-            if (!CompleteTransition(
-                    routing, result,
-                    ControllerIsolationRoutingState::OverlayInteraction)) {
+            if (result != ControllerIsolationRoutingResult::Applied &&
+                result != ControllerIsolationRoutingResult::Waiting) {
                 (void)channel->Reply(
                     ControlMessageKind::Terminal, request,
                     static_cast<std::uint32_t>(result) + 1);
                 return ERROR_INVALID_STATE;
             }
-            if (!channel->Reply(ControlMessageKind::EnterOverlay, request))
+            if (!channel->Reply(
+                    ControlMessageKind::EnterOverlay, request, 0,
+                    GetCurrentProcessId(), Progress(routing.state(), result)))
                 return ERROR_BROKEN_PIPE;
             break;
         }
@@ -221,15 +273,31 @@ int wmain(const int argumentCount, wchar_t** arguments) {
             const auto result = routing.CloseOverlay(
                 request.authority, request.observedAtMilliseconds,
                 GetTickCount64());
-            if (!CompleteTransition(
-                    routing, result,
-                    ControllerIsolationRoutingState::Playing)) {
+            if (result != ControllerIsolationRoutingResult::Applied &&
+                result != ControllerIsolationRoutingResult::Waiting) {
                 (void)channel->Reply(
                     ControlMessageKind::Terminal, request,
                     static_cast<std::uint32_t>(result) + 1);
                 return ERROR_INVALID_STATE;
             }
-            if (!channel->Reply(ControlMessageKind::CloseOverlay, request))
+            if (!channel->Reply(
+                    ControlMessageKind::CloseOverlay, request, 0,
+                    GetCurrentProcessId(), Progress(routing.state(), result)))
+                return ERROR_BROKEN_PIPE;
+            break;
+        }
+        case ControlMessageKind::HoldContained: {
+            const auto result = routing.HoldContained(
+                request.authority, GetTickCount64());
+            if (result != ControllerIsolationRoutingResult::Applied) {
+                (void)channel->Reply(
+                    ControlMessageKind::Terminal, request,
+                    static_cast<std::uint32_t>(result) + 1);
+                return ERROR_INVALID_STATE;
+            }
+            if (!channel->Reply(
+                    ControlMessageKind::HoldContained, request, 0,
+                    GetCurrentProcessId(), Progress(routing.state(), result)))
                 return ERROR_BROKEN_PIPE;
             break;
         }

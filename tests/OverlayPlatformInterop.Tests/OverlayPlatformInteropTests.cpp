@@ -79,13 +79,16 @@ int main() {
               GetProcAddress(importedModule,
                   "WidgetRailOverlayPlatformGetAbiVersion") != nullptr,
           "the focused executable imports the built public DLL ABI");
-    Check(sizeof(WidgetRailOverlayPlatformControllerFrame) == 76 &&
+    Check(sizeof(WidgetRailOverlayPlatformControllerFrame) == 80 &&
               offsetof(WidgetRailOverlayPlatformControllerFrame, state) == 20 &&
               offsetof(
                   WidgetRailOverlayPlatformControllerFrame,
                   stickNavigation) == 60 &&
+              offsetof(
+                  WidgetRailOverlayPlatformControllerFrame,
+                  remainingFrames) == 76 &&
               sizeof(WidgetRailOverlayPlatformCreateOptions) == 32,
-          "the managed-facing version-1 layouts match the fixed-width contract");
+          "the managed-facing version-2 layouts match the fixed-width contract");
 
     WidgetRailOverlayPlatformCreateOptions invalidOptions;
     invalidOptions.abiVersion = WRAIL_OVERLAY_PLATFORM_ABI_VERSION + 1;

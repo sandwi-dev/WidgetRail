@@ -184,6 +184,26 @@ struct SelectedControllerCurrent final {
     bool connected{};
 };
 
+struct ControllerRumbleState final {
+    float lowFrequency{};
+    float highFrequency{};
+    float leftTrigger{};
+    float rightTrigger{};
+
+    [[nodiscard]] friend bool operator==(
+        const ControllerRumbleState&,
+        const ControllerRumbleState&) noexcept = default;
+};
+
+struct SelectedControllerDescriptor final {
+    SelectedControllerEnrollment enrollment{};
+    ControllerDeviceNodeIdentity deviceInstanceId{};
+
+    [[nodiscard]] bool valid() const noexcept {
+        return enrollment.valid() && deviceInstanceId.valid();
+    }
+};
+
 class SelectedControllerSource {
 public:
     virtual ~SelectedControllerSource() = default;
@@ -192,12 +212,17 @@ public:
         ControllerIsolationReaderIngress& ingress) noexcept = 0;
     [[nodiscard]] virtual bool SampleCurrent(
         SelectedControllerCurrent& current) noexcept = 0;
+    [[nodiscard]] virtual bool ApplyRumble(
+        const ControllerRumbleState&) noexcept { return false; }
     virtual void Stop() noexcept = 0;
 };
 
 #if defined(WRAIL_GAMEINPUT_ISOLATION_READER)
 [[nodiscard]] std::unique_ptr<SelectedControllerSource>
 CreateGameInputSelectedControllerReader() noexcept;
+[[nodiscard]] bool DiscoverCurrentPhysicalController(
+    std::uint64_t enrollmentToken,
+    SelectedControllerDescriptor& descriptor) noexcept;
 #endif
 
 } // namespace widgetrail::isolation

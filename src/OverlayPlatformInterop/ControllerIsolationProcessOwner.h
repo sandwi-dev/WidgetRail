@@ -53,7 +53,11 @@ public:
         ControlMessageKind kind,
         const ControlFrame& request,
         std::uint32_t status = 0,
-        std::uint32_t processId = 0) noexcept;
+        std::uint32_t processId = 0,
+        ControlProgress progress = ControlProgress::None,
+        const GamepadState& state = {},
+        std::uint64_t eventOrdinal = 0,
+        const ControllerInputBatch& inputBatch = {}) noexcept;
 #if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
     [[nodiscard]] bool ReplyRawForTest(
         const ControlFrame& response) noexcept;
@@ -96,6 +100,11 @@ public:
         std::wstring& error) noexcept;
     [[nodiscard]] bool Send(
         ControlMessageKind kind,
+        DWORD timeoutMilliseconds,
+        ControlFrame& response,
+        std::wstring& error) noexcept;
+    [[nodiscard]] bool Send(
+        const ControlFrame& request,
         DWORD timeoutMilliseconds,
         ControlFrame& response,
         std::wstring& error) noexcept;
