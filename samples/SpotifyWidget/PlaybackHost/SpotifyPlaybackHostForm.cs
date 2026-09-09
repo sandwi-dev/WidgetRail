@@ -517,6 +517,7 @@ internal sealed class SpotifyPlaybackHostForm : Form
             return "top-level";
         if (string.Equals(uri.Scheme, Uri.UriSchemeHttps,
                 StringComparison.OrdinalIgnoreCase) &&
+            uri.IsDefaultPort &&
             string.Equals(uri.Host, "sdk.scdn.co", StringComparison.OrdinalIgnoreCase))
             return "exact-sdk";
         if (string.Equals(uri.Scheme, Uri.UriSchemeHttps,

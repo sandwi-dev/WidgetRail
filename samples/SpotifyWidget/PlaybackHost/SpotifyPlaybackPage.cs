@@ -64,7 +64,8 @@ internal static class SpotifyPlaybackPage
             };
             const policyState = (owner, origin) => {
               try {
-                const policy = owner && owner.permissionsPolicy;
+                const policy = owner &&
+                  (owner.permissionsPolicy || owner.featurePolicy);
                 if (!policy || typeof policy.allowsFeature !== 'function')
                   return { state: 'unavailable', autoplay: null, encryptedMedia: null };
                 return {

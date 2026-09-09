@@ -189,8 +189,11 @@ public sealed record SpotifyAutoplayPolicyDiagnostic(
     private static void ValidatePolicy(
         string state, bool? autoplay, bool? encryptedMedia)
     {
+        var hasAutoplay = autoplay.HasValue;
+        var hasEncryptedMedia = encryptedMedia.HasValue;
         if (state is not ("supported" or "unavailable" or "exception") ||
-            state == "supported" != (autoplay.HasValue && encryptedMedia.HasValue))
+            state == "supported" && (!hasAutoplay || !hasEncryptedMedia) ||
+            state != "supported" && (hasAutoplay || hasEncryptedMedia))
             throw new SpotifyPlaybackProtocolException(
                 "invalid_autoplay_diagnostic",
                 "The Spotify autoplay diagnostic is invalid.");
