@@ -1,0 +1,310 @@
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <optional>
+#include <set>
+#include <string>
+#include <vector>
+
+namespace widgetrail::isolation {
+
+// These are proposed defaults for the first physical evaluation. Latency
+// targets are deliberately separate from runtime safety limits: an outlier is
+// evidence for acceptance review, not authority to disconnect healthy input.
+struct RoutingBudgets final {
+    std::size_t maximumQueuedReadings{256};
+    std::uint64_t maximumQueuedReadingAgeMilliseconds{100};
+    std::uint64_t hostLeaseMilliseconds{250};
+    std::uint64_t minimumNeutralDwellMilliseconds{20};
+    std::uint64_t maximumNeutralDwellMilliseconds{50};
+    std::uint64_t workerHeartbeatTimeoutMilliseconds{250};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const RoutingBudgets&, const RoutingBudgets&) noexcept = default;
+};
+
+struct RoutingAuthority final {
+    std::uint64_t sessionGeneration{};
+    std::uint64_t deviceGeneration{};
+    std::uint64_t targetGeneration{};
+    std::uint64_t leaseId{};
+
+    [[nodiscard]] constexpr bool valid() const noexcept {
+        return sessionGeneration != 0 && deviceGeneration != 0 &&
+            targetGeneration != 0 && leaseId != 0;
+    }
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const RoutingAuthority&, const RoutingAuthority&) noexcept = default;
+};
+
+struct SelectedDeviceIdentity final {
+    std::array<std::uint8_t, 32> applicationLocalId{};
+    std::array<std::uint8_t, 32> applicationLocalRootId{};
+    std::wstring containerId;
+    std::wstring pnpPath;
+    std::uint16_t vendorId{};
+    std::uint16_t productId{};
+    bool knownVirtualOutput{};
+
+    [[nodiscard]] bool valid() const noexcept;
+
+    [[nodiscard]] friend bool operator==(
+        const SelectedDeviceIdentity&,
+        const SelectedDeviceIdentity&) noexcept = default;
+};
+
+struct GamepadState final {
+    std::uint16_t buttons{};
+    std::uint8_t leftTrigger{};
+    std::uint8_t rightTrigger{};
+    std::int16_t leftThumbX{};
+    std::int16_t leftThumbY{};
+    std::int16_t rightThumbX{};
+    std::int16_t rightThumbY{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const GamepadState&, const GamepadState&) noexcept = default;
+};
+
+struct DeviceReading final {
+    RoutingAuthority authority;
+    SelectedDeviceIdentity device;
+    // WidgetRail assigns this ordinal in the chronologically serialized
+    // GameInput callback. It is not GameInput v3's currently unimplemented
+    // per-kind sequence number.
+    std::uint64_t ordinal{};
+    std::uint64_t inputTimestampMicroseconds{};
+    std::uint64_t observedAtMilliseconds{};
+    GamepadState state;
+    bool connected{};
+
+    [[nodiscard]] friend bool operator==(
+        const DeviceReading&, const DeviceReading&) noexcept = default;
+};
+
+enum class RoutingMode {
+    Disabled,
+    Playing,
+    OverlayInteraction,
+    AwaitingNeutral,
+    Fault,
+};
+
+enum class RoutingFault {
+    None,
+    InvalidInitialAuthority,
+    InitialStateNotNeutral,
+    DeviceDisconnected,
+    ReadingOrderViolation,
+    ReadingQueueOverflow,
+    StaleQueuedReading,
+    OutputSubmissionFailed,
+    HostLeaseExpired,
+};
+
+enum class ReadingAdmission {
+    Accepted,
+    Duplicate,
+    RejectedAuthority,
+    RejectedDevice,
+    RejectedOrder,
+    Faulted,
+};
+
+enum class CommandResult {
+    Applied,
+    Resumed,
+    Waiting,
+    RejectedAuthority,
+    RejectedState,
+    Faulted,
+};
+
+class VirtualOutputEffects {
+public:
+    virtual ~VirtualOutputEffects() = default;
+    [[nodiscard]] virtual bool Submit(const GamepadState& state) noexcept = 0;
+    virtual void RemoveOwnedTarget() noexcept = 0;
+};
+
+class ControllerIsolationCore final {
+public:
+    explicit ControllerIsolationCore(
+        VirtualOutputEffects& output,
+        RoutingBudgets budgets = {}) noexcept;
+
+    [[nodiscard]] CommandResult BeginSession(
+        const RoutingAuthority& authority,
+        const SelectedDeviceIdentity& device,
+        const DeviceReading& current,
+        std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] ReadingAdmission EnqueueReading(
+        const DeviceReading& reading) noexcept;
+    [[nodiscard]] CommandResult Drain(std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] CommandResult EnterOverlay(
+        const RoutingAuthority& authority,
+        std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] CommandResult CloseOverlay(
+        const RoutingAuthority& authority,
+        const DeviceReading& current,
+        std::uint64_t measuredP99ReadingIntervalMilliseconds,
+        std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] CommandResult ObserveCurrent(
+        const RoutingAuthority& authority,
+        const DeviceReading& current,
+        std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] CommandResult RenewHostLease(
+        const RoutingAuthority& authority,
+        std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] CommandResult Tick(
+        std::uint64_t nowMilliseconds,
+        const std::optional<DeviceReading>& current = std::nullopt) noexcept;
+    [[nodiscard]] CommandResult StopSession(
+        const RoutingAuthority& authority) noexcept;
+
+    [[nodiscard]] RoutingMode mode() const noexcept { return mode_; }
+    [[nodiscard]] RoutingFault fault() const noexcept { return fault_; }
+    [[nodiscard]] std::size_t queuedReadings() const noexcept {
+        return readings_.size();
+    }
+    [[nodiscard]] std::uint64_t resumeAfterOrdinal() const noexcept {
+        return resumeAfterOrdinal_;
+    }
+
+private:
+    [[nodiscard]] bool Matches(
+        const RoutingAuthority& authority,
+        const SelectedDeviceIdentity& device) const noexcept;
+    [[nodiscard]] bool ExactCurrent(const DeviceReading& current) const noexcept;
+    [[nodiscard]] CommandResult ApplyAwaitingNeutral(
+        const DeviceReading& current,
+        std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] bool SubmitNeutral() noexcept;
+    void EnterFault(RoutingFault fault) noexcept;
+
+    VirtualOutputEffects& output_;
+    RoutingBudgets budgets_;
+    RoutingMode mode_{RoutingMode::Disabled};
+    RoutingFault fault_{RoutingFault::None};
+    RoutingAuthority authority_{};
+    SelectedDeviceIdentity device_{};
+    std::deque<DeviceReading> readings_;
+    std::optional<DeviceReading> current_;
+    std::optional<std::uint64_t> neutralSinceMilliseconds_;
+    std::uint64_t neutralDwellMilliseconds_{};
+    std::uint64_t lastQueuedOrdinal_{};
+    std::uint64_t lastObservedOrdinal_{};
+    std::uint64_t resumeAfterOrdinal_{};
+    std::uint64_t lastLeaseRenewedAtMilliseconds_{};
+};
+
+struct LatencyAcceptanceTargets final {
+    std::uint64_t physicalToSubmissionP95Microseconds{3'000};
+    std::uint64_t physicalToSubmissionP99Microseconds{5'000};
+    std::uint64_t physicalToSubmissionWorstMicroseconds{10'000};
+    std::uint64_t enterOverlayToNeutralP95Microseconds{8'000};
+    std::uint64_t enterOverlayToNeutralP99Microseconds{12'000};
+};
+
+class LatencyAcceptanceEvidence final {
+public:
+    void ObservePhysicalToSubmission(
+        std::uint64_t elapsedMicroseconds,
+        const LatencyAcceptanceTargets& targets = {}) noexcept;
+    void ObserveEnterOverlayToNeutral(
+        std::uint64_t elapsedMicroseconds,
+        const LatencyAcceptanceTargets& targets = {}) noexcept;
+
+    [[nodiscard]] std::uint64_t observations() const noexcept {
+        return observations_;
+    }
+    [[nodiscard]] std::uint64_t outliers() const noexcept { return outliers_; }
+
+private:
+    std::uint64_t observations_{};
+    std::uint64_t outliers_{};
+};
+
+struct WorkerIdentity final {
+    std::uint32_t processId{};
+    std::uint64_t processCreationTime{};
+    RoutingAuthority authority;
+    std::wstring targetIdentity;
+
+    [[nodiscard]] bool valid() const noexcept {
+        return processId != 0 && processCreationTime != 0 && authority.valid() &&
+            !targetIdentity.empty();
+    }
+
+    [[nodiscard]] friend bool operator==(
+        const WorkerIdentity&, const WorkerIdentity&) noexcept = default;
+};
+
+enum class GuardianAction {
+    None,
+    RecheckExactWorker,
+    TerminateExactWorker,
+    ExpectOwnedTargetRetired,
+    RefuseMismatchedWorker,
+};
+
+struct GuardianObservation final {
+    WorkerIdentity expected;
+    std::optional<WorkerIdentity> observed;
+    std::uint64_t lastHeartbeatAtMilliseconds{};
+    std::uint64_t nowMilliseconds{};
+    bool finalRecheck{};
+};
+
+[[nodiscard]] GuardianAction DecideGuardianAction(
+    const GuardianObservation& observation,
+    const RoutingBudgets& budgets = {}) noexcept;
+
+struct HidHideSnapshot final {
+    // The platform adapter canonicalizes these strings before they enter the
+    // core. This owner performs only exact ordinal set reconciliation.
+    std::set<std::wstring> applicationPaths;
+    std::set<std::wstring> deviceInstanceIds;
+    bool active{};
+
+    [[nodiscard]] friend bool operator==(
+        const HidHideSnapshot&, const HidHideSnapshot&) noexcept = default;
+};
+
+struct HidHideJournal final {
+    HidHideSnapshot before;
+    std::set<std::wstring> ownedApplicationPaths;
+    std::set<std::wstring> ownedDeviceInstanceIds;
+    bool activatedBySession{};
+};
+
+struct HidHideApplyPlan final {
+    HidHideJournal journal;
+    HidHideSnapshot desired;
+};
+
+enum class HidHideRestoreStatus {
+    Restored,
+    ExternalAdditionsPreserved,
+    Conflict,
+};
+
+struct HidHideRestorePlan final {
+    HidHideRestoreStatus status{HidHideRestoreStatus::Conflict};
+    std::optional<HidHideSnapshot> desired;
+};
+
+[[nodiscard]] std::optional<HidHideApplyPlan> PlanHidHideApply(
+    const HidHideSnapshot& before,
+    const std::wstring& workerApplicationPath,
+    const std::set<std::wstring>& selectedDeviceInstanceIds);
+
+[[nodiscard]] HidHideRestorePlan PlanHidHideRestore(
+    const HidHideJournal& journal,
+    const HidHideSnapshot& current);
+
+} // namespace widgetrail::isolation

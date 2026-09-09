@@ -292,6 +292,15 @@ if(WRAIL_BUILD_TESTS)
     target_compile_options(ControllerInputOwnershipTests PRIVATE /W4 /permissive- /EHsc)
     add_test(NAME ControllerInputOwnershipTests COMMAND ControllerInputOwnershipTests)
 
+    add_executable(ControllerIsolationCoreTests
+        ../../tests/OverlayPlatformInterop.Tests/ControllerIsolationCoreTests.cpp
+        ../OverlayPlatformInterop/ControllerIsolationCore.cpp)
+    target_compile_features(ControllerIsolationCoreTests PRIVATE cxx_std_20)
+    target_compile_options(ControllerIsolationCoreTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ControllerIsolationCoreTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME ControllerIsolationCoreTests COMMAND ControllerIsolationCoreTests)
+
     add_executable(ControllerNavigationTests
         ControllerNavigationTests.cpp ControllerNavigation.cpp)
     target_compile_features(ControllerNavigationTests PRIVATE cxx_std_20)

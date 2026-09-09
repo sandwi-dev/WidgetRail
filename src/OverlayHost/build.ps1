@@ -320,6 +320,7 @@ $transitionTestObjectDirectory = Join-Path $outputDirectory 'obj\transition-test
 $chromeTestObjectDirectory = Join-Path $outputDirectory 'obj\chrome-tests'
 $guideTestObjectDirectory = Join-Path $outputDirectory 'obj\guide-tests'
 $inputOwnershipTestObjectDirectory = Join-Path $outputDirectory 'obj\input-ownership-tests'
+$controllerIsolationTestObjectDirectory = Join-Path $outputDirectory 'obj\controller-isolation-tests'
 $navigationTestObjectDirectory = Join-Path $outputDirectory 'obj\navigation-tests'
 $pressedTestObjectDirectory = Join-Path $outputDirectory 'obj\pressed-tests'
 $sliderTestObjectDirectory = Join-Path $outputDirectory 'obj\slider-tests'
@@ -359,7 +360,7 @@ $trayRefreshHostTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-refre
 $trayRefreshCommunityFixtureOutput = Join-Path $outputDirectory 'obj\tray-refresh-community-fixture'
 $richMediaTestObjectDirectory = Join-Path $outputDirectory 'obj\rich-media-tests'
 $bundledPackageSealOutput = Join-Path $outputDirectory 'obj\bundled-package-seal'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $artworkDecoderObjectDirectory, $artworkDecoderTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $backgroundSurfaceHostTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $richMediaTestObjectDirectory, $bundledPackageSealOutput | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $artworkDecoderObjectDirectory, $artworkDecoderTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $controllerIsolationTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $backgroundSurfaceHostTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $richMediaTestObjectDirectory, $bundledPackageSealOutput | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\THIRD_PARTY_NOTICES.md') `
     -Destination (Join-Path $outputDirectory 'THIRD_PARTY_NOTICES.md') -Force
 Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\third_party\public_suffix_list\public_suffix_list.dat') `
@@ -421,6 +422,7 @@ function Invoke-OverlayPlatformInteropBuild {
         '/DWRAIL_OVERLAY_PLATFORM_EXPORTS',
         '/LD',
         (Join-Path $platformDirectory 'OverlayPlatformInterop.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationCore.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformPlacement.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformTargeting.cpp'),
@@ -544,6 +546,12 @@ function Invoke-OverlayPlatformParityTests {
         -ObjectDirectory $inputOwnershipTestObjectDirectory `
         -Sources @(
             (Join-Path $projectDirectory 'ControllerInputOwnershipTests.cpp'))
+    Invoke-OverlayPlatformParityTest `
+        -Name 'ControllerIsolationCoreTests' `
+        -ObjectDirectory $controllerIsolationTestObjectDirectory `
+        -Sources @(
+            (Join-Path $platformTestDirectory 'ControllerIsolationCoreTests.cpp'),
+            (Join-Path $platformDirectory 'ControllerIsolationCore.cpp'))
     Invoke-OverlayPlatformParityTest `
         -Name 'ControllerNavigationTests' `
         -ObjectDirectory $navigationTestObjectDirectory `
@@ -2356,6 +2364,22 @@ if (-not $SkipTests) {
     & (Join-Path $outputDirectory 'ControllerInputOwnershipTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "ControllerInputOwnershipTests failed with exit code $LASTEXITCODE."
+    }
+
+    $controllerIsolationTestArguments = $common + @(
+        (Join-Path $platformTestDirectory 'ControllerIsolationCoreTests.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationCore.cpp'),
+        "/Fo:$controllerIsolationTestObjectDirectory\",
+        "/Fe:$outputDirectory\ControllerIsolationCoreTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $controllerIsolationTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerIsolationCoreTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'ControllerIsolationCoreTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "ControllerIsolationCoreTests failed with exit code $LASTEXITCODE."
     }
 
     $navigationTestArguments = $common + @(
