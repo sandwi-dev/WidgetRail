@@ -158,6 +158,13 @@ if (args.Contains("--playnite-library-community-acceptance", StringComparer.Ordi
     return 0;
 }
 
+if (args.Contains("--package-icon-contract", StringComparer.Ordinal))
+{
+    await ShippedPackageIconContracts();
+    Console.WriteLine("PASS shipped package icon contracts");
+    return 0;
+}
+
 if (args.Contains("--playnite-library-owned-acceptance", StringComparer.Ordinal))
 {
     using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
@@ -303,6 +310,8 @@ if (args.Contains("--games-apps-installed-acceptance", StringComparer.Ordinal))
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Shipped package icons retain exact manifest, SVG, and fallback authority",
+        ShippedPackageIconContracts),
     ("Bundled catalog derives runtime policy from real manifests", BundledCatalogUsesManifests),
     ("Bundled catalog rejects unsafe and ambiguous package sources", BundledCatalogRejectsUnsafeSources),
     ("Real first-party packages merge through the community catalog path", InstalledPackagesMerge),
@@ -327,6 +336,81 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static async Task ShippedPackageIconContracts()
+{
+    var repository = FindRepositoryRootForTest();
+    var expected = new[]
+    {
+        new IconContract("src/FirstPartyWidgets/MediaSessionsWidget", "0.1.2",
+            WidgetGlyph.Music, "media-sessions.mark", "assets/icons/media-sessions.svg"),
+        new IconContract("src/FirstPartyWidgets/GamesAppsWidget", "0.1.1",
+            WidgetGlyph.Play, "games-apps.mark", "assets/icons/games-apps.svg"),
+        new IconContract("src/FirstPartyWidgets/AudioMixerWidget", "0.1.1",
+            WidgetGlyph.Volume, "audio-mixer.mark", "assets/icons/audio-mixer.svg"),
+        new IconContract("src/FirstPartyWidgets/NetworkControlsWidget", "0.1.1",
+            WidgetGlyph.Wifi, "network-controls.mark", "assets/icons/network-controls.svg"),
+        new IconContract("samples/EmbeddedMediaWidget", "0.2.9",
+            WidgetGlyph.Play, "embedded-media.mark", "assets/icons/embedded-media.svg"),
+        new IconContract("samples/YouTubeWidget", "0.3.26",
+            WidgetGlyph.Play, "youtube.brand.red", "assets/icons/youtube-red.svg"),
+        new IconContract("samples/YtMusicWidget", "0.2.12",
+            WidgetGlyph.Music, "ytmusic.mark", "assets/icons/yt-music.svg"),
+        new IconContract("samples/PlayniteLibraryWidget", "0.2.55",
+            WidgetGlyph.Play, "playnite-library.mark", "assets/icons/playnite-library.svg"),
+        new IconContract("samples/ClockWidget", "0.1.1",
+            WidgetGlyph.Connection, "clock.mark", "assets/icons/clock.svg"),
+        new IconContract("samples/FullApplicationWidget", "0.1.1",
+            WidgetGlyph.Settings, "full-application.mark", "assets/icons/full-application.svg"),
+    };
+    using var temporary = new TemporaryDirectory("wrail-package-icon-contract");
+    var catalog = new WidgetCatalog(Path.Combine(temporary.Path, "catalog"));
+    foreach (var contract in expected)
+    {
+        var packageRoot = Path.GetFullPath(
+            contract.ProjectRoot.Replace('/', Path.DirectorySeparatorChar), repository);
+        var manifestBytes = await File.ReadAllBytesAsync(
+            Path.Combine(packageRoot, "manifest.json"));
+        var manifest = ManifestJson.Deserialize(manifestBytes);
+        Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
+        Assert.Equal(contract.Version, manifest.Version);
+        Assert.Equal(contract.Fallback, manifest.Presentation.Icon);
+        Assert.Equal(contract.AssetId, manifest.Presentation.PackageIcon?.AssetId);
+        Assert.Equal(WidgetPackageIconColorMode.OriginalColor,
+            manifest.Presentation.PackageIcon?.ColorMode);
+        Assert.Equal(1, manifest.IconAssets.Count);
+        Assert.Equal(contract.AssetPath, manifest.IconAssets[contract.AssetId].Path);
+        var sourceAsset = Path.Combine(packageRoot,
+            contract.AssetPath.Replace('/', Path.DirectorySeparatorChar));
+        Assert.True(File.Exists(sourceAsset), $"{manifest.Id} package icon source is missing.");
+
+        var staging = Path.Combine(temporary.Path, manifest.Id);
+        Directory.CreateDirectory(staging);
+        await File.WriteAllBytesAsync(Path.Combine(staging, "manifest.json"), manifestBytes);
+        var stagedAsset = Path.Combine(staging,
+            contract.AssetPath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(stagedAsset)!);
+        File.Copy(sourceAsset, stagedAsset);
+        var entrypoint = manifest.Entrypoint.Assembly ?? manifest.Entrypoint.Executable ??
+            throw new InvalidOperationException($"{manifest.Id} has no package entrypoint.");
+        var stagedEntrypoint = Path.Combine(staging,
+            entrypoint.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(stagedEntrypoint)!);
+        await File.WriteAllBytesAsync(stagedEntrypoint, [0x4d, 0x5a]);
+        var archive = Path.Combine(temporary.Path, manifest.Id + ".wrwidget");
+        ZipFile.CreateFromDirectory(staging, archive, CompressionLevel.NoCompression, false);
+        var inspection = await catalog.CreateInstaller().ValidateAsync(archive);
+        Assert.Equal(manifest.Id, inspection.Id);
+        Assert.Equal(manifest.Version, inspection.Version.ToString());
+    }
+
+    var settings = ManifestJson.Deserialize(await File.ReadAllBytesAsync(Path.Combine(
+        repository, "src", "FirstPartyWidgets", "SettingsWidget", "manifest.json")));
+    Assert.Equal(WidgetGlyph.Settings, settings.Presentation.Icon);
+    Assert.True(settings.Presentation.PackageIcon is null,
+        "Settings must retain its accepted semantic gear without package-icon metadata.");
+    Assert.Equal(0, settings.IconAssets.Count);
+}
 
 static async Task BundledCatalogUsesManifests()
 {
@@ -353,6 +437,12 @@ static async Task BundledCatalogUsesManifests()
             Path.GetFullPath(configured.ReadOnlyPaths[0]) == Path.GetFullPath(package.BundleRoot),
             $"{package.Manifest.Name} package root was not the only read-only package grant.");
         AssertWorkerArguments(configured, package.BundleRoot, package.Manifest);
+        var descriptor = configured.PublicDescriptor();
+        Assert.Equal(package.Manifest.Presentation.PackageIcon, descriptor.PackageIcon);
+        Assert.SequenceEqual(package.Manifest.IconAssets.Keys.Order(StringComparer.Ordinal),
+            descriptor.IconAssets.Select(asset => asset.AssetId).Order(StringComparer.Ordinal));
+        Assert.SequenceEqual(package.Manifest.IconAssets.Keys.Order(StringComparer.Ordinal),
+            configured.DeclaredPackageIconAssetIds.Order(StringComparer.Ordinal));
     }
 }
 
@@ -1620,7 +1710,7 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
     Assert.Equal(package.Manifest.Id, packageInspection.Id);
     Assert.Equal(package.Manifest.Version, packageInspection.Version.ToString());
     Assert.SequenceEqual(
-        ["manifest.json", "payload/YtMusicWidget.dll", "styles/default.wrss"],
+        ["assets/icons/yt-music.svg", "manifest.json", "payload/YtMusicWidget.dll", "styles/default.wrss"],
         ReadPackagePaths(package.PackagePath));
     phases.Add("clean-public-validate-pack-install");
 
@@ -3603,6 +3693,15 @@ file sealed class Deployment : IDisposable
                     Path.Combine(bundleRoot, "manifest.json"));
                 File.Copy(Path.Combine(projectRoot, "styles", "default.wrss"),
                     Path.Combine(bundleRoot, "styles", "default.wrss"));
+                foreach (var asset in manifest.IconAssets.Values)
+                {
+                    var sourceAsset = Path.Combine(projectRoot,
+                        asset.Path.Replace('/', Path.DirectorySeparatorChar));
+                    var stagedAsset = Path.Combine(bundleRoot,
+                        asset.Path.Replace('/', Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(Path.GetDirectoryName(stagedAsset)!);
+                    File.Copy(sourceAsset, stagedAsset);
+                }
                 var assembly = manifest.Entrypoint?.Assembly ??
                     throw new InvalidOperationException(
                         $"{manifest.Id} does not declare a managed-worker assembly.");
@@ -3938,6 +4037,13 @@ file sealed record PackageSpec(
     WidgetGlyph Icon,
     Type WidgetType,
     string ExpectedText);
+
+file sealed record IconContract(
+    string ProjectRoot,
+    string Version,
+    WidgetGlyph Fallback,
+    string AssetId,
+    string AssetPath);
 
 file sealed record PackageFixture(
     string ShellId,

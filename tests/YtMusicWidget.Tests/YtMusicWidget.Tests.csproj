@@ -18,5 +18,6 @@
     <None Include="..\..\samples\YtMusicWidget\YtMusicCompanionPolicy.cs" Link="source\YtMusicCompanionPolicy.cs" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\YtMusicWidget\YtMusicConnectionPolicy.cs" Link="source\YtMusicConnectionPolicy.cs" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\YtMusicWidget\YtMusicPresentation.cs" Link="source\YtMusicPresentation.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\YtMusicWidget\assets\icons\yt-music.svg" Link="assets\icons\yt-music.svg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

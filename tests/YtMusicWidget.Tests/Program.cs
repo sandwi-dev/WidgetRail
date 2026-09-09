@@ -160,11 +160,15 @@ static async Task SurfaceContractAcrossConnectionStates()
 
 static void AssertStandardSurface(ViewSnapshot snapshot)
 {
-    Assert.Equal(
-        snapshot.QuickActions.Any(action => action.Capability is not null)
-            ? ProtocolConstants.DashboardGestureAuthorityVersion
-            : ProtocolConstants.SurfaceHintsVersion,
-        snapshot.ProtocolVersion);
+    var expectedVersion = ProtocolConstants.SurfaceHintsVersion;
+    if (snapshot.QuickActions.Any(action => action.Capability is not null))
+        expectedVersion = Math.Max(
+            expectedVersion, ProtocolConstants.DashboardGestureAuthorityVersion);
+    if (Nodes(snapshot.Root).SelectMany(node => node.Shortcuts)
+        .Any(shortcut => !string.IsNullOrWhiteSpace(shortcut.Label)))
+        expectedVersion = Math.Max(
+            expectedVersion, ProtocolConstants.ControllerShortcutLabelVersion);
+    Assert.Equal(expectedVersion, snapshot.ProtocolVersion);
     Assert.True(snapshot.Surface is not null, "YT Music omitted its bounded surface hint.");
     Assert.Equal(WidgetSurfaceMode.Standard, snapshot.Surface!.Mode);
     Assert.Equal(760D, snapshot.Surface.PreferredWidth);
@@ -630,16 +634,37 @@ static Task CurrentShortcutContract()
         parameterCounts.Add(signature.ReadCompressedInteger());
     }
 
-    Assert.Equal(1, parameterCounts.Count);
-    Assert.True(parameterCounts.All(count => count == 4),
-        $"Expected one interned current four-argument ScrollElement.Shortcut reference; found [{string.Join(", ", parameterCounts)}] in {assemblyPath}.");
-    var currentShortcut = typeof(ScrollElement).GetMethods(
+    Assert.True(parameterCounts.Count > 0,
+        "The compiled YT Music render path omitted ScrollElement.Shortcut references.");
+    var shortcutMethods = typeof(ScrollElement).GetMethods(
             System.Reflection.BindingFlags.Instance |
             System.Reflection.BindingFlags.Public |
             System.Reflection.BindingFlags.DeclaredOnly)
-        .Single(method => method.Name == "Shortcut");
-    Assert.Equal(4, currentShortcut.GetParameters().Length);
-    Assert.Equal(typeof(ScrollElement), currentShortcut.ReturnType);
+        .Where(method => method.Name == "Shortcut")
+        .ToArray();
+    var unlabeled = new[]
+    {
+        typeof(ControllerButton), typeof(string), typeof(ControllerEventPhase),
+        typeof(ControllerActionRepeatPolicy),
+    };
+    var labeled = new[]
+    {
+        typeof(ControllerButton), typeof(string), typeof(string),
+        typeof(ControllerEventPhase), typeof(ControllerActionRepeatPolicy),
+    };
+    Assert.Equal(2, shortcutMethods.Length);
+    Assert.True(shortcutMethods.Any(method => method.ReturnType == typeof(ScrollElement) &&
+                                             method.GetParameters().Select(parameter => parameter.ParameterType)
+                                                 .SequenceEqual(unlabeled)),
+        "ScrollElement omitted the exact current four-parameter Shortcut overload.");
+    Assert.True(shortcutMethods.Any(method => method.ReturnType == typeof(ScrollElement) &&
+                                             method.GetParameters().Select(parameter => parameter.ParameterType)
+                                                 .SequenceEqual(labeled)),
+        "ScrollElement omitted the exact current labeled five-parameter Shortcut overload.");
+    var supportedParameterCounts = shortcutMethods
+        .Select(method => method.GetParameters().Length).ToHashSet();
+    Assert.True(parameterCounts.All(supportedParameterCounts.Contains),
+        $"A ScrollElement.Shortcut reference has no exact current declared overload; found [{string.Join(", ", parameterCounts)}] in {assemblyPath}.");
     return Task.CompletedTask;
 }
 
@@ -1139,7 +1164,7 @@ static async Task RepeatOneUsesDistinctGlyph()
     await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
 
     var snapshot = widget.Render().CreateSnapshot("ytmusic.test", 1);
-    Assert.Equal(ProtocolConstants.RepeatOneGlyphVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.ControllerShortcutLabelVersion, snapshot.ProtocolVersion);
     Assert.Equal(WidgetGlyph.RepeatOne, Find(snapshot.Root, "repeat").Glyph);
     Assert.Equal("Repeat one · change repeat mode",
         Find(snapshot.Root, "repeat").AccessibilityLabel);
@@ -2174,7 +2199,16 @@ static Task PackageAssetsAreValid()
     Assert.True(manifest.OptionalPermissions.Contains("storage.private-secrets.v1"),
         "Private-secret permission is missing.");
     Assert.Equal(WidgetGlyph.Music, manifest.Presentation.Icon);
-    Assert.Equal(YtmDesktopApiClient.PackageVersion, manifest.Version);
+    Assert.Equal("0.2.12", manifest.Version);
+    Assert.Equal("ytmusic.mark", manifest.Presentation.PackageIcon?.AssetId);
+    Assert.Equal(WidgetPackageIconColorMode.OriginalColor,
+        manifest.Presentation.PackageIcon?.ColorMode);
+    Assert.Equal("assets/icons/yt-music.svg", manifest.IconAssets["ytmusic.mark"].Path);
+    var packageIcon = Path.Combine(
+        AppContext.BaseDirectory, "assets", "icons", "yt-music.svg");
+    Assert.True(File.Exists(packageIcon), $"Package icon was not copied to {packageIcon}.");
+    Assert.True(new FileInfo(packageIcon).Length is > 0 and <= ProtocolConstants.MaximumPackageIconBytes,
+        "Package icon bytes are outside the public bound.");
 
     var stylesRoot = Path.Combine(AppContext.BaseDirectory, "styles");
     var styles = WrssPackageLoader.Load(

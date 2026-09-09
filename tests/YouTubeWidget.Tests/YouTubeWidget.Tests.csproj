@@ -12,6 +12,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\samples\YouTubeWidget\manifest.json" Link="manifest.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\YouTubeWidget\assets\icons\youtube-red.svg" Link="assets\icons\youtube-red.svg" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\YouTubeWidget\media\adapter.html" Link="media\adapter.html" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\WidgetSdk\EmbeddedMediaAdapterRuntime.js" Link="media\adapter-runtime.js" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\YouTubeWidget\styles\default.wrss" Link="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />

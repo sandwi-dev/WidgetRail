@@ -1432,6 +1432,16 @@ public sealed partial class YouTubeWidgetTests
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
         var root = document.RootElement;
         Assert.AreEqual("widgetrail.samples.youtube-video", root.GetProperty("id").GetString());
+        var presentation = root.GetProperty("presentation");
+        Assert.AreEqual("play", presentation.GetProperty("icon").GetString());
+        var packageIcon = presentation.GetProperty("packageIcon");
+        Assert.AreEqual("youtube.brand.red", packageIcon.GetProperty("assetId").GetString());
+        Assert.AreEqual("originalColor", packageIcon.GetProperty("colorMode").GetString());
+        Assert.AreEqual("assets/icons/youtube-red.svg",
+            root.GetProperty("iconAssets").GetProperty("youtube.brand.red")
+                .GetProperty("path").GetString());
+        Assert.IsTrue(File.Exists(Path.Combine(
+            AppContext.BaseDirectory, "assets", "icons", "youtube-red.svg")));
         // Installed versions are immutable, so every package change bumps this.
         // Pin the shape, not the number: a literal here only ever records the
         // last bump someone remembered to mirror.

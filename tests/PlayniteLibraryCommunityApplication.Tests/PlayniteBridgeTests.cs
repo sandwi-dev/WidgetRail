@@ -256,7 +256,15 @@ public sealed class PlayniteBridgeTests
         var value = manifest.RootElement;
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, value.GetProperty("optionalPermissions").GetArrayLength());
-        Assert.AreEqual("0.2.53", value.GetProperty("version").GetString());
+        Assert.AreEqual("0.2.55", value.GetProperty("version").GetString());
+        var presentation = value.GetProperty("presentation");
+        Assert.AreEqual("play", presentation.GetProperty("icon").GetString());
+        var packageIcon = presentation.GetProperty("packageIcon");
+        Assert.AreEqual("playnite-library.mark", packageIcon.GetProperty("assetId").GetString());
+        Assert.AreEqual("originalColor", packageIcon.GetProperty("colorMode").GetString());
+        Assert.AreEqual("assets/icons/playnite-library.svg",
+            value.GetProperty("iconAssets").GetProperty("playnite-library.mark")
+                .GetProperty("path").GetString());
         var manifestText = File.ReadAllText(manifestPath);
         Assert.IsFalse(manifestText.Contains("Bearer", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(manifestText.Contains("token", StringComparison.OrdinalIgnoreCase));
@@ -294,6 +302,10 @@ public sealed class PlayniteBridgeTests
             ReadEntry(archive, "styles/default.wrss"));
         CollectionAssert.AreEqual(File.ReadAllBytes(stylePath),
             ReadEntry(archive, "payload/styles/default.wrss"));
+        var iconPath = Path.Combine(root, "samples", "PlayniteLibraryWidget",
+            "assets", "icons", "playnite-library.svg");
+        CollectionAssert.AreEqual(File.ReadAllBytes(iconPath),
+            ReadEntry(archive, "assets/icons/playnite-library.svg"));
         CollectionAssert.AreEqual(File.ReadAllBytes(Path.Combine(root, "artifacts",
                 "community-addons", "playnite-library", "application-publish",
                 "PlayniteLibraryWidget.dll")),
