@@ -304,14 +304,36 @@
 /* Spotify keeps the SDK navigation shell's compact destination set horizontal
    at every responsive size, with one shared page and persistent player. */
 .spotify-page-group {
-  width: 100%;
   min-width: 0px;
   min-height: 0px;
+  flex-basis: 0px;
   flex-grow: 1;
   flex-shrink: 1;
   gap: 10px;
   overflow: clip;
 }
+.spotify-connected-panes {
+  width: 100%;
+  min-width: 0px;
+  min-height: 0px;
+  flex-basis: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 12px;
+  align: stretch;
+  overflow: clip;
+}
+.spotify-player-card.spotify-player-pane {
+  width: 320px;
+  min-width: 260px;
+  max-width: 340px;
+  min-height: 0px;
+  flex-basis: 320px;
+  flex-grow: 0;
+  flex-shrink: 1;
+  padding: 12px;
+}
+.spotify-player-pane-transport { min-width: 0px; width: 100%; }
 .spotify-navigation-tabs {
   min-width: 0px;
   flex-grow: 1;
@@ -611,5 +633,6 @@
   flex-wrap: nowrap;
 }
 .spotify-section-refresh { flex-shrink: 0; }
+.spotify-local-feedback { width: 100%; min-width: 0px; flex-shrink: 0; }
 .spotify-device-row { width: 100%; min-width: 0px; flex-shrink: 0; }
 .spotify-playlist-detail { padding: 10px 12px 12px; }

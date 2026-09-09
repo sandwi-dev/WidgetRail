@@ -72,6 +72,10 @@ public sealed class SpotifyWidget : Widget
     private string? _preferredPlaybackDeviceId;
     private DateTimeOffset? _devicesCachedAt;
     private bool _pageLoading;
+    private bool _localPlaybackBusy;
+    private long _localPlaybackOperationGeneration;
+    private SpotifyLocalPlaybackSummary? _localPlaybackOperationBaseline;
+    private string? _localPlaybackFeedback;
     private string? _pageError;
     private SpotifyPlaylistSelection? _playlistSelection;
     private SpotifySelectedPlaylistPageSource? _playlistPageSource;
@@ -423,14 +427,12 @@ public sealed class SpotifyWidget : Widget
             case SpotifyActionKind.Noop:
                 break;
             case SpotifyActionKind.LocalStart:
-                await RunCommandOperationAsync(token => ControlLocalPlaybackAsync(
-                    new(SpotifyLocalPlaybackOperation.StartAndTransfer,
-                        ContinuePlaying: true), token), cancellationToken).ConfigureAwait(false);
+                StartLocalPlaybackOperation(new(
+                    SpotifyLocalPlaybackOperation.StartAndTransfer,
+                    ContinuePlaying: true));
                 break;
             case SpotifyActionKind.LocalStop:
-                await RunCommandOperationAsync(token => ControlLocalPlaybackAsync(
-                    new(SpotifyLocalPlaybackOperation.Stop), token), cancellationToken)
-                    .ConfigureAwait(false);
+                StartLocalPlaybackOperation(new(SpotifyLocalPlaybackOperation.Stop));
                 break;
             case SpotifyActionKind.DeviceSelect:
                 await RunCommandOperationAsync(
@@ -1050,6 +1052,8 @@ public sealed class SpotifyWidget : Widget
                 detail,
                 _devices,
                 _localPlayback,
+                _localPlaybackBusy,
+                _localPlaybackFeedback,
                 _pageLoading,
                 _pageError);
         }
@@ -1196,6 +1200,7 @@ public sealed class SpotifyWidget : Widget
                     {
                         _devices = devicesTask.Result;
                         _localPlayback = localTask.Result;
+                        if (!_localPlaybackBusy) _localPlaybackFeedback = null;
                         _preferredPlaybackDeviceId = devicesTask.Result.Devices
                             .FirstOrDefault(device => device.IsActive && !device.IsRestricted)
                             ?.DeviceId ?? _preferredPlaybackDeviceId;
@@ -1315,6 +1320,10 @@ public sealed class SpotifyWidget : Widget
         _devicesCachedAt = null;
         _preferredPlaybackDeviceId = null;
         _pageLoading = false;
+        _localPlaybackBusy = false;
+        _localPlaybackOperationGeneration = 0;
+        _localPlaybackOperationBaseline = null;
+        _localPlaybackFeedback = null;
         _pageError = null;
     }
 
@@ -1337,9 +1346,9 @@ public sealed class SpotifyWidget : Widget
         {
             if (device.IsLocalHost)
             {
-                await ControlLocalPlaybackAsync(
-                    new(SpotifyLocalPlaybackOperation.StartAndTransfer,
-                        ContinuePlaying: true), cancellationToken).ConfigureAwait(false);
+                StartLocalPlaybackOperation(new(
+                    SpotifyLocalPlaybackOperation.StartAndTransfer,
+                    ContinuePlaying: true));
                 return;
             }
             await _spotify.TransferPlaybackAsync(
@@ -1360,20 +1369,47 @@ public sealed class SpotifyWidget : Widget
         }
     }
 
-    private async Task ControlLocalPlaybackAsync(
-        SpotifyLocalPlaybackCommand command,
-        CancellationToken cancellationToken)
+    private void StartLocalPlaybackOperation(SpotifyLocalPlaybackCommand command)
     {
+        const string operationKey = "spotify.local-playback";
+        var handle = Operations.RunSingleFlight(
+            operationKey,
+            context => ControlLocalPlaybackAsync(command, context),
+            WidgetOperationLifetime.Active);
+        if (!handle.IsAccepted)
+            SetCommandStatus("Local Spotify playback is not available right now");
+    }
+
+    private async ValueTask ControlLocalPlaybackAsync(
+        SpotifyLocalPlaybackCommand command,
+        WidgetOperationContext operation)
+    {
+        var operationGeneration = operation.Generation;
+        lock (_gate)
+        {
+            if (!operation.IsCurrent) return;
+            _localPlaybackOperationGeneration = operationGeneration;
+            _localPlaybackOperationBaseline = _localPlayback;
+            _localPlaybackBusy = true;
+            _localPlaybackFeedback = null;
+            _status = command.Operation == SpotifyLocalPlaybackOperation.Stop
+                ? "Stopping Spotify playback on this PC…"
+                : "Starting Spotify playback on this PC…";
+        }
+        _runtimeDiagnostics.Record(
+            "local-playback-widget", "started", operationGeneration,
+            Math.Max(0, Volatile.Read(ref _activeGeneration)));
+        Invalidate();
         try
         {
-            lock (_gate) _pageLoading = true;
-            Invalidate();
             var local = await _spotify.ControlLocalPlaybackAsync(
-                command, cancellationToken).ConfigureAwait(false);
+                command, operation.CancellationToken).ConfigureAwait(false);
             lock (_gate)
             {
+                if (!operation.IsCurrent ||
+                    _localPlaybackOperationGeneration != operationGeneration) return;
                 _localPlayback = local;
-                _pageLoading = false;
+                _localPlaybackFeedback = null;
                 _pageError = null;
                 _status = local.DisplayMessage ?? "Local Spotify playback updated";
                 var localDeviceId = _devices?.Devices
@@ -1391,15 +1427,18 @@ public sealed class SpotifyWidget : Widget
                 }
                 _devicesCachedAt = _timeProvider.GetUtcNow();
             }
-            Invalidate();
+            _runtimeDiagnostics.Record(
+                "local-playback-widget", "succeeded", operationGeneration,
+                Math.Max(0, Volatile.Read(ref _activeGeneration)));
         }
         catch (SpotifyApplicationException exception)
         {
             lock (_gate)
             {
-                _pageLoading = false;
+                if (_localPlaybackOperationGeneration != operationGeneration) return;
                 _pageError = null;
-                _status = exception.Code switch
+                _localPlayback = _localPlaybackOperationBaseline;
+                _localPlaybackFeedback = exception.Code switch
                 {
                     "platform_unavailable" =>
                         "Return focus to Devices, then try Play here again.",
@@ -1408,8 +1447,56 @@ public sealed class SpotifyWidget : Widget
                     _ => SpotifyPlaybackPolicy.SafeMessage(
                         exception, "Local Spotify playback could not be updated"),
                 };
+                _status = _localPlaybackFeedback;
             }
-            Invalidate();
+            _runtimeDiagnostics.Record(
+                "local-playback-widget", exception.Code, operationGeneration,
+                Math.Max(0, Volatile.Read(ref _activeGeneration)));
+        }
+        catch (OperationCanceledException)
+            when (operation.CancellationToken.IsCancellationRequested)
+        {
+            lock (_gate)
+                if (_localPlaybackOperationGeneration == operationGeneration)
+                {
+                    _localPlayback = _localPlaybackOperationBaseline;
+                    _localPlaybackFeedback = "Local Spotify playback canceled";
+                    _status = _localPlaybackFeedback;
+                }
+            _runtimeDiagnostics.Record(
+                "local-playback-widget", "canceled", operationGeneration,
+                Math.Max(0, Volatile.Read(ref _activeGeneration)));
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            lock (_gate)
+            {
+                if (_localPlaybackOperationGeneration != operationGeneration) return;
+                _pageError = null;
+                _localPlayback = _localPlaybackOperationBaseline;
+                _localPlaybackFeedback =
+                    "Local Spotify playback could not be updated";
+                _status = _localPlaybackFeedback;
+            }
+            _runtimeDiagnostics.Record(
+                "local-playback-widget", SpotifyRuntimeDiagnostics.Code(exception),
+                operationGeneration,
+                Math.Max(0, Volatile.Read(ref _activeGeneration)));
+        }
+        finally
+        {
+            var publish = false;
+            lock (_gate)
+            {
+                if (_localPlaybackOperationGeneration == operationGeneration)
+                {
+                    _localPlaybackOperationGeneration = 0;
+                    _localPlaybackOperationBaseline = null;
+                    _localPlaybackBusy = false;
+                    publish = true;
+                }
+            }
+            if (publish) Invalidate();
         }
     }
 

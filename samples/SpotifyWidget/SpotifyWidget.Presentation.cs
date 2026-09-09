@@ -438,7 +438,9 @@ internal static class SpotifyPresentation
                 includeDisconnect: true)
             : DestinationPage(destination, presentation.Queue, playlists,
                 playlistDetail, presentation.Devices, presentation.LocalPlayback,
-                presentation.PageLoading, presentation.PageError, "shared");
+                presentation.LocalPlaybackBusy, presentation.LocalPlaybackFeedback,
+                presentation.PageLoading,
+                presentation.PageError, "shared");
         var contentEntry = PageEntryFocusId(presentation, destination);
         var pageGroup = UI.Stack(PageFocusGroupId(route.Route), page)
             .RememberChildFocus(contentEntry)
@@ -487,10 +489,13 @@ internal static class SpotifyPresentation
                         "spotify.navigation.settings.hint")
                     .AddClasses("spotify-navigation-settings-hint"))
             .Classes("spotify-navigation-header"));
-        content.Add(pageGroup);
-        content.Add(PlayerPanel(
-            playback, pending, "wide", docked: true,
-            controlsEnabled: !setup));
+        content.Add(UI.Row(
+                "spotify.connected.panes",
+                PlayerPanel(
+                    playback, pending, "wide", pane: true,
+                    controlsEnabled: !setup),
+                pageGroup)
+            .Classes("spotify-connected-panes"));
         var root = UI.Stack("spotify.root", content.ToArray())
             .Classes("spotify-widget", "is-ready");
         if (!setup)
@@ -618,6 +623,7 @@ internal static class SpotifyPresentation
         bool pinned = false,
         string? adjacentFocusId = null,
         bool docked = false,
+        bool pane = false,
         bool controlsEnabled = true)
     {
         if (playback is not { IsAvailable: true, Item: not null })
@@ -646,11 +652,14 @@ internal static class SpotifyPresentation
             var empty = UI.EmptyState("Nothing playing",
                     "Choose a playlist or start Spotify on a device.",
                     $"spotify.player.empty.{mode}",
-                    controlsEnabled
+                    controlsEnabled && !pane
                         ? new ComponentAction(
                             "Refresh", "spotify.refresh", WidgetGlyph.Refresh)
                         : null,
                     WidgetGlyph.Music);
+            if (pane)
+                return empty.Classes("spotify-player-card", "spotify-player-pane",
+                    "spotify-player-standard");
             return docked
                 ? empty.Classes("spotify-player-card", "spotify-player-dock",
                     "spotify-player-standard")
@@ -788,6 +797,7 @@ internal static class SpotifyPresentation
                         compact ? "spotify-compact-attribution" :
                             "spotify-wide-attribution"))
             .Classes("spotify-player-transport");
+        if (pane) transport = transport.AddClasses("spotify-player-pane-transport");
         if (docked)
             return UI.Row($"{prefix}.card", artworkFrame, details, transport)
                 .Classes("spotify-player-card", "spotify-player-dock",
@@ -800,6 +810,8 @@ internal static class SpotifyPresentation
             .Classes("spotify-player-card",
                 compact ? "spotify-player-card-compact" :
                     "spotify-player-card-wide",
+                pane ? "spotify-player-pane" :
+                    "spotify-player-flow",
                 pinned ? "spotify-pinned-player" : "spotify-player-standard");
     }
 
@@ -830,6 +842,8 @@ internal static class SpotifyPresentation
         SpotifyPlaylistDetailPresentation? playlistDetail,
         SpotifyDevicesSummary? devices,
         SpotifyLocalPlaybackSummary? localPlayback,
+        bool localPlaybackBusy,
+        string? localPlaybackFeedback,
         bool loading,
         string? error,
         string mode) =>
@@ -838,7 +852,7 @@ internal static class SpotifyPresentation
             SpotifyDestination.Queue => QueuePage(queue, loading, error, mode),
             SpotifyDestination.Playlists => PlaylistsPage(playlists, playlistDetail, mode),
             SpotifyDestination.Devices => DevicesPage(devices, localPlayback,
-                loading, error, mode),
+                localPlaybackBusy, localPlaybackFeedback, loading, error, mode),
             _ => PlaylistsPage(playlists, playlistDetail, mode),
         };
 
@@ -1006,6 +1020,8 @@ internal static class SpotifyPresentation
     private static WidgetElement DevicesPage(
         SpotifyDevicesSummary? devices,
         SpotifyLocalPlaybackSummary? local,
+        bool localPlaybackBusy,
+        string? localPlaybackFeedback,
         bool loading,
         string? error,
         string mode)
@@ -1032,11 +1048,19 @@ internal static class SpotifyPresentation
                     LocalStateLabel(local.State),
                     LocalStateTone(local.State),
                     isDisabled: local.State is SpotifyLocalPlaybackState.PremiumRequired or
-                        SpotifyLocalPlaybackState.Unavailable || localStarting,
-                    isBusy: loading || localStarting,
+                        SpotifyLocalPlaybackState.Unavailable || localStarting ||
+                        localPlaybackBusy,
+                    isBusy: localPlaybackBusy || localStarting,
                     glyph: WidgetGlyph.Music)
                 .Classes("spotify-device-row"));
         }
+        if (localPlaybackFeedback is not null)
+            rows.Add(UI.Alert(
+                    "Local playback unavailable",
+                    localPlaybackFeedback,
+                    AlertTone.Warning,
+                    $"spotify.local.feedback.{mode}")
+                .Classes("spotify-local-feedback"));
         if (devices is not null)
         {
             rows.AddRange(devices.Devices.Select((device, index) => (device, index))

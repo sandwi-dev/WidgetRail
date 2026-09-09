@@ -92,5 +92,7 @@ internal sealed record SpotifyPresentationState(
     SpotifyPlaylistDetailPresentation? PlaylistDetail,
     SpotifyDevicesSummary? Devices,
     SpotifyLocalPlaybackSummary? LocalPlayback,
+    bool LocalPlaybackBusy,
+    string? LocalPlaybackFeedback,
     bool PageLoading,
     string? PageError);
