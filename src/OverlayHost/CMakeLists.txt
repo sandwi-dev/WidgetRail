@@ -57,6 +57,31 @@ target_compile_definitions(ArtworkDecoderHost PRIVATE
     UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(ArtworkDecoderHost PRIVATE windowscodecs ole32 d2d1 d3d11 dxgi)
 
+add_executable(ControllerIsolationWorker
+    ../ControllerIsolationWorker/main.cpp
+    ../OverlayPlatformInterop/ViGEmOutputAdapter.cpp
+    ../OverlayPlatformInterop/ControllerIsolationProtocol.cpp
+    ../OverlayPlatformInterop/ControllerIsolationProcessOwner.cpp
+    ../../third_party/ViGEmClient/src/ViGEmClient.cpp)
+target_compile_features(ControllerIsolationWorker PRIVATE cxx_std_20)
+target_compile_options(ControllerIsolationWorker PRIVATE
+    /W4 /permissive- /EHsc /wd4005)
+target_compile_definitions(ControllerIsolationWorker PRIVATE
+    WRAIL_VIGEM_NATIVE_BACKEND UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_include_directories(ControllerIsolationWorker PRIVATE
+    ../../third_party/ViGEmClient/include)
+target_link_libraries(ControllerIsolationWorker PRIVATE setupapi bcrypt)
+
+add_executable(ControllerIsolationGuardian
+    ../ControllerIsolationGuardian/main.cpp
+    ../OverlayPlatformInterop/ControllerIsolationProtocol.cpp
+    ../OverlayPlatformInterop/ControllerIsolationProcessOwner.cpp)
+target_compile_features(ControllerIsolationGuardian PRIVATE cxx_std_20)
+target_compile_options(ControllerIsolationGuardian PRIVATE /W4 /permissive- /EHsc)
+target_compile_definitions(ControllerIsolationGuardian PRIVATE
+    UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(ControllerIsolationGuardian PRIVATE bcrypt)
+
 add_executable(OverlayHost WIN32
     main.cpp
     MediaSessionManager.cpp
@@ -300,6 +325,55 @@ if(WRAIL_BUILD_TESTS)
     target_compile_definitions(ControllerIsolationCoreTests PRIVATE
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME ControllerIsolationCoreTests COMMAND ControllerIsolationCoreTests)
+
+    add_executable(ViGEmOutputAdapterTests
+        ../../tests/OverlayPlatformInterop.Tests/ViGEmOutputAdapterTests.cpp
+        ../OverlayPlatformInterop/ViGEmOutputAdapter.cpp)
+    target_compile_features(ViGEmOutputAdapterTests PRIVATE cxx_std_20)
+    target_compile_options(ViGEmOutputAdapterTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ViGEmOutputAdapterTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME ViGEmOutputAdapterTests COMMAND ViGEmOutputAdapterTests)
+
+    add_executable(ControllerIsolationFakeWorker
+        ../ControllerIsolationWorker/main.cpp
+        ../OverlayPlatformInterop/ControllerIsolationProtocol.cpp
+        ../OverlayPlatformInterop/ControllerIsolationProcessOwner.cpp)
+    target_compile_features(ControllerIsolationFakeWorker PRIVATE cxx_std_20)
+    target_compile_options(ControllerIsolationFakeWorker PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ControllerIsolationFakeWorker PRIVATE
+        WRAIL_CONTROLLER_ISOLATION_TESTING
+        WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(ControllerIsolationFakeWorker PRIVATE bcrypt)
+
+    add_executable(ControllerIsolationGuardianTestHost
+        ../ControllerIsolationGuardian/main.cpp
+        ../OverlayPlatformInterop/ControllerIsolationProtocol.cpp
+        ../OverlayPlatformInterop/ControllerIsolationProcessOwner.cpp)
+    target_compile_features(ControllerIsolationGuardianTestHost PRIVATE cxx_std_20)
+    target_compile_options(ControllerIsolationGuardianTestHost PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ControllerIsolationGuardianTestHost PRIVATE
+        WRAIL_CONTROLLER_ISOLATION_TESTING
+        WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(ControllerIsolationGuardianTestHost PRIVATE bcrypt)
+
+    add_executable(ControllerIsolationProcessTests
+        ../../tests/OverlayPlatformInterop.Tests/ControllerIsolationProcessTests.cpp
+        ../OverlayPlatformInterop/ControllerIsolationProtocol.cpp
+        ../OverlayPlatformInterop/ControllerIsolationProcessOwner.cpp)
+    target_compile_features(ControllerIsolationProcessTests PRIVATE cxx_std_20)
+    target_compile_options(ControllerIsolationProcessTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ControllerIsolationProcessTests PRIVATE
+        WRAIL_CONTROLLER_ISOLATION_TESTING
+        WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(ControllerIsolationProcessTests PRIVATE bcrypt)
+    add_dependencies(ControllerIsolationProcessTests
+        ControllerIsolationFakeWorker ControllerIsolationGuardianTestHost)
+    add_test(NAME ControllerIsolationProcessTests
+        COMMAND ControllerIsolationProcessTests)
 
     add_executable(ControllerNavigationTests
         ControllerNavigationTests.cpp ControllerNavigation.cpp)

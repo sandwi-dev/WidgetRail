@@ -1,0 +1,123 @@
+#include "../OverlayPlatformInterop/ControllerIsolationProcessOwner.h"
+
+#include <windows.h>
+
+#include <array>
+#include <filesystem>
+#include <string>
+#include <string_view>
+
+namespace {
+
+using namespace widgetrail::isolation;
+
+#if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
+constexpr wchar_t kExpectedParent[] = L"ControllerIsolationProcessTests.exe";
+constexpr wchar_t kWorkerFileName[] = L"ControllerIsolationFakeWorker.exe";
+#else
+constexpr wchar_t kExpectedParent[] = L"OverlayHost.exe";
+constexpr wchar_t kWorkerFileName[] = L"ControllerIsolationWorker.exe";
+#endif
+
+std::filesystem::path SiblingWorker() {
+    std::array<wchar_t, 32'768> path{};
+    const auto length = GetModuleFileNameW(
+        nullptr, path.data(), static_cast<DWORD>(path.size()));
+    if (length == 0 || length >= path.size()) return {};
+    return std::filesystem::path(
+        std::wstring_view(path.data(), length)).parent_path() /
+        kWorkerFileName;
+}
+
+} // namespace
+
+int wmain(const int argumentCount, wchar_t** arguments) {
+    std::wstring error;
+    auto channel = ChildControlChannel::Open(
+        argumentCount, arguments, kExpectedParent, error);
+    if (!channel) return ERROR_ACCESS_DENIED;
+
+    ControlFrame hello;
+    if (channel->WaitForRequest(
+            ControllerIsolationStartupTimeoutMilliseconds, hello) !=
+            ChildWaitResult::Request ||
+        hello.kind != ControlMessageKind::Hello) {
+        return ERROR_INVALID_DATA;
+    }
+
+    ControllerIsolationProcessOwner worker;
+    if (!worker.Start(
+            SiblingWorker(), channel->admission().authority,
+            1,
+            ControllerIsolationStartupTimeoutMilliseconds, error)) {
+        (void)channel->Reply(
+            ControlMessageKind::Terminal, hello, ERROR_PROCESS_ABORTED);
+        return ERROR_PROCESS_ABORTED;
+    }
+    if (!channel->Reply(
+            ControlMessageKind::HelloAccepted, hello, 0,
+            worker.processId())) {
+        return ERROR_BROKEN_PIPE;
+    }
+
+    for (;;) {
+        ControlFrame request;
+        const auto wait = channel->WaitForRequest(
+            static_cast<DWORD>(RoutingBudgets{}.hostLeaseMilliseconds),
+            request);
+        if (wait == ChildWaitResult::Stop ||
+            wait == ChildWaitResult::ParentExited) {
+            return 0;
+        }
+        if (wait != ChildWaitResult::Request) return ERROR_INVALID_DATA;
+
+        ControlFrame workerResponse;
+        switch (request.kind) {
+        case ControlMessageKind::Heartbeat:
+            if (!worker.Send(
+                    ControlMessageKind::Heartbeat,
+                    ControllerIsolationCommandTimeoutMilliseconds,
+                    workerResponse, error)) {
+                worker.Stop();
+                (void)channel->Reply(
+                    ControlMessageKind::Terminal, request, ERROR_TIMEOUT);
+                return ERROR_TIMEOUT;
+            }
+            if (!channel->Reply(
+                    ControlMessageKind::Heartbeat, request, 0,
+                    worker.processId())) {
+                return ERROR_BROKEN_PIPE;
+            }
+            break;
+        case ControlMessageKind::Stop:
+            (void)worker.Send(
+                ControlMessageKind::Stop,
+                ControllerIsolationCommandTimeoutMilliseconds,
+                workerResponse, error);
+            worker.Stop();
+            (void)channel->Reply(ControlMessageKind::Terminal, request);
+            return 0;
+#if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
+        case ControlMessageKind::TestExit:
+        case ControlMessageKind::TestHang: {
+            const auto sent = worker.Send(
+                request.kind, ControllerIsolationCommandTimeoutMilliseconds,
+                workerResponse, error);
+            worker.Stop();
+            (void)channel->Reply(
+                ControlMessageKind::Terminal, request,
+                sent ? ERROR_INVALID_STATE :
+                    (request.kind == ControlMessageKind::TestHang
+                        ? ERROR_TIMEOUT
+                        : ERROR_PROCESS_ABORTED));
+            return 0;
+        }
+#endif
+        default:
+            worker.Stop();
+            (void)channel->Reply(
+                ControlMessageKind::Terminal, request, ERROR_NOT_SUPPORTED);
+            return ERROR_NOT_SUPPORTED;
+        }
+    }
+}
