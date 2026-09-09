@@ -1,7 +1,9 @@
 #include "../../src/OverlayPlatformInterop/ControllerIsolationRoutingSession.h"
 
 #include <cstdlib>
+#include <functional>
 #include <iostream>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -47,6 +49,7 @@ struct FakeSource final : SelectedControllerSource {
     int prepareCalls{};
     int sampleCalls{};
     int stopCalls{};
+    std::function<void()> duringSample;
 
     SelectedControllerPrepareStatus Prepare(
         const SelectedControllerEnrollment&,
@@ -59,6 +62,10 @@ struct FakeSource final : SelectedControllerSource {
 
     bool SampleCurrent(SelectedControllerCurrent& value) noexcept override {
         ++sampleCalls;
+        if (duringSample) {
+            auto callback = std::move(duringSample);
+            callback();
+        }
         value = current;
         return current.connected;
     }
@@ -181,6 +188,60 @@ void PreparationFailsBeforeOutputForUntrustedDevice() {
               ready.prepareCalls == 1 && ready.stopCalls == 1 &&
               unavailable.opens == 1,
           "output creation happens only after exact reader preparation");
+
+    FakeSource heldSource;
+    heldSource.current.state.buttons = 0x1000;
+    FakeOutput heldOutput;
+    ControllerIsolationRoutingSession held{heldSource, heldOutput, guide};
+    Check(held.PrepareSession(authority, Enrollment(), 0) ==
+              ControllerIsolationRoutingResult::RejectedState &&
+              heldSource.prepareCalls == 1 && heldOutput.opens == 0,
+          "existing neutral policy rejects held input before target creation");
+}
+
+void SampleFenceContainsOnlyPreFenceHistory() {
+    const auto authority = Authority();
+    const auto enrollment = Enrollment();
+    FakeSource source;
+    FakeOutput output;
+    FakeGuideSink guide;
+    ControllerIsolationRoutingSession session{source, output, guide};
+    GamepadState held;
+    held.buttons = 0x1000;
+    source.duringSample = [&] {
+        Check(source.Publish(
+                  ControllerReaderEventKind::Reading, 99, 0, held),
+              "sample-race fixture publishes its delayed pre-fence callback");
+    };
+    Prepare(session, authority, enrollment, source, output);
+    Check(session.Pump(0) == ControllerIsolationRoutingResult::Applied &&
+              session.state() == ControllerIsolationRoutingState::PreparedNeutral,
+          "delayed callback older than prepared current is contained without fault");
+    Check(session.CommitPlaying(authority, 10, 0) ==
+              ControllerIsolationRoutingResult::Waiting &&
+              session.Pump(20) == ControllerIsolationRoutingResult::Applied,
+          "cached exact neutral remains valid after pre-fence history is contained");
+    Check(source.Publish(
+              ControllerReaderEventKind::Reading, 101, 21, held) &&
+              session.Pump(21) == ControllerIsolationRoutingResult::Applied &&
+              output.reports.back() == held,
+          "a real post-fence edge is preserved and forwarded after resume");
+    Check(session.EnterOverlay(authority, 22) ==
+              ControllerIsolationRoutingResult::Applied,
+          "sample-fence fixture re-enters contained interaction");
+    source.current = {110, 23, {}, true};
+    Check(session.CloseOverlay(authority, 10, 23) ==
+              ControllerIsolationRoutingResult::Waiting &&
+              source.Publish(
+                  ControllerReaderEventKind::Reading, 109, 22, held) &&
+              session.Pump(43) == ControllerIsolationRoutingResult::Applied &&
+              session.state() == ControllerIsolationRoutingState::Playing,
+          "callback arriving after close but older than its current sample is contained");
+    Check(source.Publish(
+              ControllerReaderEventKind::Reading, 111, 44, held) &&
+              session.Pump(44) == ControllerIsolationRoutingResult::Applied &&
+              output.reports.back() == held,
+          "post-close reading newer than the sample fence is still forwarded");
 }
 
 void TotalOrderPreservesGameplayAndContainsOverlayInput() {
@@ -318,14 +379,158 @@ void ConflictingSourceTimestampFailsClosed() {
           "one source timestamp cannot authorize two different states");
 }
 
+void ReservedProducerDefersBarrierAndCachedNeutral() {
+    const auto authority = Authority();
+    const auto enrollment = Enrollment();
+    FakeSource source;
+    FakeOutput output;
+    FakeGuideSink guide;
+    ControllerIsolationRoutingSession session{source, output, guide};
+    Prepare(session, authority, enrollment, source, output);
+    Check(session.CommitPlaying(authority, 10, 0) ==
+              ControllerIsolationRoutingResult::Waiting &&
+              session.Pump(20) == ControllerIsolationRoutingResult::Applied,
+          "producer-pause fixture reaches Playing");
+
+    GamepadState held;
+    held.buttons = 0x1000;
+    session.readerIngress().PauseNextProducerForTest();
+    bool published{};
+    std::thread producer([&] {
+        published = source.Publish(
+            ControllerReaderEventKind::Reading, 101, 21, held);
+    });
+    for (std::size_t attempt = 0;
+         attempt < 10'000 &&
+             !session.readerIngress().ProducerPausedForTest(); ++attempt) {
+        std::this_thread::yield();
+    }
+    Check(session.readerIngress().ProducerPausedForTest(),
+          "routing fixture pauses an actual producer after ticket reservation");
+    const auto reportsBeforeEnter = output.reports.size();
+    Check(session.EnterOverlay(authority, 21) ==
+              ControllerIsolationRoutingResult::Waiting &&
+              session.state() == ControllerIsolationRoutingState::Playing &&
+              output.reports.size() == reportsBeforeEnter,
+          "EnterOverlay remains pending without an early neutral or applied result");
+    Check(ServiceControllerIsolationRoutingBeforeControlWait(session, 22) ==
+              ControllerIsolationRoutingResult::Waiting &&
+              session.state() == ControllerIsolationRoutingState::Playing,
+          "pending producer yields to the serialized owner without false fault");
+    session.readerIngress().ReleaseProducerForTest();
+    producer.join();
+    Check(published &&
+              ServiceControllerIsolationRoutingBeforeControlWait(session, 23) ==
+                  ControllerIsolationRoutingResult::Applied &&
+              session.state() ==
+                  ControllerIsolationRoutingState::OverlayInteraction &&
+              output.reports[output.reports.size() - 2] == held &&
+              output.reports.back() == GamepadState{},
+          "pre-barrier reading drains before neutral and Enter becomes applied");
+
+    source.current = {102, 24, {}, true};
+    Check(session.CloseOverlay(authority, 10, 24) ==
+              ControllerIsolationRoutingResult::Waiting,
+          "close enters its neutral wait");
+    session.readerIngress().PauseNextProducerForTest();
+    bool secondPublished{};
+    std::thread secondProducer([&] {
+        secondPublished = source.Publish(
+            ControllerReaderEventKind::Reading, 103, 25, held);
+    });
+    for (std::size_t attempt = 0;
+         attempt < 10'000 &&
+             !session.readerIngress().ProducerPausedForTest(); ++attempt) {
+        std::this_thread::yield();
+    }
+    Check(session.Pump(44) == ControllerIsolationRoutingResult::Waiting &&
+              session.state() == ControllerIsolationRoutingState::AwaitingPlaying,
+          "unpublished reserved input prevents false cached-neutral resume");
+    session.readerIngress().ReleaseProducerForTest();
+    secondProducer.join();
+    source.current = {103, 25, held, true};
+    Check(secondPublished &&
+              session.Pump(45) == ControllerIsolationRoutingResult::Waiting &&
+              session.state() == ControllerIsolationRoutingState::AwaitingPlaying,
+          "released post-fence held edge resets neutral waiting");
+}
+
+void ControlTrafficCannotStarveReadingPump() {
+    const auto authority = Authority();
+    FakeSource source;
+    FakeOutput output;
+    FakeGuideSink guide;
+    ControllerIsolationRoutingSession session{source, output, guide};
+    Prepare(session, authority, Enrollment(), source, output);
+    Check(session.CommitPlaying(authority, 10, 0) ==
+              ControllerIsolationRoutingResult::Waiting &&
+              session.Pump(20) == ControllerIsolationRoutingResult::Applied,
+          "control-traffic fixture reaches Playing");
+    GamepadState down;
+    down.buttons = 0x2000;
+    Check(source.Publish(
+              ControllerReaderEventKind::Reading, 101, 21, down),
+          "reading is queued before the synthetic request stream");
+    for (std::uint64_t request = 0; request < 64; ++request) {
+        Check(ServiceControllerIsolationRoutingBeforeControlWait(
+                  session, 21 + request) ==
+                  ControllerIsolationRoutingResult::Applied &&
+                  session.Heartbeat(authority, 21 + request) ==
+                      ControllerIsolationRoutingResult::Applied,
+              "production pre-request service remains live during heartbeat traffic");
+    }
+    Check(output.reports.back() == down,
+          "one admitted reading cannot be starved by ready control requests");
+}
+
+void StuckProducerFaultsOnlyAfterRealQueueAge() {
+    const auto authority = Authority();
+    FakeSource source;
+    FakeOutput output;
+    FakeGuideSink guide;
+    ControllerIsolationRoutingSession session{source, output, guide};
+    Prepare(session, authority, Enrollment(), source, output);
+    Check(session.CommitPlaying(authority, 10, 0) ==
+              ControllerIsolationRoutingResult::Waiting &&
+              session.Pump(20) == ControllerIsolationRoutingResult::Applied,
+          "stuck-producer fixture reaches Playing");
+    session.readerIngress().PauseNextProducerForTest();
+    bool published{};
+    std::thread producer([&] {
+        published = source.Publish(
+            ControllerReaderEventKind::Reading, 101, 21);
+    });
+    for (std::size_t attempt = 0;
+         attempt < 10'000 &&
+             !session.readerIngress().ProducerPausedForTest(); ++attempt) {
+        std::this_thread::yield();
+    }
+    Check(session.EnterOverlay(authority, 21) ==
+              ControllerIsolationRoutingResult::Waiting &&
+              session.Pump(121) == ControllerIsolationRoutingResult::Waiting &&
+              session.state() == ControllerIsolationRoutingState::Playing,
+          "reserved producer remains pending through the exact queue-age budget");
+    Check(session.Pump(122) == ControllerIsolationRoutingResult::Faulted &&
+              output.removals == 1,
+          "final acquire check faults only after the real queue-age budget");
+    session.readerIngress().ReleaseProducerForTest();
+    producer.join();
+    Check(published,
+          "paused callback can retire after the session has failed closed");
+}
+
 } // namespace
 
 int main() {
     HeartbeatCannotActivateDormantWorker();
     PreparationFailsBeforeOutputForUntrustedDevice();
+    SampleFenceContainsOnlyPreFenceHistory();
     TotalOrderPreservesGameplayAndContainsOverlayInput();
     LeaseDisconnectAndSinkFailuresRetireOwnedTarget();
     ConflictingSourceTimestampFailsClosed();
+    ReservedProducerDefersBarrierAndCachedNeutral();
+    ControlTrafficCannotStarveReadingPump();
+    StuckProducerFaultsOnlyAfterRealQueueAge();
     std::cout << "ControllerIsolationRoutingSessionTests passed " << checks
               << " checks.\n";
     return EXIT_SUCCESS;

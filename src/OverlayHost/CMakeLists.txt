@@ -341,6 +341,7 @@ if(WRAIL_BUILD_TESTS)
     target_compile_features(ControllerIsolationReaderTests PRIVATE cxx_std_20)
     target_compile_options(ControllerIsolationReaderTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(ControllerIsolationReaderTests PRIVATE
+        WRAIL_CONTROLLER_ISOLATION_READER_TESTING
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME ControllerIsolationReaderTests COMMAND ControllerIsolationReaderTests)
 
@@ -352,6 +353,7 @@ if(WRAIL_BUILD_TESTS)
     target_compile_features(ControllerIsolationRoutingSessionTests PRIVATE cxx_std_20)
     target_compile_options(ControllerIsolationRoutingSessionTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(ControllerIsolationRoutingSessionTests PRIVATE
+        WRAIL_CONTROLLER_ISOLATION_READER_TESTING
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME ControllerIsolationRoutingSessionTests
         COMMAND ControllerIsolationRoutingSessionTests)

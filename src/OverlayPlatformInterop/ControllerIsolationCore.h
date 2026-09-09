@@ -70,6 +70,12 @@ struct GamepadState final {
         const GamepadState&, const GamepadState&) noexcept = default;
 };
 
+// The single policy owner for admitting an initial or resumed neutral report.
+// Callers that acquire an output backend must validate this before creating a
+// target; ControllerIsolationCore revalidates it when the session begins.
+[[nodiscard]] bool ControllerIsolationNeutralEntry(
+    const GamepadState& state) noexcept;
+
 struct DeviceReading final {
     RoutingAuthority authority;
     // The serialized reader owner assigns a non-zero token to the exact

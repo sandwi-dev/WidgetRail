@@ -85,12 +85,41 @@ public:
     [[nodiscard]] RoutingFault fault() const noexcept { return core_.fault(); }
 
 private:
+    enum class PendingTransitionKind : std::uint8_t {
+        CommitPlaying,
+        EnterOverlay,
+        CloseOverlay,
+    };
+
+    struct PendingTransition final {
+        PendingTransitionKind kind{PendingTransitionKind::CommitPlaying};
+        std::uint64_t barrierIngressOrdinal{};
+        std::uint64_t measuredP99ReadingIntervalMilliseconds{};
+    };
+
+    enum class DrainIngressResult : std::uint8_t {
+        Complete,
+        Waiting,
+        Faulted,
+    };
+
     [[nodiscard]] std::optional<DeviceReading> MapCurrent(
         const SelectedControllerCurrent& current) noexcept;
     [[nodiscard]] std::optional<DeviceReading> MapEvent(
         const ControllerReaderEvent& event) noexcept;
-    [[nodiscard]] bool DrainIngress() noexcept;
+    [[nodiscard]] std::optional<DeviceReading> SampleCurrentFence() noexcept;
+    [[nodiscard]] DrainIngressResult DrainIngressThrough(
+        std::uint64_t barrierIngressOrdinal,
+        std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] bool ProcessIngressEvent(
+        const ControllerReaderEvent& event) noexcept;
     [[nodiscard]] bool DrainCore(std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] ControllerIsolationRoutingResult BeginTransition(
+        PendingTransitionKind kind,
+        std::uint64_t measuredP99ReadingIntervalMilliseconds,
+        std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] ControllerIsolationRoutingResult ContinueTransition(
+        std::uint64_t nowMilliseconds) noexcept;
     [[nodiscard]] bool ExactAuthority(
         const RoutingAuthority& authority) const noexcept;
     [[nodiscard]] SelectedDeviceIdentity CoreDeviceIdentity(
@@ -101,6 +130,7 @@ private:
     ControllerIsolationOutput& output_;
     ControllerIsolationGuideSink& guideSink_;
     ControllerIsolationReaderIngress ingress_;
+    RoutingBudgets budgets_;
     ControllerIsolationCore core_;
     RoutingAuthority authority_{};
     SelectedControllerEnrollment enrollment_{};
@@ -108,9 +138,23 @@ private:
         ControllerIsolationRoutingState::Disabled};
     std::optional<std::uint64_t> lastSourceTimestamp_;
     std::optional<GamepadState> lastSourceState_;
+    std::optional<std::uint64_t> sampledFenceTimestamp_;
+    std::optional<GamepadState> sampledFenceState_;
+    std::optional<std::uint64_t> producerPendingSinceMilliseconds_;
+    std::optional<std::uint64_t> ordinaryDrainBarrierOrdinal_;
+    std::optional<PendingTransition> pendingTransition_;
     bool lastSourceConnected_{};
     std::uint64_t lastReadingOrdinal_{};
+    std::uint64_t lastConsumedIngressOrdinal_{};
     bool outputOwned_{};
 };
+
+// The production worker invokes this before every control-channel wait. Tests
+// use the same boundary with fakes to prove request traffic cannot starve
+// already-admitted controller input.
+[[nodiscard]] ControllerIsolationRoutingResult
+ServiceControllerIsolationRoutingBeforeControlWait(
+    ControllerIsolationRoutingSession& session,
+    std::uint64_t nowMilliseconds) noexcept;
 
 } // namespace widgetrail::isolation

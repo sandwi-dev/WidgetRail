@@ -1,9 +1,11 @@
 #include "../../src/OverlayPlatformInterop/ControllerIsolationReader.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdlib>
 #include <iostream>
+#include <string_view>
 #include <thread>
 #include <type_traits>
 
@@ -41,6 +43,127 @@ SelectedControllerEnrollment Enrollment(const std::uint8_t seed = 1) {
     result.connected = true;
     result.gamepadSupported = true;
     return result;
+}
+
+ControllerDeviceNodeIdentity NodeIdentity(const std::wstring_view value) {
+    ControllerDeviceNodeIdentity result;
+    Check(value.size() < result.value.size(),
+          "fixture node identity fits the production bound");
+    std::copy(value.begin(), value.end(), result.value.begin());
+    result.length = value.size();
+    return result;
+}
+
+struct FakeAncestryBackend final : ControllerDeviceAncestryBackend {
+    bool resolveSucceeds{true};
+    bool locateSucceeds{true};
+    bool rootSucceeds{true};
+    bool malformedResolvedIdentity{};
+    ControllerDeviceNodeToken root{3};
+    ControllerDeviceNodeToken first{1};
+    ControllerDeviceNodeToken failRead{};
+    ControllerDeviceNodeToken failParent{};
+    std::array<ControllerDeviceNodeIdentity, 4> identities{
+        NodeIdentity(L"unused"), NodeIdentity(L"HID\\PHYSICAL"),
+        NodeIdentity(L"USB\\PARENT"), NodeIdentity(L"HTREE\\ROOT\\0")};
+    std::array<ControllerDeviceNodeToken, 4> parents{0, 2, 3, 0};
+
+    bool ResolveInterfaceInstanceId(
+        std::wstring_view,
+        ControllerDeviceNodeIdentity& identity) noexcept override {
+        if (!resolveSucceeds) return false;
+        identity = identities[first];
+        if (malformedResolvedIdentity) {
+            identity.value[1] = L'\0';
+        }
+        return true;
+    }
+
+    bool LocateNode(
+        const ControllerDeviceNodeIdentity&,
+        ControllerDeviceNodeToken& node) noexcept override {
+        if (!locateSucceeds) return false;
+        node = first;
+        return true;
+    }
+
+    bool LocateRoot(ControllerDeviceNodeToken& value) noexcept override {
+        if (!rootSucceeds) return false;
+        value = root;
+        return true;
+    }
+
+    bool ReadNodeIdentity(
+        const ControllerDeviceNodeToken node,
+        ControllerDeviceNodeIdentity& identity) noexcept override {
+        if (node == failRead || node >= identities.size()) return false;
+        identity = identities[node];
+        return true;
+    }
+
+    bool Parent(
+        const ControllerDeviceNodeToken node,
+        ControllerDeviceNodeToken& parent) noexcept override {
+        if (node == failParent || node >= parents.size()) return false;
+        parent = parents[node];
+        return true;
+    }
+};
+
+void AncestryRequiresAnExactRootedPhysicalChain() {
+    FakeAncestryBackend physical;
+    Check(ClassifyControllerDeviceAncestry(
+              L"\\\\?\\HID#PHYSICAL", physical) ==
+              ControllerDeviceAncestry::Physical,
+          "a complete non-virtual chain terminating at the exact root is physical");
+
+    FakeAncestryBackend virtualAncestor;
+    virtualAncestor.identities[2] = NodeIdentity(L"ROOT\\VIGEMBUS\\0000");
+    Check(ClassifyControllerDeviceAncestry(
+              L"\\\\?\\HID#PHYSICAL", virtualAncestor) ==
+              ControllerDeviceAncestry::KnownVirtualOutput,
+          "a ViGEm ancestor rejects the selected device");
+    Check(ClassifyControllerDeviceAncestry(
+              L"\\\\?\\ROOT#NEFARIUS\\VIGEM#0000", physical) ==
+              ControllerDeviceAncestry::KnownVirtualOutput,
+          "a virtual marker in the interface path fails before traversal");
+
+    FakeAncestryBackend missingProperty;
+    missingProperty.resolveSucceeds = false;
+    Check(ClassifyControllerDeviceAncestry(
+              L"\\\\?\\HID#PHYSICAL", missingProperty) ==
+              ControllerDeviceAncestry::Unknown,
+          "missing or wrong-type interface identity is unknown, not physical");
+    FakeAncestryBackend malformedProperty;
+    malformedProperty.malformedResolvedIdentity = true;
+    Check(ClassifyControllerDeviceAncestry(
+              L"\\\\?\\HID#PHYSICAL", malformedProperty) ==
+              ControllerDeviceAncestry::Unknown,
+          "malformed embedded-NUL interface identity is unknown");
+    FakeAncestryBackend missingRoot;
+    missingRoot.rootSucceeds = false;
+    Check(ClassifyControllerDeviceAncestry(
+              L"\\\\?\\HID#PHYSICAL", missingRoot) ==
+              ControllerDeviceAncestry::Unknown,
+          "failure to identify the actual device-tree root is unknown");
+    FakeAncestryBackend failedRead;
+    failedRead.failRead = 2;
+    Check(ClassifyControllerDeviceAncestry(
+              L"\\\\?\\HID#PHYSICAL", failedRead) ==
+              ControllerDeviceAncestry::Unknown,
+          "mid-chain identity failure is unknown");
+    FakeAncestryBackend failedParent;
+    failedParent.failParent = 2;
+    Check(ClassifyControllerDeviceAncestry(
+              L"\\\\?\\HID#PHYSICAL", failedParent) ==
+              ControllerDeviceAncestry::Unknown,
+          "mid-chain parent failure is unknown rather than clean termination");
+    FakeAncestryBackend cycle;
+    cycle.parents[2] = 1;
+    Check(ClassifyControllerDeviceAncestry(
+              L"\\\\?\\HID#PHYSICAL", cycle) ==
+              ControllerDeviceAncestry::Unknown,
+          "cyclic ancestry is bounded and unknown");
 }
 
 void EnrollmentIsExactAndVirtualFailsClosed() {
@@ -182,13 +305,41 @@ void DistinctCallbackProducersShareOneTotalOrder() {
     }
 }
 
+void ReservedProducerYieldsToTheSerializedConsumer() {
+    ControllerIsolationReaderIngress ingress;
+    Check(ingress.Open(Authority(), 1), "paused producer fixture opens");
+    ingress.PauseNextProducerForTest();
+    bool published{};
+    std::thread producer([&] {
+        published = ingress.Publish(
+            ControllerReaderEventKind::Reading, 1, 1);
+    });
+    for (std::size_t attempt = 0;
+         attempt < 10'000 && !ingress.ProducerPausedForTest(); ++attempt) {
+        std::this_thread::yield();
+    }
+    Check(ingress.ProducerPausedForTest() &&
+              ingress.reservedThroughOrdinal() == 1,
+          "producer test seam pauses only after reserving its exact ticket");
+    ControllerReaderEvent event;
+    Check(ingress.TryPop(event) == ControllerReaderPopResult::ProducerPending,
+          "consumer observes the reserved unpublished head without skipping it");
+    ingress.ReleaseProducerForTest();
+    producer.join();
+    Check(published && ingress.TryPop(event) == ControllerReaderPopResult::Event &&
+              event.ingressOrdinal == 1,
+          "released producer publishes into the same reserved total order");
+}
+
 } // namespace
 
 int main() {
+    AncestryRequiresAnExactRootedPhysicalChain();
     EnrollmentIsExactAndVirtualFailsClosed();
     FixedEventsPreserveAuthorityAndOrder();
     InvalidAndOverflowingInputFailsClosed();
     DistinctCallbackProducersShareOneTotalOrder();
+    ReservedProducerYieldsToTheSerializedConsumer();
     std::cout << "ControllerIsolationReaderTests passed " << checks
               << " checks.\n";
     return EXIT_SUCCESS;

@@ -16,15 +16,6 @@ constexpr GamepadState kNeutralState{};
     });
 }
 
-[[nodiscard]] bool NeutralEntryState(const GamepadState& state) noexcept {
-    return state.buttons == 0 && state.leftTrigger <= 24 &&
-        state.rightTrigger <= 24 &&
-        std::abs(static_cast<int>(state.leftThumbX)) <= 6'000 &&
-        std::abs(static_cast<int>(state.leftThumbY)) <= 6'000 &&
-        std::abs(static_cast<int>(state.rightThumbX)) <= 6'500 &&
-        std::abs(static_cast<int>(state.rightThumbY)) <= 6'500;
-}
-
 [[nodiscard]] bool OutsideNeutralExit(const GamepadState& state) noexcept {
     return state.buttons != 0 || state.leftTrigger >= 30 ||
         state.rightTrigger >= 30 ||
@@ -53,6 +44,15 @@ template <typename T>
 }
 
 } // namespace
+
+bool ControllerIsolationNeutralEntry(const GamepadState& state) noexcept {
+    return state.buttons == 0 && state.leftTrigger <= 24 &&
+        state.rightTrigger <= 24 &&
+        std::abs(static_cast<int>(state.leftThumbX)) <= 6'000 &&
+        std::abs(static_cast<int>(state.leftThumbY)) <= 6'000 &&
+        std::abs(static_cast<int>(state.rightThumbX)) <= 6'500 &&
+        std::abs(static_cast<int>(state.rightThumbY)) <= 6'500;
+}
 
 bool SelectedDeviceIdentity::valid() const noexcept {
     return enrollmentToken != 0 && HasIdentityBytes(applicationLocalId) &&
@@ -90,7 +90,7 @@ CommandResult ControllerIsolationCore::BeginSession(
         fault_ = RoutingFault::InvalidInitialAuthority;
         return CommandResult::RejectedAuthority;
     }
-    if (!NeutralEntryState(current.state)) {
+    if (!ControllerIsolationNeutralEntry(current.state)) {
         fault_ = RoutingFault::InitialStateNotNeutral;
         return CommandResult::RejectedState;
     }
@@ -218,7 +218,7 @@ CommandResult ControllerIsolationCore::CloseOverlay(
         doubledP99,
         budgets_.minimumNeutralDwellMilliseconds,
         budgets_.maximumNeutralDwellMilliseconds);
-    neutralSinceMilliseconds_ = NeutralEntryState(current.state)
+    neutralSinceMilliseconds_ = ControllerIsolationNeutralEntry(current.state)
         ? std::optional<std::uint64_t>{nowMilliseconds}
         : std::nullopt;
     return CommandResult::Waiting;
@@ -355,7 +355,8 @@ CommandResult ControllerIsolationCore::ApplyAwaitingNeutral(
         return CommandResult::Waiting;
     }
     if (!neutralSinceMilliseconds_) {
-        if (!NeutralEntryState(current.state)) return CommandResult::Waiting;
+        if (!ControllerIsolationNeutralEntry(current.state))
+            return CommandResult::Waiting;
         neutralSinceMilliseconds_ = nowMilliseconds;
         return CommandResult::Waiting;
     }

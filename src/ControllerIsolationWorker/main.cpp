@@ -62,10 +62,30 @@ private:
     std::size_t count_{};
 };
 
-[[nodiscard]] bool Accepted(
+[[nodiscard]] bool Applied(
     const ControllerIsolationRoutingResult result) noexcept {
-    return result == ControllerIsolationRoutingResult::Applied ||
-        result == ControllerIsolationRoutingResult::Waiting;
+    return result == ControllerIsolationRoutingResult::Applied;
+}
+
+[[nodiscard]] bool CompleteTransition(
+    ControllerIsolationRoutingSession& routing,
+    const ControllerIsolationRoutingResult initial,
+    const ControllerIsolationRoutingState completedState) noexcept {
+    if (routing.state() == completedState) return Applied(initial);
+    if (initial != ControllerIsolationRoutingResult::Waiting) return false;
+    const auto startedAt = GetTickCount64();
+    for (;;) {
+        const auto now = GetTickCount64();
+        if (now < startedAt ||
+            now - startedAt > ControllerIsolationCommandTimeoutMilliseconds) {
+            return false;
+        }
+        const auto result =
+            ServiceControllerIsolationRoutingBeforeControlWait(routing, now);
+        if (routing.state() == completedState) return Applied(result);
+        if (result != ControllerIsolationRoutingResult::Waiting) return false;
+        Sleep(1);
+    }
 }
 #endif
 
@@ -102,6 +122,17 @@ int wmain(const int argumentCount, wchar_t** arguments) {
     }
 
     for (;;) {
+#if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
+        if (routing.state() != ControllerIsolationRoutingState::Disabled) {
+            const auto serviced =
+                ServiceControllerIsolationRoutingBeforeControlWait(
+                    routing, GetTickCount64());
+            if (serviced != ControllerIsolationRoutingResult::Applied &&
+                serviced != ControllerIsolationRoutingResult::Waiting) {
+                return ERROR_DEVICE_NOT_AVAILABLE;
+            }
+        }
+#endif
         ControlFrame request;
         const auto timeout =
 #if defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
@@ -123,10 +154,6 @@ int wmain(const int argumentCount, wchar_t** arguments) {
 #if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
         if (wait == ChildWaitResult::TimedOut &&
             routing.state() != ControllerIsolationRoutingState::Disabled) {
-            if (routing.Pump(GetTickCount64()) ==
-                ControllerIsolationRoutingResult::Faulted) {
-                return ERROR_DEVICE_NOT_AVAILABLE;
-            }
             continue;
         }
 #endif
@@ -135,7 +162,7 @@ int wmain(const int argumentCount, wchar_t** arguments) {
         case ControlMessageKind::Heartbeat:
 #if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
             if (routing.state() != ControllerIsolationRoutingState::Disabled &&
-                !Accepted(routing.Heartbeat(request.authority, GetTickCount64()))) {
+                !Applied(routing.Heartbeat(request.authority, GetTickCount64()))) {
                 (void)channel->Reply(
                     ControlMessageKind::Terminal, request,
                     ERROR_INVALID_STATE);
@@ -149,7 +176,7 @@ int wmain(const int argumentCount, wchar_t** arguments) {
         case ControlMessageKind::PrepareSession: {
             const auto result = routing.PrepareSession(
                 request.authority, request.enrollment, GetTickCount64());
-            if (!Accepted(result)) {
+            if (!Applied(result)) {
                 (void)channel->Reply(
                     ControlMessageKind::Terminal, request,
                     static_cast<std::uint32_t>(result) + 1);
@@ -163,7 +190,9 @@ int wmain(const int argumentCount, wchar_t** arguments) {
             const auto result = routing.CommitPlaying(
                 request.authority, request.observedAtMilliseconds,
                 GetTickCount64());
-            if (!Accepted(result)) {
+            if (!CompleteTransition(
+                    routing, result,
+                    ControllerIsolationRoutingState::Playing)) {
                 (void)channel->Reply(
                     ControlMessageKind::Terminal, request,
                     static_cast<std::uint32_t>(result) + 1);
@@ -176,7 +205,9 @@ int wmain(const int argumentCount, wchar_t** arguments) {
         case ControlMessageKind::EnterOverlay: {
             const auto result = routing.EnterOverlay(
                 request.authority, GetTickCount64());
-            if (!Accepted(result)) {
+            if (!CompleteTransition(
+                    routing, result,
+                    ControllerIsolationRoutingState::OverlayInteraction)) {
                 (void)channel->Reply(
                     ControlMessageKind::Terminal, request,
                     static_cast<std::uint32_t>(result) + 1);
@@ -190,7 +221,9 @@ int wmain(const int argumentCount, wchar_t** arguments) {
             const auto result = routing.CloseOverlay(
                 request.authority, request.observedAtMilliseconds,
                 GetTickCount64());
-            if (!Accepted(result)) {
+            if (!CompleteTransition(
+                    routing, result,
+                    ControllerIsolationRoutingState::Playing)) {
                 (void)channel->Reply(
                     ControlMessageKind::Terminal, request,
                     static_cast<std::uint32_t>(result) + 1);

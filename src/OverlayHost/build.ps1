@@ -495,6 +495,7 @@ function Invoke-ControllerIsolationProductionBuild {
 
 function Invoke-ControllerIsolationAdapterAndProcessTests {
     $readerTestArguments = $common + @(
+        '/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING',
         (Join-Path $platformTestDirectory 'ControllerIsolationReaderTests.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationReader.cpp'),
         "/Fo:$controllerIsolationTestObjectDirectory\",
@@ -511,6 +512,7 @@ function Invoke-ControllerIsolationAdapterAndProcessTests {
     }
 
     $routingTestArguments = $common + @(
+        '/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING',
         (Join-Path $platformTestDirectory 'ControllerIsolationRoutingSessionTests.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationRoutingSession.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationReader.cpp'),

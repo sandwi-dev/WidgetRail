@@ -1,8 +1,12 @@
 #include "ControllerIsolationReader.h"
 
 #include <algorithm>
+#include <cwctype>
 #include <limits>
 #include <type_traits>
+#if defined(WRAIL_CONTROLLER_ISOLATION_READER_TESTING)
+#include <thread>
+#endif
 
 namespace widgetrail::isolation {
 namespace {
@@ -15,7 +19,76 @@ template <std::size_t Size>
     });
 }
 
+[[nodiscard]] bool ContainsVirtualMarker(
+    const std::wstring_view value) noexcept {
+    constexpr std::array markers{
+        std::wstring_view{L"VIGEMBUS"},
+        std::wstring_view{L"NEFARIUS\\VIGEM"}};
+    for (const auto marker : markers) {
+        if (value.size() < marker.size()) continue;
+        for (std::size_t start = 0;
+             start + marker.size() <= value.size(); ++start) {
+            bool matches = true;
+            for (std::size_t index = 0; index < marker.size(); ++index) {
+                if (std::towupper(value[start + index]) != marker[index]) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
+
+bool ControllerDeviceNodeIdentity::valid() const noexcept {
+    if (length == 0 || length >= value.size() || value[length] != L'\0')
+        return false;
+    return std::find(value.begin(), value.begin() + length, L'\0') ==
+        value.begin() + length;
+}
+
+ControllerDeviceAncestry ClassifyControllerDeviceAncestry(
+    const std::wstring_view normalizedInterfacePath,
+    ControllerDeviceAncestryBackend& backend) noexcept {
+    if (normalizedInterfacePath.empty())
+        return ControllerDeviceAncestry::Unknown;
+    if (ContainsVirtualMarker(normalizedInterfacePath))
+        return ControllerDeviceAncestry::KnownVirtualOutput;
+
+    ControllerDeviceNodeIdentity instanceId;
+    ControllerDeviceNodeToken node{};
+    ControllerDeviceNodeToken root{};
+    if (!backend.ResolveInterfaceInstanceId(normalizedInterfacePath, instanceId) ||
+        !instanceId.valid() || !backend.LocateNode(instanceId, node) ||
+        !backend.LocateRoot(root)) {
+        return ControllerDeviceAncestry::Unknown;
+    }
+
+    std::array<ControllerDeviceNodeToken, 32> visited{};
+    std::size_t visitedCount{};
+    for (; visitedCount < visited.size(); ++visitedCount) {
+        if (std::find(
+                visited.begin(), visited.begin() + visitedCount, node) !=
+            visited.begin() + visitedCount) {
+            return ControllerDeviceAncestry::Unknown;
+        }
+        visited[visitedCount] = node;
+        ControllerDeviceNodeIdentity identity;
+        if (!backend.ReadNodeIdentity(node, identity) || !identity.valid())
+            return ControllerDeviceAncestry::Unknown;
+        if (ContainsVirtualMarker(identity.view()))
+            return ControllerDeviceAncestry::KnownVirtualOutput;
+        if (node == root) return ControllerDeviceAncestry::Physical;
+        ControllerDeviceNodeToken parent{};
+        if (!backend.Parent(node, parent))
+            return ControllerDeviceAncestry::Unknown;
+        node = parent;
+    }
+    return ControllerDeviceAncestry::Unknown;
+}
 
 bool SelectedControllerEnrollment::valid() const noexcept {
     return enrollmentToken != 0 && HasBytes(deviceId) &&
@@ -67,6 +140,8 @@ bool ControllerIsolationReaderIngress::Publish(
         Fail(ControllerReaderFault::InvalidEvent);
         return false;
     }
+    const auto authority = authority_;
+    const auto deviceEnrollmentToken = deviceEnrollmentToken_;
 
     std::size_t position = enqueuePosition_.load(std::memory_order_relaxed);
     for (std::size_t attempt = 0;
@@ -84,10 +159,21 @@ bool ControllerIsolationReaderIngress::Publish(
                     position, position + 1, std::memory_order_relaxed)) {
                 continue;
             }
+#if defined(WRAIL_CONTROLLER_ISOLATION_READER_TESTING)
+            if (pauseNextProducerForTest_.exchange(
+                    false, std::memory_order_acq_rel)) {
+                producerPausedForTest_.store(true, std::memory_order_release);
+                while (!releaseProducerForTest_.load(
+                    std::memory_order_acquire)) {
+                    std::this_thread::yield();
+                }
+                producerPausedForTest_.store(false, std::memory_order_release);
+            }
+#endif
             cell.event = {
                 kind,
-                authority_,
-                deviceEnrollmentToken_,
+                authority,
+                deviceEnrollmentToken,
                 static_cast<std::uint64_t>(position + 1),
                 sourceTimestampMicroseconds,
                 observedAtMilliseconds,
@@ -135,6 +221,28 @@ std::size_t ControllerIsolationReaderIngress::approximateSize() const noexcept {
     const auto enqueued = enqueuePosition_.load(std::memory_order_acquire);
     return enqueued >= dequeuePosition_ ? enqueued - dequeuePosition_ : 0;
 }
+
+std::uint64_t
+ControllerIsolationReaderIngress::reservedThroughOrdinal() const noexcept {
+    static_assert(sizeof(std::size_t) <= sizeof(std::uint64_t));
+    return static_cast<std::uint64_t>(
+        enqueuePosition_.load(std::memory_order_acquire));
+}
+
+#if defined(WRAIL_CONTROLLER_ISOLATION_READER_TESTING)
+void ControllerIsolationReaderIngress::PauseNextProducerForTest() noexcept {
+    releaseProducerForTest_.store(false, std::memory_order_relaxed);
+    pauseNextProducerForTest_.store(true, std::memory_order_release);
+}
+
+bool ControllerIsolationReaderIngress::ProducerPausedForTest() const noexcept {
+    return producerPausedForTest_.load(std::memory_order_acquire);
+}
+
+void ControllerIsolationReaderIngress::ReleaseProducerForTest() noexcept {
+    releaseProducerForTest_.store(true, std::memory_order_release);
+}
+#endif
 
 void ControllerIsolationReaderIngress::Fail(
     const ControllerReaderFault fault) noexcept {

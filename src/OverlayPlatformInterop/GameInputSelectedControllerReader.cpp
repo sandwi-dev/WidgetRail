@@ -23,7 +23,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace widgetrail::isolation {
 namespace {
@@ -119,56 +118,97 @@ static_assert(sizeof(APP_LOCAL_DEVICE_ID) == 32);
     return succeeded;
 }
 
-[[nodiscard]] bool ContainsViGEmBus(std::wstring_view value) noexcept {
-    return value.find(L"VIGEMBUS") != std::wstring_view::npos ||
-        value.find(L"NEFARIUS\\VIGEM") != std::wstring_view::npos;
-}
+class CfgMgrDeviceAncestryBackend final
+    : public ControllerDeviceAncestryBackend {
+public:
+    bool ResolveInterfaceInstanceId(
+        const std::wstring_view normalizedInterfacePath,
+        ControllerDeviceNodeIdentity& identity) noexcept override {
+        identity = {};
+        if (normalizedInterfacePath.empty() ||
+            normalizedInterfacePath.size() >=
+                ControllerDeviceIdentityCharacterCapacity) {
+            return false;
+        }
+        std::array<wchar_t, ControllerDeviceIdentityCharacterCapacity>
+            interfacePath{};
+        std::copy(
+            normalizedInterfacePath.begin(), normalizedInterfacePath.end(),
+            interfacePath.begin());
+        DEVPROPTYPE propertyType{};
+        ULONG propertyBytes = static_cast<ULONG>(
+            identity.value.size() * sizeof(wchar_t));
+        const auto result = CM_Get_Device_Interface_PropertyW(
+            interfacePath.data(), &DEVPKEY_Device_InstanceId, &propertyType,
+            reinterpret_cast<PBYTE>(identity.value.data()), &propertyBytes, 0);
+        if (result != CR_SUCCESS || propertyType != DEVPROP_TYPE_STRING ||
+            propertyBytes < 2 * sizeof(wchar_t) ||
+            propertyBytes > identity.value.size() * sizeof(wchar_t) ||
+            propertyBytes % sizeof(wchar_t) != 0) {
+            identity = {};
+            return false;
+        }
+        const auto characters = propertyBytes / sizeof(wchar_t);
+        if (identity.value[characters - 1] != L'\0') {
+            identity = {};
+            return false;
+        }
+        identity.length = characters - 1;
+        return identity.valid();
+    }
 
-[[nodiscard]] std::optional<bool> IsKnownVirtualOutput(
-    const std::wstring& normalizedPnpPath) {
-    if (ContainsViGEmBus(normalizedPnpPath)) return true;
-    std::wstring instanceId;
-    DEVPROPTYPE propertyType{};
-    ULONG propertyBytes{};
-    CONFIGRET result = CM_Get_Device_Interface_PropertyW(
-        normalizedPnpPath.c_str(), &DEVPKEY_Device_InstanceId, &propertyType,
-        nullptr, &propertyBytes, 0);
-    if (result == CR_BUFFER_SMALL && propertyType == DEVPROP_TYPE_STRING &&
-        propertyBytes >= sizeof(wchar_t)) {
-        std::vector<std::byte> property(propertyBytes);
-        result = CM_Get_Device_Interface_PropertyW(
-            normalizedPnpPath.c_str(), &DEVPKEY_Device_InstanceId,
-            &propertyType, reinterpret_cast<PBYTE>(property.data()),
-            &propertyBytes, 0);
-        if (result == CR_SUCCESS) {
-            instanceId.assign(reinterpret_cast<const wchar_t*>(property.data()));
+    bool LocateNode(
+        const ControllerDeviceNodeIdentity& identity,
+        ControllerDeviceNodeToken& node) noexcept override {
+        if (!identity.valid()) return false;
+        DEVINST value{};
+        if (CM_Locate_DevNodeW(
+                &value, const_cast<wchar_t*>(identity.value.data()),
+                CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS) {
+            return false;
         }
+        node = value;
+        return true;
     }
-    if (instanceId.empty()) instanceId = normalizedPnpPath;
-    DEVINST device{};
-    if (CM_Locate_DevNodeW(&device, instanceId.data(), CM_LOCATE_DEVNODE_NORMAL) !=
-        CR_SUCCESS) {
-        return std::nullopt;
-    }
-    for (std::size_t depth = 0; depth < 32; ++depth) {
-        std::array<wchar_t, MAX_DEVICE_ID_LEN> id{};
-        if (CM_Get_Device_IDW(
-                device, id.data(), static_cast<ULONG>(id.size()), 0) !=
+
+    bool LocateRoot(ControllerDeviceNodeToken& root) noexcept override {
+        DEVINST value{};
+        if (CM_Locate_DevNodeW(&value, nullptr, CM_LOCATE_DEVNODE_NORMAL) !=
             CR_SUCCESS) {
-            return std::nullopt;
+            return false;
         }
-        std::wstring normalized(id.data());
-        std::ranges::transform(
-            normalized, normalized.begin(), [](wchar_t value) {
-                return static_cast<wchar_t>(std::towupper(value));
-            });
-        if (ContainsViGEmBus(normalized)) return true;
-        DEVINST parent{};
-        if (CM_Get_Parent(&parent, device, 0) != CR_SUCCESS) return false;
-        device = parent;
+        root = value;
+        return true;
     }
-    return std::nullopt;
-}
+
+    bool ReadNodeIdentity(
+        const ControllerDeviceNodeToken node,
+        ControllerDeviceNodeIdentity& identity) noexcept override {
+        identity = {};
+        if (CM_Get_Device_IDW(
+                static_cast<DEVINST>(node), identity.value.data(),
+                static_cast<ULONG>(identity.value.size()), 0) != CR_SUCCESS) {
+            return false;
+        }
+        while (identity.length < identity.value.size() &&
+               identity.value[identity.length] != L'\0') {
+            identity.value[identity.length] = static_cast<wchar_t>(
+                std::towupper(identity.value[identity.length]));
+            ++identity.length;
+        }
+        return identity.valid();
+    }
+
+    bool Parent(
+        const ControllerDeviceNodeToken node,
+        ControllerDeviceNodeToken& parent) noexcept override {
+        DEVINST value{};
+        if (CM_Get_Parent(&value, static_cast<DEVINST>(node), 0) != CR_SUCCESS)
+            return false;
+        parent = value;
+        return true;
+    }
+};
 
 [[nodiscard]] SelectedControllerEnrollment IdentityFrom(
     const GameInputDeviceInfo& info,
@@ -225,10 +265,12 @@ public:
         }
         const auto pnpPath = NormalizePnpPath(info->pnpPath);
         std::array<std::uint8_t, 32> pnpDigest{};
-        const auto virtualOutput = pnpPath
-            ? IsKnownVirtualOutput(*pnpPath)
-            : std::nullopt;
-        if (!pnpPath || !HashPnpPath(*pnpPath, pnpDigest) || !virtualOutput) {
+        CfgMgrDeviceAncestryBackend ancestryBackend;
+        const auto ancestry = pnpPath
+            ? ClassifyControllerDeviceAncestry(*pnpPath, ancestryBackend)
+            : ControllerDeviceAncestry::Unknown;
+        if (!pnpPath || !HashPnpPath(*pnpPath, pnpDigest) ||
+            ancestry == ControllerDeviceAncestry::Unknown) {
             Stop();
             return SelectedControllerPrepareStatus::IdentityMismatch;
         }
@@ -236,7 +278,8 @@ public:
             (device_->GetDeviceStatus() & GameInputDeviceConnected) != 0;
         const auto actual = IdentityFrom(
             *info, enrollment.enrollmentToken, pnpDigest,
-            *virtualOutput, connected);
+            ancestry == ControllerDeviceAncestry::KnownVirtualOutput,
+            connected);
         if (actual.knownVirtualOutput) {
             Stop();
             return SelectedControllerPrepareStatus::VirtualOutputRejected;

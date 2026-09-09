@@ -7,11 +7,54 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string_view>
 #include <type_traits>
 
 namespace widgetrail::isolation {
 
 inline constexpr std::size_t ControllerReaderCapacity = 256;
+inline constexpr std::size_t ControllerDeviceIdentityCharacterCapacity = 512;
+
+struct ControllerDeviceNodeIdentity final {
+    std::array<wchar_t, ControllerDeviceIdentityCharacterCapacity> value{};
+    std::size_t length{};
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] std::wstring_view view() const noexcept {
+        return {value.data(), length};
+    }
+};
+
+using ControllerDeviceNodeToken = std::uintptr_t;
+
+class ControllerDeviceAncestryBackend {
+public:
+    virtual ~ControllerDeviceAncestryBackend() = default;
+    [[nodiscard]] virtual bool ResolveInterfaceInstanceId(
+        std::wstring_view interfacePath,
+        ControllerDeviceNodeIdentity& identity) noexcept = 0;
+    [[nodiscard]] virtual bool LocateNode(
+        const ControllerDeviceNodeIdentity& identity,
+        ControllerDeviceNodeToken& node) noexcept = 0;
+    [[nodiscard]] virtual bool LocateRoot(
+        ControllerDeviceNodeToken& root) noexcept = 0;
+    [[nodiscard]] virtual bool ReadNodeIdentity(
+        ControllerDeviceNodeToken node,
+        ControllerDeviceNodeIdentity& identity) noexcept = 0;
+    [[nodiscard]] virtual bool Parent(
+        ControllerDeviceNodeToken node,
+        ControllerDeviceNodeToken& parent) noexcept = 0;
+};
+
+enum class ControllerDeviceAncestry : std::uint8_t {
+    Physical,
+    KnownVirtualOutput,
+    Unknown,
+};
+
+[[nodiscard]] ControllerDeviceAncestry ClassifyControllerDeviceAncestry(
+    std::wstring_view normalizedInterfacePath,
+    ControllerDeviceAncestryBackend& backend) noexcept;
 
 struct SelectedControllerEnrollment final {
     std::uint64_t enrollmentToken{};
@@ -95,6 +138,13 @@ public:
         return fault_.load(std::memory_order_acquire);
     }
     [[nodiscard]] std::size_t approximateSize() const noexcept;
+    [[nodiscard]] std::uint64_t reservedThroughOrdinal() const noexcept;
+
+#if defined(WRAIL_CONTROLLER_ISOLATION_READER_TESTING)
+    void PauseNextProducerForTest() noexcept;
+    [[nodiscard]] bool ProducerPausedForTest() const noexcept;
+    void ReleaseProducerForTest() noexcept;
+#endif
 
 private:
     struct Cell final {
@@ -110,6 +160,11 @@ private:
     std::atomic<ControllerReaderFault> fault_{ControllerReaderFault::Closed};
     RoutingAuthority authority_{};
     std::uint64_t deviceEnrollmentToken_{};
+#if defined(WRAIL_CONTROLLER_ISOLATION_READER_TESTING)
+    std::atomic_bool pauseNextProducerForTest_{};
+    std::atomic_bool producerPausedForTest_{};
+    std::atomic_bool releaseProducerForTest_{};
+#endif
 };
 
 enum class SelectedControllerPrepareStatus : std::uint8_t {

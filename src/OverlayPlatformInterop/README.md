@@ -40,6 +40,12 @@ unknown ancestry fails closed. Only then may the worker create its one owned
 virtual target and delegate neutral/barrier behavior to
 `ControllerIsolationCore`.
 
+Physical ancestry is accepted only when Configuration Manager resolves the
+interface's exact device-instance property and the walk reaches the actual
+device-tree root returned by `CM_Locate_DevNode(nullptr)`. Missing, malformed,
+cyclic, over-depth, or partially failed ancestry is unknown and rejected; an
+arbitrary `CM_Get_Parent` error is never interpreted as a physical root.
+
 GameInput reading, device, and Guide callbacks publish fixed records into one
 preallocated bounded multi-producer queue. The worker thread is the sole
 consumer and the sole caller of the routing core and virtual output. Queue
@@ -47,6 +53,17 @@ pressure, conflicting source timestamps, disconnect, Guide-sink pressure,
 authority mismatch, and lease expiry retire the owned target rather than drop
 or reorder transitions. Guide edges remain passive ordered signals and never
 enter the gamepad report.
+
+Each routing cycle snapshots a finite reserved-tail barrier, so continuous
+callback traffic cannot monopolize control work. A producer that has reserved
+but not published a cell yields `Waiting`; only the existing queue-age budget
+and a final acquire check can classify it as stuck. Current-reading samples are
+taken only while output is contained. Their exact timestamp/state forms a
+fence that retires delayed pre-fence reading callbacks while preserving every
+post-fence edge; disconnect and Guide signals are never suppressed. Worker
+control replies remain correlated until the requested transition is actually
+applied: Enter waits for its pre-barrier drain and neutral submission, while
+Commit/Close wait until the bounded neutral dwell has restored Playing.
 
 This is compile- and fake-test-only foundation. The present host-owned guardian
 job topology cannot keep a healthy Playing route alive across OverlayHost
