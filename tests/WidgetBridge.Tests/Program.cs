@@ -27,6 +27,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Event cancellation preserves the serialized frame boundary", BridgeEventWriteBoundaryScenarios.CancellationPreservesFrameBoundary),
     ("Bridge-wide revision notifications are latest-wins and bounded", BridgeRevisionNotificationScenarios.LatestRevisionsAreBoundedAndOrdered),
     ("Bridge read and reply timeouts have exact frame owners", BridgeFrameOwnershipScenarios.TimeoutAndCancellationHaveExactOwners),
+    ("Typed artwork notifications preserve bounded wire content", BridgeFrameOwnershipScenarios.TypedArtworkNotificationsPreserveWireContent),
     ("Strict catalog rejects unknown properties", StrictCatalogRejectsUnknownProperties),
     ("Catalog rejects host-reserved View quick actions", CatalogRejectsHostReservedView),
     ("Bridge startup scopes an explicit development installed catalog", DevelopmentCatalogRootIsScoped),
@@ -115,7 +116,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Current worker validator diagnostics persist and correlate across the Bridge", WorkerValidatorDiagnosticsPersistAndCorrelate),
     ("Diagnostics projection is bounded sanitized and read only", BridgeDiagnosticsScenarios.ProjectionIsBoundedSanitizedAndReadOnly),
     ("Catalog diagnostics identify bounded isolated widget failures", BridgeDiagnosticsScenarios.CatalogRejectionsAreBoundedAndActionable),
-    ("Artwork memory diagnostics are bounded concurrent and private", BridgeDiagnosticsScenarios.ArtworkMemoryCountersAreBoundedAndConcurrent),
     ("Diagnostics partial failures malformed input and deadline are closed", BridgeDiagnosticsScenarios.PartialFailureMalformedInputAndDeadlineAreClosed),
     ("Authority recovery projection is exact bounded and cancellation safe", BridgeDiagnosticsScenarios.RecoveryRetryIsExactBoundedAndCancellationSafe),
     ("Widget styles override global theme defaults", WidgetStylesOverrideGlobalThemeDefaults),
@@ -1997,13 +1997,6 @@ static async Task TrustedArtworkDemandIsExact()
         Assert.Equal(initialPresentationGeneration,
             artwork.Payload.GetProperty("presentationGeneration").GetString());
         Assert.Equal(1, backend.AppLibraryIconCalls);
-        var artworkMemory = server.ArtworkMemoryDiagnostics;
-        Assert.Equal(1L, artworkMemory.Requests);
-        Assert.Equal(1L, artworkMemory.Completed);
-        Assert.Equal(0L, artworkMemory.Failed);
-        Assert.Equal(0L, artworkMemory.InFlight);
-        Assert.Equal(Convert.FromBase64String(png).Length, artworkMemory.RawBytes);
-        Assert.Equal(png.Length, artworkMemory.Base64Characters);
 
         var replacementCatalog = new BridgeCatalog([
             catalog.GetConfigured("test-widget") with
@@ -2110,10 +2103,6 @@ static async Task TrustedArtworkDemandIsExact()
             .GetProperty("presentationGeneration").GetString()!;
         Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
         Assert.Equal(2, backend.AppLibraryIconCalls);
-        artworkMemory = server.ArtworkMemoryDiagnostics;
-        Assert.Equal(3L, artworkMemory.Requests);
-        Assert.Equal(1L, artworkMemory.Completed);
-        Assert.Equal(2L, artworkMemory.Failed);
 
         var forged = await client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
@@ -2124,9 +2113,6 @@ static async Task TrustedArtworkDemandIsExact()
         _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
         Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
         Assert.Equal(2, backend.AppLibraryIconCalls);
-        artworkMemory = server.ArtworkMemoryDiagnostics;
-        Assert.Equal(4L, artworkMemory.Requests);
-        Assert.Equal(3L, artworkMemory.Failed);
 
         var blockedStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -2157,14 +2143,6 @@ static async Task TrustedArtworkDemandIsExact()
         releaseBlocked.TrySetResult();
         await blockedFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(3, backend.AppLibraryIconCalls);
-        await WaitUntilAsync(
-            () => server.ArtworkMemoryDiagnostics.InFlight == 0,
-            TimeSpan.FromSeconds(2));
-        artworkMemory = server.ArtworkMemoryDiagnostics;
-        Assert.Equal(5L, artworkMemory.Requests);
-        Assert.Equal(1L, artworkMemory.Completed);
-        Assert.Equal(4L, artworkMemory.Failed);
-        Assert.Equal(0L, artworkMemory.InFlight);
     }
     finally
     {

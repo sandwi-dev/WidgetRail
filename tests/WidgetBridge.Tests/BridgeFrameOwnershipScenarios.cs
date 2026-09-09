@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+using System.Text.Json;
 using WidgetRail.WidgetBridge;
 
 internal static class BridgeFrameOwnershipScenarios
@@ -9,6 +11,66 @@ internal static class BridgeFrameOwnershipScenarios
         await AbandonedWaitReproducesRetainedBodyPrefixAsync();
         await TerminalReaderCancelsAndDrainsExactReadAsync();
         await RawReplyCancellationCanLeaveHeaderOnlyAsync();
+    }
+
+    internal static async Task TypedArtworkNotificationsPreserveWireContent()
+    {
+        foreach (var length in new[] { 0, 1, 2, 3 })
+        {
+            var content = Enumerable.Range(0, length)
+                .Select(value => (byte)(value + 1)).ToArray();
+            await using var stream = new MemoryStream();
+            var channel = new BridgeFrameChannel(stream, MaximumMessageBytes);
+            await channel.WriteAsync(
+                BridgeMessageTypes.Artwork,
+                0,
+                new BridgeEncodedArtworkEvent(
+                    "sample", "artwork", "runtime", "presentation",
+                    length == 0 ? string.Empty : "image/png", content),
+                CancellationToken.None);
+
+            var frame = stream.ToArray();
+            var bodyLength = BinaryPrimitives.ReadInt32LittleEndian(frame);
+            BoundaryAssert.Equal(frame.Length - sizeof(int), bodyLength);
+            using var document = JsonDocument.Parse(
+                frame.AsMemory(sizeof(int), bodyLength));
+            var root = document.RootElement;
+            BoundaryAssert.Equal(BridgeProtocol.CurrentVersion,
+                root.GetProperty("protocolVersion").GetInt32());
+            BoundaryAssert.Equal(BridgeMessageTypes.Artwork,
+                root.GetProperty("type").GetString());
+            BoundaryAssert.Equal(0L, root.GetProperty("requestId").GetInt64());
+            var payload = root.GetProperty("payload");
+            BoundaryAssert.Equal(Convert.ToBase64String(content),
+                payload.GetProperty("contentBase64").GetString());
+            BoundaryAssert.Equal("sample", payload.GetProperty("widgetId").GetString());
+            BoundaryAssert.Equal("artwork", payload.GetProperty("artworkHandle").GetString());
+        }
+
+        await using var legacyStream = new MemoryStream();
+        var legacyChannel = new BridgeFrameChannel(legacyStream, MaximumMessageBytes);
+        await legacyChannel.WriteAsync(
+            BridgeMessageTypes.Artwork,
+            0,
+            new BridgeLegacyArtworkEvent(
+                "sample", "artwork", "runtime", "presentation", "image/png", "AQI="),
+            CancellationToken.None);
+        using var legacyDocument = JsonDocument.Parse(
+            legacyStream.ToArray().AsMemory(sizeof(int)));
+        BoundaryAssert.Equal("AQI=", legacyDocument.RootElement
+            .GetProperty("payload").GetProperty("contentBase64").GetString());
+
+        await using var boundedStream = new MemoryStream();
+        var boundedChannel = new BridgeFrameChannel(boundedStream, 256);
+        _ = await BoundaryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            boundedChannel.WriteAsync(
+                BridgeMessageTypes.Artwork,
+                0,
+                new BridgeEncodedArtworkEvent(
+                    "sample", "artwork", "runtime", "presentation", "image/png",
+                    new byte[256]),
+                CancellationToken.None).AsTask());
+        BoundaryAssert.Equal(0, boundedStream.ToArray().Length);
     }
 
     private static async Task AbandonedWaitReproducesRetainedBodyPrefixAsync()

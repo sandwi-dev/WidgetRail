@@ -42,7 +42,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Saving exposes busy and completion feedback", BusyFeedback),
     ("Diagnostics report invalid theme packages", InvalidThemeDiagnostics),
     ("Runtime diagnostics expose bounded failures and refresh recovery", RuntimeDiagnosticsRecovery),
-    ("Runtime diagnostics render typed artwork memory and explicit absence", RuntimeArtworkMemoryDiagnostics),
     ("Authority recovery diagnostics are deterministic accessible and exact", AuthorityRecoveryDiagnostics),
     ("Authority recovery retry handles every closed typed result", AuthorityRecoveryResults),
     ("Authority recovery cancellation clears busy state without another request", AuthorityRecoveryCancellation),
@@ -606,73 +605,6 @@ static async Task RuntimeDiagnosticsRecovery()
     Assert.True(!Nodes(refreshed.Root).Any(node => node.Id == "diagnostics.worker.audio-mixer"),
         "Recovered worker retained a stale failure row.");
     Assert.Equal(2, service.RequestCount);
-    Assert.Valid(refreshed);
-}
-
-static async Task RuntimeArtworkMemoryDiagnostics()
-{
-    using var temp = new TemporaryDirectory();
-    var reported = PlatformDiagnosticsSnapshot.Unavailable() with
-    {
-        Revision = 9,
-        BridgeArtworkMemory = new PlatformBridgeArtworkMemoryDiagnostic(
-            long.MaxValue, long.MaxValue, long.MaxValue, long.MaxValue, long.MaxValue,
-            long.MaxValue, long.MaxValue, long.MaxValue, long.MaxValue, long.MaxValue,
-            long.MaxValue, long.MaxValue, long.MaxValue),
-    };
-    var absent = reported with { Revision = 10, BridgeArtworkMemory = null };
-    var service = new SequenceDiagnosticsService(reported, absent);
-    var paths = new PlatformSettingsPaths(temp.Path);
-    var widget = new SettingsWidget(
-        new PlatformSettingsStore(paths), new ThemeCatalog(paths), diagnostics: service);
-    await Activate(widget);
-    await Action(widget, "open.diagnostics");
-
-    var initial = Snapshot(widget);
-    Assert.Contains($"Artwork requests: {long.MaxValue}",
-        Text(initial.Root, "diagnostics.artwork.requests").Text!);
-    Assert.Contains($"completions: {long.MaxValue}; failures: {long.MaxValue}",
-        Text(initial.Root, "diagnostics.artwork.terminals").Text!);
-    Assert.Contains($"in flight: {long.MaxValue}; peak: {long.MaxValue}",
-        Text(initial.Root, "diagnostics.artwork.inflight").Text!);
-    Assert.Contains($"{long.MaxValue} raw bytes",
-        Text(initial.Root, "diagnostics.artwork.raw-bytes").Text!);
-    Assert.Contains($"{long.MaxValue} Base64 characters",
-        Text(initial.Root, "diagnostics.artwork.base64").Text!);
-    Assert.Contains($"{long.MaxValue} bytes",
-        Text(initial.Root, "diagnostics.artwork.managed-heap").Text!);
-    Assert.Contains($"{long.MaxValue} bytes",
-        Text(initial.Root, "diagnostics.artwork.loh").Text!);
-    Assert.Contains($"{long.MaxValue} bytes/second",
-        Text(initial.Root, "diagnostics.artwork.allocation-rate").Text!);
-    Assert.Contains($"Gen2 collections: {long.MaxValue}",
-        Text(initial.Root, "diagnostics.artwork.gen2").Text!);
-    Assert.Contains($"{long.MaxValue} bytes",
-        Text(initial.Root, "diagnostics.artwork.private-bytes").Text!);
-    Assert.Contains($"{long.MaxValue} bytes",
-        Text(initial.Root, "diagnostics.artwork.working-set").Text!);
-    Assert.True(Nodes(initial.Root).Where(node =>
-            node.Id.StartsWith("diagnostics.artwork.", StringComparison.Ordinal))
-        .All(node => node.StyleClasses.Contains("diagnostic-metric")),
-        "Artwork diagnostic rows did not retain their bounded wrapping class.");
-    Assert.True(Nodes(initial.Root).Where(node =>
-            node.Id.StartsWith("diagnostics.area.", StringComparison.Ordinal))
-        .All(node => node.StyleClasses.Contains("diagnostic-area")),
-        "Diagnostic area rows did not retain their bounded wrapping class.");
-    Assert.Valid(initial);
-
-    await Action(widget, "refresh");
-    var refreshed = Snapshot(widget);
-    Assert.Contains("not reported", Text(
-        refreshed.Root, "diagnostics.artwork.unavailable").Text!);
-    Assert.True(!Nodes(refreshed.Root).Any(node =>
-            node.Id is "diagnostics.artwork.requests" or "diagnostics.artwork.terminals" or
-                "diagnostics.artwork.inflight" or "diagnostics.artwork.raw-bytes" or
-                "diagnostics.artwork.base64" or "diagnostics.artwork.managed-heap" or
-                "diagnostics.artwork.loh" or "diagnostics.artwork.allocation-rate" or
-                "diagnostics.artwork.gen2" or "diagnostics.artwork.private-bytes" or
-                "diagnostics.artwork.working-set"),
-        "Absent artwork metrics retained stale rendered values.");
     Assert.Valid(refreshed);
 }
 

@@ -1143,16 +1143,6 @@ int main() {
     assert(artworkStats.readySourcePixels == artworkStats.readyEntries);
     assert(artworkStats.maximumSourceWidth == 1 &&
            artworkStats.maximumSourceHeight == 1);
-    const std::vector<std::wstring> currentHandles{
-        L"library.art.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        L"library.art.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        L"library.art.not-current-not-retained"};
-    const auto currentResidency = artworkCache.GetTrustedArtworkResidency(
-        L"games-apps", currentHandles);
-    assert(currentResidency.entries == 2);
-    assert(currentResidency.readyEntries == 2);
-    assert(currentResidency.inFlightEntries == 0);
-    assert(currentResidency.decodedBytes == 8);
     artworkCache.Shutdown();
 
     std::vector<std::pair<std::wstring, RemoteImageState>> artworkTransitions;

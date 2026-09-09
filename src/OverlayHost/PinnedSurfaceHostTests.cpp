@@ -131,12 +131,29 @@ void TestAcceptedCompactMediaHostContract() {
         "tearingDown_ = true;", unpinBegin);
     const auto pinnedOwner = pinnedCoordinator.find(
         "bool WidgetSurfaceCoordinator::pinned() const noexcept");
+    const auto releaseGraphics = pinnedCoordinator.find(
+        "ReleaseGraphicsResources();", callback);
+    const auto releaseCachedImages = pinnedCoordinator.find(
+        "renderer_->ReleaseCachedImages();", releaseGraphics);
     Check(unpinBegin != std::string::npos && callback != std::string::npos &&
               retirementAuthority != std::string::npos &&
               retirementAuthority < callback && pinnedOwner != std::string::npos &&
               pinnedCoordinator.find("return !tearingDown_", pinnedOwner) !=
                   std::string::npos,
           "pinned retirement revokes presentation authority before its reentrant media callback");
+    Check(releaseGraphics != std::string::npos &&
+              releaseCachedImages != std::string::npos &&
+              releaseGraphics < releaseCachedImages &&
+              releaseCachedImages < pinnedOwner,
+          "pinned endpoint retirement releases target and cached image resources without changing ordinary renderer ownership");
+    const auto bridgeClient = ReadSource(
+        fs::path{__FILE__}.parent_path() / "WidgetBridgeClient.cpp");
+    Check(bridgeClient.find(
+              "!artworkResults->Push({std::move(widgetId), std::move(handle),") !=
+              std::string::npos &&
+              bridgeClient.find("std::move(contentType), std::move(content)}") !=
+              std::string::npos,
+          "validated artwork event strings move into the bounded host queue without another encoded payload copy");
     const auto retirementCallback = section(
         "void HandlePinnedSurfaceWindowRetirement(",
         "[[nodiscard]] HRESULT ExecuteParkEmbeddedMediaSession(");
