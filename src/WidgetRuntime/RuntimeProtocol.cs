@@ -1,4 +1,8 @@
+using System.Buffers;
 using System.Buffers.Binary;
+using System.Buffers.Text;
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WidgetRail.WidgetProtocol;
@@ -123,21 +127,88 @@ internal static class RuntimeJson
 
 internal sealed class LengthPrefixedJsonChannel(Stream stream, int maximumMessageBytes)
 {
+    private static readonly byte[] ArtworkSuffix = "\"}}"u8.ToArray();
     private readonly Stream _stream = stream ?? throw new ArgumentNullException(nameof(stream));
     private readonly int _maximumMessageBytes = ValidateMaximum(maximumMessageBytes);
+    private bool _writeFaulted;
 
     public async ValueTask WriteAsync(RuntimeEnvelope message, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(message);
+        ThrowIfWriteFaulted();
         var payload = JsonSerializer.SerializeToUtf8Bytes(message, RuntimeJson.Options);
         if (payload.Length == 0 || payload.Length > _maximumMessageBytes)
             throw new WidgetProtocolViolationException($"Message length {payload.Length} is outside the permitted range.");
 
         var header = new byte[sizeof(int)];
         BinaryPrimitives.WriteInt32LittleEndian(header, payload.Length);
-        await _stream.WriteAsync(header, cancellationToken).ConfigureAwait(false);
-        await _stream.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
-        await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _stream.WriteAsync(header, cancellationToken).ConfigureAwait(false);
+            await _stream.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
+            await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            _writeFaulted = true;
+            throw;
+        }
+    }
+
+    internal async ValueTask WriteArtworkAsync(
+        long requestId,
+        string contentType,
+        ReadOnlyMemory<byte> artworkBytes,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfWriteFaulted();
+        if (requestId < 0) throw new ArgumentOutOfRangeException(nameof(requestId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(contentType);
+        if (artworkBytes.IsEmpty) throw new ArgumentException(
+            "Artwork bytes cannot be empty.", nameof(artworkBytes));
+
+        var contentTypeJson = JsonSerializer.Serialize(contentType, RuntimeJson.Options);
+        var prefix = Encoding.UTF8.GetBytes(
+            "{\"protocolVersion\":" + WidgetRuntimeProtocol.CurrentVersion
+            .ToString(CultureInfo.InvariantCulture) +
+            ",\"type\":\"artwork\",\"requestId\":" +
+            requestId.ToString(CultureInfo.InvariantCulture) +
+            ",\"payload\":{\"contentType\":" + contentTypeJson +
+            ",\"contentBase64\":\"");
+        var encodedLength = checked(((long)artworkBytes.Length + 2L) / 3L * 4L);
+        var frameLength = checked((long)prefix.Length + encodedLength + ArtworkSuffix.Length);
+        if (frameLength <= 0 || frameLength > _maximumMessageBytes)
+            throw new WidgetProtocolViolationException(
+                $"Message length {frameLength} is outside the permitted range.");
+
+        var header = new byte[sizeof(int)];
+        BinaryPrimitives.WriteInt32LittleEndian(header, (int)frameLength);
+        var encoded = new byte[16 * 1024];
+        try
+        {
+            await _stream.WriteAsync(header, cancellationToken).ConfigureAwait(false);
+            await _stream.WriteAsync(prefix, cancellationToken).ConfigureAwait(false);
+            var offset = 0;
+            while (offset < artworkBytes.Length)
+            {
+                var remaining = artworkBytes.Length - offset;
+                var count = Math.Min(12 * 1024, remaining);
+                if (count < remaining) count -= count % 3;
+                var final = count == remaining;
+                var written = EncodeBase64(
+                    artworkBytes.Slice(offset, count), encoded, final);
+                await _stream.WriteAsync(
+                    encoded.AsMemory(0, written), cancellationToken).ConfigureAwait(false);
+                offset += count;
+            }
+            await _stream.WriteAsync(ArtworkSuffix, cancellationToken).ConfigureAwait(false);
+            await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            _writeFaulted = true;
+            throw;
+        }
     }
 
     public async ValueTask<RuntimeEnvelope> ReadAsync(CancellationToken cancellationToken)
@@ -167,6 +238,26 @@ internal sealed class LengthPrefixedJsonChannel(Stream stream, int maximumMessag
         if (value is < 256 or > WidgetRuntimeProtocol.AbsoluteMaximumMessageBytes)
             throw new ArgumentOutOfRangeException(nameof(value));
         return value;
+    }
+
+    private static int EncodeBase64(
+        ReadOnlyMemory<byte> source,
+        byte[] destination,
+        bool isFinalBlock)
+    {
+        var status = Base64.EncodeToUtf8(
+            source.Span, destination, out var consumed, out var written,
+            isFinalBlock);
+        if (status != OperationStatus.Done || consumed != source.Length)
+            throw new InvalidOperationException("Artwork Base64 encoding did not complete.");
+        return written;
+    }
+
+    private void ThrowIfWriteFaulted()
+    {
+        if (_writeFaulted)
+            throw new InvalidOperationException(
+                "The runtime channel cannot be reused after a partial write.");
     }
 }
 

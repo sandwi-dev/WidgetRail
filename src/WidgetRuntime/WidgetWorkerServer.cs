@@ -441,13 +441,22 @@ internal sealed class WidgetWorkerServer
             if (artwork is not null && !WidgetEncodedArtworkContract.IsValid(artwork))
                 throw new WidgetProtocolViolationException(
                     "Widget returned invalid trusted encoded artwork.");
-            await ReplyAsync(
-                MessageTypes.Artwork,
-                request.RequestId,
-                new EncodedArtworkPayload(
-                    artwork is null ? null : WidgetEncodedArtworkContract.ContentTypeValue(artwork.ContentType),
-                    artwork is null ? null : Convert.ToBase64String(artwork.Bytes.Span)),
-                cancellationToken).ConfigureAwait(false);
+            if (artwork is null)
+            {
+                await ReplyAsync(
+                    MessageTypes.Artwork,
+                    request.RequestId,
+                    new EncodedArtworkPayload(null, null),
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await SendArtworkAsync(
+                    request.RequestId,
+                    WidgetEncodedArtworkContract.ContentTypeValue(artwork.ContentType),
+                    artwork.Bytes,
+                    cancellationToken).ConfigureAwait(false);
+            }
             break;
         case MessageTypes.ControllerInput:
             var input = RuntimeJson.FromElement<ControllerInputEvent>(request.Payload);
@@ -516,6 +525,25 @@ internal sealed class WidgetWorkerServer
             RequestId = requestId,
             Payload = RuntimeJson.ToElement(payload),
         }, cancellationToken);
+
+    private async Task SendArtworkAsync(
+        long requestId,
+        string contentType,
+        ReadOnlyMemory<byte> artworkBytes,
+        CancellationToken cancellationToken)
+    {
+        var channel = _channel ?? throw new InvalidOperationException("Worker is not connected.");
+        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await channel.WriteArtworkAsync(
+                requestId, contentType, artworkBytes, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeGate.Release();
+        }
+    }
 
     private async Task SendAsync(RuntimeEnvelope envelope, CancellationToken cancellationToken)
     {
