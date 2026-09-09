@@ -286,7 +286,9 @@ bool ControllerIsolationProcessOwner::Start(
     const RoutingAuthority& authority,
     const std::uint32_t activeProcessLimit,
     const DWORD timeoutMilliseconds,
-    std::wstring& error) noexcept {
+    std::wstring& error,
+    const ControllerIsolationChildAdmission beforeResume,
+    void* const admissionContext) noexcept {
     std::error_code fileError;
     const bool executablePresent =
         std::filesystem::is_regular_file(executable, fileError);
@@ -403,12 +405,17 @@ bool ControllerIsolationProcessOwner::Start(
     }
     childProcess_ = process.hProcess;
     processId_ = process.dwProcessId;
+    const auto creationTime = ProcessCreationTime(process.hProcess);
     if (!AssignProcessToJobObject(job_, process.hProcess) ||
+        creationTime == 0 ||
+        (beforeResume && !beforeResume(
+            admissionContext, processId_, creationTime, error)) ||
         ResumeThread(process.hThread) == static_cast<DWORD>(-1)) {
         CloseHandle(process.hThread);
         (void)TerminateProcess(childProcess_, ERROR_PROCESS_ABORTED);
         (void)WaitForSingleObject(childProcess_, timeoutMilliseconds);
-        error = L"Controller isolation exact child job admission failed.";
+        if (error.empty())
+            error = L"Controller isolation exact child job admission failed.";
         Stop();
         return false;
     }

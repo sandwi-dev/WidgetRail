@@ -3,8 +3,11 @@
 #include <windows.h>
 
 #include <cstdlib>
+#include <atomic>
 #include <filesystem>
+#include <functional>
 #include <iostream>
+#include <thread>
 
 namespace {
 using namespace widgetrail::isolation;
@@ -25,6 +28,8 @@ ControllerIsolationJournalRecord Record() {
     record.hostCreationTime = 7;
     record.guardianProcessId = 8;
     record.guardianCreationTime = 9;
+    record.workerProcessId = 10;
+    record.workerCreationTime = 11;
     record.hostPath = L"C:\\host.exe";
     record.guardianPath = L"C:\\guardian.exe";
     record.workerPath = L"C:\\worker.exe";
@@ -48,6 +53,28 @@ int main() {
     ControllerIsolationJournalStore store(path);
     std::uint32_t error{};
     const auto expected = Record();
+    auto competing = expected;
+    ++competing.hostProcessId;
+    std::atomic_bool start{};
+    std::atomic_int admitted{};
+    const auto attempt = [&](const ControllerIsolationJournalRecord& candidate) {
+        while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
+        std::uint32_t attemptError{};
+        if (store.SaveAtomicIfAbsent(candidate, attemptError))
+            admitted.fetch_add(1, std::memory_order_relaxed);
+    };
+    std::thread first(attempt, std::cref(expected));
+    std::thread second(attempt, std::cref(competing));
+    start.store(true, std::memory_order_release);
+    first.join();
+    second.join();
+    const auto admittedRecord = store.Load(error);
+    Check(admitted.load() == 1 && admittedRecord &&
+              (admittedRecord->hostProcessId == expected.hostProcessId ||
+               admittedRecord->hostProcessId == competing.hostProcessId),
+          "cross-process startup exclusion admits exactly one absent-journal authority");
+    Check(admittedRecord && store.RemoveIfCurrent(*admittedRecord, error),
+          "startup winner alone can remove its exact record");
     Check(store.SaveAtomic(expected, error),
           "valid journal is written atomically");
     const auto loaded = store.Load(error);
@@ -55,6 +82,8 @@ int main() {
               loaded->nonce == expected.nonce &&
               loaded->guardianProcessId == expected.guardianProcessId &&
               loaded->guardianCreationTime == expected.guardianCreationTime &&
+              loaded->workerProcessId == expected.workerProcessId &&
+              loaded->workerCreationTime == expected.workerCreationTime &&
               loaded->hostPath == expected.hostPath &&
               loaded->guardianPath == expected.guardianPath &&
               loaded->workerPath == expected.workerPath &&
@@ -68,6 +97,19 @@ int main() {
                   expected.policy.ownedDeviceInstanceIds &&
               loaded->phase == expected.phase,
           "journal round-trip retains exact authority and owned delta");
+    auto stale = expected;
+    ++stale.hostProcessId;
+    auto replacement = expected;
+    replacement.phase = ControllerIsolationJournalPhase::RecoveryRequired;
+    Check(!store.SaveAtomicIfCurrent(stale, replacement, error) &&
+              error == ERROR_REVISION_MISMATCH &&
+              !store.RemoveIfCurrent(stale, error) &&
+              error == ERROR_REVISION_MISMATCH &&
+              store.Matches(expected, error),
+          "stale startup or recovery owners cannot replace or remove the current journal");
+    Check(store.SaveAtomicIfCurrent(expected, replacement, error) &&
+              store.SaveAtomicIfCurrent(replacement, expected, error),
+          "the exact serialized owner can advance and restore its journal phase");
     HANDLE file = CreateFileW(
         path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);

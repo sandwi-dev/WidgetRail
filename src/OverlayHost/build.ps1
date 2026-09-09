@@ -496,6 +496,7 @@ function Invoke-ControllerIsolationProductionBuild {
         (Join-Path $platformDirectory 'HidHideConfigurationAdapter.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationJournal.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationReconnect.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationGuardianLifetime.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationGuardianSession.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationReader.cpp'),
         (Join-Path $platformDirectory 'GameInputSelectedControllerReader.cpp'),

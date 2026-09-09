@@ -1,6 +1,7 @@
 #include "ControllerIsolationGuardianSession.h"
 
 #include "ControllerIsolationJournal.h"
+#include "ControllerIsolationGuardianLifetime.h"
 #include "ControllerIsolationInputTransport.h"
 #include "ControllerIsolationProcessOwner.h"
 #include "ControllerIsolationReconnect.h"
@@ -18,6 +19,7 @@
 #include <set>
 #include <string>
 #include <thread>
+#include <utility>
 
 namespace widgetrail::isolation {
 namespace {
@@ -84,6 +86,36 @@ constexpr std::uint64_t kHostStallMilliseconds = 500;
     return valid;
 }
 
+class RetainedHostProof final {
+public:
+    ~RetainedHostProof() { Reset(); }
+    [[nodiscard]] bool present() const noexcept { return process_ != nullptr; }
+    [[nodiscard]] bool Same(const ControlFrame& hello) const noexcept {
+        return present() && hello.processId == processId_ &&
+            hello.observedAtMilliseconds == creationTime_;
+    }
+    [[nodiscard]] AdmittedHostLifetime Observe() const noexcept {
+        return ObserveAdmittedHostLifetime(process_);
+    }
+    void Retain(HANDLE& process, const ControlFrame& hello) noexcept {
+        Reset();
+        process_ = std::exchange(process, nullptr);
+        processId_ = hello.processId;
+        creationTime_ = hello.observedAtMilliseconds;
+    }
+    void Reset() noexcept {
+        if (process_) CloseHandle(process_);
+        process_ = nullptr;
+        processId_ = 0;
+        creationTime_ = 0;
+    }
+
+private:
+    HANDLE process_{};
+    std::uint32_t processId_{};
+    std::uint64_t creationTime_{};
+};
+
 [[nodiscard]] ControlProgress ResponseProgress(
     const ControlFrame& response) noexcept {
     const auto progress = static_cast<ControlProgress>(
@@ -105,6 +137,7 @@ struct GuardianRuntime final {
     std::recursive_mutex effects;
     ControllerIsolationJournalStore store;
     ControllerIsolationJournalRecord record;
+    ControllerIsolationJournalRecord persistedRecord;
     ControllerIsolationProcessOwner worker;
     ControlProgress progress{ControlProgress::Terminal};
     std::uint32_t lastError{};
@@ -117,15 +150,22 @@ struct GuardianRuntime final {
     explicit GuardianRuntime(
         const std::filesystem::path& path,
         ControllerIsolationJournalRecord value)
-        : store(path), record(std::move(value)) {}
+        : store(path), record(std::move(value)), persistedRecord(record) {}
 
     [[nodiscard]] bool SavePhase(
         const ControllerIsolationJournalPhase phase) noexcept {
         const std::scoped_lock lock(effects);
-        record.phase = phase;
+        auto replacement = record;
+        replacement.phase = phase;
         std::uint32_t error{};
-        if (store.SaveAtomic(record, error)) return true;
+        if (store.SaveAtomicIfCurrent(
+                persistedRecord, replacement, error)) {
+            record = replacement;
+            persistedRecord = replacement;
+            return true;
+        }
         lastError = error;
+        record = persistedRecord;
         return false;
     }
 
@@ -232,7 +272,15 @@ struct GuardianRuntime final {
         std::wstring startError;
         if (!worker.Start(
                 record.workerPath, record.authority, 1,
-                ControllerIsolationStartupTimeoutMilliseconds, startError)) {
+                ControllerIsolationStartupTimeoutMilliseconds, startError,
+                [](void* context, const std::uint32_t processId,
+                   const std::uint64_t creationTime,
+                   std::wstring& callbackError) noexcept {
+                    return static_cast<GuardianRuntime*>(context)->
+                        RecordWorkerIdentity(
+                            processId, creationTime, callbackError);
+                },
+                this)) {
             lastError = ERROR_PROCESS_ABORTED;
             return false;
         }
@@ -262,10 +310,24 @@ struct GuardianRuntime final {
 
     [[nodiscard]] bool Restore(const bool recovery) noexcept {
         const std::scoped_lock lock(effects);
+        ControllerIsolationLifecycleLease lifecycle;
+        if (!lifecycle.Acquire(
+                ControllerIsolationStartupTimeoutMilliseconds, lastError))
+            return false;
+        if (!store.Matches(persistedRecord, lastError)) return false;
         worker.Stop();
+        if (record.workerProcessId != 0 || record.workerCreationTime != 0) {
+            std::uint32_t workerError{};
+            if (ObserveExactIsolationWorker(record, workerError) !=
+                GuardianLifetimeStatus::Exited) {
+                lastError = workerError != 0
+                    ? workerError : ERROR_PROCESS_ABORTED;
+                return false;
+            }
+        }
         if (!policyMayBeMutated &&
             record.phase == ControllerIsolationJournalPhase::Prepared) {
-            if (!store.Remove(lastError)) return false;
+            if (!store.RemoveIfCurrent(persistedRecord, lastError)) return false;
             progress = ControlProgress::Terminal;
             return true;
         }
@@ -285,7 +347,7 @@ struct GuardianRuntime final {
                 current, *plan.desired, observed, lastError) !=
             HidHideConfigurationStatus::Ready) return false;
         policyMayBeMutated = false;
-        if (!store.Remove(lastError)) return false;
+        if (!store.RemoveIfCurrent(persistedRecord, lastError)) return false;
         progress = ControlProgress::Terminal;
         return true;
     }
@@ -305,9 +367,39 @@ struct GuardianRuntime final {
             return false;
         }
         std::uint32_t error{};
-        if (store.SaveAtomic(record, error)) return true;
+        if (store.SaveAtomicIfCurrent(
+                persistedRecord, record, error)) {
+            persistedRecord = record;
+            return true;
+        }
         lastError = error;
         return false;
+    }
+
+    [[nodiscard]] bool RecordWorkerIdentity(
+        const std::uint32_t processId,
+        const std::uint64_t creationTime,
+        std::wstring& errorText) noexcept {
+        const std::scoped_lock lock(effects);
+        if (processId == 0 || creationTime == 0 ||
+            record.workerProcessId != 0 || record.workerCreationTime != 0) {
+            errorText = L"Controller isolation Worker identity is invalid.";
+            return false;
+        }
+        auto replacement = record;
+        replacement.workerProcessId = processId;
+        replacement.workerCreationTime = creationTime;
+        std::uint32_t error{};
+        if (!store.SaveAtomicIfCurrent(
+                persistedRecord, replacement, error)) {
+            lastError = error;
+            errorText = L"Controller isolation Worker identity publication failed error=" +
+                std::to_wstring(error);
+            return false;
+        }
+        record = replacement;
+        persistedRecord = replacement;
+        return true;
     }
 
     [[nodiscard]] ControlProgress Progress() noexcept {
@@ -470,6 +562,7 @@ int RunControllerIsolationGuardianSession(
 
     std::atomic_bool stopping{};
     std::atomic_int terminalStatus{};
+    RetainedHostProof retainedHost;
     std::jthread controlThread([&] {
         RunControlIngress(runtime, controlServer, stopping, terminalStatus);
     });
@@ -477,6 +570,11 @@ int RunControllerIsolationGuardianSession(
     for (;;) {
         if (stopping.load(std::memory_order_acquire))
             return terminalStatus.load(std::memory_order_acquire);
+        if (retainedHost.present() &&
+            retainedHost.Observe() == AdmittedHostLifetime::Exited) {
+            retainedHost.Reset();
+            runtime.confirmedDisconnectedInteraction = true;
+        }
         if (!server.Accept(kAcceptSliceMilliseconds, error)) {
             if (error == ERROR_TIMEOUT) {
                 if (runtime.Progress() != ControlProgress::Terminal) {
@@ -510,6 +608,16 @@ int RunControllerIsolationGuardianSession(
             if (admittedHost) CloseHandle(admittedHost);
             server.Disconnect();
             continue;
+        }
+        if (retainedHost.present()) {
+            const auto retainedLifetime = retainedHost.Observe();
+            if (!AdmitHostReconnect(
+                    retainedLifetime, retainedHost.Same(hello))) {
+                CloseHandle(admittedHost);
+                server.Disconnect();
+                continue;
+            }
+            retainedHost.Reset();
         }
         ControlSessionGate gate(
             runtime.record.nonce, runtime.record.authority, hello.sequence);
@@ -598,13 +706,16 @@ int RunControllerIsolationGuardianSession(
         }
         server.Disconnect();
         const auto hostLifetime = ObserveAdmittedHostLifetime(admittedHost);
-        CloseHandle(admittedHost);
         if (hostLifetime == AdmittedHostLifetime::Exited &&
             runtime.Progress() != ControlProgress::Playing &&
             runtime.Progress() != ControlProgress::Terminal) {
+            CloseHandle(admittedHost);
             runtime.confirmedDisconnectedInteraction = true;
         } else if (hostLifetime != AdmittedHostLifetime::Exited) {
+            retainedHost.Retain(admittedHost, hello);
             runtime.HoldUncertainInteraction();
+        } else {
+            CloseHandle(admittedHost);
         }
     }
     };

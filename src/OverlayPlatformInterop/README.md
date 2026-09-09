@@ -75,11 +75,13 @@ The Guardian is outside the OverlayHost job and remains the sole effect owner
 for both the persistent host pipe and a separate one-shot control pipe. A pipe
 failure does not prove owner death: the Guardian keeps the virtual target
 contained until the exact authenticated host process handle signals. Only then
-may it finish the neutral barrier and resume game-facing output. Orphan recovery
-likewise requires the journaled Guardian PID, creation time, path, and SHA-256
-identity to prove that exact process has exited before restoring the recorded
-HidHide delta. Foreign HidHide applications, devices, activation state, and
-inverse-list policy are never overwritten.
+may it finish the neutral barrier and resume game-facing output. The Guardian
+creates its Worker suspended, admits it to the private job, and journals its
+exact PID and creation time before resume. Orphan recovery requires the
+journaled Guardian and Worker process identities, paths, and SHA-256 hashes to
+prove both exact processes exited before restoring the recorded HidHide delta.
+Foreign HidHide applications, devices, activation state, and inverse-list
+policy are never overwritten.
 
 HidHide and ViGEmBus must already be installed. Use the exact Release
 `OverlayHost.exe` commands below; each command authenticates the same Guardian
@@ -92,6 +94,8 @@ OverlayHost.exe --controller-isolation-disable
 OverlayHost.exe --controller-isolation-recover
 ```
 
-Enable is accepted only from a missing journal; an unreadable or corrupt journal
-fails closed. Disable performs the ordinary exact-delta restore. Recover is the
-explicit orphan path and cannot mutate HidHide merely because transport failed.
+Enable is accepted only from a missing journal under one per-session lifecycle
+mutex; an unreadable or corrupt journal fails closed. Every phase replacement
+and removal compares the complete persisted record first. Disable performs the
+ordinary exact-delta restore. Recover is the explicit orphan path and cannot
+mutate HidHide merely because transport failed.

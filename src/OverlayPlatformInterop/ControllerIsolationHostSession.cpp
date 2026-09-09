@@ -68,7 +68,7 @@ namespace {
         return false;
     }
     ControllerIsolationJournalStore store(journalPath);
-    if (!store.SaveAtomic(record, error)) {
+    if (!store.SaveAtomicIfAbsent(record, error)) {
         diagnostic = L"Controller isolation journal creation failed error=" +
             std::to_wstring(error);
         return false;
@@ -141,6 +141,28 @@ namespace {
     const std::filesystem::path& path,
     ControllerIsolationJournalRecord record,
     std::wstring& diagnostic) noexcept {
+    ControllerIsolationLifecycleLease lifecycle;
+    std::uint32_t error{};
+    if (!lifecycle.Acquire(
+            ControllerIsolationStartupTimeoutMilliseconds, error)) {
+        diagnostic = L"Controller isolation recovery lifecycle is busy error=" +
+            std::to_wstring(error);
+        return false;
+    }
+    ControllerIsolationJournalStore store(path);
+    if (!store.Matches(record, error)) {
+        diagnostic = L"Controller isolation recovery journal changed error=" +
+            std::to_wstring(error);
+        return false;
+    }
+    if (record.phase == ControllerIsolationJournalPhase::Prepared &&
+        record.guardianProcessId == 0 && record.guardianCreationTime == 0 &&
+        record.workerProcessId == 0 && record.workerCreationTime == 0) {
+        if (store.RemoveIfCurrent(record, error)) return true;
+        diagnostic = L"Controller isolation empty journal removal failed error=" +
+            std::to_wstring(error);
+        return false;
+    }
     std::uint32_t guardianError{};
     if (ObserveExactIsolationGuardian(record, guardianError) !=
         GuardianLifetimeStatus::Exited) {
@@ -148,13 +170,14 @@ namespace {
             std::to_wstring(guardianError);
         return false;
     }
-    ControllerIsolationJournalStore store(path);
-    std::uint32_t error{};
-    if (record.phase == ControllerIsolationJournalPhase::Prepared) {
-        if (store.Remove(error)) return true;
-        diagnostic = L"Controller isolation empty journal removal failed error=" +
-            std::to_wstring(error);
-        return false;
+    if (record.workerProcessId != 0 || record.workerCreationTime != 0) {
+        std::uint32_t workerError{};
+        if (ObserveExactIsolationWorker(record, workerError) !=
+            GuardianLifetimeStatus::Exited) {
+            diagnostic = L"Controller isolation recovery could not prove the exact Worker exited error=" +
+                std::to_wstring(workerError);
+            return false;
+        }
     }
     HidHideConfigurationAdapter adapter;
     HidHideSnapshot current;
@@ -171,8 +194,9 @@ namespace {
     }
     HidHideSnapshot observed;
     if (adapter.ApplySnapshot(
-            current, *plan.desired, observed, error) !=
-        HidHideConfigurationStatus::Ready || !store.Remove(error)) {
+        current, *plan.desired, observed, error) !=
+        HidHideConfigurationStatus::Ready ||
+        !store.RemoveIfCurrent(record, error)) {
         diagnostic = L"Controller isolation recovery failed error=" +
             std::to_wstring(error);
         return false;
@@ -429,7 +453,7 @@ ControllerIsolationCommandStatus ControllerIsolationHostSession::ExecuteCommand(
         if (LaunchIndependentIsolationGuardian(
                 created.guardianPath, path, processId, error) !=
             GuardianLaunchStatus::Started) {
-            (void)store.Remove(error);
+            (void)store.RemoveIfCurrent(created, error);
             diagnostic = L"Controller isolation Guardian launch failed error=" +
                 std::to_wstring(error);
             return ControllerIsolationCommandStatus::Failed;

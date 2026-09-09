@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -39,7 +40,10 @@ int main() {
               ObserveAdmittedHostLifetime(admittedHost) ==
                   AdmittedHostLifetime::Running,
           "an authenticated live host remains the interaction owner after pipe loss");
-    Check(SetEvent(admittedHost) &&
+    std::thread delayedExit([&] { Check(SetEvent(admittedHost),
+        "delayed host exit signal is published"); });
+    delayedExit.join();
+    Check(
               ObserveAdmittedHostLifetime(admittedHost) ==
                   AdmittedHostLifetime::Exited,
           "only the signaled admitted host handle proves interaction-owner death");
@@ -47,6 +51,11 @@ int main() {
     Check(ObserveAdmittedHostLifetime(nullptr) ==
               AdmittedHostLifetime::Unavailable,
           "missing host identity never synthesizes death proof");
+    Check(AdmitHostReconnect(AdmittedHostLifetime::Running, true) &&
+              !AdmitHostReconnect(AdmittedHostLifetime::Running, false) &&
+              !AdmitHostReconnect(AdmittedHostLifetime::Unavailable, false) &&
+              AdmitHostReconnect(AdmittedHostLifetime::Exited, false),
+          "only the same authenticated process or proven prior exit supersedes retained ownership");
     Check(ClassifyGuardianLifetime(true, false, ERROR_INVALID_PARAMETER,
                                   false, 0) ==
               GuardianLifetimeStatus::Exited &&

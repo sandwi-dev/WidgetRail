@@ -89,6 +89,7 @@ add_executable(ControllerIsolationGuardian
     ../OverlayPlatformInterop/HidHideConfigurationAdapter.cpp
     ../OverlayPlatformInterop/ControllerIsolationJournal.cpp
     ../OverlayPlatformInterop/ControllerIsolationReconnect.cpp
+    ../OverlayPlatformInterop/ControllerIsolationGuardianLifetime.cpp
     ../OverlayPlatformInterop/ControllerIsolationGuardianSession.cpp
     ../OverlayPlatformInterop/ControllerIsolationReader.cpp
     ../OverlayPlatformInterop/GameInputSelectedControllerReader.cpp)

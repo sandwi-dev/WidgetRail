@@ -82,6 +82,40 @@ ControllerIsolationProcessOwner StartedGuardian() {
     return guardian;
 }
 
+struct AdmissionProbe final {
+    HANDLE process{};
+    std::uint32_t processId{};
+    std::uint64_t creationTime{};
+};
+
+bool RejectBeforeResume(
+    void* context, const std::uint32_t processId,
+    const std::uint64_t creationTime, std::wstring& error) noexcept {
+    auto& probe = *static_cast<AdmissionProbe*>(context);
+    probe.processId = processId;
+    probe.creationTime = creationTime;
+    probe.process = OpenProcess(
+        PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, processId);
+    error = L"fixture rejected persisted child identity";
+    return false;
+}
+
+void WorkerIdentityAdmissionPrecedesResume() {
+    ControllerIsolationProcessOwner owner;
+    AdmissionProbe probe;
+    std::wstring error;
+    Check(!owner.Start(
+              Sibling(L"ControllerIsolationGuardianTestHost.exe"),
+              Authority(77), 2, ControllerIsolationStartupTimeoutMilliseconds,
+              error, RejectBeforeResume, &probe) &&
+              probe.process && probe.processId != 0 &&
+              probe.creationTime != 0 &&
+              error == L"fixture rejected persisted child identity" &&
+              WaitForSingleObject(probe.process, 0) == WAIT_OBJECT_0,
+          "child identity rejection terminates the still-unadmitted exact process");
+    CloseHandle(probe.process);
+}
+
 void ProtocolRejectsWrongAuthorityAndShape() {
     const auto nonce = Nonce();
     ControlSessionGate gate(nonce, Authority());
@@ -307,6 +341,7 @@ void LeaseAndTamperedFramesFailClosed() {
 
 int main() {
     ProtocolRejectsWrongAuthorityAndShape();
+    WorkerIdentityAdmissionPrecedesResume();
     DirectLaunchFailsBeforeAnyBackendAdmission();
     HeartbeatAndOrderlyStopAreCorrelated();
     WorkerDeathAndHangAreBounded();

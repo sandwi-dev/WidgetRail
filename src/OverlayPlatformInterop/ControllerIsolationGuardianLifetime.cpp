@@ -34,30 +34,30 @@ namespace {
 
 } // namespace
 
-GuardianLifetimeStatus ObserveExactIsolationGuardian(
-    const ControllerIsolationJournalRecord& record,
+[[nodiscard]] static GuardianLifetimeStatus ObserveExactProcess(
+    const std::uint32_t processId,
+    const std::uint64_t creationTime,
+    const std::filesystem::path& expectedPath,
+    const std::array<std::uint8_t, 32>& expectedHash,
     std::uint32_t& nativeError) noexcept {
     nativeError = ERROR_SUCCESS;
-    if (record.guardianProcessId == 0 || record.guardianCreationTime == 0 ||
-        record.guardianPath.empty()) {
+    if (processId == 0 || creationTime == 0 || expectedPath.empty()) {
         nativeError = ERROR_INVALID_DATA;
         return ClassifyGuardianLifetime(false, false, nativeError, false, 0);
     }
     HANDLE process = OpenProcess(
         PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE,
-        FALSE, record.guardianProcessId);
+        FALSE, processId);
     if (!process) {
         nativeError = GetLastError();
-        return ClassifyGuardianLifetime(
-            true, false, nativeError, false, 0);
+        return ClassifyGuardianLifetime(true, false, nativeError, false, 0);
     }
     std::array<wchar_t, 32'768> path{};
     DWORD length = static_cast<DWORD>(path.size());
-    const bool exact =
-        ProcessCreationTime(process) == record.guardianCreationTime &&
+    const bool exact = ProcessCreationTime(process) == creationTime &&
         QueryFullProcessImageNameW(process, 0, path.data(), &length) &&
         _wcsicmp(std::wstring(path.data(), length).c_str(),
-                 record.guardianPath.c_str()) == 0;
+                 expectedPath.c_str()) == 0;
     if (!exact) {
         nativeError = ERROR_REVISION_MISMATCH;
         CloseHandle(process);
@@ -65,7 +65,7 @@ GuardianLifetimeStatus ObserveExactIsolationGuardian(
     }
     std::array<std::uint8_t, 32> hash{};
     if (!ControllerIsolationFileSha256(path.data(), hash, nativeError) ||
-        hash != record.guardianSha256) {
+        hash != expectedHash) {
         if (nativeError == ERROR_SUCCESS) nativeError = ERROR_INVALID_IMAGE_HASH;
         CloseHandle(process);
         return ClassifyGuardianLifetime(true, true, 0, false, 0);
@@ -75,6 +75,22 @@ GuardianLifetimeStatus ObserveExactIsolationGuardian(
     if (wait != WAIT_OBJECT_0 && wait != WAIT_TIMEOUT)
         nativeError = GetLastError();
     return ClassifyGuardianLifetime(true, true, 0, true, wait);
+}
+
+GuardianLifetimeStatus ObserveExactIsolationGuardian(
+    const ControllerIsolationJournalRecord& record,
+    std::uint32_t& nativeError) noexcept {
+    return ObserveExactProcess(
+        record.guardianProcessId, record.guardianCreationTime,
+        record.guardianPath, record.guardianSha256, nativeError);
+}
+
+GuardianLifetimeStatus ObserveExactIsolationWorker(
+    const ControllerIsolationJournalRecord& record,
+    std::uint32_t& nativeError) noexcept {
+    return ObserveExactProcess(
+        record.workerProcessId, record.workerCreationTime,
+        record.workerPath, record.workerSha256, nativeError);
 }
 
 GuardianLaunchStatus LaunchIndependentIsolationGuardian(

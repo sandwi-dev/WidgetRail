@@ -48,5 +48,8 @@ enum class GuardianLifetimeStatus : std::uint8_t {
 [[nodiscard]] GuardianLifetimeStatus ObserveExactIsolationGuardian(
     const ControllerIsolationJournalRecord& record,
     std::uint32_t& nativeError) noexcept;
+[[nodiscard]] GuardianLifetimeStatus ObserveExactIsolationWorker(
+    const ControllerIsolationJournalRecord& record,
+    std::uint32_t& nativeError) noexcept;
 
 } // namespace widgetrail::isolation

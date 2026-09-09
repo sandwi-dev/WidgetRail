@@ -1,4 +1,5 @@
 #include "ControllerIsolationJournal.h"
+#include "ControllerIsolationProcessOwner.h"
 
 #include <windows.h>
 #include <bcrypt.h>
@@ -13,6 +14,8 @@ namespace widgetrail::isolation {
 namespace {
 
 constexpr std::uint32_t kMagic = 0x4A494357; // WCIJ
+constexpr wchar_t kLifecycleMutex[] =
+    L"Local\\WidgetRail.ControllerIsolation.SessionLifecycle";
 constexpr std::size_t kMaximumBytes = 128 * 1024;
 constexpr std::size_t kMaximumStrings = 512;
 constexpr std::size_t kMaximumStringCharacters = 32'768;
@@ -25,6 +28,8 @@ struct Header final {
     std::uint64_t hostCreationTime{};
     std::uint32_t guardianProcessId{};
     std::uint64_t guardianCreationTime{};
+    std::uint32_t workerProcessId{};
+    std::uint64_t workerCreationTime{};
     RoutingAuthority authority{};
     ControllerIsolationNonce nonce{};
     std::array<std::uint8_t, 32> hostSha256{};
@@ -130,6 +135,8 @@ template <typename T>
     header.hostCreationTime = record.hostCreationTime;
     header.guardianProcessId = record.guardianProcessId;
     header.guardianCreationTime = record.guardianCreationTime;
+    header.workerProcessId = record.workerProcessId;
+    header.workerCreationTime = record.workerCreationTime;
     header.authority = record.authority;
     header.nonce = record.nonce;
     header.hostSha256 = record.hostSha256;
@@ -177,6 +184,37 @@ template <typename T>
 
 } // namespace
 
+ControllerIsolationLifecycleLease::~ControllerIsolationLifecycleLease() {
+    Release();
+    if (mutex_) CloseHandle(mutex_);
+}
+
+bool ControllerIsolationLifecycleLease::Acquire(
+    const DWORD timeoutMilliseconds, std::uint32_t& nativeError) noexcept {
+    nativeError = ERROR_SUCCESS;
+    if (owned_) return true;
+    if (!mutex_) {
+        mutex_ = CreateMutexW(nullptr, FALSE, kLifecycleMutex);
+        if (!mutex_) {
+            nativeError = GetLastError();
+            return false;
+        }
+    }
+    const auto wait = WaitForSingleObject(mutex_, timeoutMilliseconds);
+    if (wait == WAIT_OBJECT_0 || wait == WAIT_ABANDONED) {
+        owned_ = true;
+        return true;
+    }
+    nativeError = wait == WAIT_TIMEOUT ? ERROR_TIMEOUT : GetLastError();
+    return false;
+}
+
+void ControllerIsolationLifecycleLease::Release() noexcept {
+    if (!owned_) return;
+    ReleaseMutex(mutex_);
+    owned_ = false;
+}
+
 bool ControllerIsolationJournalRecord::valid() const noexcept {
     const bool validPhase = phase == ControllerIsolationJournalPhase::Prepared ||
         phase == ControllerIsolationJournalPhase::PolicyPlanned ||
@@ -187,7 +225,12 @@ bool ControllerIsolationJournalRecord::valid() const noexcept {
          ((guardianProcessId == 0 && guardianCreationTime == 0) ||
           (guardianProcessId != 0 && guardianCreationTime != 0))) ||
         (guardianProcessId != 0 && guardianCreationTime != 0);
-    return validPhase && validGuardianIdentity && authority.valid() &&
+    const bool validWorkerIdentity =
+        (workerProcessId == 0 && workerCreationTime == 0) ||
+        (workerProcessId != 0 && workerCreationTime != 0);
+    return validPhase && validGuardianIdentity && validWorkerIdentity &&
+        (phase != ControllerIsolationJournalPhase::Playing ||
+         workerProcessId != 0) && authority.valid() &&
         hostProcessId != 0 && hostCreationTime != 0 &&
         ValidNonce(nonce) && !hostPath.empty() && !guardianPath.empty() &&
         !workerPath.empty() &&
@@ -242,6 +285,10 @@ bool ControllerIsolationJournalStore::SaveAtomic(
     const ControllerIsolationJournalRecord& record,
     std::uint32_t& nativeError) const noexcept {
     nativeError = ERROR_SUCCESS;
+    ControllerIsolationLifecycleLease lease;
+    if (!lease.Acquire(
+            ControllerIsolationCommandTimeoutMilliseconds, nativeError))
+        return false;
     if (!record.valid() || path_.empty()) {
         nativeError = ERROR_INVALID_DATA;
         return false;
@@ -281,6 +328,57 @@ bool ControllerIsolationJournalStore::SaveAtomic(
         nativeError = ERROR_NOT_ENOUGH_MEMORY;
         return false;
     }
+}
+
+bool ControllerIsolationJournalStore::Matches(
+    const ControllerIsolationJournalRecord& expected,
+    std::uint32_t& nativeError) const noexcept {
+    ControllerIsolationLifecycleLease lease;
+    if (!lease.Acquire(
+            ControllerIsolationCommandTimeoutMilliseconds, nativeError))
+        return false;
+    const auto current = Load(nativeError);
+    if (!current) return false;
+    try {
+        const auto expectedBytes = Serialize(expected);
+        const auto currentBytes = Serialize(*current);
+        if (!expectedBytes.empty() && expectedBytes == currentBytes) return true;
+        nativeError = ERROR_REVISION_MISMATCH;
+        return false;
+    } catch (...) {
+        nativeError = ERROR_NOT_ENOUGH_MEMORY;
+        return false;
+    }
+}
+
+bool ControllerIsolationJournalStore::SaveAtomicIfAbsent(
+    const ControllerIsolationJournalRecord& record,
+    std::uint32_t& nativeError) const noexcept {
+    ControllerIsolationLifecycleLease lease;
+    if (!lease.Acquire(
+            ControllerIsolationCommandTimeoutMilliseconds, nativeError))
+        return false;
+    std::uint32_t loadError{};
+    if (Load(loadError)) {
+        nativeError = ERROR_ALREADY_EXISTS;
+        return false;
+    }
+    if (loadError != ERROR_FILE_NOT_FOUND && loadError != ERROR_PATH_NOT_FOUND) {
+        nativeError = loadError;
+        return false;
+    }
+    return SaveAtomic(record, nativeError);
+}
+
+bool ControllerIsolationJournalStore::SaveAtomicIfCurrent(
+    const ControllerIsolationJournalRecord& expected,
+    const ControllerIsolationJournalRecord& replacement,
+    std::uint32_t& nativeError) const noexcept {
+    ControllerIsolationLifecycleLease lease;
+    if (!lease.Acquire(
+            ControllerIsolationCommandTimeoutMilliseconds, nativeError) ||
+        !Matches(expected, nativeError)) return false;
+    return SaveAtomic(replacement, nativeError);
 }
 
 std::optional<ControllerIsolationJournalRecord>
@@ -336,6 +434,8 @@ ControllerIsolationJournalStore::Load(std::uint32_t& nativeError) const noexcept
         record.hostCreationTime = header.hostCreationTime;
         record.guardianProcessId = header.guardianProcessId;
         record.guardianCreationTime = header.guardianCreationTime;
+        record.workerProcessId = header.workerProcessId;
+        record.workerCreationTime = header.workerCreationTime;
         record.workerSha256 = header.workerSha256;
         record.phase = header.phase;
         record.policy.before.active = (header.flags & 1U) != 0;
@@ -367,10 +467,24 @@ ControllerIsolationJournalStore::Load(std::uint32_t& nativeError) const noexcept
 bool ControllerIsolationJournalStore::Remove(
     std::uint32_t& nativeError) const noexcept {
     nativeError = ERROR_SUCCESS;
+    ControllerIsolationLifecycleLease lease;
+    if (!lease.Acquire(
+            ControllerIsolationCommandTimeoutMilliseconds, nativeError))
+        return false;
     if (DeleteFileW(path_.c_str()) || GetLastError() == ERROR_FILE_NOT_FOUND)
         return true;
     nativeError = GetLastError();
     return false;
+}
+
+bool ControllerIsolationJournalStore::RemoveIfCurrent(
+    const ControllerIsolationJournalRecord& expected,
+    std::uint32_t& nativeError) const noexcept {
+    ControllerIsolationLifecycleLease lease;
+    if (!lease.Acquire(
+            ControllerIsolationCommandTimeoutMilliseconds, nativeError) ||
+        !Matches(expected, nativeError)) return false;
+    return Remove(nativeError);
 }
 
 } // namespace widgetrail::isolation

@@ -31,6 +31,12 @@ enum class ChildWaitResult {
     Failed,
 };
 
+using ControllerIsolationChildAdmission = bool (*)(
+    void* context,
+    std::uint32_t processId,
+    std::uint64_t creationTime,
+    std::wstring& error) noexcept;
+
 class ChildControlChannel final {
 public:
     ChildControlChannel() noexcept = default;
@@ -97,7 +103,9 @@ public:
         const RoutingAuthority& authority,
         std::uint32_t activeProcessLimit,
         DWORD timeoutMilliseconds,
-        std::wstring& error) noexcept;
+        std::wstring& error,
+        ControllerIsolationChildAdmission beforeResume = nullptr,
+        void* admissionContext = nullptr) noexcept;
     [[nodiscard]] bool Send(
         ControlMessageKind kind,
         DWORD timeoutMilliseconds,

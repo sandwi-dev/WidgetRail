@@ -28,6 +28,13 @@ enum class AdmittedHostLifetime : std::uint8_t {
     return AdmittedHostLifetime::Unavailable;
 }
 
+[[nodiscard]] constexpr bool AdmitHostReconnect(
+    const AdmittedHostLifetime retainedLifetime,
+    const bool sameProcessIdentity) noexcept {
+    return retainedLifetime == AdmittedHostLifetime::Exited ||
+        sameProcessIdentity;
+}
+
 [[nodiscard]] constexpr GuardianStartupDisposition
 DecideGuardianStartupDisposition(
     const ControllerIsolationJournalPhase loadedPhase,
