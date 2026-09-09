@@ -501,7 +501,7 @@ internal static class SpotifyPresentation
         if (!setup)
             root = ApplyPlaybackShortcuts(root, playback)
                 .Shortcut(ControllerButton.Y, "spotify.setup.open", label: "Settings");
-        if (route.Depth == 0)
+        if (SpotifyRouteActionPolicy.CanSwitchSection(route.Route, route.Depth))
             root = root
                 .Shortcut(ControllerButton.LeftTrigger,
                     "spotify.nav.previous-section", label: "Previous section")

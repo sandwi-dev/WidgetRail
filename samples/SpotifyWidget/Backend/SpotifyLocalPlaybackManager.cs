@@ -17,7 +17,7 @@ internal sealed record SpotifyLocalPlaybackStartResult(
 internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
 {
     internal const string PublicDeviceId = "wrail-local-playback";
-    internal const string DeviceName = "Spotify on Game Bar";
+    internal const string DeviceName = "WidgetRail";
 
     private static readonly IReadOnlyCollection<string> RequiredScopes =
     [
@@ -290,20 +290,34 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
         SpotifyProviderPlaybackCommand command,
         CancellationToken cancellationToken)
     {
+        ISpotifyPlaybackHostClient? client;
+        lock (_stateGate)
+            client = _owner == identity && _state == SpotifyLocalPlaybackState.Active
+                ? _client : null;
+        if (client?.IsRunning != true) return false;
+
+        // resume()/pause() resolve when the Web Playback SDK accepts the call,
+        // not when its player state changes. Keep Spotify's Web API as the
+        // authoritative play/pause command boundary for the active device.
+        if (command.Operation is SpotifyProviderPlaybackOperation.Play or
+                SpotifyProviderPlaybackOperation.Pause)
+        {
+            _runtimeDiagnostics.Record(
+                "local-playback-control",
+                command.Operation == SpotifyProviderPlaybackOperation.Play
+                    ? "web-api-play"
+                    : "web-api-pause");
+            return false;
+        }
+
         string? operation = command.Operation switch
         {
-            SpotifyProviderPlaybackOperation.Play => "resume",
-            SpotifyProviderPlaybackOperation.Pause => "pause",
             SpotifyProviderPlaybackOperation.Next => "next_track",
             SpotifyProviderPlaybackOperation.Previous => "previous_track",
             SpotifyProviderPlaybackOperation.Seek => "seek",
             _ => null,
         };
-        ISpotifyPlaybackHostClient? client;
-        lock (_stateGate)
-            client = _owner == identity && _state == SpotifyLocalPlaybackState.Active
-                ? _client : null;
-        if (client?.IsRunning != true || operation is null) return false;
+        if (operation is null) return false;
         var payload = operation == "seek"
             ? new { positionMilliseconds = command.PositionMilliseconds }
             : (object)new { };
@@ -379,6 +393,10 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 var playback = SpotifyPlaybackProtocolCodec
                     .DecodePayload<WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState>(
                         value.Payload);
+                RecordIfStarted("local-playback-state",
+                    playback.IsAvailable
+                        ? playback.Paused ? "available-paused" : "available-playing"
+                        : "unavailable", started);
                 if (playback.IsAvailable)
                     lock (_stateGate)
                     {
@@ -387,6 +405,9 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                         _state = SpotifyLocalPlaybackState.Active;
                         _message = "Playing through this PC.";
                     }
+                break;
+            case "autoplay_failed":
+                RecordIfStarted("local-playback-sdk", "autoplay-failed", started);
                 break;
             case "sdk_error":
                 var error = SpotifyPlaybackProtocolCodec.DecodePayload<PageError>(value.Payload);

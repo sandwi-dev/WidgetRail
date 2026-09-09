@@ -1134,7 +1134,8 @@ public sealed class SpotifyWidget : Widget
     private void NavigateSection(int offset)
     {
         var navigation = _navigation.Value;
-        if (navigation.Depth != 0) return;
+        if (!SpotifyRouteActionPolicy.CanSwitchSection(
+                navigation.Route, navigation.Depth)) return;
         SpotifyRoute[] sections =
         [
             SpotifyRoute.Queue,

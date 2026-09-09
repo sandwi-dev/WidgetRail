@@ -119,6 +119,9 @@ internal static class SpotifyRouteActionPolicy
         _ => SpotifyDestination.Playlists,
     };
 
+    internal static bool CanSwitchSection(SpotifyRoute route, int depth) =>
+        depth == 0 || route == SpotifyRoute.PlaylistDetail;
+
     internal static string FocusGroupId(SpotifyRoute route) => route switch
     {
         SpotifyRoute.Queue => "spotify.page.queue",

@@ -165,7 +165,7 @@
   height: 58px;
   padding: 15px;
   color: var(--canvas, #090908);
-  background: var(--text);
+  background: var(--accent);
   border-color: transparent;
   border-width: 1px;
   corner-radius: 29px;
