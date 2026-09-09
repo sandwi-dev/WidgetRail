@@ -74,6 +74,9 @@ private:
         std::wstring& diagnostic,
         std::uint64_t value = 0) noexcept;
     [[nodiscard]] bool Pump(std::wstring& diagnostic) noexcept;
+    [[nodiscard]] bool IngestResponse(
+        const ControlFrame& response,
+        std::wstring& diagnostic) noexcept;
     [[nodiscard]] std::uint64_t TakeGuide() noexcept;
 
     ControllerIsolationPipeClient client_;

@@ -78,6 +78,12 @@ private:
 
 class PendingHostInputSink final : public ControllerIsolationHostInputSink {
 public:
+    [[nodiscard]] bool BeginInteraction() noexcept {
+        return queue_.BeginInteraction();
+    }
+
+    void RetireInteraction() noexcept { queue_.RetireInteraction(); }
+
     bool PublishInput(
         const GamepadState& state,
         const std::uint64_t ingressOrdinal) noexcept override {
@@ -222,6 +228,7 @@ int wmain(const int argumentCount, wchar_t** arguments) {
         }
 #if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
         case ControlMessageKind::PrepareSession: {
+            hostInputSink.RetireInteraction();
             const auto result = routing.PrepareSession(
                 request.authority, request.enrollment, GetTickCount64());
             if (!Applied(result)) {
@@ -232,11 +239,13 @@ int wmain(const int argumentCount, wchar_t** arguments) {
             }
             if (!channel->Reply(
                     ControlMessageKind::PrepareSession, request, 0,
-                    GetCurrentProcessId(), Progress(routing.state(), result)))
+                    GetCurrentProcessId(), Progress(routing.state(), result),
+                    {}, 0, hostInputSink.TakeBatch()))
                 return ERROR_BROKEN_PIPE;
             break;
         }
         case ControlMessageKind::CommitPlaying: {
+            hostInputSink.RetireInteraction();
             const auto result = routing.CommitPlaying(
                 request.authority, request.observedAtMilliseconds,
                 GetTickCount64());
@@ -249,15 +258,25 @@ int wmain(const int argumentCount, wchar_t** arguments) {
             }
             if (!channel->Reply(
                     ControlMessageKind::CommitPlaying, request, 0,
-                    GetCurrentProcessId(), Progress(routing.state(), result)))
+                    GetCurrentProcessId(), Progress(routing.state(), result),
+                    {}, 0, hostInputSink.TakeBatch()))
                 return ERROR_BROKEN_PIPE;
             break;
         }
         case ControlMessageKind::EnterOverlay: {
-            const auto result = routing.EnterOverlay(
-                request.authority, GetTickCount64());
+            if (!hostInputSink.BeginInteraction()) {
+                (void)channel->Reply(
+                    ControlMessageKind::Terminal, request,
+                    ERROR_ARITHMETIC_OVERFLOW);
+                return ERROR_ARITHMETIC_OVERFLOW;
+            }
+            const auto result = routing.state() ==
+                    ControllerIsolationRoutingState::OverlayInteraction
+                ? ControllerIsolationRoutingResult::Applied
+                : routing.EnterOverlay(request.authority, GetTickCount64());
             if (result != ControllerIsolationRoutingResult::Applied &&
                 result != ControllerIsolationRoutingResult::Waiting) {
+                hostInputSink.RetireInteraction();
                 (void)channel->Reply(
                     ControlMessageKind::Terminal, request,
                     static_cast<std::uint32_t>(result) + 1);
@@ -265,11 +284,13 @@ int wmain(const int argumentCount, wchar_t** arguments) {
             }
             if (!channel->Reply(
                     ControlMessageKind::EnterOverlay, request, 0,
-                    GetCurrentProcessId(), Progress(routing.state(), result)))
+                    GetCurrentProcessId(), Progress(routing.state(), result),
+                    {}, 0, hostInputSink.TakeBatch()))
                 return ERROR_BROKEN_PIPE;
             break;
         }
         case ControlMessageKind::CloseOverlay: {
+            hostInputSink.RetireInteraction();
             const auto result = routing.CloseOverlay(
                 request.authority, request.observedAtMilliseconds,
                 GetTickCount64());
@@ -282,11 +303,13 @@ int wmain(const int argumentCount, wchar_t** arguments) {
             }
             if (!channel->Reply(
                     ControlMessageKind::CloseOverlay, request, 0,
-                    GetCurrentProcessId(), Progress(routing.state(), result)))
+                    GetCurrentProcessId(), Progress(routing.state(), result),
+                    {}, 0, hostInputSink.TakeBatch()))
                 return ERROR_BROKEN_PIPE;
             break;
         }
         case ControlMessageKind::HoldContained: {
+            hostInputSink.RetireInteraction();
             const auto result = routing.HoldContained(
                 request.authority, GetTickCount64());
             if (result != ControllerIsolationRoutingResult::Applied) {
@@ -297,13 +320,15 @@ int wmain(const int argumentCount, wchar_t** arguments) {
             }
             if (!channel->Reply(
                     ControlMessageKind::HoldContained, request, 0,
-                    GetCurrentProcessId(), Progress(routing.state(), result)))
+                    GetCurrentProcessId(), Progress(routing.state(), result),
+                    {}, 0, hostInputSink.TakeBatch()))
                 return ERROR_BROKEN_PIPE;
             break;
         }
 #endif
         case ControlMessageKind::Stop:
 #if !defined(WRAIL_CONTROLLER_ISOLATION_FAKE_BACKEND)
+            hostInputSink.RetireInteraction();
             if (routing.state() != ControllerIsolationRoutingState::Disabled)
                 (void)routing.Stop(request.authority);
 #endif

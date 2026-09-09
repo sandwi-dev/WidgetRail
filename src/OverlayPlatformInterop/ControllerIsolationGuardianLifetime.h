@@ -42,6 +42,7 @@ enum class GuardianLifetimeStatus : std::uint8_t {
 [[nodiscard]] GuardianLaunchStatus LaunchIndependentIsolationGuardian(
     const std::filesystem::path& executable,
     const std::filesystem::path& journal,
+    ControllerIsolationJournalRecord& record,
     std::uint32_t& processId,
     std::uint32_t& nativeError) noexcept;
 

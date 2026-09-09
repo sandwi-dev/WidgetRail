@@ -96,6 +96,7 @@ GuardianLifetimeStatus ObserveExactIsolationWorker(
 GuardianLaunchStatus LaunchIndependentIsolationGuardian(
     const std::filesystem::path& executable,
     const std::filesystem::path& journal,
+    ControllerIsolationJournalRecord& record,
     std::uint32_t& processId,
     std::uint32_t& nativeError) noexcept {
     processId = 0;
@@ -108,7 +109,7 @@ GuardianLaunchStatus LaunchIndependentIsolationGuardian(
     }
     BOOL inJob{};
     DWORD creationFlags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP |
-        CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT;
+        CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED;
     if (!IsProcessInJob(GetCurrentProcess(), nullptr, &inJob)) {
         nativeError = GetLastError();
         return GuardianLaunchStatus::CreateFailed;
@@ -133,6 +134,11 @@ GuardianLaunchStatus LaunchIndependentIsolationGuardian(
         command += L" --controller-isolation-session ";
         if (!QuoteArgument(journal.wstring(), command))
             return GuardianLaunchStatus::InvalidInput;
+        command += L" --expected-authority " +
+            std::to_wstring(record.authority.sessionGeneration) + L" " +
+            std::to_wstring(record.authority.deviceGeneration) + L" " +
+            std::to_wstring(record.authority.targetGeneration) + L" " +
+            std::to_wstring(record.authority.leaseId);
         std::vector<wchar_t> mutableCommand(command.begin(), command.end());
         mutableCommand.push_back(L'\0');
         STARTUPINFOW startup{};
@@ -143,6 +149,23 @@ GuardianLaunchStatus LaunchIndependentIsolationGuardian(
                 FALSE, creationFlags, nullptr, executable.parent_path().c_str(),
                 &startup, &process)) {
             nativeError = GetLastError();
+            return GuardianLaunchStatus::CreateFailed;
+        }
+        auto replacement = record;
+        replacement.guardianProcessId = process.dwProcessId;
+        replacement.guardianCreationTime = ProcessCreationTime(process.hProcess);
+        ControllerIsolationJournalStore store(journal);
+        const bool published = replacement.guardianCreationTime != 0 &&
+            store.SaveAtomicIfCurrent(record, replacement, nativeError);
+        if (published) record = replacement;
+        if (!published ||
+            ResumeThread(process.hThread) == static_cast<DWORD>(-1)) {
+            if (nativeError == ERROR_SUCCESS) nativeError = GetLastError();
+            (void)TerminateProcess(process.hProcess, ERROR_PROCESS_ABORTED);
+            (void)WaitForSingleObject(
+                process.hProcess, ControllerIsolationShutdownTimeoutMilliseconds);
+            CloseHandle(process.hThread);
+            CloseHandle(process.hProcess);
             return GuardianLaunchStatus::CreateFailed;
         }
         processId = process.dwProcessId;

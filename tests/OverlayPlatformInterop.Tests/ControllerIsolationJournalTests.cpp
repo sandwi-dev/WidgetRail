@@ -75,6 +75,42 @@ int main() {
           "cross-process startup exclusion admits exactly one absent-journal authority");
     Check(admittedRecord && store.RemoveIfCurrent(*admittedRecord, error),
           "startup winner alone can remove its exact record");
+    auto delayedLaunch = expected;
+    delayedLaunch.guardianProcessId = 0;
+    delayedLaunch.guardianCreationTime = 0;
+    delayedLaunch.workerProcessId = 0;
+    delayedLaunch.workerCreationTime = 0;
+    delayedLaunch.phase = ControllerIsolationJournalPhase::Prepared;
+    ControllerIsolationLifecycleLease startupLease;
+    Check(startupLease.Acquire(100, error) &&
+              store.SaveAtomicIfAbsent(delayedLaunch, error),
+          "delayed launch holds lifecycle ownership from absent admission");
+    std::atomic_bool recoveryEntered{};
+    std::atomic_bool recoveryAcquired{};
+    std::thread recovery([&] {
+        recoveryEntered.store(true, std::memory_order_release);
+        ControllerIsolationLifecycleLease recoveryLease;
+        std::uint32_t recoveryError{};
+        recoveryAcquired.store(
+            recoveryLease.Acquire(20, recoveryError),
+            std::memory_order_release);
+    });
+    while (!recoveryEntered.load(std::memory_order_acquire))
+        std::this_thread::yield();
+    recovery.join();
+    auto publishedLaunch = delayedLaunch;
+    publishedLaunch.guardianProcessId = 101;
+    publishedLaunch.guardianCreationTime = 102;
+    Check(!recoveryAcquired.load(std::memory_order_acquire) &&
+              store.SaveAtomicIfCurrent(
+                  delayedLaunch, publishedLaunch, error),
+          "recovery cannot delete a delayed launch before Guardian ownership publication");
+    startupLease.Release();
+    const auto published = store.Load(error);
+    Check(published && published->guardianProcessId == 101 &&
+              published->guardianCreationTime == 102 &&
+              store.RemoveIfCurrent(*published, error),
+          "published launch identity survives the delayed recovery interleaving");
     Check(store.SaveAtomic(expected, error),
           "valid journal is written atomically");
     const auto loaded = store.Load(error);

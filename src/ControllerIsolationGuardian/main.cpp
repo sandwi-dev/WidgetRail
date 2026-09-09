@@ -4,6 +4,8 @@
 #include <windows.h>
 
 #include <array>
+#include <cerrno>
+#include <cwchar>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -30,13 +32,31 @@ std::filesystem::path SiblingWorker() {
         kWorkerFileName;
 }
 
+bool ParseUInt64(const wchar_t* text, std::uint64_t& value) noexcept {
+    if (!text || *text == L'\0' || *text == L'-') return false;
+    errno = 0;
+    wchar_t* end{};
+    const auto parsed = std::wcstoull(text, &end, 10);
+    if (errno != 0 || !end || *end != L'\0' || parsed == 0) return false;
+    value = parsed;
+    return true;
+}
+
 } // namespace
 
 int wmain(const int argumentCount, wchar_t** arguments) {
 #if !defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
-    if (argumentCount == 3 && arguments[1] && arguments[2] &&
-        _wcsicmp(arguments[1], L"--controller-isolation-session") == 0) {
-        return RunControllerIsolationGuardianSession(arguments[2]);
+    if (argumentCount == 8 && arguments[1] && arguments[2] && arguments[3] &&
+        _wcsicmp(arguments[1], L"--controller-isolation-session") == 0 &&
+        _wcsicmp(arguments[3], L"--expected-authority") == 0) {
+        RoutingAuthority expected;
+        if (!ParseUInt64(arguments[4], expected.sessionGeneration) ||
+            !ParseUInt64(arguments[5], expected.deviceGeneration) ||
+            !ParseUInt64(arguments[6], expected.targetGeneration) ||
+            !ParseUInt64(arguments[7], expected.leaseId))
+            return ERROR_INVALID_PARAMETER;
+        return RunControllerIsolationGuardianSession(
+            arguments[2], expected);
     }
 #endif
     std::wstring error;

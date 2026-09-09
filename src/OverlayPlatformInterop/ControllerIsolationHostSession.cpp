@@ -158,9 +158,7 @@ namespace {
     if (record.phase == ControllerIsolationJournalPhase::Prepared &&
         record.guardianProcessId == 0 && record.guardianCreationTime == 0 &&
         record.workerProcessId == 0 && record.workerCreationTime == 0) {
-        if (store.RemoveIfCurrent(record, error)) return true;
-        diagnostic = L"Controller isolation empty journal removal failed error=" +
-            std::to_wstring(error);
+        diagnostic = L"Controller isolation recovery cannot retire an unpublished startup owner.";
         return false;
     }
     std::uint32_t guardianError{};
@@ -257,6 +255,7 @@ bool ControllerIsolationHostSession::Connect(
     }
     ++nextSequence_;
     progress_ = static_cast<ControlProgress>(response.observedAtMilliseconds);
+    if (!IngestResponse(response, diagnostic)) return false;
     attached_ = true;
     if (response.status != 0) {
         diagnostic = L"Controller isolation recovery required error=" +
@@ -320,7 +319,8 @@ bool ControllerIsolationHostSession::PrepareOverlay(
     std::wstring& diagnostic) noexcept {
     if (!attached_) return true;
     ControlFrame response;
-    if (progress_ == ControlProgress::Playing &&
+    if ((progress_ == ControlProgress::Playing ||
+         progress_ == ControlProgress::Contained) &&
         !Exchange(ControlMessageKind::EnterOverlay, response, diagnostic))
         return false;
     const auto startedAt = GetTickCount64();
@@ -332,6 +332,9 @@ bool ControllerIsolationHostSession::PrepareOverlay(
             return false;
         }
         if (!Exchange(ControlMessageKind::Heartbeat, response, diagnostic))
+            return false;
+        if (progress_ == ControlProgress::Playing &&
+            !Exchange(ControlMessageKind::EnterOverlay, response, diagnostic))
             return false;
         Sleep(1);
     }
@@ -376,17 +379,20 @@ bool ControllerIsolationHostSession::PollGuide(
 
 bool ControllerIsolationHostSession::Pump(std::wstring& diagnostic) noexcept {
     ControlFrame response;
-    if (!Exchange(ControlMessageKind::Heartbeat, response, diagnostic))
-        return false;
+    return Exchange(ControlMessageKind::Heartbeat, response, diagnostic);
+}
+
+bool ControllerIsolationHostSession::IngestResponse(
+    const ControlFrame& response, std::wstring& diagnostic) noexcept {
     latestState_ = response.state;
     const auto& batch = response.inputBatch;
     const bool validBatch = batch.count <=
             ControllerIsolationInputBatchCapacity &&
-        batch.reserved == 0 && std::ranges::all_of(
-            batch.padding, [](std::uint8_t value) { return value == 0; }) &&
+        batch.reserved == 0 &&
         (batch.count == 0
              ? batch.firstIngressOrdinal == 0 && batch.lastIngressOrdinal == 0
-             : batch.firstIngressOrdinal != 0 &&
+             : batch.interactionGeneration != 0 &&
+                 batch.firstIngressOrdinal != 0 &&
                  batch.lastIngressOrdinal >= batch.firstIngressOrdinal);
     if (!validBatch) {
         diagnostic = L"Controller isolation input batch was malformed.";
@@ -428,7 +434,7 @@ void ControllerIsolationHostSession::Detach() noexcept {
     progress_ = ControlProgress::None;
     attached_ = false;
     latestState_ = {};
-    pendingStates_.Clear();
+    pendingStates_.Reset();
     pendingGuideHead_ = 0;
     pendingGuideCount_ = 0;
 }
@@ -446,31 +452,37 @@ ControllerIsolationCommandStatus ControllerIsolationHostSession::ExecuteCommand(
     auto record = store.Load(error);
     if (command == ControllerIsolationCommand::Enable && !record &&
         (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND)) {
-        ControllerIsolationJournalRecord created;
-        if (!NewRecord(path, created, diagnostic))
-            return ControllerIsolationCommandStatus::Failed;
-        std::uint32_t processId{};
-        if (LaunchIndependentIsolationGuardian(
-                created.guardianPath, path, processId, error) !=
-            GuardianLaunchStatus::Started) {
-            (void)store.RemoveIfCurrent(created, error);
-            diagnostic = L"Controller isolation Guardian launch failed error=" +
+        ControllerIsolationLifecycleLease startup;
+        if (!startup.Acquire(
+                ControllerIsolationStartupTimeoutMilliseconds, error)) {
+            diagnostic = L"Controller isolation startup lifecycle is busy error=" +
                 std::to_wstring(error);
             return ControllerIsolationCommandStatus::Failed;
         }
-        const auto startedAt = GetTickCount64();
-        do {
-            record = store.Load(error);
-            if (record && record->guardianProcessId != 0 &&
-                record->guardianCreationTime != 0) break;
-            Sleep(1);
-        } while (GetTickCount64() - startedAt <
-                 ControllerIsolationStartupTimeoutMilliseconds);
-        if (!record || record->guardianProcessId == 0 ||
-            record->guardianCreationTime == 0) {
-            diagnostic = L"Controller isolation Guardian identity publication timed out error=" +
+        record = store.Load(error);
+        if (record) {
+            startup.Release();
+        } else if (error != ERROR_FILE_NOT_FOUND &&
+                   error != ERROR_PATH_NOT_FOUND) {
+            diagnostic = L"Controller isolation journal is invalid error=" +
                 std::to_wstring(error);
-            return ControllerIsolationCommandStatus::Failed;
+            return ControllerIsolationCommandStatus::RecoveryRequired;
+        } else {
+            ControllerIsolationJournalRecord created;
+            if (!NewRecord(path, created, diagnostic))
+                return ControllerIsolationCommandStatus::Failed;
+            std::uint32_t processId{};
+            if (LaunchIndependentIsolationGuardian(
+                    created.guardianPath, path, created, processId, error) !=
+                GuardianLaunchStatus::Started) {
+                (void)store.RemoveIfCurrent(created, error);
+                diagnostic =
+                    L"Controller isolation Guardian launch failed error=" +
+                    std::to_wstring(error);
+                return ControllerIsolationCommandStatus::Failed;
+            }
+            record = created;
+            startup.Release();
         }
     }
     if (!record) {

@@ -195,14 +195,12 @@ struct GuardianRuntime final {
             }
             guideEvents.push_back(response.deviceEnrollmentToken);
         }
-        if (response.inputBatch.count != 0) {
-            if (!inputBatches.Push(response.inputBatch)) {
+        if (!inputBatches.Push(response.inputBatch)) {
                 lastError = ERROR_BUFFER_OVERFLOW;
                 progress = ControlProgress::Terminal;
                 (void)SavePhase(
                     ControllerIsolationJournalPhase::RecoveryRequired);
                 return false;
-            }
         }
         return true;
     }
@@ -219,6 +217,8 @@ struct GuardianRuntime final {
         ControlFrame& response) noexcept {
         const std::scoped_lock lock(effects);
         response.state = latestState;
+        response.inputBatch.interactionGeneration =
+            inputBatches.interactionGeneration();
         if (requestKind == ControlMessageKind::Heartbeat) {
             response.deviceEnrollmentToken = TakeGuide();
             response.inputBatch = inputBatches.TakeBatch();
@@ -354,25 +354,12 @@ struct GuardianRuntime final {
 
     [[nodiscard]] bool RecordGuardianIdentity() noexcept {
         const std::scoped_lock lock(effects);
-        if (record.phase != ControllerIsolationJournalPhase::Prepared ||
-            record.guardianProcessId != 0 ||
-            record.guardianCreationTime != 0) {
-            lastError = ERROR_ALREADY_EXISTS;
-            return false;
-        }
-        record.guardianProcessId = GetCurrentProcessId();
-        record.guardianCreationTime = ProcessCreationTime(GetCurrentProcess());
-        if (record.guardianCreationTime == 0) {
-            lastError = GetLastError();
-            return false;
-        }
-        std::uint32_t error{};
-        if (store.SaveAtomicIfCurrent(
-                persistedRecord, record, error)) {
-            persistedRecord = record;
-            return true;
-        }
-        lastError = error;
+        const auto creationTime = ProcessCreationTime(GetCurrentProcess());
+        if (record.phase == ControllerIsolationJournalPhase::Prepared &&
+            record.guardianProcessId == GetCurrentProcessId() &&
+            record.guardianCreationTime != 0 &&
+            record.guardianCreationTime == creationTime) return true;
+        lastError = ERROR_REVISION_MISMATCH;
         return false;
     }
 
@@ -527,12 +514,16 @@ void RunControlIngress(
 } // namespace
 
 int RunControllerIsolationGuardianSession(
-    const std::filesystem::path& journalPath) noexcept {
+    const std::filesystem::path& journalPath,
+    const RoutingAuthority& expectedAuthority) noexcept {
     ControllerIsolationJournalStore store(journalPath);
     std::uint32_t error{};
     auto loaded = store.Load(error);
     if (!loaded) return static_cast<int>(
         error != 0 ? error : ERROR_INVALID_DATA);
+    if (!GuardianStartupAuthorityMatches(
+            expectedAuthority, loaded->authority))
+        return ERROR_REVISION_MISMATCH;
     GuardianRuntime runtime(journalPath, std::move(*loaded));
     if (!runtime.RecordGuardianIdentity())
         return static_cast<int>(runtime.LastError());

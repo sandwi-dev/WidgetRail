@@ -35,6 +35,12 @@ enum class AdmittedHostLifetime : std::uint8_t {
         sameProcessIdentity;
 }
 
+[[nodiscard]] constexpr bool GuardianStartupAuthorityMatches(
+    const RoutingAuthority& expected,
+    const RoutingAuthority& persisted) noexcept {
+    return expected.valid() && expected == persisted;
+}
+
 [[nodiscard]] constexpr GuardianStartupDisposition
 DecideGuardianStartupDisposition(
     const ControllerIsolationJournalPhase loadedPhase,
@@ -48,6 +54,7 @@ DecideGuardianStartupDisposition(
 }
 
 [[nodiscard]] int RunControllerIsolationGuardianSession(
-    const std::filesystem::path& journalPath) noexcept;
+    const std::filesystem::path& journalPath,
+    const RoutingAuthority& expectedAuthority) noexcept;
 
 } // namespace widgetrail::isolation

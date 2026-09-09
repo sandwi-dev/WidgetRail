@@ -161,6 +161,15 @@ void ProtocolRejectsWrongAuthorityAndShape() {
               Authority(), heartbeat.sequence) ==
               ControlResponseValidation::Accepted,
           "heartbeat admits only its exact successful response");
+    heartbeatResponse.inputBatch.count = 1;
+    heartbeatResponse.inputBatch.firstIngressOrdinal = 1;
+    heartbeatResponse.inputBatch.lastIngressOrdinal = 1;
+    Check(ValidateControlResponse(
+              ControlMessageKind::Heartbeat, heartbeatResponse, nonce,
+              Authority(), heartbeat.sequence) ==
+              ControlResponseValidation::InvalidShape,
+          "nonempty input without an interaction generation fails closed");
+    heartbeatResponse.inputBatch = {};
     heartbeatResponse.kind = ControlMessageKind::Terminal;
     Check(ValidateControlResponse(
               ControlMessageKind::Heartbeat, heartbeatResponse, nonce,

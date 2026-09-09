@@ -69,7 +69,9 @@ control replies expose transition progress without blocking the request owner:
 Enter waits for its pre-barrier drain and neutral submission, while Commit/Close
 advance through the bounded neutral dwell. Input readings are batched in order
 across worker, Guardian, and host so short button edges are not collapsed when
-the host consumes more slowly than GameInput publishes.
+the host consumes more slowly than GameInput publishes. Every overlay entry
+owns a monotonic interaction generation; close, containment without a live
+host, and the next entry retire older queued UI input without retiring Guide.
 
 The Guardian is outside the OverlayHost job and remains the sole effect owner
 for both the persistent host pipe and a separate one-shot control pipe. A pipe
@@ -77,7 +79,9 @@ failure does not prove owner death: the Guardian keeps the virtual target
 contained until the exact authenticated host process handle signals. Only then
 may it finish the neutral barrier and resume game-facing output. The Guardian
 creates its Worker suspended, admits it to the private job, and journals its
-exact PID and creation time before resume. Orphan recovery requires the
+exact PID and creation time before resume. The Guardian also receives the
+creator's expected non-secret routing authority and refuses a replacement
+journal. Orphan recovery requires the
 journaled Guardian and Worker process identities, paths, and SHA-256 hashes to
 prove both exact processes exited before restoring the recorded HidHide delta.
 Foreign HidHide applications, devices, activation state, and inverse-list
@@ -98,4 +102,5 @@ Enable is accepted only from a missing journal under one per-session lifecycle
 mutex; an unreadable or corrupt journal fails closed. Every phase replacement
 and removal compares the complete persisted record first. Disable performs the
 ordinary exact-delta restore. Recover is the explicit orphan path and cannot
-mutate HidHide merely because transport failed.
+mutate HidHide merely because transport failed; an unpublished zero-identity
+startup record is retained for explicit diagnosis rather than guessed safe.

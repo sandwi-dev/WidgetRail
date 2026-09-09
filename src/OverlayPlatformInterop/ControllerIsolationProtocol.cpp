@@ -9,14 +9,13 @@ namespace {
 [[nodiscard]] bool ValidInputBatch(
     const ControllerInputBatch& batch) noexcept {
     if (batch.count > ControllerIsolationInputBatchCapacity ||
-        batch.reserved != 0 ||
-        std::ranges::any_of(
-            batch.padding, [](std::uint8_t value) { return value != 0; }))
+        batch.reserved != 0)
         return false;
     if (batch.count == 0)
         return batch.firstIngressOrdinal == 0 &&
             batch.lastIngressOrdinal == 0;
-    return batch.firstIngressOrdinal != 0 &&
+    return batch.interactionGeneration != 0 &&
+        batch.firstIngressOrdinal != 0 &&
         batch.lastIngressOrdinal >= batch.firstIngressOrdinal;
 }
 

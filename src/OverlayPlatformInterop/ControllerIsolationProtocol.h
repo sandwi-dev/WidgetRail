@@ -10,7 +10,7 @@
 namespace widgetrail::isolation {
 
 inline constexpr std::uint32_t ControllerIsolationProtocolMagic = 0x57494349;
-inline constexpr std::uint16_t ControllerIsolationProtocolVersion = 3;
+inline constexpr std::uint16_t ControllerIsolationProtocolVersion = 4;
 inline constexpr std::size_t ControllerIsolationNonceBytes = 32;
 inline constexpr std::size_t ControllerIsolationMaximumFrameBytes = 256;
 inline constexpr std::size_t ControllerIsolationInputBatchCapacity = 8;
@@ -58,7 +58,7 @@ struct ControllerInputBatch final {
     std::uint32_t count{};
     std::uint32_t reserved{};
     std::array<GamepadState, ControllerIsolationInputBatchCapacity> states{};
-    std::array<std::uint8_t, 8> padding{};
+    std::uint64_t interactionGeneration{};
 };
 
 static_assert(sizeof(ControllerInputBatch) ==

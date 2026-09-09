@@ -20,6 +20,10 @@ void Check(const bool value, const char* message) {
 } // namespace
 
 int main() {
+    Check(GuardianStartupAuthorityMatches({1, 2, 3, 4}, {1, 2, 3, 4}) &&
+              !GuardianStartupAuthorityMatches({1, 2, 3, 4}, {1, 2, 3, 5}) &&
+              !GuardianStartupAuthorityMatches({}, {1, 2, 3, 4}),
+          "a delayed Guardian can claim only its exact expected journal authority");
     Check(DecideGuardianStartupDisposition(
               ControllerIsolationJournalPhase::Prepared, true,
               ControllerIsolationJournalPhase::Playing) ==
@@ -73,6 +77,8 @@ int main() {
     ControllerIsolationHostStateQueue host;
     std::vector<GamepadState> expected;
     std::vector<GamepadState> observed;
+    Check(worker.BeginInteraction(),
+          "first overlay interaction owns a nonzero input generation");
     for (std::uint64_t index = 0; index < 200; ++index) {
         GamepadState state;
         state.leftThumbX = static_cast<std::int16_t>(index * 250 - 25'000);
@@ -102,6 +108,35 @@ int main() {
     Check(observed == expected && observed[40].buttons == 0x1000 &&
               observed[41].buttons == 0,
           "press, release, and sustained analog reports survive slower host consumption");
+
+    GamepadState oldPress;
+    oldPress.buttons = 0x1000;
+    Check(worker.Push(oldPress, 201),
+          "old interaction queues a final press before close");
+    const auto oldBatch = worker.TakeBatch();
+    const auto progressHeartbeat = worker.TakeBatch();
+    Check(guardian.Push(oldBatch) && guardian.Push(progressHeartbeat) &&
+              guardian.size() == 1 && host.Push(guardian.TakeBatch()) &&
+              host.Push(progressHeartbeat) && host.size() == 1,
+          "empty containment-progress heartbeats preserve queued current-generation input");
+    worker.RetireInteraction();
+    Check(guardian.Push(worker.TakeBatch()) &&
+              host.Push(guardian.TakeBatch()) && host.size() == 0 &&
+              host.interactionGeneration() == 0,
+          "close retires every queued old-interaction UI input");
+    Check(worker.BeginInteraction(),
+          "reopen owns a fresh monotonic input generation");
+    Check(guardian.Push(worker.TakeBatch()) &&
+              host.Push(guardian.TakeBatch()) &&
+              !guardian.Push(oldBatch) && !host.Push(oldBatch),
+          "a delayed old generation cannot re-enter Guardian or host after reopen");
+    GamepadState newPress;
+    newPress.buttons = 0x2000;
+    Check(worker.Push(newPress, 202) &&
+              guardian.Push(worker.TakeBatch()) &&
+              host.Push(guardian.TakeBatch()) && host.Pop(stateAtHost) &&
+              stateAtHost == newPress,
+          "only the fresh interaction generation reaches reopened UI input");
 
     std::cout << "ControllerIsolationInputTransportTests passed (" << checks
               << " checks)\n";
