@@ -1036,12 +1036,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
             FixedRowsRevision = refreshHome
                 ? state.FixedRowsRevision + 1
                 : state.FixedRowsRevision,
-            ActiveCategoryId = null,
+            ActiveCategoryId = refreshHome ? null : state.ActiveCategoryId,
             PreferLibraryContentFocus = refreshHome
                 ? preferContentFocus
                 : state.PreferLibraryContentFocus,
-            BrowseInitialFocusId = null,
-            ActiveBrowseReload = null,
+            BrowseInitialFocusId = refreshHome ? null : state.BrowseInitialFocusId,
+            ActiveBrowseReload = refreshHome ? null : state.ActiveBrowseReload,
         });
         if (!refreshHome) return;
         var replacement = _homeLibrary.Refresh();
@@ -2281,6 +2281,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
             else
             {
                 await CurrentLibrary.Refresh().Completion.ConfigureAwait(false);
+                if (_navigation.Value.Route == PlayniteLibraryRoute.Library &&
+                    string.Equals(_model.Value.ActiveCategoryId, categoryId,
+                        StringComparison.Ordinal))
+                {
+                    await _browseLibrary.Refresh().Completion.ConfigureAwait(false);
+                }
                 lock (_gate)
                 {
                     var confirmedCategory = PlayniteLibraryCategoryPolicy.Find(

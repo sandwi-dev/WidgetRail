@@ -680,11 +680,13 @@ public sealed class PackageRuntimeTests
     public async Task ArtworkRegistryRetainsEveryOwnerThroughIncomingPageAndFixedRows()
     {
         using var directory = new TestDirectory();
-        var client = new FakeLibraryClient(576);
-        var incomingGames = client.Games.Skip(448).ToArray();
-        foreach (var index in Enumerable.Range(512, 64))
+        var client = new FakeLibraryClient(608);
+        var incomingGames = client.Games.Skip(448).Take(64).ToArray();
+        var incomingFixedGames = client.Games.Skip(512).Take(64).ToArray();
+        foreach (var index in Enumerable.Range(576, 32))
             client.Games[index] = client.Games[index] with { Hidden = true };
-        client.Games.RemoveRange(448, incomingGames.Length);
+        var hiddenGames = client.Games.Skip(576).Take(32).ToArray();
+        client.Games.RemoveRange(448, 160);
         var diagnostics = new RecordingArtworkDiagnostics();
         await using var service = Service(directory.Path, client, diagnostics);
 
@@ -701,28 +703,37 @@ public sealed class PackageRuntimeTests
         Assert.AreEqual(896, PrivateDictionary(service, "_artwork").Count);
 
         client.Games.AddRange(incomingGames);
+        client.Games.AddRange(incomingFixedGames);
+        client.Games.AddRange(hiddenGames);
         var allPages = await QueryEveryPage(service,
             refresh: true, CancellationToken.None);
         var incoming = ArtworkHandles(allPages.Skip(448).Take(64));
         Assert.AreEqual(128, incoming.Length,
             "One complete incoming page must fit beside every active owner before the pin swap.");
         var resolvedFixedRows = await service.ResolveSavedAsync(
-            incomingGames.Skip(64).Select(game => game.Id).ToArray(),
+            incomingFixedGames.Select(game => game.Id).ToArray(),
             CancellationToken.None);
         var incomingFixed = ArtworkHandles(resolvedFixedRows);
         Assert.AreEqual(128, incomingFixed.Length,
             "One complete incoming fixed/title set must fit beside the cursor page.");
-        Assert.AreEqual(1_152, PrivateDictionary(service, "_artwork").Count,
-            "Registration must reserve a full two-role cursor page and fixed-row set for atomic handoff.");
-        Assert.IsTrue(incoming.Concat(incomingFixed).All(handle =>
+        var resolvedHidden = await service.ResolveSavedAsync(
+            hiddenGames.Select(game => game.Id).ToArray(), CancellationToken.None);
+        var hidden = ArtworkHandles(resolvedHidden);
+        Assert.AreEqual(64, hidden.Length,
+            "Every simultaneously retained Hidden owner must be budgeted.");
+        Assert.AreEqual(1_216, PrivateDictionary(service, "_artwork").Count,
+            "Registration must reserve the complete steady owner set plus one incoming transition.");
+        Assert.IsTrue(incoming.Concat(incomingFixed).Concat(hidden).All(handle =>
                 PrivateDictionary(service, "_artwork").Contains(handle)),
-            "No newly admitted page or fixed-row handle may be evicted before the pin swap.");
+            "No newly admitted page, fixed-row, or Hidden handle may be evicted before the pin swap.");
 
-        var precommitOwners = retainedHome.Concat(incomingFixed).Concat(liveBrowse).ToArray();
-        Assert.AreEqual(896, precommitOwners.Length);
+        var precommitOwners = retainedHome.Concat(incomingFixed).Concat(liveBrowse)
+            .Concat(hidden).ToArray();
+        Assert.AreEqual(960, precommitOwners.Length,
+            "The maximum simultaneous Home, Browse, fixed-row, and Hidden owners changed.");
         service.PinArtworkHandles(precommitOwners);
         var registrations = PrivateDictionary(service, "_artwork");
-        Assert.AreEqual(1_024, registrations.Count,
+        Assert.AreEqual(1_088, registrations.Count,
             "The pin swap must retire replaced published rows while preserving the pending cursor transition.");
         Assert.IsTrue(precommitOwners.Concat(incoming).All(registrations.Contains),
             "Every current published owner and never-published incoming cursor handle must remain registered.");
@@ -739,14 +750,20 @@ public sealed class PackageRuntimeTests
                     new WidgetArtworkHandle(handle), CancellationToken.None),
                 $"Precommit pin publication evicted pending cursor handle {handle}.");
 
-        var requiredAfterSwap = retainedHome.Concat(incoming).Concat(incomingFixed).ToArray();
+        var retainedBrowseAfterMove = liveBrowse.Skip(128).Concat(incoming).ToArray();
+        Assert.AreEqual(384, retainedBrowseAfterMove.Length);
+        var requiredAfterSwap = retainedHome.Concat(retainedBrowseAfterMove)
+            .Concat(incomingFixed).Concat(hidden).ToArray();
+        Assert.AreEqual(960, requiredAfterSwap.Length);
         service.PinArtworkHandles(requiredAfterSwap);
         foreach (var handle in requiredAfterSwap)
             Assert.IsNotNull(await service.ResolveArtworkAsync(
                     new WidgetArtworkHandle(handle), CancellationToken.None),
                 $"The retained rendered or newly admitted handle {handle} was stranded during swap.");
         Assert.IsFalse(diagnostics.Records.Any(record => record.Code == "unknown-handle"));
-        Assert.IsTrue(PrivateDictionary(service, "_artwork").Count <= 1_152,
+        Assert.AreEqual(960, PrivateDictionary(service, "_artwork").Count,
+            "A maximum disjoint retained-owner set was silently truncated.");
+        Assert.IsTrue(PrivateDictionary(service, "_artwork").Count <= 1_216,
             "Registration retention exceeded the bounded steady-plus-transition ceiling.");
         Assert.AreEqual(PrivateDictionary(service, "_artwork").Count,
             PrivateArtworkOrder(service).Length,

@@ -742,6 +742,95 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task CategoryBrowseCursorAndQuerySurviveHomeRoundTrip()
+    {
+        var displays = Enumerable.Range(0, 200)
+            .Select(index => new PlayniteLibraryDisplayItem(
+                $"saved-{index:D5}", $"Game {index:D5}", "Steam"))
+            .ToArray();
+        var category = new PlayniteLibraryCategory(
+            PlayniteLibraryCategoryPolicy.NewId(), "Complete catalog",
+            displays.Select(display => display.SavedId).ToArray());
+        var persisted = new PlayniteLibraryPrivateState(
+            PlayniteLibraryPrivateState.CurrentVersion, displays)
+        {
+            Categories = [category],
+        };
+        var host = new FakeHost(200, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1));
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var homeItems = widget.HomeCollection.Items.Select(item => item.Value.SavedId).ToArray();
+        var homeAnchor = widget.HomeCollection.Anchor;
+        var homeQuery = widget.RenderState.Value.Collection;
+        var homeQueries = host.QueryContexts.Count(context =>
+            context.Scope == PlayniteLibraryQueryScope.Home);
+
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.BrowseOpen, "playnite-library.library.menu"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "initial category Browse");
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.CategoryOpen(category.Id),
+            PlayniteLibraryActions.CategoryFilter));
+        await Bounded(widget.WhenLibraryIdleAsync(), "category Browse query");
+
+        Assert.AreEqual(category.Id, widget.RenderState.Value.ActiveCategoryId);
+        Assert.AreEqual(PlayniteLibraryQueryScope.Category, host.QueryContexts[^1].Scope);
+        Assert.AreEqual(category.Name, host.QueryContexts[^1].CategoryName);
+        var browseItems = widget.BrowseCollection.Items
+            .Select(item => item.Value.SavedId).ToArray();
+        var browseAnchor = widget.BrowseCollection.Anchor;
+        var browseAfter = widget.BrowseCollection.After ??
+            throw new AssertFailedException(
+                "The category fixture must retain a successor cursor after its initial page.");
+        var queriesBeforeBack = host.Queries.Count;
+        var browse = Snapshot(widget, 40_008);
+        var backInvalidation = NextInvalidation(widget);
+        Assert.IsTrue(await Route(widget, browse, ControllerButton.B,
+            browse.InitialFocusId!));
+        await Bounded(backInvalidation, "category Browse Home return");
+        await Bounded(widget.WhenLibraryIdleAsync(), "category Browse Home idle");
+
+        Assert.AreEqual(queriesBeforeBack, host.Queries.Count,
+            "Category Browse Back issued a gratuitous provider request.");
+        Assert.AreEqual(category.Id, widget.RenderState.Value.ActiveCategoryId,
+            "Home return detached the retained Browse cursor from its category query.");
+        CollectionAssert.AreEqual(homeItems,
+            widget.HomeCollection.Items.Select(item => item.Value.SavedId).ToArray());
+        Assert.AreEqual(homeAnchor, widget.HomeCollection.Anchor);
+        Assert.AreEqual(homeQuery, widget.RenderState.Value.Collection);
+        Assert.AreEqual(homeQueries, host.QueryContexts.Count(context =>
+            context.Scope == PlayniteLibraryQueryScope.Home));
+
+        var queriesBeforeReopen = host.Queries.Count;
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.BrowseOpen, "playnite-library.library.menu"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "reopened category Browse");
+        Assert.AreEqual(queriesBeforeReopen, host.Queries.Count,
+            "Reopening an already loaded category Browse window replaced its cursor.");
+        Assert.AreEqual(category.Id, widget.RenderState.Value.ActiveCategoryId);
+        CollectionAssert.AreEqual(browseItems,
+            widget.BrowseCollection.Items.Select(item => item.Value.SavedId).ToArray());
+        Assert.AreEqual(browseAnchor, widget.BrowseCollection.Anchor);
+
+        var browseScrollId = PlayniteLibraryPresentation.BrowseScrollId(
+            widget.RenderState.Value.AlternateBrowseViewport);
+        await widget.OnActionAsync(new(
+            "playnite-library.next", browseScrollId));
+        await Bounded(widget.WhenLibraryIdleAsync(), "reopened category next page");
+        Assert.AreEqual(browseAfter.Value, host.Queries[^1].Cursor,
+            "Reopened category paging did not continue from the paired cursor.");
+        Assert.AreEqual(PlayniteLibraryQueryScope.Category, host.QueryContexts[^1].Scope);
+        Assert.AreEqual(category.Name, host.QueryContexts[^1].CategoryName);
+        CollectionAssert.AreEqual(homeItems,
+            widget.HomeCollection.Items.Select(item => item.Value.SavedId).ToArray());
+        Assert.AreEqual(homeAnchor, widget.HomeCollection.Anchor);
+        Assert.AreEqual(homeQuery, widget.RenderState.Value.Collection);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task RetainedRenderedArtworkPinsBeforeSameGameLiveBrowseRevision()
     {
         const string retainedHandle = "artwork.retained.revision";

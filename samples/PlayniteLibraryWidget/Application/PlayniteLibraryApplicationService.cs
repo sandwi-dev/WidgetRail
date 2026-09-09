@@ -14,7 +14,8 @@ internal sealed class PlayniteLibraryApplicationService(
     private const int RegisteredArtworkRolesPerGame = 2;
     private const int MaximumArtworkEntries =
         (PlayniteLibraryWidget.MaximumRetainedItems * 2 +
-         WidgetAppLibraryService.MaximumSavedItems) *
+         WidgetAppLibraryService.MaximumSavedItems +
+         PlayniteLibraryPrivateState.MaximumExcludedItems) *
         RegisteredArtworkRolesPerGame;
     private const int MaximumArtworkTransitionEntries =
         (PlayniteLibraryWidget.PageSize + WidgetAppLibraryService.MaximumSavedItems) *
@@ -69,10 +70,11 @@ internal sealed class PlayniteLibraryApplicationService(
             var nextPinnedArtwork = handles.Where(_artwork.ContainsKey)
                 .Take(MaximumArtworkEntries)
                 .ToHashSet(StringComparer.Ordinal);
+            var orderChanged = false;
             foreach (var retiredHandle in _pinnedArtwork.Except(nextPinnedArtwork))
-                RemoveArtworkLocked(retiredHandle, memoryEvents);
+                orderChanged |= RemoveArtworkLocked(retiredHandle, memoryEvents);
             _pinnedArtwork = nextPinnedArtwork;
-            CompactArtworkOrderLocked();
+            if (orderChanged) CompactArtworkOrderLocked();
             TrimArtworkLocked(
                 MaximumArtworkEntries + MaximumArtworkTransitionEntries,
                 memoryEvents);
@@ -635,20 +637,19 @@ internal sealed class PlayniteLibraryApplicationService(
         }
     }
 
-    private void RemoveArtworkLocked(
+    private bool RemoveArtworkLocked(
         string handle,
         ICollection<PlayniteArtworkMemoryEvent> memoryEvents)
     {
-        var removedRegistration = _artwork.Remove(handle, out var registration)
-            ? registration
-            : null;
+        var registrationRemoved = _artwork.Remove(handle, out var registration);
         if (_artworkContent.Remove(handle) is { } removed)
             memoryEvents.Add(new(
                 PlayniteArtworkMemoryEventKind.Eviction,
-                removedRegistration is null
+                !registrationRemoved
                     ? PlayniteArtworkRole.Neutral
-                    : Role(removedRegistration.Kind),
+                    : Role(registration!.Kind),
                 removed.Bytes));
+        return registrationRemoved;
     }
 
     private void CompactArtworkOrderLocked()
