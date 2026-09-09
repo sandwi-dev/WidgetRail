@@ -1017,18 +1017,62 @@ internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
                 isMalformed: true, isOverBudget: true);
         await using var stream = await content.ReadAsStreamAsync(cancellationToken)
             .ConfigureAwait(false);
-        using var buffer = new MemoryStream();
-        var chunk = new byte[8192];
-        while (true)
+        if (content.Headers.ContentLength is { } exactLength)
         {
-            var read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false);
-            if (read == 0) break;
-            if (buffer.Length + read > maximumBytes)
+            if (exactLength < 0 || exactLength > int.MaxValue)
                 throw new PlayniteBridgeTransportException(
                     isMalformed: true, isOverBudget: true);
-            buffer.Write(chunk, 0, read);
+            var exact = GC.AllocateUninitializedArray<byte>((int)exactLength);
+            try
+            {
+                await stream.ReadExactlyAsync(exact, cancellationToken).ConfigureAwait(false);
+            }
+            catch (EndOfStreamException exception)
+            {
+                throw new PlayniteBridgeTransportException(
+                    isMalformed: true, exception);
+            }
+            var trailing = new byte[1];
+            if (await stream.ReadAsync(trailing, cancellationToken).ConfigureAwait(false) != 0)
+                throw new PlayniteBridgeTransportException(
+                    isMalformed: true,
+                    isOverBudget: exactLength >= maximumBytes);
+            return exact;
         }
-        return buffer.ToArray();
+
+        const int segmentBytes = 64 * 1024;
+        var segments = new List<(byte[] Bytes, int Count)>();
+        var total = 0;
+        while (true)
+        {
+            var capacity = Math.Min(segmentBytes, maximumBytes - total + 1);
+            var segment = new byte[capacity];
+            var count = 0;
+            while (count < segment.Length)
+            {
+                var read = await stream.ReadAsync(
+                        segment.AsMemory(count), cancellationToken)
+                    .ConfigureAwait(false);
+                if (read == 0) break;
+                count += read;
+            }
+            if (count == 0) break;
+            total += count;
+            if (total > maximumBytes)
+                throw new PlayniteBridgeTransportException(
+                    isMalformed: true, isOverBudget: true);
+            segments.Add((segment, count));
+            if (count < segment.Length) break;
+        }
+
+        var result = GC.AllocateUninitializedArray<byte>(total);
+        var offset = 0;
+        foreach (var (bytes, count) in segments)
+        {
+            bytes.AsSpan(0, count).CopyTo(result.AsSpan(offset));
+            offset += count;
+        }
+        return result;
     }
 }
 

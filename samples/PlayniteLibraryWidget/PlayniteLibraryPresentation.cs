@@ -401,10 +401,14 @@ internal static class PlayniteLibraryPresentation
                 (snapshot.HasBefore || snapshot.HasAfter))
             {
                 pageBeforeActionId = snapshot.HasBefore
-                    ? "playnite-library.library.cursor.before"
+                    ? state.Route == PlayniteLibraryRoute.Browse
+                        ? "playnite-library.browse.cursor.before"
+                        : "playnite-library.library.cursor.before"
                     : null;
                 pageAfterActionId = snapshot.HasAfter
-                    ? "playnite-library.library.cursor.after"
+                    ? state.Route == PlayniteLibraryRoute.Browse
+                        ? "playnite-library.browse.cursor.after"
+                        : "playnite-library.library.cursor.after"
                     : null;
             }
             pageShortcuts = true;
@@ -420,7 +424,26 @@ internal static class PlayniteLibraryPresentation
                 state.LaunchingSavedId is null &&
                 rail.Items.Any(row => row.Current is not null);
             var hintItems = new List<WidgetElement>();
-            if (hasActionableGame)
+            if (state.Route == PlayniteLibraryRoute.Library)
+            {
+                hintItems.Add(StableControllerHint(
+                    ControllerButton.X,
+                    "Favorite",
+                    "playnite-library.hint.favorite",
+                    hasActionableGame,
+                    hasActionableGame
+                        ? rail.Selected?.Favorite == true
+                            ? "Remove favorite"
+                            : "Add favorite"
+                        : "Favorite unavailable"));
+                hintItems.Add(StableControllerHint(
+                    ControllerButton.Menu,
+                    "Game options",
+                    "playnite-library.hint.options",
+                    hasActionableGame,
+                    hasActionableGame ? "Game options" : "Game options unavailable"));
+            }
+            else if (hasActionableGame)
             {
                 hintItems.Add(UI.ControllerHint(
                     ControllerButton.X, "Favorite", "playnite-library.hint.favorite"));
@@ -884,6 +907,27 @@ internal static class PlayniteLibraryPresentation
         if (nearStartActionId is not null || nearEndActionId is not null)
             rail = rail.Paginate(nearStartActionId, nearEndActionId, 2);
         return pageShortcuts ? PageShortcuts(rail, snapshot, interactive) : rail;
+    }
+
+    private static RowElement StableControllerHint(
+        ControllerButton button,
+        string visibleLabel,
+        string id,
+        bool available,
+        string accessibilityLabel)
+    {
+        var hint = UI.ControllerHint(button, visibleLabel, id);
+        var label = (TextElement)hint.Children[1];
+        hint = hint with
+        {
+            Children = [hint.Children[0], label with
+            {
+                AccessibilityLabel = accessibilityLabel,
+            }],
+        };
+        return available
+            ? hint
+            : hint.AddClasses("playnite-library-hint-unavailable");
     }
 
     private static GridElement GameGrid(string id, params WidgetElement[] tiles) =>

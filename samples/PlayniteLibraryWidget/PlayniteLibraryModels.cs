@@ -54,10 +54,10 @@ internal sealed class PlayniteLibraryCategoryFeedback(
 
 internal sealed record PlayniteLibraryRenderState
 {
+    // Collection is the Home route's independent query/selection model.
     internal required PlayniteLibraryCollectionState Collection { get; init; }
+    internal required PlayniteLibraryCollectionState BrowseCollection { get; init; }
     internal required WidgetAppLibraryQuery HiddenQuery { get; init; }
-    internal WidgetCursorResourceSnapshot<PlayniteLibraryItem>? RetainedHomeCollection
-        { get; init; }
     internal PlayniteLibraryFixedRows FixedRows { get; init; } =
         PlayniteLibraryFixedRows.Empty;
     internal IReadOnlyList<WidgetAppLibrarySource> SourceObservations { get; init; } = [];
@@ -71,6 +71,8 @@ internal sealed record PlayniteLibraryRenderState
     internal PlayniteLibraryBrowseReload? ActiveBrowseReload { get; init; }
     internal string? HeroSavedId { get; init; }
     internal int HeroIndex { get; init; }
+    internal string? BrowseHeroSavedId { get; init; }
+    internal int BrowseHeroIndex { get; init; }
     internal bool OrganizationBusy { get; init; }
     internal PlayniteLibraryCategoryFeedback? CategoryFeedback { get; init; }
     internal string Status { get; init; } = "Playnite Library loads when visible";
@@ -84,6 +86,7 @@ internal sealed record PlayniteLibraryRenderState
     internal static PlayniteLibraryRenderState Initial(WidgetAppLibraryQuery query) => new()
         {
             Collection = new(query),
+            BrowseCollection = new(query),
             HiddenQuery = query,
         };
 }

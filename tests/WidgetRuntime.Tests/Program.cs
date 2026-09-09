@@ -86,6 +86,7 @@ if (args.Contains("--widget-pipe", StringComparer.Ordinal))
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Length framing rejects oversized input before allocation", OversizedFrameIsRejected),
+    ("Artwork framing streams one wire-compatible bounded envelope", ArtworkFrameStreamsWithoutPayloadBuffering),
     ("Pending worker requests correlate and drain through one typed owner", WidgetProcessOwnershipScenarios.PendingRequestsCorrelateExactly),
     ("Dashboard gesture reservations match and expire through one policy", WidgetProcessOwnershipScenarios.GestureReservationsAreExactAndExpire),
     ("Worker session terminal cleanup is shared and exact", WidgetProcessOwnershipScenarios.SessionTerminalCleanupIsShared),
@@ -324,6 +325,63 @@ static async Task OversizedFrameIsRejected()
     var channel = new LengthPrefixedJsonChannel(stream, 1024);
     await Assert.ThrowsAsync<WidgetProtocolViolationException>(
         () => channel.ReadAsync(CancellationToken.None).AsTask());
+}
+
+static async Task ArtworkFrameStreamsWithoutPayloadBuffering()
+{
+    var bytes = new byte[2 * 1024 * 1024 + 5];
+    for (var index = 0; index < bytes.Length; index++)
+        bytes[index] = (byte)(index * 31 + 17);
+    await using var stream = new WriteObservingMemoryStream();
+    var channel = new LengthPrefixedJsonChannel(
+        stream, WidgetRuntimeProtocol.DefaultMaximumMessageBytes);
+
+    await channel.WriteArtworkAsync(
+        47, "image/test+\"escaped", bytes, CancellationToken.None);
+
+    Assert.True(stream.MaximumWriteBytes <= 16 * 1024,
+        "Artwork transport materialized a payload-sized stream write.");
+    stream.Position = 0;
+    var reader = new LengthPrefixedJsonChannel(
+        stream, WidgetRuntimeProtocol.DefaultMaximumMessageBytes);
+    var envelope = await reader.ReadAsync(CancellationToken.None);
+    Assert.Equal(MessageTypes.Artwork, envelope.Type);
+    Assert.Equal(47L, envelope.RequestId);
+    var payload = RuntimeJson.FromElement<EncodedArtworkPayload>(envelope.Payload);
+    Assert.Equal("image/test+\"escaped", payload.ContentType);
+    Assert.SequenceEqual(bytes, Convert.FromBase64String(payload.ContentBase64!));
+
+    await using var preflight = new WriteObservingMemoryStream();
+    var bounded = new LengthPrefixedJsonChannel(preflight, 256);
+    await Assert.ThrowsAsync<WidgetProtocolViolationException>(() =>
+        bounded.WriteArtworkAsync(1, "image/png", new byte[256],
+            CancellationToken.None).AsTask());
+    Assert.Equal(0L, preflight.Length);
+
+    await using var failing = new FailingWriteStream(failAtWrite: 3);
+    var faulted = new LengthPrefixedJsonChannel(
+        failing, WidgetRuntimeProtocol.DefaultMaximumMessageBytes);
+    await Assert.ThrowsAsync<IOException>(() => faulted.WriteArtworkAsync(
+        2, "image/jpeg", bytes, CancellationToken.None).AsTask());
+    await Assert.ThrowsAsync<InvalidOperationException>(() => faulted.WriteAsync(
+        new RuntimeEnvelope
+        {
+            Type = MessageTypes.Acknowledged,
+            Payload = RuntimeJson.ToElement(new { }),
+        }, CancellationToken.None).AsTask());
+
+    await using var cancelling = new FailingWriteStream(
+        failAtWrite: 3, new OperationCanceledException("Injected cancellation."));
+    var cancelled = new LengthPrefixedJsonChannel(
+        cancelling, WidgetRuntimeProtocol.DefaultMaximumMessageBytes);
+    await Assert.ThrowsAsync<OperationCanceledException>(() => cancelled.WriteArtworkAsync(
+        3, "image/webp", bytes, CancellationToken.None).AsTask());
+    await Assert.ThrowsAsync<InvalidOperationException>(() => cancelled.WriteAsync(
+        new RuntimeEnvelope
+        {
+            Type = MessageTypes.Acknowledged,
+            Payload = RuntimeJson.ToElement(new { }),
+        }, CancellationToken.None).AsTask());
 }
 
 static async Task LazyLaunchAndSnapshot()
@@ -4525,6 +4583,37 @@ file sealed class TerminatingAuthorityOperations(
         inner.VerifyRestored(snapshot);
 
     public void Dispose() => inner.Dispose();
+}
+
+file sealed class WriteObservingMemoryStream : MemoryStream
+{
+    internal int MaximumWriteBytes { get; private set; }
+
+    public override ValueTask WriteAsync(
+        ReadOnlyMemory<byte> buffer,
+        CancellationToken cancellationToken = default)
+    {
+        MaximumWriteBytes = Math.Max(MaximumWriteBytes, buffer.Length);
+        return base.WriteAsync(buffer, cancellationToken);
+    }
+}
+
+file sealed class FailingWriteStream(
+    int failAtWrite,
+    Exception? failure = null) : MemoryStream
+{
+    private int _writes;
+
+    public override ValueTask WriteAsync(
+        ReadOnlyMemory<byte> buffer,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (Interlocked.Increment(ref _writes) == failAtWrite)
+            return ValueTask.FromException(
+                failure ?? new IOException("Injected partial write failure."));
+        return base.WriteAsync(buffer, cancellationToken);
+    }
 }
 
 file static class TestFileObjectIdentity

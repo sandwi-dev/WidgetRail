@@ -41,6 +41,19 @@ the Bridge becomes unavailable. Retained entries are marked stale, expose no
 launch capability, and cannot authorize mutations. A fresh current observation
 is required before any action.
 
+Home and Browse use independent cursor resources, query generations, retained
+windows, selection anchors, and pagination. Paging or filtering Browse does not
+replace Home's current window or fixed rows, and returning from Browse does not
+issue a gratuitous Home query. Provider identity and mutation authority remain
+shared and current across both presentation routes.
+
+Resolved artwork payloads use a package-owned, least-recently-used content cache
+bounded to 128 MiB. That byte budget is an application cache policy, not a
+process-memory limit. Cache hits promote recency, oversized payloads may serve
+the current request without being retained, and byte eviction never revokes a
+still-published artwork handle. Handle registration, lifecycle pinning, and
+late-result rejection remain separate authority owners.
+
 ## Build and package
 
 From the repository root:
@@ -71,7 +84,7 @@ Provider and persistence authority deliberately remain outside that model:
 | Owner | State and responsibility |
 | --- | --- |
 | `WidgetModel<PlayniteLibraryRenderState>` | Immutable query/collection projection, fixed rows and source observations, details/action-sheet/title-editor selections, route-local category/running/hero/focus state, local status/busy/launching presentation, and Playnite connection presentation. |
-| `WidgetCursorResource` | Remote page lifecycle, cursors, retained item window, stale-generation rejection, cancellation, and provider errors. |
+| Home and Browse `WidgetCursorResource` instances | Independent remote page lifecycles, queries, cursors, retained item windows, anchors, stale-generation rejection, cancellation, and provider errors. |
 | `WidgetNavigator` | Route stack, route input scopes, and route-return focus. |
 | `WidgetOperations` | Named asynchronous operation admission, cancellation, and drain. |
 | Playnite application/Bridge authority | Current catalog identities, favorites, hidden/category/completion state, and exact mutation/launch authorization. |

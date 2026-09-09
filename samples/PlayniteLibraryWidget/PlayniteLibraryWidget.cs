@@ -11,6 +11,8 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 /// </summary>
 public sealed partial class PlayniteLibraryWidget : Widget
 {
+    private const string BrowseReloadRetirementOperation =
+        "playnite-library.browse-reload-retirement";
     public const int PageSize = WidgetAppLibraryService.MaximumPageSize;
     public const int MaximumRetainedItems = 192;
     internal const int MaximumRetainedLaunchStates = 32;
@@ -25,7 +27,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private readonly IPlayniteLibraryApplicationService _application;
     private readonly WidgetTimedMutation _categoryFeedbackExpiry;
     private readonly WidgetTimedMutation _playniteFeedbackExpiry;
-    private readonly WidgetCursorResource<PlayniteLibraryItem> _library;
+    private readonly WidgetCursorResource<PlayniteLibraryItem> _homeLibrary;
+    private readonly WidgetCursorResource<PlayniteLibraryItem> _browseLibrary;
     private readonly WidgetResource<IReadOnlyList<PlayniteLibraryItem>> _hiddenRows;
     private readonly WidgetResource<PlayniteBridgeConnectionResult> _playniteConnection;
     private readonly WidgetNavigator<PlayniteLibraryRoute> _navigation;
@@ -35,7 +38,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         PlayniteLibraryAuthorityProjection.Empty;
     private PlayniteLibraryAuthorityProjection _presentationAuthority =
         PlayniteLibraryAuthorityProjection.Empty;
-    private long _queryAuthorityGeneration;
+    private long _homeQueryAuthorityGeneration;
+    private long _browseQueryAuthorityGeneration;
     private long _authorityRevision;
     private bool _hasLivePlayniteAuthority;
     private readonly List<PlayniteLibraryCategory>
@@ -65,12 +69,33 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _model = CreateModel(PlayniteLibraryRenderState.Initial(InstalledGames));
         _navigation = CreateNavigator("playnite-library.navigation", PlayniteLibraryRoute.Library,
             maximumDepth: 2, maximumRoutes: 8);
-        _library = CreateCursorResource<PlayniteLibraryItem>("playnite-library.library", new()
+        _homeLibrary = CreateCursorResource<PlayniteLibraryItem>(
+            "playnite-library.library", new()
         {
             PageSize = PageSize,
             MaximumRetainedItems = MaximumRetainedItems,
             PaginationThreshold = 2,
-            LoadPage = LoadPageAsync,
+            LoadPage = (cursor, direction, limit, cancellationToken) => LoadPageAsync(
+                PlayniteLibraryRoute.Library, cursor, direction, limit, cancellationToken),
+            MapError = MapError,
+            Viewports =
+            [
+                new(PlayniteLibraryPresentation.HomeRailId, item => item.Key,
+                    item => PlayniteLibraryIdentity.FocusId("grid", item.Key),
+                    "playnite-library.empty.action")
+                {
+                    EstimatedItemExtent = 212,
+                },
+            ],
+        });
+        _browseLibrary = CreateCursorResource<PlayniteLibraryItem>(
+            "playnite-library.browse", new()
+        {
+            PageSize = PageSize,
+            MaximumRetainedItems = MaximumRetainedItems,
+            PaginationThreshold = 2,
+            LoadPage = (cursor, direction, limit, cancellationToken) => LoadPageAsync(
+                PlayniteLibraryRoute.Browse, cursor, direction, limit, cancellationToken),
             MapError = MapError,
             Viewports =
             [
@@ -81,12 +106,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     item => item.Key,
                     item => PlayniteLibraryIdentity.FocusId("grid", item.Key),
                     "playnite-library.empty.action"),
-                new(PlayniteLibraryPresentation.HomeRailId, item => item.Key,
-                    item => PlayniteLibraryIdentity.FocusId("grid", item.Key),
-                    "playnite-library.empty.action")
-                {
-                    EstimatedItemExtent = 212,
-                },
             ],
         });
         _hiddenRows = CreateResource<IReadOnlyList<PlayniteLibraryItem>>(
@@ -111,8 +130,33 @@ public sealed partial class PlayniteLibraryWidget : Widget
             });
     }
 
-    internal WidgetCursorResourceSnapshot<PlayniteLibraryItem> Collection => _library.Snapshot;
-    internal int RetainedCursorCount => _library.RetainedCursorCount;
+    internal WidgetCursorResourceSnapshot<PlayniteLibraryItem> Collection =>
+        CurrentLibrary.Snapshot;
+    internal WidgetCursorResourceSnapshot<PlayniteLibraryItem> HomeCollection =>
+        _homeLibrary.Snapshot;
+    internal WidgetCursorResourceSnapshot<PlayniteLibraryItem> BrowseCollection =>
+        _browseLibrary.Snapshot;
+    internal int RetainedCursorCount => CurrentLibrary.RetainedCursorCount;
+    private WidgetCursorResource<PlayniteLibraryItem> CurrentLibrary =>
+        LibraryForRoute(_navigation.Value.Route);
+
+    private WidgetCursorResource<PlayniteLibraryItem> LibraryForRoute(
+        PlayniteLibraryRoute route) => route == PlayniteLibraryRoute.Browse
+            ? _browseLibrary
+            : _homeLibrary;
+
+    private static PlayniteLibraryCollectionState CollectionForRoute(
+        PlayniteLibraryRoute route,
+        PlayniteLibraryRenderState state) => route == PlayniteLibraryRoute.Browse
+            ? state.BrowseCollection
+            : state.Collection;
+
+    private static PlayniteLibraryRenderState ApplyCollectionForRoute(
+        PlayniteLibraryRoute route,
+        PlayniteLibraryRenderState state,
+        WidgetAppLibraryQuery query) => route == PlayniteLibraryRoute.Browse
+            ? state with { BrowseCollection = state.BrowseCollection with { Query = query } }
+            : state with { Collection = state.Collection with { Query = query } };
     internal IReadOnlyList<PlayniteLibraryDisplayItem> WarmItems
     {
         get { lock (_gate) return _organization.Items.ToArray(); }
@@ -127,7 +171,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
     }
     internal WidgetModelSnapshot<PlayniteLibraryRenderState> RenderState => _model.Snapshot;
     internal Task WhenLibraryIdleAsync(CancellationToken cancellationToken = default) =>
-        _library.WhenIdleAsync(cancellationToken);
+        Task.WhenAll(
+            _homeLibrary.WhenIdleAsync(cancellationToken),
+            _browseLibrary.WhenIdleAsync(cancellationToken),
+            Operations.WhenIdleAsync(BrowseReloadRetirementOperation, cancellationToken));
     internal Task WhenWarmStateIdleAsync(CancellationToken cancellationToken = default) =>
         Operations.WhenIdleAsync("playnite-library.warm-state", cancellationToken);
     internal Task WhenHiddenRowsIdleAsync(CancellationToken cancellationToken = default) =>
@@ -189,29 +236,25 @@ public sealed partial class PlayniteLibraryWidget : Widget
         PlayniteLibraryRoute route,
         PlayniteLibraryRenderState local)
     {
-        var live = _library.Snapshot.Items;
+        var home = _homeLibrary.Snapshot.Items;
+        var browse = _browseLibrary.Snapshot.Items;
         var fixedRows = local.FixedRows.All.ToArray();
-        var retainedHome = local.RetainedHomeCollection?.Items ?? [];
         var retainedBrowse = local.ActiveBrowseReload?.RetainedCollection?.Items ?? [];
         var hidden = _hiddenRows.Snapshot.Value ?? [];
         IEnumerable<PlayniteLibraryItem> rendered = route switch
         {
-            PlayniteLibraryRoute.Library when local.RetainedHomeCollection is not null =>
-                retainedHome.Concat(fixedRows),
-            PlayniteLibraryRoute.Library => live.Concat(fixedRows),
+            PlayniteLibraryRoute.Library => home.Concat(fixedRows),
             PlayniteLibraryRoute.Browse when retainedBrowse.Count != 0 => retainedBrowse,
-            PlayniteLibraryRoute.Browse => live,
-            PlayniteLibraryRoute.Hidden => hidden.Concat(live).Concat(fixedRows),
+            PlayniteLibraryRoute.Browse => browse,
+            PlayniteLibraryRoute.Hidden => hidden.Concat(home).Concat(fixedRows),
             _ => [],
         };
         IEnumerable<PlayniteLibraryItem> retained = route switch
         {
-            PlayniteLibraryRoute.Library when local.RetainedHomeCollection is not null =>
-                live.Concat(hidden),
-            PlayniteLibraryRoute.Browse => live.Concat(retainedBrowse)
-                .Concat(retainedHome).Concat(fixedRows).Concat(hidden),
-            PlayniteLibraryRoute.Hidden => retainedHome,
-            _ => retainedHome.Concat(hidden),
+            PlayniteLibraryRoute.Library => browse.Concat(retainedBrowse).Concat(hidden),
+            PlayniteLibraryRoute.Browse => home.Concat(fixedRows).Concat(hidden),
+            PlayniteLibraryRoute.Hidden => home.Concat(browse),
+            _ => home.Concat(browse).Concat(hidden),
         };
         _application.PinArtworkHandles(rendered.Concat(retained)
             .SelectMany(item => item.Presentation.Artwork.Items)
@@ -254,10 +297,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     _ = _hiddenRows.Refresh();
                 else
                 {
-                    var route = _navigation.Value;
-                    var refresh = _library.Refresh();
-                    _ = ClearRetainedHomeAfterCommittedHomeAsync(
-                        refresh, route.Revision, context.CancellationToken);
+                    var route = _navigation.Value.Route;
+                    _ = LibraryForRoute(route).Refresh();
                 }
             },
             WidgetOperationLifetime.Active);
@@ -302,7 +343,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
     protected override ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
         ClearPendingBackFocus();
-        _library.Reset(invalidate: false);
+        _homeLibrary.Reset(invalidate: false);
+        _browseLibrary.Reset(invalidate: false);
         _playniteClient?.Dispose();
         return _application.DisposeAsync();
     }
@@ -396,11 +438,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 });
                 return;
             }
-            await ReturnToLibraryAsync().ConfigureAwait(false);
+            await ReturnToLibraryAsync(
+                    refreshHome: routeBeforeBack != PlayniteLibraryRoute.Browse)
+                .ConfigureAwait(false);
             return;
         }
         if (TryHandleBrowsePagination(action)) return;
-        if (_library.TryHandlePagination(action, out _))
+        if (_navigation.Value.Route == PlayniteLibraryRoute.Library &&
+            _homeLibrary.TryHandlePagination(action, out _))
         {
             Operations.Cancel("playnite-library.launch-lifecycle");
             return;
@@ -411,7 +456,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
                     ResolveActionSource(action.SourceElementId) is null) return;
                 Operations.Cancel("playnite-library.launch-lifecycle");
-                _ = _library.Refresh();
+                _ = CurrentLibrary.Refresh();
                 return;
             case PlayniteLibraryActions.Previous:
                 TryMovePage(action, WidgetCursorDirection.Before);
@@ -421,10 +466,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 return;
             case PlayniteLibraryActions.Refresh:
                 Operations.Cancel("playnite-library.launch-lifecycle");
-                _ = _library.Refresh();
+                _ = CurrentLibrary.Refresh();
                 return;
             case PlayniteLibraryActions.Retry:
-                _ = _library.Retry();
+                _ = CurrentLibrary.Retry();
                 return;
             case PlayniteLibraryActions.Launch:
                 if (ResolveActionSource(action.SourceElementId) is { } launchSource)
@@ -455,7 +500,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 return;
             case PlayniteOpenActionId:
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
-                RetainHomeCollectionForRouteTransition();
                 if (_navigation.Push(PlayniteLibraryRoute.PlayniteConnection,
                         action.SourceElementId) == WidgetNavigationResult.Changed)
                 {
@@ -526,7 +570,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 }
                 else
                 {
-                    ReplaceQuery(_model.Value.Collection.Query with
+                    ReplaceQuery(CollectionForRoute(
+                        _navigation.Value.Route, _model.Value).Query with
                     {
                         SearchText = NormalizeSearch(action.CommittedText),
                     }, resetBrowseViewport:
@@ -549,17 +594,17 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 var clearReload = resetBrowseViewport ? CreateBrowseReload() : null;
                 var cleared = _model.Update(state =>
                 {
-                    var collection = _navigation.Value.Route ==
-                        PlayniteLibraryRoute.Library
-                        ? state.Collection.ClearQuery(InstalledGames)
-                        : state.Collection.Reset(InstalledGames);
+                    var route = _navigation.Value.Route;
+                    var prior = CollectionForRoute(route, state);
+                    var collection = route == PlayniteLibraryRoute.Library
+                        ? prior.ClearQuery(InstalledGames)
+                        : prior.Reset(InstalledGames);
                     var semanticChange = !SameCollectionQuery(
-                        state.Collection, collection) ||
+                        prior, collection) ||
                         resetBrowseViewport && state.ActiveCategoryId is not null;
-                    return (state with
+                    var next = state with
                     {
                         SearchExpanded = false,
-                        Collection = collection,
                         ActiveCategoryId = resetBrowseViewport ? null : state.ActiveCategoryId,
                         AlternateBrowseViewport = resetBrowseViewport && semanticChange
                         ? !state.AlternateBrowseViewport
@@ -570,7 +615,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
                         ActiveBrowseReload = resetBrowseViewport && semanticChange
                             ? clearReload
                             : state.ActiveBrowseReload,
-                    }, semanticChange);
+                    };
+                    next = route == PlayniteLibraryRoute.Browse
+                        ? next with { BrowseCollection = collection }
+                        : next with { Collection = collection };
+                    return (next, semanticChange);
                 });
                 if (cleared.Result)
                     ReloadQuery(retainCurrentItems: !resetBrowseViewport);
@@ -578,21 +627,23 @@ public sealed partial class PlayniteLibraryWidget : Widget
             case PlayniteLibraryActions.BrowseOpen:
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
                     _navigation.Value.Route != PlayniteLibraryRoute.Library) return;
-                RetainHomeCollectionForRouteTransition();
                 if (_navigation.Push(PlayniteLibraryRoute.Browse, action.SourceElementId) ==
                     WidgetNavigationResult.Changed)
+                {
                     _model.Update(state => state with
                     {
                         SearchExpanded = false,
                         AlternateBrowseViewport = !state.AlternateBrowseViewport,
                     });
+                    _ = _browseLibrary.EnsureLoaded();
+                }
                 return;
             case PlayniteLibraryActions.FavoritesFilter:
                 if (!TryOpenBrowse(action.SourceElementId)) return;
                 var favoriteReload = CreateBrowseReload();
                 _model.Update(state => state with
                 {
-                    Collection = state.Collection.ToggleFavorites(InstalledGames),
+                    BrowseCollection = state.BrowseCollection.ToggleFavorites(InstalledGames),
                     AlternateBrowseViewport = !state.AlternateBrowseViewport,
                     BrowseInitialFocusId = PlayniteLibraryActions.FavoritesFilter,
                     ActiveBrowseReload = favoriteReload,
@@ -604,7 +655,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 var recentReload = CreateBrowseReload();
                 _model.Update(state => state with
                 {
-                    Collection = state.Collection.ToggleRecentlyPlayed(InstalledGames),
+                    BrowseCollection = state.BrowseCollection.ToggleRecentlyPlayed(InstalledGames),
                     AlternateBrowseViewport = !state.AlternateBrowseViewport,
                     BrowseInitialFocusId = PlayniteLibraryActions.RecentlyPlayedFilter,
                     ActiveBrowseReload = recentReload,
@@ -722,13 +773,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 ? action.SourceElementId
                 : null;
         if (sourceScrollId is null) return;
-        var snapshot = _library.Snapshot;
+        var library = CurrentLibrary;
+        var snapshot = library.Snapshot;
         if (snapshot.Status != WidgetPagedResourceStatus.Ready ||
             direction == WidgetCursorDirection.Before && !snapshot.HasBefore ||
             direction == WidgetCursorDirection.After && !snapshot.HasAfter)
             return;
         Operations.Cancel("playnite-library.launch-lifecycle");
-        _ = _library.Move(direction, sourceScrollId);
+        _ = library.Move(direction, sourceScrollId);
     }
 
     private bool TryHandleBrowsePagination(WidgetActionEvent action)
@@ -740,15 +792,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     _model.Value.AlternateBrowseViewport),
                 StringComparison.Ordinal))
             return false;
-        var direction = action.ActionId switch
-        {
-            "playnite-library.library.cursor.before" =>
-                (WidgetCursorDirection?)WidgetCursorDirection.Before,
-            "playnite-library.library.cursor.after" => WidgetCursorDirection.After,
-            _ => null,
-        };
-        if (direction is null) return false;
-        TryMovePage(action, direction.Value);
+        if (!_browseLibrary.TryHandlePagination(action, out _)) return false;
+        Operations.Cancel("playnite-library.launch-lifecycle");
         return true;
     }
 
@@ -788,14 +833,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 choices = PlayniteLibrarySourceCatalog.SelectOptions(
                     PresentationOrganizationLocked().ProvenSources,
                     local.SourceObservations,
-                    local.Collection.Query.SourceAttribution);
+                    local.BrowseCollection.Query.SourceAttribution);
             source = choices.FirstOrDefault(choice => string.Equals(
                 PlayniteLibraryActions.SourceOption(choice),
                 action.ActionId,
                 StringComparison.Ordinal));
             if (source is null) return ValueTask.CompletedTask;
         }
-        ReplaceQuery(local.Collection.Query with { SourceAttribution = source },
+        ReplaceQuery(local.BrowseCollection.Query with { SourceAttribution = source },
             resetBrowseViewport: true,
             browseFocusId: PlayniteLibraryActions.SourceFilter);
         return ValueTask.CompletedTask;
@@ -805,7 +850,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         if (LifecycleState != WidgetLifecycleState.Interactive ||
             _navigation.Value.Route != PlayniteLibraryRoute.Browse ||
-            _model.Value.Collection.RecentlyPlayed ||
+            _model.Value.BrowseCollection.RecentlyPlayed ||
             !string.Equals(action.SourceElementId,
                 PlayniteLibraryActions.SortFilter, StringComparison.Ordinal))
             return ValueTask.CompletedTask;
@@ -820,7 +865,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             _ => null,
         };
         if (sort is null) return ValueTask.CompletedTask;
-        ReplaceQuery(_model.Value.Collection.Query with { Sort = sort.Value },
+        ReplaceQuery(_model.Value.BrowseCollection.Query with { Sort = sort.Value },
             resetBrowseViewport: true,
             browseFocusId: PlayniteLibraryActions.SortFilter);
         return ValueTask.CompletedTask;
@@ -858,18 +903,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (LifecycleState != WidgetLifecycleState.Interactive) return false;
         if (_navigation.Value.Route == PlayniteLibraryRoute.Browse) return true;
         if (_navigation.Value.Route != PlayniteLibraryRoute.Library) return false;
-        RetainHomeCollectionForRouteTransition();
         return _navigation.Push(PlayniteLibraryRoute.Browse, sourceElementId) ==
             WidgetNavigationResult.Changed;
-    }
-
-    private bool RetainHomeCollectionForRouteTransition()
-    {
-        if (_navigation.Value.Route != PlayniteLibraryRoute.Library) return false;
-        var snapshot = _library.Snapshot;
-        if (snapshot.Items.Count != 0)
-            _model.Update(state => state with { RetainedHomeCollection = snapshot });
-        return true;
     }
 
     private string[] ProvenSourcesLocked() =>
@@ -883,11 +918,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         var browseReload = resetBrowseViewport ? CreateBrowseReload() : null;
-        var update = _model.Update(state => !force && query == state.Collection.Query
+        var route = _navigation.Value.Route;
+        var update = _model.Update(state => !force &&
+                query == CollectionForRoute(route, state).Query
             ? state
-            : state with
+            : ApplyCollectionForRoute(route, state, query) with
             {
-                Collection = state.Collection with { Query = query },
                 AlternateBrowseViewport = resetBrowseViewport
                     ? !state.AlternateBrowseViewport
                     : state.AlternateBrowseViewport,
@@ -908,36 +944,47 @@ public sealed partial class PlayniteLibraryWidget : Widget
         bool retainCurrentItems = true)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return null;
+        var route = _navigation.Value.Route;
         Operations.Cancel("playnite-library.launch-lifecycle");
         _launchGeneration.Invalidate();
         _model.Update(state => state with
         {
             Status = "Applying library filters…",
             LaunchingSavedId = null,
-            FixedRows = PlayniteLibraryFixedRows.Empty,
-            FixedRowsRevision = state.FixedRowsRevision + 1,
-            PreferLibraryContentFocus = preserveContentFocus &&
-                state.PreferLibraryContentFocus,
+            FixedRows = route == PlayniteLibraryRoute.Library
+                ? PlayniteLibraryFixedRows.Empty
+                : state.FixedRows,
+            FixedRowsRevision = route == PlayniteLibraryRoute.Library
+                ? state.FixedRowsRevision + 1
+                : state.FixedRowsRevision,
+            PreferLibraryContentFocus = route == PlayniteLibraryRoute.Library
+                ? preserveContentFocus && state.PreferLibraryContentFocus
+                : state.PreferLibraryContentFocus,
         });
+        var library = CurrentLibrary;
         WidgetOperationHandle operation;
         if (retainCurrentItems)
         {
-            operation = _library.Refresh();
+            operation = library.Refresh();
         }
         else
         {
-            _library.Reset(invalidate: false);
-            operation = _library.EnsureLoaded();
+            library.Reset(invalidate: false);
+            operation = library.EnsureLoaded();
         }
         if (_model.Value.ActiveBrowseReload is { } browseReload)
-            _ = ClearBrowseReloadAfterTerminalAsync(operation, browseReload.AttemptId);
+            _ = Operations.RunLatest(
+                BrowseReloadRetirementOperation,
+                context => new ValueTask(ClearBrowseReloadAfterTerminalAsync(
+                    operation, browseReload.AttemptId, context.CancellationToken)),
+                WidgetOperationLifetime.Active);
         return operation;
     }
 
     private PlayniteLibraryBrowseReload CreateBrowseReload()
     {
         var retainedFallback = _model.Value.ActiveBrowseReload?.RetainedCollection;
-        var snapshot = _library.Snapshot;
+        var snapshot = _browseLibrary.Snapshot;
         var retained = snapshot.Status == WidgetPagedResourceStatus.Ready
             ? snapshot with
             {
@@ -955,11 +1002,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     private async Task ClearBrowseReloadAfterTerminalAsync(
         WidgetOperationHandle operation,
-        long attemptId)
+        long attemptId,
+        CancellationToken cancellationToken)
     {
         try
         {
-            await operation.Completion.ConfigureAwait(false);
+            await operation.Completion.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -978,51 +1026,38 @@ public sealed partial class PlayniteLibraryWidget : Widget
             await admitted.Completion.ConfigureAwait(false);
     }
 
-    private async Task ReturnToLibraryAsync(bool preferContentFocus = true)
+    private async Task ReturnToLibraryAsync(
+        bool preferContentFocus = true,
+        bool refreshHome = true)
     {
         _model.Update(state => state with
         {
-            Collection = state.Collection.Reset(InstalledGames),
-            FixedRows = PlayniteLibraryFixedRows.Empty,
-            FixedRowsRevision = state.FixedRowsRevision + 1,
-            ActiveCategoryId = null,
-            PreferLibraryContentFocus = preferContentFocus,
-            BrowseInitialFocusId = null,
-            ActiveBrowseReload = null,
+            FixedRows = refreshHome ? PlayniteLibraryFixedRows.Empty : state.FixedRows,
+            FixedRowsRevision = refreshHome
+                ? state.FixedRowsRevision + 1
+                : state.FixedRowsRevision,
+            ActiveCategoryId = refreshHome ? null : state.ActiveCategoryId,
+            PreferLibraryContentFocus = refreshHome
+                ? preferContentFocus
+                : state.PreferLibraryContentFocus,
+            BrowseInitialFocusId = refreshHome ? null : state.BrowseInitialFocusId,
+            ActiveBrowseReload = refreshHome ? null : state.ActiveBrowseReload,
         });
-        var replacement = ReloadQuery(preferContentFocus, retainCurrentItems: true);
-        if (replacement is { } admitted)
-            await ClearRetainedHomeAfterCommittedHomeAsync(
-                admitted, _navigation.Value.Revision, ActiveCancellationToken)
-                .ConfigureAwait(false);
+        if (!refreshHome) return;
+        var replacement = _homeLibrary.Refresh();
+        await replacement.Completion.ConfigureAwait(false);
         var restored = _model.Update(state =>
             (state with { PendingRestoredSavedId = null }, state.PendingRestoredSavedId));
         var restoredSavedId = restored.Result;
-        var restoredItem = restoredSavedId is null ? null : _library.Snapshot.Items
+        var restoredItem = restoredSavedId is null ? null : _homeLibrary.Snapshot.Items
             .FirstOrDefault(item => string.Equals(
                 item.Value.SavedId, restoredSavedId, StringComparison.Ordinal));
         if (restoredItem is not null)
-            _library.SelectAnchor(restoredItem.Key, invalidate: false);
+            _homeLibrary.SelectAnchor(restoredItem.Key, invalidate: false);
         _model.Update(state => state with
         {
             PreferLibraryContentFocus = preferContentFocus || restoredSavedId is not null,
         });
-    }
-
-    private async Task ClearRetainedHomeAfterCommittedHomeAsync(
-        WidgetOperationHandle operation,
-        long routeRevision,
-        CancellationToken cancellationToken)
-    {
-        var result = await operation.Completion.ConfigureAwait(false);
-        var route = _navigation.Value;
-        if (cancellationToken.IsCancellationRequested ||
-            result.Status != WidgetOperationStatus.Succeeded ||
-            route.Route != PlayniteLibraryRoute.Library ||
-            route.Revision != routeRevision ||
-            _library.Snapshot.Status != WidgetPagedResourceStatus.Ready)
-            return;
-        _model.Update(state => state with { RetainedHomeCollection = null });
     }
 
     private WidgetAppLibraryQuery EffectiveQueryLocked(
@@ -1034,25 +1069,34 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (route == PlayniteLibraryRoute.Browse && local.ActiveCategoryId is not null)
             savedIds = PlayniteLibraryCategoryPolicy.Find(
                 organization, local.ActiveCategoryId)?.SavedIds ?? [];
-        if (local.Collection.FavoriteFilter)
+        var collection = CollectionForRoute(route, local);
+        if (collection.FavoriteFilter)
             savedIds = savedIds is null
                 ? organization.FavoriteSavedIds
                 : savedIds.Intersect(organization.FavoriteSavedIds,
                     StringComparer.Ordinal);
-        if (local.Collection.ManualFilter)
+        if (collection.ManualFilter)
             savedIds = savedIds is null
                 ? _organization.ManualSavedIds
                 : savedIds.Intersect(_organization.ManualSavedIds, StringComparer.Ordinal);
-        return local.Collection.Query with
+        return collection.Query with
         {
             FavoriteSavedIds = savedIds?.Take(
                 WidgetAppLibraryQuery.MaximumFavoriteSavedIds).ToArray() ?? [],
         };
     }
 
-    private void RetireCurrentQueryAuthorityLocked()
+    private long QueryAuthorityGenerationLocked(PlayniteLibraryRoute route) =>
+        route == PlayniteLibraryRoute.Browse
+            ? _browseQueryAuthorityGeneration
+            : _homeQueryAuthorityGeneration;
+
+    private void RetireCurrentQueryAuthorityLocked(PlayniteLibraryRoute route)
     {
-        _queryAuthorityGeneration++;
+        if (route == PlayniteLibraryRoute.Browse)
+            _browseQueryAuthorityGeneration++;
+        else
+            _homeQueryAuthorityGeneration++;
         _authorityRevision++;
         _livePlayniteAuthority = PlayniteLibraryAuthorityProjection.Empty;
         _hasLivePlayniteAuthority = false;
@@ -1060,17 +1104,22 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     private void RetireLiveQueryAuthorityLocked()
     {
-        RetireCurrentQueryAuthorityLocked();
+        _homeQueryAuthorityGeneration++;
+        _browseQueryAuthorityGeneration++;
+        _authorityRevision++;
+        _livePlayniteAuthority = PlayniteLibraryAuthorityProjection.Empty;
+        _hasLivePlayniteAuthority = false;
         _createdCategoriesPendingReconciliation.Clear();
     }
 
     private void EnsureQueryAuthorityCurrent(
+        PlayniteLibraryRoute route,
         long generation,
         CancellationToken cancellationToken)
     {
         lock (_gate)
         {
-            if (generation == _queryAuthorityGeneration) return;
+            if (generation == QueryAuthorityGenerationLocked(route)) return;
         }
         cancellationToken.ThrowIfCancellationRequested();
         throw new OperationCanceledException("The Playnite query authority was retired.",
@@ -1085,6 +1134,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     }
 
     private bool TryPublishQueryAuthority(
+        PlayniteLibraryRoute route,
         long generation,
         long authorityRevision,
         PlayniteLibraryAuthorityProjection authority,
@@ -1093,7 +1143,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         lock (_gate)
         {
-            if (generation == _queryAuthorityGeneration &&
+            var currentGeneration = QueryAuthorityGenerationLocked(route);
+            if (generation == currentGeneration &&
                 authorityRevision == _authorityRevision)
             {
                 authority = ReconcileCreatedCategoryLocked(authority, retainedLastGood);
@@ -1103,7 +1154,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 _authorityRevision++;
                 return true;
             }
-            if (generation == _queryAuthorityGeneration) return false;
+            if (generation == currentGeneration) return false;
         }
         cancellationToken.ThrowIfCancellationRequested();
         throw new OperationCanceledException("The Playnite query authority was retired.",
@@ -1196,7 +1247,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 _organization = normalized;
                 _stateRevision = revision;
             }
-            if (_library.Snapshot.Items.Count == 0)
+            if (_homeLibrary.Snapshot.Items.Count == 0 &&
+                _browseLibrary.Snapshot.Items.Count == 0)
                 _model.Update(state => state with
                 {
                     Status = normalized.Items.Count == 0
@@ -1221,6 +1273,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     }
 
     private async ValueTask<WidgetCursorPage<PlayniteLibraryItem>> LoadPageAsync(
+        PlayniteLibraryRoute route,
         WidgetCollectionCursor? cursor,
         WidgetCursorDirection? direction,
         int limit,
@@ -1232,14 +1285,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
         PlayniteLibraryPrivateState organization;
         long queryAuthorityGeneration;
         long authorityRevision;
-        var route = _navigation.Value.Route;
         var local = _model.Value;
         lock (_gate)
         {
-            if (direction is null) RetireCurrentQueryAuthorityLocked();
-            queryAuthorityGeneration = _queryAuthorityGeneration;
+            if (direction is null) RetireCurrentQueryAuthorityLocked(route);
+            queryAuthorityGeneration = QueryAuthorityGenerationLocked(route);
             authorityRevision = _authorityRevision;
-            collectionState = local.Collection;
+            collectionState = CollectionForRoute(route, local);
             query = EffectiveQueryLocked(route, local);
             organization = PresentationOrganizationLocked();
         }
@@ -1265,7 +1317,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 cancellationToken)
             .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        EnsureQueryAuthorityCurrent(queryAuthorityGeneration, cancellationToken);
+        EnsureQueryAuthorityCurrent(route, queryAuthorityGeneration, cancellationToken);
         var page = result.Page;
         lock (_gate) organization = PresentationOrganizationLocked(result.Authority);
         var rawItems = page.Items.Select(PlayniteLibraryItem.From).ToArray();
@@ -1287,7 +1339,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 : await _application.ResolveSavedAsync(
                     fixedSavedIds, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
-            EnsureQueryAuthorityCurrent(queryAuthorityGeneration, cancellationToken);
+            EnsureQueryAuthorityCurrent(route, queryAuthorityGeneration, cancellationToken);
             var resolvedBySavedId = resolved.ToDictionary(
                 item => item.SavedId, StringComparer.Ordinal);
             var automaticManualGames = route == PlayniteLibraryRoute.Library
@@ -1301,7 +1353,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 await SaveStateAsync(
                     state => PlayniteLibraryOrganizationPolicy.RemoveAutomaticManualGames(
                         state, automaticManualGames), cancellationToken).ConfigureAwait(false);
-                EnsureQueryAuthorityCurrent(queryAuthorityGeneration, cancellationToken);
+                EnsureQueryAuthorityCurrent(route, queryAuthorityGeneration, cancellationToken);
                 lock (_gate) organization = PresentationOrganizationLocked(result.Authority);
             }
             PlayniteLibraryItem[] recent = [];
@@ -1348,7 +1400,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (route == _navigation.Value.Route)
             reconcileSources = _model.Update(state =>
             {
-                if (state.Collection != collectionState) return (state, false);
+                if (CollectionForRoute(route, state) != collectionState)
+                    return (state, false);
                 var observations = PlayniteLibrarySourceCatalog.RetainObservations(
                     state.SourceObservations, page.Sources);
                 return (ReferenceEquals(observations, state.SourceObservations)
@@ -1361,17 +1414,22 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 rawItems, page.Sources, page.Before is null && page.After is null,
                 cancellationToken)
             .ConfigureAwait(false);
-        EnsureQueryAuthorityCurrent(queryAuthorityGeneration, cancellationToken);
-        _ = TryPublishQueryAuthority(queryAuthorityGeneration, authorityRevision,
+        EnsureQueryAuthorityCurrent(route, queryAuthorityGeneration, cancellationToken);
+        _ = TryPublishQueryAuthority(route, queryAuthorityGeneration, authorityRevision,
             result.Authority, result.RetainedLastGood, cancellationToken);
+        var favoriteSavedIds = organization.FavoriteSavedIds
+            .ToHashSet(StringComparer.Ordinal);
         var items = rawItems.Select(item => item.WithProjectedValue(
                 PlayniteLibraryTitlePolicy.Project(organization, item.Value)))
             .Where(item => MatchesFixedQuery(item.Value, query))
+            .Where(item => !collectionState.FavoriteFilter ||
+                favoriteSavedIds.Contains(item.Value.SavedId))
             .ToArray();
         _model.Update(state =>
         {
-            var current = direction is null && route == _navigation.Value.Route &&
-                state.Collection == collectionState
+            var current = direction is null && route == PlayniteLibraryRoute.Library &&
+                route == _navigation.Value.Route &&
+                CollectionForRoute(route, state) == collectionState
                 ? state with
                 {
                     FixedRows = fixedRows,
@@ -1387,9 +1445,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
                         $"{items.Length}{(page.After is null ? string.Empty : "+")} games in the current catalog window",
             };
         });
+        var emptyFavorites = collectionState.FavoriteFilter && favoriteSavedIds.Count == 0;
         return new(items,
-            page.Before is null ? null : new WidgetCollectionCursor(page.Before),
-            page.After is null ? null : new WidgetCollectionCursor(page.After));
+            emptyFavorites || page.Before is null
+                ? null
+                : new WidgetCollectionCursor(page.Before),
+            emptyFavorites || page.After is null
+                ? null
+                : new WidgetCollectionCursor(page.After));
     }
 
     private async ValueTask<IReadOnlyList<PlayniteLibraryItem>> LoadHiddenRowsAsync(
@@ -1459,6 +1522,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
             requestCancellation, activeLifetime);
+        var library = CurrentLibrary;
         PlayniteLibraryItem? selected = null;
         long collectionRevision = 0;
         long fixedRowsRevision = 0;
@@ -1467,13 +1531,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
             var local = _model.Value;
             var fixedRows = local.FixedRows;
             fixedRowsRevision = local.FixedRowsRevision;
-            selected = _library.Snapshot.Items.Concat(fixedRows.All).FirstOrDefault(item =>
+            selected = library.Snapshot.Items.Concat(fixedRows.All).FirstOrDefault(item =>
                 string.Equals(
                 PlayniteLibraryIdentity.FocusId("grid", item.Key), sourceElementId,
                 StringComparison.Ordinal));
             if (selected is null) return;
-            if (_library.Snapshot.Items.Any(item => item.Key == selected.Key))
-                _library.SelectAnchor(selected.Key, invalidate: false);
+            if (library.Snapshot.Items.Any(item => item.Key == selected.Key))
+                library.SelectAnchor(selected.Key, invalidate: false);
             lock (_gate)
             {
                 RemoveLaunchStateLocked(selected.Value.SavedId);
@@ -1483,12 +1547,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 LaunchingSavedId = selected.Value.SavedId,
                 Status = $"Pending · {selected.Value.Presentation.DisplayName}",
             });
-            collectionRevision = _library.Snapshot.Revision;
+            collectionRevision = library.Snapshot.Revision;
             var resolved = await _application.ResolveSavedAsync(
                     [selected.Value.SavedId], lifetime.Token).ConfigureAwait(false);
             var current = resolved.SingleOrDefault(item => string.Equals(
                 item.SavedId, selected.Value.SavedId, StringComparison.Ordinal));
-            var stillCurrent = IsCurrentResolved(selected.Key);
+            var stillCurrent = IsCurrentResolved(library, selected.Key);
             if (current is null || !stillCurrent ||
                 current.Presentation.Availability.State !=
                     WidgetAppLibraryAvailabilityState.Installed ||
@@ -1504,8 +1568,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
             lock (_gate)
             {
                 if (_launchGeneration.IsCurrent(generation) &&
-                    collectionRevision == _library.Snapshot.Revision &&
-                    IsCurrentResolved(selected.Key))
+                    collectionRevision == library.Snapshot.Revision &&
+                    IsCurrentResolved(library, selected.Key))
                 {
                     var modelUpdate = _model.Update(state =>
                         fixedRowsRevision != state.FixedRowsRevision
@@ -1532,8 +1596,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
             lock (_gate)
             {
                 if (selected is not null && _launchGeneration.IsCurrent(generation) &&
-                    collectionRevision == _library.Snapshot.Revision &&
-                    IsCurrentResolved(selected.Key))
+                    collectionRevision == library.Snapshot.Revision &&
+                    IsCurrentResolved(library, selected.Key))
                 {
                     var modelUpdate = _model.Update(state =>
                         fixedRowsRevision != state.FixedRowsRevision
@@ -1610,9 +1674,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             favorite = !authority.FavoriteGameIds.Contains(
                 display.SavedId, StringComparer.Ordinal);
         }
-        var admitted = _model.Update(state =>
-            (state with { OrganizationBusy = true }, state.Collection.FavoriteFilter));
-        var filteringFavorites = admitted.Result;
+        _model.Update(state => state with { OrganizationBusy = true });
         var applied = false;
         string? status = null;
         try
@@ -1647,7 +1709,21 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 Status = status ?? state.Status,
             });
         }
-        if (applied && filteringFavorites) ReloadQuery();
+        if (applied) await RefreshLoadedFavoriteQueriesAsync().ConfigureAwait(false);
+    }
+
+    private async Task RefreshLoadedFavoriteQueriesAsync()
+    {
+        var state = _model.Value;
+        var refreshes = new List<WidgetOperationHandle>(2);
+        if (state.Collection.FavoriteFilter &&
+            _homeLibrary.Snapshot.Status != WidgetPagedResourceStatus.NotLoaded)
+            refreshes.Add(_homeLibrary.Refresh());
+        if (state.BrowseCollection.FavoriteFilter &&
+            _browseLibrary.Snapshot.Status != WidgetPagedResourceStatus.NotLoaded)
+            refreshes.Add(_browseLibrary.Refresh());
+        foreach (var refresh in refreshes)
+            await refresh.Completion.ConfigureAwait(false);
     }
 
     private async Task<bool> SetHiddenAsync(
@@ -1657,7 +1733,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         if (!hidden)
         {
-            await _library.WhenIdleAsync(cancellationToken).ConfigureAwait(false);
+            await _homeLibrary.WhenIdleAsync(cancellationToken).ConfigureAwait(false);
             if (LifecycleState != WidgetLifecycleState.Interactive ||
                 _navigation.Value.Route != PlayniteLibraryRoute.Hidden)
                 return false;
@@ -1783,7 +1859,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         string sourceElementId,
         CancellationToken cancellationToken)
     {
-        var item = _library.Snapshot.Items.FirstOrDefault(candidate => string.Equals(
+        var item = CurrentLibrary.Snapshot.Items.FirstOrDefault(candidate => string.Equals(
             PlayniteLibraryIdentity.FocusId("add", candidate.Key), sourceElementId,
             StringComparison.Ordinal));
         if (item is null) return;
@@ -1960,7 +2036,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private PlayniteLibraryDisplayItem? DisplayForSource(string sourceElementId)
     {
         var fixedRows = _model.Value.FixedRows;
-        var item = _library.Snapshot.Items.Concat(fixedRows.All)
+        var item = CurrentLibrary.Snapshot.Items.Concat(fixedRows.All)
             .FirstOrDefault(candidate => string.Equals(
             PlayniteLibraryIdentity.FocusId("grid", candidate.Key), sourceElementId,
             StringComparison.Ordinal));
@@ -1978,12 +2054,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
             PresentationOrganizationLocked());
         var sourceCollection = route switch
         {
-            PlayniteLibraryRoute.Library when local.RetainedHomeCollection is { } retainedHome =>
-                retainedHome,
             PlayniteLibraryRoute.Browse when
                 local.ActiveBrowseReload?.RetainedCollection is { } retainedBrowse =>
                 retainedBrowse,
-            _ => _library.Snapshot,
+            PlayniteLibraryRoute.Browse => _browseLibrary.Snapshot,
+            _ => _homeLibrary.Snapshot,
         };
         var collection = sourceCollection with
         {
@@ -2006,7 +2081,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         return new(
         collection,
         organization,
-        StatusLocked(_library.Snapshot, local),
+        StatusLocked(sourceCollection, local),
         local.LaunchingSavedId,
         new Dictionary<string, PlayniteLibraryLaunchState>(
             _launchStates, StringComparer.Ordinal),
@@ -2014,15 +2089,19 @@ public sealed partial class PlayniteLibraryWidget : Widget
         LifecycleState == WidgetLifecycleState.Interactive,
         route == PlayniteLibraryRoute.Hidden
             ? local.HiddenQuery
-            : local.Collection.Query,
-        local.Collection.RecentlyPlayed,
-        local.Collection.FavoriteFilter,
+            : CollectionForRoute(route, local).Query,
+        CollectionForRoute(route, local).RecentlyPlayed,
+        CollectionForRoute(route, local).FavoriteFilter,
         route,
         fixedRows,
         _hiddenRows.Snapshot.Value ?? [],
         local.SourceObservations,
-        local.HeroSavedId,
-        local.HeroIndex)
+        route == PlayniteLibraryRoute.Browse
+            ? local.BrowseHeroSavedId
+            : local.HeroSavedId,
+        route == PlayniteLibraryRoute.Browse
+            ? local.BrowseHeroIndex
+            : local.HeroIndex)
     {
         ActiveCategoryId = local.ActiveCategoryId,
         SearchExpanded = local.SearchExpanded,
@@ -2031,7 +2110,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         BrowseRetained = route == PlayniteLibraryRoute.Browse &&
             local.ActiveBrowseReload?.RetainedCollection is not null,
         Collections = PlayniteLibraryCollectionPolicy.Options(
-            organization, ProvenSourcesLocked(), local.Collection.Selection),
+            organization, ProvenSourcesLocked(),
+            CollectionForRoute(route, local).Selection),
         CompletionStatuses = _presentationAuthority.CompletionStatuses,
         CategoryFeedback = ownedCategoryFeedback?.Message,
         CategoryFeedbackSucceeded = ownedCategoryFeedback?.Succeeded == true,
@@ -2053,7 +2133,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     private string? ResolveActionSource(string sourceElementId)
     {
-        var item = _library.Snapshot.Items.Concat(_model.Value.FixedRows.All)
+        var item = CurrentLibrary.Snapshot.Items.Concat(_model.Value.FixedRows.All)
             .FirstOrDefault(candidate => string.Equals(
                 PlayniteLibraryIdentity.FocusId("grid", candidate.Key), sourceElementId,
                 StringComparison.Ordinal));
@@ -2064,7 +2144,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         if (_navigation.Value.Route != PlayniteLibraryRoute.Library) return;
         var fixedRows = _model.Value.FixedRows;
-        var selected = _library.Snapshot.Items.Concat(fixedRows.All)
+        var selected = _homeLibrary.Snapshot.Items.Concat(fixedRows.All)
             .FirstOrDefault(item => string.Equals(
                 PlayniteLibraryIdentity.FocusId("grid", item.Key), sourceElementId,
                 StringComparison.Ordinal));
@@ -2080,7 +2160,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (LifecycleState != WidgetLifecycleState.Interactive ||
             _navigation.Value.Route is not (PlayniteLibraryRoute.Library or
                 PlayniteLibraryRoute.Browse)) return;
-        RetainHomeCollectionForRouteTransition();
         if (_navigation.Value.Route != PlayniteLibraryRoute.Library)
             _navigation.Back(sourceElementId);
         _model.Update(state => state with
@@ -2120,10 +2199,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _model.Update(state => state with
         {
             ActiveCategoryId = categoryId,
-            Collection = state.Collection.Reset(InstalledGames),
-            FixedRows = PlayniteLibraryFixedRows.Empty,
-            FixedRowsRevision = state.FixedRowsRevision + 1,
-            PreferLibraryContentFocus = false,
+            BrowseCollection = state.BrowseCollection.Reset(InstalledGames),
             AlternateBrowseViewport = !state.AlternateBrowseViewport,
             BrowseInitialFocusId = PlayniteLibraryActions.CategoryFilter,
             ActiveBrowseReload = reload,
@@ -2159,7 +2235,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             var created = await _application.CreateCategoryAsync(
                     normalized, cancellationToken).ConfigureAwait(false);
             if (created is not null)
-                await _library.Refresh().Completion.ConfigureAwait(false);
+                await _homeLibrary.Refresh().Completion.ConfigureAwait(false);
             lock (_gate)
             {
                 if (created is not null) AdmitCreatedCategoryLocked(created);
@@ -2223,7 +2299,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
             }
             else
             {
-                await _library.Refresh().Completion.ConfigureAwait(false);
+                await CurrentLibrary.Refresh().Completion.ConfigureAwait(false);
+                if (_navigation.Value.Route == PlayniteLibraryRoute.Library &&
+                    string.Equals(_model.Value.ActiveCategoryId, categoryId,
+                        StringComparison.Ordinal))
+                {
+                    await _browseLibrary.Refresh().Completion.ConfigureAwait(false);
+                }
                 lock (_gate)
                 {
                     var confirmedCategory = PlayniteLibraryCategoryPolicy.Find(
@@ -2305,7 +2387,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 return ValueTask.CompletedTask;
         if (route == PlayniteLibraryRoute.Library)
         {
-            RetainHomeCollectionForRouteTransition();
             if (_navigation.Push(PlayniteLibraryRoute.Browse, sourceElementId) !=
                     WidgetNavigationResult.Changed)
                 return ValueTask.CompletedTask;
@@ -2323,7 +2404,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 item.Value.Presentation.DisplayName,
                 item.Value.Presentation.Source.DisplayName))
             .FirstOrDefault() ??
-        _library.Snapshot.Items.Where(item => item.Value.SavedId == savedId)
+        _homeLibrary.Snapshot.Items.Concat(_browseLibrary.Snapshot.Items)
+            .Where(item => item.Value.SavedId == savedId)
             .Select(item => new PlayniteLibraryDisplayItem(
                 item.Value.SavedId,
                 item.Value.Presentation.DisplayName,
@@ -2331,7 +2413,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             .FirstOrDefault();
 
     private PlayniteLibraryDisplayItem? DisplayForCurrentSavedLocked(string savedId) =>
-        _library.Snapshot.Items.Concat(_model.Value.FixedRows.All)
+        CurrentLibrary.Snapshot.Items.Concat(_model.Value.FixedRows.All)
             .Where(item => string.Equals(item.Value.SavedId, savedId,
                 StringComparison.Ordinal))
             .Select(item => new PlayniteLibraryDisplayItem(
@@ -2340,9 +2422,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 item.Value.Presentation.Source.DisplayName))
             .FirstOrDefault();
 
-    private bool IsCurrentResolved(WidgetCollectionItemKey key)
+    private bool IsCurrentResolved(
+        WidgetCursorResource<PlayniteLibraryItem> library,
+        WidgetCollectionItemKey key)
     {
-        if (_library.Snapshot.Items.Any(item => item.Key == key)) return true;
+        if (library.Snapshot.Items.Any(item => item.Key == key)) return true;
         return _model.Value.FixedRows.All.Any(item => item.Key == key);
     }
 

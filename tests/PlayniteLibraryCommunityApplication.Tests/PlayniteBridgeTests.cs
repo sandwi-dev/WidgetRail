@@ -202,6 +202,47 @@ public sealed class PlayniteBridgeTests
             "The bounded reader must classify the size rejection without reading the body.");
         Assert.AreEqual("response-over-budget",
             PlayniteLibraryApplicationService.ArtworkFailureCode(overBudget));
+
+        using var unknownExactContent = new BoundedTestContent(
+            new byte[maximumBytes], declaredLength: null);
+        var unknownExact = await PlayniteBridgeHttpTransport.ReadBoundedAsync(
+            unknownExactContent, maximumBytes, CancellationToken.None);
+        Assert.AreEqual(maximumBytes, unknownExact.Length,
+            "An unknown-length response must admit the exact public bound.");
+
+        using var unknownOversizedContent = new BoundedTestContent(
+            new byte[maximumBytes + 1], declaredLength: null);
+        var unknownOverBudget = await Assert.ThrowsExactlyAsync<PlayniteBridgeTransportException>(
+            async () => await PlayniteBridgeHttpTransport.ReadBoundedAsync(
+                unknownOversizedContent, maximumBytes, CancellationToken.None));
+        Assert.IsTrue(unknownOverBudget.IsOverBudget,
+            "Unknown-length input must stop after the first byte beyond the bound.");
+
+        using var truncatedContent = new BoundedTestContent(
+            new byte[15], declaredLength: 16);
+        var truncated = await Assert.ThrowsExactlyAsync<PlayniteBridgeTransportException>(
+            async () => await PlayniteBridgeHttpTransport.ReadBoundedAsync(
+                truncatedContent, maximumBytes, CancellationToken.None));
+        Assert.IsTrue(truncated.IsMalformed,
+            "A truncated declared body must fail as malformed input.");
+        Assert.IsFalse(truncated.IsOverBudget,
+            "A truncated body is not an over-budget response.");
+
+        using var trailingContent = new BoundedTestContent(
+            new byte[17], declaredLength: 16);
+        var trailing = await Assert.ThrowsExactlyAsync<PlayniteBridgeTransportException>(
+            async () => await PlayniteBridgeHttpTransport.ReadBoundedAsync(
+                trailingContent, maximumBytes, CancellationToken.None));
+        Assert.IsTrue(trailing.IsMalformed,
+            "Bytes after the declared response length must fail closed.");
+
+        using var cancellableContent = new BoundedTestContent(
+            new byte[64], declaredLength: null);
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            async () => await PlayniteBridgeHttpTransport.ReadBoundedAsync(
+                cancellableContent, maximumBytes, cancelled.Token));
     }
 
     [TestMethod]
@@ -256,7 +297,7 @@ public sealed class PlayniteBridgeTests
         var value = manifest.RootElement;
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, value.GetProperty("optionalPermissions").GetArrayLength());
-        Assert.AreEqual("0.2.55", value.GetProperty("version").GetString());
+        Assert.AreEqual("0.2.59", value.GetProperty("version").GetString());
         var presentation = value.GetProperty("presentation");
         Assert.AreEqual("play", presentation.GetProperty("icon").GetString());
         var packageIcon = presentation.GetProperty("packageIcon");
@@ -400,5 +441,23 @@ public sealed class PlayniteBridgeTests
         }
 
         public void Dispose() { }
+    }
+
+    private sealed class BoundedTestContent(
+        byte[] bytes,
+        long? declaredLength) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(
+            Stream stream,
+            TransportContext? context) => stream.WriteAsync(bytes).AsTask();
+
+        protected override Task<Stream> CreateContentReadStreamAsync() =>
+            Task.FromResult<Stream>(new MemoryStream(bytes, writable: false));
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = declaredLength ?? 0;
+            return declaredLength.HasValue;
+        }
     }
 }
