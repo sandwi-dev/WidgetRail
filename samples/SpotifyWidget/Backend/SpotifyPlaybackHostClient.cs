@@ -72,6 +72,7 @@ internal sealed class SpotifyPlaybackHostClient : ISpotifyPlaybackHostClient
             "host_initialized",
             "lifecycle_changed",
             "sdk_loaded",
+            "connect_succeeded",
             "ready",
             "not_ready",
             "disconnected",

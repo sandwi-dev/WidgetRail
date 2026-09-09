@@ -292,6 +292,9 @@ internal sealed class SpotifyPlaybackHostForm : Form
                     Transition(SpotifyPlaybackSignal.SdkLoaded);
                     normalized = new { };
                     break;
+                case "connect_succeeded":
+                    normalized = new { };
+                    break;
                 case "ready":
                     Transition(SpotifyPlaybackSignal.Ready);
                     normalized = ValidateDevice(payload);

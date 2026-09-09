@@ -1034,10 +1034,11 @@ internal static class SpotifyPresentation
         {
             var localActive = local.State == SpotifyLocalPlaybackState.Active;
             var localStarting = local.State == SpotifyLocalPlaybackState.Starting;
+            var localPending = localStarting || localPlaybackBusy;
             var localNeedsReconnect = local.State ==
                 SpotifyLocalPlaybackState.ReauthorizationRequired;
             rows.Add(UI.SettingsRow("This overlay",
-                    new ComponentAction(localActive ? "Stop" : localStarting ? "Starting…" :
+                    new ComponentAction(localActive ? "Stop" : localPending ? "Starting…" :
                         localNeedsReconnect ? "Reconnect" : "Play here",
                         localActive ? "spotify.local.stop" : localNeedsReconnect
                             ? "spotify.connect.features" : "spotify.local.start",
@@ -1046,12 +1047,11 @@ internal static class SpotifyPresentation
                     $"spotify.local.{mode}",
                     local.DisplayMessage ?? "Web Playback SDK audio stays in the trusted host.",
                     local.DeviceName,
-                    LocalStateLabel(local.State),
-                    LocalStateTone(local.State),
+                    localPlaybackBusy ? "Starting" : LocalStateLabel(local.State),
+                    localPlaybackBusy ? StatusTone.Info : LocalStateTone(local.State),
                     isDisabled: local.State is SpotifyLocalPlaybackState.PremiumRequired or
-                        SpotifyLocalPlaybackState.Unavailable || localStarting ||
-                        localPlaybackBusy,
-                    isBusy: localPlaybackBusy || localStarting,
+                        SpotifyLocalPlaybackState.Unavailable || localPending,
+                    isBusy: localPending,
                     glyph: WidgetGlyph.Music)
                 .Classes("spotify-device-row"));
         }

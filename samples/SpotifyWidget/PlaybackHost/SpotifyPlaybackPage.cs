@@ -157,10 +157,11 @@ internal static class SpotifyPlaybackPage
                     post('command_completed', requestId);
                     Promise.resolve(connection).then(
                       connected => {
-                        if (!connected) post('sdk_error', null, {
-                          code: 'initialization_error',
-                          message: 'Spotify playback could not connect.'
-                        });
+                        if (connected) post('connect_succeeded', null);
+                        else post('sdk_error', null, {
+                            code: 'initialization_error',
+                            message: 'Spotify playback could not connect.'
+                          });
                       },
                       () => post('sdk_error', null, {
                         code: 'initialization_error',

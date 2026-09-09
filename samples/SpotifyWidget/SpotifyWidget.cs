@@ -1380,6 +1380,9 @@ public sealed class SpotifyWidget : Widget
                 _status = $"Playing on {device.Name}";
             }
             Invalidate();
+            await RefreshPlaybackAsync(
+                    Volatile.Read(ref _activeGeneration), cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (SpotifyApplicationException exception)
         {
@@ -1404,6 +1407,7 @@ public sealed class SpotifyWidget : Widget
         WidgetOperationContext operation)
     {
         var operationGeneration = operation.Generation;
+        var commandSucceeded = false;
         lock (_gate)
         {
             if (!operation.IsCurrent) return;
@@ -1449,6 +1453,12 @@ public sealed class SpotifyWidget : Widget
             _runtimeDiagnostics.Record(
                 "local-playback-widget", "succeeded", operationGeneration,
                 Math.Max(0, Volatile.Read(ref _activeGeneration)));
+            commandSucceeded = true;
+            if (command.Operation == SpotifyLocalPlaybackOperation.StartAndTransfer)
+                await RefreshPlaybackAsync(
+                        Volatile.Read(ref _activeGeneration),
+                        operation.CancellationToken)
+                    .ConfigureAwait(false);
         }
         catch (SpotifyApplicationException exception)
         {
@@ -1473,14 +1483,21 @@ public sealed class SpotifyWidget : Widget
                 Math.Max(0, Volatile.Read(ref _activeGeneration)));
         }
         catch (OperationCanceledException)
+            when (operation.CancellationToken.IsCancellationRequested &&
+                  commandSucceeded)
+        {
+            // The device transfer already succeeded. Lifecycle cancellation of
+            // its follow-up observation must not roll back that accepted state.
+        }
+        catch (OperationCanceledException)
             when (operation.CancellationToken.IsCancellationRequested)
         {
             lock (_gate)
                 if (_localPlaybackOperationGeneration == operationGeneration)
                 {
                     _localPlayback = _localPlaybackOperationBaseline;
-                    _localPlaybackFeedback = "Local Spotify playback canceled";
-                    _status = _localPlaybackFeedback;
+                    _localPlaybackFeedback = null;
+                    _status = "Local Spotify playback canceled";
                 }
             _runtimeDiagnostics.Record(
                 "local-playback-widget", "canceled", operationGeneration,

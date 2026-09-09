@@ -38,6 +38,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     private int _volumePercent = 80;
     private string? _message;
     private TaskCompletionSource<string>? _ready;
+    private long _startTimestamp;
     private int _disposed;
 
     internal SpotifyLocalPlaybackManager(
@@ -141,6 +142,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 _state = SpotifyLocalPlaybackState.Starting;
                 _message = "Starting Spotify playback on this PC.";
                 _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                _startTimestamp = started;
             }
 
             try
@@ -328,15 +330,30 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
 
     private void OnClientEvent(object? sender, SpotifyPlaybackEventEnvelope value)
     {
+        long started;
+        lock (_stateGate)
+        {
+            if (!ReferenceEquals(sender, _client)) return;
+            started = _startTimestamp;
+        }
         switch (value.Type)
         {
             case "token_requested":
-                _ = AnswerTokenRequestAsync(sender as ISpotifyPlaybackHostClient, value);
+                RecordIfStarted("local-playback-token", "requested", started);
+                _ = AnswerTokenRequestAsync(
+                    sender as ISpotifyPlaybackHostClient, value, started);
+                break;
+            case "connect_succeeded":
+                RecordIfStarted(
+                    "local-playback-connect", "promise-succeeded", started);
                 break;
             case "ready":
+                RecordIfStarted("local-playback-sdk", "ready-event", started);
                 var ready = SpotifyPlaybackProtocolCodec.DecodePayload<PageDevice>(value.Payload);
                 lock (_stateGate)
                 {
+                    if (!ReferenceEquals(sender, _client) ||
+                        started != _startTimestamp) return;
                     _spotifyDeviceId = ready.DeviceId;
                     _state = SpotifyLocalPlaybackState.Ready;
                     _message = "Ready to play through this PC.";
@@ -344,8 +361,11 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 }
                 break;
             case "not_ready":
+                RecordIfStarted("local-playback-sdk", "not-ready-event", started);
                 lock (_stateGate)
                 {
+                    if (!ReferenceEquals(sender, _client) ||
+                        started != _startTimestamp) return;
                     _spotifyDeviceId = null;
                     _state = SpotifyLocalPlaybackState.NotReady;
                     _message = "Spotify temporarily disconnected this PC.";
@@ -356,11 +376,17 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                     .DecodePayload<WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState>(
                         value.Payload);
                 if (playback.IsAvailable)
-                    SetState(_owner, SpotifyLocalPlaybackState.Active,
-                        "Playing through this PC.");
+                    lock (_stateGate)
+                    {
+                        if (!ReferenceEquals(sender, _client) ||
+                            started != _startTimestamp) return;
+                        _state = SpotifyLocalPlaybackState.Active;
+                        _message = "Playing through this PC.";
+                    }
                 break;
             case "sdk_error":
                 var error = SpotifyPlaybackProtocolCodec.DecodePayload<PageError>(value.Payload);
+                RecordIfStarted("local-playback-sdk", error.Code, started);
                 var state = error.Code switch
                 {
                     "account_error" => SpotifyLocalPlaybackState.PremiumRequired,
@@ -375,15 +401,23 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                         "Reconnect Spotify to resume playback on this PC.",
                     _ => "Spotify local playback reported an error.",
                 };
-                lock (_stateGate) _ready?.TrySetException(
-                    new SpotifyPlaybackHostClientException(error.Code, message));
-                SetState(_owner, state, message);
+                lock (_stateGate)
+                {
+                    if (!ReferenceEquals(sender, _client) ||
+                        started != _startTimestamp) return;
+                    _ready?.TrySetException(
+                        new SpotifyPlaybackHostClientException(error.Code, message));
+                    _state = state;
+                    _message = message;
+                }
                 break;
         }
     }
 
     private async Task AnswerTokenRequestAsync(
-        ISpotifyPlaybackHostClient? source, SpotifyPlaybackEventEnvelope value)
+        ISpotifyPlaybackHostClient? source,
+        SpotifyPlaybackEventEnvelope value,
+        long started)
     {
         SpotifyIntegrationIdentity? owner = null;
         try
@@ -395,23 +429,38 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             timeout.CancelAfter(TimeSpan.FromSeconds(15));
             var token = await _tokenProvider(owner.Value, RequiredScopes, timeout.Token)
                 .ConfigureAwait(false);
+            lock (_stateGate)
+                if (!ReferenceEquals(source, _client) || owner != _owner ||
+                    started == 0 || started != _startTimestamp) return;
+            Record("local-playback-token", "refresh-acquired", started);
             await source.ProvideTokenAsync(request.TokenRequestId, token, timeout.Token)
                 .ConfigureAwait(false);
+            lock (_stateGate)
+                if (!ReferenceEquals(source, _client) || owner != _owner ||
+                    started != _startTimestamp) return;
+            Record("local-playback-token", "callback-acknowledged", started);
         }
         catch (Exception exception) when (exception is SpotifyProviderException or
             SpotifyPlaybackHostClientException or SpotifyPlaybackProtocolException or
             OperationCanceledException)
         {
+            if (source is not { } exactSource || owner is not { } exactOwner) return;
             lock (_stateGate)
             {
-                if (source is null || owner is null ||
-                    !ReferenceEquals(source, _client) || owner != _owner) return;
+                if (!ReferenceEquals(exactSource, _client) || exactOwner != _owner ||
+                    started == 0 || started != _startTimestamp) return;
                 _state = SpotifyLocalPlaybackState.ReauthorizationRequired;
                 _message = "Spotify could not renew local playback authorization.";
                 _ready?.TrySetException(new SpotifyPlaybackHostClientException(
                     "reauthorization_required", _message));
             }
-            _ = Task.Run(() => StopFailedClientAsync(source, owner.Value));
+            Record("local-playback-token", exception switch
+            {
+                SpotifyProviderException provider => provider.Code,
+                SpotifyPlaybackHostClientException host => host.Code,
+                _ => SpotifyRuntimeDiagnostics.Code(exception),
+            }, started);
+            _ = Task.Run(() => StopFailedClientAsync(exactSource, exactOwner));
         }
     }
 
@@ -456,6 +505,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             _spotifyDeviceId = null;
             _ready?.TrySetCanceled();
             _ready = null;
+            _startTimestamp = 0;
         }
         if (client is null) return;
         client.EventReceived -= OnClientEvent;
@@ -490,6 +540,11 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
         _runtimeDiagnostics.Record(
             boundary, code, elapsedMilliseconds: Math.Max(
                 0, (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds));
+
+    private void RecordIfStarted(string boundary, string code, long started)
+    {
+        if (started != 0) Record(boundary, code, started);
+    }
 
     private sealed record PageDevice(string DeviceId);
     private sealed record PageError(string Code, string Message);
