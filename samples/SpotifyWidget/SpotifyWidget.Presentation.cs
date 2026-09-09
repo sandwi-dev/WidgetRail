@@ -531,12 +531,7 @@ internal static class SpotifyPresentation
                 quickActions.Add(new(ControllerButton.RightBumper, "spotify.next",
                     "Next track"));
         }
-        var initialFocusId = route.Route is SpotifyRoute.PlaylistDetail or SpotifyRoute.Setup
-            ? contentEntry
-            : playback is { IsAvailable: true, Item: not null }
-                ? "spotify.play-toggle"
-                : contentEntry;
-        return new WidgetView(root, initialFocusId,
+        return new WidgetView(root, contentEntry,
             quickActions, Surface: StandardSurface);
     }
 
