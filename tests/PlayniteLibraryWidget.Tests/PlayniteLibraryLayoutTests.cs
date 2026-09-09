@@ -31,8 +31,9 @@ public sealed class PlayniteLibraryLayoutTests
             Categories = [new(
                 "category.11111111111111111111111111111111", "Strategy", [])],
         };
-        var view = PlayniteLibraryPresentation.Render(State(
-            collection, organization, PlayniteLibraryRoute.Library, []));
+        var presentation = State(
+            collection, organization, PlayniteLibraryRoute.Library, []);
+        var view = PlayniteLibraryPresentation.Render(presentation);
         Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, view.Surface!.WidthMode);
         Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, view.Surface.HeightMode);
         var snapshot = new PresentationWidget(view).RenderSnapshot(
@@ -129,6 +130,27 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.IsTrue(Nodes(hintRegion).Any(node =>
                 node.Id == "playnite-library.hint.options.key" && node.Text == "Menu"),
             "Home must advertise the current Menu-owned game options.");
+        var unavailableView = PlayniteLibraryPresentation.Render(
+            presentation with { OrganizationBusy = true });
+        var unavailableSnapshot = new PresentationWidget(unavailableView)
+            .RenderSnapshot("playnite-library.unavailable-hints", 2);
+        var unavailableHints = Nodes(unavailableSnapshot.Root)
+            .Single(node => node.Id == "playnite-library.organization.hints");
+        CollectionAssert.AreEqual(
+            hintRegion.Children.Select(child => child.Id).ToArray(),
+            unavailableHints.Children.Select(child => child.Id).ToArray(),
+            "Favorite availability changed the Home footer structure.");
+        var unavailableFavoriteLabel = Nodes(unavailableHints).Single(node =>
+            node.Id == "playnite-library.hint.favorite.label");
+        Assert.AreEqual("Favorite", unavailableFavoriteLabel.Text,
+            "Favorite availability changed the visible Home hint width.");
+        Assert.AreEqual("Favorite unavailable", unavailableFavoriteLabel.AccessibilityLabel,
+            "The stable Home footer did not truthfully expose unavailable Favorite.");
+        CollectionAssert.Contains(unavailableHints.Children[0].StyleClasses.ToArray(),
+            "playnite-library-hint-unavailable");
+        Assert.IsFalse(Nodes(unavailableHints).Any(node =>
+                node.ActionId == PlayniteLibraryActions.Favorite),
+            "The inactive Home hint became an executable Favorite action.");
         Assert.AreEqual(PlayniteLibraryIdentity.FocusId("grid", items[0].Key),
             snapshot.InitialFocusId);
         var styles = File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
@@ -139,6 +161,10 @@ public sealed class PlayniteLibraryLayoutTests
             node.StyleClasses.Contains("playnite-library-control", StringComparer.Ordinal)));
         StringAssert.Contains(styles,
             ".playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; padding: 4px 6px 10px; }");
+        StringAssert.Contains(styles,
+            ".playnite-library-footer { min-height: 28px; flex-shrink: 0; flex-wrap: wrap; gap: 6px; }");
+        StringAssert.Contains(styles,
+            ".playnite-library-hint-unavailable { opacity: 0.64; }");
         StringAssert.Contains(styles,
             ".playnite-library-tile { aspect-ratio: 2/3;");
         StringAssert.Contains(styles,
@@ -451,10 +477,10 @@ public sealed class PlayniteLibraryLayoutTests
             "Mutable Browse results must not retain native remembered-child authority.");
         var browseQuery = Nodes(browse.Root).Single(node =>
             node.Id == "playnite-library.query");
-        Assert.AreEqual("playnite-library.search",
-            browseQuery.InitialChildFocusId);
+        Assert.IsNull(browseQuery.InitialChildFocusId,
+            "The query row must not claim remembered-child ownership from its native Select controls.");
         Assert.IsTrue(Nodes(browseQuery).Any(node =>
-            node.Id == browseQuery.InitialChildFocusId));
+            node.Id == "playnite-library.search"));
         var browseActions = Nodes(browse.Root).Single(node =>
             node.Id == "playnite-library.actions");
         Assert.AreEqual(PlayniteLibraryActions.Refresh,
@@ -654,10 +680,10 @@ public sealed class PlayniteLibraryLayoutTests
                 "playnite-library-browse-foreground", phase);
             Assert.IsTrue(nodes.Any(node => node.Id == "playnite-library.header"), phase);
             var query = nodes.Single(node => node.Id == "playnite-library.query");
-            Assert.AreEqual("playnite-library.search", query.InitialChildFocusId,
-                phase);
+            Assert.IsNull(query.InitialChildFocusId,
+                phase + " must leave native Select popup ownership outside the query row.");
             Assert.IsTrue(Nodes(query).Any(node =>
-                node.Id == query.InitialChildFocusId), phase);
+                node.Id == "playnite-library.search"), phase);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count,
                 phase + " must remain protocol-valid.");
             if (phase is "ready" or "refreshing")

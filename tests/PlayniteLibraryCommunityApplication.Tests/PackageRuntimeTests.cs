@@ -63,6 +63,53 @@ public sealed class PackageRuntimeTests
         Assert.AreEqual(default, counters.Capture());
     }
 
+    [TestMethod]
+    public void ArtworkContentCacheIsByteBoundedLeastRecentlyUsedAndCopyFree()
+    {
+        var productionBudget = (long)typeof(PlayniteArtworkContentCache).GetField(
+            nameof(PlayniteArtworkContentCache.MaximumRetainedBytes),
+            BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
+        Assert.AreEqual(134_217_728L, productionBudget);
+        var cache = new PlayniteArtworkContentCache(maximumRetainedBytes: 9);
+        var first = new WidgetEncodedArtwork(WidgetArtworkContentType.Png,
+            new byte[] { 1, 2, 3, 4 });
+        var second = new WidgetEncodedArtwork(WidgetArtworkContentType.Jpeg,
+            new byte[] { 5, 6, 7, 8 });
+        var third = new WidgetEncodedArtwork(WidgetArtworkContentType.WebP,
+            new byte[] { 9, 10, 11, 12 });
+
+        Assert.IsTrue(cache.Store("first", first).Stored);
+        Assert.IsTrue(cache.Store("second", second).Stored);
+        Assert.AreEqual(8L, cache.RetainedBytes);
+        Assert.IsTrue(cache.TryGet("first", out var hit));
+        Assert.AreSame(first, hit,
+            "A cache hit must return the admitted value without another byte copy.");
+
+        var admitted = cache.Store("third", third);
+        Assert.IsTrue(admitted.Stored);
+        CollectionAssert.AreEqual(new[] { "second" },
+            admitted.Evictions.Select(value => value.Handle).ToArray());
+        Assert.IsTrue(cache.Contains("first"));
+        Assert.IsFalse(cache.Contains("second"));
+        Assert.IsTrue(cache.Contains("third"));
+        Assert.AreEqual(8L, cache.RetainedBytes);
+
+        var oversized = cache.Store("oversized",
+            new WidgetEncodedArtwork(WidgetArtworkContentType.Png, new byte[10]));
+        Assert.IsFalse(oversized.Stored);
+        Assert.IsFalse(cache.Contains("oversized"));
+        Assert.AreEqual(8L, cache.RetainedBytes);
+
+        var replacement = cache.Store("first",
+            new WidgetEncodedArtwork(WidgetArtworkContentType.Png, new byte[6]));
+        Assert.IsTrue(replacement.Stored);
+        Assert.AreEqual(4, replacement.PreviousBytes);
+        CollectionAssert.AreEqual(new[] { "third" },
+            replacement.Evictions.Select(value => value.Handle).ToArray());
+        Assert.AreEqual(6L, cache.RetainedBytes);
+        Assert.AreEqual(1, cache.Count);
+    }
+
     [TestMethod, Timeout(30_000)]
     public async Task PackageServiceTraversesTenThousandAndPagesThirtyTwoOrSixtyFour()
     {
@@ -674,8 +721,19 @@ public sealed class PackageRuntimeTests
         var precommitOwners = retainedHome.Concat(incomingFixed).Concat(liveBrowse).ToArray();
         Assert.AreEqual(896, precommitOwners.Length);
         service.PinArtworkHandles(precommitOwners);
-        Assert.AreEqual(1_152, PrivateDictionary(service, "_artwork").Count,
-            "The synchronous fixed-row invalidation must preserve the pending cursor transition window.");
+        var registrations = PrivateDictionary(service, "_artwork");
+        Assert.AreEqual(1_024, registrations.Count,
+            "The pin swap must retire replaced published rows while preserving the pending cursor transition.");
+        Assert.IsTrue(precommitOwners.Concat(incoming).All(registrations.Contains),
+            "Every current published owner and never-published incoming cursor handle must remain registered.");
+        Assert.IsTrue(fixedRows.All(handle => !registrations.Contains(handle)),
+            "The exact previously published fixed rows replaced by the pin swap were not retired.");
+        CollectionAssert.AreEqual(
+            PrivateArtworkOrder(service).Distinct(StringComparer.Ordinal).ToArray(),
+            PrivateArtworkOrder(service),
+            "Retired or reused registrations left duplicate entries in the bounded FIFO order.");
+        Assert.AreEqual(registrations.Count, PrivateArtworkOrder(service).Length,
+            "The bounded FIFO order diverged from live artwork registrations.");
         foreach (var handle in incoming)
             Assert.IsNotNull(await service.ResolveArtworkAsync(
                     new WidgetArtworkHandle(handle), CancellationToken.None),
@@ -688,8 +746,52 @@ public sealed class PackageRuntimeTests
                     new WidgetArtworkHandle(handle), CancellationToken.None),
                 $"The retained rendered or newly admitted handle {handle} was stranded during swap.");
         Assert.IsFalse(diagnostics.Records.Any(record => record.Code == "unknown-handle"));
-        Assert.AreEqual(1_152, PrivateDictionary(service, "_artwork").Count,
-            "Registration retention must remain bounded after the atomic owner swap.");
+        Assert.IsTrue(PrivateDictionary(service, "_artwork").Count <= 1_152,
+            "Registration retention exceeded the bounded steady-plus-transition ceiling.");
+        Assert.AreEqual(PrivateDictionary(service, "_artwork").Count,
+            PrivateArtworkOrder(service).Length,
+            "The bounded FIFO order diverged after the atomic owner swap.");
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task ArtworkByteEvictionPreservesPublishedHandleAuthority()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(3);
+        var artworkBytes = Convert.FromBase64String(FakeLibraryClient.TinyPng).Length;
+        await using var service = Service(
+            directory.Path, client, artworkCacheBytes: artworkBytes * 2L);
+        var page = await service.QueryAsync(AllGames, null, null, 32,
+            refresh: true, CancellationToken.None);
+        var handles = page.Items.Select(item => item.Presentation.Artwork.Find(
+                WidgetAppLibraryArtworkRole.Tile)!.Handle)
+            .ToArray();
+        service.PinArtworkHandles(handles);
+
+        Assert.IsNotNull(await service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(handles[0]), CancellationToken.None));
+        Assert.IsNotNull(await service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(handles[1]), CancellationToken.None));
+        Assert.IsNotNull(await service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(handles[0]), CancellationToken.None));
+        Assert.IsNotNull(await service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(handles[2]), CancellationToken.None));
+
+        Assert.AreEqual(artworkBytes * 2L, service.RetainedArtworkBytes);
+        Assert.AreEqual(2, service.RetainedArtworkEntryCount);
+        Assert.IsTrue(service.IsArtworkContentRetained(handles[0]));
+        Assert.IsFalse(service.IsArtworkContentRetained(handles[1]),
+            "The least recently used payload was not evicted.");
+        Assert.IsTrue(service.IsArtworkContentRetained(handles[2]));
+        Assert.IsTrue(PrivateDictionary(service, "_artwork").Contains(handles[1]),
+            "Content eviction revoked a still-published handle registration.");
+
+        var requestsBeforeReload = client.ArtworkRequests.Count;
+        Assert.IsNotNull(await service.ResolveArtworkAsync(
+            new WidgetArtworkHandle(handles[1]), CancellationToken.None));
+        Assert.AreEqual(requestsBeforeReload + 1, client.ArtworkRequests.Count,
+            "An evicted live handle did not reload through its retained authority.");
+        Assert.IsTrue(service.RetainedArtworkBytes <= artworkBytes * 2L);
     }
 
     [TestMethod, Timeout(30_000)]
@@ -746,7 +848,7 @@ public sealed class PackageRuntimeTests
         Assert.IsNotNull(await resolving,
             "The current caller may consume bytes that completed after retirement.");
         Assert.IsFalse(PrivateDictionary(service, "_artwork").Contains(target));
-        Assert.IsFalse(PrivateDictionary(service, "_artworkContent").Contains(target),
+        Assert.IsFalse(service.IsArtworkContentRetained(target),
             "A late ordinary or neutral result must not create orphan cache content.");
         Assert.IsNull(await service.ResolveArtworkAsync(
             new WidgetArtworkHandle(target), CancellationToken.None));
@@ -775,11 +877,12 @@ public sealed class PackageRuntimeTests
 
     private static PlayniteLibraryApplicationService Service(
         string root, FakeLibraryClient client,
-        IPlayniteLibraryArtworkDiagnostics? diagnostics = null)
+        IPlayniteLibraryArtworkDiagnostics? diagnostics = null,
+        long artworkCacheBytes = PlayniteArtworkContentCache.MaximumRetainedBytes)
     {
         Directory.CreateDirectory(root);
         return new(client, new PlayniteLibraryStateFileStore(
-            Path.Combine(root, "organization.json")), diagnostics);
+            Path.Combine(root, "organization.json")), diagnostics, artworkCacheBytes);
     }
 
     private static (byte Red, byte Green, byte Blue, byte Alpha) DecodeSingleRgbaPng(
@@ -883,6 +986,14 @@ public sealed class PackageRuntimeTests
         string name) => (IDictionary)(typeof(PlayniteLibraryApplicationService)
         .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!
         .GetValue(service) ?? throw new AssertFailedException(name + " was null."));
+
+    private static string[] PrivateArtworkOrder(
+        PlayniteLibraryApplicationService service) =>
+        ((IEnumerable)(typeof(PlayniteLibraryApplicationService)
+            .GetField("_artworkOrder", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(service) ?? throw new AssertFailedException("_artworkOrder was null.")))
+        .Cast<string>()
+        .ToArray();
 
     private sealed class RecordingArtworkDiagnostics : IPlayniteLibraryArtworkDiagnostics
     {
