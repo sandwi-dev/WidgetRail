@@ -365,7 +365,6 @@ public sealed class SpotifyWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
         var intent = SpotifyRouteActionPolicy.Classify(action);
-        RecordActionDiagnostic(action, "action-classification", ActionKindCode(intent.Kind));
         if (TryHandleNavigationBack(action)) return;
         if (TryHandlePageAction(action, intent)) return;
 
@@ -471,40 +470,12 @@ public sealed class SpotifyWidget : Widget
         }
     }
 
-    protected override void OnActionDiagnostic(
-        WidgetActionEvent action,
-        string stage,
-        string code)
-    {
-        RecordActionDiagnostic(action, "action-queue-stage", stage);
-        RecordActionDiagnostic(action, "action-queue-result", code);
-    }
-
     private void RecordActionDiagnostic(
         WidgetActionEvent action,
         string boundary,
         string code) =>
         _runtimeDiagnostics.Record(boundary, code, Math.Max(0, action.Sequence),
             Math.Max(0, Volatile.Read(ref _activeGeneration)));
-
-    private static string ActionKindCode(SpotifyActionKind kind) => kind switch
-    {
-        SpotifyActionKind.Playback => "playback",
-        SpotifyActionKind.Seek => "seek",
-        SpotifyActionKind.Refresh => "refresh",
-        SpotifyActionKind.Navigate => "navigate",
-        SpotifyActionKind.PreviousSection => "previous-section",
-        SpotifyActionKind.NextSection => "next-section",
-        SpotifyActionKind.QueuePlay => "queue-play",
-        SpotifyActionKind.PlaylistTrack => "playlist-track",
-        SpotifyActionKind.PlaylistPlay => "playlist-play",
-        SpotifyActionKind.DeviceSelect => "device-select",
-        SpotifyActionKind.LocalStart => "local-start",
-        SpotifyActionKind.LocalStop => "local-stop",
-        SpotifyActionKind.Noop => "noop",
-        SpotifyActionKind.Unknown => "unknown",
-        _ => "other",
-    };
 
     private async Task CheckConfigurationAsync(CancellationToken cancellationToken)
     {
@@ -726,8 +697,6 @@ public sealed class SpotifyWidget : Widget
         var operation = Interlocked.Increment(ref _queueLoadOperationSequence);
         var generation = Math.Max(0, Volatile.Read(ref _activeGeneration));
         var started = Stopwatch.GetTimestamp();
-        _runtimeDiagnostics.Record(
-            "queue-refresh", "admitted", operation, generation, 0);
         using var queueLifetime =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         queueLifetime.CancelAfter(QueueLoadTimeout);
@@ -741,12 +710,6 @@ public sealed class SpotifyWidget : Widget
             var occurrenceRequest = _queueOccurrences.BeginPage("queue", 0, direction);
             var items = _queueOccurrences.NormalizePage(
                 occurrenceRequest, queue.Items, []);
-            _runtimeDiagnostics.Record(
-                "queue-refresh",
-                items.Count == 0 ? "empty" : "success",
-                operation,
-                generation,
-                ElapsedMilliseconds(started));
             return new(items, null, null);
         }
         catch (OperationCanceledException exception)
@@ -761,9 +724,6 @@ public sealed class SpotifyWidget : Widget
         }
         catch (OperationCanceledException)
         {
-            _runtimeDiagnostics.Record(
-                "queue-refresh", "canceled", operation, generation,
-                ElapsedMilliseconds(started));
             throw;
         }
         catch (Exception exception)
@@ -1441,9 +1401,6 @@ public sealed class SpotifyWidget : Widget
                 ? "Stopping Spotify playback on this PC…"
                 : "Starting Spotify playback on this PC…";
         }
-        _runtimeDiagnostics.Record(
-            "local-playback-widget", "started", operationGeneration,
-            Math.Max(0, Volatile.Read(ref _activeGeneration)));
         Invalidate();
         try
         {
@@ -1472,9 +1429,6 @@ public sealed class SpotifyWidget : Widget
                 }
                 _devicesCachedAt = _timeProvider.GetUtcNow();
             }
-            _runtimeDiagnostics.Record(
-                "local-playback-widget", "succeeded", operationGeneration,
-                Math.Max(0, Volatile.Read(ref _activeGeneration)));
             commandSucceeded = true;
             if (command.Operation == SpotifyLocalPlaybackOperation.StartAndTransfer)
                 await RefreshPlaybackAsync(
@@ -1521,9 +1475,6 @@ public sealed class SpotifyWidget : Widget
                     _localPlaybackFeedback = null;
                     _status = "Local Spotify playback canceled";
                 }
-            _runtimeDiagnostics.Record(
-                "local-playback-widget", "canceled", operationGeneration,
-                Math.Max(0, Volatile.Read(ref _activeGeneration)));
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -1667,11 +1618,7 @@ public sealed class SpotifyWidget : Widget
             if (command is null || _pendingOperation is not null)
             {
                 _status = "That Spotify control is not available";
-                RecordActionDiagnostic(action, "playback-decision",
-                    command is null ? "unavailable" : "pending");
-                RecordActionDiagnostic(action, "action-status", "control-unavailable");
                 Invalidate();
-                RecordActionDiagnostic(action, "action-invalidation", "control-unavailable");
                 return;
             }
             _optimisticReconciliation = null;
@@ -1682,16 +1629,11 @@ public sealed class SpotifyWidget : Widget
                 before!, command, _timeProvider.GetUtcNow().ToUnixTimeMilliseconds());
             _status = SpotifyPlaybackPolicy.OperationStatus(operation);
         }
-        RecordActionDiagnostic(action, "playback-decision", "admitted");
-        RecordActionDiagnostic(action, "action-status", "optimistic");
         Invalidate();
-        RecordActionDiagnostic(action, "action-invalidation", "optimistic");
         try
         {
-            RecordActionDiagnostic(action, "playback-provider", "started");
             await _spotify.ControlPlaybackAsync(command, cancellationToken)
                 .ConfigureAwait(false);
-            RecordActionDiagnostic(action, "playback-provider", "succeeded");
             lock (_gate)
             {
                 if (_pendingOperation != operation ||
@@ -1710,9 +1652,7 @@ public sealed class SpotifyWidget : Widget
                 }
                 _status = "Updated in Spotify";
             }
-            RecordActionDiagnostic(action, "action-status", "provider-succeeded");
             Invalidate();
-            RecordActionDiagnostic(action, "action-invalidation", "provider-succeeded");
 
             // The Web API acknowledges all transport controls without a
             // playback representation. Retain only accepted optimistic field
@@ -1736,7 +1676,6 @@ public sealed class SpotifyWidget : Widget
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            RecordActionDiagnostic(action, "playback-provider", "canceled");
             RestoreOptimistic(before, operationSequence, action);
         }
         catch (SpotifyApplicationException exception)
@@ -1770,9 +1709,7 @@ public sealed class SpotifyWidget : Widget
             _optimisticReconciliation = null;
             if (status is not null) _status = status;
         }
-        RecordActionDiagnostic(action, "action-status", "restored");
         Invalidate();
-        RecordActionDiagnostic(action, "action-invalidation", "restored");
     }
 
     private static string PlaybackFailureCode(Exception exception)

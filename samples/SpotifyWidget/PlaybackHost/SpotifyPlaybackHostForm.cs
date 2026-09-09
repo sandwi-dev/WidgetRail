@@ -20,7 +20,6 @@ internal sealed class SpotifyPlaybackHostForm : Form
     private readonly System.Windows.Forms.Timer _sdkLoadTimeout = new() { Interval = 30_000 };
     private readonly Action<SpotifyPlaybackEvent> _emit;
     private bool _initialized;
-    private bool _autoplayPermissionDiagnosticEmitted;
 
     internal SpotifyPlaybackHostForm(Action<SpotifyPlaybackEvent> emit)
     {
@@ -192,16 +191,6 @@ internal sealed class SpotifyPlaybackHostForm : Form
                     : CoreWebView2PermissionState.Deny;
                 args.SavesInProfile = false;
                 args.Handled = true;
-                if (autoplay && !_autoplayPermissionDiagnosticEmitted)
-                {
-                    _autoplayPermissionDiagnosticEmitted = true;
-                    var diagnostic = new SpotifyAutoplayPermissionDiagnostic(
-                        originClass,
-                        args.IsUserInitiated,
-                        allow ? "allow" : "deny");
-                    diagnostic.Validate();
-                    Emit("autoplay_permission", null, diagnostic);
-                }
             };
             core.BasicAuthenticationRequested += (_, args) => args.Cancel = true;
             core.ServerCertificateErrorDetected += (_, args) =>
@@ -338,12 +327,6 @@ internal sealed class SpotifyPlaybackHostForm : Form
                 case "disconnected":
                     Transition(SpotifyPlaybackSignal.Disconnected);
                     normalized = new { };
-                    break;
-                case "autoplay_policy":
-                    var autoplayPolicy = SpotifyPlaybackProtocolCodec
-                        .DecodePayload<SpotifyAutoplayPolicyDiagnostic>(payload);
-                    autoplayPolicy.Validate();
-                    normalized = autoplayPolicy;
                     break;
                 case "autoplay_failed":
                     Transition(SpotifyPlaybackSignal.AutoplayFailed);

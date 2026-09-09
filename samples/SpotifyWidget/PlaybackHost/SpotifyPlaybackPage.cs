@@ -22,7 +22,6 @@ internal static class SpotifyPlaybackPage
             let sdkReady = false;
             const pendingTokens = new Map();
             let tokenSequence = 0;
-            const autoplayDiagnosticStages = new Set();
 
             const text = (value, max = MAX_STRING) =>
               typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, max) : '';
@@ -49,68 +48,6 @@ internal static class SpotifyPlaybackPage
             const requirePlayer = (requestId, operation) => {
               if (!player) { failure(requestId, 'player_unavailable'); return; }
               invoke(requestId, operation);
-            };
-            const exactSdkFrame = frame => {
-              try { return new URL(frame.src).origin === 'https://sdk.scdn.co'; }
-              catch (_) { return false; }
-            };
-            const allowState = (frame, feature) => {
-              if (!frame) return 'unavailable';
-              const value = frame.getAttribute('allow');
-              if (value === null) return 'missing';
-              const present = value.slice(0, 1024).split(';').some(directive =>
-                directive.trim().toLowerCase().split(/\s+/, 1)[0] === feature);
-              return present ? 'present' : 'missing';
-            };
-            const policyState = (owner, origin) => {
-              try {
-                const policy = owner &&
-                  (owner.permissionsPolicy || owner.featurePolicy);
-                if (!policy || typeof policy.allowsFeature !== 'function')
-                  return { state: 'unavailable', autoplay: null, encryptedMedia: null };
-                return {
-                  state: 'supported',
-                  autoplay: origin === null
-                    ? policy.allowsFeature('autoplay')
-                    : policy.allowsFeature('autoplay', origin),
-                  encryptedMedia: origin === null
-                    ? policy.allowsFeature('encrypted-media')
-                    : policy.allowsFeature('encrypted-media', origin)
-                };
-              } catch (_) {
-                return { state: 'exception', autoplay: null, encryptedMedia: null };
-              }
-            };
-            const observedFrames = () => {
-              const nodes = document.querySelectorAll('iframe');
-              const frames = [];
-              for (let index = 0; index < Math.min(nodes.length, 8); index++)
-                frames.push(nodes[index]);
-              return { frames, capped: nodes.length > frames.length };
-            };
-            const postAutoplayDiagnostic = stage => {
-              if (autoplayDiagnosticStages.has(stage)) return;
-              autoplayDiagnosticStages.add(stage);
-              const observation = observedFrames();
-              const frames = observation.frames;
-              const sdkFrames = frames.filter(exactSdkFrame);
-              const sdkFrame = sdkFrames[0] || null;
-              const parentPolicy = policyState(document, 'https://sdk.scdn.co');
-              const framePolicy = policyState(sdkFrame, null);
-              post('autoplay_policy', null, {
-                stage,
-                frameCount: frames.length,
-                frameCountCapped: observation.capped,
-                exactSdkFrameCount: sdkFrames.length,
-                allowAutoplay: allowState(sdkFrame, 'autoplay'),
-                allowEncryptedMedia: allowState(sdkFrame, 'encrypted-media'),
-                parentPolicyState: parentPolicy.state,
-                parentAllowsAutoplay: parentPolicy.autoplay,
-                parentAllowsEncryptedMedia: parentPolicy.encryptedMedia,
-                framePolicyState: framePolicy.state,
-                frameAllowsAutoplay: framePolicy.autoplay,
-                frameAllowsEncryptedMedia: framePolicy.encryptedMedia
-              });
             };
             const track = value => {
               if (!value || typeof value !== 'object') return null;
@@ -162,16 +99,11 @@ internal static class SpotifyPlaybackPage
               };
             };
             const addListeners = () => {
-              player.addListener('ready', value => {
-                postAutoplayDiagnostic('ready');
-                post('ready', null, { deviceId: text(value && value.device_id, 128) });
-              });
+              player.addListener('ready', value =>
+                post('ready', null, { deviceId: text(value && value.device_id, 128) }));
               player.addListener('not_ready', value => post('not_ready', null, { deviceId: text(value && value.device_id, 128) }));
               player.addListener('player_state_changed', value => post('player_state_changed', null, state(value)));
-              player.addListener('autoplay_failed', () => {
-                postAutoplayDiagnostic('autoplay-failed');
-                post('autoplay_failed', null);
-              });
+              player.addListener('autoplay_failed', () => post('autoplay_failed', null));
               for (const type of ['initialization_error', 'authentication_error', 'account_error', 'playback_error']) {
                 player.addListener(type, value => post('sdk_error', null, {
                   code: type,
@@ -198,16 +130,6 @@ internal static class SpotifyPlaybackPage
               sdkReady = true;
               post('sdk_loaded', null);
             };
-
-            const frameObserver = new MutationObserver(() => {
-              const frames = observedFrames().frames;
-              if (frames.some(exactSdkFrame)) {
-                postAutoplayDiagnostic('frame-created');
-                frameObserver.disconnect();
-              }
-            });
-            frameObserver.observe(document.documentElement,
-              { childList: true, subtree: true });
 
             // Define the global callback before requesting Spotify's script. The SDK
             // invokes it from the document load path and fails closed when it is absent.

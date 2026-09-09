@@ -99,7 +99,6 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     {
         ThrowIfDisposed();
         var started = Stopwatch.GetTimestamp();
-        _runtimeDiagnostics.Record("local-playback-start", "admitted");
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -126,7 +125,6 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             {
                 initialToken = await _tokenProvider(identity, RequiredScopes, cancellationToken)
                     .ConfigureAwait(false);
-                Record("local-playback-token", "acquired", started);
             }
             catch (SpotifyProviderException exception)
                 when (exception.Code is "insufficient_scope" or "not_connected" or
@@ -153,12 +151,10 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             try
             {
                 await client.StartAsync(cancellationToken).ConfigureAwait(false);
-                Record("local-playback-host", "started", started);
                 var connect = client.ConnectAsync(new(
                     DeviceName,
                     _volumePercent / 100d,
                     new(true, initialToken.GrantedScopes)), cancellationToken);
-                Record("local-playback-connect", "dispatched", started);
                 using var readyLifetime = CancellationTokenSource.CreateLinkedTokenSource(
                     cancellationToken, _lifetime.Token);
                 readyLifetime.CancelAfter(ReadyTimeout);
@@ -169,20 +165,14 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 {
                     await connect.ConfigureAwait(false);
                     commandAcknowledged = true;
-                    Record("local-playback-connect", "command-acknowledged", started);
                 }
                 var deviceId = await readyTask.ConfigureAwait(false);
-                Record("local-playback-connect", "ready-observed", started);
                 if (!commandAcknowledged)
                 {
                     await connect.ConfigureAwait(false);
-                    Record("local-playback-connect", "command-acknowledged", started);
                 }
-                Record("local-playback-sdk", "ready", started);
-                Record("local-playback-activation", "dispatched", started);
                 await client.SendAsync("activate_element", new { }, readyLifetime.Token)
                     .ConfigureAwait(false);
-                Record("local-playback-activation", "completed", started);
                 SetState(identity, SpotifyLocalPlaybackState.Ready,
                     "Ready to play through this PC.", deviceId);
                 return new(deviceId, GetSummary(identity));
@@ -301,22 +291,10 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 SpotifyLocalPlaybackState.AutoplayBlocked ? _client : null;
         if (client?.IsRunning != true) return false;
 
-        // resume()/pause() resolve when the Web Playback SDK accepts the call,
-        // not when its player state changes. Keep Spotify's Web API as the
-        // authoritative play/pause command boundary for the active device.
-        if (command.Operation is SpotifyProviderPlaybackOperation.Play or
-                SpotifyProviderPlaybackOperation.Pause)
-        {
-            _runtimeDiagnostics.Record(
-                "local-playback-control",
-                command.Operation == SpotifyProviderPlaybackOperation.Play
-                    ? "web-api-play"
-                    : "web-api-pause");
-            return false;
-        }
-
         string? operation = command.Operation switch
         {
+            SpotifyProviderPlaybackOperation.Play => "resume",
+            SpotifyProviderPlaybackOperation.Pause => "pause",
             SpotifyProviderPlaybackOperation.Next => "next_track",
             SpotifyProviderPlaybackOperation.Previous => "previous_track",
             SpotifyProviderPlaybackOperation.Seek => "seek",
@@ -362,16 +340,10 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
         switch (value.Type)
         {
             case "token_requested":
-                RecordIfStarted("local-playback-token", "requested", started);
                 _ = AnswerTokenRequestAsync(
                     sender as ISpotifyPlaybackHostClient, value, started);
                 break;
-            case "connect_succeeded":
-                RecordIfStarted(
-                    "local-playback-connect", "promise-succeeded", started);
-                break;
             case "ready":
-                RecordIfStarted("local-playback-sdk", "ready-event", started);
                 var ready = SpotifyPlaybackProtocolCodec.DecodePayload<PageDevice>(value.Payload);
                 lock (_stateGate)
                 {
@@ -384,7 +356,6 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 }
                 break;
             case "not_ready":
-                RecordIfStarted("local-playback-sdk", "not-ready-event", started);
                 lock (_stateGate)
                 {
                     if (!ReferenceEquals(sender, _client) ||
@@ -398,10 +369,6 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 var playback = SpotifyPlaybackProtocolCodec
                     .DecodePayload<WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState>(
                         value.Payload);
-                RecordIfStarted("local-playback-state",
-                    playback.IsAvailable
-                        ? playback.Paused ? "available-paused" : "available-playing"
-                        : "unavailable", started);
                 if (playback.IsAvailable)
                     lock (_stateGate)
                     {
@@ -419,22 +386,9 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                         }
                     }
                 break;
-            case "autoplay_policy":
-                var policy = SpotifyPlaybackProtocolCodec
-                    .DecodePayload<SpotifyAutoplayPolicyDiagnostic>(value.Payload);
-                RecordAutoplayPolicy(policy, started);
-                break;
-            case "autoplay_permission":
-                var permission = SpotifyPlaybackProtocolCodec
-                    .DecodePayload<SpotifyAutoplayPermissionDiagnostic>(value.Payload);
-                permission.Validate();
-                RecordIfStarted("autoplay-permission",
-                    permission.OriginClass + '-' +
-                    (permission.IsUserInitiated ? "user" : "not-user") + '-' +
-                    permission.Decision, started);
-                break;
             case "autoplay_failed":
-                RecordIfStarted("local-playback-sdk", "autoplay-failed", started);
+                if (started != 0)
+                    Record("local-playback-sdk", "autoplay-failed", started);
                 lock (_stateGate)
                 {
                     if (!ReferenceEquals(sender, _client) ||
@@ -446,7 +400,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 break;
             case "sdk_error":
                 var error = SpotifyPlaybackProtocolCodec.DecodePayload<PageError>(value.Payload);
-                RecordIfStarted("local-playback-sdk", error.Code, started);
+                if (started != 0) Record("local-playback-sdk", error.Code, started);
                 var state = error.Code switch
                 {
                     "account_error" => SpotifyLocalPlaybackState.PremiumRequired,
@@ -492,13 +446,11 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             lock (_stateGate)
                 if (!ReferenceEquals(source, _client) || owner != _owner ||
                     started == 0 || started != _startTimestamp) return;
-            Record("local-playback-token", "refresh-acquired", started);
             await source.ProvideTokenAsync(request.TokenRequestId, token, timeout.Token)
                 .ConfigureAwait(false);
             lock (_stateGate)
                 if (!ReferenceEquals(source, _client) || owner != _owner ||
                     started != _startTimestamp) return;
-            Record("local-playback-token", "callback-acknowledged", started);
         }
         catch (Exception exception) when (exception is SpotifyProviderException or
             SpotifyPlaybackHostClientException or SpotifyPlaybackProtocolException or
@@ -600,54 +552,6 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
         _runtimeDiagnostics.Record(
             boundary, code, elapsedMilliseconds: Math.Max(
                 0, (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds));
-
-    private void RecordIfStarted(string boundary, string code, long started)
-    {
-        if (started != 0) Record(boundary, code, started);
-    }
-
-    private void RecordAutoplayPolicy(
-        SpotifyAutoplayPolicyDiagnostic value, long started)
-    {
-        value.Validate();
-        if (started == 0) return;
-        var elapsed = Math.Max(
-            0, (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-        _runtimeDiagnostics.Record(
-            "autoplay-policy", value.Stage,
-            value.FrameCount, value.ExactSdkFrameCount, elapsed);
-        if (value.FrameCountCapped)
-            _runtimeDiagnostics.Record(
-                "autoplay-policy", "frame-count-capped",
-                value.FrameCount, value.ExactSdkFrameCount, elapsed);
-        _runtimeDiagnostics.Record(
-            "autoplay-allow", "autoplay-" + value.AllowAutoplay,
-            elapsedMilliseconds: elapsed);
-        _runtimeDiagnostics.Record(
-            "autoplay-allow", "encrypted-media-" + value.AllowEncryptedMedia,
-            elapsedMilliseconds: elapsed);
-        _runtimeDiagnostics.Record(
-            "autoplay-parent-policy",
-            PolicyCode("autoplay", value.ParentPolicyState,
-                value.ParentAllowsAutoplay), elapsedMilliseconds: elapsed);
-        _runtimeDiagnostics.Record(
-            "autoplay-parent-policy",
-            PolicyCode("encrypted-media", value.ParentPolicyState,
-                value.ParentAllowsEncryptedMedia), elapsedMilliseconds: elapsed);
-        _runtimeDiagnostics.Record(
-            "autoplay-frame-policy",
-            PolicyCode("autoplay", value.FramePolicyState,
-                value.FrameAllowsAutoplay), elapsedMilliseconds: elapsed);
-        _runtimeDiagnostics.Record(
-            "autoplay-frame-policy",
-            PolicyCode("encrypted-media", value.FramePolicyState,
-                value.FrameAllowsEncryptedMedia), elapsedMilliseconds: elapsed);
-    }
-
-    private static string PolicyCode(string feature, string state, bool? allowed) =>
-        state == "supported"
-            ? feature + "-" + (allowed == true ? "allowed" : "denied")
-            : feature + "-" + state;
 
     private sealed record PageDevice(string DeviceId);
     private sealed record PageError(string Code, string Message);

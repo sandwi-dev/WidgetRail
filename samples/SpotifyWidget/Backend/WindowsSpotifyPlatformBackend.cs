@@ -547,23 +547,14 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var timestamp = Stopwatch.GetTimestamp();
-        _runtimeDiagnostics.Record("local-playback-transfer", "admitted");
         try
         {
             var started = await _localPlayback.StartAsync(identity, cancellationToken)
                 .ConfigureAwait(false);
-            _runtimeDiagnostics.Record(
-                "local-playback-transfer", "device-ready",
-                elapsedMilliseconds: Math.Max(
-                    0, (long)Stopwatch.GetElapsedTime(timestamp).TotalMilliseconds));
             await _playbackApi.TransferPlaybackAsync(
                 identity, started.SpotifyDeviceId, continuePlaying, cancellationToken)
                 .ConfigureAwait(false);
             _localPlayback.MarkActive(identity);
-            _runtimeDiagnostics.Record(
-                "local-playback-transfer", "succeeded",
-                elapsedMilliseconds: Math.Max(
-                    0, (long)Stopwatch.GetElapsedTime(timestamp).TotalMilliseconds));
         }
         catch (SpotifyProviderException exception)
         {
