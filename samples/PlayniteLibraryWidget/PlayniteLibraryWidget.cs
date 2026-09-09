@@ -1417,9 +1417,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
         EnsureQueryAuthorityCurrent(route, queryAuthorityGeneration, cancellationToken);
         _ = TryPublishQueryAuthority(route, queryAuthorityGeneration, authorityRevision,
             result.Authority, result.RetainedLastGood, cancellationToken);
+        var favoriteSavedIds = organization.FavoriteSavedIds
+            .ToHashSet(StringComparer.Ordinal);
         var items = rawItems.Select(item => item.WithProjectedValue(
                 PlayniteLibraryTitlePolicy.Project(organization, item.Value)))
             .Where(item => MatchesFixedQuery(item.Value, query))
+            .Where(item => !collectionState.FavoriteFilter ||
+                favoriteSavedIds.Contains(item.Value.SavedId))
             .ToArray();
         _model.Update(state =>
         {
@@ -1441,9 +1445,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
                         $"{items.Length}{(page.After is null ? string.Empty : "+")} games in the current catalog window",
             };
         });
+        var emptyFavorites = collectionState.FavoriteFilter && favoriteSavedIds.Count == 0;
         return new(items,
-            page.Before is null ? null : new WidgetCollectionCursor(page.Before),
-            page.After is null ? null : new WidgetCollectionCursor(page.After));
+            emptyFavorites || page.Before is null
+                ? null
+                : new WidgetCollectionCursor(page.Before),
+            emptyFavorites || page.After is null
+                ? null
+                : new WidgetCollectionCursor(page.After));
     }
 
     private async ValueTask<IReadOnlyList<PlayniteLibraryItem>> LoadHiddenRowsAsync(
@@ -1665,11 +1674,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             favorite = !authority.FavoriteGameIds.Contains(
                 display.SavedId, StringComparer.Ordinal);
         }
-        var route = _navigation.Value.Route;
-        var admitted = _model.Update(state =>
-            (state with { OrganizationBusy = true },
-                CollectionForRoute(route, state).FavoriteFilter));
-        var filteringFavorites = admitted.Result;
+        _model.Update(state => state with { OrganizationBusy = true });
         var applied = false;
         string? status = null;
         try
@@ -1704,7 +1709,21 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 Status = status ?? state.Status,
             });
         }
-        if (applied && filteringFavorites) ReloadQuery();
+        if (applied) await RefreshLoadedFavoriteQueriesAsync().ConfigureAwait(false);
+    }
+
+    private async Task RefreshLoadedFavoriteQueriesAsync()
+    {
+        var state = _model.Value;
+        var refreshes = new List<WidgetOperationHandle>(2);
+        if (state.Collection.FavoriteFilter &&
+            _homeLibrary.Snapshot.Status != WidgetPagedResourceStatus.NotLoaded)
+            refreshes.Add(_homeLibrary.Refresh());
+        if (state.BrowseCollection.FavoriteFilter &&
+            _browseLibrary.Snapshot.Status != WidgetPagedResourceStatus.NotLoaded)
+            refreshes.Add(_browseLibrary.Refresh());
+        foreach (var refresh in refreshes)
+            await refresh.Completion.ConfigureAwait(false);
     }
 
     private async Task<bool> SetHiddenAsync(

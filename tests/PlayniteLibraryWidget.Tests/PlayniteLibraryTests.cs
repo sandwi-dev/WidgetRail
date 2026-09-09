@@ -831,6 +831,88 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task FavoriteMutationRefreshesOnlyLoadedFavoriteQueryOwners()
+    {
+        var displays = Enumerable.Range(0, 3)
+            .Select(index => new PlayniteLibraryDisplayItem(
+                $"saved-{index:D5}", $"Game {index:D5}", "Steam"))
+            .ToArray();
+        var persisted = new PlayniteLibraryPrivateState(
+            PlayniteLibraryPrivateState.CurrentVersion, displays)
+        {
+            FavoriteSavedIds = [displays[0].SavedId],
+        };
+        var host = new FakeHost(3, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1));
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var homeItems = widget.HomeCollection.Items.Select(item => item.Value.SavedId).ToArray();
+        var homeRevision = widget.HomeCollection.Revision;
+
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.FavoritesFilter, "playnite-library.library.menu"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "loaded Browse Favorites");
+        CollectionAssert.AreEqual(new[] { displays[0].SavedId },
+            widget.BrowseCollection.Items.Select(item => item.Value.SavedId).ToArray());
+        var favoriteBrowse = Snapshot(widget, 40_009);
+        var backInvalidation = NextInvalidation(widget);
+        Assert.IsTrue(await Route(widget, favoriteBrowse, ControllerButton.B,
+            favoriteBrowse.InitialFocusId!));
+        await Bounded(backInvalidation, "Favorites Browse Home return");
+        await Bounded(widget.WhenLibraryIdleAsync(), "Favorites Browse Home idle");
+
+        var home = Snapshot(widget, 40_010);
+        var first = Nodes(home.Root).Single(node =>
+            node.ActionId == PlayniteLibraryActions.Launch &&
+            (node.AccessibilityLabel ?? string.Empty).StartsWith(
+                displays[0].DisplayName, StringComparison.Ordinal));
+        var queriesBeforeRemove = host.Queries.Count;
+        await widget.OnActionAsync(new(PlayniteLibraryActions.Favorite, first.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "remove retained Browse favorite");
+        Assert.AreEqual(queriesBeforeRemove + 1, host.Queries.Count,
+            "The mutation must refresh only the loaded Favorites-filtered Browse owner.");
+        Assert.AreEqual(WidgetPagedResourceStatus.Ready, widget.BrowseCollection.Status);
+        Assert.IsEmpty(widget.BrowseCollection.Items,
+            "The retained Browse Favorites window kept an unfavorited item.");
+        CollectionAssert.AreEqual(homeItems,
+            widget.HomeCollection.Items.Select(item => item.Value.SavedId).ToArray());
+        Assert.AreEqual(homeRevision, widget.HomeCollection.Revision,
+            "Refreshing inactive Browse Favorites replaced unfiltered Home.");
+
+        var second = Nodes(Snapshot(widget, 40_011).Root).Single(node =>
+            node.ActionId == PlayniteLibraryActions.Launch &&
+            (node.AccessibilityLabel ?? string.Empty).StartsWith(
+                displays[1].DisplayName, StringComparison.Ordinal));
+        var queriesBeforeAdd = host.Queries.Count;
+        await widget.OnActionAsync(new(PlayniteLibraryActions.Favorite, second.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "add retained Browse favorite");
+        Assert.AreEqual(queriesBeforeAdd + 1, host.Queries.Count);
+        CollectionAssert.AreEqual(new[] { displays[1].SavedId },
+            widget.BrowseCollection.Items.Select(item => item.Value.SavedId).ToArray(),
+            "The retained Browse Favorites window missed a newly favorited item.");
+        Assert.AreEqual(homeRevision, widget.HomeCollection.Revision);
+
+        var queriesBeforeReopen = host.Queries.Count;
+        await widget.OnActionAsync(new(
+            PlayniteLibraryActions.BrowseOpen, "playnite-library.library.menu"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "reopen reconciled Browse Favorites");
+        Assert.AreEqual(queriesBeforeReopen, host.Queries.Count,
+            "Reopening the reconciled Favorites owner issued another provider request.");
+        Assert.IsTrue(widget.RenderState.Value.BrowseCollection.FavoriteFilter);
+        var reopened = Snapshot(widget, 40_012);
+        Assert.IsFalse(Nodes(reopened.Root).Any(node =>
+            node.ActionId == PlayniteLibraryActions.Launch &&
+            (node.AccessibilityLabel ?? string.Empty).StartsWith(
+                displays[0].DisplayName, StringComparison.Ordinal)));
+        Assert.IsTrue(Nodes(reopened.Root).Any(node =>
+            node.ActionId == PlayniteLibraryActions.Launch &&
+            (node.AccessibilityLabel ?? string.Empty).StartsWith(
+                displays[1].DisplayName, StringComparison.Ordinal)));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task RetainedRenderedArtworkPinsBeforeSameGameLiveBrowseRevision()
     {
         const string retainedHandle = "artwork.retained.revision";

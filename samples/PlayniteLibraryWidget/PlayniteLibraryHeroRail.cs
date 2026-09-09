@@ -49,6 +49,8 @@ internal static class PlayniteLibraryHeroRailPolicy
         var excluded = state.Organization.ExcludedSavedIds.ToHashSet(StringComparer.Ordinal);
         var rows = snapshot.Items
             .Where(item => !excluded.Contains(item.Value.SavedId))
+            .Where(item => !state.FavoriteFilter ||
+                favorites.Contains(item.Value.SavedId))
             .Select(item => new PlayniteLibraryHeroRailItem(
                 item,
                 new(item.Value.SavedId, item.Presentation.DisplayName,
