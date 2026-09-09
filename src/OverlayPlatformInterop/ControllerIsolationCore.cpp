@@ -55,7 +55,7 @@ template <typename T>
 } // namespace
 
 bool SelectedDeviceIdentity::valid() const noexcept {
-    return HasIdentityBytes(applicationLocalId) &&
+    return enrollmentToken != 0 && HasIdentityBytes(applicationLocalId) &&
         HasIdentityBytes(applicationLocalRootId) && !containerId.empty() &&
         !pnpPath.empty() && vendorId != 0 && productId != 0 &&
         !knownVirtualOutput;
@@ -64,15 +64,28 @@ bool SelectedDeviceIdentity::valid() const noexcept {
 ControllerIsolationCore::ControllerIsolationCore(
     VirtualOutputEffects& output,
     RoutingBudgets budgets) noexcept
-    : output_(output), budgets_(budgets) {}
+    : output_(output), budgets_(budgets),
+      budgetsValid_(budgets.maximumQueuedReadings != 0 &&
+          budgets.maximumQueuedReadings <= MaximumReadingCapacity &&
+          budgets.maximumQueuedReadingAgeMilliseconds != 0 &&
+          budgets.hostLeaseMilliseconds != 0 &&
+          budgets.minimumNeutralDwellMilliseconds != 0 &&
+          budgets.minimumNeutralDwellMilliseconds <=
+              budgets.maximumNeutralDwellMilliseconds &&
+          budgets.workerHeartbeatTimeoutMilliseconds != 0) {}
 
 CommandResult ControllerIsolationCore::BeginSession(
     const RoutingAuthority& authority,
     const SelectedDeviceIdentity& device,
     const DeviceReading& current,
     const std::uint64_t nowMilliseconds) noexcept {
+    if (!budgetsValid_) {
+        fault_ = RoutingFault::InvalidBudgets;
+        return CommandResult::RejectedState;
+    }
     if (mode_ != RoutingMode::Disabled || !authority.valid() || !device.valid() ||
-        current.authority != authority || current.device != device ||
+        current.authority != authority ||
+        current.deviceEnrollmentToken != device.enrollmentToken ||
         current.ordinal == 0 || !current.connected) {
         fault_ = RoutingFault::InvalidInitialAuthority;
         return CommandResult::RejectedAuthority;
@@ -83,7 +96,9 @@ CommandResult ControllerIsolationCore::BeginSession(
     }
     authority_ = authority;
     device_ = device;
+    targetRetired_ = false;
     current_ = current;
+    lastAdmittedReading_ = current;
     lastQueuedOrdinal_ = current.ordinal;
     lastObservedOrdinal_ = current.ordinal;
     resumeAfterOrdinal_ = current.ordinal;
@@ -103,22 +118,31 @@ ReadingAdmission ControllerIsolationCore::EnqueueReading(
         reading.authority != authority_) {
         return ReadingAdmission::RejectedAuthority;
     }
-    if (reading.device != device_) return ReadingAdmission::RejectedDevice;
+    if (reading.deviceEnrollmentToken != device_.enrollmentToken)
+        return ReadingAdmission::RejectedDevice;
     if (!reading.connected) {
         EnterFault(RoutingFault::DeviceDisconnected);
         return ReadingAdmission::Faulted;
     }
-    if (reading.ordinal == lastQueuedOrdinal_) return ReadingAdmission::Duplicate;
+    if (reading.ordinal == lastQueuedOrdinal_) {
+        if (lastAdmittedReading_ &&
+            EquivalentReport(reading, *lastAdmittedReading_)) {
+            return ReadingAdmission::Duplicate;
+        }
+        EnterFault(RoutingFault::ReadingOrderViolation);
+        return ReadingAdmission::RejectedOrder;
+    }
     if (reading.ordinal < lastQueuedOrdinal_) {
         EnterFault(RoutingFault::ReadingOrderViolation);
         return ReadingAdmission::RejectedOrder;
     }
-    if (readings_.size() >= budgets_.maximumQueuedReadings) {
+    if (readingCount_ >= budgets_.maximumQueuedReadings) {
         EnterFault(RoutingFault::ReadingQueueOverflow);
         return ReadingAdmission::Faulted;
     }
-    readings_.push_back(reading);
+    PushReading(reading);
     lastQueuedOrdinal_ = reading.ordinal;
+    lastAdmittedReading_ = reading;
     return ReadingAdmission::Accepted;
 }
 
@@ -126,22 +150,24 @@ CommandResult ControllerIsolationCore::Drain(
     const std::uint64_t nowMilliseconds) noexcept {
     if (mode_ == RoutingMode::Disabled) return CommandResult::RejectedState;
     if (mode_ == RoutingMode::Fault) return CommandResult::Faulted;
-    while (!readings_.empty()) {
-        DeviceReading reading = std::move(readings_.front());
-        readings_.pop_front();
+    while (readingCount_ != 0) {
+        DeviceReading reading = PopReading();
         if (reading.observedAtMilliseconds > nowMilliseconds ||
             nowMilliseconds - reading.observedAtMilliseconds >
                 budgets_.maximumQueuedReadingAgeMilliseconds) {
-            readings_.clear();
+            ClearReadings();
             EnterFault(RoutingFault::StaleQueuedReading);
             return CommandResult::Faulted;
+        }
+        if (mode_ == RoutingMode::Playing &&
+            reading.ordinal <= resumeAfterOrdinal_) {
+            continue;
         }
         current_ = reading;
         lastObservedOrdinal_ = reading.ordinal;
         if (mode_ == RoutingMode::Playing) {
-            if (reading.ordinal <= resumeAfterOrdinal_) continue;
             if (!output_.Submit(reading.state)) {
-                readings_.clear();
+                ClearReadings();
                 EnterFault(RoutingFault::OutputSubmissionFailed);
                 return CommandResult::Faulted;
             }
@@ -181,10 +207,15 @@ CommandResult ControllerIsolationCore::CloseOverlay(
     mode_ = RoutingMode::AwaitingNeutral;
     lastLeaseRenewedAtMilliseconds_ = nowMilliseconds;
     current_ = current;
+    lastAdmittedReading_ = current;
     lastObservedOrdinal_ = std::max(lastObservedOrdinal_, current.ordinal);
     lastQueuedOrdinal_ = std::max(lastQueuedOrdinal_, current.ordinal);
+    const auto doubledP99 = measuredP99ReadingIntervalMilliseconds >
+            budgets_.maximumNeutralDwellMilliseconds / 2
+        ? budgets_.maximumNeutralDwellMilliseconds
+        : measuredP99ReadingIntervalMilliseconds * 2;
     neutralDwellMilliseconds_ = std::clamp(
-        measuredP99ReadingIntervalMilliseconds * 2,
+        doubledP99,
         budgets_.minimumNeutralDwellMilliseconds,
         budgets_.maximumNeutralDwellMilliseconds);
     neutralSinceMilliseconds_ = NeutralEntryState(current.state)
@@ -206,6 +237,7 @@ CommandResult ControllerIsolationCore::ObserveCurrent(
         return CommandResult::Faulted;
     }
     current_ = current;
+    lastAdmittedReading_ = current;
     lastObservedOrdinal_ = current.ordinal;
     lastQueuedOrdinal_ = std::max(lastQueuedOrdinal_, current.ordinal);
     return ApplyAwaitingNeutral(current, nowMilliseconds);
@@ -246,10 +278,13 @@ CommandResult ControllerIsolationCore::StopSession(
     const RoutingAuthority& authority) noexcept {
     if (authority != authority_) return CommandResult::RejectedAuthority;
     if (mode_ == RoutingMode::Disabled) return CommandResult::RejectedState;
-    (void)SubmitNeutral();
-    output_.RemoveOwnedTarget();
-    readings_.clear();
+    if (!targetRetired_) {
+        (void)SubmitNeutral();
+        RetireOwnedTarget();
+    }
+    ClearReadings();
     current_.reset();
+    lastAdmittedReading_.reset();
     neutralSinceMilliseconds_.reset();
     authority_ = {};
     device_ = {};
@@ -262,22 +297,54 @@ CommandResult ControllerIsolationCore::StopSession(
 
 bool ControllerIsolationCore::Matches(
     const RoutingAuthority& authority,
-    const SelectedDeviceIdentity& device) const noexcept {
-    return authority == authority_ && device == device_;
+    const std::uint64_t deviceEnrollmentToken) const noexcept {
+    return authority == authority_ &&
+        deviceEnrollmentToken == device_.enrollmentToken;
 }
 
 bool ControllerIsolationCore::ExactCurrent(
     const DeviceReading& current) const noexcept {
     if (!current.connected || current.ordinal == 0 ||
-        !Matches(current.authority, current.device) ||
+        !Matches(current.authority, current.deviceEnrollmentToken) ||
         current.ordinal < lastObservedOrdinal_ ||
         current.ordinal < lastQueuedOrdinal_) {
         return false;
     }
+    if (lastAdmittedReading_ &&
+        current.ordinal == lastAdmittedReading_->ordinal) {
+        return EquivalentReport(current, *lastAdmittedReading_);
+    }
     return !current_ || current.ordinal != current_->ordinal ||
-        (current.inputTimestampMicroseconds ==
-             current_->inputTimestampMicroseconds &&
-         current.state == current_->state);
+        EquivalentReport(current, *current_);
+}
+
+bool ControllerIsolationCore::EquivalentReport(
+    const DeviceReading& left,
+    const DeviceReading& right) const noexcept {
+    return left.authority == right.authority &&
+        left.deviceEnrollmentToken == right.deviceEnrollmentToken &&
+        left.ordinal == right.ordinal &&
+        left.inputTimestampMicroseconds == right.inputTimestampMicroseconds &&
+        left.state == right.state && left.connected == right.connected;
+}
+
+void ControllerIsolationCore::ClearReadings() noexcept {
+    readingHead_ = 0;
+    readingCount_ = 0;
+}
+
+void ControllerIsolationCore::PushReading(
+    const DeviceReading& reading) noexcept {
+    const auto tail = (readingHead_ + readingCount_) % MaximumReadingCapacity;
+    readings_[tail] = reading;
+    ++readingCount_;
+}
+
+DeviceReading ControllerIsolationCore::PopReading() noexcept {
+    DeviceReading reading = readings_[readingHead_];
+    readingHead_ = (readingHead_ + 1) % MaximumReadingCapacity;
+    --readingCount_;
+    return reading;
 }
 
 CommandResult ControllerIsolationCore::ApplyAwaitingNeutral(
@@ -303,17 +370,24 @@ CommandResult ControllerIsolationCore::ApplyAwaitingNeutral(
 }
 
 bool ControllerIsolationCore::SubmitNeutral() noexcept {
+    if (targetRetired_) return false;
     return output_.Submit(kNeutralState);
+}
+
+void ControllerIsolationCore::RetireOwnedTarget() noexcept {
+    if (targetRetired_) return;
+    output_.RemoveOwnedTarget();
+    targetRetired_ = true;
 }
 
 void ControllerIsolationCore::EnterFault(const RoutingFault fault) noexcept {
     if (mode_ == RoutingMode::Fault) return;
     fault_ = fault;
-    readings_.clear();
+    ClearReadings();
     if (fault != RoutingFault::OutputSubmissionFailed) {
-        if (!SubmitNeutral()) output_.RemoveOwnedTarget();
+        if (!SubmitNeutral()) RetireOwnedTarget();
     } else {
-        output_.RemoveOwnedTarget();
+        RetireOwnedTarget();
     }
     mode_ = RoutingMode::Fault;
 }
@@ -352,7 +426,7 @@ GuardianAction DecideGuardianAction(
         : GuardianAction::RecheckExactWorker;
 }
 
-std::optional<HidHideApplyPlan> PlanHidHideApply(
+HidHideApplyResult PlanHidHideApply(
     const HidHideSnapshot& before,
     const std::wstring& workerApplicationPath,
     const std::set<std::wstring>& selectedDeviceInstanceIds) {
@@ -360,7 +434,14 @@ std::optional<HidHideApplyPlan> PlanHidHideApply(
         std::ranges::any_of(selectedDeviceInstanceIds, [](const auto& value) {
             return value.empty();
         })) {
-        return std::nullopt;
+        return {HidHideApplyStatus::InvalidInput, std::nullopt};
+    }
+    if (!before.active && std::ranges::any_of(
+            before.deviceInstanceIds,
+            [&selectedDeviceInstanceIds](const auto& device) {
+                return !selectedDeviceInstanceIds.contains(device);
+            })) {
+        return {HidHideApplyStatus::ActivationConflict, std::nullopt};
     }
     HidHideApplyPlan plan;
     plan.journal.before = before;
@@ -377,7 +458,7 @@ std::optional<HidHideApplyPlan> PlanHidHideApply(
     }
     plan.journal.activatedBySession = !before.active;
     plan.desired.active = true;
-    return plan;
+    return {HidHideApplyStatus::Ready, std::move(plan)};
 }
 
 HidHideRestorePlan PlanHidHideRestore(

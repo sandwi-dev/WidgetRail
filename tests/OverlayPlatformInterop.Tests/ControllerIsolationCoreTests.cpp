@@ -2,11 +2,15 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
+#include <type_traits>
 #include <utility>
 
 namespace {
 
 using namespace widgetrail::isolation;
+
+static_assert(std::is_trivially_copyable_v<DeviceReading>);
 
 int checks{};
 
@@ -38,6 +42,7 @@ RoutingAuthority Authority(const std::uint64_t generation = 1) {
 
 SelectedDeviceIdentity Device(const std::uint8_t seed = 1) {
     SelectedDeviceIdentity result;
+    result.enrollmentToken = seed;
     result.applicationLocalId[0] = seed;
     result.applicationLocalRootId[0] = static_cast<std::uint8_t>(seed + 1);
     result.containerId = L"container-" + std::to_wstring(seed);
@@ -53,7 +58,15 @@ DeviceReading Reading(
     const std::uint64_t ordinal,
     const std::uint64_t observedAt,
     const GamepadState state = {}) {
-    return {authority, device, ordinal, ordinal * 1'000, observedAt, state, true};
+    return {
+        authority,
+        device.enrollmentToken,
+        ordinal,
+        ordinal * 1'000,
+        observedAt,
+        state,
+        true,
+    };
 }
 
 ControllerIsolationCore Started(
@@ -93,11 +106,76 @@ void ExactAuthorityAndOrderedGameplay() {
               ReadingAdmission::Duplicate &&
               core.mode() == RoutingMode::Playing,
           "an unchanged current reading is healthy rather than stale");
-    Check(core.EnqueueReading(Reading(Authority(2), device, 4, 14)) ==
+    auto alteredDuplicate = Reading(authority, device, 3, 14);
+    alteredDuplicate.state.buttons = 0x2000;
+    Check(core.EnqueueReading(alteredDuplicate) ==
+              ReadingAdmission::RejectedOrder &&
+              core.mode() == RoutingMode::Fault &&
+              output.submitted.back() == GamepadState{},
+          "a duplicate ordinal carrying altered report authority fails closed");
+
+    FakeOutput rejectionOutput;
+    auto rejection = Started(rejectionOutput, authority, device);
+    Check(rejection.EnqueueReading(Reading(Authority(2), device, 4, 14)) ==
               ReadingAdmission::RejectedAuthority &&
-              core.EnqueueReading(Reading(authority, Device(2), 4, 14)) ==
+              rejection.EnqueueReading(
+                  Reading(authority, Device(2), 4, 14)) ==
                   ReadingAdmission::RejectedDevice,
           "wrong session and selected-device identities fail closed");
+}
+
+void InvalidBudgetsFailBeforeTargetOwnership() {
+    const auto authority = Authority();
+    const auto device = Device();
+    RoutingBudgets zeroQueue;
+    zeroQueue.maximumQueuedReadings = 0;
+    FakeOutput zeroQueueOutput;
+    ControllerIsolationCore zeroQueueCore{zeroQueueOutput, zeroQueue};
+    Check(zeroQueueCore.BeginSession(
+              authority, device, Reading(authority, device, 1, 0), 0) ==
+              CommandResult::RejectedState &&
+              zeroQueueCore.fault() == RoutingFault::InvalidBudgets &&
+              zeroQueueOutput.submitted.empty() &&
+              zeroQueueOutput.removals == 0,
+          "zero queue capacity is rejected before target ownership");
+
+    RoutingBudgets oversizedQueue;
+    oversizedQueue.maximumQueuedReadings =
+        ControllerIsolationCore::MaximumReadingCapacity + 1;
+    FakeOutput oversizedOutput;
+    ControllerIsolationCore oversizedCore{oversizedOutput, oversizedQueue};
+    Check(oversizedCore.BeginSession(
+              authority, device, Reading(authority, device, 1, 0), 0) ==
+              CommandResult::RejectedState &&
+              oversizedCore.fault() == RoutingFault::InvalidBudgets,
+          "configured queue capacity cannot exceed fixed storage");
+
+    RoutingBudgets invertedDwell;
+    invertedDwell.minimumNeutralDwellMilliseconds = 51;
+    invertedDwell.maximumNeutralDwellMilliseconds = 50;
+    FakeOutput invertedOutput;
+    ControllerIsolationCore invertedCore{invertedOutput, invertedDwell};
+    Check(invertedCore.BeginSession(
+              authority, device, Reading(authority, device, 1, 0), 0) ==
+              CommandResult::RejectedState &&
+              invertedCore.fault() == RoutingFault::InvalidBudgets,
+          "inverted neutral dwell bounds are rejected before std::clamp");
+
+    FakeOutput overflowDwellOutput;
+    auto overflowDwell = Started(overflowDwellOutput, authority, device);
+    Check(overflowDwell.EnterOverlay(authority, 0) == CommandResult::Applied &&
+              overflowDwell.CloseOverlay(
+                  authority,
+                  Reading(authority, device, 1, 0),
+                  std::numeric_limits<std::uint64_t>::max(),
+                  0) == CommandResult::Waiting &&
+              overflowDwell.ObserveCurrent(
+                  authority, Reading(authority, device, 1, 0), 49) ==
+                  CommandResult::Waiting &&
+              overflowDwell.ObserveCurrent(
+                  authority, Reading(authority, device, 1, 0), 50) ==
+                  CommandResult::Resumed,
+          "doubling a measured interval saturates at the configured dwell cap");
 }
 
 void QueueBoundsNeverReplayStaleInput() {
@@ -224,6 +302,31 @@ void CloseRequiresReleaseAndUsesHysteresis() {
           "non-neutral input cancels dwell and a later neutral sample restarts it");
 }
 
+void PendingContainedReportsCannotEscapeCloseBarrier() {
+    FakeOutput output;
+    const auto authority = Authority();
+    const auto device = Device();
+    auto core = Started(output, authority, device);
+    Check(core.EnterOverlay(authority, 1) == CommandResult::Applied,
+          "pending-barrier setup enters contained interaction");
+    GamepadState contained;
+    contained.buttons = 0x1000;
+    const auto pending = Reading(authority, device, 2, 2, contained);
+    Check(core.EnqueueReading(pending) == ReadingAdmission::Accepted &&
+              core.CloseOverlay(authority, pending, 10, 2) ==
+                  CommandResult::Waiting &&
+              core.ObserveCurrent(
+                  authority, Reading(authority, device, 3, 3), 3) ==
+                  CommandResult::Waiting &&
+              core.ObserveCurrent(
+                  authority, Reading(authority, device, 3, 3), 23) ==
+                  CommandResult::Resumed &&
+              core.Drain(23) == CommandResult::Applied &&
+              output.submitted.size() == 2 &&
+              output.submitted.back() == GamepadState{},
+          "a queued contained report below the resume barrier never reaches gameplay");
+}
+
 void LeaseAndOutputFailuresAreSafetyFaults() {
     const auto authority = Authority();
     const auto device = Device();
@@ -250,6 +353,12 @@ void LeaseAndOutputFailuresAreSafetyFaults() {
               failed.fault() == RoutingFault::OutputSubmissionFailed &&
               failedOutput.removals == 1,
           "backend failure retires the owned target exactly once");
+    Check(failed.StopSession(authority) == CommandResult::Applied &&
+              failedOutput.removals == 1 &&
+              failed.StopSession(authority) ==
+                  CommandResult::RejectedAuthority &&
+              failedOutput.removals == 1,
+          "fault cleanup and repeated stop cannot retire or submit the target again");
 }
 
 void LatencyOutliersRemainAcceptanceEvidence() {
@@ -286,25 +395,38 @@ void GuardianRequiresExactIdentityAndFinalRecheck() {
 }
 
 void HidHideJournalPreservesOtherOwners() {
-    HidHideSnapshot before{{L"existing.exe"}, {L"existing-device"}, false};
-    const auto apply = PlanHidHideApply(
+    HidHideSnapshot unsafeBefore{
+        {L"existing.exe"}, {L"existing-device"}, false};
+    const auto refusedActivation = PlanHidHideApply(
+        unsafeBefore, L"controller-worker.exe", {L"selected-device"});
+    Check(refusedActivation.status ==
+              HidHideApplyStatus::ActivationConflict &&
+              !refusedActivation.plan,
+          "activating HidHide cannot silently enroll an unrelated disabled device");
+
+    HidHideSnapshot before{{L"existing.exe"}, {}, false};
+    const auto applyResult = PlanHidHideApply(
         before, L"controller-worker.exe", {L"selected-device"});
-    Check(apply && apply->desired.active &&
-              apply->desired.applicationPaths ==
+    Check(applyResult.status == HidHideApplyStatus::Ready &&
+              applyResult.plan,
+          "a selected-only inactive policy can be activated safely");
+    const auto& apply = *applyResult.plan;
+    Check(apply.desired.active &&
+              apply.desired.applicationPaths ==
                   std::set<std::wstring>{L"controller-worker.exe", L"existing.exe"} &&
-              apply->desired.deviceInstanceIds ==
-                  std::set<std::wstring>{L"existing-device", L"selected-device"},
+              apply.desired.deviceInstanceIds ==
+                  std::set<std::wstring>{L"selected-device"},
           "apply merges only the worker and exact selected-device entries");
-    const auto restored = PlanHidHideRestore(apply->journal, apply->desired);
+    const auto restored = PlanHidHideRestore(apply.journal, apply.desired);
     Check(restored.status == HidHideRestoreStatus::Restored &&
               restored.desired == before,
           "clean teardown restores only the journaled additions and active flag");
 
-    auto externallyExtended = apply->desired;
+    auto externallyExtended = apply.desired;
     externallyExtended.applicationPaths.insert(L"other-owner.exe");
     externallyExtended.deviceInstanceIds.insert(L"other-device");
     const auto preserve = PlanHidHideRestore(
-        apply->journal, externallyExtended);
+        apply.journal, externallyExtended);
     Check(preserve.status ==
               HidHideRestoreStatus::ExternalAdditionsPreserved &&
               preserve.desired && preserve.desired->active &&
@@ -315,9 +437,17 @@ void HidHideJournalPreservesOtherOwners() {
               !preserve.desired->deviceInstanceIds.contains(L"selected-device"),
           "external additions survive while our exact entries are retired");
 
-    auto conflict = apply->desired;
+    auto activeBefore = HidHideSnapshot{
+        {L"existing.exe"}, {L"existing-device"}, true};
+    const auto activeApplyResult = PlanHidHideApply(
+        activeBefore, L"controller-worker.exe", {L"selected-device"});
+    Check(activeApplyResult.status == HidHideApplyStatus::Ready &&
+              activeApplyResult.plan,
+          "an already-active shared policy can preserve unrelated entries");
+    const auto& activeApply = *activeApplyResult.plan;
+    auto conflict = activeApply.desired;
     conflict.deviceInstanceIds.erase(L"existing-device");
-    const auto refused = PlanHidHideRestore(apply->journal, conflict);
+    const auto refused = PlanHidHideRestore(activeApply.journal, conflict);
     Check(refused.status == HidHideRestoreStatus::Conflict &&
               !refused.desired,
           "missing original authority refuses restoration instead of overwriting shared state");
@@ -340,9 +470,11 @@ void StopIsExactAndGenerationBound() {
 
 int main() {
     ExactAuthorityAndOrderedGameplay();
+    InvalidBudgetsFailBeforeTargetOwnership();
     QueueBoundsNeverReplayStaleInput();
     OverlayNeutralAckAndHealthyCachedClose();
     CloseRequiresReleaseAndUsesHysteresis();
+    PendingContainedReportsCannotEscapeCloseBarrier();
     LeaseAndOutputFailuresAreSafetyFaults();
     LatencyOutliersRemainAcceptanceEvidence();
     GuardianRequiresExactIdentityAndFinalRecheck();

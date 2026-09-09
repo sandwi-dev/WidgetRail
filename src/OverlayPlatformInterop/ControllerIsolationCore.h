@@ -3,7 +3,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <optional>
 #include <set>
 #include <string>
@@ -42,6 +41,7 @@ struct RoutingAuthority final {
 };
 
 struct SelectedDeviceIdentity final {
+    std::uint64_t enrollmentToken{};
     std::array<std::uint8_t, 32> applicationLocalId{};
     std::array<std::uint8_t, 32> applicationLocalRootId{};
     std::wstring containerId;
@@ -72,7 +72,11 @@ struct GamepadState final {
 
 struct DeviceReading final {
     RoutingAuthority authority;
-    SelectedDeviceIdentity device;
+    // The serialized reader owner assigns a non-zero token to the exact
+    // enrolled device identity. Per-report traffic carries only that fixed
+    // token and generation-bound authority; paths and strings never enter the
+    // hot queue.
+    std::uint64_t deviceEnrollmentToken{};
     // WidgetRail assigns this ordinal in the chronologically serialized
     // GameInput callback. It is not GameInput v3's currently unimplemented
     // per-kind sequence number.
@@ -96,6 +100,7 @@ enum class RoutingMode {
 
 enum class RoutingFault {
     None,
+    InvalidBudgets,
     InvalidInitialAuthority,
     InitialStateNotNeutral,
     DeviceDisconnected,
@@ -131,8 +136,12 @@ public:
     virtual void RemoveOwnedTarget() noexcept = 0;
 };
 
+// All calls must be made by one serialized control/reading owner. The core is
+// intentionally lock-free; callers may not race commands with report intake.
 class ControllerIsolationCore final {
 public:
+    static constexpr std::size_t MaximumReadingCapacity = 256;
+
     explicit ControllerIsolationCore(
         VirtualOutputEffects& output,
         RoutingBudgets budgets = {}) noexcept;
@@ -169,7 +178,7 @@ public:
     [[nodiscard]] RoutingMode mode() const noexcept { return mode_; }
     [[nodiscard]] RoutingFault fault() const noexcept { return fault_; }
     [[nodiscard]] std::size_t queuedReadings() const noexcept {
-        return readings_.size();
+        return readingCount_;
     }
     [[nodiscard]] std::uint64_t resumeAfterOrdinal() const noexcept {
         return resumeAfterOrdinal_;
@@ -178,12 +187,19 @@ public:
 private:
     [[nodiscard]] bool Matches(
         const RoutingAuthority& authority,
-        const SelectedDeviceIdentity& device) const noexcept;
+        std::uint64_t deviceEnrollmentToken) const noexcept;
     [[nodiscard]] bool ExactCurrent(const DeviceReading& current) const noexcept;
+    [[nodiscard]] bool EquivalentReport(
+        const DeviceReading& left,
+        const DeviceReading& right) const noexcept;
+    void ClearReadings() noexcept;
+    void PushReading(const DeviceReading& reading) noexcept;
+    [[nodiscard]] DeviceReading PopReading() noexcept;
     [[nodiscard]] CommandResult ApplyAwaitingNeutral(
         const DeviceReading& current,
         std::uint64_t nowMilliseconds) noexcept;
     [[nodiscard]] bool SubmitNeutral() noexcept;
+    void RetireOwnedTarget() noexcept;
     void EnterFault(RoutingFault fault) noexcept;
 
     VirtualOutputEffects& output_;
@@ -192,14 +208,19 @@ private:
     RoutingFault fault_{RoutingFault::None};
     RoutingAuthority authority_{};
     SelectedDeviceIdentity device_{};
-    std::deque<DeviceReading> readings_;
+    std::array<DeviceReading, MaximumReadingCapacity> readings_{};
+    std::size_t readingHead_{};
+    std::size_t readingCount_{};
     std::optional<DeviceReading> current_;
+    std::optional<DeviceReading> lastAdmittedReading_;
     std::optional<std::uint64_t> neutralSinceMilliseconds_;
     std::uint64_t neutralDwellMilliseconds_{};
     std::uint64_t lastQueuedOrdinal_{};
     std::uint64_t lastObservedOrdinal_{};
     std::uint64_t resumeAfterOrdinal_{};
     std::uint64_t lastLeaseRenewedAtMilliseconds_{};
+    bool budgetsValid_{};
+    bool targetRetired_{true};
 };
 
 struct LatencyAcceptanceTargets final {
@@ -287,6 +308,17 @@ struct HidHideApplyPlan final {
     HidHideSnapshot desired;
 };
 
+enum class HidHideApplyStatus {
+    Ready,
+    InvalidInput,
+    ActivationConflict,
+};
+
+struct HidHideApplyResult final {
+    HidHideApplyStatus status{HidHideApplyStatus::InvalidInput};
+    std::optional<HidHideApplyPlan> plan;
+};
+
 enum class HidHideRestoreStatus {
     Restored,
     ExternalAdditionsPreserved,
@@ -298,7 +330,7 @@ struct HidHideRestorePlan final {
     std::optional<HidHideSnapshot> desired;
 };
 
-[[nodiscard]] std::optional<HidHideApplyPlan> PlanHidHideApply(
+[[nodiscard]] HidHideApplyResult PlanHidHideApply(
     const HidHideSnapshot& before,
     const std::wstring& workerApplicationPath,
     const std::set<std::wstring>& selectedDeviceInstanceIds);
