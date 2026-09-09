@@ -254,8 +254,13 @@ bool ControllerIsolationHostSession::Connect(
         return false;
     }
     ++nextSequence_;
-    progress_ = static_cast<ControlProgress>(response.observedAtMilliseconds);
-    if (!IngestResponse(response, diagnostic)) return false;
+    interactionPipe_ = !controlPipe;
+    if (response.status == 0) {
+        if (!ApplySuccessfulResponse(response, diagnostic)) return false;
+    } else {
+        progress_ = static_cast<ControlProgress>(
+            response.observedAtMilliseconds);
+    }
     attached_ = true;
     if (response.status != 0) {
         diagnostic = L"Controller isolation recovery required error=" +
@@ -306,13 +311,12 @@ bool ControllerIsolationHostSession::Exchange(
     }
     nextSequence_ = nextSequence_ == std::numeric_limits<std::uint64_t>::max()
         ? 0 : nextSequence_ + 1;
-    progress_ = static_cast<ControlProgress>(response.observedAtMilliseconds);
     if (response.status != 0) {
         diagnostic = L"Controller isolation remote failure error=" +
             std::to_wstring(response.status);
         return false;
     }
-    return true;
+    return ApplySuccessfulResponse(response, diagnostic);
 }
 
 bool ControllerIsolationHostSession::PrepareOverlay(
@@ -418,6 +422,41 @@ bool ControllerIsolationHostSession::IngestResponse(
     return true;
 }
 
+bool ControllerIsolationHostSession::ApplySuccessfulResponse(
+    const ControlFrame& response, std::wstring& diagnostic) noexcept {
+    progress_ = static_cast<ControlProgress>(response.observedAtMilliseconds);
+    return !interactionPipe_ || IngestResponse(response, diagnostic);
+}
+
+#if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
+void ControllerIsolationHostSession::BeginResponsePathForTest(
+    const bool interactionPipe) noexcept {
+    attached_ = true;
+    interactionPipe_ = interactionPipe;
+}
+
+bool ControllerIsolationHostSession::ApplySuccessfulResponseForTest(
+    const ControlFrame& response, std::wstring& diagnostic) noexcept {
+    return ApplySuccessfulResponse(response, diagnostic);
+}
+
+ControllerIsolationHostReading
+ControllerIsolationHostSession::TakeBufferedResponseForTest() noexcept {
+    ControllerIsolationHostReading reading;
+    if (!pendingStates_.Pop(reading.state)) reading.state = latestState_;
+    reading.progress = progress_;
+    reading.guideEvent = TakeGuide();
+    reading.remainingInputStates = static_cast<std::uint32_t>(
+        pendingStates_.size());
+    return reading;
+}
+
+std::uint64_t
+ControllerIsolationHostSession::interactionGenerationForTest() const noexcept {
+    return pendingStates_.interactionGeneration();
+}
+#endif
+
 std::uint64_t ControllerIsolationHostSession::TakeGuide() noexcept {
     if (pendingGuideCount_ == 0) return 0;
     const auto event = pendingGuideEvents_[pendingGuideHead_];
@@ -433,6 +472,7 @@ void ControllerIsolationHostSession::Detach() noexcept {
     nextSequence_ = 1;
     progress_ = ControlProgress::None;
     attached_ = false;
+    interactionPipe_ = false;
     latestState_ = {};
     pendingStates_.Reset();
     pendingGuideHead_ = 0;

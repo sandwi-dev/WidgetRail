@@ -616,11 +616,21 @@ function Invoke-ControllerIsolationAdapterAndProcessTests {
     }
 
     $inputTransportArguments = $common + @(
+        '/DWRAIL_CONTROLLER_ISOLATION_TESTING',
         (Join-Path $platformTestDirectory 'ControllerIsolationInputTransportTests.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationCore.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationProtocol.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationProcessOwner.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationJournal.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationReconnect.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationGuardianLifetime.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationHostSession.cpp'),
+        (Join-Path $platformDirectory 'HidHideConfigurationAdapter.cpp'),
         "/Fo:$controllerIsolationTestObjectDirectory\",
         "/Fe:$outputDirectory\ControllerIsolationInputTransportTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments
+    ) + $libraryArguments + @(
+        'bcrypt.lib', 'advapi32.lib', 'shell32.lib', 'ole32.lib')
     & $cl $inputTransportArguments
     if ($LASTEXITCODE -ne 0) {
         throw "ControllerIsolationInputTransportTests build failed with exit code $LASTEXITCODE."

@@ -59,6 +59,16 @@ public:
     [[nodiscard]] ControlProgress progress() const noexcept { return progress_; }
     void Detach() noexcept;
 
+#if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
+    void BeginResponsePathForTest(bool interactionPipe = true) noexcept;
+    [[nodiscard]] bool ApplySuccessfulResponseForTest(
+        const ControlFrame& response,
+        std::wstring& diagnostic) noexcept;
+    [[nodiscard]] ControllerIsolationHostReading
+    TakeBufferedResponseForTest() noexcept;
+    [[nodiscard]] std::uint64_t interactionGenerationForTest() const noexcept;
+#endif
+
     [[nodiscard]] static ControllerIsolationCommandStatus ExecuteCommand(
         ControllerIsolationCommand command,
         std::wstring& diagnostic) noexcept;
@@ -77,6 +87,9 @@ private:
     [[nodiscard]] bool IngestResponse(
         const ControlFrame& response,
         std::wstring& diagnostic) noexcept;
+    [[nodiscard]] bool ApplySuccessfulResponse(
+        const ControlFrame& response,
+        std::wstring& diagnostic) noexcept;
     [[nodiscard]] std::uint64_t TakeGuide() noexcept;
 
     ControllerIsolationPipeClient client_;
@@ -84,6 +97,7 @@ private:
     std::uint64_t nextSequence_{1};
     ControlProgress progress_{ControlProgress::None};
     bool attached_{};
+    bool interactionPipe_{};
     GamepadState latestState_{};
     ControllerIsolationHostStateQueue pendingStates_;
     std::array<std::uint64_t, 32> pendingGuideEvents_{};

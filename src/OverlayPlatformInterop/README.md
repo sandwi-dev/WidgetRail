@@ -72,6 +72,8 @@ across worker, Guardian, and host so short button edges are not collapsed when
 the host consumes more slowly than GameInput publishes. Every overlay entry
 owns a monotonic interaction generation; close, containment without a live
 host, and the next entry retire older queued UI input without retiring Guide.
+Retirement preserves the last positive generation as a high-water mark, so a
+delayed batch from that interaction cannot reactivate after the queue is empty.
 
 The Guardian is outside the OverlayHost job and remains the sole effect owner
 for both the persistent host pipe and a separate one-shot control pipe. A pipe

@@ -83,16 +83,22 @@ public:
             (batch.count == 0 &&
              (batch.firstIngressOrdinal != 0 ||
               batch.lastIngressOrdinal != 0))) return false;
-        if (batch.interactionGeneration != interactionGeneration_) {
-            if (batch.interactionGeneration != 0 &&
-                batch.interactionGeneration < interactionGeneration_)
-                return false;
+        if (batch.interactionGeneration == 0) {
+            if (batch.count != 0) return false;
             Clear();
-            interactionGeneration_ = batch.interactionGeneration;
+            activeInteractionGeneration_ = 0;
+            return true;
+        }
+        if (batch.interactionGeneration < highestInteractionGeneration_ ||
+            (batch.interactionGeneration == highestInteractionGeneration_ &&
+             activeInteractionGeneration_ == 0)) return false;
+        if (batch.interactionGeneration != activeInteractionGeneration_) {
+            Clear();
+            highestInteractionGeneration_ = batch.interactionGeneration;
+            activeInteractionGeneration_ = batch.interactionGeneration;
         }
         if (batch.count == 0) return true;
         if (count_ == batches_.size() ||
-            batch.interactionGeneration == 0 ||
             batch.firstIngressOrdinal == 0 ||
             batch.lastIngressOrdinal < batch.firstIngressOrdinal)
             return false;
@@ -104,7 +110,7 @@ public:
     [[nodiscard]] ControllerInputBatch TakeBatch() noexcept {
         if (count_ == 0) {
             ControllerInputBatch empty;
-            empty.interactionGeneration = interactionGeneration_;
+            empty.interactionGeneration = activeInteractionGeneration_;
             return empty;
         }
         const auto batch = batches_[head_];
@@ -115,16 +121,21 @@ public:
 
     [[nodiscard]] std::size_t size() const noexcept { return count_; }
     [[nodiscard]] std::uint64_t interactionGeneration() const noexcept {
-        return interactionGeneration_;
+        return activeInteractionGeneration_;
     }
     void Clear() noexcept { head_ = 0; count_ = 0; }
-    void Reset() noexcept { Clear(); interactionGeneration_ = 0; }
+    void Reset() noexcept {
+        Clear();
+        highestInteractionGeneration_ = 0;
+        activeInteractionGeneration_ = 0;
+    }
 
 private:
     std::array<ControllerInputBatch, Capacity> batches_{};
     std::size_t head_{};
     std::size_t count_{};
-    std::uint64_t interactionGeneration_{};
+    std::uint64_t highestInteractionGeneration_{};
+    std::uint64_t activeInteractionGeneration_{};
 };
 
 class ControllerIsolationHostStateQueue final {
@@ -139,16 +150,22 @@ public:
             (batch.count == 0 &&
              (batch.firstIngressOrdinal != 0 ||
               batch.lastIngressOrdinal != 0))) return false;
-        if (batch.interactionGeneration != interactionGeneration_) {
-            if (batch.interactionGeneration != 0 &&
-                batch.interactionGeneration < interactionGeneration_)
-                return false;
+        if (batch.interactionGeneration == 0) {
+            if (batch.count != 0) return false;
             Clear();
-            interactionGeneration_ = batch.interactionGeneration;
+            activeInteractionGeneration_ = 0;
+            return true;
+        }
+        if (batch.interactionGeneration < highestInteractionGeneration_ ||
+            (batch.interactionGeneration == highestInteractionGeneration_ &&
+             activeInteractionGeneration_ == 0)) return false;
+        if (batch.interactionGeneration != activeInteractionGeneration_) {
+            Clear();
+            highestInteractionGeneration_ = batch.interactionGeneration;
+            activeInteractionGeneration_ = batch.interactionGeneration;
         }
         if ((batch.count != 0 &&
-             (batch.interactionGeneration == 0 ||
-              batch.firstIngressOrdinal == 0 ||
+             (batch.firstIngressOrdinal == 0 ||
               batch.lastIngressOrdinal < batch.firstIngressOrdinal)) ||
             count_ + batch.count > states_.size()) return false;
         for (std::uint32_t index = 0; index < batch.count; ++index) {
@@ -167,17 +184,22 @@ public:
     }
 
     void Clear() noexcept { head_ = 0; count_ = 0; }
-    void Reset() noexcept { Clear(); interactionGeneration_ = 0; }
+    void Reset() noexcept {
+        Clear();
+        highestInteractionGeneration_ = 0;
+        activeInteractionGeneration_ = 0;
+    }
     [[nodiscard]] std::size_t size() const noexcept { return count_; }
     [[nodiscard]] std::uint64_t interactionGeneration() const noexcept {
-        return interactionGeneration_;
+        return activeInteractionGeneration_;
     }
 
 private:
     std::array<GamepadState, Capacity> states_{};
     std::size_t head_{};
     std::size_t count_{};
-    std::uint64_t interactionGeneration_{};
+    std::uint64_t highestInteractionGeneration_{};
+    std::uint64_t activeInteractionGeneration_{};
 };
 
 } // namespace widgetrail::isolation

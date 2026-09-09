@@ -1,5 +1,6 @@
 #include "../../src/OverlayPlatformInterop/ControllerIsolationGuardianSession.h"
 #include "../../src/OverlayPlatformInterop/ControllerIsolationGuardianLifetime.h"
+#include "../../src/OverlayPlatformInterop/ControllerIsolationHostSession.h"
 #include "../../src/OverlayPlatformInterop/ControllerIsolationInputTransport.h"
 
 #include <cstdlib>
@@ -24,6 +25,79 @@ int main() {
               !GuardianStartupAuthorityMatches({1, 2, 3, 4}, {1, 2, 3, 5}) &&
               !GuardianStartupAuthorityMatches({}, {1, 2, 3, 4}),
           "a delayed Guardian can claim only its exact expected journal authority");
+
+    ControllerIsolationHostSession responsePath;
+    responsePath.BeginResponsePathForTest();
+    std::wstring responseDiagnostic;
+    ControlFrame heartbeat;
+    heartbeat.observedAtMilliseconds = static_cast<std::uint64_t>(
+        ControlProgress::AwaitingNeutral);
+    heartbeat.state.buttons = 0x1000;
+    heartbeat.deviceEnrollmentToken = 41;
+    heartbeat.inputBatch.count = 1;
+    heartbeat.inputBatch.firstIngressOrdinal = 1;
+    heartbeat.inputBatch.lastIngressOrdinal = 1;
+    heartbeat.inputBatch.interactionGeneration = 7;
+    heartbeat.inputBatch.states[0].buttons = 0x2000;
+    Check(responsePath.ApplySuccessfulResponseForTest(
+              heartbeat, responseDiagnostic),
+          "the HostSession heartbeat response path ingests state, Guide, and input");
+    const auto heartbeatReading = responsePath.TakeBufferedResponseForTest();
+    Check(heartbeatReading.progress == ControlProgress::AwaitingNeutral &&
+              heartbeatReading.state.buttons == 0x2000 &&
+              heartbeatReading.guideEvent == 41 &&
+              heartbeatReading.remainingInputStates == 0 &&
+              responsePath.interactionGenerationForTest() == 7,
+          "the HostSession exposes the exact correlated heartbeat payload");
+
+    responsePath.BeginResponsePathForTest(false);
+    ControlFrame managementStatus;
+    managementStatus.observedAtMilliseconds = static_cast<std::uint64_t>(
+        ControlProgress::AwaitingNeutral);
+    Check(responsePath.ApplySuccessfulResponseForTest(
+              managementStatus, responseDiagnostic) &&
+              responsePath.interactionGenerationForTest() == 7,
+          "an intentionally payload-free management reply cannot retire interaction input");
+    responsePath.BeginResponsePathForTest();
+
+    ControlFrame containmentProgress;
+    containmentProgress.observedAtMilliseconds = static_cast<std::uint64_t>(
+        ControlProgress::Contained);
+    containmentProgress.state.buttons = 0x4000;
+    containmentProgress.inputBatch.interactionGeneration = 7;
+    Check(responsePath.ApplySuccessfulResponseForTest(
+              containmentProgress, responseDiagnostic),
+          "containment progress retains the active HostSession interaction");
+    const auto containedReading = responsePath.TakeBufferedResponseForTest();
+    Check(containedReading.progress == ControlProgress::Contained &&
+              containedReading.state.buttons == 0x4000 &&
+              containedReading.guideEvent == 0 &&
+              responsePath.interactionGenerationForTest() == 7,
+          "containment progress updates current state without retiring input");
+
+    ControlFrame queuedBeforeClose = containmentProgress;
+    queuedBeforeClose.inputBatch.count = 1;
+    queuedBeforeClose.inputBatch.firstIngressOrdinal = 2;
+    queuedBeforeClose.inputBatch.lastIngressOrdinal = 2;
+    queuedBeforeClose.inputBatch.states[0].buttons = 0x8000;
+    Check(responsePath.ApplySuccessfulResponseForTest(
+              queuedBeforeClose, responseDiagnostic),
+          "the HostSession has queued input to retire at close");
+    ControlFrame closeResponse;
+    closeResponse.observedAtMilliseconds = static_cast<std::uint64_t>(
+        ControlProgress::Playing);
+    Check(responsePath.ApplySuccessfulResponseForTest(
+              closeResponse, responseDiagnostic),
+          "the HostSession close response retires the active generation");
+    const auto closedReading = responsePath.TakeBufferedResponseForTest();
+    Check(closedReading.progress == ControlProgress::Playing &&
+              closedReading.state == GamepadState{} &&
+              closedReading.remainingInputStates == 0 &&
+              responsePath.interactionGenerationForTest() == 0,
+          "no queued UI input survives the HostSession close response");
+    Check(!responsePath.ApplySuccessfulResponseForTest(
+              queuedBeforeClose, responseDiagnostic),
+          "a delayed response from the retired HostSession generation fails closed");
     Check(DecideGuardianStartupDisposition(
               ControllerIsolationJournalPhase::Prepared, true,
               ControllerIsolationJournalPhase::Playing) ==

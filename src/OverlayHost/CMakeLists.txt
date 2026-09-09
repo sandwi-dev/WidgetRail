@@ -432,11 +432,22 @@ if(WRAIL_BUILD_TESTS)
         COMMAND ControllerIsolationReconnectTests)
 
     add_executable(ControllerIsolationInputTransportTests
-        ../../tests/OverlayPlatformInterop.Tests/ControllerIsolationInputTransportTests.cpp)
+        ../../tests/OverlayPlatformInterop.Tests/ControllerIsolationInputTransportTests.cpp
+        ../OverlayPlatformInterop/ControllerIsolationCore.cpp
+        ../OverlayPlatformInterop/ControllerIsolationProtocol.cpp
+        ../OverlayPlatformInterop/ControllerIsolationProcessOwner.cpp
+        ../OverlayPlatformInterop/ControllerIsolationJournal.cpp
+        ../OverlayPlatformInterop/ControllerIsolationReconnect.cpp
+        ../OverlayPlatformInterop/ControllerIsolationGuardianLifetime.cpp
+        ../OverlayPlatformInterop/ControllerIsolationHostSession.cpp
+        ../OverlayPlatformInterop/HidHideConfigurationAdapter.cpp)
     target_compile_features(ControllerIsolationInputTransportTests PRIVATE cxx_std_20)
     target_compile_options(ControllerIsolationInputTransportTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(ControllerIsolationInputTransportTests PRIVATE
+        WRAIL_CONTROLLER_ISOLATION_TESTING
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(ControllerIsolationInputTransportTests PRIVATE
+        bcrypt advapi32 shell32 ole32)
     add_test(NAME ControllerIsolationInputTransportTests
         COMMAND ControllerIsolationInputTransportTests)
 
