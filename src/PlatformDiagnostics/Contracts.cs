@@ -22,27 +22,6 @@ public sealed record PlatformWorkerDiagnostic(
     bool CanRestart);
 
 /// <summary>
-/// Bounded, aggregate Bridge artwork and process-memory diagnostics. Names carry
-/// their exact units; a null snapshot property means that the producing Bridge
-/// does not report this diagnostic set. No widget, package, handle, request, or
-/// content identity is included.
-/// </summary>
-public sealed record PlatformBridgeArtworkMemoryDiagnostic(
-    long Requests,
-    long Completed,
-    long Failed,
-    long InFlight,
-    long MaximumInFlight,
-    long RawBytes,
-    long Base64Characters,
-    long ManagedHeapBytes,
-    long LargeObjectHeapBytes,
-    long AllocatedBytesPerSecond,
-    long Gen2Collections,
-    long PrivateBytes,
-    long WorkingSetBytes);
-
-/// <summary>
 /// Sanitized host-owned recovery state. Raw profile names, SIDs, filesystem
 /// paths, security descriptors, and object identities must never be projected
 /// into this contract.
@@ -160,9 +139,6 @@ public sealed record PlatformDiagnosticsSnapshot(
     /// Optional aggregate artwork/process diagnostic payload. Absence means the
     /// producing Bridge does not report these metrics; zero is a measured value.
     /// </summary>
-    public PlatformBridgeArtworkMemoryDiagnostic? BridgeArtworkMemory
-        { get; init; }
-
     public static PlatformDiagnosticsSnapshot Unavailable(string summary = "Runtime diagnostics are unavailable") =>
         new(
             CurrentSchemaVersion,

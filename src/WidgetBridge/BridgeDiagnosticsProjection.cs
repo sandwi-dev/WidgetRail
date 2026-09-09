@@ -24,8 +24,7 @@ internal sealed record BridgeDiagnosticsReadModel(
     bool CatalogRetainedLastGood,
     bool InstalledCatalogPending,
     BridgeAppearanceDiagnostic Appearance,
-    bool ProvidersConfigured,
-    BridgeArtworkMemorySnapshot Artwork)
+    bool ProvidersConfigured)
 {
     internal IReadOnlyList<BridgeCatalogWidgetRejection> WidgetRejections { get; init; } = [];
 }
@@ -41,8 +40,7 @@ internal sealed class WidgetBridgeDiagnosticsSource(
     BridgeCatalogMonitor? catalogMonitor,
     PlatformAppearanceService? appearance,
     ConsentStore? consentStore,
-    bool providersConfigured,
-    BridgeArtworkMemoryDiagnostics artwork) : IBridgeDiagnosticsSource
+    bool providersConfigured) : IBridgeDiagnosticsSource
 {
     public BridgeDiagnosticsReadModel Capture()
     {
@@ -62,8 +60,7 @@ internal sealed class WidgetBridgeDiagnosticsSource(
                 appearance is not null,
                 appearance?.Current.Revision ?? 0,
                 appearanceErrors),
-            providersConfigured,
-            artwork.Capture())
+            providersConfigured)
         {
             WidgetRejections = catalog.WidgetRejections,
         };
@@ -181,20 +178,6 @@ internal sealed class BridgeDiagnosticsProjection(
             workers)
         {
             AuthorityRecoveries = await recoveryTask.ConfigureAwait(false),
-            BridgeArtworkMemory = new PlatformBridgeArtworkMemoryDiagnostic(
-                input.Artwork.Requests,
-                input.Artwork.Completed,
-                input.Artwork.Failed,
-                input.Artwork.InFlight,
-                input.Artwork.MaximumInFlight,
-                input.Artwork.RawBytes,
-                input.Artwork.Base64Characters,
-                input.Artwork.ManagedHeapBytes,
-                input.Artwork.LargeObjectHeapBytes,
-                input.Artwork.AllocatedBytesPerSecond,
-                input.Artwork.Gen2Collections,
-                input.Artwork.PrivateBytes,
-                input.Artwork.WorkingSetBytes),
         };
     }
 
