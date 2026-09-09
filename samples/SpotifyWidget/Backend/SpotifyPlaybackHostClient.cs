@@ -76,6 +76,8 @@ internal sealed class SpotifyPlaybackHostClient : ISpotifyPlaybackHostClient
             "ready",
             "not_ready",
             "disconnected",
+            "autoplay_policy",
+            "autoplay_permission",
             "autoplay_failed",
             "sdk_error",
             "token_requested",

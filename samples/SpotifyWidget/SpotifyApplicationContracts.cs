@@ -120,6 +120,7 @@ public enum SpotifyLocalPlaybackState
     Ready,
     Active,
     NotReady,
+    AutoplayBlocked,
     ReauthorizationRequired,
     PremiumRequired,
     Unavailable,

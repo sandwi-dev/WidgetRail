@@ -153,6 +153,65 @@ public sealed record SpotifyLocalPlaybackState(
     SpotifyPlaybackDisallows Disallows,
     SpotifyPlaybackTrack? CurrentTrack);
 
+public sealed record SpotifyAutoplayPolicyDiagnostic(
+    string Stage,
+    int FrameCount,
+    bool FrameCountCapped,
+    int ExactSdkFrameCount,
+    string AllowAutoplay,
+    string AllowEncryptedMedia,
+    string ParentPolicyState,
+    bool? ParentAllowsAutoplay,
+    bool? ParentAllowsEncryptedMedia,
+    string FramePolicyState,
+    bool? FrameAllowsAutoplay,
+    bool? FrameAllowsEncryptedMedia)
+{
+    public const int MaximumObservedFrames = 8;
+
+    public void Validate()
+    {
+        if (Stage is not ("frame-created" or "ready" or "autoplay-failed") ||
+            FrameCount is < 0 or > MaximumObservedFrames ||
+            ExactSdkFrameCount is < 0 or > MaximumObservedFrames ||
+            ExactSdkFrameCount > FrameCount ||
+            AllowAutoplay is not ("present" or "missing" or "unavailable") ||
+            AllowEncryptedMedia is not ("present" or "missing" or "unavailable"))
+            throw new SpotifyPlaybackProtocolException(
+                "invalid_autoplay_diagnostic",
+                "The Spotify autoplay diagnostic is invalid.");
+        ValidatePolicy(ParentPolicyState,
+            ParentAllowsAutoplay, ParentAllowsEncryptedMedia);
+        ValidatePolicy(FramePolicyState,
+            FrameAllowsAutoplay, FrameAllowsEncryptedMedia);
+    }
+
+    private static void ValidatePolicy(
+        string state, bool? autoplay, bool? encryptedMedia)
+    {
+        if (state is not ("supported" or "unavailable" or "exception") ||
+            state == "supported" != (autoplay.HasValue && encryptedMedia.HasValue))
+            throw new SpotifyPlaybackProtocolException(
+                "invalid_autoplay_diagnostic",
+                "The Spotify autoplay diagnostic is invalid.");
+    }
+}
+
+public sealed record SpotifyAutoplayPermissionDiagnostic(
+    string OriginClass,
+    bool IsUserInitiated,
+    string Decision)
+{
+    public void Validate()
+    {
+        if (OriginClass is not ("top-level" or "exact-sdk" or "spotify-other" or "other") ||
+            Decision is not ("allow" or "deny"))
+            throw new SpotifyPlaybackProtocolException(
+                "invalid_autoplay_permission_diagnostic",
+                "The Spotify autoplay permission diagnostic is invalid.");
+    }
+}
+
 public sealed record SpotifyPlaybackRequest(
     int Version,
     string RequestId,

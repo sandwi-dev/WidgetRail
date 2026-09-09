@@ -18,6 +18,7 @@ internal sealed class SpotifyPlaybackHostForm : Form
     private readonly System.Windows.Forms.Timer _sdkLoadTimeout = new() { Interval = 30_000 };
     private readonly Action<SpotifyPlaybackEvent> _emit;
     private bool _initialized;
+    private bool _autoplayPermissionDiagnosticEmitted;
 
     internal SpotifyPlaybackHostForm(Action<SpotifyPlaybackEvent> emit)
     {
@@ -180,11 +181,22 @@ internal sealed class SpotifyPlaybackHostForm : Form
             };
             core.PermissionRequested += (_, args) =>
             {
-                args.State = args.PermissionKind == CoreWebView2PermissionKind.Autoplay
+                var autoplay = args.PermissionKind == CoreWebView2PermissionKind.Autoplay;
+                args.State = autoplay
                     ? CoreWebView2PermissionState.Allow
                     : CoreWebView2PermissionState.Deny;
                 args.SavesInProfile = false;
                 args.Handled = true;
+                if (autoplay && !_autoplayPermissionDiagnosticEmitted)
+                {
+                    _autoplayPermissionDiagnosticEmitted = true;
+                    var diagnostic = new SpotifyAutoplayPermissionDiagnostic(
+                        ClassifyPermissionOrigin(args.Uri),
+                        args.IsUserInitiated,
+                        "allow");
+                    diagnostic.Validate();
+                    Emit("autoplay_permission", null, diagnostic);
+                }
             };
             core.BasicAuthenticationRequested += (_, args) => args.Cancel = true;
             core.ServerCertificateErrorDetected += (_, args) =>
@@ -306,6 +318,12 @@ internal sealed class SpotifyPlaybackHostForm : Form
                 case "disconnected":
                     Transition(SpotifyPlaybackSignal.Disconnected);
                     normalized = new { };
+                    break;
+                case "autoplay_policy":
+                    var autoplayPolicy = SpotifyPlaybackProtocolCodec
+                        .DecodePayload<SpotifyAutoplayPolicyDiagnostic>(payload);
+                    autoplayPolicy.Validate();
+                    normalized = autoplayPolicy;
                     break;
                 case "autoplay_failed":
                     Transition(SpotifyPlaybackSignal.AutoplayFailed);
@@ -489,6 +507,30 @@ internal sealed class SpotifyPlaybackHostForm : Form
 
     private void Emit(string type, string? requestId, object payload) =>
         _emit(new(SpotifyPlaybackProtocol.Version, type, requestId, payload));
+
+    private static string ClassifyPermissionOrigin(string value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return "other";
+        if (string.Equals(uri.GetLeftPart(UriPartial.Authority),
+                new Uri(SpotifyPlaybackPage.TopLevelUri).GetLeftPart(UriPartial.Authority),
+                StringComparison.OrdinalIgnoreCase))
+            return "top-level";
+        if (string.Equals(uri.Scheme, Uri.UriSchemeHttps,
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(uri.Host, "sdk.scdn.co", StringComparison.OrdinalIgnoreCase))
+            return "exact-sdk";
+        if (string.Equals(uri.Scheme, Uri.UriSchemeHttps,
+                StringComparison.OrdinalIgnoreCase) &&
+            (IsDomain(uri.Host, "spotify.com") || IsDomain(uri.Host, "scdn.co") ||
+             IsDomain(uri.Host, "spotifycdn.com") ||
+             IsDomain(uri.Host, "akamaized.net")))
+            return "spotify-other";
+        return "other";
+    }
+
+    private static bool IsDomain(string host, string domain) =>
+        string.Equals(host, domain, StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith('.' + domain, StringComparison.OrdinalIgnoreCase);
 
     private sealed record SeekPayload(long PositionMilliseconds);
     private sealed record NamePayload(string Name);

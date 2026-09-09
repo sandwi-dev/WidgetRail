@@ -1032,7 +1032,8 @@ internal static class SpotifyPresentation
         var rows = new List<WidgetElement>();
         if (local is not null)
         {
-            var localActive = local.State == SpotifyLocalPlaybackState.Active;
+            var localActive = local.State is SpotifyLocalPlaybackState.Active or
+                SpotifyLocalPlaybackState.AutoplayBlocked;
             var localStarting = local.State == SpotifyLocalPlaybackState.Starting;
             var localPending = localStarting || localPlaybackBusy;
             var localNeedsReconnect = local.State ==
@@ -1165,6 +1166,7 @@ internal static class SpotifyPresentation
         SpotifyLocalPlaybackState.Active => "Playing here",
         SpotifyLocalPlaybackState.Ready => "Ready",
         SpotifyLocalPlaybackState.Starting => "Starting",
+        SpotifyLocalPlaybackState.AutoplayBlocked => "Playback blocked",
         SpotifyLocalPlaybackState.PremiumRequired => "Premium required",
         SpotifyLocalPlaybackState.ReauthorizationRequired => "Reconnect required",
         SpotifyLocalPlaybackState.Unavailable => "Unavailable",
@@ -1177,6 +1179,7 @@ internal static class SpotifyPresentation
         SpotifyLocalPlaybackState.Active or SpotifyLocalPlaybackState.Ready =>
             StatusTone.Success,
         SpotifyLocalPlaybackState.Starting => StatusTone.Info,
+        SpotifyLocalPlaybackState.AutoplayBlocked => StatusTone.Warning,
         SpotifyLocalPlaybackState.PremiumRequired or
             SpotifyLocalPlaybackState.ReauthorizationRequired => StatusTone.Warning,
         SpotifyLocalPlaybackState.Error => StatusTone.Danger,

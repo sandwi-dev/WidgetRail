@@ -88,7 +88,8 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
         var summary = GetSummary(identity);
         if (summary.State == SpotifyLocalPlaybackState.Unavailable) return null;
         return new(PublicDeviceId, DeviceName, "Computer",
-            summary.State == SpotifyLocalPlaybackState.Active,
+            summary.State is SpotifyLocalPlaybackState.Active or
+                SpotifyLocalPlaybackState.AutoplayBlocked,
             false, true, summary.VolumePercent, true);
     }
 
@@ -292,8 +293,8 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     {
         ISpotifyPlaybackHostClient? client;
         lock (_stateGate)
-            client = _owner == identity && _state == SpotifyLocalPlaybackState.Active
-                ? _client : null;
+            client = _owner == identity && _state is SpotifyLocalPlaybackState.Active or
+                SpotifyLocalPlaybackState.AutoplayBlocked ? _client : null;
         if (client?.IsRunning != true) return false;
 
         // resume()/pause() resolve when the Web Playback SDK accepts the call,
@@ -402,12 +403,42 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                     {
                         if (!ReferenceEquals(sender, _client) ||
                             started != _startTimestamp) return;
-                        _state = SpotifyLocalPlaybackState.Active;
-                        _message = "Playing through this PC.";
+                        if (!playback.Paused)
+                        {
+                            _state = SpotifyLocalPlaybackState.Active;
+                            _message = "Spotify reported playback on this PC.";
+                        }
+                        else if (_state != SpotifyLocalPlaybackState.AutoplayBlocked)
+                        {
+                            _state = SpotifyLocalPlaybackState.Active;
+                            _message = "Paused on this PC.";
+                        }
                     }
+                break;
+            case "autoplay_policy":
+                var policy = SpotifyPlaybackProtocolCodec
+                    .DecodePayload<SpotifyAutoplayPolicyDiagnostic>(value.Payload);
+                RecordAutoplayPolicy(policy, started);
+                break;
+            case "autoplay_permission":
+                var permission = SpotifyPlaybackProtocolCodec
+                    .DecodePayload<SpotifyAutoplayPermissionDiagnostic>(value.Payload);
+                permission.Validate();
+                RecordIfStarted("autoplay-permission",
+                    permission.OriginClass + '-' +
+                    (permission.IsUserInitiated ? "user" : "not-user") + '-' +
+                    permission.Decision, started);
                 break;
             case "autoplay_failed":
                 RecordIfStarted("local-playback-sdk", "autoplay-failed", started);
+                lock (_stateGate)
+                {
+                    if (!ReferenceEquals(sender, _client) ||
+                        started != _startTimestamp) return;
+                    _state = SpotifyLocalPlaybackState.AutoplayBlocked;
+                    _message = "Spotify audio was blocked by browser autoplay policy. " +
+                        "Stop local playback or try Play again.";
+                }
                 break;
             case "sdk_error":
                 var error = SpotifyPlaybackProtocolCodec.DecodePayload<PageError>(value.Payload);
@@ -570,6 +601,49 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     {
         if (started != 0) Record(boundary, code, started);
     }
+
+    private void RecordAutoplayPolicy(
+        SpotifyAutoplayPolicyDiagnostic value, long started)
+    {
+        value.Validate();
+        if (started == 0) return;
+        var elapsed = Math.Max(
+            0, (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+        _runtimeDiagnostics.Record(
+            "autoplay-policy", value.Stage,
+            value.FrameCount, value.ExactSdkFrameCount, elapsed);
+        if (value.FrameCountCapped)
+            _runtimeDiagnostics.Record(
+                "autoplay-policy", "frame-count-capped",
+                value.FrameCount, value.ExactSdkFrameCount, elapsed);
+        _runtimeDiagnostics.Record(
+            "autoplay-allow", "autoplay-" + value.AllowAutoplay,
+            elapsedMilliseconds: elapsed);
+        _runtimeDiagnostics.Record(
+            "autoplay-allow", "encrypted-media-" + value.AllowEncryptedMedia,
+            elapsedMilliseconds: elapsed);
+        _runtimeDiagnostics.Record(
+            "autoplay-parent-policy",
+            PolicyCode("autoplay", value.ParentPolicyState,
+                value.ParentAllowsAutoplay), elapsedMilliseconds: elapsed);
+        _runtimeDiagnostics.Record(
+            "autoplay-parent-policy",
+            PolicyCode("encrypted-media", value.ParentPolicyState,
+                value.ParentAllowsEncryptedMedia), elapsedMilliseconds: elapsed);
+        _runtimeDiagnostics.Record(
+            "autoplay-frame-policy",
+            PolicyCode("autoplay", value.FramePolicyState,
+                value.FrameAllowsAutoplay), elapsedMilliseconds: elapsed);
+        _runtimeDiagnostics.Record(
+            "autoplay-frame-policy",
+            PolicyCode("encrypted-media", value.FramePolicyState,
+                value.FrameAllowsEncryptedMedia), elapsedMilliseconds: elapsed);
+    }
+
+    private static string PolicyCode(string feature, string state, bool? allowed) =>
+        state == "supported"
+            ? feature + "-" + (allowed == true ? "allowed" : "denied")
+            : feature + "-" + state;
 
     private sealed record PageDevice(string DeviceId);
     private sealed record PageError(string Code, string Message);
