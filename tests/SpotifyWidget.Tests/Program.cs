@@ -26,7 +26,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Explicit connect requests the four implemented least-privilege scopes", ExplicitConnect),
     ("Ready UI exposes native controller transport and attribution", ReadyControllerUi),
     ("Ready UI publishes responsive wide and compact navigation", ResponsiveNavigation),
-    ("Responsive player fits named host envelopes and preserves focus identity", SpotifyResponsiveLayoutTests.NamedHostEnvelopesFitAndPreserveFocus),
+    ("Ready UI publishes persistent player navigation metadata and WRSS contracts", SpotifyResponsiveLayoutTests.PersistentPlayerNavigationAndMetadataContract),
     ("LT RT and nested Y B preserve route and focus authority", SectionNavigationAndNestedFocus),
     ("Collection pages load lazily and remain cached", LazyPageLoading),
     ("Typed pinned Up Next demand survives lifecycle and transport",

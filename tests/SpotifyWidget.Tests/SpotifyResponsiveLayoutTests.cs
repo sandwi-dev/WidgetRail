@@ -5,7 +5,7 @@ using WidgetRail.WidgetStyling;
 
 internal static class SpotifyResponsiveLayoutTests
 {
-    internal static Task NamedHostEnvelopesFitAndPreserveFocus()
+    internal static Task PersistentPlayerNavigationAndMetadataContract()
     {
         var theme = CompileTheme();
         var handles = new SpotifyPresentationHandleFixture();
