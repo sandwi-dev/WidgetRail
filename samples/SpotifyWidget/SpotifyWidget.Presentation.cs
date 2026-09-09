@@ -486,8 +486,10 @@ internal static class SpotifyPresentation
                     "spotify.refresh-warning",
                     new ComponentAction("Retry now", "spotify.refresh", WidgetGlyph.Refresh))
                 .Classes("spotify-refresh-warning"));
-        content.Add(parts.CompactNavigation.AddClasses("spotify-navigation-tabs"));
-        content.Add(parts.Body.AddClasses("spotify-shell-body"));
+        content.Add(parts.CompactNavigation
+            .VisibleWhen(ResponsiveVisibility.Always)
+            .AddClasses("spotify-navigation-tabs"));
+        content.Add(pageGroup);
         content.Add(PlayerPanel(
             playback, pending, "wide", docked: true,
             controlsEnabled: !setup));

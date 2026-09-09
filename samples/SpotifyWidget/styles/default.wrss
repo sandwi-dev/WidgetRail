@@ -318,9 +318,8 @@
   min-height: 44px;
   flex-shrink: 0;
 }
-/* The SDK navigation shell owns responsive tabs/rail geometry. Spotify adds
-   only bounded page and persistent-player sizing. */
-.spotify-shell-body,
+/* Spotify keeps the SDK navigation shell's compact destination set horizontal
+   at every responsive size, with one shared page and persistent player. */
 .spotify-page-group {
   width: 100%;
   min-width: 0px;
