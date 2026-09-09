@@ -179,6 +179,10 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                     Record("local-playback-connect", "command-acknowledged", started);
                 }
                 Record("local-playback-sdk", "ready", started);
+                Record("local-playback-activation", "dispatched", started);
+                await client.SendAsync("activate_element", new { }, readyLifetime.Token)
+                    .ConfigureAwait(false);
+                Record("local-playback-activation", "completed", started);
                 SetState(identity, SpotifyLocalPlaybackState.Ready,
                     "Ready to play through this PC.", deviceId);
                 return new(deviceId, GetSummary(identity));

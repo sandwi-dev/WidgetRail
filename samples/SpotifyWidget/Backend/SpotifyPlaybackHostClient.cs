@@ -90,6 +90,7 @@ internal sealed class SpotifyPlaybackHostClient : ISpotifyPlaybackHostClient
             "connect",
             "provide_token",
             "disconnect",
+            "activate_element",
             "pause",
             "resume",
             "toggle_play",

@@ -275,6 +275,7 @@ internal static class SpotifyPlaybackPage
                   query(requestId, () => player.getVolume(), 'volume', value => ({ volume: value }));
                   break;
                 case 'set_volume': requirePlayer(requestId, () => player.setVolume(Number(payload.volume))); break;
+                case 'activate_element': requirePlayer(requestId, () => player.activateElement()); break;
                 case 'pause': requirePlayer(requestId, () => player.pause()); break;
                 case 'resume': requirePlayer(requestId, () => player.resume()); break;
                 case 'toggle_play': requirePlayer(requestId, () => player.togglePlay()); break;

@@ -69,6 +69,7 @@ public sealed class SpotifyWidget : Widget
     private bool _pageLoading;
     private bool _localPlaybackBusy;
     private long _localPlaybackOperationGeneration;
+    private long _localPlaybackSummaryRevision;
     private SpotifyLocalPlaybackSummary? _localPlaybackOperationBaseline;
     private string? _localPlaybackFeedback;
     private string? _pageError;
@@ -851,16 +852,35 @@ public sealed class SpotifyWidget : Widget
         try
         {
             if (generation != Volatile.Read(ref _activeGeneration)) return false;
+            bool refreshLocalPlayback;
+            long localPlaybackRevision;
             lock (_gate)
             {
                 if (_authorizationState != SpotifyAuthorizationState.Connected) return false;
+                refreshLocalPlayback = _localPlayback is not null && !_localPlaybackBusy;
+                localPlaybackRevision = _localPlaybackSummaryRevision;
             }
             try
             {
                 var observationSequence = Interlocked.Increment(ref _playbackObservationSequence);
                 var playback = await _spotify.GetPlaybackAsync(cancellationToken)
                     .ConfigureAwait(false);
+                SpotifyLocalPlaybackSummary? localPlayback = null;
+                if (refreshLocalPlayback)
+                    localPlayback = await _spotify.GetLocalPlaybackAsync(cancellationToken)
+                        .ConfigureAwait(false);
                 if (generation != Volatile.Read(ref _activeGeneration)) return false;
+                if (localPlayback is not null)
+                    lock (_gate)
+                    {
+                        if (generation == Volatile.Read(ref _activeGeneration) &&
+                            !_localPlaybackBusy &&
+                            _localPlaybackSummaryRevision == localPlaybackRevision)
+                        {
+                            _localPlayback = localPlayback;
+                            AdvanceLocalPlaybackSummaryRevisionLocked();
+                        }
+                    }
                 SetState(generation, SpotifyWidgetViewState.Ready,
                     playback.IsAvailable ? "Live from Spotify" : "Connected · no active playback",
                     playback, refreshDemandedQueueOnPlaybackChange, observationSequence);
@@ -881,6 +901,9 @@ public sealed class SpotifyWidget : Widget
             _refreshGate.Release();
         }
     }
+
+    private void AdvanceLocalPlaybackSummaryRevisionLocked() =>
+        _localPlaybackSummaryRevision = checked(_localPlaybackSummaryRevision + 1);
 
     private async Task RefreshAsync(CancellationToken cancellationToken)
     {
@@ -1215,6 +1238,7 @@ public sealed class SpotifyWidget : Widget
                     {
                         _devices = devicesTask.Result;
                         _localPlayback = localTask.Result;
+                        AdvanceLocalPlaybackSummaryRevisionLocked();
                         if (!_localPlaybackBusy) _localPlaybackFeedback = null;
                         _preferredPlaybackDeviceId = devicesTask.Result.Devices
                             .FirstOrDefault(device => device.IsActive && !device.IsRestricted)
@@ -1332,6 +1356,7 @@ public sealed class SpotifyWidget : Widget
         _queueOccurrences.Reset();
         _devices = null;
         _localPlayback = null;
+        AdvanceLocalPlaybackSummaryRevisionLocked();
         _devicesCachedAt = null;
         _preferredPlaybackDeviceId = null;
         _pageLoading = false;
@@ -1407,6 +1432,7 @@ public sealed class SpotifyWidget : Widget
         lock (_gate)
         {
             if (!operation.IsCurrent) return;
+            AdvanceLocalPlaybackSummaryRevisionLocked();
             _localPlaybackOperationGeneration = operationGeneration;
             _localPlaybackOperationBaseline = _localPlayback;
             _localPlaybackBusy = true;

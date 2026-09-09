@@ -9,6 +9,8 @@ namespace WidgetRail.SpotifyPlaybackHost;
 internal sealed class SpotifyPlaybackHostForm : Form
 {
     private const int WsExNoActivate = 0x08000000;
+    private static readonly Uri TopLevelOrigin = new(SpotifyPlaybackPage.TopLevelUri);
+    private static readonly Uri SdkOrigin = new("https://sdk.scdn.co");
 
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
     private readonly EphemeralUserDataDirectory _userData = new();
@@ -90,6 +92,7 @@ internal sealed class SpotifyPlaybackHostForm : Form
                     _pendingPageResponses.Clear();
                     SendToPage(request, new { });
                     break;
+                case "activate_element":
                 case "pause":
                 case "resume":
                 case "toggle_play":
@@ -182,7 +185,9 @@ internal sealed class SpotifyPlaybackHostForm : Form
             core.PermissionRequested += (_, args) =>
             {
                 var autoplay = args.PermissionKind == CoreWebView2PermissionKind.Autoplay;
-                args.State = autoplay
+                var originClass = ClassifyPermissionOrigin(args.Uri);
+                var allow = autoplay && originClass is "top-level" or "exact-sdk";
+                args.State = allow
                     ? CoreWebView2PermissionState.Allow
                     : CoreWebView2PermissionState.Deny;
                 args.SavesInProfile = false;
@@ -191,9 +196,9 @@ internal sealed class SpotifyPlaybackHostForm : Form
                 {
                     _autoplayPermissionDiagnosticEmitted = true;
                     var diagnostic = new SpotifyAutoplayPermissionDiagnostic(
-                        ClassifyPermissionOrigin(args.Uri),
+                        originClass,
                         args.IsUserInitiated,
-                        "allow");
+                        allow ? "allow" : "deny");
                     diagnostic.Validate();
                     Emit("autoplay_permission", null, diagnostic);
                 }
@@ -211,6 +216,21 @@ internal sealed class SpotifyPlaybackHostForm : Form
                 });
                 Close();
             };
+            try
+            {
+                await ConfigureAutoplayPermissionAsync(core).ConfigureAwait(true);
+            }
+            catch (Exception)
+            {
+                Transition(SpotifyPlaybackSignal.InitializationError);
+                Emit("sdk_error", null, new
+                {
+                    code = "autoplay_permission_configuration_failed",
+                    message = "Spotify autoplay permission could not be configured safely."
+                });
+                Close();
+                return;
+            }
             _initialized = true;
             _sdkLoadTimeout.Start();
             core.Navigate(SpotifyPlaybackPage.TopLevelUri);
@@ -512,7 +532,7 @@ internal sealed class SpotifyPlaybackHostForm : Form
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return "other";
         if (string.Equals(uri.GetLeftPart(UriPartial.Authority),
-                new Uri(SpotifyPlaybackPage.TopLevelUri).GetLeftPart(UriPartial.Authority),
+                TopLevelOrigin.GetLeftPart(UriPartial.Authority),
                 StringComparison.OrdinalIgnoreCase))
             return "top-level";
         if (string.Equals(uri.Scheme, Uri.UriSchemeHttps,
@@ -527,6 +547,15 @@ internal sealed class SpotifyPlaybackHostForm : Form
              IsDomain(uri.Host, "akamaized.net")))
             return "spotify-other";
         return "other";
+    }
+
+    private static async Task ConfigureAutoplayPermissionAsync(CoreWebView2 core)
+    {
+        foreach (var origin in new[] { TopLevelOrigin, SdkOrigin })
+            await core.Profile.SetPermissionStateAsync(
+                CoreWebView2PermissionKind.Autoplay,
+                origin.GetLeftPart(UriPartial.Authority),
+                CoreWebView2PermissionState.Allow).ConfigureAwait(true);
     }
 
     private static bool IsDomain(string host, string domain) =>

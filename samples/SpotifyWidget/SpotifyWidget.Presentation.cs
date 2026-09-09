@@ -489,6 +489,15 @@ internal static class SpotifyPresentation
                         "spotify.navigation.settings.hint")
                     .AddClasses("spotify-navigation-settings-hint"))
             .Classes("spotify-navigation-header"));
+        if (!setup && presentation.LocalPlayback is
+                { State: SpotifyLocalPlaybackState.AutoplayBlocked } blockedLocalPlayback)
+            content.Add(UI.Alert(
+                    "Local playback blocked",
+                    blockedLocalPlayback.DisplayMessage ??
+                        "Spotify audio was blocked by browser autoplay policy.",
+                    AlertTone.Warning,
+                    "spotify.local.autoplay-blocked")
+                .Classes("spotify-local-feedback"));
         content.Add(UI.Row(
                 "spotify.connected.panes",
                 PlayerPanel(
