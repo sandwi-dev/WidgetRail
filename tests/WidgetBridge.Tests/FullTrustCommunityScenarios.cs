@@ -488,6 +488,13 @@ internal static class FullTrustCommunityScenarios
             repositoryRoot, "samples", "SpotifyWidget", "manifest.json")));
         Write(archive, "styles/default.wrss", File.ReadAllBytes(Path.Combine(
             repositoryRoot, "samples", "SpotifyWidget", "styles", "default.wrss")));
+        foreach (var icon in new[]
+                 {
+                     "spotify-black.svg", "spotify-full-green.svg",
+                     "spotify-green.svg", "spotify-white.svg",
+                 })
+            Write(archive, "assets/icons/" + icon, File.ReadAllBytes(Path.Combine(
+                repositoryRoot, "samples", "SpotifyWidget", "assets", "icons", icon)));
         var payload = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
         AddGraph(applicationOutput);
         AddGraph(playbackHostOutput);
@@ -534,6 +541,8 @@ internal static class FullTrustCommunityScenarios
             widgetRoot, "manifest.json")));
         Write(archive, "styles/default.wrss", File.ReadAllBytes(Path.Combine(
             widgetRoot, "styles", "default.wrss")));
+        Write(archive, "assets/icons/playnite-library.svg", File.ReadAllBytes(Path.Combine(
+            widgetRoot, "assets", "icons", "playnite-library.svg")));
         foreach (var file in Directory.EnumerateFiles(
                      applicationOutput, "*", SearchOption.AllDirectories)
                  .Where(path => !path.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) &&

@@ -252,6 +252,8 @@ static async Task SdkGalleryBackgroundArtworkCrossesBridge()
 {
     await using var harness = await BridgeHarness.StartAsync(
         instanceId: "sdk-gallery-background.instance",
+        declaredPackageIconAssetIds: new HashSet<string>(
+            ["gallery.mark"], StringComparer.Ordinal),
         maximumBytes: BridgeProtocol.DefaultMaximumMessageBytes);
     var lifecycle = await harness.Client.RequestAsync(
         BridgeMessageTypes.SetWidgetLifecycle,
@@ -261,7 +263,12 @@ static async Task SdkGalleryBackgroundArtworkCrossesBridge()
 
     var initialResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
-    Assert.Equal(BridgeMessageTypes.Snapshot, initialResponse.Type);
+    var galleryErrorCode = initialResponse.Type == BridgeMessageTypes.Error &&
+        initialResponse.Payload.TryGetProperty("code", out var galleryError)
+            ? galleryError.GetString()
+            : null;
+    Assert.True(initialResponse.Type == BridgeMessageTypes.Snapshot,
+        $"SDK Gallery initial snapshot failed with safe code '{galleryErrorCode ?? "none"}'.");
     var initial = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         initialResponse.Payload.GetProperty("snapshot").GetRawText()));
     Assert.Equal(SdkGalleryWidget.DefaultBackgroundArtworkHandle, initial.Root.ArtworkHandle);
@@ -529,11 +536,11 @@ static async Task PermittedEighthWorkerPreStartTimeoutReleasesSlot()
 
         var startup = client.GetSnapshotAsync();
         await preStartEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        var exception = await Assert.ThrowsAsync<WidgetProcessException>(async () =>
+        var exception = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(async () =>
             await startup.ConfigureAwait(false));
 
-        Assert.Equal("Widget worker startup exceeded its time limit.", exception.Message);
-        Assert.Equal(1, failures);
+        Assert.Equal("Worker pre-process setup exceeded its time limit.", exception.Message);
+        Assert.Equal(0, failures);
         Assert.Equal(0, client.Starts);
         Assert.True(!client.IsRunning, "Timed-out provisional worker remained running.");
         Assert.Equal(7, budget.Snapshot.ApplicationWorkers);
@@ -6947,6 +6954,7 @@ file sealed class BridgeHarness : IAsyncDisposable
         string instanceId = "test.instance",
         string? workerDiagnosticRoot = null,
         Action<BridgeWidgetRequestDiagnostic>? requestDiagnosticSink = null,
+        IReadOnlySet<string>? declaredPackageIconAssetIds = null,
         int maximumBytes = 64 * 1024)
     {
         var temporary = TemporaryCatalog.Create(
@@ -6956,6 +6964,12 @@ file sealed class BridgeHarness : IAsyncDisposable
         {
             if (withAppearance) appearance = await TemporaryAppearance.CreateAsync();
             var catalog = BridgeCatalog.Load(temporary.Path);
+            if (declaredPackageIconAssetIds is not null)
+                catalog = new BridgeCatalog(catalog.Widgets.Select(widget =>
+                    catalog.GetConfigured(widget.Id) with
+                    {
+                        DeclaredPackageIconAssetIds = declaredPackageIconAssetIds,
+                    }));
             var pipeName = $"wrail-bridge-test-{Guid.NewGuid():N}";
             var server = new WidgetBridgeServer(
                 pipeName,
