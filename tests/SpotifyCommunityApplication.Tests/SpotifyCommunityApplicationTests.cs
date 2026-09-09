@@ -54,7 +54,9 @@ public sealed class SpotifyCommunityApplicationTests
             Assert.AreEqual("authorization_code", form["grant_type"]);
             Assert.IsFalse(form.ContainsKey("client_secret"));
             return Json(200, Token("access-one", "refresh-one",
-                "user-read-playback-state user-modify-playback-state"));
+                "user-read-playback-state user-modify-playback-state streaming " +
+                "user-read-email user-read-private playlist-read-private " +
+                "playlist-read-collaborative"));
         });
 
         await using (var backend = Backend(configuration, vault, http, browser, callback))
@@ -65,10 +67,8 @@ public sealed class SpotifyCommunityApplicationTests
             Assert.AreEqual(SpotifyApplicationContract.ExactRedirectUri, setup.RedirectUri);
             Assert.AreEqual(SpotifyAuthorizationState.Disconnected,
                 (await service.GetAuthorizationAsync()).State);
-            var connected = await service.ConnectAsync([
-                SpotifyAuthorizationScope.PlaybackStateRead,
-                SpotifyAuthorizationScope.PlaybackStateControl,
-            ]);
+            var connected = await service.ConnectAsync(
+                SpotifyApplicationContract.RequiredAuthorizationScopes);
             Assert.AreEqual(SpotifyAuthorizationState.Connected, connected.State);
             Assert.AreEqual("refresh-one", vault.Token);
             Assert.AreEqual(1, browser.OpenCalls);
@@ -77,7 +77,9 @@ public sealed class SpotifyCommunityApplicationTests
 
         var restartHttp = new FakeHttp(request => request.Uri.Host == "accounts.spotify.com"
             ? Json(200, Token("access-two", null,
-                "user-read-playback-state user-modify-playback-state"))
+                "user-read-playback-state user-modify-playback-state streaming " +
+                "user-read-email user-read-private playlist-read-private " +
+                "playlist-read-collaborative"))
             : new SpotifyHttpResponse(204, string.Empty, EmptyHeaders()));
         await using var restartedBackend = Backend(configuration, vault, restartHttp,
             new NullBrowser(), new NullCallback());

@@ -38,6 +38,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Web API playback mutations use exact encoded URLs and typed JSON bodies", WebApiMutations),
     ("Playlist authorization expands to the least privileged read scopes", PlaylistScopeExpansion),
     ("Local playback hands off tokens and exposes only its public pseudo-device", LocalPlaybackLifecycle),
+    ("Local playback routing follows exact successful device decisions", LocalPlaybackRoutingAuthority),
+    ("Activation failure and cancellation cannot reach device transfer", LocalPlaybackActivationFailureCleanup),
     ("Disconnect clears cached credentials and stops local playback", DisconnectClearsSession),
     ("Canceled local playback startup releases the host and resets Starting", LocalPlaybackCancellation),
     ("Local playback maps reauthorization premium and SDK errors", LocalPlaybackErrorStates),
@@ -864,7 +866,9 @@ static async Task LocalPlaybackLifecycle()
     {
         var tokenCalls = 0;
         var failRenewal = false;
+        var startupOrder = new List<string>();
         var client = new FakeLocalPlaybackHostClient("private-real-device-id");
+        client.CommandObserved = type => startupOrder.Add(type);
         var remoteDevices = string.Join(',', Enumerable.Range(0, 64).Select(index =>
             "{\"id\":\"remote-" + index + "\",\"is_active\":false," +
             "\"is_restricted\":false,\"name\":\"Remote " + index + "\"," +
@@ -876,7 +880,7 @@ static async Task LocalPlaybackLifecycle()
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 Assert.Equal(Identity(), identity);
-                Assert.SequenceEqual([WindowsSpotifyPlatformBackend.StreamingScope], scopes);
+                Assert.SequenceEqual(LocalPlaybackScopes(), scopes);
                 tokenCalls++;
                 if (failRenewal)
                     throw new SpotifyProviderException(
@@ -884,7 +888,7 @@ static async Task LocalPlaybackLifecycle()
                 return Task.FromResult(new TrustedHostSpotifyAccessToken(
                     tokenCalls == 1 ? "initial-token" : "renewed-token",
                     DateTimeOffset.UtcNow.AddMinutes(10),
-                    [WindowsSpotifyPlatformBackend.StreamingScope]));
+                    LocalPlaybackScopes()));
             },
             () => client);
         var http = new FakeHttp(request =>
@@ -896,7 +900,10 @@ static async Task LocalPlaybackLifecycle()
                 return Json(200, "{\"devices\":[" + remoteDevices + "]}");
             if (request.Method == HttpMethod.Put &&
                 request.Uri.AbsolutePath == "/v1/me/player")
+            {
+                startupOrder.Add("transfer");
                 return new SpotifyHttpResponse(204, string.Empty, EmptyHeaders());
+            }
             throw new InvalidOperationException("Unexpected Spotify request: " + request.Uri);
         });
         await using var backend = Backend(
@@ -921,6 +928,7 @@ static async Task LocalPlaybackLifecycle()
         Assert.Equal(SpotifyLocalPlaybackManager.DeviceName,
             client.ConnectOptions!.DeviceName);
         Assert.True(client.Commands.Any(command => command.Type == "activate_element"));
+        Assert.SequenceEqual(["activate_element", "transfer"], startupOrder);
         var transfer = http.Requests.Single(request => request.Method == HttpMethod.Put &&
             request.Uri.AbsolutePath == "/v1/me/player");
         using (var body = JsonDocument.Parse(transfer.JsonBody!))
@@ -968,6 +976,134 @@ static async Task LocalPlaybackLifecycle()
     finally { File.Delete(hostPath); }
 }
 
+static async Task LocalPlaybackRoutingAuthority()
+{
+    var hostPath = CreateTemporaryPlaybackHost();
+    try
+    {
+        var client = new FakeLocalPlaybackHostClient("private-routing-device");
+        var manager = new SpotifyLocalPlaybackManager(
+            hostPath,
+            (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
+                "local-token", DateTimeOffset.UtcNow.AddMinutes(10),
+                LocalPlaybackScopes())),
+            () => client);
+        var http = new FakeHttp(request => request.Uri.Host == "accounts.spotify.com"
+            ? Json(200, Token("web-api-token", null))
+            : new SpotifyHttpResponse(204, string.Empty, EmptyHeaders()));
+        await using var backend = Backend(
+            new FakeConfigurationStore("Client123456789"), new FakeVault("refresh"),
+            http, new NullBrowser(), new NullCallback(), localPlayback: manager);
+        var identity = Identity();
+
+        await backend.ControlSpotifyLocalPlaybackAsync(identity,
+            new(SpotifyLocalPlaybackOperation.StartAndTransfer, null, true), default);
+        await backend.ControlSpotifyPlaybackAsync(identity,
+            new(SpotifyPlaybackOperation.Pause), default);
+        Assert.Equal("pause", client.Commands[^1].Type);
+        Assert.Equal(0, http.Requests.Count(request =>
+            request.Uri.AbsolutePath == "/v1/me/player/pause"));
+
+        await backend.TransferSpotifyPlaybackAsync(identity,
+            new("remote-device", true), default);
+        client.Raise("player_state_changed", AvailableLocalPlayback(paused: false));
+        await backend.ControlSpotifyPlaybackAsync(identity,
+            new(SpotifyPlaybackOperation.Play), default);
+        Assert.Equal(1, http.Requests.Count(request =>
+            request.Uri.AbsolutePath == "/v1/me/player/play"));
+        Assert.True(!(await backend.GetSpotifyDevicesAsync(identity, default)).Devices
+            .Single(device => device.IsLocalHost).IsActive);
+
+        await backend.TransferSpotifyPlaybackAsync(identity,
+            new(SpotifyLocalPlaybackManager.PublicDeviceId, true), default);
+        await backend.ControlSpotifyPlaybackAsync(identity,
+            new(SpotifyPlaybackOperation.Play), default);
+        Assert.Equal("resume", client.Commands[^1].Type);
+        Assert.Equal(1, http.Requests.Count(request =>
+            request.Uri.AbsolutePath == "/v1/me/player/play"));
+
+        client.Raise("player_state_changed", UnavailableLocalPlayback());
+        await backend.ControlSpotifyPlaybackAsync(identity,
+            new(SpotifyPlaybackOperation.Pause), default);
+        Assert.Equal(1, http.Requests.Count(request =>
+            request.Uri.AbsolutePath == "/v1/me/player/pause"));
+
+        var stale = manager.BeginRoutingDecision(identity);
+        var current = manager.BeginRoutingDecision(identity);
+        manager.CompleteRoutingDecision(identity, stale, local: true);
+        Assert.True(!manager.GetPublicDevice(identity)!.IsActive);
+        manager.CompleteRoutingDecision(identity, current, local: false);
+        Assert.True(!manager.GetPublicDevice(identity)!.IsActive);
+    }
+    finally { File.Delete(hostPath); }
+}
+
+static async Task LocalPlaybackActivationFailureCleanup()
+{
+    var timeout = (TimeSpan)typeof(SpotifyLocalPlaybackManager).GetField(
+        "ReadyTimeout", System.Reflection.BindingFlags.Static |
+        System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+    Assert.Equal(TimeSpan.FromSeconds(35), timeout);
+
+    async Task RunAsync(bool cancel)
+    {
+        var hostPath = CreateTemporaryPlaybackHost();
+        try
+        {
+            var client = new FakeLocalPlaybackHostClient("private-activation-device");
+            if (cancel)
+                client.CommandWait = new(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+            else
+                client.FailCommandType = "activate_element";
+            var manager = new SpotifyLocalPlaybackManager(
+                hostPath,
+                (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
+                    "local-token", DateTimeOffset.UtcNow.AddMinutes(10),
+                    LocalPlaybackScopes())),
+                () => client);
+            var http = new FakeHttp(_ => throw new InvalidOperationException(
+                "Transfer must not run before activation succeeds."));
+            await using var backend = Backend(
+                new FakeConfigurationStore("Client123456789"), new FakeVault("refresh"),
+                http, new NullBrowser(), new NullCallback(), localPlayback: manager);
+            using var cancellation = new CancellationTokenSource();
+            var operation = backend.ControlSpotifyLocalPlaybackAsync(
+                Identity(), new(SpotifyLocalPlaybackOperation.StartAndTransfer, null, true),
+                cancellation.Token);
+            if (cancel)
+            {
+                await WaitUntilAsync(() => client.Commands.Any(command =>
+                    command.Type == "activate_element"));
+                cancellation.Cancel();
+                await Assert.ThrowsAsync<OperationCanceledException>(
+                    () => operation, string.Empty);
+            }
+            else
+            {
+                await Assert.ThrowsAsync<SpotifyApplicationException>(
+                    () => operation, "sdk_command_failed");
+            }
+            Assert.Equal(0, http.Requests.Count);
+            Assert.Equal(1, client.DisposeCalls);
+            Assert.True(!client.IsRunning);
+        }
+        finally { File.Delete(hostPath); }
+    }
+
+    await RunAsync(cancel: false);
+    await RunAsync(cancel: true);
+}
+
+static WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState AvailableLocalPlayback(
+    bool paused) => new(
+    true, paused, 1_000, 120_000, 0, false,
+    new(false, false, false, false, false), null);
+
+static WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState UnavailableLocalPlayback() =>
+    new(false, true, 0, 0, 0, false,
+        new(false, false, false, false, false), null);
+
 static async Task DisconnectClearsSession()
 {
     var hostPath = CreateTemporaryPlaybackHost();
@@ -976,6 +1112,8 @@ static async Task DisconnectClearsSession()
         var scopes = new HashSet<string>(StringComparer.Ordinal)
         {
             WindowsSpotifyPlatformBackend.StreamingScope,
+            WindowsSpotifyPlatformBackend.UserReadEmailScope,
+            WindowsSpotifyPlatformBackend.UserReadPrivateScope,
         };
         var vault = new FakeVault("durable-refresh", scopes);
         var client = new FakeLocalPlaybackHostClient("private-disconnect-device");
@@ -995,7 +1133,7 @@ static async Task DisconnectClearsSession()
                 tokenCalls++;
                 return Json(200, Token(
                     "pre-disconnect-access", null,
-                    WindowsSpotifyPlatformBackend.StreamingScope));
+                    string.Join(' ', LocalPlaybackScopes())));
             }
             apiCalls++;
             throw new InvalidOperationException(
@@ -1043,7 +1181,7 @@ static async Task LocalPlaybackErrorStates()
                 hostPath,
                 (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
                     "initial-token", DateTimeOffset.UtcNow.AddMinutes(10),
-                    [WindowsSpotifyPlatformBackend.StreamingScope])),
+                    LocalPlaybackScopes())),
                 () => client);
             await using var backend = Backend(
                 new FakeConfigurationStore("Client123456789"), new FakeVault("refresh"),
@@ -1131,7 +1269,7 @@ static async Task LocalPlaybackCancellation()
             hostPath,
             (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
                 "initial-token", DateTimeOffset.UtcNow.AddMinutes(10),
-                [WindowsSpotifyPlatformBackend.StreamingScope])),
+                LocalPlaybackScopes())),
             () => client);
         await using var backend = Backend(
             new FakeConfigurationStore("Client123456789"), new FakeVault("refresh"),
@@ -1169,7 +1307,7 @@ static async Task LocalPlaybackBackendDisposal()
             hostPath,
             (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
                 "initial-token", DateTimeOffset.UtcNow.AddMinutes(10),
-                [WindowsSpotifyPlatformBackend.StreamingScope])),
+                LocalPlaybackScopes())),
             () => client);
         var http = new FakeHttp(request => request.Uri.Host == "accounts.spotify.com"
             ? Json(200, Token("web-api-token", null))
@@ -1205,7 +1343,7 @@ static async Task IncrementalScopes()
     Assert.Contains("user-read-recently-played", browser.Uri!.Query);
 
     await Assert.ThrowsAsync<SpotifyProviderException>(() => backend.ConnectAsync(
-        Identity(), ["user-read-private"], default), "invalid_scope");
+        Identity(), ["playlist-modify-public"], default), "invalid_scope");
 }
 
 static WindowsSpotifyPlatformBackend Backend(
@@ -1233,6 +1371,13 @@ static async Task WaitUntilAsync(Func<bool> condition)
 }
 
 static SpotifyIntegrationIdentity Identity() => new("dev.publisher", "dev.spotify.widget");
+
+static string[] LocalPlaybackScopes() =>
+[
+    WindowsSpotifyPlatformBackend.StreamingScope,
+    WindowsSpotifyPlatformBackend.UserReadEmailScope,
+    WindowsSpotifyPlatformBackend.UserReadPrivateScope,
+];
 
 static SpotifyHttpResponse Json(int status, string body) =>
     new(status, body, EmptyHeaders());
@@ -1512,6 +1657,9 @@ internal sealed class FakeLocalPlaybackHostClient(
     internal int DisposeCalls { get; private set; }
     internal SpotifyPlaybackConnectOptions? ConnectOptions { get; private set; }
     internal List<(string Type, JsonElement Payload)> Commands { get; } = [];
+    internal Action<string>? CommandObserved { get; set; }
+    internal string? FailCommandType { get; set; }
+    internal TaskCompletionSource? CommandWait { get; set; }
     internal TaskCompletionSource<(string RequestId, TrustedHostSpotifyAccessToken Token)>
         TokenProvided { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -1545,13 +1693,19 @@ internal sealed class FakeLocalPlaybackHostClient(
         return Task.FromResult(Envelope("command_completed", new { }));
     }
 
-    public Task<SpotifyPlaybackEventEnvelope> SendAsync(
+    public async Task<SpotifyPlaybackEventEnvelope> SendAsync(
         string type, object? payload, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var element = JsonSerializer.SerializeToElement(payload ?? new { });
         lock (_gate) Commands.Add((type, element));
-        return Task.FromResult(Envelope("command_completed", new { }));
+        CommandObserved?.Invoke(type);
+        if (CommandWait is not null)
+            await CommandWait.Task.WaitAsync(cancellationToken);
+        if (type == FailCommandType)
+            throw new SpotifyPlaybackHostClientException(
+                "sdk_command_failed", "The local SDK command failed.");
+        return Envelope("command_completed", new { });
     }
 
     internal void Raise(string type, object payload) =>
@@ -1565,8 +1719,9 @@ internal sealed class FakeLocalPlaybackHostClient(
     }
 
     private static SpotifyPlaybackEventEnvelope Envelope(string type, object payload) =>
-        new(SpotifyPlaybackProtocol.Version, type, null,
-            JsonSerializer.SerializeToElement(payload));
+        SpotifyPlaybackProtocolCodec.DecodeEvent(
+            SpotifyPlaybackProtocolCodec.EncodeEvent(new(
+                SpotifyPlaybackProtocol.Version, type, null, payload)));
 }
 
 internal sealed class ManualTimeProvider : TimeProvider
