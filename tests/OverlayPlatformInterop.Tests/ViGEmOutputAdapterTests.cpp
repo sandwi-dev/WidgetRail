@@ -27,6 +27,7 @@ struct FakeBackend {
     std::vector<GamepadState> reports;
     std::string failAt;
     int peerTargets{3};
+    std::wstring targetIdentity{L"USB\\VID_045E&PID_028E\\01"};
     ViGEmFeedbackCallback feedback{};
     void* feedbackContext{};
 };
@@ -111,11 +112,42 @@ void UnregisterFeedback(ViGEmTargetHandle target) noexcept {
     activeBackend->feedbackContext = nullptr;
 }
 
+bool IdentifyTarget(ViGEmTargetHandle target, ControllerDeviceNodeIdentity& identity) noexcept {
+    Check(target == kTarget, "identity comes from the owned target handle");
+    identity = {};
+    if (Fails("identify")) return false;
+    std::copy(activeBackend->targetIdentity.begin(), activeBackend->targetIdentity.end(), identity.value.begin());
+    identity.length = activeBackend->targetIdentity.size();
+    return true;
+}
+
 ViGEmApi Api() {
     return {
         AllocateClient, FreeClient, Connect, Disconnect, AllocateTarget,
         FreeTarget, AddTarget, RemoveTarget, Update,
-        RegisterFeedback, UnregisterFeedback, FakeBackend::Success};
+        RegisterFeedback, UnregisterFeedback, FakeBackend::Success, IdentifyTarget};
+}
+
+void OwnedIdentityIsLimitedToTheTargetLifetime() {
+    FakeBackend backend;
+    activeBackend = &backend;
+    const auto api = Api();
+    ViGEmOutputAdapter adapter(api);
+    Check(!adapter.ownedDeviceInstance().valid(), "closed target has no asserted PnP identity");
+    Check(adapter.Open() && adapter.ownedDeviceInstance().view() == backend.targetIdentity,
+          "target metadata identifies the owned device independently of matching peer VID/PID");
+    const auto oldIdentity = adapter.ownedDeviceInstance();
+    adapter.RemoveOwnedTarget();
+    Check(!adapter.ownedDeviceInstance().valid(), "removal invalidates owned identity immediately");
+    backend.targetIdentity = L"USB\\VID_045E&PID_028E\\02";
+    Check(adapter.Open() && adapter.ownedDeviceInstance().view() == backend.targetIdentity &&
+              adapter.ownedDeviceInstance() != oldIdentity,
+          "recreation refreshes identity despite identical vendor and product IDs");
+    adapter.RemoveOwnedTarget();
+    backend.failAt = "identify";
+    Check(!adapter.Open() && !adapter.targetOwned() && !adapter.ownedDeviceInstance().valid() &&
+              adapter.status() == ViGEmAdapterStatus::TargetIdentityUnavailable && backend.peerTargets == 3,
+          "ambiguous output correlation fails closed and removes only the acquired target");
 }
 
 void ExactLifecycleAndReportMapping() {
@@ -212,6 +244,7 @@ void UpdateAndRemovalFailuresRemainBounded() {
 
 int main() {
     ExactLifecycleAndReportMapping();
+    OwnedIdentityIsLimitedToTheTargetLifetime();
     FailuresCleanUpOnlyAcquiredOwnership();
     UpdateAndRemovalFailuresRemainBounded();
     std::cout << "ViGEmOutputAdapterTests passed (" << checks << " checks)\n";

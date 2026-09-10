@@ -68,11 +68,13 @@ struct FakeAncestryBackend final : ControllerDeviceAncestryBackend {
     ControllerDeviceNodeToken root{3};
     ControllerDeviceNodeToken first{1};
     ControllerDeviceNodeToken failRead{};
+    ControllerDeviceNodeToken failService{};
     ControllerDeviceNodeToken failParent{};
-    std::array<ControllerDeviceNodeIdentity, 4> identities{
+    std::array<ControllerDeviceNodeIdentity, 40> identities{
         NodeIdentity(L"unused"), NodeIdentity(L"HID\\PHYSICAL"),
-        NodeIdentity(L"USB\\PARENT"), NodeIdentity(L"HTREE\\ROOT\\0")};
-    std::array<ControllerDeviceNodeToken, 4> parents{0, 2, 3, 0};
+        NodeIdentity(L"PCI\\PARENT"), NodeIdentity(L"HTREE\\ROOT\\0")};
+    std::array<ControllerDeviceNodeToken, 40> parents{0, 2, 3, 0};
+    std::array<ControllerDeviceNodeIdentity, 40> services{};
 
     bool ResolveInterfaceInstanceId(
         std::wstring_view,
@@ -104,6 +106,14 @@ struct FakeAncestryBackend final : ControllerDeviceAncestryBackend {
         ControllerDeviceNodeIdentity& identity) noexcept override {
         if (node == failRead || node >= identities.size()) return false;
         identity = identities[node];
+        return true;
+    }
+
+    bool ReadNodeService(
+        const ControllerDeviceNodeToken node,
+        ControllerDeviceNodeIdentity& service) noexcept override {
+        if (node == failService || node >= services.size()) return false;
+        service = services[node];
         return true;
     }
 
@@ -188,6 +198,99 @@ void AncestryRequiresAnExactRootedPhysicalChain() {
               L"\\\\?\\HID#PHYSICAL", cycle) ==
               ControllerDeviceAncestry::Unknown,
           "cyclic ancestry is bounded and unknown");
+}
+
+void RetainedViGEmOutputCannotBecomeAReconnectSource() {
+    FakeAncestryBackend virtualBus;
+    virtualBus.identities[1] = NodeIdentity(L"USB\\VID_045E&PID_028E\\01");
+    virtualBus.identities[2] = NodeIdentity(L"ROOT\\SYSTEM\\0002");
+    virtualBus.services[1] = NodeIdentity(L"xusb22");
+    virtualBus.services[2] = NodeIdentity(L"ViGEmBus");
+    const auto classify = [&] {
+        return ClassifyControllerDeviceAncestry(L"\\\\?\\USB#VID_045E&PID_028E#01", virtualBus);
+    };
+    Check(classify() == ControllerDeviceAncestry::KnownVirtualOutput,
+          "generic ROOT SYSTEM instance is excluded by its ViGEmBus service");
+    virtualBus.services[2] = NodeIdentity(L"vIgEmBuS");
+    Check(classify() == ControllerDeviceAncestry::KnownVirtualOutput,
+          "Windows service identity comparison ignores case");
+
+    const auto output = Descriptor(1, L"USB\\VID_045E&PID_028E\\01");
+    const auto physical = Descriptor(2, L"USB\\VID_2DC8&PID_3106\\PHYSICAL");
+    const auto kind = classify() == ControllerDeviceAncestry::KnownVirtualOutput
+        ? SelectedControllerCandidateKind::KnownVirtualOutput
+        : SelectedControllerCandidateKind::Physical;
+    SelectedControllerDescriptor selected;
+    SelectedControllerDiscovery disconnected(true);
+    disconnected.Observe(kind, output);
+    Check(disconnected.Resolve(selected) == SelectedControllerDiscoveryStatus::Unavailable &&
+              !selected.valid(),
+          "disconnect waits while only the retained virtual output remains");
+    SelectedControllerDiscovery reconnected(true);
+    reconnected.Observe(kind, output);
+    reconnected.Observe(SelectedControllerCandidateKind::Physical, physical);
+    Check(reconnected.Resolve(selected) == SelectedControllerDiscoveryStatus::Ready && selected == physical,
+          "physical reconnect wins even when virtual output sorts first");
+
+    virtualBus.services[2] = NodeIdentity(L"ViGEmBusOther");
+    Check(classify() == ControllerDeviceAncestry::SoftwareEnumerated,
+          "unrecognized ROOT SYSTEM service is software evidence, not proof of virtual ownership");
+    virtualBus.failService = 2;
+    Check(classify() == ControllerDeviceAncestry::Unknown,
+          "unreadable ancestor service is not admitted as physical");
+    virtualBus.failService = 0;
+    virtualBus.services[2] = NodeIdentity(L"ViGEmBus");
+    virtualBus.services[2].value[2] = L'\0';
+    Check(classify() == ControllerDeviceAncestry::Unknown,
+          "malformed ancestor service cannot bypass virtual exclusion");
+}
+
+void ClassificationRequiresSupportedHardwareEvidence() {
+    FakeAncestryBackend backend;
+    for (const auto path : {L"USB\\PAD", L"BTHENUM\\PAD", L"BTHLEDEVICE\\PAD", L"HID\\I2C_PAD"}) {
+        backend.identities[1] = NodeIdentity(path);
+        Check(ClassifyControllerDeviceAncestry(L"interface", backend) == ControllerDeviceAncestry::Physical,
+              "supported controller transport under PCI hardware ancestry is admissible");
+    }
+    backend.identities[2] = NodeIdentity(L"ACPI\\I2C_HOST");
+    Check(ClassifyControllerDeviceAncestry(L"interface", backend) == ControllerDeviceAncestry::Physical,
+          "built-in HID controller under ACPI hardware ancestry is admissible");
+    backend.identities[3] = NodeIdentity(L"ACPI_HAL\\PNP0C08\\0");
+    backend.identities[4] = NodeIdentity(L"ROOT\\ACPI_HAL\\0000");
+    backend.identities[5] = NodeIdentity(L"HTREE\\ROOT\\0");
+    backend.parents[3] = 4; backend.parents[4] = 5; backend.root = 5;
+    Check(ClassifyControllerDeviceAncestry(L"interface", backend) == ControllerDeviceAncestry::Physical,
+          "Windows ACPI HAL root preserves proven transport and hardware bus evidence");
+    backend.identities[3] = NodeIdentity(L"HTREE\\ROOT\\0");
+    backend.parents[3] = 0; backend.root = 3;
+    for (const auto path : {L"ROOT\\SYSTEM\\1", L"root\\usb\\2"}) {
+        backend.identities[2] = NodeIdentity(path);
+        Check(ClassifyControllerDeviceAncestry(L"interface", backend) == ControllerDeviceAncestry::SoftwareEnumerated,
+              "node immediately below root supplies bounded software enumeration evidence");
+    }
+    for (const auto path : {L"ROOT\\SYSTEMATIC\\1", L"ROOT\\USBFAKE\\1", L"PCI_FAKE\\1", L"UNKNOWN\\1"}) {
+        backend.identities[2] = NodeIdentity(path);
+        Check(ClassifyControllerDeviceAncestry(L"interface", backend) == ControllerDeviceAncestry::Unknown,
+              "near-prefix or unsupported root branches are not physical evidence");
+    }
+    backend.identities[2] = NodeIdentity(L"PCI\\PARENT");
+    backend.identities[1] = NodeIdentity(L"CUSTOM\\PAD");
+    Check(ClassifyControllerDeviceAncestry(L"interface", backend) == ControllerDeviceAncestry::Unknown,
+          "hardware ancestry alone does not admit an unsupported transport");
+    backend.identities[1] = NodeIdentity(L"USB\\OWNED");
+    const auto owned = NodeIdentity(L"usb\\owned");
+    Check(ClassifyControllerDeviceAncestry(L"interface", backend, &owned) == ControllerDeviceAncestry::OwnedVirtualOutput,
+          "live exact owned identity excludes output before general classification");
+    const auto peer = NodeIdentity(L"USB\\PEER");
+    Check(ClassifyControllerDeviceAncestry(L"interface", backend, &peer) == ControllerDeviceAncestry::Physical,
+          "another output identity cannot claim this device");
+    backend.root = 39;
+    for (std::size_t i = 1; i < 39; ++i) {
+        backend.identities[i] = NodeIdentity(L"USB\\DEEP");
+        backend.parents[i] = i + 1;
+    }
+    Check(ClassifyControllerDeviceAncestry(L"interface", backend) == ControllerDeviceAncestry::Unknown,
+          "ancestry exceeding 32 nodes remains bounded and unknown");
 }
 
 void EnrollmentIsExactAndVirtualFailsClosed() {
@@ -444,6 +547,8 @@ int main() {
               !resolved.valid(),
           "ambiguous discovery never returns a usable enrollment");
     AncestryRequiresAnExactRootedPhysicalChain();
+    RetainedViGEmOutputCannotBecomeAReconnectSource();
+    ClassificationRequiresSupportedHardwareEvidence();
     EnrollmentIsExactAndVirtualFailsClosed();
     DiscoveryRequiresExactlyOnePhysicalController();
     FixedEventsPreserveAuthorityAndOrder();

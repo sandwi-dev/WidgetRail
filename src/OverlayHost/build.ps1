@@ -517,7 +517,7 @@ function Invoke-ControllerIsolationLocalTests {
         [pscustomobject]@{
             Name = 'ViGEmOutputAdapterTests'
             Definitions = @()
-            Sources = @('ViGEmOutputAdapterTests.cpp', 'ViGEmOutputAdapter.cpp')
+            Sources = @('ViGEmOutputAdapterTests.cpp', 'ViGEmOutputAdapter.cpp', 'ControllerIsolationReader.cpp')
         },
         [pscustomobject]@{
             Name = 'HidHideConfigurationAdapterTests'

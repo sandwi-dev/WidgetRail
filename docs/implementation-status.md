@@ -2,6 +2,18 @@
 
 Status: integrated Phase 0 platform prototype, 2026-08-09
 
+WIDGE-217 reconnect correction and WIDGE-218 candidate: the user subsequently
+reported loss of ordinary input after power-cycling the selected controller.
+The live recovery record showed that rediscovery had selected the retained
+ViGEm output. Service-aware bounded ancestry, conservative hardware evidence,
+and live owned-target/PnP correlation now prevent that feedback path. Identity
+is retired on removal and re-resolved on creation; Settings labels the output.
+Reader 1,033 checks, output 86, local owner 76, ABI 55 and Settings 62/62 pass.
+Live checks distinguish the physical 8BitDo, virtual output and exact owned
+output; two same-VID/PID virtual targets remain distinct across two owned-target
+recreations. Physical reconnect acceptance is pending; broader hardware coverage
+limits are recorded in controller-input.md. This correction is not yet on main.
+
 WIDGE-217 is accepted for closure and local integration on 2026-09-10 with
 Windows UI compatibility work deferred as WIDGE-221. Settings > Controllers
 provides default-off Exclusive control, driver readiness, enablement gates,

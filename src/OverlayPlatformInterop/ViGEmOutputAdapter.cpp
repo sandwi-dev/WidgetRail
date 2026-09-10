@@ -14,7 +14,7 @@ constexpr GamepadState kNeutralState{};
 bool ViGEmApi::complete() const noexcept {
     return AllocateClient && FreeClient && Connect && Disconnect &&
         AllocateX360Target && FreeTarget && AddTarget && RemoveTarget &&
-        UpdateX360 && RegisterFeedback && UnregisterFeedback;
+        UpdateX360 && RegisterFeedback && UnregisterFeedback && IdentifyTarget;
 }
 
 ViGEmOutputAdapter::ViGEmOutputAdapter(const ViGEmApi& api) noexcept
@@ -57,6 +57,11 @@ bool ViGEmOutputAdapter::Open() noexcept {
         return false;
     }
     targetAdded_ = true;
+    if (!api_.IdentifyTarget(target_, ownedDeviceInstance_) || !ownedDeviceInstance_.valid()) {
+        status_ = ViGEmAdapterStatus::TargetIdentityUnavailable;
+        RemoveOwnedTarget();
+        return false;
+    }
     feedbackGate_.store(0, std::memory_order_release);
     rawError_ = api_.RegisterFeedback(
         client_, target_, Feedback, this);
@@ -123,6 +128,7 @@ bool ViGEmOutputAdapter::Submit(const GamepadState& state) noexcept {
 }
 
 void ViGEmOutputAdapter::RemoveOwnedTarget() noexcept {
+    ownedDeviceInstance_ = {};
     const auto priorStatus = status_;
     ViGEmAdapterStatus removalStatus = status_;
     if (target_) {
@@ -196,6 +202,9 @@ ViGEmTargetHandle NativeAllocateTarget() noexcept {
 }
 void NativeFreeTarget(ViGEmTargetHandle target) noexcept {
     vigem_target_free(static_cast<PVIGEM_TARGET>(target));
+}
+bool NativeIdentifyTarget(ViGEmTargetHandle target, ControllerDeviceNodeIdentity& identity) noexcept {
+    return ResolveViGEmOwnedTarget(vigem_target_get_index(static_cast<PVIGEM_TARGET>(target)), identity);
 }
 std::uint32_t NativeAddTarget(
     ViGEmClientHandle client,
@@ -289,6 +298,7 @@ const ViGEmApi& OfficialViGEmApi() noexcept {
         NativeRegisterFeedback,
         NativeUnregisterFeedback,
         VIGEM_ERROR_NONE,
+        NativeIdentifyTarget,
     };
     return api;
 }

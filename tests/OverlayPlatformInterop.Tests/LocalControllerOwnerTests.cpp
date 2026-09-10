@@ -12,7 +12,7 @@ using namespace widgetrail::isolation;
 namespace widgetrail::isolation {
 // Native discovery is never reached by the injected production owner in this suite.
 std::unique_ptr<SelectedControllerSource> CreateGameInputSelectedControllerReader() noexcept { std::abort(); }
-SelectedControllerDiscoveryStatus DiscoverCurrentPhysicalController(std::uint64_t, SelectedControllerDescriptor&) noexcept { std::abort(); }
+SelectedControllerDiscoveryStatus DiscoverCurrentPhysicalController(std::uint64_t, SelectedControllerDescriptor&, const ControllerDeviceNodeIdentity*) noexcept { std::abort(); }
 bool DiscoverSelectedControllerHideTargets(const ControllerDeviceNodeIdentity&, std::set<std::wstring>&) noexcept { std::abort(); }
 }
 namespace {

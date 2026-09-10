@@ -34,6 +34,7 @@ struct ViGEmApi final {
         ViGEmFeedbackCallback, void*) noexcept{};
     void (*UnregisterFeedback)(ViGEmTargetHandle) noexcept{};
     std::uint32_t successCode{};
+    bool (*IdentifyTarget)(ViGEmTargetHandle, ControllerDeviceNodeIdentity&) noexcept{};
 
     [[nodiscard]] bool complete() const noexcept;
 };
@@ -49,10 +50,11 @@ enum class ViGEmAdapterStatus {
     InitialNeutralFailed,
     UpdateFailed,
     RemoveTargetFailed,
+    TargetIdentityUnavailable,
 };
 
-// Serialized exact-target owner. The adapter never enumerates the bus or other
-// clients' targets. Its process must remain the sole owner of this object.
+// Serialized exact-target owner. Read-only PnP correlation identifies its own
+// target; all mutations still use only its acquired handle, never peer targets.
 class ViGEmOutputAdapter final : public VirtualOutputEffects {
 public:
     explicit ViGEmOutputAdapter(const ViGEmApi& api) noexcept;
@@ -72,6 +74,9 @@ public:
     [[nodiscard]] bool targetOwned() const noexcept {
         return target_ != nullptr && targetAdded_;
     }
+    [[nodiscard]] const ControllerDeviceNodeIdentity& ownedDeviceInstance() const noexcept {
+        return ownedDeviceInstance_;
+    }
 
 private:
     static constexpr std::uint32_t FeedbackClosed = 1U << 31;
@@ -87,6 +92,7 @@ private:
     ViGEmTargetHandle target_{};
     bool connected_{};
     bool targetAdded_{};
+    ControllerDeviceNodeIdentity ownedDeviceInstance_{};
     bool feedbackRegistered_{};
     std::atomic<std::uint64_t> feedbackSequence_{};
     std::atomic<std::uint16_t> feedbackMotors_{};

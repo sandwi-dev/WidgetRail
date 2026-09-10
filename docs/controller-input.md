@@ -19,6 +19,38 @@ Settings worker refreshes status only on its active Controllers page, and stops
 that work when deactivated. Physical-to-virtual forwarding is supported;
 recognized virtual input sources are excluded to avoid recapturing virtual output.
 
+### Source classification and owned output
+
+WIDGE-218 checks the bounded parent chain and device services. ViGEmBus devices
+are excluded even when Windows gives the bus a generic `ROOT\SYSTEM` instance
+ID. An exact node beneath the device-tree root beginning with `ROOT\SYSTEM\`
+or `ROOT\USB\` is classified as software-enumerated and excluded from automatic
+selection; this is not proof of its underlying hardware or application owner.
+Supported USB, HID, Bluetooth and Bluetooth LE paths also need PCI/ACPI hardware
+ancestry terminating at a recognized hardware root (including Windows ACPI HAL).
+Missing, malformed, disappearing, cyclic, overly deep and unsupported paths are
+unknown and never admitted simply because they lack a virtual marker. This is
+conservative topology evidence, not a universal physical/virtual attestation.
+
+For the owned ViGEm target, the adapter correlates the live target index with
+the direct child's Windows device address beneath one present ViGEmBus instance.
+Ambiguous buses, duplicate addresses or unavailable identity fail setup safely.
+The resulting exact instance ID also excludes descendants during reconnect
+discovery. Identity is cleared on target removal and resolved again on creation;
+neither an Xbox name, VID/PID nor XInput player slot establishes ownership.
+The bus index/address relationship is part of the dependency's implementation:
+[ViGEmBus PDO metadata](https://github.com/nefarius/ViGEmBus/blob/d986e1d93708ec9b11049542fa6027272cce716c/sys/EmulationTargetPDO.cpp#L318).
+No driver code is changed. Settings identifies the game-facing device as the
+WidgetRail virtual Xbox 360 controller; Windows retains its compatible Xbox name.
+
+The reconnect regression was caused by the retained output being selected while
+the physical controller was absent. A device status callback did detect removal;
+the subsequent discovery misclassified the output. Hardware observation on the
+affected USB 8BitDo and ViGEm stack now separates both devices correctly. Broader
+Bluetooth/built-in and other virtual-stack hardware coverage remains a manual
+verification limit; their supported and unknown topologies have deterministic
+coverage. Virtual-source forwarding and manual selection remain separate work.
+
 Selected-reader retirement sends an explicit zeroed GameInput rumble report.
 Although the SDK annotates a null report as optional, GameInputRedist 3.3.221
 can dereference it during teardown. A stop failure must not be mistaken for

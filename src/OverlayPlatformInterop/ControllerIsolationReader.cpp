@@ -41,6 +41,12 @@ template <std::size_t Size>
     return false;
 }
 
+[[nodiscard]] bool StartsWithIdentity(const std::wstring_view value,
+                                    const std::wstring_view prefix) noexcept {
+    return value.size() >= prefix.size() && std::equal(prefix.begin(), prefix.end(), value.begin(),
+        [](wchar_t expected, wchar_t actual) { return expected == std::towupper(actual); });
+}
+
 } // namespace
 
 bool ControllerDeviceNodeIdentity::valid() const noexcept {
@@ -71,7 +77,8 @@ std::optional<bool> IsSelectedControllerDescendant(
 
 ControllerDeviceAncestry ClassifyControllerDeviceAncestry(
     const std::wstring_view normalizedInterfacePath,
-    ControllerDeviceAncestryBackend& backend) noexcept {
+    ControllerDeviceAncestryBackend& backend,
+    const ControllerDeviceNodeIdentity* ownedOutput) noexcept {
     if (normalizedInterfacePath.empty())
         return ControllerDeviceAncestry::Unknown;
     if (ContainsVirtualMarker(normalizedInterfacePath))
@@ -88,6 +95,8 @@ ControllerDeviceAncestry ClassifyControllerDeviceAncestry(
 
     std::array<ControllerDeviceNodeToken, 32> visited{};
     std::size_t visitedCount{};
+    bool supportedTransport{};
+    bool hardwareBus{};
     for (; visitedCount < visited.size(); ++visitedCount) {
         if (std::find(
                 visited.begin(), visited.begin() + visitedCount, node) !=
@@ -98,12 +107,44 @@ ControllerDeviceAncestry ClassifyControllerDeviceAncestry(
         ControllerDeviceNodeIdentity identity;
         if (!backend.ReadNodeIdentity(node, identity) || !identity.valid())
             return ControllerDeviceAncestry::Unknown;
+        if (ownedOutput && ownedOutput->valid() &&
+            identity.length == ownedOutput->length && std::equal(
+                identity.view().begin(), identity.view().end(), ownedOutput->view().begin(),
+                [](wchar_t a, wchar_t b) { return std::towupper(a) == std::towupper(b); }))
+            return ControllerDeviceAncestry::OwnedVirtualOutput;
         if (ContainsVirtualMarker(identity.view()))
             return ControllerDeviceAncestry::KnownVirtualOutput;
-        if (node == root) return ControllerDeviceAncestry::Physical;
+        if (node == root) return ControllerDeviceAncestry::Unknown;
+        supportedTransport = supportedTransport || StartsWithIdentity(identity.view(), L"USB\\") ||
+            StartsWithIdentity(identity.view(), L"HID\\") || StartsWithIdentity(identity.view(), L"BTHENUM\\") ||
+            StartsWithIdentity(identity.view(), L"BTHLEDEVICE\\");
+        hardwareBus = hardwareBus || StartsWithIdentity(identity.view(), L"PCI\\") ||
+            StartsWithIdentity(identity.view(), L"ACPI\\");
+        // ViGEmBus may be enumerated as ROOT\SYSTEM\<number>, with no
+        // virtual marker in either the Xbox child or its ancestors' IDs.
+        ControllerDeviceNodeIdentity service;
+        if (!backend.ReadNodeService(node, service) ||
+            (service.length != 0 && !service.valid()))
+            return ControllerDeviceAncestry::Unknown;
+        constexpr std::wstring_view viGEmService = L"VIGEMBUS";
+        if (service.length == viGEmService.size() && std::equal(
+                service.view().begin(), service.view().end(), viGEmService.begin(),
+                [](wchar_t actual, wchar_t expected) { return std::towupper(actual) == expected; }))
+            return ControllerDeviceAncestry::KnownVirtualOutput;
         ControllerDeviceNodeToken parent{};
         if (!backend.Parent(node, parent))
             return ControllerDeviceAncestry::Unknown;
+        if (parent == root) {
+            // Software enumeration is exclusion evidence, not proof of which
+            // application owns a device or that its underlying hardware is virtual.
+            if (StartsWithIdentity(identity.view(), L"ROOT\\SYSTEM\\") ||
+                StartsWithIdentity(identity.view(), L"ROOT\\USB\\"))
+                return ControllerDeviceAncestry::SoftwareEnumerated;
+            return supportedTransport && hardwareBus &&
+                (StartsWithIdentity(identity.view(), L"PCI\\") || StartsWithIdentity(identity.view(), L"ACPI\\") ||
+                 StartsWithIdentity(identity.view(), L"ROOT\\ACPI_HAL\\"))
+                ? ControllerDeviceAncestry::Physical : ControllerDeviceAncestry::Unknown;
+        }
         node = parent;
     }
     return ControllerDeviceAncestry::Unknown;
@@ -120,7 +161,8 @@ bool SelectedControllerEnrollment::valid() const noexcept {
 void SelectedControllerDiscovery::Observe(
     const SelectedControllerCandidateKind kind,
     const SelectedControllerDescriptor& descriptor) noexcept {
-    if (kind == SelectedControllerCandidateKind::KnownVirtualOutput) return;
+    if (kind == SelectedControllerCandidateKind::KnownVirtualOutput ||
+        kind == SelectedControllerCandidateKind::SoftwareEnumerated) return;
     if (kind == SelectedControllerCandidateKind::Unknown ||
         !descriptor.valid()) {
         unknownIdentity_ = !chooseStableFirst_;

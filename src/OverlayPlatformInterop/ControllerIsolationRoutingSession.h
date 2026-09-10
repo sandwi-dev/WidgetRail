@@ -13,6 +13,7 @@ public:
     [[nodiscard]] virtual bool OpenOwnedTarget() noexcept = 0;
     [[nodiscard]] virtual bool TakeLatestFeedback(
         ControllerRumbleState&) noexcept { return false; }
+    [[nodiscard]] virtual ControllerDeviceNodeIdentity OwnedDeviceInstance() const noexcept { return {}; }
 };
 
 class ControllerIsolationGuideSink {

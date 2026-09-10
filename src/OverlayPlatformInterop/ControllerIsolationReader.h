@@ -45,6 +45,10 @@ public:
     [[nodiscard]] virtual bool ReadNodeIdentity(
         ControllerDeviceNodeToken node,
         ControllerDeviceNodeIdentity& identity) noexcept = 0;
+    // An absent service is a successful empty value; unreadable properties fail.
+    [[nodiscard]] virtual bool ReadNodeService(
+        ControllerDeviceNodeToken node,
+        ControllerDeviceNodeIdentity& service) noexcept = 0;
     [[nodiscard]] virtual bool Parent(
         ControllerDeviceNodeToken node,
         ControllerDeviceNodeToken& parent) noexcept = 0;
@@ -54,11 +58,14 @@ enum class ControllerDeviceAncestry : std::uint8_t {
     Physical,
     KnownVirtualOutput,
     Unknown,
+    SoftwareEnumerated,
+    OwnedVirtualOutput,
 };
 
 [[nodiscard]] ControllerDeviceAncestry ClassifyControllerDeviceAncestry(
     std::wstring_view normalizedInterfacePath,
-    ControllerDeviceAncestryBackend& backend) noexcept;
+    ControllerDeviceAncestryBackend& backend,
+    const ControllerDeviceNodeIdentity* ownedOutput = nullptr) noexcept;
 
 // Unknown ancestry must never widen the selected controller's hiding scope.
 [[nodiscard]] std::optional<bool> IsSelectedControllerDescendant(
@@ -223,6 +230,7 @@ enum class SelectedControllerCandidateKind : std::uint8_t {
     Physical,
     KnownVirtualOutput,
     Unknown,
+    SoftwareEnumerated,
 };
 
 enum class SelectedControllerDiscoveryStatus : std::uint8_t {
@@ -289,7 +297,10 @@ CreateGameInputSelectedControllerReader() noexcept;
 [[nodiscard]] SelectedControllerDiscoveryStatus
 DiscoverCurrentPhysicalController(
     std::uint64_t enrollmentToken,
-    SelectedControllerDescriptor& descriptor) noexcept;
+    SelectedControllerDescriptor& descriptor,
+    const ControllerDeviceNodeIdentity* ownedOutput = nullptr) noexcept;
+[[nodiscard]] bool ResolveViGEmOwnedTarget(std::uint32_t targetIndex,
+    ControllerDeviceNodeIdentity& identity) noexcept;
 [[nodiscard]] bool DiscoverSelectedControllerHideTargets(
     const ControllerDeviceNodeIdentity& selected,
     std::set<std::wstring>& targets) noexcept;

@@ -52,6 +52,7 @@ public:
         return adapter_.TakeLatestFeedback(state);
     }
     void RemoveOwnedTarget() noexcept override { adapter_.RemoveOwnedTarget(); }
+    ControllerDeviceNodeIdentity OwnedDeviceInstance() const noexcept override { return adapter_.ownedDeviceInstance(); }
 private:
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
     inline static const ViGEmApi testApi_{};
@@ -73,6 +74,9 @@ public:
     }
     bool Submit(const GamepadState& state) noexcept override { return open_ && output_.Submit(state); }
     bool TakeLatestFeedback(ControllerRumbleState& state) noexcept override { return output_.TakeLatestFeedback(state); }
+    ControllerDeviceNodeIdentity OwnedDeviceInstance() const noexcept override {
+        return open_ ? output_.OwnedDeviceInstance() : ControllerDeviceNodeIdentity{};
+    }
     void RemoveOwnedTarget() noexcept override {
         if (open_ && !output_.Submit({})) { output_.RemoveOwnedTarget(); open_ = false; }
         ControllerRumbleState ignored;
@@ -254,12 +258,13 @@ struct ControllerIsolationHostSession::Impl final {
             FinishStartup(failure); return;
         }
         SelectedControllerDescriptor descriptor;
+        const auto ownedOutput = output.OwnedDeviceInstance();
         const auto discovery =
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
             test ? (test->discover ? test->discover(test->discoveryContext, descriptor) :
                 (descriptor = test->descriptor, SelectedControllerDiscoveryStatus::Ready)) :
 #endif
-            DiscoverCurrentPhysicalController(GetTickCount64() | 1, descriptor);
+            DiscoverCurrentPhysicalController(GetTickCount64() | 1, descriptor, &ownedOutput);
         if (discovery !=
             SelectedControllerDiscoveryStatus::Ready) {
             if (discovery == SelectedControllerDiscoveryStatus::Unavailable) {

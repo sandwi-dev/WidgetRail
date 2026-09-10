@@ -78,7 +78,8 @@ internal static class ControllerSettingsScenarios
             var json = JsonSerializer.Serialize(snapshot);
             foreach (var text in new[] { "Input behavior", "Required drivers", "Exclusive control", "HidHide", "ViGEmBus",
                 "your game also reacts", "controller stops working in a game",
-                "single controller press may register twice in Settings or the Windows app switcher" })
+                "single controller press may register twice in Settings or the Windows app switcher",
+                "virtual Xbox 360 controller created by WidgetRail" })
                 if (!json.Contains(text, StringComparison.Ordinal)) throw new Exception("Missing guidance: " + text);
             if (snapshot.InitialFocusId != (status.CanEnable ? "controllers.exclusive-control" : "controllers.refresh"))
                 throw new Exception("Unavailable toggle must not own initial focus.");

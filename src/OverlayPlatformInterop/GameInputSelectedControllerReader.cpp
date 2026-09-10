@@ -202,6 +202,24 @@ public:
         return identity.valid();
     }
 
+    bool ReadNodeService(
+        const ControllerDeviceNodeToken node,
+        ControllerDeviceNodeIdentity& service) noexcept override {
+        service = {};
+        DEVPROPTYPE type{};
+        ULONG bytes = static_cast<ULONG>(service.value.size() * sizeof(wchar_t));
+        const auto result = CM_Get_DevNode_PropertyW(
+            static_cast<DEVINST>(node), &DEVPKEY_Device_Service, &type,
+            reinterpret_cast<PBYTE>(service.value.data()), &bytes, 0);
+        if (result == CR_NO_SUCH_VALUE) { service = {}; return true; }
+        if (result != CR_SUCCESS || type != DEVPROP_TYPE_STRING ||
+            bytes < sizeof(wchar_t) || bytes > service.value.size() * sizeof(wchar_t) ||
+            bytes % sizeof(wchar_t) != 0) return false;
+        service.length = bytes / sizeof(wchar_t) - 1;
+        if (service.value[service.length] != L'\0') return false;
+        return service.length == 0 || service.valid();
+    }
+
     bool Parent(
         const ControllerDeviceNodeToken node,
         ControllerDeviceNodeToken& parent) noexcept override {
@@ -249,6 +267,7 @@ struct PhysicalControllerDiscoveryContext final {
     std::mutex mutex;
     SelectedControllerDiscovery discovery{true};
     const SelectedControllerEnrollment* requested{};
+    const ControllerDeviceNodeIdentity* ownedOutput{};
     SelectedControllerDescriptor selectedDescriptor;
     ComPtr<IGameInputDevice> selectedDevice;
 };
@@ -274,10 +293,13 @@ void CALLBACK OnPhysicalControllerDiscovery(
         if (normalized) {
             CfgMgrDeviceAncestryBackend backend;
             const auto ancestry = ClassifyControllerDeviceAncestry(
-                *normalized, backend);
-            if (ancestry == ControllerDeviceAncestry::KnownVirtualOutput) {
+                *normalized, backend, state.ownedOutput);
+            if (ancestry == ControllerDeviceAncestry::KnownVirtualOutput ||
+                ancestry == ControllerDeviceAncestry::OwnedVirtualOutput) {
                 candidateKind =
                     SelectedControllerCandidateKind::KnownVirtualOutput;
+            } else if (ancestry == ControllerDeviceAncestry::SoftwareEnumerated) {
+                candidateKind = SelectedControllerCandidateKind::SoftwareEnumerated;
             } else if (ancestry == ControllerDeviceAncestry::Physical) {
                 std::array<std::uint8_t, 32> digest{};
                 if (backend.ResolveInterfaceInstanceId(
@@ -309,12 +331,14 @@ DiscoverCurrentPhysicalController(
     const std::uint64_t enrollmentToken,
     SelectedControllerDescriptor& descriptor,
     ComPtr<IGameInputDevice>* const selectedDevice = nullptr,
-    const SelectedControllerEnrollment* const requested = nullptr) noexcept {
+    const SelectedControllerEnrollment* const requested = nullptr,
+    const ControllerDeviceNodeIdentity* const ownedOutput = nullptr) noexcept {
     descriptor = {};
     if (selectedDevice) selectedDevice->Reset();
     if (enrollmentToken == 0)
         return SelectedControllerDiscoveryStatus::UnknownIdentity;
     PhysicalControllerDiscoveryContext context(enrollmentToken, requested);
+    context.ownedOutput = ownedOutput;
     GameInputCallbackToken callback{};
     const auto registered = gameInput.RegisterDeviceCallback(
         nullptr, GameInputKindGamepad, GameInputDeviceConnected,
@@ -384,7 +408,8 @@ public:
             ? ClassifyControllerDeviceAncestry(*pnpPath, ancestryBackend)
             : ControllerDeviceAncestry::Unknown;
         if (!pnpPath || !HashPnpPath(*pnpPath, pnpDigest) ||
-            ancestry == ControllerDeviceAncestry::Unknown) {
+            (ancestry != ControllerDeviceAncestry::Physical &&
+             ancestry != ControllerDeviceAncestry::KnownVirtualOutput)) {
             Stop();
             return SelectedControllerPrepareStatus::IdentityMismatch;
         }
@@ -552,7 +577,8 @@ CreateGameInputSelectedControllerReader() noexcept {
 
 SelectedControllerDiscoveryStatus DiscoverCurrentPhysicalController(
     const std::uint64_t enrollmentToken,
-    SelectedControllerDescriptor& descriptor) noexcept {
+    SelectedControllerDescriptor& descriptor,
+    const ControllerDeviceNodeIdentity* ownedOutput) noexcept {
     descriptor = {};
     if (enrollmentToken == 0)
         return SelectedControllerDiscoveryStatus::UnknownIdentity;
@@ -560,7 +586,52 @@ SelectedControllerDiscoveryStatus DiscoverCurrentPhysicalController(
     if (FAILED(GameInputCreate(gameInput.ReleaseAndGetAddressOf())) ||
         !gameInput) return SelectedControllerDiscoveryStatus::Unavailable;
     return DiscoverCurrentPhysicalController(
-        *gameInput.Get(), enrollmentToken, descriptor);
+        *gameInput.Get(), enrollmentToken, descriptor, nullptr, nullptr, ownedOutput);
+}
+
+bool ResolveViGEmOwnedTarget(const std::uint32_t targetIndex,
+    ControllerDeviceNodeIdentity& identity) noexcept {
+    identity = {};
+    if (targetIndex == 0) return false;
+    // ViGEm exposes its live target serial as the PDO address. Correlate only
+    // beneath a unique present ViGEmBus instance; neither VID/PID nor a name
+    // identifies a target. Ambiguous/missing metadata must not assert ownership.
+    constexpr ULONG flags = CM_GETIDLIST_FILTER_SERVICE | CM_GETIDLIST_FILTER_PRESENT;
+    ULONG characters{};
+    if (CM_Get_Device_ID_List_SizeW(&characters, L"ViGEmBus", flags) != CR_SUCCESS ||
+        characters < 2 || characters > 16'384) return false;
+    std::array<wchar_t, 16'384> buses{};
+    if (CM_Get_Device_ID_ListW(L"ViGEmBus", buses.data(), characters, flags) != CR_SUCCESS)
+        return false;
+    std::size_t firstLength{};
+    while (firstLength < characters && buses[firstLength] != L'\0') ++firstLength;
+    if (firstLength == 0 || firstLength + 1 >= characters || buses[firstLength + 1] != L'\0')
+        return false;
+    DEVINST bus{}, child{};
+    if (CM_Locate_DevNodeW(&bus, buses.data(), CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS ||
+        CM_Get_Child(&child, bus, 0) != CR_SUCCESS) return false;
+    CfgMgrDeviceAncestryBackend backend;
+    ControllerDeviceNodeIdentity match;
+    for (unsigned count = 0; count < 256; ++count) {
+        ULONG address{};
+        ULONG bytes = sizeof(address);
+        DEVPROPTYPE type{};
+        if (CM_Get_DevNode_PropertyW(child, &DEVPKEY_Device_Address, &type,
+                reinterpret_cast<PBYTE>(&address), &bytes, 0) != CR_SUCCESS ||
+            type != DEVPROP_TYPE_UINT32 || bytes != sizeof(address)) return false;
+        if (address == targetIndex) {
+            if (match.valid() || !backend.ReadNodeIdentity(child, match)) return false;
+        }
+        DEVINST sibling{};
+        const auto result = CM_Get_Sibling(&sibling, child, 0);
+        if (result == CR_NO_SUCH_DEVNODE) {
+            identity = match;
+            return identity.valid();
+        }
+        if (result != CR_SUCCESS || sibling == child) return false;
+        child = sibling;
+    }
+    return false;
 }
 
 bool DiscoverSelectedControllerHideTargets(
