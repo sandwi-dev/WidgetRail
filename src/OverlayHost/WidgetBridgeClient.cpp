@@ -3898,6 +3898,53 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
     return std::nullopt;
 }
 
+std::optional<ControllerControlPreference> WidgetBridgeClient::ExchangeControllerControl(
+    const std::uint32_t state, const std::uint32_t prerequisites) {
+    std::scoped_lock lock(requestMutex_);
+    if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_ || state > 5 || prerequisites > 7) return std::nullopt;
+    winrt::handle deadline{CreateWaitableTimerW(nullptr, TRUE, nullptr)};
+    LARGE_INTEGER due{}; due.QuadPart = -20'000'000;
+    if (!deadline || !SetWaitableTimer(deadline.get(), &due, 0, nullptr, nullptr, FALSE)) return std::nullopt;
+    constexpr const wchar_t* states[]{L"unavailable", L"off", L"starting", L"active", L"waitingForController", L"recoveryRequired"};
+    try {
+        JsonObject payload;
+        payload.Insert(L"state", JsonValue::CreateStringValue(states[state]));
+        payload.Insert(L"hidHideReady", JsonValue::CreateBooleanValue((prerequisites & 1U) != 0));
+        payload.Insert(L"viGEmBusReady", JsonValue::CreateBooleanValue((prerequisites & 2U) != 0));
+        payload.Insert(L"inputReady", JsonValue::CreateBooleanValue((prerequisites & 4U) != 0));
+        const auto requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(L"controller-control"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()), deadline.get())) return std::nullopt;
+        while (const auto frame = ReadFrame(deadline.get())) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            long long responseId{};
+            if (response.GetNamedNumber(L"protocolVersion") != 1 || !ReadRequestId(response, responseId))
+                throw std::runtime_error("Invalid controller response");
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_))
+                    throw std::runtime_error("Invalid controller notification");
+                continue;
+            }
+            if (responseId != requestId || response.GetNamedString(L"type") != L"controller-control")
+                throw std::runtime_error("Unexpected controller response");
+            const auto result = response.GetNamedObject(L"payload");
+            if (result.Size() != 2 || result.GetNamedValue(L"exclusiveControl").ValueType() != JsonValueType::Boolean ||
+                result.GetNamedValue(L"revision").ValueType() != JsonValueType::Number)
+                throw std::runtime_error("Invalid controller preference");
+            const auto revision = result.GetNamedNumber(L"revision");
+            if (!std::isfinite(revision) || revision < 0 || revision > 9'007'199'254'740'990.0 || std::floor(revision) != revision)
+                throw std::runtime_error("Invalid controller revision");
+            return ControllerControlPreference{result.GetNamedBoolean(L"exclusiveControl"), static_cast<long long>(revision)};
+        }
+    } catch (...) { Fail(L"Controller settings exchange failed."); }
+    return std::nullopt;
+}
+
 std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
     std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;

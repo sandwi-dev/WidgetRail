@@ -2,6 +2,18 @@
 
 Status: integrated Phase 0 platform prototype, 2026-08-09
 
+WIDGE-217 adds Settings > Controllers with default-off Exclusive control,
+separate input-behavior and required-driver groups, readiness-gated enablement,
+actual native status, and an explicit owned-cleanup retry. The sole native
+routing owner keeps a stable automatic physical-controller selection, waits
+when none are available, and neutralizes/retains its virtual output across
+disconnect and replacement. Initial held input is cancellable and cannot reach
+gameplay before neutral. Focused evidence includes Settings 62/62, diagnostics
+18/18, the Bridge controller persistence/freshness scenario, routing 182 checks,
+and local ownership 72 checks. Packaged physical acceptance remains pending;
+W213/W217 integration is held until that user verdict. Elevated GoW compatibility
+is deferred at the user's request, not claimed fixed.
+
 WIDGE-213 controller-isolation follow-up uses the existing XInput Guide adapter
 on the sole native routing thread at 25 ms, with GameInput retained for selected
 physical readings, disconnect and rumble. The unused isolation GameInput Guide
@@ -9,7 +21,7 @@ registration and temporary detailed Guide counters have been removed. Stable
 physical identity rebinding after HidHide and valid empty HidHide list parsing
 remain. Focused coverage includes 182 routing checks, 919 reader checks and 48
 local-owner checks. These later commits are held from main pending WIDGE-217;
-the cleanup candidate still requires the final physical Guide/navigation check.
+the subsequent Guide/navigation candidate was physically accepted by the user.
 
 This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user

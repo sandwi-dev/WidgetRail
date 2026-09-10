@@ -12,6 +12,15 @@
 
 .settings-header { flex-shrink: 0; }
 
+.section-heading {
+  font-size: 16px;
+  font-weight: 600;
+  padding: 14px 0 2px;
+  max-lines: 2;
+}
+
+.controller-driver { gap: 4px; padding: 4px 0; }
+
 .settings-page {
   flex-grow: 1;
   flex-basis: 0;
@@ -43,6 +52,8 @@
   font-weight: 400;
   max-lines: 2;
 }
+
+.controllers-help { max-lines: 6; }
 
 .settings-status.is-error,
 .diagnostic-error {

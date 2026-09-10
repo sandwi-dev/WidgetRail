@@ -21,6 +21,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeCatalogMonitor? _catalogMonitor;
     private readonly BridgeClientRegistry _registry;
     private readonly BridgeDiagnosticsProjection _diagnostics;
+    private readonly BridgeControllerControl _controllers;
     private readonly BridgeAuthorityRecoveryProjection _authorityRecovery;
     private readonly BridgeWidgetLocalDataService _localData;
     private readonly BridgeWidgetPackageUninstallService _packageUninstall;
@@ -75,7 +76,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         Action<string, BrokerCapabilityDiagnostic>? capabilityDiagnosticSink,
         Action<BridgeClientLifetimeDiagnostic>? lifetimeDiagnosticSink = null,
         Action<BridgeWidgetRequestDiagnostic>? requestDiagnosticSink = null,
-        string? workerDiagnosticRoot = null)
+        string? workerDiagnosticRoot = null,
+        PlatformSettingsStore? settingsStore = null)
     {
         _pipeName = ValidatePipeName(pipeName);
         _maximumMessageBytes = maximumMessageBytes is >= 256 and <=
@@ -83,6 +85,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 ? maximumMessageBytes
                 : throw new ArgumentOutOfRangeException(nameof(maximumMessageBytes));
         _appearance = appearance;
+        _controllers = new BridgeControllerControl(settingsStore);
         _consentStore = consentStore;
         _platformBackend = platformBackend;
         _appLibraryArtwork = platformBackend is null ? null : new AppLibraryArtworkRegistry();
@@ -341,10 +344,20 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         _writeGate.Dispose();
     }
 
+    private async ValueTask<PlatformDiagnosticsSnapshot> CreateDiagnosticsAsync(CancellationToken cancellationToken) =>
+        (await _diagnostics.CreateAsync(cancellationToken).ConfigureAwait(false)) with
+        { Controllers = _controllers.Status };
+
     private async Task HandleRequestAsync(BridgeEnvelope request, CancellationToken cancellationToken)
     {
         switch (request.Type)
         {
+        case BridgeMessageTypes.ControllerControl:
+            _controllers.Report(BridgeJson.FromElement<ControllerControlStatus>(request.Payload));
+            await ReplyAsync(BridgeMessageTypes.ControllerControl, request.RequestId,
+                await _controllers.ReadPreferenceAsync(cancellationToken).ConfigureAwait(false),
+                cancellationToken).ConfigureAwait(false);
+            break;
         case BridgeMessageTypes.ListWidgets:
             var (listCatalog, listRevision) = _registry.CatalogSnapshot();
             await ReplyAsync(BridgeMessageTypes.Widgets, request.RequestId,
@@ -938,13 +951,13 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     ? null
                 : IsTrustedSettings(configured)
                 ? context => new DiagnosticsWidgetProcessCompanion(
-                    _diagnostics.CreateAsync,
+                    CreateDiagnosticsAsync,
                     _authorityRecovery.RetryAsync,
                     _localData.InspectAsync,
                     _localData.ClearAsync,
                     _packageUninstall.InspectAsync,
                     _packageUninstall.UninstallAsync,
-                    context)
+                    context, _controllers.SetAsync)
                 : _consentStore is null || _platformBackend is null
                     ? null
                     : CreateCompanionFactory(configured),

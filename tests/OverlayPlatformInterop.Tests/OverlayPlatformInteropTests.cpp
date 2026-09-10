@@ -134,6 +134,13 @@ int main() {
               GetProcAddress(importedModule,
                   "WidgetRailOverlayPlatformGetAbiVersion") != nullptr,
           "the focused executable imports the built public DLL ABI");
+    Check(GetProcAddress(importedModule, "WidgetRailOverlayPlatformControllerPrerequisites") != nullptr &&
+          GetProcAddress(importedModule, "WidgetRailOverlayPlatformControllerControlState") != nullptr &&
+          GetProcAddress(importedModule, "WidgetRailOverlayPlatformSetExclusiveControl") != nullptr,
+          "controller settings operations are exported by the production DLL");
+    Check(WidgetRailOverlayPlatformControllerControlState(nullptr) == 0 &&
+          WidgetRailOverlayPlatformSetExclusiveControl(nullptr, 1) == WidgetRailOverlayPlatformStatus::InvalidArgument,
+          "controller settings reject missing owner without driver mutation");
     Check(sizeof(WidgetRailOverlayPlatformControllerFrame) == 80 &&
               offsetof(WidgetRailOverlayPlatformControllerFrame, state) == 20 &&
               offsetof(

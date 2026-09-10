@@ -1,5 +1,26 @@
 # Controller input model
 
+## Exclusive control lifecycle
+
+The Controllers Settings preference defaults to off and is separate from ordinary
+overlay navigation. When enabled, one native routing thread owns the selected
+physical GameInput reader and the ViGEm output. The selected-device disconnect
+callback retires the reader, neutralizes output and stops old feedback. Discovery
+uses GameInput blocking enumeration at 250 ms intervals while waiting, rather
+than a permanent global arrival callback. Other devices cannot replace a connected
+selection. Device handoff retains the owned virtual target where possible, restores
+only owned HidHide changes, and requires fresh neutral input from the replacement.
+Turning the setting off also cancels discovery or an initial held-input wait.
+
+The host exchanges preference and status with the Bridge once per second; this
+administrative exchange is separate from gameplay routing and has a two-second
+transport deadline. Driver readiness reports expire after five seconds. The
+Settings worker refreshes status only on its active Controllers page, and stops
+that work when deactivated. Physical-to-virtual forwarding is supported;
+recognized virtual input sources are excluded to avoid recapturing virtual output.
+
+## Ordinary overlay input
+
 Status: implemented prototype policy
 
 Guide/Home is the global overlay toggle. View is the global one-pin navigation

@@ -21,6 +21,7 @@ public enum SettingsPage
     Accessibility,
     AccessibilityVisual,
     Overlay,
+    Controllers,
     InstalledWidgets,
     InstalledWidgetDetails,
     InstalledWidgetVersions,
@@ -64,6 +65,7 @@ public sealed class SettingsWidget : Widget
     private string? _themePickerFocusId;
     private SettingsPage _page;
     private int _activationLoadCount;
+    private Task _controllerStatusTask = Task.CompletedTask;
     private bool _settingsValid = true;
     private bool _busy;
     private bool _error;
@@ -190,6 +192,45 @@ public sealed class SettingsWidget : Widget
     {
         Interlocked.Increment(ref _activationLoadCount);
         await ReloadAsync(activeLifetime).ConfigureAwait(false);
+        EnsureControllerStatusPolling();
+    }
+
+    protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken) =>
+        await _controllerStatusTask.ConfigureAwait(false);
+
+    private void EnsureControllerStatusPolling()
+    {
+        if (_controllerStatusTask.IsCompleted &&
+            !ActiveCancellationToken.IsCancellationRequested)
+            _controllerStatusTask = PollControllerStatusAsync(ActiveCancellationToken);
+    }
+
+    private async Task PollControllerStatusAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(1_000, cancellationToken).ConfigureAwait(false);
+                if (CurrentPage != SettingsPage.Controllers ||
+                    !await _operationGate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) continue;
+                try
+                {
+                    ControllerControlStatus status;
+                    try { status = (await _diagnosticsService.GetSnapshotAsync(cancellationToken).ConfigureAwait(false)).Controllers; }
+                    catch (PlatformDiagnosticsException) { status = ControllerControlStatus.Unavailable; }
+                    bool changed;
+                    lock (_stateLock)
+                    {
+                        changed = _diagnostics.Controllers != status;
+                        _diagnostics = _diagnostics with { Controllers = status };
+                    }
+                    if (changed) Invalidate();
+                }
+                finally { _operationGate.Release(); }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 
     public override async ValueTask OnActionAsync(
@@ -226,6 +267,12 @@ public sealed class SettingsWidget : Widget
             if (SettingsPreferencePolicy.TryCreate(action.ActionId, out var preference))
             {
                 await PersistPreferenceAsync(preference, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            if (action.ActionId is "controllers.exclusive-control.toggle" or "controllers.restore" &&
+                CurrentPage == SettingsPage.Controllers)
+            {
+                await SetExclusiveControlAsync(cancellationToken, action.ActionId == "controllers.restore").ConfigureAwait(false);
                 return;
             }
             switch (action.ActionId)
@@ -518,6 +565,40 @@ public sealed class SettingsWidget : Widget
         Invalidate();
     }
 
+    private async Task SetExclusiveControlAsync(CancellationToken cancellationToken, bool restore = false)
+    {
+        SetOperation("Checking controller requirements…", busy: true, error: false);
+        try
+        {
+            var current = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var enabled = !restore && !current.Controllers.ExclusiveControl;
+            var result = await _diagnosticsService.SetExclusiveControlAsync(enabled, cancellationToken)
+                .ConfigureAwait(false);
+            var saved = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                _settings = saved;
+                _diagnostics = _diagnostics with { Controllers = result.Status };
+                _busy = false;
+                _error = !result.Accepted;
+                _status = result.Accepted ? "Controller preference saved" :
+                    "Exclusive control could not be changed. Check the driver status and try again.";
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            SetOperation("Controller change cancelled", busy: false, error: false);
+            return;
+        }
+        catch (Exception exception) when (exception is PlatformSettingsException or
+            PlatformDiagnosticsException or IOException or UnauthorizedAccessException)
+        {
+            SetOperation("Controller settings are unavailable. Check again.", busy: false, error: true);
+            return;
+        }
+        Invalidate();
+    }
+
     private async Task PersistPreferenceAsync(
         SettingsPreferenceMutation mutation,
         CancellationToken cancellationToken)
@@ -734,6 +815,7 @@ public sealed class SettingsWidget : Widget
                 previousPage != SettingsPage.PermissionDiagnostics)
                 _permissionState = _permissionState with { DiagnosticsReturnFocus = false };
         }
+        EnsureControllerStatusPolling();
         Invalidate();
     }
 

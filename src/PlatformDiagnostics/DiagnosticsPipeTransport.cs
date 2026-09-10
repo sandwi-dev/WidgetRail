@@ -20,6 +20,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     internal static readonly TimeSpan MaximumOperationTimeout = TimeSpan.FromSeconds(10);
     private readonly string _pipeName;
     private readonly Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> _snapshotProvider;
+    private readonly Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? _exclusiveControl;
     private readonly Func<string, CancellationToken,
         ValueTask<PlatformAuthorityRecoveryRetryResult>>? _authorityRecoveryRetry;
     private readonly Func<string, CancellationToken,
@@ -49,12 +50,14 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         Func<string, CancellationToken,
             ValueTask<PlatformWidgetPackageUninstallInspection>>? packageUninstallInspection = null,
         Func<string, string, string, string, CancellationToken,
-            ValueTask<PlatformWidgetPackageUninstallResult>>? packageUninstall = null)
+            ValueTask<PlatformWidgetPackageUninstallResult>>? packageUninstall = null,
+        Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? exclusiveControl = null)
     {
         if (!IsToken(pipeName, 200))
             throw new ArgumentException("Diagnostics pipe name is invalid.", nameof(pipeName));
         _pipeName = pipeName;
         _snapshotProvider = snapshotProvider ?? throw new ArgumentNullException(nameof(snapshotProvider));
+        _exclusiveControl = exclusiveControl;
         _authorityRecoveryRetry = authorityRecoveryRetry;
         _localDataInspection = localDataInspection;
         _localDataClear = localDataClear;
@@ -149,9 +152,25 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
 
         var request = await ReadAsync<DiagnosticsRequest>(pipe, cancellationToken)
             .ConfigureAwait(false);
+        if (request.ExclusiveControl is not null && request.Operation != "set-exclusive-control")
+            throw new PlatformDiagnosticsException("malformed_request");
         string receiptOperation;
         switch (request.Operation)
         {
+            case "set-exclusive-control":
+            {
+                if (request.ExclusiveControl is null || request.ConfirmationToken is not null ||
+                    request.WidgetId is not null || request.PublisherId is not null || request.ActiveVersion is not null)
+                    throw new PlatformDiagnosticsException("malformed_request");
+                var result = _exclusiveControl is null
+                    ? new ControllerControlResult(false, ControllerControlStatus.Unavailable)
+                    : await _exclusiveControl(request.ExclusiveControl.Value, cancellationToken)
+                        .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+                ValidateControllerResult(result);
+                await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
+                receiptOperation = "set-exclusive-control";
+                break;
+            }
             case SnapshotOperation when request.ConfirmationToken is null &&
                 request.WidgetId is null:
             {
@@ -297,6 +316,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     internal static void ValidateSnapshot(PlatformDiagnosticsSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        ValidateControllerStatus(snapshot.Controllers);
         if (snapshot.SchemaVersion != PlatformDiagnosticsSnapshot.CurrentSchemaVersion ||
             snapshot.Revision < 0 || snapshot.Workers is null ||
             snapshot.AuthorityRecoveries is null ||
@@ -518,12 +538,25 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private static extern bool GetNamedPipeClientProcessId(IntPtr pipe, out uint clientProcessId);
 
     private sealed record DiagnosticsHello(string Nonce);
+    internal static void ValidateControllerStatus(ControllerControlStatus status)
+    {
+        if (status is null || !Enum.IsDefined(status.State))
+            throw new PlatformDiagnosticsException("invalid_controller_status");
+    }
+
+    internal static void ValidateControllerResult(ControllerControlResult result)
+    {
+        if (result is null) throw new PlatformDiagnosticsException("invalid_controller_result");
+        ValidateControllerStatus(result.Status);
+    }
+
     private sealed record DiagnosticsRequest(
         string Operation,
         string? ConfirmationToken = null,
         string? WidgetId = null,
         string? PublisherId = null,
-        string? ActiveVersion = null);
+        string? ActiveVersion = null,
+        bool? ExclusiveControl = null);
     private sealed record DiagnosticsAcknowledgement(bool Accepted);
     private sealed record DiagnosticsReceipt(string Operation);
 }
@@ -551,6 +584,13 @@ public sealed class PlatformDiagnosticsPipeClient(
             PlatformDiagnosticsPipeServer.ValidateSnapshot,
             cancellationToken).ConfigureAwait(false);
     }
+
+    public async ValueTask<ControllerControlResult> SetExclusiveControlAsync(
+        bool enabled, CancellationToken cancellationToken = default) =>
+        await ExecuteAsync<ControllerControlResult>(
+            new DiagnosticsRequest("set-exclusive-control", ExclusiveControl: enabled),
+            "set-exclusive-control", PlatformDiagnosticsPipeServer.ValidateControllerResult,
+            cancellationToken).ConfigureAwait(false);
 
     public async ValueTask<PlatformAuthorityRecoveryRetryResult> RetryAuthorityRecoveryAsync(
         string confirmationToken,
@@ -684,7 +724,8 @@ public sealed class PlatformDiagnosticsPipeClient(
         string? ConfirmationToken = null,
         string? WidgetId = null,
         string? PublisherId = null,
-        string? ActiveVersion = null);
+        string? ActiveVersion = null,
+        bool? ExclusiveControl = null);
     private sealed record DiagnosticsAcknowledgement(bool Accepted);
     private sealed record DiagnosticsReceipt(string Operation);
 

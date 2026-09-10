@@ -86,6 +86,7 @@ constexpr UINT_PTR kForegroundLossTimer = 5;
 constexpr UINT_PTR kActionFeedbackTimer = 6;
 constexpr UINT_PTR kPinnedSurfaceTimer = 7;
 constexpr UINT_PTR kBridgeControlPlaneTimer = 8;
+constexpr UINT_PTR kControllerSettingsTimer = 9;
 constexpr UINT kVisibleControllerTimerMilliseconds = 15;
 constexpr UINT kPlatformEventMessage = WM_APP + 1;
 constexpr UINT kImageReadyMessage = WM_APP + 2;
@@ -1101,6 +1102,10 @@ public:
                 L" bridge-session=" +
                 std::to_wstring(bridge_.bridgeSessionGeneration()));
             RefreshPlatformAppearance();
+            if (!developmentProbeOnly_) {
+                RefreshControllerSettings();
+                SetTimer(window_, kControllerSettingsTimer, 1'000, nullptr);
+            }
             if (auto change = sessions_.EstablishCatalog()) {
                 ApplyWidgetCatalogChange(*change);
                 developmentCatalogReady = true;
@@ -2331,6 +2336,10 @@ private:
                 static_cast<float>(static_cast<short>(HIWORD(lParam))), true);
             return 0;
         case WM_TIMER:
+            if (wParam == kControllerSettingsTimer) {
+                RefreshControllerSettings();
+                return 0;
+            }
             if (wParam == kBridgeControlPlaneTimer) {
                 // A fully hidden, unpinned overlay retains only the native
                 // Bridge control plane. Pumping frames here fills the client's
@@ -6189,6 +6198,26 @@ private:
         AppendDiagnostic(L"Applied platform appearance revision " +
                          std::to_wstring(current->revision) + L" theme=" +
                          current->themeId + L"@" + current->themeVersion);
+    }
+
+    void RefreshControllerSettings() {
+        const auto prerequisites = WidgetRailOverlayPlatformControllerPrerequisites();
+        const auto state = WidgetRailOverlayPlatformControllerControlState(platform_);
+        const auto preference = bridge_.ExchangeControllerControl(state, prerequisites);
+        if (!preference) return;
+        if (!controllerPreferenceRevision_ || *controllerPreferenceRevision_ != preference->revision ||
+            controllerPreferenceEnabled_ != preference->exclusiveControl) {
+            controllerPreferenceRevision_ = preference->revision;
+            controllerPreferenceEnabled_ = preference->exclusiveControl;
+            const auto result = WidgetRailOverlayPlatformSetExclusiveControl(platform_,
+                preference->exclusiveControl ? WRAIL_OVERLAY_PLATFORM_TRUE : WRAIL_OVERLAY_PLATFORM_FALSE);
+            if (WidgetRailOverlayPlatformRequiresLegacyGuidePolling(platform_) != WRAIL_OVERLAY_PLATFORM_FALSE)
+                SetTimer(window_, kGuideCompatibilityTimer, 25, nullptr);
+            else
+                KillTimer(window_, kGuideCompatibilityTimer);
+            AppendDiagnostic(result == WidgetRailOverlayPlatformStatus::Ok
+                ? L"Controller settings applied" : L"Controller settings could not be applied; check Controllers settings");
+        }
     }
 
     void RefreshPlatformAppearance() {
@@ -17978,6 +18007,8 @@ private:
     std::optional<std::wstring> performanceState_;
     std::optional<std::wstring> performanceWidgetId_;
     std::optional<std::wstring> performanceDiagnosticsPath_;
+    std::optional<long long> controllerPreferenceRevision_;
+    bool controllerPreferenceEnabled_{};
     std::optional<std::wstring> performanceDiagnosticsNonce_;
     std::optional<std::wstring> scrollEvidencePath_;
     widgetrail::ScrollEvidenceProbe scrollEvidenceProbe_;

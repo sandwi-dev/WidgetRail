@@ -66,7 +66,8 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
             packageUninstallInspection,
         Func<string, string, string, string, CancellationToken,
             ValueTask<PlatformWidgetPackageUninstallResult>> packageUninstall,
-        WidgetProcessCompanionContext context)
+        WidgetProcessCompanionContext context,
+        Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? exclusiveControl = null)
     {
         ArgumentNullException.ThrowIfNull(snapshotProvider);
         ArgumentNullException.ThrowIfNull(authorityRecoveryRetry);
@@ -85,7 +86,8 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
             localDataInspection: localDataInspection,
             localDataClear: localDataClear,
             packageUninstallInspection: packageUninstallInspection,
-            packageUninstall: packageUninstall);
+            packageUninstall: packageUninstall,
+            exclusiveControl: exclusiveControl);
         WorkerArguments =
         [
             "--diagnostics-pipe", pipeName,

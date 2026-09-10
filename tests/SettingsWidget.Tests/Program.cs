@@ -19,6 +19,8 @@ if (args is ["--export-renderer-fixture", var rendererFixturePath])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Controllers page separates input behavior and prerequisite status", ControllerSettingsScenarios.LayoutAndGates),
+    ("Controller actions gate enable preserve disable and retry recovery", ControllerSettingsScenarios.ActionsAndRecovery),
     ("Root keeps widget permissions inside Installed Widgets", RootCategories),
     ("Snapshot presentation is repeatable", SettingsPolicyScenarios.PresentationIsRepeatable),
     ("Navigation and preference policies are closed", SettingsPolicyScenarios.NavigationAndPreferencePoliciesAreClosed),
@@ -106,7 +108,7 @@ static Task RootCategories()
     Assert.Equal("settings-root", snapshot.ActiveInputScopeId);
     Assert.Equal("category.appearance", snapshot.InitialFocusId);
     Assert.SequenceEqual(
-        ["category.appearance", "category.accessibility", "category.overlay", "category.installed-widgets", "category.diagnostics", "settings.refresh", "category.reset"],
+        ["category.appearance", "category.accessibility", "category.overlay", "category.controllers", "category.installed-widgets", "category.diagnostics", "settings.refresh", "category.reset"],
         Buttons(snapshot.Root).Select(button => button.Id));
     Assert.Valid(snapshot);
     return Task.CompletedTask;
