@@ -62,9 +62,12 @@ public:
     void Stop() noexcept;
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
     struct TestDependencies {
+        using PollGuideCompatibility = std::uint8_t (*)(void*) noexcept;
         LocalPolicyEffects* effects{};
         SelectedControllerSource* source{};
         ControllerIsolationOutput* output{};
+        PollGuideCompatibility pollGuideCompatibility{};
+        void* guideCompatibilityContext{};
         SelectedControllerDescriptor descriptor{};
         std::filesystem::path journalPath;
         bool throwAfterApply{};

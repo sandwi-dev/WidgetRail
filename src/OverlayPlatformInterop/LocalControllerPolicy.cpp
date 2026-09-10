@@ -9,6 +9,12 @@ namespace {
 constexpr std::size_t MaximumBytes = 128 * 1024;
 constexpr std::size_t MaximumEntries = 512;
 constexpr std::string_view Magic = "WidgetRailControllerIsolationLocal=1\n";
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+[[nodiscard]] std::wstring LocalOwnerMutexName() {
+    return L"Local\\WidgetRail.ControllerIsolation.LocalOwner.Tests." +
+        std::to_wstring(GetCurrentProcessId());
+}
+#endif
 class File final {
 public:
     explicit File(HANDLE value) noexcept : value_(value) {}
@@ -109,7 +115,12 @@ LocalOwnerLease::~LocalOwnerLease() {
 }
 bool LocalOwnerLease::Acquire(std::wstring& diagnostic, DWORD timeout) {
     if (owned_) return true;
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+    const auto mutexName = LocalOwnerMutexName();
+    mutex_ = CreateMutexW(nullptr, FALSE, mutexName.c_str());
+#else
     mutex_ = CreateMutexW(nullptr, FALSE, L"Local\\WidgetRail.ControllerIsolation.LocalOwner");
+#endif
     if (!mutex_) return Fail(diagnostic, L"owner mutex", GetLastError());
     const auto wait = WaitForSingleObject(mutex_, timeout);
     if (wait == WAIT_OBJECT_0 || wait == WAIT_ABANDONED) { owned_ = true; return true; }

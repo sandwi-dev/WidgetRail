@@ -48,8 +48,14 @@ struct Source final : SelectedControllerSource {
     std::uint64_t timestamp{100};
     std::atomic_bool blockSample{}, sampleEntered{};
     std::atomic_int stopped{};
-    SelectedControllerPrepareStatus Prepare(const SelectedControllerEnrollment&, ControllerIsolationReaderIngress& value) noexcept override {
-        std::scoped_lock lock(mutex); ingress = &value; return SelectedControllerPrepareStatus::Ready;
+    SelectedControllerPrepareStatus Prepare(
+        const SelectedControllerEnrollment& enrollment,
+        ControllerIsolationReaderIngress& value,
+        SelectedControllerEnrollment& preparedEnrollment) noexcept override {
+        std::scoped_lock lock(mutex);
+        ingress = &value;
+        preparedEnrollment = enrollment;
+        return SelectedControllerPrepareStatus::Ready;
     }
     bool SampleCurrent(SelectedControllerCurrent& value) noexcept override {
         sampleEntered = true;
@@ -77,15 +83,29 @@ struct Output final : ControllerIsolationOutput {
     void RemoveOwnedTarget() noexcept override { ++removals; }
     bool Is(GamepadState value) { std::scoped_lock lock(mutex); return last == value; }
 };
+struct CompatibilityGuide final {
+    std::atomic_uint8_t pending{};
+    std::atomic_int polls{};
+    static std::uint8_t Poll(void* context) noexcept {
+        auto& self = *static_cast<CompatibilityGuide*>(context);
+        ++self.polls;
+        return self.pending.exchange(0);
+    }
+};
 template<class Predicate> bool Until(Predicate predicate) {
     const auto start = GetTickCount64();
     do { if (predicate()) return true; Sleep(1); } while (GetTickCount64() - start < 1500);
     return false;
 }
 ControllerIsolationHostSession::TestDependencies Dependencies(
-    const std::filesystem::path& path, Effects& effects, Source* source, Output& output) {
+    const std::filesystem::path& path, Effects& effects, Source* source, Output& output,
+    CompatibilityGuide* guide = nullptr) {
     ControllerIsolationHostSession::TestDependencies value;
     value.effects = &effects; value.source = source; value.output = &output; value.journalPath = path;
+    if (guide) {
+        value.pollGuideCompatibility = CompatibilityGuide::Poll;
+        value.guideCompatibilityContext = guide;
+    }
     auto& enrollment = value.descriptor.enrollment;
     enrollment.enrollmentToken = 1; enrollment.deviceId[0] = 1; enrollment.deviceRootId[0] = 2;
     enrollment.containerId[0] = 3; enrollment.normalizedPnpPathDigest[0] = 4;
@@ -165,9 +185,23 @@ void SetupCleanup(const std::filesystem::path& root) {
         "restore failure retains record and original fault");
 }
 void OwnerTransitions(const std::filesystem::path& root) {
-    Effects effects; Source source; Output output;
-    ControllerIsolationHostSession owner(Dependencies(root / L"owner" / L"local-session.v1", effects, &source, output));
+    Effects effects; Source source; Output output; CompatibilityGuide compatibilityGuide;
+    ControllerIsolationHostSession owner(Dependencies(
+        root / L"owner" / L"local-session.v1", effects, &source, output,
+        &compatibilityGuide));
     std::wstring error; Check(owner.Start(true, error), "actual routing thread starts");
+    Check(Until([&] { return compatibilityGuide.polls > 0; }),
+        "routing thread owns physical XInput Guide polling");
+    compatibilityGuide.pending = 1;
+    std::uint64_t compatibilityEvent{};
+    Check(Until([&] {
+        return owner.PollGuide(compatibilityEvent, error) && compatibilityEvent != 0;
+    }), "physical XInput Guide rising edge reaches the bounded local queue");
+    Sleep(75);
+    compatibilityEvent = 0;
+    (void)owner.PollGuide(compatibilityEvent, error);
+    Check(compatibilityEvent == 0,
+        "physical XInput Guide edge is delivered once");
     {
         Effects otherEffects; Source otherSource; Output otherOutput;
         ControllerIsolationHostSession second(Dependencies(root / L"owner" / L"local-session.v1", otherEffects, &otherSource, otherOutput));

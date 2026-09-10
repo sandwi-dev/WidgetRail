@@ -289,7 +289,8 @@ struct ControllerIsolationHostSession::Impl final {
             FinishStartup(L"Controller isolation HidHide apply error=" + std::to_wstring(error)); return;
         }
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
-        constexpr bool guideCompatibilityAvailable = false;
+        const bool guideCompatibilityAvailable =
+            test && test->pollGuideCompatibility;
 #else
         widgetrail::input::XInputGuideCompatibility guideCompatibility;
         const bool guideCompatibilityAvailable = guideCompatibility.Initialize();
@@ -379,7 +380,8 @@ struct ControllerIsolationHostSession::Impl final {
                 nextGuideCompatibilityPoll =
                     now + kGuideCompatibilityPollMilliseconds;
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
-                constexpr std::uint8_t slots{};
+                const auto slots = test->pollGuideCompatibility(
+                    test->guideCompatibilityContext);
 #else
                 const auto slots = guideCompatibility.PollRisingEdges();
 #endif

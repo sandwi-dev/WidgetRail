@@ -384,6 +384,31 @@ void ReservedProducerYieldsToTheSerializedConsumer() {
 } // namespace
 
 int main() {
+    const auto enrolled = Enrollment();
+    auto local = Descriptor(1, L"physical-controller");
+    local.enrollment.deviceId[0] = 20;
+    local.enrollment.deviceRootId[0] = 21;
+    SelectedControllerEnrollment resolved;
+    Check(ResolveLocalController(enrolled, SelectedControllerDiscoveryStatus::Ready,
+              local, resolved) == LocalControllerResolutionStatus::Ready &&
+              resolved == local.enrollment,
+          "post-hide GameInput-local IDs rebind to the same stable physical controller");
+    auto foreign = local;
+    foreign.enrollment.containerId[0] ^= 1;
+    Check(ResolveLocalController(enrolled, SelectedControllerDiscoveryStatus::Ready,
+              foreign, resolved) == LocalControllerResolutionStatus::StableIdentityMismatch &&
+              !resolved.valid(),
+          "same local IDs cannot admit a different physical controller");
+    foreign = local;
+    foreign.enrollment.knownVirtualOutput = true;
+    Check(ResolveLocalController(enrolled, SelectedControllerDiscoveryStatus::Ready,
+              foreign, resolved) == LocalControllerResolutionStatus::StableIdentityMismatch &&
+              !resolved.valid(),
+          "virtual output cannot be rebound as the physical reader");
+    Check(ResolveLocalController(enrolled, SelectedControllerDiscoveryStatus::Ambiguous,
+              local, resolved) == LocalControllerResolutionStatus::Ambiguous &&
+              !resolved.valid(),
+          "ambiguous discovery never returns a usable enrollment");
     AncestryRequiresAnExactRootedPhysicalChain();
     EnrollmentIsExactAndVirtualFailsClosed();
     DiscoveryRequiresExactlyOnePhysicalController();
