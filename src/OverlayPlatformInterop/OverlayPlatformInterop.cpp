@@ -130,9 +130,6 @@ struct WidgetRailOverlayPlatformHandle final {
     widgetrail::ForegroundTargetTracker foregroundTarget;
     std::optional<widgetrail::input::ControllerReadPath> lastReadPath;
     std::optional<bool> lastForegroundExclusive;
-    std::uint64_t localGuidePops{};
-    std::uint64_t guideDebounceAccepted{};
-    std::uint64_t guideDebounceRejected{};
 
     void Diagnostic(const std::wstring& message) noexcept {
         if (!options.diagnostic || !TryEnterCallback()) return;
@@ -648,10 +645,6 @@ WidgetRailOverlayPlatformDrainEvent(
         if (!diagnostic.empty()) handle->Diagnostic(diagnostic);
         if (guideAvailable && guideEvent != 0 &&
                    (guideEvent & (1ULL << 63)) == 0) {
-            ++handle->localGuidePops;
-            handle->Diagnostic(
-                L"Controller isolation Guide diagnostic stage=platform-pop count=" +
-                std::to_wstring(handle->localGuidePops));
             handle->Queue({
                 RawEventKind::GuidePressed,
                 WidgetRailOverlayPlatformGuideSource::GameInput});
@@ -668,21 +661,7 @@ WidgetRailOverlayPlatformDrainEvent(
         }
         switch (raw.kind) {
         case RawEventKind::GuidePressed:
-            if (!handle->guideDebouncer.Accept(nowMilliseconds)) {
-                ++handle->guideDebounceRejected;
-                handle->Diagnostic(
-                    L"Controller isolation Guide diagnostic stage=debounce accepted=" +
-                    std::to_wstring(handle->guideDebounceAccepted) +
-                    L" rejected=" +
-                    std::to_wstring(handle->guideDebounceRejected));
-                continue;
-            }
-            ++handle->guideDebounceAccepted;
-            handle->Diagnostic(
-                L"Controller isolation Guide diagnostic stage=debounce accepted=" +
-                std::to_wstring(handle->guideDebounceAccepted) +
-                L" rejected=" +
-                std::to_wstring(handle->guideDebounceRejected));
+            if (!handle->guideDebouncer.Accept(nowMilliseconds)) continue;
             PublishEvent(
                 *event,
                 WidgetRailOverlayPlatformEventKind::GuideToggleRequested,

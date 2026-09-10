@@ -376,7 +376,7 @@ reports.
 
 ## Guide acquisition
 
-The native host's primary Guide path is the documented GameInput system-button
+Without controller isolation, the native host's primary Guide path is the documented GameInput system-button
 callback, registered for background Guide delivery and foreground-exclusive
 Guide behavior. Rising edges are posted onto the host window thread.
 
@@ -388,6 +388,17 @@ entry point, and polls four XInput slots every 25 ms for the hidden Guide bit.
 The adapter is isolated and removable; it is not a Microsoft-supported API
 contract. Both sources are rising-edge tracked and share a 150 ms deduplication
 guard.
+
+With `--controller-isolation`, the sole native routing thread polls that same
+XInput adapter across all four slots every 25 ms and sends rising Guide edges
+through the bounded local queue and existing debounce. It does not register a
+GameInput Guide callback: that registration succeeded but delivered no events
+under the tested HidHide configuration. Ordinary physical gamepad readings,
+disconnect notifications and rumble still use GameInput. Guide is accepted from
+any controller; gameplay routing remains tied to the selected physical device.
+This routing thread continues while the overlay is hidden and is independent
+of rendering. Normal process shutdown stops routing and restores only owned
+HidHide changes; gameplay forwarding is not guaranteed after exit or crash.
 
 Do not describe this as universal 8BitDo support. Results can vary by model,
 firmware, controller mode, transport, Steam configuration, and other software

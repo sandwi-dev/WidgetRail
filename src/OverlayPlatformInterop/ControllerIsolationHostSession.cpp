@@ -61,17 +61,6 @@ private:
 class LocalQueues final : public ControllerIsolationGuideSink,
                           public ControllerIsolationHostInputSink {
 public:
-    struct GuideDiagnostics final {
-        std::uint64_t admissionAttempts{};
-        std::uint64_t admitted{};
-        std::uint64_t rejected{};
-        std::uint64_t notifications{};
-        std::uint64_t popped{};
-
-        [[nodiscard]] friend bool operator==(
-            const GuideDiagnostics&, const GuideDiagnostics&) noexcept = default;
-    };
-
     void SetNotify(ControllerIsolationHostSession::Notify notify, void* context) noexcept {
         notify_ = notify; context_ = context;
     }
@@ -84,14 +73,8 @@ public:
     bool PublishGuide(bool pressed, std::uint64_t, std::uint64_t ordinal) noexcept override {
         {
             std::scoped_lock lock(mutex_);
-            ++guideDiagnostics_.admissionAttempts;
-            if (guides_.size() == 32) {
-                ++guideDiagnostics_.rejected;
-                return false;
-            }
+            if (guides_.size() == 32) return false;
             guides_.push_back(ordinal | (pressed ? 0ULL : (1ULL << 63)));
-            ++guideDiagnostics_.admitted;
-            if (notify_) ++guideDiagnostics_.notifications;
         }
         NotifyPlatform();
         return true;
@@ -107,46 +90,15 @@ public:
         std::scoped_lock l(mutex_);
         if (guides_.empty()) return 0;
         const auto result = guides_.front(); guides_.pop_front();
-        ++guideDiagnostics_.popped;
         return result;
-    }
-    [[nodiscard]] GuideDiagnostics GuideSnapshot() const noexcept {
-        std::scoped_lock lock(mutex_);
-        return guideDiagnostics_;
     }
 private:
     mutable std::mutex mutex_;
     ControllerIsolationInputEventQueue input_;
     std::deque<std::uint64_t> guides_;
-    GuideDiagnostics guideDiagnostics_{};
     ControllerIsolationHostSession::Notify notify_{};
     void* context_{};
 };
-
-[[nodiscard]] std::wstring FormatGuideDiagnostics(
-    const std::wstring_view stage,
-    const SelectedControllerGuideDiagnostics& source,
-    const LocalQueues::GuideDiagnostics& queues) {
-    return L"Controller isolation Guide diagnostic stage=" +
-        std::wstring(stage) +
-        L" focus-policy=" + std::to_wstring(source.focusPolicy) +
-        L" register-result=" + std::to_wstring(source.registrationResult) +
-        L" callback-entries=" + std::to_wstring(source.callbackEntries) +
-        L" lease-rejected=" + std::to_wstring(source.leaseRejections) +
-        L" null-device=" + std::to_wstring(source.nullDevices) +
-        L" device-info-failed=" + std::to_wstring(source.deviceInfoFailures) +
-        L" selected-id-mismatch=" + std::to_wstring(source.selectedIdMismatches) +
-        L" unchanged=" + std::to_wstring(source.unchangedStates) +
-        L" current-guide=" + std::to_wstring(source.lastCurrentGuide) +
-        L" previous-guide=" + std::to_wstring(source.lastPreviousGuide) +
-        L" ingress-accepted=" + std::to_wstring(source.ingressAccepted) +
-        L" ingress-rejected=" + std::to_wstring(source.ingressRejected) +
-        L" sink-attempts=" + std::to_wstring(queues.admissionAttempts) +
-        L" sink-admitted=" + std::to_wstring(queues.admitted) +
-        L" sink-rejected=" + std::to_wstring(queues.rejected) +
-        L" notifications=" + std::to_wstring(queues.notifications) +
-        L" queue-popped=" + std::to_wstring(queues.popped);
-}
 
 [[nodiscard]] LocalControllerProgress ConvertProgress(ControllerIsolationRoutingState state) {
     switch (state) {
@@ -176,19 +128,6 @@ struct ControllerIsolationHostSession::Impl final {
     std::deque<std::wstring> pendingDiagnostics;
     bool startupDone{}, desiredOverlay{};
     std::uint64_t desiredGeneration{}, appliedGeneration{};
-
-    void QueueGuideDiagnostic(
-        const std::wstring_view stage,
-        const SelectedControllerGuideDiagnostics& source,
-        const LocalQueues::GuideDiagnostics& queue) {
-        {
-            std::scoped_lock lock(mutex);
-            if (pendingDiagnostics.size() >= 8) return;
-            pendingDiagnostics.push_back(
-                FormatGuideDiagnostics(stage, source, queue));
-        }
-        queues.NotifyPlatform();
-    }
 
     void QueueDiagnostic(std::wstring message) {
         {
@@ -334,16 +273,11 @@ struct ControllerIsolationHostSession::Impl final {
         }
         { std::scoped_lock lock(mutex); progress = LocalControllerProgress::Playing;
           startupDone = true; changed.notify_all(); }
-        auto guideSource = source->GuideDiagnostics();
-        auto guideQueues = queues.GuideSnapshot();
-        QueueGuideDiagnostic(L"initial", guideSource, guideQueues);
         QueueDiagnostic(guideCompatibilityAvailable
             ? L"Controller isolation physical XInput Guide compatibility polling active cadence-ms=25"
             : L"Controller isolation physical XInput Guide compatibility polling unavailable");
-        const auto guideObservationDeadline = GetTickCount64() + 5'000;
         auto nextGuideCompatibilityPoll = GetTickCount64();
         std::uint64_t guideCompatibilityOrdinal{};
-        bool guideObservationReported{};
         std::wstring firstFailure;
         LocalControllerOwnerAction inFlight{LocalControllerOwnerAction::None};
         while (!stop.stop_requested()) {
@@ -386,12 +320,8 @@ struct ControllerIsolationHostSession::Impl final {
                 const auto slots = guideCompatibility.PollRisingEdges();
 #endif
                 if (slots != 0) {
-                    const bool admitted = queues.PublishGuide(
+                    (void)queues.PublishGuide(
                         true, now * 1'000, ++guideCompatibilityOrdinal);
-                    QueueDiagnostic(
-                        L"Controller isolation physical XInput Guide edge slots=" +
-                        std::to_wstring(slots) +
-                        L" admitted=" + std::to_wstring(admitted ? 1 : 0));
                 }
             }
             const bool transitionComplete =
@@ -416,20 +346,6 @@ struct ControllerIsolationHostSession::Impl final {
             if (result == ControllerIsolationRoutingResult::Faulted) {
                 firstFailure = L"Controller isolation routing fault=" +
                     std::to_wstring(static_cast<unsigned>(routing.fault())); break;
-            }
-            const auto currentGuideSource = source->GuideDiagnostics();
-            const auto currentGuideQueues = queues.GuideSnapshot();
-            if (currentGuideSource != guideSource ||
-                currentGuideQueues != guideQueues) {
-                guideSource = currentGuideSource;
-                guideQueues = currentGuideQueues;
-                QueueGuideDiagnostic(L"activity", guideSource, guideQueues);
-            }
-            if (!guideObservationReported &&
-                GetTickCount64() >= guideObservationDeadline) {
-                guideObservationReported = true;
-                QueueGuideDiagnostic(
-                    L"observation-5s", guideSource, guideQueues);
             }
             Sleep(1);
         }

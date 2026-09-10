@@ -335,26 +335,10 @@ DiscoverCurrentPhysicalController(
 class GameInputSelectedControllerReader final : public SelectedControllerSource {
 public:
     GameInputSelectedControllerReader() noexcept {
-        constexpr auto focusPolicy = static_cast<GameInputFocusPolicy>(
-            GameInputEnableBackgroundInput |
-            GameInputEnableBackgroundGuideButton);
-        guideFocusPolicy_.store(
-            static_cast<std::uint32_t>(focusPolicy),
-            std::memory_order_relaxed);
         const auto createResult =
             GameInputCreate(gameInput_.ReleaseAndGetAddressOf());
         if (FAILED(createResult) || !gameInput_) return;
-        gameInput_->SetFocusPolicy(focusPolicy);
-        const auto guideResult = gameInput_->RegisterSystemButtonCallback(
-            nullptr, GameInputSystemButtonGuide, this, OnGuide,
-            &guideToken_);
-        guideRegistrationResult_.store(
-            static_cast<std::uint32_t>(guideResult),
-            std::memory_order_relaxed);
-        if (FAILED(guideResult)) {
-            guideToken_ = 0;
-            gameInput_.Reset();
-        }
+        gameInput_->SetFocusPolicy(GameInputEnableBackgroundInput);
     }
 
     ~GameInputSelectedControllerReader() override { Stop(); }
@@ -366,7 +350,7 @@ public:
         preparedEnrollment = {};
         if (!enrollment.valid())
             return SelectedControllerPrepareStatus::InvalidEnrollment;
-        if (!gameInput_ || device_ || guideToken_ == 0)
+        if (!gameInput_ || device_)
             return SelectedControllerPrepareStatus::Unavailable;
         SelectedControllerDescriptor localDescriptor;
         const auto discovery = DiscoverCurrentPhysicalController(
@@ -410,7 +394,6 @@ public:
             Stop();
             return SelectedControllerPrepareStatus::IdentityMismatch;
         }
-        selectedDeviceId_ = preparedEnrollment.deviceId;
         ingress_ = &ingress;
         accepting_.store(true, std::memory_order_release);
         const auto readingResult = gameInput_->RegisterReadingCallback(
@@ -429,22 +412,6 @@ public:
             return SelectedControllerPrepareStatus::CallbackRegistrationFailed;
         }
         return SelectedControllerPrepareStatus::Ready;
-    }
-
-    SelectedControllerGuideDiagnostics GuideDiagnostics() const noexcept override {
-        return {
-            guideFocusPolicy_.load(std::memory_order_relaxed),
-            guideRegistrationResult_.load(std::memory_order_relaxed),
-            guideCallbackEntries_.load(std::memory_order_relaxed),
-            guideLeaseRejections_.load(std::memory_order_relaxed),
-            guideNullDevices_.load(std::memory_order_relaxed),
-            guideDeviceInfoFailures_.load(std::memory_order_relaxed),
-            guideSelectedIdMismatches_.load(std::memory_order_relaxed),
-            guideUnchangedStates_.load(std::memory_order_relaxed),
-            guideIngressAccepted_.load(std::memory_order_relaxed),
-            guideIngressRejected_.load(std::memory_order_relaxed),
-            guideLastCurrent_.load(std::memory_order_relaxed),
-            guideLastPrevious_.load(std::memory_order_relaxed)};
     }
 
     bool SampleCurrent(SelectedControllerCurrent& current) noexcept override {
@@ -484,7 +451,7 @@ public:
         accepting_.store(false, std::memory_order_release);
         if (device_) device_->SetRumbleState(nullptr);
         if (gameInput_) {
-            for (auto* token : {&readingToken_, &deviceToken_, &guideToken_}) {
+            for (auto* token : {&readingToken_, &deviceToken_}) {
                 if (*token == 0) continue;
                 gameInput_->StopCallback(*token);
                 gameInput_->UnregisterCallback(*token);
@@ -494,7 +461,6 @@ public:
         std::unique_lock lock(callbackMutex_);
         callbackDrain_.wait(lock, [this] { return callbacksInFlight_ == 0; });
         ingress_ = nullptr;
-        selectedDeviceId_ = {};
         device_.Reset();
         gameInput_.Reset();
     }
@@ -553,64 +519,15 @@ private:
             GetTickCount64(), {}, false);
     }
 
-    static void CALLBACK OnGuide(
-        GameInputCallbackToken,
-        void* context,
-        IGameInputDevice*,
-        std::uint64_t timestamp,
-        GameInputSystemButtons current,
-        GameInputSystemButtons previous) noexcept {
-        auto& self = *static_cast<GameInputSelectedControllerReader*>(context);
-        self.guideCallbackEntries_.fetch_add(1, std::memory_order_relaxed);
-        const bool currentGuide =
-            (current & GameInputSystemButtonGuide) != 0;
-        const bool previousGuide =
-            (previous & GameInputSystemButtonGuide) != 0;
-        self.guideLastCurrent_.store(currentGuide, std::memory_order_relaxed);
-        self.guideLastPrevious_.store(previousGuide, std::memory_order_relaxed);
-        CallbackLease lease(self);
-        if (!lease || !self.ingress_) {
-            self.guideLeaseRejections_.fetch_add(1, std::memory_order_relaxed);
-            return;
-        }
-        if (currentGuide == previousGuide) {
-            self.guideUnchangedStates_.fetch_add(1, std::memory_order_relaxed);
-            return;
-        }
-        if (self.ingress_->Publish(
-            currentGuide
-                ? ControllerReaderEventKind::GuidePressed
-                : ControllerReaderEventKind::GuideReleased,
-            timestamp, GetTickCount64())) {
-            self.guideIngressAccepted_.fetch_add(1, std::memory_order_relaxed);
-        } else {
-            self.guideIngressRejected_.fetch_add(1, std::memory_order_relaxed);
-        }
-    }
-
     std::atomic_bool accepting_{};
     std::mutex callbackMutex_;
     std::condition_variable callbackDrain_;
     std::uint32_t callbacksInFlight_{};
     ControllerIsolationReaderIngress* ingress_{};
-    std::array<std::uint8_t, 32> selectedDeviceId_{};
-    std::atomic<std::uint32_t> guideFocusPolicy_{};
-    std::atomic<std::uint32_t> guideRegistrationResult_{};
-    std::atomic<std::uint64_t> guideCallbackEntries_{};
-    std::atomic<std::uint64_t> guideLeaseRejections_{};
-    std::atomic<std::uint64_t> guideNullDevices_{};
-    std::atomic<std::uint64_t> guideDeviceInfoFailures_{};
-    std::atomic<std::uint64_t> guideSelectedIdMismatches_{};
-    std::atomic<std::uint64_t> guideUnchangedStates_{};
-    std::atomic<std::uint64_t> guideIngressAccepted_{};
-    std::atomic<std::uint64_t> guideIngressRejected_{};
-    std::atomic_bool guideLastCurrent_{};
-    std::atomic_bool guideLastPrevious_{};
     ComPtr<IGameInput> gameInput_;
     ComPtr<IGameInputDevice> device_;
     GameInputCallbackToken readingToken_{};
     GameInputCallbackToken deviceToken_{};
-    GameInputCallbackToken guideToken_{};
 };
 
 } // namespace

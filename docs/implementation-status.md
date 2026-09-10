@@ -2,6 +2,15 @@
 
 Status: integrated Phase 0 platform prototype, 2026-08-09
 
+WIDGE-213 controller-isolation follow-up uses the existing XInput Guide adapter
+on the sole native routing thread at 25 ms, with GameInput retained for selected
+physical readings, disconnect and rumble. The unused isolation GameInput Guide
+registration and temporary detailed Guide counters have been removed. Stable
+physical identity rebinding after HidHide and valid empty HidHide list parsing
+remain. Focused coverage includes 182 routing checks, 919 reader checks and 48
+local-owner checks. These later commits are held from main pending WIDGE-217;
+the cleanup candidate still requires the final physical Guide/navigation check.
+
 This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.
