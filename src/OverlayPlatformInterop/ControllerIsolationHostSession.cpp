@@ -27,6 +27,26 @@ namespace {
 constexpr std::size_t kMaximumJournalBytes = 128 * 1024;
 constexpr std::size_t kMaximumJournalEntries = 512;
 constexpr std::uint64_t kMeasuredReadingIntervalMilliseconds = 10;
+constexpr wchar_t kLocalOwnerMutex[] =
+    L"Local\\WidgetRail.ControllerIsolation.LocalOwner";
+
+class LocalOwnerLease final {
+public:
+    ~LocalOwnerLease() { if (owned_) ReleaseMutex(mutex_); if (mutex_) CloseHandle(mutex_); }
+    [[nodiscard]] bool Acquire(std::wstring& diagnostic) noexcept {
+        mutex_ = CreateMutexW(nullptr, FALSE, kLocalOwnerMutex);
+        if (!mutex_) { diagnostic = L"Controller isolation owner mutex failed."; return false; }
+        const auto result = WaitForSingleObject(mutex_, 2'000);
+        if (result == WAIT_OBJECT_0 || result == WAIT_ABANDONED) { owned_ = true; return true; }
+        diagnostic = result == WAIT_TIMEOUT
+            ? L"Controller isolation is already owned by another OverlayHost."
+            : L"Controller isolation owner mutex wait failed.";
+        return false;
+    }
+private:
+    HANDLE mutex_{};
+    bool owned_{};
+};
 
 [[nodiscard]] std::filesystem::path CurrentExecutable() {
     std::array<wchar_t, 32'768> path{};
@@ -244,7 +264,7 @@ struct ControllerIsolationHostSession::Impl final {
     LocalControllerProgress progress{LocalControllerProgress::Disabled};
     GamepadState latest{};
     std::wstring diagnostic;
-    bool startupDone{}, enterRequested{}, closeRequested{};
+    bool startupDone{}, desiredOverlay{};
 
     void FinishStartup(const std::wstring& message) noexcept {
         std::scoped_lock lock(mutex);
@@ -264,6 +284,9 @@ struct ControllerIsolationHostSession::Impl final {
     }
 
     void Run(std::stop_token stop) noexcept {
+        LocalOwnerLease owner;
+        std::wstring failure;
+        if (!owner.Acquire(failure)) { FinishStartup(failure); return; }
         const auto journalPath = LocalJournalPath();
         if (journalPath.empty() || std::filesystem::exists(LegacyJournalPath())) {
             FinishStartup(std::filesystem::exists(LegacyJournalPath())
@@ -271,7 +294,7 @@ struct ControllerIsolationHostSession::Impl final {
                 : L"Controller isolation LocalAppData is unavailable."); return;
         }
         HidHideConfigurationAdapter hidhide;
-        HidHideJournal prior; bool priorFound{}; std::wstring failure;
+        HidHideJournal prior; bool priorFound{};
         if (!LoadJournal(journalPath, prior, priorFound, failure)) { FinishStartup(failure); return; }
         if (priorFound && !Restore(prior, hidhide, journalPath)) {
             FinishStartup(L"Controller isolation crash recovery found foreign drift or failed."); return;
@@ -302,7 +325,10 @@ struct ControllerIsolationHostSession::Impl final {
             return;
         }
         auto source = CreateGameInputSelectedControllerReader(); LocalOutput output;
-        if (!source) { FinishStartup(L"Controller isolation reader allocation failed."); return; }
+        if (!source) {
+            (void)Restore(plan.plan->journal, hidhide, journalPath);
+            FinishStartup(L"Controller isolation reader allocation failed."); return;
+        }
         ControllerIsolationRoutingSession routing(*source, output, queues, {}, &queues);
         const RoutingAuthority authority{1, 1, 1, GetTickCount64() | 1};
         auto result = routing.PrepareSession(authority, descriptor.enrollment, GetTickCount64());
@@ -322,14 +348,18 @@ struct ControllerIsolationHostSession::Impl final {
         { std::scoped_lock lock(mutex); progress = LocalControllerProgress::Playing;
           startupDone = true; changed.notify_all(); }
         while (!stop.stop_requested()) {
-            bool enter{}, close{};
-            { std::scoped_lock lock(mutex); enter = std::exchange(enterRequested, false);
-              close = std::exchange(closeRequested, false); }
-            if (enter && routing.state() == ControllerIsolationRoutingState::Playing) {
+            bool wantsOverlay{};
+            { std::scoped_lock lock(mutex); wantsOverlay = desiredOverlay; }
+            if (wantsOverlay && routing.state() == ControllerIsolationRoutingState::Playing) {
                 if (!queues.BeginInteraction() || routing.EnterOverlay(authority, GetTickCount64()) ==
                     ControllerIsolationRoutingResult::Faulted) break;
             }
-            if (close && routing.state() == ControllerIsolationRoutingState::OverlayInteraction) {
+            if (wantsOverlay && routing.state() == ControllerIsolationRoutingState::AwaitingPlaying) {
+                if (!queues.BeginInteraction() ||
+                    routing.HoldContained(authority, GetTickCount64()) ==
+                    ControllerIsolationRoutingResult::Faulted) break;
+            }
+            if (!wantsOverlay && routing.state() == ControllerIsolationRoutingState::OverlayInteraction) {
                 queues.RetireInteraction();
                 if (routing.CloseOverlay(authority, kMeasuredReadingIntervalMilliseconds,
                                          GetTickCount64()) == ControllerIsolationRoutingResult::Faulted) break;
@@ -340,6 +370,7 @@ struct ControllerIsolationHostSession::Impl final {
             if (result == ControllerIsolationRoutingResult::Faulted) break;
             Sleep(1);
         }
+        const auto fault = routing.fault();
         queues.RetireInteraction();
         if (routing.state() != ControllerIsolationRoutingState::Disabled) (void)routing.Stop(authority);
         if (!Restore(plan.plan->journal, hidhide, journalPath)) {
@@ -347,7 +378,16 @@ struct ControllerIsolationHostSession::Impl final {
             diagnostic = L"Controller isolation shutdown recovery failed; journal retained.";
             progress = LocalControllerProgress::Fault; changed.notify_all(); return;
         }
-        std::scoped_lock lock(mutex); progress = LocalControllerProgress::Disabled; changed.notify_all();
+        std::scoped_lock lock(mutex);
+        if (fault != RoutingFault::None) {
+            diagnostic = L"Controller isolation routing fault=" +
+                std::to_wstring(static_cast<unsigned>(fault)) +
+                L"; explicit shutdown or reinitialization is required.";
+            progress = LocalControllerProgress::Fault;
+        } else {
+            progress = LocalControllerProgress::Disabled;
+        }
+        changed.notify_all();
     }
 };
 
@@ -367,17 +407,19 @@ bool ControllerIsolationHostSession::Start(bool enabled, std::wstring& diagnosti
 bool ControllerIsolationHostSession::PrepareOverlay(std::wstring& diagnostic) noexcept {
     std::unique_lock lock(impl_->mutex);
     if (impl_->progress == LocalControllerProgress::Fault) { diagnostic = impl_->diagnostic; return false; }
-    impl_->enterRequested = true;
+    impl_->desiredOverlay = true;
     (void)impl_->changed.wait_for(lock, std::chrono::milliseconds(500), [this] {
         return impl_->progress == LocalControllerProgress::Contained ||
                impl_->progress == LocalControllerProgress::Fault;
     });
+    const bool contained = impl_->progress == LocalControllerProgress::Contained;
+    if (!contained) impl_->desiredOverlay = false;
     diagnostic = impl_->diagnostic;
-    return impl_->progress == LocalControllerProgress::Contained;
+    return contained;
 }
 
 void ControllerIsolationHostSession::CloseOverlay() noexcept {
-    std::scoped_lock lock(impl_->mutex); impl_->closeRequested = true;
+    std::scoped_lock lock(impl_->mutex); impl_->desiredOverlay = false;
 }
 
 bool ControllerIsolationHostSession::Poll(ControllerIsolationHostReading& reading,
@@ -399,8 +441,7 @@ bool ControllerIsolationHostSession::PollGuide(std::uint64_t& guideEvent,
 
 bool ControllerIsolationHostSession::active() const noexcept {
     std::scoped_lock lock(impl_->mutex);
-    return impl_->progress != LocalControllerProgress::Disabled &&
-           impl_->progress != LocalControllerProgress::Fault;
+    return impl_->progress != LocalControllerProgress::Disabled;
 }
 
 void ControllerIsolationHostSession::Stop() noexcept {

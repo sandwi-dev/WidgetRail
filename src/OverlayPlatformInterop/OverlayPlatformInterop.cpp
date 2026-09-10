@@ -445,11 +445,13 @@ WidgetRailOverlayPlatformInitialize(WidgetRailOverlayPlatformHandle* handle) noe
             controllerIsolationRequested.load(std::memory_order_acquire),
             isolationDiagnostic)) {
         handle->Diagnostic(
-            L"Controller isolation attached; Guardian owns physical input and Guide");
+            L"Controller isolation local owner owns physical input and Guide");
         handle->initialized = true;
         return WidgetRailOverlayPlatformStatus::Ok;
     }
-    if (!isolationDiagnostic.empty()) {
+    if (controllerIsolationRequested.load(std::memory_order_acquire)) {
+        if (isolationDiagnostic.empty())
+            isolationDiagnostic = L"Controller isolation startup failed without a diagnostic.";
         handle->Diagnostic(isolationDiagnostic);
         return WidgetRailOverlayPlatformStatus::ControllerIsolationUnavailable;
     }
