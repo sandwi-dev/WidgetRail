@@ -114,6 +114,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Shared overlay diagnostics rotate with bounded retained generations", SharedOverlayDiagnosticsRotate),
     ("Worker request diagnostics are bounded developer-only records", WorkerRequestDiagnosticsAreBounded),
     ("Current worker validator diagnostics persist and correlate across the Bridge", WorkerValidatorDiagnosticsPersistAndCorrelate),
+    ("Controller settings gate persistence freshness and recovery", ControllerControlScenarios.GatingAndPersistence),
     ("Diagnostics projection is bounded sanitized and read only", BridgeDiagnosticsScenarios.ProjectionIsBoundedSanitizedAndReadOnly),
     ("Catalog diagnostics identify bounded isolated widget failures", BridgeDiagnosticsScenarios.CatalogRejectionsAreBoundedAndActionable),
     ("Diagnostics partial failures malformed input and deadline are closed", BridgeDiagnosticsScenarios.PartialFailureMalformedInputAndDeadlineAreClosed),

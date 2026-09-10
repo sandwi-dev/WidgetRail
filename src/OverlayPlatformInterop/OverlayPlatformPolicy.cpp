@@ -97,7 +97,8 @@ void ControllerFrameTracker::Prime(
 WidgetRailOverlayPlatformControllerFrame ControllerFrameTracker::Update(
     const bool connected,
     const WidgetRailOverlayPlatformRawControllerState& state,
-    const std::uint64_t nowMilliseconds) noexcept {
+    const std::uint64_t nowMilliseconds,
+    const bool allowNavigationRepeat) noexcept {
     WidgetRailOverlayPlatformControllerFrame frame;
     frame.connected = ToAbiBoolean(connected);
     frame.state = connected ? state : WidgetRailOverlayPlatformRawControllerState{};
@@ -135,7 +136,8 @@ WidgetRailOverlayPlatformControllerFrame ControllerFrameTracker::Update(
     recoveryChordHeld_ = recoveryChordDown;
 
     frame.stickNavigation = ConvertNavigation(stickNavigator_.UpdateEvent(
-        frame.state.leftThumbX, frame.state.leftThumbY, nowMilliseconds));
+        frame.state.leftThumbX, frame.state.leftThumbY, nowMilliseconds,
+        allowNavigationRepeat));
     frame.dpadNavigation = ConvertNavigation(dpadNavigator_.UpdateEvent(
         widgetrail::input::DigitalNavigationAxis(
             frame.state.buttons,
@@ -145,7 +147,7 @@ WidgetRailOverlayPlatformControllerFrame ControllerFrameTracker::Update(
             frame.state.buttons,
             XINPUT_GAMEPAD_DPAD_DOWN,
             XINPUT_GAMEPAD_DPAD_UP),
-        nowMilliseconds));
+        nowMilliseconds, allowNavigationRepeat));
     return frame;
 }
 

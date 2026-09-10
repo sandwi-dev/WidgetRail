@@ -52,11 +52,15 @@ struct FakeSource final : SelectedControllerSource {
     std::function<void()> duringSample;
 
     SelectedControllerPrepareStatus Prepare(
-        const SelectedControllerEnrollment&,
-        ControllerIsolationReaderIngress& value) noexcept override {
+        const SelectedControllerEnrollment& enrollment,
+        ControllerIsolationReaderIngress& value,
+        SelectedControllerEnrollment& preparedEnrollment) noexcept override {
         ++prepareCalls;
-        if (prepareStatus == SelectedControllerPrepareStatus::Ready)
+        preparedEnrollment = {};
+        if (prepareStatus == SelectedControllerPrepareStatus::Ready) {
             ingress = &value;
+            preparedEnrollment = enrollment;
+        }
         return prepareStatus;
     }
 

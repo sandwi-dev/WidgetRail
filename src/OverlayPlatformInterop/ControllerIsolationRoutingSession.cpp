@@ -57,31 +57,44 @@ ControllerIsolationRoutingResult
 ControllerIsolationRoutingSession::PrepareSession(
     const RoutingAuthority& authority,
     const SelectedControllerEnrollment& enrollment,
-    const std::uint64_t nowMilliseconds) noexcept {
+    const std::uint64_t nowMilliseconds,
+    const bool waitForNeutral) noexcept {
     if (state_ != ControllerIsolationRoutingState::Disabled)
         return ControllerIsolationRoutingResult::RejectedState;
     if (!authority.valid() || !enrollment.valid())
         return ControllerIsolationRoutingResult::RejectedAuthority;
     authority_ = authority;
-    enrollment_ = enrollment;
     if (!ingress_.Open(authority, enrollment.enrollmentToken)) {
         Fail();
         return ControllerIsolationRoutingResult::ReaderUnavailable;
     }
-    const auto prepared = source_.Prepare(enrollment, ingress_);
-    if (prepared != SelectedControllerPrepareStatus::Ready) {
+    SelectedControllerEnrollment preparedEnrollment;
+    const auto prepared = source_.Prepare(
+        enrollment, ingress_, preparedEnrollment);
+    if (prepared != SelectedControllerPrepareStatus::Ready ||
+        !SameStableControllerIdentity(enrollment, preparedEnrollment)) {
         Fail();
         return ControllerIsolationRoutingResult::ReaderUnavailable;
     }
+    enrollment_ = preparedEnrollment;
     const auto initial = SampleCurrentFence();
     if (!initial) {
         Fail();
-        return ControllerIsolationRoutingResult::Faulted;
+        return ControllerIsolationRoutingResult::ReaderUnavailable;
     }
     if (!ControllerIsolationNeutralEntry(initial->state)) {
+        if (waitForNeutral) {
+            state_ = ControllerIsolationRoutingState::WaitingForInitialNeutral;
+            return ControllerIsolationRoutingResult::Waiting;
+        }
         Fail();
         return ControllerIsolationRoutingResult::RejectedState;
     }
+    return FinishPreparation(*initial, nowMilliseconds);
+}
+
+ControllerIsolationRoutingResult ControllerIsolationRoutingSession::FinishPreparation(
+    const DeviceReading& initial, const std::uint64_t nowMilliseconds) noexcept {
     if (!output_.OpenOwnedTarget()) {
         Fail();
         return ControllerIsolationRoutingResult::OutputUnavailable;
@@ -89,14 +102,14 @@ ControllerIsolationRoutingSession::PrepareSession(
     outputOwned_ = true;
     CommandResult begun{CommandResult::Faulted};
     try {
-        const auto device = CoreDeviceIdentity(enrollment);
-        begun = core_.BeginSession(authority, device, *initial, nowMilliseconds);
+        const auto device = CoreDeviceIdentity(enrollment_);
+        begun = core_.BeginSession(authority_, device, initial, nowMilliseconds);
     } catch (...) {
         Fail();
         return ControllerIsolationRoutingResult::Faulted;
     }
     if (begun != CommandResult::Applied ||
-        core_.EnterOverlay(authority, nowMilliseconds) != CommandResult::Applied) {
+        core_.EnterOverlay(authority_, nowMilliseconds) != CommandResult::Applied) {
         Fail();
         return ControllerIsolationRoutingResult::Faulted;
     }
@@ -161,6 +174,8 @@ ControllerIsolationRoutingResult ControllerIsolationRoutingSession::HoldContaine
 
 ControllerIsolationRoutingResult ControllerIsolationRoutingSession::Pump(
     const std::uint64_t nowMilliseconds) noexcept {
+    if (state_ == ControllerIsolationRoutingState::WaitingForInitialNeutral)
+        return WaitForInitialNeutral(nowMilliseconds);
     if (state_ == ControllerIsolationRoutingState::Disabled)
         return ControllerIsolationRoutingResult::RejectedState;
     if (state_ == ControllerIsolationRoutingState::Fault)
@@ -218,7 +233,8 @@ ControllerIsolationRoutingResult ControllerIsolationRoutingSession::Stop(
     const RoutingAuthority& authority) noexcept {
     if (!ExactAuthority(authority))
         return ControllerIsolationRoutingResult::RejectedAuthority;
-    const auto result = core_.StopSession(authority);
+    const auto result = core_.mode() == RoutingMode::Disabled
+        ? CommandResult::Applied : core_.StopSession(authority);
     source_.Stop();
     ingress_.Close();
     authority_ = {};
@@ -236,6 +252,36 @@ ControllerIsolationRoutingResult ControllerIsolationRoutingSession::Stop(
     outputOwned_ = false;
     state_ = ControllerIsolationRoutingState::Disabled;
     return Convert(result);
+}
+
+ControllerIsolationRoutingResult ControllerIsolationRoutingSession::WaitForInitialNeutral(
+    const std::uint64_t nowMilliseconds) noexcept {
+    if (ingress_.fault() != ControllerReaderFault::None) {
+        Fail(); return ControllerIsolationRoutingResult::Faulted;
+    }
+    for (std::size_t count = 0; count < ControllerReaderCapacity; ++count) {
+        ControllerReaderEvent event;
+        const auto result = ingress_.TryPop(event);
+        if (result == ControllerReaderPopResult::Empty) break;
+        if (result == ControllerReaderPopResult::ProducerPending) {
+            if (!producerPendingSinceMilliseconds_) producerPendingSinceMilliseconds_ = nowMilliseconds;
+            if (nowMilliseconds - *producerPendingSinceMilliseconds_ <= budgets_.maximumQueuedReadingAgeMilliseconds)
+                return ControllerIsolationRoutingResult::Waiting;
+            Fail(); return ControllerIsolationRoutingResult::Faulted;
+        }
+        producerPendingSinceMilliseconds_.reset();
+        if (result != ControllerReaderPopResult::Event || event.authority != authority_ ||
+            event.deviceEnrollmentToken != enrollment_.enrollmentToken ||
+            event.ingressOrdinal != lastConsumedIngressOrdinal_ + 1 ||
+            event.kind == ControllerReaderEventKind::Disconnected) {
+            Fail(); return ControllerIsolationRoutingResult::ReaderUnavailable;
+        }
+        lastConsumedIngressOrdinal_ = event.ingressOrdinal;
+    }
+    const auto current = SampleCurrentFence();
+    if (!current) { Fail(); return ControllerIsolationRoutingResult::ReaderUnavailable; }
+    if (!ControllerIsolationNeutralEntry(current->state)) return ControllerIsolationRoutingResult::Waiting;
+    return FinishPreparation(*current, nowMilliseconds);
 }
 
 std::optional<DeviceReading>

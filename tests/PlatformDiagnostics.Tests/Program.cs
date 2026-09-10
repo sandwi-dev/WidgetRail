@@ -6,6 +6,7 @@ using WidgetRail.PlatformDiagnostics;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Exclusive controller control is authenticated and returns actual status", ControllerControlRoundTrip),
     ("Bound worker receives a validated sanitized snapshot", AuthenticatedRoundTrip),
     ("Authenticated worker retries only the exact recovery confirmation token", AuthenticatedRecoveryRetry),
     ("Trusted worker inspects and clears only exact widget local data", WidgetLocalDataRoundTrip),
@@ -41,6 +42,32 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static async Task ControllerControlRoundTrip()
+{
+    var calls = new List<bool>();
+    var ready = new ControllerControlStatus(ControllerControlState.Off, true, true, true);
+    await using var harness = new DiagnosticsHarness(
+        _ => ValueTask.FromResult(HealthySnapshot(1) with { Controllers = ready }),
+        exclusiveControl: (enabled, _) =>
+        {
+            calls.Add(enabled);
+            return ValueTask.FromResult(new ControllerControlResult(true, ready with
+            {
+                State = enabled ? ControllerControlState.Starting : ControllerControlState.Stopping,
+            }));
+        });
+    Assert.Equal(ready, (await harness.Client.GetSnapshotAsync()).Controllers);
+    Assert.Equal(ControllerControlState.Starting, (await harness.Client.SetExclusiveControlAsync(true)).Status.State);
+    Assert.Equal(ControllerControlState.Stopping, (await harness.Client.SetExclusiveControlAsync(false)).Status.State);
+    Assert.True(calls.SequenceEqual(new[] { true, false }));
+    var unauthorized = new PlatformDiagnosticsPipeClient(harness.PipeName, new string('0', 64),
+        Environment.ProcessId, TimeSpan.FromSeconds(1));
+    await Assert.ThrowsAsync<PlatformDiagnosticsException>(() => unauthorized.SetExclusiveControlAsync(true).AsTask());
+    Assert.Equal(2, calls.Count);
+    await using var unavailable = new DiagnosticsHarness(_ => ValueTask.FromResult(HealthySnapshot(2)));
+    Assert.True(!(await unavailable.Client.SetExclusiveControlAsync(true)).Accepted);
+}
 
 static async Task AuthenticatedRoundTrip()
 {
@@ -702,12 +729,13 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
         Func<string, CancellationToken,
             ValueTask<PlatformWidgetPackageUninstallInspection>>? uninstallInspect = null,
         Func<string, string, string, string, CancellationToken,
-            ValueTask<PlatformWidgetPackageUninstallResult>>? uninstall = null)
+            ValueTask<PlatformWidgetPackageUninstallResult>>? uninstall = null,
+        Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? exclusiveControl = null)
     {
         PipeName = $"wrail-diagnostics-test-{Guid.NewGuid():N}";
         _server = new PlatformDiagnosticsPipeServer(
             PipeName, provider, serverTimeout, retry, inspect, clear,
-            uninstallInspect, uninstall);
+            uninstallInspect, uninstall, exclusiveControl);
         _server.BindExpectedClientProcess(Environment.ProcessId);
         Client = new PlatformDiagnosticsPipeClient(
             PipeName, _server.ChannelNonce, Environment.ProcessId,

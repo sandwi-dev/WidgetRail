@@ -43,6 +43,7 @@ internal static class SettingsPresentation
             SettingsPage.AccessibilityVisual => RenderVisualAccessibility(
                 header, state.Settings, state.Busy),
             SettingsPage.Overlay => RenderOverlay(header, state.Settings, state.Busy),
+            SettingsPage.Controllers => ControllerSettingsPresentation.Render(state),
             SettingsPage.Diagnostics => RenderDiagnostics(header, state),
             SettingsPage.AuthorityRecovery => RenderAuthorityRecovery(header, state),
             SettingsPage.Reset => RenderReset(header, state.Busy),
@@ -115,6 +116,8 @@ internal static class SettingsPresentation
         var installedWidgets = UI.Button(
                 "Installed widgets", "open.installed-widgets", "category.installed-widgets")
             .Busy(busy).Classes("category-card");
+        var controllers = UI.Button("Controllers", "open.controllers", "category.controllers")
+            .Busy(busy).Classes("category-card");
         var diagnostics = UI.Button("Diagnostics", "open.diagnostics", "category.diagnostics")
             .Classes("category-card");
         var refresh = UI.Button("Refresh", "refresh", "settings.refresh")
@@ -127,7 +130,7 @@ internal static class SettingsPresentation
                 UI.Text($"Theme: {settings.Appearance.ThemeId} {settings.Appearance.ThemeVersion}",
                     "settings.summary", "Selected theme").Classes("settings-summary"),
                 UI.ResponsiveGrid("settings.category-grid", 250, 2,
-                        appearance, accessibility, overlay, installedWidgets,
+                        appearance, accessibility, overlay, controllers, installedWidgets,
                         diagnostics, refresh, reset)
                     .Classes("category-grid")).Classes("root-category-list"),
             "category.appearance");
@@ -629,6 +632,7 @@ internal static class SettingsNavigationPolicy
             "open.accessibility" => SettingsPage.Accessibility,
             "open.visual-accessibility" => SettingsPage.AccessibilityVisual,
             "open.overlay" => SettingsPage.Overlay,
+            "open.controllers" => SettingsPage.Controllers,
             "open.installed-widgets" => SettingsPage.InstalledWidgets,
             "open.permissions" => SettingsPage.Permissions,
             "open.diagnostics" => SettingsPage.Diagnostics,
@@ -644,6 +648,7 @@ internal static class SettingsNavigationPolicy
             "open.accessibility" or
             "open.visual-accessibility" or
             "open.overlay" or
+            "open.controllers" or
             "open.installed-widgets" or
             "open.permissions" or
             "open.diagnostics" or

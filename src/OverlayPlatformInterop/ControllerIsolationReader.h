@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <type_traits>
 
@@ -58,6 +59,14 @@ enum class ControllerDeviceAncestry : std::uint8_t {
 [[nodiscard]] ControllerDeviceAncestry ClassifyControllerDeviceAncestry(
     std::wstring_view normalizedInterfacePath,
     ControllerDeviceAncestryBackend& backend) noexcept;
+
+// Unknown ancestry must never widen the selected controller's hiding scope.
+[[nodiscard]] std::optional<bool> IsSelectedControllerDescendant(
+    ControllerDeviceNodeToken candidate, ControllerDeviceNodeToken selected,
+    ControllerDeviceAncestryBackend& backend) noexcept;
+[[nodiscard]] constexpr bool IsControllerHidUsage(std::uint16_t page, std::uint16_t usage) noexcept {
+    return page == 1 && (usage == 4 || usage == 5);
+}
 
 struct SelectedControllerEnrollment final {
     std::uint64_t enrollmentToken{};
@@ -223,11 +232,30 @@ enum class SelectedControllerDiscoveryStatus : std::uint8_t {
     UnknownIdentity,
 };
 
+enum class LocalControllerResolutionStatus : std::uint8_t {
+    Ready,
+    Unavailable,
+    Ambiguous,
+    UnknownIdentity,
+    StableIdentityMismatch,
+};
+
+[[nodiscard]] bool SameStableControllerIdentity(
+    const SelectedControllerEnrollment& enrolled,
+    const SelectedControllerEnrollment& local) noexcept;
+[[nodiscard]] LocalControllerResolutionStatus ResolveLocalController(
+    const SelectedControllerEnrollment& enrolled,
+    SelectedControllerDiscoveryStatus discoveryStatus,
+    const SelectedControllerDescriptor& localDescriptor,
+    SelectedControllerEnrollment& localEnrollment) noexcept;
+
 // Bounded selection owner for one blocking GameInput enumeration. It retains
 // at most one exact physical descriptor and saturates at ambiguity; known
 // virtual outputs never compete with physical input.
 class SelectedControllerDiscovery final {
 public:
+    explicit SelectedControllerDiscovery(bool chooseStableFirst = false) noexcept
+        : chooseStableFirst_(chooseStableFirst) {}
     void Observe(
         SelectedControllerCandidateKind kind,
         const SelectedControllerDescriptor& descriptor = {}) noexcept;
@@ -238,6 +266,7 @@ private:
     SelectedControllerDescriptor selected_{};
     std::uint8_t physicalCount_{};
     bool unknownIdentity_{};
+    bool chooseStableFirst_{};
 };
 
 class SelectedControllerSource {
@@ -245,7 +274,8 @@ public:
     virtual ~SelectedControllerSource() = default;
     [[nodiscard]] virtual SelectedControllerPrepareStatus Prepare(
         const SelectedControllerEnrollment& enrollment,
-        ControllerIsolationReaderIngress& ingress) noexcept = 0;
+        ControllerIsolationReaderIngress& ingress,
+        SelectedControllerEnrollment& preparedEnrollment) noexcept = 0;
     [[nodiscard]] virtual bool SampleCurrent(
         SelectedControllerCurrent& current) noexcept = 0;
     [[nodiscard]] virtual bool ApplyRumble(
@@ -260,6 +290,9 @@ CreateGameInputSelectedControllerReader() noexcept;
 DiscoverCurrentPhysicalController(
     std::uint64_t enrollmentToken,
     SelectedControllerDescriptor& descriptor) noexcept;
+[[nodiscard]] bool DiscoverSelectedControllerHideTargets(
+    const ControllerDeviceNodeIdentity& selected,
+    std::set<std::wstring>& targets) noexcept;
 #endif
 
 } // namespace widgetrail::isolation

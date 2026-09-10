@@ -50,6 +50,25 @@ bool ControllerDeviceNodeIdentity::valid() const noexcept {
         value.begin() + length;
 }
 
+std::optional<bool> IsSelectedControllerDescendant(
+    ControllerDeviceNodeToken candidate, const ControllerDeviceNodeToken selected,
+    ControllerDeviceAncestryBackend& backend) noexcept {
+    ControllerDeviceNodeToken root{};
+    if (!backend.LocateRoot(root) || selected == root) return std::nullopt;
+    std::array<ControllerDeviceNodeToken, 32> visited{};
+    for (std::size_t count = 0; count < visited.size(); ++count) {
+        if (candidate == selected) return true;
+        if (candidate == root) return false;
+        if (std::find(visited.begin(), visited.begin() + count, candidate) != visited.begin() + count)
+            return std::nullopt;
+        visited[count] = candidate;
+        ControllerDeviceNodeToken parent{};
+        if (!backend.Parent(candidate, parent)) return std::nullopt;
+        candidate = parent;
+    }
+    return std::nullopt;
+}
+
 ControllerDeviceAncestry ClassifyControllerDeviceAncestry(
     const std::wstring_view normalizedInterfacePath,
     ControllerDeviceAncestryBackend& backend) noexcept {
@@ -104,11 +123,12 @@ void SelectedControllerDiscovery::Observe(
     if (kind == SelectedControllerCandidateKind::KnownVirtualOutput) return;
     if (kind == SelectedControllerCandidateKind::Unknown ||
         !descriptor.valid()) {
-        unknownIdentity_ = true;
+        unknownIdentity_ = !chooseStableFirst_;
         return;
     }
     if (physicalCount_ != 0 && selected_ == descriptor) return;
-    if (physicalCount_ == 0) selected_ = descriptor;
+    if (physicalCount_ == 0 || (chooseStableFirst_ &&
+        descriptor.deviceInstanceId.view() < selected_.deviceInstanceId.view())) selected_ = descriptor;
     if (physicalCount_ < 2) ++physicalCount_;
 }
 
@@ -119,10 +139,48 @@ SelectedControllerDiscoveryStatus SelectedControllerDiscovery::Resolve(
         return SelectedControllerDiscoveryStatus::UnknownIdentity;
     if (physicalCount_ == 0)
         return SelectedControllerDiscoveryStatus::Unavailable;
-    if (physicalCount_ != 1)
+    if (physicalCount_ != 1 && !chooseStableFirst_)
         return SelectedControllerDiscoveryStatus::Ambiguous;
     descriptor = selected_;
     return SelectedControllerDiscoveryStatus::Ready;
+}
+
+bool SameStableControllerIdentity(
+    const SelectedControllerEnrollment& enrolled,
+    const SelectedControllerEnrollment& local) noexcept {
+    return enrolled.valid() && local.valid() &&
+        enrolled.enrollmentToken == local.enrollmentToken &&
+        enrolled.containerId == local.containerId &&
+        enrolled.normalizedPnpPathDigest == local.normalizedPnpPathDigest &&
+        enrolled.vendorId == local.vendorId &&
+        enrolled.productId == local.productId &&
+        enrolled.deviceFamily == local.deviceFamily &&
+        enrolled.connected == local.connected &&
+        enrolled.gamepadSupported == local.gamepadSupported &&
+        !enrolled.knownVirtualOutput && !local.knownVirtualOutput;
+}
+
+LocalControllerResolutionStatus ResolveLocalController(
+    const SelectedControllerEnrollment& enrolled,
+    const SelectedControllerDiscoveryStatus discoveryStatus,
+    const SelectedControllerDescriptor& localDescriptor,
+    SelectedControllerEnrollment& localEnrollment) noexcept {
+    localEnrollment = {};
+    switch (discoveryStatus) {
+    case SelectedControllerDiscoveryStatus::Unavailable:
+        return LocalControllerResolutionStatus::Unavailable;
+    case SelectedControllerDiscoveryStatus::Ambiguous:
+        return LocalControllerResolutionStatus::Ambiguous;
+    case SelectedControllerDiscoveryStatus::UnknownIdentity:
+        return LocalControllerResolutionStatus::UnknownIdentity;
+    case SelectedControllerDiscoveryStatus::Ready:
+        break;
+    }
+    if (!localDescriptor.valid() ||
+        !SameStableControllerIdentity(enrolled, localDescriptor.enrollment))
+        return LocalControllerResolutionStatus::StableIdentityMismatch;
+    localEnrollment = localDescriptor.enrollment;
+    return LocalControllerResolutionStatus::Ready;
 }
 
 ControllerIsolationReaderIngress::ControllerIsolationReaderIngress() noexcept {

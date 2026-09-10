@@ -2,6 +2,37 @@
 
 Status: integrated Phase 0 platform prototype, 2026-08-09
 
+WIDGE-217 is accepted for closure and local integration on 2026-09-10 with
+Windows UI compatibility work deferred as WIDGE-221. Settings > Controllers
+provides default-off Exclusive control, driver readiness, enablement gates,
+actual routing status, exact-owned recovery, and guidance to reopen already-
+running games/apps. A visible warning explains that one press may register
+twice in Settings or the Windows app switcher and advises turning the setting
+off. The cause of that remaining duplication is unconfirmed. System Guide
+forwarding is not included; the unfinished experiment was removed.
+
+One native routing owner keeps sticky automatic selection and uses neutral
+handoff on disconnect. Selected-controller hiding covers its Xbox instance and
+exact descendant HID gamepad/joystick collections, excluding keyboard, mouse
+and unrelated devices. Independent probes confirm physical HID access is denied
+while enabled and restored while off. The user confirmed Game Controllers lists
+only the virtual controller. Explicit zeroed rumble reports prevent the observed
+GameInputRedist 3.3.221 null-report crash on disable. Three live enable/active/
+disable/off cycles complete with no remaining recovery journal.
+
+Focused evidence: Settings 62/62, PlatformSettings 21/21, diagnostics pipe 18/18,
+Bridge controller persistence/freshness/recovery 1/1, reader 935 checks, routing
+182, local owner 76, and production DLL ABI 55. Settings shares one fresh catalog
+read across its inventory and permissions views; measured reload time decreased
+from 1,255 ms to 646 ms on the current catalog. These results are not a claim of
+universal game or hardware compatibility. Elevated GoW remains deferred, and
+WIDGE-218 through WIDGE-221 retain the separate controller follow-ups.
+
+The previously accepted WIDGE-213 Guide and navigation fixes are included in
+this integration: routing-thread XInput Guide polling at 25 ms, GameInput
+ordinary input/disconnect/rumble, stable post-hide rebinding, valid empty HidHide
+lists, and suppression of navigation repeats from queued input history.
+
 This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.

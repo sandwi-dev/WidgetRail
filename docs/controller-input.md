@@ -1,5 +1,42 @@
 # Controller input model
 
+## Exclusive control lifecycle
+
+The Controllers Settings preference defaults to off and is separate from ordinary
+overlay navigation. When enabled, one native routing thread owns the selected
+physical GameInput reader and the ViGEm output. The selected-device disconnect
+callback retires the reader, neutralizes output and stops old feedback. Discovery
+uses GameInput blocking enumeration at 250 ms intervals while waiting, rather
+than a permanent global arrival callback. Other devices cannot replace a connected
+selection. Device handoff retains the owned virtual target where possible, restores
+only owned HidHide changes, and requires fresh neutral input from the replacement.
+Turning the setting off also cancels discovery or an initial held-input wait.
+
+The host exchanges preference and status with the Bridge once per second; this
+administrative exchange is separate from gameplay routing and has a two-second
+transport deadline. Driver readiness reports expire after five seconds. The
+Settings worker refreshes status only on its active Controllers page, and stops
+that work when deactivated. Physical-to-virtual forwarding is supported;
+recognized virtual input sources are excluded to avoid recapturing virtual output.
+
+Selected-reader retirement sends an explicit zeroed GameInput rumble report.
+Although the SDK annotates a null report as optional, GameInputRedist 3.3.221
+can dereference it during teardown. A stop failure must not be mistaken for
+successful physical-device restoration; retained owned-policy recovery remains
+the recovery path after a host crash.
+
+HidHide denies individual device instance IDs. The selected Xbox device may
+also expose a separate HID joystick/gamepad collection; hiding only its Xbox
+instance leaves that DirectInput/HID path accessible. Before enabling, the
+native owner identifies gamepad/joystick HID interfaces in the selected device's
+exact subtree and journals them together with the selected instance. Mouse,
+keyboard, consumer-control and unrelated-device interfaces are excluded. All
+owned entries are restored on disable, handoff or normal shutdown. Unknown or
+changing identity aborts setup instead of widening the hiding scope. See the
+[HidHide API documentation](https://docs.nefarius.at/projects/HidHide/API-Documentation/).
+
+## Ordinary overlay input
+
 Status: implemented prototype policy
 
 Guide/Home is the global overlay toggle. View is the global one-pin navigation
@@ -376,7 +413,7 @@ reports.
 
 ## Guide acquisition
 
-The native host's primary Guide path is the documented GameInput system-button
+Without controller isolation, the native host's primary Guide path is the documented GameInput system-button
 callback, registered for background Guide delivery and foreground-exclusive
 Guide behavior. Rising edges are posted onto the host window thread.
 
@@ -388,6 +425,17 @@ entry point, and polls four XInput slots every 25 ms for the hidden Guide bit.
 The adapter is isolated and removable; it is not a Microsoft-supported API
 contract. Both sources are rising-edge tracked and share a 150 ms deduplication
 guard.
+
+With `--controller-isolation`, the sole native routing thread polls that same
+XInput adapter across all four slots every 25 ms and sends rising Guide edges
+through the bounded local queue and existing debounce. It does not register a
+GameInput Guide callback: that registration succeeded but delivered no events
+under the tested HidHide configuration. Ordinary physical gamepad readings,
+disconnect notifications and rumble still use GameInput. Guide is accepted from
+any controller; gameplay routing remains tied to the selected physical device.
+This routing thread continues while the overlay is hidden and is independent
+of rendering. Normal process shutdown stops routing and restores only owned
+HidHide changes; gameplay forwarding is not guaranteed after exit or crash.
 
 Do not describe this as universal 8BitDo support. Results can vary by model,
 firmware, controller mode, transport, Steam configuration, and other software

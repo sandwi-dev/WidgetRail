@@ -9,6 +9,8 @@
 #include <cfgmgr32.h>
 #include <initguid.h>
 #include <devpkey.h>
+#include <hidsdi.h>
+#include <hidpi.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -23,6 +25,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace widgetrail::isolation {
 namespace {
@@ -239,11 +242,15 @@ public:
 
 struct PhysicalControllerDiscoveryContext final {
     explicit PhysicalControllerDiscoveryContext(
-        const std::uint64_t value) noexcept : enrollmentToken(value) {}
+        const std::uint64_t value, const SelectedControllerEnrollment* expected = nullptr) noexcept
+        : enrollmentToken(value), requested(expected) {}
 
     std::uint64_t enrollmentToken{};
     std::mutex mutex;
-    SelectedControllerDiscovery discovery;
+    SelectedControllerDiscovery discovery{true};
+    const SelectedControllerEnrollment* requested{};
+    SelectedControllerDescriptor selectedDescriptor;
+    ComPtr<IGameInputDevice> selectedDevice;
 };
 
 void CALLBACK OnPhysicalControllerDiscovery(
@@ -285,29 +292,85 @@ void CALLBACK OnPhysicalControllerDiscovery(
         }
     }
     const std::scoped_lock lock(state.mutex);
+    if (state.requested && (candidateKind != SelectedControllerCandidateKind::Physical ||
+        !SameStableControllerIdentity(*state.requested, descriptor.enrollment))) return;
+    if (candidateKind == SelectedControllerCandidateKind::Physical &&
+        descriptor.valid() &&
+        (!state.selectedDevice || descriptor.deviceInstanceId.view() <= state.selectedDescriptor.deviceInstanceId.view())) {
+        state.selectedDescriptor = descriptor;
+        state.selectedDevice = device;
+    }
     state.discovery.Observe(candidateKind, descriptor);
+}
+
+[[nodiscard]] SelectedControllerDiscoveryStatus
+DiscoverCurrentPhysicalController(
+    IGameInput& gameInput,
+    const std::uint64_t enrollmentToken,
+    SelectedControllerDescriptor& descriptor,
+    ComPtr<IGameInputDevice>* const selectedDevice = nullptr,
+    const SelectedControllerEnrollment* const requested = nullptr) noexcept {
+    descriptor = {};
+    if (selectedDevice) selectedDevice->Reset();
+    if (enrollmentToken == 0)
+        return SelectedControllerDiscoveryStatus::UnknownIdentity;
+    PhysicalControllerDiscoveryContext context(enrollmentToken, requested);
+    GameInputCallbackToken callback{};
+    const auto registered = gameInput.RegisterDeviceCallback(
+        nullptr, GameInputKindGamepad, GameInputDeviceConnected,
+        GameInputBlockingEnumeration, &context,
+        OnPhysicalControllerDiscovery, &callback);
+    if (FAILED(registered) || callback == 0) {
+        if (callback != 0) {
+            gameInput.StopCallback(callback);
+            (void)gameInput.UnregisterCallback(callback);
+        }
+        return SelectedControllerDiscoveryStatus::Unavailable;
+    }
+    gameInput.StopCallback(callback);
+    if (!gameInput.UnregisterCallback(callback))
+        return SelectedControllerDiscoveryStatus::UnknownIdentity;
+    const std::scoped_lock lock(context.mutex);
+    const auto status = context.discovery.Resolve(descriptor);
+    if (status == SelectedControllerDiscoveryStatus::Ready && selectedDevice) {
+        if (!context.selectedDevice || context.selectedDescriptor != descriptor)
+            return SelectedControllerDiscoveryStatus::UnknownIdentity;
+        *selectedDevice = context.selectedDevice;
+    }
+    return status;
 }
 
 class GameInputSelectedControllerReader final : public SelectedControllerSource {
 public:
+    GameInputSelectedControllerReader() noexcept {
+        const auto createResult =
+            GameInputCreate(gameInput_.ReleaseAndGetAddressOf());
+        if (FAILED(createResult) || !gameInput_) return;
+        gameInput_->SetFocusPolicy(GameInputEnableBackgroundInput);
+    }
+
     ~GameInputSelectedControllerReader() override { Stop(); }
 
     SelectedControllerPrepareStatus Prepare(
         const SelectedControllerEnrollment& enrollment,
-        ControllerIsolationReaderIngress& ingress) noexcept override {
+        ControllerIsolationReaderIngress& ingress,
+        SelectedControllerEnrollment& preparedEnrollment) noexcept override {
+        preparedEnrollment = {};
         if (!enrollment.valid())
             return SelectedControllerPrepareStatus::InvalidEnrollment;
-        if (gameInput_ || device_)
+        if (!gameInput_ || device_)
             return SelectedControllerPrepareStatus::Unavailable;
-        APP_LOCAL_DEVICE_ID deviceId{};
-        std::memcpy(&deviceId, enrollment.deviceId.data(), sizeof(deviceId));
-        if (FAILED(GameInputCreate(gameInput_.ReleaseAndGetAddressOf())) ||
-            !gameInput_ ||
-            FAILED(gameInput_->FindDeviceFromId(
-                &deviceId, device_.ReleaseAndGetAddressOf())) ||
-            !device_) {
+        SelectedControllerDescriptor localDescriptor;
+        const auto discovery = DiscoverCurrentPhysicalController(
+            *gameInput_.Get(), enrollment.enrollmentToken, localDescriptor,
+            &device_, &enrollment);
+        const auto resolution = ResolveLocalController(
+            enrollment, discovery, localDescriptor, preparedEnrollment);
+        if (resolution != LocalControllerResolutionStatus::Ready || !device_) {
             Stop();
-            return SelectedControllerPrepareStatus::Unavailable;
+            return resolution == LocalControllerResolutionStatus::Unavailable
+                ? SelectedControllerPrepareStatus::Unavailable
+                : SelectedControllerPrepareStatus::IdentityMismatch;
         }
         const GameInputDeviceInfo* info{};
         if (FAILED(device_->GetDeviceInfo(&info)) || !info) {
@@ -335,25 +398,24 @@ public:
             Stop();
             return SelectedControllerPrepareStatus::VirtualOutputRejected;
         }
-        if (actual != enrollment) {
+        if (actual != preparedEnrollment) {
             Stop();
             return SelectedControllerPrepareStatus::IdentityMismatch;
         }
         ingress_ = &ingress;
         accepting_.store(true, std::memory_order_release);
-        gameInput_->SetFocusPolicy(static_cast<GameInputFocusPolicy>(
-            GameInputEnableBackgroundInput |
-            GameInputEnableBackgroundGuideButton));
-        if (FAILED(gameInput_->RegisterReadingCallback(
+        const auto readingResult = gameInput_->RegisterReadingCallback(
                 device_.Get(), GameInputKindGamepad, this, OnReading,
-                &readingToken_)) ||
-            FAILED(gameInput_->RegisterDeviceCallback(
+                &readingToken_);
+        if (FAILED(readingResult)) {
+            Stop();
+            return SelectedControllerPrepareStatus::CallbackRegistrationFailed;
+        }
+        const auto deviceResult = gameInput_->RegisterDeviceCallback(
                 device_.Get(), GameInputKindGamepad,
                 GameInputDeviceConnected, GameInputNoEnumeration,
-                this, OnDevice, &deviceToken_)) ||
-            FAILED(gameInput_->RegisterSystemButtonCallback(
-                device_.Get(), GameInputSystemButtonGuide, this, OnGuide,
-                &guideToken_))) {
+                this, OnDevice, &deviceToken_);
+        if (FAILED(deviceResult)) {
             Stop();
             return SelectedControllerPrepareStatus::CallbackRegistrationFailed;
         }
@@ -395,9 +457,13 @@ public:
 
     void Stop() noexcept override {
         accepting_.store(false, std::memory_order_release);
-        if (device_) device_->SetRumbleState(nullptr);
+        // Although the SDK marks this pointer optional, GameInputRedist
+        // 3.3.221 dereferences null while forwarding a stop report. Supply an
+        // explicit all-motors-off report before retiring the selected device.
+        const GameInputRumbleParams stoppedRumble{};
+        if (device_) device_->SetRumbleState(&stoppedRumble);
         if (gameInput_) {
-            for (auto* token : {&readingToken_, &deviceToken_, &guideToken_}) {
+            for (auto* token : {&readingToken_, &deviceToken_}) {
                 if (*token == 0) continue;
                 gameInput_->StopCallback(*token);
                 gameInput_->UnregisterCallback(*token);
@@ -465,28 +531,6 @@ private:
             GetTickCount64(), {}, false);
     }
 
-    static void CALLBACK OnGuide(
-        GameInputCallbackToken,
-        void* context,
-        IGameInputDevice*,
-        std::uint64_t timestamp,
-        GameInputSystemButtons current,
-        GameInputSystemButtons previous) noexcept {
-        auto& self = *static_cast<GameInputSelectedControllerReader*>(context);
-        CallbackLease lease(self);
-        if (!lease || !self.ingress_) return;
-        const bool currentGuide =
-            (current & GameInputSystemButtonGuide) != 0;
-        const bool previousGuide =
-            (previous & GameInputSystemButtonGuide) != 0;
-        if (currentGuide == previousGuide) return;
-        (void)self.ingress_->Publish(
-            currentGuide
-                ? ControllerReaderEventKind::GuidePressed
-                : ControllerReaderEventKind::GuideReleased,
-            timestamp, GetTickCount64());
-    }
-
     std::atomic_bool accepting_{};
     std::mutex callbackMutex_;
     std::condition_variable callbackDrain_;
@@ -496,7 +540,6 @@ private:
     ComPtr<IGameInputDevice> device_;
     GameInputCallbackToken readingToken_{};
     GameInputCallbackToken deviceToken_{};
-    GameInputCallbackToken guideToken_{};
 };
 
 } // namespace
@@ -516,19 +559,68 @@ SelectedControllerDiscoveryStatus DiscoverCurrentPhysicalController(
     ComPtr<IGameInput> gameInput;
     if (FAILED(GameInputCreate(gameInput.ReleaseAndGetAddressOf())) ||
         !gameInput) return SelectedControllerDiscoveryStatus::Unavailable;
-    PhysicalControllerDiscoveryContext context(enrollmentToken);
-    GameInputCallbackToken callback{};
-    if (FAILED(gameInput->RegisterDeviceCallback(
-            nullptr, GameInputKindGamepad, GameInputDeviceConnected,
-            GameInputBlockingEnumeration, &context,
-            OnPhysicalControllerDiscovery, &callback)) || callback == 0) {
-        return SelectedControllerDiscoveryStatus::Unavailable;
-    }
-    gameInput->StopCallback(callback);
-    if (!gameInput->UnregisterCallback(callback))
-        return SelectedControllerDiscoveryStatus::UnknownIdentity;
-    const std::scoped_lock lock(context.mutex);
-    return context.discovery.Resolve(descriptor);
+    return DiscoverCurrentPhysicalController(
+        *gameInput.Get(), enrollmentToken, descriptor);
+}
+
+bool DiscoverSelectedControllerHideTargets(
+    const ControllerDeviceNodeIdentity& selected,
+    std::set<std::wstring>& targets) noexcept {
+    targets.clear();
+    try {
+        CfgMgrDeviceAncestryBackend backend;
+        ControllerDeviceNodeToken selectedNode{};
+        if (!selected.valid() || !backend.LocateNode(selected, selectedNode)) return false;
+        std::set<std::wstring> resolved{std::wstring(selected.view())};
+        GUID hid{}; HidD_GetHidGuid(&hid);
+        ULONG length{};
+        if (CM_Get_Device_Interface_List_SizeW(&length, &hid, nullptr,
+                CM_GET_DEVICE_INTERFACE_LIST_PRESENT) != CR_SUCCESS || length == 0 || length > 65'536)
+            return false;
+        std::vector<wchar_t> paths(length);
+        if (CM_Get_Device_Interface_ListW(&hid, nullptr, paths.data(), length,
+                CM_GET_DEVICE_INTERFACE_LIST_PRESENT) != CR_SUCCESS || paths.back() != L'\0')
+            return false;
+        for (std::size_t offset = 0; offset < paths.size() && paths[offset] != L'\0';) {
+            const auto end = std::find(paths.begin() + offset, paths.end(), L'\0');
+            if (end == paths.end()) return false;
+            const auto count = static_cast<std::size_t>(end - paths.begin()) - offset;
+            const auto* path = paths.data() + offset;
+            offset += count + 1;
+            ControllerDeviceNodeIdentity identity;
+            ControllerDeviceNodeToken node{};
+            if (!backend.ResolveInterfaceInstanceId({path, count}, identity) || !backend.LocateNode(identity, node))
+                return false;
+            const auto related = IsSelectedControllerDescendant(node, selectedNode, backend);
+            if (!related) return false;
+            if (!*related || resolved.contains(std::wstring(identity.view()))) continue;
+            // An Xbox composite device can have a separate DirectInput/HID
+            // gamepad collection. Hide only gamepad/joystick collections in its
+            // exact subtree, never sibling controllers or keyboard/mouse nodes.
+            const auto handle = CreateFileW(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+            if (handle == INVALID_HANDLE_VALUE) return false;
+            PHIDP_PREPARSED_DATA data{};
+            HIDP_CAPS caps{};
+            const bool described = HidD_GetPreparsedData(handle, &data) &&
+                HidP_GetCaps(data, &caps) == HIDP_STATUS_SUCCESS;
+            if (data) HidD_FreePreparsedData(data);
+            CloseHandle(handle);
+            if (!described) return false;
+            if (IsControllerHidUsage(caps.UsagePage, caps.Usage)) {
+                ControllerDeviceNodeIdentity current;
+                if (!backend.ReadNodeIdentity(node, current) ||
+                    _wcsicmp(current.value.data(), identity.value.data()) != 0) return false;
+                resolved.insert(std::wstring(identity.view()));
+                if (resolved.size() > 16) return false;
+            }
+        }
+        ControllerDeviceNodeIdentity current;
+        if (!backend.ReadNodeIdentity(selectedNode, current) ||
+            _wcsicmp(current.value.data(), selected.value.data()) != 0) return false;
+        targets = std::move(resolved);
+        return true;
+    } catch (...) { return false; }
 }
 
 } // namespace widgetrail::isolation

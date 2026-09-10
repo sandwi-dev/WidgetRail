@@ -117,6 +117,24 @@ struct FakeAncestryBackend final : ControllerDeviceAncestryBackend {
 };
 
 void AncestryRequiresAnExactRootedPhysicalChain() {
+    FakeAncestryBackend aliases;
+    Check(IsSelectedControllerDescendant(1, 2, aliases) == true,
+          "HID gamepad descendant belongs to the selected Xbox device");
+    Check(IsSelectedControllerDescendant(1, 1, aliases) == true,
+          "selected HID controller is its own target");
+    Check(IsSelectedControllerDescendant(1, 99, aliases) == false,
+          "another controller cannot enter the selected subtree");
+    Check(!IsSelectedControllerDescendant(1, 3, aliases).has_value(),
+          "device-tree root cannot become an all-device hiding scope");
+    aliases.failParent = 1;
+    Check(!IsSelectedControllerDescendant(1, 2, aliases).has_value(),
+          "unreadable ancestry is not permission to hide a device");
+    aliases.failParent = 0; aliases.parents[2] = 1;
+    Check(!IsSelectedControllerDescendant(1, 99, aliases).has_value(),
+          "ancestry cycles fail closed");
+    Check(IsControllerHidUsage(1, 4) && IsControllerHidUsage(1, 5) &&
+          !IsControllerHidUsage(1, 2) && !IsControllerHidUsage(1, 6) && !IsControllerHidUsage(12, 5),
+          "only joystick/gamepad HID collections qualify, not mouse keyboard or consumer controls");
     FakeAncestryBackend physical;
     Check(ClassifyControllerDeviceAncestry(
               L"\\\\?\\HID#PHYSICAL", physical) ==
@@ -233,6 +251,22 @@ void DiscoveryRequiresExactlyOnePhysicalController() {
 }
 
 void FixedEventsPreserveAuthorityAndOrder() {
+    const auto first = Descriptor(1, L"HID\\A");
+    const auto second = Descriptor(2, L"HID\\B");
+    SelectedControllerDescriptor selected;
+    SelectedControllerDiscovery forward(true), reverse(true);
+    forward.Observe(SelectedControllerCandidateKind::Physical, first);
+    forward.Observe(SelectedControllerCandidateKind::Physical, second);
+    reverse.Observe(SelectedControllerCandidateKind::Physical, second);
+    reverse.Observe(SelectedControllerCandidateKind::Physical, first);
+    Check(forward.Resolve(selected) == SelectedControllerDiscoveryStatus::Ready && selected == first,
+          "automatic selection chooses stable instance order among multiple controllers");
+    Check(reverse.Resolve(selected) == SelectedControllerDiscoveryStatus::Ready && selected == first,
+          "automatic selection does not depend on callback enumeration order");
+    reverse.Observe(SelectedControllerCandidateKind::Unknown);
+    reverse.Observe(SelectedControllerCandidateKind::KnownVirtualOutput);
+    Check(reverse.Resolve(selected) == SelectedControllerDiscoveryStatus::Ready && selected == first,
+          "ineligible and virtual controllers never replace an eligible physical controller");
     ControllerIsolationReaderIngress ingress;
     const auto authority = Authority();
     const auto enrollment = Enrollment();
@@ -384,6 +418,31 @@ void ReservedProducerYieldsToTheSerializedConsumer() {
 } // namespace
 
 int main() {
+    const auto enrolled = Enrollment();
+    auto local = Descriptor(1, L"physical-controller");
+    local.enrollment.deviceId[0] = 20;
+    local.enrollment.deviceRootId[0] = 21;
+    SelectedControllerEnrollment resolved;
+    Check(ResolveLocalController(enrolled, SelectedControllerDiscoveryStatus::Ready,
+              local, resolved) == LocalControllerResolutionStatus::Ready &&
+              resolved == local.enrollment,
+          "post-hide GameInput-local IDs rebind to the same stable physical controller");
+    auto foreign = local;
+    foreign.enrollment.containerId[0] ^= 1;
+    Check(ResolveLocalController(enrolled, SelectedControllerDiscoveryStatus::Ready,
+              foreign, resolved) == LocalControllerResolutionStatus::StableIdentityMismatch &&
+              !resolved.valid(),
+          "same local IDs cannot admit a different physical controller");
+    foreign = local;
+    foreign.enrollment.knownVirtualOutput = true;
+    Check(ResolveLocalController(enrolled, SelectedControllerDiscoveryStatus::Ready,
+              foreign, resolved) == LocalControllerResolutionStatus::StableIdentityMismatch &&
+              !resolved.valid(),
+          "virtual output cannot be rebound as the physical reader");
+    Check(ResolveLocalController(enrolled, SelectedControllerDiscoveryStatus::Ambiguous,
+              local, resolved) == LocalControllerResolutionStatus::Ambiguous &&
+              !resolved.valid(),
+          "ambiguous discovery never returns a usable enrollment");
     AncestryRequiresAnExactRootedPhysicalChain();
     EnrollmentIsExactAndVirtualFailsClosed();
     DiscoveryRequiresExactlyOnePhysicalController();

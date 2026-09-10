@@ -448,6 +448,7 @@ function Invoke-OverlayPlatformInteropBuild {
         "/IMPLIB:$outputDirectory\OverlayPlatformInterop.lib"
     ) + $libraryArguments + @(
         '/SUBSYSTEM:WINDOWS', 'gameinput.lib', 'user32.lib',
+        'hid.lib',
         'xinput9_1_0.lib', 'bcrypt.lib', 'advapi32.lib', 'shell32.lib',
         'setupapi.lib', 'cfgmgr32.lib',
         'ole32.lib'

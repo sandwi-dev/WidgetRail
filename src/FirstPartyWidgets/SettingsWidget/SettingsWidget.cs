@@ -21,6 +21,7 @@ public enum SettingsPage
     Accessibility,
     AccessibilityVisual,
     Overlay,
+    Controllers,
     InstalledWidgets,
     InstalledWidgetDetails,
     InstalledWidgetVersions,
@@ -64,6 +65,7 @@ public sealed class SettingsWidget : Widget
     private string? _themePickerFocusId;
     private SettingsPage _page;
     private int _activationLoadCount;
+    private Task _controllerStatusTask = Task.CompletedTask;
     private bool _settingsValid = true;
     private bool _busy;
     private bool _error;
@@ -190,6 +192,45 @@ public sealed class SettingsWidget : Widget
     {
         Interlocked.Increment(ref _activationLoadCount);
         await ReloadAsync(activeLifetime).ConfigureAwait(false);
+        EnsureControllerStatusPolling();
+    }
+
+    protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken) =>
+        await _controllerStatusTask.ConfigureAwait(false);
+
+    private void EnsureControllerStatusPolling()
+    {
+        if (_controllerStatusTask.IsCompleted &&
+            !ActiveCancellationToken.IsCancellationRequested)
+            _controllerStatusTask = PollControllerStatusAsync(ActiveCancellationToken);
+    }
+
+    private async Task PollControllerStatusAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(1_000, cancellationToken).ConfigureAwait(false);
+                if (CurrentPage != SettingsPage.Controllers ||
+                    !await _operationGate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) continue;
+                try
+                {
+                    ControllerControlStatus status;
+                    try { status = (await _diagnosticsService.GetSnapshotAsync(cancellationToken).ConfigureAwait(false)).Controllers; }
+                    catch (PlatformDiagnosticsException) { status = ControllerControlStatus.Unavailable; }
+                    bool changed;
+                    lock (_stateLock)
+                    {
+                        changed = _diagnostics.Controllers != status;
+                        _diagnostics = _diagnostics with { Controllers = status };
+                    }
+                    if (changed) Invalidate();
+                }
+                finally { _operationGate.Release(); }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 
     public override async ValueTask OnActionAsync(
@@ -226,6 +267,12 @@ public sealed class SettingsWidget : Widget
             if (SettingsPreferencePolicy.TryCreate(action.ActionId, out var preference))
             {
                 await PersistPreferenceAsync(preference, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            if (action.ActionId is "controllers.exclusive-control.toggle" or "controllers.restore" &&
+                CurrentPage == SettingsPage.Controllers)
+            {
+                await SetExclusiveControlAsync(cancellationToken, action.ActionId == "controllers.restore").ConfigureAwait(false);
                 return;
             }
             switch (action.ActionId)
@@ -332,10 +379,15 @@ public sealed class SettingsWidget : Widget
                 string.Equals(entry.Descriptor.Version.ToString(), settings.Appearance.ThemeVersion, StringComparison.Ordinal));
             if (!selectedInstalled)
                 warning ??= "Selected theme is unavailable; choose an installed theme";
-            var installedWarning = await ReloadInstalledWidgetsAsync(cancellationToken)
+            // Both sections describe the same catalog revision. Validate its
+            // package files once per reload, rather than hashing every installed
+            // version again for the permissions projection.
+            var catalogRead = SettingsReadinessRetry.CatalogAsync(
+                _widgetCatalog.DiscoverAsync, cancellationToken);
+            var installedWarning = await ReloadInstalledWidgetsAsync(cancellationToken, catalogRead)
                 .ConfigureAwait(false);
             warning ??= installedWarning;
-            var permissionWarning = await ReloadPermissionsAsync(cancellationToken)
+            var permissionWarning = await ReloadPermissionsAsync(cancellationToken, catalogRead)
                 .ConfigureAwait(false);
             warning ??= permissionWarning;
             PlatformDiagnosticsSnapshot diagnostics;
@@ -513,6 +565,40 @@ public sealed class SettingsWidget : Widget
         catch (PlatformSettingsException exception)
         {
             SetOperation($"Reset failed ({exception.Code})", busy: false, error: true);
+            return;
+        }
+        Invalidate();
+    }
+
+    private async Task SetExclusiveControlAsync(CancellationToken cancellationToken, bool restore = false)
+    {
+        SetOperation("Checking controller requirements…", busy: true, error: false);
+        try
+        {
+            var current = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var enabled = !restore && !current.Controllers.ExclusiveControl;
+            var result = await _diagnosticsService.SetExclusiveControlAsync(enabled, cancellationToken)
+                .ConfigureAwait(false);
+            var saved = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                _settings = saved;
+                _diagnostics = _diagnostics with { Controllers = result.Status };
+                _busy = false;
+                _error = !result.Accepted;
+                _status = result.Accepted ? "Controller preference saved" :
+                    "Exclusive control could not be changed. Check the driver status and try again.";
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            SetOperation("Controller change cancelled", busy: false, error: false);
+            return;
+        }
+        catch (Exception exception) when (exception is PlatformSettingsException or
+            PlatformDiagnosticsException or IOException or UnauthorizedAccessException)
+        {
+            SetOperation("Controller settings are unavailable. Check again.", busy: false, error: true);
             return;
         }
         Invalidate();
@@ -734,6 +820,7 @@ public sealed class SettingsWidget : Widget
                 previousPage != SettingsPage.PermissionDiagnostics)
                 _permissionState = _permissionState with { DiagnosticsReturnFocus = false };
         }
+        EnsureControllerStatusPolling();
         Invalidate();
     }
 
@@ -753,7 +840,8 @@ public sealed class SettingsWidget : Widget
         lock (_stateLock) return _permissionState.PackageCapabilitiesReturnPage;
     }
 
-    private async Task<string?> ReloadPermissionsAsync(CancellationToken cancellationToken)
+    private async Task<string?> ReloadPermissionsAsync(CancellationToken cancellationToken,
+        Task<WidgetCatalogSnapshot>? catalogRead = null)
     {
         IReadOnlyList<SettingsPermissionPackage> packages = [];
         var catalogValid = true;
@@ -762,9 +850,9 @@ public sealed class SettingsWidget : Widget
         var unknownDeclarations = new SettingsUnknownDeclarationAccumulator();
         try
         {
-            var catalog = await SettingsReadinessRetry.CatalogAsync(
+            var catalog = await (catalogRead ?? SettingsReadinessRetry.CatalogAsync(
                     _widgetCatalog.DiscoverAsync,
-                    cancellationToken)
+                    cancellationToken))
                 .ConfigureAwait(false);
             var discovered = new Dictionary<string, SettingsPermissionPackage>(StringComparer.Ordinal);
             if (_bundledWidgetRoot is not null)
@@ -1032,13 +1120,14 @@ public sealed class SettingsWidget : Widget
         Invalidate();
     }
 
-    private async Task<string?> ReloadInstalledWidgetsAsync(CancellationToken cancellationToken)
+    private async Task<string?> ReloadInstalledWidgetsAsync(CancellationToken cancellationToken,
+        Task<WidgetCatalogSnapshot>? catalogRead = null)
     {
         try
         {
-            var snapshot = await SettingsReadinessRetry.CatalogAsync(
+            var snapshot = await (catalogRead ?? SettingsReadinessRetry.CatalogAsync(
                     _widgetCatalog.DiscoverAsync,
-                    cancellationToken)
+                    cancellationToken))
                 .ConfigureAwait(false);
             var builtIn = _bundledWidgetRoot is null
                 ? []

@@ -90,7 +90,7 @@ internal static class Program
                 mediaDiagnostics.Record,
                 mediaDiagnostics.RecordLifetime,
                 mediaDiagnostics.RecordRequestFailure,
-                Path.Combine(settingsPaths.RootDirectory, "worker-diagnostics"));
+                Path.Combine(settingsPaths.RootDirectory, "worker-diagnostics"), settingsStore);
             mediaDiagnostics.RecordBridgeStartupPhase("control-plane-created");
             catalogMonitor.Start();
             mediaDiagnostics.RecordBridgeStartupPhase("installed-catalog-pending");

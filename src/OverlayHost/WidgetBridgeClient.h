@@ -830,6 +830,11 @@ private:
     std::size_t recursion_{};
 };
 
+struct ControllerControlPreference final {
+    bool exclusiveControl{};
+    long long revision{};
+};
+
 class WidgetBridgeClient final {
 public:
     WidgetBridgeClient() = default;
@@ -845,6 +850,8 @@ public:
     [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ListWidgets();
     /// Retrieves immutable platform appearance without launching a widget worker.
     [[nodiscard]] std::optional<PlatformAppearance> GetPlatformAppearance();
+    [[nodiscard]] std::optional<ControllerControlPreference> ExchangeControllerControl(
+        std::uint32_t state, std::uint32_t prerequisites);
     /// Coalesced latest revision announced by platform-appearance-changed events.
     [[nodiscard]] std::optional<long long> TakePlatformAppearanceChangedRevision() noexcept;
     /// Coalesced latest catalog revision announced by widget-catalog-changed events.

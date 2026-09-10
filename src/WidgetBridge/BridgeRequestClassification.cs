@@ -8,6 +8,7 @@ internal enum BridgeRequestKind
 {
     ListWidgets,
     GetPlatformAppearance,
+    ControllerControl,
     GetSnapshot,
     ResolveArtwork,
     ResolvePackageIcon,
@@ -89,6 +90,13 @@ internal readonly record struct BridgeRequestKey
 /// </summary>
 internal static class BridgeRequestClassifier
 {
+    private static BridgeRequestKey ControllerControl(JsonElement payload)
+    {
+        var status = BridgeJson.FromElement<WidgetRail.PlatformDiagnostics.ControllerControlStatus>(payload);
+        if (!Enum.IsDefined(status.State)) throw new BridgeProtocolException("Invalid controller status.");
+        return BridgeRequestKey.Global(BridgeRequestKind.ControllerControl);
+    }
+
     internal static BridgeRequestKey Classify(BridgeEnvelope request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -100,6 +108,7 @@ internal static class BridgeRequestClassifier
                     request.Payload, BridgeRequestKind.ListWidgets),
                 BridgeMessageTypes.GetPlatformAppearance => Empty(
                     request.Payload, BridgeRequestKind.GetPlatformAppearance),
+                BridgeMessageTypes.ControllerControl => ControllerControl(request.Payload),
                 BridgeMessageTypes.GetSnapshot => Widget(
                     BridgeJson.FromElement<BridgePresentationRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),

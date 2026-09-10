@@ -13,7 +13,7 @@
 namespace widgetrail::isolation {
 
 enum class LocalControllerProgress : std::uint8_t {
-    Disabled, Preparing, Playing, Contained, AwaitingNeutral, Fault,
+    Disabled, Preparing, Playing, Contained, AwaitingNeutral, Fault, WaitingForController,
 };
 
 enum class LocalControllerOwnerAction : std::uint8_t { None, Enter, Recontain, Close };
@@ -39,6 +39,7 @@ struct ControllerIsolationHostReading final {
     LocalControllerProgress progress{LocalControllerProgress::Disabled};
     std::uint64_t guideEvent{};
     std::uint32_t remainingInputStates{};
+    bool queuedInput{};
 };
 
 // Application-lifetime controller owner. Its private routing thread is the only
@@ -53,19 +54,29 @@ public:
 
     using Notify = void (*)(void*) noexcept;
     [[nodiscard]] bool Start(bool enabled, std::wstring& diagnostic,
-                             Notify notify = nullptr, void* context = nullptr) noexcept;
+                             Notify notify = nullptr, void* context = nullptr,
+                             bool overlayVisible = false) noexcept;
     [[nodiscard]] bool PrepareOverlay(std::wstring& diagnostic) noexcept;
     void CloseOverlay() noexcept;
     [[nodiscard]] bool Poll(ControllerIsolationHostReading&, std::wstring&) noexcept;
     [[nodiscard]] bool PollGuide(std::uint64_t&, std::wstring&) noexcept;
     [[nodiscard]] bool active() const noexcept;
     void Stop() noexcept;
+    void Reset() noexcept;
+    [[nodiscard]] LocalControllerProgress progress() const noexcept;
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
     struct TestDependencies {
+        using PollGuideCompatibility = std::uint8_t (*)(void*) noexcept;
+        using Discover = SelectedControllerDiscoveryStatus (*)(void*, SelectedControllerDescriptor&) noexcept;
         LocalPolicyEffects* effects{};
         SelectedControllerSource* source{};
         ControllerIsolationOutput* output{};
+        PollGuideCompatibility pollGuideCompatibility{};
+        void* guideCompatibilityContext{};
+        Discover discover{};
+        void* discoveryContext{};
         SelectedControllerDescriptor descriptor{};
+        std::set<std::wstring> additionalHideTargets;
         std::filesystem::path journalPath;
         bool throwAfterApply{};
     };

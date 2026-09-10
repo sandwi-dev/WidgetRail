@@ -153,6 +153,16 @@ WidgetRailOverlayPlatformGetAbiVersion() noexcept;
 WRAIL_OVERLAY_PLATFORM_API void WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformConfigureControllerIsolation(std::uint32_t enabled) noexcept;
 
+// Read-only readiness: bit 0 HidHide, bit 1 ViGEmBus, bit 2 GameInput/Guide.
+WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformControllerPrerequisites() noexcept;
+
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformSetExclusiveControl(WidgetRailOverlayPlatformHandle* handle, std::uint32_t enabled) noexcept;
+
+WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformControllerControlState(const WidgetRailOverlayPlatformHandle* handle) noexcept;
+
 WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformRecoverControllerIsolation(wchar_t* message, std::uint32_t capacity) noexcept;
 

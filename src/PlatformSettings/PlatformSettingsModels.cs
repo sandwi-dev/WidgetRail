@@ -105,6 +105,12 @@ public sealed record AppearanceSettings
     };
 }
 
+public sealed record ControllerSettings
+{
+    public bool ExclusiveControl { get; init; }
+    public long Revision { get; init; }
+}
+
 public sealed record PlatformSettingsDocument
 {
     public const int CurrentSchemaVersion = 3;
@@ -114,6 +120,8 @@ public sealed record PlatformSettingsDocument
 
     [JsonRequired]
     public required AppearanceSettings Appearance { get; init; }
+
+    public ControllerSettings Controllers { get; init; } = new();
 
     public static PlatformSettingsDocument Default { get; } = new()
     {
@@ -172,6 +180,10 @@ public static class PlatformSettingsValidator
         if (document.SchemaVersion != PlatformSettingsDocument.CurrentSchemaVersion)
             Add("$.schemaVersion", "unsupported_version",
                 $"Expected settings schema version {PlatformSettingsDocument.CurrentSchemaVersion}.");
+        if (document.Controllers is null)
+            Add("$.controllers", "required", "Controller settings are required.");
+        else if (document.Controllers.Revision < 0 || document.Controllers.Revision > 9_007_199_254_740_990L)
+            Add("$.controllers.revision", "invalid_revision", "Controller settings revision is invalid.");
         if (document.Appearance is null)
         {
             Add("$.appearance", "required", "Appearance settings are required.");

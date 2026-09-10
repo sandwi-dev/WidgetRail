@@ -1,5 +1,39 @@
 # Settings and global themes
 
+## Controllers
+
+Settings > Controllers groups **Input behavior** separately from **Required drivers**.
+**Exclusive control** defaults to off. Turn it on if your game also reacts while
+you use the overlay. Turn it off if your controller stops working in a game or
+you notice unexpected input.
+
+Games and apps that are already open may keep using the previous controller
+setup. Close and reopen them after changing Exclusive control.
+
+**Known issue:** a single controller press may register twice in Settings or the
+Windows app switcher. Turn Exclusive control off if this happens. This Windows
+UI compatibility investigation is deferred as WIDGE-221; the cause remains
+unconfirmed. The current virtual output does not forward Guide to Windows.
+
+Enabling requires available HidHide, ViGEmBus, and Windows controller support.
+The driver rows report readiness from actual driver access, and the native host
+checks again before enabling. Settings never installs drivers automatically.
+The switch saves your preference; the status beneath it reports actual routing:
+off, starting, active, waiting for a controller, unavailable, or recovery required.
+Disable remains available when prerequisites fail. **Restore controller access**
+turns the preference off and retries only WidgetRail's owned cleanup.
+
+Selection is automatic. With multiple eligible physical controllers already
+connected, WidgetRail uses a stable device-instance-ID order. It keeps that
+controller until it disconnects, then neutralizes output and selects a replacement.
+If none remain, it waits for a controller. A reconnected former controller cannot
+displace the active replacement. Release held controls before input resumes.
+Recognized virtual controllers are excluded; there is no manual controller picker.
+
+The user accepted closure with this warning and the deferred compatibility work.
+
+## Appearance and themes
+
 Status: **controller Settings, data-only theme distribution, and the global
 appearance pipeline are implemented**. The first-party Settings worker, strict
 settings store, versioned theme catalog, explicit cascade layers, no-poll

@@ -109,6 +109,25 @@ public sealed record PlatformWidgetPackageUninstallResult(
     PlatformWidgetPackageUninstallStatus Status,
     string Code);
 
+public enum ControllerControlState
+{
+    Unavailable, Off, Starting, Active, WaitingForController, RecoveryRequired, Stopping,
+}
+
+public sealed record ControllerControlStatus(
+    ControllerControlState State,
+    bool HidHideReady,
+    bool ViGEmBusReady,
+    bool InputReady)
+{
+    public bool CanEnable => HidHideReady && ViGEmBusReady && InputReady &&
+        State != ControllerControlState.RecoveryRequired;
+    public static ControllerControlStatus Unavailable { get; } =
+        new(ControllerControlState.Unavailable, false, false, false);
+}
+
+public sealed record ControllerControlResult(bool Accepted, ControllerControlStatus Status);
+
 public sealed record PlatformDiagnosticsSnapshot(
     int SchemaVersion,
     long Revision,
@@ -127,6 +146,8 @@ public sealed record PlatformDiagnosticsSnapshot(
     public const int RecoveryIdLength = 32;
     public const int ConfirmationTokenLength = 32;
     public const int LegacyConfirmationTokenLength = 64;
+
+    public ControllerControlStatus Controllers { get; init; } = ControllerControlStatus.Unavailable;
 
     /// <summary>
     /// Bounded sanitized authority-recovery projection. This additive property
@@ -163,6 +184,10 @@ public sealed record PlatformDiagnosticsSnapshot(
 
 public interface IPlatformDiagnosticsService
 {
+    ValueTask<ControllerControlResult> SetExclusiveControlAsync(
+        bool enabled, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(new ControllerControlResult(false, ControllerControlStatus.Unavailable));
+
     ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(
         CancellationToken cancellationToken = default);
 

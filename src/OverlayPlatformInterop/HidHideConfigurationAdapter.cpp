@@ -74,7 +74,7 @@ private:
         error = GetLastError();
         return false;
     }
-    if (needed < sizeof(wchar_t) * 2 ||
+    if (needed < sizeof(wchar_t) ||
         needed > kMaximumMultiStringBytes ||
         needed % sizeof(wchar_t) != 0) {
         error = ERROR_INVALID_DATA;
@@ -89,27 +89,7 @@ private:
         if (error == ERROR_SUCCESS) error = ERROR_INVALID_DATA;
         return false;
     }
-    values.clear();
-    std::size_t cursor{};
-    while (cursor < buffer.size() && buffer[cursor] != L'\0') {
-        const auto end = std::find(
-            buffer.begin() + static_cast<std::ptrdiff_t>(cursor),
-            buffer.end(), L'\0');
-        if (end == buffer.end() || values.size() == kMaximumEntries) {
-            error = ERROR_INVALID_DATA;
-            return false;
-        }
-        std::wstring value(
-            buffer.begin() + static_cast<std::ptrdiff_t>(cursor), end);
-        if (value.empty() || !values.insert(std::move(value)).second) {
-            error = ERROR_INVALID_DATA;
-            return false;
-        }
-        cursor = static_cast<std::size_t>(end - buffer.begin()) + 1;
-    }
-    if (cursor >= buffer.size() ||
-        std::any_of(buffer.begin() + static_cast<std::ptrdiff_t>(cursor),
-                    buffer.end(), [](wchar_t value) { return value != L'\0'; })) {
+    if (!ParseHidHideMultiString(buffer, values)) {
         error = ERROR_INVALID_DATA;
         return false;
     }
@@ -214,6 +194,32 @@ bool TransactionWriteActive(
 }
 
 } // namespace
+
+bool ParseHidHideMultiString(
+    const std::span<const wchar_t> characters,
+    std::set<std::wstring>& values) noexcept {
+    if (characters.empty() ||
+        characters.size() > kMaximumMultiStringBytes / sizeof(wchar_t))
+        return false;
+    values.clear();
+    std::size_t cursor{};
+    while (cursor < characters.size() && characters[cursor] != L'\0') {
+        const auto end = std::find(
+            characters.begin() + static_cast<std::ptrdiff_t>(cursor),
+            characters.end(), L'\0');
+        if (end == characters.end() || values.size() == kMaximumEntries)
+            return false;
+        std::wstring value(
+            characters.begin() + static_cast<std::ptrdiff_t>(cursor), end);
+        if (value.empty() || !values.insert(std::move(value)).second)
+            return false;
+        cursor = static_cast<std::size_t>(end - characters.begin()) + 1;
+    }
+    return cursor < characters.size() &&
+        std::ranges::all_of(
+            characters.begin() + static_cast<std::ptrdiff_t>(cursor),
+            characters.end(), [](const wchar_t value) { return value == L'\0'; });
+}
 
 bool ControllerIsolationDosDevicePath(
     const std::wstring& absolutePath,
