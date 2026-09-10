@@ -280,8 +280,15 @@ struct ControllerIsolationHostSession::Impl final {
         if (!pathResolved || !hidhide.Read(before, error)) {
             FinishStartup(L"Controller isolation HidHide preflight error=" + std::to_wstring(error)); return;
         }
-        const auto plan = PlanHidHideApply(before, executableDevicePath,
-            {std::wstring(descriptor.deviceInstanceId.view())});
+        std::set<std::wstring> hideTargets{std::wstring(descriptor.deviceInstanceId.view())};
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+        if (test) hideTargets.insert(test->additionalHideTargets.begin(), test->additionalHideTargets.end());
+        else
+#endif
+        if (!DiscoverSelectedControllerHideTargets(descriptor.deviceInstanceId, hideTargets)) {
+            FinishStartup(L"Selected controller gamepad interfaces could not be identified safely."); return;
+        }
+        const auto plan = PlanHidHideApply(before, executableDevicePath, hideTargets);
         LocalPolicyRecord record;
         if (!plan.plan || !SaveLocalPolicy(journalPath, plan.plan->journal, record, failure)) {
             FinishStartup(failure.empty() ? L"Controller isolation policy plan rejected." : failure); return;

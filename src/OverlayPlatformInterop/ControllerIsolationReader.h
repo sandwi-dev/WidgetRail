@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <type_traits>
 
@@ -58,6 +59,14 @@ enum class ControllerDeviceAncestry : std::uint8_t {
 [[nodiscard]] ControllerDeviceAncestry ClassifyControllerDeviceAncestry(
     std::wstring_view normalizedInterfacePath,
     ControllerDeviceAncestryBackend& backend) noexcept;
+
+// Unknown ancestry must never widen the selected controller's hiding scope.
+[[nodiscard]] std::optional<bool> IsSelectedControllerDescendant(
+    ControllerDeviceNodeToken candidate, ControllerDeviceNodeToken selected,
+    ControllerDeviceAncestryBackend& backend) noexcept;
+[[nodiscard]] constexpr bool IsControllerHidUsage(std::uint16_t page, std::uint16_t usage) noexcept {
+    return page == 1 && (usage == 4 || usage == 5);
+}
 
 struct SelectedControllerEnrollment final {
     std::uint64_t enrollmentToken{};
@@ -281,6 +290,9 @@ CreateGameInputSelectedControllerReader() noexcept;
 DiscoverCurrentPhysicalController(
     std::uint64_t enrollmentToken,
     SelectedControllerDescriptor& descriptor) noexcept;
+[[nodiscard]] bool DiscoverSelectedControllerHideTargets(
+    const ControllerDeviceNodeIdentity& selected,
+    std::set<std::wstring>& targets) noexcept;
 #endif
 
 } // namespace widgetrail::isolation

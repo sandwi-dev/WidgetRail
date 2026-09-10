@@ -33,6 +33,17 @@ six-widget catalog, an isolated reload without Bridge diagnostics decreased from
 all activation latency. Windows Guide-hold panel duplicate input remains under
 investigation and is reported only with Exclusive control enabled.
 
+WIDGE-217 composite-device correction: a fresh, non-allowlisted process could
+open the physical controller's HID gamepad collection while its Xbox instance
+was hidden. The native owner now adds exact descendant gamepad/joystick HID
+instances to the same owned-policy journal. Read-only discovery on the affected
+hardware resolves two targets (USB/Xbox and HID). Reader policy passes 935
+checks, local owner passes 76, and imported production ABI passes 55. The new
+cleanup fixture initially hit the existing activation-conflict guard; it was
+corrected to model an already-active foreign policy. Native discovery also
+required case-insensitive identity comparison across Windows property APIs.
+Live denial, disable cleanup and Windows-panel retest remain acceptance gates.
+
 WIDGE-213 controller-isolation follow-up uses the existing XInput Guide adapter
 on the sole native routing thread at 25 ms, with GameInput retained for selected
 physical readings, disconnect and rumble. The unused isolation GameInput Guide

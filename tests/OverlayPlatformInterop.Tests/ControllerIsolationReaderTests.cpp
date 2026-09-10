@@ -117,6 +117,24 @@ struct FakeAncestryBackend final : ControllerDeviceAncestryBackend {
 };
 
 void AncestryRequiresAnExactRootedPhysicalChain() {
+    FakeAncestryBackend aliases;
+    Check(IsSelectedControllerDescendant(1, 2, aliases) == true,
+          "HID gamepad descendant belongs to the selected Xbox device");
+    Check(IsSelectedControllerDescendant(1, 1, aliases) == true,
+          "selected HID controller is its own target");
+    Check(IsSelectedControllerDescendant(1, 99, aliases) == false,
+          "another controller cannot enter the selected subtree");
+    Check(!IsSelectedControllerDescendant(1, 3, aliases).has_value(),
+          "device-tree root cannot become an all-device hiding scope");
+    aliases.failParent = 1;
+    Check(!IsSelectedControllerDescendant(1, 2, aliases).has_value(),
+          "unreadable ancestry is not permission to hide a device");
+    aliases.failParent = 0; aliases.parents[2] = 1;
+    Check(!IsSelectedControllerDescendant(1, 99, aliases).has_value(),
+          "ancestry cycles fail closed");
+    Check(IsControllerHidUsage(1, 4) && IsControllerHidUsage(1, 5) &&
+          !IsControllerHidUsage(1, 2) && !IsControllerHidUsage(1, 6) && !IsControllerHidUsage(12, 5),
+          "only joystick/gamepad HID collections qualify, not mouse keyboard or consumer controls");
     FakeAncestryBackend physical;
     Check(ClassifyControllerDeviceAncestry(
               L"\\\\?\\HID#PHYSICAL", physical) ==

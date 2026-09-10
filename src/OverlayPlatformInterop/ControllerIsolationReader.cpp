@@ -50,6 +50,25 @@ bool ControllerDeviceNodeIdentity::valid() const noexcept {
         value.begin() + length;
 }
 
+std::optional<bool> IsSelectedControllerDescendant(
+    ControllerDeviceNodeToken candidate, const ControllerDeviceNodeToken selected,
+    ControllerDeviceAncestryBackend& backend) noexcept {
+    ControllerDeviceNodeToken root{};
+    if (!backend.LocateRoot(root) || selected == root) return std::nullopt;
+    std::array<ControllerDeviceNodeToken, 32> visited{};
+    for (std::size_t count = 0; count < visited.size(); ++count) {
+        if (candidate == selected) return true;
+        if (candidate == root) return false;
+        if (std::find(visited.begin(), visited.begin() + count, candidate) != visited.begin() + count)
+            return std::nullopt;
+        visited[count] = candidate;
+        ControllerDeviceNodeToken parent{};
+        if (!backend.Parent(candidate, parent)) return std::nullopt;
+        candidate = parent;
+    }
+    return std::nullopt;
+}
+
 ControllerDeviceAncestry ClassifyControllerDeviceAncestry(
     const std::wstring_view normalizedInterfacePath,
     ControllerDeviceAncestryBackend& backend) noexcept {

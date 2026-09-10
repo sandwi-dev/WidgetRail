@@ -13,6 +13,7 @@ namespace widgetrail::isolation {
 // Native discovery is never reached by the injected production owner in this suite.
 std::unique_ptr<SelectedControllerSource> CreateGameInputSelectedControllerReader() noexcept { std::abort(); }
 SelectedControllerDiscoveryStatus DiscoverCurrentPhysicalController(std::uint64_t, SelectedControllerDescriptor&) noexcept { std::abort(); }
+bool DiscoverSelectedControllerHideTargets(const ControllerDeviceNodeIdentity&, std::set<std::wstring>&) noexcept { std::abort(); }
 }
 namespace {
 int checks{};
@@ -341,6 +342,31 @@ void AutomaticSelectionLifetime(const std::filesystem::path& root) {
           "disable retires the virtual device and restores exact owned policy");
 }
 
+void CompositeGamepadCleanup(const std::filesystem::path& root) {
+    Effects effects; Source source; Output output;
+    effects.state.active = true;
+    effects.state.deviceInstanceIds.insert(L"HID\\other-controller");
+    const auto before = effects.state;
+    const auto path = root / L"composite" / L"local-session.v1";
+    auto dependencies = Dependencies(path, effects, &source, output);
+    dependencies.additionalHideTargets.insert(L"HID\\selected-gamepad-alias");
+    ControllerIsolationHostSession owner(dependencies);
+    std::wstring error;
+    Check(owner.Start(true, error), "composite controller owner starts");
+    Check(effects.state.deviceInstanceIds.size() == 3 &&
+          effects.state.deviceInstanceIds.contains(L"HID\\selected-gamepad-alias") &&
+          effects.state.deviceInstanceIds.contains(std::wstring(dependencies.descriptor.deviceInstanceId.view())),
+          "both selected input identities are hidden without replacing unrelated policy");
+    LocalPolicyRecord record; bool found{};
+    Check(LoadLocalPolicy(path, record, found, error) && found &&
+          record.policy.ownedDeviceInstanceIds.size() == 2 &&
+          !record.policy.ownedDeviceInstanceIds.contains(L"HID\\other-controller"),
+          "recovery journal owns every selected interface and excludes foreign devices");
+    owner.Stop();
+    Check(effects.state == before && !std::filesystem::exists(path) && output.removals == 1,
+          "composite shutdown restores exactly the previous HidHide policy");
+}
+
 void PendingTransitionsAreSingleFlight(const std::filesystem::path& root) {
     Effects effects; Source source; Output output;
     ControllerIsolationHostSession owner(Dependencies(
@@ -379,7 +405,7 @@ int main() {
     const auto root = std::filesystem::temp_directory_path() / (L"wrail-local-owner-" + std::to_wstring(GetCurrentProcessId()));
     std::filesystem::create_directories(root);
     try { ParserAndRecovery(root); SetupCleanup(root); OwnerTransitions(root);
-          PendingTransitionsAreSingleFlight(root); AutomaticSelectionLifetime(root); VisibleStartupAndHeldDisconnect(root); }
+          PendingTransitionsAreSingleFlight(root); AutomaticSelectionLifetime(root); VisibleStartupAndHeldDisconnect(root); CompositeGamepadCleanup(root); }
     catch (const std::exception& error) { std::cerr << "FAILED: " << error.what() << "\nRetained: " << root << '\n'; return 1; }
     std::filesystem::remove_all(root);
     std::cout << "LocalControllerOwnerTests passed " << checks << " checks\n";

@@ -25,6 +25,16 @@ can dereference it during teardown. A stop failure must not be mistaken for
 successful physical-device restoration; retained owned-policy recovery remains
 the recovery path after a host crash.
 
+HidHide denies individual device instance IDs. The selected Xbox device may
+also expose a separate HID joystick/gamepad collection; hiding only its Xbox
+instance leaves that DirectInput/HID path accessible. Before enabling, the
+native owner identifies gamepad/joystick HID interfaces in the selected device's
+exact subtree and journals them together with the selected instance. Mouse,
+keyboard, consumer-control and unrelated-device interfaces are excluded. All
+owned entries are restored on disable, handoff or normal shutdown. Unknown or
+changing identity aborts setup instead of widening the hiding scope. See the
+[HidHide API documentation](https://docs.nefarius.at/projects/HidHide/API-Documentation/).
+
 ## Ordinary overlay input
 
 Status: implemented prototype policy

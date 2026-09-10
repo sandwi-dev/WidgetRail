@@ -76,6 +76,7 @@ public:
         Discover discover{};
         void* discoveryContext{};
         SelectedControllerDescriptor descriptor{};
+        std::set<std::wstring> additionalHideTargets;
         std::filesystem::path journalPath;
         bool throwAfterApply{};
     };

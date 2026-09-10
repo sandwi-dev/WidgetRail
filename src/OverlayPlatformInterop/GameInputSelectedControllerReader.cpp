@@ -9,6 +9,8 @@
 #include <cfgmgr32.h>
 #include <initguid.h>
 #include <devpkey.h>
+#include <hidsdi.h>
+#include <hidpi.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -23,6 +25,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace widgetrail::isolation {
 namespace {
@@ -558,6 +561,66 @@ SelectedControllerDiscoveryStatus DiscoverCurrentPhysicalController(
         !gameInput) return SelectedControllerDiscoveryStatus::Unavailable;
     return DiscoverCurrentPhysicalController(
         *gameInput.Get(), enrollmentToken, descriptor);
+}
+
+bool DiscoverSelectedControllerHideTargets(
+    const ControllerDeviceNodeIdentity& selected,
+    std::set<std::wstring>& targets) noexcept {
+    targets.clear();
+    try {
+        CfgMgrDeviceAncestryBackend backend;
+        ControllerDeviceNodeToken selectedNode{};
+        if (!selected.valid() || !backend.LocateNode(selected, selectedNode)) return false;
+        std::set<std::wstring> resolved{std::wstring(selected.view())};
+        GUID hid{}; HidD_GetHidGuid(&hid);
+        ULONG length{};
+        if (CM_Get_Device_Interface_List_SizeW(&length, &hid, nullptr,
+                CM_GET_DEVICE_INTERFACE_LIST_PRESENT) != CR_SUCCESS || length == 0 || length > 65'536)
+            return false;
+        std::vector<wchar_t> paths(length);
+        if (CM_Get_Device_Interface_ListW(&hid, nullptr, paths.data(), length,
+                CM_GET_DEVICE_INTERFACE_LIST_PRESENT) != CR_SUCCESS || paths.back() != L'\0')
+            return false;
+        for (std::size_t offset = 0; offset < paths.size() && paths[offset] != L'\0';) {
+            const auto end = std::find(paths.begin() + offset, paths.end(), L'\0');
+            if (end == paths.end()) return false;
+            const auto count = static_cast<std::size_t>(end - paths.begin()) - offset;
+            const auto* path = paths.data() + offset;
+            offset += count + 1;
+            ControllerDeviceNodeIdentity identity;
+            ControllerDeviceNodeToken node{};
+            if (!backend.ResolveInterfaceInstanceId({path, count}, identity) || !backend.LocateNode(identity, node))
+                return false;
+            const auto related = IsSelectedControllerDescendant(node, selectedNode, backend);
+            if (!related) return false;
+            if (!*related || resolved.contains(std::wstring(identity.view()))) continue;
+            // An Xbox composite device can have a separate DirectInput/HID
+            // gamepad collection. Hide only gamepad/joystick collections in its
+            // exact subtree, never sibling controllers or keyboard/mouse nodes.
+            const auto handle = CreateFileW(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+            if (handle == INVALID_HANDLE_VALUE) return false;
+            PHIDP_PREPARSED_DATA data{};
+            HIDP_CAPS caps{};
+            const bool described = HidD_GetPreparsedData(handle, &data) &&
+                HidP_GetCaps(data, &caps) == HIDP_STATUS_SUCCESS;
+            if (data) HidD_FreePreparsedData(data);
+            CloseHandle(handle);
+            if (!described) return false;
+            if (IsControllerHidUsage(caps.UsagePage, caps.Usage)) {
+                ControllerDeviceNodeIdentity current;
+                if (!backend.ReadNodeIdentity(node, current) ||
+                    _wcsicmp(current.value.data(), identity.value.data()) != 0) return false;
+                resolved.insert(std::wstring(identity.view()));
+                if (resolved.size() > 16) return false;
+            }
+        }
+        ControllerDeviceNodeIdentity current;
+        if (!backend.ReadNodeIdentity(selectedNode, current) ||
+            _wcsicmp(current.value.data(), selected.value.data()) != 0) return false;
+        targets = std::move(resolved);
+        return true;
+    } catch (...) { return false; }
 }
 
 } // namespace widgetrail::isolation
