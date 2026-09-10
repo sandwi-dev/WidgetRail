@@ -397,7 +397,8 @@ public:
         accepting_.store(true, std::memory_order_release);
         constexpr auto focusPolicy = static_cast<GameInputFocusPolicy>(
             GameInputEnableBackgroundInput |
-            GameInputEnableBackgroundGuideButton);
+            GameInputEnableBackgroundGuideButton |
+            GameInputExclusiveForegroundGuideButton);
         guideFocusPolicy_.store(
             static_cast<std::uint32_t>(focusPolicy),
             std::memory_order_relaxed);
