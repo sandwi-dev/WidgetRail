@@ -2,6 +2,7 @@
 
 #include "ControllerIsolationInputTransport.h"
 #include "ControllerIsolationReader.h"
+#include "LocalControllerPolicy.h"
 #include "ControllerIsolationRoutingSession.h"
 #include "HidHideConfigurationAdapter.h"
 #include "ViGEmOutputAdapter.h"
@@ -24,29 +25,7 @@
 namespace widgetrail::isolation {
 namespace {
 
-constexpr std::size_t kMaximumJournalBytes = 128 * 1024;
-constexpr std::size_t kMaximumJournalEntries = 512;
-constexpr std::uint64_t kMeasuredReadingIntervalMilliseconds = 10;
-constexpr wchar_t kLocalOwnerMutex[] =
-    L"Local\\WidgetRail.ControllerIsolation.LocalOwner";
-
-class LocalOwnerLease final {
-public:
-    ~LocalOwnerLease() { if (owned_) ReleaseMutex(mutex_); if (mutex_) CloseHandle(mutex_); }
-    [[nodiscard]] bool Acquire(std::wstring& diagnostic) noexcept {
-        mutex_ = CreateMutexW(nullptr, FALSE, kLocalOwnerMutex);
-        if (!mutex_) { diagnostic = L"Controller isolation owner mutex failed."; return false; }
-        const auto result = WaitForSingleObject(mutex_, 2'000);
-        if (result == WAIT_OBJECT_0 || result == WAIT_ABANDONED) { owned_ = true; return true; }
-        diagnostic = result == WAIT_TIMEOUT
-            ? L"Controller isolation is already owned by another OverlayHost."
-            : L"Controller isolation owner mutex wait failed.";
-        return false;
-    }
-private:
-    HANDLE mutex_{};
-    bool owned_{};
-};
+constexpr std::uint64_t kNeutralDwellInputMilliseconds = 10;
 
 [[nodiscard]] std::filesystem::path CurrentExecutable() {
     std::array<wchar_t, 32'768> path{};
@@ -57,150 +36,13 @@ private:
         : std::filesystem::path(std::wstring_view(path.data(), length));
 }
 
-[[nodiscard]] std::filesystem::path LocalJournalPath() {
-    PWSTR localAppData{};
-    if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_DEFAULT,
-                                    nullptr, &localAppData)) || !localAppData)
-        return {};
-    std::filesystem::path result(localAppData);
-    CoTaskMemFree(localAppData);
-    return result / L"WidgetRail" / L"controller-isolation" /
-        L"local-session.v1";
-}
-
-[[nodiscard]] std::filesystem::path LegacyJournalPath() {
-    auto path = LocalJournalPath();
-    return path.empty() ? path : path.parent_path() / L"session.bin";
-}
-
-[[nodiscard]] std::string Hex(const std::wstring& value) {
-    constexpr char digits[] = "0123456789abcdef";
-    std::string result;
-    const auto* bytes = reinterpret_cast<const unsigned char*>(value.data());
-    result.reserve(value.size() * sizeof(wchar_t) * 2);
-    for (std::size_t i = 0; i < value.size() * sizeof(wchar_t); ++i) {
-        result.push_back(digits[bytes[i] >> 4]);
-        result.push_back(digits[bytes[i] & 15]);
-    }
-    return result;
-}
-
-[[nodiscard]] bool Unhex(const std::string& value, std::wstring& result) {
-    if (value.empty() || value.size() % (sizeof(wchar_t) * 2) != 0 ||
-        value.size() > 32'768 * sizeof(wchar_t) * 2) return false;
-    const auto digit = [](char c) -> int {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        return -1;
-    };
-    std::vector<unsigned char> bytes(value.size() / 2);
-    for (std::size_t i = 0; i < bytes.size(); ++i) {
-        const auto high = digit(value[i * 2]);
-        const auto low = digit(value[i * 2 + 1]);
-        if (high < 0 || low < 0) return false;
-        bytes[i] = static_cast<unsigned char>((high << 4) | low);
-    }
-    result.assign(reinterpret_cast<const wchar_t*>(bytes.data()),
-                  bytes.size() / sizeof(wchar_t));
-    return result.find(L'\0') == std::wstring::npos;
-}
-
-[[nodiscard]] bool SaveJournal(const std::filesystem::path& path,
-                               const HidHideJournal& journal,
-                               std::wstring& diagnostic) {
-    std::string text = "WidgetRailControllerIsolationLocal=1\n";
-    text += std::string("before-active=") + (journal.before.active ? "1\n" : "0\n");
-    text += std::string("before-inverse=") +
-        (journal.before.applicationListInverted ? "1\n" : "0\n");
-    text += std::string("activated=") + (journal.activatedBySession ? "1\n" : "0\n");
-    const auto append = [&](const char* prefix,
-                            const std::set<std::wstring>& values) {
-        for (const auto& value : values) text += prefix + Hex(value) + "\n";
-    };
-    append("before-app=", journal.before.applicationPaths);
-    append("before-device=", journal.before.deviceInstanceIds);
-    append("owned-app=", journal.ownedApplicationPaths);
-    append("owned-device=", journal.ownedDeviceInstanceIds);
-    if (text.size() > kMaximumJournalBytes) {
-        diagnostic = L"Controller isolation journal exceeds its bound.";
-        return false;
-    }
-    std::error_code ec;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    if (ec) { diagnostic = L"Controller isolation journal directory failed."; return false; }
-    auto temporary = path; temporary += L".tmp";
-    HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr,
-                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE) {
-        diagnostic = L"Controller isolation journal creation failed."; return false;
-    }
-    DWORD written{};
-    const bool writtenAll = WriteFile(file, text.data(),
-        static_cast<DWORD>(text.size()), &written, nullptr) &&
-        written == text.size() && FlushFileBuffers(file);
-    CloseHandle(file);
-    if (!writtenAll || !MoveFileExW(temporary.c_str(), path.c_str(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        diagnostic = L"Controller isolation journal commit failed."; return false;
-    }
-    return true;
-}
-
-[[nodiscard]] bool LoadJournal(const std::filesystem::path& path,
-                               HidHideJournal& journal, bool& found,
-                               std::wstring& diagnostic) {
-    found = std::filesystem::exists(path);
-    if (!found) return true;
-    std::error_code ec;
-    const auto size = std::filesystem::file_size(path, ec);
-    if (ec || size == 0 || size > kMaximumJournalBytes) {
-        diagnostic = L"Controller isolation local journal is invalid."; return false;
-    }
-    std::ifstream input(path, std::ios::binary);
-    std::string text(static_cast<std::size_t>(size), '\0');
-    if (!input.read(text.data(), static_cast<std::streamsize>(text.size())) ||
-        !text.starts_with("WidgetRailControllerIsolationLocal=1\n")) {
-        diagnostic = L"Controller isolation local journal is unrecognized."; return false;
-    }
-    journal = {};
-    bool active{}, inverse{}, activated{}, sawActive{}, sawInverse{}, sawActivated{};
-    std::size_t entries{};
-    for (std::size_t cursor = text.find('\n') + 1; cursor < text.size();) {
-        const auto end = text.find('\n', cursor);
-        if (end == std::string::npos || ++entries > kMaximumJournalEntries) return false;
-        const auto line = text.substr(cursor, end - cursor); cursor = end + 1;
-        const auto boolean = [&](const char* key, bool& target, bool& saw) {
-            if (!line.starts_with(key)) return false;
-            const auto value = line.substr(std::char_traits<char>::length(key));
-            if (saw || (value != "0" && value != "1")) return false;
-            target = value == "1"; saw = true; return true;
-        };
-        if (boolean("before-active=", active, sawActive) ||
-            boolean("before-inverse=", inverse, sawInverse) ||
-            boolean("activated=", activated, sawActivated)) continue;
-        const auto add = [&](const char* key, std::set<std::wstring>& values) {
-            if (!line.starts_with(key)) return false;
-            std::wstring decoded;
-            return Unhex(line.substr(std::char_traits<char>::length(key)), decoded) &&
-                   values.insert(std::move(decoded)).second;
-        };
-        if (add("before-app=", journal.before.applicationPaths) ||
-            add("before-device=", journal.before.deviceInstanceIds) ||
-            add("owned-app=", journal.ownedApplicationPaths) ||
-            add("owned-device=", journal.ownedDeviceInstanceIds)) continue;
-        diagnostic = L"Controller isolation local journal has an unknown field.";
-        return false;
-    }
-    if (!sawActive || !sawInverse || !sawActivated) return false;
-    journal.before.active = active;
-    journal.before.applicationListInverted = inverse;
-    journal.activatedBySession = activated;
-    return true;
-}
-
 class LocalOutput final : public ControllerIsolationOutput {
 public:
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+    LocalOutput() noexcept : adapter_(testApi_) {}
+#else
     LocalOutput() noexcept : adapter_(OfficialViGEmApi()) {}
+#endif
     bool OpenOwnedTarget() noexcept override { return adapter_.Open(); }
     bool Submit(const GamepadState& state) noexcept override { return adapter_.Submit(state); }
     bool TakeLatestFeedback(ControllerRumbleState& state) noexcept override {
@@ -208,21 +50,31 @@ public:
     }
     void RemoveOwnedTarget() noexcept override { adapter_.RemoveOwnedTarget(); }
 private:
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+    inline static const ViGEmApi testApi_{};
+#endif
     ViGEmOutputAdapter adapter_;
 };
 
 class LocalQueues final : public ControllerIsolationGuideSink,
                           public ControllerIsolationHostInputSink {
 public:
+    void SetNotify(ControllerIsolationHostSession::Notify notify, void* context) noexcept {
+        notify_ = notify; context_ = context;
+    }
     bool BeginInteraction() noexcept { std::scoped_lock l(mutex_); return input_.BeginInteraction(); }
     void RetireInteraction() noexcept { std::scoped_lock l(mutex_); input_.RetireInteraction(); }
     bool PublishInput(const GamepadState& state, std::uint64_t ordinal) noexcept override {
         std::scoped_lock l(mutex_); return input_.Push(state, ordinal);
     }
     bool PublishGuide(bool pressed, std::uint64_t, std::uint64_t ordinal) noexcept override {
-        std::scoped_lock l(mutex_);
-        if (guides_.size() == 32) return false;
-        guides_.push_back(ordinal | (pressed ? 0ULL : (1ULL << 63))); return true;
+        {
+            std::scoped_lock lock(mutex_);
+            if (guides_.size() == 32) return false;
+            guides_.push_back(ordinal | (pressed ? 0ULL : (1ULL << 63)));
+        }
+        if (notify_) notify_(context_);
+        return true;
     }
     bool Pop(GamepadState& state, std::uint32_t& remaining) noexcept {
         std::scoped_lock l(mutex_);
@@ -240,6 +92,8 @@ private:
     std::mutex mutex_;
     ControllerIsolationInputEventQueue input_;
     std::deque<std::uint64_t> guides_;
+    ControllerIsolationHostSession::Notify notify_{};
+    void* context_{};
 };
 
 [[nodiscard]] LocalControllerProgress ConvertProgress(ControllerIsolationRoutingState state) {
@@ -257,6 +111,9 @@ private:
 } // namespace
 
 struct ControllerIsolationHostSession::Impl final {
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+    std::optional<TestDependencies> test;
+#endif
     std::mutex mutex;
     std::condition_variable changed;
     std::jthread thread;
@@ -265,75 +122,116 @@ struct ControllerIsolationHostSession::Impl final {
     GamepadState latest{};
     std::wstring diagnostic;
     bool startupDone{}, desiredOverlay{};
+    std::uint64_t desiredGeneration{}, appliedGeneration{};
 
     void FinishStartup(const std::wstring& message) noexcept {
         std::scoped_lock lock(mutex);
-        diagnostic = message; progress = LocalControllerProgress::Fault;
+        diagnostic = message.empty() ? L"Controller isolation operation failed." : message; progress = LocalControllerProgress::Fault;
         startupDone = true; changed.notify_all();
     }
 
-    static bool Restore(const HidHideJournal& journal,
-                        HidHideConfigurationAdapter& adapter,
-                        const std::filesystem::path& path) noexcept {
-        HidHideSnapshot current, observed; std::uint32_t error{};
-        if (adapter.ReadSnapshot(current, error) != HidHideConfigurationStatus::Ready) return false;
-        const auto restore = PlanHidHideRestore(journal, current);
-        if (!restore.desired || restore.status == HidHideRestoreStatus::Conflict) return false;
-        return adapter.ApplySnapshot(current, *restore.desired, observed, error) ==
-                   HidHideConfigurationStatus::Ready && DeleteFileW(path.c_str());
+    void Run(std::stop_token stop) noexcept {
+        std::wstring cleanupFailure;
+        LocalOwnerLease owner;
+        try {
+            if (!owner.Acquire(cleanupFailure)) { FinishStartup(cleanupFailure); return; }
+            RunOwned(stop, cleanupFailure);
+        } catch (const std::exception&) {
+            FinishStartup(L"Controller isolation setup/routing exception.");
+        } catch (...) {
+            FinishStartup(L"Controller isolation unexpected setup/routing exception.");
+        }
+        if (!cleanupFailure.empty()) {
+            std::scoped_lock lock(mutex);
+            if (!diagnostic.empty()) diagnostic += L" ";
+            diagnostic += cleanupFailure;
+            progress = LocalControllerProgress::Fault;
+            startupDone = true;
+            changed.notify_all();
+        }
     }
 
-    void Run(std::stop_token stop) noexcept {
-        LocalOwnerLease owner;
-        std::wstring failure;
-        if (!owner.Acquire(failure)) { FinishStartup(failure); return; }
-        const auto journalPath = LocalJournalPath();
-        if (journalPath.empty() || std::filesystem::exists(LegacyJournalPath())) {
-            FinishStartup(std::filesystem::exists(LegacyJournalPath())
-                ? L"A legacy controller-isolation journal requires explicit recovery."
-                : L"Controller isolation LocalAppData is unavailable."); return;
+    void RunOwned(std::stop_token stop, std::wstring& cleanupFailure) {
+        const auto journalPath =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? test->journalPath :
+#endif
+            LocalControllerJournalPath();
+        if (journalPath.empty()) { FinishStartup(L"Controller isolation LocalAppData unavailable."); return; }
+        if (std::filesystem::exists(journalPath.parent_path() / L"session.bin")) {
+            FinishStartup(L"A legacy controller-isolation journal requires original recovery."); return;
         }
-        HidHideConfigurationAdapter hidhide;
-        HidHideJournal prior; bool priorFound{};
-        if (!LoadJournal(journalPath, prior, priorFound, failure)) { FinishStartup(failure); return; }
-        if (priorFound && !Restore(prior, hidhide, journalPath)) {
-            FinishStartup(L"Controller isolation crash recovery found foreign drift or failed."); return;
+        NativeLocalPolicyEffects nativeEffects;
+        LocalPolicyEffects& hidhide =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? *test->effects :
+#endif
+            nativeEffects;
+        LocalPolicyRecord prior; bool priorFound{}; std::wstring failure;
+        if (!LoadLocalPolicy(journalPath, prior, priorFound, failure) ||
+            (priorFound && !RestoreLocalPolicy(journalPath, prior, hidhide, failure))) {
+            FinishStartup(failure); return;
         }
         SelectedControllerDescriptor descriptor;
-        if (DiscoverCurrentPhysicalController(GetTickCount64() | 1, descriptor) !=
+        const auto discovery =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? (descriptor = test->descriptor, SelectedControllerDiscoveryStatus::Ready) :
+#endif
+            DiscoverCurrentPhysicalController(GetTickCount64() | 1, descriptor);
+        if (discovery !=
             SelectedControllerDiscoveryStatus::Ready) {
             FinishStartup(L"Controller isolation requires exactly one known physical controller."); return;
         }
         HidHideSnapshot before; std::uint32_t error{}; std::wstring executableDevicePath;
-        if (hidhide.ReadSnapshot(before, error) != HidHideConfigurationStatus::Ready ||
-            !ControllerIsolationDosDevicePath(CurrentExecutable().wstring(), executableDevicePath, error)) {
-            FinishStartup(L"Controller isolation HidHide preflight failed."); return;
+        const bool pathResolved =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? (executableDevicePath = L"test-reader", true) :
+#endif
+            ControllerIsolationDosDevicePath(CurrentExecutable().wstring(), executableDevicePath, error);
+        if (!pathResolved || !hidhide.Read(before, error)) {
+            FinishStartup(L"Controller isolation HidHide preflight error=" + std::to_wstring(error)); return;
         }
         const auto plan = PlanHidHideApply(before, executableDevicePath,
             {std::wstring(descriptor.deviceInstanceId.view())});
-        if (!plan.plan || !SaveJournal(journalPath, plan.plan->journal, failure)) {
-            FinishStartup(failure.empty() ? L"Controller isolation policy plan was rejected." : failure); return;
+        LocalPolicyRecord record;
+        if (!plan.plan || !SaveLocalPolicy(journalPath, plan.plan->journal, record, failure)) {
+            FinishStartup(failure.empty() ? L"Controller isolation policy plan rejected." : failure); return;
         }
+        // Every return and exception after publication goes through exact-owned
+        // restoration. Reader/output objects are declared later and retire first.
+        LocalPolicyCleanup cleanup(journalPath, record, hidhide, cleanupFailure);
         HidHideSnapshot observed;
-        if (hidhide.ApplySnapshot(before, plan.plan->desired, observed, error) !=
-            HidHideConfigurationStatus::Ready) {
-            if (Restore(plan.plan->journal, hidhide, journalPath)) {
-                FinishStartup(L"Controller isolation HidHide apply failed and was restored.");
-            } else {
-                FinishStartup(L"Controller isolation HidHide apply failed; recovery journal retained.");
-            }
-            return;
+        if (!hidhide.Apply(before, plan.plan->desired, observed, error)) {
+            FinishStartup(L"Controller isolation HidHide apply error=" + std::to_wstring(error)); return;
         }
-        auto source = CreateGameInputSelectedControllerReader(); LocalOutput output;
-        if (!source) {
-            (void)Restore(plan.plan->journal, hidhide, journalPath);
-            FinishStartup(L"Controller isolation reader allocation failed."); return;
-        }
+        auto ownedSource =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? std::unique_ptr<SelectedControllerSource>{} :
+#endif
+            CreateGameInputSelectedControllerReader();
+        LocalOutput nativeOutput;
+        auto* source =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? test->source :
+#endif
+            ownedSource.get();
+        ControllerIsolationOutput& output =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? *test->output :
+#endif
+            nativeOutput;
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+        if (test && test->throwAfterApply) throw std::runtime_error("injected post-apply allocation failure");
+#endif
+        if (!source) { FinishStartup(L"Controller isolation reader allocation failed."); return; }
         ControllerIsolationRoutingSession routing(*source, output, queues, {}, &queues);
         const RoutingAuthority authority{1, 1, 1, GetTickCount64() | 1};
         auto result = routing.PrepareSession(authority, descriptor.enrollment, GetTickCount64());
-        if (result == ControllerIsolationRoutingResult::Applied)
-            result = routing.CommitPlaying(authority, kMeasuredReadingIntervalMilliseconds, GetTickCount64());
+        if (result != ControllerIsolationRoutingResult::Applied) {
+            FinishStartup(L"Controller isolation reader/output prepare failed result=" +
+                std::to_wstring(static_cast<unsigned>(result))); return;
+        }
+        result = routing.CommitPlaying(authority, kNeutralDwellInputMilliseconds, GetTickCount64());
         const auto startupAt = GetTickCount64();
         while (!stop.stop_requested() && routing.state() != ControllerIsolationRoutingState::Playing &&
                result != ControllerIsolationRoutingResult::Faulted &&
@@ -341,65 +239,77 @@ struct ControllerIsolationHostSession::Impl final {
             result = routing.Pump(GetTickCount64()); Sleep(1);
         }
         if (routing.state() != ControllerIsolationRoutingState::Playing) {
-            if (routing.state() != ControllerIsolationRoutingState::Disabled) (void)routing.Stop(authority);
-            (void)Restore(plan.plan->journal, hidhide, journalPath);
-            FinishStartup(L"Controller isolation could not enter gameplay routing."); return;
+            FinishStartup(L"Controller isolation startup neutral barrier failed."); return;
         }
         { std::scoped_lock lock(mutex); progress = LocalControllerProgress::Playing;
           startupDone = true; changed.notify_all(); }
+        std::wstring firstFailure;
         while (!stop.stop_requested()) {
             bool wantsOverlay{};
-            { std::scoped_lock lock(mutex); wantsOverlay = desiredOverlay; }
-            const auto action = DecideLocalControllerOwnerAction(
-                ConvertProgress(routing.state()), wantsOverlay);
-            if (action == LocalControllerOwnerAction::Enter) {
-                if (!queues.BeginInteraction() || routing.EnterOverlay(authority, GetTickCount64()) ==
-                    ControllerIsolationRoutingResult::Faulted) break;
-            }
-            if (action == LocalControllerOwnerAction::Recontain) {
-                if (!queues.BeginInteraction() ||
-                    routing.HoldContained(authority, GetTickCount64()) ==
-                    ControllerIsolationRoutingResult::Faulted) break;
-            }
-            if (action == LocalControllerOwnerAction::Close) {
+            std::uint64_t generation{};
+            { std::scoped_lock lock(mutex); wantsOverlay = desiredOverlay; generation = desiredGeneration; }
+            const auto action = DecideLocalControllerOwnerAction(ConvertProgress(routing.state()), wantsOverlay);
+            result = ControllerIsolationRoutingResult::Applied;
+            if (action == LocalControllerOwnerAction::Enter || action == LocalControllerOwnerAction::Recontain) {
+                if (!queues.BeginInteraction()) {
+                    firstFailure = L"Controller isolation interaction generation exhausted."; break;
+                }
+                result = action == LocalControllerOwnerAction::Enter
+                    ? routing.EnterOverlay(authority, GetTickCount64())
+                    : routing.HoldContained(authority, GetTickCount64());
+            } else if (action == LocalControllerOwnerAction::Close) {
                 queues.RetireInteraction();
-                if (routing.CloseOverlay(authority, kMeasuredReadingIntervalMilliseconds,
-                                         GetTickCount64()) == ControllerIsolationRoutingResult::Faulted) break;
+                result = routing.CloseOverlay(authority, kNeutralDwellInputMilliseconds, GetTickCount64());
+            }
+            if (result != ControllerIsolationRoutingResult::Applied &&
+                result != ControllerIsolationRoutingResult::Waiting) {
+                firstFailure = L"Controller isolation local transition rejected result=" +
+                    std::to_wstring(static_cast<unsigned>(result)); break;
             }
             result = routing.Pump(GetTickCount64());
             { std::scoped_lock lock(mutex); progress = ConvertProgress(routing.state());
-              latest = routing.currentState(); changed.notify_all(); }
-            if (result == ControllerIsolationRoutingResult::Faulted) break;
+              latest = routing.currentState();
+              if (generation == desiredGeneration) appliedGeneration = generation;
+              changed.notify_all(); }
+            if (result == ControllerIsolationRoutingResult::Faulted) {
+                firstFailure = L"Controller isolation routing fault=" +
+                    std::to_wstring(static_cast<unsigned>(routing.fault())); break;
+            }
             Sleep(1);
         }
-        const auto fault = routing.fault();
         queues.RetireInteraction();
         if (routing.state() != ControllerIsolationRoutingState::Disabled) (void)routing.Stop(authority);
-        if (!Restore(plan.plan->journal, hidhide, journalPath)) {
-            std::scoped_lock lock(mutex);
-            diagnostic = L"Controller isolation shutdown recovery failed; journal retained.";
-            progress = LocalControllerProgress::Fault; changed.notify_all(); return;
-        }
+        (void)cleanup.Finish();
         std::scoped_lock lock(mutex);
-        if (fault != RoutingFault::None) {
-            diagnostic = L"Controller isolation routing fault=" +
-                std::to_wstring(static_cast<unsigned>(fault)) +
-                L"; explicit shutdown or reinitialization is required.";
+        if (!firstFailure.empty()) {
+            diagnostic = firstFailure;
             progress = LocalControllerProgress::Fault;
         } else {
-            progress = LocalControllerProgress::Disabled;
+            progress = stop.stop_requested() ? LocalControllerProgress::Disabled : LocalControllerProgress::Fault;
         }
         changed.notify_all();
     }
 };
 
-ControllerIsolationHostSession::ControllerIsolationHostSession() noexcept
-    : impl_(std::make_unique<Impl>()) {}
+ControllerIsolationHostSession::ControllerIsolationHostSession() noexcept = default;
 ControllerIsolationHostSession::~ControllerIsolationHostSession() { Stop(); }
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+ControllerIsolationHostSession::ControllerIsolationHostSession(TestDependencies dependencies)
+    : impl_(std::make_unique<Impl>()) { impl_->test = std::move(dependencies); }
+#endif
 
-bool ControllerIsolationHostSession::Start(bool enabled, std::wstring& diagnostic) noexcept {
+bool ControllerIsolationHostSession::Start(bool enabled, std::wstring& diagnostic,
+    Notify notify, void* context) noexcept {
     if (!enabled) return false;
-    impl_->thread = std::jthread([this](std::stop_token stop) { impl_->Run(stop); });
+    try {
+        if (!impl_) impl_ = std::make_unique<Impl>();
+        if (impl_->thread.joinable()) { diagnostic = L"Controller isolation already configured."; return false; }
+        impl_->queues.SetNotify(notify, context);
+        impl_->thread = std::jthread([this](std::stop_token stop) { impl_->Run(stop); });
+    } catch (...) {
+        diagnostic = L"Controller isolation thread/allocation failed.";
+        return false;
+    }
     std::unique_lock lock(impl_->mutex);
     impl_->changed.wait(lock, [this] { return impl_->startupDone; });
     diagnostic = impl_->diagnostic;
@@ -407,26 +317,38 @@ bool ControllerIsolationHostSession::Start(bool enabled, std::wstring& diagnosti
 }
 
 bool ControllerIsolationHostSession::PrepareOverlay(std::wstring& diagnostic) noexcept {
+    if (!impl_) { diagnostic = L"Controller isolation is not configured."; return false; }
     std::unique_lock lock(impl_->mutex);
     if (impl_->progress == LocalControllerProgress::Fault) { diagnostic = impl_->diagnostic; return false; }
     impl_->desiredOverlay = true;
-    (void)impl_->changed.wait_for(lock, std::chrono::milliseconds(500), [this] {
-        return impl_->progress == LocalControllerProgress::Contained ||
+    const auto requestedGeneration = ++impl_->desiredGeneration;
+    (void)impl_->changed.wait_for(lock, std::chrono::milliseconds(500), [this, requestedGeneration] {
+        return (impl_->progress == LocalControllerProgress::Contained &&
+                impl_->appliedGeneration == requestedGeneration) ||
                impl_->progress == LocalControllerProgress::Fault;
     });
-    const bool contained = impl_->progress == LocalControllerProgress::Contained;
-    if (!contained) impl_->desiredOverlay = false;
+    const bool contained = impl_->progress == LocalControllerProgress::Contained &&
+        impl_->appliedGeneration == requestedGeneration && impl_->desiredOverlay;
+    if (!contained) {
+        impl_->desiredOverlay = false;
+        ++impl_->desiredGeneration;
+    }
     diagnostic = impl_->diagnostic;
+    if (!contained && diagnostic.empty()) diagnostic = L"Controller isolation containment did not complete; open cancelled.";
     return contained;
 }
 
 void ControllerIsolationHostSession::CloseOverlay() noexcept {
-    std::scoped_lock lock(impl_->mutex); impl_->desiredOverlay = false;
+    if (!impl_) return;
+    std::scoped_lock lock(impl_->mutex);
+    impl_->desiredOverlay = false;
+    ++impl_->desiredGeneration;
 }
 
 bool ControllerIsolationHostSession::Poll(ControllerIsolationHostReading& reading,
                                            std::wstring& diagnostic) noexcept {
     reading = {};
+    if (!impl_) return false;
     std::scoped_lock lock(impl_->mutex);
     reading.progress = impl_->progress; reading.state = impl_->latest;
     (void)impl_->queues.Pop(reading.state, reading.remainingInputStates);
@@ -436,17 +358,21 @@ bool ControllerIsolationHostSession::Poll(ControllerIsolationHostReading& readin
 
 bool ControllerIsolationHostSession::PollGuide(std::uint64_t& guideEvent,
                                                 std::wstring& diagnostic) noexcept {
+    guideEvent = 0;
+    if (!impl_) return false;
     std::scoped_lock lock(impl_->mutex);
     guideEvent = impl_->queues.TakeGuide(); diagnostic = impl_->diagnostic;
     return impl_->progress != LocalControllerProgress::Fault;
 }
 
 bool ControllerIsolationHostSession::active() const noexcept {
+    if (!impl_) return false;
     std::scoped_lock lock(impl_->mutex);
     return LocalControllerIsolationConfigured(impl_->progress);
 }
 
 void ControllerIsolationHostSession::Stop() noexcept {
+    if (!impl_) return;
     if (impl_->thread.joinable()) { impl_->thread.request_stop(); impl_->thread.join(); }
 }
 

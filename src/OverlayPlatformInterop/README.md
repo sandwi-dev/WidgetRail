@@ -33,6 +33,13 @@ local journal is restored only when the current policy still proves that the
 delta is ours; foreign additions, inverse policy, corrupt local records, and
 the retired Guardian-era journal all fail closed.
 
+If startup reports a pending local recovery, run
+`OverlayHost.exe --controller-isolation-recover-only`. This keyboard/mouse
+recovery command acquires the same session-wide owner, restores only the exact
+journaled delta, and exits without selecting a controller, creating a virtual
+target, or starting fresh hiding. It retains the record when policy drift or a
+record replacement prevents exact recovery.
+
 The routing thread serializes ordinary reports against neutral transitions.
 Opening the overlay drains the pre-transition input boundary and submits neutral
 before local overlay input is admitted. Closing retains neutral until the

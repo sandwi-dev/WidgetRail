@@ -18148,6 +18148,19 @@ private:
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+    for (int index = 1; index < __argc; ++index) {
+        if (_wcsicmp(__wargv[index], L"--controller-isolation-recover-only") != 0) continue;
+        if (__argc != 2) {
+            MessageBoxW(nullptr, L"Recovery-only must be used alone; it never starts controller routing.",
+                L"WidgetRail Controller Isolation", MB_OK | MB_ICONERROR);
+            return EXIT_FAILURE;
+        }
+        wchar_t message[512]{};
+        const auto result = WidgetRailOverlayPlatformRecoverControllerIsolation(message, 512);
+        MessageBoxW(nullptr, message, L"WidgetRail Controller Isolation",
+            MB_OK | (result == WidgetRailOverlayPlatformStatus::Ok ? MB_ICONINFORMATION : MB_ICONERROR));
+        return result == WidgetRailOverlayPlatformStatus::Ok ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
     std::wstring processProfile = L"production";
     bool processOwnerProbe = false;
     bool controllerIsolationEnabled = false;

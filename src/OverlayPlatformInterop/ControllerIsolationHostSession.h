@@ -5,6 +5,10 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+#include "ControllerIsolationRoutingSession.h"
+#include "LocalControllerPolicy.h"
+#endif
 
 namespace widgetrail::isolation {
 
@@ -47,13 +51,26 @@ public:
     ControllerIsolationHostSession(const ControllerIsolationHostSession&) = delete;
     ControllerIsolationHostSession& operator=(const ControllerIsolationHostSession&) = delete;
 
-    [[nodiscard]] bool Start(bool enabled, std::wstring& diagnostic) noexcept;
+    using Notify = void (*)(void*) noexcept;
+    [[nodiscard]] bool Start(bool enabled, std::wstring& diagnostic,
+                             Notify notify = nullptr, void* context = nullptr) noexcept;
     [[nodiscard]] bool PrepareOverlay(std::wstring& diagnostic) noexcept;
     void CloseOverlay() noexcept;
     [[nodiscard]] bool Poll(ControllerIsolationHostReading&, std::wstring&) noexcept;
     [[nodiscard]] bool PollGuide(std::uint64_t&, std::wstring&) noexcept;
     [[nodiscard]] bool active() const noexcept;
     void Stop() noexcept;
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+    struct TestDependencies {
+        LocalPolicyEffects* effects{};
+        SelectedControllerSource* source{};
+        ControllerIsolationOutput* output{};
+        SelectedControllerDescriptor descriptor{};
+        std::filesystem::path journalPath;
+        bool throwAfterApply{};
+    };
+    explicit ControllerIsolationHostSession(TestDependencies dependencies);
+#endif
 
 private:
     struct Impl;

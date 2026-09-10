@@ -154,6 +154,9 @@ WRAIL_OVERLAY_PLATFORM_API void WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformConfigureControllerIsolation(std::uint32_t enabled) noexcept;
 
 WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformRecoverControllerIsolation(wchar_t* message, std::uint32_t capacity) noexcept;
+
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformCreate(
     const WidgetRailOverlayPlatformCreateOptions* options,
     WidgetRailOverlayPlatformHandle** handle) noexcept;

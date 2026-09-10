@@ -2,6 +2,7 @@
 
 #include "OverlayPlatformPolicy.h"
 #include "ControllerIsolationHostSession.h"
+#include "LocalControllerPolicy.h"
 #include "../OverlayHost/ControllerInputOwnership.h"
 #include "../OverlayHost/GuideInputCompatibility.h"
 #include "../OverlayHost/OverlayPlacement.h"
@@ -418,6 +419,23 @@ WidgetRailOverlayPlatformConfigureControllerIsolation(const std::uint32_t enable
                                        std::memory_order_release);
 }
 
+WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformRecoverControllerIsolation(wchar_t* message, const std::uint32_t capacity) noexcept {
+    if (!message || capacity == 0) return WidgetRailOverlayPlatformStatus::InvalidArgument;
+    std::wstring diagnostic;
+    bool recovered{};
+    try {
+        widgetrail::isolation::NativeLocalPolicyEffects effects;
+        recovered = widgetrail::isolation::RecoverLocalControllerPolicy(
+            widgetrail::isolation::LocalControllerJournalPath(), effects, diagnostic);
+    } catch (...) {
+        diagnostic = L"Controller isolation recovery exception; journal retained.";
+    }
+    wcsncpy_s(message, capacity, diagnostic.c_str(), _TRUNCATE);
+    return recovered ? WidgetRailOverlayPlatformStatus::Ok
+                     : WidgetRailOverlayPlatformStatus::ControllerIsolationUnavailable;
+}
+
 WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL WidgetRailOverlayPlatformCreate(
     const WidgetRailOverlayPlatformCreateOptions* options,
     WidgetRailOverlayPlatformHandle** handle) noexcept {
@@ -443,7 +461,9 @@ WidgetRailOverlayPlatformInitialize(WidgetRailOverlayPlatformHandle* handle) noe
     std::wstring isolationDiagnostic;
     if (handle->controllerIsolation.Start(
             controllerIsolationRequested.load(std::memory_order_acquire),
-            isolationDiagnostic)) {
+            isolationDiagnostic,
+            [](void* context) noexcept { static_cast<WidgetRailOverlayPlatformHandle*>(context)->Signal(); },
+            handle)) {
         handle->Diagnostic(
             L"Controller isolation local owner owns physical input and Guide");
         handle->initialized = true;

@@ -94,6 +94,7 @@ add_executable(OverlayHost WIN32
     ../OverlayPlatformInterop/ControllerIsolationRoutingSession.cpp
     ../OverlayPlatformInterop/GameInputSelectedControllerReader.cpp
     ../OverlayPlatformInterop/ControllerIsolationHostSession.cpp
+    ../OverlayPlatformInterop/LocalControllerPolicy.cpp
     ../OverlayPlatformInterop/HidHideConfigurationAdapter.cpp
     ../OverlayPlatformInterop/ViGEmOutputAdapter.cpp
     ../../third_party/ViGEmClient/src/ViGEmClient.cpp
@@ -321,6 +322,23 @@ if(WRAIL_BUILD_TESTS)
     target_compile_definitions(ControllerIsolationCoreTests PRIVATE
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME ControllerIsolationCoreTests COMMAND ControllerIsolationCoreTests)
+
+    add_executable(LocalControllerOwnerTests
+        ../../tests/OverlayPlatformInterop.Tests/LocalControllerOwnerTests.cpp
+        ../OverlayPlatformInterop/ControllerIsolationHostSession.cpp
+        ../OverlayPlatformInterop/LocalControllerPolicy.cpp
+        ../OverlayPlatformInterop/ControllerIsolationCore.cpp
+        ../OverlayPlatformInterop/ControllerIsolationReader.cpp
+        ../OverlayPlatformInterop/ControllerIsolationRoutingSession.cpp
+        ../OverlayPlatformInterop/HidHideConfigurationAdapter.cpp
+        ../OverlayPlatformInterop/ViGEmOutputAdapter.cpp)
+    target_compile_features(LocalControllerOwnerTests PRIVATE cxx_std_20)
+    target_compile_options(LocalControllerOwnerTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(LocalControllerOwnerTests PRIVATE WRAIL_LOCAL_CONTROLLER_TESTING
+        WRAIL_GAMEINPUT_ISOLATION_READER UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(LocalControllerOwnerTests PRIVATE shell32 ole32)
+    add_test(NAME LocalControllerOwnerTests COMMAND LocalControllerOwnerTests)
+    set_tests_properties(LocalControllerOwnerTests PROPERTIES TIMEOUT 15)
 
     add_executable(ControllerIsolationReaderTests
         ../../tests/OverlayPlatformInterop.Tests/ControllerIsolationReaderTests.cpp
