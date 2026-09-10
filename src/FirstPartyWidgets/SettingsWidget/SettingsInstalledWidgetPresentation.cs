@@ -274,9 +274,13 @@ internal static class SettingsInstalledWidgetPresentation
                         "installed.details.optional-permissions", "Optional capabilities")
                         .Classes("page-help"),
                     UI.Text(
-                        "Included with WidgetRail. Built-in widgets are updated with the app and cannot be disabled or version-managed here.",
+                        builtIn.Id == BuiltInWidgetSettings.SettingsWidgetId ? "Settings stays enabled so you can manage WidgetRail." :
+                            settings.BuiltInWidgets.IsEnabled(builtIn.Id) ? "Enabled · Included and updated with WidgetRail." : "Disabled · Enable this widget to show it in the overlay.",
                         "installed.details.status", "Built-in widget management status")
                         .Classes("page-help"),
+                    UI.Button(settings.BuiltInWidgets.IsEnabled(builtIn.Id) ? "Disable widget" : "Enable widget",
+                            "installed.builtin.toggle", "installed.details.toggle")
+                        .Disabled(builtIn.Id == BuiltInWidgetSettings.SettingsWidgetId).Busy(busy).Classes("setting-row"),
                     UI.Button(
                             builtInHasPermissions
                                 ? "Permissions & configuration"

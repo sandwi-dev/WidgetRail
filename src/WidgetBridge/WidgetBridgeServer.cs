@@ -22,6 +22,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeClientRegistry _registry;
     private readonly BridgeDiagnosticsProjection _diagnostics;
     private readonly BridgeControllerControl _controllers;
+    private int _pendingApplicationControl;
     private readonly BridgeAuthorityRecoveryProjection _authorityRecovery;
     private readonly BridgeWidgetLocalDataService _localData;
     private readonly BridgeWidgetPackageUninstallService _packageUninstall;
@@ -143,6 +144,13 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     /// whose bounded cleanup has not yet released its residency lease.
     /// </summary>
     public int RunningWorkerCount => _registry.RunningWorkerCount;
+    internal ValueTask<ApplicationControlResult> RequestApplicationControlAsync(bool restart, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(new ApplicationControlResult(
+            Interlocked.CompareExchange(ref _pendingApplicationControl, restart ? 2 : 1, 0) == 0));
+    }
+    internal int TakeRequestedApplicationControl() => Interlocked.Exchange(ref _pendingApplicationControl, 0);
     public WorkerResidencyBudgetSnapshot ResidencyBudget => _registry.ResidencyBudget;
     internal int ArtworkRegistrationCount => _appLibraryArtwork?.RegistrationCount ?? 0;
     internal ValueTask<PlatformWidgetLocalDataInspection> InspectWidgetLocalDataAsync(
@@ -352,6 +360,12 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     {
         switch (request.Type)
         {
+        case BridgeMessageTypes.ApplicationControl:
+            if (request.Payload.ValueKind != JsonValueKind.Object || request.Payload.EnumerateObject().Any())
+                throw new BridgeProtocolException("Invalid application control request.");
+            await ReplyAsync(BridgeMessageTypes.ApplicationControl, request.RequestId,
+                new { Action = TakeRequestedApplicationControl() }, cancellationToken).ConfigureAwait(false);
+            return;
         case BridgeMessageTypes.ControllerControl:
             _controllers.Report(BridgeJson.FromElement<ControllerControlStatus>(request.Payload));
             await ReplyAsync(BridgeMessageTypes.ControllerControl, request.RequestId,
@@ -957,7 +971,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     _localData.ClearAsync,
                     _packageUninstall.InspectAsync,
                     _packageUninstall.UninstallAsync,
-                    context, _controllers.SetAsync)
+                    context, _controllers.SetAsync, RequestApplicationControlAsync)
                 : _consentStore is null || _platformBackend is null
                     ? null
                     : CreateCompanionFactory(configured),

@@ -43,9 +43,13 @@ internal static class Program
                 Path.Combine(settingsPaths.RootDirectory, "overlay.log"),
                 bridgeSessionGeneration);
             var trustedCatalogStarted = Stopwatch.GetTimestamp();
+            var settingsStore = new PlatformSettingsStore(settingsPaths);
+            PlatformSettingsDocument initialSettings;
+            try { initialSettings = await settingsStore.LoadAsync(shutdown.Token).ConfigureAwait(false); }
+            catch (PlatformSettingsException) { initialSettings = PlatformSettingsDocument.Default; }
             var trustedCatalog = BridgeCatalog.LoadTrustedObserved(
                 catalogPath, installedCatalogRoot);
-            var catalog = trustedCatalog.Catalog;
+            var catalog = trustedCatalog.Catalog.WithWidgetSettings(initialSettings.BuiltInWidgets);
             mediaDiagnostics.RecordBridgeStartupPhase(
                 "trusted-catalog-ready",
                 (long)Stopwatch.GetElapsedTime(trustedCatalogStarted).TotalMilliseconds);
@@ -53,9 +57,16 @@ internal static class Program
                 catalogPath, installedCatalogRoot, workerHostExecutable, catalog,
                 initialDiagnostics: trustedCatalog.Warnings,
                 installedCatalogPending: true,
-                loadCatalog: null,
+                loadCatalog: async cancellationToken =>
+                {
+                    var loaded = await BridgeCatalog.LoadWithInstalledObservedAsync(catalogPath,
+                        installedCatalogRoot, workerHostExecutable, cancellationToken).ConfigureAwait(false);
+                    var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+                    return loaded with { Catalog = loaded.Catalog.WithWidgetSettings(settings.BuiltInWidgets) };
+                },
                 catalogLoadObserved: mediaDiagnostics.RecordInstalledCatalogLoad,
-                initialWidgetRejections: trustedCatalog.WidgetRejections);
+                initialWidgetRejections: trustedCatalog.WidgetRejections,
+                settingsFilePath: settingsPaths.SettingsFile);
             catalogMonitor.Diagnostics += (_, warnings) =>
             {
                 foreach (var warning in warnings)
@@ -63,7 +74,6 @@ internal static class Program
             };
             foreach (var warning in trustedCatalog.Warnings)
                 Console.Error.WriteLine($"Widget catalog warning: {warning}");
-            var settingsStore = new PlatformSettingsStore(settingsPaths);
             mediaDiagnostics.RecordBridgeSessionStarted(Environment.ProcessId);
             await using var appearance = new PlatformAppearanceService(
                 settingsPaths,

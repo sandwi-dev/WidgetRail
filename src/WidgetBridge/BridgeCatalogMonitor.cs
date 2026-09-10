@@ -39,6 +39,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     private readonly string _trustedCatalogPath;
     private readonly string _installedCatalogRoot;
     private readonly string _workerHostExecutable;
+    private readonly string? _settingsFilePath;
+    private FileSystemWatcher? _settingsWatcher;
     private readonly object _stateGate = new();
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
     private readonly Channel<byte> _reloadSignals = Channel.CreateBounded<byte>(new BoundedChannelOptions(1)
@@ -101,7 +103,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         Action<BridgeInstalledCatalogObservation>? catalogLoadObserved = null,
         Func<CancellationToken, Task>? prepareWatchers = null,
         Action? beforePublicationCheck = null,
-        IReadOnlyList<BridgeCatalogWidgetRejection>? initialWidgetRejections = null)
+        IReadOnlyList<BridgeCatalogWidgetRejection>? initialWidgetRejections = null,
+        string? settingsFilePath = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trustedCatalogPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(installedCatalogRoot);
@@ -109,6 +112,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         _trustedCatalogPath = Path.GetFullPath(trustedCatalogPath);
         _installedCatalogRoot = Path.GetFullPath(installedCatalogRoot);
         _workerHostExecutable = Path.GetFullPath(workerHostExecutable);
+        _settingsFilePath = settingsFilePath;
         _current = initialCatalog ?? throw new ArgumentNullException(nameof(initialCatalog));
         _lastDiagnostics = initialDiagnostics?.Take(64).ToArray() ?? [];
         _installedCatalogPending = installedCatalogPending;
@@ -230,7 +234,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             {
                 loaded = await _loadCatalog(reloadCancellation.Token).ConfigureAwait(false);
             }
-            catch (Exception exception) when (exception is BridgeCatalogException or
+            catch (Exception exception) when (exception is BridgeCatalogException or WidgetRail.PlatformSettings.PlatformSettingsException or
                                                    IOException or UnauthorizedAccessException)
             {
                 loadFailureWarnings =
@@ -338,6 +342,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         }
         _trustedWatcher?.Dispose();
         _installedWatcher?.Dispose();
+        _settingsWatcher?.Dispose();
         await _reloadGate.WaitAsync().ConfigureAwait(false);
         _reloadGate.Release();
         _shutdown.Dispose();
@@ -347,7 +352,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     private Task PrepareWatchersAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (_trustedWatcher is not null && _installedWatcher is not null)
+        if (_trustedWatcher is not null && _installedWatcher is not null &&
+            (_settingsFilePath is null || _settingsWatcher is not null))
             return Task.CompletedTask;
         var trustedDirectory = Path.GetDirectoryName(_trustedCatalogPath)
             ?? throw new InvalidOperationException("Trusted catalog path has no parent directory.");
@@ -368,6 +374,13 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 IsInstalledCatalogChange);
             _trustedWatcher = trusted;
             _installedWatcher = installed;
+            if (_settingsFilePath is not null)
+            {
+                var directory = Path.GetDirectoryName(_settingsFilePath)!;
+                Directory.CreateDirectory(directory);
+                _settingsWatcher = CreateWatcher(directory, Path.GetFileName(_settingsFilePath), false,
+                    path => string.Equals(path, _settingsFilePath, StringComparison.OrdinalIgnoreCase));
+            }
             return Task.CompletedTask;
         }
         catch

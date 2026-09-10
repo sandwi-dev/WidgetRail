@@ -206,6 +206,9 @@ public sealed class BridgeCatalog
     public IReadOnlyList<BridgeWidgetDescriptor> Widgets =>
         _ordered.Select(widget => widget.PublicDescriptor()).ToArray();
 
+    internal BridgeCatalog WithWidgetSettings(WidgetRail.PlatformSettings.BuiltInWidgetSettings settings) =>
+        new(_ordered.Where(widget => widget.Id == "settings" || settings.IsEnabled(widget.PackageId)));
+
     internal ConfiguredWidget GetConfigured(string widgetId)
     {
         if (!_configured.TryGetValue(widgetId, out var widget))

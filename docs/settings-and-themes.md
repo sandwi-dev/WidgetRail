@@ -1,5 +1,30 @@
 # Settings and global themes
 
+## Settings controls
+
+Quit and Restart are distinct buttons at the right end of the Settings header.
+They control WidgetRail itself, not Windows. Quit uses the normal shutdown path;
+Restart finishes that cleanup and releases single-instance ownership before
+launching the same executable again. Initial focus stays on the first settings
+option, with controller navigation available to the header. The idle Ready line
+is omitted; operation feedback and errors remain available.
+
+Installed Widgets can disable or re-enable built-in widgets. Settings itself
+stays enabled so management and recovery remain reachable. The preference is
+saved by manifest ID and catalog changes retire disabled workers and remove
+their tray entries; enabling restores the bundled entry. Disabling does not
+uninstall the widget or erase its data.
+
+Each widget's permissions page has an Allow all permissions action for its
+currently displayed, supported required and optional declarations. The selected
+publisher/content identity and declarations are rechecked, then all decisions
+are committed atomically. New declarations do not inherit this approval, other
+widgets are unaffected, and individual permissions can still be revoked.
+
+Settings publishes a loading indicator while initialization runs. It does not
+admit actions against the incomplete settings projection, and deactivation
+cancels and drains initialization before another activation can start.
+
 ## Controllers
 
 Settings > Controllers groups **Input behavior** separately from **Required drivers**.

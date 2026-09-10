@@ -17,6 +17,7 @@ internal static class ControllerSettingsScenarios
         {
             await widget.InitializeAsync(default);
             await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default);
+            await widget.InitializationTask;
             await widget.OnActionAsync(new WidgetActionEvent("open.controllers", "test"));
             await widget.OnActionAsync(new WidgetActionEvent("controllers.exclusive-control.toggle", "controllers.exclusive-control"));
             if ((await store.LoadAsync()).Controllers.ExclusiveControl) throw new Exception("Unavailable enable persisted.");

@@ -78,16 +78,25 @@ public sealed class ConsentStore
         }
     }
 
-    public async Task<ConsentDocument> SetDecisionAsync(
+    public Task<ConsentDocument> SetDecisionAsync(
         BrokerWidgetIdentity identity,
         string capabilityId,
+        ConsentDecision decision,
+        CancellationToken cancellationToken = default) =>
+        SetDecisionsAsync(identity, [capabilityId], decision, cancellationToken);
+
+    public async Task<ConsentDocument> SetDecisionsAsync(
+        BrokerWidgetIdentity identity,
+        IReadOnlyCollection<string> capabilityIds,
         ConsentDecision decision,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(identity);
         identity.Validate();
-        if (!PlatformCapabilities.IsManifestDeclarable(capabilityId))
+        ArgumentNullException.ThrowIfNull(capabilityIds);
+        if (capabilityIds.Count is 0 or > 256 || capabilityIds.Any(id => !PlatformCapabilities.IsManifestDeclarable(id)))
             throw new BrokerException("unsupported_capability", "Capability is unsupported.");
+        var capabilities = capabilityIds.ToHashSet(StringComparer.Ordinal);
         if (!Enum.IsDefined(decision))
             throw new BrokerException("invalid_consent", "Consent decision is invalid.");
 
@@ -101,9 +110,9 @@ public sealed class ConsentStore
             var entries = current.Entries
                 .Where(entry => !(entry.PackageId == identity.PackageId &&
                                   entry.PublisherId == identity.PublisherId &&
-                                  entry.CapabilityId == capabilityId))
+                                  capabilities.Contains(entry.CapabilityId)))
                 .ToList();
-            entries.Add(new(identity.PackageId, identity.PublisherId, capabilityId, decision));
+            entries.AddRange(capabilities.Select(id => new ConsentEntry(identity.PackageId, identity.PublisherId, id, decision)));
             entries.Sort(CompareEntries);
             var updated = new ConsentDocument(1, checked(current.Revision + 1), entries);
             updated = ValidateAndMigrate(updated);

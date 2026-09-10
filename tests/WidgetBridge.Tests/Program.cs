@@ -22,6 +22,7 @@ if (args.Contains("--widget-pipe", StringComparer.Ordinal))
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Settings controls retain Settings and consume application actions once", SettingsControlsScenarios.QueueAndCatalog),
     ("Bridge framing rejects oversized messages", OversizedFrameIsRejected),
     ("Protected Wi-Fi secret frames zero every mutable managed owner", ProtectedWifiSecretFramesAreZeroed),
     ("Event cancellation preserves the serialized frame boundary", BridgeEventWriteBoundaryScenarios.CancellationPreservesFrameBoundary),

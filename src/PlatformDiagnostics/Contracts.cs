@@ -182,8 +182,13 @@ public sealed record PlatformDiagnosticsSnapshot(
         string summary) => new(id, label, state, summary);
 }
 
+public sealed record ApplicationControlResult(bool Accepted);
+
 public interface IPlatformDiagnosticsService
 {
+    ValueTask<ApplicationControlResult> RequestApplicationControlAsync(
+        bool restart, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(new ApplicationControlResult(false));
     ValueTask<ControllerControlResult> SetExclusiveControlAsync(
         bool enabled, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(new ControllerControlResult(false, ControllerControlStatus.Unavailable));

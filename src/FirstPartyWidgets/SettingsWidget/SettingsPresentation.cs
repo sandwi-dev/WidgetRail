@@ -52,13 +52,46 @@ internal static class SettingsPresentation
         return view is not null;
     }
 
-    public static StackElement Header(SettingsPresentationState state) =>
-        UI.Stack("settings.header",
-            UI.Text("SETTINGS", "settings.title", "Settings").Classes("settings-title"),
-            UI.Text(state.Status, "settings.status", state.Status).Classes(
-                "settings-status",
-                state.Error ? "is-error" : state.Busy ? "is-busy" : "is-ready"))
-        .Classes("settings-header");
+    public static StackElement Header(SettingsPresentationState state)
+    {
+        var children = new List<WidgetElement>
+        {
+            UI.Row("settings.header.row",
+                UI.Text("SETTINGS", "settings.title", "Settings").Classes("settings-title", "header-title"),
+                UI.Button("Quit", "application.quit", "settings.quit")
+                    .Busy(state.Busy).FocusRight("settings.restart").Classes("header-action", "header-quit") with { AccessibilityLabel = "Quit WidgetRail" },
+                UI.Button("Restart", "application.restart", "settings.restart")
+                    .Busy(state.Busy).FocusLeft("settings.quit").Classes("header-action", "header-restart") with { AccessibilityLabel = "Restart WidgetRail" })
+                .Classes("settings-header-row"),
+        };
+        if (state.Status != "Ready" && state.Status != "Settings load when this widget becomes visible")
+            children.Add(UI.Text(state.Status, "settings.status", state.Status)
+                .Classes("settings-status", state.Error ? "is-error" : "is-busy"));
+        return UI.Stack("settings.header", children.ToArray()).Classes("settings-header");
+    }
+
+    private static StackElement ComposeRoot(StackElement header, WidgetElement content, string scope, string? initialFocus)
+    {
+        IReadOnlyList<ControllerShortcut> shortcuts = [];
+        if (content is ContainerElement container && container.InputScopeId == scope)
+        {
+            shortcuts = container.Shortcuts;
+            content = container with { InputScopeId = null, Shortcuts = [] };
+        }
+        WidgetElement Link(WidgetElement element)
+        {
+            if (element is ButtonElement button)
+            {
+                if (initialFocus is not null && element.Id is "settings.quit" or "settings.restart")
+                    return button.FocusDown(initialFocus);
+                if (element.Id == initialFocus && button.FocusNeighbors?.Up is null) return button.FocusUp("settings.restart");
+            }
+            if (element is ContainerElement group) return group with { Children = group.Children.Select(Link).ToArray() };
+            return element;
+        }
+        return UI.Stack("settings-root", Link(header), Link(content)).InputScope(scope)
+            .Classes("settings-widget") with { Shortcuts = shortcuts };
+    }
 
     public static ScrollElement PageScope(string id, params WidgetElement[] children) =>
         UI.VerticalScroll(id, children)
@@ -71,7 +104,7 @@ internal static class SettingsPresentation
         WidgetElement content,
         string? initialFocus,
         string activeScope) => new(
-            UI.Stack("settings-root", header, content).Classes("settings-widget"),
+            ComposeRoot(header, content, activeScope, initialFocus),
             initialFocus,
             ActiveInputScopeId: activeScope,
             Surface: new WidgetSurfaceHints
@@ -87,7 +120,7 @@ internal static class SettingsPresentation
         StackElement header,
         WidgetElement content,
         string initialFocus) => new(
-            UI.Stack("settings-root", header, content).Classes("settings-widget"),
+            ComposeRoot(header, content, "settings-root", initialFocus),
             initialFocus,
             ActiveInputScopeId: "settings-root",
             Surface: new WidgetSurfaceHints

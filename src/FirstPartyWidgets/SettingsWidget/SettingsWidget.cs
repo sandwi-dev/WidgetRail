@@ -66,6 +66,9 @@ public sealed class SettingsWidget : Widget
     private SettingsPage _page;
     private int _activationLoadCount;
     private Task _controllerStatusTask = Task.CompletedTask;
+    private Task _initializationTask = Task.CompletedTask;
+    private bool _initializing;
+    internal Task InitializationTask => _initializationTask;
     private bool _settingsValid = true;
     private bool _busy;
     private bool _error;
@@ -108,6 +111,14 @@ public sealed class SettingsWidget : Widget
 
     public override WidgetView Render()
     {
+        lock (_stateLock)
+            if (_initializing)
+                return SettingsPresentation.View(
+                    UI.Stack("settings.header", UI.Text("SETTINGS", "settings.title", "Settings").Classes("settings-title")),
+                    SettingsPresentation.PageScope("settings.loading",
+                        UI.LoadingIndicator("settings.loading.indicator", "Loading settings"),
+                        UI.Text("Loading settings…", "settings.loading.message", "Loading settings")),
+                    null, "settings.loading");
         PlatformSettingsDocument settings;
         ThemeCatalogSnapshot themes;
         SettingsPage page;
@@ -188,15 +199,37 @@ public sealed class SettingsWidget : Widget
         };
     }
 
-    protected override async ValueTask OnActivatedAsync(CancellationToken activeLifetime)
+    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
         Interlocked.Increment(ref _activationLoadCount);
-        await ReloadAsync(activeLifetime).ConfigureAwait(false);
-        EnsureControllerStatusPolling();
+        lock (_stateLock) { _initializing = true; _busy = true; _status = "Loading settings…"; }
+        _initializationTask = Task.Run(async () =>
+        {
+            try
+            {
+                await ReloadAsync(activeLifetime).ConfigureAwait(false);
+                EnsureControllerStatusPolling();
+            }
+            catch (OperationCanceledException) when (activeLifetime.IsCancellationRequested) { }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or PlatformSettingsException)
+            {
+                SetOperation("Settings could not load. Select Refresh to try again.", false, true);
+            }
+            finally
+            {
+                lock (_stateLock) { _initializing = false; _busy = false; }
+                Invalidate();
+            }
+        }, CancellationToken.None);
+        Invalidate();
+        return ValueTask.CompletedTask;
     }
 
-    protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken) =>
+    protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
+    {
+        await _initializationTask.ConfigureAwait(false);
         await _controllerStatusTask.ConfigureAwait(false);
+    }
 
     private void EnsureControllerStatusPolling()
     {
@@ -238,6 +271,7 @@ public sealed class SettingsWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        lock (_stateLock) if (_initializing) return;
         // ReloadAsync owns the same operation gate used by normal actions. Keep
         // refresh outside that critical section so controller refresh cannot
         // deadlock while still serializing against every other mutation.
@@ -277,6 +311,10 @@ public sealed class SettingsWidget : Widget
             }
             switch (action.ActionId)
             {
+                case "application.quit":
+                case "application.restart":
+                    await RequestApplicationControlAsync(action.ActionId == "application.restart", cancellationToken).ConfigureAwait(false);
+                    break;
                 case "installed.permissions.open": OpenSelectedInstalledPermissions(); break;
                 case "open.permission-diagnostics": OpenPermissionDiagnostics(); break;
                 case "authority.recovery.retry": await RetrySelectedAuthorityRecoveryAsync(
@@ -296,11 +334,13 @@ public sealed class SettingsWidget : Widget
                     cancellationToken).ConfigureAwait(false); break;
                 case "installed.toggle": await ToggleSelectedInstalledWidgetAsync(cancellationToken)
                     .ConfigureAwait(false); break;
+                case "installed.builtin.toggle": await ToggleSelectedBuiltInWidgetAsync(cancellationToken).ConfigureAwait(false); break;
                 case "installed.surface-appearance.cycle":
                     await CycleSelectedWidgetSurfaceAppearanceAsync(cancellationToken)
                         .ConfigureAwait(false); break;
                 case "capability.grant": await ChangeConsentAsync(
                     ConsentDecision.Grant, cancellationToken).ConfigureAwait(false); break;
+                case "capabilities.grant-all": await AllowAllPermissionsAsync(cancellationToken).ConfigureAwait(false); break;
                 case "capability.deny": await ChangeConsentAsync(
                     ConsentDecision.Deny, cancellationToken).ConfigureAwait(false); break;
                 case "reset.confirm": await ResetAsync(cancellationToken).ConfigureAwait(false); break;
@@ -991,6 +1031,50 @@ public sealed class SettingsWidget : Widget
                 "unsafe_bundled_catalog", "Bundled widget catalog path is unsafe.");
     }
 
+    private async Task RequestApplicationControlAsync(bool restart, CancellationToken cancellationToken)
+    {
+        SetOperation(restart ? "Restarting WidgetRail…" : "Closing WidgetRail…", true, false);
+        try
+        {
+            var result = await _diagnosticsService.RequestApplicationControlAsync(restart, cancellationToken).ConfigureAwait(false);
+            if (!result.Accepted) SetOperation("WidgetRail could not accept the request. Try again.", false, true);
+        }
+        catch (PlatformDiagnosticsException) { SetOperation("WidgetRail is unavailable. Try again.", false, true); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { SetOperation("Request cancelled", false, false); }
+    }
+
+    private async Task AllowAllPermissionsAsync(CancellationToken cancellationToken)
+    {
+        SettingsPermissionPackage? selected;
+        lock (_stateLock)
+            selected = _page == SettingsPage.PackageCapabilities && _permissionState.Projection.ConsentValid &&
+                _permissionState.Projection.CatalogValid ? _permissionState.SelectedPackage : null;
+        if (selected is null || selected.Capabilities.Count == 0) return;
+        SetOperation("Allowing permissions…", busy: true, error: false);
+        try
+        {
+            await ReloadPermissionsAsync(cancellationToken).ConfigureAwait(false);
+            SettingsPermissionPackage? current;
+            lock (_stateLock)
+                current = _permissionState.Projection.CatalogValid && _permissionState.Projection.ConsentValid
+                    ? _permissionState.SelectedPackage : null;
+            if (current is null || current.Id != selected.Id || current.AuthorityPublisher != selected.AuthorityPublisher ||
+                !current.Capabilities.SequenceEqual(selected.Capabilities))
+            {
+                SetOperation("The widget's permission requests changed. Review the list before allowing access.", false, true);
+                return;
+            }
+            var updated = await _consentStore.SetDecisionsAsync(SettingsPermissionPolicy.ConsentIdentity(current),
+                current.Capabilities.Select(capability => capability.Id).ToArray(), ConsentDecision.Grant, cancellationToken)
+                .ConfigureAwait(false);
+            lock (_stateLock)
+                _permissionState = _permissionState with { Projection = _permissionState.Projection with { Consent = updated } };
+            SetOperation($"All listed permissions allowed for {current.Name}", false, false);
+        }
+        catch (BrokerException exception) { SetOperation($"Permission change failed ({exception.Code})", false, true); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { SetOperation("Permission change cancelled", false, false); }
+    }
+
     private async Task ChangeConsentAsync(
         ConsentDecision decision, CancellationToken cancellationToken)
     {
@@ -1596,6 +1680,31 @@ public sealed class SettingsWidget : Widget
             return;
         }
         Invalidate();
+    }
+
+    private async Task ToggleSelectedBuiltInWidgetAsync(CancellationToken cancellationToken)
+    {
+        WidgetManifest? selected;
+        lock (_stateLock)
+            selected = _page == SettingsPage.InstalledWidgetDetails && _installedState.CatalogValid && _settingsValid
+                ? _installedState.SelectedBuiltIn : null;
+        if (selected is null || selected.Id == BuiltInWidgetSettings.SettingsWidgetId) return;
+        SetOperation("Updating widget…", true, false);
+        try
+        {
+            var updated = await _store.UpdateAsync(current => current with
+            {
+                BuiltInWidgets = new BuiltInWidgetSettings
+                {
+                    DisabledIds = current.BuiltInWidgets.IsEnabled(selected.Id)
+                        ? current.BuiltInWidgets.DisabledIds.Append(selected.Id).Order(StringComparer.Ordinal).ToArray()
+                        : current.BuiltInWidgets.DisabledIds.Where(id => id != selected.Id).ToArray(),
+                },
+            }, cancellationToken).ConfigureAwait(false);
+            lock (_stateLock) _settings = updated;
+            SetOperation($"{selected.Name} {(updated.BuiltInWidgets.IsEnabled(selected.Id) ? "enabled" : "disabled")}", false, false);
+        }
+        catch (PlatformSettingsException exception) { SetOperation($"Widget change failed ({exception.Code})", false, true); }
     }
 
     private async Task ToggleSelectedInstalledWidgetAsync(CancellationToken cancellationToken)

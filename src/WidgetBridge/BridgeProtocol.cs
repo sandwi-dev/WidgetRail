@@ -21,6 +21,7 @@ internal static class BridgeMessageTypes
     public const string Widgets = "widgets";
     public const string GetPlatformAppearance = "get-platform-appearance";
     public const string ControllerControl = "controller-control";
+    public const string ApplicationControl = "application-control";
     public const string PlatformAppearance = "platform-appearance";
     public const string AppearanceChanged = "platform-appearance-changed";
     public const string CatalogChanged = "widget-catalog-changed";

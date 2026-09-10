@@ -22,6 +22,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Controllers page separates input behavior and prerequisite status", ControllerSettingsScenarios.LayoutAndGates),
     ("Controller actions gate enable preserve disable and retry recovery", ControllerSettingsScenarios.ActionsAndRecovery),
     ("Root keeps widget permissions inside Installed Widgets", RootCategories),
+    ("Header actions preserve initial focus and omit Ready", HeaderActions),
+    ("Initialization publishes loading before slow dependencies complete", LoadingBeforeReady),
+    ("Allow all grants only one widget's displayed declarations atomically", AllowAllPermissions),
+    ("Settings cannot be disabled through its UI or saved preferences", SettingsCannotBeDisabled),
     ("Snapshot presentation is repeatable", SettingsPolicyScenarios.PresentationIsRepeatable),
     ("Navigation and preference policies are closed", SettingsPolicyScenarios.NavigationAndPreferencePoliciesAreClosed),
     ("Preference persistence owns valid and recovery writes", SettingsPolicyScenarios.PreferencePersistenceOwnsWrites),
@@ -55,7 +59,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Local widget installation is an exact host-owned disabled-review action", LocalWidgetInstallationAction),
     ("Selected widget local data requires exact confirmation and stays document blind", InstalledWidgetLocalDataClear),
     ("Disabled Community uninstall confirms exact package and preserves private data", InstalledWidgetPackageUninstall),
-    ("Built-in widgets remain visible and read-only without community packages", BuiltInWidgetInventory),
+    ("Built-in widgets remain available and can be disabled without removing files", BuiltInWidgetInventory),
     ("Installed widget enable and disable update catalog state", InstalledWidgetToggle),
     ("Installed widget versions support controller rollback while disabled", InstalledWidgetVersionRollback),
     ("Installed version changes immediately refresh permission authority", InstalledVersionRefreshesPermissions),
@@ -109,9 +113,100 @@ static Task RootCategories()
     Assert.Equal("category.appearance", snapshot.InitialFocusId);
     Assert.SequenceEqual(
         ["category.appearance", "category.accessibility", "category.overlay", "category.controllers", "category.installed-widgets", "category.diagnostics", "settings.refresh", "category.reset"],
-        Buttons(snapshot.Root).Select(button => button.Id));
+        Buttons(snapshot.Root).Where(button => button.Id is not ("settings.quit" or "settings.restart")).Select(button => button.Id));
     Assert.Valid(snapshot);
     return Task.CompletedTask;
+}
+
+static async Task HeaderActions()
+{
+    using var temp = new TemporaryDirectory();
+    var service = new InitializationDiagnostics();
+    service.Release.TrySetResult(PlatformDiagnosticsSnapshot.Unavailable());
+    var widget = new SettingsWidget(Store(temp.Path), diagnostics: service);
+    await Activate(widget);
+    var view = Snapshot(widget);
+    Assert.Equal("category.appearance", view.InitialFocusId);
+    Assert.Equal("application.quit", Button(view.Root, "settings.quit").ActionId);
+    Assert.Equal("application.restart", Button(view.Root, "settings.restart").ActionId);
+    Assert.Equal("category.appearance", Button(view.Root, "settings.restart").Focus!.Down);
+    Assert.Equal("settings.restart", Button(view.Root, "category.appearance").Focus!.Up);
+    Assert.True(!Nodes(view.Root).Any(node => node.Id == "settings.status" && node.Text == "Ready"), "Ready subheader remained.");
+    await Action(widget, "application.restart");
+    Assert.SequenceEqual([true], service.Requests);
+    Assert.Valid(view);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+}
+
+static async Task LoadingBeforeReady()
+{
+    using var temp = new TemporaryDirectory();
+    var service = new InitializationDiagnostics();
+    var widget = new SettingsWidget(Store(temp.Path), diagnostics: service);
+    await widget.InitializeAsync(default);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default).AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+    await service.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    var loading = Snapshot(widget);
+    Assert.True(Nodes(loading.Root).Any(node => node.Id == "settings.loading.indicator"), "No loading indicator while dependency was blocked.");
+    await Action(widget, "application.quit");
+    Assert.Equal(0, service.Requests.Count);
+    service.Release.TrySetResult(PlatformDiagnosticsSnapshot.Unavailable());
+    await widget.InitializationTask;
+    Assert.Equal("category.appearance", Snapshot(widget).InitialFocusId);
+    Assert.Valid(loading);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+}
+
+static async Task AllowAllPermissions()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    WriteInstalledWidget(catalogRoot, "dev.test.all", "dev.publisher.all", "All",
+        [PlatformCapabilities.AudioSessionsReadV1], [PlatformCapabilities.NetworkWifiReadV1]);
+    WriteInstalledWidget(catalogRoot, "dev.test.other", "dev.publisher.other", "Other",
+        [PlatformCapabilities.AudioSessionsReadV1], []);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
+    await Activate(widget);
+    await Action(widget, "open.permissions");
+    await Action(widget, "permission.select.0");
+    var before = await consent.LoadAsync();
+    await Action(widget, "capabilities.grant-all");
+    var after = await consent.LoadAsync();
+    Assert.Equal(before.Revision + 1, after.Revision);
+    Assert.Equal(2, after.Entries.Count);
+    Assert.True(after.Entries.All(entry => entry.PackageId == "dev.test.all" && entry.Decision == ConsentDecision.Grant),
+        "Bulk grant touched another widget or missed a declaration.");
+    Assert.True(Button(Snapshot(widget).Root, "capabilities.grant-all").IsDisabled == true, "Completed bulk grant remained active.");
+    await Action(widget, "capability.select.0");
+    await Action(widget, "capability.deny");
+    Assert.Equal(1, (await consent.LoadAsync()).Entries.Count(entry => entry.Decision == ConsentDecision.Grant));
+    var priorInvalid = await consent.LoadAsync();
+    await Assert.ThrowsAsync<BrokerException>(() => consent.SetDecisionsAsync(
+        new("dev.test.all", "publisher", "test"), [PlatformCapabilities.AudioSessionsReadV1, "unsupported.permission"], ConsentDecision.Grant));
+    Assert.Equal(priorInvalid.Revision, (await consent.LoadAsync()).Revision);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+}
+
+static async Task SettingsCannotBeDisabled()
+{
+    using var temp = new TemporaryDirectory();
+    var bundledRoot = Path.Combine(temp.Path, "runtime");
+    WriteBundledWidget(bundledRoot, "Settings", BuiltInWidgetSettings.SettingsWidgetId,
+        "widgetrail.firstparty", "Settings", [], []);
+    var store = Store(temp.Path);
+    var widget = new SettingsWidget(store, bundledWidgetRoot: bundledRoot);
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    await Action(widget, "installed.builtin.select.0");
+    Assert.True(Button(Snapshot(widget).Root, "installed.details.toggle").IsDisabled == true, "Settings toggle is enabled.");
+    await Action(widget, "installed.builtin.toggle");
+    Assert.Equal(0, (await store.LoadAsync()).BuiltInWidgets.DisabledIds.Count);
+    await Assert.ThrowsAsync<PlatformSettingsException>(() => store.UpdateAsync(current => current with
+    {
+        BuiltInWidgets = new() { DisabledIds = [BuiltInWidgetSettings.SettingsWidgetId] },
+    }));
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
 }
 
 static async Task ReadinessRetryIsBoundedAndClassified()
@@ -206,7 +301,9 @@ static async Task ControllerScrollSurface()
     Assert.Equal(ViewNodeKind.Grid, categoryGrid.Kind);
     Assert.Equal(250d, categoryGrid.GridMinimumColumnWidth);
     Assert.Equal(2, categoryGrid.GridMaximumColumns);
-    Assert.True(Buttons(categoryGrid).All(button => button.Focus is null),
+    Assert.True(Buttons(categoryGrid).All(button => button.Id == "category.appearance"
+            ? button.Focus is { Up: "settings.restart", Down: null, Left: null, Right: null }
+            : button.Focus is null),
         "Responsive category navigation must use final host geometry rather than static edges.");
 
     await Action(widget, "open.diagnostics");
@@ -216,7 +313,8 @@ static async Task ControllerScrollSurface()
     var page = Nodes(diagnostics.Root).Single(node => node.Id == "diagnostics.page");
     Assert.Equal(ViewNodeKind.Scroll, page.Kind);
     Assert.Equal(ScrollAxis.Vertical, page.ScrollAxis);
-    Assert.Equal("diagnostics.page", page.InputScopeId);
+    Assert.Equal("diagnostics.page", diagnostics.Root.InputScopeId);
+    Assert.Equal<string?>(null, page.InputScopeId);
     Assert.True(Nodes(diagnostics.Root).Single(node => node.Id == "diagnostics.schema")
             .StyleClasses.Contains("wrail-code-text", StringComparer.Ordinal),
         "Diagnostics schema should use semantic code text styling.");
@@ -856,6 +954,7 @@ static async Task ActivationLifecycle()
     await widget.InitializeAsync(CancellationToken.None);
     Assert.Equal(0, widget.ActivationLoadCount);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await widget.InitializationTask;
     Assert.Equal(1, widget.ActivationLoadCount);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Interactive, CancellationToken.None);
     Assert.Equal(1, widget.ActivationLoadCount);
@@ -863,6 +962,7 @@ static async Task ActivationLifecycle()
     Assert.Equal(1, widget.ActivationLoadCount);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await widget.InitializationTask;
     Assert.Equal(2, widget.ActivationLoadCount);
 }
 
@@ -1042,6 +1142,7 @@ static async Task LocalWidgetInstallationAction()
         "Local import", [], []);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await widget.InitializationTask;
     var refreshed = Snapshot(widget);
     Assert.Contains("Local import", Button(refreshed.Root, "installed.item.0").Text!);
     Assert.Contains("Disabled", Button(refreshed.Root, "installed.item.0").Text!);
@@ -1237,8 +1338,12 @@ static async Task BuiltInWidgetInventory()
     var details = Snapshot(widget);
     Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
     Assert.Contains("Built-in", Text(details.Root, "installed.details.source").Text!);
-    Assert.Contains("cannot be disabled or version-managed",
+    Assert.Contains("Included and updated with WidgetRail",
         Text(details.Root, "installed.details.status").Text!);
+    await Action(widget, "installed.builtin.toggle");
+    Assert.True(!(await Store(temp.Path).LoadAsync()).BuiltInWidgets.IsEnabled("widgetrail.firstparty.audio-mixer"), "Built-in disable was not persisted.");
+    await Action(widget, "installed.builtin.toggle");
+    Assert.True((await Store(temp.Path).LoadAsync()).BuiltInWidgets.IsEnabled("widgetrail.firstparty.audio-mixer"), "Built-in re-enable failed.");
     Assert.True(!Buttons(details.Root).Any(button =>
         button.ActionId is "installed.toggle" or "installed.versions.open" or
             "installed.uninstall.open"),
@@ -1522,6 +1627,7 @@ static async Task InstalledWidgetVersionLimitRetry()
         "The quota fault collapsed the retained inventory to an empty page.");
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await widget.InitializationTask;
     var reactivated = Snapshot(widget);
     Assert.Contains("Last good", Button(reactivated.Root, "installed.item.0").Text!);
 
@@ -1574,6 +1680,7 @@ static async Task InstalledWidgetActivationReload()
 
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await widget.InitializationTask;
     Assert.True(Buttons(Snapshot(widget).Root).Any(button => button.Id == "installed.item.0"),
         "Installed package review did not reload on the next activation.");
 }
@@ -1625,7 +1732,7 @@ static async Task PermissionScopesAreScrollable()
     await Action(widget, "open.permissions");
     var packages = Snapshot(widget);
     Assert.Equal("permissions.packages", packages.ActiveInputScopeId);
-    Assert.Equal(ViewNodeKind.Scroll, Scope(packages.Root, "permissions.packages").Kind);
+    Assert.Equal(ViewNodeKind.Stack, Scope(packages.Root, "permissions.packages").Kind);
     Assert.HasShortcut(packages.Root, "permissions.packages", ControllerButton.B, "back");
     Assert.True(!Scope(packages.Root, "permissions.packages").Shortcuts.Any(shortcut =>
         shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper),
@@ -1642,7 +1749,7 @@ static async Task PermissionScopesAreScrollable()
     var capabilities = Snapshot(widget);
     Assert.Equal(SettingsPage.PackageCapabilities, widget.CurrentPage);
     Assert.Equal("capabilities.package", capabilities.ActiveInputScopeId);
-    Assert.Equal(ViewNodeKind.Scroll, Scope(capabilities.Root, "capabilities.package").Kind);
+    Assert.Equal(ViewNodeKind.Stack, Scope(capabilities.Root, "capabilities.package").Kind);
     Assert.HasShortcut(capabilities.Root, "capabilities.package", ControllerButton.B, "back");
     Assert.Equal(7, Buttons(capabilities.Root).Count(button =>
         button.Id.StartsWith("capability.item.", StringComparison.Ordinal)));
@@ -1657,7 +1764,7 @@ static async Task PermissionScopesAreScrollable()
     await Action(widget, "capability.select.6");
     var decision = Snapshot(widget);
     Assert.Equal("capability.decision", decision.ActiveInputScopeId);
-    Assert.Equal(ViewNodeKind.Scroll, Scope(decision.Root, "capability.decision").Kind);
+    Assert.Equal(ViewNodeKind.Stack, Scope(decision.Root, "capability.decision").Kind);
     Assert.HasShortcut(decision.Root, "capability.decision", ControllerButton.B, "back");
     Assert.True(Buttons(decision.Root).Any(button => button.Id == "capability.grant"),
         "Grant confirmation action is missing.");
@@ -2010,7 +2117,7 @@ static async Task PermissionDiagnosticsAreBounded()
         Button(packages.Root, "permissions.diagnostics.open").Text!);
     await Action(widget, "open.permission-diagnostics");
     var diagnostics = Snapshot(widget);
-    var rows = Buttons(diagnostics.Root).ToArray();
+    var rows = Buttons(diagnostics.Root).Where(button => button.Id.StartsWith("permission-diagnostics.", StringComparison.Ordinal)).ToArray();
     var exactDetails = rows.Where(row =>
         row.Id.StartsWith("permission-diagnostics.unknown.", StringComparison.Ordinal) ||
         row.Id.StartsWith("permission-diagnostics.inactive.", StringComparison.Ordinal)).ToArray();
@@ -2025,7 +2132,7 @@ static async Task PermissionDiagnosticsAreBounded()
     Assert.Equal(rows[0].Id, diagnostics.InitialFocusId);
     for (var index = 0; index < rows.Length; index++)
     {
-        Assert.Equal(index == 0 ? null : rows[index - 1].Id, rows[index].Focus!.Up);
+        Assert.Equal(index == 0 ? "settings.restart" : rows[index - 1].Id, rows[index].Focus!.Up);
         Assert.Equal(index == rows.Length - 1 ? null : rows[index + 1].Id,
             rows[index].Focus!.Down);
     }
@@ -2045,7 +2152,8 @@ static async Task PermissionDiagnosticsAreBounded()
     Assert.Equal(retiredAuthorities.Length,
         retiredAuthorities.Distinct(StringComparer.Ordinal).Count());
     var rerendered = Snapshot(widget);
-    Assert.SequenceEqual(rows.Select(row => row.Id), Buttons(rerendered.Root).Select(row => row.Id));
+    Assert.SequenceEqual(rows.Select(row => row.Id), Buttons(rerendered.Root)
+        .Where(row => row.Id.StartsWith("permission-diagnostics.", StringComparison.Ordinal)).Select(row => row.Id));
     Assert.Valid(diagnostics);
     Assert.Valid(rerendered);
 }
@@ -2212,6 +2320,7 @@ static async Task PermissionActivationReload()
         "Catalog changed without a new activation.");
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await widget.InitializationTask;
     Assert.True(Buttons(Snapshot(widget).Root).Any(button => button.Id == "permission.item.0"),
         "Catalog did not reload on the next activation.");
 }
@@ -2385,6 +2494,7 @@ static async Task Activate(SettingsWidget widget)
 {
     await widget.InitializeAsync(CancellationToken.None);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    await widget.InitializationTask;
 }
 
 static ValueTask Action(SettingsWidget widget, string action, string sourceElementId = "test") =>
@@ -2708,6 +2818,23 @@ file sealed class CancelingAuthorityRecoveryDiagnosticsService(
         cancellation.Cancel();
         cancellationToken.ThrowIfCancellationRequested();
         throw new InvalidOperationException("Cancelled recovery unexpectedly continued.");
+    }
+}
+
+file sealed class InitializationDiagnostics : IPlatformDiagnosticsService
+{
+    public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource<PlatformDiagnosticsSnapshot> Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public List<bool> Requests { get; } = [];
+    public async ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
+    {
+        Entered.TrySetResult();
+        return await Release.Task.WaitAsync(cancellationToken);
+    }
+    public ValueTask<ApplicationControlResult> RequestApplicationControlAsync(bool restart, CancellationToken cancellationToken = default)
+    {
+        Requests.Add(restart);
+        return ValueTask.FromResult(new ApplicationControlResult(true));
     }
 }
 

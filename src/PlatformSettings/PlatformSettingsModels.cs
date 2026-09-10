@@ -111,6 +111,13 @@ public sealed record ControllerSettings
     public long Revision { get; init; }
 }
 
+public sealed record BuiltInWidgetSettings
+{
+    public const string SettingsWidgetId = "widgetrail.firstparty.settings";
+    public IReadOnlyList<string> DisabledIds { get; init; } = [];
+    public bool IsEnabled(string id) => id is "settings" or SettingsWidgetId || !DisabledIds.Contains(id, StringComparer.Ordinal);
+}
+
 public sealed record PlatformSettingsDocument
 {
     public const int CurrentSchemaVersion = 3;
@@ -122,6 +129,7 @@ public sealed record PlatformSettingsDocument
     public required AppearanceSettings Appearance { get; init; }
 
     public ControllerSettings Controllers { get; init; } = new();
+    public BuiltInWidgetSettings BuiltInWidgets { get; init; } = new();
 
     public static PlatformSettingsDocument Default { get; } = new()
     {
@@ -177,6 +185,10 @@ public static class PlatformSettingsValidator
     {
         ArgumentNullException.ThrowIfNull(document);
         var errors = new List<PlatformSettingsValidationError>();
+        if (document.BuiltInWidgets?.DisabledIds is not { } disabled || disabled.Count > 64 ||
+            disabled.Any(id => id is "settings" or BuiltInWidgetSettings.SettingsWidgetId || !ThemeIdentity.IsValid(id)) ||
+            disabled.Distinct(StringComparer.Ordinal).Count() != disabled.Count)
+            Add("$.builtInWidgets.disabledIds", "invalid_widget_ids", "Disabled widget IDs must be unique supported identifiers; Settings cannot be disabled.");
         if (document.SchemaVersion != PlatformSettingsDocument.CurrentSchemaVersion)
             Add("$.schemaVersion", "unsupported_version",
                 $"Expected settings schema version {PlatformSettingsDocument.CurrentSchemaVersion}.");

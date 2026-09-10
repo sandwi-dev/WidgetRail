@@ -365,6 +365,7 @@ internal static class SettingsPolicyScenarios
         await widget.InitializeAsync(CancellationToken.None);
         await widget.SetLifecycleStateAsync(
             WidgetLifecycleState.Visible, CancellationToken.None);
+        await widget.InitializationTask;
         await widget.OnActionAsync(new WidgetActionEvent("open.permissions", "test"));
         var before = SnapshotJson(widget.Render());
         using var cancelled = new CancellationTokenSource();

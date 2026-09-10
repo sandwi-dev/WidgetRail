@@ -6,6 +6,7 @@ using WidgetRail.PlatformDiagnostics;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Trusted application controls request quit and restart without OS actions", ApplicationControlRoundTrip),
     ("Exclusive controller control is authenticated and returns actual status", ControllerControlRoundTrip),
     ("Bound worker receives a validated sanitized snapshot", AuthenticatedRoundTrip),
     ("Authenticated worker retries only the exact recovery confirmation token", AuthenticatedRecoveryRetry),
@@ -42,6 +43,18 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static async Task ApplicationControlRoundTrip()
+{
+    var requests = new List<bool>();
+    await using var harness = new DiagnosticsHarness(_ => ValueTask.FromResult(HealthySnapshot(1)),
+        applicationControl: (restart, _) => { requests.Add(restart); return ValueTask.FromResult(new ApplicationControlResult(true)); });
+    Assert.True((await harness.Client.RequestApplicationControlAsync(false)).Accepted);
+    Assert.True((await harness.Client.RequestApplicationControlAsync(true)).Accepted);
+    Assert.True(requests.SequenceEqual(new[] { false, true }));
+    await using var unsupported = new DiagnosticsHarness(_ => ValueTask.FromResult(HealthySnapshot(1)));
+    Assert.True(!(await unsupported.Client.RequestApplicationControlAsync(false)).Accepted);
+}
 
 static async Task ControllerControlRoundTrip()
 {
@@ -730,12 +743,13 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
             ValueTask<PlatformWidgetPackageUninstallInspection>>? uninstallInspect = null,
         Func<string, string, string, string, CancellationToken,
             ValueTask<PlatformWidgetPackageUninstallResult>>? uninstall = null,
-        Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? exclusiveControl = null)
+        Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? exclusiveControl = null,
+        Func<bool, CancellationToken, ValueTask<ApplicationControlResult>>? applicationControl = null)
     {
         PipeName = $"wrail-diagnostics-test-{Guid.NewGuid():N}";
         _server = new PlatformDiagnosticsPipeServer(
             PipeName, provider, serverTimeout, retry, inspect, clear,
-            uninstallInspect, uninstall, exclusiveControl);
+            uninstallInspect, uninstall, exclusiveControl, applicationControl);
         _server.BindExpectedClientProcess(Environment.ProcessId);
         Client = new PlatformDiagnosticsPipeClient(
             PipeName, _server.ChannelNonce, Environment.ProcessId,

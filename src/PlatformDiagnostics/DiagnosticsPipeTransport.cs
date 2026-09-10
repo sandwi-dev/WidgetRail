@@ -21,6 +21,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private readonly string _pipeName;
     private readonly Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> _snapshotProvider;
     private readonly Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? _exclusiveControl;
+    private readonly Func<bool, CancellationToken, ValueTask<ApplicationControlResult>>? _applicationControl;
     private readonly Func<string, CancellationToken,
         ValueTask<PlatformAuthorityRecoveryRetryResult>>? _authorityRecoveryRetry;
     private readonly Func<string, CancellationToken,
@@ -51,13 +52,15 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
             ValueTask<PlatformWidgetPackageUninstallInspection>>? packageUninstallInspection = null,
         Func<string, string, string, string, CancellationToken,
             ValueTask<PlatformWidgetPackageUninstallResult>>? packageUninstall = null,
-        Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? exclusiveControl = null)
+        Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? exclusiveControl = null,
+        Func<bool, CancellationToken, ValueTask<ApplicationControlResult>>? applicationControl = null)
     {
         if (!IsToken(pipeName, 200))
             throw new ArgumentException("Diagnostics pipe name is invalid.", nameof(pipeName));
         _pipeName = pipeName;
         _snapshotProvider = snapshotProvider ?? throw new ArgumentNullException(nameof(snapshotProvider));
         _exclusiveControl = exclusiveControl;
+        _applicationControl = applicationControl;
         _authorityRecoveryRetry = authorityRecoveryRetry;
         _localDataInspection = localDataInspection;
         _localDataClear = localDataClear;
@@ -157,6 +160,19 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         string receiptOperation;
         switch (request.Operation)
         {
+            case "quit-widgetrail":
+            case "restart-widgetrail":
+            {
+                if (request.ConfirmationToken is not null || request.WidgetId is not null ||
+                    request.PublisherId is not null || request.ActiveVersion is not null)
+                    throw new PlatformDiagnosticsException("malformed_request");
+                var result = _applicationControl is null ? new ApplicationControlResult(false) :
+                    await _applicationControl(request.Operation == "restart-widgetrail", cancellationToken)
+                        .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+                await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
+                receiptOperation = request.Operation;
+                break;
+            }
             case "set-exclusive-control":
             {
                 if (request.ExclusiveControl is null || request.ConfirmationToken is not null ||
@@ -582,6 +598,15 @@ public sealed class PlatformDiagnosticsPipeClient(
             new DiagnosticsRequest("snapshot"),
             "snapshot",
             PlatformDiagnosticsPipeServer.ValidateSnapshot,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<ApplicationControlResult> RequestApplicationControlAsync(
+        bool restart, CancellationToken cancellationToken = default)
+    {
+        var operation = restart ? "restart-widgetrail" : "quit-widgetrail";
+        return await ExecuteAsync<ApplicationControlResult>(new DiagnosticsRequest(operation), operation,
+            result => { if (result is null) throw new PlatformDiagnosticsException("malformed_response"); },
             cancellationToken).ConfigureAwait(false);
     }
 

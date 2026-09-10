@@ -9,6 +9,7 @@ internal enum BridgeRequestKind
     ListWidgets,
     GetPlatformAppearance,
     ControllerControl,
+    ApplicationControl,
     GetSnapshot,
     ResolveArtwork,
     ResolvePackageIcon,
@@ -109,6 +110,7 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.GetPlatformAppearance => Empty(
                     request.Payload, BridgeRequestKind.GetPlatformAppearance),
                 BridgeMessageTypes.ControllerControl => ControllerControl(request.Payload),
+                BridgeMessageTypes.ApplicationControl => BridgeRequestKey.Global(BridgeRequestKind.ApplicationControl),
                 BridgeMessageTypes.GetSnapshot => Widget(
                     BridgeJson.FromElement<BridgePresentationRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),

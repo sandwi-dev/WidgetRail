@@ -719,6 +719,7 @@ public:
                   return submitted.value_or(false);
               }) {}
     ~OverlayApp() { Shutdown(); }
+    [[nodiscard]] bool restartRequested() const noexcept { return restartRequested_; }
 
     [[nodiscard]] const std::wstring& initializationError() const noexcept {
         return initializationError_;
@@ -2338,6 +2339,11 @@ private:
         case WM_TIMER:
             if (wParam == kControllerSettingsTimer) {
                 RefreshControllerSettings();
+                const auto action = bridge_.TakeApplicationControl();
+                if (action == 1 || action == 2) {
+                    restartRequested_ = action == 2;
+                    PostMessageW(window_, WM_CLOSE, 0, 0);
+                }
                 return 0;
             }
             if (wParam == kBridgeControlPlaneTimer) {
@@ -18108,6 +18114,7 @@ private:
     std::uint64_t pinnedWorkDiagnosticMediaReconciliations_{};
     bool pinnedWorkDiagnosticPublished_{};
     bool runtimeInitialized_{};
+    bool restartRequested_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
     widgetrail::RenderResult lastWidgetRenderResult_;
     std::optional<widgetrail::DeclarativeRenderTiming>
@@ -18178,7 +18185,7 @@ private:
 
 } // namespace
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+static int RunWidgetRail(HINSTANCE instance, int showCommand, bool& restart) {
     for (int index = 1; index < __argc; ++index) {
         if (_wcsicmp(__wargv[index], L"--controller-isolation-recover-only") != 0) continue;
         if (__argc != 2) {
@@ -18251,5 +18258,31 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         return EXIT_FAILURE;
     }
     app.BindProcessActivation(processOwner);
-    return app.Run();
+    const auto result = app.Run();
+    restart = app.restartRequested();
+    return result;
+}
+
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+    bool restart{};
+    const auto result = RunWidgetRail(instance, showCommand, restart);
+    // RunWidgetRail has destroyed the app and released process ownership before
+    // creating the replacement, so it cannot be mistaken for a Show-only client.
+    if (!restart) return result;
+    std::array<wchar_t, 32'768> executable{};
+    const auto length = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+    if (length == 0 || length >= executable.size()) return EXIT_FAILURE;
+    std::wstring command = GetCommandLineW();
+    command += L" --show";
+    STARTUPINFOW startup{sizeof(startup)};
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(executable.data(), command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr,
+            &startup, &process)) {
+        MessageBoxW(nullptr, L"WidgetRail closed, but could not restart. Open WidgetRail again.",
+            L"WidgetRail", MB_OK | MB_ICONERROR);
+        return EXIT_FAILURE;
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    return result;
 }

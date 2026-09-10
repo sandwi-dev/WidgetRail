@@ -215,6 +215,16 @@ internal static class SettingsPermissionPresentation
                     "capabilities.diagnostic", "Consent diagnostic")
                 .Classes("diagnostic-error"));
         }
+        if (package.Capabilities.Count != 0)
+        {
+            var allAllowed = package.Capabilities.All(capability =>
+                SettingsPermissionPolicy.FindDecision(consent, package, capability.Id) == ConsentDecision.Grant);
+            children.Add(UI.Button(allAllowed ? "All permissions allowed" : "Allow all permissions",
+                    "capabilities.grant-all", "capabilities.grant-all")
+                .Disabled(!consentValid || allAllowed).Busy(busy).Classes("primary-button"));
+            children.Add(UI.Text("Allows the permissions listed below for this widget. New permissions added later still need your approval.",
+                "capabilities.grant-all-help", "Allow all permissions guidance").Classes("page-help"));
+        }
         for (var index = 0; index < package.Capabilities.Count; index++)
         {
             var capability = package.Capabilities[index];
