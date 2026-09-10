@@ -392,6 +392,7 @@ public:
             Stop();
             return SelectedControllerPrepareStatus::IdentityMismatch;
         }
+        selectedDeviceId_ = preparedEnrollment.deviceId;
         ingress_ = &ingress;
         accepting_.store(true, std::memory_order_release);
         gameInput_->SetFocusPolicy(static_cast<GameInputFocusPolicy>(
@@ -405,7 +406,7 @@ public:
                 GameInputDeviceConnected, GameInputNoEnumeration,
                 this, OnDevice, &deviceToken_)) ||
             FAILED(gameInput_->RegisterSystemButtonCallback(
-                device_.Get(), GameInputSystemButtonGuide, this, OnGuide,
+                nullptr, GameInputSystemButtonGuide, this, OnGuide,
                 &guideToken_))) {
             Stop();
             return SelectedControllerPrepareStatus::CallbackRegistrationFailed;
@@ -460,6 +461,7 @@ public:
         std::unique_lock lock(callbackMutex_);
         callbackDrain_.wait(lock, [this] { return callbacksInFlight_ == 0; });
         ingress_ = nullptr;
+        selectedDeviceId_ = {};
         device_.Reset();
         gameInput_.Reset();
     }
@@ -521,13 +523,18 @@ private:
     static void CALLBACK OnGuide(
         GameInputCallbackToken,
         void* context,
-        IGameInputDevice*,
+        IGameInputDevice* device,
         std::uint64_t timestamp,
         GameInputSystemButtons current,
         GameInputSystemButtons previous) noexcept {
         auto& self = *static_cast<GameInputSelectedControllerReader*>(context);
         CallbackLease lease(self);
-        if (!lease || !self.ingress_) return;
+        if (!lease || !self.ingress_ || !device) return;
+        const GameInputDeviceInfo* info{};
+        if (FAILED(device->GetDeviceInfo(&info)) || !info ||
+            std::memcmp(
+                &info->deviceId, self.selectedDeviceId_.data(),
+                self.selectedDeviceId_.size()) != 0) return;
         const bool currentGuide =
             (current & GameInputSystemButtonGuide) != 0;
         const bool previousGuide =
@@ -545,6 +552,7 @@ private:
     std::condition_variable callbackDrain_;
     std::uint32_t callbacksInFlight_{};
     ControllerIsolationReaderIngress* ingress_{};
+    std::array<std::uint8_t, 32> selectedDeviceId_{};
     ComPtr<IGameInput> gameInput_;
     ComPtr<IGameInputDevice> device_;
     GameInputCallbackToken readingToken_{};
