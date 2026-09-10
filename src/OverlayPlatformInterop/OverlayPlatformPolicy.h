@@ -28,7 +28,8 @@ public:
     [[nodiscard]] WidgetRailOverlayPlatformControllerFrame Update(
         bool connected,
         const WidgetRailOverlayPlatformRawControllerState& state,
-        std::uint64_t nowMilliseconds) noexcept;
+        std::uint64_t nowMilliseconds,
+        bool allowNavigationRepeat = true) noexcept;
     void Reset() noexcept;
     [[nodiscard]] bool primed() const noexcept { return primed_; }
 

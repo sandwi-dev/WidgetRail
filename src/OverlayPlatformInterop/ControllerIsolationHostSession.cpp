@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <stop_token>
 #include <thread>
@@ -65,10 +66,21 @@ public:
         notify_ = notify; context_ = context;
     }
     void NotifyPlatform() const noexcept { if (notify_) notify_(context_); }
-    bool BeginInteraction() noexcept { std::scoped_lock l(mutex_); return input_.BeginInteraction(); }
-    void RetireInteraction() noexcept { std::scoped_lock l(mutex_); input_.RetireInteraction(); }
+    bool BeginInteraction() noexcept {
+        std::scoped_lock l(mutex_);
+        latestInput_.reset();
+        return input_.BeginInteraction();
+    }
+    void RetireInteraction() noexcept {
+        std::scoped_lock l(mutex_);
+        input_.RetireInteraction();
+        latestInput_.reset();
+    }
     bool PublishInput(const GamepadState& state, std::uint64_t ordinal) noexcept override {
-        std::scoped_lock l(mutex_); return input_.Push(state, ordinal);
+        std::scoped_lock l(mutex_);
+        if (!input_.Push(state, ordinal)) return false;
+        latestInput_ = state;
+        return true;
     }
     bool PublishGuide(bool pressed, std::uint64_t, std::uint64_t ordinal) noexcept override {
         {
@@ -82,7 +94,12 @@ public:
     bool Pop(GamepadState& state, std::uint32_t& remaining) noexcept {
         std::scoped_lock l(mutex_);
         const auto next = input_.TakeNext();
-        if (!next) return false;
+        if (!next) {
+            // Published history and its current state share this lock, so a
+            // just-consumed release cannot fall back to an older routing snapshot.
+            if (latestInput_) state = *latestInput_;
+            return false;
+        }
         state = *next;
         remaining = static_cast<std::uint32_t>(input_.size()); return true;
     }
@@ -95,6 +112,7 @@ public:
 private:
     mutable std::mutex mutex_;
     ControllerIsolationInputEventQueue input_;
+    std::optional<GamepadState> latestInput_;
     std::deque<std::uint64_t> guides_;
     ControllerIsolationHostSession::Notify notify_{};
     void* context_{};
@@ -423,7 +441,7 @@ bool ControllerIsolationHostSession::Poll(ControllerIsolationHostReading& readin
     if (!impl_) return false;
     std::scoped_lock lock(impl_->mutex);
     reading.progress = impl_->progress; reading.state = impl_->latest;
-    (void)impl_->queues.Pop(reading.state, reading.remainingInputStates);
+    reading.queuedInput = impl_->queues.Pop(reading.state, reading.remainingInputStates);
     reading.guideEvent = impl_->queues.TakeGuide();
     diagnostic = impl_->TakeDiagnosticLocked();
     return impl_->progress != LocalControllerProgress::Fault;

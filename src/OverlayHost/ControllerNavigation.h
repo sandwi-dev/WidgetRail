@@ -408,7 +408,7 @@ public:
     [[nodiscard]] std::optional<NavigationDirection> Update(
         short x, short y, std::uint64_t now) noexcept;
     [[nodiscard]] std::optional<StickNavigationEvent> UpdateEvent(
-        short x, short y, std::uint64_t now) noexcept;
+        short x, short y, std::uint64_t now, bool allowRepeat = true) noexcept;
     void Reset() noexcept;
 
 private:
@@ -451,7 +451,8 @@ inline std::optional<NavigationDirection> StickNavigator::Update(
 inline std::optional<StickNavigationEvent> StickNavigator::UpdateEvent(
     const short x,
     const short y,
-    const std::uint64_t now) noexcept {
+    const std::uint64_t now,
+    const bool allowRepeat) noexcept {
     const auto resolved = Resolve(x, y);
     if (resolved == NavigationDirection::None) {
         Reset();
@@ -462,7 +463,7 @@ inline std::optional<StickNavigationEvent> StickNavigator::UpdateEvent(
         nextRepeat_ = now + options_.initialRepeatMilliseconds;
         return StickNavigationEvent{resolved, NavigationEventPhase::Pressed};
     }
-    if (nextRepeat_ != 0 && now >= nextRepeat_) {
+    if (allowRepeat && nextRepeat_ != 0 && now >= nextRepeat_) {
         nextRepeat_ = now + options_.repeatMilliseconds;
         return StickNavigationEvent{resolved, NavigationEventPhase::Repeated};
     }

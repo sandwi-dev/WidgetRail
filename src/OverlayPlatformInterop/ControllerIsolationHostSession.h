@@ -39,6 +39,7 @@ struct ControllerIsolationHostReading final {
     LocalControllerProgress progress{LocalControllerProgress::Disabled};
     std::uint64_t guideEvent{};
     std::uint32_t remainingInputStates{};
+    bool queuedInput{};
 };
 
 // Application-lifetime controller owner. Its private routing thread is the only

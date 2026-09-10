@@ -814,12 +814,15 @@ WidgetRailOverlayPlatformReadController(
         const auto structSize = frame->structSize;
         const auto abiVersion = frame->abiVersion;
         *frame = handle->controllerTracker.Update(
-            connected, state, nowMilliseconds);
+            connected, state, nowMilliseconds, !reading.queuedInput);
         frame->structSize = structSize;
         frame->abiVersion = abiVersion;
         frame->foregroundExclusive = ToAbiBoolean(connected);
         frame->readPath = WidgetRailOverlayPlatformReadPath::ControllerIsolation;
-        frame->remainingFrames = reading.remainingInputStates;
+        // History preserves transitions, but cannot prove a control is still
+        // held after a UI stall. Finish with a current-state read for repeats.
+        frame->remainingFrames = reading.remainingInputStates +
+            (reading.queuedInput ? 1U : 0U);
         return WidgetRailOverlayPlatformStatus::Ok;
     }
     widgetrail::input::ControllerInputOwnershipDecision decision;
