@@ -10,6 +10,15 @@ useful lane is genuinely blocked by a user-owned stop condition.
 
 ## Authority and precedence
 
+User role override (2026-09-10): the current task performs both review/planning
+and implementation directly. Do not dispatch to the former standing implementation
+tasks or spawn agents. Their branches, worktrees, retained changes and evidence
+remain available for direct continuation. This overrides role separation and
+direct-agent-report requirements in both goal documents; retain scoped assignments,
+isolated worktrees, explicit review passes, verification and user-owned acceptance.
+Keep the later WIDGE-213 changes out of local main until WIDGE-217 is completed.
+The no-push instruction remains in force.
+
 Plane's existing `WidgetRail` project (identifier `WIDGE`, project ID
 `12b194d4-2971-41f9-867c-5a590f888653`) is the sole live delivery control plane. It owns current
 WIDGE assignments, lane, order, priority, dependencies, state, blockers, review disposition, and
