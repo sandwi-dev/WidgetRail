@@ -125,6 +125,44 @@ SelectedControllerDiscoveryStatus SelectedControllerDiscovery::Resolve(
     return SelectedControllerDiscoveryStatus::Ready;
 }
 
+bool SameStableControllerIdentity(
+    const SelectedControllerEnrollment& enrolled,
+    const SelectedControllerEnrollment& local) noexcept {
+    return enrolled.valid() && local.valid() &&
+        enrolled.enrollmentToken == local.enrollmentToken &&
+        enrolled.containerId == local.containerId &&
+        enrolled.normalizedPnpPathDigest == local.normalizedPnpPathDigest &&
+        enrolled.vendorId == local.vendorId &&
+        enrolled.productId == local.productId &&
+        enrolled.deviceFamily == local.deviceFamily &&
+        enrolled.connected == local.connected &&
+        enrolled.gamepadSupported == local.gamepadSupported &&
+        !enrolled.knownVirtualOutput && !local.knownVirtualOutput;
+}
+
+LocalControllerResolutionStatus ResolveLocalController(
+    const SelectedControllerEnrollment& enrolled,
+    const SelectedControllerDiscoveryStatus discoveryStatus,
+    const SelectedControllerDescriptor& localDescriptor,
+    SelectedControllerEnrollment& localEnrollment) noexcept {
+    localEnrollment = {};
+    switch (discoveryStatus) {
+    case SelectedControllerDiscoveryStatus::Unavailable:
+        return LocalControllerResolutionStatus::Unavailable;
+    case SelectedControllerDiscoveryStatus::Ambiguous:
+        return LocalControllerResolutionStatus::Ambiguous;
+    case SelectedControllerDiscoveryStatus::UnknownIdentity:
+        return LocalControllerResolutionStatus::UnknownIdentity;
+    case SelectedControllerDiscoveryStatus::Ready:
+        break;
+    }
+    if (!localDescriptor.valid() ||
+        !SameStableControllerIdentity(enrolled, localDescriptor.enrollment))
+        return LocalControllerResolutionStatus::StableIdentityMismatch;
+    localEnrollment = localDescriptor.enrollment;
+    return LocalControllerResolutionStatus::Ready;
+}
+
 ControllerIsolationReaderIngress::ControllerIsolationReaderIngress() noexcept {
     for (std::size_t index = 0; index < cells_.size(); ++index)
         cells_[index].sequence.store(index, std::memory_order_relaxed);

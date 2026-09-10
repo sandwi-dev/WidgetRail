@@ -63,16 +63,19 @@ ControllerIsolationRoutingSession::PrepareSession(
     if (!authority.valid() || !enrollment.valid())
         return ControllerIsolationRoutingResult::RejectedAuthority;
     authority_ = authority;
-    enrollment_ = enrollment;
     if (!ingress_.Open(authority, enrollment.enrollmentToken)) {
         Fail();
         return ControllerIsolationRoutingResult::ReaderUnavailable;
     }
-    const auto prepared = source_.Prepare(enrollment, ingress_);
-    if (prepared != SelectedControllerPrepareStatus::Ready) {
+    SelectedControllerEnrollment preparedEnrollment;
+    const auto prepared = source_.Prepare(
+        enrollment, ingress_, preparedEnrollment);
+    if (prepared != SelectedControllerPrepareStatus::Ready ||
+        !SameStableControllerIdentity(enrollment, preparedEnrollment)) {
         Fail();
         return ControllerIsolationRoutingResult::ReaderUnavailable;
     }
+    enrollment_ = preparedEnrollment;
     const auto initial = SampleCurrentFence();
     if (!initial) {
         Fail();
@@ -89,7 +92,7 @@ ControllerIsolationRoutingSession::PrepareSession(
     outputOwned_ = true;
     CommandResult begun{CommandResult::Faulted};
     try {
-        const auto device = CoreDeviceIdentity(enrollment);
+        const auto device = CoreDeviceIdentity(enrollment_);
         begun = core_.BeginSession(authority, device, *initial, nowMilliseconds);
     } catch (...) {
         Fail();

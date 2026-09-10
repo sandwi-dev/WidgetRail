@@ -244,6 +244,8 @@ struct PhysicalControllerDiscoveryContext final {
     std::uint64_t enrollmentToken{};
     std::mutex mutex;
     SelectedControllerDiscovery discovery;
+    SelectedControllerDescriptor selectedDescriptor;
+    ComPtr<IGameInputDevice> selectedDevice;
 };
 
 void CALLBACK OnPhysicalControllerDiscovery(
@@ -285,7 +287,49 @@ void CALLBACK OnPhysicalControllerDiscovery(
         }
     }
     const std::scoped_lock lock(state.mutex);
+    if (candidateKind == SelectedControllerCandidateKind::Physical &&
+        descriptor.valid() &&
+        (!state.selectedDevice || state.selectedDescriptor == descriptor)) {
+        state.selectedDescriptor = descriptor;
+        state.selectedDevice = device;
+    }
     state.discovery.Observe(candidateKind, descriptor);
+}
+
+[[nodiscard]] SelectedControllerDiscoveryStatus
+DiscoverCurrentPhysicalController(
+    IGameInput& gameInput,
+    const std::uint64_t enrollmentToken,
+    SelectedControllerDescriptor& descriptor,
+    ComPtr<IGameInputDevice>* const selectedDevice = nullptr) noexcept {
+    descriptor = {};
+    if (selectedDevice) selectedDevice->Reset();
+    if (enrollmentToken == 0)
+        return SelectedControllerDiscoveryStatus::UnknownIdentity;
+    PhysicalControllerDiscoveryContext context(enrollmentToken);
+    GameInputCallbackToken callback{};
+    const auto registered = gameInput.RegisterDeviceCallback(
+        nullptr, GameInputKindGamepad, GameInputDeviceConnected,
+        GameInputBlockingEnumeration, &context,
+        OnPhysicalControllerDiscovery, &callback);
+    if (FAILED(registered) || callback == 0) {
+        if (callback != 0) {
+            gameInput.StopCallback(callback);
+            (void)gameInput.UnregisterCallback(callback);
+        }
+        return SelectedControllerDiscoveryStatus::Unavailable;
+    }
+    gameInput.StopCallback(callback);
+    if (!gameInput.UnregisterCallback(callback))
+        return SelectedControllerDiscoveryStatus::UnknownIdentity;
+    const std::scoped_lock lock(context.mutex);
+    const auto status = context.discovery.Resolve(descriptor);
+    if (status == SelectedControllerDiscoveryStatus::Ready && selectedDevice) {
+        if (!context.selectedDevice || context.selectedDescriptor != descriptor)
+            return SelectedControllerDiscoveryStatus::UnknownIdentity;
+        *selectedDevice = context.selectedDevice;
+    }
+    return status;
 }
 
 class GameInputSelectedControllerReader final : public SelectedControllerSource {
@@ -294,20 +338,29 @@ public:
 
     SelectedControllerPrepareStatus Prepare(
         const SelectedControllerEnrollment& enrollment,
-        ControllerIsolationReaderIngress& ingress) noexcept override {
+        ControllerIsolationReaderIngress& ingress,
+        SelectedControllerEnrollment& preparedEnrollment) noexcept override {
+        preparedEnrollment = {};
         if (!enrollment.valid())
             return SelectedControllerPrepareStatus::InvalidEnrollment;
         if (gameInput_ || device_)
             return SelectedControllerPrepareStatus::Unavailable;
-        APP_LOCAL_DEVICE_ID deviceId{};
-        std::memcpy(&deviceId, enrollment.deviceId.data(), sizeof(deviceId));
         if (FAILED(GameInputCreate(gameInput_.ReleaseAndGetAddressOf())) ||
-            !gameInput_ ||
-            FAILED(gameInput_->FindDeviceFromId(
-                &deviceId, device_.ReleaseAndGetAddressOf())) ||
-            !device_) {
+            !gameInput_) {
             Stop();
             return SelectedControllerPrepareStatus::Unavailable;
+        }
+        SelectedControllerDescriptor localDescriptor;
+        const auto discovery = DiscoverCurrentPhysicalController(
+            *gameInput_.Get(), enrollment.enrollmentToken, localDescriptor,
+            &device_);
+        const auto resolution = ResolveLocalController(
+            enrollment, discovery, localDescriptor, preparedEnrollment);
+        if (resolution != LocalControllerResolutionStatus::Ready || !device_) {
+            Stop();
+            return resolution == LocalControllerResolutionStatus::Unavailable
+                ? SelectedControllerPrepareStatus::Unavailable
+                : SelectedControllerPrepareStatus::IdentityMismatch;
         }
         const GameInputDeviceInfo* info{};
         if (FAILED(device_->GetDeviceInfo(&info)) || !info) {
@@ -335,7 +388,7 @@ public:
             Stop();
             return SelectedControllerPrepareStatus::VirtualOutputRejected;
         }
-        if (actual != enrollment) {
+        if (actual != preparedEnrollment) {
             Stop();
             return SelectedControllerPrepareStatus::IdentityMismatch;
         }
@@ -516,19 +569,8 @@ SelectedControllerDiscoveryStatus DiscoverCurrentPhysicalController(
     ComPtr<IGameInput> gameInput;
     if (FAILED(GameInputCreate(gameInput.ReleaseAndGetAddressOf())) ||
         !gameInput) return SelectedControllerDiscoveryStatus::Unavailable;
-    PhysicalControllerDiscoveryContext context(enrollmentToken);
-    GameInputCallbackToken callback{};
-    if (FAILED(gameInput->RegisterDeviceCallback(
-            nullptr, GameInputKindGamepad, GameInputDeviceConnected,
-            GameInputBlockingEnumeration, &context,
-            OnPhysicalControllerDiscovery, &callback)) || callback == 0) {
-        return SelectedControllerDiscoveryStatus::Unavailable;
-    }
-    gameInput->StopCallback(callback);
-    if (!gameInput->UnregisterCallback(callback))
-        return SelectedControllerDiscoveryStatus::UnknownIdentity;
-    const std::scoped_lock lock(context.mutex);
-    return context.discovery.Resolve(descriptor);
+    return DiscoverCurrentPhysicalController(
+        *gameInput.Get(), enrollmentToken, descriptor);
 }
 
 } // namespace widgetrail::isolation

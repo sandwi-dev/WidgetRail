@@ -223,6 +223,23 @@ enum class SelectedControllerDiscoveryStatus : std::uint8_t {
     UnknownIdentity,
 };
 
+enum class LocalControllerResolutionStatus : std::uint8_t {
+    Ready,
+    Unavailable,
+    Ambiguous,
+    UnknownIdentity,
+    StableIdentityMismatch,
+};
+
+[[nodiscard]] bool SameStableControllerIdentity(
+    const SelectedControllerEnrollment& enrolled,
+    const SelectedControllerEnrollment& local) noexcept;
+[[nodiscard]] LocalControllerResolutionStatus ResolveLocalController(
+    const SelectedControllerEnrollment& enrolled,
+    SelectedControllerDiscoveryStatus discoveryStatus,
+    const SelectedControllerDescriptor& localDescriptor,
+    SelectedControllerEnrollment& localEnrollment) noexcept;
+
 // Bounded selection owner for one blocking GameInput enumeration. It retains
 // at most one exact physical descriptor and saturates at ambiguity; known
 // virtual outputs never compete with physical input.
@@ -245,7 +262,8 @@ public:
     virtual ~SelectedControllerSource() = default;
     [[nodiscard]] virtual SelectedControllerPrepareStatus Prepare(
         const SelectedControllerEnrollment& enrollment,
-        ControllerIsolationReaderIngress& ingress) noexcept = 0;
+        ControllerIsolationReaderIngress& ingress,
+        SelectedControllerEnrollment& preparedEnrollment) noexcept = 0;
     [[nodiscard]] virtual bool SampleCurrent(
         SelectedControllerCurrent& current) noexcept = 0;
     [[nodiscard]] virtual bool ApplyRumble(
