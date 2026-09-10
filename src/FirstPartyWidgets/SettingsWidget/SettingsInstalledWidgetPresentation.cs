@@ -31,7 +31,7 @@ internal static class SettingsInstalledWidgetPresentation
         {
             UI.Text("Installed widgets", "installed.heading", "Installed widgets").Classes("page-heading"),
             UI.Text(valid
-                    ? "Built-in widgets are included with the app. Community packages are unsigned: review their exact sealed bytes and requested capabilities before enabling. Publisher labels are unverified."
+                    ? "Built-in widgets come with WidgetRail. Only install community widgets from sources you trust. WidgetRail has not verified who made them."
                     : $"{diagnostic ?? "Installed widget catalog is unavailable."} Last-good installed versions remain available for review; retry after the catalog changes.",
                 "installed.help", "Installed widget help")
                 .Classes(valid ? "page-help" : "diagnostic-error"),
@@ -42,7 +42,7 @@ internal static class SettingsInstalledWidgetPresentation
                 .Disabled(!valid).Busy(busy)
                 .Classes("setting-row", "primary-button"),
             UI.Text(
-                    "Choose one local .wrwidget in the host picker. Successful packages are installed disabled for review; the selected path is never shared with this widget.",
+                    "Choose a .wrwidget file from your PC. New widgets stay off until you review their permissions and turn them on.",
                     "installed.install-local.help",
                     "Local widget installation safety")
                 .Classes("page-help"),
@@ -80,7 +80,7 @@ internal static class SettingsInstalledWidgetPresentation
             var compatibility = WidgetHostCompatibility.Evaluate(package.ActiveVersion.Manifest);
             var status = package.Enabled
                 ? compatibility.IsSupported ? "Enabled" : "Enabled · incompatible"
-                : compatibility.IsSupported ? "Disabled · unsigned review required" : "Incompatible";
+                : compatibility.IsSupported ? "Disabled · review before enabling" : "Incompatible";
             children.Add(UI.Button(
                     $"{package.Name} · {package.ActiveVersion.Version} · " +
                     (valid ? status : $"Last good · {status}"),

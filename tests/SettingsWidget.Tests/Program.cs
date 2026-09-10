@@ -1041,7 +1041,7 @@ static async Task InstalledWidgetReview()
         "installed.next-page");
     Assert.Equal(5, Buttons(first.Root).Count(button =>
         button.Id.StartsWith("installed.item.", StringComparison.Ordinal)));
-    Assert.Contains("unsigned review required", Button(first.Root, "installed.item.0").Text!);
+    Assert.Contains("review before enabling", Button(first.Root, "installed.item.0").Text!);
 
     await Action(widget, "installed.next-page");
     var second = Snapshot(widget);
@@ -1151,7 +1151,7 @@ static async Task LocalWidgetInstallationAction()
         button.ActionId == "host.install-local-widget"));
     Assert.Equal("installed.back", install.Focus!.Down);
     Assert.Equal("installed.install-local", Button(initial.Root, "installed.back").Focus!.Up);
-    Assert.Contains("installed disabled for review",
+    Assert.Contains("stay off until you review their permissions and turn them on",
         Text(initial.Root, "installed.install-local.help").Text!);
     Assert.True(!JsonSerializer.Serialize(initial).Contains(temp.Path, StringComparison.OrdinalIgnoreCase),
         "The Settings snapshot exposed a local package path.");
