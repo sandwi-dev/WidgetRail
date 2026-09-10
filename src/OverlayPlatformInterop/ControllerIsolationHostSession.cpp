@@ -273,21 +273,22 @@ struct ControllerIsolationHostSession::Impl final {
         // Every return and exception after publication goes through exact-owned
         // restoration. Reader/output objects are declared later and retire first.
         LocalPolicyCleanup cleanup(journalPath, record, hidhide, cleanupFailure);
-        HidHideSnapshot observed;
-        if (!hidhide.Apply(before, plan.plan->desired, observed, error)) {
-            FinishStartup(L"Controller isolation HidHide apply error=" + std::to_wstring(error)); return;
-        }
         auto ownedSource =
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
             test ? std::unique_ptr<SelectedControllerSource>{} :
 #endif
             CreateGameInputSelectedControllerReader();
-        LocalOutput nativeOutput;
         auto* source =
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
             test ? test->source :
 #endif
             ownedSource.get();
+        if (!source) { FinishStartup(L"Controller isolation reader allocation failed."); return; }
+        HidHideSnapshot observed;
+        if (!hidhide.Apply(before, plan.plan->desired, observed, error)) {
+            FinishStartup(L"Controller isolation HidHide apply error=" + std::to_wstring(error)); return;
+        }
+        LocalOutput nativeOutput;
         ControllerIsolationOutput& output =
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
             test ? *test->output :
@@ -296,7 +297,6 @@ struct ControllerIsolationHostSession::Impl final {
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
         if (test && test->throwAfterApply) throw std::runtime_error("injected post-apply allocation failure");
 #endif
-        if (!source) { FinishStartup(L"Controller isolation reader allocation failed."); return; }
         ControllerIsolationRoutingSession routing(*source, output, queues, {}, &queues);
         const RoutingAuthority authority{1, 1, 1, GetTickCount64() | 1};
         auto result = routing.PrepareSession(authority, descriptor.enrollment, GetTickCount64());

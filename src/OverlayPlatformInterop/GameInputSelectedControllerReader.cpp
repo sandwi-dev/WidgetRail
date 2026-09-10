@@ -334,6 +334,29 @@ DiscoverCurrentPhysicalController(
 
 class GameInputSelectedControllerReader final : public SelectedControllerSource {
 public:
+    GameInputSelectedControllerReader() noexcept {
+        constexpr auto focusPolicy = static_cast<GameInputFocusPolicy>(
+            GameInputEnableBackgroundInput |
+            GameInputEnableBackgroundGuideButton);
+        guideFocusPolicy_.store(
+            static_cast<std::uint32_t>(focusPolicy),
+            std::memory_order_relaxed);
+        const auto createResult =
+            GameInputCreate(gameInput_.ReleaseAndGetAddressOf());
+        if (FAILED(createResult) || !gameInput_) return;
+        gameInput_->SetFocusPolicy(focusPolicy);
+        const auto guideResult = gameInput_->RegisterSystemButtonCallback(
+            nullptr, GameInputSystemButtonGuide, this, OnGuide,
+            &guideToken_);
+        guideRegistrationResult_.store(
+            static_cast<std::uint32_t>(guideResult),
+            std::memory_order_relaxed);
+        if (FAILED(guideResult)) {
+            guideToken_ = 0;
+            gameInput_.Reset();
+        }
+    }
+
     ~GameInputSelectedControllerReader() override { Stop(); }
 
     SelectedControllerPrepareStatus Prepare(
@@ -343,13 +366,8 @@ public:
         preparedEnrollment = {};
         if (!enrollment.valid())
             return SelectedControllerPrepareStatus::InvalidEnrollment;
-        if (gameInput_ || device_)
+        if (!gameInput_ || device_ || guideToken_ == 0)
             return SelectedControllerPrepareStatus::Unavailable;
-        if (FAILED(GameInputCreate(gameInput_.ReleaseAndGetAddressOf())) ||
-            !gameInput_) {
-            Stop();
-            return SelectedControllerPrepareStatus::Unavailable;
-        }
         SelectedControllerDescriptor localDescriptor;
         const auto discovery = DiscoverCurrentPhysicalController(
             *gameInput_.Get(), enrollment.enrollmentToken, localDescriptor,
@@ -395,14 +413,6 @@ public:
         selectedDeviceId_ = preparedEnrollment.deviceId;
         ingress_ = &ingress;
         accepting_.store(true, std::memory_order_release);
-        constexpr auto focusPolicy = static_cast<GameInputFocusPolicy>(
-            GameInputEnableBackgroundInput |
-            GameInputEnableBackgroundGuideButton |
-            GameInputExclusiveForegroundGuideButton);
-        guideFocusPolicy_.store(
-            static_cast<std::uint32_t>(focusPolicy),
-            std::memory_order_relaxed);
-        gameInput_->SetFocusPolicy(focusPolicy);
         const auto readingResult = gameInput_->RegisterReadingCallback(
                 device_.Get(), GameInputKindGamepad, this, OnReading,
                 &readingToken_);
@@ -415,16 +425,6 @@ public:
                 GameInputDeviceConnected, GameInputNoEnumeration,
                 this, OnDevice, &deviceToken_);
         if (FAILED(deviceResult)) {
-            Stop();
-            return SelectedControllerPrepareStatus::CallbackRegistrationFailed;
-        }
-        const auto guideResult = gameInput_->RegisterSystemButtonCallback(
-                nullptr, GameInputSystemButtonGuide, this, OnGuide,
-                &guideToken_);
-        guideRegistrationResult_.store(
-            static_cast<std::uint32_t>(guideResult),
-            std::memory_order_relaxed);
-        if (FAILED(guideResult)) {
             Stop();
             return SelectedControllerPrepareStatus::CallbackRegistrationFailed;
         }
