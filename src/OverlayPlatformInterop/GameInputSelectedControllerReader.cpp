@@ -555,7 +555,7 @@ private:
     static void CALLBACK OnGuide(
         GameInputCallbackToken,
         void* context,
-        IGameInputDevice* device,
+        IGameInputDevice*,
         std::uint64_t timestamp,
         GameInputSystemButtons current,
         GameInputSystemButtons previous) noexcept {
@@ -570,21 +570,6 @@ private:
         CallbackLease lease(self);
         if (!lease || !self.ingress_) {
             self.guideLeaseRejections_.fetch_add(1, std::memory_order_relaxed);
-            return;
-        }
-        if (!device) {
-            self.guideNullDevices_.fetch_add(1, std::memory_order_relaxed);
-            return;
-        }
-        const GameInputDeviceInfo* info{};
-        if (FAILED(device->GetDeviceInfo(&info)) || !info) {
-            self.guideDeviceInfoFailures_.fetch_add(1, std::memory_order_relaxed);
-            return;
-        }
-        if (std::memcmp(
-                &info->deviceId, self.selectedDeviceId_.data(),
-                self.selectedDeviceId_.size()) != 0) {
-            self.guideSelectedIdMismatches_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
         if (currentGuide == previousGuide) {
