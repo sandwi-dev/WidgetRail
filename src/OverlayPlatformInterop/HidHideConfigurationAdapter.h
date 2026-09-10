@@ -3,6 +3,7 @@
 #include "ControllerIsolationCore.h"
 
 #include <cstdint>
+#include <span>
 #include <string>
 
 namespace widgetrail::isolation {
@@ -11,6 +12,10 @@ namespace widgetrail::isolation {
     const std::wstring& absolutePath,
     std::wstring& devicePath,
     std::uint32_t& nativeError) noexcept;
+
+[[nodiscard]] bool ParseHidHideMultiString(
+    std::span<const wchar_t> characters,
+    std::set<std::wstring>& values) noexcept;
 
 enum class HidHideConfigurationStatus : std::uint8_t {
     Ready,

@@ -1,5 +1,6 @@
 #include "../../src/OverlayPlatformInterop/HidHideConfigurationAdapter.h"
 
+#include <array>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -58,6 +59,27 @@ HidHideSnapshotTransaction Api(FakeTransaction& fake) {
     return {&fake, Read, WriteApplications, WriteDevices, WriteActive};
 }
 
+void DriverEmptyMultiStringIsAcceptedWithoutWeakeningShape() {
+    std::set<std::wstring> values{L"stale"};
+    constexpr std::array empty{L'\0'};
+    Check(ParseHidHideMultiString(empty, values) && values.empty(),
+          "the driver's one-NUL empty multi-string is accepted exactly");
+
+    constexpr std::array ordinary{L'A', L'\0', L'B', L'\0', L'\0'};
+    Check(ParseHidHideMultiString(ordinary, values) &&
+              values == std::set<std::wstring>{L"A", L"B"},
+          "ordinary double-terminated entries retain exact set semantics");
+
+    constexpr std::array missingTerminal{L'A', L'\0'};
+    constexpr std::array dataAfterEmpty{L'\0', L'A'};
+    constexpr std::array duplicate{L'A', L'\0', L'A', L'\0', L'\0'};
+    Check(!ParseHidHideMultiString({}, values) &&
+              !ParseHidHideMultiString(missingTerminal, values) &&
+              !ParseHidHideMultiString(dataAfterEmpty, values) &&
+              !ParseHidHideMultiString(duplicate, values),
+          "missing termination, trailing data, and duplicate entries still fail closed");
+}
+
 void ForeignDriftCausesNoMutation() {
     HidHideSnapshot expected{{L"existing.exe"}, {}, false, false};
     FakeTransaction fake{{{L"existing.exe", L"foreign.exe"}, {}, false, false}};
@@ -111,6 +133,7 @@ void PartialWriteRetainsObservedRecoveryEvidence() {
 }
 
 int main() {
+    DriverEmptyMultiStringIsAcceptedWithoutWeakeningShape();
     ForeignDriftCausesNoMutation();
     SameOwnerPerformsExactReadback();
     PartialWriteRetainsObservedRecoveryEvidence();
