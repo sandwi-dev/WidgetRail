@@ -160,16 +160,14 @@ void Prepare(
           "preparation acquires input before output and publishes neutral only");
 }
 
-void HeartbeatCannotActivateDormantWorker() {
+void PumpCannotActivateDormantRouting() {
     FakeSource source;
     FakeOutput output;
     FakeGuideSink guide;
     ControllerIsolationRoutingSession session{source, output, guide};
-    Check(session.Heartbeat(Authority(), 1) ==
-              ControllerIsolationRoutingResult::RejectedAuthority &&
-              session.Pump(1) ==
+    Check(session.Pump(1) ==
                   ControllerIsolationRoutingResult::RejectedState,
-          "heartbeat and pump cannot activate a disabled session");
+          "pump cannot activate a disabled routing session");
     Check(source.prepareCalls == 0 && output.opens == 0 &&
               output.reports.empty(),
           "no GameInput or virtual target owner runs before PrepareSession");
@@ -336,21 +334,25 @@ void TotalOrderPreservesGameplayAndContainsOverlayInput() {
           "explicit stop retires only the owned output and selected source");
 }
 
-void LeaseDisconnectAndSinkFailuresRetireOwnedTarget() {
+void LocalRoutingDisconnectAndSinkFailuresRetireOwnedTarget() {
     const auto authority = Authority();
     const auto enrollment = Enrollment();
-    FakeSource leaseSource;
-    FakeOutput leaseOutput;
-    FakeGuideSink leaseGuide;
-    ControllerIsolationRoutingSession lease{
-        leaseSource, leaseOutput, leaseGuide};
-    Prepare(lease, authority, enrollment, leaseSource, leaseOutput);
-    Check(lease.Heartbeat(authority, 200) ==
-              ControllerIsolationRoutingResult::Applied &&
-              lease.Pump(450) == ControllerIsolationRoutingResult::Applied &&
-              lease.Pump(451) == ControllerIsolationRoutingResult::Faulted &&
-              leaseOutput.removals == 1,
-          "host lease expiry fails closed even while no input arrives");
+    FakeSource containedSource;
+    FakeOutput containedOutput;
+    FakeGuideSink containedGuide;
+    ControllerIsolationRoutingSession contained{
+        containedSource, containedOutput, containedGuide};
+    Prepare(contained, authority, enrollment, containedSource, containedOutput);
+    Check(contained.CommitPlaying(authority, 10, 0) ==
+              ControllerIsolationRoutingResult::Waiting &&
+              contained.Pump(20) == ControllerIsolationRoutingResult::Applied &&
+              contained.EnterOverlay(authority, 21) ==
+                  ControllerIsolationRoutingResult::Applied &&
+              contained.Pump(10'000) == ControllerIsolationRoutingResult::Applied &&
+              contained.state() == ControllerIsolationRoutingState::OverlayInteraction &&
+              containedOutput.removals == 0 &&
+              containedOutput.reports.back() == GamepadState{},
+          "healthy contained routing remains neutral without heartbeat renewal");
 
     FakeSource disconnectSource;
     FakeOutput disconnectOutput;
@@ -430,14 +432,14 @@ void ReservedProducerDefersBarrierAndCachedNeutral() {
               session.state() == ControllerIsolationRoutingState::Playing &&
               output.reports.size() == reportsBeforeEnter,
           "EnterOverlay remains pending without an early neutral or applied result");
-    Check(ServiceControllerIsolationRoutingBeforeControlWait(session, 22) ==
+    Check(session.Pump(22) ==
               ControllerIsolationRoutingResult::Waiting &&
               session.state() == ControllerIsolationRoutingState::Playing,
           "pending producer yields to the serialized owner without false fault");
     session.readerIngress().ReleaseProducerForTest();
     producer.join();
     Check(published &&
-              ServiceControllerIsolationRoutingBeforeControlWait(session, 23) ==
+              session.Pump(23) ==
                   ControllerIsolationRoutingResult::Applied &&
               session.state() ==
                   ControllerIsolationRoutingState::OverlayInteraction &&
@@ -532,12 +534,9 @@ void ControlTrafficCannotStarveReadingPump() {
               ControllerReaderEventKind::Reading, 101, 21, down),
           "reading is queued before the synthetic request stream");
     for (std::uint64_t request = 0; request < 64; ++request) {
-        Check(ServiceControllerIsolationRoutingBeforeControlWait(
-                  session, 21 + request) ==
-                  ControllerIsolationRoutingResult::Applied &&
-                  session.Heartbeat(authority, 21 + request) ==
+        Check(session.Pump(21 + request) ==
                       ControllerIsolationRoutingResult::Applied,
-              "production pre-request service remains live during heartbeat traffic");
+              "local routing remains live while UI work is not polling input");
     }
     Check(output.reports.back() == down,
           "one admitted reading cannot be starved by ready control requests");
@@ -623,11 +622,11 @@ void ContainedInputPreservesTapAndSustainedAnalogOrder() {
 } // namespace
 
 int main() {
-    HeartbeatCannotActivateDormantWorker();
+    PumpCannotActivateDormantRouting();
     PreparationFailsBeforeOutputForUntrustedDevice();
     SampleFenceContainsOnlyPreFenceHistory();
     TotalOrderPreservesGameplayAndContainsOverlayInput();
-    LeaseDisconnectAndSinkFailuresRetireOwnedTarget();
+    LocalRoutingDisconnectAndSinkFailuresRetireOwnedTarget();
     ConflictingSourceTimestampFailsClosed();
     ReservedProducerDefersBarrierAndCachedNeutral();
     PendingEnterCanBeRecontainedOnHostLoss();

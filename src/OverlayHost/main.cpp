@@ -18148,60 +18148,39 @@ private:
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
-    if (__argc == 2 && __wargv[1]) {
-        std::optional<WidgetRailControllerIsolationCommand> command;
-        if (_wcsicmp(__wargv[1], L"--controller-isolation-enable") == 0)
-            command = WidgetRailControllerIsolationCommand::Enable;
-        else if (_wcsicmp(__wargv[1], L"--controller-isolation-status") == 0)
-            command = WidgetRailControllerIsolationCommand::Status;
-        else if (_wcsicmp(__wargv[1], L"--controller-isolation-disable") == 0)
-            command = WidgetRailControllerIsolationCommand::Disable;
-        else if (_wcsicmp(__wargv[1], L"--controller-isolation-recover") == 0)
-            command = WidgetRailControllerIsolationCommand::Recover;
-        if (command) {
-            WidgetRailControllerIsolationCommandResult result;
-            const auto status =
-                WidgetRailOverlayPlatformControllerIsolationCommand(
-                    *command, &result);
-            const wchar_t* state = L"failed";
-            switch (result.state) {
-            case WidgetRailControllerIsolationState::Disabled:
-                state = L"disabled"; break;
-            case WidgetRailControllerIsolationState::Prepared:
-                state = L"prepared"; break;
-            case WidgetRailControllerIsolationState::AwaitingNeutral:
-                state = L"awaiting neutral release"; break;
-            case WidgetRailControllerIsolationState::Playing:
-                state = L"playing"; break;
-            case WidgetRailControllerIsolationState::Contained:
-                state = L"overlay input contained"; break;
-            case WidgetRailControllerIsolationState::RecoveryRequired:
-                state = L"recovery required"; break;
-            case WidgetRailControllerIsolationState::Failed:
-                break;
-            }
-            std::wstring message = L"Controller isolation: ";
-            message += state;
-            if (result.message[0] != L'\0') {
-                message += L"\n\n";
-                message += result.message;
-            }
-            MessageBoxW(
-                nullptr, message.c_str(), L"WidgetRail Controller Isolation",
-                MB_OK | (status == WidgetRailOverlayPlatformStatus::Ok
-                    ? MB_ICONINFORMATION : MB_ICONERROR));
-            return status == WidgetRailOverlayPlatformStatus::Ok
-                ? EXIT_SUCCESS : EXIT_FAILURE;
+    for (int index = 1; index < __argc; ++index) {
+        if (_wcsicmp(__wargv[index], L"--controller-isolation-recover-only") != 0) continue;
+        if (__argc != 2) {
+            MessageBoxW(nullptr, L"Recovery-only must be used alone; it never starts controller routing.",
+                L"WidgetRail Controller Isolation", MB_OK | MB_ICONERROR);
+            return EXIT_FAILURE;
         }
+        wchar_t message[512]{};
+        const auto result = WidgetRailOverlayPlatformRecoverControllerIsolation(message, 512);
+        MessageBoxW(nullptr, message, L"WidgetRail Controller Isolation",
+            MB_OK | (result == WidgetRailOverlayPlatformStatus::Ok ? MB_ICONINFORMATION : MB_ICONERROR));
+        return result == WidgetRailOverlayPlatformStatus::Ok ? EXIT_SUCCESS : EXIT_FAILURE;
     }
     std::wstring processProfile = L"production";
     bool processOwnerProbe = false;
+    bool controllerIsolationEnabled = false;
     for (int index = 1; index < __argc; ++index) {
         if (_wcsicmp(__wargv[index], L"--process-profile") == 0 &&
             index + 1 < __argc) {
             processProfile = __wargv[++index];
         } else if (_wcsicmp(__wargv[index], L"--process-owner-probe") == 0) {
             processOwnerProbe = true;
+        } else if (_wcsicmp(__wargv[index], L"--controller-isolation") == 0) {
+            controllerIsolationEnabled = true;
+        } else if (_wcsicmp(__wargv[index], L"--controller-isolation-enable") == 0 ||
+                   _wcsicmp(__wargv[index], L"--controller-isolation-status") == 0 ||
+                   _wcsicmp(__wargv[index], L"--controller-isolation-disable") == 0 ||
+                   _wcsicmp(__wargv[index], L"--controller-isolation-recover") == 0) {
+            MessageBoxW(nullptr,
+                L"This controller-isolation command belongs to the retired helper design. "
+                L"Use --controller-isolation on the long-lived WidgetRail process.",
+                L"WidgetRail Controller Isolation", MB_OK | MB_ICONERROR);
+            return EXIT_FAILURE;
         }
     }
     widgetrail::process::OverlayProcessOwner processOwner;
@@ -18229,6 +18208,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         return received ? EXIT_SUCCESS : EXIT_FAILURE;
     }
     OverlayApp app;
+    WidgetRailOverlayPlatformConfigureControllerIsolation(
+        controllerIsolationEnabled ? WRAIL_OVERLAY_PLATFORM_TRUE
+                                   : WRAIL_OVERLAY_PLATFORM_FALSE);
     if (!app.Initialize(instance, showCommand)) {
         const std::wstring message = L"OverlayHost failed to initialize.\n\n" +
                                      app.initializationError();

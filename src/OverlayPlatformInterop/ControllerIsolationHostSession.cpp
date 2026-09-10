@@ -1,563 +1,400 @@
 #include "ControllerIsolationHostSession.h"
 
-#include "ControllerIsolationGuardianLifetime.h"
-#include "ControllerIsolationProcessOwner.h"
+#include "ControllerIsolationInputTransport.h"
+#include "ControllerIsolationReader.h"
+#include "LocalControllerPolicy.h"
+#include "ControllerIsolationRoutingSession.h"
 #include "HidHideConfigurationAdapter.h"
+#include "ViGEmOutputAdapter.h"
 
-#include <bcrypt.h>
+#include <windows.h>
 #include <shlobj.h>
 
 #include <array>
-#include <algorithm>
+#include <condition_variable>
+#include <deque>
 #include <filesystem>
-#include <limits>
+#include <fstream>
+#include <mutex>
+#include <set>
+#include <stop_token>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace widgetrail::isolation {
 namespace {
 
+constexpr std::uint64_t kNeutralDwellInputMilliseconds = 10;
+
 [[nodiscard]] std::filesystem::path CurrentExecutable() {
     std::array<wchar_t, 32'768> path{};
-    const auto length = GetModuleFileNameW(
-        nullptr, path.data(), static_cast<DWORD>(path.size()));
+    const auto length = GetModuleFileNameW(nullptr, path.data(),
+                                           static_cast<DWORD>(path.size()));
     return length == 0 || length >= path.size()
         ? std::filesystem::path{}
         : std::filesystem::path(std::wstring_view(path.data(), length));
 }
 
-[[nodiscard]] bool RandomBytes(void* value, const ULONG bytes) noexcept {
-    return BCryptGenRandom(
-        nullptr, static_cast<PUCHAR>(value), bytes,
-        BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0;
-}
+class LocalOutput final : public ControllerIsolationOutput {
+public:
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+    LocalOutput() noexcept : adapter_(testApi_) {}
+#else
+    LocalOutput() noexcept : adapter_(OfficialViGEmApi()) {}
+#endif
+    bool OpenOwnedTarget() noexcept override { return adapter_.Open(); }
+    bool Submit(const GamepadState& state) noexcept override { return adapter_.Submit(state); }
+    bool TakeLatestFeedback(ControllerRumbleState& state) noexcept override {
+        return adapter_.TakeLatestFeedback(state);
+    }
+    void RemoveOwnedTarget() noexcept override { adapter_.RemoveOwnedTarget(); }
+private:
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+    inline static const ViGEmApi testApi_{};
+#endif
+    ViGEmOutputAdapter adapter_;
+};
 
-[[nodiscard]] bool NewRecord(
-    const std::filesystem::path& journalPath,
-    ControllerIsolationJournalRecord& record,
-    std::wstring& diagnostic) noexcept {
-    const auto host = CurrentExecutable();
-    const auto directory = host.parent_path();
-    record = {};
-    record.hostPath = host.wstring();
-    record.guardianPath =
-        (directory / L"ControllerIsolationGuardian.exe").wstring();
-    record.workerPath =
-        (directory / L"ControllerIsolationWorker.exe").wstring();
-    record.hostProcessId = GetCurrentProcessId();
-    record.hostCreationTime = ProcessCreationTime(GetCurrentProcess());
-    record.phase = ControllerIsolationJournalPhase::Prepared;
-    std::array<std::uint64_t, 4> authority{};
-    if (!RandomBytes(authority.data(), static_cast<ULONG>(sizeof(authority))) ||
-        !RandomBytes(record.nonce.data(),
-                     static_cast<ULONG>(record.nonce.size()))) {
-        diagnostic = L"Controller isolation authority generation failed.";
-        return false;
+class LocalQueues final : public ControllerIsolationGuideSink,
+                          public ControllerIsolationHostInputSink {
+public:
+    void SetNotify(ControllerIsolationHostSession::Notify notify, void* context) noexcept {
+        notify_ = notify; context_ = context;
     }
-    for (auto& value : authority) if (value == 0) value = 1;
-    record.authority = {
-        authority[0], authority[1], authority[2], authority[3]};
-    std::uint32_t error{};
-    if (!ControllerIsolationFileSha256(
-            record.hostPath, record.hostSha256, error) ||
-        !ControllerIsolationFileSha256(
-            record.guardianPath, record.guardianSha256, error) ||
-        !ControllerIsolationFileSha256(
-            record.workerPath, record.workerSha256, error)) {
-        diagnostic = L"Controller isolation artifact identity failed error=" +
-            std::to_wstring(error);
-        return false;
+    bool BeginInteraction() noexcept { std::scoped_lock l(mutex_); return input_.BeginInteraction(); }
+    void RetireInteraction() noexcept { std::scoped_lock l(mutex_); input_.RetireInteraction(); }
+    bool PublishInput(const GamepadState& state, std::uint64_t ordinal) noexcept override {
+        std::scoped_lock l(mutex_); return input_.Push(state, ordinal);
     }
-    ControllerIsolationJournalStore store(journalPath);
-    if (!store.SaveAtomicIfAbsent(record, error)) {
-        diagnostic = L"Controller isolation journal creation failed error=" +
-            std::to_wstring(error);
-        return false;
-    }
-    return true;
-}
-
-[[nodiscard]] bool AuthenticatedShape(
-    const ControlFrame& response,
-    const ControlMessageKind expectedKind,
-    const ControllerIsolationJournalRecord& record,
-    const std::uint64_t sequence) noexcept {
-    return response.magic == ControllerIsolationProtocolMagic &&
-        response.version == ControllerIsolationProtocolVersion &&
-        response.size == sizeof(ControlFrame) && response.reserved == 0 &&
-        response.kind == expectedKind &&
-        SameNonce(response.nonce, record.nonce) &&
-        response.authority == record.authority &&
-        response.sequence == sequence;
-}
-
-[[nodiscard]] bool ExactGuardianProcess(
-    const ControllerIsolationPipeClient& client,
-    const ControllerIsolationJournalRecord& record) noexcept {
-    const auto processId = client.serverProcessId();
-    if (!processId) return false;
-    HANDLE process = OpenProcess(
-        PROCESS_QUERY_LIMITED_INFORMATION, FALSE, *processId);
-    if (!process) return false;
-    std::array<wchar_t, 32'768> path{};
-    DWORD length = static_cast<DWORD>(path.size());
-    const bool queried = QueryFullProcessImageNameW(
-        process, 0, path.data(), &length) != FALSE;
-    const bool exactPersistedIdentity =
-        record.guardianProcessId != 0 &&
-        *processId == record.guardianProcessId &&
-        ProcessCreationTime(process) == record.guardianCreationTime;
-    CloseHandle(process);
-    if (!queried || !exactPersistedIdentity || _wcsicmp(
-            std::wstring(path.data(), length).c_str(),
-            record.guardianPath.c_str()) != 0) return false;
-    std::array<std::uint8_t, 32> hash{};
-    std::uint32_t error{};
-    return ControllerIsolationFileSha256(path.data(), hash, error) &&
-        hash == record.guardianSha256;
-}
-
-[[nodiscard]] ControllerIsolationCommandStatus ConvertStatus(
-    const ControlProgress progress, const std::uint32_t remoteStatus) noexcept {
-    if (remoteStatus != 0 || progress == ControlProgress::Terminal)
-        return ControllerIsolationCommandStatus::RecoveryRequired;
-    switch (progress) {
-    case ControlProgress::PreparedNeutral:
-    case ControlProgress::Queued:
-        return ControllerIsolationCommandStatus::Prepared;
-    case ControlProgress::AwaitingNeutral:
-        return ControllerIsolationCommandStatus::AwaitingNeutral;
-    case ControlProgress::Playing:
-        return ControllerIsolationCommandStatus::Playing;
-    case ControlProgress::Contained:
-        return ControllerIsolationCommandStatus::Contained;
-    case ControlProgress::None:
-    case ControlProgress::Terminal:
-        break;
-    }
-    return ControllerIsolationCommandStatus::Failed;
-}
-
-[[nodiscard]] bool RecoverWithoutGuardian(
-    const std::filesystem::path& path,
-    ControllerIsolationJournalRecord record,
-    std::wstring& diagnostic) noexcept {
-    ControllerIsolationLifecycleLease lifecycle;
-    std::uint32_t error{};
-    if (!lifecycle.Acquire(
-            ControllerIsolationStartupTimeoutMilliseconds, error)) {
-        diagnostic = L"Controller isolation recovery lifecycle is busy error=" +
-            std::to_wstring(error);
-        return false;
-    }
-    ControllerIsolationJournalStore store(path);
-    if (!store.Matches(record, error)) {
-        diagnostic = L"Controller isolation recovery journal changed error=" +
-            std::to_wstring(error);
-        return false;
-    }
-    if (record.phase == ControllerIsolationJournalPhase::Prepared &&
-        record.guardianProcessId == 0 && record.guardianCreationTime == 0 &&
-        record.workerProcessId == 0 && record.workerCreationTime == 0) {
-        diagnostic = L"Controller isolation recovery cannot retire an unpublished startup owner.";
-        return false;
-    }
-    std::uint32_t guardianError{};
-    if (ObserveExactIsolationGuardian(record, guardianError) !=
-        GuardianLifetimeStatus::Exited) {
-        diagnostic = L"Controller isolation recovery requires proof that the exact Guardian exited error=" +
-            std::to_wstring(guardianError);
-        return false;
-    }
-    if (record.workerProcessId != 0 || record.workerCreationTime != 0) {
-        std::uint32_t workerError{};
-        if (ObserveExactIsolationWorker(record, workerError) !=
-            GuardianLifetimeStatus::Exited) {
-            diagnostic = L"Controller isolation recovery could not prove the exact Worker exited error=" +
-                std::to_wstring(workerError);
-            return false;
+    bool PublishGuide(bool pressed, std::uint64_t, std::uint64_t ordinal) noexcept override {
+        {
+            std::scoped_lock lock(mutex_);
+            if (guides_.size() == 32) return false;
+            guides_.push_back(ordinal | (pressed ? 0ULL : (1ULL << 63)));
         }
+        if (notify_) notify_(context_);
+        return true;
     }
-    HidHideConfigurationAdapter adapter;
-    HidHideSnapshot current;
-    if (adapter.ReadSnapshot(current, error) !=
-        HidHideConfigurationStatus::Ready) {
-        diagnostic = L"Controller isolation recovery read failed error=" +
-            std::to_wstring(error);
-        return false;
+    bool Pop(GamepadState& state, std::uint32_t& remaining) noexcept {
+        std::scoped_lock l(mutex_);
+        const auto next = input_.TakeNext();
+        if (!next) return false;
+        state = *next;
+        remaining = static_cast<std::uint32_t>(input_.size()); return true;
     }
-    const auto plan = PlanHidHideRecovery(record.policy, current);
-    if (plan.status == HidHideRestoreStatus::Conflict || !plan.desired) {
-        diagnostic = L"Controller isolation recovery found foreign policy drift.";
-        return false;
+    std::uint64_t TakeGuide() noexcept {
+        std::scoped_lock l(mutex_);
+        if (guides_.empty()) return 0;
+        const auto result = guides_.front(); guides_.pop_front(); return result;
     }
-    HidHideSnapshot observed;
-    if (adapter.ApplySnapshot(
-        current, *plan.desired, observed, error) !=
-        HidHideConfigurationStatus::Ready ||
-        !store.RemoveIfCurrent(record, error)) {
-        diagnostic = L"Controller isolation recovery failed error=" +
-            std::to_wstring(error);
-        return false;
+private:
+    std::mutex mutex_;
+    ControllerIsolationInputEventQueue input_;
+    std::deque<std::uint64_t> guides_;
+    ControllerIsolationHostSession::Notify notify_{};
+    void* context_{};
+};
+
+[[nodiscard]] LocalControllerProgress ConvertProgress(ControllerIsolationRoutingState state) {
+    switch (state) {
+    case ControllerIsolationRoutingState::PreparedNeutral: return LocalControllerProgress::Preparing;
+    case ControllerIsolationRoutingState::AwaitingPlaying: return LocalControllerProgress::AwaitingNeutral;
+    case ControllerIsolationRoutingState::Playing: return LocalControllerProgress::Playing;
+    case ControllerIsolationRoutingState::OverlayInteraction: return LocalControllerProgress::Contained;
+    case ControllerIsolationRoutingState::Fault: return LocalControllerProgress::Fault;
+    case ControllerIsolationRoutingState::Disabled: return LocalControllerProgress::Disabled;
     }
-    return true;
+    return LocalControllerProgress::Fault;
 }
 
 } // namespace
 
-std::filesystem::path ControllerIsolationJournalPath() noexcept {
-    PWSTR localAppData{};
-    if (FAILED(SHGetKnownFolderPath(
-            FOLDERID_LocalAppData, KF_FLAG_DEFAULT, nullptr, &localAppData)) ||
-        !localAppData) return {};
-    std::filesystem::path result(localAppData);
-    CoTaskMemFree(localAppData);
-    return result / L"WidgetRail" / L"controller-isolation" / L"session.bin";
-}
+struct ControllerIsolationHostSession::Impl final {
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+    std::optional<TestDependencies> test;
+#endif
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::jthread thread;
+    LocalQueues queues;
+    LocalControllerProgress progress{LocalControllerProgress::Disabled};
+    GamepadState latest{};
+    std::wstring diagnostic;
+    bool startupDone{}, desiredOverlay{};
+    std::uint64_t desiredGeneration{}, appliedGeneration{};
 
-ControllerIsolationHostSession::~ControllerIsolationHostSession() { Detach(); }
+    void FinishStartup(const std::wstring& message) noexcept {
+        std::scoped_lock lock(mutex);
+        diagnostic = message.empty() ? L"Controller isolation operation failed." : message; progress = LocalControllerProgress::Fault;
+        startupDone = true; changed.notify_all();
+    }
 
-bool ControllerIsolationHostSession::Connect(
-    const ControllerIsolationJournalRecord& record,
-    std::wstring& diagnostic,
-    const bool controlPipe) noexcept {
-    record_ = record;
-    std::uint32_t error{};
-    if (!client_.Connect(
-            controlPipe
-                ? ControllerIsolationControlPipeName(record.authority)
-                : ControllerIsolationPipeName(record.authority),
-            ControllerIsolationStartupTimeoutMilliseconds, error)) {
-        diagnostic = L"Controller isolation Guardian connection failed error=" +
-            std::to_wstring(error);
-        return false;
-    }
-    auto hello = MakeControlFrame(
-        ControlMessageKind::Hello, record.nonce, record.authority,
-        nextSequence_);
-    hello.processId = GetCurrentProcessId();
-    hello.observedAtMilliseconds = ProcessCreationTime(GetCurrentProcess());
-    ControlFrame response;
-    if (!client_.Exchange(
-            hello, response, ControllerIsolationStartupTimeoutMilliseconds,
-            error) ||
-        !AuthenticatedShape(
-            response, ControlMessageKind::HelloAccepted, record,
-            nextSequence_)) {
-        diagnostic = L"Controller isolation Guardian authentication failed error=" +
-            std::to_wstring(error);
-        client_.Close();
-        return false;
-    }
-    if (!ExactGuardianProcess(client_, record)) {
-        diagnostic = L"Controller isolation Guardian identity was rejected.";
-        client_.Close();
-        return false;
-    }
-    ++nextSequence_;
-    interactionPipe_ = !controlPipe;
-    if (response.status == 0) {
-        if (!ApplySuccessfulResponse(response, diagnostic)) return false;
-    } else {
-        progress_ = static_cast<ControlProgress>(
-            response.observedAtMilliseconds);
-    }
-    attached_ = true;
-    if (response.status != 0) {
-        diagnostic = L"Controller isolation recovery required error=" +
-            std::to_wstring(response.status);
-    }
-    return true;
-}
-
-bool ControllerIsolationHostSession::AttachIfEnabled(
-    std::wstring& diagnostic) noexcept {
-    if (attached_) return true;
-    const auto path = ControllerIsolationJournalPath();
-    if (path.empty()) return false;
-    ControllerIsolationJournalStore store(path);
-    std::uint32_t error{};
-    const auto record = store.Load(error);
-    if (!record) {
-        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND)
-            diagnostic = L"Controller isolation journal is invalid error=" +
-                std::to_wstring(error);
-        return false;
-    }
-    return Connect(*record, diagnostic);
-}
-
-bool ControllerIsolationHostSession::Exchange(
-    const ControlMessageKind kind, ControlFrame& response,
-    std::wstring& diagnostic, const std::uint64_t value) noexcept {
-    if (!attached_ || nextSequence_ == 0) return false;
-    auto request = MakeControlFrame(
-        kind, record_.nonce, record_.authority, nextSequence_);
-    request.observedAtMilliseconds = value;
-    std::uint32_t error{};
-    const auto expected = kind == ControlMessageKind::Stop
-        ? ControlMessageKind::Terminal : kind;
-    const auto timeout = kind == ControlMessageKind::Stop ||
-            kind == ControlMessageKind::Recover
-        ? ControllerIsolationStartupTimeoutMilliseconds
-        : ControllerIsolationCommandTimeoutMilliseconds;
-    if (!client_.Exchange(
-            request, response, timeout,
-            error) ||
-        !AuthenticatedShape(response, expected, record_, nextSequence_)) {
-        diagnostic = L"Controller isolation command failed error=" +
-            std::to_wstring(error);
-        Detach();
-        return false;
-    }
-    nextSequence_ = nextSequence_ == std::numeric_limits<std::uint64_t>::max()
-        ? 0 : nextSequence_ + 1;
-    if (response.status != 0) {
-        diagnostic = L"Controller isolation remote failure error=" +
-            std::to_wstring(response.status);
-        return false;
-    }
-    return ApplySuccessfulResponse(response, diagnostic);
-}
-
-bool ControllerIsolationHostSession::PrepareOverlay(
-    std::wstring& diagnostic) noexcept {
-    if (!attached_) return true;
-    ControlFrame response;
-    if ((progress_ == ControlProgress::Playing ||
-         progress_ == ControlProgress::Contained) &&
-        !Exchange(ControlMessageKind::EnterOverlay, response, diagnostic))
-        return false;
-    const auto startedAt = GetTickCount64();
-    while (progress_ != ControlProgress::Contained) {
-        if (progress_ == ControlProgress::Terminal ||
-            GetTickCount64() - startedAt >
-                ControllerIsolationCommandTimeoutMilliseconds) {
-            diagnostic = L"Controller isolation containment timed out.";
-            return false;
+    void Run(std::stop_token stop) noexcept {
+        std::wstring cleanupFailure;
+        LocalOwnerLease owner;
+        try {
+            if (!owner.Acquire(cleanupFailure)) { FinishStartup(cleanupFailure); return; }
+            RunOwned(stop, cleanupFailure);
+        } catch (const std::exception&) {
+            FinishStartup(L"Controller isolation setup/routing exception.");
+        } catch (...) {
+            FinishStartup(L"Controller isolation unexpected setup/routing exception.");
         }
-        if (!Exchange(ControlMessageKind::Heartbeat, response, diagnostic))
-            return false;
-        if (progress_ == ControlProgress::Playing &&
-            !Exchange(ControlMessageKind::EnterOverlay, response, diagnostic))
-            return false;
-        Sleep(1);
+        if (!cleanupFailure.empty()) {
+            std::scoped_lock lock(mutex);
+            if (!diagnostic.empty()) diagnostic += L" ";
+            diagnostic += cleanupFailure;
+            progress = LocalControllerProgress::Fault;
+            startupDone = true;
+            changed.notify_all();
+        }
     }
-    return true;
+
+    void RunOwned(std::stop_token stop, std::wstring& cleanupFailure) {
+        const auto journalPath =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? test->journalPath :
+#endif
+            LocalControllerJournalPath();
+        if (journalPath.empty()) { FinishStartup(L"Controller isolation LocalAppData unavailable."); return; }
+        if (std::filesystem::exists(journalPath.parent_path() / L"session.bin")) {
+            FinishStartup(L"A legacy controller-isolation journal requires original recovery."); return;
+        }
+        NativeLocalPolicyEffects nativeEffects;
+        LocalPolicyEffects& hidhide =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? *test->effects :
+#endif
+            nativeEffects;
+        LocalPolicyRecord prior; bool priorFound{}; std::wstring failure;
+        if (!LoadLocalPolicy(journalPath, prior, priorFound, failure) ||
+            (priorFound && !RestoreLocalPolicy(journalPath, prior, hidhide, failure))) {
+            FinishStartup(failure); return;
+        }
+        SelectedControllerDescriptor descriptor;
+        const auto discovery =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? (descriptor = test->descriptor, SelectedControllerDiscoveryStatus::Ready) :
+#endif
+            DiscoverCurrentPhysicalController(GetTickCount64() | 1, descriptor);
+        if (discovery !=
+            SelectedControllerDiscoveryStatus::Ready) {
+            FinishStartup(L"Controller isolation requires exactly one known physical controller."); return;
+        }
+        HidHideSnapshot before; std::uint32_t error{}; std::wstring executableDevicePath;
+        const bool pathResolved =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? (executableDevicePath = L"test-reader", true) :
+#endif
+            ControllerIsolationDosDevicePath(CurrentExecutable().wstring(), executableDevicePath, error);
+        if (!pathResolved || !hidhide.Read(before, error)) {
+            FinishStartup(L"Controller isolation HidHide preflight error=" + std::to_wstring(error)); return;
+        }
+        const auto plan = PlanHidHideApply(before, executableDevicePath,
+            {std::wstring(descriptor.deviceInstanceId.view())});
+        LocalPolicyRecord record;
+        if (!plan.plan || !SaveLocalPolicy(journalPath, plan.plan->journal, record, failure)) {
+            FinishStartup(failure.empty() ? L"Controller isolation policy plan rejected." : failure); return;
+        }
+        // Every return and exception after publication goes through exact-owned
+        // restoration. Reader/output objects are declared later and retire first.
+        LocalPolicyCleanup cleanup(journalPath, record, hidhide, cleanupFailure);
+        HidHideSnapshot observed;
+        if (!hidhide.Apply(before, plan.plan->desired, observed, error)) {
+            FinishStartup(L"Controller isolation HidHide apply error=" + std::to_wstring(error)); return;
+        }
+        auto ownedSource =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? std::unique_ptr<SelectedControllerSource>{} :
+#endif
+            CreateGameInputSelectedControllerReader();
+        LocalOutput nativeOutput;
+        auto* source =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? test->source :
+#endif
+            ownedSource.get();
+        ControllerIsolationOutput& output =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+            test ? *test->output :
+#endif
+            nativeOutput;
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+        if (test && test->throwAfterApply) throw std::runtime_error("injected post-apply allocation failure");
+#endif
+        if (!source) { FinishStartup(L"Controller isolation reader allocation failed."); return; }
+        ControllerIsolationRoutingSession routing(*source, output, queues, {}, &queues);
+        const RoutingAuthority authority{1, 1, 1, GetTickCount64() | 1};
+        auto result = routing.PrepareSession(authority, descriptor.enrollment, GetTickCount64());
+        if (result != ControllerIsolationRoutingResult::Applied) {
+            FinishStartup(L"Controller isolation reader/output prepare failed result=" +
+                std::to_wstring(static_cast<unsigned>(result))); return;
+        }
+        result = routing.CommitPlaying(authority, kNeutralDwellInputMilliseconds, GetTickCount64());
+        const auto startupAt = GetTickCount64();
+        while (!stop.stop_requested() && routing.state() != ControllerIsolationRoutingState::Playing &&
+               result != ControllerIsolationRoutingResult::Faulted &&
+               GetTickCount64() - startupAt < 2'000) {
+            result = routing.Pump(GetTickCount64()); Sleep(1);
+        }
+        if (routing.state() != ControllerIsolationRoutingState::Playing) {
+            FinishStartup(L"Controller isolation startup neutral barrier failed."); return;
+        }
+        { std::scoped_lock lock(mutex); progress = LocalControllerProgress::Playing;
+          startupDone = true; changed.notify_all(); }
+        std::wstring firstFailure;
+        LocalControllerOwnerAction inFlight{LocalControllerOwnerAction::None};
+        while (!stop.stop_requested()) {
+            bool wantsOverlay{};
+            std::uint64_t generation{};
+            { std::scoped_lock lock(mutex); wantsOverlay = desiredOverlay; generation = desiredGeneration; }
+            const auto action = inFlight == LocalControllerOwnerAction::None
+                ? DecideLocalControllerOwnerAction(ConvertProgress(routing.state()), wantsOverlay)
+                : LocalControllerOwnerAction::None;
+            result = ControllerIsolationRoutingResult::Applied;
+            if (action == LocalControllerOwnerAction::Enter || action == LocalControllerOwnerAction::Recontain) {
+                if (!queues.BeginInteraction()) {
+                    firstFailure = L"Controller isolation interaction generation exhausted."; break;
+                }
+                result = action == LocalControllerOwnerAction::Enter
+                    ? routing.EnterOverlay(authority, GetTickCount64())
+                    : routing.HoldContained(authority, GetTickCount64());
+            } else if (action == LocalControllerOwnerAction::Close) {
+                queues.RetireInteraction();
+                result = routing.CloseOverlay(authority, kNeutralDwellInputMilliseconds, GetTickCount64());
+            }
+            if (result != ControllerIsolationRoutingResult::Applied &&
+                result != ControllerIsolationRoutingResult::Waiting) {
+                firstFailure = L"Controller isolation local transition rejected result=" +
+                    std::to_wstring(static_cast<unsigned>(result)); break;
+            }
+            if (action != LocalControllerOwnerAction::None &&
+                result == ControllerIsolationRoutingResult::Waiting)
+                inFlight = action;
+            result = routing.Pump(GetTickCount64());
+            const bool transitionComplete =
+                ((inFlight == LocalControllerOwnerAction::Enter ||
+                  inFlight == LocalControllerOwnerAction::Recontain) &&
+                 routing.state() == ControllerIsolationRoutingState::OverlayInteraction) ||
+                (inFlight == LocalControllerOwnerAction::Close &&
+                 (routing.state() == ControllerIsolationRoutingState::AwaitingPlaying ||
+                  routing.state() == ControllerIsolationRoutingState::Playing));
+            if (transitionComplete || result != ControllerIsolationRoutingResult::Waiting)
+                inFlight = LocalControllerOwnerAction::None;
+            { std::scoped_lock lock(mutex); progress = ConvertProgress(routing.state());
+              latest = routing.currentState();
+              const bool desiredApplied = wantsOverlay
+                  ? routing.state() == ControllerIsolationRoutingState::OverlayInteraction
+                  : routing.state() == ControllerIsolationRoutingState::Playing ||
+                    routing.state() == ControllerIsolationRoutingState::AwaitingPlaying;
+              if (inFlight == LocalControllerOwnerAction::None && desiredApplied &&
+                  generation == desiredGeneration)
+                  appliedGeneration = generation;
+              changed.notify_all(); }
+            if (result == ControllerIsolationRoutingResult::Faulted) {
+                firstFailure = L"Controller isolation routing fault=" +
+                    std::to_wstring(static_cast<unsigned>(routing.fault())); break;
+            }
+            Sleep(1);
+        }
+        queues.RetireInteraction();
+        if (routing.state() != ControllerIsolationRoutingState::Disabled) (void)routing.Stop(authority);
+        (void)cleanup.Finish();
+        std::scoped_lock lock(mutex);
+        if (!firstFailure.empty()) {
+            diagnostic = firstFailure;
+            progress = LocalControllerProgress::Fault;
+        } else {
+            progress = stop.stop_requested() ? LocalControllerProgress::Disabled : LocalControllerProgress::Fault;
+        }
+        changed.notify_all();
+    }
+};
+
+ControllerIsolationHostSession::ControllerIsolationHostSession() noexcept = default;
+ControllerIsolationHostSession::~ControllerIsolationHostSession() { Stop(); }
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+ControllerIsolationHostSession::ControllerIsolationHostSession(TestDependencies dependencies)
+    : impl_(std::make_unique<Impl>()) { impl_->test = std::move(dependencies); }
+#endif
+
+bool ControllerIsolationHostSession::Start(bool enabled, std::wstring& diagnostic,
+    Notify notify, void* context) noexcept {
+    if (!enabled) return false;
+    try {
+        if (!impl_) impl_ = std::make_unique<Impl>();
+        if (impl_->thread.joinable()) { diagnostic = L"Controller isolation already configured."; return false; }
+        impl_->queues.SetNotify(notify, context);
+        impl_->thread = std::jthread([this](std::stop_token stop) { impl_->Run(stop); });
+    } catch (...) {
+        diagnostic = L"Controller isolation thread/allocation failed.";
+        return false;
+    }
+    std::unique_lock lock(impl_->mutex);
+    impl_->changed.wait(lock, [this] { return impl_->startupDone; });
+    diagnostic = impl_->diagnostic;
+    return impl_->progress == LocalControllerProgress::Playing;
+}
+
+bool ControllerIsolationHostSession::PrepareOverlay(std::wstring& diagnostic) noexcept {
+    if (!impl_) { diagnostic = L"Controller isolation is not configured."; return false; }
+    std::unique_lock lock(impl_->mutex);
+    if (impl_->progress == LocalControllerProgress::Fault) { diagnostic = impl_->diagnostic; return false; }
+    impl_->desiredOverlay = true;
+    const auto requestedGeneration = ++impl_->desiredGeneration;
+    (void)impl_->changed.wait_for(lock, std::chrono::milliseconds(500), [this, requestedGeneration] {
+        return (impl_->progress == LocalControllerProgress::Contained &&
+                impl_->appliedGeneration == requestedGeneration) ||
+               impl_->progress == LocalControllerProgress::Fault;
+    });
+    const bool contained = impl_->progress == LocalControllerProgress::Contained &&
+        impl_->appliedGeneration == requestedGeneration && impl_->desiredOverlay;
+    if (!contained) {
+        impl_->desiredOverlay = false;
+        ++impl_->desiredGeneration;
+    }
+    diagnostic = impl_->diagnostic;
+    if (!contained && diagnostic.empty()) diagnostic = L"Controller isolation containment did not complete; open cancelled.";
+    return contained;
 }
 
 void ControllerIsolationHostSession::CloseOverlay() noexcept {
-    if (!attached_ || progress_ != ControlProgress::Contained) return;
-    ControlFrame ignored;
-    std::wstring diagnostic;
-    (void)Exchange(ControlMessageKind::CloseOverlay, ignored, diagnostic, 10);
+    if (!impl_) return;
+    std::scoped_lock lock(impl_->mutex);
+    impl_->desiredOverlay = false;
+    ++impl_->desiredGeneration;
 }
 
-bool ControllerIsolationHostSession::Poll(
-    ControllerIsolationHostReading& reading,
-    std::wstring& diagnostic) noexcept {
+bool ControllerIsolationHostSession::Poll(ControllerIsolationHostReading& reading,
+                                           std::wstring& diagnostic) noexcept {
     reading = {};
-    if (!attached_) return false;
-    if (pendingStates_.Pop(reading.state)) {
-        reading.progress = progress_;
-        reading.guideEvent = TakeGuide();
-        reading.remainingInputStates = static_cast<std::uint32_t>(
-            pendingStates_.size());
-        return true;
-    }
-    if (!Pump(diagnostic)) return false;
-    if (!pendingStates_.Pop(reading.state)) reading.state = latestState_;
-    reading.progress = progress_;
-    reading.guideEvent = TakeGuide();
-    reading.remainingInputStates = static_cast<std::uint32_t>(
-        pendingStates_.size());
-    return true;
+    if (!impl_) return false;
+    std::scoped_lock lock(impl_->mutex);
+    reading.progress = impl_->progress; reading.state = impl_->latest;
+    (void)impl_->queues.Pop(reading.state, reading.remainingInputStates);
+    reading.guideEvent = impl_->queues.TakeGuide(); diagnostic = impl_->diagnostic;
+    return impl_->progress != LocalControllerProgress::Fault;
 }
 
-bool ControllerIsolationHostSession::PollGuide(
-    std::uint64_t& guideEvent, std::wstring& diagnostic) noexcept {
+bool ControllerIsolationHostSession::PollGuide(std::uint64_t& guideEvent,
+                                                std::wstring& diagnostic) noexcept {
     guideEvent = 0;
-    if (!attached_ || !Pump(diagnostic)) return false;
-    guideEvent = TakeGuide();
-    return true;
+    if (!impl_) return false;
+    std::scoped_lock lock(impl_->mutex);
+    guideEvent = impl_->queues.TakeGuide(); diagnostic = impl_->diagnostic;
+    return impl_->progress != LocalControllerProgress::Fault;
 }
 
-bool ControllerIsolationHostSession::Pump(std::wstring& diagnostic) noexcept {
-    ControlFrame response;
-    return Exchange(ControlMessageKind::Heartbeat, response, diagnostic);
+bool ControllerIsolationHostSession::active() const noexcept {
+    if (!impl_) return false;
+    std::scoped_lock lock(impl_->mutex);
+    return LocalControllerIsolationConfigured(impl_->progress);
 }
 
-bool ControllerIsolationHostSession::IngestResponse(
-    const ControlFrame& response, std::wstring& diagnostic) noexcept {
-    latestState_ = response.state;
-    const auto& batch = response.inputBatch;
-    const bool validBatch = batch.count <=
-            ControllerIsolationInputBatchCapacity &&
-        batch.reserved == 0 &&
-        (batch.count == 0
-             ? batch.firstIngressOrdinal == 0 && batch.lastIngressOrdinal == 0
-             : batch.interactionGeneration != 0 &&
-                 batch.firstIngressOrdinal != 0 &&
-                 batch.lastIngressOrdinal >= batch.firstIngressOrdinal);
-    if (!validBatch) {
-        diagnostic = L"Controller isolation input batch was malformed.";
-        Detach();
-        return false;
-    }
-    if (!pendingStates_.Push(batch)) {
-        diagnostic = L"Controller isolation host input queue overflowed.";
-        Detach();
-        return false;
-    }
-    if (response.deviceEnrollmentToken != 0) {
-        if (pendingGuideCount_ == pendingGuideEvents_.size()) {
-            diagnostic = L"Controller isolation Guide queue overflowed.";
-            Detach();
-            return false;
-        }
-        pendingGuideEvents_[
-            (pendingGuideHead_ + pendingGuideCount_) %
-            pendingGuideEvents_.size()] = response.deviceEnrollmentToken;
-        ++pendingGuideCount_;
-    }
-    return true;
-}
-
-bool ControllerIsolationHostSession::ApplySuccessfulResponse(
-    const ControlFrame& response, std::wstring& diagnostic) noexcept {
-    progress_ = static_cast<ControlProgress>(response.observedAtMilliseconds);
-    return !interactionPipe_ || IngestResponse(response, diagnostic);
-}
-
-#if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
-void ControllerIsolationHostSession::BeginResponsePathForTest(
-    const bool interactionPipe) noexcept {
-    attached_ = true;
-    interactionPipe_ = interactionPipe;
-}
-
-bool ControllerIsolationHostSession::ApplySuccessfulResponseForTest(
-    const ControlFrame& response, std::wstring& diagnostic) noexcept {
-    return ApplySuccessfulResponse(response, diagnostic);
-}
-
-ControllerIsolationHostReading
-ControllerIsolationHostSession::TakeBufferedResponseForTest() noexcept {
-    ControllerIsolationHostReading reading;
-    if (!pendingStates_.Pop(reading.state)) reading.state = latestState_;
-    reading.progress = progress_;
-    reading.guideEvent = TakeGuide();
-    reading.remainingInputStates = static_cast<std::uint32_t>(
-        pendingStates_.size());
-    return reading;
-}
-
-std::uint64_t
-ControllerIsolationHostSession::interactionGenerationForTest() const noexcept {
-    return pendingStates_.interactionGeneration();
-}
-#endif
-
-std::uint64_t ControllerIsolationHostSession::TakeGuide() noexcept {
-    if (pendingGuideCount_ == 0) return 0;
-    const auto event = pendingGuideEvents_[pendingGuideHead_];
-    pendingGuideHead_ =
-        (pendingGuideHead_ + 1) % pendingGuideEvents_.size();
-    --pendingGuideCount_;
-    return event;
-}
-
-void ControllerIsolationHostSession::Detach() noexcept {
-    client_.Close();
-    record_ = {};
-    nextSequence_ = 1;
-    progress_ = ControlProgress::None;
-    attached_ = false;
-    interactionPipe_ = false;
-    latestState_ = {};
-    pendingStates_.Reset();
-    pendingGuideHead_ = 0;
-    pendingGuideCount_ = 0;
-}
-
-ControllerIsolationCommandStatus ControllerIsolationHostSession::ExecuteCommand(
-    const ControllerIsolationCommand command,
-    std::wstring& diagnostic) noexcept {
-    const auto path = ControllerIsolationJournalPath();
-    if (path.empty()) {
-        diagnostic = L"Controller isolation LocalAppData path is unavailable.";
-        return ControllerIsolationCommandStatus::Failed;
-    }
-    ControllerIsolationJournalStore store(path);
-    std::uint32_t error{};
-    auto record = store.Load(error);
-    if (command == ControllerIsolationCommand::Enable && !record &&
-        (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND)) {
-        ControllerIsolationLifecycleLease startup;
-        if (!startup.Acquire(
-                ControllerIsolationStartupTimeoutMilliseconds, error)) {
-            diagnostic = L"Controller isolation startup lifecycle is busy error=" +
-                std::to_wstring(error);
-            return ControllerIsolationCommandStatus::Failed;
-        }
-        record = store.Load(error);
-        if (record) {
-            startup.Release();
-        } else if (error != ERROR_FILE_NOT_FOUND &&
-                   error != ERROR_PATH_NOT_FOUND) {
-            diagnostic = L"Controller isolation journal is invalid error=" +
-                std::to_wstring(error);
-            return ControllerIsolationCommandStatus::RecoveryRequired;
-        } else {
-            ControllerIsolationJournalRecord created;
-            if (!NewRecord(path, created, diagnostic))
-                return ControllerIsolationCommandStatus::Failed;
-            std::uint32_t processId{};
-            if (LaunchIndependentIsolationGuardian(
-                    created.guardianPath, path, created, processId, error) !=
-                GuardianLaunchStatus::Started) {
-                (void)store.RemoveIfCurrent(created, error);
-                diagnostic =
-                    L"Controller isolation Guardian launch failed error=" +
-                    std::to_wstring(error);
-                return ControllerIsolationCommandStatus::Failed;
-            }
-            record = created;
-            startup.Release();
-        }
-    }
-    if (!record) {
-        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND) {
-            diagnostic = L"Controller isolation journal is invalid error=" +
-                std::to_wstring(error);
-            return ControllerIsolationCommandStatus::RecoveryRequired;
-        }
-        if (command == ControllerIsolationCommand::Status ||
-            command == ControllerIsolationCommand::Disable ||
-            command == ControllerIsolationCommand::Recover)
-            return ControllerIsolationCommandStatus::Disabled;
-        return ControllerIsolationCommandStatus::Failed;
-    }
-    ControllerIsolationHostSession session;
-    if (!session.Connect(*record, diagnostic, true)) {
-        if (command == ControllerIsolationCommand::Recover &&
-            RecoverWithoutGuardian(path, *record, diagnostic))
-            return ControllerIsolationCommandStatus::Disabled;
-        return record->phase ==
-                ControllerIsolationJournalPhase::RecoveryRequired
-            ? ControllerIsolationCommandStatus::RecoveryRequired
-            : ControllerIsolationCommandStatus::Failed;
-    }
-    ControlFrame response;
-    ControlMessageKind kind = ControlMessageKind::QueryStatus;
-    if (command == ControllerIsolationCommand::Disable)
-        kind = ControlMessageKind::Stop;
-    else if (command == ControllerIsolationCommand::Recover)
-        kind = ControlMessageKind::Recover;
-    if (!session.Exchange(kind, response, diagnostic))
-        return ControllerIsolationCommandStatus::RecoveryRequired;
-    return kind == ControlMessageKind::Stop || kind == ControlMessageKind::Recover
-        ? ControllerIsolationCommandStatus::Disabled
-        : ConvertStatus(session.progress_, response.status);
+void ControllerIsolationHostSession::Stop() noexcept {
+    if (!impl_) return;
+    if (impl_->thread.joinable()) { impl_->thread.request_stop(); impl_->thread.join(); }
 }
 
 } // namespace widgetrail::isolation

@@ -1,110 +1,80 @@
 #pragma once
 
-#include "ControllerIsolationJournal.h"
-#include "ControllerIsolationInputTransport.h"
-#include "ControllerIsolationReconnect.h"
-
-#include <windows.h>
+#include "ControllerIsolationCore.h"
 
 #include <cstdint>
-#include <array>
-#include <filesystem>
-#include <optional>
+#include <memory>
 #include <string>
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+#include "ControllerIsolationRoutingSession.h"
+#include "LocalControllerPolicy.h"
+#endif
 
 namespace widgetrail::isolation {
 
-enum class ControllerIsolationCommand : std::uint32_t {
-    Enable = 1,
-    Status = 2,
-    Disable = 3,
-    Recover = 4,
+enum class LocalControllerProgress : std::uint8_t {
+    Disabled, Preparing, Playing, Contained, AwaitingNeutral, Fault,
 };
 
-enum class ControllerIsolationCommandStatus : std::uint32_t {
-    Disabled = 0,
-    Prepared = 1,
-    AwaitingNeutral = 2,
-    Playing = 3,
-    Contained = 4,
-    RecoveryRequired = 5,
-    Failed = 6,
-};
+enum class LocalControllerOwnerAction : std::uint8_t { None, Enter, Recontain, Close };
+
+[[nodiscard]] constexpr LocalControllerOwnerAction DecideLocalControllerOwnerAction(
+    const LocalControllerProgress progress, const bool desiredOverlay) noexcept {
+    if (desiredOverlay && progress == LocalControllerProgress::Playing)
+        return LocalControllerOwnerAction::Enter;
+    if (desiredOverlay && progress == LocalControllerProgress::AwaitingNeutral)
+        return LocalControllerOwnerAction::Recontain;
+    if (!desiredOverlay && progress == LocalControllerProgress::Contained)
+        return LocalControllerOwnerAction::Close;
+    return LocalControllerOwnerAction::None;
+}
+
+[[nodiscard]] constexpr bool LocalControllerIsolationConfigured(
+    const LocalControllerProgress progress) noexcept {
+    return progress != LocalControllerProgress::Disabled;
+}
 
 struct ControllerIsolationHostReading final {
     GamepadState state{};
-    ControlProgress progress{ControlProgress::None};
+    LocalControllerProgress progress{LocalControllerProgress::Disabled};
     std::uint64_t guideEvent{};
     std::uint32_t remainingInputStates{};
 };
 
+// Application-lifetime controller owner. Its private routing thread is the only
+// caller of GameInput, the routing state machine and the ViGEm target. The UI
+// thread only requests mode changes and consumes bounded local snapshots.
 class ControllerIsolationHostSession final {
 public:
-    ControllerIsolationHostSession() noexcept = default;
+    ControllerIsolationHostSession() noexcept;
     ~ControllerIsolationHostSession();
     ControllerIsolationHostSession(const ControllerIsolationHostSession&) = delete;
-    ControllerIsolationHostSession& operator=(
-        const ControllerIsolationHostSession&) = delete;
+    ControllerIsolationHostSession& operator=(const ControllerIsolationHostSession&) = delete;
 
-    [[nodiscard]] bool AttachIfEnabled(std::wstring& diagnostic) noexcept;
+    using Notify = void (*)(void*) noexcept;
+    [[nodiscard]] bool Start(bool enabled, std::wstring& diagnostic,
+                             Notify notify = nullptr, void* context = nullptr) noexcept;
     [[nodiscard]] bool PrepareOverlay(std::wstring& diagnostic) noexcept;
     void CloseOverlay() noexcept;
-    [[nodiscard]] bool Poll(
-        ControllerIsolationHostReading& reading,
-        std::wstring& diagnostic) noexcept;
-    [[nodiscard]] bool PollGuide(
-        std::uint64_t& guideEvent,
-        std::wstring& diagnostic) noexcept;
-    [[nodiscard]] bool active() const noexcept { return attached_; }
-    [[nodiscard]] ControlProgress progress() const noexcept { return progress_; }
-    void Detach() noexcept;
-
-#if defined(WRAIL_CONTROLLER_ISOLATION_TESTING)
-    void BeginResponsePathForTest(bool interactionPipe = true) noexcept;
-    [[nodiscard]] bool ApplySuccessfulResponseForTest(
-        const ControlFrame& response,
-        std::wstring& diagnostic) noexcept;
-    [[nodiscard]] ControllerIsolationHostReading
-    TakeBufferedResponseForTest() noexcept;
-    [[nodiscard]] std::uint64_t interactionGenerationForTest() const noexcept;
+    [[nodiscard]] bool Poll(ControllerIsolationHostReading&, std::wstring&) noexcept;
+    [[nodiscard]] bool PollGuide(std::uint64_t&, std::wstring&) noexcept;
+    [[nodiscard]] bool active() const noexcept;
+    void Stop() noexcept;
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+    struct TestDependencies {
+        LocalPolicyEffects* effects{};
+        SelectedControllerSource* source{};
+        ControllerIsolationOutput* output{};
+        SelectedControllerDescriptor descriptor{};
+        std::filesystem::path journalPath;
+        bool throwAfterApply{};
+    };
+    explicit ControllerIsolationHostSession(TestDependencies dependencies);
 #endif
 
-    [[nodiscard]] static ControllerIsolationCommandStatus ExecuteCommand(
-        ControllerIsolationCommand command,
-        std::wstring& diagnostic) noexcept;
-
 private:
-    [[nodiscard]] bool Connect(
-        const ControllerIsolationJournalRecord& record,
-        std::wstring& diagnostic,
-        bool controlPipe = false) noexcept;
-    [[nodiscard]] bool Exchange(
-        ControlMessageKind kind,
-        ControlFrame& response,
-        std::wstring& diagnostic,
-        std::uint64_t value = 0) noexcept;
-    [[nodiscard]] bool Pump(std::wstring& diagnostic) noexcept;
-    [[nodiscard]] bool IngestResponse(
-        const ControlFrame& response,
-        std::wstring& diagnostic) noexcept;
-    [[nodiscard]] bool ApplySuccessfulResponse(
-        const ControlFrame& response,
-        std::wstring& diagnostic) noexcept;
-    [[nodiscard]] std::uint64_t TakeGuide() noexcept;
-
-    ControllerIsolationPipeClient client_;
-    ControllerIsolationJournalRecord record_{};
-    std::uint64_t nextSequence_{1};
-    ControlProgress progress_{ControlProgress::None};
-    bool attached_{};
-    bool interactionPipe_{};
-    GamepadState latestState_{};
-    ControllerIsolationHostStateQueue pendingStates_;
-    std::array<std::uint64_t, 32> pendingGuideEvents_{};
-    std::size_t pendingGuideHead_{};
-    std::size_t pendingGuideCount_{};
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
-
-[[nodiscard]] std::filesystem::path ControllerIsolationJournalPath() noexcept;
 
 } // namespace widgetrail::isolation

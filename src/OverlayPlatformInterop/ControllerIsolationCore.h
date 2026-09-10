@@ -16,10 +16,8 @@ namespace widgetrail::isolation {
 struct RoutingBudgets final {
     std::size_t maximumQueuedReadings{256};
     std::uint64_t maximumQueuedReadingAgeMilliseconds{100};
-    std::uint64_t hostLeaseMilliseconds{250};
     std::uint64_t minimumNeutralDwellMilliseconds{20};
     std::uint64_t maximumNeutralDwellMilliseconds{50};
-    std::uint64_t workerHeartbeatTimeoutMilliseconds{250};
 
     [[nodiscard]] friend constexpr bool operator==(
         const RoutingBudgets&, const RoutingBudgets&) noexcept = default;
@@ -172,9 +170,6 @@ public:
         const RoutingAuthority& authority,
         const DeviceReading& current,
         std::uint64_t nowMilliseconds) noexcept;
-    [[nodiscard]] CommandResult RenewHostLease(
-        const RoutingAuthority& authority,
-        std::uint64_t nowMilliseconds) noexcept;
     [[nodiscard]] CommandResult HoldOverlay(
         const RoutingAuthority& authority,
         std::uint64_t nowMilliseconds) noexcept;
@@ -227,7 +222,6 @@ private:
     std::uint64_t lastQueuedOrdinal_{};
     std::uint64_t lastObservedOrdinal_{};
     std::uint64_t resumeAfterOrdinal_{};
-    std::uint64_t lastLeaseRenewedAtMilliseconds_{};
     bool budgetsValid_{};
     bool targetRetired_{true};
 };
@@ -258,41 +252,6 @@ private:
     std::uint64_t observations_{};
     std::uint64_t outliers_{};
 };
-
-struct WorkerIdentity final {
-    std::uint32_t processId{};
-    std::uint64_t processCreationTime{};
-    RoutingAuthority authority;
-    std::wstring targetIdentity;
-
-    [[nodiscard]] bool valid() const noexcept {
-        return processId != 0 && processCreationTime != 0 && authority.valid() &&
-            !targetIdentity.empty();
-    }
-
-    [[nodiscard]] friend bool operator==(
-        const WorkerIdentity&, const WorkerIdentity&) noexcept = default;
-};
-
-enum class GuardianAction {
-    None,
-    RecheckExactWorker,
-    TerminateExactWorker,
-    ExpectOwnedTargetRetired,
-    RefuseMismatchedWorker,
-};
-
-struct GuardianObservation final {
-    WorkerIdentity expected;
-    std::optional<WorkerIdentity> observed;
-    std::uint64_t lastHeartbeatAtMilliseconds{};
-    std::uint64_t nowMilliseconds{};
-    bool finalRecheck{};
-};
-
-[[nodiscard]] GuardianAction DecideGuardianAction(
-    const GuardianObservation& observation,
-    const RoutingBudgets& budgets = {}) noexcept;
 
 struct HidHideSnapshot final {
     // The platform adapter canonicalizes these strings before they enter the
