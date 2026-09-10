@@ -43,6 +43,44 @@ internal static class ControllerControlScenarios
             catch (OperationCanceledException) { }
             Check(await control.ReadPreferenceAsync(default) == saved, "Cancellation must not mutate settings.");
             Check(!(await new BridgeControllerControl(null).SetAsync(false, default)).Accepted, "Missing store must refuse.");
+            var transitions = new BridgeControllerControl(store, clock);
+            await transitions.ReadPreferenceAsync(default);
+            transitions.Report(ready with { State = ControllerControlState.Active });
+            Check((await transitions.SetAsync(false, default)).Status.State == ControllerControlState.Stopping,
+                "Disable immediately reports its pending transition.");
+            Check(transitions.Status.State == ControllerControlState.Stopping,
+                "A refresh cannot return cached Active after accepted disable.");
+            transitions.Report(ready with { State = ControllerControlState.Active });
+            Check(transitions.Status.State == ControllerControlState.Stopping,
+                "The host report sent before receiving the new preference must not regress the status.");
+            await transitions.ReadPreferenceAsync(default);
+            Check(transitions.Status.State == ControllerControlState.Stopping,
+                "Issuing the new preference alone does not confirm application.");
+            transitions.Report(ready);
+            Check(transitions.Status.State == ControllerControlState.Off,
+                "The next applied host report completes disable without an intervening Active state.");
+
+            await transitions.SetAsync(true, default);
+            transitions.Report(ready);
+            Check(transitions.Status.State == ControllerControlState.Starting, "Enable also ignores a pre-command Off report.");
+            await transitions.ReadPreferenceAsync(default);
+            await transitions.SetAsync(false, default);
+            transitions.Report(ready with { State = ControllerControlState.Active });
+            Check(transitions.Status.State == ControllerControlState.Stopping,
+                "Rapid reversal cannot be completed by the earlier enable's Active report.");
+            await transitions.ReadPreferenceAsync(default);
+            transitions.Report(ready with { State = ControllerControlState.RecoveryRequired });
+            Check(transitions.Status.State == ControllerControlState.RecoveryRequired,
+                "A failure reported for the current command remains visible.");
+            Check(!(await transitions.SetAsync(true, default)).Accepted, "Transition masking must not bypass the recovery gate.");
+            await transitions.SetAsync(false, default);
+            clock.Advance(6);
+            Check(transitions.Status == ControllerControlStatus.Unavailable, "Pending transitions cannot make expired host reports fresh.");
+            await store.ReplaceAsync(PlatformSettingsDocument.Default);
+            await transitions.ReadPreferenceAsync(default);
+            transitions.Report(ready);
+            Check(transitions.Status.State == ControllerControlState.Off,
+                "Resetting settings must supersede a pending request even when the revision returns to zero.");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
