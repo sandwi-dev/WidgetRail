@@ -3382,6 +3382,37 @@ void OversizedFocusFollowUsesOneAxisSymmetricRevealOwner() {
 }
 
 void IrrevealableClipsDoNotBecomeFocusTraps() {
+    for (const float pixelScale : {1.0F, 1.05F, 1.25F, 1.5F, 2.0F}) {
+        for (const float nativeOverlap : {0.75F, 2.5F}) {
+            WidgetSnapshot boundary;
+            boundary.instanceId = L"scroll-limit-rounding";
+            boundary.activeInputScopeId = L"limit.scroll";
+            boundary.root = Node(L"limit.scroll", L"scroll");
+            boundary.root.inputScopeId = boundary.activeInputScopeId;
+            boundary.root.scrollAxis = L"vertical";
+            auto target = FixedButton(L"limit.target", 44);
+            // Presentation geometry can extend past the layout's scroll limit
+            // after snapping. Model that difference independently of Taffy rounding.
+            target.baseStyle.insert_or_assign(L"translate-y", Length(nativeOverlap / pixelScale));
+            boundary.root.children = {FixedSpacer(L"limit.prefix", 180), std::move(target)};
+            widgetrail::DeclarativeRenderOptions options;
+            options.pixelScale = pixelScale;
+            DeclarativeRenderer boundaryRenderer{nullptr, nullptr, nullptr};
+            const auto before = boundaryRenderer.Render(
+                nullptr, boundary, {}, {0, 0, 160, 100}, options);
+            Check(!before.focusRects.contains(L"limit.target"),
+                  "scroll-limit target begins offscreen");
+            Check(before.revealableFocusIds.contains(L"limit.target") == (nativeOverlap < 1.0F),
+                  "scroll-limit reachability tolerates one raster pixel but rejects larger clipping");
+            if (nativeOverlap < 1.0F) {
+                const auto after = boundaryRenderer.Render(
+                    nullptr, boundary, L"limit.target", {0, 0, 160, 100}, options);
+                Check(after.focusRects.contains(L"limit.target") &&
+                      after.scrollOffsets.at(L"limit.scroll") > 0,
+                      "accepted scroll-limit target is revealed by focus-follow");
+            }
+        }
+    }
     WidgetSnapshot rasterEdge;
     rasterEdge.instanceId = L"raster-edge.runtime";
     rasterEdge.activeInputScopeId = L"root";

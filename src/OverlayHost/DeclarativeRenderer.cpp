@@ -2366,9 +2366,12 @@ struct DeclarativeRenderer::RenderPass final {
         }
         if (!hasMatchingScroll) return false;
 
+        // Layout scroll limits and raster-snapped presentation edges can differ
+        // by one pixel. Use the same tolerance before and after focus-follow.
         return revealRange.valid &&
             std::max(minimumDelta, revealRange.minimumDelta) <=
-                std::min(maximumDelta, revealRange.maximumDelta) + kRevealEpsilon;
+                std::min(maximumDelta, revealRange.maximumDelta) +
+                    std::max(kRevealEpsilon, rasterEdgeTolerance);
     }
 
     [[nodiscard]] bool CanRevealNode(const std::wstring_view nodeId) const {

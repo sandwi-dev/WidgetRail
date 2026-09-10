@@ -78,13 +78,22 @@ internal static class SettingsPresentation
             shortcuts = container.Shortcuts;
             content = container with { InputScopeId = null, Shortcuts = [] };
         }
+        // Restored/selected focus may be in the middle of a page. Only the
+        // first available page button should lead Up to the fixed header.
+        string? FirstButton(WidgetElement element) => element switch
+        {
+            ButtonElement button when button.IsDisabled is not true || button.Id == initialFocus => button.Id,
+            ContainerElement group => group.Children.Select(FirstButton).FirstOrDefault(id => id is not null),
+            _ => null,
+        };
+        var headerEntry = FirstButton(content);
         WidgetElement Link(WidgetElement element)
         {
             if (element is ButtonElement button)
             {
                 if (initialFocus is not null && element.Id is "settings.quit" or "settings.restart")
                     return button.FocusDown(initialFocus);
-                if (element.Id == initialFocus && button.FocusNeighbors?.Up is null) return button.FocusUp("settings.restart");
+                if (element.Id == headerEntry && button.FocusNeighbors?.Up is null) return button.FocusUp("settings.restart");
             }
             if (element is ContainerElement group) return group with { Children = group.Children.Select(Link).ToArray() };
             return element;
@@ -533,20 +542,7 @@ internal static class SettingsPresentation
                 status: selected ? "Active" : entry.IsValid ? "Installed" : "Invalid",
                 statusTone: entry.IsValid ? StatusTone.Neutral : StatusTone.Danger,
                 isBusy: busy);
-            // Explicit links keep adjacent themes reachable outside the scroll viewport.
-            children.Add(row with
-            {
-                Children = row.Children.Select(child => child is ButtonElement button
-                    ? button with
-                    {
-                        FocusNeighbors = new()
-                        {
-                            Up = index > 0 ? $"theme.item.{index - 1}.action" : "settings.restart",
-                            Down = index + 1 < themes.Themes.Count ? $"theme.item.{index + 1}.action" : null,
-                        },
-                    }
-                    : child).ToArray(),
-            });
+            children.Add(row);
             if (selected && requestedFocus is null) initialFocus = $"theme.item.{index}.action";
         }
         return View(header, PageScope("theme.picker", children.ToArray()),

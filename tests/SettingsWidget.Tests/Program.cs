@@ -489,8 +489,8 @@ static async Task ThemePickerScroll()
         "Theme picker did not expose every installed test theme in one Scroll.");
     for (var index = 0; index < options.Length; index++)
     {
-        Assert.Equal(index > 0 ? options[index - 1].Id : "settings.restart", options[index].Focus!.Up);
-        Assert.Equal(index + 1 < options.Length ? options[index + 1].Id : null, options[index].Focus!.Down);
+        Assert.Equal(index == 0 ? "settings.restart" : null, options[index].Focus?.Up);
+        Assert.Equal(null, options[index].Focus?.Down);
     }
     for (var index = 0; index < 6; index++)
         Assert.True(Nodes(snapshot.Root).Any(node =>
@@ -513,7 +513,7 @@ static async Task ThemePickerScroll()
     await Action(widget, "back");
     var restored = Snapshot(widget);
     Assert.Equal(options[^1].Id, restored.InitialFocusId);
-    Assert.Equal(options[^2].Id, Button(restored.Root, options[^1].Id).Focus!.Up);
+    Assert.Equal(null, Button(restored.Root, options[^1].Id).Focus?.Up);
     Assert.Equal("settings.restart", Button(restored.Root, options[0].Id).Focus!.Up);
     Assert.Valid(restored);
 
@@ -524,8 +524,7 @@ static async Task ThemePickerScroll()
     var selected = Snapshot(widget);
     var selectedIndex = ThemeIndex(widget, "Theme 5");
     Assert.Equal($"theme.item.{selectedIndex}.action", selected.InitialFocusId);
-    Assert.Equal($"theme.item.{selectedIndex - 1}.action",
-        Button(selected.Root, selected.InitialFocusId!).Focus!.Up);
+    Assert.Equal(null, Button(selected.Root, selected.InitialFocusId!).Focus?.Up);
     Assert.Valid(selected);
 }
 

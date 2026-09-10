@@ -118,8 +118,8 @@ internal static class ControllerSettingsScenarios
         var nodes = Nodes(snapshot.Root).ToArray();
         var toggle = nodes.Single(node => node.Id == "controllers.exclusive-control");
         var refresh = nodes.Single(node => node.Id == "controllers.refresh");
-        if (canChange && (toggle.Focus?.Down != refresh.Id || refresh.Focus?.Up != toggle.Id))
-            throw new Exception("Controller actions must remain mutually reachable outside the scroll viewport.");
+        if (canChange && (toggle.Focus?.Down is not null || refresh.Focus?.Up is not null))
+            throw new Exception("Controller actions must use geometric navigation inside the page.");
         if (!canChange && refresh.Focus?.Up != "settings.restart")
             throw new Exception("Unavailable toggle must not trap navigation from Check again.");
         var errors = ViewSnapshotValidator.Validate(snapshot);
