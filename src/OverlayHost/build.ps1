@@ -462,6 +462,7 @@ function Invoke-OverlayPlatformInteropBuild {
 function Invoke-LocalControllerOwnerTests {
     $arguments = $common + @(
         '/DWRAIL_LOCAL_CONTROLLER_TESTING', '/DWRAIL_GAMEINPUT_ISOLATION_READER',
+        '/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING',
         (Join-Path $platformTestDirectory 'LocalControllerOwnerTests.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationHostSession.cpp'),
         (Join-Path $platformDirectory 'LocalControllerPolicy.cpp'),
@@ -478,6 +479,20 @@ function Invoke-LocalControllerOwnerTests {
     $test = Start-Process -FilePath (Join-Path $outputDirectory 'LocalControllerOwnerTests.exe') -NoNewWindow -PassThru
     if (-not $test.WaitForExit(15000)) { $test.Kill(); throw 'LocalControllerOwnerTests exceeded 15s.' }
     if ($test.ExitCode -ne 0) { throw "LocalControllerOwnerTests failed: $($test.ExitCode)" }
+    $routingArguments = $common + @(
+        '/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING',
+        (Join-Path $platformTestDirectory 'ControllerIsolationRoutingSessionTests.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationRoutingSession.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationReader.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationCore.cpp'),
+        "/Fo:$controllerIsolationTestObjectDirectory\",
+        "/Fe:$outputDirectory\ControllerIsolationRoutingSessionTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $routingArguments
+    if ($LASTEXITCODE -ne 0) { throw "ControllerIsolationRoutingSessionTests compile failed: $LASTEXITCODE" }
+    & (Join-Path $outputDirectory 'ControllerIsolationRoutingSessionTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw "ControllerIsolationRoutingSessionTests failed: $LASTEXITCODE" }
 }
 
 function Invoke-ControllerIsolationLocalTests {

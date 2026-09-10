@@ -62,6 +62,9 @@ struct Source final : SelectedControllerSource {
         return ingress && ingress->Publish(kind, timestamp, GetTickCount64(), value,
             kind != ControllerReaderEventKind::Disconnected);
     }
+    void PauseNextProducer() { ingress->PauseNextProducerForTest(); }
+    bool ProducerPaused() { return ingress->ProducerPausedForTest(); }
+    void ReleaseProducer() { ingress->ReleaseProducerForTest(); }
     void Stop() noexcept override { std::scoped_lock lock(mutex); ingress = nullptr; ++stopped; }
 };
 struct Output final : ControllerIsolationOutput {
@@ -207,11 +210,46 @@ void OwnerTransitions(const std::filesystem::path& root) {
         "actual runtime fault stays configured with no legacy fallback");
     owner.Stop(); Check(output.removals == 1 && source.stopped > 0, "actual owner shutdown retires source and exact target once");
 }
+
+void PendingTransitionsAreSingleFlight(const std::filesystem::path& root) {
+    Effects effects; Source source; Output output;
+    ControllerIsolationHostSession owner(Dependencies(
+        root / L"single-flight" / L"local-session.v1", effects, &source, output));
+    std::wstring error;
+    Check(owner.Start(true, error), "single-flight actual owner starts");
+    GamepadState held{}; held.buttons = 0x1000;
+
+    source.PauseNextProducer();
+    bool publishedEnter{};
+    std::thread enterProducer([&] { publishedEnter = source.Publish(ControllerReaderEventKind::Reading, held); });
+    Check(Until([&] { return source.ProducerPaused(); }), "Enter producer holds a real reserved ingress slot");
+    std::atomic_bool enterDone{}; bool entered{};
+    std::thread enter([&] { std::wstring message; entered = owner.PrepareOverlay(message); enterDone = true; });
+    Sleep(25);
+    Check(!enterDone && owner.active(), "pending Enter survives multiple owner iterations without resubmission fault");
+    source.ReleaseProducer(); enterProducer.join(); enter.join();
+    Check(publishedEnter && entered && output.Is({}), "pending Enter drains reserved report then neutralizes once");
+
+    source.PauseNextProducer();
+    bool publishedClose{};
+    std::thread closeProducer([&] { publishedClose = source.Publish(ControllerReaderEventKind::Reading, held); });
+    Check(Until([&] { return source.ProducerPaused(); }), "Close producer holds a real reserved ingress slot");
+    owner.CloseOverlay();
+    Sleep(25);
+    Check(owner.active(), "pending Close survives multiple owner iterations without resubmission fault");
+    source.ReleaseProducer(); closeProducer.join();
+    Check(publishedClose && Until([&] {
+        ControllerIsolationHostReading reading; (void)owner.Poll(reading, error);
+        return reading.progress == LocalControllerProgress::AwaitingNeutral;
+    }) && output.Is({}), "pending Close preserves neutral release barrier after reserved report");
+    owner.Stop();
+}
 }
 int main() {
     const auto root = std::filesystem::temp_directory_path() / (L"wrail-local-owner-" + std::to_wstring(GetCurrentProcessId()));
     std::filesystem::create_directories(root);
-    try { ParserAndRecovery(root); SetupCleanup(root); OwnerTransitions(root); }
+    try { ParserAndRecovery(root); SetupCleanup(root); OwnerTransitions(root);
+          PendingTransitionsAreSingleFlight(root); }
     catch (const std::exception& error) { std::cerr << "FAILED: " << error.what() << "\nRetained: " << root << '\n'; return 1; }
     std::filesystem::remove_all(root);
     std::cout << "LocalControllerOwnerTests passed " << checks << " checks\n";

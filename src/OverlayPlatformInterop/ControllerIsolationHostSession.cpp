@@ -244,11 +244,14 @@ struct ControllerIsolationHostSession::Impl final {
         { std::scoped_lock lock(mutex); progress = LocalControllerProgress::Playing;
           startupDone = true; changed.notify_all(); }
         std::wstring firstFailure;
+        LocalControllerOwnerAction inFlight{LocalControllerOwnerAction::None};
         while (!stop.stop_requested()) {
             bool wantsOverlay{};
             std::uint64_t generation{};
             { std::scoped_lock lock(mutex); wantsOverlay = desiredOverlay; generation = desiredGeneration; }
-            const auto action = DecideLocalControllerOwnerAction(ConvertProgress(routing.state()), wantsOverlay);
+            const auto action = inFlight == LocalControllerOwnerAction::None
+                ? DecideLocalControllerOwnerAction(ConvertProgress(routing.state()), wantsOverlay)
+                : LocalControllerOwnerAction::None;
             result = ControllerIsolationRoutingResult::Applied;
             if (action == LocalControllerOwnerAction::Enter || action == LocalControllerOwnerAction::Recontain) {
                 if (!queues.BeginInteraction()) {
@@ -266,10 +269,28 @@ struct ControllerIsolationHostSession::Impl final {
                 firstFailure = L"Controller isolation local transition rejected result=" +
                     std::to_wstring(static_cast<unsigned>(result)); break;
             }
+            if (action != LocalControllerOwnerAction::None &&
+                result == ControllerIsolationRoutingResult::Waiting)
+                inFlight = action;
             result = routing.Pump(GetTickCount64());
+            const bool transitionComplete =
+                ((inFlight == LocalControllerOwnerAction::Enter ||
+                  inFlight == LocalControllerOwnerAction::Recontain) &&
+                 routing.state() == ControllerIsolationRoutingState::OverlayInteraction) ||
+                (inFlight == LocalControllerOwnerAction::Close &&
+                 (routing.state() == ControllerIsolationRoutingState::AwaitingPlaying ||
+                  routing.state() == ControllerIsolationRoutingState::Playing));
+            if (transitionComplete || result != ControllerIsolationRoutingResult::Waiting)
+                inFlight = LocalControllerOwnerAction::None;
             { std::scoped_lock lock(mutex); progress = ConvertProgress(routing.state());
               latest = routing.currentState();
-              if (generation == desiredGeneration) appliedGeneration = generation;
+              const bool desiredApplied = wantsOverlay
+                  ? routing.state() == ControllerIsolationRoutingState::OverlayInteraction
+                  : routing.state() == ControllerIsolationRoutingState::Playing ||
+                    routing.state() == ControllerIsolationRoutingState::AwaitingPlaying;
+              if (inFlight == LocalControllerOwnerAction::None && desiredApplied &&
+                  generation == desiredGeneration)
+                  appliedGeneration = generation;
               changed.notify_all(); }
             if (result == ControllerIsolationRoutingResult::Faulted) {
                 firstFailure = L"Controller isolation routing fault=" +

@@ -335,7 +335,8 @@ if(WRAIL_BUILD_TESTS)
     target_compile_features(LocalControllerOwnerTests PRIVATE cxx_std_20)
     target_compile_options(LocalControllerOwnerTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(LocalControllerOwnerTests PRIVATE WRAIL_LOCAL_CONTROLLER_TESTING
-        WRAIL_GAMEINPUT_ISOLATION_READER UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        WRAIL_GAMEINPUT_ISOLATION_READER WRAIL_CONTROLLER_ISOLATION_READER_TESTING
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(LocalControllerOwnerTests PRIVATE shell32 ole32)
     add_test(NAME LocalControllerOwnerTests COMMAND LocalControllerOwnerTests)
     set_tests_properties(LocalControllerOwnerTests PROPERTIES TIMEOUT 15)
