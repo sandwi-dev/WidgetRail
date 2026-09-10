@@ -2,6 +2,11 @@
 
 ## Settings controls
 
+Controllers starts with a Controller shortcut option that switches between Guide
+and View + Menu. Exactly one is active, Guide is the default for existing settings
+as well as new installs, and choosing it does not require Exclusive control or
+its drivers. The host picks up changes through its controller-settings refresh.
+
 Quit and Restart are distinct buttons at the right end of the Settings header.
 They control WidgetRail itself, not Windows. Quit uses the normal shutdown path;
 Restart finishes that cleanup and releases single-instance ownership before

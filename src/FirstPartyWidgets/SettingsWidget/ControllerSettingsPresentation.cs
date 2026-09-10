@@ -35,6 +35,11 @@ internal static class ControllerSettingsPresentation
         return SettingsPresentation.View(SettingsPresentation.Header(state),
             SettingsPresentation.PageScope("controllers.page",
                 UI.Text("Controllers", "controllers.heading", "Controllers settings").Classes("page-heading"),
+                UI.Text("Open WidgetRail", "controllers.open-heading", "Open WidgetRail").Classes("section-heading"),
+                UI.Button($"Controller shortcut: {(state.Settings.Controllers.OpenShortcut == ControllerOpenShortcut.Guide ? "Guide" : "View + Menu")}",
+                    "controllers.open-shortcut.toggle", "controllers.open-shortcut").Busy(state.Busy).Classes("setting-row"),
+                UI.Text("Choose Guide or press View and Menu together to open and close the overlay. Press this option to switch shortcuts.",
+                    "controllers.open-help", "Controller shortcut help").Classes("page-help", "controllers-help"),
                 UI.Text("Input behavior", "controllers.input-heading", "Input behavior").Classes("section-heading"),
                 toggle,
                 UI.Text($"Status - {statusText}", "controllers.status", $"Status - {statusText}")
@@ -61,7 +66,7 @@ internal static class ControllerSettingsPresentation
                             : "The required drivers must be ready before Exclusive control can be turned on.",
                     "controllers.requirements-help", "Exclusive control requirements").Classes("page-help"),
                 refresh),
-            canChange ? "controllers.exclusive-control" : "controllers.refresh",
+            "controllers.open-shortcut",
             "controllers.page");
     }
 

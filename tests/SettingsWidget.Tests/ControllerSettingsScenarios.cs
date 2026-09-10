@@ -20,6 +20,14 @@ internal static class ControllerSettingsScenarios
             await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default);
             await widget.InitializationTask;
             await widget.OnActionAsync(new WidgetActionEvent("open.controllers", "test"));
+            await widget.OnActionAsync(new WidgetActionEvent("controllers.open-shortcut.toggle", "controllers.open-shortcut"));
+            var shortcutSettings = await store.LoadAsync();
+            if (shortcutSettings.Controllers.OpenShortcut != ControllerOpenShortcut.ViewMenu ||
+                shortcutSettings.Controllers.ExclusiveControl || shortcutSettings.Controllers.Revision != 0)
+                throw new Exception("Shortcut must save independently of driver readiness and exclusive ownership.");
+            await widget.OnActionAsync(new WidgetActionEvent("controllers.open-shortcut.toggle", "controllers.open-shortcut"));
+            if ((await store.LoadAsync()).Controllers.OpenShortcut != ControllerOpenShortcut.Guide)
+                throw new Exception("Shortcut must switch back to Guide.");
             await widget.OnActionAsync(new WidgetActionEvent("controllers.exclusive-control.toggle", "controllers.exclusive-control"));
             if ((await store.LoadAsync()).Controllers.ExclusiveControl) throw new Exception("Unavailable enable persisted.");
             service.Status = new(ControllerControlState.Off, true, true, true);
@@ -79,6 +87,12 @@ internal static class ControllerSettingsScenarios
     public static Task LayoutAndGates()
     {
         var document = PlatformSettingsDocument.Default;
+        if (document.Controllers.OpenShortcut != ControllerOpenShortcut.Guide ||
+            JsonSerializer.Deserialize<ControllerSettings>("{\"ExclusiveControl\":true,\"Revision\":3}")?.OpenShortcut != ControllerOpenShortcut.Guide)
+            throw new Exception("Old settings and new installs must retain Guide as the default.");
+        if (PlatformSettingsValidator.Validate(document with
+            { Controllers = new() { OpenShortcut = (ControllerOpenShortcut)99 } }).Count == 0)
+            throw new Exception("Unknown shortcut values must be rejected.");
         if (document.Controllers.ExclusiveControl) throw new Exception("Exclusive control must default off.");
         foreach (var flags in Enumerable.Range(0, 8))
         {
@@ -97,13 +111,13 @@ internal static class ControllerSettingsScenarios
                 "single controller press may register twice in Settings or the Windows app switcher",
                 "Status - " })
                 if (!json.Contains(text, StringComparison.Ordinal)) throw new Exception("Missing guidance: " + text);
-            if (snapshot.InitialFocusId != (status.CanEnable ? "controllers.exclusive-control" : "controllers.refresh"))
-                throw new Exception("Unavailable toggle must not own initial focus.");
+            if (snapshot.InitialFocusId != "controllers.open-shortcut")
+                throw new Exception("Shortcut must be the first option regardless of driver readiness.");
             var enabled = state with { Settings = document with { Controllers = new() { ExclusiveControl = true } } };
             SettingsPresentation.TryRender(enabled, out var enabledView);
             AssertNavigation(enabledView.CreateSnapshot("settings", 1), true);
-            if (enabledView.CreateSnapshot("settings", 1).InitialFocusId != "controllers.exclusive-control")
-                throw new Exception("Disable must remain reachable when drivers fail.");
+            if (enabledView.CreateSnapshot("settings", 1).InitialFocusId != "controllers.open-shortcut")
+                throw new Exception("Shortcut must retain initial focus when Exclusive control is enabled.");
         }
         if (!SettingsNavigationPolicy.TryResolve("open.controllers", SettingsPage.Root, SettingsPage.Root, out var target) ||
             target != SettingsPage.Controllers || SettingsNavigationPolicy.Parent(target, SettingsPage.Root) != SettingsPage.Root)
@@ -120,8 +134,8 @@ internal static class ControllerSettingsScenarios
         var refresh = nodes.Single(node => node.Id == "controllers.refresh");
         if (canChange && (toggle.Focus?.Down is not null || refresh.Focus?.Up is not null))
             throw new Exception("Controller actions must use geometric navigation inside the page.");
-        if (!canChange && refresh.Focus?.Up != "settings.restart")
-            throw new Exception("Unavailable toggle must not trap navigation from Check again.");
+        if (nodes.Single(node => node.Id == "controllers.open-shortcut").Focus?.Up != "settings.restart")
+            throw new Exception("Shortcut must be connected to the header.");
         var errors = ViewSnapshotValidator.Validate(snapshot);
         if (errors.Count != 0) throw new Exception(string.Join(Environment.NewLine, errors));
     }

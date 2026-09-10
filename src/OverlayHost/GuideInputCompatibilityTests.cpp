@@ -161,6 +161,12 @@ int main() {
               .actions.empty(),
           "an unlabeled owner never borrows dashboard QuickAction text");
 
+    const auto chordLine = widgetrail::guide::BuildOpenWidgetLine(
+        widgetrail::ControllerGuideDensity::Full, {}, true, 500.0F,
+        [](std::wstring_view text) { return std::optional<float>(static_cast<float>(text.size()) * 6); }, true);
+    Check(chordLine.host == L"B Back   View + Menu Close" &&
+          chordLine.accessible.find(L"View + Menu Close") != std::wstring::npos,
+          "selected chord owns both the visible and accessible close hint");
     std::cout << "GuideInputCompatibilityTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

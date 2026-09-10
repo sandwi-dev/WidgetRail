@@ -45,6 +45,7 @@ using MeasureOpenWidgetText =
     const OpenWidgetAuthority& authority,
     bool hasBack,
     float availableWidth,
-    const MeasureOpenWidgetText& measureText);
+    const MeasureOpenWidgetText& measureText,
+    bool viewMenuShortcut = false);
 
 } // namespace widgetrail::guide

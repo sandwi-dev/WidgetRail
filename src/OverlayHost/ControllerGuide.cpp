@@ -154,9 +154,11 @@ OpenWidgetLine BuildOpenWidgetLine(
     const OpenWidgetAuthority& authority,
     const bool hasBack,
     const float availableWidth,
-    const MeasureOpenWidgetText& measureText) {
+    const MeasureOpenWidgetText& measureText,
+    const bool viewMenuShortcut) {
     OpenWidgetLine result;
-    result.host = hasBack ? L"B Back   Guide Close" : L"Guide Close";
+    result.host = std::wstring(hasBack ? L"B Back   " : L"") +
+        (viewMenuShortcut ? L"View + Menu Close" : L"Guide Close");
     const auto reserved = measureText
         ? measureText(result.host + L"   ")
         : std::nullopt;

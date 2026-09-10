@@ -1,5 +1,18 @@
 # Controller input model
 
+## Opening the overlay
+
+Settings → Controllers offers one active opening shortcut: Guide (the default)
+or View + Menu. The selected shortcut also closes the overlay. View + Menu uses
+an optional 25 ms background observer with GameInput device connection callbacks
+and public XInput state reads; it does not depend on the Windows Guide callback.
+Both buttons must be down on the same controller. Held input is ignored at
+startup/reconnect until released, and all observed copies must release before
+another toggle. Selecting Guide stops the observer. The existing View + Menu
+widget-restart action is disabled while it is the overlay shortcut; the selected
+combination is not also dispatched as widget input. Game input is not suppressed
+or delayed by the shortcut observer. Exclusive control remains independent.
+
 ## Exclusive control lifecycle
 
 The Controllers Settings preference defaults to off and is separate from ordinary

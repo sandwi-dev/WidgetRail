@@ -303,6 +303,11 @@ public sealed class SettingsWidget : Widget
                 await PersistPreferenceAsync(preference, cancellationToken).ConfigureAwait(false);
                 return;
             }
+            if (action.ActionId == "controllers.open-shortcut.toggle" && CurrentPage == SettingsPage.Controllers)
+            {
+                await ToggleControllerShortcutAsync(cancellationToken).ConfigureAwait(false);
+                return;
+            }
             if (action.ActionId is "controllers.exclusive-control.toggle" or "controllers.restore" &&
                 CurrentPage == SettingsPage.Controllers)
             {
@@ -670,6 +675,36 @@ public sealed class SettingsWidget : Widget
                 _busy = false;
                 _error = false;
                 _status = mutation.SuccessStatus;
+            }
+        }
+        catch (PlatformSettingsException exception)
+        {
+            SetOperation($"Save failed ({exception.Code})", busy: false, error: true);
+            return;
+        }
+        Invalidate();
+    }
+
+    private async Task ToggleControllerShortcutAsync(CancellationToken cancellationToken)
+    {
+        SetOperation("Saving controller shortcut…", busy: true, error: false);
+        try
+        {
+            var saved = await _store.UpdateAsync(current => current with
+            {
+                Controllers = current.Controllers with
+                {
+                    OpenShortcut = current.Controllers.OpenShortcut == ControllerOpenShortcut.Guide
+                        ? ControllerOpenShortcut.ViewMenu : ControllerOpenShortcut.Guide,
+                },
+            }, cancellationToken).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                _settings = saved;
+                _settingsValid = true;
+                _busy = false;
+                _error = false;
+                _status = "Ready";
             }
         }
         catch (PlatformSettingsException exception)

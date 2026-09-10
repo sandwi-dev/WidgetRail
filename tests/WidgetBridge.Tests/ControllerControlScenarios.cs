@@ -21,11 +21,18 @@ internal static class ControllerControlScenarios
             }
             var ready = new ControllerControlStatus(ControllerControlState.Off, true, true, true);
             control.Report(ready);
+            await store.UpdateAsync(current => current with
+            { Controllers = current.Controllers with { OpenShortcut = ControllerOpenShortcut.ViewMenu } });
             var enabled = await control.SetAsync(true, default);
             Check(enabled.Accepted && enabled.Status.State == ControllerControlState.Starting,
                 "Saving intent cannot claim active routing.");
             var saved = await control.ReadPreferenceAsync(default);
             Check(saved.ExclusiveControl && saved.Revision == 1, "Preference and revision must persist together.");
+            Check(saved.OpenShortcut == ControllerOpenShortcut.ViewMenu,
+                "Changing Exclusive control must preserve the selected overlay shortcut.");
+            using var wire = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(saved, BridgeJson.Options));
+            Check(wire.RootElement.GetProperty("openShortcut").GetString() == "viewMenu",
+                "Native shortcut exchange must use the declared enum wire values.");
             clock.Advance(6);
             Check(control.Status == ControllerControlStatus.Unavailable && !(await control.SetAsync(true, default)).Accepted,
                 "Stale native readiness must refuse enable.");

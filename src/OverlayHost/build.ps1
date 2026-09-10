@@ -670,6 +670,7 @@ function Invoke-OverlayPlatformParityTests {
 }
 
 function Invoke-ControllerGuideTests {
+    Invoke-ControllerOpenShortcutTests
     Invoke-OverlayPlatformParityTest `
         -Name 'GuideInputCompatibilityTests' `
         -ObjectDirectory $guideTestObjectDirectory `
@@ -678,6 +679,16 @@ function Invoke-ControllerGuideTests {
             (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
             (Join-Path $projectDirectory 'ControllerGuide.cpp')) `
         -Libraries @('user32.lib')
+}
+
+function Invoke-ControllerOpenShortcutTests {
+    Invoke-OverlayPlatformParityTest `
+        -Name 'ControllerOpenShortcutTests' `
+        -ObjectDirectory $guideTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'ControllerOpenShortcutTests.cpp'),
+            (Join-Path $projectDirectory 'ControllerOpenShortcut.cpp')) `
+        -Libraries @('gameinput.lib', 'xinput9_1_0.lib')
 }
 
 function Invoke-AccessibilityEventsTests {
@@ -1935,6 +1946,7 @@ if ($PinnedSliderRouteTestsOnly) {
 $hostArguments = $hostCompileArguments + @(
     '/DWRAIL_OVERLAY_PLATFORM_IMPORTS',
     (Join-Path $projectDirectory 'main.cpp'),
+    (Join-Path $projectDirectory 'ControllerOpenShortcut.cpp'),
     (Join-Path $projectDirectory 'MediaSessionManager.cpp'),
     (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
     (Join-Path $projectDirectory 'CompositorBackgroundSurfaceCoordinator.cpp'),
@@ -2449,6 +2461,7 @@ if (-not $SkipTests) {
         throw "OverlayChromeTests failed with exit code $LASTEXITCODE."
     }
 
+    Invoke-ControllerOpenShortcutTests
     $guideTestArguments = $common + @(
         (Join-Path $projectDirectory 'GuideInputCompatibilityTests.cpp'),
         (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),

@@ -105,10 +105,14 @@ public sealed record AppearanceSettings
     };
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter<ControllerOpenShortcut>))]
+public enum ControllerOpenShortcut { Guide, ViewMenu }
+
 public sealed record ControllerSettings
 {
     public bool ExclusiveControl { get; init; }
     public long Revision { get; init; }
+    public ControllerOpenShortcut OpenShortcut { get; init; } = ControllerOpenShortcut.Guide;
 }
 
 public sealed record BuiltInWidgetSettings
@@ -196,6 +200,8 @@ public static class PlatformSettingsValidator
             Add("$.controllers", "required", "Controller settings are required.");
         else if (document.Controllers.Revision < 0 || document.Controllers.Revision > 9_007_199_254_740_990L)
             Add("$.controllers.revision", "invalid_revision", "Controller settings revision is invalid.");
+        if (document.Controllers is not null && !Enum.IsDefined(document.Controllers.OpenShortcut))
+            Add("$.controllers.openShortcut", "invalid_enum", "Controller shortcut is invalid.");
         if (document.Appearance is null)
         {
             Add("$.appearance", "required", "Appearance settings are required.");

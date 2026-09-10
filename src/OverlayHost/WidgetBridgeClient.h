@@ -833,6 +833,7 @@ private:
 struct ControllerControlPreference final {
     bool exclusiveControl{};
     long long revision{};
+    bool viewMenuShortcut{};
 };
 
 class WidgetBridgeClient final {

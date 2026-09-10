@@ -6,6 +6,7 @@
 #include "DeclarativeRenderer.h"
 #include "EmbeddedMediaResourceContract.h"
 #include "ControllerNavigation.h"
+#include "ControllerOpenShortcut.h"
 #include "ControllerShortcutResolver.h"
 #include "ControllerInputOwnership.h"
 #include "ControllerGuide.h"
@@ -87,6 +88,7 @@ constexpr UINT_PTR kActionFeedbackTimer = 6;
 constexpr UINT_PTR kPinnedSurfaceTimer = 7;
 constexpr UINT_PTR kBridgeControlPlaneTimer = 8;
 constexpr UINT_PTR kControllerSettingsTimer = 9;
+constexpr UINT_PTR kControllerOpenShortcutTimer = 10;
 constexpr UINT kVisibleControllerTimerMilliseconds = 15;
 constexpr UINT kPlatformEventMessage = WM_APP + 1;
 constexpr UINT kImageReadyMessage = WM_APP + 2;
@@ -1790,6 +1792,7 @@ private:
     void HandlePlatformEvent(const WidgetRailOverlayPlatformEvent& event) {
         switch (event.kind) {
         case WidgetRailOverlayPlatformEventKind::GuideToggleRequested:
+            if (viewMenuShortcutEnabled_) break;
             if (textEntryModal_.active()) {
                 AppendDiagnostic(L"Guide input consumed by text entry modal");
                 break;
@@ -1804,7 +1807,7 @@ private:
             Dispatch(widgetrail::Command::ToggleOverlay);
             break;
         case WidgetRailOverlayPlatformEventKind::LegacyGuidePollingChanged:
-            if (event.value != 0) {
+            if (event.value != 0 && !viewMenuShortcutEnabled_) {
                 SetTimer(window_, kGuideCompatibilityTimer, 25, nullptr);
                 AppendDiagnostic(
                     L"XInput Guide compatibility polling activated for a connected Xbox 360-family device");
@@ -2408,6 +2411,8 @@ private:
                     }
                 }
                 PumpBridgeEvents(controllerTick);
+            } else if (wParam == kControllerOpenShortcutTimer) {
+                (void)PollOpenShortcut();
             } else if (wParam == kGuideCompatibilityTimer) {
                 WidgetRailOverlayPlatformEvent event;
                 std::uint32_t hasEvent = WRAIL_OVERLAY_PLATFORM_FALSE;
@@ -6211,19 +6216,42 @@ private:
         const auto state = WidgetRailOverlayPlatformControllerControlState(platform_);
         const auto preference = bridge_.ExchangeControllerControl(state, prerequisites);
         if (!preference) return;
+        if (viewMenuShortcutEnabled_ != preference->viewMenuShortcut) {
+            viewMenuShortcutEnabled_ = preference->viewMenuShortcut;
+            if (viewMenuShortcutEnabled_) {
+                openShortcut_.Start();
+                SetTimer(window_, kControllerOpenShortcutTimer, 25, nullptr);
+                KillTimer(window_, kGuideCompatibilityTimer);
+            } else {
+                KillTimer(window_, kControllerOpenShortcutTimer);
+                openShortcut_.Stop();
+                if (WidgetRailOverlayPlatformRequiresLegacyGuidePolling(platform_) != WRAIL_OVERLAY_PLATFORM_FALSE)
+                    SetTimer(window_, kGuideCompatibilityTimer, 25, nullptr);
+            }
+            AppendDiagnostic(viewMenuShortcutEnabled_ ? L"Controller shortcut: View + Menu" : L"Controller shortcut: Guide");
+        }
         if (!controllerPreferenceRevision_ || *controllerPreferenceRevision_ != preference->revision ||
             controllerPreferenceEnabled_ != preference->exclusiveControl) {
             controllerPreferenceRevision_ = preference->revision;
             controllerPreferenceEnabled_ = preference->exclusiveControl;
             const auto result = WidgetRailOverlayPlatformSetExclusiveControl(platform_,
                 preference->exclusiveControl ? WRAIL_OVERLAY_PLATFORM_TRUE : WRAIL_OVERLAY_PLATFORM_FALSE);
-            if (WidgetRailOverlayPlatformRequiresLegacyGuidePolling(platform_) != WRAIL_OVERLAY_PLATFORM_FALSE)
+            if (!viewMenuShortcutEnabled_ && WidgetRailOverlayPlatformRequiresLegacyGuidePolling(platform_) != WRAIL_OVERLAY_PLATFORM_FALSE)
                 SetTimer(window_, kGuideCompatibilityTimer, 25, nullptr);
             else
                 KillTimer(window_, kGuideCompatibilityTimer);
             AppendDiagnostic(result == WidgetRailOverlayPlatformStatus::Ok
                 ? L"Controller settings applied" : L"Controller settings could not be applied; check Controllers settings");
         }
+    }
+
+    bool PollOpenShortcut() {
+        if (!viewMenuShortcutEnabled_ || !openShortcut_.Poll()) return false;
+        if (!textEntryModal_.active()) {
+            AppendDiagnostic(L"View + Menu shortcut dispatched on window thread");
+            Dispatch(widgetrail::Command::ToggleOverlay);
+        }
+        return true;
     }
 
     void RefreshPlatformAppearance() {
@@ -11067,6 +11095,7 @@ private:
     }
 
     void PollController() {
+        if (PollOpenShortcut()) return;
         for (std::uint32_t isolationFrame = 0;
              isolationFrame < 16; ++isolationFrame) {
         const ULONGLONG now = GetTickCount64();
@@ -11089,6 +11118,15 @@ private:
             if (textEntryModal_.active())
                 textEntryModal_.UpdateControllerRepeat({}, now);
             return;
+        }
+        if (viewMenuShortcutEnabled_) {
+            constexpr WORD shortcutButtons = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
+            frame.recoveryChordPressed = WRAIL_OVERLAY_PLATFORM_FALSE;
+            if (openShortcut_.consumed() || (frame.state.buttons & shortcutButtons) == shortcutButtons) {
+                frame.state.buttons &= ~shortcutButtons;
+                frame.pressedButtons &= ~shortcutButtons;
+                frame.releasedButtons &= ~shortcutButtons;
+            }
         }
         const auto processFrame = [&]() {
         const bool connected =
@@ -16895,7 +16933,7 @@ private:
             availableWidth,
             [this](const std::wstring_view text) {
                 return MeasureGuideTextWidth(text);
-            });
+            }, viewMenuShortcutEnabled_);
     }
 
     void DrawWidgetFooter(
@@ -18014,6 +18052,8 @@ private:
     std::optional<std::wstring> performanceWidgetId_;
     std::optional<std::wstring> performanceDiagnosticsPath_;
     std::optional<long long> controllerPreferenceRevision_;
+    widgetrail::input::ControllerOpenShortcut openShortcut_;
+    bool viewMenuShortcutEnabled_{};
     bool controllerPreferenceEnabled_{};
     std::optional<std::wstring> performanceDiagnosticsNonce_;
     std::optional<std::wstring> scrollEvidencePath_;
