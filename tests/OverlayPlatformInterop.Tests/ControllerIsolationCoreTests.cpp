@@ -1,4 +1,5 @@
 #include "../../src/OverlayPlatformInterop/ControllerIsolationCore.h"
+#include "../../src/OverlayPlatformInterop/ControllerIsolationHostSession.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -472,6 +473,22 @@ void StopIsExactAndGenerationBound() {
           "the exact session neutralizes and removes only its owned target");
 }
 
+void LocalOwnerDesiredModeRetainsReopenAndFaultAuthority() {
+    Check(DecideLocalControllerOwnerAction(
+              LocalControllerProgress::AwaitingNeutral, true) ==
+              LocalControllerOwnerAction::Recontain &&
+              DecideLocalControllerOwnerAction(
+                  LocalControllerProgress::Contained, false) ==
+                  LocalControllerOwnerAction::Close &&
+              DecideLocalControllerOwnerAction(
+                  LocalControllerProgress::Playing, false) ==
+                  LocalControllerOwnerAction::None,
+          "local owner retains latest reopen intent and cancels hidden open intent");
+    Check(LocalControllerIsolationConfigured(LocalControllerProgress::Fault) &&
+              !LocalControllerIsolationConfigured(LocalControllerProgress::Disabled),
+          "configured routing fault cannot fall back to legacy input ownership");
+}
+
 } // namespace
 
 int main() {
@@ -486,6 +503,7 @@ int main() {
     HidHideJournalPreservesOtherOwners();
     StaleHostCanRecontainAwaitingNeutral();
     StopIsExactAndGenerationBound();
+    LocalOwnerDesiredModeRetainsReopenAndFaultAuthority();
     std::cout << "ControllerIsolationCoreTests passed (" << checks
               << " checks)\n";
     return 0;

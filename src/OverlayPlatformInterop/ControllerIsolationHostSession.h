@@ -12,6 +12,24 @@ enum class LocalControllerProgress : std::uint8_t {
     Disabled, Preparing, Playing, Contained, AwaitingNeutral, Fault,
 };
 
+enum class LocalControllerOwnerAction : std::uint8_t { None, Enter, Recontain, Close };
+
+[[nodiscard]] constexpr LocalControllerOwnerAction DecideLocalControllerOwnerAction(
+    const LocalControllerProgress progress, const bool desiredOverlay) noexcept {
+    if (desiredOverlay && progress == LocalControllerProgress::Playing)
+        return LocalControllerOwnerAction::Enter;
+    if (desiredOverlay && progress == LocalControllerProgress::AwaitingNeutral)
+        return LocalControllerOwnerAction::Recontain;
+    if (!desiredOverlay && progress == LocalControllerProgress::Contained)
+        return LocalControllerOwnerAction::Close;
+    return LocalControllerOwnerAction::None;
+}
+
+[[nodiscard]] constexpr bool LocalControllerIsolationConfigured(
+    const LocalControllerProgress progress) noexcept {
+    return progress != LocalControllerProgress::Disabled;
+}
+
 struct ControllerIsolationHostReading final {
     GamepadState state{};
     LocalControllerProgress progress{LocalControllerProgress::Disabled};

@@ -350,16 +350,18 @@ struct ControllerIsolationHostSession::Impl final {
         while (!stop.stop_requested()) {
             bool wantsOverlay{};
             { std::scoped_lock lock(mutex); wantsOverlay = desiredOverlay; }
-            if (wantsOverlay && routing.state() == ControllerIsolationRoutingState::Playing) {
+            const auto action = DecideLocalControllerOwnerAction(
+                ConvertProgress(routing.state()), wantsOverlay);
+            if (action == LocalControllerOwnerAction::Enter) {
                 if (!queues.BeginInteraction() || routing.EnterOverlay(authority, GetTickCount64()) ==
                     ControllerIsolationRoutingResult::Faulted) break;
             }
-            if (wantsOverlay && routing.state() == ControllerIsolationRoutingState::AwaitingPlaying) {
+            if (action == LocalControllerOwnerAction::Recontain) {
                 if (!queues.BeginInteraction() ||
                     routing.HoldContained(authority, GetTickCount64()) ==
                     ControllerIsolationRoutingResult::Faulted) break;
             }
-            if (!wantsOverlay && routing.state() == ControllerIsolationRoutingState::OverlayInteraction) {
+            if (action == LocalControllerOwnerAction::Close) {
                 queues.RetireInteraction();
                 if (routing.CloseOverlay(authority, kMeasuredReadingIntervalMilliseconds,
                                          GetTickCount64()) == ControllerIsolationRoutingResult::Faulted) break;
@@ -441,7 +443,7 @@ bool ControllerIsolationHostSession::PollGuide(std::uint64_t& guideEvent,
 
 bool ControllerIsolationHostSession::active() const noexcept {
     std::scoped_lock lock(impl_->mutex);
-    return impl_->progress != LocalControllerProgress::Disabled;
+    return LocalControllerIsolationConfigured(impl_->progress);
 }
 
 void ControllerIsolationHostSession::Stop() noexcept {
