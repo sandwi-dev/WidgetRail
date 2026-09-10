@@ -34,6 +34,7 @@ public:
 
 enum class ControllerIsolationRoutingState : std::uint8_t {
     Disabled,
+    WaitingForInitialNeutral,
     PreparedNeutral,
     AwaitingPlaying,
     Playing,
@@ -70,7 +71,8 @@ public:
     [[nodiscard]] ControllerIsolationRoutingResult PrepareSession(
         const RoutingAuthority& authority,
         const SelectedControllerEnrollment& enrollment,
-        std::uint64_t nowMilliseconds) noexcept;
+        std::uint64_t nowMilliseconds,
+        bool waitForNeutral = false) noexcept;
     [[nodiscard]] ControllerIsolationRoutingResult CommitPlaying(
         const RoutingAuthority& authority,
         std::uint64_t measuredP99ReadingIntervalMilliseconds,
@@ -117,6 +119,10 @@ private:
         Faulted,
     };
 
+    [[nodiscard]] ControllerIsolationRoutingResult FinishPreparation(
+        const DeviceReading& initial, std::uint64_t nowMilliseconds) noexcept;
+    [[nodiscard]] ControllerIsolationRoutingResult WaitForInitialNeutral(
+        std::uint64_t nowMilliseconds) noexcept;
     [[nodiscard]] std::optional<DeviceReading> MapCurrent(
         const SelectedControllerCurrent& current) noexcept;
     [[nodiscard]] std::optional<DeviceReading> MapEvent(

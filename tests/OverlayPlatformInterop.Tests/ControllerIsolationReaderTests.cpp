@@ -233,6 +233,22 @@ void DiscoveryRequiresExactlyOnePhysicalController() {
 }
 
 void FixedEventsPreserveAuthorityAndOrder() {
+    const auto first = Descriptor(1, L"HID\\A");
+    const auto second = Descriptor(2, L"HID\\B");
+    SelectedControllerDescriptor selected;
+    SelectedControllerDiscovery forward(true), reverse(true);
+    forward.Observe(SelectedControllerCandidateKind::Physical, first);
+    forward.Observe(SelectedControllerCandidateKind::Physical, second);
+    reverse.Observe(SelectedControllerCandidateKind::Physical, second);
+    reverse.Observe(SelectedControllerCandidateKind::Physical, first);
+    Check(forward.Resolve(selected) == SelectedControllerDiscoveryStatus::Ready && selected == first,
+          "automatic selection chooses stable instance order among multiple controllers");
+    Check(reverse.Resolve(selected) == SelectedControllerDiscoveryStatus::Ready && selected == first,
+          "automatic selection does not depend on callback enumeration order");
+    reverse.Observe(SelectedControllerCandidateKind::Unknown);
+    reverse.Observe(SelectedControllerCandidateKind::KnownVirtualOutput);
+    Check(reverse.Resolve(selected) == SelectedControllerDiscoveryStatus::Ready && selected == first,
+          "ineligible and virtual controllers never replace an eligible physical controller");
     ControllerIsolationReaderIngress ingress;
     const auto authority = Authority();
     const auto enrollment = Enrollment();

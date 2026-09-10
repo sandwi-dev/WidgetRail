@@ -59,6 +59,30 @@ private:
     ViGEmOutputAdapter adapter_;
 };
 
+// A selected-reader session may retire while the enabled host keeps one game
+// device. Every handoff neutralizes and discards old feedback before reuse.
+class RetainedControllerOutput final : public ControllerIsolationOutput {
+public:
+    explicit RetainedControllerOutput(ControllerIsolationOutput& output) : output_(output) {}
+    ~RetainedControllerOutput() override { if (open_) output_.RemoveOwnedTarget(); }
+    bool OpenOwnedTarget() noexcept override {
+        if (!open_) open_ = output_.OpenOwnedTarget();
+        ControllerRumbleState ignored;
+        (void)output_.TakeLatestFeedback(ignored);
+        return open_;
+    }
+    bool Submit(const GamepadState& state) noexcept override { return open_ && output_.Submit(state); }
+    bool TakeLatestFeedback(ControllerRumbleState& state) noexcept override { return output_.TakeLatestFeedback(state); }
+    void RemoveOwnedTarget() noexcept override {
+        if (open_ && !output_.Submit({})) { output_.RemoveOwnedTarget(); open_ = false; }
+        ControllerRumbleState ignored;
+        (void)output_.TakeLatestFeedback(ignored);
+    }
+private:
+    ControllerIsolationOutput& output_;
+    bool open_{};
+};
+
 class LocalQueues final : public ControllerIsolationGuideSink,
                           public ControllerIsolationHostInputSink {
 public:
@@ -120,6 +144,7 @@ private:
 
 [[nodiscard]] LocalControllerProgress ConvertProgress(ControllerIsolationRoutingState state) {
     switch (state) {
+    case ControllerIsolationRoutingState::WaitingForInitialNeutral: return LocalControllerProgress::AwaitingNeutral;
     case ControllerIsolationRoutingState::PreparedNeutral: return LocalControllerProgress::Preparing;
     case ControllerIsolationRoutingState::AwaitingPlaying: return LocalControllerProgress::AwaitingNeutral;
     case ControllerIsolationRoutingState::Playing: return LocalControllerProgress::Playing;
@@ -145,6 +170,9 @@ struct ControllerIsolationHostSession::Impl final {
     std::wstring diagnostic;
     std::deque<std::wstring> pendingDiagnostics;
     bool startupDone{}, desiredOverlay{};
+    bool retryDiscovery{};
+    bool preparingInput{};
+    std::uint64_t sessionGeneration{};
     std::uint64_t desiredGeneration{}, appliedGeneration{};
 
     void QueueDiagnostic(std::wstring message) {
@@ -176,7 +204,19 @@ struct ControllerIsolationHostSession::Impl final {
         LocalOwnerLease owner;
         try {
             if (!owner.Acquire(cleanupFailure)) { FinishStartup(cleanupFailure); return; }
-            RunOwned(stop, cleanupFailure);
+            LocalOutput nativeOutput;
+            ControllerIsolationOutput& underlying =
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+                test ? *test->output :
+#endif
+                nativeOutput;
+            RetainedControllerOutput output(underlying);
+            do {
+                retryDiscovery = false;
+                RunOwned(stop, cleanupFailure, output);
+                if (!cleanupFailure.empty() || !retryDiscovery || stop.stop_requested()) break;
+                for (unsigned wait = 0; wait < 25 && !stop.stop_requested(); ++wait) Sleep(10);
+            } while (!stop.stop_requested());
         } catch (const std::exception&) {
             FinishStartup(L"Controller isolation setup/routing exception.");
         } catch (...) {
@@ -192,7 +232,7 @@ struct ControllerIsolationHostSession::Impl final {
         }
     }
 
-    void RunOwned(std::stop_token stop, std::wstring& cleanupFailure) {
+    void RunOwned(std::stop_token stop, std::wstring& cleanupFailure, ControllerIsolationOutput& output) {
         const auto journalPath =
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
             test ? test->journalPath :
@@ -216,12 +256,20 @@ struct ControllerIsolationHostSession::Impl final {
         SelectedControllerDescriptor descriptor;
         const auto discovery =
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
-            test ? (descriptor = test->descriptor, SelectedControllerDiscoveryStatus::Ready) :
+            test ? (test->discover ? test->discover(test->discoveryContext, descriptor) :
+                (descriptor = test->descriptor, SelectedControllerDiscoveryStatus::Ready)) :
 #endif
             DiscoverCurrentPhysicalController(GetTickCount64() | 1, descriptor);
         if (discovery !=
             SelectedControllerDiscoveryStatus::Ready) {
-            FinishStartup(L"Controller isolation requires exactly one known physical controller."); return;
+            if (discovery == SelectedControllerDiscoveryStatus::Unavailable) {
+                retryDiscovery = true;
+                std::scoped_lock lock(mutex);
+                latest = {}; progress = LocalControllerProgress::WaitingForController;
+                startupDone = true; changed.notify_all();
+                return;
+            }
+            FinishStartup(L"No eligible physical controller could be selected safely."); return;
         }
         HidHideSnapshot before; std::uint32_t error{}; std::wstring executableDevicePath;
         const bool pathResolved =
@@ -263,33 +311,61 @@ struct ControllerIsolationHostSession::Impl final {
 #endif
             ownedSource.get();
         if (!source) { FinishStartup(L"Controller isolation reader allocation failed."); return; }
-        LocalOutput nativeOutput;
-        ControllerIsolationOutput& output =
-#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
-            test ? *test->output :
-#endif
-            nativeOutput;
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
         if (test && test->throwAfterApply) throw std::runtime_error("injected post-apply allocation failure");
 #endif
         ControllerIsolationRoutingSession routing(*source, output, queues, {}, &queues);
-        const RoutingAuthority authority{1, 1, 1, GetTickCount64() | 1};
-        auto result = routing.PrepareSession(authority, descriptor.enrollment, GetTickCount64());
+        if (sessionGeneration == std::numeric_limits<std::uint64_t>::max()) {
+            FinishStartup(L"Controller session generation exhausted."); return;
+        }
+        const RoutingAuthority authority{++sessionGeneration, sessionGeneration, 1, GetTickCount64() | 1};
+        auto result = routing.PrepareSession(authority, descriptor.enrollment, GetTickCount64(), true);
+        if (result == ControllerIsolationRoutingResult::Waiting) {
+            { std::scoped_lock lock(mutex); preparingInput = true; progress = LocalControllerProgress::AwaitingNeutral;
+              latest = {}; startupDone = true; changed.notify_all(); }
+            while (!stop.stop_requested() && result == ControllerIsolationRoutingResult::Waiting) {
+                result = routing.Pump(GetTickCount64()); Sleep(1);
+            }
+            { std::scoped_lock lock(mutex); preparingInput = false; }
+        }
+        if (stop.stop_requested()) return;
         if (result != ControllerIsolationRoutingResult::Applied) {
+            if (result == ControllerIsolationRoutingResult::ReaderUnavailable) {
+                retryDiscovery = true;
+                std::scoped_lock lock(mutex);
+                latest = {}; progress = LocalControllerProgress::WaitingForController;
+                startupDone = true; changed.notify_all();
+                return;
+            }
             FinishStartup(L"Controller isolation reader/output prepare failed result=" +
                 std::to_wstring(static_cast<unsigned>(result))); return;
         }
-        result = routing.CommitPlaying(authority, kNeutralDwellInputMilliseconds, GetTickCount64());
+        bool startContained{};
+        { std::scoped_lock lock(mutex); startContained = desiredOverlay; }
+        if (startContained) {
+            if (!queues.BeginInteraction()) { FinishStartup(L"Controller interaction generation exhausted."); return; }
+            result = routing.HoldContained(authority, GetTickCount64());
+        } else {
+            result = routing.CommitPlaying(authority, kNeutralDwellInputMilliseconds, GetTickCount64());
+        }
         const auto startupAt = GetTickCount64();
-        while (!stop.stop_requested() && routing.state() != ControllerIsolationRoutingState::Playing &&
+        while (!stop.stop_requested() && !startContained && routing.state() != ControllerIsolationRoutingState::Playing &&
                result != ControllerIsolationRoutingResult::Faulted &&
                GetTickCount64() - startupAt < 2'000) {
             result = routing.Pump(GetTickCount64()); Sleep(1);
         }
-        if (routing.state() != ControllerIsolationRoutingState::Playing) {
+        if (routing.state() != ControllerIsolationRoutingState::Playing &&
+            routing.state() != ControllerIsolationRoutingState::OverlayInteraction) {
+            if (routing.fault() == RoutingFault::DeviceDisconnected) {
+                retryDiscovery = true;
+                std::scoped_lock lock(mutex);
+                latest = {}; progress = LocalControllerProgress::WaitingForController;
+                startupDone = true; changed.notify_all();
+                return;
+            }
             FinishStartup(L"Controller isolation startup neutral barrier failed."); return;
         }
-        { std::scoped_lock lock(mutex); progress = LocalControllerProgress::Playing;
+        { std::scoped_lock lock(mutex); progress = ConvertProgress(routing.state());
           startupDone = true; changed.notify_all(); }
         QueueDiagnostic(guideCompatibilityAvailable
             ? L"Controller isolation physical XInput Guide compatibility polling active cadence-ms=25"
@@ -362,6 +438,7 @@ struct ControllerIsolationHostSession::Impl final {
                   appliedGeneration = generation;
               changed.notify_all(); }
             if (result == ControllerIsolationRoutingResult::Faulted) {
+                retryDiscovery = routing.fault() == RoutingFault::DeviceDisconnected;
                 firstFailure = L"Controller isolation routing fault=" +
                     std::to_wstring(static_cast<unsigned>(routing.fault())); break;
             }
@@ -371,7 +448,9 @@ struct ControllerIsolationHostSession::Impl final {
         if (routing.state() != ControllerIsolationRoutingState::Disabled) (void)routing.Stop(authority);
         (void)cleanup.Finish();
         std::scoped_lock lock(mutex);
-        if (!firstFailure.empty()) {
+        if (retryDiscovery && cleanupFailure.empty()) {
+            latest = {}; progress = LocalControllerProgress::WaitingForController;
+        } else if (!firstFailure.empty()) {
             diagnostic = firstFailure;
             progress = LocalControllerProgress::Fault;
         } else {
@@ -389,12 +468,13 @@ ControllerIsolationHostSession::ControllerIsolationHostSession(TestDependencies 
 #endif
 
 bool ControllerIsolationHostSession::Start(bool enabled, std::wstring& diagnostic,
-    Notify notify, void* context) noexcept {
+    Notify notify, void* context, bool overlayVisible) noexcept {
     if (!enabled) return false;
     try {
         if (!impl_) impl_ = std::make_unique<Impl>();
         if (impl_->thread.joinable()) { diagnostic = L"Controller isolation already configured."; return false; }
         impl_->queues.SetNotify(notify, context);
+        impl_->desiredOverlay = overlayVisible;
         impl_->thread = std::jthread([this](std::stop_token stop) { impl_->Run(stop); });
     } catch (...) {
         diagnostic = L"Controller isolation thread/allocation failed.";
@@ -403,7 +483,8 @@ bool ControllerIsolationHostSession::Start(bool enabled, std::wstring& diagnosti
     std::unique_lock lock(impl_->mutex);
     impl_->changed.wait(lock, [this] { return impl_->startupDone; });
     diagnostic = impl_->diagnostic;
-    return impl_->progress == LocalControllerProgress::Playing;
+    return impl_->progress != LocalControllerProgress::Fault &&
+        impl_->progress != LocalControllerProgress::Disabled;
 }
 
 bool ControllerIsolationHostSession::PrepareOverlay(std::wstring& diagnostic) noexcept {
@@ -412,6 +493,9 @@ bool ControllerIsolationHostSession::PrepareOverlay(std::wstring& diagnostic) no
     if (impl_->progress == LocalControllerProgress::Fault) { diagnostic = impl_->diagnostic; return false; }
     impl_->desiredOverlay = true;
     const auto requestedGeneration = ++impl_->desiredGeneration;
+    if (impl_->progress == LocalControllerProgress::WaitingForController ||
+        impl_->preparingInput)
+        return true;
     (void)impl_->changed.wait_for(lock, std::chrono::milliseconds(500), [this, requestedGeneration] {
         return (impl_->progress == LocalControllerProgress::Contained &&
                 impl_->appliedGeneration == requestedGeneration) ||
@@ -466,6 +550,17 @@ bool ControllerIsolationHostSession::active() const noexcept {
 void ControllerIsolationHostSession::Stop() noexcept {
     if (!impl_) return;
     if (impl_->thread.joinable()) { impl_->thread.request_stop(); impl_->thread.join(); }
+}
+
+void ControllerIsolationHostSession::Reset() noexcept {
+    Stop();
+    impl_.reset();
+}
+
+LocalControllerProgress ControllerIsolationHostSession::progress() const noexcept {
+    if (!impl_) return LocalControllerProgress::Disabled;
+    std::scoped_lock lock(impl_->mutex);
+    return impl_->progress;
 }
 
 } // namespace widgetrail::isolation

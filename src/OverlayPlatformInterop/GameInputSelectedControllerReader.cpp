@@ -239,11 +239,13 @@ public:
 
 struct PhysicalControllerDiscoveryContext final {
     explicit PhysicalControllerDiscoveryContext(
-        const std::uint64_t value) noexcept : enrollmentToken(value) {}
+        const std::uint64_t value, const SelectedControllerEnrollment* expected = nullptr) noexcept
+        : enrollmentToken(value), requested(expected) {}
 
     std::uint64_t enrollmentToken{};
     std::mutex mutex;
-    SelectedControllerDiscovery discovery;
+    SelectedControllerDiscovery discovery{true};
+    const SelectedControllerEnrollment* requested{};
     SelectedControllerDescriptor selectedDescriptor;
     ComPtr<IGameInputDevice> selectedDevice;
 };
@@ -287,9 +289,11 @@ void CALLBACK OnPhysicalControllerDiscovery(
         }
     }
     const std::scoped_lock lock(state.mutex);
+    if (state.requested && (candidateKind != SelectedControllerCandidateKind::Physical ||
+        !SameStableControllerIdentity(*state.requested, descriptor.enrollment))) return;
     if (candidateKind == SelectedControllerCandidateKind::Physical &&
         descriptor.valid() &&
-        (!state.selectedDevice || state.selectedDescriptor == descriptor)) {
+        (!state.selectedDevice || descriptor.deviceInstanceId.view() <= state.selectedDescriptor.deviceInstanceId.view())) {
         state.selectedDescriptor = descriptor;
         state.selectedDevice = device;
     }
@@ -301,12 +305,13 @@ DiscoverCurrentPhysicalController(
     IGameInput& gameInput,
     const std::uint64_t enrollmentToken,
     SelectedControllerDescriptor& descriptor,
-    ComPtr<IGameInputDevice>* const selectedDevice = nullptr) noexcept {
+    ComPtr<IGameInputDevice>* const selectedDevice = nullptr,
+    const SelectedControllerEnrollment* const requested = nullptr) noexcept {
     descriptor = {};
     if (selectedDevice) selectedDevice->Reset();
     if (enrollmentToken == 0)
         return SelectedControllerDiscoveryStatus::UnknownIdentity;
-    PhysicalControllerDiscoveryContext context(enrollmentToken);
+    PhysicalControllerDiscoveryContext context(enrollmentToken, requested);
     GameInputCallbackToken callback{};
     const auto registered = gameInput.RegisterDeviceCallback(
         nullptr, GameInputKindGamepad, GameInputDeviceConnected,
@@ -355,7 +360,7 @@ public:
         SelectedControllerDescriptor localDescriptor;
         const auto discovery = DiscoverCurrentPhysicalController(
             *gameInput_.Get(), enrollment.enrollmentToken, localDescriptor,
-            &device_);
+            &device_, &enrollment);
         const auto resolution = ResolveLocalController(
             enrollment, discovery, localDescriptor, preparedEnrollment);
         if (resolution != LocalControllerResolutionStatus::Ready || !device_) {

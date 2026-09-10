@@ -245,6 +245,8 @@ enum class LocalControllerResolutionStatus : std::uint8_t {
 // virtual outputs never compete with physical input.
 class SelectedControllerDiscovery final {
 public:
+    explicit SelectedControllerDiscovery(bool chooseStableFirst = false) noexcept
+        : chooseStableFirst_(chooseStableFirst) {}
     void Observe(
         SelectedControllerCandidateKind kind,
         const SelectedControllerDescriptor& descriptor = {}) noexcept;
@@ -255,6 +257,7 @@ private:
     SelectedControllerDescriptor selected_{};
     std::uint8_t physicalCount_{};
     bool unknownIdentity_{};
+    bool chooseStableFirst_{};
 };
 
 class SelectedControllerSource {

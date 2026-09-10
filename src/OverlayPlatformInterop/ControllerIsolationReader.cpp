@@ -104,11 +104,12 @@ void SelectedControllerDiscovery::Observe(
     if (kind == SelectedControllerCandidateKind::KnownVirtualOutput) return;
     if (kind == SelectedControllerCandidateKind::Unknown ||
         !descriptor.valid()) {
-        unknownIdentity_ = true;
+        unknownIdentity_ = !chooseStableFirst_;
         return;
     }
     if (physicalCount_ != 0 && selected_ == descriptor) return;
-    if (physicalCount_ == 0) selected_ = descriptor;
+    if (physicalCount_ == 0 || (chooseStableFirst_ &&
+        descriptor.deviceInstanceId.view() < selected_.deviceInstanceId.view())) selected_ = descriptor;
     if (physicalCount_ < 2) ++physicalCount_;
 }
 
@@ -119,7 +120,7 @@ SelectedControllerDiscoveryStatus SelectedControllerDiscovery::Resolve(
         return SelectedControllerDiscoveryStatus::UnknownIdentity;
     if (physicalCount_ == 0)
         return SelectedControllerDiscoveryStatus::Unavailable;
-    if (physicalCount_ != 1)
+    if (physicalCount_ != 1 && !chooseStableFirst_)
         return SelectedControllerDiscoveryStatus::Ambiguous;
     descriptor = selected_;
     return SelectedControllerDiscoveryStatus::Ready;
