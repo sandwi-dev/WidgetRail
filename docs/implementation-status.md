@@ -24,6 +24,15 @@ reader-only probe completed one teardown but failed its next device bind; it
 is not counted as a passing suite. User Settings disable/reconnect retest is
 still required.
 
+The user subsequently confirmed Exclusive control works. Controllers now
+explains that already-open games/apps may keep their previous controller setup
+and should be reopened after a change. Settings also shares one fresh installed
+catalog read between inventory and permissions during each reload. On the current
+six-widget catalog, an isolated reload without Bridge diagnostics decreased from
+1,255 ms to 646 ms; Settings tests pass 62/62. This does not claim elimination of
+all activation latency. Windows Guide-hold panel duplicate input remains under
+investigation and is reported only with Exclusive control enabled.
+
 WIDGE-213 controller-isolation follow-up uses the existing XInput Guide adapter
 on the sole native routing thread at 25 ms, with GameInput retained for selected
 physical readings, disconnect and rumble. The unused isolation GameInput Guide

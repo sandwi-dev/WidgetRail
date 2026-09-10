@@ -7,6 +7,9 @@ Settings > Controllers groups **Input behavior** separately from **Required driv
 you use the overlay. Turn it off if your controller stops working in a game or
 you notice unexpected input.
 
+Games and apps that are already open may keep using the previous controller
+setup. Close and reopen them after changing Exclusive control.
+
 Enabling requires available HidHide, ViGEmBus, and Windows controller support.
 The driver rows report readiness from actual driver access, and the native host
 checks again before enabling. Settings never installs drivers automatically.

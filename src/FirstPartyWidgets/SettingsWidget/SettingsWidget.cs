@@ -379,10 +379,15 @@ public sealed class SettingsWidget : Widget
                 string.Equals(entry.Descriptor.Version.ToString(), settings.Appearance.ThemeVersion, StringComparison.Ordinal));
             if (!selectedInstalled)
                 warning ??= "Selected theme is unavailable; choose an installed theme";
-            var installedWarning = await ReloadInstalledWidgetsAsync(cancellationToken)
+            // Both sections describe the same catalog revision. Validate its
+            // package files once per reload, rather than hashing every installed
+            // version again for the permissions projection.
+            var catalogRead = SettingsReadinessRetry.CatalogAsync(
+                _widgetCatalog.DiscoverAsync, cancellationToken);
+            var installedWarning = await ReloadInstalledWidgetsAsync(cancellationToken, catalogRead)
                 .ConfigureAwait(false);
             warning ??= installedWarning;
-            var permissionWarning = await ReloadPermissionsAsync(cancellationToken)
+            var permissionWarning = await ReloadPermissionsAsync(cancellationToken, catalogRead)
                 .ConfigureAwait(false);
             warning ??= permissionWarning;
             PlatformDiagnosticsSnapshot diagnostics;
@@ -835,7 +840,8 @@ public sealed class SettingsWidget : Widget
         lock (_stateLock) return _permissionState.PackageCapabilitiesReturnPage;
     }
 
-    private async Task<string?> ReloadPermissionsAsync(CancellationToken cancellationToken)
+    private async Task<string?> ReloadPermissionsAsync(CancellationToken cancellationToken,
+        Task<WidgetCatalogSnapshot>? catalogRead = null)
     {
         IReadOnlyList<SettingsPermissionPackage> packages = [];
         var catalogValid = true;
@@ -844,9 +850,9 @@ public sealed class SettingsWidget : Widget
         var unknownDeclarations = new SettingsUnknownDeclarationAccumulator();
         try
         {
-            var catalog = await SettingsReadinessRetry.CatalogAsync(
+            var catalog = await (catalogRead ?? SettingsReadinessRetry.CatalogAsync(
                     _widgetCatalog.DiscoverAsync,
-                    cancellationToken)
+                    cancellationToken))
                 .ConfigureAwait(false);
             var discovered = new Dictionary<string, SettingsPermissionPackage>(StringComparer.Ordinal);
             if (_bundledWidgetRoot is not null)
@@ -1114,13 +1120,14 @@ public sealed class SettingsWidget : Widget
         Invalidate();
     }
 
-    private async Task<string?> ReloadInstalledWidgetsAsync(CancellationToken cancellationToken)
+    private async Task<string?> ReloadInstalledWidgetsAsync(CancellationToken cancellationToken,
+        Task<WidgetCatalogSnapshot>? catalogRead = null)
     {
         try
         {
-            var snapshot = await SettingsReadinessRetry.CatalogAsync(
+            var snapshot = await (catalogRead ?? SettingsReadinessRetry.CatalogAsync(
                     _widgetCatalog.DiscoverAsync,
-                    cancellationToken)
+                    cancellationToken))
                 .ConfigureAwait(false);
             var builtIn = _bundledWidgetRoot is null
                 ? []
