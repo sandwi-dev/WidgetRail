@@ -31,6 +31,13 @@ Precedence is:
 Plane never authorizes credentials, destructive recovery, publication, a full-trust package consent,
 or a material product decision reserved to the user.
 
+User controller-isolation decision (2026-09-10): gameplay forwarding need not survive WidgetRail
+process exit or crash. Implement one native routing owner in the long-lived overlay process,
+scheduled independently of rendering, with local controller/Guide delivery instead of the
+Guardian/Worker heartbeat path. Retain normal-shutdown cleanup and minimal exact-owned HidHide
+recovery after a crash. A future Settings exit action may reuse cleanup; its UI is separate work.
+This supersedes the older controller reference's independent process-survival requirement.
+
 ## Startup and reconciliation
 
 At every continuation and meaningful heartbeat:
