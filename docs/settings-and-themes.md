@@ -10,6 +10,11 @@ you notice unexpected input.
 Games and apps that are already open may keep using the previous controller
 setup. Close and reopen them after changing Exclusive control.
 
+**Known issue:** a single controller press may register twice in Settings or the
+Windows app switcher. Turn Exclusive control off if this happens. This Windows
+UI compatibility investigation is deferred as WIDGE-221; the cause remains
+unconfirmed. The current virtual output does not forward Guide to Windows.
+
 Enabling requires available HidHide, ViGEmBus, and Windows controller support.
 The driver rows report readiness from actual driver access, and the native host
 checks again before enabling. Settings never installs drivers automatically.
@@ -25,7 +30,7 @@ If none remain, it waits for a controller. A reconnected former controller canno
 displace the active replacement. Release held controls before input resumes.
 Recognized virtual controllers are excluded; there is no manual controller picker.
 
-This candidate still requires physical enable/disable and reconnect acceptance.
+The user accepted closure with this warning and the deferred compatibility work.
 
 ## Appearance and themes
 

@@ -54,6 +54,7 @@
 }
 
 .controllers-help { max-lines: 6; }
+.controllers-warning { color: var(--warning); }
 
 .settings-status.is-error,
 .diagnostic-error {

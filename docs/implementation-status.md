@@ -2,56 +2,36 @@
 
 Status: integrated Phase 0 platform prototype, 2026-08-09
 
-WIDGE-217 adds Settings > Controllers with default-off Exclusive control,
-separate input-behavior and required-driver groups, readiness-gated enablement,
-actual native status, and an explicit owned-cleanup retry. The sole native
-routing owner keeps a stable automatic physical-controller selection, waits
-when none are available, and neutralizes/retains its virtual output across
-disconnect and replacement. Initial held input is cancellable and cannot reach
-gameplay before neutral. Focused evidence includes Settings 62/62, diagnostics
-18/18, the Bridge controller persistence/freshness scenario, routing 182 checks,
-and local ownership 72 checks. Packaged physical acceptance remains pending;
-W213/W217 integration is held until that user verdict. Elevated GoW compatibility
-is deferred at the user's request, not claimed fixed.
+WIDGE-217 is accepted for closure and local integration on 2026-09-10 with
+Windows UI compatibility work deferred as WIDGE-221. Settings > Controllers
+provides default-off Exclusive control, driver readiness, enablement gates,
+actual routing status, exact-owned recovery, and guidance to reopen already-
+running games/apps. A visible warning explains that one press may register
+twice in Settings or the Windows app switcher and advises turning the setting
+off. The cause of that remaining duplication is unconfirmed. System Guide
+forwarding is not included; the unfinished experiment was removed.
 
-WIDGE-217 disable correction: the candidate crashed inside installed
-GameInputRedist 3.3.221 when retiring rumble with a null report, leaving the
-owned HidHide recovery journal. Dump analysis confirmed the null argument and
-runtime dereference. The reader now supplies an explicit all-motors-off report.
-Exact-owned recovery restored access. A live production-DLL check completed
-three enable/active/disable/off cycles with no pending journal. An earlier
-reader-only probe completed one teardown but failed its next device bind; it
-is not counted as a passing suite. User Settings disable/reconnect retest is
-still required.
+One native routing owner keeps sticky automatic selection and uses neutral
+handoff on disconnect. Selected-controller hiding covers its Xbox instance and
+exact descendant HID gamepad/joystick collections, excluding keyboard, mouse
+and unrelated devices. Independent probes confirm physical HID access is denied
+while enabled and restored while off. The user confirmed Game Controllers lists
+only the virtual controller. Explicit zeroed rumble reports prevent the observed
+GameInputRedist 3.3.221 null-report crash on disable. Three live enable/active/
+disable/off cycles complete with no remaining recovery journal.
 
-The user subsequently confirmed Exclusive control works. Controllers now
-explains that already-open games/apps may keep their previous controller setup
-and should be reopened after a change. Settings also shares one fresh installed
-catalog read between inventory and permissions during each reload. On the current
-six-widget catalog, an isolated reload without Bridge diagnostics decreased from
-1,255 ms to 646 ms; Settings tests pass 62/62. This does not claim elimination of
-all activation latency. Windows Guide-hold panel duplicate input remains under
-investigation and is reported only with Exclusive control enabled.
+Focused evidence: Settings 62/62, PlatformSettings 21/21, diagnostics pipe 18/18,
+Bridge controller persistence/freshness/recovery 1/1, reader 935 checks, routing
+182, local owner 76, and production DLL ABI 55. Settings shares one fresh catalog
+read across its inventory and permissions views; measured reload time decreased
+from 1,255 ms to 646 ms on the current catalog. These results are not a claim of
+universal game or hardware compatibility. Elevated GoW remains deferred, and
+WIDGE-218 through WIDGE-221 retain the separate controller follow-ups.
 
-WIDGE-217 composite-device correction: a fresh, non-allowlisted process could
-open the physical controller's HID gamepad collection while its Xbox instance
-was hidden. The native owner now adds exact descendant gamepad/joystick HID
-instances to the same owned-policy journal. Read-only discovery on the affected
-hardware resolves two targets (USB/Xbox and HID). Reader policy passes 935
-checks, local owner passes 76, and imported production ABI passes 55. The new
-cleanup fixture initially hit the existing activation-conflict guard; it was
-corrected to model an already-active foreign policy. Native discovery also
-required case-insensitive identity comparison across Windows property APIs.
-Live denial, disable cleanup and Windows-panel retest remain acceptance gates.
-
-WIDGE-213 controller-isolation follow-up uses the existing XInput Guide adapter
-on the sole native routing thread at 25 ms, with GameInput retained for selected
-physical readings, disconnect and rumble. The unused isolation GameInput Guide
-registration and temporary detailed Guide counters have been removed. Stable
-physical identity rebinding after HidHide and valid empty HidHide list parsing
-remain. Focused coverage includes 182 routing checks, 919 reader checks and 48
-local-owner checks. These later commits are held from main pending WIDGE-217;
-the subsequent Guide/navigation candidate was physically accepted by the user.
+The previously accepted WIDGE-213 Guide and navigation fixes are included in
+this integration: routing-thread XInput Guide polling at 25 ms, GameInput
+ordinary input/disconnect/rumble, stable post-hide rebinding, valid empty HidHide
+lists, and suppression of navigation repeats from queued input history.
 
 This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user

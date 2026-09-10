@@ -38,6 +38,10 @@ internal static class ControllerSettingsPresentation
                     "controllers.enable-help", "When to enable Exclusive control").Classes("page-help", "controllers-help"),
                 UI.Text("Turn this off if your controller stops working in a game or you notice unexpected input.",
                     "controllers.disable-help", "When to disable Exclusive control").Classes("page-help", "controllers-help"),
+                UI.Text("Known issue: a single controller press may register twice in Settings or the Windows app switcher. Turn Exclusive control off if this happens.",
+                    "controllers.compatibility-warning",
+                    "Known issue: a single controller press may register twice in Settings or the Windows app switcher. Turn Exclusive control off if this happens.")
+                    .Classes("page-help", "controllers-help", "controllers-warning"),
                 UI.Text("Games and apps that are already open may keep using the previous controller setup. Close and reopen them after changing this setting.",
                     "controllers.restart-help", "Restart open games and apps after changing Exclusive control").Classes("page-help", "controllers-help"),
                 UI.Text(statusText, "controllers.status", $"Exclusive control status: {statusText}").Classes("settings-status"),
