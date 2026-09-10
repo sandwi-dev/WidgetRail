@@ -160,6 +160,8 @@ WidgetRailOverlayPlatformControllerPrerequisites() noexcept;
 WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformSetExclusiveControl(WidgetRailOverlayPlatformHandle* handle, std::uint32_t enabled) noexcept;
 
+// 0 unavailable, 1 off, 2 starting, 3 active, 4 waiting, 5 recovery required,
+// 6 setup failed with owned hiding restored and ordinary input selected.
 WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformControllerControlState(const WidgetRailOverlayPlatformHandle* handle) noexcept;
 

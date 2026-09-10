@@ -56,6 +56,22 @@ bool ControllerDeviceNodeIdentity::valid() const noexcept {
         value.begin() + length;
 }
 
+void OwnedControllerTargetDiscovery::Observe(const bool pendingRemoval,
+    const std::optional<std::uint32_t> address, const ControllerDeviceNodeIdentity& identity) noexcept {
+    if (pendingRemoval) return;
+    if (!address) { invalid_ = true; return; }
+    if (*address != index_) return;
+    if (selected_.valid() || !identity.valid()) { invalid_ = true; return; }
+    selected_ = identity;
+}
+
+bool OwnedControllerTargetDiscovery::Resolve(ControllerDeviceNodeIdentity& identity) const noexcept {
+    identity = {};
+    if (index_ == 0 || invalid_ || !selected_.valid()) return false;
+    identity = selected_;
+    return true;
+}
+
 std::optional<bool> IsSelectedControllerDescendant(
     ControllerDeviceNodeToken candidate, const ControllerDeviceNodeToken selected,
     ControllerDeviceAncestryBackend& backend) noexcept {

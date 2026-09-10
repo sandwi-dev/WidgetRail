@@ -111,7 +111,7 @@ public sealed record PlatformWidgetPackageUninstallResult(
 
 public enum ControllerControlState
 {
-    Unavailable, Off, Starting, Active, WaitingForController, RecoveryRequired, Stopping,
+    Unavailable, Off, Starting, Active, WaitingForController, RecoveryRequired, Stopping, Failed,
 }
 
 public sealed record ControllerControlStatus(

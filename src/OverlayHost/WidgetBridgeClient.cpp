@@ -3940,11 +3940,11 @@ int WidgetBridgeClient::TakeApplicationControl() {
 std::optional<ControllerControlPreference> WidgetBridgeClient::ExchangeControllerControl(
     const std::uint32_t state, const std::uint32_t prerequisites) {
     std::scoped_lock lock(requestMutex_);
-    if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_ || state > 5 || prerequisites > 7) return std::nullopt;
+    if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_ || state > 6 || prerequisites > 7) return std::nullopt;
     winrt::handle deadline{CreateWaitableTimerW(nullptr, TRUE, nullptr)};
     LARGE_INTEGER due{}; due.QuadPart = -20'000'000;
     if (!deadline || !SetWaitableTimer(deadline.get(), &due, 0, nullptr, nullptr, FALSE)) return std::nullopt;
-    constexpr const wchar_t* states[]{L"unavailable", L"off", L"starting", L"active", L"waitingForController", L"recoveryRequired"};
+    constexpr const wchar_t* states[]{L"unavailable", L"off", L"starting", L"active", L"waitingForController", L"recoveryRequired", L"failed"};
     try {
         JsonObject payload;
         payload.Insert(L"state", JsonValue::CreateStringValue(states[state]));

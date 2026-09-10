@@ -82,7 +82,8 @@ struct Output final : ControllerIsolationOutput {
     int reports{};
     std::atomic_int removals{};
     std::atomic_int opens{};
-    bool OpenOwnedTarget() noexcept override { ++opens; return true; }
+    bool failOpen{};
+    bool OpenOwnedTarget() noexcept override { ++opens; return !failOpen; }
     bool Submit(const GamepadState& value) noexcept override { std::scoped_lock lock(mutex); last = value; ++reports; return true; }
     void RemoveOwnedTarget() noexcept override { ++removals; }
     bool Is(GamepadState value) { std::scoped_lock lock(mutex); return last == value; }
@@ -168,10 +169,11 @@ void ParserAndRecovery(const std::filesystem::path& root) {
     second.join(); Check(!secondAccepted, "actual mutex excludes concurrent owner");
 }
 void SetupCleanup(const std::filesystem::path& root) {
-    for (int failure = 0; failure < 4; ++failure) {
+    for (int failure = 0; failure < 5; ++failure) {
         const auto path = root / (L"failure-" + std::to_wstring(failure)) / L"local-session.v1";
         Effects effects; const auto before = effects.state; Source source; Output output;
         effects.failHide = failure == 1; effects.throwHide = failure == 2;
+        output.failOpen = failure == 4;
         auto dependency = Dependencies(path, effects, failure == 0 ? nullptr : &source, output);
         dependency.throwAfterApply = failure == 3;
         ControllerIsolationHostSession owner(dependency); std::wstring error;

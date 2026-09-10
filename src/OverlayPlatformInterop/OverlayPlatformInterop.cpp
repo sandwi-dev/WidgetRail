@@ -117,6 +117,7 @@ struct WidgetRailOverlayPlatformHandle final {
     std::deque<RawEvent> events;
     bool initialized{};
     bool controllerRecoveryRequired{};
+    bool controllerSetupFailed{};
     std::atomic_bool shutDown{};
     bool visible{};
     bool focused{};
@@ -441,6 +442,7 @@ std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformControllerControlState(const WidgetRailOverlayPlatformHandle* handle) noexcept {
     if (!handle || handle->shutDown) return 0;
     if (handle->controllerRecoveryRequired) return 5;
+    if (handle->controllerSetupFailed) return 6;
     using Progress = widgetrail::isolation::LocalControllerProgress;
     switch (handle->controllerIsolation.progress()) {
     case Progress::Disabled: return 1;
@@ -456,8 +458,10 @@ WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformSetExclusiveControl(WidgetRailOverlayPlatformHandle* handle, const std::uint32_t enabled) noexcept {
     if (!handle || handle->shutDown) return WidgetRailOverlayPlatformStatus::InvalidArgument;
     const bool requested = enabled != WRAIL_OVERLAY_PLATFORM_FALSE;
-    if (requested && WidgetRailOverlayPlatformControllerPrerequisites() != 7U)
+    if (requested && WidgetRailOverlayPlatformControllerPrerequisites() != 7U) {
+        if (!handle->controllerIsolation.active()) handle->controllerSetupFailed = true;
         return WidgetRailOverlayPlatformStatus::ControllerIsolationUnavailable;
+    }
     if (requested && requested == controllerIsolationRequested.load(std::memory_order_acquire) &&
         !handle->controllerRecoveryRequired && handle->initialized &&
         handle->controllerIsolation.progress() != widgetrail::isolation::LocalControllerProgress::Fault)
@@ -477,6 +481,7 @@ WidgetRailOverlayPlatformSetExclusiveControl(WidgetRailOverlayPlatformHandle* ha
         return WidgetRailOverlayPlatformStatus::ControllerIsolationUnavailable;
     }
     handle->controllerRecoveryRequired = false;
+    handle->controllerSetupFailed = false;
     handle->controllerIsolation.Reset();
     handle->RetireLocalControllerOwners();
     { std::scoped_lock lock(handle->mutex); handle->events.clear(); }
@@ -486,6 +491,7 @@ WidgetRailOverlayPlatformSetExclusiveControl(WidgetRailOverlayPlatformHandle* ha
     controllerIsolationRequested.store(requested, std::memory_order_release);
     const auto result = WidgetRailOverlayPlatformInitialize(handle);
     if (result != WidgetRailOverlayPlatformStatus::Ok) return result;
+    if (requested && handle->controllerSetupFailed) return WidgetRailOverlayPlatformStatus::ControllerIsolationUnavailable;
     if (requested && handle->visible && !handle->controllerIsolation.PrepareOverlay(diagnostic)) {
         handle->Diagnostic(diagnostic);
         return WidgetRailOverlayPlatformStatus::ControllerIsolationUnavailable;
@@ -553,7 +559,25 @@ WidgetRailOverlayPlatformInitialize(WidgetRailOverlayPlatformHandle* handle) noe
         if (isolationDiagnostic.empty())
             isolationDiagnostic = L"Controller isolation startup failed without a diagnostic.";
         handle->Diagnostic(isolationDiagnostic);
-        return WidgetRailOverlayPlatformStatus::ControllerIsolationUnavailable;
+        // Startup can signal failure before its scoped hide-policy cleanup has
+        // finished. Drain the owner and verify recovery before restoring reads.
+        handle->controllerIsolation.Stop();
+        try {
+            widgetrail::isolation::NativeLocalPolicyEffects effects;
+            if (!widgetrail::isolation::RecoverLocalControllerPolicy(
+                    widgetrail::isolation::LocalControllerJournalPath(), effects, isolationDiagnostic)) {
+                handle->controllerRecoveryRequired = true;
+                handle->Diagnostic(isolationDiagnostic);
+                return WidgetRailOverlayPlatformStatus::ControllerIsolationUnavailable;
+            }
+        } catch (...) {
+            handle->controllerRecoveryRequired = true;
+            return WidgetRailOverlayPlatformStatus::ControllerIsolationUnavailable;
+        }
+        handle->controllerIsolation.Reset();
+        controllerIsolationRequested.store(false, std::memory_order_release);
+        handle->controllerSetupFailed = true;
+        handle->Diagnostic(L"Exclusive control setup failed; owned hiding restored and ordinary input resumed.");
     }
 
     const HRESULT createResult = GameInputCreate(

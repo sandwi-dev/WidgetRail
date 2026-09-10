@@ -31,6 +31,19 @@ struct ControllerDeviceNodeIdentity final {
 
 using ControllerDeviceNodeToken = std::uintptr_t;
 
+// Streaming correlation beneath an already-identified unique ViGEm bus.
+class OwnedControllerTargetDiscovery final {
+public:
+    explicit OwnedControllerTargetDiscovery(std::uint32_t index) noexcept : index_(index) {}
+    void Observe(bool pendingRemoval, std::optional<std::uint32_t> address,
+                 const ControllerDeviceNodeIdentity& identity) noexcept;
+    [[nodiscard]] bool Resolve(ControllerDeviceNodeIdentity& identity) const noexcept;
+private:
+    std::uint32_t index_{};
+    ControllerDeviceNodeIdentity selected_{};
+    bool invalid_{};
+};
+
 class ControllerDeviceAncestryBackend {
 public:
     virtual ~ControllerDeviceAncestryBackend() = default;

@@ -34,6 +34,19 @@ internal static class ControllerSettingsScenarios
             await widget.OnActionAsync(new WidgetActionEvent("controllers.restore", "controllers.refresh"));
             if (service.Requests.Last() || (await store.LoadAsync()).Controllers.Revision != 3)
                 throw new Exception("Recovery must reissue off with a new revision.");
+            await store.UpdateAsync(current => current with { Controllers = current.Controllers with { ExclusiveControl = true } });
+            service.Status = new(ControllerControlState.Failed, true, true, true);
+            await widget.OnActionAsync(new WidgetActionEvent("refresh", "controllers.refresh"));
+            json = JsonSerializer.Serialize(widget.Render().CreateSnapshot("settings", 1));
+            if (!json.Contains("Exclusive control  Off") || !json.Contains("Normal controller input has been restored"))
+                throw new Exception("Failed startup must display Off and explain ordinary input restoration.");
+            await widget.OnActionAsync(new WidgetActionEvent("controllers.exclusive-control.toggle", "controllers.exclusive-control"));
+            if (!service.Requests.Last()) throw new Exception("Retry after failed startup must request enable, not another disable.");
+            service.Status = new(ControllerControlState.Failed, true, true, true);
+            await widget.OnActionAsync(new WidgetActionEvent("refresh", "controllers.refresh"));
+            await widget.OnActionAsync(new WidgetActionEvent("controllers.restore", "controllers.refresh"));
+            if (service.Requests.Last() || (await store.LoadAsync()).Controllers.ExclusiveControl)
+                throw new Exception("Keep off must cancel the saved enable request.");
             await widget.OnActionAsync(new WidgetActionEvent("back", "test"));
             if (widget.CurrentPage != SettingsPage.Root) throw new Exception("Controller page Back scope is wrong.");
         }

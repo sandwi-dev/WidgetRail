@@ -611,22 +611,24 @@ bool ResolveViGEmOwnedTarget(const std::uint32_t targetIndex,
     if (CM_Locate_DevNodeW(&bus, buses.data(), CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS ||
         CM_Get_Child(&child, bus, 0) != CR_SUCCESS) return false;
     CfgMgrDeviceAncestryBackend backend;
-    ControllerDeviceNodeIdentity match;
+    OwnedControllerTargetDiscovery discovery(targetIndex);
     for (unsigned count = 0; count < 256; ++count) {
+        ULONG status{}, problem{};
+        if (CM_Get_DevNode_Status(&status, &problem, child, 0) != CR_SUCCESS) return false;
+        const bool removing = (status & DN_WILL_BE_REMOVED) != 0;
         ULONG address{};
         ULONG bytes = sizeof(address);
         DEVPROPTYPE type{};
-        if (CM_Get_DevNode_PropertyW(child, &DEVPKEY_Device_Address, &type,
-                reinterpret_cast<PBYTE>(&address), &bytes, 0) != CR_SUCCESS ||
-            type != DEVPROP_TYPE_UINT32 || bytes != sizeof(address)) return false;
-        if (address == targetIndex) {
-            if (match.valid() || !backend.ReadNodeIdentity(child, match)) return false;
-        }
+        const bool addressKnown = !removing && CM_Get_DevNode_PropertyW(child, &DEVPKEY_Device_Address, &type,
+                reinterpret_cast<PBYTE>(&address), &bytes, 0) == CR_SUCCESS &&
+            type == DEVPROP_TYPE_UINT32 && bytes == sizeof(address);
+        ControllerDeviceNodeIdentity candidateIdentity;
+        if (addressKnown && address == targetIndex && !backend.ReadNodeIdentity(child, candidateIdentity)) return false;
+        discovery.Observe(removing, addressKnown ? std::optional<std::uint32_t>{address} : std::nullopt, candidateIdentity);
         DEVINST sibling{};
         const auto result = CM_Get_Sibling(&sibling, child, 0);
         if (result == CR_NO_SUCH_DEVNODE) {
-            identity = match;
-            return identity.valid();
+            return discovery.Resolve(identity);
         }
         if (result != CR_SUCCESS || sibling == child) return false;
         child = sibling;

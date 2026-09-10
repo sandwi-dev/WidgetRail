@@ -38,6 +38,10 @@ Ambiguous buses, duplicate addresses or unavailable identity fail setup safely.
 The resulting exact instance ID also excludes descendants during reconnect
 discovery. Identity is cleared on target removal and resolved again on creation;
 neither an Xbox name, VID/PID nor XInput player slot establishes ownership.
+Children explicitly marked by Windows as pending removal do not participate in
+this correlation: they may retain a devnode after their address property has
+already disappeared. Unreadable live nodes and duplicate live addresses still
+reject ownership. A matched, retiring target cannot be admitted either.
 The bus index/address relationship is part of the dependency's implementation:
 [ViGEmBus PDO metadata](https://github.com/nefarius/ViGEmBus/blob/d986e1d93708ec9b11049542fa6027272cce716c/sys/EmulationTargetPDO.cpp#L318).
 No driver code is changed. Settings identifies the game-facing device as the
@@ -50,6 +54,13 @@ affected USB 8BitDo and ViGEm stack now separates both devices correctly. Broade
 Bluetooth/built-in and other virtual-stack hardware coverage remains a manual
 verification limit; their supported and unknown topologies have deterministic
 coverage. Virtual-source forwarding and manual selection remain separate work.
+
+If startup fails, the native host drains the routing owner and verifies exact-
+owned HidHide recovery before restoring ordinary input. Failed cleanup remains
+Recovery required. Successful cleanup publishes a separate Failed state; the
+Settings switch displays Off with retry guidance and a Keep Exclusive control
+off action to cancel the saved enable request. A saved request is never treated
+as proof that exclusive routing started.
 
 Selected-reader retirement sends an explicit zeroed GameInput rumble report.
 Although the SDK annotates a null report as optional, GameInputRedist 3.3.221

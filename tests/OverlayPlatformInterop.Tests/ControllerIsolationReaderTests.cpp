@@ -245,6 +245,29 @@ void RetainedViGEmOutputCannotBecomeAReconnectSource() {
           "malformed ancestor service cannot bypass virtual exclusion");
 }
 
+void OwnedOutputIgnoresOnlyExplicitlyRetiringNodes() {
+    const auto owned = NodeIdentity(L"USB\\VID_045E&PID_028E\\01");
+    const auto peer = NodeIdentity(L"USB\\VID_045E&PID_028E\\02");
+    ControllerDeviceNodeIdentity result;
+    OwnedControllerTargetDiscovery pendingSibling(1);
+    pendingSibling.Observe(true, std::nullopt, {});
+    pendingSibling.Observe(false, 1, owned);
+    Check(pendingSibling.Resolve(result) && result == owned,
+          "pending-removal node without address cannot reject the active owned target");
+    OwnedControllerTargetDiscovery unknownLiveSibling(1);
+    unknownLiveSibling.Observe(false, std::nullopt, {});
+    unknownLiveSibling.Observe(false, 1, owned);
+    Check(!unknownLiveSibling.Resolve(result) && !result.valid(),
+          "unreadable live node still prevents asserting exact output ownership");
+    OwnedControllerTargetDiscovery duplicates(1);
+    duplicates.Observe(false, 1, owned);
+    duplicates.Observe(false, 1, peer);
+    Check(!duplicates.Resolve(result), "duplicate live addresses remain ambiguous");
+    OwnedControllerTargetDiscovery removingTarget(1);
+    removingTarget.Observe(true, 1, owned);
+    Check(!removingTarget.Resolve(result), "a retiring target itself cannot become owned output");
+}
+
 void ClassificationRequiresSupportedHardwareEvidence() {
     FakeAncestryBackend backend;
     for (const auto path : {L"USB\\PAD", L"BTHENUM\\PAD", L"BTHLEDEVICE\\PAD", L"HID\\I2C_PAD"}) {
@@ -548,6 +571,7 @@ int main() {
           "ambiguous discovery never returns a usable enrollment");
     AncestryRequiresAnExactRootedPhysicalChain();
     RetainedViGEmOutputCannotBecomeAReconnectSource();
+    OwnedOutputIgnoresOnlyExplicitlyRetiringNodes();
     ClassificationRequiresSupportedHardwareEvidence();
     EnrollmentIsExactAndVirtualFailsClosed();
     DiscoveryRequiresExactlyOnePhysicalController();

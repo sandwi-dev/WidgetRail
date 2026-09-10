@@ -616,7 +616,9 @@ public sealed class SettingsWidget : Widget
         try
         {
             var current = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
-            var enabled = !restore && !current.Controllers.ExclusiveControl;
+            bool failed;
+            lock (_stateLock) failed = _diagnostics.Controllers.State == ControllerControlState.Failed;
+            var enabled = !restore && (failed || !current.Controllers.ExclusiveControl);
             var result = await _diagnosticsService.SetExclusiveControlAsync(enabled, cancellationToken)
                 .ConfigureAwait(false);
             var saved = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);

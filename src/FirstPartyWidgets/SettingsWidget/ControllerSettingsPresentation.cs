@@ -11,19 +11,22 @@ internal static class ControllerSettingsPresentation
     {
         var requested = state.Settings.Controllers.ExclusiveControl;
         var status = state.Diagnostics.Controllers;
-        var canChange = requested || status.CanEnable;
-        var toggle = UI.Switch("Exclusive control", requested,
+        var failed = status.State == ControllerControlState.Failed;
+        var displayedOn = requested && !failed;
+        var canChange = displayedOn || status.CanEnable;
+        var toggle = UI.Switch("Exclusive control", displayedOn,
                 "controllers.exclusive-control.toggle", "controllers.exclusive-control")
             .Busy(state.Busy).Disabled(!canChange).AddClasses("setting-row");
         var recovery = status.State == ControllerControlState.RecoveryRequired;
-        var refresh = UI.Button(recovery ? "Restore controller access" : "Check again",
-                recovery ? "controllers.restore" : "refresh", "controllers.refresh")
+        var refresh = UI.Button(recovery ? "Restore controller access" : failed ? "Keep Exclusive control off" : "Check again",
+                recovery || failed ? "controllers.restore" : "refresh", "controllers.refresh")
             .Busy(state.Busy).Classes("setting-row");
         var statusText = status.State switch
         {
             ControllerControlState.Off => "Off",
             ControllerControlState.Starting => "Starting — release the controller controls",
             ControllerControlState.Stopping => "Turning off…",
+            ControllerControlState.Failed => "Exclusive control could not start. Normal controller input has been restored. Turn this on to try again.",
             ControllerControlState.Active => "Active",
             ControllerControlState.WaitingForController => "Waiting for a controller",
             ControllerControlState.RecoveryRequired => "Controller access needs to be restored. Select Restore controller access to turn this off and retry cleanup.",
