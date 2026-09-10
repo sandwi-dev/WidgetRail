@@ -180,6 +180,25 @@ enum class SelectedControllerPrepareStatus : std::uint8_t {
     CallbackRegistrationFailed,
 };
 
+struct SelectedControllerGuideDiagnostics final {
+    std::uint32_t focusPolicy{};
+    std::uint32_t registrationResult{};
+    std::uint64_t callbackEntries{};
+    std::uint64_t leaseRejections{};
+    std::uint64_t nullDevices{};
+    std::uint64_t deviceInfoFailures{};
+    std::uint64_t selectedIdMismatches{};
+    std::uint64_t unchangedStates{};
+    std::uint64_t ingressAccepted{};
+    std::uint64_t ingressRejected{};
+    bool lastCurrentGuide{};
+    bool lastPreviousGuide{};
+
+    [[nodiscard]] friend bool operator==(
+        const SelectedControllerGuideDiagnostics&,
+        const SelectedControllerGuideDiagnostics&) noexcept = default;
+};
+
 struct SelectedControllerCurrent final {
     std::uint64_t sourceTimestampMicroseconds{};
     std::uint64_t observedAtMilliseconds{};
@@ -268,6 +287,8 @@ public:
         SelectedControllerCurrent& current) noexcept = 0;
     [[nodiscard]] virtual bool ApplyRumble(
         const ControllerRumbleState&) noexcept { return false; }
+    [[nodiscard]] virtual SelectedControllerGuideDiagnostics
+    GuideDiagnostics() const noexcept { return {}; }
     virtual void Stop() noexcept = 0;
 };
 

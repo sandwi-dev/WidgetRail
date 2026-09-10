@@ -130,6 +130,9 @@ struct WidgetRailOverlayPlatformHandle final {
     widgetrail::ForegroundTargetTracker foregroundTarget;
     std::optional<widgetrail::input::ControllerReadPath> lastReadPath;
     std::optional<bool> lastForegroundExclusive;
+    std::uint64_t localGuidePops{};
+    std::uint64_t guideDebounceAccepted{};
+    std::uint64_t guideDebounceRejected{};
 
     void Diagnostic(const std::wstring& message) noexcept {
         if (!options.diagnostic || !TryEnterCallback()) return;
@@ -640,10 +643,15 @@ WidgetRailOverlayPlatformDrainEvent(
     if (handle->controllerIsolation.active()) {
         std::uint64_t guideEvent{};
         std::wstring diagnostic;
-        if (!handle->controllerIsolation.PollGuide(guideEvent, diagnostic)) {
-            if (!diagnostic.empty()) handle->Diagnostic(diagnostic);
-        } else if (guideEvent != 0 &&
+        const bool guideAvailable =
+            handle->controllerIsolation.PollGuide(guideEvent, diagnostic);
+        if (!diagnostic.empty()) handle->Diagnostic(diagnostic);
+        if (guideAvailable && guideEvent != 0 &&
                    (guideEvent & (1ULL << 63)) == 0) {
+            ++handle->localGuidePops;
+            handle->Diagnostic(
+                L"Controller isolation Guide diagnostic stage=platform-pop count=" +
+                std::to_wstring(handle->localGuidePops));
             handle->Queue({
                 RawEventKind::GuidePressed,
                 WidgetRailOverlayPlatformGuideSource::GameInput});
@@ -660,7 +668,21 @@ WidgetRailOverlayPlatformDrainEvent(
         }
         switch (raw.kind) {
         case RawEventKind::GuidePressed:
-            if (!handle->guideDebouncer.Accept(nowMilliseconds)) continue;
+            if (!handle->guideDebouncer.Accept(nowMilliseconds)) {
+                ++handle->guideDebounceRejected;
+                handle->Diagnostic(
+                    L"Controller isolation Guide diagnostic stage=debounce accepted=" +
+                    std::to_wstring(handle->guideDebounceAccepted) +
+                    L" rejected=" +
+                    std::to_wstring(handle->guideDebounceRejected));
+                continue;
+            }
+            ++handle->guideDebounceAccepted;
+            handle->Diagnostic(
+                L"Controller isolation Guide diagnostic stage=debounce accepted=" +
+                std::to_wstring(handle->guideDebounceAccepted) +
+                L" rejected=" +
+                std::to_wstring(handle->guideDebounceRejected));
             PublishEvent(
                 *event,
                 WidgetRailOverlayPlatformEventKind::GuideToggleRequested,
@@ -746,7 +768,9 @@ WidgetRailOverlayPlatformPrimeController(
     if (handle->controllerIsolation.active()) {
         widgetrail::isolation::ControllerIsolationHostReading reading;
         std::wstring diagnostic;
-        if (handle->controllerIsolation.Poll(reading, diagnostic)) {
+        const bool polled = handle->controllerIsolation.Poll(reading, diagnostic);
+        if (!diagnostic.empty()) handle->Diagnostic(diagnostic);
+        if (polled) {
             state = {
                 reading.state.buttons, reading.state.leftTrigger,
                 reading.state.rightTrigger, reading.state.leftThumbX,
@@ -760,8 +784,6 @@ WidgetRailOverlayPlatformPrimeController(
                     RawEventKind::GuidePressed,
                     WidgetRailOverlayPlatformGuideSource::GameInput});
             }
-        } else if (!diagnostic.empty()) {
-            handle->Diagnostic(diagnostic);
         }
         handle->controllerTracker.Prime(connected, state, nowMilliseconds);
         return WidgetRailOverlayPlatformStatus::Ok;
@@ -793,7 +815,9 @@ WidgetRailOverlayPlatformReadController(
     if (handle->controllerIsolation.active()) {
         widgetrail::isolation::ControllerIsolationHostReading reading;
         std::wstring diagnostic;
-        if (handle->controllerIsolation.Poll(reading, diagnostic)) {
+        const bool polled = handle->controllerIsolation.Poll(reading, diagnostic);
+        if (!diagnostic.empty()) handle->Diagnostic(diagnostic);
+        if (polled) {
             state = {
                 reading.state.buttons, reading.state.leftTrigger,
                 reading.state.rightTrigger, reading.state.leftThumbX,
@@ -807,8 +831,6 @@ WidgetRailOverlayPlatformReadController(
                     RawEventKind::GuidePressed,
                     WidgetRailOverlayPlatformGuideSource::GameInput});
             }
-        } else if (!diagnostic.empty()) {
-            handle->Diagnostic(diagnostic);
         }
         const auto structSize = frame->structSize;
         const auto abiVersion = frame->abiVersion;
