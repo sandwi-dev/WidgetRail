@@ -21,6 +21,11 @@ internal static class ControllerSettingsPresentation
         var refresh = UI.Button(recovery ? "Restore controller access" : failed ? "Keep Exclusive control off" : "Check again",
                 recovery || failed ? "controllers.restore" : "refresh", "controllers.refresh")
             .Busy(state.Busy).Classes("setting-row");
+        if (canChange)
+        {
+            toggle = toggle.FocusDown(refresh.Id);
+            refresh = refresh.FocusUp(toggle.Id);
+        }
         var statusText = status.State switch
         {
             ControllerControlState.Off => "Off",

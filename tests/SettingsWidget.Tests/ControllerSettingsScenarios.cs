@@ -2,6 +2,7 @@ using System.Text.Json;
 using WidgetRail.FirstPartyWidgets.Settings;
 using WidgetRail.PlatformDiagnostics;
 using WidgetRail.PlatformSettings;
+using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
 internal static class ControllerSettingsScenarios
@@ -89,6 +90,7 @@ internal static class ControllerSettingsScenarios
                 null, "Ready", true, false, false);
             if (!SettingsPresentation.TryRender(state, out var view)) throw new Exception("Missing Controllers page.");
             var snapshot = view.CreateSnapshot("settings", 1);
+            AssertNavigation(snapshot, status.CanEnable);
             var json = JsonSerializer.Serialize(snapshot);
             foreach (var text in new[] { "Input behavior", "Required drivers", "Exclusive control", "HidHide", "ViGEmBus",
                 "your game also reacts", "controller stops working in a game",
@@ -99,6 +101,7 @@ internal static class ControllerSettingsScenarios
                 throw new Exception("Unavailable toggle must not own initial focus.");
             var enabled = state with { Settings = document with { Controllers = new() { ExclusiveControl = true } } };
             SettingsPresentation.TryRender(enabled, out var enabledView);
+            AssertNavigation(enabledView.CreateSnapshot("settings", 1), true);
             if (enabledView.CreateSnapshot("settings", 1).InitialFocusId != "controllers.exclusive-control")
                 throw new Exception("Disable must remain reachable when drivers fail.");
         }
@@ -106,5 +109,20 @@ internal static class ControllerSettingsScenarios
             target != SettingsPage.Controllers || SettingsNavigationPolicy.Parent(target, SettingsPage.Root) != SettingsPage.Root)
             throw new Exception("Controllers navigation and Back must remain scoped.");
         return Task.CompletedTask;
+    }
+
+    private static void AssertNavigation(ViewSnapshot snapshot, bool canChange)
+    {
+        static IEnumerable<ViewNode> Nodes(ViewNode node) =>
+            new[] { node }.Concat(node.Children.SelectMany(Nodes));
+        var nodes = Nodes(snapshot.Root).ToArray();
+        var toggle = nodes.Single(node => node.Id == "controllers.exclusive-control");
+        var refresh = nodes.Single(node => node.Id == "controllers.refresh");
+        if (canChange && (toggle.Focus?.Down != refresh.Id || refresh.Focus?.Up != toggle.Id))
+            throw new Exception("Controller actions must remain mutually reachable outside the scroll viewport.");
+        if (!canChange && refresh.Focus?.Up != "settings.restart")
+            throw new Exception("Unavailable toggle must not trap navigation from Check again.");
+        var errors = ViewSnapshotValidator.Validate(snapshot);
+        if (errors.Count != 0) throw new Exception(string.Join(Environment.NewLine, errors));
     }
 }

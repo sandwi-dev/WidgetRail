@@ -522,7 +522,7 @@ internal static class SettingsPresentation
                 entry.Descriptor.Id == settings.Appearance.ThemeId &&
                 entry.Descriptor.Version.ToString() == settings.Appearance.ThemeVersion;
             var diagnostic = entry.Diagnostics.FirstOrDefault()?.Code;
-            children.Add(UI.SettingsRow(
+            var row = UI.SettingsRow(
                 entry.Descriptor.Name,
                 new ComponentAction("Review", $"theme.open.{index}"),
                 $"theme.item.{index}",
@@ -532,7 +532,21 @@ internal static class SettingsPresentation
                 value: entry.Descriptor.Version.ToString(),
                 status: selected ? "Active" : entry.IsValid ? "Installed" : "Invalid",
                 statusTone: entry.IsValid ? StatusTone.Neutral : StatusTone.Danger,
-                isBusy: busy));
+                isBusy: busy);
+            // Explicit links keep adjacent themes reachable outside the scroll viewport.
+            children.Add(row with
+            {
+                Children = row.Children.Select(child => child is ButtonElement button
+                    ? button with
+                    {
+                        FocusNeighbors = new()
+                        {
+                            Up = index > 0 ? $"theme.item.{index - 1}.action" : "settings.restart",
+                            Down = index + 1 < themes.Themes.Count ? $"theme.item.{index + 1}.action" : null,
+                        },
+                    }
+                    : child).ToArray(),
+            });
             if (selected && requestedFocus is null) initialFocus = $"theme.item.{index}.action";
         }
         return View(header, PageScope("theme.picker", children.ToArray()),
