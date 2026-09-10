@@ -37,6 +37,8 @@ internal static class ControllerSettingsPresentation
                 UI.Text("Controllers", "controllers.heading", "Controllers settings").Classes("page-heading"),
                 UI.Text("Input behavior", "controllers.input-heading", "Input behavior").Classes("section-heading"),
                 toggle,
+                UI.Text($"Status - {statusText}", "controllers.status", $"Status - {statusText}")
+                    .Classes("settings-status", "controllers-status"),
                 UI.Text("Keep controller input in WidgetRail while the overlay is open. Turn this on if your game also reacts when you use the overlay.",
                     "controllers.enable-help", "When to enable Exclusive control").Classes("page-help", "controllers-help"),
                 UI.Text("Turn this off if your controller stops working in a game or you notice unexpected input.",
@@ -47,9 +49,6 @@ internal static class ControllerSettingsPresentation
                     .Classes("page-help", "controllers-help", "controllers-warning"),
                 UI.Text("Games and apps that are already open may keep using the previous controller setup. Close and reopen them after changing this setting.",
                     "controllers.restart-help", "Restart open games and apps after changing Exclusive control").Classes("page-help", "controllers-help"),
-                UI.Text(statusText, "controllers.status", $"Exclusive control status: {statusText}").Classes("settings-status"),
-                UI.Text("Exclusive control uses a virtual Xbox 360 controller created by WidgetRail. Windows may show it under the standard Xbox controller name.",
-                    "controllers.output-help", "WidgetRail virtual controller").Classes("page-help", "controllers-help"),
                 UI.Text("Required drivers", "controllers.drivers-heading", "Required drivers").Classes("section-heading"),
                 Driver("HidHide", "controllers.hidhide", status.HidHideReady,
                     "Keeps the physical controller from also reaching your game."),

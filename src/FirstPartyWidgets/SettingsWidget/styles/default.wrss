@@ -59,6 +59,7 @@
 }
 
 .controllers-help { max-lines: 6; }
+.controllers-status { color: var(--accent); font-weight: 600; max-lines: 6; }
 .controllers-warning { color: var(--warning); }
 
 .settings-status.is-error,

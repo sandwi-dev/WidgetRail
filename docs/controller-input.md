@@ -44,8 +44,7 @@ already disappeared. Unreadable live nodes and duplicate live addresses still
 reject ownership. A matched, retiring target cannot be admitted either.
 The bus index/address relationship is part of the dependency's implementation:
 [ViGEmBus PDO metadata](https://github.com/nefarius/ViGEmBus/blob/d986e1d93708ec9b11049542fa6027272cce716c/sys/EmulationTargetPDO.cpp#L318).
-No driver code is changed. Settings identifies the game-facing device as the
-WidgetRail virtual Xbox 360 controller; Windows retains its compatible Xbox name.
+No driver code is changed. Windows retains the compatible Xbox controller name.
 
 The reconnect regression was caused by the retained output being selected while
 the physical controller was absent. A device status callback did detect removal;
