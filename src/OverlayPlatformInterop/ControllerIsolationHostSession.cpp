@@ -6,6 +6,7 @@
 #include "ControllerIsolationRoutingSession.h"
 #include "HidHideConfigurationAdapter.h"
 #include "ViGEmOutputAdapter.h"
+#include "../OverlayHost/GuideInputCompatibility.h"
 
 #include <windows.h>
 #include <shlobj.h>
@@ -26,6 +27,7 @@ namespace widgetrail::isolation {
 namespace {
 
 constexpr std::uint64_t kNeutralDwellInputMilliseconds = 10;
+constexpr std::uint64_t kGuideCompatibilityPollMilliseconds = 25;
 
 [[nodiscard]] std::filesystem::path CurrentExecutable() {
     std::array<wchar_t, 32'768> path{};
@@ -188,6 +190,15 @@ struct ControllerIsolationHostSession::Impl final {
         queues.NotifyPlatform();
     }
 
+    void QueueDiagnostic(std::wstring message) {
+        {
+            std::scoped_lock lock(mutex);
+            if (pendingDiagnostics.size() >= 8) return;
+            pendingDiagnostics.push_back(std::move(message));
+        }
+        queues.NotifyPlatform();
+    }
+
     [[nodiscard]] std::wstring TakeDiagnosticLocked() {
         if (!pendingDiagnostics.empty()) {
             auto result = std::move(pendingDiagnostics.front());
@@ -273,6 +284,16 @@ struct ControllerIsolationHostSession::Impl final {
         // Every return and exception after publication goes through exact-owned
         // restoration. Reader/output objects are declared later and retire first.
         LocalPolicyCleanup cleanup(journalPath, record, hidhide, cleanupFailure);
+        HidHideSnapshot observed;
+        if (!hidhide.Apply(before, plan.plan->desired, observed, error)) {
+            FinishStartup(L"Controller isolation HidHide apply error=" + std::to_wstring(error)); return;
+        }
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+        constexpr bool guideCompatibilityAvailable = false;
+#else
+        widgetrail::input::XInputGuideCompatibility guideCompatibility;
+        const bool guideCompatibilityAvailable = guideCompatibility.Initialize();
+#endif
         auto ownedSource =
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
             test ? std::unique_ptr<SelectedControllerSource>{} :
@@ -284,10 +305,6 @@ struct ControllerIsolationHostSession::Impl final {
 #endif
             ownedSource.get();
         if (!source) { FinishStartup(L"Controller isolation reader allocation failed."); return; }
-        HidHideSnapshot observed;
-        if (!hidhide.Apply(before, plan.plan->desired, observed, error)) {
-            FinishStartup(L"Controller isolation HidHide apply error=" + std::to_wstring(error)); return;
-        }
         LocalOutput nativeOutput;
         ControllerIsolationOutput& output =
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
@@ -319,7 +336,12 @@ struct ControllerIsolationHostSession::Impl final {
         auto guideSource = source->GuideDiagnostics();
         auto guideQueues = queues.GuideSnapshot();
         QueueGuideDiagnostic(L"initial", guideSource, guideQueues);
+        QueueDiagnostic(guideCompatibilityAvailable
+            ? L"Controller isolation physical XInput Guide compatibility polling active cadence-ms=25"
+            : L"Controller isolation physical XInput Guide compatibility polling unavailable");
         const auto guideObservationDeadline = GetTickCount64() + 5'000;
+        auto nextGuideCompatibilityPoll = GetTickCount64();
+        std::uint64_t guideCompatibilityOrdinal{};
         bool guideObservationReported{};
         std::wstring firstFailure;
         LocalControllerOwnerAction inFlight{LocalControllerOwnerAction::None};
@@ -350,7 +372,26 @@ struct ControllerIsolationHostSession::Impl final {
             if (action != LocalControllerOwnerAction::None &&
                 result == ControllerIsolationRoutingResult::Waiting)
                 inFlight = action;
-            result = routing.Pump(GetTickCount64());
+            const auto now = GetTickCount64();
+            result = routing.Pump(now);
+            if (guideCompatibilityAvailable &&
+                now >= nextGuideCompatibilityPoll) {
+                nextGuideCompatibilityPoll =
+                    now + kGuideCompatibilityPollMilliseconds;
+#if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
+                constexpr std::uint8_t slots{};
+#else
+                const auto slots = guideCompatibility.PollRisingEdges();
+#endif
+                if (slots != 0) {
+                    const bool admitted = queues.PublishGuide(
+                        true, now * 1'000, ++guideCompatibilityOrdinal);
+                    QueueDiagnostic(
+                        L"Controller isolation physical XInput Guide edge slots=" +
+                        std::to_wstring(slots) +
+                        L" admitted=" + std::to_wstring(admitted ? 1 : 0));
+                }
+            }
             const bool transitionComplete =
                 ((inFlight == LocalControllerOwnerAction::Enter ||
                   inFlight == LocalControllerOwnerAction::Recontain) &&
