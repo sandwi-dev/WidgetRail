@@ -1340,8 +1340,25 @@ static async Task BuiltInWidgetInventory()
     Assert.Contains("Built-in", Text(details.Root, "installed.details.source").Text!);
     Assert.Contains("Included and updated with WidgetRail",
         Text(details.Root, "installed.details.status").Text!);
+    Assert.True(Button(details.Root, "installed.details.toggle").StyleClasses.Contains("danger-button"),
+        "Built-in disable must use the community-widget danger style.");
+    string[] controlOrder = ["installed.details.permissions", "installed.details.surface-appearance",
+        "installed.details.toggle", "installed.details.local-data", "installed.details.back"];
+    Assert.SequenceEqual(controlOrder, Buttons(details.Root)
+        .Where(button => controlOrder.Contains(button.Id)).Select(button => button.Id));
+    for (var index = 1; index < controlOrder.Length; index++)
+    {
+        Assert.Equal(controlOrder[index - 1], Button(details.Root, controlOrder[index]).Focus!.Up);
+        Assert.Equal(controlOrder[index], Button(details.Root, controlOrder[index - 1]).Focus!.Down);
+    }
     await Action(widget, "installed.builtin.toggle");
     Assert.True(!(await Store(temp.Path).LoadAsync()).BuiltInWidgets.IsEnabled("widgetrail.firstparty.audio-mixer"), "Built-in disable was not persisted.");
+    var disabledBuiltIn = Snapshot(widget);
+    Assert.True(Button(disabledBuiltIn.Root, "installed.details.toggle").StyleClasses.Contains("primary-button"),
+        "Built-in enable must use the community-widget primary style.");
+    Assert.Equal("installed.details.toggle", Button(disabledBuiltIn.Root, "installed.details.local-data").Focus!.Up);
+    Assert.Equal("installed.details.toggle", Button(disabledBuiltIn.Root, "installed.details.surface-appearance").Focus!.Down);
+    Assert.Valid(disabledBuiltIn);
     await Action(widget, "installed.builtin.toggle");
     Assert.True((await Store(temp.Path).LoadAsync()).BuiltInWidgets.IsEnabled("widgetrail.firstparty.audio-mixer"), "Built-in re-enable failed.");
     Assert.True(!Buttons(details.Root).Any(button =>

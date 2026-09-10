@@ -239,6 +239,9 @@ internal static class SettingsInstalledWidgetPresentation
                     "installed.details.surface-appearance")
                 .Busy(busy).Classes("setting-row");
         }
+        static ButtonElement EnabledActionButton(string label, string actionId, bool enabled, bool canToggle, bool busy) =>
+            UI.Button(label, actionId, "installed.details.toggle")
+                .Disabled(!canToggle).Busy(busy).Classes(enabled ? "danger-button" : "primary-button");
         if (builtIn is not null && valid)
         {
             var builtInHasPermissions = permissionCatalogValid &&
@@ -250,8 +253,21 @@ internal static class SettingsInstalledWidgetPresentation
             var builtInOptionalPermissions = builtIn.OptionalPermissions.Count == 0
                 ? "None"
                 : string.Join(", ", builtIn.OptionalPermissions.Order(StringComparer.Ordinal));
+            var enabled = settings.BuiltInWidgets.IsEnabled(builtIn.Id);
+            var builtInControls = new List<WidgetElement>
+            {
+                UI.Button(builtInHasPermissions ? "Permissions & configuration" : "No host permissions requested",
+                        "installed.permissions.open", "installed.details.permissions")
+                    .Disabled(!builtInHasPermissions).Busy(busy).Classes("setting-row"),
+                SurfaceAppearanceButton(builtIn.Id, settings, busy),
+                EnabledActionButton(enabled ? "Disable widget" : "Enable widget", "installed.builtin.toggle",
+                    enabled, builtIn.Id != BuiltInWidgetSettings.SettingsWidgetId, busy),
+                LocalDataButton(state, busy),
+                UI.Button("Back", "back", "installed.details.back").Classes("secondary-button"),
+            };
+            SettingsPresentation.LinkVertical(builtInControls);
             return SettingsPresentation.View(header,
-                SettingsPresentation.PageScope("installed.details",
+                SettingsPresentation.PageScope("installed.details", [
                     UI.Text(builtIn.Name, "installed.details.heading", "Built-in widget name")
                         .Classes("page-heading"),
                     UI.Text("Source: Built-in", "installed.details.source", "Built-in widget source")
@@ -278,18 +294,7 @@ internal static class SettingsInstalledWidgetPresentation
                             settings.BuiltInWidgets.IsEnabled(builtIn.Id) ? "Enabled · Included and updated with WidgetRail." : "Disabled · Enable this widget to show it in the overlay.",
                         "installed.details.status", "Built-in widget management status")
                         .Classes("page-help"),
-                    UI.Button(settings.BuiltInWidgets.IsEnabled(builtIn.Id) ? "Disable widget" : "Enable widget",
-                            "installed.builtin.toggle", "installed.details.toggle")
-                        .Disabled(builtIn.Id == BuiltInWidgetSettings.SettingsWidgetId).Busy(busy).Classes("setting-row"),
-                    UI.Button(
-                            builtInHasPermissions
-                                ? "Permissions & configuration"
-                                : "No host permissions requested",
-                            "installed.permissions.open", "installed.details.permissions")
-                        .Disabled(!builtInHasPermissions).Busy(busy).Classes("setting-row"),
-                    SurfaceAppearanceButton(builtIn.Id, settings, busy),
-                    LocalDataButton(state, busy),
-                    UI.Button("Back", "back", "installed.details.back").Classes("secondary-button")),
+                    .. builtInControls]),
                 builtInHasPermissions ? "installed.details.permissions" : "installed.details.back",
                 "installed.details");
         }
@@ -344,11 +349,9 @@ internal static class SettingsInstalledWidgetPresentation
             .FocusUp("installed.details.versions")
             .FocusDown(canToggleNow ? "installed.details.toggle" : "installed.details.back")
             .Disabled(!valid || !hasPermissions).Busy(busy).Classes("setting-row");
-        var actionButton = UI.Button(action, "installed.toggle", "installed.details.toggle")
+        var actionButton = EnabledActionButton(action, "installed.toggle", package.Enabled, canToggleNow, busy)
             .FocusUp("installed.details.permissions")
-            .FocusDown("installed.details.local-data").Busy(busy)
-            .Disabled(!canToggleNow)
-            .Classes(package.Enabled ? "danger-button" : "primary-button");
+            .FocusDown("installed.details.local-data");
         var canUninstall = valid && !package.Enabled && state.PackageUninstall is { } uninstall &&
             SettingsInstalledWidgetUninstallPolicy.Matches(package, uninstall) &&
             uninstall is { CanUninstall: true, ConfirmationToken: not null };
