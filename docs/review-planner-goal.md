@@ -98,6 +98,11 @@ Routine Plane creation, grooming, state, label, order, dependency, relation, and
 mutations are pre-authorized when they accurately record work under this goal. After every mutation,
 read the item or comment back.
 
+User authorization renewed on 2026-09-10: Plane updates containing non-personal project information,
+including implementation plans and technical evidence, are always allowed. Record only meaningful
+assignment, blocker, review, acceptance, integration, or completion changes; do not spam comments
+with routine progress, repeated status, or unchanged checks. Never include personal information or secrets.
+
 Plane comments must be concise, immutable milestone records containing commit, scope, evidence,
 disposition, residual risk, and next state. Use wrapper-free, contiguous semantic HTML such as
 `<p>`, `<strong>`, `<code>`, `<ul>`, and `<pre><code>`. Do not use `<div>` wrappers or
