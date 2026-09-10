@@ -67,9 +67,64 @@ void Check(const bool condition, const char* message) {
     }
 }
 
+void QueuedNavigationCannotRepeatAfterRenderingStall() {
+    using Direction = WidgetRailOverlayPlatformNavigationDirection;
+    using Phase = WidgetRailOverlayPlatformNavigationPhase;
+    widgetrail::platform::ControllerFrameTracker tracker;
+    tracker.Prime(true, {}, 0);
+    WidgetRailOverlayPlatformRawControllerState tilted;
+    tilted.leftThumbX = 20'000;
+    auto frame = tracker.Update(true, tilted, 10, false);
+    Check(frame.stickNavigation.direction == Direction::Right &&
+              frame.stickNavigation.phase == Phase::Pressed,
+          "queued flick keeps its initial direction edge");
+    tilted.leftThumbX = 21'000;
+    frame = tracker.Update(true, tilted, 507, false);
+    Check(frame.stickNavigation.direction == Direction::None,
+          "497 ms rendering delay cannot turn queued tilt into a hold repeat");
+    frame = tracker.Update(true, {}, 507, false);
+    Check(frame.stickNavigation.direction == Direction::None,
+          "queued neutral retires the flick without another move");
+    frame = tracker.Update(true, {}, 508);
+    Check(frame.stickNavigation.direction == Direction::None,
+          "current neutral remains quiet after backlog drain");
+    frame = tracker.Update(true, tilted, 520, false);
+    Check(frame.stickNavigation.phase == Phase::Pressed &&
+              frame.stickNavigation.direction == Direction::Right,
+          "a fresh flick after release still navigates");
+    frame = tracker.Update(true, tilted, 1'000, false);
+    Check(frame.stickNavigation.direction == Direction::None,
+          "backlog drain does not advance the held-repeat deadline");
+    frame = tracker.Update(true, tilted, 1'000);
+    Check(frame.stickNavigation.direction == Direction::Right &&
+              frame.stickNavigation.phase == Phase::Repeated,
+          "current physically held stick can repeat after history drains");
+    Check(tracker.Update(true, tilted, 1'124).stickNavigation.direction == Direction::None &&
+              tracker.Update(true, tilted, 1'125).stickNavigation.phase == Phase::Repeated,
+          "held stick retains its ordinary 125 ms repeat cadence");
+    tracker.Reset();
+    tracker.Prime(true, {}, 0);
+    WidgetRailOverlayPlatformRawControllerState button;
+    button.buttons = XINPUT_GAMEPAD_DPAD_RIGHT | XINPUT_GAMEPAD_A;
+    frame = tracker.Update(true, button, 10, false);
+    Check(frame.pressedButtons == button.buttons && frame.dpadNavigation.direction == Direction::Right,
+          "queued button and D-pad presses are preserved");
+    frame = tracker.Update(true, button, 507, false);
+    Check(frame.pressedButtons == 0 && frame.dpadNavigation.direction == Direction::None,
+          "queued held D-pad cannot synthesize a repeat");
+    frame = tracker.Update(true, {}, 507, false);
+    Check(frame.releasedButtons == button.buttons,
+          "queued short button and D-pad releases are preserved");
+    tracker.Prime(true, tilted, 1'500);
+    frame = tracker.Update(true, tilted, 1'501);
+    Check(frame.stickNavigation.direction == Direction::None,
+          "reopening with a held stick still requires its primed repeat delay");
+}
+
 } // namespace
 
 int main() {
+    QueuedNavigationCannotRepeatAfterRenderingStall();
     Check(WidgetRailOverlayPlatformGetAbiVersion() ==
               WRAIL_OVERLAY_PLATFORM_ABI_VERSION,
           "the exported ABI reports the version compiled into the caller");

@@ -218,14 +218,21 @@ void OwnerTransitions(const std::filesystem::path& root) {
     source.Publish(ControllerReaderEventKind::Reading, {});
     source.Publish(ControllerReaderEventKind::GuidePressed);
     source.Publish(ControllerReaderEventKind::GuideReleased);
-    bool sawPress{}, sawRelease{}; unsigned guides{};
+    bool sawPress{}, sawRelease{}, queuedPress{}, queuedRelease{}; unsigned guides{};
     Check(Until([&] {
         ControllerIsolationHostReading value; (void)owner.Poll(value, error);
         if (value.state == down) sawPress = true;
         if (sawPress && value.state == GamepadState{}) sawRelease = true;
+        if (value.queuedInput && value.state == down) queuedPress = true;
+        if (queuedPress && value.queuedInput && value.state == GamepadState{}) queuedRelease = true;
         if (value.guideEvent) ++guides;
-        return sawPress && sawRelease && guides == 2;
+        return sawPress && sawRelease && queuedPress && queuedRelease && guides == 2;
     }), "actual owner delivers short tap and Guide edges once");
+    Check(queuedPress && queuedRelease, "actual owner marks preserved press/release as history");
+    ControllerIsolationHostReading current;
+    Check(Until([&] { (void)owner.Poll(current, error); return !current.queuedInput; }) &&
+              current.remainingInputStates == 0 && current.state == GamepadState{},
+          "drained history reconciles current neutral without resurrecting old input");
     std::uint64_t guide{}; (void)owner.PollGuide(guide, error); Check(!guide, "Guide drained once");
     source.Publish(ControllerReaderEventKind::Reading, down);
     owner.CloseOverlay();
