@@ -30,6 +30,8 @@ using namespace GameInput::v3;
 
 namespace {
 
+std::atomic_bool controllerIsolationRequested{};
+
 enum class RawEventKind {
     GuidePressed,
     LegacyDeviceChanged,
@@ -410,6 +412,12 @@ WidgetRailOverlayPlatformGetAbiVersion() noexcept {
     return WRAIL_OVERLAY_PLATFORM_ABI_VERSION;
 }
 
+void WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformConfigureControllerIsolation(const std::uint32_t enabled) noexcept {
+    controllerIsolationRequested.store(enabled != WRAIL_OVERLAY_PLATFORM_FALSE,
+                                       std::memory_order_release);
+}
+
 WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL WidgetRailOverlayPlatformCreate(
     const WidgetRailOverlayPlatformCreateOptions* options,
     WidgetRailOverlayPlatformHandle** handle) noexcept {
@@ -433,7 +441,9 @@ WidgetRailOverlayPlatformInitialize(WidgetRailOverlayPlatformHandle* handle) noe
     if (handle->initialized) return WidgetRailOverlayPlatformStatus::Ok;
 
     std::wstring isolationDiagnostic;
-    if (handle->controllerIsolation.AttachIfEnabled(isolationDiagnostic)) {
+    if (handle->controllerIsolation.Start(
+            controllerIsolationRequested.load(std::memory_order_acquire),
+            isolationDiagnostic)) {
         handle->Diagnostic(
             L"Controller isolation attached; Guardian owns physical input and Guide");
         handle->initialized = true;
@@ -514,7 +524,7 @@ WidgetRailOverlayPlatformInitialize(WidgetRailOverlayPlatformHandle* handle) noe
 void WRAIL_OVERLAY_PLATFORM_CALL WidgetRailOverlayPlatformShutdown(
     WidgetRailOverlayPlatformHandle* handle) noexcept {
     if (!handle || !handle->BeginShutdown()) return;
-    handle->controllerIsolation.Detach();
+    handle->controllerIsolation.Stop();
     handle->RetireLocalControllerOwners();
     handle->controllerTracker.Reset();
     handle->guideDebouncer.Reset();
@@ -590,43 +600,6 @@ WidgetRailOverlayPlatformPrepareVisible(
         return WidgetRailOverlayPlatformStatus::Ok;
     handle->Diagnostic(diagnostic);
     return WidgetRailOverlayPlatformStatus::ControllerIsolationUnavailable;
-}
-
-WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
-WidgetRailOverlayPlatformControllerIsolationCommand(
-    const WidgetRailControllerIsolationCommand command,
-    WidgetRailControllerIsolationCommandResult* result) noexcept {
-    if (!result || result->structSize < sizeof(*result) ||
-        result->abiVersion != WRAIL_OVERLAY_PLATFORM_ABI_VERSION) {
-        return WidgetRailOverlayPlatformStatus::InvalidArgument;
-    }
-    std::wstring diagnostic;
-    const auto internalCommand = static_cast<
-        widgetrail::isolation::ControllerIsolationCommand>(command);
-    if (internalCommand <
-            widgetrail::isolation::ControllerIsolationCommand::Enable ||
-        internalCommand >
-            widgetrail::isolation::ControllerIsolationCommand::Recover) {
-        return WidgetRailOverlayPlatformStatus::InvalidArgument;
-    }
-    const auto state =
-        widgetrail::isolation::ControllerIsolationHostSession::ExecuteCommand(
-            internalCommand, diagnostic);
-    const auto structSize = result->structSize;
-    const auto abiVersion = result->abiVersion;
-    *result = {};
-    result->structSize = structSize;
-    result->abiVersion = abiVersion;
-    result->state = static_cast<WidgetRailControllerIsolationState>(state);
-    if (!diagnostic.empty()) {
-        wcsncpy_s(
-            result->message, std::size(result->message),
-            diagnostic.c_str(), _TRUNCATE);
-    }
-    return state ==
-            widgetrail::isolation::ControllerIsolationCommandStatus::Failed
-        ? WidgetRailOverlayPlatformStatus::ControllerIsolationUnavailable
-        : WidgetRailOverlayPlatformStatus::Ok;
 }
 
 WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
@@ -758,7 +731,7 @@ WidgetRailOverlayPlatformPrimeController(
                 reading.state.leftThumbY, reading.state.rightThumbX,
                 reading.state.rightThumbY};
             connected = reading.progress ==
-                widgetrail::isolation::ControlProgress::Contained;
+                widgetrail::isolation::LocalControllerProgress::Contained;
             if (reading.guideEvent != 0 &&
                 (reading.guideEvent & (1ULL << 63)) == 0) {
                 handle->Queue({
@@ -804,9 +777,8 @@ WidgetRailOverlayPlatformReadController(
                 reading.state.rightTrigger, reading.state.leftThumbX,
                 reading.state.leftThumbY, reading.state.rightThumbX,
                 reading.state.rightThumbY};
-            connected = reading.progress ==
-                    widgetrail::isolation::ControlProgress::Contained &&
-                foregroundConfirmed != WRAIL_OVERLAY_PLATFORM_FALSE;
+            connected = handle->visible && reading.progress ==
+                widgetrail::isolation::LocalControllerProgress::Contained;
             if (reading.guideEvent != 0 &&
                 (reading.guideEvent & (1ULL << 63)) == 0) {
                 handle->Queue({

@@ -142,22 +142,6 @@ ControllerIsolationRoutingResult ControllerIsolationRoutingSession::CloseOverlay
         measuredP99ReadingIntervalMilliseconds, nowMilliseconds);
 }
 
-ControllerIsolationRoutingResult ControllerIsolationRoutingSession::Heartbeat(
-    const RoutingAuthority& authority,
-    const std::uint64_t nowMilliseconds) noexcept {
-    if (!ExactAuthority(authority))
-        return ControllerIsolationRoutingResult::RejectedAuthority;
-    if (state_ == ControllerIsolationRoutingState::Disabled ||
-        state_ == ControllerIsolationRoutingState::Fault) {
-        return ControllerIsolationRoutingResult::RejectedState;
-    }
-    if (state_ == ControllerIsolationRoutingState::Playing)
-        return ControllerIsolationRoutingResult::Applied;
-    const auto result = core_.RenewHostLease(authority, nowMilliseconds);
-    if (result == CommandResult::Faulted) Fail();
-    return Convert(result);
-}
-
 ControllerIsolationRoutingResult ControllerIsolationRoutingSession::HoldContained(
     const RoutingAuthority& authority,
     const std::uint64_t nowMilliseconds) noexcept {
@@ -468,15 +452,6 @@ ControllerIsolationRoutingSession::ContinueTransition(
         Fail();
     }
     return Convert(result);
-}
-
-ControllerIsolationRoutingResult
-ServiceControllerIsolationRoutingBeforeControlWait(
-    ControllerIsolationRoutingSession& session,
-    const std::uint64_t nowMilliseconds) noexcept {
-    if (session.state() == ControllerIsolationRoutingState::Disabled)
-        return ControllerIsolationRoutingResult::Applied;
-    return session.Pump(nowMilliseconds);
 }
 
 bool ControllerIsolationRoutingSession::DrainCore(

@@ -55,31 +55,6 @@ enum class WidgetRailOverlayPlatformReadPath : std::uint32_t {
     ControllerIsolation = 3,
 };
 
-enum class WidgetRailControllerIsolationCommand : std::uint32_t {
-    Enable = 1,
-    Status = 2,
-    Disable = 3,
-    Recover = 4,
-};
-
-enum class WidgetRailControllerIsolationState : std::uint32_t {
-    Disabled = 0,
-    Prepared = 1,
-    AwaitingNeutral = 2,
-    Playing = 3,
-    Contained = 4,
-    RecoveryRequired = 5,
-    Failed = 6,
-};
-
-struct WidgetRailControllerIsolationCommandResult final {
-    std::uint32_t structSize{sizeof(WidgetRailControllerIsolationCommandResult)};
-    std::uint32_t abiVersion{WRAIL_OVERLAY_PLATFORM_ABI_VERSION};
-    WidgetRailControllerIsolationState state{
-        WidgetRailControllerIsolationState::Disabled};
-    std::uint32_t reserved{};
-    wchar_t message[512]{};
-};
 
 struct WidgetRailOverlayPlatformEvent final {
     std::uint32_t structSize{sizeof(WidgetRailOverlayPlatformEvent)};
@@ -173,6 +148,11 @@ extern "C" {
 WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformGetAbiVersion() noexcept;
 
+// Process-start configuration consumed by the subsequently created long-lived
+// native owner. It intentionally does not widen the stable create-options ABI.
+WRAIL_OVERLAY_PLATFORM_API void WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformConfigureControllerIsolation(std::uint32_t enabled) noexcept;
+
 WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformCreate(
     const WidgetRailOverlayPlatformCreateOptions* options,
@@ -203,11 +183,6 @@ WidgetRailOverlayPlatformSetWindowState(
 WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformPrepareVisible(
     WidgetRailOverlayPlatformHandle* handle) noexcept;
-
-WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
-WidgetRailOverlayPlatformControllerIsolationCommand(
-    WidgetRailControllerIsolationCommand command,
-    WidgetRailControllerIsolationCommandResult* result) noexcept;
 
 WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformDrainEvent(
@@ -273,7 +248,6 @@ static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformControllerFrame
 static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformPlacementInput>);
 static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformPlacement>);
 static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformCreateOptions>);
-static_assert(std::is_standard_layout_v<WidgetRailControllerIsolationCommandResult>);
 static_assert(sizeof(WidgetRailOverlayPlatformEvent) == 32);
 static_assert(sizeof(WidgetRailOverlayPlatformRawControllerState) == 12);
 static_assert(sizeof(WidgetRailOverlayPlatformNavigationEvent) == 8);

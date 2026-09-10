@@ -327,7 +327,7 @@ void PendingContainedReportsCannotEscapeCloseBarrier() {
           "a queued contained report below the resume barrier never reaches gameplay");
 }
 
-void LeaseAndOutputFailuresAreSafetyFaults() {
+void LocalRoutingAndOutputFailuresAreSafetyFaults() {
     const auto authority = Authority();
     const auto device = Device();
     FakeOutput playingOutput;
@@ -339,10 +339,10 @@ void LeaseAndOutputFailuresAreSafetyFaults() {
     FakeOutput containedOutput;
     auto contained = Started(containedOutput, authority, device);
     Check(contained.EnterOverlay(authority, 1) == CommandResult::Applied &&
-              contained.Tick(252) == CommandResult::Faulted &&
-              contained.fault() == RoutingFault::HostLeaseExpired &&
+              contained.Tick(10'000) == CommandResult::Applied &&
+              contained.mode() == RoutingMode::OverlayInteraction &&
               containedOutput.submitted.back() == GamepadState{},
-          "a lost interactive host lease remains fail-closed and neutral");
+          "healthy local interaction remains neutral without lease renewal");
 
     FakeOutput failedOutput;
     failedOutput.failNext = true;
@@ -367,31 +367,6 @@ void LatencyOutliersRemainAcceptanceEvidence() {
     evidence.ObserveEnterOverlayToNeutral(80'000);
     Check(evidence.observations() == 2 && evidence.outliers() == 2,
           "latency misses remain measurement evidence without routing side effects");
-}
-
-void GuardianRequiresExactIdentityAndFinalRecheck() {
-    const WorkerIdentity worker{42, 100, Authority(), L"owned-target"};
-    GuardianObservation healthy{worker, worker, 1'000, 1'250, false};
-    Check(DecideGuardianAction(healthy) == GuardianAction::None,
-          "the heartbeat boundary itself remains healthy");
-    healthy.nowMilliseconds = 1'251;
-    Check(DecideGuardianAction(healthy) ==
-              GuardianAction::RecheckExactWorker,
-          "the first stale observation requests an exact final recheck");
-    healthy.finalRecheck = true;
-    Check(DecideGuardianAction(healthy) ==
-              GuardianAction::TerminateExactWorker,
-          "only the same stale process identity may be terminated");
-    auto replacement = worker;
-    replacement.processCreationTime = 101;
-    healthy.observed = replacement;
-    Check(DecideGuardianAction(healthy) ==
-              GuardianAction::RefuseMismatchedWorker,
-          "PID reuse or another target can never inherit recovery authority");
-    healthy.observed.reset();
-    Check(DecideGuardianAction(healthy) ==
-              GuardianAction::ExpectOwnedTargetRetired,
-          "an already-dead owner expects backend target retirement without cleanup of peers");
 }
 
 void HidHideJournalPreservesOtherOwners() {
@@ -506,9 +481,8 @@ int main() {
     OverlayNeutralAckAndHealthyCachedClose();
     CloseRequiresReleaseAndUsesHysteresis();
     PendingContainedReportsCannotEscapeCloseBarrier();
-    LeaseAndOutputFailuresAreSafetyFaults();
+    LocalRoutingAndOutputFailuresAreSafetyFaults();
     LatencyOutliersRemainAcceptanceEvidence();
-    GuardianRequiresExactIdentityAndFinalRecheck();
     HidHideJournalPreservesOtherOwners();
     StaleHostCanRecontainAwaitingNeutral();
     StopIsExactAndGenerationBound();

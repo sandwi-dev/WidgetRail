@@ -68,17 +68,15 @@ ControllerIsolationCore::ControllerIsolationCore(
       budgetsValid_(budgets.maximumQueuedReadings != 0 &&
           budgets.maximumQueuedReadings <= MaximumReadingCapacity &&
           budgets.maximumQueuedReadingAgeMilliseconds != 0 &&
-          budgets.hostLeaseMilliseconds != 0 &&
           budgets.minimumNeutralDwellMilliseconds != 0 &&
           budgets.minimumNeutralDwellMilliseconds <=
-              budgets.maximumNeutralDwellMilliseconds &&
-          budgets.workerHeartbeatTimeoutMilliseconds != 0) {}
+          budgets.maximumNeutralDwellMilliseconds) {}
 
 CommandResult ControllerIsolationCore::BeginSession(
     const RoutingAuthority& authority,
     const SelectedDeviceIdentity& device,
     const DeviceReading& current,
-    const std::uint64_t nowMilliseconds) noexcept {
+    const std::uint64_t /*nowMilliseconds*/) noexcept {
     if (!budgetsValid_) {
         fault_ = RoutingFault::InvalidBudgets;
         return CommandResult::RejectedState;
@@ -102,7 +100,6 @@ CommandResult ControllerIsolationCore::BeginSession(
     lastQueuedOrdinal_ = current.ordinal;
     lastObservedOrdinal_ = current.ordinal;
     resumeAfterOrdinal_ = current.ordinal;
-    lastLeaseRenewedAtMilliseconds_ = nowMilliseconds;
     fault_ = RoutingFault::None;
     if (!SubmitNeutral()) {
         EnterFault(RoutingFault::OutputSubmissionFailed);
@@ -192,7 +189,7 @@ CommandResult ControllerIsolationCore::Drain(
 
 CommandResult ControllerIsolationCore::EnterOverlay(
     const RoutingAuthority& authority,
-    const std::uint64_t nowMilliseconds) noexcept {
+    const std::uint64_t /*nowMilliseconds*/) noexcept {
     if (authority != authority_) return CommandResult::RejectedAuthority;
     if (mode_ != RoutingMode::Playing) return CommandResult::RejectedState;
     if (!SubmitNeutral()) {
@@ -200,7 +197,6 @@ CommandResult ControllerIsolationCore::EnterOverlay(
         return CommandResult::Faulted;
     }
     mode_ = RoutingMode::OverlayInteraction;
-    lastLeaseRenewedAtMilliseconds_ = nowMilliseconds;
     neutralSinceMilliseconds_.reset();
     return CommandResult::Applied;
 }
@@ -215,7 +211,6 @@ CommandResult ControllerIsolationCore::CloseOverlay(
         return CommandResult::RejectedState;
     if (!ExactCurrent(current)) return CommandResult::RejectedAuthority;
     mode_ = RoutingMode::AwaitingNeutral;
-    lastLeaseRenewedAtMilliseconds_ = nowMilliseconds;
     current_ = current;
     lastAdmittedReading_ = current;
     lastObservedOrdinal_ = std::max(lastObservedOrdinal_, current.ordinal);
@@ -253,24 +248,11 @@ CommandResult ControllerIsolationCore::ObserveCurrent(
     return ApplyAwaitingNeutral(current, nowMilliseconds);
 }
 
-CommandResult ControllerIsolationCore::RenewHostLease(
-    const RoutingAuthority& authority,
-    const std::uint64_t nowMilliseconds) noexcept {
-    if (authority != authority_) return CommandResult::RejectedAuthority;
-    if (mode_ != RoutingMode::OverlayInteraction &&
-        mode_ != RoutingMode::AwaitingNeutral) {
-        return CommandResult::RejectedState;
-    }
-    lastLeaseRenewedAtMilliseconds_ = nowMilliseconds;
-    return CommandResult::Applied;
-}
-
 CommandResult ControllerIsolationCore::HoldOverlay(
     const RoutingAuthority& authority,
-    const std::uint64_t nowMilliseconds) noexcept {
+    const std::uint64_t /*nowMilliseconds*/) noexcept {
     if (authority != authority_) return CommandResult::RejectedAuthority;
     if (mode_ == RoutingMode::OverlayInteraction) {
-        lastLeaseRenewedAtMilliseconds_ = nowMilliseconds;
         return CommandResult::Applied;
     }
     if (mode_ != RoutingMode::AwaitingNeutral)
@@ -280,7 +262,6 @@ CommandResult ControllerIsolationCore::HoldOverlay(
         return CommandResult::Faulted;
     }
     mode_ = RoutingMode::OverlayInteraction;
-    lastLeaseRenewedAtMilliseconds_ = nowMilliseconds;
     neutralSinceMilliseconds_.reset();
     ClearReadings();
     return CommandResult::Applied;
@@ -291,14 +272,6 @@ CommandResult ControllerIsolationCore::Tick(
     const std::optional<DeviceReading>& current) noexcept {
     if (mode_ == RoutingMode::Disabled) return CommandResult::RejectedState;
     if (mode_ == RoutingMode::Fault) return CommandResult::Faulted;
-    if ((mode_ == RoutingMode::OverlayInteraction ||
-         mode_ == RoutingMode::AwaitingNeutral) &&
-        nowMilliseconds > lastLeaseRenewedAtMilliseconds_ &&
-        nowMilliseconds - lastLeaseRenewedAtMilliseconds_ >
-            budgets_.hostLeaseMilliseconds) {
-        EnterFault(RoutingFault::HostLeaseExpired);
-        return CommandResult::Faulted;
-    }
     if (current) return ObserveCurrent(authority_, *current, nowMilliseconds);
     return mode_ == RoutingMode::AwaitingNeutral
         ? CommandResult::Waiting
@@ -438,24 +411,6 @@ void LatencyAcceptanceEvidence::ObserveEnterOverlayToNeutral(
     ++observations_;
     if (elapsedMicroseconds > targets.enterOverlayToNeutralP99Microseconds)
         ++outliers_;
-}
-
-GuardianAction DecideGuardianAction(
-    const GuardianObservation& observation,
-    const RoutingBudgets& budgets) noexcept {
-    if (!observation.expected.valid())
-        return GuardianAction::RefuseMismatchedWorker;
-    if (!observation.observed) return GuardianAction::ExpectOwnedTargetRetired;
-    if (*observation.observed != observation.expected)
-        return GuardianAction::RefuseMismatchedWorker;
-    if (observation.nowMilliseconds < observation.lastHeartbeatAtMilliseconds ||
-        observation.nowMilliseconds - observation.lastHeartbeatAtMilliseconds <=
-            budgets.workerHeartbeatTimeoutMilliseconds) {
-        return GuardianAction::None;
-    }
-    return observation.finalRecheck
-        ? GuardianAction::TerminateExactWorker
-        : GuardianAction::RecheckExactWorker;
 }
 
 HidHideApplyResult PlanHidHideApply(

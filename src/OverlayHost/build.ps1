@@ -383,6 +383,7 @@ $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else 
 $includeArguments = @(
     "/I$gameInputPackage\native\include",
     "/I$webView2Package\build\native\include",
+    "/I$(Join-Path $viGEmClientDirectory 'include')",
     "/I$($vcTools.FullName)\include",
     "/I$sdkRoot\Include\$($sdk.Name)\ucrt",
     "/I$sdkRoot\Include\$($sdk.Name)\shared",
@@ -433,16 +434,18 @@ if ($TrustedArtworkTestsOnly) { Invoke-ArtworkDecoderBuild -Testing }
 function Invoke-OverlayPlatformInteropBuild {
     $arguments = $common + @(
         '/DWRAIL_OVERLAY_PLATFORM_EXPORTS',
+        '/DWRAIL_VIGEM_NATIVE_BACKEND',
+        '/DWRAIL_GAMEINPUT_ISOLATION_READER',
         '/LD',
         (Join-Path $platformDirectory 'OverlayPlatformInterop.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationCore.cpp'),
-        (Join-Path $platformDirectory 'ControllerIsolationProtocol.cpp'),
-        (Join-Path $platformDirectory 'ControllerIsolationProcessOwner.cpp'),
-        (Join-Path $platformDirectory 'ControllerIsolationJournal.cpp'),
-        (Join-Path $platformDirectory 'ControllerIsolationReconnect.cpp'),
-        (Join-Path $platformDirectory 'ControllerIsolationGuardianLifetime.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationReader.cpp'),
+        (Join-Path $platformDirectory 'ControllerIsolationRoutingSession.cpp'),
+        (Join-Path $platformDirectory 'GameInputSelectedControllerReader.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationHostSession.cpp'),
         (Join-Path $platformDirectory 'HidHideConfigurationAdapter.cpp'),
+        (Join-Path $platformDirectory 'ViGEmOutputAdapter.cpp'),
+        (Join-Path $viGEmClientDirectory 'src\ViGEmClient.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformPlacement.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformTargeting.cpp'),
@@ -454,6 +457,7 @@ function Invoke-OverlayPlatformInteropBuild {
     ) + $libraryArguments + @(
         '/SUBSYSTEM:WINDOWS', 'gameinput.lib', 'user32.lib',
         'xinput9_1_0.lib', 'bcrypt.lib', 'advapi32.lib', 'shell32.lib',
+        'setupapi.lib', 'cfgmgr32.lib',
         'ole32.lib'
     )
     & $cl $arguments
@@ -684,6 +688,58 @@ function Invoke-ControllerIsolationAdapterAndProcessTests {
     & (Join-Path $outputDirectory 'ControllerIsolationProcessTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "ControllerIsolationProcessTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-ControllerIsolationLocalTests {
+    $cases = @(
+        [pscustomobject]@{
+            Name = 'ControllerIsolationReaderTests'
+            Definitions = @('/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING')
+            Sources = @('ControllerIsolationReaderTests.cpp', 'ControllerIsolationReader.cpp')
+        },
+        [pscustomobject]@{
+            Name = 'ControllerIsolationRoutingSessionTests'
+            Definitions = @('/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING')
+            Sources = @('ControllerIsolationRoutingSessionTests.cpp', 'ControllerIsolationRoutingSession.cpp', 'ControllerIsolationReader.cpp', 'ControllerIsolationCore.cpp')
+        },
+        [pscustomobject]@{
+            Name = 'ControllerIsolationCoreTests'
+            Definitions = @()
+            Sources = @('ControllerIsolationCoreTests.cpp', 'ControllerIsolationCore.cpp')
+        },
+        [pscustomobject]@{
+            Name = 'ViGEmOutputAdapterTests'
+            Definitions = @()
+            Sources = @('ViGEmOutputAdapterTests.cpp', 'ViGEmOutputAdapter.cpp')
+        },
+        [pscustomobject]@{
+            Name = 'HidHideConfigurationAdapterTests'
+            Definitions = @()
+            Sources = @('HidHideConfigurationAdapterTests.cpp', 'HidHideConfigurationAdapter.cpp')
+        }
+    )
+    foreach ($case in $cases) {
+        $sources = foreach ($source in $case.Sources) {
+            if ($source.EndsWith('Tests.cpp')) {
+                Join-Path $platformTestDirectory $source
+            } else {
+                Join-Path $platformDirectory $source
+            }
+        }
+        $arguments = $common + $case.Definitions + $sources + @(
+            "/Fo:$controllerIsolationTestObjectDirectory\",
+            "/Fe:$outputDirectory\$($case.Name).exe",
+            '/link', '/SUBSYSTEM:CONSOLE'
+        ) + $libraryArguments
+        & $cl $arguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "$($case.Name) build failed with exit code $LASTEXITCODE."
+        }
+        & (Join-Path $outputDirectory "$($case.Name).exe")
+        if ($LASTEXITCODE -ne 0) {
+            throw "$($case.Name) failed with exit code $LASTEXITCODE."
+        }
     }
 }
 
@@ -2042,8 +2098,7 @@ if ($PlatformInteropTestsOnly) {
     if ($SkipTests) {
         throw 'PlatformInteropTestsOnly cannot be combined with SkipTests.'
     }
-    Invoke-ControllerIsolationProductionBuild
-    Invoke-ControllerIsolationAdapterAndProcessTests
+    Invoke-ControllerIsolationLocalTests
     Invoke-OverlayPlatformInteropBuild
     Invoke-OverlayPlatformInteropTests
     Invoke-OverlayPlatformParityTests
@@ -2059,7 +2114,6 @@ if ($WidgetSwitchFallbackAuthorityTestsOnly -or
     return
 }
 
-Invoke-ControllerIsolationProductionBuild
 Invoke-OverlayPlatformInteropBuild
 
 $hostCompileArguments = $common + @('/Zi')

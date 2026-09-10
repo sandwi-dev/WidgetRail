@@ -82,9 +82,6 @@ public:
         const RoutingAuthority& authority,
         std::uint64_t measuredP99ReadingIntervalMilliseconds,
         std::uint64_t nowMilliseconds) noexcept;
-    [[nodiscard]] ControllerIsolationRoutingResult Heartbeat(
-        const RoutingAuthority& authority,
-        std::uint64_t nowMilliseconds) noexcept;
     [[nodiscard]] ControllerIsolationRoutingResult HoldContained(
         const RoutingAuthority& authority,
         std::uint64_t nowMilliseconds) noexcept;
@@ -167,13 +164,5 @@ private:
     std::uint64_t lastConsumedIngressOrdinal_{};
     bool outputOwned_{};
 };
-
-// The production worker invokes this before every control-channel wait. Tests
-// use the same boundary with fakes to prove request traffic cannot starve
-// already-admitted controller input.
-[[nodiscard]] ControllerIsolationRoutingResult
-ServiceControllerIsolationRoutingBeforeControlWait(
-    ControllerIsolationRoutingSession& session,
-    std::uint64_t nowMilliseconds) noexcept;
 
 } // namespace widgetrail::isolation
