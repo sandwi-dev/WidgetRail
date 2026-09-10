@@ -14,6 +14,16 @@ and local ownership 72 checks. Packaged physical acceptance remains pending;
 W213/W217 integration is held until that user verdict. Elevated GoW compatibility
 is deferred at the user's request, not claimed fixed.
 
+WIDGE-217 disable correction: the candidate crashed inside installed
+GameInputRedist 3.3.221 when retiring rumble with a null report, leaving the
+owned HidHide recovery journal. Dump analysis confirmed the null argument and
+runtime dereference. The reader now supplies an explicit all-motors-off report.
+Exact-owned recovery restored access. A live production-DLL check completed
+three enable/active/disable/off cycles with no pending journal. An earlier
+reader-only probe completed one teardown but failed its next device bind; it
+is not counted as a passing suite. User Settings disable/reconnect retest is
+still required.
+
 WIDGE-213 controller-isolation follow-up uses the existing XInput Guide adapter
 on the sole native routing thread at 25 ms, with GameInput retained for selected
 physical readings, disconnect and rumble. The unused isolation GameInput Guide

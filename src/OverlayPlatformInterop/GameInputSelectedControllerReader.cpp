@@ -454,7 +454,11 @@ public:
 
     void Stop() noexcept override {
         accepting_.store(false, std::memory_order_release);
-        if (device_) device_->SetRumbleState(nullptr);
+        // Although the SDK marks this pointer optional, GameInputRedist
+        // 3.3.221 dereferences null while forwarding a stop report. Supply an
+        // explicit all-motors-off report before retiring the selected device.
+        const GameInputRumbleParams stoppedRumble{};
+        if (device_) device_->SetRumbleState(&stoppedRumble);
         if (gameInput_) {
             for (auto* token : {&readingToken_, &deviceToken_}) {
                 if (*token == 0) continue;

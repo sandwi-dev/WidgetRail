@@ -19,6 +19,12 @@ Settings worker refreshes status only on its active Controllers page, and stops
 that work when deactivated. Physical-to-virtual forwarding is supported;
 recognized virtual input sources are excluded to avoid recapturing virtual output.
 
+Selected-reader retirement sends an explicit zeroed GameInput rumble report.
+Although the SDK annotates a null report as optional, GameInputRedist 3.3.221
+can dereference it during teardown. A stop failure must not be mistaken for
+successful physical-device restoration; retained owned-policy recovery remains
+the recovery path after a host crash.
+
 ## Ordinary overlay input
 
 Status: implemented prototype policy
