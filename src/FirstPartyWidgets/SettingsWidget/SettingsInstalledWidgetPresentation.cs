@@ -93,6 +93,12 @@ internal static class SettingsInstalledWidgetPresentation
         if (visible.Length == 0)
             children.Add(UI.Text(valid ? "No community widgets are installed." : "No package actions are available.",
                 "installed.empty", "Installed widget list status").Classes("diagnostic-line"));
+        if (page > 0)
+            children.Add(UI.Button("Previous page", "installed.previous-page", "installed.previous-page")
+                .Classes("secondary-button"));
+        if (page < lastPage)
+            children.Add(UI.Button("Next page", "installed.next-page", "installed.next-page")
+                .Classes("secondary-button"));
         children.Add(UI.Button("Back", "back", "installed.back").Classes("secondary-button"));
         SettingsPresentation.LinkVertical(children);
 
@@ -100,12 +106,6 @@ internal static class SettingsInstalledWidgetPresentation
             .InputScope("installed.widgets")
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
-        if (page > 0)
-            scope = scope.Shortcut(
-                ControllerButton.LeftBumper, "installed.previous-page", label: "Previous page");
-        if (page < lastPage)
-            scope = scope.Shortcut(
-                ControllerButton.RightBumper, "installed.next-page", label: "Next page");
         var selectedBuiltInIndex = builtIn
             .Select((manifest, index) => (manifest, index))
             .Where(item => item.manifest.Id == selectedBuiltInId)
@@ -162,6 +162,12 @@ internal static class SettingsInstalledWidgetPresentation
                 "No safely removable inactive versions are available. Use diagnostics or reinstall the selected version.",
                 "installed.repair.empty", "No safe catalog repair candidates")
                 .Classes("diagnostic-line"));
+        if (page > 0)
+            children.Add(UI.Button("Previous page", "installed.previous-page", "installed.repair.previous-page")
+                .Classes("secondary-button"));
+        if (page < lastPage)
+            children.Add(UI.Button("Next page", "installed.next-page", "installed.repair.next-page")
+                .Classes("secondary-button"));
         children.Add(UI.Button("Back", "back", "installed.repair.back")
             .Classes("secondary-button"));
         SettingsPresentation.LinkVertical(children);
@@ -169,12 +175,6 @@ internal static class SettingsInstalledWidgetPresentation
             .InputScope("installed.repair.list")
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
-        if (page > 0)
-            scope = scope.Shortcut(
-                ControllerButton.LeftBumper, "installed.previous-page", label: "Previous page");
-        if (page < lastPage)
-            scope = scope.Shortcut(
-                ControllerButton.RightBumper, "installed.next-page", label: "Next page");
         return SettingsPresentation.View(
             header, scope,
             visible.Length == 0 ? "installed.repair.back" : $"installed.repair.item.{start}",
@@ -582,6 +582,12 @@ internal static class SettingsInstalledWidgetPresentation
                 .Disabled(package.Enabled || isActive).Busy(busy).Selected(isActive)
                 .Classes("setting-row", isActive ? "is-enabled" : "is-disabled"));
         }
+        if (page > 0)
+            children.Add(UI.Button("Previous page", "installed.versions.previous-page", "installed.versions.previous-page")
+                .Classes("secondary-button"));
+        if (page < lastPage)
+            children.Add(UI.Button("Next page", "installed.versions.next-page", "installed.versions.next-page")
+                .Classes("secondary-button"));
         children.Add(UI.Button("Back", "back", "installed.versions.back").Classes("secondary-button"));
         SettingsPresentation.LinkVertical(children);
 
@@ -589,14 +595,6 @@ internal static class SettingsInstalledWidgetPresentation
             .InputScope("installed.versions")
             .Shortcut(ControllerButton.B, "back")
             .Classes("settings-page");
-        if (page > 0)
-            scope = scope.Shortcut(
-                ControllerButton.LeftBumper, "installed.versions.previous-page",
-                label: "Previous page");
-        if (page < lastPage)
-            scope = scope.Shortcut(
-                ControllerButton.RightBumper, "installed.versions.next-page",
-                label: "Next page");
         var initialFocus = package.Enabled
             ? "installed.versions.back"
             : visible.Select((version, offset) => (version, offset))

@@ -263,7 +263,6 @@ internal static class PlayniteLibraryPresentation
         string? catalogAnchorKey = null;
         string? pageBeforeActionId = null;
         string? pageAfterActionId = null;
-        var pageShortcuts = false;
         BackgroundSurfaceArtwork? catalogBackgroundArtwork = null;
         string? initialFocus = state.Route == PlayniteLibraryRoute.Browse
             ? state.BrowseInitialFocusId ?? snapshot.RequestedFocusId
@@ -388,7 +387,6 @@ internal static class PlayniteLibraryPresentation
                     row.Favorite,
                     renderActionsEnabled && !state.OrganizationBusy && !state.BrowseRetained,
                     row.Key,
-                    rail.PageBumpers,
                     row.CollectionItem,
                     categories: state.Route is PlayniteLibraryRoute.Library or
                         PlayniteLibraryRoute.Browse
@@ -414,7 +412,6 @@ internal static class PlayniteLibraryPresentation
                         : "playnite-library.library.cursor.after"
                     : null;
             }
-            pageShortcuts = true;
             var controls = UI.HorizontalScroll("playnite-library.actions",
                     UI.Button("Refresh", "playnite-library.refresh", "playnite-library.refresh")
                 .Disabled(!renderActionsEnabled)
@@ -453,28 +450,15 @@ internal static class PlayniteLibraryPresentation
                 hintItems.Add(UI.ControllerHint(
                     ControllerButton.Menu, "Game options", "playnite-library.hint.options"));
             }
-            if (rail.PageBumpers)
-            {
-                if (renderActionsEnabled && snapshot.Status == WidgetPagedResourceStatus.Ready &&
-                    snapshot.HasBefore)
-                    hintItems.Add(UI.ControllerHint(
-                        ControllerButton.LeftBumper, "Previous page",
-                        "playnite-library.hint.previous"));
-                if (renderActionsEnabled && snapshot.Status == WidgetPagedResourceStatus.Ready &&
-                    snapshot.HasAfter)
-                    hintItems.Add(UI.ControllerHint(
-                        ControllerButton.RightBumper, "Next page",
-                        "playnite-library.hint.next"));
-            }
             WidgetElement catalog = state.Route switch
             {
                 PlayniteLibraryRoute.Library => HomeRail(
                     snapshot, catalogAnchorKey, pageBeforeActionId, pageAfterActionId,
-                    pageShortcuts, renderActionsEnabled, tiles),
+                    tiles),
                 PlayniteLibraryRoute.Browse => BrowseGrid(
                     BrowseScrollId(state.AlternateBrowseViewport), snapshot,
                     catalogAnchorKey, pageBeforeActionId, pageAfterActionId,
-                    pageShortcuts, renderActionsEnabled && !state.BrowseRetained, tiles),
+                    tiles),
                 _ => GameGrid("playnite-library.library.grid", tiles),
             };
             var children = new List<WidgetElement>();
@@ -522,8 +506,7 @@ internal static class PlayniteLibraryPresentation
                 current: null,
                 favorite: state.Organization.FavoriteSavedIds.Contains(
                     item.SavedId, StringComparer.Ordinal),
-                interactive: false, key: PlayniteLibraryIdentity.Key(item.SavedId),
-                pageBumpers: false)).ToArray();
+                interactive: false, key: PlayniteLibraryIdentity.Key(item.SavedId))).ToArray();
             catalogPage = true;
             catalogAnchorKey = PlayniteLibraryIdentity.Key(
                 warmRows[0].SavedId).Value;
@@ -712,8 +695,6 @@ internal static class PlayniteLibraryPresentation
                 .Classes("playnite-library-page-scroll");
             if (pageBeforeActionId is not null || pageAfterActionId is not null)
                 page = page.Paginate(pageBeforeActionId, pageAfterActionId, 2);
-            if (pageShortcuts)
-                page = PageShortcuts(page, snapshot, renderActionsEnabled);
             page = page with { CollectionAnchorKey = catalogAnchorKey };
             root = UI.Stack("playnite-library.root", page)
                 .Classes("playnite-library-widget", "playnite-library-canvas");
@@ -860,32 +841,12 @@ internal static class PlayniteLibraryPresentation
             .Classes("playnite-library-source-status");
     }
 
-    private static ScrollElement PageShortcuts(
-        ScrollElement scroll,
-        WidgetCursorResourceSnapshot<PlayniteLibraryItem> snapshot,
-        bool interactive)
-    {
-        if (!interactive || snapshot.Status != WidgetPagedResourceStatus.Ready)
-            return scroll;
-        if (snapshot.HasBefore)
-            scroll = scroll.Shortcut(
-                ControllerButton.LeftBumper, "playnite-library.previous",
-                label: "Previous page");
-        if (snapshot.HasAfter)
-            scroll = scroll.Shortcut(
-                ControllerButton.RightBumper, "playnite-library.next",
-                label: "Next page");
-        return scroll;
-    }
-
     private static ScrollElement BrowseGrid(
         string scrollId,
         WidgetCursorResourceSnapshot<PlayniteLibraryItem> snapshot,
         string? collectionAnchorKey,
         string? nearStartActionId,
         string? nearEndActionId,
-        bool pageShortcuts,
-        bool interactive,
         params WidgetElement[] tiles)
     {
         var grid = UI.ResponsiveGrid(
@@ -904,7 +865,7 @@ internal static class PlayniteLibraryPresentation
             };
         if (nearStartActionId is not null || nearEndActionId is not null)
             scroll = scroll.Paginate(nearStartActionId, nearEndActionId, 2);
-        return pageShortcuts ? PageShortcuts(scroll, snapshot, interactive) : scroll;
+        return scroll;
     }
 
     private static StackElement CinematicStage(
@@ -919,8 +880,6 @@ internal static class PlayniteLibraryPresentation
         string? collectionAnchorKey,
         string? nearStartActionId,
         string? nearEndActionId,
-        bool pageShortcuts,
-        bool interactive,
         params WidgetElement[] tiles)
     {
         var rail = UI.HorizontalScroll(HomeRailId, tiles)
@@ -934,7 +893,7 @@ internal static class PlayniteLibraryPresentation
             };
         if (nearStartActionId is not null || nearEndActionId is not null)
             rail = rail.Paginate(nearStartActionId, nearEndActionId, 2);
-        return pageShortcuts ? PageShortcuts(rail, snapshot, interactive) : rail;
+        return rail;
     }
 
     private static RowElement StableControllerHint(
@@ -1074,7 +1033,6 @@ internal static class PlayniteLibraryPresentation
         bool favorite,
         bool interactive,
         WidgetCollectionItemKey key,
-        bool pageBumpers,
         bool collectionItem = true,
         IReadOnlyList<PlayniteLibraryCategory>? categories = null,
         string? completionStatus = null,

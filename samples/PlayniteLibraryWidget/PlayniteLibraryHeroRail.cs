@@ -20,8 +20,7 @@ internal sealed record PlayniteLibraryHeroRailItem(
 internal sealed record PlayniteLibraryHeroRailModel(
     IReadOnlyList<PlayniteLibraryHeroRailItem> Items,
     int SelectedIndex,
-    string? CatalogAnchorKey,
-    bool PageBumpers)
+    string? CatalogAnchorKey)
 {
     internal PlayniteLibraryHeroRailItem? Selected =>
         SelectedIndex >= 0 && SelectedIndex < Items.Count ? Items[SelectedIndex] : null;
@@ -70,8 +69,7 @@ internal static class PlayniteLibraryHeroRailPolicy
                     row.Display.SavedId, item.Value.SavedId, StringComparison.Ordinal)))
             ? currentAnchor.Value
             : rows.FirstOrDefault()?.Current?.Key.Value;
-        return new(rows, selectedIndex, anchor,
-            snapshot.HasBefore || snapshot.HasAfter);
+        return new(rows, selectedIndex, anchor);
     }
 
     internal static PlayniteLibraryHeroRailModel Project(
@@ -175,8 +173,7 @@ internal static class PlayniteLibraryHeroRailPolicy
                 item.Key == currentAnchor && catalogIds.Contains(item.Value.SavedId))
             ? currentAnchor.Value
             : catalog.FirstOrDefault()?.Current?.Key.Value;
-        return new(rows, selectedIndex, anchor,
-            snapshot.HasBefore || snapshot.HasAfter);
+        return new(rows, selectedIndex, anchor);
     }
 
     internal static PlayniteLibraryHeroRailItem? SelectFromInput(

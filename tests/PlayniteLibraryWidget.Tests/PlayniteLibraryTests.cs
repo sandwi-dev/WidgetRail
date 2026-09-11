@@ -3956,22 +3956,6 @@ public sealed class PlayniteLibraryTests
         public override WidgetView Render() => new(UI.Stack("source-observation.root"));
     }
 
-    private static void AssertShortcutMap(
-        ViewSnapshot snapshot,
-        bool before,
-        bool after)
-    {
-        var scroll = Nodes(snapshot.Root).Single(node =>
-            node.Id is PlayniteLibraryPresentation.ScrollId or
-                PlayniteLibraryPresentation.AlternateBrowseScrollId);
-        Assert.AreEqual(before, scroll.Shortcuts.Any(shortcut =>
-            shortcut.Button == ControllerButton.LeftBumper &&
-            shortcut.ActionId == "playnite-library.previous"));
-        Assert.AreEqual(after, scroll.Shortcuts.Any(shortcut =>
-            shortcut.Button == ControllerButton.RightBumper &&
-            shortcut.ActionId == "playnite-library.next"));
-    }
-
     private static void AssertValidCollectionAnchor(ViewSnapshot snapshot)
     {
         var scroll = Nodes(snapshot.Root).SingleOrDefault(node =>

@@ -136,8 +136,8 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.AreEqual(ViewNodeKind.Scroll, rail.Kind);
         Assert.AreEqual(ScrollAxis.Horizontal, rail.ScrollAxis);
         Assert.AreEqual(items[0].Key.Value, rail.CollectionAnchorKey);
-        Assert.IsTrue(rail.Shortcuts.Any(shortcut => shortcut.Button ==
-            ControllerButton.RightBumper && shortcut.ActionId == "playnite-library.next"));
+        Assert.IsFalse(nodes.Any(node => node.Shortcuts.Any(shortcut =>
+            shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper)));
         var collectionItems = nodes.Where(node => node.CollectionItemKey is not null)
             .Select(node => node.CollectionItemKey!)
             .ToArray();

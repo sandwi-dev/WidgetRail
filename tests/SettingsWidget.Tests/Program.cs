@@ -1037,8 +1037,10 @@ static async Task InstalledWidgetReview()
     var first = Snapshot(widget);
     Assert.Equal("installed.widgets", first.ActiveInputScopeId);
     Assert.HasShortcut(first.Root, "installed.widgets", ControllerButton.B, "back");
-    Assert.HasShortcut(first.Root, "installed.widgets", ControllerButton.RightBumper,
-        "installed.next-page");
+    Assert.Equal("installed.next-page", Button(first.Root, "installed.next-page").ActionId);
+    Assert.True(!Nodes(first.Root).SelectMany(node => node.Shortcuts).Any(shortcut =>
+        shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper),
+        "Installed pages must expose buttons without bumper shortcuts.");
     Assert.Equal(5, Buttons(first.Root).Count(button =>
         button.Id.StartsWith("installed.item.", StringComparison.Ordinal)));
     Assert.Contains("review before enabling", Button(first.Root, "installed.item.0").Text!);
@@ -1046,8 +1048,7 @@ static async Task InstalledWidgetReview()
     await Action(widget, "installed.next-page");
     var second = Snapshot(widget);
     Assert.Equal("installed.item.5", second.InitialFocusId);
-    Assert.HasShortcut(second.Root, "installed.widgets", ControllerButton.LeftBumper,
-        "installed.previous-page");
+    Assert.Equal("installed.previous-page", Button(second.Root, "installed.previous-page").ActionId);
     await Action(widget, "installed.select.5");
     var details = Snapshot(widget);
     Assert.SequenceEqual(SnapshotJson.Serialize(details), SnapshotJson.Serialize(Snapshot(widget)));
