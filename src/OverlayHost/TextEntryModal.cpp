@@ -560,8 +560,11 @@ void TextEntryModal::UpdateKeyLabels() {
         auto label = KeyLabel(index);
         const auto hint = ControllerHint(index);
         if (!hint.empty()) label += L" (" + std::wstring(hint) + L")";
+        std::array<wchar_t, 128> currentLabel{};
+        GetWindowTextW(keys_[index], currentLabel.data(), static_cast<int>(currentLabel.size()));
+        if (label == currentLabel.data()) continue;
         SetWindowTextW(keys_[index], label.c_str());
-        InvalidateRect(keys_[index], nullptr, TRUE);
+        InvalidateRect(keys_[index], nullptr, FALSE);
     }
 }
 
@@ -737,8 +740,8 @@ void TextEntryModal::SetKeyboardFocus(const std::size_t index) {
     const auto prior = focusIndex_ < keys_.size() ? keys_[focusIndex_] : nullptr;
     focusIndex_ = index;
     SetFocus(keys_[focusIndex_]);
-    if (prior) InvalidateRect(prior, nullptr, TRUE);
-    InvalidateRect(keys_[focusIndex_], nullptr, TRUE);
+    if (prior) InvalidateRect(prior, nullptr, FALSE);
+    InvalidateRect(keys_[focusIndex_], nullptr, FALSE);
     if (edit_) InvalidateRect(edit_, nullptr, TRUE);
 }
 
@@ -987,6 +990,10 @@ LRESULT CALLBACK TextEntryModal::KeyWindowProc(
     auto* self = reinterpret_cast<TextEntryModal*>(GetWindowLongPtrW(window, GWLP_USERDATA));
     if (!self || !self->priorKeyWindowProc_)
         return DefWindowProcW(window, message, wParam, lParam);
+    // Owner-draw paints every pixel, including corners, in one completed frame.
+    // Native BUTTON erasure otherwise exposes its system brush between caption
+    // changes and WM_DRAWITEM, especially while Shift refreshes many keys.
+    if (message == WM_ERASEBKGND) return 1;
     const auto found = std::find(self->keys_.begin(), self->keys_.end(), window);
     if (message == WM_GETDLGCODE)
         return DLGC_WANTARROWS | DLGC_WANTCHARS | DLGC_WANTALLKEYS;
@@ -996,12 +1003,12 @@ LRESULT CALLBACK TextEntryModal::KeyWindowProc(
             self->controllerRepeatAction_ == RepeatAction::ActivateKey)
             self->ResetControllerRepeat();
         self->focusIndex_ = index;
-        InvalidateRect(window, nullptr, TRUE);
+        InvalidateRect(window, nullptr, FALSE);
         if (self->edit_) InvalidateRect(self->edit_, nullptr, TRUE);
     } else if (message == WM_KILLFOCUS) {
         if (self->controllerRepeatAction_ == RepeatAction::ActivateKey)
             self->ResetControllerRepeat();
-        InvalidateRect(window, nullptr, TRUE);
+        InvalidateRect(window, nullptr, FALSE);
     }
     if (message == WM_KEYDOWN) {
         if (IsPasteGesture(wParam)) {

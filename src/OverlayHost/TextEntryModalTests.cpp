@@ -435,6 +435,20 @@ void CheckKeyboardSession(HWND owner) {
     draw.hwndItem = GetDlgItem(window, 1000);
     draw.hDC = pixels;
     draw.rcItem = {0, 0, 64, 52};
+    const COLORREF retainedPixel = RGB(17, 43, 69);
+    const auto retainedBrush = CreateSolidBrush(retainedPixel);
+    for (int layer = 0; layer < 2; ++layer) {
+        keyboard.HandleController(L"LT");
+        for (int key = 0; key < static_cast<int>(TextEntryKeyCount); ++key) {
+            FillRect(pixels, &draw.rcItem, retainedBrush);
+            const auto erased = SendMessageW(GetDlgItem(window, 1000 + key), WM_ERASEBKGND,
+                reinterpret_cast<WPARAM>(pixels), 0);
+            Check(erased != 0 && GetPixel(pixels, 12, 12) == retainedPixel &&
+                GetPixel(pixels, 0, 0) == retainedPixel,
+                "Shift refresh preserves existing key pixels until the complete custom paint");
+        }
+    }
+    DeleteObject(retainedBrush);
     SendMessageW(window, WM_DRAWITEM, 1000, reinterpret_cast<LPARAM>(&draw));
     const TextEntryModalTheme palette;
     Check(GetPixel(pixels, 0, 0) == palette.panel && GetPixel(pixels, 63, 51) == palette.panel,
