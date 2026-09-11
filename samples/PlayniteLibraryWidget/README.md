@@ -12,6 +12,11 @@ not presented as unavailable merely because their page has not loaded.
 Browse shows the total matching its current query, independently of retained
 page size. Adjacent loading preserves focus and uses the shared edge indicator;
 providers without a known total display an explicitly labeled loaded count.
+Each cursor traversal keeps its initial membership and ordering until refresh;
+current game details and favorite authority remain live. A favorite change takes
+effect in ordering on refresh, so later pages cannot overlap an earlier ordering.
+Home and Browse own separate traversals. Replacing a query retires its old cursors.
+Saving a favorite disables activation temporarily while preserving rail focus.
 
 ## Setup and safety
 

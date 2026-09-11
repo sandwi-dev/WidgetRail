@@ -34,6 +34,11 @@ internal sealed class PlayniteLibraryApplicationService(
     private readonly object _artworkGate = new();
     private HashSet<string> _pinnedArtwork = new(StringComparer.Ordinal);
     private Catalog? _lastGood;
+    // One active traversal per bounded query scope keeps Home independent of
+    // Browse and retires replaced queries without an unbounded snapshot cache.
+    private sealed record Traversal(string Id, WidgetAppLibraryQuery Query,
+        PlayniteLibraryQueryContext Context, PlayniteBridgeGame[] Items);
+    private readonly Dictionary<PlayniteLibraryQueryScope, Traversal> _traversals = [];
     private long _catalogMutationRevision;
     private long _lastGoodMutationRevision;
     private readonly IPlayniteLibraryArtworkDiagnostics _artworkDiagnostics =
@@ -103,6 +108,7 @@ internal sealed class PlayniteLibraryApplicationService(
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(context);
+        if (!Enum.IsDefined(context.Scope)) throw new ArgumentOutOfRangeException(nameof(context));
         if (limit is < 1 or > WidgetAppLibraryService.MaximumPageSize)
             throw new ArgumentOutOfRangeException(nameof(limit));
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -133,14 +139,32 @@ internal sealed class PlayniteLibraryApplicationService(
                 stale = true;
             }
 
-            var filtered = ApplyQuery(catalog.Games, query, context).ToArray();
-            var offset = CursorOffset(cursor, direction, limit, filtered.Length);
-            var pageItems = filtered.Skip(offset).Take(limit)
-                .Select(game => Project(game, stale)).ToArray();
-            var before = offset == 0 ? null : Math.Max(0, offset - limit).ToString();
-            var after = offset + pageItems.Length >= filtered.Length
+            Traversal traversal;
+            int offset;
+            if (direction is null)
+            {
+                traversal = new(Guid.NewGuid().ToString("N"),
+                    query with { FavoriteSavedIds = query.FavoriteSavedIds.ToArray() }, context,
+                    ApplyQuery(catalog.Games, query, context).ToArray());
+                _traversals[context.Scope] = traversal;
+                offset = 0;
+            }
+            else
+            {
+                if (!_traversals.TryGetValue(context.Scope, out var existing) ||
+                    existing.Context != context || !SameQuery(existing.Query, query))
+                    throw new WidgetCapabilityException("invalid_cursor", "Refresh the library to continue browsing.");
+                traversal = existing;
+                offset = CursorOffset(cursor, traversal);
+            }
+            var current = catalog.Games.ToDictionary(game => game.Id, StringComparer.Ordinal);
+            var pageItems = traversal.Items.Skip(offset).Take(limit)
+                .Select(game => current.TryGetValue(game.Id, out var updated)
+                    ? Project(updated, stale) : Project(game, stale: true)).ToArray();
+            var before = offset == 0 ? null : Cursor(traversal, Math.Max(0, offset - limit));
+            var after = offset + pageItems.Length >= traversal.Items.Length
                 ? null
-                : (offset + pageItems.Length).ToString();
+                : Cursor(traversal, offset + pageItems.Length);
             var sourceHealth = stale
                 ? WidgetAppLibrarySourceHealth.Degraded
                 : WidgetAppLibrarySourceHealth.Healthy;
@@ -159,7 +183,7 @@ internal sealed class PlayniteLibraryApplicationService(
                 pageItems, before, after, catalog.Revision) { Sources = sources };
             return new(page, ProjectAuthority(catalog.Games, catalog.Categories), stale)
             {
-                MatchingGameCount = filtered.Length,
+                MatchingGameCount = traversal.Items.Length,
             };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -783,19 +807,24 @@ internal sealed class PlayniteLibraryApplicationService(
             !normalized.Any(char.IsControl) ? normalized : null;
     }
 
-    private static int CursorOffset(
-        WidgetCollectionCursor? cursor,
-        WidgetCursorDirection? direction,
-        int limit,
-        int count)
+    private static bool SameQuery(WidgetAppLibraryQuery left, WidgetAppLibraryQuery right) =>
+        left.InstalledOnly == right.InstalledOnly && left.Kind == right.Kind &&
+        left.SourceAttribution == right.SourceAttribution && left.Sort == right.Sort &&
+        left.SearchText == right.SearchText &&
+        left.FavoriteSavedIds.SequenceEqual(right.FavoriteSavedIds, StringComparer.Ordinal);
+
+    private static string Cursor(Traversal traversal, int offset) =>
+        traversal.Id + "." + offset.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static int CursorOffset(WidgetCollectionCursor? cursor, Traversal traversal)
     {
-        if (direction is null) return 0;
-        if (cursor is null || !int.TryParse(cursor.Value.Value, out var offset) ||
-            offset < 0 || offset > count)
-            throw new WidgetCapabilityException("invalid_cursor", "The cursor is invalid.");
-        return direction == WidgetCursorDirection.Before
-            ? Math.Max(0, offset)
-            : offset;
+        var prefix = traversal.Id + ".";
+        if (cursor is null || !cursor.Value.Value.StartsWith(prefix, StringComparison.Ordinal) ||
+            !int.TryParse(cursor.Value.Value.AsSpan(prefix.Length),
+                System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var offset) ||
+            offset < 0 || offset >= traversal.Items.Length)
+            throw new WidgetCapabilityException("invalid_cursor", "Refresh the library to continue browsing.");
+        return offset;
     }
 
     private static bool CanRetain(Exception exception, CancellationToken cancellationToken) =>

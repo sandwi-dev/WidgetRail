@@ -12,6 +12,43 @@ namespace PlayniteLibraryCommunityApplication.Tests;
 public sealed class PackageRuntimeTests
 {
     [TestMethod]
+    public async Task HomeCursorKeepsMembershipAndOrderWhenFavoriteChangesBetweenPages()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(8);
+        await using var service = Service(directory.Path, client);
+        var context = new PlayniteLibraryQueryContext(PlayniteLibraryQueryScope.Home);
+        var first = await service.QueryWithAuthorityAsync(AllGames, context, null, null, 2, true, CancellationToken.None);
+        var ids = first.Page.Items.Select(item => item.SavedId).ToList();
+        await service.SetFavoriteAsync(client.Games[4].Id, true, CancellationToken.None);
+        var cursor = first.Page.After;
+        await service.QueryWithAuthorityAsync(AllGames with { SearchText = "00000" },
+            new(PlayniteLibraryQueryScope.Library), null, null, 2, true, CancellationToken.None);
+        while (cursor is not null)
+        {
+            var next = await service.QueryWithAuthorityAsync(AllGames, context, new(cursor),
+                WidgetCursorDirection.After, 2, false, CancellationToken.None);
+            ids.AddRange(next.Page.Items.Select(item => item.SavedId));
+            CollectionAssert.Contains(next.Authority.FavoriteGameIds.ToArray(), client.Games[4].Id,
+                "Preserving page order must not publish stale favorite authority.");
+            cursor = next.Page.After;
+        }
+        CollectionAssert.AreEqual(Enumerable.Range(0, 8).Reverse().Select(index => client.Games[index].Id).ToArray(), ids.ToArray(),
+            "A mutation must not splice a newly sorted page into an older cursor window.");
+        var refreshed = await service.QueryWithAuthorityAsync(AllGames, context, null, null, 2, true, CancellationToken.None);
+        Assert.AreEqual(client.Games[4].Id, refreshed.Page.Items[0].SavedId);
+        await Assert.ThrowsExactlyAsync<WidgetCapabilityException>(async () =>
+            await service.QueryWithAuthorityAsync(AllGames, context, new(first.Page.After!),
+                WidgetCursorDirection.After, 2, false, CancellationToken.None));
+        var nextPage = await service.QueryWithAuthorityAsync(AllGames, context, new(refreshed.Page.After!),
+            WidgetCursorDirection.After, 2, false, CancellationToken.None);
+        var previous = await service.QueryWithAuthorityAsync(AllGames, context, new(nextPage.Page.Before!),
+            WidgetCursorDirection.Before, 2, false, CancellationToken.None);
+        CollectionAssert.AreEqual(refreshed.Page.Items.Select(item => item.SavedId).ToArray(),
+            previous.Page.Items.Select(item => item.SavedId).ToArray());
+    }
+
+    [TestMethod]
     public async Task HomeOrdersWholeCatalogBeforePagingAndReportsMatchingTotal()
     {
         using var directory = new TestDirectory();
@@ -151,7 +188,7 @@ public sealed class PackageRuntimeTests
             AllGames, new(PlayniteLibraryQueryScope.Library), null, null,
             32, refresh: true, CancellationToken.None);
         Assert.AreEqual(32, first.Page.Items.Count);
-        Assert.AreEqual("32", first.Page.After);
+        Assert.IsTrue(first.Page.After!.EndsWith(".32", StringComparison.Ordinal));
         Assert.AreEqual(157, client.QueryCalls,
             "Ten thousand records must be traversed in bounded 64-item Bridge pages.");
         Assert.IsTrue(client.Queries.All(query => query.Limit == 64));
@@ -162,7 +199,7 @@ public sealed class PackageRuntimeTests
             new WidgetCollectionCursor(first.Page.After!), WidgetCursorDirection.After,
             64, refresh: false, CancellationToken.None);
         Assert.AreEqual(64, second.Items.Count);
-        Assert.AreEqual("96", second.After);
+        Assert.IsTrue(second.After!.EndsWith(".96", StringComparison.Ordinal));
         Assert.AreEqual(157, client.QueryCalls,
             "Presentation paging must reuse the bounded current catalog.");
 

@@ -227,7 +227,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             : navigation.InitialFocusId ?? view.InitialFocusId;
         initialFocusId = ResolveInitialFocus(
             root, initialFocusId, view.InitialFocusId, navigation.InputScopeId,
-            allowDisabledRequestedTarget: navigation.Route == PlayniteLibraryRoute.Browse);
+            allowDisabledRequestedTarget: navigation.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse);
         return view with
         {
             Root = root,

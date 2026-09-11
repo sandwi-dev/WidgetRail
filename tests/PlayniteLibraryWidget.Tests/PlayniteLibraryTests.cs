@@ -13,6 +13,36 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed class PlayniteLibraryTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task HomeFavoriteKeepsFocusWhileSavingAndAfterCompletion()
+    {
+        foreach (var succeeds in new[] { true, false })
+        {
+            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var host = new FakeHost(8) { FavoriteCompletion = completion.Task };
+            var widget = Create(host);
+            await Interactive(widget);
+            await Ready(widget, host);
+            var before = Snapshot(widget, 1);
+            var tile = Nodes(before.Root).Where(node => node.CollectionItemKey is not null).Skip(1).First();
+            var favorite = widget.OnActionAsync(new(PlayniteLibraryActions.Favorite, tile.Id)).AsTask();
+            try
+            {
+                Assert.IsTrue(widget.RenderState.Value.OrganizationBusy);
+                var saving = Snapshot(widget, 2);
+                Assert.AreEqual(before.InitialFocusId, saving.InitialFocusId,
+                    "Saving a favorite must not replace the rail default with Refresh.");
+                Assert.IsTrue(Nodes(saving.Root).Single(node => node.Id == tile.Id).IsDisabled == true,
+                    "Keeping focus must not re-enable activation during the mutation.");
+            }
+            finally { completion.TrySetResult(succeeds); }
+            await Bounded(favorite, "favorite completion");
+            Assert.AreEqual(before.InitialFocusId, Snapshot(widget, 3).InitialFocusId);
+            Assert.IsFalse(widget.RenderState.Value.OrganizationBusy);
+            await Background(widget);
+        }
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task BrowseCountUsesQueryTotalAcrossPages()
     {
         var host = new FakeHost(LauncherWidget.PageSize + 4);
@@ -4000,6 +4030,8 @@ public sealed class PlayniteLibraryTests
         public async ValueTask<WidgetAppLibraryItem?> SetFavoriteAsync(
             string gameId, bool favorite, CancellationToken cancellationToken)
         {
+            if (host.FavoriteCompletion is { } completion && !await completion.WaitAsync(cancellationToken))
+                return null;
             host.SetFavorite(gameId, favorite);
             return (await ResolveSavedAsync([gameId], cancellationToken)).SingleOrDefault();
         }
@@ -4056,6 +4088,7 @@ public sealed class PlayniteLibraryTests
 
     private sealed class FakeHost
     {
+        internal Task<bool>? FavoriteCompletion { get; init; }
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
             WidgetTestPrivateState, AuthorityBox> Authorities = new();
         private readonly int _count;
