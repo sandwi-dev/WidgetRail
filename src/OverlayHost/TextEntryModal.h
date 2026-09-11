@@ -30,7 +30,9 @@ private:
     std::vector<wchar_t> value_;
 };
 
-inline constexpr std::size_t TextEntryKeyCount = 40;
+inline constexpr std::size_t TextEntryCharacterKeyCount = 40;
+inline constexpr std::size_t TextEntryKeyCount = 44;
+inline constexpr UINT TextEntryCompletedMessage = WM_APP + 0x270;
 
 struct TextEntryModalTheme final {
     COLORREF canvas{RGB(16, 19, 26)};
@@ -87,10 +89,11 @@ public:
     static constexpr std::size_t MaximumLength = 96;
 
     TextEntryModal() = default;
+    ~TextEntryModal();
     TextEntryModal(const TextEntryModal&) = delete;
     TextEntryModal& operator=(const TextEntryModal&) = delete;
 
-    [[nodiscard]] TextEntryModalResult Show(
+    [[nodiscard]] bool Begin(
         HINSTANCE instance,
         HWND owner,
         std::wstring_view value,
@@ -100,6 +103,12 @@ public:
         TextEntryModalTheme theme = {});
 
     [[nodiscard]] bool active() const noexcept { return window_ != nullptr; }
+    [[nodiscard]] std::optional<TextEntryModalResult> TakeResult();
+    void SetVisible(bool visible) noexcept;
+    void SetOpacity(float opacity) noexcept;
+    void Raise() noexcept;
+    void Focus() noexcept;
+    [[nodiscard]] std::optional<RECT> CaretBounds() const noexcept;
     void Close() noexcept;
     void HandleController(std::wstring_view button) noexcept;
     void UpdateControllerRepeat(
@@ -124,6 +133,7 @@ private:
     void Insert(wchar_t value);
     [[nodiscard]] bool PasteClipboard();
     void Backspace();
+    void Clear();
     void ResetControllerRepeat() noexcept;
     void InvokeRepeatAction(RepeatAction action);
     void MoveCaret(int delta);
@@ -141,6 +151,7 @@ private:
     HWND prompt_{};
     HWND edit_{};
     HWND legend_{};
+    HWND resumeFocus_{};
     std::array<HWND, TextEntryKeyCount> keys_{};
     WNDPROC priorEditWindowProc_{};
     WNDPROC priorKeyWindowProc_{};
@@ -166,6 +177,7 @@ private:
     TextEntryModalOutcome outcome_{TextEntryModalOutcome::Failed};
     bool completed_{};
     bool password_{};
+    bool visible_{};
 };
 
 } // namespace widgetrail::input

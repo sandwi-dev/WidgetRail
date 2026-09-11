@@ -1236,6 +1236,12 @@ private:
         std::wstring presentationGeneration;
     };
 
+    struct PendingTextEntry final {
+        widgetrail::input::TextEntryActionRequest request;
+        std::wstring focusToRestore;
+        bool protectedWifi{};
+    };
+
     enum class TextEntryControllerPhase {
         None,
         AwaitingEntryNeutral,
@@ -1794,10 +1800,6 @@ private:
         switch (event.kind) {
         case WidgetRailOverlayPlatformEventKind::GuideToggleRequested:
             if (viewMenuShortcutEnabled_) break;
-            if (textEntryModal_.active()) {
-                AppendDiagnostic(L"Guide input consumed by text entry modal");
-                break;
-            }
             if (event.guideSource ==
                 WidgetRailOverlayPlatformGuideSource::LegacyCompatibility) {
                 AppendDiagnostic(
@@ -2046,7 +2048,6 @@ private:
         }
 #endif
         case WM_HOTKEY:
-            if (textEntryModal_.active()) return 0;
             if (wParam == kDeveloperHotkey) {
                 AppendDiagnostic(L"F1 fallback toggle received");
                 Dispatch(widgetrail::Command::ToggleOverlay);
@@ -2120,7 +2121,7 @@ private:
             }
             return 0;
         case kForegroundChangedMessage:
-            if (textEntryModal_.active() ||
+            if (!textEntryModal_.active() &&
                 textEntryControllerPhase_ != TextEntryControllerPhase::None) {
                 // Opening and destroying the owned modal can enqueue transient
                 // foreground changes. They belong to the modal transaction and
@@ -2129,7 +2130,10 @@ private:
                 return 0;
             }
             if (state_.surface() != widgetrail::Surface::Hidden) {
-                const HWND foreground = reinterpret_cast<HWND>(lParam);
+                // The keyboard can activate between WinEvent capture and this
+                // message. Evaluate live ownership for its asynchronous scope.
+                const HWND foreground = textEntryModal_.active()
+                    ? GetForegroundWindow() : reinterpret_cast<HWND>(lParam);
                 const bool valid = foreground && IsWindow(foreground);
                 DWORD processId = 0;
                 if (valid) (void)GetWindowThreadProcessId(foreground, &processId);
@@ -2602,7 +2606,11 @@ private:
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_ERASEBKGND:
             return 1;
+        case widgetrail::input::TextEntryCompletedMessage:
+            FinishTextEntry();
+            return 0;
         case WM_CLOSE:
+            textEntryModal_.Close();
             if (performanceState_ && performanceCountersActive_ &&
                 !PublishPerformanceCounters()) {
                 AppendDiagnostic(L"Performance runtime diagnostics could not be published");
@@ -5572,6 +5580,9 @@ private:
     }
 
     void Shutdown() {
+        textEntryModal_.Close();
+        (void)textEntryModal_.TakeResult();
+        pendingTextEntry_.reset();
         auto* proofSession = richMediaProofSessionKey_
             ? mediaSessions_.Find(*richMediaProofSessionKey_) : nullptr;
         const auto retainedEnvironment =
@@ -5995,6 +6006,10 @@ private:
     void Dispatch(const widgetrail::Command command) {
         ApplyStateTransition(
             [&] { return state_.Dispatch(command); }, command);
+        if (textEntryModal_.active() && state_.surface() == widgetrail::Surface::Hidden) {
+            textEntryModal_.UpdateControllerRepeat({}, GetTickCount64());
+            textEntryControllerPhase_ = TextEntryControllerPhase::AwaitingEntryNeutral;
+        }
     }
 
     bool SelectTrayWidget(const std::wstring_view widgetId) {
@@ -6256,10 +6271,8 @@ private:
 
     bool PollOpenShortcut() {
         if (!viewMenuShortcutEnabled_ || !openShortcut_.Poll()) return false;
-        if (!textEntryModal_.active()) {
-            AppendDiagnostic(L"View + Menu shortcut dispatched on window thread");
-            Dispatch(widgetrail::Command::ToggleOverlay);
-        }
+        AppendDiagnostic(L"View + Menu shortcut dispatched on window thread");
+        Dispatch(widgetrail::Command::ToggleOverlay);
         return true;
     }
 
@@ -6995,6 +7008,7 @@ private:
     }
 
     void ApplyTransitionWindowOpacity(const float opacityFactor) {
+        textEntryModal_.SetOpacity(opacityFactor);
         const auto factor = std::clamp(opacityFactor, 0.0F, 1.0F);
         const BYTE baseOverlayOpacity =
             compositionSurface_.available() ? 255 : targetOverlayOpacity_;
@@ -7593,6 +7607,16 @@ private:
             PrimeControllerState();
         }
         pinnedSurfaceCoordinator_.OnOverlayShown();
+        if (textEntryModal_.active()) {
+            if (!textEntryModalAuthority_ ||
+                state_.surface() != widgetrail::Surface::Widget ||
+                state_.activeWidget() != textEntryModalAuthority_->widgetId) {
+                textEntryModal_.Close();
+            } else {
+                textEntryModal_.SetVisible(true);
+                textEntryModal_.SetOpacity(overlayTransitionSample_.shellOpacity);
+            }
+        }
         return OverlayShowResult::Shown;
     }
 
@@ -7797,7 +7821,9 @@ private:
         visibleSessionStartedAt_ = 0;
         pendingCompositionContentRevealWidget_.clear();
         if (compositionSurface_.available()) (void)compositionSurface_.SnapContentVisible();
-        textEntryModal_.Close();
+        textEntryModal_.SetVisible(false);
+        textEntryControllerPhase_ = textEntryModal_.active()
+            ? TextEntryControllerPhase::AwaitingEntryNeutral : textEntryControllerPhase_;
         localWidgetPackageImport_.CancelPicker();
         if (const auto operation = localWidgetPackageImport_.CancelActiveOperation()) {
             (void)bridge_.CancelLocalWidgetPackageInstall(
@@ -7887,7 +7913,9 @@ private:
             positions = DeferWindowPos(
                 positions, backdropWindow_, window_, 0, 0, 0, 0, flags);
         }
-        return positions && EndDeferWindowPos(positions) != FALSE;
+        const bool applied = positions && EndDeferWindowPos(positions) != FALSE;
+        textEntryModal_.Raise();
+        return applied;
     }
 
     void ReassertOverlayZOrder() {
@@ -9488,6 +9516,10 @@ private:
         const float clientX,
         const float clientY,
         const bool openContext = false) {
+        if (pendingTextEntry_) {
+            textEntryModal_.Focus();
+            return;
+        }
         if (state_.surface() == widgetrail::Surface::Hidden || !window_) return;
         RECT client{};
         if (!GetClientRect(window_, &client)) return;
@@ -10313,6 +10345,10 @@ private:
 
     void HandleKey(const UINT key, const bool repeated) {
         if (state_.surface() == widgetrail::Surface::Hidden) return;
+        if (pendingTextEntry_) {
+            textEntryModal_.Focus();
+            return;
+        }
         if (widgetContextMenu_) {
             if (!WidgetContextMenuAuthorityCurrent()) {
                 CloseWidgetContextMenu();
@@ -11206,7 +11242,7 @@ private:
                     widgetrail::richmedia::Command::SeekForward);
             return;
         }
-        if (textEntryModal_.active()) {
+        if (textEntryModal_.active() && state_.surface() != widgetrail::Surface::Hidden) {
             if (!foregroundOwned) {
                 textEntryModal_.UpdateControllerRepeat({}, now);
                 return;
@@ -11233,6 +11269,8 @@ private:
             routeDirection(frame.dpadNavigation);
             if ((pressed & XINPUT_GAMEPAD_B) != 0)
                 textEntryModal_.HandleController(L"B");
+            else if ((pressed & XINPUT_GAMEPAD_Y) != 0)
+                textEntryModal_.HandleController(L"Y");
             textEntryModal_.UpdateControllerRepeat({
                 .activateDown = (buttons & XINPUT_GAMEPAD_A) != 0,
                 .activatePressed = (pressed & XINPUT_GAMEPAD_A) != 0,
@@ -11250,7 +11288,8 @@ private:
             // deliberately consumed here rather than reaching overlay state.
             return;
         }
-        if (textEntryControllerPhase_ != TextEntryControllerPhase::None) {
+        if (textEntryControllerPhase_ != TextEntryControllerPhase::None &&
+            (!textEntryModal_.active() || state_.surface() != widgetrail::Surface::Hidden)) {
             if (TextEntryControllerFrameNeutral(frame)) {
                 textEntryControllerPhase_ = TextEntryControllerPhase::None;
                 AppendDiagnostic(
@@ -11810,9 +11849,8 @@ private:
 
         if (pressed & XINPUT_GAMEPAD_A) {
             DispatchRepeatableControllerAction(L"A", now);
-            // Opening a modal runs a nested message loop. When it returns, the
-            // original activation frame is still on this stack and must not be
-            // interpreted a second time after modal authority is retired.
+            // Opening the keyboard transfers input authority immediately.
+            // Do not deliver the rest of its activation frame to the widget.
             if (textEntryControllerPhase_ != TextEntryControllerPhase::None)
                 return;
         }
@@ -14553,15 +14591,23 @@ private:
             0xF7 / 255.0F, 0xF7 / 255.0F, 0xFA / 255.0F, 1.0F};
         const widgetrail::NativeColor defaultSecondary{
             0x9B / 255.0F, 0xA3 / 255.0F, 0xB3 / 255.0F, 1.0F};
-        const widgetrail::NativeColor defaultControl{
-            0x24 / 255.0F, 0x2A / 255.0F, 0x37 / 255.0F, 1.0F};
         const auto& appearance = appearanceState_.current();
         widgetrail::input::TextEntryModalTheme theme;
+        const auto blend = [](COLORREF foreground, COLORREF background, float alpha) {
+            const auto channel = [alpha](BYTE front, BYTE back) {
+                return static_cast<BYTE>(std::lround(front * alpha + back * (1.0F - alpha)));
+            };
+            return RGB(channel(GetRValue(foreground), GetRValue(background)),
+                channel(GetGValue(foreground), GetGValue(background)),
+                channel(GetBValue(foreground), GetBValue(background)));
+        };
         theme.canvas = GdiColor(effectiveCanvasBackground_);
-        theme.panel = GdiColor(effectivePanelBackground_);
-        theme.control = colorOr(trayItemStyle_.background(), defaultControl);
-        theme.controlFocused = colorOr(
-            trayItemSelectedFocusedStyle_.background(), kDefaultAccent);
+        theme.panel = blend(GdiColor(effectivePanelBackground_), theme.canvas,
+            effectivePanelBackground_.alpha);
+        const auto textColor = colorOr(bodyStyle_.foreground(), defaultText);
+        theme.control = blend(textColor, theme.panel, 0.10F);
+        const auto selected = trayItemSelectedFocusedStyle_.background().value_or(kDefaultAccent);
+        theme.controlFocused = blend(GdiColor(selected), theme.control, std::max(0.35F, selected.alpha));
         theme.text = colorOr(bodyStyle_.foreground(), defaultText);
         theme.secondaryText = colorOr(hintStyle_.foreground(), defaultSecondary);
         theme.focus = colorOr(
@@ -14577,6 +14623,7 @@ private:
         const std::wstring_view widget,
         const widgetrail::WidgetSnapshot& snapshot,
         const std::wstring_view nodeId) {
+        if (pendingTextEntry_ || textEntryModal_.active()) return true;
         const auto* node = widgetrail::input::FindNodeInInputScope(
             snapshot, nodeId, snapshot.activeInputScopeId);
         if (!node || !node->isTextEntry) return false;
@@ -14604,11 +14651,7 @@ private:
         interactionSession_.ClearFocus();
         ClearAccessibilityTree();
         InvalidateRect(window_, nullptr, FALSE);
-        if (chromeWindow_) {
-            EnableWindow(chromeWindow_, FALSE);
-            InvalidateRect(chromeWindow_, nullptr, FALSE);
-        }
-        if (backdropWindow_) EnableWindow(backdropWindow_, FALSE);
+        if (chromeWindow_) InvalidateRect(chromeWindow_, nullptr, FALSE);
         textEntryModalAuthority_ = TextEntryModalAuthority{
             request->widgetId,
             request->runtimeGeneration,
@@ -14616,20 +14659,35 @@ private:
         };
         textEntryControllerPhase_ =
             TextEntryControllerPhase::AwaitingEntryNeutral;
-        auto modalResult = textEntryModal_.Show(
-            instance_, window_, request->value,
-            modalTitle, request->maximumLength, sensitive || protectedWifi,
-            CurrentTextEntryTheme());
+        pendingTextEntry_ = PendingTextEntry{*request, exactFocusToRestore, protectedWifi};
+        if (!textEntryModal_.Begin(
+                instance_, window_, request->value,
+                modalTitle, request->maximumLength, sensitive || protectedWifi,
+                CurrentTextEntryTheme())) {
+            pendingTextEntry_.reset();
+            textEntryModalAuthority_.reset();
+            textEntryControllerPhase_ = TextEntryControllerPhase::AwaitingExitNeutral;
+            RestoreFocusForActiveSurface(widget);
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+        return true;
+    }
+
+    void FinishTextEntry() {
+        auto completedEntry = textEntryModal_.TakeResult();
+        if (!completedEntry || !pendingTextEntry_) return;
+        auto pending = std::move(*pendingTextEntry_);
+        pendingTextEntry_.reset();
+        const auto* request = &pending.request;
+        const auto& exactFocusToRestore = pending.focusToRestore;
+        const bool protectedWifi = pending.protectedWifi;
+        auto& modalResult = *completedEntry;
         // The terminal modal sample (B/RT/mouse/keyboard) and every other held
         // controller category remain quarantined until one complete neutral
         // frame has been consumed by the sole platform frame owner.
         textEntryControllerPhase_ =
             TextEntryControllerPhase::AwaitingExitNeutral;
         textEntryModalAuthority_.reset();
-        if (backdropWindow_ && IsWindow(backdropWindow_))
-            EnableWindow(backdropWindow_, TRUE);
-        if (chromeWindow_ && IsWindow(chromeWindow_))
-            EnableWindow(chromeWindow_, TRUE);
         bool actionDispatched{};
         if (modalResult.outcome == widgetrail::input::TextEntryModalOutcome::Committed &&
             modalResult.committedText) {
@@ -14723,9 +14781,9 @@ private:
             L" action-dispatched=" + (actionDispatched ? L"true" : L"false") +
             L" committed-value=" + preservation +
             L" focus=" + (interactionSession_.focusedElementId().empty() ? L"none" : interactionSession_.focusedElementId()));
-        (void)SetFocus(window_);
+        if (state_.surface() != widgetrail::Surface::Hidden && IsOverlayProcessForeground())
+            (void)SetFocus(window_);
         InvalidateRect(window_, nullptr, FALSE);
-        return true;
     }
 
     [[nodiscard]] bool GraphicsResourcesReady() const noexcept {
@@ -18206,6 +18264,7 @@ private:
     std::uint64_t widgetAccessibilityRevision_{};
     long long hostAccessibilitySequence_{};
     widgetrail::input::TextEntryModal textEntryModal_;
+    std::optional<PendingTextEntry> pendingTextEntry_;
     std::optional<TextEntryModalAuthority> textEntryModalAuthority_;
     TextEntryControllerPhase textEntryControllerPhase_{
         TextEntryControllerPhase::None};

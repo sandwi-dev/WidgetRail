@@ -8,8 +8,8 @@
 
 namespace widgetrail::input {
 
-// Immutable authority captured before the host enters the text modal's nested
-// message loop. It contains no snapshot or node references.
+// Immutable authority captured before the asynchronous keyboard session opens.
+// It contains no snapshot or node references and is revalidated at completion.
 struct TextEntryActionRequest final {
     std::wstring widgetId;
     std::wstring runtimeGeneration;

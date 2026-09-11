@@ -379,6 +379,139 @@ BOOL CALLBACK CollectChildren(const HWND child, const LPARAM value) {
 }
 }
 
+// The fixture owns its ordinary event loop; production Begin returns immediately.
+widgetrail::input::TextEntryModalResult RunKeyboard(
+    widgetrail::input::TextEntryModal& keyboard, HINSTANCE instance, HWND owner,
+    std::wstring_view value, std::wstring_view placeholder, std::size_t maximum,
+    bool password = false, widgetrail::input::TextEntryModalTheme theme = {}) {
+    if (!keyboard.Begin(instance, owner, value, placeholder, maximum, password, std::move(theme)))
+        return {};
+    MSG message{};
+    while (keyboard.active() && GetMessageW(&message, nullptr, 0, 0) > 0) {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+    }
+    auto result = keyboard.TakeResult();
+    SetFocus(owner);
+    return result ? std::move(*result) : widgetrail::input::TextEntryModalResult{};
+}
+
+void CheckKeyboardSession(HWND owner) {
+    using namespace widgetrail::input;
+    TextEntryModal keyboard;
+    Check(keyboard.Begin(GetModuleHandleW(nullptr), owner, L"draft", L"Session fixture", 96),
+        "begin returns with a live keyboard and no nested message loop");
+    const HWND window = FindWindowW(L"WidgetRail.TextEntryModal", ModalTitle(L"Session fixture").c_str());
+    const HWND edit = GetDlgItem(window, 101);
+    Check(window && edit && IsWindowEnabled(owner), "keyboard leaves overlay window enabled");
+    Check((GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) != 0,
+        "keyboard is an owned overlay surface without its own task-switcher entry");
+    Check(GetWindow(window, GW_OWNER) == owner, "overlay owns the keyboard lifetime and z-order");
+    HDC reference = GetDC(window);
+    HDC pixels = CreateCompatibleDC(reference);
+    HBITMAP bitmap = CreateCompatibleBitmap(reference, 64, 52);
+    const auto previous = SelectObject(pixels, bitmap);
+    DRAWITEMSTRUCT draw{};
+    draw.CtlType = ODT_BUTTON;
+    draw.CtlID = 1000;
+    draw.hwndItem = GetDlgItem(window, 1000);
+    draw.hDC = pixels;
+    draw.rcItem = {0, 0, 64, 52};
+    SendMessageW(window, WM_DRAWITEM, 1000, reinterpret_cast<LPARAM>(&draw));
+    const TextEntryModalTheme palette;
+    Check(GetPixel(pixels, 0, 0) == palette.panel && GetPixel(pixels, 63, 51) == palette.panel,
+        "rounded key corners are painted with the panel color, without white artifacts");
+    Check(GetPixel(pixels, 12, 12) == palette.control, "unfocused key uses its themed fill");
+    draw.itemState = ODS_FOCUS;
+    SendMessageW(window, WM_DRAWITEM, 1000, reinterpret_cast<LPARAM>(&draw));
+    Check(GetPixel(pixels, 12, 12) == palette.controlFocused,
+        "focused key paints its distinct fill without repainting the surrounding panel");
+    SelectObject(pixels, previous);
+    DeleteObject(bitmap);
+    DeleteDC(pixels);
+    ReleaseDC(window, reference);
+    Check(!keyboard.Begin(GetModuleHandleW(nullptr), owner, L"", L"duplicate", 96),
+        "a second session cannot replace an unfinished draft");
+    keyboard.HandleController(L"DPadLeft");
+    Check(WindowText(CurrentFocus(window)) == L"p", "left edge wraps to end of its row");
+    keyboard.HandleController(L"DPadRight");
+    Check(WindowText(CurrentFocus(window)) == L"q", "right edge wraps to start of its row");
+    keyboard.HandleController(L"DPadUp");
+    keyboard.HandleController(L"DPadUp");
+    Check(WindowText(CurrentFocus(window)) == L"Clear", "top edge wraps to action row");
+    keyboard.HandleController(L"DPadLeft");
+    Check(WindowText(CurrentFocus(window)) == L"Done", "action row wraps at its own width");
+    keyboard.HandleController(L"DPadDown");
+    Check(WindowText(CurrentFocus(window)) == L"9", "bottom edge wraps to aligned top key");
+
+    const auto checkCaret = [&](const char* name) {
+        const auto caret = keyboard.CaretBounds();
+        RECT client{};
+        GetClientRect(edit, &client);
+        Check(caret && IsInside(*caret, client) && caret->right > caret->left &&
+            caret->bottom > caret->top, name);
+    };
+    checkCaret("controller caret is visible at end of existing text");
+    keyboard.SetVisible(false);
+    Check(keyboard.active() && !IsWindowVisible(window), "hide preserves the keyboard session");
+    keyboard.HandleController(L"Y");
+    keyboard.HandleController(L"RT");
+    keyboard.UpdateControllerRepeat({.backspaceDown = true, .backspacePressed = true}, 1000);
+    Check(WindowText(edit) == L"draft" && !keyboard.TakeResult(), "hidden keyboard consumes no editing or commit input");
+    keyboard.SetVisible(true);
+    Check(IsWindowVisible(window) && WindowText(edit) == L"draft" &&
+        WindowText(CurrentFocus(window)) == L"9", "resume preserves draft, caret and selected key");
+    keyboard.SetOpacity(0.25F);
+    BYTE opacity{};
+    DWORD opacityFlags{};
+    Check(GetLayeredWindowAttributes(window, nullptr, &opacity, &opacityFlags) &&
+        opacity == 64 && (opacityFlags & LWA_ALPHA) != 0,
+        "keyboard participates in the host's overlay fade");
+    keyboard.SetOpacity(1.0F);
+    keyboard.UpdateControllerRepeat({.backspaceDown = true}, 2000);
+    Check(WindowText(edit) == L"draft", "resume does not repeat a button held while hidden");
+    keyboard.HandleController(L"Y");
+    Check(WindowText(edit).empty(), "Y clears the complete draft");
+    checkCaret("controller caret is visible in an empty entry");
+    const std::wstring longText(96, L'W');
+    SetWindowTextW(edit, longText.c_str());
+    SendMessageW(edit, EM_SETSEL, 96, 96);
+    SendMessageW(edit, EM_SCROLLCARET, 0, 0);
+    checkCaret("controller caret stays inside a horizontally scrolled full entry");
+    SendMessageW(window, WM_COMMAND, MAKEWPARAM(1040, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(window,1040)));
+    Check(WindowText(edit).empty(), "visible Clear button clears without committing");
+    keyboard.HandleController(L"RT");
+    Check(!keyboard.Begin(GetModuleHandleW(nullptr), owner, L"", L"duplicate", 96),
+        "completion must be consumed before starting a new session");
+    auto result = keyboard.TakeResult();
+    Check(result && result->outcome == TextEntryModalOutcome::Committed &&
+        result->committedText && result->committedText->empty(), "cleared text can be explicitly committed");
+    Check(!keyboard.TakeResult(), "completion is consumed exactly once");
+    Check(keyboard.Begin(GetModuleHandleW(nullptr), owner, L"keep", L"Physical focus", 96),
+        "new session can start after completion was consumed");
+    const HWND physicalWindow = FindWindowW(L"WidgetRail.TextEntryModal", ModalTitle(L"Physical focus").c_str());
+    const HWND physicalEdit = GetDlgItem(physicalWindow, 101);
+    SetFocus(physicalEdit);
+    SendMessageW(physicalEdit, EM_SETSEL, 1, 3);
+    keyboard.SetVisible(false);
+    keyboard.SetVisible(true);
+    Check(GetFocus() == physicalEdit && EditSelection(physicalEdit) == std::pair<DWORD, DWORD>{1, 3},
+        "hide and resume preserve physical typing focus and selected text");
+    keyboard.HandleController(L"B");
+    result = keyboard.TakeResult();
+    Check(result && result->outcome == TextEntryModalOutcome::Cancelled && !result->committedText,
+        "cancel does not send an unfinished draft");
+    Check(keyboard.Begin(GetModuleHandleW(nullptr), owner, L"", L"Protected session", 96, true),
+        "protected session starts asynchronously");
+    keyboard.HandleController(L"A");
+    Check(keyboard.CaretBounds().has_value(), "masked entry supports end caret");
+    keyboard.SetVisible(false);
+    keyboard.Close();
+    result = keyboard.TakeResult();
+    Check(result && result->outcome == TextEntryModalOutcome::Closed && !result->committedText,
+        "retiring a hidden protected session destroys its draft without commit");
+}
+
 int wmain() {
     Check(widgetrail::input::TextEntryModal::MaximumLength == 96,
         "host text entry uses the protocol bound");
@@ -403,10 +536,10 @@ int wmain() {
 
     widgetrail::input::TextEntryModal modal;
     Check(!modal.active(), "modal starts inactive");
-    Check(modal.Show(GetModuleHandleW(nullptr), nullptr, L"", L"Search", 96).outcome ==
+    Check(RunKeyboard(modal, GetModuleHandleW(nullptr), nullptr, L"", L"Search", 96).outcome ==
             widgetrail::input::TextEntryModalOutcome::Failed,
         "missing owner fails closed without entering a modal loop");
-    Check(modal.Show(GetModuleHandleW(nullptr), GetDesktopWindow(), L"", L"Search", 97)
+    Check(RunKeyboard(modal, GetModuleHandleW(nullptr), GetDesktopWindow(), L"", L"Search", 97)
             .outcome == widgetrail::input::TextEntryModalOutcome::Failed,
         "oversized maximum fails closed");
 
@@ -417,6 +550,8 @@ int wmain() {
     ShowWindow(owner, SW_SHOW);
     UpdateWindow(owner);
     SetFocus(owner);
+
+    CheckKeyboardSession(owner);
 
     widgetrail::input::TextEntryModalTheme theme;
     theme.canvas = RGB(7, 11, 17);
@@ -439,8 +574,8 @@ int wmain() {
         }), "modal controls complete creation before controller input");
         Check(window != nullptr, "modal owns one discoverable native window");
         Check(edit != nullptr, "modal exposes a native text-edit accessibility control");
-        Check(WaitUntil([&] { return !IsWindowEnabled(owner); }),
-            "modal disables its owner for exclusive pointer and keyboard input");
+        Check(WaitUntil([&] { return IsWindowEnabled(owner); }),
+            "keyboard leaves owner enabled for overlay shortcuts");
 
         const auto style = static_cast<DWORD>(GetWindowLongPtrW(window, GWL_STYLE));
         const auto extendedStyle = static_cast<DWORD>(
@@ -467,14 +602,14 @@ int wmain() {
         Check(WaitUntil([&] {
             children.clear();
             EnumChildWindows(window, CollectChildren, reinterpret_cast<LPARAM>(&children));
-            return children.size() == 43;
+            return children.size() == 47;
         }), "all modal controls complete creation before accessibility inspection");
-        Check(children.size() == 43,
-            "prompt, edit, 40 keys, and controller legend are all present");
+        Check(children.size() == 47,
+            "prompt, edit, 40 character keys, four actions, and legend are present");
         const auto buttonCount = std::count_if(children.begin(), children.end(),
             [](const HWND child) { return WindowClass(child) == L"Button"; });
         Check(buttonCount == widgetrail::input::TextEntryKeyCount,
-            "keyboard exposes exactly 40 focusable keys and no action row");
+            "keyboard exposes character keys and explicit editing actions");
         for (const auto child : children) {
             RECT childBounds{};
             Check(GetWindowRect(child, &childBounds) && IsInside(childBounds, modalBounds),
@@ -486,9 +621,7 @@ int wmain() {
             Check(!WindowText(child).empty(),
                 "prompt, edit, keyboard, and legend expose accessible text");
             const auto text = WindowText(child);
-            Check(text != L"Commit" && text != L"Clear" &&
-                    text != L"Cancel" && text != L"Backspace",
-                "removed action-row controls do not re-enter the focus graph");
+            Check(text != L"Commit", "commit action uses the friendly Done label");
         }
 
         const HWND prompt = GetDlgItem(window, 100);
@@ -496,9 +629,9 @@ int wmain() {
         Check(prompt && WindowText(prompt) == L"Search installed games" &&
                 WindowText(edit) == L"ab",
             "prompt guidance and committed edit value remain distinct");
-        Check(legend && WindowText(legend).find(L"RT  Enter") != std::wstring::npos &&
+        Check(legend && WindowText(legend).find(L"RT  Done") != std::wstring::npos &&
                 WindowText(legend).find(L"Commit") == std::wstring::npos,
-            "controller legend exposes Enter without a focusable Commit action");
+            "controller legend exposes Done and Clear shortcuts");
 
         HDC promptDc = GetDC(prompt);
         const auto panelBrush = reinterpret_cast<HBRUSH>(SendMessageW(
@@ -616,7 +749,7 @@ int wmain() {
             "middle insertion follows the visible caret without moving key focus");
         Check(modal.PostController(L"RT"), "RT enters the final value");
     });
-    const auto committed = modal.Show(
+    const auto committed = RunKeyboard(modal,
         GetModuleHandleW(nullptr), owner, L"ab", L"Search installed games", 8,
         false, theme);
     driver.join();
@@ -803,7 +936,7 @@ int wmain() {
         Check(modal.PostController(L"B"),
             "B remains one edge-triggered modal cancellation");
     });
-    const auto repeatCancelled = modal.Show(
+    const auto repeatCancelled = RunKeyboard(modal,
         GetModuleHandleW(nullptr), owner, L"abcd", L"Repeatable input", 32);
     repeatDriver.join();
     Check(repeatCancelled.outcome ==
@@ -837,7 +970,7 @@ int wmain() {
             "live buffer displays the empty result immediately");
         Check(modal.PostController(L"B"), "B cancels only the modal");
     });
-    const auto hintedCancel = modal.Show(
+    const auto hintedCancel = RunKeyboard(modal,
         GetModuleHandleW(nullptr), owner, L"", L"Public client identifier", 8);
     hintDriver.join();
     Check(hintedCancel.outcome == widgetrail::input::TextEntryModalOutcome::Cancelled &&
@@ -848,7 +981,7 @@ int wmain() {
         Check(WaitUntil([&] { return modal.active(); }), "cancel modal becomes active");
         Check(modal.PostController(L"B"), "controller B cancels the modal");
     });
-    const auto cancelled = modal.Show(
+    const auto cancelled = RunKeyboard(modal,
         GetModuleHandleW(nullptr), owner, L"retained", L"Search installed games", 8);
     cancelDriver.join();
     Check(cancelled.outcome == widgetrail::input::TextEntryModalOutcome::Cancelled &&
@@ -868,7 +1001,7 @@ int wmain() {
         Check(PostMessageW(window, WM_CLOSE, 0, 0) != FALSE,
             "native window close enters the modal terminal path");
     });
-    const auto closed = modal.Show(
+    const auto closed = RunKeyboard(modal,
         GetModuleHandleW(nullptr), owner, L"retained", L"Search installed games", 8);
     closeDriver.join();
     Check(closed.outcome == widgetrail::input::TextEntryModalOutcome::Closed &&
@@ -890,7 +1023,7 @@ int wmain() {
             "maximum-length buffer rejects further insertion without truncation");
         Check(modal.PostController(L"RT"), "full buffer remains enterable");
     });
-    const auto maximum = modal.Show(
+    const auto maximum = RunKeyboard(modal,
         GetModuleHandleW(nullptr), owner, L"12345678", L"Bounded value", 8);
     maximumDriver.join();
     Check(maximum.outcome == widgetrail::input::TextEntryModalOutcome::Committed &&
@@ -1006,7 +1139,7 @@ int wmain() {
         Check(modal.PostController(L"RT"), "controller Enter commits protected input");
         if (SUCCEEDED(comResult)) CoUninitialize();
     });
-    auto protectedCommitted = modal.Show(
+    auto protectedCommitted = RunKeyboard(modal,
         GetModuleHandleW(nullptr), owner, L"", L"Password for test network", 63, true);
     passwordDriver.join();
     constexpr std::wstring_view expectedSecret{L"bounded-secret-42"};
@@ -1024,7 +1157,7 @@ int wmain() {
         Check(modal.PostController(L"B"),
             "controller B cancels protected input without a commit");
     });
-    const auto protectedCancelled = modal.Show(
+    const auto protectedCancelled = RunKeyboard(modal,
         GetModuleHandleW(nullptr), owner, L"", L"Enter access key", 64, true);
     protectedCancelDriver.join();
     Check(protectedCancelled.outcome ==

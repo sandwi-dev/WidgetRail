@@ -108,12 +108,12 @@ TextEntryModalLayout CalculateTextEntryModalLayout(
     TextEntryModalLayout result{};
     result.windowBounds = {x, y, x + width, y + height};
     result.scale = scale;
-    result.promptBounds = ScaleRect({32, 24, 728, 56}, scale);
-    result.editBounds = ScaleRect({32, 64, 728, 126}, scale);
+    result.promptBounds = ScaleRect({28, 24, 732, 58}, scale);
+    result.editBounds = ScaleRect({44, 87, 716, 121}, scale);
     constexpr int keyWidth = 64;
-    constexpr int keyHeight = 58;
+    constexpr int keyHeight = 52;
     constexpr int keyGap = 8;
-    for (std::size_t index = 0; index < result.keyBounds.size(); ++index) {
+    for (std::size_t index = 0; index < TextEntryCharacterKeyCount; ++index) {
         const int row = static_cast<int>(index) / kColumns;
         const int column = static_cast<int>(index) % kColumns;
         const int left = 24 + column * (keyWidth + keyGap);
@@ -121,11 +121,16 @@ TextEntryModalLayout CalculateTextEntryModalLayout(
         result.keyBounds[index] = ScaleRect(
             {left, top, left + keyWidth, top + keyHeight}, scale);
     }
-    result.legendBounds = ScaleRect({32, 424, 728, 532}, scale);
+    for (std::size_t action = 0; action < 4; ++action) {
+        const int left = 24 + static_cast<int>(action) * 180;
+        result.keyBounds[TextEntryCharacterKeyCount + action] =
+            ScaleRect({left, 408, left + 172, 460}, scale);
+    }
+    result.legendBounds = ScaleRect({28, 484, 732, 540}, scale);
     return result;
 }
 
-TextEntryModalResult TextEntryModal::Show(
+bool TextEntryModal::Begin(
     HINSTANCE instance,
     HWND owner,
     const std::wstring_view value,
@@ -133,7 +138,7 @@ TextEntryModalResult TextEntryModal::Show(
     const std::size_t maximumLength,
     const bool password,
     TextEntryModalTheme theme) {
-    if (active() || !instance || !owner || maximumLength == 0 ||
+    if (active() || completed_ || !instance || !owner || maximumLength == 0 ||
         maximumLength > MaximumLength || value.size() > maximumLength ||
         placeholder.size() > MaximumLength || (password && !value.empty()))
         return {};
@@ -162,6 +167,8 @@ TextEntryModalResult TextEntryModal::Show(
     result_.reset();
     outcome_ = TextEntryModalOutcome::Failed;
     completed_ = false;
+    visible_ = false;
+    resumeFocus_ = nullptr;
     keys_.fill(nullptr);
     focusIndex_ = 10;
     layer_ = Layer::Lowercase;
@@ -182,7 +189,7 @@ TextEntryModalResult TextEntryModal::Show(
         ? L"WidgetRail text entry"
         : L"WidgetRail text entry - " + placeholder_;
     window_ = CreateWindowExW(
-        WS_EX_CONTROLPARENT,
+        WS_EX_CONTROLPARENT | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
         kClassName,
         title.c_str(),
         WS_POPUP | WS_CLIPCHILDREN,
@@ -194,27 +201,21 @@ TextEntryModalResult TextEntryModal::Show(
     }
 
     outcome_ = TextEntryModalOutcome::Closed;
-    EnableWindow(owner, FALSE);
-    ShowWindow(window_, SW_SHOW);
-    UpdateWindow(window_);
-    SetKeyboardFocus(focusIndex_);
+    SetOpacity(1.0F);
+    SetVisible(true);
+    return true;
+}
 
-    MSG message{};
-    BOOL messageResult{};
-    while (window_ && (messageResult = GetMessageW(&message, nullptr, 0, 0)) > 0) {
-        if (!IsDialogMessageW(window_, &message)) {
-            TranslateMessage(&message);
-            DispatchMessageW(&message);
-        }
-    }
-    if (messageResult == 0) PostQuitMessage(static_cast<int>(message.wParam));
-    if (IsWindow(owner)) {
-        EnableWindow(owner, TRUE);
-        if (IsWindowVisible(owner)) {
-            SetActiveWindow(owner);
-            SetFocus(owner);
-        }
-    }
+TextEntryModal::~TextEntryModal() {
+    owner_ = nullptr;
+    Close();
+    (void)TakeResult();
+    ReleaseThemeResources();
+}
+
+std::optional<TextEntryModalResult> TextEntryModal::TakeResult() {
+    if (!completed_) return std::nullopt;
+    completed_ = false;
     window_ = nullptr;
     prompt_ = nullptr;
     edit_ = nullptr;
@@ -231,6 +232,35 @@ TextEntryModalResult TextEntryModal::Show(
     placeholder_.clear();
     password_ = false;
     return result;
+}
+
+void TextEntryModal::SetVisible(const bool visible) noexcept {
+    if (!window_ || visible_ == visible) return;
+    if (!visible && IsChild(window_, GetFocus())) resumeFocus_ = GetFocus();
+    visible_ = visible;
+    ResetControllerRepeat();
+    ShowWindow(window_, visible ? SW_SHOWNOACTIVATE : SW_HIDE);
+    if (visible) {
+        Raise();
+        Focus();
+    }
+}
+
+void TextEntryModal::Focus() noexcept {
+    if (!window_ || !visible_) return;
+    if (IsChild(window_, GetFocus())) return;
+    if (resumeFocus_ && IsChild(window_, resumeFocus_)) SetFocus(resumeFocus_);
+    else SetKeyboardFocus(focusIndex_);
+}
+
+void TextEntryModal::SetOpacity(const float opacity) noexcept {
+    if (window_) SetLayeredWindowAttributes(window_, 0,
+        static_cast<BYTE>(std::lround(std::clamp(opacity, 0.0F, 1.0F) * 255.0F)), LWA_ALPHA);
+}
+
+void TextEntryModal::Raise() noexcept {
+    if (window_ && visible_) SetWindowPos(window_, HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 }
 
 void TextEntryModal::CreateThemeResources() {
@@ -314,8 +344,8 @@ void TextEntryModal::CreateControls() {
     const auto legendBounds = createBounds(layout_.legendBounds);
     legend_ = CreateWindowExW(
         0, L"STATIC",
-        L"A  Select key     X  Backspace     B  Cancel     RT  Enter\r\n"
-        L"LB / RB  Move caret     D-pad / Left stick  Move key focus",
+        L"A  Select     X  Backspace     Y  Clear     B  Cancel     RT  Done\r\n"
+        L"LB / RB  Move caret     D-pad / Left stick  Move between keys",
         WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
         legendBounds[0], legendBounds[1], legendBounds[2], legendBounds[3],
         window_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kLegendId)), instance_, nullptr);
@@ -353,7 +383,7 @@ void TextEntryModal::ApplyLayout() {
 }
 
 std::optional<wchar_t> TextEntryModal::KeyValue(const std::size_t index) const noexcept {
-    if (index >= TextEntryKeyCount || index == 30 || index == 39) return std::nullopt;
+    if (index >= TextEntryCharacterKeyCount || index == 30 || index == 39) return std::nullopt;
     if (layer_ == Layer::Symbols) {
         const auto symbolIndex = index < 30 ? index : index - 1;
         return kSymbols[symbolIndex];
@@ -371,6 +401,10 @@ std::optional<wchar_t> TextEntryModal::KeyValue(const std::size_t index) const n
 }
 
 std::wstring TextEntryModal::KeyLabel(const std::size_t index) const {
+    if (index == 40) return L"Clear";
+    if (index == 41) return L"Backspace";
+    if (index == 42) return L"Cancel";
+    if (index == 43) return L"Done";
     if (index == 30)
         return layer_ == Layer::Symbols ? L"abc" :
             layer_ == Layer::Uppercase ? L"ABC" : L"Shift";
@@ -471,6 +505,14 @@ bool TextEntryModal::PasteClipboard() {
     return admitted;
 }
 
+void TextEntryModal::Clear() {
+    if (!edit_) return;
+    ResetControllerRepeat();
+    SetWindowTextW(edit_, L"");
+    SendMessageW(edit_, EM_SETSEL, 0, 0);
+    InvalidateRect(edit_, nullptr, TRUE);
+}
+
 void TextEntryModal::Backspace() {
     if (!edit_) return;
     DWORD selectionStart{};
@@ -503,6 +545,10 @@ void TextEntryModal::MoveCaret(const int delta) {
 
 void TextEntryModal::ActivateFocusedKey() {
     if (focusIndex_ >= keys_.size()) return;
+    if (focusIndex_ == 40) { Clear(); return; }
+    if (focusIndex_ == 41) { Backspace(); return; }
+    if (focusIndex_ == 42) { Complete(TextEntryModalOutcome::Cancelled); return; }
+    if (focusIndex_ == 43) { Complete(TextEntryModalOutcome::Committed); return; }
     if (focusIndex_ == 30) {
         layer_ = layer_ == Layer::Symbols ? Layer::Lowercase :
             layer_ == Layer::Lowercase ? Layer::Uppercase : Layer::Lowercase;
@@ -534,6 +580,8 @@ void TextEntryModal::Complete(const TextEntryModalOutcome outcome) {
     const HWND closing = window_;
     if (closing) DestroyWindow(closing);
     window_ = nullptr;
+    visible_ = false;
+    if (owner_) PostMessageW(owner_, TextEntryCompletedMessage, 0, 0);
 }
 
 void TextEntryModal::SetKeyboardFocus(const std::size_t index) {
@@ -550,20 +598,28 @@ void TextEntryModal::SetKeyboardFocus(const std::size_t index) {
 }
 
 void TextEntryModal::MoveFocus(const Direction direction) {
-    int row = static_cast<int>(focusIndex_) / kColumns;
-    int column = static_cast<int>(focusIndex_) % kColumns;
-    if (direction == Direction::Left) column = std::max(0, column - 1);
-    else if (direction == Direction::Right) column = std::min(kColumns - 1, column + 1);
-    else if (direction == Direction::Up) row = std::max(0, row - 1);
-    else if (direction == Direction::Down) row = std::min(3, row + 1);
-    SetKeyboardFocus(static_cast<std::size_t>(row * kColumns + column));
+    const bool actionRow = focusIndex_ >= TextEntryCharacterKeyCount;
+    int row = actionRow ? 4 : static_cast<int>(focusIndex_) / kColumns;
+    int column = actionRow ? static_cast<int>(focusIndex_ - TextEntryCharacterKeyCount)
+                           : static_cast<int>(focusIndex_) % kColumns;
+    if (direction == Direction::Left || direction == Direction::Right) {
+        const int count = actionRow ? 4 : kColumns;
+        column = (column + count + (direction == Direction::Left ? -1 : 1)) % count;
+    } else {
+        row = (row + 5 + (direction == Direction::Up ? -1 : 1)) % 5;
+        if (actionRow) column = std::min(9, (column * 2 + 1) * 10 / 8);
+        else if (row == 4) column = std::min(3, (column * 2 + 1) * 4 / 20);
+    }
+    SetKeyboardFocus(row == 4 ? TextEntryCharacterKeyCount + column
+                             : static_cast<std::size_t>(row * kColumns + column));
 }
 
 void TextEntryModal::HandleController(const std::wstring_view button) noexcept {
-    if (!window_) return;
+    if (!window_ || !visible_) return;
     if (button == L"B") Complete(TextEntryModalOutcome::Cancelled);
     else if (button == L"A") ActivateFocusedKey();
     else if (button == L"X") Backspace();
+    else if (button == L"Y") Clear();
     else if (button == L"RT") Complete(TextEntryModalOutcome::Committed);
     else if (button == L"LB") MoveCaret(-1);
     else if (button == L"RB") MoveCaret(1);
@@ -614,7 +670,7 @@ void TextEntryModal::UpdateControllerRepeat(
         requested = action;
         ++heldCount;
     }
-    if (!window_ || heldCount != 1) {
+    if (!window_ || !visible_ || heldCount != 1) {
         ResetControllerRepeat();
         return;
     }
@@ -666,7 +722,7 @@ bool TextEntryModal::PostController(const std::wstring_view button) noexcept {
         button == L"X" ? 3 : button == L"DPadLeft" ? 4 :
         button == L"DPadRight" ? 5 : button == L"DPadUp" ? 6 :
         button == L"DPadDown" ? 7 : button == L"LB" ? 8 :
-        button == L"RB" ? 9 : button == L"RT" ? 10 : 0;
+        button == L"RB" ? 9 : button == L"RT" ? 10 : button == L"Y" ? 11 : 0;
     return command != 0 && PostMessageW(window_, kControllerMessage, command, 0) != FALSE;
 }
 
@@ -723,33 +779,60 @@ LRESULT CALLBACK TextEntryModal::EditWindowProc(
     const auto result = CallWindowProcW(
         self->priorEditWindowProc_, window, message, wParam, lParam);
     if (message == WM_PAINT && GetFocus() != window) {
-        DWORD selectionStart{};
-        DWORD selectionEnd{};
-        SendMessageW(window, EM_GETSEL,
-            reinterpret_cast<WPARAM>(&selectionStart), reinterpret_cast<LPARAM>(&selectionEnd));
-        const LRESULT position = SendMessageW(window, EM_POSFROMCHAR, selectionEnd, 0);
-        if (position != -1) {
+        if (const auto caret = self->CaretBounds()) {
             HDC dc = GetDC(window);
             if (dc) {
-                RECT client{};
-                GetClientRect(window, &client);
-                const int x = static_cast<short>(LOWORD(position));
-                const int y = static_cast<short>(HIWORD(position));
-                HPEN pen = CreatePen(PS_SOLID,
-                    std::max(2, static_cast<int>(std::lround(2.0 * self->layout_.scale))),
-                    self->theme_.focus);
-                const auto priorPen = SelectObject(dc, pen);
-                MoveToEx(dc, x, y + 5, nullptr);
-                const LONG caretBottom = static_cast<LONG>(
-                    y + PixelHeight(24.0, self->layout_.scale, self->theme_.textScale));
-                LineTo(dc, x, std::min<LONG>(client.bottom - 5, caretBottom));
-                SelectObject(dc, priorPen);
-                DeleteObject(pen);
+                const auto brush = CreateSolidBrush(self->theme_.focus);
+                FillRect(dc, &*caret, brush);
+                DeleteObject(brush);
                 ReleaseDC(window, dc);
             }
         }
     }
     return result;
+}
+
+std::optional<RECT> TextEntryModal::CaretBounds() const noexcept {
+    if (!edit_) return std::nullopt;
+    DWORD start{}, end{};
+    SendMessageW(edit_, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
+    if (start != end) return std::nullopt;
+    const int length = GetWindowTextLengthW(edit_);
+    const auto index = std::min<DWORD>(end, static_cast<DWORD>(std::max(0, length)));
+    RECT client{};
+    GetClientRect(edit_, &client);
+    HDC dc = GetDC(edit_);
+    if (!dc) return std::nullopt;
+    const auto priorFont = SelectObject(dc, bodyFont_);
+    TEXTMETRICW metrics{};
+    GetTextMetricsW(dc, &metrics);
+    const auto margins = SendMessageW(edit_, EM_GETMARGINS, 0, 0);
+    int x = LOWORD(margins);
+    int y = 0;
+    // EM_POSFROMCHAR rejects the insertion point AFTER the last character.
+    // Measure the final displayed glyph from its valid start position instead.
+    if (length > 0) {
+        const auto probe = std::min<DWORD>(index, length - 1);
+        const auto position = SendMessageW(edit_, EM_POSFROMCHAR, probe, 0);
+        if (position != -1) {
+            x = static_cast<short>(LOWORD(position));
+            y = static_cast<short>(HIWORD(position));
+            if (index == static_cast<DWORD>(length)) {
+                std::array<wchar_t, MaximumLength + 1> text{};
+                GetWindowTextW(edit_, text.data(), static_cast<int>(text.size()));
+                const wchar_t glyph = password_ ? L'\x25cf' : text[probe];
+                SIZE advance{};
+                GetTextExtentPoint32W(dc, &glyph, 1, &advance);
+                x += advance.cx;
+                SecureZeroMemory(text.data(), sizeof(text));
+            }
+        }
+    }
+    SelectObject(dc, priorFont);
+    ReleaseDC(edit_, dc);
+    const int width = std::max(2, static_cast<int>(std::lround(2.0 * layout_.scale)));
+    x = std::clamp(x, 0, static_cast<int>(std::max(0L, client.right - width)));
+    return RECT{x, std::max(0, y), x + width, std::min(client.bottom, y + metrics.tmHeight)};
 }
 
 LRESULT CALLBACK TextEntryModal::KeyWindowProc(
@@ -818,7 +901,7 @@ LRESULT TextEntryModal::HandleMessage(
             wParam == 3 ? L"X" : wParam == 4 ? L"DPadLeft" :
             wParam == 5 ? L"DPadRight" : wParam == 6 ? L"DPadUp" :
             wParam == 7 ? L"DPadDown" : wParam == 8 ? L"LB" :
-            wParam == 9 ? L"RB" : L"RT");
+            wParam == 9 ? L"RB" : wParam == 11 ? L"Y" : L"RT");
         return 0;
     case WM_CREATE:
         CreateControls();
@@ -858,8 +941,10 @@ LRESULT TextEntryModal::HandleMessage(
         const auto priorBrush = SelectObject(item->hDC, brush);
         const auto priorPen = SelectObject(item->hDC, pen);
         const int radius = std::max(4, static_cast<int>(std::lround(10.0 * layout_.scale)));
-        RoundRect(item->hDC, item->rcItem.left, item->rcItem.top,
-            item->rcItem.right, item->rcItem.bottom, radius, radius);
+        FillRect(item->hDC, &item->rcItem, panelBrush_);
+        const int inset = std::max(2, static_cast<int>(std::lround(2.0 * layout_.scale)));
+        RoundRect(item->hDC, item->rcItem.left + inset, item->rcItem.top + inset,
+            item->rcItem.right - inset, item->rcItem.bottom - inset, radius, radius);
         SelectObject(item->hDC, priorPen);
         SelectObject(item->hDC, priorBrush);
         DeleteObject(pen);
@@ -898,6 +983,13 @@ LRESULT TextEntryModal::HandleMessage(
         const int inset = std::max(1, static_cast<int>(std::lround(8.0 * layout_.scale)));
         InflateRect(&panel, -inset, -inset);
         FillRect(dc, &panel, panelBrush_);
+        RECT input = ScaleRect({28, 72, 732, 136}, layout_.scale);
+        const auto priorBrush = SelectObject(dc, controlBrush_);
+        const auto priorPen = SelectObject(dc, GetStockObject(NULL_PEN));
+        const int radius = std::max(8, static_cast<int>(std::lround(12 * layout_.scale)));
+        RoundRect(dc, input.left, input.top, input.right, input.bottom, radius, radius);
+        SelectObject(dc, priorPen);
+        SelectObject(dc, priorBrush);
         EndPaint(window_, &paint);
         return 0;
     }
