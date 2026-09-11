@@ -508,6 +508,7 @@ public sealed record ViewNode
     /// <summary>Stable relative position of the first retained collection item.</summary>
     public long? CollectionStartIndex { get; init; }
     public CollectionNavigationRequest? CollectionNavigation { get; init; }
+    public CollectionLoadingState? CollectionLoading { get; init; }
     /// <summary>
     /// Protocol-v14 stable identity for one direct collection item. This key
     /// is presentation identity only and never authorizes an action.
@@ -553,6 +554,9 @@ public sealed record ViewSnapshot
     public EmbeddedMediaSession? EmbeddedMediaSession { get; init; }
     public required ViewNode Root { get; init; }
 }
+
+[JsonConverter(typeof(JsonStringEnumConverter<CollectionLoadingState>))]
+public enum CollectionLoadingState { Idle, Before, After }
 
 public sealed record CollectionNavigationRequest
 {

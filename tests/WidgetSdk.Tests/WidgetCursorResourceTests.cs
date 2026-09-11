@@ -79,11 +79,25 @@ internal static class WidgetCursorResourceTests
         await widget.Resource.EnsureLoaded().Completion;
         var pending = widget.Resource.Move(WidgetCursorDirection.After, "items.list");
         await started.Task;
+        var loading = widget.Resource.Capture();
+        var loadingRows = loading.Snapshot.Items.Select(item => loading.PresentItem(item,
+            UI.Button(item.Id, "select", "focus." + item.Id))).ToArray();
+        var loadingView = new WidgetView(loading.Present(UI.VerticalScroll("items.list", loadingRows)))
+            .CreateSnapshot("loading.test", 1);
+        Equal<CollectionLoadingState?>(CollectionLoadingState.After, loadingView.Root.CollectionLoading);
+        Equal(ProtocolConstants.CollectionLoadingVersion, loadingView.ProtocolVersion);
+        True(System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(loadingView))
+            .Contains("\"collectionLoading\":\"after\"", StringComparison.Ordinal),
+            "Collection loading must use canonical lowercase protocol values.");
+        Equal(PresentationPropertyImpact.Paint, PresentationPropertyMetadata.Impact(PresentationProperty.CollectionLoading));
+        True(loadingView.Root.IsBusy != true, "Loading feedback must not disable collection inputs.");
         widget.Resource.SelectAnchor(new("item.2"));
         release.SetResult(); await pending.Completion;
         Equal(new WidgetCollectionItemKey("item.2"), widget.Resource.Snapshot.Anchor);
         Equal<string?>(null, widget.Resource.Snapshot.RequestedFocusId);
         Equal<CollectionNavigationRequest?>(null, widget.Resource.Snapshot.NavigationRequest);
+        var ready = widget.Render().CreateSnapshot("loading.test", 2);
+        Equal<CollectionLoadingState?>(CollectionLoadingState.Idle, ready.Root.Children[0].CollectionLoading);
         await StopAsync(widget);
     }
 
@@ -318,7 +332,7 @@ internal static class WidgetCursorResourceTests
         });
         await widget.Resource.EnsureLoaded().Completion;
         var initial = widget.Render().CreateSnapshot("virtual.fixture", 1);
-        Equal(ProtocolConstants.CollectionPositionVersion, initial.ProtocolVersion);
+        Equal(ProtocolConstants.CollectionLoadingVersion, initial.ProtocolVersion);
         var window = initial.Root.Children[0].VirtualCollectionWindow!;
         Equal(1L, window.RequestGeneration);
         Equal(VirtualCollectionWindowChange.Replace, window.Change);

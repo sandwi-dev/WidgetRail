@@ -1738,6 +1738,14 @@ ScrollPaginationSessionOutcome WidgetInteractionSession::ReconcileScrollPaginati
         const bool beforeResident = before != actions.end();
         const bool afterResident = after != actions.end();
         const bool firstObservation = !latch.initialized;
+        const auto* scrollNode = FindNodeInInputScope(*authority.semantics, latch.scrollId, authority.semantics->activeInputScopeId);
+        const auto containsItems = [&](const auto& self, const WidgetNode& node) -> bool {
+            if (&node != scrollNode && node.kind == L"scroll") return false;
+            if (!node.collectionItemKey.empty()) return true;
+            return std::ranges::any_of(node.children, [&](const WidgetNode& child) { return self(self, child); });
+        };
+        const bool hasCollection = scrollNode && scrollNode->collectionStartIndex && containsItems(containsItems, *scrollNode);
+        const bool firstCollection = hasCollection && !latch.collectionObserved;
         const bool residenceChanged = latch.initialized &&
             (latch.beforeResident != beforeResident ||
              latch.afterResident != afterResident);
@@ -1750,10 +1758,6 @@ ScrollPaginationSessionOutcome WidgetInteractionSession::ReconcileScrollPaginati
         const auto wasResident = [&](const ScrollPaginationEdge edge) {
             return edge == ScrollPaginationEdge::Before
                 ? latch.beforeResident : latch.afterResident;
-        };
-        const auto isResident = [&](const ScrollPaginationEdge edge) {
-            return edge == ScrollPaginationEdge::Before
-                ? beforeResident : afterResident;
         };
 
         if (latch.prefetch) {
@@ -1832,10 +1836,9 @@ ScrollPaginationSessionOutcome WidgetInteractionSession::ReconcileScrollPaginati
             latch.pendingIntentGeneration > latch.lastDemandGeneration) {
             const auto intentEdge = *latch.pendingIntentEdge;
             const auto* candidate = actionFor(intentEdge);
-            const bool sameDirection = !latch.latchedEdge ||
-                *latch.latchedEdge == intentEdge ||
-                !isResident(*latch.latchedEdge);
-            if (candidate && sameDirection) {
+            // A real newer direction may reverse inside overlapping prefetch
+            // zones. Passive snapshot reconciliation still cannot rearm either edge.
+            if (candidate) {
                 queue(
                     *candidate,
                     wasResident(intentEdge)
@@ -1854,7 +1857,7 @@ ScrollPaginationSessionOutcome WidgetInteractionSession::ReconcileScrollPaginati
                 ScrollPaginationIntentSource::None, ++scrollPaginationDemandGeneration_);
         }
 
-        if (!latch.prefetch && firstObservation && initialRouteObservation &&
+        if (!latch.prefetch && ((firstObservation && initialRouteObservation) || firstCollection) &&
             !initialQueued &&
             !latch.pendingIntentEdge) {
             if (beforeResident != afterResident) {
@@ -1894,6 +1897,7 @@ ScrollPaginationSessionOutcome WidgetInteractionSession::ReconcileScrollPaginati
         }
         if (!residenceChanged) latch.reconciliationSuppressionReported = false;
         latch.initialized = true;
+        latch.collectionObserved = latch.collectionObserved || hasCollection;
         latch.beforeResident = beforeResident;
         latch.afterResident = afterResident;
     }

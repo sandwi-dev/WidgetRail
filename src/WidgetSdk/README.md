@@ -571,6 +571,15 @@ the loaded window while adjacent data is requested; spacers alone do not grant
 random-access seeking into unloaded content. Existing per-page, item-count,
 cursor-history, identifier, and logical-extent bounds remain enforced.
 
+Cursor presentations expose shared protocol-v48 loading feedback. `Capture().Present`
+sets `CollectionLoading` automatically; custom presentations use the captured
+snapshot's `LoadingState`. The host draws a non-focusable loading badge at the
+requested edge without moving content or disabling navigation. Initial loading
+and refresh use the trailing edge; idle and failure remove the badge.
+Positioned collections prefetch within two viewport lengths of either loaded
+edge. This is a latency budget, not a guarantee: slow providers can still require
+waiting at the loaded boundary. Size page batches and retention for the viewport.
+
 `WidgetAppLibraryItem` has one authoritative normalized `Presentation` value;
 there are no duplicate scalar title/kind/source/artwork accessors. It contains
 the sanitized display name and closed kind, one opaque source reference, one

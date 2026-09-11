@@ -811,7 +811,7 @@ public static class ViewSnapshotValidator
                 }
                 var itemKeys = new HashSet<string>(StringComparer.Ordinal);
                 var itemCount = 0;
-                if (node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.VirtualCollectionWindow is not null)
+                if (node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.VirtualCollectionWindow is not null)
                     CollectCollectionItems(node, path);
                 if (node.CollectionAnchorKey is not null)
                 {
@@ -830,6 +830,8 @@ public static class ViewSnapshotValidator
                         "A non-empty keyed cursor collection requires one retained anchor.");
                 }
 
+                if (node.CollectionLoading is { } loading && !Enum.IsDefined(loading))
+                    Add(path, "invalid_collection_loading", "Collection loading requires a valid loading state.");
                 if (node.CollectionNavigation is { } navigation)
                 {
                     if (navigation.RequestId < 1 || navigation.RequestId > ProtocolConstants.MaximumFocusGroupEntryRequestId ||
@@ -932,7 +934,7 @@ public static class ViewSnapshotValidator
                      node.ScrollNearEndActionId is not null ||
                      node.ScrollPaginationThreshold is not null ||
                      node.VirtualCollectionWindow is not null ||
-                     node.CollectionAnchorKey is not null || node.CollectionStartIndex is not null || node.CollectionNavigation is not null)
+                     node.CollectionAnchorKey is not null || node.CollectionStartIndex is not null || node.CollectionNavigation is not null || node.CollectionLoading is not null)
             {
                 Add(path, "scroll_property_not_allowed",
                     "Scroll properties apply only to scroll containers.");
@@ -1411,7 +1413,7 @@ public static class ViewSnapshotValidator
                     node.UsesFocusedDescendantArtwork is not null || node.ScrollAxis is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
                     node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null ||
-                    node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
+                    node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
                     (node.Shortcuts?.Count ?? 0) != 0)
                     Add(path, "focus_presentation_surface_property_not_allowed",
                         "FocusPresentationSurface accepts only its ID, visibility, styles, default fragment, and one ordinary content child.");
@@ -1555,7 +1557,7 @@ public static class ViewSnapshotValidator
                     node.DefaultFocusPresentation is not null || node.ScrollAxis is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
                     node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null ||
-                    node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
+                    node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
                     (node.Shortcuts?.Count ?? 0) != 0)
                 {
                     Add(nodePath, "interactive_focus_presentation_fragment",

@@ -279,6 +279,25 @@ int main() {
               afterActions.front().edgeKey == L"key.4",
           "the rendered trailing viewport threshold—not focused-row identity—prefetches");
 
+    for (float scale : {0.85F, 1.0F, 1.05F, 2.0F}) {
+        auto buffered = pagedScroll; buffered.collectionStartIndex = 0; buffered.children.clear();
+        widgetrail::RenderResult geometry;
+        for (int index = 0; index < 20; ++index) {
+            auto item = pagedScroll.children.front(); item.id = L"buffer." + std::to_wstring(index);
+            item.collectionItemKey = L"key." + std::to_wstring(index); buffered.children.push_back(item);
+            Add(geometry, item.id, {0, index * 44.0F * scale, 200 * scale, 40 * scale});
+        }
+        geometry.scrollViewports[buffered.id] = {widgetrail::declarative::ScrollAxis::Vertical,
+            {0, 680 * scale, 200 * scale, 80 * scale}, 680 * scale, 800 * scale};
+        const auto ahead = widgetrail::input::FindScrollPaginationActions(buffered, L"root", geometry);
+        Check(ahead.size() == 1 && ahead[0].edge == widgetrail::input::ScrollPaginationEdge::After && ahead[0].lastVisibleIndex < 19,
+            "positioned collections prefetch before the loaded trailing edge reaches the viewport");
+        geometry.scrollViewports[buffered.id].rect.y = 120 * scale;
+        const auto behind = widgetrail::input::FindScrollPaginationActions(buffered, L"root", geometry);
+        Check(behind.size() == 1 && behind[0].edge == widgetrail::input::ScrollPaginationEdge::Before && behind[0].firstVisibleIndex > 0,
+            "reverse prefetch starts before reaching the loaded leading edge");
+    }
+
     auto horizontalScroll = pagedScroll;
     horizontalScroll.id = L"horizontal.scroll";
     horizontalScroll.scrollAxis = L"horizontal";

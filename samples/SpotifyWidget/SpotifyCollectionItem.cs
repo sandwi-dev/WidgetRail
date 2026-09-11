@@ -16,10 +16,10 @@ internal sealed record SpotifyMediaCollectionItem(
 internal static class SpotifyCollectionPolicy
 {
     // An 82-DIP authored row plus the 6-DIP scroll gap yields an 88-DIP
-    // logical stride. Twelve items cover at least two preferred-view heights;
-    // retaining two pages keeps forward/back traversal bounded at 24 items.
-    internal const int PageSize = 12;
-    internal const int RetainedItemTarget = PageSize * 2;
+    // logical stride. Larger transport batches amortize Web API latency; four
+    // pages retain forward lead and recently visited rows for direction changes.
+    internal const int PageSize = 24;
+    internal const int RetainedItemTarget = PageSize * 4;
     internal const int MaximumRetainedItems = 256;
     internal const int PaginationThreshold = 2;
     internal const double EstimatedItemExtent = 88d;

@@ -1730,6 +1730,37 @@ void PressedAndAdmissionReconciliation() {
           "idempotent lifecycle cleanup returns no unrelated damage");
 }
 
+void ColdCollectionAndReversePrefetch() {
+    using namespace widgetrail::input;
+    auto snapshot = PagedSnapshot(); snapshot.root.children[0].collectionStartIndex = 0;
+    snapshot.root.children[0].scrollNearStartActionId.clear();
+    auto loading = snapshot; loading.root.children[0].children.clear();
+    auto geometry = PagedRender(0, 0);
+    WidgetInteractionSession cold;
+    Check(!cold.ReconcileScrollPagination(Authority(loading,L"paged.widget"), geometry, 1).dispatchReady,
+        "an empty loading shell does not invent pagination data");
+    Check(cold.ReconcileScrollPagination(Authority(snapshot,L"paged.widget"), geometry, 2).dispatchReady,
+        "the first real page warms its next page without waiting for a stick movement");
+
+    snapshot.root.children[0].scrollNearStartActionId=L"page.before";
+    auto middle = PagedRender(0,44);
+    const auto authority=Authority(snapshot,L"paged.widget");
+    WidgetInteractionSession reverse;
+    (void)reverse.ReconcileScrollPagination(authority,middle,10);
+    (void)reverse.ObserveScrollPaginationIntent(authority,L"page.scroll",
+        widgetrail::declarative::ScrollAxis::Vertical,ScrollPaginationEdge::After,ScrollPaginationIntentSource::RightStick,11);
+    Check(reverse.ReconcileScrollPagination(authority,middle,12).dispatchReady,"forward prefetch starts in its lead zone");
+    auto acquired=reverse.AcquireScrollPaginationDispatch(authority,middle,13);
+    Check(acquired.first.has_value(),"forward request is admitted once");
+    auto next=PagedSnapshot(3,101); next.root.children[0].collectionStartIndex=3;
+    auto nextGeometry=PagedRender(3,44); auto nextAuthority=Authority(next,L"paged.widget");
+    (void)reverse.ReconcileScrollPagination(nextAuthority,nextGeometry,14);
+    (void)reverse.ObserveScrollPaginationIntent(nextAuthority,L"page.scroll",
+        widgetrail::declarative::ScrollAxis::Vertical,ScrollPaginationEdge::Before,ScrollPaginationIntentSource::RightStick,15);
+    Check(reverse.ReconcileScrollPagination(nextAuthority,nextGeometry,16).dispatchReady,
+        "new reverse input can prefetch before while both lead zones overlap");
+}
+
 void CursorBoundaryAndViewportDemand() {
     using namespace widgetrail::input;
     auto snapshot = PagedSnapshot(); snapshot.root.children[0].collectionStartIndex = 0;
@@ -2109,6 +2140,7 @@ int main() {
     FreeScrollAndRetainedRefreshLifecycle();
     ExactSliderRequestAuthorityAndRollback();
     PressedAndAdmissionReconciliation();
+    ColdCollectionAndReversePrefetch();
     CursorBoundaryAndViewportDemand();
     PaginationPrefetchLifecycle();
     AnchoredSelectPopupIsExactAndBounded();

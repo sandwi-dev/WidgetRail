@@ -879,6 +879,7 @@ internal static class PlayniteLibraryPresentation
                 CollectionAnchorKey = collectionAnchorKey,
                 CollectionStartIndex = collectionAnchorKey is null ? null : snapshot.StartIndex,
                 CollectionNavigation = collectionAnchorKey is null ? null : snapshot.NavigationRequest,
+                CollectionLoading = collectionAnchorKey is null ? null : snapshot.LoadingState,
             };
         if (nearStartActionId is not null || nearEndActionId is not null)
             scroll = scroll.Paginate(nearStartActionId, nearEndActionId, 2);
@@ -907,6 +908,7 @@ internal static class PlayniteLibraryPresentation
                 CollectionAnchorKey = collectionAnchorKey,
                 CollectionStartIndex = collectionAnchorKey is null ? null : snapshot.StartIndex,
                 CollectionNavigation = collectionAnchorKey is null ? null : snapshot.NavigationRequest,
+                CollectionLoading = collectionAnchorKey is null ? null : snapshot.LoadingState,
             };
         if (nearStartActionId is not null || nearEndActionId is not null)
             rail = rail.Paginate(nearStartActionId, nearEndActionId, 2);

@@ -6116,6 +6116,18 @@ void CursorWindowRegression(bool suppress, bool virtualGap=false) {
     auto plan=renderer.PlanFocusedFreeScroll(snapshot,L"item.0",widgetrail::declarative::ScrollAxis::Vertical,virtualGap ? 900.0F : 300.0F,viewport,L"root");
     if(!plan) { std::cout << "SCROLL probe plan missing\n"; return; }
     const auto before=draw();
+    snapshot.root.collectionLoading=L"after";
+    const auto loadingAfter=draw();
+    Check(loadingAfter.collectionLoadingRects.contains(L"root"), "shared cursor loading badge is painted at the fetching edge");
+    Near(loadingAfter.navigationRects.at(L"item.6").y, before.navigationRects.at(L"item.6").y,
+        "loading feedback does not move existing collection rows");
+    Check(loadingAfter.navigationRects.size()==before.navigationRects.size(), "loading badge adds no focus target");
+    snapshot.root.collectionLoading=L"before";
+    const auto loadingBefore=draw();
+    Check(loadingBefore.collectionLoadingRects.at(L"root").y < loadingAfter.collectionLoadingRects.at(L"root").y,
+        "previous-page loading uses the leading viewport edge");
+    snapshot.root.collectionLoading=L"idle";
+    Check(draw().collectionLoadingRects.empty(), "shared loading feedback disappears when the fetch finishes");
     if(virtualGap) {
         Check(!before.focusRects.empty(), "virtual scroll never enters a spacer-only viewport");
         Check(before.scrollViewports.at(L"root").offset <= 450.01F, "virtual scroll stops at the loaded trailing edge");

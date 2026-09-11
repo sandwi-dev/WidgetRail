@@ -105,7 +105,9 @@ public sealed class SpotifyWidget : Widget
     internal SpotifyWidget(
         ISpotifyApplicationService spotify,
         TimeProvider? timeProvider,
-        ISpotifyRuntimeDiagnostics runtimeDiagnostics)
+        ISpotifyRuntimeDiagnostics runtimeDiagnostics,
+        int collectionPageSize = SpotifyCollectionPolicy.PageSize,
+        int collectionRetainedTarget = SpotifyCollectionPolicy.RetainedItemTarget)
     {
         _spotify = spotify ?? throw new ArgumentNullException(nameof(spotify));
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -156,9 +158,9 @@ public sealed class SpotifyWidget : Widget
         _playlists = CreateCursorResource<SpotifyPlaylistCollectionItem>(
             "spotify.playlists", new()
         {
-            PageSize = SpotifyCollectionPolicy.PageSize,
+            PageSize = collectionPageSize,
             MaximumRetainedItems = WidgetCursorResource<SpotifyMediaCollectionItem>.MaximumRetainedItems,
-            RetainedItemTarget = SpotifyCollectionPolicy.RetainedItemTarget,
+            RetainedItemTarget = collectionRetainedTarget,
             PaginationThreshold = SpotifyCollectionPolicy.PaginationThreshold,
             LoadPage = async (cursor, _, limit, token) =>
             {
@@ -186,9 +188,9 @@ public sealed class SpotifyWidget : Widget
         _playlistItems = CreateCursorResource<SpotifyMediaCollectionItem>(
             "spotify.playlist.items", new()
         {
-            PageSize = SpotifyCollectionPolicy.PageSize,
+            PageSize = collectionPageSize,
             MaximumRetainedItems = WidgetCursorResource<SpotifyMediaCollectionItem>.MaximumRetainedItems,
-            RetainedItemTarget = SpotifyCollectionPolicy.RetainedItemTarget,
+            RetainedItemTarget = collectionRetainedTarget,
             PaginationThreshold = SpotifyCollectionPolicy.PaginationThreshold,
             LoadPage = LoadSelectedPlaylistCursorPageAsync,
             MapError = SpotifyResourceError,

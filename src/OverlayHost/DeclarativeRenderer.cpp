@@ -4164,6 +4164,41 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
+    void DrawCollectionLoading(const WidgetNode& node, const NativeRenderStyle& style,
+        const Rect viewportRect, const float opacity) {
+        if (!target || node.kind != L"scroll" || (node.collectionLoading.empty() || node.collectionLoading == L"idle") ||
+            viewportRect.width < 32.0F || viewportRect.height < 24.0F) return;
+        const float height = std::min(viewportRect.height - 8.0F, std::max(32.0F, style.fontSizePx() + 14.0F));
+        const float width = std::min(viewportRect.width - 8.0F, std::max(130.0F, style.fontSizePx() * 6.0F + 38.0F));
+        Rect badge{viewportRect.x + (viewportRect.width - width) * 0.5F,
+            node.collectionLoading == L"before" ? viewportRect.y + 4.0F : viewportRect.y + viewportRect.height - height - 4.0F,
+            width, height};
+        if (node.scrollAxis == L"horizontal") {
+            badge.x = node.collectionLoading == L"before" ? viewportRect.x + 4.0F : viewportRect.x + viewportRect.width - width - 4.0F;
+            badge.y = viewportRect.y + viewportRect.height - height - 4.0F;
+        }
+        const auto foreground = style.foreground().value_or(kDefaultText);
+        const auto luminance = foreground.red * 0.2126F + foreground.green * 0.7152F + foreground.blue * 0.0722F;
+        const NativeColor background = luminance > 0.5F ? kDefaultButton : NativeColor{0.96F, 0.97F, 0.99F, 0.96F};
+        auto fill = Brush(target, WithOpacity(background, opacity));
+        auto outline = Brush(target, WithOpacity(foreground, opacity * 0.3F));
+        target->PushAxisAlignedClip(D2DRect(viewportRect), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        const D2D1_ROUNDED_RECT rounded{D2DRect(badge), height * 0.5F, height * 0.5F};
+        if (fill) target->FillRoundedRectangle(rounded, fill.Get());
+        if (outline) target->DrawRoundedRectangle(rounded, outline.Get(), 1.0F);
+        const float iconSize = std::min(18.0F, height - 8.0F);
+        DrawLoadingIndicatorNode(node, style, {badge.x + 10.0F, badge.y + (height - iconSize) * 0.5F, iconSize, iconSize}, opacity);
+        WidgetNode label; label.id = node.id; label.text = L"Loading\u2026";
+        DrawTextContent(label, style, {badge.x + 36.0F, badge.y, std::max(0.0F, badge.width - 44.0F), badge.height},
+            opacity, NativeTextVerticalAlignment::Center);
+        target->PopAxisAlignedClip();
+        // This badge contributes no layout or input node. It follows existing
+        // scroll paints without forcing the entire widget to animate while waiting.
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        result.collectionLoadingRects[node.id] = badge;
+#endif
+    }
+
     void DrawLoadingIndicatorNode(
         const WidgetNode& node,
         const NativeRenderStyle& style,
@@ -4352,6 +4387,7 @@ struct DeclarativeRenderer::RenderPass final {
                 if (fragment) DrawNode(*fragment, inputScope);
             }
             for (const auto& child : node.children) DrawNode(child, inputScope);
+            DrawCollectionLoading(node, style, Intersection(presented.contentBox, presented.visibleBox), opacity);
             return;
         }
         target->PushAxisAlignedClip(
@@ -4494,6 +4530,7 @@ struct DeclarativeRenderer::RenderPass final {
             if (fragment) DrawNode(*fragment, inputScope);
         }
         for (const auto& child : node.children) DrawNode(child, inputScope);
+        DrawCollectionLoading(node, style, Intersection(presented.contentBox, presented.visibleBox), opacity);
         // Draw semantic state after descendants so it remains visible over a
         // composed tile while the entire surface stays the sole input target.
         if (node.kind == L"actionSurface") {

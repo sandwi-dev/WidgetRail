@@ -332,6 +332,7 @@ public sealed record ScrollElement : ContainerElement
     /// <summary>Stable relative position of the first retained collection item.</summary>
     public long? CollectionStartIndex { get; init; }
     public CollectionNavigationRequest? CollectionNavigation { get; init; }
+    public CollectionLoadingState? CollectionLoading { get; init; }
     internal VirtualCollectionWindow? VirtualCollectionWindow { get; init; }
     public new ScrollElement InputScope(string scopeId) => this with { InputScopeId = RequireId(scopeId) };
     public new ScrollElement RememberChildFocus(string initialChildFocusId) => this with
@@ -388,6 +389,7 @@ public sealed record ScrollElement : ContainerElement
         CollectionAnchorKey = CollectionAnchorKey,
         CollectionStartIndex = CollectionStartIndex,
         CollectionNavigation = CollectionNavigation,
+        CollectionLoading = CollectionLoading,
     };
 }
 

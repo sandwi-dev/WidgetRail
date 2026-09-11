@@ -1424,3 +1424,17 @@ pages from eviction. `RetainedItemTarget` can be smaller than the hard
 without eviction churn. Sequential free scrolling remains within the loaded
 window while more data is requested. Viewport anchoring and focus-follow are
 independent during page changes.
+
+### Collection loading feedback (protocol v48)
+
+Scroll nodes can carry `collectionLoading`: `idle`, `before`, or `after`.
+This paint-only metadata draws a shared, non-focusable loading badge at the
+corresponding viewport edge. It does not change layout, focus, or input admission.
+It is also valid on an empty Scroll during initial loading. Cursor presentations
+provide it automatically, and custom presentations can use the captured
+snapshot's `LoadingState`. The marker stays present as `idle` between requests
+so the required protocol version does not change on every fetch.
+
+For positioned collections, the host starts prefetching within two viewport
+lengths of the loaded edge. Only actually visible keys are protected from
+eviction; prefetch distance does not expand that protected set.

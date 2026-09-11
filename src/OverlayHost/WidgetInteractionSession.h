@@ -672,6 +672,7 @@ private:
         std::wstring scrollId;
         declarative::ScrollAxis axis{declarative::ScrollAxis::None};
         bool initialized{};
+        bool collectionObserved{};
         bool beforeResident{};
         bool afterResident{};
         std::optional<ScrollPaginationEdge> latchedEdge;

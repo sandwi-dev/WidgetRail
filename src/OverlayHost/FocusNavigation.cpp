@@ -403,11 +403,27 @@ void CollectScrollPaginationActions(
                 actions.back().visibleCollectionKeys.push_back(items[index]->collectionItemKey);
         }
     };
-    if (*firstVisible < node.scrollPaginationThreshold) {
+    bool nearBefore = *firstVisible < node.scrollPaginationThreshold;
+    bool nearAfter = items.size() - *lastVisible <= node.scrollPaginationThreshold;
+    if (node.collectionStartIndex) {
+        const auto first = CollectionItemBounds(*items.front(), activeScopeId, renderResult);
+        const auto last = CollectionItemBounds(*items.back(), activeScopeId, renderResult);
+        const auto& rect = viewport->second.rect;
+        const bool vertical = viewport->second.axis == declarative::ScrollAxis::Vertical;
+        const float start = vertical ? rect.y : rect.x;
+        const float extent = vertical ? rect.height : rect.width;
+        // Two measured viewports provide lead time for remote cursor requests,
+        // independent of tile size, grid columns, DPI, and transport page size.
+        const float lead = extent * 2.0F;
+        if (first) nearBefore = nearBefore || start - (vertical ? first->y : first->x) <= lead;
+        if (last) nearAfter = nearAfter ||
+            (vertical ? last->y + last->height : last->x + last->width) - start - extent <= lead;
+    }
+    if (nearBefore) {
         append(ScrollPaginationEdge::Before,
                node.scrollNearStartActionId, 0);
     }
-    if (items.size() - *lastVisible <= node.scrollPaginationThreshold) {
+    if (nearAfter) {
         append(ScrollPaginationEdge::After,
                node.scrollNearEndActionId, items.size() - 1);
     }

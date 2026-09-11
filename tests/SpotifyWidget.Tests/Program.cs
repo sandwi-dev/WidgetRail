@@ -8,6 +8,7 @@ using System.Text;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Production cursor batches retain forward and reverse buffers", ProductionCursorBuffer),
     ("Opening the widget never starts OAuth", OpeningNeverConnects),
     ("Disconnected copy and paired actions remain bounded and centered", DisconnectedLayoutContract),
     ("Primary actions keep theme-safe fill and focus contrast", PrimaryActionContrast),
@@ -2511,7 +2512,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.51", manifest.Version);
+    Assert.Equal("0.3.52", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
@@ -2691,14 +2692,44 @@ static Task TimeFormatting()
     return Task.CompletedTask;
 }
 
+static async Task ProductionCursorBuffer()
+{
+    var harness = SpotifyHarness.Ready();
+    var playlists = Enumerable.Range(0, 150).Select(index => new SpotifyPlaylistSummary(
+        $"buffer-{index}", $"Buffer {index}", null, null,
+        $"https://open.spotify.com/playlist/buffer-{index}", $"spotify:playlist:buffer-{index}",
+        "Listener", false, true, 1)).ToArray();
+    harness.Playlists = new(playlists, 0, 24, playlists.Length);
+    var widget = await StartAsync(harness, productionPaging: true);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+    await WaitUntil(() => harness.PlaylistCalls == 1);
+    await WaitUntil(() => CollectionRows(Find(widget.RenderSnapshot("buffer.test", 1).Root, "spotify.playlists.scroll")).Length == 24);
+    Assert.Equal(24, harness.LastPlaylistLimit);
+    var first = CollectionRows(Find(widget.RenderSnapshot("buffer.test", 1).Root, "spotify.playlists.scroll"))[0].Id;
+    for (int page = 2; page <= 4; page++)
+    {
+        await widget.OnActionAsync(new("spotify.playlists.cursor.after", "spotify.playlists.scroll"));
+        var expected = page * 24;
+        await WaitUntil(() => CollectionRows(Find(widget.RenderSnapshot("buffer.test", page).Root, "spotify.playlists.scroll")).Length == expected);
+    }
+    var retained = CollectionRows(Find(widget.RenderSnapshot("buffer.test", 5).Root, "spotify.playlists.scroll"));
+    Assert.Equal(96, retained.Length);
+    Assert.Equal(first, retained[0].Id);
+    await StopAsync(widget);
+}
+
 static async Task<SpotifyWidget> StartAsync(
     SpotifyHarness harness,
     TimeProvider? timeProvider = null,
-    ISpotifyRuntimeDiagnostics? diagnostics = null)
+    ISpotifyRuntimeDiagnostics? diagnostics = null,
+    bool productionPaging = false)
 {
-    var widget = diagnostics is null
-        ? new SpotifyWidget(harness, timeProvider)
-        : new SpotifyWidget(harness, timeProvider, diagnostics);
+    // Small deterministic windows keep the boundary/eviction regressions concise.
+    // A separate test exercises the actual production batching configuration.
+    var widget = productionPaging
+        ? new SpotifyWidget(harness, timeProvider, diagnostics ?? SpotifyRuntimeDiagnostics.None)
+        : new SpotifyWidget(harness, timeProvider, diagnostics ?? SpotifyRuntimeDiagnostics.None, 12, 24);
     await WidgetTestHost.InitializeAsync(widget);
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
     return widget;
@@ -2951,6 +2982,7 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
     public int PlaybackCalls { get; private set; }
     public int QueueCalls { get; private set; }
     public int PlaylistCalls { get; private set; }
+    public int LastPlaylistLimit { get; private set; }
     public int PlaylistDetailCalls { get; private set; }
     public int DeviceCalls { get; private set; }
     public int LocalPlaybackCalls { get; private set; }
@@ -3076,6 +3108,7 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
     {
         cancellationToken.ThrowIfCancellationRequested();
         PlaylistCalls++;
+        LastPlaylistLimit = limit;
         var source = PlaylistCompletion is null
             ? Playlists
             : IgnorePlaylistCancellation

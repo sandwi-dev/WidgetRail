@@ -438,6 +438,7 @@ struct WidgetNode final {
     std::optional<VirtualCollectionWindow> virtualCollectionWindow;
     std::wstring collectionAnchorKey;
     std::optional<std::int64_t> collectionStartIndex;
+    std::wstring collectionLoading;
     struct CollectionNavigationRequest {
         std::uint64_t requestId{};
         std::wstring originFocusId;

@@ -2103,6 +2103,8 @@ property TState WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAu
 property TValue? WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Value { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfaceOrientation WidgetRail.WidgetSdk.ActionSurfaceElement.Orientation { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfacePresentation? WidgetRail.WidgetSdk.ActionSurfaceElement.Presentation { get; set; }
+property WidgetRail.WidgetProtocol.CollectionLoadingState WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.LoadingState { get; }
+property WidgetRail.WidgetProtocol.CollectionLoadingState? WidgetRail.WidgetSdk.ScrollElement.CollectionLoading { get; set; }
 property WidgetRail.WidgetProtocol.CollectionNavigationRequest? WidgetRail.WidgetSdk.ScrollElement.CollectionNavigation { get; set; }
 property WidgetRail.WidgetProtocol.CollectionNavigationRequest? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.NavigationRequest { get; set; }
 property WidgetRail.WidgetProtocol.ControllerButton WidgetRail.WidgetSdk.ControllerInputEvent.Button { get; set; }
@@ -2197,6 +2199,7 @@ property WidgetRail.WidgetSdk.WidgetCollectionItemKey WidgetRail.WidgetSdk.Colle
 property WidgetRail.WidgetSdk.WidgetCollectionItemKey? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Anchor { get; set; }
 property WidgetRail.WidgetSdk.WidgetCommandPolicy WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Policy { get; set; }
 property WidgetRail.WidgetSdk.WidgetCursorDirection? WidgetRail.WidgetSdk.WidgetAppLibraryCursorRequest.Direction { get; set; }
+property WidgetRail.WidgetSdk.WidgetCursorDirection? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.LoadingDirection { get; set; }
 property WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> WidgetRail.WidgetSdk.WidgetCursorPresentation<TItem>.Snapshot { get; }
 property WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Snapshot { get; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.BackgroundSurfaceElement.Content { get; set; }

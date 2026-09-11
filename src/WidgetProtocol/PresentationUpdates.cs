@@ -70,6 +70,7 @@ public enum PresentationProperty
     CollectionAnchorKey,
     CollectionStartIndex,
     CollectionNavigation,
+    CollectionLoading,
     CollectionItemKey,
     StyleClasses,
     Shortcuts,
@@ -136,6 +137,7 @@ public static class PresentationPropertyMetadata
 {
     public static PresentationPropertyImpact Impact(PresentationProperty property) => property switch
     {
+        PresentationProperty.CollectionLoading => PresentationPropertyImpact.Paint,
         PresentationProperty.ActiveInputScopeId or
         PresentationProperty.InitialFocusId or
         PresentationProperty.QuickActions =>

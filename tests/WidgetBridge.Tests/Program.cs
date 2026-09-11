@@ -5166,7 +5166,7 @@ static async Task VirtualCollectionWindowCrossesBridge()
     Assert.Equal(BridgeMessageTypes.Snapshot, firstResponse.Type);
     var first = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         firstResponse.Payload.GetProperty("snapshot").GetRawText()));
-    Assert.Equal(ProtocolConstants.CollectionPositionVersion, first.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.CollectionLoadingVersion, first.ProtocolVersion);
     Assert.Equal(32, first.Root.Children.Count);
     Assert.Equal(10_000L, first.Root.VirtualCollectionWindow?.TotalItemCount);
     Assert.Equal(0L, first.Root.VirtualCollectionWindow?.FirstItemIndex);

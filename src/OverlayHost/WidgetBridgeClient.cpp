@@ -1239,6 +1239,10 @@ WidgetNode ParseNode(const JsonObject& source) {
             throw winrt::hresult_invalid_argument();
         node.collectionNavigation = std::move(request);
     }
+    node.collectionLoading = OptionalString(source, L"collectionLoading");
+    if (!node.collectionLoading.empty() && (node.kind != L"scroll" ||
+        (node.collectionLoading != L"idle" && node.collectionLoading != L"before" && node.collectionLoading != L"after")))
+        throw winrt::hresult_invalid_argument();
     node.collectionItemKey = OptionalString(source, L"collectionItemKey");
     if ((!node.collectionAnchorKey.empty() &&
          (node.collectionAnchorKey.size() > kMaximumIdentifierLength ||
@@ -2297,6 +2301,12 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     if (snapshot.protocolVersion < protocol_contract::CollectionPositionVersion &&
         usesCollectionPosition(usesCollectionPosition, snapshot.root))
         throw winrt::hresult_invalid_argument();
+    const auto usesCollectionLoading = [&](const auto& self, const WidgetNode& node) -> bool {
+        if (!node.collectionLoading.empty()) return true;
+        return std::ranges::any_of(node.children, [&](const WidgetNode& child) { return self(self, child); });
+    };
+    if (snapshot.protocolVersion < protocol_contract::CollectionLoadingVersion && usesCollectionLoading(usesCollectionLoading, snapshot.root))
+        throw winrt::hresult_invalid_argument();
     snapshot.documentJson = std::wstring(std::wstring_view(source.Stringify()));
     return snapshot;
 }
@@ -2338,7 +2348,7 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 50> properties{
+    static constexpr std::array<std::wstring_view, 51> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
@@ -2352,7 +2362,7 @@ bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
         L"defaultFocusPresentation", L"scrollAxis",
         L"scrollNearStartActionId", L"scrollNearEndActionId",
         L"scrollPaginationThreshold", L"virtualCollectionWindow",
-        L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey",
+        L"collectionLoading", L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey",
         L"collectionItemKey", L"styleClasses",
         L"shortcuts"};
     return std::find(properties.begin(), properties.end(), property) != properties.end();
@@ -2397,7 +2407,7 @@ bool ValidateWidgetDocumentStructure(
                  L"scrollAxis", L"scrollNearStartActionId",
                  L"scrollNearEndActionId", L"scrollPaginationThreshold",
                  L"virtualCollectionWindow",
-                 L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey", L"collectionItemKey",
+                 L"collectionLoading", L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey", L"collectionItemKey",
                  L"styleClasses", L"shortcuts",
                  L"children"})) {
             error = L"The materialized widget node contains an unknown property.";
@@ -2954,6 +2964,7 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         return Effect::MeasureLayout | Effect::Paint |
             Effect::Interaction | Effect::Accessibility;
     }
+    if (property == L"collectionLoading") return Effect::Paint;
     if (property == L"sliderInteractionMode") {
         return Effect::Paint | Effect::Interaction | Effect::Accessibility;
     }

@@ -76,7 +76,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             PageSize = CursorTestMode ? 6 : PageSize,
             MaximumRetainedItems = MaximumRetainedItems,
-            RetainedItemTarget = CursorTestMode ? 24 : null,
+            RetainedItemTarget = CursorTestMode ? 48 : null,
             PaginationThreshold = 2,
             LoadPage = (cursor, direction, limit, cancellationToken) => LoadPageAsync(
                 PlayniteLibraryRoute.Library, cursor, direction, limit, cancellationToken),
@@ -96,7 +96,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             PageSize = CursorTestMode ? 6 : PageSize,
             MaximumRetainedItems = MaximumRetainedItems,
-            RetainedItemTarget = CursorTestMode ? 24 : null,
+            RetainedItemTarget = CursorTestMode ? 48 : null,
             PaginationThreshold = 2,
             LoadPage = (cursor, direction, limit, cancellationToken) => LoadPageAsync(
                 PlayniteLibraryRoute.Browse, cursor, direction, limit, cancellationToken),

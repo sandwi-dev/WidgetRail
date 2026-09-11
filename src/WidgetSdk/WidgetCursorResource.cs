@@ -62,6 +62,14 @@ public sealed record WidgetCursorResourceSnapshot<TItem>(
     /// <summary>Stable relative position of the retained window, including opaque-cursor providers.</summary>
     public long StartIndex { get; init; }
     public CollectionNavigationRequest? NavigationRequest { get; init; }
+    public WidgetCursorDirection? LoadingDirection { get; init; }
+    public CollectionLoadingState LoadingState => Status switch
+    {
+        WidgetPagedResourceStatus.Loading or WidgetPagedResourceStatus.Refreshing => CollectionLoadingState.After,
+        WidgetPagedResourceStatus.LoadingAdjacent => LoadingDirection == WidgetCursorDirection.Before
+            ? CollectionLoadingState.Before : CollectionLoadingState.After,
+        _ => CollectionLoadingState.Idle,
+    };
     public VirtualCollectionWindowChange WindowChange { get; init; }
 }
 
@@ -298,6 +306,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             CollectionAnchorKey = snapshot.Anchor?.Value,
             CollectionStartIndex = snapshot.Items.Count == 0 ? null : snapshot.StartIndex,
             CollectionNavigation = snapshot.Items.Count == 0 ? null : snapshot.NavigationRequest,
+            CollectionLoading = snapshot.LoadingState,
             VirtualCollectionWindow = _viewports[scroll.Id].EstimatedItemExtent is { } estimate &&
                 snapshot.Items.Count != 0 && snapshot.WindowGeneration > 0
                 ? new VirtualCollectionWindow
@@ -409,7 +418,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                     WidgetPagedResourceStatus.LoadingAdjacent;
                 changed = SetSnapshotLocked(status, before.Items, before.Before, before.After,
                     before.Anchor, null, null);
-                _snapshot = _snapshot with { NavigationRequest = intent.MoveFocus ? new()
+                _snapshot = _snapshot with { LoadingDirection = intent.Direction, NavigationRequest = intent.MoveFocus ? new()
                 {
                     RequestId = ++_navigationRequestId, OriginFocusId = intent.OriginFocusId,
                 } : null };
@@ -720,6 +729,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             WindowGeneration = previous.WindowGeneration,
             StartIndex = previous.StartIndex,
             NavigationRequest = previous.NavigationRequest,
+            LoadingDirection = status == WidgetPagedResourceStatus.LoadingAdjacent ? previous.LoadingDirection : null,
             WindowChange = previous.WindowChange,
         };
         return true;
