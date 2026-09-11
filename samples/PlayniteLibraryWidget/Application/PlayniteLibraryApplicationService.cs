@@ -521,8 +521,7 @@ internal sealed class PlayniteLibraryApplicationService(
         PlayniteLibraryQueryContext context)
     {
         IEnumerable<PlayniteBridgeGame> values = games;
-        if (query.InstalledOnly || context.Scope is PlayniteLibraryQueryScope.Home or
-                PlayniteLibraryQueryScope.RecentlyPlayed)
+        if (query.InstalledOnly || context.Scope == PlayniteLibraryQueryScope.Home)
             values = values.Where(game => game.IsInstalled);
         if (context.Scope == PlayniteLibraryQueryScope.Hidden)
             values = values.Where(game => game.Hidden);

@@ -178,6 +178,32 @@ public sealed class PackageRuntimeTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task UninstalledGamesRemainOrganizableInBrowseButCannotLaunch()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(3);
+        client.Games[1] = client.Games[1] with { IsInstalled = false, LastActivityUnixMilliseconds = 1000 };
+        client.Categories.Add(new(FakeLibraryClient.GuidFrom(30_001), "Controllers"));
+        var id = client.Games[1].Id;
+        await using var service = Service(directory.Path, client);
+        var browse = await service.QueryWithAuthorityAsync(AllGames,
+            new(PlayniteLibraryQueryScope.Library), null, null, 16, true, CancellationToken.None);
+        Assert.IsTrue(browse.Page.Items.Any(item => item.SavedId == id));
+        var home = await service.QueryWithAuthorityAsync(AllGames,
+            new(PlayniteLibraryQueryScope.Home), null, null, 16, false, CancellationToken.None);
+        Assert.IsFalse(home.Page.Items.Any(item => item.SavedId == id));
+        var recent = await service.QueryWithAuthorityAsync(AllGames,
+            new(PlayniteLibraryQueryScope.RecentlyPlayed), null, null, 16, false, CancellationToken.None);
+        Assert.IsTrue(recent.Page.Items.Any(item => item.SavedId == id));
+        Assert.IsNotNull(await service.SetFavoriteAsync(id, true, CancellationToken.None));
+        Assert.IsNotNull(await service.SetCategoryMembershipAsync(id, "Controllers", true, CancellationToken.None));
+        Assert.IsNotNull(await service.SetHiddenAsync(id, true, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<WidgetCapabilityException>(async () =>
+            await service.LaunchObservedAsync(id, WidgetAppLaunchOverlayBehavior.KeepOpen, CancellationToken.None));
+        Assert.IsNull(client.LastLaunchedId);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task PackageServiceTraversesTenThousandAndPagesThirtyTwoOrSixtyFour()
     {
         using var directory = new TestDirectory();

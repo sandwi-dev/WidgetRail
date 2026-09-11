@@ -794,7 +794,7 @@ public sealed class PlayniteLibraryLayoutTests
                     PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, [])))
             .RenderSnapshot("playnite-library.browse.catalog-empty", 12);
         var emptyNodes = Nodes(trulyEmpty.Root).ToArray();
-        Assert.AreEqual("No installed games", emptyNodes.Single(node =>
+        Assert.AreEqual("No games", emptyNodes.Single(node =>
             node.Id == "playnite-library.browse.empty.title").Text);
         Assert.AreEqual("playnite-library.refresh", emptyNodes.Single(node =>
             node.Id == "playnite-library.browse.empty.action").ActionId);

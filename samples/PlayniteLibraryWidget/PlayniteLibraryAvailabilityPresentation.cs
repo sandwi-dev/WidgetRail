@@ -12,6 +12,12 @@ internal sealed record PlayniteLibraryTileAvailability(
 
 internal static class PlayniteLibraryAvailabilityPresentation
 {
+    internal static bool IsUninstalled(PlayniteLibraryItem? item) =>
+        item?.Presentation.Availability is
+        { State: WidgetAppLibraryAvailabilityState.Unavailable, StatusCode: "owned_not_installed" };
+
+    internal static bool CanManage(PlayniteLibraryItem? item) => Tile(item).Launchable || IsUninstalled(item);
+
     internal static PlayniteLibraryTileAvailability Tile(PlayniteLibraryItem? item)
     {
         if (item is null) return new("Play unavailable · Current provider data is missing", false, false);
@@ -28,6 +34,7 @@ internal static class PlayniteLibraryAvailabilityPresentation
                 ? new("Owned · Source degraded · Refresh to confirm install availability",
                     false, false)
                 : new("Source degraded · Refresh to confirm availability", false, false);
+        if (IsUninstalled(item)) return new("Not installed", false, false);
         if (presentation.Availability.State == WidgetAppLibraryAvailabilityState.Unavailable)
             return OwnedUnavailable(presentation);
         if (!presentation.Availability.IsLaunchable ||

@@ -89,7 +89,7 @@ internal sealed record PlayniteLibraryRenderState
     internal static PlayniteLibraryRenderState Initial(WidgetAppLibraryQuery query) => new()
         {
             Collection = new(query),
-            BrowseCollection = new(query),
+            BrowseCollection = new(query with { InstalledOnly = false }),
             HiddenQuery = query,
         };
 }

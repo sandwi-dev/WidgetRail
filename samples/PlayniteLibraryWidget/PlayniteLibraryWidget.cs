@@ -5,7 +5,7 @@ using System.Text;
 namespace WidgetRail.Samples.PlayniteLibrary;
 
 /// <summary>
-/// Controller-first complete installed game library. The trusted provider owns
+/// Controller-first Playnite library with installed Home and all-game Browse. The trusted provider owns
 /// discovery and launch authority; this widget retains only a bounded cursor
 /// window plus a non-authorizing display projection.
 /// </summary>
@@ -25,6 +25,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         InstalledOnly: true,
         Kind: WidgetAppLibraryKind.Game,
         Sort: WidgetAppLibrarySortOrder.DisplayName);
+    private static readonly WidgetAppLibraryQuery BrowseGames = InstalledGames with { InstalledOnly = false };
     private readonly object _gate = new();
     private readonly SemaphoreSlim _stateGate = new(1, 1);
     private readonly IPlayniteLibraryApplicationService _application;
@@ -620,7 +621,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     var prior = CollectionForRoute(route, state);
                     var collection = route == PlayniteLibraryRoute.Library
                         ? prior.ClearQuery(InstalledGames)
-                        : prior.Reset(InstalledGames);
+                        : prior.Reset(BrowseGames);
                     var semanticChange = !SameCollectionQuery(
                         prior, collection) ||
                         resetBrowseViewport && state.ActiveCategoryId is not null;
@@ -661,7 +662,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 var favoriteReload = CreateBrowseReload();
                 _model.Update(state => state with
                 {
-                    BrowseCollection = state.BrowseCollection.ToggleFavorites(InstalledGames),
+                    BrowseCollection = state.BrowseCollection.ToggleFavorites(BrowseGames),
                     BrowseInitialFocusId = PlayniteLibraryActions.FavoritesFilter,
                     ActiveBrowseReload = favoriteReload,
                 });
@@ -672,7 +673,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 var recentReload = CreateBrowseReload();
                 _model.Update(state => state with
                 {
-                    BrowseCollection = state.BrowseCollection.ToggleRecentlyPlayed(InstalledGames),
+                    BrowseCollection = state.BrowseCollection.ToggleRecentlyPlayed(BrowseGames),
                     BrowseInitialFocusId = PlayniteLibraryActions.RecentlyPlayedFilter,
                     ActiveBrowseReload = recentReload,
                 });
@@ -1240,7 +1241,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 _model.Update(state => state with
                 {
                     Status = normalized.Items.Count == 0
-                        ? "Loading installed games…"
+                        ? "Loading games…"
                         : $"Checking {normalized.Items.Count} saved display rows…",
                 });
         }
@@ -1485,6 +1486,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private async Task LaunchAsync(string sourceElementId, CancellationToken cancellationToken)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        var selected = CurrentLibrary.Snapshot.Items.Concat(_model.Value.FixedRows.All)
+            .FirstOrDefault(item => PlayniteLibraryIdentity.FocusId("grid", item.Key) == sourceElementId);
+        if (PlayniteLibraryAvailabilityPresentation.IsUninstalled(selected)) return;
         var generationReady = new TaskCompletionSource<long>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var handle = Operations.RunSingleFlight(
@@ -2196,7 +2200,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _model.Update(state => state with
         {
             ActiveCategoryId = categoryId,
-            BrowseCollection = state.BrowseCollection.Reset(InstalledGames),
+            BrowseCollection = state.BrowseCollection.Reset(BrowseGames),
             BrowseInitialFocusId = PlayniteLibraryActions.CategoryFilter,
             ActiveBrowseReload = reload,
         });
@@ -2443,9 +2447,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         snapshot.Status switch
         {
             WidgetPagedResourceStatus.Loading when _organization.Items.Count == 0 =>
-                "Loading installed games…",
+                "Loading games…",
             WidgetPagedResourceStatus.Refreshing when snapshot.Items.Count == 0 =>
-                "Refreshing installed games…",
+                "Refreshing games…",
             WidgetPagedResourceStatus.LoadingAdjacent => "Loading more games…",
             WidgetPagedResourceStatus.Error when snapshot.Items.Count != 0 =>
                 $"{snapshot.Items.Count} games · some sources unavailable",

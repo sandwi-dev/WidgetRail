@@ -101,7 +101,7 @@ internal static class PlayniteLibraryPresentation
                     .Classes("playnite-library-status")
                     .VisibleWhen(ResponsiveVisibility.CompactOnly),
                 UI.Stack("playnite-library.header.expanded",
-                        UI.Text("INSTALLED GAMES", "playnite-library.eyebrow", "Installed games")
+                        UI.Text("GAMES", "playnite-library.eyebrow", "Games")
                             .Classes("playnite-library-eyebrow"),
                         UI.Text(routeTitle, "playnite-library.title", routeTitle)
                             .Classes("playnite-library-title"),
@@ -197,7 +197,7 @@ internal static class PlayniteLibraryPresentation
                 .AddClasses("playnite-library-control", "playnite-library-filter-control"));
             if (!state.RecentlyPlayed)
                 filterControls.Add(UI.Select("Sort", SortOptions(state.Query.Sort),
-                        PlayniteLibraryActions.SortFilter, "Sort installed games")
+                        PlayniteLibraryActions.SortFilter, "Sort games")
                     .Disabled(!renderActionsEnabled)
                     .AddClasses("playnite-library-control", "playnite-library-filter-control"));
             filterControls.Add(UI.Button("Clear", "playnite-library.query.clear",
@@ -230,7 +230,7 @@ internal static class PlayniteLibraryPresentation
                         state.Route switch
                         {
                             PlayniteLibraryRoute.Hidden => "Search hidden games",
-                            _ => "Search installed games",
+                            _ => "Search games",
                         },
                         "playnite-library.search.commit",
                         "playnite-library.search",
@@ -527,10 +527,10 @@ internal static class PlayniteLibraryPresentation
         else if (state.Route == PlayniteLibraryRoute.Browse)
         {
             var activeQuery = HasActiveBrowseQuery(state);
-            var title = activeQuery ? "No matching games" : "No installed games";
+            var title = activeQuery ? "No matching games" : "No games";
             var detail = activeQuery
-                ? "Clear search and filters to see the complete installed library."
-                : "Refresh after installing games in Playnite.";
+                ? "Clear search and filters to see your full library."
+                : "Add games to Playnite, then refresh your library.";
             var actionLabel = activeQuery ? "Clear search and filters" : "Refresh";
             var actionId = activeQuery
                 ? "playnite-library.query.clear"
@@ -1039,7 +1039,7 @@ internal static class PlayniteLibraryPresentation
                 PlayniteLibraryActions.Launch, id, subtitle: subtitle, artwork: artwork,
                 accessibilityLabel: $"{title}, {subtitle}, {state}")
             .Busy(launching || availability.Busy)
-            .Disabled(!interactive || !availability.Launchable)
+            .Disabled(!interactive || !PlayniteLibraryAvailabilityPresentation.CanManage(current))
             .AddClasses("playnite-library-tile");
         if (focusSummaryContext)
             tile = tile.AddClasses("playnite-library-fixed-tile");
@@ -1047,7 +1047,7 @@ internal static class PlayniteLibraryPresentation
             tile = tile.AddClasses("playnite-library-browse-tile");
         if (interactive && current is not null && !launching)
         {
-            var actionEnabled = availability.Launchable;
+            var actionEnabled = PlayniteLibraryAvailabilityPresentation.CanManage(current);
             tile = tile
                 .ContextMenuShortcut(ControllerButton.X)
                 .ContextAction(PlayniteLibraryActions.Favorite,

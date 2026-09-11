@@ -13,6 +13,43 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed class PlayniteLibraryTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task BrowseIncludesUninstalledGamesWithOptionsButCannotLaunchThem()
+    {
+        var host = new FakeHost(3);
+        host.ItemFactory = index => index != 1 ? Item(index) : Item(index) with
+        {
+            Presentation = Item(index).Presentation with
+            {
+                Availability = new(WidgetAppLibraryAvailabilityState.Unavailable, false, "owned_not_installed"),
+                Capabilities = new([]),
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        Assert.IsTrue(host.Queries[0].Query.InstalledOnly);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.BrowseOpen, "playnite-library.library.menu"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "all-games Browse");
+        Assert.IsFalse(host.Queries[^1].Query.InstalledOnly);
+        var tile = Nodes(Snapshot(widget, 90_010).Root).Single(node =>
+            node.ActionId == PlayniteLibraryActions.Launch && node.AccessibilityLabel!.StartsWith("Game 00001", StringComparison.Ordinal));
+        Assert.IsFalse(tile.IsDisabled == true, "The game remains navigable and its X options remain available.");
+        StringAssert.Contains(tile.AccessibilityLabel!, "Not installed");
+        Assert.AreEqual(ControllerButton.X, tile.ContextMenuButton);
+        Assert.IsTrue(tile.ContextActions.All(action => !action.IsDisabled));
+        await widget.OnActionAsync(new(PlayniteLibraryActions.Launch, tile.Id));
+        Assert.AreEqual(0, host.Launches.Count);
+        Assert.IsNull(widget.RenderState.Value.LaunchingSavedId);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.Favorite, tile.Id));
+        CollectionAssert.Contains(host.Authority.FavoriteGameIds.ToArray(), "saved-00001");
+        await widget.OnActionAsync(new(PlayniteLibraryActions.Hide, tile.Id));
+        CollectionAssert.Contains(host.Authority.HiddenGameIds.ToArray(), "saved-00001");
+        await widget.OnActionAsync(new(PlayniteLibraryActions.QueryClear, PlayniteLibraryActions.QueryClear));
+        Assert.IsFalse(widget.RenderState.Value.BrowseCollection.Query.InstalledOnly);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task HeaderHintsRouteRefreshWithoutFocusableControls()
     {
         var host = new FakeHost(20);
@@ -2351,7 +2388,7 @@ public sealed class PlayniteLibraryTests
         var state = PlayniteLibraryRenderState.Initial(query);
 
         Assert.AreEqual(query, state.Collection.Query);
-        Assert.AreEqual(query, state.BrowseCollection.Query);
+        Assert.AreEqual(query with { InstalledOnly = false }, state.BrowseCollection.Query);
         Assert.AreEqual(query, state.HiddenQuery);
         Assert.AreSame(PlayniteLibraryFixedRows.Empty, state.FixedRows);
         Assert.AreEqual(0, state.SourceObservations.Count);

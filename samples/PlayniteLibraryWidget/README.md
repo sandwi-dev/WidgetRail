@@ -10,6 +10,9 @@ Categories, Hidden games, and Playnite connection. X opens the focused game's
 options, including Favorite. Browse also uses a Y hint for Refresh. Header
 hints do not interrupt navigation through the game collection.
 
+Browse includes installed and uninstalled games. Uninstalled games show "Not installed"
+and keep their game options, but cannot be launched. Home lists installed games only.
+
 Home orders the full provider collection by favorites, most recently played,
 name, and stable game ID before splitting it into pages. The rail preserves
 that order as pages arrive. Saved games outside a partial cursor window are
