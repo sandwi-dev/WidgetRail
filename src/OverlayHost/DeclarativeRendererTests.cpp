@@ -4152,6 +4152,40 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
     Check(summaryFloat(shiftedSummary, L"final-offset=") > overlapOffset,
           "focus-follow runs after retained-overlap reconciliation");
 
+    // Regression: free scrolling must rebase window churn even when the
+    // declared anchor survives; retaining its numeric offset skips whole rows.
+    DeclarativeRenderer freeWindowRenderer{d2d.Get(), write.Get(), nullptr};
+    auto freeWindow = collectionWindow(1, 0, L"item.4", L"retained-overlap-item-7");
+    const auto freeInitial = renderCollection(freeWindowRenderer, freeWindow,
+        L"retained-overlap-item-7", anchoredViewport);
+    const float retainedScreenY = freeInitial.elementRects.at(L"retained-overlap-item-6").y;
+    widgetrail::DeclarativeRenderOptions freeWindowOptions;
+    freeWindowOptions.suppressFocusedDescendantFollow = true;
+    const auto freeRender = [&](const WidgetSnapshot& value) {
+        target->BeginDraw();
+        const auto result = freeWindowRenderer.Render(target.Get(), value,
+            L"retained-overlap-item-7", anchoredViewport, freeWindowOptions);
+        Check(SUCCEEDED(target->EndDraw()) && result.succeeded, "free-scroll window render succeeds");
+        return result;
+    };
+    freeWindow = collectionWindow(2, 2, L"item.4", L"retained-overlap-item-9");
+    const auto forwardWindow = freeRender(freeWindow);
+    Near(forwardWindow.elementRects.at(L"retained-overlap-item-6").y,
+        retainedScreenY, "trim-start plus append preserves screen position during free scroll");
+    Check(forwardWindow.timing.collectionAdmissionSummary.find(L"reconciliation=overlap") != std::wstring::npos,
+        "surviving offscreen declared anchor does not bypass visible-row reconciliation");
+    freeWindow = collectionWindow(3, 0, L"item.4", L"retained-overlap-item-7");
+    const auto reverseWindow = freeRender(freeWindow);
+    Near(reverseWindow.elementRects.at(L"retained-overlap-item-6").y,
+        retainedScreenY, "prepend plus trim-end preserves screen position during free scroll");
+    const auto motion = freeWindowRenderer.PlanFocusedFreeScroll(freeWindow,
+        L"retained-overlap-item-7", widgetrail::declarative::ScrollAxis::Vertical, -22, anchoredViewport,
+        L"retained-overlap.collection");
+    Check(motion.has_value(), "the same window still accepts deliberate scroll movement");
+    const auto movedWindow = freeRender(freeWindow);
+    Near(movedWindow.elementRects.at(L"retained-overlap-item-6").y,
+        retainedScreenY + 22, "unchanged content does not undo right-stick movement");
+
     DeclarativeRenderer changedViewportRenderer{
         d2d.Get(), write.Get(), nullptr};
     (void)renderCollection(

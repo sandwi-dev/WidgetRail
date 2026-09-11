@@ -770,6 +770,54 @@ int wmain() {
             auto compositorOptions = retargetOptions;
             compositorOptions.compositorBackgroundAvailable = true;
             compositorOptions.animationTimestampMilliseconds = 3000;
+            // Updating the default while an override is fading must not
+            // discard the existing blend or introduce a default frame.
+            {
+                widgetrail::DeclarativeRenderer defaultRenderer{d2d.Get(), write.Get(), &retargetCache};
+                auto defaultSnapshot = *retargetSnapshot;
+                auto defaultOptions = retargetOptions;
+                const auto drawDefault = [&](const std::wstring_view focus, const std::uint64_t time) {
+                    defaultOptions.animationTimestampMilliseconds = time;
+                    target->BeginDraw();
+                    const auto result = defaultRenderer.Render(target.Get(), defaultSnapshot, focus, viewport, defaultOptions);
+                    Require(SUCCEEDED(target->EndDraw()) && result.succeeded, "default continuity draw failed");
+                    return result;
+                };
+                (void)drawDefault(L"background.retarget.red", 1000);
+                (void)drawDefault(L"background.retarget.green", 1100);
+                defaultSnapshot.root.artworkHandle = L"background.retarget.blue";
+                const auto changedDuringFade = drawDefault(L"background.retarget.green", 1120);
+                Require(changedDuringFade.animationActive &&
+                    RequireBackgroundHandle(changedDuringFade, retargetSurface, "default update lost fade") == L"background.retarget.green",
+                    "default update interrupted the active focused-artwork fade");
+                const auto unfocused = drawDefault(L"", 1140);
+                Require(unfocused.animationActive &&
+                    RequireBackgroundHandle(unfocused, retargetSurface, "tray focus lost fade") == L"background.retarget.green",
+                    "focus leaving the widget must continue the existing fade");
+            }
+            {
+                widgetrail::DeclarativeRenderer trayRenderer{d2d.Get(), write.Get(), &retargetCache};
+                auto trayOptions = compositorOptions;
+                auto traySnapshot = *retargetSnapshot;
+                target->BeginDraw();
+                const auto selected = trayRenderer.Render(target.Get(), traySnapshot,
+                    L"background.retarget.green", viewport, trayOptions);
+                Require(SUCCEEDED(target->EndDraw()) && selected.compositorBackground,
+                    "tray fixture did not select a compositor background");
+                trayOptions.retainedCompositorBackground = selected.compositorBackground;
+                traySnapshot.root.artworkHandle = L"background.retarget.blue";
+                target->BeginDraw();
+                const auto onTray = trayRenderer.Render(target.Get(), traySnapshot, L"", viewport, trayOptions);
+                Require(SUCCEEDED(target->EndDraw()) && onTray.compositorBackground &&
+                    onTray.compositorBackground->artworkHandle == L"background.retarget.green" &&
+                    onTray.compositorBackground->focusedElementId.empty(),
+                    "tray focus must retain the background without retaining widget input focus");
+                trayOptions.artworkRuntimeGeneration = L"replacement-runtime";
+                target->BeginDraw();
+                const auto replaced = trayRenderer.Render(target.Get(), traySnapshot, L"", viewport, trayOptions);
+                Require(SUCCEEDED(target->EndDraw()) && !replaced.compositorBackground,
+                    "a replacement runtime cannot inherit the previous surface selection");
+            }
             // Exercise the host's actual back-to-front layer order with an
             // opaque panel, which the old transparent-only fixture omitted.
             // Both inline (tray focus) and extracted backgrounds must cover
@@ -1438,9 +1486,10 @@ int wmain() {
         requests.WaitForBack(changedDefaultKey,
             "changed default request did not reach its demand owner");
         Require(requests.back() == changedDefaultKey &&
-                !changedDefaultPending.backgroundArtworkHandles.contains(
-                    L"background-surface-test.root"),
-            "changed default did not reset the retained focused artwork");
+                RequireBackgroundHandle(changedDefaultPending,
+                    L"background-surface-test.root", "pending default lost displayed artwork") ==
+                    L"background-surface-test.focus.replacement",
+            "pending changed default must retain the last displayed focused artwork");
         Require(cache.SupplyTrustedArtwork(
             L"widgetrail.tests.background-surface",
             L"background-surface-test.artwork.changed", L"image/png", std::wstring(png)),
@@ -1453,7 +1502,9 @@ int wmain() {
                     L"background-surface-test.root",
                     "changed default omitted the reset surface artwork") ==
                 L"background-surface-test.artwork.changed",
-            "changed default did not initialize the reset surface");
+            "ready changed default did not enter the existing transition");
+        Require(changedDefaultReady.animationActive,
+            "ready changed default replaced the surface without a transition");
 
         (void)render(L"background-surface-test.replacement");
         parsed->root.usesFocusedDescendantArtwork = false;

@@ -327,6 +327,9 @@ struct DeclarativeRenderOptions final {
     /// BackgroundSurface selection. Empty preserves test/source compatibility.
     std::wstring artworkAuthorityId;
     bool compositorBackgroundAvailable{};
+    /// Last admitted compositor selection, used only when focus leaves the
+    /// widget or its offscreen cursor item is evicted. Exact owner checks apply.
+    std::optional<ComputedCompositorBackground> retainedCompositorBackground;
     /// Right-stick free scroll deliberately retains semantic focus without
     /// allowing that descendant to pull the viewport back until re-entry.
     bool suppressFocusedDescendantFollow{};

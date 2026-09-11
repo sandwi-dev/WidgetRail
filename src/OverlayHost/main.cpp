@@ -17666,6 +17666,7 @@ private:
                 }
                 options.compositorBackgroundAvailable =
                     compositionSurface_.available() && !inertRetainedSnapshot;
+                options.retainedCompositorBackground = lastWidgetRenderResult_.compositorBackground;
                 if (descriptor) {
                     options.artworkAuthorityId =
                         std::wstring{renderedWidget} + L"\x1f" +

@@ -625,7 +625,16 @@ struct DeclarativeRenderer::RenderPass final {
             !surface.usesFocusedDescendantArtwork) return false;
         if (!compositorBackgroundId.empty()) return compositorBackgroundId == surface.id;
         const auto selection = ResolveFocusBackgroundSelection(snapshot->root, focusedId);
-        if (selection.surface != &surface || !selection.focused) return false;
+        const auto* prior = options.retainedCompositorBackground
+            ? &*options.retainedCompositorBackground : nullptr;
+        const bool retainSelection = !selection.surface && prior &&
+            prior->authorityId == options.artworkAuthorityId &&
+            prior->artworkWidgetId == options.artworkWidgetId &&
+            prior->artworkRuntimeGeneration == options.artworkRuntimeGeneration &&
+            prior->artworkPresentationGeneration == options.artworkPresentationGeneration &&
+            prior->widgetInstanceId == snapshot->instanceId && prior->nodeId == surface.id &&
+            prior->resourceGeneration == owner->bitmapResourceGeneration_;
+        if (!retainSelection && (selection.surface != &surface || !selection.focused)) return false;
         std::vector<const WidgetNode*> path;
         if (!FindNodePath(snapshot->root, surface.id, path)) return false;
         const auto paints = [&](const WidgetNode& node) {
@@ -690,7 +699,11 @@ struct DeclarativeRenderer::RenderPass final {
         }
         compositorBackgroundId = surface.id;
         WidgetNode desired = surface;
-        if (!selection.imageSource.empty() || !selection.artworkHandle.empty()) {
+        if (retainSelection) {
+            desired.imageSource = prior->imageSource;
+            desired.artworkHandle = prior->artworkHandle;
+            desired.imageFit = prior->imageFit;
+        } else if (!selection.imageSource.empty() || !selection.artworkHandle.empty()) {
             desired.imageSource = selection.imageSource;
             desired.artworkHandle = selection.artworkHandle;
         }
@@ -706,9 +719,10 @@ struct DeclarativeRenderer::RenderPass final {
             desired.imageFit, bounds, style, opacity,
             snapshot->sequence, owner->bitmapResourceGeneration_,
             shown->second.visibleBox};
-        result.compositorBackground->defaultArtworkKey =
-            surface.imageSource + L"\x1f" + surface.artworkHandle + L"\x1f" + surface.imageFit;
-        result.compositorBackground->retainCurrentArtwork =
+        result.compositorBackground->defaultArtworkKey = retainSelection
+            ? prior->defaultArtworkKey
+            : surface.imageSource + L"\x1f" + surface.artworkHandle + L"\x1f" + surface.imageFit;
+        result.compositorBackground->retainCurrentArtwork = !retainSelection &&
             selection.imageSource.empty() && selection.artworkHandle.empty();
         AddBackgroundSurfaceTransitionDiagnostic(surface, L"compositor-eligible");
         return true;
@@ -1435,7 +1449,10 @@ struct DeclarativeRenderer::RenderPass final {
             const bool replacementWindow = scroll.virtualCollectionWindow &&
                 scroll.virtualCollectionWindow->change ==
                     VirtualCollectionWindowChange::Replace;
-            if (retainedAnchorSurvives && !replacementWindow) {
+            // Free scrolling must preserve a visible row when the loaded
+            // window shifts, even if its declared (possibly offscreen) anchor
+            // survives. This adjusts content coordinates, never live focus.
+            if (retainedAnchorSurvives && !replacementWindow && !contentChangesOnly) {
                 return;
             }
             if (std::abs(previousScrollBox->contentBox.width -
@@ -3497,15 +3514,15 @@ struct DeclarativeRenderer::RenderPass final {
         }
 
         auto retained = focusBackgrounds.find(authority);
-        if (retained != focusBackgrounds.end() &&
+        const bool defaultChanged = retained != focusBackgrounds.end() &&
             (retained->second.defaultImageSource != node.imageSource ||
              retained->second.defaultArtworkHandle != node.artworkHandle ||
-             retained->second.defaultImageFit != node.imageFit)) {
-            AddBackgroundSurfaceTransitionDiagnostic(
-                node, L"retirement", L"default-artwork-changed");
-            focusBackgrounds.erase(retained);
-            retained = focusBackgrounds.end();
-        }
+             retained->second.defaultImageFit != node.imageFit);
+        const auto acceptDefaultDeclaration = [&](FocusBackgroundEntry& entry) {
+            entry.defaultImageSource = node.imageSource;
+            entry.defaultArtworkHandle = node.artworkHandle;
+            entry.defaultImageFit = node.imageFit;
+        };
 
         const auto sameProposal = [](
             const std::wstring_view imageSource,
@@ -3723,10 +3740,20 @@ struct DeclarativeRenderer::RenderPass final {
             return;
         }
 
+        // Updating a default is a new artwork proposal, not a new surface.
+        // An active override wins. With no widget focus, preserve the displayed
+        // selection and any fade already underway until focus returns.
+        const bool transitionDefault = defaultChanged && !desired &&
+            selection.surface == &node && selection.focused;
+        if (transitionDefault) desired = node;
         retained = focusBackgrounds.find(authority);
         if (retained != focusBackgrounds.end()) {
             auto& entry = retained->second;
+            if (defaultChanged && desired && !transitionDefault)
+                acceptDefaultDeclaration(entry);
             completeTransition(entry);
+            if (transitionDefault && sameCommittedProposal(entry, node))
+                acceptDefaultDeclaration(entry);
 
             if (entry.incomingBitmap) {
                 if (!desired) {
