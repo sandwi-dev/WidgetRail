@@ -1798,6 +1798,62 @@ void CoalescedRefreshKeepsSameEdgeButCompletesOldPrefetch() {
     Check(next && next->action.collectionGeneration == 6, "next page is bound to the new committed window");
 }
 
+void TerminalReverseIntentCannotBlockViewportRefill() {
+    using namespace widgetrail::input;
+    for (const bool horizontal : {false, true}) {
+        auto cached = PagedSnapshot();
+        auto& scroll = cached.root.children[0];
+        scroll.collectionStartIndex = 0;
+        scroll.collectionGeneration = 1;
+        scroll.collectionLoading = L"idle";
+        scroll.scrollNearStartActionId.clear();
+        scroll.scrollAxis = horizontal ? L"horizontal" : L"vertical";
+        const auto axis = horizontal ? widgetrail::declarative::ScrollAxis::Horizontal : widgetrail::declarative::ScrollAxis::Vertical;
+        auto geometry = PagedRender(0, 0);
+        if (horizontal) {
+            for (auto& [id, rect] : geometry.navigationRects) rect = {rect.y,rect.x,rect.height,rect.width};
+            for (auto& [id, rect] : geometry.focusRects) rect = {rect.y,rect.x,rect.height,rect.width};
+            geometry.scrollViewports.at(L"page.scroll") = {axis,{0,0,80,200},0,140};
+        }
+        WidgetInteractionSession session;
+        (void)session.ReconcileScrollPagination(Authority(cached,L"paged.widget"),geometry,1);
+        Check(session.AcquireScrollPaginationDispatch(Authority(cached,L"paged.widget"),geometry,2).first.has_value(),
+            "fixture initially loads forward pages");
+        scroll.collectionGeneration = 2;
+        (void)session.ReconcileScrollPagination(Authority(cached,L"paged.widget"),geometry,3);
+        (void)session.ObserveScrollPaginationIntent(Authority(cached,L"paged.widget"),L"page.scroll",axis,
+            ScrollPaginationEdge::Before,ScrollPaginationIntentSource::RightStick,4);
+        auto refreshing = cached;
+        refreshing.root.children[0].collectionLoading = L"after";
+        refreshing.root.children[0].scrollNearEndActionId.clear();
+        Check(!session.ReconcileScrollPagination(Authority(refreshing,L"paged.widget"),geometry,5).dispatchReady,
+            "refill waits while refreshed page data is loading");
+        scroll.collectionGeneration = 3;
+        geometry.scrollViewports.at(L"page.scroll") = horizontal
+            ? widgetrail::RenderScrollViewport{axis,{0,0,300,200},0,0}
+            : widgetrail::RenderScrollViewport{axis,{0,0,200,300},0,0};
+        Check(session.ReconcileScrollPagination(Authority(cached,L"paged.widget"),geometry,6).dispatchReady,
+            "settled refresh fills spare viewport space without another controller input");
+        const auto next = session.AcquireScrollPaginationDispatch(Authority(cached,L"paged.widget"),geometry,7).first;
+        Check(next && next->action.edge == ScrollPaginationEdge::After && next->action.viewportUnderfilled,
+            "automatic refill fetches the available next page rather than a nonexistent previous page");
+
+        WidgetInteractionSession previous;
+        scroll.scrollNearStartActionId = L"page.before";
+        scroll.collectionLoading = L"after";
+        scroll.scrollNearStartActionId.clear(); scroll.scrollNearEndActionId.clear();
+        (void)previous.ObserveScrollPaginationIntent(Authority(cached,L"paged.widget"),L"page.scroll",axis,
+            ScrollPaginationEdge::Before,ScrollPaginationIntentSource::RightStick,8);
+        (void)previous.ReconcileScrollPagination(Authority(cached,L"paged.widget"),geometry,9);
+        scroll.collectionLoading = L"idle";
+        scroll.scrollNearStartActionId = L"page.before"; scroll.scrollNearEndActionId = L"page.after";
+        (void)previous.ReconcileScrollPagination(Authority(cached,L"paged.widget"),geometry,10);
+        const auto before = previous.AcquireScrollPaginationDispatch(Authority(cached,L"paged.widget"),geometry,11).first;
+        Check(before && before->action.edge == ScrollPaginationEdge::Before,
+            "a real previous-page intent survives temporarily hidden actions during loading");
+    }
+}
+
 void CursorBoundaryAndViewportDemand() {
     using namespace widgetrail::input;
     auto snapshot = PagedSnapshot(); snapshot.root.children[0].collectionStartIndex = 0;
@@ -2179,6 +2235,7 @@ int main() {
     PressedAndAdmissionReconciliation();
     ColdCollectionAndReversePrefetch();
     CoalescedRefreshKeepsSameEdgeButCompletesOldPrefetch();
+    TerminalReverseIntentCannotBlockViewportRefill();
     CursorBoundaryAndViewportDemand();
     PaginationPrefetchLifecycle();
     AnchoredSelectPopupIsExactAndBounded();

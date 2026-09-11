@@ -1764,6 +1764,19 @@ ScrollPaginationSessionOutcome WidgetInteractionSession::ReconcileScrollPaginati
                 ? latch.beforeResident : latch.afterResident;
         };
 
+        // A prior attempt to scroll past a terminal edge must not block filling
+        // a refreshed viewport. Only retire it once the collection is settled:
+        // actions are also temporarily absent while a fetch is in progress.
+        if (scrollNode && scrollNode->collectionLoading == L"idle" && latch.pendingIntentEdge) {
+            const auto& availableAction = *latch.pendingIntentEdge == ScrollPaginationEdge::Before
+                ? scrollNode->scrollNearStartActionId : scrollNode->scrollNearEndActionId;
+            if (availableAction.empty()) {
+                latch.pendingIntentEdge.reset();
+                latch.pendingIntentGeneration = 0;
+                latch.pendingIntentSource = ScrollPaginationIntentSource::None;
+            }
+        }
+
         if (latch.prefetch) {
             const auto exact = std::ranges::find_if(actions, [&](const auto& action) {
                 return SameScrollPaginationAuthority(latch, authority, action);

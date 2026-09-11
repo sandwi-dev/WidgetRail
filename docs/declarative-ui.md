@@ -1425,6 +1425,10 @@ without eviction churn. Sequential free scrolling remains within the loaded
 window while more data is requested. Viewport anchoring and focus-follow are
 independent during page changes.
 
+Automatic filling of spare viewport space discards a remembered direction
+when the settled collection has no page in that direction. Temporarily missing
+page actions during loading do not discard that intent.
+
 ### Collection loading feedback (protocol v48)
 
 Scroll nodes can carry `collectionLoading`: `idle`, `before`, or `after`.
