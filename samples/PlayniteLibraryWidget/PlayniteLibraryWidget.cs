@@ -216,6 +216,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             state = CapturePresentationStateLocked(navigation.Route, local);
         }
+        CursorDiagnostic("render", "snapshot", navigation.Route);
         var view = PlayniteLibraryPresentation.Render(state);
         var root = _navigation.Scope(navigation, view.Root);
         var initialFocusId = navigation.Route == PlayniteLibraryRoute.Categories ||
@@ -302,7 +303,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 else
                 {
                     var route = _navigation.Value.Route;
-                    _ = LibraryForRoute(route).Refresh();
+                    ObserveCursorOperation("activation-refresh", route, LibraryForRoute(route).Refresh());
                 }
             },
             WidgetOperationLifetime.Active);
@@ -314,6 +315,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         WidgetLifecycleState current,
         CancellationToken stateLifetime)
     {
+        CursorDiagnostic("lifecycle", current.ToString(), _navigation.Value.Route);
         if (current != WidgetLifecycleState.Interactive)
             ClearPendingBackFocus();
         if (current == WidgetLifecycleState.Interactive ||
@@ -449,8 +451,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
         if (TryHandleBrowsePagination(action)) return;
         if (_navigation.Value.Route == PlayniteLibraryRoute.Library &&
-            _homeLibrary.TryHandlePagination(action, out _))
+            _homeLibrary.TryHandlePagination(action, out var pageOperation))
         {
+            ObserveCursorOperation("pagination", PlayniteLibraryRoute.Library, pageOperation);
             Operations.Cancel("playnite-library.launch-lifecycle");
             return;
         }
@@ -470,7 +473,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 return;
             case PlayniteLibraryActions.Refresh:
                 Operations.Cancel("playnite-library.launch-lifecycle");
-                _ = CurrentLibrary.Refresh();
+                ObserveCursorOperation("button-refresh", _navigation.Value.Route, CurrentLibrary.Refresh());
                 return;
             case PlayniteLibraryActions.Retry:
                 _ = CurrentLibrary.Retry();
@@ -796,7 +799,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     _model.Value.AlternateBrowseViewport),
                 StringComparison.Ordinal))
             return false;
-        if (!_browseLibrary.TryHandlePagination(action, out _)) return false;
+        if (!_browseLibrary.TryHandlePagination(action, out var pageOperation)) return false;
+        ObserveCursorOperation("pagination", PlayniteLibraryRoute.Browse, pageOperation);
         Operations.Cancel("playnite-library.launch-lifecycle");
         return true;
     }
@@ -1306,6 +1310,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             local.ActiveCategoryId is not null
             ? PlayniteLibraryCategoryPolicy.Find(organization, local.ActiveCategoryId)?.Name
             : null;
+        CursorDiagnostic("provider-start", direction?.ToString() ?? "Refresh", route);
         var result = await _application.QueryWithAuthorityAsync(
                 query,
                 new(route switch
@@ -1326,6 +1331,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         cancellationToken.ThrowIfCancellationRequested();
         EnsureQueryAuthorityCurrent(route, queryAuthorityGeneration, cancellationToken);
         var page = result.Page;
+        CursorDiagnostic("provider-return", direction?.ToString() ?? "Refresh", route, page.Items.Count);
         lock (_gate) organization = PresentationOrganizationLocked(result.Authority);
         var rawItems = page.Items.Select(PlayniteLibraryItem.From).ToArray();
         var fixedRows = PlayniteLibraryFixedRows.Empty;
@@ -2471,6 +2477,34 @@ public sealed partial class PlayniteLibraryWidget : Widget
             WidgetPagedResourceStatus.Error => "Installed game library unavailable",
             _ => local.Status,
         };
+
+    protected override void OnActionDiagnostic(WidgetActionEvent action, string stage, string code)
+    {
+        if (action.ActionId == PlayniteLibraryActions.Refresh ||
+            action.ActionId == "playnite-library.library.cursor.before" || action.ActionId == "playnite-library.library.cursor.after" ||
+            action.ActionId == "playnite-library.browse.cursor.before" || action.ActionId == "playnite-library.browse.cursor.after")
+            CursorDiagnostic("queue-" + stage, code, _navigation.Value.Route);
+    }
+
+    private void CursorDiagnostic(string stage, string code, PlayniteLibraryRoute route, int resultCount = -1)
+    {
+        if (!CursorTestMode) return;
+        var resource = LibraryForRoute(route);
+        PlayniteLibraryCursorDiagnostics.Record(stage, code, route, LifecycleState,
+            resource.Snapshot, resource.IsBusy, resultCount);
+    }
+
+    private void ObserveCursorOperation(string stage, PlayniteLibraryRoute route, WidgetOperationHandle operation)
+    {
+        if (!CursorTestMode) return;
+        CursorDiagnostic(stage + "-admission", operation.Admission.ToString(), route);
+        _ = ObserveAsync();
+        async Task ObserveAsync()
+        {
+            var result = await operation.Completion.ConfigureAwait(false);
+            CursorDiagnostic(stage + "-completion", result.Status.ToString(), route);
+        }
+    }
 
     private static WidgetResourceError MapError(Exception exception) => exception switch
     {

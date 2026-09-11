@@ -13,6 +13,46 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed class PlayniteLibraryTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task QueuedRefreshAndReopenCanContinueHomePagination()
+    {
+        var host = new FakeHost(LauncherWidget.PageSize * 3) { YieldQueries = true };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var admit = typeof(Widget).GetMethod("AdmitAction",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        void Queue(string action, string source)
+        {
+            var admission = (WidgetOperationAdmission)admit.Invoke(widget, [new WidgetActionEvent(action, source), null])!;
+            Assert.IsTrue(admission is WidgetOperationAdmission.Enqueued or WidgetOperationAdmission.Joined);
+        }
+        async Task WaitFor(Func<bool> condition, string phase)
+        {
+            await Bounded(WaitCore(), phase);
+            async Task WaitCore() { while (!condition()) await Task.Delay(1); }
+        }
+        for (var iteration = 0; iteration < 12; iteration++)
+        {
+            var priorQueries = host.Queries.Count;
+            Queue(PlayniteLibraryActions.Refresh, PlayniteLibraryActions.Refresh);
+            await WaitFor(() => host.Queries.Count > priorQueries &&
+                widget.HomeCollection.Status == WidgetPagedResourceStatus.Ready, "queued refresh");
+            Queue("playnite-library.library.cursor.after", PlayniteLibraryPresentation.HomeRailId);
+            await WaitFor(() => widget.HomeCollection.Items.Count == LauncherWidget.PageSize * 2, "first page demand");
+            await Background(widget);
+            priorQueries = host.Queries.Count;
+            await Interactive(widget);
+            Queue("playnite-library.library.cursor.after", PlayniteLibraryPresentation.HomeRailId);
+            await WaitFor(() => host.Queries.Count > priorQueries &&
+                widget.HomeCollection.Status == WidgetPagedResourceStatus.Ready, "reopened collection");
+            await Bounded(widget.WhenLibraryIdleAsync(), "reopened load drain");
+            Queue("playnite-library.library.cursor.after", PlayniteLibraryPresentation.HomeRailId);
+            await WaitFor(() => widget.HomeCollection.Items.Count >= LauncherWidget.PageSize * 2, "reopened next page");
+        }
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task HomeFavoriteKeepsFocusWhileSavingAndAfterCompletion()
     {
         foreach (var succeeds in new[] { true, false })
@@ -4088,6 +4128,7 @@ public sealed class PlayniteLibraryTests
 
     private sealed class FakeHost
     {
+        internal bool YieldQueries { get; init; }
         internal Task<bool>? FavoriteCompletion { get; init; }
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
             WidgetTestPrivateState, AuthorityBox> Authorities = new();
@@ -4149,6 +4190,7 @@ public sealed class PlayniteLibraryTests
             bool refresh,
             CancellationToken cancellationToken)
         {
+            if (YieldQueries) await Task.Yield();
             cancellationToken.ThrowIfCancellationRequested();
             var retainedLastGood = RetainPublishedCategoriesOnNextQuery;
             if (RetainPublishedCategoriesOnNextQuery)
