@@ -33,6 +33,47 @@ namespace widgetrail::richmedia {
 
 class RichMediaSurfaceCoordinatorTestPeer final {
 public:
+    static bool ReentrantTeardownIsOrdered(const Lifecycle initialLifecycle,
+                                          const bool requestShutdown) {
+        RichMediaSurfaceCoordinator coordinator;
+        coordinator.state_.lifecycle = initialLifecycle;
+        coordinator.profileRootDirectory_ = L"teardown-order-sentinel";
+        // A lease also exercises the early creation visibility callback.
+        (void)coordinator.CreateCallbackLease();
+        int callbacks = 0;
+        bool nestedPreservedState = true;
+        coordinator.configuration_.setPresentationVisible = [&](bool) {
+            ++callbacks;
+            // Bound the reproduction on an unfixed build.
+            if (callbacks > 2) { nestedPreservedState = false; return; }
+            coordinator.BeginSessionTeardown();
+            coordinator.CompleteSessionTeardown();
+            if (requestShutdown) coordinator.Shutdown();
+            nestedPreservedState = nestedPreservedState &&
+                coordinator.state_.lifecycle == Lifecycle::Closing &&
+                coordinator.teardownRequested_ &&
+                !coordinator.teardownBegun_ &&
+                !coordinator.profileRootDirectory_.empty();
+        };
+        coordinator.BeginSessionTeardown();
+        const int expectedCallbacks =
+            initialLifecycle == Lifecycle::EnvironmentCreating ||
+            initialLifecycle == Lifecycle::ControllerCreating ? 2 : 1;
+        const bool ordered = nestedPreservedState &&
+            callbacks == expectedCallbacks &&
+            coordinator.state_.lifecycle == Lifecycle::Closing &&
+            coordinator.teardownBegun_ && !coordinator.teardownRequested_ &&
+            coordinator.sessionTeardownResult_.sessionOwnersEmpty &&
+            !coordinator.profileRootDirectory_.empty();
+        coordinator.CompleteSessionTeardown();
+        const bool completed = coordinator.state_.lifecycle == Lifecycle::Absent &&
+            !coordinator.teardownBegun_ &&
+            coordinator.profileRootDirectory_.empty() == requestShutdown;
+        coordinator.Shutdown();
+        coordinator.Shutdown();
+        return ordered && completed;
+    }
+
     static void Fault(RichMediaSurfaceCoordinator& coordinator,
                       const std::wstring_view code) {
         coordinator.Fault(code, E_FAIL);
@@ -153,7 +194,9 @@ public:
     static void RecordLiveUnexpectedBrowserExit(
         RichMediaSurfaceCoordinator& coordinator, const DWORD processId) {
         RichMediaSurfaceCoordinator::RecordBrowserProcessExit(
-            coordinator.environmentSignal_, processId);
+            coordinator.sharedEnvironment_, processId, true,
+            static_cast<std::uint32_t>(
+                COREWEBVIEW2_BROWSER_PROCESS_EXIT_KIND_FAILED), true);
     }
     static void MarkEnvironmentFaulted(
         RichMediaSurfaceCoordinator& coordinator) {
@@ -695,8 +738,108 @@ void RunMediaSessionManagerContractCases() {
             "the faulted session no longer owns the overlay endpoint");
 }
 
+void RunRetirementReentrancyContractCases() {
+    using namespace widgetrail::richmedia;
+    for (const auto lifecycle : {Lifecycle::EnvironmentCreating,
+             Lifecycle::ControllerCreating, Lifecycle::ReadyHidden,
+             Lifecycle::Visible, Lifecycle::Faulted}) {
+        for (const bool shutdown : {false, true})
+            Require(RichMediaSurfaceCoordinatorTestPeer::ReentrantTeardownIsOrdered(
+                        lifecycle, shutdown),
+                    "nested begin/complete/shutdown preserves outer teardown ordering");
+    }
+
+    // Exercise explicit retirement, invalid geometry, and failure cleanup.
+    for (int terminalPath = 0; terminalPath != 3; ++terminalPath) {
+        media::MediaSessionManager manager{
+            RichMediaSurfaceCoordinator::CreateSharedEnvironment()};
+        const media::SessionKey key{L"retiring", L"instance", L"runtime", L"media"};
+        const media::SessionKey otherKey{L"other", L"instance", L"runtime", L"media"};
+        auto* record = manager.Ensure(key);
+        auto* other = manager.Ensure(otherKey);
+        Require(record && other, "two sessions are admitted");
+        record->authority = media::SessionAuthority{};
+        record->authority->presentationGeneration = L"generation";
+        media::TransitionInput retire{};
+        media::TransitionInput present{
+            true, true, true, true, media::GeometryState::Ready,
+            media::PresentationState::OverlayViewport,
+            media::ParkingReason::EndpointUnavailable,
+            media::EndpointGeometry{
+                reinterpret_cast<HWND>(1), {0, 0, 400, 300}, {0, 0, 400, 300},
+                {0, 0, 400, 300}, 1.0, true, 1}};
+        media::TransitionOperations operations;
+        operations.park = [](const auto&, auto&, auto) { return S_OK; };
+        operations.present = [](const auto&, auto&, auto, const auto&) { return S_OK; };
+        operations.update = [](const auto&, auto&, auto, const auto&) { return E_FAIL; };
+        int terminalCalls = 0;
+        bool failRetirement = terminalPath == 0;
+        auto terminal = [&](const media::SessionKey& exact, media::SessionRecord& live) {
+            ++terminalCalls;
+            Require(terminalCalls <= 2, "terminal side effect cannot recursively execute");
+            Require(manager.Reconcile(exact, retire, operations) == E_PENDING &&
+                        manager.Reconcile(exact, present, operations) == E_PENDING,
+                    "a retiring session defers all nested transitions");
+            Require(!manager.Ensure(exact) && !manager.EraseAfterTerminal(exact) &&
+                        manager.Find(exact) == &live,
+                    "retirement retains its record without allowing reuse or erasure");
+            Require(!manager.RequestPresentation(
+                        exact, media::PresentationState::OverlayFullscreen, L"generation"),
+                    "retiring sessions reject new presentation requests");
+            Require(manager.Reconcile(otherKey, present, operations) == E_PENDING,
+                    "another session cannot displace a retiring endpoint owner");
+            auto pinned = present;
+            pinned.requestedPresentation = media::PresentationState::CompactPinned;
+            Require(SUCCEEDED(manager.Reconcile(otherKey, pinned, operations)),
+                    "retirement does not block an unrelated endpoint");
+            return failRetirement ? E_FAIL : S_OK;
+        };
+        operations.retire = terminal;
+        operations.fault = terminal;
+        Require(SUCCEEDED(manager.Reconcile(key, present, operations)),
+                "session acquires overlay before retirement");
+        auto input = terminalPath == 0 ? retire : present;
+        if (terminalPath == 1) input.geometry = media::GeometryState::Invalid;
+        if (terminalPath == 2) ++input.desiredGeometry->bounds.right;
+        const HRESULT result = manager.Reconcile(key, input, operations);
+        if (terminalPath == 0) {
+            Require(result == E_FAIL && manager.Find(key) == record &&
+                        !record->retirementInProgress &&
+                        manager.EndpointOwner(media::Endpoint::Overlay) == key,
+                    "failed retirement keeps the session available for retry");
+            failRetirement = false;
+            Require(manager.Reconcile(key, retire, operations) == S_OK,
+                    "retirement can be retried after failure");
+        } else {
+            Require(FAILED(result), "fault cleanup preserves failure disposition");
+        }
+        Require(terminalCalls == (terminalPath == 0 ? 2 : 1) &&
+                    !manager.Find(key) &&
+                    !manager.EndpointOwner(media::Endpoint::Overlay) &&
+                    manager.Find(otherKey) == other,
+                "only the retiring session is erased after the outer effect returns");
+        Require(manager.Ensure(key) != nullptr,
+                "same key can be admitted after retirement completes");
+    }
+    // No endpoint owner is needed to protect a parked record from erasure.
+    media::MediaSessionManager parked{
+        RichMediaSurfaceCoordinator::CreateSharedEnvironment()};
+    const media::SessionKey key{L"parked", L"instance", L"runtime", L"media"};
+    Require(parked.Ensure(key) != nullptr, "parked session admitted");
+    media::TransitionOperations operations;
+    operations.retire = [&](const auto& exact, auto&) {
+        Require(!parked.EraseAfterTerminal(exact),
+                "a parked retiring record cannot be erased by a nested caller");
+        return S_OK;
+    };
+    Require(parked.Reconcile(key, {}, operations) == S_OK && parked.empty(),
+            "outer retirement erases parked session");
+    std::cout << "RichMedia teardown reentrancy cases passed=14\n";
+}
+
 void RunContractCases() {
     RunMediaSessionManagerContractCases();
+    RunRetirementReentrancyContractCases();
     using namespace widgetrail::richmedia;
     {
         RichMediaSurfaceCoordinator unbound;
@@ -1834,6 +1977,61 @@ void RunExternalPresentationCommitCases() {
     std::cout << "Rich media external presentation cases passed=12\n";
 }
 
+void RunTeardownMessagePumpCases() {
+    using namespace widgetrail::richmedia;
+    struct Probe {
+        RichMediaSurfaceCoordinator* coordinator{};
+        bool shutdown{};
+        bool called{};
+        bool stayedClosing{};
+    } probe;
+    WNDCLASSW windowClass{};
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.lpszClassName = L"WidgetRail.TeardownReentrancyTests";
+    windowClass.lpfnWndProc = [](HWND window, UINT message, WPARAM wParam,
+                                LPARAM lParam) -> LRESULT {
+        if (message == WM_APP) {
+            auto& current = *reinterpret_cast<Probe*>(lParam);
+            current.called = true;
+            current.coordinator->BeginSessionTeardown();
+            current.coordinator->CompleteSessionTeardown();
+            if (current.shutdown) current.coordinator->Shutdown();
+            current.stayedClosing =
+                current.coordinator->state().lifecycle == Lifecycle::Closing;
+            return 0;
+        }
+        return DefWindowProcW(window, message, wParam, lParam);
+    };
+    Require(RegisterClassW(&windowClass) != 0, "teardown callback class registered");
+    const HWND window = CreateWindowExW(
+        0, windowClass.lpszClassName, L"", 0, 0, 0, 0, 0,
+        HWND_MESSAGE, nullptr, windowClass.hInstance, nullptr);
+    Require(window != nullptr, "teardown callback window created");
+    Fixture fixture(90, false, {}, {}, {}, {}, {}, true);
+    for (int iteration = 0; iteration != 12; ++iteration) {
+        if (iteration != 0)
+            Require(SUCCEEDED(fixture.OpenSession(false, false)),
+                    "session reopens on retained environment");
+        const auto lifecycle = fixture.coordinator().state().lifecycle;
+        Require(lifecycle == Lifecycle::EnvironmentCreating ||
+                    lifecycle == Lifecycle::ControllerCreating,
+                "teardown starts with a real asynchronous creation outstanding");
+        probe = {&fixture.coordinator(), iteration == 11, false, false};
+        Require(PostMessageW(window, WM_APP, 0, reinterpret_cast<LPARAM>(&probe)),
+                "nested teardown callback posted");
+        Require(SUCCEEDED(fixture.CloseSession()),
+                "outer teardown completes after nested Windows callback");
+        const auto result = fixture.coordinator().sessionTeardownResult();
+        Require(probe.called && probe.stayedClosing &&
+                    fixture.coordinator().state().lifecycle == Lifecycle::Absent &&
+                    result.sessionOwnersEmpty && !result.callbackDeadlineExpired,
+                "message pump drains creation without recursive teardown or early completion");
+    }
+    DestroyWindow(window);
+    UnregisterClassW(windowClass.lpszClassName, windowClass.hInstance);
+    std::cout << "RichMedia teardown message-pump cases passed=12\n";
+}
+
 void RunLifecycleCases() {
     using namespace widgetrail::richmedia;
     const auto root = std::filesystem::temp_directory_path() /
@@ -1976,9 +2174,9 @@ void RunSharedEnvironmentAdmissionCases() {
     const auto initialEnvironment = environmentOwner.coordinator().environmentState();
     const auto environment = RichMediaSurfaceCoordinatorTestPeer::SharedEnvironment(
         environmentOwner.coordinator());
-    Require(SUCCEEDED(environmentOwner.CloseSession()) &&
-                environmentOwner.finalDetachSucceededAndWaited(),
-            "shared environment owner session did not retire cleanly");
+    // Keep a controller alive while simulating pending environment creation.
+    // Otherwise WebView2 may exit after the last controller closes, and a
+    // delayed browser-exit event invalidates the healthy-environment Retry case.
     RichMediaSurfaceCoordinatorTestPeer::HoldSharedEnvironmentCreating(
         environmentOwner.coordinator());
 
@@ -2005,6 +2203,9 @@ void RunSharedEnvironmentAdmissionCases() {
 
     RequireReady(aurora, "environment creator did not become ready", L"aurora.primary");
     RequireReady(cedar, "retained environment waiter did not resume", L"cedar.primary");
+    Require(SUCCEEDED(environmentOwner.CloseSession()) &&
+                environmentOwner.finalDetachSucceededAndWaited(),
+            "shared environment owner session did not retire cleanly");
     const auto auroraEnvironment = aurora.coordinator().environmentState();
     const auto cedarEnvironment = cedar.coordinator().environmentState();
     Require(auroraEnvironment.lifecycle == EnvironmentLifecycle::Ready &&
@@ -2640,6 +2841,11 @@ int wmain(int argc, wchar_t** argv) {
     try {
         RunContractCases();
         if (argc > 1 && std::wstring_view{argv[1]} == L"--contract-only") {
+            CoUninitialize();
+            return 0;
+        }
+        RunTeardownMessagePumpCases();
+        if (argc > 1 && std::wstring_view{argv[1]} == L"--teardown-only") {
             CoUninitialize();
             return 0;
         }

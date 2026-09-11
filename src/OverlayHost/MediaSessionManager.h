@@ -116,6 +116,9 @@ struct PresentationRequest final {
 
 struct SessionRecord final {
     SessionKey key;
+    // Terminal side effects pump messages. Keep the record and its endpoint
+    // reserved until the outer retirement finishes.
+    bool retirementInProgress{};
     // Consecutive deferrals for this session. Reset by any effect that
     // actually commits, including a no-op reconcile.
     std::uint32_t deferralStreak{};

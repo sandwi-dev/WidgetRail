@@ -480,6 +480,9 @@ private:
     // an outstanding creation callback to drain. A session that is being
     // retired must not adopt a controller that arrives during that pump.
     bool teardownRequested_{};
+    // A nested Shutdown waits for the caller to detach the presentation and
+    // complete the outer teardown before releasing the environment.
+    bool shutdownRequested_{};
     bool presentationTransferPending_{};
     bool presentationTransferDetached_{};
     bool transferDesiredVisible_{};

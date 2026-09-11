@@ -74,7 +74,7 @@ TransitionPlan MediaSessionManager::PlanTransition(
 SessionRecord* MediaSessionManager::Ensure(const SessionKey& key) {
     const auto value = key.value();
     if (const auto found = sessions_.find(value); found != sessions_.end())
-        return &found->second;
+        return found->second.retirementInProgress ? nullptr : &found->second;
     if (sessions_.size() >= MaximumResidentSessions) return nullptr;
     SessionRecord record;
     record.key = key;
@@ -134,7 +134,7 @@ bool MediaSessionManager::RequestPresentation(
     const PresentationState target,
     const std::wstring_view presentationGeneration) {
     auto* session = Find(key);
-    if (!session || !session->authority ||
+    if (!session || session->retirementInProgress || !session->authority ||
         presentationGeneration.empty() ||
         session->authority->presentationGeneration != presentationGeneration)
         return false;
@@ -184,6 +184,7 @@ HRESULT MediaSessionManager::Reconcile(
     const TransitionOperations& operations) {
     auto* current = Find(key);
     if (!current) return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+    if (current->retirementInProgress) return E_PENDING;
     auto plan = PlanTransition(*current, input);
     if (plan.effect == TransitionEffect::None) {
         // A parked plan carries no endpoint. Adopting the caller resolved
@@ -223,8 +224,12 @@ HRESULT MediaSessionManager::Reconcile(
     // terminal transition instead of dereferencing a freed record.
     const auto faultAndErase = [&](const SessionKey& target,
                                    const HRESULT failure) {
-        if (auto* present = Find(target); present && operations.fault)
-            (void)operations.fault(target, *present);
+        if (auto* present = Find(target)) {
+            if (present->retirementInProgress) return failure;
+            present->retirementInProgress = true;
+            const auto lifetime = present->coordinator;
+            if (operations.fault) (void)operations.fault(target, *present);
+        }
         ClearEndpointOwnership(target);
         sessions_.erase(target.value());
         return failure;
@@ -235,8 +240,12 @@ HRESULT MediaSessionManager::Reconcile(
         const auto& terminal = plan.effect == TransitionEffect::Retire
             ? operations.retire : operations.fault;
         if (!terminal) return E_UNEXPECTED;
+        current->retirementInProgress = true;
         const HRESULT result = terminal(key, *current);
-        if (FAILED(result)) return result;
+        if (FAILED(result)) {
+            current->retirementInProgress = false;
+            return result;
+        }
         ClearEndpointOwnership(key);
         sessions_.erase(key.value());
         return plan.effect == TransitionEffect::Retire ? S_OK : E_INVALIDARG;
@@ -318,6 +327,7 @@ HRESULT MediaSessionManager::Reconcile(
     if (owner && *owner != key) {
         auto* displaced = Find(*owner);
         if (!displaced || !operations.park) return E_UNEXPECTED;
+        if (displaced->retirementInProgress) return E_PENDING;
         const SessionKey displacedKey = displaced->key;
         const auto displacedLifetime = displaced->coordinator;
         const auto displacementReason = *endpoint == Endpoint::Pinned
@@ -382,6 +392,7 @@ HRESULT MediaSessionManager::Reconcile(
 bool MediaSessionManager::EraseAfterTerminal(const SessionKey& key) {
     const auto found = sessions_.find(key.value());
     if (found == sessions_.end()) return false;
+    if (found->second.retirementInProgress) return false;
     if ((overlayOwner_ && *overlayOwner_ == key) ||
         (pinnedOwner_ && *pinnedOwner_ == key)) return false;
     const auto& session = found->second;

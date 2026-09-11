@@ -5024,6 +5024,7 @@ private:
             OverlayFullscreenMediaRequested();
         auto* session = mediaSessions_.Find(sessionKey);
         bool creatingSession = session == nullptr;
+        if (session && session->retirementInProgress) return;
         if (!hasDeclaredViewport && creatingSession) {
             RetireEmbeddedMediaSessionsForWidget(
                 widgetId, L"retained-session-authority-replaced");
@@ -5472,12 +5473,9 @@ private:
             return;
         }
         if (FAILED(initialize)) {
-            session->coordinator->BeginSessionTeardown();
-            session->coordinator->CompleteSessionTeardown();
-            session->coordinator->Shutdown();
             AppendDiagnostic(L"Embedded media initialization failed hr=" +
                 std::to_wstring(static_cast<long>(initialize)));
-            (void)mediaSessions_.EraseAfterTerminal(sessionKey);
+            StopEmbeddedMediaSession(sessionKey, L"initialization-failed");
             return;
         }
         incompleteAdmission.release();

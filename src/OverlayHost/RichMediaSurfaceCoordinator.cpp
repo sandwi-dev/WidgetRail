@@ -2107,14 +2107,18 @@ void RichMediaSurfaceCoordinator::RemoveEvents() noexcept {
 }
 
 void RichMediaSurfaceCoordinator::Shutdown() noexcept {
+    shutdownRequested_ = true;
+    if (teardownRequested_) return;
     BeginSessionTeardown();
     CompleteSessionTeardown();
     ReleaseEnvironment(true);
     profileRootDirectory_.clear();
+    shutdownRequested_ = false;
 }
 
 void RichMediaSurfaceCoordinator::BeginSessionTeardown() noexcept {
-    if (state_.lifecycle == Lifecycle::Absent || teardownBegun_) return;
+    if (state_.lifecycle == Lifecycle::Absent || teardownBegun_ ||
+        teardownRequested_) return;
     // The wait below dispatches messages, which lets WebView2 deliver a
     // pending controller creation for this exact coordinator. Refuse that
     // adoption up front so the doomed callback cannot run a full
@@ -2123,10 +2127,14 @@ void RichMediaSurfaceCoordinator::BeginSessionTeardown() noexcept {
     sessionTeardownResult_ = {};
     retrySurfaceGeneration_ = state_.lifecycle == Lifecycle::Faulted
         ? state_.authority.surfaceGeneration : 0;
+    const bool creationPending =
+        state_.lifecycle == Lifecycle::EnvironmentCreating ||
+        state_.lifecycle == Lifecycle::ControllerCreating;
+    // Publish Closing before any callback or message dispatch. Shared
+    // environment completion must not start another controller during teardown.
+    state_.lifecycle = Lifecycle::Closing;
     const auto creatingLease = callbackLease_;
-    if (creatingLease &&
-        (state_.lifecycle == Lifecycle::EnvironmentCreating ||
-         state_.lifecycle == Lifecycle::ControllerCreating)) {
+    if (creatingLease && creationPending) {
         desiredVisible_ = false;
         state_.inputEnabled = false;
         if (configuration_.setPresentationVisible)
@@ -2207,7 +2215,7 @@ void RichMediaSurfaceCoordinator::BeginSessionTeardown() noexcept {
 }
 
 void RichMediaSurfaceCoordinator::CompleteSessionTeardown() noexcept {
-    if (!teardownBegun_) return;
+    if (teardownRequested_ || !teardownBegun_) return;
     state_ = {};
     waitingForSharedEnvironmentRecovery_ = false;
     desiredVisible_ = false;
@@ -2218,6 +2226,11 @@ void RichMediaSurfaceCoordinator::CompleteSessionTeardown() noexcept {
     presentationTransferPending_ = false;
     transferDesiredVisible_ = false;
     teardownBegun_ = false;
+    if (shutdownRequested_) {
+        ReleaseEnvironment(true);
+        profileRootDirectory_.clear();
+        shutdownRequested_ = false;
+    }
 }
 
 void RichMediaSurfaceCoordinator::ReleaseEnvironment(
