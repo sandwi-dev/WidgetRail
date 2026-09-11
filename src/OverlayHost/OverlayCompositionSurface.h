@@ -78,12 +78,19 @@ public:
     enum class ExternalContentEndpoint { Overlay, Pinned };
     enum class ExternalContentCoordinateSpace { ContentLocal, EndpointLocal };
     enum class Layer {
+        PanelBackground,
         BackgroundBase,
         BackgroundOutgoing,
         BackgroundIncoming,
         Content,
         Guide,
         Tray,
+    };
+    // Back-to-front within the animated widget panel. Host fill must never
+    // occlude artwork extracted from the declarative Content layer.
+    static constexpr Layer ContentLayerOrder[] = {
+        Layer::PanelBackground, Layer::BackgroundBase,
+        Layer::BackgroundOutgoing, Layer::BackgroundIncoming, Layer::Content,
     };
 
     struct Frame final {
@@ -183,6 +190,7 @@ public:
         std::uint64_t content{};
         std::uint64_t guide{};
         std::uint64_t tray{};
+        std::uint64_t panelBackground{};
     };
 
     bool Initialize(HWND window, ID2D1Factory1* factory, std::wstring& error);
@@ -339,6 +347,7 @@ private:
     ExternalContentPresentationState pinnedExternalContentPresentation_{};
     Microsoft::WRL::ComPtr<IDCompositionVisual2> chromeRootVisual_;
     Microsoft::WRL::ComPtr<IDCompositionEffectGroup> effect_;
+    LayerState panelBackground_;
     LayerState backgroundBase_;
     LayerState backgroundOutgoing_;
     LayerState backgroundIncoming_;

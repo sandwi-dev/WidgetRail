@@ -291,15 +291,35 @@ CompositorBackgroundSurfaceCoordinator::Stage(
     return StageDisposition::Committed;
 }
 
+ComputedCompositorBackground CompositorBackgroundSurfaceCoordinator::ResolveRetainedArtwork(
+    const ComputedCompositorBackground& requested) const {
+    auto resolved = requested;
+    const auto* displayed = state_.incoming ? &*state_.incoming
+        : state_.committed ? &*state_.committed : nullptr;
+    if (!requested.retainCurrentArtwork || requested.defaultArtworkKey.empty() || !displayed)
+        return resolved;
+    const auto& previous = displayed->descriptor;
+    if (previous.authorityId == requested.authorityId &&
+        previous.widgetInstanceId == requested.widgetInstanceId &&
+        previous.nodeId == requested.nodeId &&
+        previous.resourceGeneration == requested.resourceGeneration &&
+        previous.defaultArtworkKey == requested.defaultArtworkKey) {
+        resolved.imageSource = previous.imageSource;
+        resolved.artworkHandle = previous.artworkHandle;
+    }
+    return resolved;
+}
+
 std::optional<CompositorBackgroundSurfaceCoordinator::Observation>
 CompositorBackgroundSurfaceCoordinator::Observe(
-    const ComputedCompositorBackground& background,
+    const ComputedCompositorBackground& requested,
     DeclarativeRenderer& renderer,
     OverlayCompositionSurface& surface,
     const unsigned int width,
     const unsigned int height,
     const float pixelsPerDip,
     const std::uint64_t nowMilliseconds) {
+    const auto background = ResolveRetainedArtwork(requested);
     auto next = state_;
     std::wstring diagnostic;
     Staged staged;
@@ -372,7 +392,7 @@ void CompositorBackgroundSurfaceCoordinator::CancelObservation(
 
 CompositorBackgroundSurfaceCoordinator::AdvanceDisposition
 CompositorBackgroundSurfaceCoordinator::Advance(
-    const std::optional<ComputedCompositorBackground>& current,
+    const std::optional<ComputedCompositorBackground>& requested,
     DeclarativeRenderer& renderer,
     OverlayCompositionSurface& surface,
     const unsigned int width,
@@ -380,6 +400,8 @@ CompositorBackgroundSurfaceCoordinator::Advance(
     const float pixelsPerDip,
     const std::uint64_t nowMilliseconds,
     std::wstring& diagnostic) {
+    const auto current = requested
+        ? std::optional{ResolveRetainedArtwork(*requested)} : std::nullopt;
     if (!current || !state_.proposal ||
         !SameDestination(state_.proposal->image.descriptor, *current) ||
         state_.proposal->image.descriptor.focusedElementId !=

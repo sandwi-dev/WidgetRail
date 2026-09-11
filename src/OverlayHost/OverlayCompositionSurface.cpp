@@ -85,6 +85,8 @@ bool OverlayCompositionSurface::Initialize(
     if (SUCCEEDED(result)) result = device_->CreateVisual(
         presentationVisual_.ReleaseAndGetAddressOf());
     if (SUCCEEDED(result)) result = device_->CreateVisual(
+        panelBackground_.visual.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result)) result = device_->CreateVisual(
         backgroundBase_.visual.ReleaseAndGetAddressOf());
     if (SUCCEEDED(result)) result = device_->CreateVisual(
         backgroundOutgoing_.visual.ReleaseAndGetAddressOf());
@@ -106,14 +108,13 @@ bool OverlayCompositionSurface::Initialize(
     if (SUCCEEDED(result)) {
         result = rootVisual_->AddVisual(presentationVisual_.Get(), FALSE, nullptr);
     }
-    if (SUCCEEDED(result)) result = presentationVisual_->AddVisual(
-        backgroundBase_.visual.Get(), FALSE, nullptr);
-    if (SUCCEEDED(result)) result = presentationVisual_->AddVisual(
-        backgroundOutgoing_.visual.Get(), TRUE, backgroundBase_.visual.Get());
-    if (SUCCEEDED(result)) result = presentationVisual_->AddVisual(
-        backgroundIncoming_.visual.Get(), TRUE, backgroundOutgoing_.visual.Get());
-    if (SUCCEEDED(result)) result = presentationVisual_->AddVisual(
-        content_.visual.Get(), TRUE, backgroundIncoming_.visual.Get());
+    IDCompositionVisual2* previous = nullptr;
+    for (const auto layer : ContentLayerOrder) {
+        if (FAILED(result)) break;
+        auto* visual = StateFor(layer).visual.Get();
+        result = presentationVisual_->AddVisual(visual, previous != nullptr, previous);
+        previous = visual;
+    }
     if (SUCCEEDED(result)) result = target_->SetRoot(rootVisual_.Get());
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result)) result = device_->WaitForCommitCompletion();
@@ -226,6 +227,7 @@ void OverlayCompositionSurface::Reset() noexcept {
         (void)target_->SetRoot(nullptr);
         (void)device_->Commit();
     }
+    panelBackground_ = {};
     backgroundBase_ = {};
     backgroundOutgoing_ = {};
     backgroundIncoming_ = {};
@@ -751,6 +753,7 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
 OverlayCompositionSurface::LayerState& OverlayCompositionSurface::StateFor(
     const Layer layer) noexcept {
     switch (layer) {
+    case Layer::PanelBackground: return panelBackground_;
     case Layer::BackgroundBase: return backgroundBase_;
     case Layer::BackgroundOutgoing: return backgroundOutgoing_;
     case Layer::BackgroundIncoming: return backgroundIncoming_;
@@ -764,6 +767,7 @@ OverlayCompositionSurface::LayerState& OverlayCompositionSurface::StateFor(
 const OverlayCompositionSurface::LayerState& OverlayCompositionSurface::StateFor(
     const Layer layer) const noexcept {
     switch (layer) {
+    case Layer::PanelBackground: return panelBackground_;
     case Layer::BackgroundBase: return backgroundBase_;
     case Layer::BackgroundOutgoing: return backgroundOutgoing_;
     case Layer::BackgroundIncoming: return backgroundIncoming_;
@@ -885,6 +889,7 @@ HRESULT OverlayCompositionSurface::EndFrame(Frame& frame) noexcept {
     const HRESULT result = frame.surface->EndDraw();
     if (SUCCEEDED(result)) {
         switch (frame.layer) {
+        case Layer::PanelBackground: ++paintCounters_.panelBackground; break;
         case Layer::BackgroundBase:
         case Layer::BackgroundOutgoing:
         case Layer::BackgroundIncoming: break;

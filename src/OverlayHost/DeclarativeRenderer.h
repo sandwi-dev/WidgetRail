@@ -127,6 +127,10 @@ struct ComputedCompositorBackground final {
     std::uint64_t resourceGeneration{};
     // Preserve the ancestor/viewport clip independently from image-fit bounds.
     std::optional<declarative::Rect> clipBounds;
+    // A focusable descendant without an override retains the last displayed
+    // artwork for this exact surface/default declaration.
+    std::wstring defaultArtworkKey;
+    bool retainCurrentArtwork{};
 };
 
 struct RenderResult final {

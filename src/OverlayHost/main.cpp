@@ -15001,6 +15001,7 @@ private:
 
     enum class CompositionPaintLayer {
         Combined,
+        PanelBackground,
         Content,
         Guide,
         Tray,
@@ -15090,6 +15091,19 @@ private:
         };
 
         const bool overlayFullscreen = OverlayFullscreenMediaRequested();
+        if (layer == CompositionPaintLayer::PanelBackground) {
+            if (!overlayFullscreen && state_.surface() == widgetrail::Surface::Widget) {
+                if (const auto panel = widgetrail::ComputePanelLocalSurfaceGeometry(
+                        metrics->viewportWidthDip, metrics->viewportHeightDip)) {
+                    DrawWidgetPanelBackground({
+                        D2D1::RectF(panel->panelX, panel->panelY,
+                            panel->panelX + panel->panelWidth, panel->footerY),
+                        panelCornerRadius_, panelCornerRadius_});
+                }
+            }
+            finishUpdate();
+            return;
+        }
         if (overlayFullscreen && layer == CompositionPaintLayer::Tray) {
             finishUpdate();
             return;
@@ -15170,6 +15184,7 @@ private:
             BackgroundPresentation> backgroundPresentation;
         std::optional<std::uint64_t> backgroundObservationTransaction;
         bool retireBackground{};
+        std::wstring panelBackgroundKey;
         std::optional<widgetrail::shell::RetainedTrayState> trayState;
         struct OverlayFullscreenGeometry final {
             EmbeddedMediaSessionKey sessionKey;
@@ -16248,6 +16263,20 @@ private:
             }
         }
 
+        set.panelBackgroundKey = retainedPanelBackgroundKey_;
+        if (!retainPendingRefreshPixels) {
+            const auto panelKey = CurrentPanelBackgroundPaintKey(width, height, dpi);
+            if (panelKey != retainedPanelBackgroundKey_ ||
+                !compositionSurface_.hasContent(
+                    widgetrail::OverlayCompositionSurface::Layer::PanelBackground)) {
+                if (!RenderCompositionLayer(width, height, dpi,
+                        widgetrail::OverlayCompositionSurface::Layer::PanelBackground,
+                        CompositionPaintLayer::PanelBackground, contentGeometry,
+                        nullptr, set)) return false;
+            }
+            set.panelBackgroundKey = panelKey;
+        }
+
         const auto guideKey = CurrentGuidePaintKey(
             chromeSession.guideWidth, chromeSession.guideHeight, chromeSession.dpi);
         const bool guideDirty =
@@ -16373,6 +16402,7 @@ private:
         widgetrail::shell::ResetFixedChromeComposition(
             compositionSurface_, chromeWindow_);
         compositorBackgroundCoordinator_.Abandon();
+        retainedPanelBackgroundKey_.clear();
         chromeAccessibilityProvider_.Clear();
         retainedGuidePaintKey_.clear();
         retainedTrayPaintState_.reset();
@@ -16503,6 +16533,7 @@ private:
         }
         if (frames.retireBackground)
             compositorBackgroundCoordinator_.Retire(compositionSurface_);
+        retainedPanelBackgroundKey_ = std::move(frames.panelBackgroundKey);
         if (lastWidgetRenderResult_.compositorBackground) {
             if (const auto deadline = compositorBackgroundCoordinator_.deadline())
                 lastWidgetRenderResult_.backgroundSurfaceSettleWake =
@@ -17257,6 +17288,52 @@ private:
         }
     }
 
+    [[nodiscard]] std::wstring CurrentPanelBackgroundPaintKey(
+        unsigned int width, unsigned int height, UINT dpi) const {
+        const auto appearance = ResolveRenderedSurfaceAppearance();
+        auto* brush = appearance.effective ==
+                widgetrail::surface_appearance::Mode::Solid
+            ? solidCardBrush_.Get() : cardBrush_.Get();
+        const auto color = brush ? brush->GetColor() : D2D1::ColorF(0, 0, 0, 0);
+        return std::to_wstring(width) + L"|" + std::to_wstring(height) + L"|" +
+            std::to_wstring(dpi) + L"|" +
+            std::to_wstring(appearanceState_.current()
+                ? appearanceState_.current()->interfaceScale : 1.0) + L"|" +
+            std::to_wstring(static_cast<int>(state_.surface())) + L"|" +
+            std::to_wstring(OverlayFullscreenMediaRequested()) + L"|" +
+            std::wstring(widgetrail::surface_appearance::Name(appearance.effective)) + L"|" +
+            std::to_wstring(panelCornerRadius_) + L"|" +
+            std::to_wstring(color.r) + L"|" + std::to_wstring(color.g) + L"|" +
+            std::to_wstring(color.b) + L"|" + std::to_wstring(color.a);
+    }
+
+    void DrawWidgetPanelBackground(const D2D1_ROUNDED_RECT& panel) {
+        const auto surfaceAppearance = ResolveRenderedSurfaceAppearance();
+        const std::wstring surfaceDiagnosticKey =
+            std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.declared)) + L"|" +
+            std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.requested)) + L"|" +
+            std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.effective)) + L"|" +
+            std::wstring(surfaceAppearance.fallbackReason);
+        if (surfaceDiagnosticKey != lastSurfaceAppearanceDiagnostic_) {
+            lastSurfaceAppearanceDiagnostic_ = surfaceDiagnosticKey;
+            AppendDiagnostic(
+                L"Widget surface appearance widget=" + std::wstring(state_.activeWidget()) +
+                L" declared=" + std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.declared)) +
+                L" requested=" + std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.requested)) +
+                L" effective=" + std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.effective)) +
+                (surfaceAppearance.fallbackReason.empty() ? std::wstring{} :
+                    L" fallback=" + std::wstring(surfaceAppearance.fallbackReason)));
+        }
+        if (surfaceAppearance.effective != widgetrail::surface_appearance::Mode::Transparent)
+            widgetrail::shell::FillColorKeyRoundedRectangle(
+                renderTarget_.Get(), panel,
+                surfaceAppearance.effective == widgetrail::surface_appearance::Mode::Solid
+                    ? solidCardBrush_.Get() : cardBrush_.Get(),
+                compositionSurface_.available()
+                    ? widgetrail::shell::OuterChromeBoundary::PremultipliedAlpha
+                    : widgetrail::shell::OuterChromeBoundary::ColorKeyAliased);
+    }
+
     void DrawWidget(
         const float width,
         const float height,
@@ -17331,33 +17408,8 @@ private:
         const D2D1_ROUNDED_RECT panel{
             D2D1::RectF(panelLeft, panelTop, panelLeft + panelWidth, visualPanelBottom),
             panelCornerRadius_, panelCornerRadius_};
-        const auto surfaceAppearance = ResolveRenderedSurfaceAppearance();
-        const std::wstring surfaceDiagnosticKey =
-            std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.declared)) + L"|" +
-            std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.requested)) + L"|" +
-            std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.effective)) + L"|" +
-            std::wstring(surfaceAppearance.fallbackReason);
-        if (surfaceDiagnosticKey != lastSurfaceAppearanceDiagnostic_) {
-            lastSurfaceAppearanceDiagnostic_ = surfaceDiagnosticKey;
-            AppendDiagnostic(
-                L"Widget surface appearance widget=" + std::wstring(widget) +
-                L" declared=" + std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.declared)) +
-                L" requested=" + std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.requested)) +
-                L" effective=" + std::wstring(widgetrail::surface_appearance::Name(surfaceAppearance.effective)) +
-                (surfaceAppearance.fallbackReason.empty()
-                    ? std::wstring{}
-                    : L" fallback=" + std::wstring(surfaceAppearance.fallbackReason)));
-        }
-        if (surfaceAppearance.effective !=
-            widgetrail::surface_appearance::Mode::Transparent) {
-            widgetrail::shell::FillColorKeyRoundedRectangle(
-                renderTarget_.Get(), panel,
-                surfaceAppearance.effective == widgetrail::surface_appearance::Mode::Solid
-                    ? solidCardBrush_.Get() : cardBrush_.Get(),
-                compositionSurface_.available()
-                    ? widgetrail::shell::OuterChromeBoundary::PremultipliedAlpha
-                    : widgetrail::shell::OuterChromeBoundary::ColorKeyAliased);
-        }
+        if (layer != CompositionPaintLayer::Content || !compositionSurface_.available())
+            DrawWidgetPanelBackground(panel);
 
         if (bridgeWidget) {
             ComPtr<ID2D1Layer> contentLayer;
@@ -18242,6 +18294,7 @@ private:
     widgetrail::OverlayCompositionSurface compositionSurface_;
     widgetrail::CompositorBackgroundSurfaceCoordinator
         compositorBackgroundCoordinator_;
+    std::wstring retainedPanelBackgroundKey_;
     bool compositionPlacementInProgress_{};
     ComPtr<ID2D1HwndRenderTarget> hwndRenderTarget_;
     ComPtr<ID2D1RenderTarget> renderTarget_;

@@ -704,6 +704,10 @@ struct DeclarativeRenderer::RenderPass final {
             desired.imageFit, bounds, style, opacity,
             snapshot->sequence, owner->bitmapResourceGeneration_,
             shown->second.visibleBox};
+        result.compositorBackground->defaultArtworkKey =
+            surface.imageSource + L"\x1f" + surface.artworkHandle + L"\x1f" + surface.imageFit;
+        result.compositorBackground->retainCurrentArtwork =
+            selection.imageSource.empty() && selection.artworkHandle.empty();
         AddBackgroundSurfaceTransitionDiagnostic(surface, L"compositor-eligible");
         return true;
     }

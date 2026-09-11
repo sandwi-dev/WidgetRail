@@ -770,6 +770,57 @@ int wmain() {
             auto compositorOptions = retargetOptions;
             compositorOptions.compositorBackgroundAvailable = true;
             compositorOptions.animationTimestampMilliseconds = 3000;
+            // Exercise the host's actual back-to-front layer order with an
+            // opaque panel, which the old transparent-only fixture omitted.
+            // Both inline (tray focus) and extracted backgrounds must cover
+            // the host fill; changing focus must still change the image.
+            for (const float hostOpacity : {1.0F, 0.55F, 0.0F}) {
+                for (const auto focus : {L"", L"background.retarget.ordinary",
+                         L"background.retarget.red", L"background.retarget.green",
+                         L"background.retarget.blue"}) {
+                    widgetrail::DeclarativeRenderer panelRenderer{
+                        d2d.Get(), write.Get(), &retargetCache};
+                    target->BeginDraw();
+                    target->Clear(D2D1::ColorF(0, 0, 0, 0));
+                    const auto planned = panelRenderer.Render(
+                        target.Get(), *retargetSnapshot, focus, viewport, compositorOptions);
+                    Require(planned.succeeded, "panel background fixture did not render");
+                    target->Clear(D2D1::ColorF(0, 0, 0, 0));
+                    ComPtr<ID2D1SolidColorBrush> hostFill;
+                    Require(SUCCEEDED(target->CreateSolidColorBrush(
+                                D2D1::ColorF(0, 0, 0, hostOpacity), &hostFill)),
+                            "host panel fixture could not create its fill");
+                    for (const auto layer :
+                         widgetrail::OverlayCompositionSurface::ContentLayerOrder) {
+                        using Layer = widgetrail::OverlayCompositionSurface::Layer;
+                        if (layer == Layer::PanelBackground) {
+                            target->FillRectangle(D2D1::RectF(0, 0, 640, 420), hostFill.Get());
+                        } else if (layer == Layer::BackgroundBase && planned.compositorBackground) {
+                            Require(panelRenderer.PaintCompositorBackground(target.Get(),
+                                        *planned.compositorBackground, nullptr, true),
+                                    "host fixture could not paint background base");
+                        } else if (layer == Layer::BackgroundOutgoing && planned.compositorBackground) {
+                            const auto bitmap = panelRenderer.ResolveCompositorBackgroundBitmap(
+                                target.Get(), *planned.compositorBackground);
+                            Require(bitmap && panelRenderer.PaintCompositorBackground(target.Get(),
+                                        *planned.compositorBackground, bitmap.Get(), false),
+                                    "host fixture could not paint extracted artwork");
+                        } else if (layer == Layer::Content) {
+                            Require(panelRenderer.Render(target.Get(), *retargetSnapshot,
+                                        focus, viewport, compositorOptions).succeeded,
+                                    "host fixture could not paint foreground content");
+                        }
+                    }
+                    Require(SUCCEEDED(target->EndDraw()), "host panel composite draw failed");
+                    const auto pixel = ReadPixel(canvas.Get(), 620, 400);
+                    const std::size_t channel = std::wstring_view{focus} == L"background.retarget.green"
+                        ? 1 : std::wstring_view{focus} == L"background.retarget.blue" ? 0 : 2;
+                    Require(pixel[channel] > 240 && pixel[3] == 255 &&
+                                pixel[(channel + 1) % 3] < 15,
+                            "host panel obscured root artwork or focus replacement");
+                }
+            }
+            std::cout << "Host panel/background ordering pixel cases passed=15\n";
             target->BeginDraw();
             const auto eligible = compositorRenderer.Render(
                 target.Get(), *retargetSnapshot, L"background.retarget.red",
@@ -839,6 +890,18 @@ int wmain() {
                         compositionWindow, compositionFactory.Get(), compositionError),
                 "compositor fixture could not initialize the real DComp owner");
             widgetrail::CompositorBackgroundSurfaceCoordinator coordinator;
+            widgetrail::OverlayCompositionSurface::Frame panelFrame;
+            Require(SUCCEEDED(composition.BeginFrame(
+                        widgetrail::OverlayCompositionSurface::Layer::PanelBackground,
+                        640, 360, 0, 0, nullptr, panelFrame)),
+                    "integrated fixture could not begin the host panel layer");
+            panelFrame.target->Clear(D2D1::ColorF(0, 0, 0, 1));
+            Require(SUCCEEDED(composition.EndFrame(panelFrame)),
+                    "integrated fixture could not finish the host panel layer");
+            widgetrail::OverlayCompositionSurface::CommitTiming panelTiming;
+            std::vector<widgetrail::OverlayCompositionSurface::Frame*> panelFrames{&panelFrame};
+            Require(SUCCEEDED(composition.CommitFrames(panelFrames, false, panelTiming)),
+                    "integrated fixture could not commit the host panel layer");
             widgetrail::DeclarativeRenderer integratedRenderer{
                 compositionFactory.Get(), write.Get(), &retargetCache};
             auto integratedOptions = compositorOptions;
@@ -897,6 +960,8 @@ int wmain() {
             commitObservation(std::move(greenContent), std::move(*greenObservation));
             const auto contentBeforeTransition =
                 composition.paintCounters().content;
+            const auto panelBeforeTransition =
+                composition.paintCounters().panelBackground;
             std::wstring advanceDiagnostic;
             Require(coordinator.Advance(
                         greenResult.compositorBackground, integratedRenderer,
@@ -904,8 +969,9 @@ int wmain() {
                         advanceDiagnostic) == widgetrail::
                             CompositorBackgroundSurfaceCoordinator::
                                 AdvanceDisposition::Advanced &&
-                    composition.paintCounters().content == contentBeforeTransition,
-                "committed background-only transition repainted Content");
+                    composition.paintCounters().content == contentBeforeTransition &&
+                    composition.paintCounters().panelBackground == panelBeforeTransition,
+                "committed background-only transition repainted Content or the host panel");
 
             auto [blueContent, blueResult] = renderIntegrated(
                 L"background.retarget.blue", 3300);
@@ -1031,6 +1097,55 @@ int wmain() {
                 "superseded pending artwork regained presentation authority");
             std::cout << "Compositor cache-miss retention checks passed\n";
             coordinator.Retire(composition);
+            auto [retainedContent, retainedResult] = renderIntegrated(
+                L"background.retarget.green", 6000);
+            auto retainedObservation = coordinator.Observe(
+                *retainedResult.compositorBackground, integratedRenderer,
+                composition, 640, 360, 1.0F, 6000);
+            Require(retainedObservation.has_value(), "retention fixture could not stage green");
+            commitObservation(std::move(retainedContent), std::move(*retainedObservation));
+            auto [pendingContent, pendingResult] = renderIntegrated(
+                L"background.retarget.blue", 6010);
+            auto pendingObservation = coordinator.Observe(
+                *pendingResult.compositorBackground, integratedRenderer,
+                composition, 640, 360, 1.0F, 6010);
+            Require(pendingObservation.has_value(), "retention fixture could not stage pending blue");
+            commitObservation(std::move(pendingContent), std::move(*pendingObservation));
+            auto [ordinaryContent, ordinaryResult] = renderIntegrated(
+                L"background.retarget.ordinary", 6020);
+            Require(ordinaryResult.compositorBackground->retainCurrentArtwork &&
+                        ordinaryResult.compositorBackground->artworkHandle == L"background.retarget.red",
+                    "ordinary focus lost its explicit retention/default distinction");
+            auto ordinaryObservation = coordinator.Observe(
+                *ordinaryResult.compositorBackground, integratedRenderer,
+                composition, 640, 360, 1.0F, 6020);
+            Require(ordinaryObservation && ordinaryObservation->frames.empty(),
+                    "ordinary focus unnecessarily repainted retained artwork");
+            commitObservation(std::move(ordinaryContent), std::move(*ordinaryObservation));
+            Require(CoordinatorAccess::CommittedHandle(coordinator) == L"background.retarget.green" &&
+                        !coordinator.deadline(),
+                    "Retain selected the default or pending artwork instead of the displayed image");
+            retargetSnapshot->root.artworkHandle = L"background.retarget.blue";
+            ++retargetSnapshot->sequence;
+            auto [defaultContent, defaultResult] = renderIntegrated(
+                L"background.retarget.ordinary", 6100);
+            auto defaultObservation = coordinator.Observe(
+                *defaultResult.compositorBackground, integratedRenderer,
+                composition, 640, 360, 1.0F, 6100);
+            Require(defaultObservation.has_value(), "changed default was not observed");
+            commitObservation(std::move(defaultContent), std::move(*defaultObservation));
+            Require(coordinator.Advance(defaultResult.compositorBackground,
+                        integratedRenderer, composition, 640, 360, 1.0F, 6250,
+                        advanceDiagnostic) ==
+                        widgetrail::CompositorBackgroundSurfaceCoordinator::AdvanceDisposition::Advanced &&
+                        CoordinatorAccess::IncomingHandle(coordinator) == L"background.retarget.blue",
+                    "changed default incorrectly inherited retained artwork from the prior declaration");
+            coordinator.Retire(composition);
+            Require(composition.hasContent(
+                        widgetrail::OverlayCompositionSurface::Layer::PanelBackground) &&
+                        composition.paintCounters().panelBackground == panelBeforeTransition,
+                    "background retirement removed or repainted the independent host panel");
+            std::cout << "Compositor ordinary-focus retention and panel lifetime checks passed\n";
             composition.Reset();
             DestroyWindow(compositionWindow);
             retargetCache.Shutdown();
