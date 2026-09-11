@@ -1741,6 +1741,17 @@ void ColdCollectionAndReversePrefetch() {
         "an empty loading shell does not invent pagination data");
     Check(cold.ReconcileScrollPagination(Authority(snapshot,L"paged.widget"), geometry, 2).dispatchReady,
         "the first real page warms its next page without waiting for a stick movement");
+    Check(cold.AcquireScrollPaginationDispatch(Authority(snapshot,L"paged.widget"), geometry, 3).first.has_value(),
+        "the initial request reaches in-flight state");
+    auto refreshing = snapshot;
+    refreshing.root.children[0].scrollNearEndActionId.clear();
+    (void)cold.ReconcileScrollPagination(Authority(refreshing,L"paged.widget"), geometry, 4);
+    (void)cold.RetireScrollPagination(L"paged.widget", L"overlay-hidden");
+    (void)cold.ReconcileScrollPagination(Authority(refreshing,L"paged.widget"), geometry, 5);
+    (void)cold.ObserveScrollPaginationIntent(Authority(refreshing,L"paged.widget"),L"page.scroll",
+        widgetrail::declarative::ScrollAxis::Vertical,ScrollPaginationEdge::After,ScrollPaginationIntentSource::RightStick,6);
+    Check(cold.ReconcileScrollPagination(Authority(snapshot,L"paged.widget"), geometry, 7).dispatchReady,
+        "refresh and reopen can rearm the same page edge once its request becomes available again");
 
     snapshot.root.children[0].scrollNearStartActionId=L"page.before";
     auto middle = PagedRender(0,44);

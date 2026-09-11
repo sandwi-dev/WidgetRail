@@ -580,6 +580,13 @@ Positioned collections prefetch within two viewport lengths of either loaded
 edge. This is a latency budget, not a guarantee: slow providers can still require
 waiting at the loaded boundary. Size page batches and retention for the viewport.
 
+Pagination actions are published only for a Ready cursor snapshot. Custom
+presentations must follow this rule too, so a pending refresh or fetch cannot
+be mistaken for another available page. A stale page demand during refresh
+joins the refresh without replacing it; callers can request again after it
+settles. Cancellation restores the last settled state rather than a superseded
+operation's transient loading state.
+
 `WidgetAppLibraryItem` has one authoritative normalized `Presentation` value;
 there are no duplicate scalar title/kind/source/artwork accessors. It contains
 the sanitized display name and closed kind, one opaque source reference, one

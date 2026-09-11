@@ -31,6 +31,9 @@ public sealed class PlayniteLibraryLayoutTests
             Assert.AreEqual(expected, view.InitialFocusId, phase.ToString());
             var snapshot = new PresentationWidget(view).RenderSnapshot("browse.paging", 1);
             Assert.AreEqual("34 games", Nodes(snapshot.Root).Single(node => node.Id == "playnite-library.status").Text);
+            var scroll = Nodes(snapshot.Root).Single(node => node.Id == PlayniteLibraryPresentation.ScrollId);
+            Assert.AreEqual(phase == WidgetPagedResourceStatus.Ready, scroll.ScrollNearEndActionId is not null,
+                "Only a settled collection may advertise another page request.");
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
         }
         var finalPage = state with { Collection = Snapshot(WidgetPagedResourceStatus.Ready, items.Take(4).ToArray(), before: "prev") };

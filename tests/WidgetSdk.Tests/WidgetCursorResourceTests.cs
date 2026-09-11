@@ -5,6 +5,8 @@ internal static class WidgetCursorResourceTests
 {
     public static async Task Run()
     {
+        await RefreshRejectsStalePaginationAndResumesAfterReopen();
+        await CanceledReplacementRestoresSettledState();
         await EqualVisibleDemandJoinsPendingPage();
         await CapturedPresentationSurvivesConcurrentEviction();
         await PendingPagePreservesNewAnchor();
@@ -22,6 +24,61 @@ internal static class WidgetCursorResourceTests
         await ResetCancelsJoinedLoadAndAllowsFreshWork();
         await ActiveLifecycleDrainsJoinedLoad();
         ContractIsVersionedOpaqueAndBounded();
+    }
+
+    private static async Task RefreshRejectsStalePaginationAndResumesAfterReopen()
+    {
+        var started = Signal();
+        var hold = false;
+        var calls = 0;
+        var widget = await StartAsync(Options(40, pageSize: 4, maximumRetainedItems: 12,
+            async: async (cursor, direction, limit, token) =>
+            {
+                Interlocked.Increment(ref calls);
+                if (hold) { started.TrySetResult(); await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+                return Page(cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1)), limit, 40);
+            }));
+        await widget.Resource.EnsureLoaded().Completion;
+        hold = true;
+        var refresh = widget.Resource.Refresh();
+        await started.Task;
+        var staleDemand = widget.Resource.Prefetch(WidgetCursorDirection.After, "items.list");
+        Equal(WidgetOperationAdmission.Joined, staleDemand.Admission);
+        Equal(WidgetPagedResourceStatus.Refreshing, widget.Resource.Snapshot.Status);
+        var loading = widget.Resource.Capture().Present(UI.VerticalScroll("items.list"));
+        Equal<string?>(null, loading.NearEndActionId);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+        Equal(WidgetOperationStatus.Canceled, (await refresh.Completion).Status);
+        await staleDemand.Completion;
+        Equal(WidgetPagedResourceStatus.Ready, widget.Resource.Snapshot.Status);
+        Equal(2, calls);
+        hold = false;
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+        await widget.Resource.Refresh().Completion;
+        await widget.Resource.Prefetch(WidgetCursorDirection.After, "items.list").Completion;
+        Equal(8, widget.Resource.Snapshot.Items.Count);
+        await StopAsync(widget);
+    }
+
+    private static async Task CanceledReplacementRestoresSettledState()
+    {
+        var hold = false;
+        var widget = await StartAsync(Options(40, pageSize: 4, maximumRetainedItems: 12,
+            async: async (cursor, direction, limit, token) =>
+            {
+                if (hold) await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return Page(cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1)), limit, 40);
+            }));
+        await widget.Resource.EnsureLoaded().Completion;
+        hold = true;
+        var page = widget.Resource.Prefetch(WidgetCursorDirection.After, "items.list");
+        var replacement = widget.Resource.Refresh();
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+        await page.Completion; await replacement.Completion;
+        Equal(WidgetPagedResourceStatus.Ready, widget.Resource.Snapshot.Status);
+        Equal(CollectionLoadingState.Idle, widget.Resource.Snapshot.LoadingState);
+        True(!widget.Resource.IsBusy, "Canceled replacement must not retain a loading state with no operation.");
+        await StopAsync(widget);
     }
 
     private static async Task EqualVisibleDemandJoinsPendingPage()

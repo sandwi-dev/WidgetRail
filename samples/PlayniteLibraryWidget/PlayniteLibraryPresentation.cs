@@ -400,7 +400,7 @@ internal static class PlayniteLibraryPresentation
                 .ToArray();
             catalogPage = true;
             catalogAnchorKey = rail.CatalogAnchorKey;
-            if (snapshot.Status != WidgetPagedResourceStatus.Error &&
+            if (snapshot.Status == WidgetPagedResourceStatus.Ready &&
                 (snapshot.HasBefore || snapshot.HasAfter))
             {
                 pageBeforeActionId = snapshot.HasBefore

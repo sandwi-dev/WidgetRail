@@ -244,13 +244,20 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         if (!Enum.IsDefined(direction)) throw new ArgumentOutOfRangeException(nameof(direction));
         StableIdentifier.Validate(sourceScrollId, nameof(sourceScrollId));
         WidgetCollectionCursor? cursor;
-        lock (_gate)
+        lock (_admissionGate)
         {
-            if (!_viewports.ContainsKey(sourceScrollId))
-                throw new ArgumentException("The source is not a configured cursor viewport.", nameof(sourceScrollId));
-            cursor = direction == WidgetCursorDirection.Before ? _snapshot.Before : _snapshot.After;
+            lock (_gate)
+            {
+                if (!_viewports.ContainsKey(sourceScrollId))
+                    throw new ArgumentException("The source is not a configured cursor viewport.", nameof(sourceScrollId));
+                // An action authored by the retained view must not replace the
+                // refresh that is establishing its new cursor authority.
+                if (_current is { Intent.Direction: null } refresh)
+                    return new(WidgetOperationAdmission.Joined, refresh.Completion.Task);
+                cursor = direction == WidgetCursorDirection.Before ? _snapshot.Before : _snapshot.After;
+            }
+            return cursor is null ? Completed() : Start(new(cursor, direction, sourceScrollId, false, moveFocus, originFocusId, protectedKeys));
         }
-        return cursor is null ? Completed() : Start(new(cursor, direction, sourceScrollId, false, moveFocus, originFocusId, protectedKeys));
     }
 
     public WidgetOperationHandle Retry()
@@ -293,14 +300,18 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         ArgumentNullException.ThrowIfNull(scroll);
         if (!_viewports.ContainsKey(scroll.Id))
             throw new ArgumentException("The scroll is not a configured cursor viewport.", nameof(scroll));
-        var before = snapshot.Status != WidgetPagedResourceStatus.Error && snapshot.HasBefore
+        var before = snapshot.Status == WidgetPagedResourceStatus.Ready && snapshot.HasBefore
             ? _beforeActionId
             : null;
-        var after = snapshot.Status != WidgetPagedResourceStatus.Error && snapshot.HasAfter
+        var after = snapshot.Status == WidgetPagedResourceStatus.Ready && snapshot.HasAfter
             ? _afterActionId
             : null;
-        var result = before is null && after is null ? scroll :
-            scroll.Paginate(before, after, _options.PaginationThreshold);
+        var result = scroll with
+        {
+            NearStartActionId = before,
+            NearEndActionId = after,
+            PaginationThreshold = before is null && after is null ? null : _options.PaginationThreshold,
+        };
         return result with
         {
             CollectionAnchorKey = snapshot.Anchor?.Value,
@@ -410,7 +421,9 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                     return new(WidgetOperationAdmission.Joined, duplicate.Completion.Task);
                 if (intent.MoveFocus && _navigationRequestId >= ProtocolConstants.MaximumFocusGroupEntryRequestId)
                     throw new InvalidOperationException("Navigation request generation exhausted.");
-                var before = _snapshot;
+                // Cancellation must restore settled data, never the loading
+                // status of the operation that this request superseded.
+                var before = _current?.Before ?? _snapshot;
                 request = new(intent, _epoch, before, _focusIntentRevision);
                 _current = request;
                 var status = before.Items.Count == 0 ? WidgetPagedResourceStatus.Loading :
