@@ -20,6 +20,21 @@ internal static class SettingsToastScenarios
             await widget.InitializeAsync(default);
             await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default);
             await widget.InitializationTask;
+            await widget.OnActionAsync(new WidgetActionEvent("open.controllers", "test"));
+            foreach (var shortcut in new[] { "Guide", "View + Menu" })
+            {
+                await widget.OnActionAsync(new WidgetActionEvent("controllers.open-shortcut.toggle", "controllers.open-shortcut"));
+                var changed = Snapshot();
+                if (Nodes(changed.Root).SingleOrDefault(node => node.Id == "settings.toast.message")?.Text !=
+                    $"Controller shortcut set to {shortcut}")
+                    throw new Exception("Saving the shortcut must replace busy feedback with a confirmation.");
+                clock.Advance(TimeSpan.FromSeconds(4));
+                if (!HasToast()) throw new Exception("Shortcut confirmation disappeared before its duration elapsed.");
+                clock.Advance(TimeSpan.FromSeconds(1));
+                await widget.ToastExpiryTask.WaitAsync(TimeSpan.FromSeconds(5));
+                if (HasToast() || Snapshot().InitialFocusId != changed.InitialFocusId)
+                    throw new Exception("Shortcut confirmation must expire after five seconds without changing focus.");
+            }
             await Refresh();
             var snapshot = Snapshot();
             if (!HasToast() || snapshot.Root.Children.Last().Id != "settings.toast")

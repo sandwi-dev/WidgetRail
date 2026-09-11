@@ -735,7 +735,9 @@ public sealed class SettingsWidget : Widget
                 _settingsValid = true;
                 _busy = false;
                 _error = false;
-                StatusMessage = "Ready";
+                StatusMessage = saved.Controllers.OpenShortcut == ControllerOpenShortcut.Guide
+                    ? "Controller shortcut set to Guide"
+                    : "Controller shortcut set to View + Menu";
             }
         }
         catch (PlatformSettingsException exception)
