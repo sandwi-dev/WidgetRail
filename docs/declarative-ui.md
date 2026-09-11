@@ -455,6 +455,12 @@ result for an older focus cannot replace the current selection. Keep every
 referenced handle resolvable through the ordinary bounded
 `OnResolveArtworkAsync` contract.
 
+When focused artwork changes during a background fade, the compositor starts
+the next fade from the currently blended image. The retained blend preserves
+physical pixel alignment and resolution, including inset surfaces and display
+scaling. Image fitting, clipping, and authored opacity are baked into that blend
+once; subsequent retargets reuse it without applying those effects again.
+
 ## Focus-associated presentation (protocol v40)
 
 `UI.FocusPresentationSurface(...)` reserves one ordinary content subtree and

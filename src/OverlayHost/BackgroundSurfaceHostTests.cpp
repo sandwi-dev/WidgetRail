@@ -14,6 +14,7 @@
 #include <iostream>
 #include <chrono>
 #include <condition_variable>
+#include <cmath>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -23,6 +24,27 @@
 
 namespace widgetrail {
 struct CompositorBackgroundSurfaceCoordinatorTestAccess final {
+    using Image = CompositorBackgroundSurfaceCoordinator::Image;
+    static void ConfigureTarget(
+        ID2D1RenderTarget* target, POINT offset, float scale) {
+        CompositorBackgroundSurfaceCoordinator::ConfigureTarget(
+            target, RECT{0, 0, 256, 256}, offset, scale);
+    }
+    static Image Rebase(
+        const Image& committed, const Image& incoming,
+        DeclarativeRenderer& renderer, ID2D1RenderTarget* target, float scale) {
+        CompositorBackgroundSurfaceCoordinator coordinator;
+        coordinator.state_.committed = committed;
+        coordinator.state_.incoming = incoming;
+        coordinator.state_.transitionStartedAt = 1000;
+        Image result;
+        std::wstring diagnostic;
+        if (!coordinator.RebaseOutgoing(
+                coordinator.state_, renderer, target, scale, 1200,
+                result, diagnostic))
+            throw std::runtime_error("compositor pixel rebase failed");
+        return result;
+    }
     static bool SameDestination(
         const ComputedCompositorBackground& left,
         const ComputedCompositorBackground& right) {
@@ -183,6 +205,118 @@ bool HasDiagnostic(
         [&](const auto& diagnostic) { return diagnostic.code == code; });
 }
 
+void VerifyCompositorRebasePixels(
+    ID2D1Factory* d2d, IDWriteFactory* write, IWICImagingFactory* wic) {
+    using Microsoft::WRL::ComPtr;
+    using Access = widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess;
+    ComPtr<IWICBitmap> canvas;
+    Require(SUCCEEDED(wic->CreateBitmap(
+        256, 256, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad,
+        canvas.ReleaseAndGetAddressOf())), "compositor pixel canvas failed");
+    ComPtr<ID2D1RenderTarget> target;
+    Require(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+        canvas.Get(), D2D1::RenderTargetProperties(),
+        target.ReleaseAndGetAddressOf())), "compositor pixel target failed");
+    widgetrail::DeclarativeRenderer renderer{d2d, write, nullptr};
+    const auto bitmap = [&](bool green) {
+        // An asymmetric image makes a second contain/cover operation observable.
+        std::array<UINT32, 8> pixels = green
+            ? std::array<UINT32, 8>{0xff00ff00, 0xff00ff00, 0xff0000ff, 0xff0000ff,
+                                    0xff00ff00, 0xff00ff00, 0xff0000ff, 0xff0000ff}
+            : std::array<UINT32, 8>{0xffff0000, 0xffff0000, 0xffffffff, 0xffffffff,
+                                    0xffff0000, 0xffff0000, 0xffffffff, 0xffffffff};
+        ComPtr<ID2D1Bitmap> result;
+        Require(SUCCEEDED(target->CreateBitmap(
+            D2D1::SizeU(4, 2), pixels.data(), 4 * sizeof(UINT32),
+            D2D1::BitmapProperties(D2D1::PixelFormat(
+                DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96, 96),
+            result.ReleaseAndGetAddressOf())), "compositor source bitmap failed");
+        return result;
+    };
+    const auto red = bitmap(false);
+    const auto green = bitmap(true);
+    const auto paint = [&](const Access::Image& image, float opacity) {
+        Require(renderer.PaintCompositorBackground(
+            target.Get(), image.descriptor, image.bitmap.Get(), false, opacity,
+            image.surfaceComposite), "compositor pixel paint failed");
+    };
+    const auto begin = [&](float scale) {
+        Access::ConfigureTarget(target.Get(), POINT{11, 7}, scale);
+        target->BeginDraw();
+        target->Clear(D2D1::ColorF(0, 0, 0, 0));
+    };
+    const auto end = [&] {
+        Require(SUCCEEDED(target->EndDraw()), "compositor pixel EndDraw failed");
+    };
+    const auto read = [&] {
+        std::vector<std::array<BYTE, 4>> result;
+        for (UINT y = 0; y < 140; ++y)
+            for (UINT x = 0; x < 220; ++x)
+                result.push_back(ReadPixel(canvas.Get(), x, y));
+        return result;
+    };
+    unsigned int retargetCount{};
+    for (const auto bounds : {widgetrail::declarative::Rect{16, 12, 80, 48},
+                             widgetrail::declarative::Rect{16.25F, 12.5F, 79.5F, 47.25F}}) {
+        for (const float scale : {1.0F, 1.25F, 1.5F, 2.0F}) {
+            for (const float opacity : {1.0F, 0.45F}) {
+                for (const auto fit : {L"cover", L"contain"}) {
+                    widgetrail::ComputedCompositorBackground descriptor;
+                    descriptor.bounds = bounds;
+                    descriptor.imageFit = fit;
+                    descriptor.opacity = opacity;
+                    Access::Image committed{descriptor, red};
+                    Access::Image incoming{descriptor, green};
+                    for (int retarget = 0; retarget < 3; ++retarget) {
+                        begin(scale);
+                        paint(committed, 1.0F);
+                        paint(incoming, 0.875F); // cubic ease-out at 200/400 ms
+                        end();
+                        const auto before = read();
+                        const auto composite = Access::Rebase(
+                            committed, incoming, renderer, target.Get(), scale);
+                        const auto size = composite.bitmap->GetPixelSize();
+                        Require(size.width == static_cast<UINT>(
+                                    std::ceil((bounds.x + bounds.width) * scale) -
+                                    std::floor(bounds.x * scale)) &&
+                                size.height == static_cast<UINT>(
+                                    std::ceil((bounds.y + bounds.height) * scale) -
+                                    std::floor(bounds.y * scale)),
+                            "rebase did not preserve physical resolution");
+                        begin(scale);
+                        paint(composite, 1.0F);
+                        end();
+                        const auto after = read();
+                        for (std::size_t p = 0; p < before.size(); ++p)
+                            for (std::size_t c = 0; c < 4; ++c)
+                                Require(std::abs(int(before[p][c]) - int(after[p][c])) <= 2,
+                                    "retarget changed presented pixels");
+                        committed = composite;
+                        incoming.bitmap = retarget % 2 == 0 ? red : green;
+                        ++retargetCount;
+                    }
+                }
+            }
+        }
+    }
+    // Check the production drawing transform against actual pixel placement,
+    // independently of the before/after comparison above.
+    widgetrail::ComputedCompositorBackground descriptor;
+    descriptor.bounds = {0, 0, 8, 4};
+    descriptor.imageFit = L"cover";
+    descriptor.opacity = 1.0F;
+    begin(2.0F);
+    paint(Access::Image{descriptor, red}, 1.0F);
+    end();
+    Require(ReadPixel(canvas.Get(), 12, 8)[3] == 255 &&
+            ReadPixel(canvas.Get(), 10, 8)[3] == 0 &&
+            ReadPixel(canvas.Get(), 12, 6)[3] == 0 &&
+            ReadPixel(canvas.Get(), 27, 8)[3] == 0,
+        "background draw ignored or scaled the backing-surface offset");
+    std::cout << "Compositor background pixel continuity: "
+              << retargetCount << " retargets passed\n";
+}
+
 } // namespace
 
 int wmain() {
@@ -308,6 +442,7 @@ int wmain() {
             CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
             IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
             "WIC factory creation failed");
+        VerifyCompositorRebasePixels(d2d.Get(), write.Get(), wic.Get());
         ComPtr<IWICBitmap> canvas;
         Require(SUCCEEDED(wic->CreateBitmap(
             640, 420, GUID_WICPixelFormat32bppPBGRA,

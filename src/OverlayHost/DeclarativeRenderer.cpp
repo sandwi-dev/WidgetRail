@@ -4553,7 +4553,8 @@ bool DeclarativeRenderer::PaintCompositorBackground(
     const ComputedCompositorBackground& background,
     ID2D1Bitmap* const bitmap,
     const bool baseOnly,
-    const float opacity) const {
+    const float opacity,
+    const bool surfaceComposite) const {
     if (!renderTarget) return false;
     WidgetNode node;
     node.id = background.nodeId;
@@ -4564,6 +4565,13 @@ bool DeclarativeRenderer::PaintCompositorBackground(
     if (baseOnly) {
         pass.DrawSurface(node, background.style, background.bounds,
             background.opacity);
+        return true;
+    }
+    if (surfaceComposite && bitmap) {
+        // A rebase already contains image fitting, clipping, and surface
+        // opacity. Only the new transition's opacity belongs on this draw.
+        renderTarget->DrawBitmap(bitmap, D2DRect(background.bounds), opacity,
+            D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
         return true;
     }
     return bitmap && pass.DrawResolvedImageLayers(

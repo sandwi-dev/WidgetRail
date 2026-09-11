@@ -6,6 +6,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
@@ -47,18 +48,62 @@ std::wstring CompositorBackgroundSurfaceCoordinator::Key(
         L"\x1f" + background.artworkHandle + L"\x1f" + background.imageFit;
 }
 
+void CompositorBackgroundSurfaceCoordinator::ConfigureTarget(
+    ID2D1RenderTarget* const target, const RECT& updateArea,
+    const POINT updateOffset, const float pixelsPerDip) {
+    const auto mapping = PlanCompositionUpdateRasterMapping(
+        updateArea, updateOffset, pixelsPerDip);
+    target->SetDpi(96, 96);
+    target->SetTransform(
+        D2D1::Matrix3x2F::Scale(pixelsPerDip, pixelsPerDip) *
+        D2D1::Matrix3x2F::Translation(
+            mapping.sceneTranslationPixels.x, mapping.sceneTranslationPixels.y));
+}
+
 bool CompositorBackgroundSurfaceCoordinator::RebaseOutgoing(
     const State& state,
     DeclarativeRenderer& renderer,
     ID2D1RenderTarget* const target,
-    const unsigned int width,
-    const unsigned int height,
+    const float pixelsPerDip,
     const std::uint64_t nowMilliseconds,
     Image& result,
     std::wstring& diagnostic) const {
-    if (!state.committed || !state.incoming || !target ||
-        static_cast<std::uint64_t>(width) * height * 4ULL >
-            kMaximumRebaseBytes) {
+    if (!state.committed || !state.incoming || !target) {
+        diagnostic = L"rebase=invalid-state";
+        return false;
+    }
+    const auto outgoingBounds = state.committed->descriptor.bounds;
+    const auto incomingBounds = state.incoming->descriptor.bounds;
+    const auto validBounds = [](const auto& bounds) {
+        return std::isfinite(bounds.x) && std::isfinite(bounds.y) &&
+            std::isfinite(bounds.width) && std::isfinite(bounds.height) &&
+            bounds.width > 0.0F && bounds.height > 0.0F;
+    };
+    if (!validBounds(outgoingBounds) || !validBounds(incomingBounds)) {
+        diagnostic = L"rebase=invalid-bounds";
+        return false;
+    }
+    // Keep the same physical pixel grid as the presented layers, including
+    // fractional logical origins and any extent retained by an earlier rebase.
+    const double left = std::floor(
+        static_cast<double>(std::min(outgoingBounds.x, incomingBounds.x)) * pixelsPerDip);
+    const double top = std::floor(
+        static_cast<double>(std::min(outgoingBounds.y, incomingBounds.y)) * pixelsPerDip);
+    const double right = std::ceil(std::max(
+        static_cast<double>(outgoingBounds.x) + outgoingBounds.width,
+        static_cast<double>(incomingBounds.x) + incomingBounds.width) * pixelsPerDip);
+    const double bottom = std::ceil(std::max(
+        static_cast<double>(outgoingBounds.y) + outgoingBounds.height,
+        static_cast<double>(incomingBounds.y) + incomingBounds.height) * pixelsPerDip);
+    const double pixelWidth = right - left;
+    const double pixelHeight = bottom - top;
+    if (!std::isfinite(pixelsPerDip) || pixelsPerDip <= 0.0F ||
+        !std::isfinite(left) || !std::isfinite(top) ||
+        !std::isfinite(pixelWidth) || !std::isfinite(pixelHeight) ||
+        pixelWidth <= 0 || pixelHeight <= 0 ||
+        pixelWidth > std::numeric_limits<UINT32>::max() ||
+        pixelHeight > std::numeric_limits<UINT32>::max() ||
+        pixelWidth * pixelHeight * 4.0 > kMaximumRebaseBytes) {
         diagnostic = L"rebase=resource-bound";
         return false;
     }
@@ -69,25 +114,37 @@ bool CompositorBackgroundSurfaceCoordinator::RebaseOutgoing(
     const float inverse = 1.0F - linear;
     const float progress = 1.0F - inverse * inverse * inverse;
     ComPtr<ID2D1BitmapRenderTarget> composite;
-    const auto size = D2D1::SizeF(
-        state.incoming->descriptor.bounds.width,
-        state.incoming->descriptor.bounds.height);
+    const declarative::Rect bounds{
+        static_cast<float>(left / pixelsPerDip),
+        static_cast<float>(top / pixelsPerDip),
+        static_cast<float>(pixelWidth / pixelsPerDip),
+        static_cast<float>(pixelHeight / pixelsPerDip)};
+    const auto size = D2D1::SizeF(bounds.width, bounds.height);
+    const auto pixels = D2D1::SizeU(
+        static_cast<UINT32>(pixelWidth), static_cast<UINT32>(pixelHeight));
     if (FAILED(target->CreateCompatibleRenderTarget(
-            &size, nullptr, nullptr,
+            &size, &pixels, nullptr,
             D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
             composite.ReleaseAndGetAddressOf())) || !composite) {
         diagnostic = L"rebase=failed";
         return false;
     }
+    // Capture in surface-local coordinates at the physical display resolution.
+    // The parent target's backing-atlas translation must not enter this bitmap.
+    composite->SetTransform(D2D1::Matrix3x2F::Translation(-bounds.x, -bounds.y));
     composite->BeginDraw();
     composite->Clear(D2D1::ColorF(0, 0, 0, 0));
     (void)renderer.PaintCompositorBackground(
         composite.Get(), state.committed->descriptor,
-        state.committed->bitmap.Get(), false, 1.0F);
+        state.committed->bitmap.Get(), false, 1.0F,
+        state.committed->surfaceComposite);
     (void)renderer.PaintCompositorBackground(
         composite.Get(), state.incoming->descriptor,
-        state.incoming->bitmap.Get(), false, progress);
+        state.incoming->bitmap.Get(), false, progress,
+        state.incoming->surfaceComposite);
     result.descriptor = state.incoming->descriptor;
+    result.descriptor.bounds = bounds;
+    result.surfaceComposite = true;
     if (FAILED(composite->EndDraw()) ||
         FAILED(composite->GetBitmap(result.bitmap.ReleaseAndGetAddressOf()))) {
         diagnostic = L"rebase=failed";
@@ -119,9 +176,8 @@ CompositorBackgroundSurfaceCoordinator::Stage(
         const HRESULT result = surface.BeginFrame(
             layer, width, height, 0, 0, nullptr, frames[index]);
         if (FAILED(result)) return false;
-        frames[index].target->SetDpi(96, 96);
-        frames[index].target->SetTransform(
-            D2D1::Matrix3x2F::Scale(pixelsPerDip, pixelsPerDip));
+        ConfigureTarget(frames[index].target.Get(), frames[index].updateArea,
+            frames[index].updateOffset, pixelsPerDip);
         frames[index].target->Clear(D2D1::ColorF(0, 0, 0, 0));
         return true;
     };
@@ -170,7 +226,7 @@ CompositorBackgroundSurfaceCoordinator::Stage(
     if (activate && next.incoming) {
         Image rebased;
         if (!RebaseOutgoing(
-                next, renderer, frames[1].target.Get(), width, height,
+                next, renderer, frames[1].target.Get(), pixelsPerDip,
                 nowMilliseconds, rebased, diagnostic)) {
             surface.AbandonFrame(frames[1]);
             return StageDisposition::Failed;
@@ -180,7 +236,7 @@ CompositorBackgroundSurfaceCoordinator::Stage(
     if (outgoing) {
         (void)renderer.PaintCompositorBackground(
             frames[1].target.Get(), outgoing->descriptor,
-            outgoing->bitmap.Get(), false);
+            outgoing->bitmap.Get(), false, 1.0F, outgoing->surfaceComposite);
         if (FAILED(surface.EndFrame(frames[1])))
             return StageDisposition::Failed;
     }

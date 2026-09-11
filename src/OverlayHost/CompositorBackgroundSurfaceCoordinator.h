@@ -56,6 +56,7 @@ private:
     struct Image final {
         ComputedCompositorBackground descriptor;
         Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
+        bool surfaceComposite{};
     };
     struct Proposal final {
         Image image;
@@ -86,12 +87,14 @@ private:
         const ComputedCompositorBackground& right) noexcept;
     [[nodiscard]] static std::wstring Key(
         const ComputedCompositorBackground& background);
+    static void ConfigureTarget(
+        ID2D1RenderTarget* target, const RECT& updateArea,
+        POINT updateOffset, float pixelsPerDip);
     [[nodiscard]] bool RebaseOutgoing(
         const State& state,
         DeclarativeRenderer& renderer,
         ID2D1RenderTarget* target,
-        unsigned int width,
-        unsigned int height,
+        float pixelsPerDip,
         std::uint64_t nowMilliseconds,
         Image& result,
         std::wstring& diagnostic) const;

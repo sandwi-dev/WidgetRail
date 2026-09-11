@@ -400,7 +400,8 @@ public:
         const ComputedCompositorBackground& background,
         ID2D1Bitmap* bitmap,
         bool baseOnly,
-        float opacity = 1.0F) const;
+        float opacity = 1.0F,
+        bool surfaceComposite = false) const;
 
     /// Binds one admitted update to the last complete renderer checkpoint.
     /// A missing plan means the caller must conservatively repaint/re-layout
