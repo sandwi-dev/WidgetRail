@@ -77,6 +77,7 @@ public enum PresentationProperty
     Shortcuts,
     SelectOptions,
     CollectionResetGeneration,
+    ContextMenuButton,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -140,6 +141,7 @@ public static class PresentationPropertyMetadata
     public static PresentationPropertyImpact Impact(PresentationProperty property) => property switch
     {
         PresentationProperty.CollectionResetGeneration => PresentationPropertyImpact.MeasureLayout | PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
+        PresentationProperty.ContextMenuButton => PresentationPropertyImpact.Authority | PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility,
         PresentationProperty.CollectionLoading => PresentationPropertyImpact.Paint,
         PresentationProperty.CollectionGeneration => PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
         PresentationProperty.ActiveInputScopeId or

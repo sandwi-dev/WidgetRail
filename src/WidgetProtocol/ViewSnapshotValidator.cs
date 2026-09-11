@@ -1160,12 +1160,18 @@ public static class ViewSnapshotValidator
             var contextActions = node.ContextActions ?? [];
             if (node.ContextActions is null)
                 Add($"{path}.contextActions", "required", "Context actions cannot be null.");
-            else if (node.Kind is not ViewNodeKind.ActionSurface && contextActions.Count != 0)
+            else if (node.Kind is not ViewNodeKind.ActionSurface &&
+                     !(node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll && node.ContextMenuButton is not null) && contextActions.Count != 0)
                 Add($"{path}.contextActions", "context_actions_not_allowed",
-                    "Only action surfaces may declare contextual actions.");
+                    "Context actions require an action surface or a container with an explicit menu trigger.");
             else if (contextActions.Count > ProtocolConstants.MaximumContextActionCount)
                 Add($"{path}.contextActions", "too_many_context_actions",
                     $"An action surface may expose at most {ProtocolConstants.MaximumContextActionCount} context actions.");
+            if (node.ContextMenuButton is { } menuButton &&
+                (menuButton is not (ControllerButton.Menu or ControllerButton.X or ControllerButton.Y) ||
+                 contextActions.Count == 0 ||
+                 node.Kind is not (ViewNodeKind.ActionSurface or ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll)))
+                Add(path, "invalid_context_menu_trigger", "A context menu trigger requires contextual actions on a supported owner and Menu, X or Y.");
             var contextActionIds = new HashSet<string>(StringComparer.Ordinal);
             for (var index = 0; index < Math.Min(
                      contextActions.Count, ProtocolConstants.MaximumContextActionCount); index++)

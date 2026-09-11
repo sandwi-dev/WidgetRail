@@ -1017,7 +1017,7 @@ WidgetNode ParseNode(const JsonObject& source) {
     if (node.kind == L"mediaViewport" &&
         !HasNoUnknownProperties(source,
             {L"id", L"kind", L"mediaSessionId", L"accessibilityLabel",
-             L"visibleWhen", L"styleClasses", L"shortcuts", L"contextActions",
+             L"visibleWhen", L"styleClasses", L"shortcuts", L"contextMenuButton", L"contextActions",
              L"selectOptions", L"children"}))
         throw winrt::hresult_invalid_argument(
             L"MediaViewport contains unsupported properties.");
@@ -1025,10 +1025,18 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.accessibilityLabel = OptionalString(source, L"accessibilityLabel");
     node.accessibilityValue = OptionalString(source, L"accessibilityValue");
     node.actionId = OptionalString(source, L"actionId");
+    node.contextMenuButton = OptionalString(source, L"contextMenuButton");
+    const bool containerMenu = !node.contextMenuButton.empty() &&
+        (node.kind == L"stack" || node.kind == L"row" || node.kind == L"grid" || node.kind == L"scroll");
+    if (source.HasKey(L"contextMenuButton") &&
+        ((node.contextMenuButton != L"menu" && node.contextMenuButton != L"x" && node.contextMenuButton != L"y") ||
+         (node.kind != L"actionSurface" && !containerMenu) || !source.HasKey(L"contextActions")))
+        throw winrt::hresult_invalid_argument();
     if (source.HasKey(L"contextActions")) {
         const auto actions = source.GetNamedArray(L"contextActions");
-        if ((node.kind != L"actionSurface" && actions.Size() != 0) ||
-            actions.Size() > protocol_contract::MaximumContextActionCount)
+        if ((node.kind != L"actionSurface" && !containerMenu && actions.Size() != 0) ||
+            actions.Size() > protocol_contract::MaximumContextActionCount ||
+            (!node.contextMenuButton.empty() && actions.Size() == 0))
             throw winrt::hresult_invalid_argument();
         std::unordered_set<std::wstring> actionIds;
         node.contextActions.reserve(actions.Size());
@@ -2230,6 +2238,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     ValidateFocusGroupEntryRequest(snapshot);
     const auto validateContextActions = [&](const auto& self,
                                             const WidgetNode& node) -> void {
+        if (!node.contextMenuButton.empty() && snapshot.protocolVersion < protocol_contract::ContextMenuTriggerVersion)
+            throw winrt::hresult_invalid_argument();
         if (!node.contextActions.empty() &&
             snapshot.protocolVersion < protocol_contract::ContextActionsVersion)
             throw winrt::hresult_invalid_argument(
@@ -2375,9 +2385,9 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 53> properties{
+    static constexpr std::array<std::wstring_view, 54> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
-        L"actionId", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
+        L"actionId", L"contextMenuButton", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
         L"valueChangedActionId", L"sliderInteractionMode", L"imageSource",
         L"artworkHandle", L"focusBackgroundArtworkHandle", L"mediaSessionId",
@@ -2420,7 +2430,7 @@ bool ValidateWidgetDocumentStructure(
         }
         if (!HasNoUnknownProperties(node,
                 {L"id", L"kind", L"visibleWhen", L"text",
-                 L"accessibilityLabel", L"accessibilityValue", L"actionId", L"contextActions", L"selectOptions",
+                 L"accessibilityLabel", L"accessibilityValue", L"actionId", L"contextMenuButton", L"contextActions", L"selectOptions",
                  L"textEntryValue", L"textEntryPlaceholder",
                  L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum",
                  L"step", L"valueChangedActionId", L"sliderInteractionMode",
@@ -2967,6 +2977,8 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         return Effect::Authority | Effect::Interaction |
             Effect::Paint | Effect::Accessibility;
     }
+    if (property == L"contextMenuButton")
+        return Effect::Authority | Effect::Paint | Effect::Interaction | Effect::Accessibility;
     if (property == L"actionId" || property == L"contextActions" ||
         property == L"valueChangedActionId" ||
         property == L"focus" || property == L"focusPersistenceId" ||

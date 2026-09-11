@@ -4237,6 +4237,10 @@ struct DeclarativeRenderer::RenderPass final {
         const WidgetNode& node,
         const std::wstring_view inputScope,
         const PresentationNode& presented) {
+        if (node.kind != L"actionSurface" && !node.contextMenuButton.empty() &&
+            !node.contextActions.empty() && presented.visibleBox.width > 0.5F &&
+            presented.visibleBox.height > 0.5F)
+            result.contextMenuRects[node.id] = presented.visibleBox;
         if (node.kind != L"button" && node.kind != L"slider" &&
             node.kind != L"actionSurface") {
             return;

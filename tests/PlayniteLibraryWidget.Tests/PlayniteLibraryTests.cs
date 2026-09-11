@@ -13,6 +13,25 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed class PlayniteLibraryTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task HeaderHintsRouteRefreshWithoutFocusableControls()
+    {
+        var host = new FakeHost(20);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var snapshot = Snapshot(widget, 90_001);
+        var header = Nodes(snapshot.Root).Single(node => node.Id == "playnite-library.home.actions");
+        Assert.IsFalse(Nodes(header).Any(node => node.IsFocusable));
+        Assert.IsTrue(Nodes(snapshot.Root).Any(node => node.Id == snapshot.InitialFocusId && node.ActionId == PlayniteLibraryActions.Launch));
+        var before = host.Queries.Count;
+        Assert.IsTrue(await Route(widget, snapshot, ControllerButton.Y, snapshot.InitialFocusId!));
+        await WaitUntil(() => host.Queries.Count > before);
+        await Bounded(widget.WhenLibraryIdleAsync(), "Y refresh");
+        Assert.AreEqual(before + 1, host.Queries.Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task HomeActivationRefreshesOnceAndBrowseReopeningRetainsSixteenItemPages()
     {
         var host = new FakeHost(40);
@@ -635,7 +654,7 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task HomeLibraryNavigationPrimaryActionOpensBrowseAndReactivationRetainsLastGoodPosters()
+    public async Task HomeLibraryMenuOpensBrowseAndReactivationRetainsLastGoodPosters()
     {
         var displays = Enumerable.Range(0, 3).Select(index =>
             new PlayniteLibraryDisplayItem(
@@ -671,7 +690,8 @@ public sealed class PlayniteLibraryTests
             .Select(item => item.Value.SavedId).ToArray();
         var libraryNavigation = Nodes(home.Root).Single(node =>
             node.Id == "playnite-library.library.menu");
-        var libraryAction = libraryNavigation.ActionId;
+        Assert.IsFalse(libraryNavigation.IsFocusable);
+        var libraryAction = libraryNavigation.ContextActions.Single(action => action.Label == "Library").ActionId;
         Assert.IsNotNull(libraryAction);
         Assert.AreEqual("playnite-library.browse.open", libraryAction);
         await widget.OnActionAsync(new(libraryAction, libraryNavigation.Id));
@@ -737,8 +757,8 @@ public sealed class PlayniteLibraryTests
                 node.Id == PlayniteLibraryPresentation.HomeRailId);
             Assert.AreEqual(expectedAnchor.Value, rail.CollectionAnchorKey,
                 phase + " must retain the exact collection anchor.");
-            Assert.AreEqual(libraryNavigation.Id, snapshot.InitialFocusId,
-                phase + " must restore the explicit control that opened Browse.");
+            Assert.AreEqual(posters[0].Id, snapshot.InitialFocusId,
+                phase + " returns focus to the first game instead of a header hint.");
             var returnTarget = nodes.Single(node => node.Id == snapshot.InitialFocusId);
             Assert.IsTrue(returnTarget.IsFocusable,
                 phase + " return target must remain focusable in the current Home scope.");
@@ -759,7 +779,7 @@ public sealed class PlayniteLibraryTests
                 phase + " must preserve current hidden presentation metadata.");
             var menu = nodes.Single(node => node.Id == "playnite-library.library.menu");
             Assert.IsFalse(menu.ContextActions.Single(action =>
-                action.ActionId == "playnite-library.filter.favorites").IsDisabled);
+                action.ActionId == "playnite-library.browse.open").IsDisabled);
             Assert.IsFalse(menu.ContextActions.Single(action =>
                 action.ActionId == "playnite-library.hidden.open").IsDisabled);
         }
@@ -1615,10 +1635,8 @@ public sealed class PlayniteLibraryTests
 
             var actions = Nodes(snapshot.Root).Single(node =>
                 node.Id == "playnite-library.actions");
-            Assert.AreEqual(PlayniteLibraryActions.Refresh,
-                actions.InitialChildFocusId);
-            Assert.IsTrue(Nodes(actions).Any(node =>
-                node.Id == actions.InitialChildFocusId));
+            Assert.IsNull(actions.InitialChildFocusId);
+            Assert.IsFalse(Nodes(actions).Any(node => node.IsFocusable));
         }
     }
 

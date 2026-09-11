@@ -6172,6 +6172,19 @@ void CursorWindowRegression(bool suppress, bool virtualGap=false) {
 } // namespace
 
 int main() {
+    {
+        WidgetSnapshot snapshot; snapshot.instanceId=L"menu.hint"; snapshot.activeInputScopeId=L"root";
+        snapshot.root=Node(L"root",L"stack");
+        auto hint=Node(L"hint",L"row"); hint.contextMenuButton=L"menu";
+        hint.contextActions.push_back({L"library",L"Library"});
+        hint.baseStyle={{L"width",Length(100)},{L"height",Length(40)},{L"flex-shrink",Number(0)}};
+        snapshot.root.children.push_back(hint);
+        DeclarativeRenderer renderer{nullptr,nullptr,nullptr};
+        const auto result=renderer.Render(nullptr,snapshot,L"",{0,0,240,100});
+        Check(result.contextMenuRects.contains(L"hint"), "nonfocusable menu hint has a visible popup anchor");
+        Check(!result.focusRects.contains(L"hint") && !result.navigationRects.contains(L"hint"), "menu hint stays out of focus traversal");
+    }
+
     const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     Check(SUCCEEDED(initialized), "initialize COM");
     ImagePlacementMath();

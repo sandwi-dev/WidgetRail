@@ -383,6 +383,7 @@ public sealed record ViewNode
     public string? AccessibilityValue { get; init; }
     public string? ActionId { get; init; }
     public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
+    public ControllerButton? ContextMenuButton { get; init; }
     public IReadOnlyList<WidgetSelectOption> SelectOptions { get; init; } = [];
     /// <summary>Current bounded value for a host-owned text-entry modal.</summary>
     public string? TextEntryValue { get; init; }

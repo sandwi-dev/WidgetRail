@@ -177,6 +177,8 @@ struct RenderResult final {
     bool focusFollowCycle{};
     bool focusFollowBoundHit{};
 #endif
+    // Visible anchors for explicitly declared non-focusable context menus only.
+    std::map<std::wstring, declarative::Rect, std::less<>> contextMenuRects;
     std::map<std::wstring, declarative::Rect, std::less<>> focusRects;
     // Full logical controller geometry includes offscreen descendants of a
     // semantic scroll container. Pointer hit regions remain visible-only.

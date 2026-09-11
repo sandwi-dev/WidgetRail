@@ -907,3 +907,18 @@ acknowledged subscription first (`OpenSessionsSubscriptionAsync` or
 coalesced full-snapshot event buffer closes the fetch/subscription race.
 `WatchSessionsAsync` and `WatchStatusAsync` remain compatibility helpers for
 event-only consumers.
+
+### Context menus from controller hints
+
+A visible non-focusable container can declare a scoped native dropdown with
+`ContextMenu(ControllerButton.Menu, actions)`. For example, apply it to a
+`UI.ControllerHint` row. The hint stays outside focus traversal; the host uses
+its visible bounds to anchor the existing dropdown. Use one container menu per
+button in an active input scope. Ambiguous or unrendered owners do not dispatch.
+
+Action surfaces retain Menu as their default context trigger. Use
+`ContextMenuShortcut(ControllerButton.X)` to choose X instead. Explicit triggers
+support Menu, X and Y and require protocol v51. A focused action surface takes
+precedence over a container menu for the same button. Disabled/busy owners and
+other input scopes cannot capture the trigger. These declarations use the
+existing full-widget context menu and action-validation path.

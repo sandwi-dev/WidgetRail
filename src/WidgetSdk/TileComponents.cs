@@ -157,6 +157,14 @@ public sealed record ActionSurfaceElement : WidgetElement
     public FocusNeighbors? FocusNeighbors { get; init; }
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
     public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
+    public ControllerButton? ContextMenuButton { get; init; }
+
+    public ActionSurfaceElement ContextMenuShortcut(ControllerButton button)
+    {
+        if (button is not (ControllerButton.Menu or ControllerButton.X or ControllerButton.Y))
+            throw new ArgumentOutOfRangeException(nameof(button));
+        return this with { ContextMenuButton = button };
+    }
 
     public ActionSurfaceElement FocusUp(string id) => this with
     {
@@ -251,6 +259,7 @@ public sealed record ActionSurfaceElement : WidgetElement
         AccessibilityLabel = AccessibilityLabel,
         ActionId = ActionId,
         ContextActions = ContextActions,
+        ContextMenuButton = ContextMenuButton,
         ActionSurfaceOrientation = Orientation,
         ActionSurfacePresentation = Presentation,
         IsDisabled = IsDisabled,

@@ -394,7 +394,7 @@ public static partial class UI
                 ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.Spacer or
                 ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator) ||
                 node.ActionId is not null || node.ValueChangedActionId is not null ||
-                (node.ContextActions?.Count ?? 0) != 0 ||
+                node.ContextMenuButton is not null || (node.ContextActions?.Count ?? 0) != 0 ||
                 (node.SelectOptions?.Count ?? 0) != 0 || node.Focus is not null ||
                 node.FocusPersistenceId is not null || node.InputScopeId is not null ||
                 node.InitialChildFocusId is not null ||

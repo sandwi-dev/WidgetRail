@@ -797,4 +797,33 @@ std::optional<std::wstring> FindFreeScrollReentryTarget(
     return candidates.front().id;
 }
 
+std::optional<std::wstring> ResolveContextMenuSource(
+    const WidgetSnapshot& snapshot, const std::wstring_view focusedId,
+    const std::wstring_view button, const RenderResult& renderResult) {
+    const WidgetNode* focused{};
+    const WidgetNode* container{};
+    bool ambiguous{};
+    const auto visit = [&](const auto& self, const WidgetNode& node,
+                           const std::wstring_view inheritedScope) -> void {
+        const std::wstring_view scope = node.inputScopeId.empty() ? inheritedScope : std::wstring_view{node.inputScopeId};
+        if (node.isDisabled || node.isBusy) return;
+        if (scope == snapshot.activeInputScopeId && !node.isDisabled && !node.isBusy && !node.contextActions.empty()) {
+            const std::wstring_view trigger = node.contextMenuButton.empty() ? std::wstring_view{L"menu"} : std::wstring_view{node.contextMenuButton};
+            if (trigger == button) {
+                if (node.kind == L"actionSurface" && node.id == focusedId && renderResult.focusRects.contains(node.id))
+                    focused = &node;
+                else if (node.kind != L"actionSurface" && !node.contextMenuButton.empty() && renderResult.contextMenuRects.contains(node.id)) {
+                    ambiguous = ambiguous || container != nullptr;
+                    container = &node;
+                }
+            }
+        }
+        for (const auto& child : node.children) self(self, child, scope);
+    };
+    visit(visit, snapshot.root, snapshot.root.inputScopeId.empty() ? snapshot.root.id : snapshot.root.inputScopeId);
+    if (focused) return focused->id;
+    if (container && !ambiguous) return container->id;
+    return std::nullopt;
+}
+
 } // namespace widgetrail::input

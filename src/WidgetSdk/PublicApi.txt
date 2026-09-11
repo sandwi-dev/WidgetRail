@@ -450,6 +450,7 @@ method WidgetRail.WidgetSdk.ActionSheetItem.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ActionSheetItem.ToString() -> string
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Busy(bool busy = true) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.ContextAction(string actionId, string label, WidgetRail.WidgetProtocol.WidgetContextActionStyle style = WidgetRail.WidgetProtocol.WidgetContextActionStyle.Default, bool disabled = false, bool busy = false) -> WidgetRail.WidgetSdk.ActionSurfaceElement
+method WidgetRail.WidgetSdk.ActionSurfaceElement.ContextMenuShortcut(WidgetRail.WidgetProtocol.ControllerButton button) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Disabled(bool disabled = true) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Equals(object? obj) -> bool
@@ -510,6 +511,7 @@ method WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.Deconstruct
 method WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.ToString() -> string
+method WidgetRail.WidgetSdk.ContainerElement.ContextMenu(WidgetRail.WidgetProtocol.ControllerButton button, params WidgetRail.WidgetProtocol.WidgetContextAction[] actions) -> WidgetRail.WidgetSdk.ContainerElement
 method WidgetRail.WidgetSdk.ContainerElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.ContainerElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ContainerElement.GetHashCode() -> int
@@ -2010,6 +2012,7 @@ property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.Cont
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ContainerElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.PinnedPresentationLayout>? WidgetRail.WidgetSdk.WidgetView.PinnedLayouts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetContextAction> WidgetRail.WidgetSdk.ActionSurfaceElement.ContextActions { get; set; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetContextAction> WidgetRail.WidgetSdk.ContainerElement.ContextActions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? WidgetRail.WidgetSdk.WidgetView.QuickActions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.SelectOption> WidgetRail.WidgetSdk.SelectElement.Options { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryAction> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilitySet.Actions { get; set; }
@@ -2108,6 +2111,8 @@ property WidgetRail.WidgetProtocol.CollectionLoadingState? WidgetRail.WidgetSdk.
 property WidgetRail.WidgetProtocol.CollectionNavigationRequest? WidgetRail.WidgetSdk.ScrollElement.CollectionNavigation { get; set; }
 property WidgetRail.WidgetProtocol.CollectionNavigationRequest? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.NavigationRequest { get; set; }
 property WidgetRail.WidgetProtocol.ControllerButton WidgetRail.WidgetSdk.ControllerInputEvent.Button { get; set; }
+property WidgetRail.WidgetProtocol.ControllerButton? WidgetRail.WidgetSdk.ActionSurfaceElement.ContextMenuButton { get; set; }
+property WidgetRail.WidgetProtocol.ControllerButton? WidgetRail.WidgetSdk.ContainerElement.ContextMenuButton { get; set; }
 property WidgetRail.WidgetProtocol.ControllerButton? WidgetRail.WidgetSdk.WidgetActionEvent.ControllerButton { get; set; }
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.ControllerInputEvent.Phase { get; set; }
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.WidgetActionEvent.Phase { get; set; }

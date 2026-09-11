@@ -458,6 +458,7 @@ struct WidgetNode final {
     std::vector<std::wstring> styleClasses;
     std::vector<WidgetShortcut> shortcuts;
     std::vector<WidgetContextAction> contextActions;
+    std::wstring contextMenuButton;
     std::vector<WidgetSelectOption> selectOptions;
     std::wstring focusUp;
     std::wstring focusDown;

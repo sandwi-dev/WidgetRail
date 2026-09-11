@@ -9,7 +9,7 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 50;
+    public const int CurrentVersion = 51;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
@@ -47,6 +47,7 @@ public static class ProtocolConstants
     public const int HeldButtonActionRepeatVersion = 32;
     public const int RememberedChildFocusGroupVersion = 33;
     public const int ContextActionsVersion = 34;
+    public const int ContextMenuTriggerVersion = 51;
     public const int SurfaceAppearanceVersion = 35;
     public const int TrustedEncodedArtworkVersion = 36;
     public const int PosterTileVersion = 37;

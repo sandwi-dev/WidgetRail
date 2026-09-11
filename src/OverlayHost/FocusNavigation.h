@@ -15,6 +15,10 @@ struct WidgetSnapshot;
 
 namespace widgetrail::input {
 
+[[nodiscard]] std::optional<std::wstring> ResolveContextMenuSource(
+    const WidgetSnapshot& snapshot, std::wstring_view focusedId,
+    std::wstring_view button, const RenderResult& renderResult);
+
 struct PointerHitTarget final {
     std::wstring id;
     bool enabled{};

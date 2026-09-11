@@ -9166,7 +9166,7 @@ private:
         const auto* node = widgetrail::input::FindNodeInInputScope(
             *snapshot, widgetContextMenu_->sourceNodeId,
             widgetContextMenu_->inputScopeId);
-        if (!node || node->kind != L"actionSurface" || node->isDisabled ||
+        if (!node || (node->kind != L"actionSurface" && node->contextMenuButton.empty()) || node->isDisabled ||
             node->isBusy || node->contextActions.size() !=
                 widgetContextMenu_->actions.size())
             return false;
@@ -9895,11 +9895,13 @@ private:
             ? widgetrail::input::FindNodeInInputScope(
                 *snapshot, nodeId, snapshot->activeInputScopeId)
             : nullptr;
-        const auto focusRect = lastWidgetRenderResult_.focusRects.find(nodeId);
+        const auto& rectangles = node && node->kind != L"actionSurface"
+            ? lastWidgetRenderResult_.contextMenuRects : lastWidgetRenderResult_.focusRects;
+        const auto focusRect = rectangles.find(nodeId);
         if (!snapshot || !descriptor || !node ||
-            node->kind != L"actionSurface" || node->isDisabled || node->isBusy ||
+            (node->kind != L"actionSurface" && node->contextMenuButton.empty()) || node->isDisabled || node->isBusy ||
             node->contextActions.empty() ||
-            (!pointerAnchor && focusRect == lastWidgetRenderResult_.focusRects.end()))
+            (!pointerAnchor && focusRect == rectangles.end()))
             return false;
         trayContextMenu_.reset();
         widgetContextMenu_ = WidgetContextMenuState{
@@ -9910,7 +9912,7 @@ private:
             snapshot->sequence,
             snapshot->activeInputScopeId,
             std::wstring{nodeId},
-            pointerAnchor.value_or(focusRect->second),
+            pointerAnchor ? *pointerAnchor : focusRect->second,
             node->contextActions,
             0,
         };
@@ -11449,13 +11451,19 @@ private:
             OpenTrayContextMenu(state_.selectedWidget());
             return;
         }
-        if (!recoveryChordDown &&
-            (pressed & XINPUT_GAMEPAD_START) != 0 &&
+        if (!recoveryChordDown && !pinnedSurfaceCoordinator_.controllerFocused() &&
             state_.surface() == widgetrail::Surface::Widget &&
             state_.focusRegion() == widgetrail::FocusRegion::Widget) {
-            (void)OpenWidgetContextMenu(
-                interactionSession_.focusedElementId());
-            return;
+            if (const auto* snapshot = InteractionSnapshotFor(state_.activeWidget())) {
+                for (const auto& [mask, button] : std::array<std::pair<WORD, std::wstring_view>, 3>{
+                         {{XINPUT_GAMEPAD_START, L"menu"}, {XINPUT_GAMEPAD_X, L"x"}, {XINPUT_GAMEPAD_Y, L"y"}}}) {
+                    if ((pressed & mask) == 0) continue;
+                    const auto source = widgetrail::input::ResolveContextMenuSource(
+                        *snapshot, interactionSession_.focusedElementId(), button, lastWidgetRenderResult_);
+                    if (source && OpenWidgetContextMenu(*source)) return;
+                }
+            }
+            if ((pressed & XINPUT_GAMEPAD_START) != 0) return;
         }
         const auto pinnedControllerCommand = widgetrail::pinned::ResolveControllerCommand({
             pinnedSurfaceCoordinator_.pinned(),

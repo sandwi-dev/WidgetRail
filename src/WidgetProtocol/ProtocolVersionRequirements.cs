@@ -162,6 +162,9 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.RememberedChildFocusGroupVersion,
                     $"{path}.initialChildFocusId",
                     $"Remembered-child focus groups require protocol version {ProtocolConstants.RememberedChildFocusGroupVersion} or later.");
+            if (node.ContextMenuButton is not null)
+                Add("context-menu-trigger", ProtocolConstants.ContextMenuTriggerVersion,
+                    $"{path}.contextMenuButton", "Context menu triggers require protocol version 51 or later.");
             if ((node.ContextActions?.Count ?? 0) != 0)
                 Add(
                     "context-actions",

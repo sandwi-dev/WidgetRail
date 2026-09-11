@@ -1364,6 +1364,15 @@ void VerifyVirtualCollectionProtocol() {
 } // namespace
 
 int main() {
+    {
+        const std::string menu=R"json({"snapshot":{"protocolVersion":51,"sequence":1,"widgetInstanceId":"menu","activeInputScopeId":"root","root":{"id":"root","kind":"row","contextMenuButton":"menu","contextActions":[{"actionId":"library","label":"Library"}],"children":[]}},"renderStyles":{}})json";
+        std::wstring menuError;
+        const auto parsed=widgetrail::testing::ParseWidgetSnapshotResponse(menu,menuError);
+        Require(parsed && parsed->root.contextMenuButton==L"menu", "nonfocusable menu metadata crosses native parser");
+        auto old=menu; old.replace(old.find("51"),2,"50"); menuError.clear();
+        Require(!widgetrail::testing::ParseWidgetSnapshotResponse(old,menuError), "legacy protocol rejects explicit menu trigger");
+    }
+
     VerifyWidgetBridgePipeReadinessContract();
     const auto nowPlayingManifest = std::filesystem::path{__FILE__}.parent_path()
         .parent_path() / L"FirstPartyWidgets" / L"MediaSessionsWidget" /

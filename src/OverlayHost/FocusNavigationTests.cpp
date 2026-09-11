@@ -28,6 +28,30 @@ void Add(widgetrail::RenderResult& result, std::wstring id, widgetrail::declarat
 } // namespace
 
 int main() {
+    {
+        widgetrail::WidgetSnapshot menus; menus.activeInputScopeId=L"root";
+        menus.root.id=L"root"; menus.root.kind=L"stack";
+        widgetrail::WidgetNode game; game.id=L"game"; game.kind=L"actionSurface";
+        game.contextActions.push_back({L"favorite",L"Favorite"}); game.contextMenuButton=L"x";
+        widgetrail::WidgetNode hint; hint.id=L"menu.hint"; hint.kind=L"row";
+        hint.contextActions.push_back({L"library",L"Library"}); hint.contextMenuButton=L"menu";
+        menus.root.children={game,hint};
+        widgetrail::RenderResult rendered; Add(rendered,L"game",{0,100,150,200});
+        rendered.contextMenuRects[L"menu.hint"]={200,0,100,40};
+        const auto resolve=[&](std::wstring_view button){return widgetrail::input::ResolveContextMenuSource(menus,L"game",button,rendered);};
+        Check(resolve(L"x")==L"game", "X opens focused game's context menu");
+        Check(resolve(L"menu")==L"menu.hint", "Menu opens non-focusable global hint menu");
+        Check(!resolve(L"y"), "unclaimed Y continues to widget refresh shortcut");
+        menus.root.children[0].contextMenuButton.clear();
+        Check(resolve(L"menu")==L"game", "legacy Menu keeps focused context priority");
+        menus.root.children[0].isDisabled=true;
+        Check(resolve(L"menu")==L"menu.hint", "disabled tile cannot own a context menu");
+        menus.root.children[1].inputScopeId=L"other";
+        Check(!resolve(L"menu"), "menu ownership cannot cross input scopes");
+        menus.root.children[1].inputScopeId.clear(); rendered.contextMenuRects.clear();
+        Check(!resolve(L"menu"), "unrendered menu hint cannot claim controller input");
+    }
+
     using widgetrail::input::FindGeometricFocusTarget;
     using widgetrail::input::NavigationDirection;
     using widgetrail::input::ResolveResponsiveFocusPersistenceTarget;

@@ -92,6 +92,20 @@ public abstract record ContainerElement : WidgetElement
     public string? InputScopeId { get; init; }
     public string? InitialChildFocusId { get; init; }
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
+    public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
+    public ControllerButton? ContextMenuButton { get; init; }
+
+    /// <summary>Opens a native contextual dropdown from a non-focusable visible container.</summary>
+    public ContainerElement ContextMenu(ControllerButton button, params WidgetContextAction[] actions)
+    {
+        ArgumentNullException.ThrowIfNull(actions);
+        if (button is not (ControllerButton.Menu or ControllerButton.X or ControllerButton.Y))
+            throw new ArgumentOutOfRangeException(nameof(button));
+        if (actions.Length is < 1 or > ProtocolConstants.MaximumContextActionCount || actions.Any(action => action is null))
+            throw new ArgumentException("A context menu requires a bounded nonempty action list.", nameof(actions));
+        return this with { ContextMenuButton = button, ContextActions = Array.AsReadOnly(actions.ToArray()) };
+    }
+
 
     public ContainerElement InputScope(string scopeId) => this with
     {
@@ -142,6 +156,8 @@ public abstract record ContainerElement : WidgetElement
         StyleClasses = StyleClasses,
         InputScopeId = InputScopeId,
         InitialChildFocusId = InitialChildFocusId,
+        ContextMenuButton = ContextMenuButton,
+        ContextActions = ContextActions,
         Shortcuts = Shortcuts,
         Children = Children.Select(child => child.ToProtocolNode()).ToArray(),
     };

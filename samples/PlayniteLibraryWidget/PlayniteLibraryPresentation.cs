@@ -89,10 +89,7 @@ internal static class PlayniteLibraryPresentation
         WidgetElement header = state.Route == PlayniteLibraryRoute.Library
             ? UI.Row("playnite-library.home.actions",
                     UI.Row("playnite-library.home.utilities",
-                            UI.Button("Refresh", PlayniteLibraryActions.Refresh,
-                                    PlayniteLibraryActions.Refresh)
-                                .Disabled(!renderActionsEnabled)
-                                .AddClasses("playnite-library-control"))
+                            UI.ControllerHint(ControllerButton.Y, "Refresh", "playnite-library.hint.refresh"))
                         .Classes("playnite-library-home-utilities"),
                     LibraryNavigation(state, renderActionsEnabled))
                 .Classes("playnite-library-home-actions")
@@ -408,11 +405,8 @@ internal static class PlayniteLibraryPresentation
                     : null;
             }
             var controls = UI.HorizontalScroll("playnite-library.actions",
-                    UI.Button("Refresh", "playnite-library.refresh", "playnite-library.refresh")
-                .Disabled(!renderActionsEnabled)
-                        .AddClasses("playnite-library-control"))
+                    UI.ControllerHint(ControllerButton.Y, "Refresh", "playnite-library.browse.hint.refresh"))
                 .Classes("playnite-library-actions")
-                .RememberChildFocus(PlayniteLibraryActions.Refresh)
                 .VisibleWhen(ResponsiveVisibility.ExpandedOnly);
             var hasActionableGame = renderActionsEnabled && !state.OrganizationBusy &&
                 !state.BrowseRetained &&
@@ -422,28 +416,13 @@ internal static class PlayniteLibraryPresentation
             if (state.Route == PlayniteLibraryRoute.Library)
             {
                 hintItems.Add(StableControllerHint(
-                    ControllerButton.X,
-                    "Favorite",
-                    "playnite-library.hint.favorite",
-                    hasActionableGame,
-                    hasActionableGame
-                        ? rail.Selected?.Favorite == true
-                            ? "Remove favorite"
-                            : "Add favorite"
-                        : "Favorite unavailable"));
-                hintItems.Add(StableControllerHint(
-                    ControllerButton.Menu,
-                    "Game options",
-                    "playnite-library.hint.options",
-                    hasActionableGame,
-                    hasActionableGame ? "Game options" : "Game options unavailable"));
+                    ControllerButton.X, "Game options", "playnite-library.hint.options",
+                    hasActionableGame, hasActionableGame ? "Game options" : "Game options unavailable"));
             }
             else if (hasActionableGame)
             {
                 hintItems.Add(UI.ControllerHint(
-                    ControllerButton.X, "Favorite", "playnite-library.hint.favorite"));
-                hintItems.Add(UI.ControllerHint(
-                    ControllerButton.Menu, "Game options", "playnite-library.hint.options"));
+                    ControllerButton.X, "Game options", "playnite-library.hint.options"));
             }
             WidgetElement catalog = state.Route switch
             {
@@ -703,6 +682,8 @@ internal static class PlayniteLibraryPresentation
             state.BrowseInitialFocusId is null &&
             !catalogPage)
             initialFocus = "playnite-library.search";
+        if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
+            root = ((ContainerElement)root).Shortcut(ControllerButton.Y, PlayniteLibraryActions.Refresh, label: "Refresh");
         return new WidgetView(root, initialFocus, Surface: state.Route switch
         {
             PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse => CinematicSurface,
@@ -1068,8 +1049,7 @@ internal static class PlayniteLibraryPresentation
         {
             var actionEnabled = availability.Launchable;
             tile = tile
-                .Shortcut(ControllerButton.X, actionId: PlayniteLibraryActions.Favorite,
-                    label: favorite ? "Remove favorite" : "Add favorite")
+                .ContextMenuShortcut(ControllerButton.X)
                 .ContextAction(PlayniteLibraryActions.Favorite,
                     favorite ? "Remove favorite" : "Add favorite", disabled: !actionEnabled)
                 .ContextAction(PlayniteLibraryActions.Hide, "Hide", disabled: !actionEnabled)
@@ -1109,32 +1089,16 @@ internal static class PlayniteLibraryPresentation
                     .Classes("playnite-library-summary-meta"))
             .Classes("playnite-library-home-summary");
 
-    private static ActionSurfaceElement LibraryNavigation(
+    private static ContainerElement LibraryNavigation(
         PlayniteLibraryPresentationState state,
         bool renderActionsEnabled) =>
-        UI.ActionSurface(PlayniteLibraryActions.BrowseOpen,
-                "playnite-library.library.menu",
-                "Library navigation. Press Menu for Recently played, Favorites, " +
-                "Categories, Hidden games, and Playnite connection.",
-                ActionSurfaceOrientation.Horizontal,
-                UI.Row("playnite-library.library.menu.content",
-                        UI.Text("Library", "playnite-library.library.menu.label",
-                                "Open library navigation")
-                            .Classes("playnite-library-menu-label"),
-                        UI.ControllerHint(ControllerButton.Menu, "Library options",
-                                "playnite-library.library.menu.hint"))
-                    .Classes("playnite-library-library-menu-content"))
-            .Disabled(!renderActionsEnabled)
-            .AddClasses("playnite-library-control", "playnite-library-library-menu")
-            .ContextAction(PlayniteLibraryActions.RecentlyPlayedFilter, "Recently played",
-                disabled: !renderActionsEnabled)
-            .ContextAction(PlayniteLibraryActions.FavoritesFilter, "Favorites",
-                disabled: !renderActionsEnabled || state.Organization.FavoriteSavedIds.Count == 0)
-            .ContextAction(PlayniteLibraryActions.CategoriesOpen, "Categories", disabled: !renderActionsEnabled)
-            .ContextAction(PlayniteLibraryActions.HiddenOpen, "Hidden games",
-                disabled: !renderActionsEnabled || state.Organization.ExcludedSavedIds.Count == 0)
-            .ContextAction(PlayniteLibraryWidget.PlayniteOpenActionId, "Playnite connection",
-                disabled: !renderActionsEnabled);
+        UI.ControllerHint(ControllerButton.Menu, "Menu", "playnite-library.library.menu")
+            .ContextMenu(ControllerButton.Menu,
+                new(PlayniteLibraryActions.BrowseOpen, "Library", IsDisabled: !renderActionsEnabled),
+                new(PlayniteLibraryActions.CategoriesOpen, "Categories", IsDisabled: !renderActionsEnabled),
+                new(PlayniteLibraryActions.HiddenOpen, "Hidden games",
+                    IsDisabled: !renderActionsEnabled || state.Organization.ExcludedSavedIds.Count == 0),
+                new(PlayniteLibraryWidget.PlayniteOpenActionId, "Playnite connection", IsDisabled: !renderActionsEnabled));
 
     private static WidgetElement FocusedGameSummary(
         string savedId,

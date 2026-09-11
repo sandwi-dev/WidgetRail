@@ -111,27 +111,26 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.AreEqual("playnite-library.library.menu", topActions.Children[^1].Id);
         CollectionAssert.AreEqual(new[]
         {
-            "playnite-library.refresh",
+            "playnite-library.hint.refresh",
         }, topActions.Children[0].Children.Select(node => node.Id).ToArray());
         Assert.IsFalse(nodes.Any(node => node.Id is "playnite-library.eyebrow" or
             "playnite-library.title" or "playnite-library.status"));
         Assert.IsFalse(nodes.Any(node => node.StyleClasses.Contains(
             "playnite-library-header-row", StringComparer.Ordinal)));
         var library = nodes.Single(node => node.Id == "playnite-library.library.menu");
-        Assert.AreEqual("playnite-library.browse.open", library.ActionId);
-        CollectionAssert.Contains(library.StyleClasses.ToArray(),
-            "playnite-library-control");
+        Assert.IsNull(library.ActionId);
+        Assert.IsFalse(library.IsFocusable);
+        Assert.AreEqual(ControllerButton.Menu, library.ContextMenuButton);
+        Assert.IsFalse(Nodes(topActions).Any(node => node.IsFocusable));
         CollectionAssert.AreEqual(new[]
         {
-            "playnite-library.filter.recent",
-            "playnite-library.filter.favorites",
+            "playnite-library.browse.open",
             "playnite-library.categories.open",
             "playnite-library.hidden.open",
             LauncherWidget.PlayniteOpenActionId,
         }, library.ContextActions.Select(action => action.ActionId).ToArray());
-        StringAssert.Contains(library.AccessibilityLabel!, "Press Menu");
         Assert.IsTrue(nodes.Any(node =>
-            node.Id == "playnite-library.library.menu.hint.key" && node.Text == "Menu"));
+            node.Id == "playnite-library.library.menu.key" && node.Text == "Menu"));
         var rail = nodes.Single(node => node.Id == PlayniteLibraryPresentation.HomeRailId);
         Assert.AreEqual(ViewNodeKind.Scroll, rail.Kind);
         Assert.AreEqual(ScrollAxis.Horizontal, rail.ScrollAxis);
@@ -157,10 +156,10 @@ public sealed class PlayniteLibraryLayoutTests
                     "playnite-library.collection.hint.next" ||
                 node.Text is "Previous collection" or "Next collection"),
             "Home must not advertise previous/next collection trigger hints.");
-        Assert.IsTrue(launchTiles.All(node => node.Shortcuts.Any(shortcut =>
-                shortcut.Button == ControllerButton.X &&
-                shortcut.ActionId == PlayniteLibraryActions.Favorite)),
-            "Removing Home collection triggers must preserve the Favorite shortcut.");
+        Assert.IsTrue(launchTiles.All(node => node.ContextMenuButton == ControllerButton.X),
+            "X opens the focused game's options.");
+        Assert.IsTrue(nodes.SelectMany(node => node.Shortcuts).Any(shortcut =>
+            shortcut.Button == ControllerButton.Y && shortcut.ActionId == PlayniteLibraryActions.Refresh));
         var focusedSummary = launchTiles[0].FocusPresentation!;
         CollectionAssert.Contains(focusedSummary.StyleClasses.ToArray(),
             "playnite-library-home-summary");
@@ -184,8 +183,8 @@ public sealed class PlayniteLibraryLayoutTests
                 node.Id == "playnite-library.hint.options.key" && node.Text == "Y"),
             "Home must not advertise the retired Y game-action surface.");
         Assert.IsTrue(Nodes(hintRegion).Any(node =>
-                node.Id == "playnite-library.hint.options.key" && node.Text == "Menu"),
-            "Home must advertise the current Menu-owned game options.");
+                node.Id == "playnite-library.hint.options.key" && node.Text == "X"),
+            "Home must advertise X for game options.");
         var unavailableView = PlayniteLibraryPresentation.Render(
             presentation with { OrganizationBusy = true });
         var unavailableSnapshot = new PresentationWidget(unavailableView)
@@ -195,13 +194,13 @@ public sealed class PlayniteLibraryLayoutTests
         CollectionAssert.AreEqual(
             hintRegion.Children.Select(child => child.Id).ToArray(),
             unavailableHints.Children.Select(child => child.Id).ToArray(),
-            "Favorite availability changed the Home footer structure.");
-        var unavailableFavoriteLabel = Nodes(unavailableHints).Single(node =>
-            node.Id == "playnite-library.hint.favorite.label");
-        Assert.AreEqual("Favorite", unavailableFavoriteLabel.Text,
-            "Favorite availability changed the visible Home hint width.");
-        Assert.AreEqual("Favorite unavailable", unavailableFavoriteLabel.AccessibilityLabel,
-            "The stable Home footer did not truthfully expose unavailable Favorite.");
+            "Game-option availability changed the Home footer structure.");
+        var unavailableOptionsLabel = Nodes(unavailableHints).Single(node =>
+            node.Id == "playnite-library.hint.options.label");
+        Assert.AreEqual("Game options", unavailableOptionsLabel.Text,
+            "Game-option availability changed the visible Home hint width.");
+        Assert.AreEqual("Game options unavailable", unavailableOptionsLabel.AccessibilityLabel,
+            "The stable Home footer must expose unavailable game options.");
         CollectionAssert.Contains(unavailableHints.Children[0].StyleClasses.ToArray(),
             "playnite-library-hint-unavailable");
         Assert.IsFalse(Nodes(unavailableHints).Any(node =>
@@ -214,7 +213,7 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.IsFalse(styles.Contains("\nbutton {", StringComparison.Ordinal),
             "Playnite WRSS must not style every Button through a bare element selector.");
         Assert.IsTrue(topActions.Children[0].Children.All(node =>
-            node.StyleClasses.Contains("playnite-library-control", StringComparer.Ordinal)));
+            !node.IsFocusable));
         StringAssert.Contains(styles,
             ".playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; padding: 4px 6px 10px; }");
         StringAssert.Contains(styles,
@@ -298,7 +297,7 @@ public sealed class PlayniteLibraryLayoutTests
                      "playnite-library.filter.recent",
                      "playnite-library.filter.favorites",
                      "playnite-library.query.clear",
-                     "playnite-library.refresh",
+                     "playnite-library.browse.hint.refresh",
                  })
             Assert.IsTrue(browsePageNodes.Any(node => node.Id == id),
                 id + " must remain inside the page-wide Browse shortcut owner.");
@@ -539,10 +538,8 @@ public sealed class PlayniteLibraryLayoutTests
             node.Id == "playnite-library.search"));
         var browseActions = Nodes(browse.Root).Single(node =>
             node.Id == "playnite-library.actions");
-        Assert.AreEqual(PlayniteLibraryActions.Refresh,
-            browseActions.InitialChildFocusId);
-        Assert.IsTrue(Nodes(browseActions).Any(node =>
-            node.Id == browseActions.InitialChildFocusId));
+        Assert.IsNull(browseActions.InitialChildFocusId);
+        Assert.IsFalse(Nodes(browseActions).Any(node => node.IsFocusable));
         Assert.AreEqual(150D, browseGrid.GridMinimumColumnWidth);
         Assert.AreEqual(7, browseGrid.GridMaximumColumns);
         var browseRootStyle = theme.Resolve(new WrssElement("stack", null,
@@ -756,10 +753,8 @@ public sealed class PlayniteLibraryLayoutTests
                     phase + " mutable Browse results must not retain remembered focus.");
                 var actions = nodes.Single(node =>
                     node.Id == "playnite-library.actions");
-                Assert.AreEqual(PlayniteLibraryActions.Refresh,
-                    actions.InitialChildFocusId, phase);
-                Assert.IsTrue(Nodes(actions).Any(node =>
-                    node.Id == actions.InitialChildFocusId), phase);
+                Assert.IsNull(actions.InitialChildFocusId);
+                Assert.IsFalse(Nodes(actions).Any(node => node.IsFocusable));
                 Assert.IsTrue(nodes.Any(node => node.ActionId == "playnite-library.launch"),
                     phase + " must retain the admitted catalog while refreshing.");
             }

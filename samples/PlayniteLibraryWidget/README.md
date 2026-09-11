@@ -5,6 +5,11 @@ user-installed Playnite Bridge instance. The package owns its bounded localhost
 client, protected credential prompt, presentation, and organization state. It
 does not copy a product app-library provider into the package.
 
+Home uses non-focusable controller hints: Y refreshes and Menu opens Library,
+Categories, Hidden games, and Playnite connection. X opens the focused game's
+options, including Favorite. Browse also uses a Y hint for Refresh. Header
+hints do not interrupt navigation through the game collection.
+
 Home orders the full provider collection by favorites, most recently played,
 name, and stable game ID before splitting it into pages. The rail preserves
 that order as pages arrive. Saved games outside a partial cursor window are

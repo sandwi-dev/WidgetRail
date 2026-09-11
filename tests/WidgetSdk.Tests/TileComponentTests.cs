@@ -247,6 +247,19 @@ internal static class TileComponentTests
             .Aggregate(tile with { ContextActions = [] },
                 (current, index) => current.ContextAction(
                     $"action.{index}", $"Action {index}")));
+        var hint = UI.ControllerHint(ControllerButton.Menu, "Menu", "menu.hint")
+            .ContextMenu(ControllerButton.Menu, new WidgetContextAction("library.open", "Library"));
+        var menu = new WidgetView(UI.Stack("menu.root", hint, tile.ContextMenuShortcut(ControllerButton.X)), tile.Id)
+            .CreateSnapshot("menu.instance", 1);
+        Equal(ProtocolConstants.ContextMenuTriggerVersion, menu.ProtocolVersion);
+        True(PresentationPropertyMetadata.Impact(PresentationProperty.ContextMenuButton).HasFlag(PresentationPropertyImpact.Paint),
+            "Changing a menu trigger must rebuild its visible popup anchor geometry.");
+        Equal(0, ViewSnapshotValidator.Validate(menu).Count);
+        True(!menu.Root.Children[0].IsFocusable, "A menu hint must stay outside controller focus traversal.");
+        Equal(ControllerButton.Menu, menu.Root.Children[0].ContextMenuButton);
+        Equal(ControllerButton.X, menu.Root.Children[1].ContextMenuButton);
+        True(ViewSnapshotValidator.Validate(menu with { ProtocolVersion = 50 }).Count > 0, "Old hosts reject explicit menu triggers.");
+        Throws<ArgumentOutOfRangeException>(() => tile.ContextMenuShortcut(ControllerButton.B));
         return Task.CompletedTask;
     }
 
