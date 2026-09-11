@@ -126,7 +126,6 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
     private readonly string _afterActionId;
     private readonly WidgetCursorResourceOptions<TItem> _options;
     private readonly IReadOnlyDictionary<string, WidgetCursorViewport<TItem>> _viewports;
-    private readonly bool _usesVirtualCollectionWindows;
     private readonly WidgetOperations _operations;
     private readonly Action _invalidate;
     private readonly HashSet<string> _cursorHistory = new(StringComparer.Ordinal);
@@ -192,8 +191,6 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         StableIdentifier.Validate(_afterActionId, nameof(operationKey));
         _options = options;
         _viewports = new ReadOnlyDictionary<string, WidgetCursorViewport<TItem>>(viewports);
-        _usesVirtualCollectionWindows = viewports.Values.Any(
-            viewport => viewport.EstimatedItemExtent is not null);
         _operations = operations;
         _invalidate = invalidate;
     }
@@ -316,6 +313,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         {
             CollectionAnchorKey = snapshot.Anchor?.Value,
             CollectionStartIndex = snapshot.Items.Count == 0 ? null : snapshot.StartIndex,
+            CollectionGeneration = snapshot.Items.Count == 0 ? null : snapshot.WindowGeneration,
             CollectionNavigation = snapshot.Items.Count == 0 ? null : snapshot.NavigationRequest,
             CollectionLoading = snapshot.LoadingState,
             VirtualCollectionWindow = _viewports[scroll.Id].EstimatedItemExtent is { } estimate &&
@@ -457,7 +455,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             {
                 if (!CanCommit(request, context)) return;
                 ValidateTraversalProgress(request.Intent, page);
-                if (_usesVirtualCollectionWindows && _windowGeneration >=
+                if (_windowGeneration >=
                     WidgetRail.WidgetProtocol.ProtocolConstants.MaximumVirtualCollectionRequestGeneration)
                     throw new InvalidOperationException("Virtual collection request generation is exhausted.");
                 var proposed = Merge(page, request.Intent.Cursor, request.Intent.Direction, request.Intent.ProtectedKeys);
@@ -477,9 +475,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                     beforeCursor, afterCursor, anchor, focus, null);
                 var firstIndex = _segments.First?.Value.Page.FirstItemIndex;
                 var total = _segments.First?.Value.Page.TotalItemCount;
-                var nextWindowGeneration = _usesVirtualCollectionWindows
-                    ? _windowGeneration + 1
-                    : 0;
+                var nextWindowGeneration = _windowGeneration + 1;
                 var windowChange = firstIndex is null
                     ? VirtualCollectionWindowChange.Replace
                     : request.Intent.Direction switch
@@ -488,8 +484,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                         WidgetCursorDirection.After => VirtualCollectionWindowChange.Append,
                         _ => VirtualCollectionWindowChange.Replace,
                     };
-                if (_usesVirtualCollectionWindows)
-                    _windowGeneration = nextWindowGeneration;
+                _windowGeneration = nextWindowGeneration;
                 _snapshot = _snapshot with
                 {
                     FirstItemIndex = firstIndex,

@@ -224,6 +224,9 @@ internal sealed class ProtocolVersionRequirements
                             path,
                             $"Scroll pagination requires protocol version {ProtocolConstants.ScrollPaginationVersion} or later.");
                     }
+                    if (node.CollectionGeneration is not null)
+                        Add("collection-generation", ProtocolConstants.CollectionGenerationVersion,
+                            $"{path}.collectionGeneration", "Collection generations require protocol version 49 or later.");
                     if (node.CollectionLoading is not null)
                         Add("collection-loading", ProtocolConstants.CollectionLoadingVersion,
                             $"{path}.collectionLoading", "Collection loading indicators require protocol version 48 or later.");

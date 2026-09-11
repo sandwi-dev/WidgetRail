@@ -1222,6 +1222,13 @@ WidgetNode ParseNode(const JsonObject& source) {
             throw winrt::hresult_invalid_argument();
         node.collectionStartIndex = static_cast<std::int64_t>(value);
     }
+    if (source.HasKey(L"collectionGeneration")) {
+        const auto value = source.GetNamedNumber(L"collectionGeneration");
+        if (!node.collectionStartIndex || !std::isfinite(value) || std::floor(value) != value ||
+            value < 1 || value > protocol_contract::MaximumVirtualCollectionRequestGeneration)
+            throw winrt::hresult_invalid_argument();
+        node.collectionGeneration = static_cast<std::uint64_t>(value);
+    }
     if (source.HasKey(L"collectionNavigation")) {
         const auto encoded = source.GetNamedObject(L"collectionNavigation");
         const auto id = encoded.GetNamedNumber(L"requestId");
@@ -1789,7 +1796,7 @@ void ValidateFocusPresentations(const WidgetNode& root, const int protocolVersio
             !node.focusPresentation.empty() || !node.defaultFocusPresentation.empty() ||
             !node.scrollAxis.empty() || !node.scrollNearStartActionId.empty() ||
             !node.scrollNearEndActionId.empty() || node.scrollPaginationThreshold != 0 ||
-            node.collectionStartIndex || node.virtualCollectionWindow || !node.collectionAnchorKey.empty() ||
+            node.collectionGeneration || node.collectionStartIndex || node.virtualCollectionWindow || !node.collectionAnchorKey.empty() ||
             !node.collectionItemKey.empty() || !node.shortcuts.empty())
             throw winrt::hresult_invalid_argument(
                 L"Focus-associated presentation contains interactive authority.");
@@ -2308,6 +2315,12 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     };
     if (snapshot.protocolVersion < protocol_contract::CollectionLoadingVersion && usesCollectionLoading(usesCollectionLoading, snapshot.root))
         throw winrt::hresult_invalid_argument();
+    const auto usesCollectionGeneration = [&](const auto& self, const WidgetNode& node) -> bool {
+        if (node.collectionGeneration) return true;
+        return std::ranges::any_of(node.children, [&](const WidgetNode& child) { return self(self, child); });
+    };
+    if (snapshot.protocolVersion < protocol_contract::CollectionGenerationVersion && usesCollectionGeneration(usesCollectionGeneration, snapshot.root))
+        throw winrt::hresult_invalid_argument();
     snapshot.documentJson = std::wstring(std::wstring_view(source.Stringify()));
     return snapshot;
 }
@@ -2349,7 +2362,7 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 51> properties{
+    static constexpr std::array<std::wstring_view, 52> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
@@ -2363,7 +2376,7 @@ bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
         L"defaultFocusPresentation", L"scrollAxis",
         L"scrollNearStartActionId", L"scrollNearEndActionId",
         L"scrollPaginationThreshold", L"virtualCollectionWindow",
-        L"collectionLoading", L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey",
+        L"collectionGeneration", L"collectionLoading", L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey",
         L"collectionItemKey", L"styleClasses",
         L"shortcuts"};
     return std::find(properties.begin(), properties.end(), property) != properties.end();
@@ -2408,7 +2421,7 @@ bool ValidateWidgetDocumentStructure(
                  L"scrollAxis", L"scrollNearStartActionId",
                  L"scrollNearEndActionId", L"scrollPaginationThreshold",
                  L"virtualCollectionWindow",
-                 L"collectionLoading", L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey", L"collectionItemKey",
+                 L"collectionGeneration", L"collectionLoading", L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey", L"collectionItemKey",
                  L"styleClasses", L"shortcuts",
                  L"children"})) {
             error = L"The materialized widget node contains an unknown property.";
@@ -2966,6 +2979,7 @@ WidgetPresentationEffect ImpactForPresentationProperty(
             Effect::Interaction | Effect::Accessibility;
     }
     if (property == L"collectionLoading") return Effect::Paint;
+    if (property == L"collectionGeneration") return Effect::Paint | Effect::Interaction;
     if (property == L"sliderInteractionMode") {
         return Effect::Paint | Effect::Interaction | Effect::Accessibility;
     }

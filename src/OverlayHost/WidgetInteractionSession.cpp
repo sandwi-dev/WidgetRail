@@ -141,6 +141,7 @@ bool SameScrollPaginationRequest(
         left.action.actionId == right.action.actionId &&
         left.action.edge == right.action.edge &&
         left.action.edgeKey == right.action.edgeKey &&
+        left.action.collectionGeneration == right.action.collectionGeneration &&
         left.demandGeneration == right.demandGeneration;
 }
 
@@ -383,6 +384,8 @@ std::wstring FormatScrollPaginationDiagnostic(
         std::wstring{ScrollPaginationIntentName(request.intentSource)} +
         L" demand-generation=" +
         std::to_wstring(request.demandGeneration);
+    if (action.collectionGeneration)
+        message += L" collection-generation=" + std::to_wstring(*action.collectionGeneration);
     if (!diagnostic.replacementEdgeKey.empty())
         message += L" replacement-edge=" + diagnostic.replacementEdgeKey;
     if (!diagnostic.reason.empty()) message += L" reason=" + diagnostic.reason;
@@ -1419,7 +1422,8 @@ bool WidgetInteractionSession::SameScrollPaginationAuthority(
     return request.action.scrollId == action.scrollId &&
         request.action.actionId == action.actionId &&
         request.action.edge == action.edge &&
-        request.action.edgeKey == action.edgeKey;
+        request.action.edgeKey == action.edgeKey &&
+        request.action.collectionGeneration == action.collectionGeneration;
 }
 
 bool WidgetInteractionSession::SameScrollPaginationRouteEdge(
@@ -1780,9 +1784,9 @@ ScrollPaginationSessionOutcome WidgetInteractionSession::ReconcileScrollPaginati
                     diagnostic.kind = ScrollPaginationDiagnosticKind::Completed;
                     if (replacement != actions.end())
                         diagnostic.replacementEdgeKey = replacement->edgeKey;
-                    diagnostic.reason = replacement != actions.end()
-                        ? L"requested-edge-changed"
-                        : L"requested-edge-unavailable";
+                    diagnostic.reason = replacement == actions.end() ? L"requested-edge-unavailable"
+                        : replacement->collectionGeneration != latch.prefetch->request.action.collectionGeneration
+                            ? L"collection-generation-changed" : L"requested-edge-changed";
                     diagnostic.adjacentActionCount =
                         scrollPaginationAdjacentActionCount_;
                     diagnostic.visibleCompletionCount =

@@ -1193,6 +1193,15 @@ void VerifyPositionedCollectionProtocol() {
         parsed->root.collectionNavigation->requestId == 2, "positioned collection and explicit navigation cross the native parser");
     auto legacy = json; legacy.replace(legacy.find("47"), 2, "46"); error.clear();
     Require(!widgetrail::testing::ParseWidgetSnapshotResponse(legacy, error), "old protocol cannot admit positioned collections");
+    auto generated = json; generated.replace(generated.find("47"), 2, "49");
+    generated.insert(generated.find("\"collectionStartIndex\""), "\"collectionGeneration\":7,");
+    error.clear();
+    auto generationParsed = widgetrail::testing::ParseWidgetSnapshotResponse(generated, error);
+    Require(generationParsed && generationParsed->root.collectionGeneration == 7,
+        "committed collection generation crosses the native parser");
+    generated.replace(generated.find("49"), 2, "48"); error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(generated, error),
+        "old protocol cannot admit collection generations");
     auto loading = json; loading.replace(loading.find("47"), 2, "48");
     loading.insert(loading.find("\"collectionStartIndex\""), "\"collectionLoading\":\"after\",");
     error.clear();

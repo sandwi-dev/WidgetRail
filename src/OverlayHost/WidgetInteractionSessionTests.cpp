@@ -1772,6 +1772,32 @@ void ColdCollectionAndReversePrefetch() {
         "new reverse input can prefetch before while both lead zones overlap");
 }
 
+void CoalescedRefreshKeepsSameEdgeButCompletesOldPrefetch() {
+    using namespace widgetrail::input;
+    auto cached = PagedSnapshot();
+    cached.root.children[0].collectionStartIndex = 0;
+    cached.root.children[0].collectionGeneration = 4;
+    cached.root.children[0].scrollNearStartActionId.clear();
+    const auto geometry = PagedRender(0, 44);
+    WidgetInteractionSession session;
+    Check(session.ReconcileScrollPagination(Authority(cached,L"paged.widget"),geometry,1).dispatchReady,
+        "reopen queues a request from the retained pre-refresh view");
+    const auto request = session.AcquireScrollPaginationDispatch(Authority(cached,L"paged.widget"),geometry,2).first;
+    Check(request && request->action.collectionGeneration == 4, "prefetch captures its collection generation");
+    (void)session.ObserveScrollPaginationIntent(Authority(cached,L"paged.widget"),L"page.scroll",
+        widgetrail::declarative::ScrollAxis::Vertical,ScrollPaginationEdge::After,ScrollPaginationIntentSource::RightStick,3);
+    Check(!session.ReconcileScrollPagination(Authority(cached,L"paged.widget"),geometry,4).dispatchReady,
+        "repainting the same generation does not duplicate an in-flight request");
+    // Refresh and its first prefetch finished between published views. The final
+    // count, item IDs and edge are identical to the old view, but the window is new.
+    auto completed = cached; completed.sequence++;
+    completed.root.children[0].collectionGeneration = 6;
+    const auto outcome = session.ReconcileScrollPagination(Authority(completed,L"paged.widget"),geometry,5);
+    Check(outcome.dispatchReady, "coalesced same-edge refresh releases old in-flight state and honors new scrolling");
+    const auto next = session.AcquireScrollPaginationDispatch(Authority(completed,L"paged.widget"),geometry,6).first;
+    Check(next && next->action.collectionGeneration == 6, "next page is bound to the new committed window");
+}
+
 void CursorBoundaryAndViewportDemand() {
     using namespace widgetrail::input;
     auto snapshot = PagedSnapshot(); snapshot.root.children[0].collectionStartIndex = 0;
@@ -2152,6 +2178,7 @@ int main() {
     ExactSliderRequestAuthorityAndRollback();
     PressedAndAdmissionReconciliation();
     ColdCollectionAndReversePrefetch();
+    CoalescedRefreshKeepsSameEdgeButCompletesOldPrefetch();
     CursorBoundaryAndViewportDemand();
     PaginationPrefetchLifecycle();
     AnchoredSelectPopupIsExactAndBounded();

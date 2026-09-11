@@ -507,6 +507,7 @@ public sealed record ViewNode
     public string? CollectionAnchorKey { get; init; }
     /// <summary>Stable relative position of the first retained collection item.</summary>
     public long? CollectionStartIndex { get; init; }
+    public long? CollectionGeneration { get; init; }
     public CollectionNavigationRequest? CollectionNavigation { get; init; }
     public CollectionLoadingState? CollectionLoading { get; init; }
     /// <summary>

@@ -391,6 +391,7 @@ void CollectScrollPaginationActions(
             *lastVisible,
             items.size(),
         });
+        actions.back().collectionGeneration = node.collectionGeneration;
         if (edge == ScrollPaginationEdge::After && *firstVisible == 0 && *lastVisible + 1 == items.size()) {
             const auto last = CollectionItemBounds(*items.back(), activeScopeId, renderResult);
             const auto& rect = viewport->second.rect;

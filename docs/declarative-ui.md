@@ -1441,6 +1441,20 @@ An action still cannot be advertised for a nonexistent boundary. At `idle`,
 availability and actions must match again. This keeps loading from changing
 scroll geometry while preventing overlapping fetches.
 
+### Committed collection generations (protocol v49)
+
+A positioned Scroll may include a positive, bounded `collectionGeneration`.
+It identifies the committed cursor window independently of its count or edge
+keys. The SDK increments `WindowGeneration` on every successful page or refresh
+commit, including collections without virtual extent metadata. Custom cursor
+presentations forward it alongside `collectionStartIndex`.
+
+The host captures the generation when requesting another page. A changed
+generation retires that request even when refresh and paging were coalesced into
+one view with the same items as before. Unchanged generations still suppress
+duplicate in-flight requests. Generation updates require paint and interaction
+reconciliation, without layout measurement.
+
 For positioned collections, the host starts prefetching within two viewport
 lengths of the loaded edge. Only actually visible keys are protected from
 eviction; prefetch distance does not expand that protected set.

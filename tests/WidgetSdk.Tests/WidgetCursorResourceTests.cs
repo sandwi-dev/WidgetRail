@@ -5,6 +5,7 @@ internal static class WidgetCursorResourceTests
 {
     public static async Task Run()
     {
+        await CommittedGenerationDistinguishesIdenticalRefreshedWindows();
         await RefreshRejectsStalePaginationAndResumesAfterReopen();
         await PendingLoadRetainsVirtualExtent();
         await CanceledReplacementRestoresSettledState();
@@ -25,6 +26,31 @@ internal static class WidgetCursorResourceTests
         await ResetCancelsJoinedLoadAndAllowsFreshWork();
         await ActiveLifecycleDrainsJoinedLoad();
         ContractIsVersionedOpaqueAndBounded();
+    }
+
+    private static async Task CommittedGenerationDistinguishesIdenticalRefreshedWindows()
+    {
+        var widget = await StartAsync(Options(40, pageSize: 4, maximumRetainedItems: 12));
+        await widget.Resource.EnsureLoaded().Completion;
+        await widget.Resource.Prefetch(WidgetCursorDirection.After, "items.list").Completion;
+        var before = widget.Resource.Capture();
+        await widget.Resource.Refresh().Completion;
+        await widget.Resource.Prefetch(WidgetCursorDirection.After, "items.list").Completion;
+        var after = widget.Resource.Capture();
+        True(before.Snapshot.Items.SequenceEqual(after.Snapshot.Items), "Fixture must end on an identical retained window.");
+        True(before.Snapshot.WindowGeneration > 0 && after.Snapshot.WindowGeneration > before.Snapshot.WindowGeneration,
+            "Each committed window needs a generation even without virtual extent metadata.");
+        var rows = after.Snapshot.Items.Select(item => after.PresentItem(item, UI.Button(item.Id,"select","focus." + item.Id))).ToArray();
+        var view = new WidgetView(after.Present(UI.VerticalScroll("items.list",rows))).CreateSnapshot("generation.fixture",1);
+        Equal<long?>(after.Snapshot.WindowGeneration, view.Root.CollectionGeneration);
+        Equal(ProtocolConstants.CollectionGenerationVersion, view.ProtocolVersion);
+        Equal(PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
+            PresentationPropertyMetadata.Impact(PresentationProperty.CollectionGeneration));
+        True(ViewSnapshotValidator.Validate(view with { ProtocolVersion = 48 }).Any(error => error.Code == "feature_requires_version"),
+            "Collection generations must require their protocol version.");
+        True(ViewSnapshotValidator.Validate(view with { Root = view.Root with { CollectionGeneration = 0 } }).Count > 0,
+            "Collection generation zero is not a committed window.");
+        await StopAsync(widget);
     }
 
     private static async Task RefreshRejectsStalePaginationAndResumesAfterReopen()
@@ -171,7 +197,7 @@ internal static class WidgetCursorResourceTests
         var loadingView = new WidgetView(loading.Present(UI.VerticalScroll("items.list", loadingRows)))
             .CreateSnapshot("loading.test", 1);
         Equal<CollectionLoadingState?>(CollectionLoadingState.After, loadingView.Root.CollectionLoading);
-        Equal(ProtocolConstants.CollectionLoadingVersion, loadingView.ProtocolVersion);
+        Equal(ProtocolConstants.CollectionGenerationVersion, loadingView.ProtocolVersion);
         True(System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(loadingView))
             .Contains("\"collectionLoading\":\"after\"", StringComparison.Ordinal),
             "Collection loading must use canonical lowercase protocol values.");
@@ -418,7 +444,7 @@ internal static class WidgetCursorResourceTests
         });
         await widget.Resource.EnsureLoaded().Completion;
         var initial = widget.Render().CreateSnapshot("virtual.fixture", 1);
-        Equal(ProtocolConstants.CollectionLoadingVersion, initial.ProtocolVersion);
+        Equal(ProtocolConstants.CollectionGenerationVersion, initial.ProtocolVersion);
         var window = initial.Root.Children[0].VirtualCollectionWindow!;
         Equal(1L, window.RequestGeneration);
         Equal(VirtualCollectionWindowChange.Replace, window.Change);

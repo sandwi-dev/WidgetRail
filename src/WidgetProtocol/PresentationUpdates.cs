@@ -69,6 +69,7 @@ public enum PresentationProperty
     VirtualCollectionWindow,
     CollectionAnchorKey,
     CollectionStartIndex,
+    CollectionGeneration,
     CollectionNavigation,
     CollectionLoading,
     CollectionItemKey,
@@ -138,6 +139,7 @@ public static class PresentationPropertyMetadata
     public static PresentationPropertyImpact Impact(PresentationProperty property) => property switch
     {
         PresentationProperty.CollectionLoading => PresentationPropertyImpact.Paint,
+        PresentationProperty.CollectionGeneration => PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
         PresentationProperty.ActiveInputScopeId or
         PresentationProperty.InitialFocusId or
         PresentationProperty.QuickActions =>

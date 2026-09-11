@@ -9,7 +9,7 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 48;
+    public const int CurrentVersion = 49;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
@@ -26,6 +26,7 @@ public static class ProtocolConstants
     public const int CursorCollectionVersion = 14;
     public const int CollectionPositionVersion = 47;
     public const int CollectionLoadingVersion = 48;
+    public const int CollectionGenerationVersion = 49;
     public const int TextEntryVersion = 15;
     public const int SurfaceAxisSizingVersion = 17;
     public const int AtomicPresentationUpdateVersion = 18;

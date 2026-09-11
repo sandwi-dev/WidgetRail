@@ -13194,7 +13194,8 @@ private:
                 action.actionId == request.action.actionId &&
                 action.sourceElementId == request.action.sourceElementId &&
                 action.edge == request.action.edge &&
-                action.edgeKey == request.action.edgeKey;
+                action.edgeKey == request.action.edgeKey &&
+                action.collectionGeneration == request.action.collectionGeneration;
         });
     }
 

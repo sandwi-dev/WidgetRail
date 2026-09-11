@@ -587,6 +587,12 @@ joins the refresh without replacing it; callers can request again after it
 settles. Cancellation restores the last settled state rather than a superseded
 operation's transient loading state.
 
+Cursor presentations also forward protocol-v49 `CollectionGeneration` from
+the captured snapshot's `WindowGeneration`. Every successful commit advances
+this value, including an identical refresh and nonvirtual cursor collections.
+Custom presentations must forward it too: item counts and edge keys alone
+cannot distinguish a refreshed window when intermediate views are coalesced.
+
 `WidgetAppLibraryItem` has one authoritative normalized `Presentation` value;
 there are no duplicate scalar title/kind/source/artwork accessors. It contains
 the sanitized display name and closed kind, one opaque source reference, one

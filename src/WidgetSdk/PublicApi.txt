@@ -2441,6 +2441,7 @@ property long WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot.Revision { get; se
 property long WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetTestPrivateState.Revision { get; }
+property long? WidgetRail.WidgetSdk.ScrollElement.CollectionGeneration { get; set; }
 property long? WidgetRail.WidgetSdk.ScrollElement.CollectionStartIndex { get; set; }
 property long? WidgetRail.WidgetSdk.WidgetAppLibraryMetadata.LastPlayedAtUnixMilliseconds { get; set; }
 property long? WidgetRail.WidgetSdk.WidgetAppLibraryMetadata.PlaytimeMinutes { get; set; }

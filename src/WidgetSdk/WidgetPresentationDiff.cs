@@ -406,6 +406,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.VirtualCollectionWindow, before.VirtualCollectionWindow, after.VirtualCollectionWindow);
         Add(PresentationProperty.CollectionAnchorKey, before.CollectionAnchorKey, after.CollectionAnchorKey);
         Add(PresentationProperty.CollectionStartIndex, before.CollectionStartIndex, after.CollectionStartIndex);
+        Add(PresentationProperty.CollectionGeneration, before.CollectionGeneration, after.CollectionGeneration);
         Add(PresentationProperty.CollectionNavigation, before.CollectionNavigation, after.CollectionNavigation);
         Add(PresentationProperty.CollectionLoading, before.CollectionLoading, after.CollectionLoading);
         Add(PresentationProperty.CollectionItemKey, before.CollectionItemKey, after.CollectionItemKey);

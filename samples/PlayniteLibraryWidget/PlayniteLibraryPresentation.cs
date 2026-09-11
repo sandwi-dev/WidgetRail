@@ -898,6 +898,7 @@ internal static class PlayniteLibraryPresentation
             {
                 CollectionAnchorKey = collectionAnchorKey,
                 CollectionStartIndex = collectionAnchorKey is null ? null : snapshot.StartIndex,
+                CollectionGeneration = collectionAnchorKey is not null && snapshot.WindowGeneration > 0 ? snapshot.WindowGeneration : null,
                 CollectionNavigation = collectionAnchorKey is null ? null : snapshot.NavigationRequest,
                 CollectionLoading = collectionAnchorKey is null ? null : snapshot.LoadingState,
             };
@@ -927,6 +928,7 @@ internal static class PlayniteLibraryPresentation
             {
                 CollectionAnchorKey = collectionAnchorKey,
                 CollectionStartIndex = collectionAnchorKey is null ? null : snapshot.StartIndex,
+                CollectionGeneration = collectionAnchorKey is not null && snapshot.WindowGeneration > 0 ? snapshot.WindowGeneration : null,
                 CollectionNavigation = collectionAnchorKey is null ? null : snapshot.NavigationRequest,
                 CollectionLoading = collectionAnchorKey is null ? null : snapshot.LoadingState,
             };
