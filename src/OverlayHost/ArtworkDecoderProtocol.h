@@ -8,7 +8,7 @@
 namespace widgetrail::artworkdecoder {
 
 constexpr std::uint32_t protocolMagic = 0x44524157; // WARD
-constexpr std::uint32_t protocolVersion = 3;
+constexpr std::uint32_t protocolVersion = 4;
 constexpr std::size_t maximumEncodedBytes = 8U * 1024U * 1024U;
 constexpr std::size_t maximumDecodedBytes = 64U * 1024U * 1024U;
 

@@ -153,6 +153,58 @@ int main() {
         const auto png4096 = EncodeWicImage(GUID_ContainerFormatPng, 4'096, 1);
         const auto jpeg = EncodeWicImage(GUID_ContainerFormatJpeg, 1, 1);
         const auto png = EncodeWicImage(GUID_ContainerFormatPng, 2, 1);
+        // Display-sized variants must shrink the actual decoded buffer, retain
+        // aspect ratio, and keep original source admission limits intact.
+        {
+            ArtworkDecoderProcessOwner decoder(defaultLimits, ExecutableSibling(L"ArtworkDecoderTestHost.exe"));
+            for (const auto& format : {GUID_ContainerFormatPng, GUID_ContainerFormatJpeg}) {
+                const auto encoded = EncodeWicImage(format, 1200, 1800);
+                const auto mime = IsEqualGUID(format, GUID_ContainerFormatPng) ? L"image/png" : L"image/jpeg";
+                const auto poster = decoder.Decode(encoded, mime, {}, artworkdecoder::TestBehavior::Normal, 256, 384);
+                assert(poster.succeeded() && poster.image.width == 256 && poster.image.height == 384);
+                assert(poster.image.premultipliedBgra.size() == 256U * 384U * 4U);
+                const auto background = decoder.Decode(encoded, mime, {}, artworkdecoder::TestBehavior::Normal, 1024, 576);
+                assert(background.succeeded() && background.image.width > poster.image.width);
+                assert(background.image.premultipliedBgra.size() <= (2U * 1024U * 576U + 4096U) * 4U);
+                assert(!decoder.Decode(encoded, mime, {}, artworkdecoder::TestBehavior::Normal, 0, 384).succeeded());
+                assert(!decoder.Decode(encoded, mime, {}, artworkdecoder::TestBehavior::Normal, 4096, 384).succeeded());
+            }
+            const auto smallImage = decoder.Decode(png, L"image/png", {}, artworkdecoder::TestBehavior::Normal, 256, 384);
+            assert(smallImage.succeeded() && smallImage.image.width == 2 && smallImage.image.height == 1);
+            const auto oversized = EncodeWicImage(GUID_ContainerFormatPng, 4097, 1);
+            assert(!decoder.Decode(oversized, L"image/png", {}, artworkdecoder::TestBehavior::Normal, 64, 64).succeeded());
+            const auto bucket = DisplayImageSize(120, 180, 1.05F);
+            assert(bucket.width == 128 && bucket.height == 192);
+        }
+        {
+            const auto encoded = EncodeWicImage(GUID_ContainerFormatPng, 1200, 1800);
+            const TrustedArtworkDemandAuthority authority{L"variant-test",L"runtime",L"presentation"};
+            const auto posterKey = RemoteImageCache::TrustedArtworkKey(authority.widgetId,L"poster",L"cover",{256,384});
+            const auto backgroundKey = RemoteImageCache::TrustedArtworkKey(authority.widgetId,L"background",L"cover",{512,768});
+            assert(posterKey != backgroundKey);
+            assert(posterKey == RemoteImageCache::TrustedArtworkKey(authority.widgetId,L"another-poster",L"cover",{256,384}));
+            const auto accepted=[](std::wstring_view,const TrustedArtworkDemandAuthority&,std::stop_token) { return TrustedArtworkRequestDisposition::Accepted; };
+            RemoteImageCache variants(defaultLimits, {}, {}, accepted);
+            assert(variants.RequestTrustedArtwork(posterKey,authority,{256,384}) == RemoteImageRequestResult::Queued);
+            assert(variants.RequestTrustedArtwork(backgroundKey,authority,{512,768}) == RemoteImageRequestResult::Queued);
+            assert(variants.SupplyTrustedArtwork(authority.widgetId,L"cover",authority,L"image/png",Base64(encoded)));
+            const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+            while (variants.GetStats().readyEntries<2 && std::chrono::steady_clock::now()<until)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            const auto poster=variants.GetReadyImage(posterKey);
+            const auto background=variants.GetReadyImage(backgroundKey);
+            assert(poster && poster->width==256 && poster->height==384);
+            assert(background && background->width==512 && background->height==768);
+            auto tight=defaultLimits;
+            tight.maximumEncodedArtworkBytesTotal=encoded.size();
+            tight.maximumEncodedArtworkBytesPerWidget=encoded.size();
+            tight.maximumEncodedArtworkBytes=encoded.size();
+            RemoteImageCache bounded(tight, {}, {}, accepted);
+            (void)bounded.RequestTrustedArtwork(posterKey,authority,{256,384});
+            (void)bounded.RequestTrustedArtwork(backgroundKey,authority,{512,768});
+            assert(!bounded.SupplyTrustedArtwork(authority.widgetId,L"cover",authority,L"image/png",Base64(encoded)));
+            assert(bounded.GetStats().encodedArtworkBytes==0);
+        }
         const auto stillWebP = StillWebP();
         const auto animatedWebP = AnimatedWebP();
 
@@ -750,6 +802,61 @@ int main() {
         assert(stats.decodedBytes == 0);
         assert(stats.bytePressureEvictions == 0);
         perImageCache.Shutdown();
+    }
+
+    {
+        // Two protected visible images survive speculative churn at the same
+        // fixed budget. Releasing one permits ordinary LRU eviction again.
+        RemoteImageLimits pressure;
+        pressure.maximumDecodedImageBytes = 4;
+        pressure.maximumDecodedBytes = 12;
+        RemoteImageCache cache(pressure, {}, [](std::wstring_view source, std::stop_token, const RemoteImageLimits& limits) {
+            assert(source.starts_with(L"https://example.test/"));
+            assert(limits.decodeSize.width == 64 && limits.decodeSize.height == 64);
+            RemoteDecodedImage image;
+            image.width = image.height = 1; image.stride = 4;
+            image.premultipliedBgra = {0x10, 0x20, 0x30, 0xFF};
+            return RemoteImageFetchResult{S_OK, std::move(image), {}};
+        });
+        const auto key = [](std::wstring source) { return RemoteImageCache::VariantKey(source, {64,64}); };
+        const auto load = [&](std::wstring source) {
+            assert(cache.Request(source, {64,64}) == RemoteImageRequestResult::Queued);
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+            while (cache.GetState(key(source)) != RemoteImageState::Ready && std::chrono::steady_clock::now() < deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            assert(cache.GetState(key(source)) == RemoteImageState::Ready);
+            assert(cache.GetStats().decodedBytes <= 12);
+        };
+        const auto tray = key(L"https://example.test/tray");
+        const auto poster = key(L"https://example.test/visible");
+        cache.ProtectImages(&cache, {tray, poster});
+        load(L"https://example.test/tray"); load(L"https://example.test/visible");
+        for (int i=0; i<20; ++i) load(L"https://example.test/speculative-" + std::to_wstring(i));
+        assert(cache.GetState(tray) == RemoteImageState::Ready);
+        assert(cache.GetState(poster) == RemoteImageState::Ready);
+        assert(!cache.CanPrefetch(L"https://example.test/not-visible"));
+        assert(cache.CanPrefetch(tray));
+        const auto retained = key(L"https://example.test/speculative-19");
+        cache.ProtectImages(&cache, {tray, poster, retained});
+        const auto denied = key(L"https://example.test/denied");
+        assert(cache.Request(L"https://example.test/denied", {64,64}) == RemoteImageRequestResult::Queued);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        while (cache.GetState(denied) != RemoteImageState::Failed && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        assert(cache.BudgetRejected(denied));
+        assert(!cache.ReleaseBudgetRejection(denied));
+        assert(cache.GetStats().decodedBytes == 12);
+        cache.ProtectImages(&cache, {tray, poster});
+        assert(cache.ReleaseBudgetRejection(denied));
+        load(L"https://example.test/denied");
+        assert(cache.Request(L"http://example.test/unsafe", {64,64}) == RemoteImageRequestResult::InvalidUrl);
+        cache.ProtectImages(&cache, {poster});
+        load(L"https://example.test/new");
+        assert(cache.GetState(tray) == RemoteImageState::Missing);
+        assert(cache.GetState(poster) == RemoteImageState::Ready);
+        cache.ReleaseImageProtection(&cache);
+        load(L"https://example.test/final");
+        assert(cache.GetState(poster) == RemoteImageState::Missing);
     }
 
     std::mutex mutex;

@@ -1,4 +1,7 @@
 #pragma once
+#include "ImageDecodeSize.h"
+#include <set>
+#include <map>
 
 #include <Windows.h>
 #include <d2d1.h>
@@ -91,6 +94,7 @@ enum class TrustedArtworkRequestDisposition {
 };
 
 struct RemoteImageLimits {
+    ImageDecodeSize decodeSize{};
     // Entry metadata and ready decoded pixels have independent bounds from
     // pending fetch/decode admission. A full pending queue must not evict a
     // useful ready image merely to track another request.
@@ -213,14 +217,14 @@ public:
     RemoteImageCache(const RemoteImageCache&) = delete;
     RemoteImageCache& operator=(const RemoteImageCache&) = delete;
 
-    [[nodiscard]] RemoteImageRequestResult Request(std::wstring url);
+    [[nodiscard]] RemoteImageRequestResult Request(std::wstring url, ImageDecodeSize size = {});
     /// Queues a host-created opaque artwork cache key. Snapshot image sources
     /// cannot enter this path; only the renderer constructs these keys from a
     /// validated protocol-v14 artwork handle and current widget ID.
     [[nodiscard]] RemoteImageRequestResult RequestTrustedArtwork(std::wstring key);
     [[nodiscard]] RemoteImageRequestResult RequestTrustedArtwork(
         std::wstring key,
-        TrustedArtworkDemandAuthority authority);
+        TrustedArtworkDemandAuthority authority, ImageDecodeSize size = {});
     [[nodiscard]] RemoteImageRequestResult RequestPackageIcon(
         std::wstring key,
         PackageIconDemandAuthority authority);
@@ -267,7 +271,7 @@ public:
     [[nodiscard]] static std::wstring TrustedArtworkKey(
         std::wstring_view widgetId,
         std::wstring_view nodeId,
-        std::wstring_view artworkHandle);
+        std::wstring_view artworkHandle, ImageDecodeSize size = {});
     [[nodiscard]] static std::wstring PackageIconKey(
         const PackageIconDemandAuthority& authority);
     [[nodiscard]] static std::uint64_t OpaqueDiagnosticHash(
@@ -281,6 +285,12 @@ public:
         std::wstring_view url,
         ID2D1Bitmap** bitmap);
 
+    static std::wstring VariantKey(std::wstring_view source, ImageDecodeSize size);
+    void ProtectImages(const void* owner, std::set<std::wstring> keys);
+    void ReleaseImageProtection(const void* owner);
+    bool CanPrefetch(std::wstring_view key) const;
+    bool BudgetRejected(std::wstring_view key) const;
+    bool ReleaseBudgetRejection(std::wstring_view key);
     void Clear();
     void Shutdown() noexcept;
 
@@ -312,6 +322,9 @@ private:
         std::uint64_t demandGeneration{};
         std::optional<PackageIconDemandAuthority> packageIconAuthority;
         bool packageIconQueued{};
+        ImageDecodeSize decodeSize{};
+        bool budgetRejected{};
+        std::size_t rejectedBytes{};
     };
 
     struct ArtworkDemand final {
@@ -333,6 +346,8 @@ private:
         const ArtworkDemand& demand,
         TrustedArtworkRequestDisposition disposition);
     void CompleteLocked(const std::wstring& url, RemoteImageFetchResult result);
+    bool ProtectedLocked(std::wstring_view key) const;
+    std::map<const void*, std::set<std::wstring>> protectedImages_;
     RemoteImageLimits limits_;
     CompletionCallback completion_;
     bool usesCustomFetch_{};

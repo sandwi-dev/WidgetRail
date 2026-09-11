@@ -131,6 +131,7 @@ struct ComputedCompositorBackground final {
     // artwork for this exact surface/default declaration.
     std::wstring defaultArtworkKey;
     bool retainCurrentArtwork{};
+    ImageDecodeSize decodeSize{};
 };
 
 struct RenderResult final {
@@ -327,6 +328,8 @@ struct DeclarativeRenderOptions final {
     /// BackgroundSurface selection. Empty preserves test/source compatibility.
     std::wstring artworkAuthorityId;
     bool compositorBackgroundAvailable{};
+    bool sizeArtworkToDisplay{};
+    ImageDecodeSize artworkDecodeSize{};
     /// Last admitted compositor selection, used only when focus leaves the
     /// widget or its offscreen cursor item is evicted. Exact owner checks apply.
     std::optional<ComputedCompositorBackground> retainedCompositorBackground;
@@ -375,6 +378,8 @@ public:
         RemoteImageCache* imageCache,
         ArtworkRenderDiagnosticCallback artworkRenderDiagnostic = {}) noexcept;
 
+    ~DeclarativeRenderer();
+    void SetChromeImageProtection(std::set<std::wstring> keys);
     DeclarativeRenderer(const DeclarativeRenderer&) = delete;
     DeclarativeRenderer& operator=(const DeclarativeRenderer&) = delete;
 
@@ -652,7 +657,11 @@ private:
     [[nodiscard]] bool BindBitmapResourceDomain(
         ID2D1RenderTarget* renderTarget) noexcept;
     void ClearBitmapCache(bool resourceInvalidation) noexcept;
-    void TrimBitmapCache(std::size_t incomingBytes) noexcept;
+    bool TrimBitmapCache(std::size_t incomingBytes) noexcept;
+    void PublishImageProtection();
+    bool ImageProtected(std::wstring_view key) const;
+    std::set<std::wstring> protectedImageKeys_;
+    std::set<std::wstring> chromeImageKeys_;
     void RecalculateFocusBackgroundCompositeBytes() noexcept;
     void ReportArtworkRenderDiagnostic(
         const WidgetNode& node,

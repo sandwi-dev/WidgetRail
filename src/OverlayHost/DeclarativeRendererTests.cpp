@@ -6133,6 +6133,80 @@ void PackageSvgIconPaintUsesGenericRenderTargetAuthority() {
     cache.Shutdown();
 }
 
+void VisibleArtworkAndChromeSurviveCachePressure() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write; ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas; ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())), "retention D2D factory");
+    Check(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))), "retention text factory");
+    Check(SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))), "retention WIC factory");
+    Check(SUCCEEDED(wic->CreateBitmap(200,120,GUID_WICPixelFormat32bppPBGRA,WICBitmapCacheOnLoad,canvas.ReleaseAndGetAddressOf())), "retention canvas");
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(canvas.Get(),D2D1::RenderTargetProperties(),target.ReleaseAndGetAddressOf())), "retention render target");
+    RemoteImageLimits limits;
+    limits.maximumDecodedBytes = 256U * 128U * 4U * 3U;
+    RemoteImageCache cache(limits, {}, [](std::wstring_view, std::stop_token, const RemoteImageLimits& requested) {
+        RemoteDecodedImage image;
+        image.width = requested.decodeSize.width; image.height = requested.decodeSize.height;
+        image.stride = image.width * 4;
+        image.premultipliedBgra.resize(static_cast<std::size_t>(image.stride) * image.height, 0xff);
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    });
+    const ImageDecodeSize size{256,128};
+    const auto key=[&](std::wstring_view url) { return RemoteImageCache::VariantKey(url,size); };
+    const auto wait=[&](const std::wstring& imageKey) {
+        const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(cache.GetState(imageKey)!=RemoteImageState::Ready && std::chrono::steady_clock::now()<until)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Check(cache.GetState(imageKey)==RemoteImageState::Ready,"retention image finished loading");
+    };
+    const auto icon=key(L"https://example.test/tray");
+    DeclarativeRenderer renderer(d2d.Get(),write.Get(),&cache);
+    renderer.SetChromeImageProtection({icon});
+    (void)cache.Request(L"https://example.test/tray",size); wait(icon);
+    WidgetSnapshot snapshot; snapshot.instanceId=L"retention"; snapshot.sequence=1;
+    snapshot.root=Node(L"poster",L"image"); snapshot.root.imageSource=L"https://example.test/poster";
+    DeclarativeRenderOptions options; options.sizeArtworkToDisplay=true;
+    const auto draw=[&]() {
+        target->BeginDraw(); auto result=renderer.Render(target.Get(),snapshot,{}, {0,0,200,120},options);
+        Check(SUCCEEDED(target->EndDraw()) && result.succeeded,"display-sized poster renders");
+    };
+    draw(); const auto poster=key(snapshot.root.imageSource); wait(poster); draw();
+    auto initial=renderer.GetImageBitmapCacheStats();
+    Check(initial.entries==1 && initial.bytes==256U*128U*4U,"GPU retains display-sized poster");
+    for(int i=0;i<20;++i) {
+        const auto url=L"https://example.test/pressure-"+std::to_wstring(i);
+        (void)cache.Request(url,size); wait(key(url));
+        Check(cache.GetState(icon)==RemoteImageState::Ready,"tray source survives poster loading pressure");
+        Check(cache.GetState(poster)==RemoteImageState::Ready,"visible poster source survives loading pressure");
+        draw();
+    }
+    Check(renderer.GetImageBitmapCacheStats().creates==initial.creates,"stopping or repainting does not recreate visible poster bitmap");
+    snapshot.root=Node(L"empty",L"column"); ++snapshot.sequence; draw();
+    (void)cache.Request(L"https://example.test/replacement",size); wait(key(L"https://example.test/replacement"));
+    Check(cache.GetState(poster)==RemoteImageState::Missing,"leaving collection releases visible source protection");
+    Check(cache.GetState(icon)==RemoteImageState::Ready,"tray remains protected when widget changes");
+    renderer.SetChromeImageProtection({});
+    (void)cache.Request(L"https://example.test/replacement2",size); wait(key(L"https://example.test/replacement2"));
+    Check(cache.GetState(icon)==RemoteImageState::Missing,"hidden tray icon is eligible for ordinary eviction");
+    // Exercise GPU entry pressure separately: the same protection used for
+    // tray icons must preserve a retained bitmap even when it is not repainted.
+    renderer.SetChromeImageProtection({poster});
+    for (int i=0; i<270; ++i) {
+        snapshot.root=Node(L"replacement-poster",L"image");
+        snapshot.root.imageSource=L"https://example.test/gpu-pressure-"+std::to_wstring(i);
+        ++snapshot.sequence;
+        draw(); wait(key(snapshot.root.imageSource)); draw();
+    }
+    const auto pressured=renderer.GetImageBitmapCacheStats();
+    Check(pressured.evictions>0 && pressured.entries<=256 && pressured.bytes<=96U*1024U*1024U,
+        "GPU eviction respects unchanged entry and byte budgets");
+    snapshot.root=Node(L"poster",L"image"); snapshot.root.imageSource=L"https://example.test/poster";
+    ++snapshot.sequence; draw();
+    Check(renderer.GetImageBitmapCacheStats().creates==pressured.creates,
+        "retained chrome bitmap survives GPU churn without re-creation");
+}
+
 void BitmapRetentionPolicyIsBounded() {
     widgetrail::DeclarativeRenderer renderer(nullptr, nullptr, nullptr);
     const auto stats = renderer.GetImageBitmapCacheStats();
@@ -6269,6 +6343,7 @@ int main() {
     ContentMeasurementUsesResponsiveTaffyGeometry();
     MediaViewportUsesFinalDeclarativeGeometry();
     PackageSvgIconPaintUsesGenericRenderTargetAuthority();
+    VisibleArtworkAndChromeSurviveCachePressure();
     BitmapRetentionPolicyIsBounded();
     std::cout << "DeclarativeRendererTests: " << checks << " checks passed\n";
     CoUninitialize();

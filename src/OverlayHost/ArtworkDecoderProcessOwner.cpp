@@ -84,7 +84,7 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
             (requestedWidth == 0 || requestedHeight == 0 ||
              requestedWidth > 512 || requestedHeight > 512)) ||
         (contentType != ContentType::Svg &&
-            (requestedWidth != 0 || requestedHeight != 0 ||
+            (!widgetrail::ImageDecodeSize{requestedWidth, requestedHeight}.valid() ||
              rasterVariant != RasterVariant::OriginalColor)))
         return Failure(E_INVALIDARG, L"Trusted artwork decode input was invalid.");
 
@@ -176,6 +176,10 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
     if (header->decodedBytes > limits_.maximumDecodedImageBytes ||
         header->decodedBytes > maximumDecodedBytes ||
         header->width == 0 || header->height == 0 ||
+        (contentType != ContentType::Svg && requestedWidth != 0 &&
+            (header->width > 2048 || header->height > 2048 ||
+             static_cast<std::uint64_t>(header->width) * header->height >
+                2ULL * requestedWidth * requestedHeight + 4096)) ||
         header->stride != static_cast<std::uint64_t>(header->width) * 4U ||
         static_cast<std::uint64_t>(header->stride) * header->height !=
             header->decodedBytes) {

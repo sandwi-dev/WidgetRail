@@ -2696,6 +2696,7 @@ void WidgetSurfaceCoordinator::Paint() {
     options.activeSliderElementId =
         sliderPresentation.activeSliderElementId;
     options.artworkWidgetId = admission_->widgetId;
+    options.sizeArtworkToDisplay = true;
     options.artworkRuntimeGeneration = admission_->runtimeGeneration;
     options.artworkPresentationGeneration = admission_->presentationGeneration;
     options.packageContentDigest = admission_->packageContentDigest;

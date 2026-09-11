@@ -6971,7 +6971,7 @@ private:
     [[nodiscard]] std::wstring TrayWidgetPaintIdentity(
         const std::wstring_view widgetId,
         const widgetrail::declarative::Rect iconBounds,
-        const float pixelsPerDip) const {
+        const float pixelsPerDip, std::set<std::wstring>* protectedKeys = nullptr) const {
         std::wstring identity{widgetId};
         identity += L":" + std::to_wstring(static_cast<int>(
             DisplayWidgetIcon(widgetId)));
@@ -6990,10 +6990,13 @@ private:
                 *descriptor->packageIcon, iconBounds, options);
         if (!resolvedAuthority) return identity;
         const auto& authority = *resolvedAuthority;
+        if (protectedKeys) protectedKeys->insert(widgetrail::RemoteImageCache::PackageIconKey(authority));
         const auto state = imageCache_
             ? imageCache_->GetPackageIconState(
                 widgetrail::RemoteImageCache::PackageIconKey(authority), authority)
             : widgetrail::RemoteImageState::Missing;
+        if (state == widgetrail::RemoteImageState::Missing && imageCache_)
+            (void)imageCache_->RequestPackageIcon(widgetrail::RemoteImageCache::PackageIconKey(authority), authority);
         identity += L":package:" + descriptor->runtimeGeneration + L":" +
             descriptor->presentationGeneration + L":" +
             descriptor->packageContentDigest + L":" +
@@ -16125,6 +16128,7 @@ private:
         const unsigned int height,
         const float pixelsPerDip) const {
         widgetrail::shell::RetainedTrayState state;
+        std::set<std::wstring> protectedIcons;
         state.width = width;
         state.height = height;
         state.appearanceRevision = static_cast<std::uint64_t>(std::max<long long>(
@@ -16155,7 +16159,7 @@ private:
             state.items.push_back({
                 relative(tile.bounds),
                 TrayWidgetPaintIdentity(
-                    widgetId, TrayPackageIconBounds(tile.bounds), pixelsPerDip),
+                    widgetId, TrayPackageIconBounds(tile.bounds), pixelsPerDip, &protectedIcons),
                 selected,
                 selected &&
                     state_.focusRegion() == widgetrail::FocusRegion::Tray,
@@ -16168,6 +16172,7 @@ private:
                     std::to_wstring(layout.nextOverflow->targetSlot),
                 false, false});
         }
+        if (declarativeRenderer_) declarativeRenderer_->SetChromeImageProtection(std::move(protectedIcons));
         return state;
     }
 
@@ -16367,6 +16372,11 @@ private:
             activeContentRenderPlan_ = widgetrail::IncrementalPresentationPlan{
                 widgetrail::IncrementalPresentationWork::FullRaster, fullDamage};
         }
+        auto nextTrayState = CurrentTrayPaintState(
+            *trayLayout, chromeSession.trayWidth, chromeSession.trayHeight,
+            chromeSession.pixelsPerDip);
+        if (!nextTrayState) return false;
+        if (OverlayFullscreenMediaRequested()) nextTrayState->items.clear();
         if (retainPendingRefreshPixels) {
             activeContentRenderPlan_ = widgetrail::IncrementalPresentationPlan{
                 widgetrail::IncrementalPresentationWork::NoRaster, {}};
@@ -16439,11 +16449,6 @@ private:
         }
         set.guideKey = guideKey;
 
-        auto nextTrayState = CurrentTrayPaintState(
-            *trayLayout, chromeSession.trayWidth, chromeSession.trayHeight,
-            chromeSession.pixelsPerDip);
-        if (!nextTrayState) return false;
-        if (OverlayFullscreenMediaRequested()) nextTrayState->items.clear();
         const bool trayDirty = widgetrail::shell::RequiresTrayRepaint(
             retainedTrayPaintState_ ? &*retainedTrayPaintState_ : nullptr,
             *nextTrayState);
@@ -16852,6 +16857,14 @@ private:
             ? frameLayout
             : computedLayout ? &*computedLayout : nullptr;
         if (!layout) return;
+        // The fallback HWND path has no retained tray-state pass.
+        std::set<std::wstring> protectedIcons;
+        for (const auto& tile : layout->tiles) {
+            (void)TrayWidgetPaintIdentity(state_.order()[tile.slot],
+                TrayPackageIconBounds(tile.bounds), physicalPixelsPerDip, &protectedIcons);
+        }
+        if (declarativeRenderer_)
+            declarativeRenderer_->SetChromeImageProtection(std::move(protectedIcons));
 
         const auto drawOverflow = [&](const widgetrail::shell::TrayOverflowLayout& overflow) {
             const auto& bounds = overflow.bounds;
@@ -17657,6 +17670,7 @@ private:
                     options.accessibility = accessibilityPolicy;
                 options.animationTimestampMilliseconds = presentationTime;
                 options.artworkWidgetId = std::wstring{renderedWidget};
+                options.sizeArtworkToDisplay = true;
                 if (descriptor) {
                     options.artworkRuntimeGeneration = descriptor->runtimeGeneration;
                     options.artworkPresentationGeneration =

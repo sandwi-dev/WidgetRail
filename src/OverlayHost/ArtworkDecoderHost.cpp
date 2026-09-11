@@ -1,4 +1,5 @@
 #include "ArtworkDecoderProtocol.h"
+#include "ImageDecodeSize.h"
 #include "EncodedArtworkEnvelope.h"
 
 #include <Windows.h>
@@ -63,7 +64,7 @@ using namespace widgetrail::artworkdecoder;
             (header.requestedWidth == 0 || header.requestedHeight == 0 ||
              header.requestedWidth > 512 || header.requestedHeight > 512)) ||
         (header.contentType != ContentType::Svg &&
-            (header.requestedWidth != 0 || header.requestedHeight != 0 ||
+            (!widgetrail::ImageDecodeSize{header.requestedWidth, header.requestedHeight}.valid() ||
              header.rasterVariant != RasterVariant::OriginalColor)))
         return E_INVALIDARG;
 
@@ -212,20 +213,27 @@ using namespace widgetrail::artworkdecoder;
          decoded > header.maximumDecodedBytes || decoded > maximumDecodedBytes ||
          decoded > std::numeric_limits<UINT>::max()))
         result = HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+    ComPtr<IWICBitmapScaler> scaler;
+    const auto output = widgetrail::FitDecodedImage(width, height, {header.requestedWidth, header.requestedHeight});
+    if (SUCCEEDED(result) && (output.width != width || output.height != height)) {
+        result = factory->CreateBitmapScaler(scaler.ReleaseAndGetAddressOf());
+        if (SUCCEEDED(result)) result = scaler->Initialize(frame.Get(), output.width, output.height, WICBitmapInterpolationModeFant);
+        width = output.width; height = output.height;
+    }
     if (SUCCEEDED(result))
         result = factory->CreateFormatConverter(converter.ReleaseAndGetAddressOf());
     if (SUCCEEDED(result))
-        result = converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppPBGRA,
+        result = converter->Initialize(scaler ? static_cast<IWICBitmapSource*>(scaler.Get()) : frame.Get(), GUID_WICPixelFormat32bppPBGRA,
             WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom);
     if (SUCCEEDED(result))
-        result = converter->CopyPixels(nullptr, static_cast<UINT>(stride),
-            static_cast<UINT>(decoded),
+        result = converter->CopyPixels(nullptr, width * 4,
+            width * height * 4,
             reinterpret_cast<BYTE*>(view + decodedOffset));
     if (SUCCEEDED(result)) {
         header.width = width;
         header.height = height;
-        header.stride = static_cast<std::uint32_t>(stride);
-        header.decodedBytes = static_cast<std::uint32_t>(decoded);
+        header.stride = width * 4;
+        header.decodedBytes = width * height * 4;
     }
     return result;
 }

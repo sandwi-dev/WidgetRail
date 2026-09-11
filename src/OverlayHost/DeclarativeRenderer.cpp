@@ -719,6 +719,8 @@ struct DeclarativeRenderer::RenderPass final {
             desired.imageFit, bounds, style, opacity,
             snapshot->sequence, owner->bitmapResourceGeneration_,
             shown->second.visibleBox};
+        result.compositorBackground->decodeSize = options.sizeArtworkToDisplay
+            ? DisplayImageSize(bounds.width, bounds.height, options.pixelScale) : ImageDecodeSize{};
         result.compositorBackground->defaultArtworkKey = retainSelection
             ? prior->defaultArtworkKey
             : surface.imageSource + L"\x1f" + surface.artworkHandle + L"\x1f" + surface.imageFit;
@@ -3364,7 +3366,7 @@ struct DeclarativeRenderer::RenderPass final {
                 node, L"rebase-failed", L"surface-bitmap-budget");
             return {};
         }
-        owner->TrimBitmapCache(static_cast<std::size_t>(estimatedBytes64));
+        if (!owner->TrimBitmapCache(static_cast<std::size_t>(estimatedBytes64))) return {};
 
         const auto desiredSize = D2D1::SizeF(rect.width, rect.height);
         const auto desiredPixels = D2D1::SizeU(
@@ -3414,6 +3416,53 @@ struct DeclarativeRenderer::RenderPass final {
         }
         byteCount = static_cast<std::size_t>(byteCount64);
         return bitmap;
+    }
+
+    ImageDecodeSize ImageSize(const WidgetNode& node) const {
+        if (!options.sizeArtworkToDisplay || node.imageSource.starts_with(L"data:")) return {};
+        if (options.artworkDecodeSize.width) return options.artworkDecodeSize;
+        const auto geometry = presentation.find(NarrowStableId(node.id));
+        if (geometry == presentation.end()) return {};
+        return DisplayImageSize(geometry->second.borderBox.width, geometry->second.borderBox.height, options.pixelScale);
+    }
+    std::wstring ImageKey(const WidgetNode& node, ImageDecodeSize size) const {
+        return !node.artworkHandle.empty() && node.imageSource.empty()
+            ? RemoteImageCache::TrustedArtworkKey(options.artworkWidgetId, node.id, node.artworkHandle, size)
+            : RemoteImageCache::VariantKey(node.imageSource, size);
+    }
+    ImageDecodeSize CachedImageSize(const WidgetNode& node) const {
+        auto size = ImageSize(node);
+        while (owner->imageCache_ && (size.width > 64 || size.height > 64) &&
+               owner->imageCache_->BudgetRejected(ImageKey(node, size))) {
+            size = {std::max(64U, size.width / 2), std::max(64U, size.height / 2)};
+        }
+        return size;
+    }
+    std::set<std::wstring> visibleImageKeys;
+    void GatherVisibleImages(const WidgetNode& node) {
+        const auto geometry = presentation.find(NarrowStableId(node.id));
+        if (geometry != presentation.end() && geometry->second.visibleBox.width > 0.5F && geometry->second.visibleBox.height > 0.5F) {
+            const auto size = CachedImageSize(node);
+            if (!node.imageSource.empty() || !node.artworkHandle.empty()) visibleImageKeys.insert(ImageKey(node, size));
+            if (node.kind == L"backgroundSurface") {
+                const auto focused = ResolveFocusBackgroundSelection(snapshot->root, focusedId);
+                const auto protect = [&](std::wstring_view url, std::wstring_view handle) {
+                    if (url.empty() && handle.empty()) return;
+                    WidgetNode image;
+                    image.id = node.id;
+                    image.imageSource = url;
+                    image.artworkHandle = handle;
+                    visibleImageKeys.insert(ImageKey(image, CachedImageSize(image)));
+                };
+                if (focused.surface == &node) protect(focused.imageSource, focused.artworkHandle);
+                for (const auto& [key, entry] : focusBackgrounds) {
+                    if (entry.sessionId != node.id || entry.widgetInstanceId != snapshot->instanceId || entry.widgetId != options.artworkWidgetId) continue;
+                    protect(entry.imageSource, entry.artworkHandle);
+                    protect(entry.incomingImageSource, entry.incomingArtworkHandle);
+                }
+            }
+        }
+        for (const auto& child : node.children) GatherVisibleImages(child);
     }
 
     bool DrawImage(
@@ -4605,6 +4654,23 @@ struct DeclarativeRenderer::RenderPass final {
     }
 };
 
+DeclarativeRenderer::~DeclarativeRenderer() {
+    if (imageCache_) imageCache_->ReleaseImageProtection(this);
+}
+void DeclarativeRenderer::PublishImageProtection() {
+    if (!imageCache_) return;
+    auto keys = protectedImageKeys_;
+    keys.insert(chromeImageKeys_.begin(), chromeImageKeys_.end());
+    imageCache_->ProtectImages(this, std::move(keys));
+}
+void DeclarativeRenderer::SetChromeImageProtection(std::set<std::wstring> keys) {
+    chromeImageKeys_ = std::move(keys);
+    PublishImageProtection();
+}
+bool DeclarativeRenderer::ImageProtected(std::wstring_view key) const {
+    return protectedImageKeys_.contains(std::wstring{key}) || chromeImageKeys_.contains(std::wstring{key});
+}
+
 DeclarativeRenderer::DeclarativeRenderer(
     ID2D1Factory* d2dFactory,
     IDWriteFactory* writeFactory,
@@ -4701,6 +4767,11 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::ResolveCompositorBackgroundBitmap(
     pass.options.artworkRuntimeGeneration = background.artworkRuntimeGeneration;
     pass.options.artworkPresentationGeneration =
         background.artworkPresentationGeneration;
+    pass.options.sizeArtworkToDisplay = background.decodeSize.width != 0;
+    pass.options.artworkDecodeSize = background.decodeSize;
+    const auto key = pass.ImageKey(node, pass.CachedImageSize(node));
+    protectedImageKeys_.insert(key);
+    PublishImageProtection();
     auto state = ImagePresentationState::Pending;
     return GetImageBitmap(
         renderTarget, node, pass, pass.options.artworkWidgetId, state);
@@ -5360,6 +5431,19 @@ RenderResult DeclarativeRenderer::Render(
             D2DRect(viewport), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
     }
     const auto clipSetupFinished = std::chrono::steady_clock::now();
+    const auto priorImageProtection = protectedImageKeys_;
+    if (options.sizeArtworkToDisplay) {
+        pass.GatherVisibleImages(snapshot.root);
+        if (options.retainedCompositorBackground) {
+            const auto& background = *options.retainedCompositorBackground;
+            if (background.widgetInstanceId == snapshot.instanceId && background.artworkWidgetId == options.artworkWidgetId)
+                pass.visibleImageKeys.insert(!background.artworkHandle.empty()
+                    ? RemoteImageCache::TrustedArtworkKey(background.artworkWidgetId, background.nodeId, background.artworkHandle, background.decodeSize)
+                    : RemoteImageCache::VariantKey(background.imageSource, background.decodeSize));
+        }
+        protectedImageKeys_.insert(pass.visibleImageKeys.begin(), pass.visibleImageKeys.end());
+        PublishImageProtection();
+    }
     pass.DrawNode(snapshot.root);
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     if (options.failAfterNodeDrawForTesting) {
@@ -5528,6 +5612,8 @@ RenderResult DeclarativeRenderer::Render(
 #endif
     pass.result.timing.collectionAdmissionSummary =
         std::move(collectionAdmissionSummary);
+    protectedImageKeys_ = pass.result.succeeded ? std::move(pass.visibleImageKeys) : priorImageProtection;
+    PublishImageProtection();
     return pass.result;
 }
 
@@ -5727,7 +5813,7 @@ void DeclarativeRenderer::ClearBitmapCache(
     }
 }
 
-void DeclarativeRenderer::TrimBitmapCache(
+bool DeclarativeRenderer::TrimBitmapCache(
     const std::size_t incomingBytes) noexcept {
     while (!bitmaps_.empty()) {
         const bool countPressure = bitmaps_.size() >= kMaximumBitmapEntries;
@@ -5742,17 +5828,19 @@ void DeclarativeRenderer::TrimBitmapCache(
         const bool bytePressure = retainedPressure ||
             bitmapBytes_ > availableAfterRetained;
         if (!countPressure && !bytePressure) break;
-        const auto oldest = std::min_element(
-            bitmaps_.begin(), bitmaps_.end(),
-            [](const auto& left, const auto& right) {
-                return left.second.lastUse < right.second.lastUse;
-            });
+        auto oldest = bitmaps_.end();
+        for (auto entry = bitmaps_.begin(); entry != bitmaps_.end(); ++entry) {
+            if (ImageProtected(entry->first)) continue;
+            if (oldest == bitmaps_.end() || entry->second.lastUse < oldest->second.lastUse) oldest = entry;
+        }
+        if (oldest == bitmaps_.end()) return false;
         bitmapBytes_ -= oldest->second.bytes;
         bitmaps_.erase(oldest);
         ++bitmapEvictions_;
         if (bytePressure) ++bitmapBytePressureEvictions_;
         else ++bitmapCountPressureEvictions_;
     }
+    return incomingBytes <= kMaximumBitmapBytes - std::min(kMaximumBitmapBytes, bitmapBytes_ + focusBackgroundCompositeBytes_);
 }
 
 void DeclarativeRenderer::RecalculateFocusBackgroundCompositeBytes() noexcept {
@@ -5853,15 +5941,15 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         std::wstring{artworkWidgetId},
         pass.options.artworkRuntimeGeneration,
         pass.options.artworkPresentationGeneration};
+    const auto decodeSize = pass.CachedImageSize(node);
     std::wstring source = trustedArtwork
-        ? RemoteImageCache::TrustedArtworkKey(
-            artworkWidgetId, node.id, node.artworkHandle)
-        : node.imageSource;
+        ? RemoteImageCache::TrustedArtworkKey(artworkWidgetId, node.id, node.artworkHandle, decodeSize)
+        : RemoteImageCache::VariantKey(node.imageSource, decodeSize);
     if (!imageCache_ || !renderTarget || source.empty()) {
         pass.Add(node.id, L"missing_image", L"Image has no HTTPS source or image cache.");
         return {};
     }
-    if (!trustedArtwork && !RemoteImageCache::IsAllowedImageSource(source)) {
+    if (!trustedArtwork && !RemoteImageCache::IsAllowedImageSource(node.imageSource)) {
         pass.Add(node.id, L"invalid_image_url",
             L"Only bounded HTTPS or canonical inline PNG image sources are accepted.");
         return {};
@@ -5879,13 +5967,19 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         }
         return existing->second.bitmap;
     }
-    const auto state = trustedArtwork
+    auto state = trustedArtwork
         ? imageCache_->GetTrustedArtworkState(source, artworkAuthority)
         : imageCache_->GetState(source);
+    if (state == RemoteImageState::Failed && imageCache_->ReleaseBudgetRejection(source))
+        state = RemoteImageState::Missing;
     if (state == RemoteImageState::Missing) {
+        if (pass.options.sizeArtworkToDisplay && !imageCache_->CanPrefetch(source)) {
+            presentationState = ImagePresentationState::Pending;
+            return {};
+        }
         const auto request = trustedArtwork
-            ? imageCache_->RequestTrustedArtwork(source, artworkAuthority)
-            : imageCache_->Request(source);
+            ? imageCache_->RequestTrustedArtwork(source, artworkAuthority, decodeSize)
+            : imageCache_->Request(node.imageSource, decodeSize);
         if (trustedArtwork &&
             imageCache_->GetTrustedArtworkState(source, artworkAuthority) ==
                 RemoteImageState::Failed) {
@@ -5902,6 +5996,10 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         return {};
     }
     if (state == RemoteImageState::Queued || state == RemoteImageState::Loading) {
+        presentationState = ImagePresentationState::Pending;
+        return {};
+    }
+    if (state == RemoteImageState::Failed && imageCache_->BudgetRejected(source)) {
         presentationState = ImagePresentationState::Pending;
         return {};
     }
@@ -5934,7 +6032,7 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         static_cast<std::uint64_t>(pixelSize.height) * 4ULL;
     if (byteCount64 <= kMaximumBitmapEntryBytes) {
         const auto byteCount = static_cast<std::size_t>(byteCount64);
-        TrimBitmapCache(byteCount);
+        if (!TrimBitmapCache(byteCount)) return bitmap;
         bitmapBytes_ += byteCount;
         bitmaps_.emplace(
             source,
@@ -6011,7 +6109,7 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetPackageIconBitmap(
         static_cast<std::uint64_t>(pixelSize.height) * 4ULL;
     if (byteCount64 <= kMaximumBitmapEntryBytes) {
         const auto byteCount = static_cast<std::size_t>(byteCount64);
-        TrimBitmapCache(byteCount);
+        if (!TrimBitmapCache(byteCount)) return bitmap;
         bitmapBytes_ += byteCount;
         bitmaps_.emplace(key, BitmapCacheEntry{bitmap, byteCount, ++bitmapAccessClock_});
     }
