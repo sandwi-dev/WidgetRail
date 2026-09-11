@@ -7061,6 +7061,8 @@ private:
             DisableCompositionFallback(L"opening zoom commit failed");
         shellZoomNeedsSettlement_ = !reduced;
         compositorShellTransition_ = compositionSurface_.available();
+        AppendDiagnostic(L"Overlay entrance phase=open compositor=" + std::wstring(compositionSurface_.available() ? L"true" : L"false") + L" from-scale=" +
+            std::to_wstring(widgetrail::OverlayEntranceZoomScale(current.shellOpacity, reduced)));
     }
 
     void BeginOverlayCloseTransition(const ULONGLONG timestamp) {
@@ -7072,6 +7074,8 @@ private:
             DisableCompositionFallback(L"closing zoom commit failed");
         shellZoomNeedsSettlement_ = !reduced;
         compositorShellTransition_ = compositionSurface_.available();
+        AppendDiagnostic(L"Overlay entrance phase=close compositor=" + std::wstring(compositionSurface_.available() ? L"true" : L"false") + L" to-scale=" +
+            std::to_wstring(reduced ? 1.0F : widgetrail::OverlayMinimumZoomScale));
     }
 
     void BeginOpenAfterSuccessfulPaint() {
@@ -7192,6 +7196,8 @@ private:
         pendingEntranceDirection_ = widgetrail::WidgetEntranceDirection::None;
         committedEntranceOffsetX_ = entranceOffset;
         committedEntranceStartedAt_ = GetTickCount64();
+        AppendDiagnostic(L"Widget entrance widget=" + std::wstring(state_.activeWidget()) +
+            L" offset-px=" + std::to_wstring(entranceOffset));
     }
 
     void RequestWidgetContentReveal(const std::wstring_view widgetId,

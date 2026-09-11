@@ -6,6 +6,10 @@
 
 namespace widgetrail {
 
+inline constexpr float OverlayMinimumZoomScale = 0.92F;
+inline constexpr float WidgetEntranceDistanceDip = 32.0F;
+inline constexpr unsigned long long WidgetEntranceDurationMilliseconds = 180;
+
 enum class WidgetEntranceDirection { None = 0, FromLeft = -1, FromRight = 1 };
 
 // Explicit navigation wins at the ends of the rail. Pointer selection uses
@@ -22,7 +26,7 @@ enum class WidgetEntranceDirection { None = 0, FromLeft = -1, FromRight = 1 };
 
 [[nodiscard]] inline float OverlayEntranceZoomScale(
     const float visibility, const bool reducedMotion) noexcept {
-    return reducedMotion ? 1.0F : 0.97F + 0.03F *
+    return reducedMotion ? 1.0F : OverlayMinimumZoomScale + (1.0F - OverlayMinimumZoomScale) *
         (std::isfinite(visibility) ? std::clamp(visibility, 0.0F, 1.0F) : 1.0F);
 }
 
@@ -31,13 +35,14 @@ enum class WidgetEntranceDirection { None = 0, FromLeft = -1, FromRight = 1 };
     const bool reducedMotion) noexcept {
     if (reducedMotion || !std::isfinite(physicalPixelsPerDip) || physicalPixelsPerDip <= 0)
         return 0.0F;
-    return static_cast<float>(direction) * 12.0F * std::min(physicalPixelsPerDip, 8.0F);
+    return static_cast<float>(direction) * WidgetEntranceDistanceDip * std::min(physicalPixelsPerDip, 8.0F);
 }
 
 [[nodiscard]] inline float SampleWidgetEntranceOffset(
     const float from, const unsigned long long elapsedMilliseconds) noexcept {
-    if (!std::isfinite(from) || elapsedMilliseconds >= 120) return 0.0F;
-    const float remaining = 1.0F - static_cast<float>(elapsedMilliseconds) / 120.0F;
+    if (!std::isfinite(from) || elapsedMilliseconds >= WidgetEntranceDurationMilliseconds) return 0.0F;
+    const float remaining = 1.0F - static_cast<float>(elapsedMilliseconds) /
+        static_cast<float>(WidgetEntranceDurationMilliseconds);
     return from * remaining * remaining * remaining;
 }
 

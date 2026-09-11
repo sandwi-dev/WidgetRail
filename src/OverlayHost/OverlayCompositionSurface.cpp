@@ -925,7 +925,7 @@ HRESULT OverlayCompositionSurface::CommitFrames(
     if (SUCCEEDED(result) && presentation) result = ApplyPresentation(*presentation);
     if (SUCCEEDED(result) && background) result = ApplyBackgroundPresentation(*background);
     if (SUCCEEDED(result) && revealContent) {
-        if (!std::isfinite(entranceOffsetX) || std::abs(entranceOffsetX) > 96.0F)
+        if (!std::isfinite(entranceOffsetX) || std::abs(entranceOffsetX) > WidgetEntranceDistanceDip * 8.0F)
             return E_INVALIDARG;
         ComPtr<IDCompositionAnimation> reveal;
         ComPtr<IDCompositionVisual3> content;
@@ -937,7 +937,7 @@ HRESULT OverlayCompositionSurface::CommitFrames(
         ComPtr<IDCompositionAnimation> slide;
         if (SUCCEEDED(result)) result = device_->CreateTranslateTransform(entrance.GetAddressOf());
         if (SUCCEEDED(result)) result = CreatePresentationAnimation(
-            device_.Get(), entranceOffsetX, 0.0F, 120, slide.GetAddressOf());
+            device_.Get(), entranceOffsetX, 0.0F, WidgetEntranceDurationMilliseconds, slide.GetAddressOf());
         if (SUCCEEDED(result)) result = entrance->SetOffsetX(slide.Get());
         if (SUCCEEDED(result)) result = content_.visual->SetTransform(entrance.Get());
         if (SUCCEEDED(result)) contentEntranceTransform_ = std::move(entrance);
@@ -1039,7 +1039,7 @@ HRESULT OverlayCompositionSurface::SetShellZoomAnchor(const float width, const f
 
 HRESULT OverlayCompositionSurface::CommitShellZoom(
     const float fromScale, const bool opening, const bool reducedMotion) noexcept {
-    if (!device_ || !rootVisual_ || !std::isfinite(fromScale) || fromScale < 0.97F || fromScale > 1.0F)
+    if (!device_ || !rootVisual_ || !std::isfinite(fromScale) || fromScale < OverlayMinimumZoomScale || fromScale > 1.0F)
         return E_INVALIDARG;
     ComPtr<IDCompositionScaleTransform> zoom;
     HRESULT result = device_->CreateScaleTransform(zoom.GetAddressOf());
@@ -1055,11 +1055,12 @@ HRESULT OverlayCompositionSurface::CommitShellZoom(
     } else {
         ComPtr<IDCompositionAnimation> scale;
         if (SUCCEEDED(result)) result = CreatePresentationAnimation(device_.Get(), fromScale,
-            opening ? 1.0F : 0.97F, opening ? 140 : 100, scale.GetAddressOf(), !opening);
+            opening ? 1.0F : OverlayMinimumZoomScale, opening ? 140 : 100, scale.GetAddressOf(), !opening);
         if (SUCCEEDED(result)) result = zoom->SetScaleX(scale.Get());
         if (SUCCEEDED(result)) result = zoom->SetScaleY(scale.Get());
         ComPtr<IDCompositionAnimation> opacity;
-        const float fromOpacity = std::clamp((fromScale - 0.97F) / 0.03F, 0.0F, 1.0F);
+        const float fromOpacity = std::clamp((fromScale - OverlayMinimumZoomScale) /
+            (1.0F - OverlayMinimumZoomScale), 0.0F, 1.0F);
         if (SUCCEEDED(result)) result = CreatePresentationAnimation(device_.Get(), fromOpacity,
             opening ? 1.0F : 0.0F, opening ? 140 : 100, opacity.GetAddressOf(), !opening);
         if (SUCCEEDED(result)) result = effect_->SetOpacity(opacity.Get());

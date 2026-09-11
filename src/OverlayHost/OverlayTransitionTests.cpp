@@ -569,19 +569,19 @@ void EntrancePolicyHonorsDirectionAndReducedMotion() {
     Check(ResolveWidgetEntranceDirection(2, 2, 4) == WidgetEntranceDirection::None &&
         ResolveWidgetEntranceDirection(0, 0, 0) == WidgetEntranceDirection::None,
         "same-widget refresh and unavailable slots have no directional entrance");
-    Near(widgetrail::OverlayEntranceZoomScale(0.0F, false), 0.97F, "opening starts with subtle zoom");
-    Near(widgetrail::OverlayEntranceZoomScale(0.5F, false), 0.985F, "interruption retains intermediate zoom");
+    Near(widgetrail::OverlayEntranceZoomScale(0.0F, false), 0.92F, "opening starts with subtle zoom");
+    Near(widgetrail::OverlayEntranceZoomScale(0.5F, false), 0.96F, "interruption retains intermediate zoom");
     Near(widgetrail::OverlayEntranceZoomScale(1.0F, false), 1.0F, "open settles at authored size");
     Near(widgetrail::OverlayEntranceZoomScale(0.0F, true), 1.0F, "reduced motion has no zoom");
-    Near(widgetrail::WidgetEntranceOffset(WidgetEntranceDirection::FromLeft, 1.5F, false), -18.0F,
+    Near(widgetrail::WidgetEntranceOffset(WidgetEntranceDirection::FromLeft, 1.5F, false), -48.0F,
         "entrance distance follows DPI and interface scale");
     Near(widgetrail::WidgetEntranceOffset(WidgetEntranceDirection::FromRight, 1.5F, true), 0.0F,
         "reduced motion has no slide");
     Near(widgetrail::SampleWidgetEntranceOffset(12.0F, 0), 12.0F,
         "hit testing starts at the compositor entrance offset");
-    Near(widgetrail::SampleWidgetEntranceOffset(12.0F, 60), 1.5F,
+    Near(widgetrail::SampleWidgetEntranceOffset(12.0F, 90), 1.5F,
         "hit testing follows the cubic entrance curve");
-    Near(widgetrail::SampleWidgetEntranceOffset(-12.0F, 120), 0.0F,
+    Near(widgetrail::SampleWidgetEntranceOffset(-12.0F, 180), 0.0F,
         "completed entrance restores authored hit testing coordinates");
 }
 
