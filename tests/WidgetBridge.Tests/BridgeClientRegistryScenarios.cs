@@ -1389,6 +1389,89 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(1, failedRestore.Registry.ResidencyBudget.ApplicationWorkers);
     }
 
+    internal static async Task ActivationInvalidationsSurviveFirstPresentation()
+    {
+        var configured = Widget("first-presentation", worker: 'p', catalog: 'p',
+            residency: new WidgetResidencyPolicy { Mode = WidgetResidencyPolicies.SuspendWhenHidden });
+        foreach (var failFirst in new[] { false, true })
+        {
+            var ready = false;
+            await using var fixture = new RegistryFixture(Catalog(configured), configure: (_, client) =>
+            {
+                client.SnapshotFactory = sequence => new ViewSnapshot
+                {
+                    Sequence = sequence,
+                    WidgetInstanceId = configured.InstanceId,
+                    ActiveInputScopeId = "root",
+                    Root = new ViewNode
+                    {
+                        Id = "root", Kind = ViewNodeKind.Stack, InputScopeId = "root",
+                        Children = [new ViewNode { Id = "status", Kind = ViewNodeKind.Text,
+                            Text = ready ? "Ready" : "Loading" }],
+                    },
+                };
+                client.AfterSnapshot = () =>
+                {
+                    // The first frame still says Loading, but provider data has
+                    // arrived before the bridge can commit that frame.
+                    ready = true;
+                    client.RaiseInvalidated(41);
+                    client.RaiseInvalidated(42);
+                    if (failFirst) throw new InvalidOperationException("synthetic publication failure");
+                };
+            });
+            if (failFirst)
+            {
+                await RegistryAssert.ThrowsAsync<InvalidOperationException>(() => Establish());
+                await fixture.Registry.DrainNotificationsAsync(configured.Id);
+                RegistryAssert.Equal(0, fixture.Invalidations.Count);
+                var failedClient = fixture.Clients.Single();
+                failedClient.AfterSnapshot = null;
+                failedClient.RaiseInvalidated(99); // Ordinary Background still suppresses updates.
+                using var recovered = await Establish();
+                await fixture.Registry.DrainNotificationsAsync(configured.Id);
+                RegistryAssert.Equal(0, fixture.Invalidations.Count);
+            }
+            else
+            {
+                using var admitted = await Establish();
+                RegistryAssert.Equal("Loading", admitted.Value.Snapshot.Root.Children[0].Text);
+                await fixture.Registry.DrainNotificationsAsync(configured.Id);
+                RegistryAssert.Equal(1, fixture.Invalidations.Count);
+                RegistryAssert.Equal(42L, fixture.Invalidations[0].Revision);
+                fixture.Clients.Single().AfterSnapshot = null;
+                using var refreshed = await fixture.Registry.GetSnapshotAsync(
+                    configured.Id, CancellationToken.None, CancellationToken.None);
+                RegistryAssert.Equal("Ready", refreshed.Value.Snapshot.Root.Children[0].Text);
+                RegistryAssert.True(refreshed.Value.Snapshot.Sequence > admitted.Value.Snapshot.Sequence,
+                    "The retained update must permit a fresh frame without a user action.");
+            }
+
+            Task<BridgeClientPublication<BridgeClientPresentation>> Establish() =>
+                fixture.Registry.EstablishPresentationAsync(configured.Id,
+                    WidgetLifecycleState.Visible, WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+                    PresentationUpdateCapabilities.None, 0, 0, CancellationToken.None, CancellationToken.None);
+        }
+    }
+
+    internal static async Task ActivationInvalidationsSurviveLifecycleCommit()
+    {
+        var configured = Widget("lifecycle-invalidation", worker: 'p', catalog: 'p',
+            residency: new WidgetResidencyPolicy { Mode = WidgetResidencyPolicies.SuspendWhenHidden });
+        await using var fixture = new RegistryFixture(Catalog(configured), configure: (_, client) =>
+            client.AfterLifecycle = () => client.RaiseInvalidated(17));
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        await fixture.Registry.DrainNotificationsAsync(configured.Id);
+        RegistryAssert.Equal(1, fixture.Invalidations.Count);
+        RegistryAssert.Equal(17L, fixture.Invalidations[0].Revision);
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Background);
+        await fixture.Registry.DrainNotificationsAsync(configured.Id);
+        var count = fixture.Invalidations.Count;
+        fixture.Clients.Single().RaiseInvalidated(18);
+        await fixture.Registry.DrainNotificationsAsync(configured.Id);
+        RegistryAssert.Equal(count, fixture.Invalidations.Count);
+    }
+
     internal static async Task LifecycleAndFirstSnapshotAreAtomic()
     {
         var configured = Widget("presentation-admission", worker: 'p', catalog: 'p');
@@ -2252,6 +2335,8 @@ internal sealed class RegistryTestClient(
     internal List<WidgetActionEvent> ActionEvents { get; } = [];
     internal List<EmbeddedMediaPlaybackEvent> EmbeddedMediaPlaybackEvents { get; } = [];
     internal Func<long, ViewSnapshot>? SnapshotFactory { get; set; }
+    internal Action? AfterSnapshot { get; set; }
+    internal Action? AfterLifecycle { get; set; }
     internal bool RebaseRecoverySequence { get; set; }
     public bool IsRunning => Volatile.Read(ref _running) != 0;
     public int Starts => Volatile.Read(ref _starts);
@@ -2299,6 +2384,7 @@ internal sealed class RegistryTestClient(
     {
         PresentationRequests.Add((transactionKind, baseSequence, recoveryOriginSequence));
         var snapshot = await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        AfterSnapshot?.Invoke();
         if (RebaseRecoverySequence &&
             transactionKind == WidgetPresentationTransactionKind.RecoveryCheckpoint)
         {
@@ -2324,6 +2410,7 @@ internal sealed class RegistryTestClient(
             throw new InvalidOperationException("synthetic lifecycle restore failure");
         }
         lock (_gate) LifecycleStates.Add(state);
+        AfterLifecycle?.Invoke();
         return Task.CompletedTask;
     }
 

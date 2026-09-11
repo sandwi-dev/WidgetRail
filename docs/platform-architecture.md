@@ -135,6 +135,13 @@ frame; timeout ends that pipe session before any
 subsequent frame can follow a possibly partial write. Framing bytes and the
 public protocol are unchanged.
 
+When a background widget begins visible activation, the registry retains the
+latest invalidation until lifecycle/presentation admission commits. This covers
+provider data arriving after the first loading frame was captured. A successful
+commit releases one refresh demand through the existing notification lane;
+failed or retired activation discards it. Ordinary background suppression and
+the atomic lifecycle/presentation commit remain unchanged.
+
 Catalog identity mutation only reserves retirement under the registry gate;
 notification cancellation, operation drain, and external client disposal start
 after that gate is released. Cancellation or the internal restart deadline

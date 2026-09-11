@@ -643,9 +643,11 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
     {
         var registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var committed = false;
         try
         {
             DemandCurrent(registration);
+            BeginActivationInvalidations(registration, state);
             registration.CancelIdleUnload();
             await ExecuteClientOperationAsync(
                     registration,
@@ -655,10 +657,13 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             DemandCurrent(registration);
             registration.HostLifecycle = state;
             ScheduleIdleUnload(registration, sessionCancellation);
-            return AdmitPublication(registration, state);
+            var publication = AdmitPublication(registration, state);
+            committed = true;
+            return publication;
         }
         finally
         {
+            CompleteActivationInvalidations(registration, committed);
             registration.OperationGate.Release();
         }
     }
@@ -682,9 +687,11 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         var registration = await GetOrCreateAsync(widgetId, cancellationToken)
             .ConfigureAwait(false);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var committed = false;
         try
         {
             DemandCurrent(registration);
+            BeginActivationInvalidations(registration, state);
             var incremental = transactionKind ==
                 WidgetPresentationTransactionKind.IncrementalUpdate;
             var retainedWorkerStart = incremental
@@ -728,6 +735,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 var publication = CommitEstablishmentPublication(
                     registration, state, transactionKind, presentation);
                 ScheduleIdleUnload(registration, sessionCancellation);
+                committed = true;
                 return publication;
             }
             catch
@@ -744,8 +752,33 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         }
         finally
         {
+            CompleteActivationInvalidations(registration, committed);
             registration.OperationGate.Release();
         }
+    }
+
+    private void BeginActivationInvalidations(
+        ClientRegistration registration, WidgetLifecycleState target)
+    {
+        lock (_gate)
+        {
+            registration.BufferActivationInvalidations =
+                registration.HostLifecycle == WidgetLifecycleState.Background &&
+                target is WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive;
+            registration.ActivationInvalidationRevision = 0;
+        }
+    }
+
+    private void CompleteActivationInvalidations(ClientRegistration registration, bool committed)
+    {
+        long revision;
+        lock (_gate)
+        {
+            revision = committed ? registration.ActivationInvalidationRevision : 0;
+            registration.BufferActivationInvalidations = false;
+            registration.ActivationInvalidationRevision = 0;
+        }
+        if (revision > 0) EnqueueInvalidation(registration, revision);
     }
 
     private BridgeClientPublication<BridgeClientPresentation>
@@ -1663,13 +1696,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             Interlocked.Increment(ref _nextRegistrationGeneration),
             RecordTerminalFailure);
         var runtimeGeneration = configured.PublicDescriptor().RuntimeGeneration;
-        client.Invalidated += (_, revision) =>
-            EnqueueNotification(
-                registration,
-                BridgeClientNotificationKind.Invalidation,
-                cancellationToken => _invalidated(
-                    new BridgeClientInvalidation(configured.Id, revision), cancellationToken),
-                requireInvalidationAuthority: true);
+        client.Invalidated += (_, revision) => EnqueueInvalidation(registration, revision);
         client.ActionFailed += (_, failure) =>
             EnqueueNotification(
                 registration,
@@ -1708,18 +1735,34 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         }
     }
 
+    private void EnqueueInvalidation(ClientRegistration registration, long revision) =>
+        EnqueueNotification(
+            registration,
+            BridgeClientNotificationKind.Invalidation,
+            cancellationToken => _invalidated(
+                new BridgeClientInvalidation(registration.Configured.Id, revision), cancellationToken),
+            invalidationRevision: revision);
+
     private void EnqueueNotification(
         ClientRegistration registration,
         BridgeClientNotificationKind kind,
         Func<CancellationToken, Task> publish,
-        bool requireInvalidationAuthority = false)
+        long? invalidationRevision = null)
     {
         var startPump = false;
         lock (_gate)
         {
-            if (!IsCurrentLocked(registration) ||
-                (requireInvalidationAuthority && !registration.MayPublishInvalidation))
+            if (!IsCurrentLocked(registration)) return;
+            if (invalidationRevision is { } revision && !registration.MayPublishInvalidation)
+            {
+                // HostLifecycle remains Background until the first presentation
+                // commits. Retain one refresh demand for data arriving after
+                // that frame was captured, without publishing premature authority.
+                if (registration.BufferActivationInvalidations)
+                    registration.ActivationInvalidationRevision = Math.Max(
+                        registration.ActivationInvalidationRevision, revision);
                 return;
+            }
             var admission = registration.NotificationLane.Enqueue(
                 kind,
                 publish,
@@ -2415,6 +2458,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             HostLifecycle != WidgetLifecycleState.Background ||
             WidgetResidencyPolicies.Resolve(Configured.ResidencyPolicy).Mode ==
                 WidgetResidencyMode.KeepAlive;
+        // Owned by the registry gate; bounded to one activation transition.
+        internal bool BufferActivationInvalidations { get; set; }
+        internal long ActivationInvalidationRevision { get; set; }
 
         internal int DemandCurrentPresentationBase(long baseSequence)
         {

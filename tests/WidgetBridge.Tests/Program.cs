@@ -91,6 +91,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog retirement cancels a real running-registration request lease",
         BridgeClientRegistryScenarios.CatalogRetirementCancelsRegistrationLease),
     ("Client registry commits lifecycle and first snapshot as one generation", BridgeClientRegistryScenarios.LifecycleAndFirstSnapshotAreAtomic),
+    ("Client registry retains activation updates until first presentation commits", BridgeClientRegistryScenarios.ActivationInvalidationsSurviveFirstPresentation),
+    ("Client registry retains activation updates until lifecycle commits", BridgeClientRegistryScenarios.ActivationInvalidationsSurviveLifecycleCommit),
     ("Client registry publication admission serializes replacement", BridgeClientRegistryScenarios.PublicationAdmissionSerializesReplacement),
     ("Client registry notification lane bounds and balances admission", BridgeClientRegistryScenarios.NotificationLaneBoundsAndBalancesAdmission),
     ("Client registry notification burst cancels and drains on replacement", BridgeClientRegistryScenarios.NotificationBurstIsBoundedAndRetires),
