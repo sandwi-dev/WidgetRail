@@ -668,6 +668,23 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 });
                 ReloadQuery(retainCurrentItems: false);
                 return;
+            case PlayniteLibraryActions.InstalledFilter:
+                if (!TryOpenBrowse(action.SourceElementId)) return;
+                var installedReload = CreateBrowseReload();
+                _model.Update(state => state with
+                {
+                    BrowseCollection = state.BrowseCollection with
+                    {
+                        Query = state.BrowseCollection.Query with
+                        {
+                            InstalledOnly = !state.BrowseCollection.Query.InstalledOnly,
+                        },
+                    },
+                    BrowseInitialFocusId = PlayniteLibraryActions.InstalledFilter,
+                    ActiveBrowseReload = installedReload,
+                });
+                ReloadQuery(retainCurrentItems: false);
+                return;
             case PlayniteLibraryActions.RecentlyPlayedFilter:
                 if (!TryOpenBrowse(action.SourceElementId)) return;
                 var recentReload = CreateBrowseReload();

@@ -189,6 +189,10 @@ public sealed class PackageRuntimeTests
         var browse = await service.QueryWithAuthorityAsync(AllGames,
             new(PlayniteLibraryQueryScope.Library), null, null, 16, true, CancellationToken.None);
         Assert.IsTrue(browse.Page.Items.Any(item => item.SavedId == id));
+        var installed = await service.QueryWithAuthorityAsync(AllGames with { InstalledOnly = true },
+            new(PlayniteLibraryQueryScope.Library), null, null, 16, false, CancellationToken.None);
+        Assert.IsFalse(installed.Page.Items.Any(item => item.SavedId == id));
+        Assert.AreEqual(2, installed.Page.Items.Count);
         var home = await service.QueryWithAuthorityAsync(AllGames,
             new(PlayniteLibraryQueryScope.Home), null, null, 16, false, CancellationToken.None);
         Assert.IsFalse(home.Page.Items.Any(item => item.SavedId == id));

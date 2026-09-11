@@ -11,7 +11,9 @@ options, including Favorite. Browse also uses a Y hint for Refresh. Header
 hints have a dark backing for readability and do not interrupt navigation through
 the game collection. Browse groups its hints in one horizontal, wrapping row.
 
-Browse includes installed and uninstalled games. Uninstalled games show "Not installed"
+Browse includes installed and uninstalled games by default. The Installed toggle
+beside Favorites limits Browse to installed games
+and combines with Favorites; Clear turns it off. Uninstalled games show "Not installed"
 on a visible poster badge and keep their game options, but cannot be launched.
 Pressing A shows a toast asking the user to install the game through Playnite and
 then refresh. Home lists installed games only.

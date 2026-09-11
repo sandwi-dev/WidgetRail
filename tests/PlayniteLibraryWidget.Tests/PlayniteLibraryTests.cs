@@ -13,6 +13,45 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed class PlayniteLibraryTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task InstalledFilterCombinesWithFavoritesAndClearRestoresAllGames()
+    {
+        var host = new FakeHost(20);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.Favorite,
+            Snapshot(widget, 91_000).InitialFocusId!));
+        await widget.OnActionAsync(new(PlayniteLibraryActions.BrowseOpen, "playnite-library.library.menu"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "Browse");
+        Assert.IsFalse(widget.RenderState.Value.BrowseCollection.Query.InstalledOnly);
+        var before = widget.BrowseCollection.WindowGeneration;
+        await widget.OnActionAsync(new(PlayniteLibraryActions.InstalledFilter, PlayniteLibraryActions.InstalledFilter));
+        await Bounded(widget.WhenLibraryIdleAsync(), "installed filter");
+        Assert.IsTrue(host.Queries[^1].Query.InstalledOnly);
+        Assert.AreNotEqual(before, widget.BrowseCollection.WindowGeneration);
+        var enabled = Nodes(Snapshot(widget, 91_001).Root).Single(node => node.Id == PlayniteLibraryActions.InstalledFilter);
+        Assert.AreEqual("Installed: On", enabled.Text);
+        CollectionAssert.Contains(enabled.StyleClasses.ToArray(), "playnite-library-filter-active");
+        Assert.IsFalse(Nodes(Snapshot(widget, 91_002).Root).Single(node => node.Id == PlayniteLibraryActions.QueryClear).IsDisabled == true);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.FavoritesFilter, PlayniteLibraryActions.FavoritesFilter));
+        await Bounded(widget.WhenLibraryIdleAsync(), "installed favorites");
+        Assert.IsTrue(widget.RenderState.Value.BrowseCollection.FavoriteFilter);
+        Assert.IsTrue(host.Queries[^1].Query.InstalledOnly);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.InstalledFilter, PlayniteLibraryActions.InstalledFilter));
+        await Bounded(widget.WhenLibraryIdleAsync(), "all favorites");
+        Assert.IsFalse(host.Queries[^1].Query.InstalledOnly);
+        Assert.IsTrue(widget.RenderState.Value.BrowseCollection.FavoriteFilter);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.InstalledFilter, PlayniteLibraryActions.InstalledFilter));
+        await Bounded(widget.WhenLibraryIdleAsync(), "installed again");
+        await widget.OnActionAsync(new(PlayniteLibraryActions.QueryClear, PlayniteLibraryActions.QueryClear));
+        await Bounded(widget.WhenLibraryIdleAsync(), "clear filters");
+        Assert.IsFalse(host.Queries[^1].Query.InstalledOnly);
+        Assert.IsFalse(widget.RenderState.Value.BrowseCollection.FavoriteFilter);
+        Assert.AreEqual("Installed: Off", Nodes(Snapshot(widget, 91_003).Root).Single(node => node.Id == PlayniteLibraryActions.InstalledFilter).Text);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task BrowseIncludesUninstalledGamesWithOptionsButCannotLaunchThem()
     {
         var clock = new ManualTimerTimeProvider();

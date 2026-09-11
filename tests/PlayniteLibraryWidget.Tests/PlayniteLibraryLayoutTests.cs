@@ -1012,7 +1012,8 @@ public sealed class PlayniteLibraryLayoutTests
         IReadOnlyList<WidgetAppLibrarySource> sources) => new(
             collection, organization, "Ready", null,
             new Dictionary<string, PlayniteLibraryLaunchState>(StringComparer.Ordinal),
-            OrganizationBusy: false, Interactive: true, new WidgetAppLibraryQuery(),
+            OrganizationBusy: false, Interactive: true,
+            new WidgetAppLibraryQuery { InstalledOnly = route != PlayniteLibraryRoute.Browse },
             RecentlyPlayed: false, FavoriteFilter: false, route,
             PlayniteLibraryFixedRows.Empty, HiddenRows: [], sources,
             HeroSavedId: null, HeroIndex: 0)

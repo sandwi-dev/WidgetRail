@@ -174,6 +174,15 @@ internal static class PlayniteLibraryPresentation
             if (state.FavoriteFilter)
                 favorites = favorites.AddClasses("playnite-library-filter-active");
             filterControls.Add(favorites);
+            var installed = UI.Button(
+                    state.Query.InstalledOnly ? "Installed: On" : "Installed: Off",
+                    PlayniteLibraryActions.InstalledFilter,
+                    PlayniteLibraryActions.InstalledFilter)
+                .Disabled(!renderActionsEnabled)
+                .AddClasses("playnite-library-control", "playnite-library-filter-control");
+            if (state.Query.InstalledOnly)
+                installed = installed.AddClasses("playnite-library-filter-active");
+            filterControls.Add(installed);
             var recent = UI.Button(
                     state.RecentlyPlayed ? "Recently played: On" : "Recently played: Off",
                     PlayniteLibraryActions.RecentlyPlayedFilter,
@@ -208,6 +217,7 @@ internal static class PlayniteLibraryPresentation
                     state.Query.Sort == WidgetAppLibrarySortOrder.DisplayName &&
                     (state.Route == PlayniteLibraryRoute.Library ||
                      !state.FavoriteFilter &&
+                     !state.Query.InstalledOnly &&
                      !state.RecentlyPlayed &&
                      state.ActiveCategoryId is null &&
                      state.Query.SourceAttribution is null))
@@ -704,6 +714,7 @@ internal static class PlayniteLibraryPresentation
     }
 
     private static bool HasActiveBrowseQuery(PlayniteLibraryPresentationState state) =>
+        state.Query.InstalledOnly ||
         state.Query.SearchText is not null ||
         state.Query.SourceAttribution is not null ||
         state.Query.Sort != WidgetAppLibrarySortOrder.DisplayName ||
