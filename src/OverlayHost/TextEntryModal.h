@@ -146,7 +146,7 @@ private:
     void ActivateFocusedKey();
     [[nodiscard]] std::optional<wchar_t> KeyValue(std::size_t index) const noexcept;
     [[nodiscard]] std::wstring KeyLabel(std::size_t index) const;
-    [[nodiscard]] std::wstring_view ControllerHint(std::size_t index, bool focused) const noexcept;
+    [[nodiscard]] std::wstring_view ControllerHint(std::size_t index) const noexcept;
     void Complete(TextEntryModalOutcome outcome);
     void MoveFocus(Direction direction);
     void SetKeyboardFocus(std::size_t index);

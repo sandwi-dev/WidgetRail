@@ -372,7 +372,7 @@ bool TextEntryModal::PaintSurface(HDC dc, const RECT& bounds,
             drawingBrush_->SetColor(DrawingColor(theme_.text));
             const auto label = *key == 30 && layer_ != Layer::Symbols
                 ? std::wstring(L"\x21e7") : KeyLabel(*key);
-            const auto hint = ControllerHint(*key, focused);
+            const auto hint = ControllerHint(*key);
             const bool face = hint.size() == 1;
             const bool bumper = hint == L"LB" || hint == L"RB";
             const float badgeWidth = hint.empty() ? 0.0F : (face ? 18.0F : bumper ? 32.0F : 26.0F) * scale;
@@ -384,7 +384,7 @@ bool TextEntryModal::PaintSurface(HDC dc, const RECT& bounds,
                     keyTextFormat_.Get(), 10000.0F, height - 2.0F * inset, &textLayout))) {
                 DWRITE_TEXT_METRICS metrics{};
                 textLayout->GetMetrics(&metrics);
-                // Compact character keys also fit a leading activation badge.
+                // The compact Shift key also fits its leading trigger badge.
                 // Action buttons get full-width labels in their own two rows.
                 if (metrics.widthIncludingTrailingWhitespace > labelWidth) {
                     textLayout->SetFontSize(keyTextFormat_->GetFontSize() *
@@ -543,7 +543,7 @@ std::wstring TextEntryModal::KeyLabel(const std::size_t index) const {
     return *value == L' ' ? L"Space" : std::wstring(1, *value);
 }
 
-std::wstring_view TextEntryModal::ControllerHint(const std::size_t index, const bool focused) const noexcept {
+std::wstring_view TextEntryModal::ControllerHint(const std::size_t index) const noexcept {
     if (index == 30) return L"LT";
     if (index == 40) return L"LB";
     if (index == 41) return L"RB";
@@ -551,14 +551,14 @@ std::wstring_view TextEntryModal::ControllerHint(const std::size_t index, const 
     if (index == 43) return L"X";
     if (index == 44) return L"B";
     if (index == 45) return L"RT";
-    return focused ? L"A" : L"";
+    return {};
 }
 
 void TextEntryModal::UpdateKeyLabels() {
     for (std::size_t index = 0; index < keys_.size(); ++index) {
         if (!keys_[index]) continue;
         auto label = KeyLabel(index);
-        const auto hint = ControllerHint(index, false);
+        const auto hint = ControllerHint(index);
         if (!hint.empty()) label += L" (" + std::wstring(hint) + L")";
         SetWindowTextW(keys_[index], label.c_str());
         InvalidateRect(keys_[index], nullptr, TRUE);
@@ -1102,7 +1102,7 @@ LRESULT TextEntryModal::HandleMessage(
         SetTextColor(item->hDC, theme_.text);
         const auto priorFont = SelectObject(item->hDC, keyFont_);
         auto label = KeyLabel(index);
-        const auto hint = ControllerHint(index, focused);
+        const auto hint = ControllerHint(index);
         if (!hint.empty()) label = L"[" + std::wstring(hint) + L"] " + label;
         RECT textBounds = item->rcItem;
         DrawTextW(item->hDC, label.data(), static_cast<int>(label.size()), &textBounds,
