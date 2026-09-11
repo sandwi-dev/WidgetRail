@@ -812,6 +812,21 @@ int wmain() {
                     onTray.compositorBackground->artworkHandle == L"background.retarget.green" &&
                     onTray.compositorBackground->focusedElementId.empty(),
                     "tray focus must retain the background without retaining widget input focus");
+                // A no-artwork control delegates its effective image to the
+                // coordinator. Preserve that delegation when moving to tray.
+                target->BeginDraw();
+                const auto ordinary = trayRenderer.Render(target.Get(), traySnapshot,
+                    L"background.retarget.ordinary", viewport, trayOptions);
+                Require(SUCCEEDED(target->EndDraw()) && ordinary.compositorBackground &&
+                    ordinary.compositorBackground->retainCurrentArtwork,
+                    "ordinary control did not retain the displayed selection");
+                trayOptions.retainedCompositorBackground = ordinary.compositorBackground;
+                target->BeginDraw();
+                const auto ordinaryToTray = trayRenderer.Render(target.Get(), traySnapshot, L"", viewport, trayOptions);
+                Require(SUCCEEDED(target->EndDraw()) && ordinaryToTray.compositorBackground &&
+                    ordinaryToTray.compositorBackground->retainCurrentArtwork &&
+                    ordinaryToTray.compositorBackground->defaultArtworkKey == ordinary.compositorBackground->defaultArtworkKey,
+                    "moving from an ordinary control to tray must not resolve to the authored default");
                 trayOptions.artworkRuntimeGeneration = L"replacement-runtime";
                 target->BeginDraw();
                 const auto replaced = trayRenderer.Render(target.Get(), traySnapshot, L"", viewport, trayOptions);

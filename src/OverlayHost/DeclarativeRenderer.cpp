@@ -722,8 +722,9 @@ struct DeclarativeRenderer::RenderPass final {
         result.compositorBackground->defaultArtworkKey = retainSelection
             ? prior->defaultArtworkKey
             : surface.imageSource + L"\x1f" + surface.artworkHandle + L"\x1f" + surface.imageFit;
-        result.compositorBackground->retainCurrentArtwork = !retainSelection &&
-            selection.imageSource.empty() && selection.artworkHandle.empty();
+        result.compositorBackground->retainCurrentArtwork = retainSelection
+            ? prior->retainCurrentArtwork
+            : selection.imageSource.empty() && selection.artworkHandle.empty();
         AddBackgroundSurfaceTransitionDiagnostic(surface, L"compositor-eligible");
         return true;
     }
