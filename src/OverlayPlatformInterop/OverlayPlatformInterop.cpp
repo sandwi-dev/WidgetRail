@@ -133,6 +133,28 @@ struct WidgetRailOverlayPlatformHandle final {
     widgetrail::ForegroundTargetTracker foregroundTarget;
     std::optional<widgetrail::input::ControllerReadPath> lastReadPath;
     std::optional<bool> lastForegroundExclusive;
+    std::optional<HRESULT> lastGamepadReadResult;
+    std::uintptr_t lastGamepadReadDevice{};
+    GameInputDeviceStatus lastGamepadReadStatus{};
+    std::uint64_t lastGamepadReadDiagnosticAt{};
+
+    void ObserveGamepadRead(const HRESULT result, IGameInputDevice* device) noexcept {
+        const auto identity = reinterpret_cast<std::uintptr_t>(device);
+        const auto status = device ? device->GetDeviceStatus() : GameInputDeviceNoStatus;
+        if (lastGamepadReadResult == result && lastGamepadReadDevice == identity &&
+            lastGamepadReadStatus == status) return;
+        const auto now = GetTickCount64();
+        // Alternating active controllers or read failures must not flood the UI log.
+        if (lastGamepadReadResult && now - lastGamepadReadDiagnosticAt < 1000) return;
+        lastGamepadReadDiagnosticAt = now;
+        lastGamepadReadResult = result;
+        lastGamepadReadDevice = identity;
+        lastGamepadReadStatus = status;
+        Diagnostic(L"Controller navigation reader result=" +
+            std::to_wstring(static_cast<unsigned long>(result)) +
+            L" device=" + std::to_wstring(identity) +
+            L" status=" + std::to_wstring(static_cast<unsigned>(status)));
+    }
 
     void Diagnostic(const std::wstring& message) noexcept {
         if (!options.diagnostic || !TryEnterCallback()) return;
@@ -258,9 +280,18 @@ struct WidgetRailOverlayPlatformHandle final {
             ComPtr<IGameInputReading> reading;
             const HRESULT result = gameInput->GetCurrentReading(
                 GameInputKindGamepad, nullptr, reading.ReleaseAndGetAddressOf());
-            if (FAILED(result) || !reading) return false;
+            if (FAILED(result) || !reading) {
+                ObserveGamepadRead(FAILED(result) ? result : E_UNEXPECTED, nullptr);
+                return false;
+            }
+            ComPtr<IGameInputDevice> device;
+            reading->GetDevice(device.GetAddressOf());
             GameInputGamepadState input{};
-            if (!reading->GetGamepadState(&input)) return false;
+            if (!reading->GetGamepadState(&input)) {
+                ObserveGamepadRead(E_FAIL, device.Get());
+                return false;
+            }
+            ObserveGamepadRead(S_OK, device.Get());
             const auto has = [buttons = input.buttons](
                                  const GameInputGamepadButtons button) {
                 return (static_cast<unsigned>(buttons) &
@@ -383,6 +414,11 @@ void CALLBACK OnGameInputDevice(
     const bool wasConnected =
         (previous & GameInputDeviceConnected) != GameInputDeviceNoStatus;
     if (connected == wasConnected || !device) return;
+
+    handle->Diagnostic(L"Controller device connection changed device=" +
+        std::to_wstring(reinterpret_cast<std::uintptr_t>(device)) +
+        L" connected=" + std::to_wstring(connected ? 1 : 0) +
+        L" status=" + std::to_wstring(static_cast<unsigned>(current)));
 
     const GameInputDeviceInfo* info{};
     if (FAILED(device->GetDeviceInfo(&info)) || !info ||
