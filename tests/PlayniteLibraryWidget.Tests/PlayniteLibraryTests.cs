@@ -120,7 +120,7 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task HomeActivationRefreshesOnceAndBrowseReopeningRetainsSixteenItemPages()
+    public async Task HomeUsesSixteenAndBrowseUsesThirtyItemPagesAcrossReopening()
     {
         var host = new FakeHost(40);
         var widget = Create(host);
@@ -153,7 +153,8 @@ public sealed class PlayniteLibraryTests
 
         await widget.OnActionAsync(new(PlayniteLibraryActions.BrowseOpen, "playnite-library.library.menu"));
         await Bounded(widget.WhenLibraryIdleAsync(), "initial Browse load");
-        Assert.AreEqual(16, widget.BrowseCollection.Items.Count);
+        Assert.AreEqual(30, widget.BrowseCollection.Items.Count);
+        Assert.AreEqual(30, host.MaximumRequestedLimit);
         queryCount = host.Queries.Count;
         var browseGeneration = widget.BrowseCollection.WindowGeneration;
         await Background(widget);

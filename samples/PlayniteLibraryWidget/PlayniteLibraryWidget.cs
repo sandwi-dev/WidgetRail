@@ -14,6 +14,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private const string BrowseReloadRetirementOperation =
         "playnite-library.browse-reload-retirement";
     public const int PageSize = 16;
+    internal const int BrowsePageSize = 30;
     private const int RetainedItemTarget = 48;
     public const int MaximumRetainedItems = 192;
     // Candidate-only diagnostic opt-in; paging behavior is identical in every build.
@@ -96,9 +97,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _browseLibrary = CreateCursorResource<PlayniteLibraryItem>(
             "playnite-library.browse", new()
         {
-            PageSize = PageSize,
+            PageSize = BrowsePageSize,
             MaximumRetainedItems = MaximumRetainedItems,
-            RetainedItemTarget = RetainedItemTarget,
+            RetainedItemTarget = BrowsePageSize * 2,
             PaginationThreshold = 2,
             LoadPage = (cursor, direction, limit, cancellationToken) => LoadPageAsync(
                 PlayniteLibraryRoute.Browse, cursor, direction, limit, cancellationToken),

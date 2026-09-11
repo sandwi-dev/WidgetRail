@@ -31,12 +31,12 @@ effect in ordering on refresh, so later pages cannot overlap an earlier ordering
 Home and Browse own separate traversals. Replacing a query retires its old cursors.
 Saving a favorite disables activation temporarily while preserving rail focus.
 Home and Browse load more games automatically while scrolling or navigating;
-there are no LB/RB page-jump shortcuts. Both fetch 16 games per page. Home refreshes
+there are no LB/RB page-jump shortcuts. Home fetches 16 games per page; Browse fetches 30. Home refreshes
 once whenever it becomes active, including reopening the overlay and returning from another
 route. A successful refresh starts the rail at the beginning.
 Visible-to-interactive transitions do not trigger a second refresh.
 Browse reuses its loaded pages, stable scroll container, and position on reopening.
-Refresh and query changes request fresh data explicitly. The retention target is 48 items with a hard maximum
+Refresh and query changes request fresh data explicitly. The retention target is 48 items for Home and 60 for Browse, with a hard maximum
 of 192; visible pages remain protected by the shared cursor policy.
 
 ## Setup and safety
