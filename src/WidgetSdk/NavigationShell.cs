@@ -401,7 +401,7 @@ public static partial class UI
                 (node.Shortcuts?.Count ?? 0) != 0 || node.ScrollAxis is not null ||
                 node.ScrollNearStartActionId is not null ||
                 node.ScrollNearEndActionId is not null ||
-                node.CollectionGeneration is not null || node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null ||
+                node.CollectionResetGeneration is not null || node.CollectionGeneration is not null || node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null ||
                 node.CollectionItemKey is not null)
                 throw new ArgumentException(
                     "Compact navigation adornments must be input-inert presentational content.",

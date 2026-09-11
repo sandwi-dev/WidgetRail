@@ -553,6 +553,7 @@ struct DeclarativeRenderer::RenderPass final {
     std::map<std::wstring, TextMeasurementProof, std::less<>> textMeasurements;
     std::map<std::wstring, CollectionReconciliationTrace, std::less<>>
         collectionReconciliationOffsets;
+    std::set<std::wstring, std::less<>> resetCollections;
     std::unordered_map<std::wstring, FocusBackgroundEntry> focusBackgrounds;
     std::uint64_t focusBackgroundAccessClock{};
     bool backgroundSurfaceAnimationActive{};
@@ -979,6 +980,14 @@ struct DeclarativeRenderer::RenderPass final {
                     L"Scroll requires the vertical or horizontal axis.",
                     RenderDiagnosticSeverity::Error);
             const auto key = ScrollStateKey(node.id);
+            if (!measurementOnly && node.collectionResetGeneration) {
+                auto& state = ScrollState()[key];
+                if (state.collectionResetGeneration != *node.collectionResetGeneration) {
+                    state = {};
+                    state.collectionResetGeneration = *node.collectionResetGeneration;
+                    resetCollections.insert(node.id);
+                }
+            }
             if (const auto offset = ScrollState().find(key);
                 offset != ScrollState().end()) {
                 if (!measurementOnly)
@@ -1280,7 +1289,7 @@ struct DeclarativeRenderer::RenderPass final {
     [[nodiscard]] bool ReconcileCollectionAnchors(const bool contentChangesOnly = false) {
         bool changed{};
         VisitScrollNodes(snapshot->root, [&](const WidgetNode& scroll) {
-            if (scroll.collectionAnchorKey.empty()) return;
+            if (scroll.collectionAnchorKey.empty() || resetCollections.contains(scroll.id)) return;
             const auto stateKey = ScrollStateKey(scroll.id);
             const auto existing = ScrollState().find(stateKey);
             const auto* scrollBox = layout.Find(NarrowStableId(scroll.id));

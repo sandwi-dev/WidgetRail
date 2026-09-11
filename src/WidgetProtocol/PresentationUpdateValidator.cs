@@ -310,6 +310,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ScrollPaginationThreshold => Read<int?>(change.Value),
                 PresentationProperty.CollectionStartIndex => Read<long?>(change.Value),
                 PresentationProperty.CollectionGeneration => Read<long?>(change.Value),
+                PresentationProperty.CollectionResetGeneration => Read<long?>(change.Value),
                 PresentationProperty.CollectionNavigation => Read<CollectionNavigationRequest?>(change.Value),
                 PresentationProperty.CollectionLoading => Read<CollectionLoadingState?>(change.Value),
                 PresentationProperty.VirtualCollectionWindow =>
@@ -479,6 +480,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.VirtualCollectionWindow => node with { VirtualCollectionWindow = Read<VirtualCollectionWindow?>(change.Value) },
                 PresentationProperty.CollectionStartIndex => node with { CollectionStartIndex = Read<long?>(change.Value) },
                 PresentationProperty.CollectionGeneration => node with { CollectionGeneration = Read<long?>(change.Value) },
+                PresentationProperty.CollectionResetGeneration => node with { CollectionResetGeneration = Read<long?>(change.Value) },
                 PresentationProperty.CollectionNavigation => node with { CollectionNavigation = Read<CollectionNavigationRequest?>(change.Value) },
                 PresentationProperty.CollectionLoading => node with { CollectionLoading = Read<CollectionLoadingState?>(change.Value) },
                 PresentationProperty.CollectionAnchorKey => node with { CollectionAnchorKey = Read<string?>(change.Value) },

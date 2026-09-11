@@ -1316,6 +1316,15 @@ void FreeScrollAndRetainedRefreshLifecycle() {
               decision.followSuppressed,
           "current free-scroll authority suppresses focused-descendant follow");
 
+    auto refreshed = snapshot;
+    refreshed.root.children[3].collectionResetGeneration = 2;
+    Check(session.EvaluateFreeScrollAuthority(Authority(refreshed)).disposition ==
+              FreeScrollAuthorityDisposition::Replaced,
+          "successful collection refresh retires old right-stick focus suppression");
+    Check(session.EvaluateFreeScrollAuthority(current).disposition ==
+              FreeScrollAuthorityDisposition::Current,
+          "unchanged refresh generation preserves ordinary free scrolling");
+
     const auto retained = Authority(
         snapshot, L"fixture.widget", L"runtime-7", L"presentation-9", true);
     decision = session.EvaluateFreeScrollAuthority(retained);

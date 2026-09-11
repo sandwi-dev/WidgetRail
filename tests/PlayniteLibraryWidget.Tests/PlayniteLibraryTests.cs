@@ -175,7 +175,7 @@ public sealed class PlayniteLibraryTests
         string CountText() => Nodes(Snapshot(widget, 100).Root).Single(node => node.Id == "playnite-library.status").Text!;
         Assert.AreEqual($"{LauncherWidget.PageSize + 4} games", CountText());
         await widget.OnActionAsync(new("playnite-library.browse.cursor.after",
-            PlayniteLibraryPresentation.BrowseScrollId(widget.RenderState.Value.AlternateBrowseViewport)));
+            PlayniteLibraryPresentation.ScrollId));
         await Bounded(widget.WhenLibraryIdleAsync(), "browse count final page");
         Assert.AreEqual($"{LauncherWidget.PageSize + 4} games", CountText());
         await Background(widget);
@@ -473,9 +473,7 @@ public sealed class PlayniteLibraryTests
                 [Item(0), Item(1), Item(2)], null, null, actionId));
             await Bounded(terminal, actionId + " terminal");
             await Bounded(widget.WhenLibraryIdleAsync(), actionId + " drain");
-            if (actionId == PlayniteLibraryActions.FavoritesFilter)
-                Assert.IsTrue(widget.RenderState.Value.AlternateBrowseViewport,
-                    "Opening Browse through a semantic Home filter must replace the viewport exactly once.");
+
             AssertValidCollectionAnchor(Snapshot(widget, sequence++));
         }
 
@@ -858,8 +856,7 @@ public sealed class PlayniteLibraryTests
         await widget.OnActionAsync(new(
             PlayniteLibraryActions.BrowseOpen, "playnite-library.library.menu"));
         await Bounded(widget.WhenLibraryIdleAsync(), "initial Browse window");
-        var browseScrollId = PlayniteLibraryPresentation.BrowseScrollId(
-            widget.RenderState.Value.AlternateBrowseViewport);
+        var browseScrollId = PlayniteLibraryPresentation.ScrollId;
         await widget.OnActionAsync(new(
             "playnite-library.browse.cursor.after", browseScrollId));
         await Bounded(widget.WhenLibraryIdleAsync(), "paged Browse window");
@@ -984,8 +981,7 @@ public sealed class PlayniteLibraryTests
             widget.BrowseCollection.Items.Select(item => item.Value.SavedId).ToArray());
         Assert.AreEqual(browseAnchor, widget.BrowseCollection.Anchor);
 
-        var browseScrollId = PlayniteLibraryPresentation.BrowseScrollId(
-            widget.RenderState.Value.AlternateBrowseViewport);
+        var browseScrollId = PlayniteLibraryPresentation.ScrollId;
         await widget.OnActionAsync(new(
             "playnite-library.next", browseScrollId));
         await Bounded(widget.WhenLibraryIdleAsync(), "reopened category next page");
@@ -1173,8 +1169,8 @@ public sealed class PlayniteLibraryTests
         await widget.OnActionAsync(new("playnite-library.browse.open",
             "playnite-library.library.menu"));
         var reopenedBrowse = AssertValidSnapshot(50_003, "directly reopened Browse");
-        Assert.AreNotEqual(firstBrowseScrollId, BrowseScrollId(reopenedBrowse),
-            "Direct Home-to-Browse reentry must replace the previously active viewport identity.");
+        Assert.AreEqual(firstBrowseScrollId, BrowseScrollId(reopenedBrowse),
+            "Reopening retained Browse keeps its stable viewport identity.");
         await CommitSearch("Game", "retain all Browse results");
         var restoredBrowse = AssertValidSnapshot(50_004, "navigator-owned restored Browse");
         Assert.AreEqual(restoredTile.Id, restoredBrowse.InitialFocusId,
@@ -1232,8 +1228,7 @@ public sealed class PlayniteLibraryTests
 
         static string BrowseScrollId(ViewSnapshot snapshot) =>
             Nodes(snapshot.Root).Single(node =>
-                node.Id is PlayniteLibraryPresentation.ScrollId or
-                    PlayniteLibraryPresentation.AlternateBrowseScrollId).Id;
+                node.Id is PlayniteLibraryPresentation.ScrollId).Id;
     }
 
     [TestMethod, Timeout(30_000)]
@@ -1314,7 +1309,7 @@ public sealed class PlayniteLibraryTests
             shortcut.Button == ControllerButton.B &&
             shortcut.ActionId == "playnite-library.navigation.back"));
         var ascendingScrollId = Nodes(ascending.Root).Single(node =>
-            node.Id == PlayniteLibraryPresentation.AlternateBrowseScrollId).Id;
+            node.Id == PlayniteLibraryPresentation.ScrollId).Id;
 
         await Choose(
             PlayniteLibraryActions.SortFilter,
@@ -1333,8 +1328,8 @@ public sealed class PlayniteLibraryTests
         var descendingScrollId = Nodes(descending.Root).Single(node =>
             node.StyleClasses.Contains("playnite-library-browse-scroll",
                 StringComparer.Ordinal)).Id;
-        Assert.AreNotEqual(ascendingScrollId, descendingScrollId,
-            "A changed sort must publish a fresh host-owned Browse viewport.");
+        Assert.AreEqual(ascendingScrollId, descendingScrollId,
+            "A changed sort keeps a stable Browse viewport identity.");
         Assert.IsNull(host.Queries[^1].Cursor,
             "A changed sort must restart the provider cursor at the first page.");
 
@@ -1485,7 +1480,7 @@ public sealed class PlayniteLibraryTests
 
         var initial = Snapshot(widget, 50_301);
         var initialScrollId = BrowseScroll(initial).Id;
-        Assert.AreEqual(PlayniteLibraryPresentation.AlternateBrowseScrollId,
+        Assert.AreEqual(PlayniteLibraryPresentation.ScrollId,
             initialScrollId);
         AssertBrowseComposition(initial);
 
@@ -1495,7 +1490,6 @@ public sealed class PlayniteLibraryTests
             PlayniteLibraryActions.QueryClear));
         Assert.AreEqual(queriesBeforeNoOpClear, host.Queries.Count,
             "Clearing an already-default Browse query must not replace its viewport or reload.");
-        Assert.IsTrue(widget.RenderState.Value.AlternateBrowseViewport);
 
         await widget.OnActionAsync(new(
             PlayniteLibraryActions.Refresh,
@@ -1541,8 +1535,8 @@ public sealed class PlayniteLibraryTests
         Assert.AreEqual(PlayniteLibraryActions.SourceFilter,
             sourceResult.InitialFocusId);
         var alternateScrollId = BrowseScroll(sourceResult).Id;
-        Assert.AreNotEqual(initialScrollId, alternateScrollId,
-            "A semantic source change must replace the Browse viewport identity.");
+        Assert.AreEqual(initialScrollId, alternateScrollId,
+            "A semantic source change keeps the viewport identity and resets through cursor metadata.");
         Assert.IsNull(host.Queries[^1].Cursor,
             "A semantic source change must restart on the first provider page.");
         AssertBrowseComposition(sourceResult);
@@ -1597,14 +1591,13 @@ public sealed class PlayniteLibraryTests
             "A no-results query must restore the exact Sort opener.");
         Assert.AreEqual("No matching games", Nodes(empty.Root).Single(node =>
             node.Id == "playnite-library.browse.empty.title").Text);
-        Assert.IsTrue(widget.RenderState.Value.AlternateBrowseViewport,
-            "Successive semantic queries must alternate between exactly two static viewport identities.");
+        Assert.IsTrue(widget.BrowseCollection.ResetGeneration > 0,
+            "A committed query carries the shared collection reset generation.");
         await Background(widget);
 
         static ViewNode BrowseScroll(ViewSnapshot snapshot) =>
             Nodes(snapshot.Root).Single(node =>
-                node.Id is PlayniteLibraryPresentation.ScrollId or
-                    PlayniteLibraryPresentation.AlternateBrowseScrollId);
+                node.Id is PlayniteLibraryPresentation.ScrollId);
 
         static void AssertBrowseComposition(ViewSnapshot snapshot)
         {
@@ -2344,7 +2337,6 @@ public sealed class PlayniteLibraryTests
         Assert.AreEqual(query, state.HiddenQuery);
         Assert.AreSame(PlayniteLibraryFixedRows.Empty, state.FixedRows);
         Assert.AreEqual(0, state.SourceObservations.Count);
-        Assert.IsFalse(state.AlternateBrowseViewport);
         Assert.AreEqual(PlayniteBridgeConnectionKind.NotConfigured, state.PlayniteKind);
         Assert.AreEqual("credential_missing", state.PlayniteCode);
         Assert.AreEqual("Organization change was not saved",
@@ -3959,8 +3951,7 @@ public sealed class PlayniteLibraryTests
     private static void AssertValidCollectionAnchor(ViewSnapshot snapshot)
     {
         var scroll = Nodes(snapshot.Root).SingleOrDefault(node =>
-            node.Id is PlayniteLibraryPresentation.ScrollId or
-                PlayniteLibraryPresentation.AlternateBrowseScrollId);
+            node.Id is PlayniteLibraryPresentation.ScrollId);
         if (scroll is null) return;
         var keys = Nodes(scroll).Where(node => node.CollectionItemKey is not null)
             .Select(node => node.CollectionItemKey!).ToHashSet(StringComparer.Ordinal);

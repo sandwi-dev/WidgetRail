@@ -235,6 +235,34 @@ void CursorRequestsAreExplicitAndOneShot() {
     memory.Remember(L"widget",before,L"item.20");
     auto evicted=window(64,64,64);
     Check(memory.Restore(L"widget",evicted)==L"item.64", "evicted focus recovers inside the same collection");
+    before.root.collectionResetGeneration = 1;
+    memory.Remember(L"widget", before, L"item.20");
+    auto refreshed = window(0, 128, 20);
+    refreshed.root.collectionResetGeneration = 5;
+    refreshed.root.collectionGeneration = 6; // refresh and adjacent page coalesced
+    Check(memory.Restore(L"widget", refreshed) == L"item.0", "refresh resets remembered item focus despite overlapping keys");
+    memory.Remember(L"widget", refreshed, L"item.3");
+    refreshed.root.collectionGeneration = 7;
+    Check(memory.Restore(L"widget", refreshed) == L"item.3", "later pages do not replay collection reset");
+    auto outer = refreshed;
+    outer.root = Button(L"root"); outer.root.kind = L"stack"; outer.root.inputScopeId = L"items";
+    outer.root.children = {Button(L"header"), refreshed.root};
+    memory.Remember(L"widget", outer, L"header");
+    outer.root.children[1].collectionResetGeneration = 8;
+    Check(memory.Restore(L"widget", outer) == L"header", "collection reset preserves external control focus");
+    widgetrail::input::WidgetFocusGroupMemory groups;
+    outer.root.initialChildFocusId = L"header";
+    outer.root.children[1].initialChildFocusId = L"item.20";
+    groups.Remember(L"widget", outer, L"item.20");
+    outer.root.children[1].collectionResetGeneration = 9;
+    const auto render = FocusGroupRender({L"header", L"item.0", L"item.20"});
+    Check(groups.Resolve(L"widget", outer, L"items", render) == L"item.0", "collection focus group discards its stale child on refresh");
+    Check(groups.Resolve(L"widget", outer, L"root", render) == L"item.0", "outer group discards remembered child of refreshed collection");
+    groups.Remember(L"widget", outer, L"header");
+    outer.root.children[1].collectionResetGeneration = 10;
+    Check(groups.Resolve(L"widget", outer, L"root", render) == L"header", "group focus outside refreshed collection remains remembered");
+
+
 }
 
 } // namespace

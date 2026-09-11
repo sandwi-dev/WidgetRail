@@ -313,6 +313,7 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         compactMediaSessionAvailable);
     if (!nextLayouts) return false;
     collectionFocusMemory_.Remember(admission_->widgetId, SelectedSnapshot(), focusedElementId_);
+    focusGroupMemory_.Remember(admission_->widgetId, SelectedSnapshot(), focusedElementId_);
     ++workCounters_.snapshots;
     const auto priorSurfaceAppearance = EffectiveSurfaceAppearance();
     const std::wstring priorLayoutId{SelectedLayoutId()};
@@ -356,8 +357,6 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         (!freeScroll_.binding() && !input::FindNodeInInputScope(
             selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId)))
         focusedElementId_ = selectedSnapshot.initialFocusId;
-    focusGroupMemory_.Remember(
-        admission_->widgetId, selectedSnapshot, focusedElementId_);
     const input::WidgetInteractionAuthority authority{
         admission_->widgetId,
         &selectedSnapshot,
@@ -398,6 +397,7 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
             collectionFocusMemory_.Remember(admission_->widgetId, selectedSnapshot, focusedElementId_);
         }
     }
+    focusGroupMemory_.Remember(admission_->widgetId, selectedSnapshot, focusedElementId_);
     const auto* retainedFocus = input::FindNodeInInputScope(
         selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId);
     // Disabled and busy are transient states an adjustment itself provokes: a

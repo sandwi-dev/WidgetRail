@@ -23,7 +23,6 @@ internal sealed record PlayniteLibraryPresentationState(
 {
     internal string? ActiveCategoryId { get; init; }
     internal bool SearchExpanded { get; init; }
-    internal bool AlternateBrowseViewport { get; init; }
     internal string? BrowseInitialFocusId { get; init; }
     internal bool BrowseRetained { get; init; }
     internal int? MatchingGameCount { get; init; }
@@ -39,8 +38,6 @@ internal static class PlayniteLibraryPresentation
     private const double CompactPosterWidth = 150;
     private const int CompactPosterMaximumColumns = 7;
     internal const string ScrollId = "playnite-library.library.scroll";
-    internal const string AlternateBrowseScrollId =
-        "playnite-library.library.scroll.alternate";
     internal const string HomeRailId = "playnite-library.library.grid";
     internal const string RetryId = PlayniteLibraryActions.Retry;
     private static readonly WidgetSurfaceHints Surface = new()
@@ -70,8 +67,6 @@ internal static class PlayniteLibraryPresentation
         MinimumHeight = 340,
     };
 
-    internal static string BrowseScrollId(bool alternate) =>
-        alternate ? AlternateBrowseScrollId : ScrollId;
 
     internal static WidgetView Render(PlayniteLibraryPresentationState state)
     {
@@ -456,7 +451,7 @@ internal static class PlayniteLibraryPresentation
                     snapshot, catalogAnchorKey, pageBeforeActionId, pageAfterActionId,
                     tiles),
                 PlayniteLibraryRoute.Browse => BrowseGrid(
-                    BrowseScrollId(state.AlternateBrowseViewport), snapshot,
+                    ScrollId, snapshot,
                     catalogAnchorKey, pageBeforeActionId, pageAfterActionId,
                     tiles),
                 _ => GameGrid("playnite-library.library.grid", tiles),
@@ -860,6 +855,7 @@ internal static class PlayniteLibraryPresentation
                 CollectionAnchorKey = collectionAnchorKey,
                 CollectionStartIndex = collectionAnchorKey is null ? null : snapshot.StartIndex,
                 CollectionGeneration = collectionAnchorKey is not null && snapshot.WindowGeneration > 0 ? snapshot.WindowGeneration : null,
+                CollectionResetGeneration = snapshot.ResetGeneration > 0 ? snapshot.ResetGeneration : null,
                 CollectionNavigation = collectionAnchorKey is null ? null : snapshot.NavigationRequest,
                 CollectionLoading = collectionAnchorKey is null ? null : snapshot.LoadingState,
             };
@@ -888,6 +884,7 @@ internal static class PlayniteLibraryPresentation
                 CollectionAnchorKey = collectionAnchorKey,
                 CollectionStartIndex = collectionAnchorKey is null ? null : snapshot.StartIndex,
                 CollectionGeneration = collectionAnchorKey is not null && snapshot.WindowGeneration > 0 ? snapshot.WindowGeneration : null,
+                CollectionResetGeneration = snapshot.ResetGeneration > 0 ? snapshot.ResetGeneration : null,
                 CollectionNavigation = collectionAnchorKey is null ? null : snapshot.NavigationRequest,
                 CollectionLoading = collectionAnchorKey is null ? null : snapshot.LoadingState,
             };

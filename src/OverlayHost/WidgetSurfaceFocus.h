@@ -61,6 +61,7 @@ private:
         std::size_t ordinal{};
         std::wstring initialFocusId;
         std::wstring collectionScrollId;
+        std::uint64_t collectionResetGeneration{};
     };
 
     [[nodiscard]] static std::wstring Key(
@@ -91,7 +92,12 @@ private:
         std::wstring_view widgetId,
         std::wstring_view scopeId,
         std::wstring_view groupId);
-    std::unordered_map<std::wstring, std::wstring> entries_;
+    struct Entry final {
+        std::wstring elementId;
+        std::wstring collectionScrollId;
+        std::uint64_t collectionResetGeneration{};
+    };
+    std::unordered_map<std::wstring, Entry> entries_;
 };
 
 } // namespace widgetrail::input

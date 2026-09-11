@@ -35,7 +35,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Queue traverses every bounded occurrence without wrapping", QueueTraversesContinuously),
     ("Playlist pages load automatically in bounded cached windows", MaximumPlaylistPageContract),
     ("Controller prefetch preserves focus before subsequent 12/12/5 navigation", ControllerPlaylistPrefetchRoundTrip),
-    ("Continuous playlist detail preserves keyed refresh and one header edge", ContinuousPlaylistDetailAnchorAndHeader),
+    ("Continuous playlist detail resets on refresh and preserves one header edge", ContinuousPlaylistDetailAnchorAndHeader),
     ("Duplicate queue occurrences keep unique exact actions", DuplicateQueueOccurrencesRouteExactly),
     ("Duplicate playlist occurrences survive paging churn and eviction", DuplicatePlaylistOccurrencesStayKeyed),
     ("Occurrence identity retention is bounded by the collection window", OccurrenceIdentityIsBounded),
@@ -1579,7 +1579,7 @@ static async Task ContinuousPlaylistDetailAnchorAndHeader()
     await WaitUntil(() => harness.PlaylistDetailCalls == 5);
     var refreshed = widget.RenderSnapshot("spotify.anchor-refresh", 2);
     var scroll = Find(refreshed.Root, "spotify.playlist.detail.scroll");
-    Assert.Equal("media." + CollectionToken(retainedUri), scroll.CollectionAnchorKey);
+    Assert.Equal("media." + CollectionToken("spotify:track:track-1"), scroll.CollectionAnchorKey);
     Assert.NotNull(Find(refreshed.Root, TrackFocus("wide", retainedUri)));
     await StopAsync(widget);
 }
@@ -1615,7 +1615,7 @@ static async Task DuplicateQueueOccurrencesRouteExactly()
     var selected = rows[2];
     await widget.OnActionAsync(new(selected.ActionId!, selected.Id));
     Assert.Equal(repeatedUri, harness.StartedPlayback.Single().ItemUris!.Single());
-    Assert.Equal(selected.CollectionItemKey,
+    Assert.Equal(rows[0].CollectionItemKey,
         Find(widget.RenderSnapshot("spotify.queue.selected-duplicate", 2).Root,
             "spotify.queue.scroll").CollectionAnchorKey);
     await StopAsync(widget);
@@ -2512,7 +2512,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.54", manifest.Version);
+    Assert.Equal("0.3.55", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);

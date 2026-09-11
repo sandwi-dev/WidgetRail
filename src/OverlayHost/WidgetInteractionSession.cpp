@@ -694,7 +694,12 @@ bool FreeScrollInteractionState::BindingMatches(
     const FreeScrollBinding& binding,
     const WidgetInteractionAuthority& authority,
     const std::wstring_view focusedElementId) noexcept {
-    return authority.semantics &&
+    const auto* collection = authority.semantics
+        ? FindNodeInInputScope(*authority.semantics, binding.scrollId, authority.semantics->activeInputScopeId)
+        : nullptr;
+    const bool collectionReset = collection && collection->collectionResetGeneration &&
+        *collection->collectionResetGeneration != binding.collectionResetGeneration;
+    return !collectionReset && authority.semantics &&
         binding.widgetId == authority.widgetId &&
         binding.widgetInstanceId == authority.semantics->instanceId &&
         binding.runtimeGeneration == authority.runtimeGeneration &&
@@ -744,6 +749,10 @@ bool FreeScrollInteractionState::Bind(
         std::wstring{scrollId},
         axis,
     };
+    if (authority.semantics) {
+        const auto* collection = FindNodeInInputScope(*authority.semantics, scrollId, authority.semantics->activeInputScopeId);
+        binding_->collectionResetGeneration = collection ? collection->collectionResetGeneration.value_or(0) : 0;
+    }
     refreshDeferred_ = false;
     return changed;
 }

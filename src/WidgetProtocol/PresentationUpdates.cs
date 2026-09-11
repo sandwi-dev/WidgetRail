@@ -76,6 +76,7 @@ public enum PresentationProperty
     StyleClasses,
     Shortcuts,
     SelectOptions,
+    CollectionResetGeneration,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -138,6 +139,7 @@ public static class PresentationPropertyMetadata
 {
     public static PresentationPropertyImpact Impact(PresentationProperty property) => property switch
     {
+        PresentationProperty.CollectionResetGeneration => PresentationPropertyImpact.MeasureLayout | PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
         PresentationProperty.CollectionLoading => PresentationPropertyImpact.Paint,
         PresentationProperty.CollectionGeneration => PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
         PresentationProperty.ActiveInputScopeId or

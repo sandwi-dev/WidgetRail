@@ -127,9 +127,11 @@ void WidgetSurfaceFocusMemory::Remember(
         std::vector<const WidgetNode*> path;
         (void)FindNodePath(snapshot.root, focusedElementId, scope, RootInputScope(snapshot), path);
         std::wstring collectionScroll;
+        std::uint64_t resetGeneration{};
         for (auto it = path.rbegin(); it != path.rend(); ++it) {
             if ((*it)->kind == L"scroll" && (*it)->collectionStartIndex) {
                 collectionScroll = (*it)->id;
+                resetGeneration = (*it)->collectionResetGeneration.value_or(0);
                 break;
             }
         }
@@ -150,6 +152,7 @@ void WidgetSurfaceFocusMemory::Remember(
             static_cast<std::size_t>(position - focusNodes.begin()),
             snapshot.initialFocusId,
             std::move(collectionScroll),
+            resetGeneration,
         };
     }
 }
@@ -159,6 +162,14 @@ std::wstring WidgetSurfaceFocusMemory::Restore(
     const WidgetSnapshot& snapshot) const {
     const auto scope = std::wstring_view(snapshot.activeInputScopeId);
     const auto memory = entries_.find(Key(widgetId, scope));
+    // A fresh collection invalidates only remembered focus inside that collection.
+    if (memory != entries_.end() && !memory->second.collectionScrollId.empty()) {
+        const auto* collection = FindNodeInInputScope(snapshot, memory->second.collectionScrollId, scope);
+        if (collection && collection->collectionResetGeneration &&
+            *collection->collectionResetGeneration != memory->second.collectionResetGeneration) {
+            if (const auto* first = FirstEnabledFocusNode(*collection, scope, scope)) return first->id;
+        }
+    }
     std::vector<const WidgetNode*> initialPath;
     (void)FindNodePath(snapshot.root, snapshot.initialFocusId, scope, RootInputScope(snapshot), initialPath);
     const WidgetNode* initialCollection{};
@@ -243,10 +254,18 @@ void WidgetFocusGroupMemory::Remember(
     std::vector<const WidgetNode*> path;
     if (!FindNodePath(snapshot.root, focusedElementId, scope,
             RootInputScope(snapshot), path)) return;
+    Entry entry{std::wstring(focusedElementId), {}, 0};
+    for (auto it = path.rbegin(); it != path.rend(); ++it) {
+        if ((*it)->kind == L"scroll" && (*it)->collectionStartIndex) {
+            entry.collectionScrollId = (*it)->id;
+            entry.collectionResetGeneration = (*it)->collectionResetGeneration.value_or(0);
+            break;
+        }
+    }
     for (const auto* ancestor : path) {
         if (!ancestor->initialChildFocusId.empty() &&
             ancestor->id != focusedElementId) {
-            entries_[Key(widgetId, scope, ancestor->id)] = focusedElementId;
+            entries_[Key(widgetId, scope, ancestor->id)] = entry;
         }
     }
 }
@@ -264,8 +283,21 @@ std::optional<std::wstring> WidgetFocusGroupMemory::Resolve(
             IsEnabledFocusTarget(id, renderResult);
     };
     const auto memory = entries_.find(Key(widgetId, scope, groupId));
-    if (memory != entries_.end() && eligible(memory->second))
-        return memory->second;
+    bool reset = false;
+    if (memory != entries_.end() && !memory->second.collectionScrollId.empty()) {
+        const auto* collection = FindNodeInInputScope(snapshot, memory->second.collectionScrollId, scope);
+        reset = collection && collection->collectionResetGeneration &&
+            *collection->collectionResetGeneration != memory->second.collectionResetGeneration;
+        if (reset && ContainsDescendant(*group, collection->id)) {
+            if (const auto* first = FirstVisibleFocusDescendant(*collection, scope, scope, renderResult))
+                return first->id;
+        }
+    }
+    if (reset) {
+        if (const auto* first = FirstVisibleFocusDescendant(*group, scope, scope, renderResult)) return first->id;
+    }
+    if (!reset && memory != entries_.end() && eligible(memory->second.elementId))
+        return memory->second.elementId;
     if (eligible(group->initialChildFocusId)) return group->initialChildFocusId;
     if (const auto* first = FirstVisibleFocusDescendant(
             *group, scope, scope, renderResult)) return first->id;

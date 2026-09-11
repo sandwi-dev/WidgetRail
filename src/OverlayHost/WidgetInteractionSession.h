@@ -54,6 +54,7 @@ struct FreeScrollBinding final {
     std::wstring focusedElementId;
     std::wstring scrollId;
     declarative::ScrollAxis axis{declarative::ScrollAxis::None};
+    std::uint64_t collectionResetGeneration{};
 };
 
 enum class FreeScrollAuthorityDisposition {

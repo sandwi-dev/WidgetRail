@@ -72,6 +72,7 @@ internal static class WidgetWorkerNotificationScenarios
             System.Text.Encoding.UTF8.GetBytes(render.Payload.GetRawText()));
         NotificationAssert.Equal(4, first.Root.Children.Count);
         NotificationAssert.Equal(1L, first.Root.CollectionGeneration);
+        NotificationAssert.Equal(1L, first.Root.CollectionResetGeneration);
         NotificationAssert.True(first.Root.VirtualCollectionWindow is
         {
             RequestGeneration: 1,
@@ -238,6 +239,26 @@ internal static class WidgetWorkerNotificationScenarios
         }, deadline.Token);
         _ = await ReadResponseAsync(
             channel, requestId: 3, new List<long>(), deadline.Token);
+        // Destruction can publish a final cursor invalidation after Stop is acknowledged.
+        // Continue reading until the worker has drained its notification lane.
+        using var drainCancellation = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+        while (!server.IsCompleted)
+        {
+            var pending = channel.ReadAsync(drainCancellation.Token).AsTask();
+            if (await Task.WhenAny(server, pending) == server)
+            {
+                drainCancellation.Cancel();
+                try { await pending; }
+                catch (OperationCanceledException) when (drainCancellation.IsCancellationRequested) { }
+                catch (EndOfStreamException) { }
+                break;
+            }
+            RuntimeEnvelope notification;
+            try { notification = await pending; }
+            catch (EndOfStreamException) { break; }
+            NotificationAssert.Equal(MessageTypes.Invalidated, notification.Type);
+            NotificationAssert.Equal(0L, notification.RequestId);
+        }
         await server.WaitAsync(deadline.Token);
     }
 

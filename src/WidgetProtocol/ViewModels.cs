@@ -502,12 +502,15 @@ public sealed record ViewNode
     public VirtualCollectionWindow? VirtualCollectionWindow { get; init; }
     /// <summary>
     /// Protocol-v14 keyed collection anchor retained at the same viewport
-    /// position when children are appended, prepended, refreshed, or evicted.
+    /// position when children are appended, prepended, or evicted; a new
+    /// CollectionResetGeneration discards the prior position.
     /// </summary>
     public string? CollectionAnchorKey { get; init; }
     /// <summary>Stable relative position of the first retained collection item.</summary>
     public long? CollectionStartIndex { get; init; }
     public long? CollectionGeneration { get; init; }
+    /// <summary>Protocol-v50 identity of a fresh collection; unchanged by adjacent pages.</summary>
+    public long? CollectionResetGeneration { get; init; }
     public CollectionNavigationRequest? CollectionNavigation { get; init; }
     public CollectionLoadingState? CollectionLoading { get; init; }
     /// <summary>

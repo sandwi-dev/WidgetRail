@@ -107,10 +107,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 new(PlayniteLibraryPresentation.ScrollId, item => item.Key,
                     item => PlayniteLibraryIdentity.FocusId("grid", item.Key),
                     "playnite-library.empty.action"),
-                new(PlayniteLibraryPresentation.AlternateBrowseScrollId,
-                    item => item.Key,
-                    item => PlayniteLibraryIdentity.FocusId("grid", item.Key),
-                    "playnite-library.empty.action"),
             ],
         });
         _hiddenRows = CreateResource<IReadOnlyList<PlayniteLibraryItem>>(
@@ -632,9 +628,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     {
                         SearchExpanded = false,
                         ActiveCategoryId = resetBrowseViewport ? null : state.ActiveCategoryId,
-                        AlternateBrowseViewport = resetBrowseViewport && semanticChange
-                        ? !state.AlternateBrowseViewport
-                        : state.AlternateBrowseViewport,
                         BrowseInitialFocusId = resetBrowseViewport && semanticChange
                             ? PlayniteLibraryActions.QueryClear
                             : state.BrowseInitialFocusId,
@@ -659,7 +652,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     _model.Update(state => state with
                     {
                         SearchExpanded = false,
-                        AlternateBrowseViewport = !state.AlternateBrowseViewport,
                     });
                     _ = _browseLibrary.EnsureLoaded();
                 }
@@ -670,7 +662,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 _model.Update(state => state with
                 {
                     BrowseCollection = state.BrowseCollection.ToggleFavorites(InstalledGames),
-                    AlternateBrowseViewport = !state.AlternateBrowseViewport,
                     BrowseInitialFocusId = PlayniteLibraryActions.FavoritesFilter,
                     ActiveBrowseReload = favoriteReload,
                 });
@@ -682,7 +673,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 _model.Update(state => state with
                 {
                     BrowseCollection = state.BrowseCollection.ToggleRecentlyPlayed(InstalledGames),
-                    AlternateBrowseViewport = !state.AlternateBrowseViewport,
                     BrowseInitialFocusId = PlayniteLibraryActions.RecentlyPlayedFilter,
                     ActiveBrowseReload = recentReload,
                 });
@@ -791,13 +781,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 PlayniteLibraryPresentation.HomeRailId or
                 PlayniteLibraryPresentation.ScrollId
             ? action.SourceElementId
-            : _navigation.Value.Route == PlayniteLibraryRoute.Browse &&
-              string.Equals(action.SourceElementId,
-                  PlayniteLibraryPresentation.BrowseScrollId(
-                      _model.Value.AlternateBrowseViewport),
-                  StringComparison.Ordinal)
-                ? action.SourceElementId
-                : null;
+            : null;
         if (sourceScrollId is null) return;
         var library = CurrentLibrary;
         var snapshot = library.Snapshot;
@@ -814,8 +798,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (_navigation.Value.Route != PlayniteLibraryRoute.Browse ||
             !string.Equals(
                 action.SourceElementId,
-                PlayniteLibraryPresentation.BrowseScrollId(
-                    _model.Value.AlternateBrowseViewport),
+                PlayniteLibraryPresentation.ScrollId,
                 StringComparison.Ordinal))
             return false;
         if (!_browseLibrary.TryHandlePagination(action, out var pageOperation)) return false;
@@ -951,9 +934,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
             ? state
             : ApplyCollectionForRoute(route, state, query) with
             {
-                AlternateBrowseViewport = resetBrowseViewport
-                    ? !state.AlternateBrowseViewport
-                    : state.AlternateBrowseViewport,
                 BrowseInitialFocusId = resetBrowseViewport
                     ? browseFocusId
                     : state.BrowseInitialFocusId,
@@ -1073,19 +1053,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (_navigation.Value.Route != PlayniteLibraryRoute.Library) return;
         var replacement = _homeLibrary.Refresh();
         await replacement.Completion.ConfigureAwait(false);
-        var restored = _model.Update(state =>
-            (state with { PendingRestoredSavedId = null }, state.PendingRestoredSavedId));
-        var restoredSavedId = restored.Result;
-        var restoredItem = restoredSavedId is null ? null : _homeLibrary.Snapshot.Items
-            .FirstOrDefault(item => string.Equals(
-                item.Value.SavedId, restoredSavedId, StringComparison.Ordinal));
-        if (restoredItem is not null)
-            _homeLibrary.SelectAnchor(restoredItem.Key, invalidate: false);
-        _model.Update(state => state with
-        {
-            PreferLibraryContentFocus = restoredSavedId is not null ||
-                (resetPresentation ? preferContentFocus : state.PreferLibraryContentFocus),
-        });
+        _model.Update(state => state with { PendingRestoredSavedId = null });
     }
 
     private WidgetAppLibraryQuery EffectiveQueryLocked(
@@ -2133,7 +2101,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         ActiveCategoryId = local.ActiveCategoryId,
         SearchExpanded = local.SearchExpanded,
-        AlternateBrowseViewport = local.AlternateBrowseViewport,
         BrowseInitialFocusId = local.BrowseInitialFocusId,
         MatchingGameCount = gameCount?.Generation == QueryAuthorityGenerationLocked(route)
             ? gameCount.Count : null,
@@ -2230,7 +2197,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             ActiveCategoryId = categoryId,
             BrowseCollection = state.BrowseCollection.Reset(InstalledGames),
-            AlternateBrowseViewport = !state.AlternateBrowseViewport,
             BrowseInitialFocusId = PlayniteLibraryActions.CategoryFilter,
             ActiveBrowseReload = reload,
         });

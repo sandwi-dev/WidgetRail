@@ -59,6 +59,8 @@ public sealed record WidgetCursorResourceSnapshot<TItem>(
     public long? FirstItemIndex { get; init; }
     public long? TotalItemCount { get; init; }
     public long WindowGeneration { get; init; }
+    /// <summary>Identity of the last committed fresh collection; unchanged by adjacent loading.</summary>
+    public long ResetGeneration { get; init; }
     /// <summary>Stable relative position of the retained window, including opaque-cursor providers.</summary>
     public long StartIndex { get; init; }
     public CollectionNavigationRequest? NavigationRequest { get; init; }
@@ -209,20 +211,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         return forceRefresh ? Refresh() : Start(new(null, null, null, false));
     }
 
-    public WidgetOperationHandle Refresh()
-    {
-        WidgetCollectionCursor? cursor;
-        lock (_gate)
-        {
-            var anchored = _snapshot.Anchor is { } anchor
-                ? _segments.FirstOrDefault(segment =>
-                    segment.Page.Items.Any(item =>
-                        KeyOf(item) == anchor))
-                : null;
-            cursor = anchored?.RequestCursor ?? _segments.First?.Value.RequestCursor;
-        }
-        return Start(new(cursor, null, null, true));
-    }
+    /// <summary>Reloads from the beginning, retaining current data until a successful commit.</summary>
+    public WidgetOperationHandle Refresh() => Start(new(null, null, null, true));
 
     /// <summary>Loads adjacent data without requesting a focus move.</summary>
     public WidgetOperationHandle Prefetch(WidgetCursorDirection direction, string sourceScrollId) =>
@@ -315,6 +305,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             CollectionAnchorKey = snapshot.Anchor?.Value,
             CollectionStartIndex = snapshot.Items.Count == 0 ? null : snapshot.StartIndex,
             CollectionGeneration = snapshot.Items.Count == 0 ? null : snapshot.WindowGeneration,
+            CollectionResetGeneration = snapshot.ResetGeneration > 0 ? snapshot.ResetGeneration : null,
             CollectionNavigation = snapshot.Items.Count == 0 ? null : snapshot.NavigationRequest,
             CollectionLoading = snapshot.LoadingState,
             VirtualCollectionWindow = _viewports[scroll.Id].EstimatedItemExtent is { } estimate &&
@@ -461,7 +452,9 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                     throw new InvalidOperationException("Virtual collection request generation is exhausted.");
                 var proposed = Merge(page, request.Intent.Cursor, request.Intent.Direction, request.Intent.ProtectedKeys);
                 var merged = new ReadOnlyCollection<TItem>(proposed.SelectMany(segment => segment.Page.Items).ToArray());
-                var anchor = ResolveAnchor(_snapshot, merged, request.Intent.Direction);
+                var anchor = request.Intent.Direction is null
+                    ? merged.Count == 0 ? (WidgetCollectionItemKey?)null : KeyOf(merged[0])
+                    : ResolveAnchor(_snapshot, merged, request.Intent.Direction);
                 var focus = request.FocusIntentRevision == _focusIntentRevision
                     ? ResolveFocus(page.Items, request.Intent) : null;
                 var beforeCursor = proposed.FirstOrDefault()?.Page.Before;
@@ -493,6 +486,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                     NavigationRequest = focus is not null && _snapshot.NavigationRequest is { } navigation ? navigation with { TargetFocusId = focus } : null,
                     TotalItemCount = total,
                     WindowGeneration = nextWindowGeneration,
+                    ResetGeneration = request.Intent.Direction is null ? nextWindowGeneration : _snapshot.ResetGeneration,
                     WindowChange = windowChange,
                 };
                 committed = true;
@@ -736,6 +730,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             FirstItemIndex = previous.FirstItemIndex,
             TotalItemCount = previous.TotalItemCount,
             WindowGeneration = previous.WindowGeneration,
+            ResetGeneration = previous.ResetGeneration,
             StartIndex = previous.StartIndex,
             NavigationRequest = previous.NavigationRequest,
             LoadingDirection = status == WidgetPagedResourceStatus.LoadingAdjacent ? previous.LoadingDirection : null,

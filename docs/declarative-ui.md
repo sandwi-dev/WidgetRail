@@ -594,7 +594,7 @@ Protocol v14 adds `WidgetCursorResource<TItem>` for continuous collections.
 Its `PresentItem` modifier publishes a stable `collectionItemKey`; `Present`
 publishes one `collectionAnchorKey` plus the existing near-edge actions. The
 native host retains the anchor's viewport-relative position when a bounded
-window prepends, appends, refreshes, or evicts nodes, including items nested in
+window prepends, appends, or evicts nodes, including items nested in
 a responsive Grid. At most 256 keyed items are serialized and offset paging
 continues to use its unchanged replacement-window behavior.
 
@@ -1458,6 +1458,15 @@ generation retires that request even when refresh and paging were coalesced into
 one view with the same items as before. Unchanged generations still suppress
 duplicate in-flight requests. Generation updates require paint and interaction
 reconciliation, without layout measurement.
+
+Protocol-v50 Scroll metadata `collectionResetGeneration` identifies the most
+recent successful fresh collection load. It is a bounded positive generation,
+independent of ordinary page commits, and remains present on subsequent pages.
+A changed value clears that scroll container's offset and anchor restoration,
+invalidates remembered focus inside the collection, and retires old free-scroll
+focus suppression. Focus outside the collection is retained. A reset requires
+layout, paint and interaction reconciliation, even when item keys are identical.
+Failed or canceled refreshes do not publish a new reset generation.
 
 For positioned collections, the host starts prefetching within two viewport
 lengths of the loaded edge. Only actually visible keys are protected from

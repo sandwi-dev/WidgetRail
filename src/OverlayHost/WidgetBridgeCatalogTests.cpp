@@ -1202,6 +1202,13 @@ void VerifyPositionedCollectionProtocol() {
     generated.replace(generated.find("49"), 2, "48"); error.clear();
     Require(!widgetrail::testing::ParseWidgetSnapshotResponse(generated, error),
         "old protocol cannot admit collection generations");
+    auto reset = json; reset.replace(reset.find("47"), 2, "50");
+    reset.insert(reset.find("\"collectionStartIndex\""), "\"collectionResetGeneration\":9,");
+    error.clear();
+    const auto resetParsed = widgetrail::testing::ParseWidgetSnapshotResponse(reset, error);
+    Require(resetParsed && resetParsed->root.collectionResetGeneration == 9, "reset generation crosses native parser");
+    reset.replace(reset.find("50"), 2, "49"); error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(reset, error), "legacy protocol rejects reset generation");
     auto loading = json; loading.replace(loading.find("47"), 2, "48");
     loading.insert(loading.find("\"collectionStartIndex\""), "\"collectionLoading\":\"after\",");
     error.clear();

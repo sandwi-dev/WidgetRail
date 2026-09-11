@@ -332,6 +332,8 @@ public sealed record ScrollElement : ContainerElement
     /// <summary>Stable relative position of the first retained collection item.</summary>
     public long? CollectionStartIndex { get; init; }
     public long? CollectionGeneration { get; init; }
+    /// <summary>Cursor-provided fresh collection identity; applied automatically by Capture().Present().</summary>
+    public long? CollectionResetGeneration { get; init; }
     public CollectionNavigationRequest? CollectionNavigation { get; init; }
     public CollectionLoadingState? CollectionLoading { get; init; }
     internal VirtualCollectionWindow? VirtualCollectionWindow { get; init; }
@@ -390,6 +392,7 @@ public sealed record ScrollElement : ContainerElement
         CollectionAnchorKey = CollectionAnchorKey,
         CollectionStartIndex = CollectionStartIndex,
         CollectionGeneration = CollectionGeneration,
+        CollectionResetGeneration = CollectionResetGeneration,
         CollectionNavigation = CollectionNavigation,
         CollectionLoading = CollectionLoading,
     };

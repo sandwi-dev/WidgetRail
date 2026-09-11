@@ -590,6 +590,7 @@ private:
         std::vector<std::wstring> layoutBoundaries;
     };
     struct ScrollStateEntry final {
+        std::uint64_t collectionResetGeneration{};
         float offset{};
         std::uint64_t lastAccess{};
         std::wstring anchorKey;

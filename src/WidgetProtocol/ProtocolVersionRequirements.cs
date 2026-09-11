@@ -224,6 +224,9 @@ internal sealed class ProtocolVersionRequirements
                             path,
                             $"Scroll pagination requires protocol version {ProtocolConstants.ScrollPaginationVersion} or later.");
                     }
+                    if (node.CollectionResetGeneration is not null)
+                        Add("collection-reset-generation", ProtocolConstants.CollectionResetGenerationVersion,
+                            $"{path}.collectionResetGeneration", "Collection reset generations require protocol version 50 or later.");
                     if (node.CollectionGeneration is not null)
                         Add("collection-generation", ProtocolConstants.CollectionGenerationVersion,
                             $"{path}.collectionGeneration", "Collection generations require protocol version 49 or later.");

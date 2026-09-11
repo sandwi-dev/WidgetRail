@@ -2089,6 +2089,33 @@ void CursorCollectionPreservesKeyedViewportAnchor() {
         nullptr, deleted, L"item.node.3", {0.0F, 0.0F, 240.0F, 100.0F});
     Check(fallback.focusRects.contains(L"item.node.3"),
           "a deleted anchor admits the authored nearest keyed fallback");
+    for (const auto* axis : {L"vertical", L"horizontal"}) {
+        auto reset = snapshot;
+        reset.root.scrollAxis = axis;
+        reset.root.collectionStartIndex = 0;
+        reset.root.collectionResetGeneration = 1;
+        if (std::wstring_view(axis) == L"horizontal") {
+            for (auto& child : reset.root.children) {
+                child.baseStyle.emplace(L"width", Length(80));
+                child.baseStyle.emplace(L"min-width", Length(80));
+            }
+        }
+        DeclarativeRenderer resetRenderer{nullptr, nullptr, nullptr};
+        const auto scrolled = resetRenderer.Render(nullptr, reset, L"item.node.5", {0,0,240,100});
+        Check(scrolled.scrollOffsets.at(L"collection") > 0, "reset fixture starts away from collection beginning");
+        reset.root.collectionResetGeneration = 4;
+        reset.root.collectionGeneration = 5; // refresh plus prefetch, identical keys
+        widgetrail::DeclarativeRenderOptions options;
+        options.suppressFocusedDescendantFollow = true;
+        const auto first = resetRenderer.Render(nullptr, reset, L"item.node.5", {0,0,240,100}, options);
+        Near(first.scrollOffsets.at(L"collection"), 0, "fresh collection resets offset even with identical items and old free-scroll focus");
+        const auto moved = resetRenderer.Render(nullptr, reset, L"item.node.5", {0,0,240,100});
+        Check(moved.scrollOffsets.at(L"collection") > 0, "navigation can move after a reset");
+        reset.root.collectionGeneration = 6;
+        const auto retained = resetRenderer.Render(nullptr, reset, L"item.node.5", {0,0,240,100}, options);
+        Near(retained.scrollOffsets.at(L"collection"), moved.scrollOffsets.at(L"collection"), "adjacent page generation does not reset again");
+    }
+
 }
 
 void VirtualCollectionWindowKeepsNativeWorkBounded() {

@@ -17,7 +17,7 @@ internal static class WidgetCursorResourceTests
         await TraversesTenThousandItemsWithinBound();
         await ProjectsVersionedTenThousandItemVirtualWindow();
         await HandlesEmptySparseFinalAndLastGoodError();
-        await PreservesAnchorAcrossAppendPrependAndRefresh();
+        await PreservesAnchorDuringPagingAndResetsItOnRefresh();
         await DirectionChangeAllowsEvictedRefetch();
         await TraversalHistoryFailsClosedAndRefreshResetsIt();
         await RejectsLateDuplicateAndLoopResults();
@@ -37,13 +37,20 @@ internal static class WidgetCursorResourceTests
         await widget.Resource.Refresh().Completion;
         await widget.Resource.Prefetch(WidgetCursorDirection.After, "items.list").Completion;
         var after = widget.Resource.Capture();
+        True(after.Snapshot.ResetGeneration > before.Snapshot.ResetGeneration,
+            "Refresh identity must survive a coalesced successor page.");
+        True(after.Snapshot.ResetGeneration < after.Snapshot.WindowGeneration,
+            "Adjacent paging must retain the refresh identity.");
         True(before.Snapshot.Items.SequenceEqual(after.Snapshot.Items), "Fixture must end on an identical retained window.");
         True(before.Snapshot.WindowGeneration > 0 && after.Snapshot.WindowGeneration > before.Snapshot.WindowGeneration,
             "Each committed window needs a generation even without virtual extent metadata.");
         var rows = after.Snapshot.Items.Select(item => after.PresentItem(item, UI.Button(item.Id,"select","focus." + item.Id))).ToArray();
         var view = new WidgetView(after.Present(UI.VerticalScroll("items.list",rows))).CreateSnapshot("generation.fixture",1);
         Equal<long?>(after.Snapshot.WindowGeneration, view.Root.CollectionGeneration);
-        Equal(ProtocolConstants.CollectionGenerationVersion, view.ProtocolVersion);
+        Equal<long?>(after.Snapshot.ResetGeneration, view.Root.CollectionResetGeneration);
+        True(ViewSnapshotValidator.Validate(view with { ProtocolVersion = 49 }).Any(error => error.Code == "feature_requires_version"), "Reset metadata requires protocol 50.");
+        True(ViewSnapshotValidator.Validate(view with { Root = view.Root with { CollectionResetGeneration = 0 } }).Count > 0, "Reset generation must be positive.");
+        Equal(ProtocolConstants.CollectionResetGenerationVersion, view.ProtocolVersion);
         Equal(PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
             PresentationPropertyMetadata.Impact(PresentationProperty.CollectionGeneration));
         True(ViewSnapshotValidator.Validate(view with { ProtocolVersion = 48 }).Any(error => error.Code == "feature_requires_version"),
@@ -66,6 +73,7 @@ internal static class WidgetCursorResourceTests
                 return Page(cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1)), limit, 40);
             }));
         await widget.Resource.EnsureLoaded().Completion;
+        var resetGeneration = widget.Resource.Snapshot.ResetGeneration;
         hold = true;
         var refresh = widget.Resource.Refresh();
         await started.Task;
@@ -78,6 +86,7 @@ internal static class WidgetCursorResourceTests
         Equal(WidgetOperationStatus.Canceled, (await refresh.Completion).Status);
         await staleDemand.Completion;
         Equal(WidgetPagedResourceStatus.Ready, widget.Resource.Snapshot.Status);
+        Equal(resetGeneration, widget.Resource.Snapshot.ResetGeneration);
         Equal(2, calls);
         hold = false;
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
@@ -197,7 +206,7 @@ internal static class WidgetCursorResourceTests
         var loadingView = new WidgetView(loading.Present(UI.VerticalScroll("items.list", loadingRows)))
             .CreateSnapshot("loading.test", 1);
         Equal<CollectionLoadingState?>(CollectionLoadingState.After, loadingView.Root.CollectionLoading);
-        Equal(ProtocolConstants.CollectionGenerationVersion, loadingView.ProtocolVersion);
+        Equal(ProtocolConstants.CollectionResetGenerationVersion, loadingView.ProtocolVersion);
         True(System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(loadingView))
             .Contains("\"collectionLoading\":\"after\"", StringComparison.Ordinal),
             "Collection loading must use canonical lowercase protocol values.");
@@ -444,7 +453,7 @@ internal static class WidgetCursorResourceTests
         });
         await widget.Resource.EnsureLoaded().Completion;
         var initial = widget.Render().CreateSnapshot("virtual.fixture", 1);
-        Equal(ProtocolConstants.CollectionGenerationVersion, initial.ProtocolVersion);
+        Equal(ProtocolConstants.CollectionResetGenerationVersion, initial.ProtocolVersion);
         var window = initial.Root.Children[0].VirtualCollectionWindow!;
         Equal(1L, window.RequestGeneration);
         Equal(VirtualCollectionWindowChange.Replace, window.Change);
@@ -582,6 +591,7 @@ internal static class WidgetCursorResourceTests
         Equal(WidgetPagedResourceStatus.Error, widget.Resource.Snapshot.Status);
         Equal(4L, widget.Resource.Snapshot.WindowGeneration);
         Equal(retained.WindowChange, widget.Resource.Snapshot.WindowChange);
+        Equal(retained.ResetGeneration, widget.Resource.Snapshot.ResetGeneration);
         Equal(96, widget.Resource.Snapshot.Items.Count);
         Equal(retained.Before, widget.Resource.Snapshot.Before);
         Equal(retained.After, widget.Resource.Snapshot.After);
@@ -606,9 +616,9 @@ internal static class WidgetCursorResourceTests
         Equal(WidgetPagedResourceStatus.Ready, widget.Resource.Snapshot.Status);
         Equal(5L, widget.Resource.Snapshot.WindowGeneration);
         var recoveredScroll = widget.Render().CreateSnapshot("virtual.fixture", 4).Root.Children[0];
-        Equal("test.cursor.cursor.before", recoveredScroll.ScrollNearStartActionId);
+        Equal<string?>(null, recoveredScroll.ScrollNearStartActionId);
         Equal("test.cursor.cursor.after", recoveredScroll.ScrollNearEndActionId);
-        True(recoveredScroll.VirtualCollectionWindow is { HasBefore: true, HasAfter: true },
+        True(recoveredScroll.VirtualCollectionWindow is { HasBefore: false, HasAfter: true },
             "Explicit Retry did not restore non-Error virtual boundary availability.");
         foreach (var nextMutation in new[] { 1, 2, 3 })
         {
@@ -654,7 +664,7 @@ internal static class WidgetCursorResourceTests
         await StopAsync(unknownPositionWidget);
     }
 
-    private static async Task PreservesAnchorAcrossAppendPrependAndRefresh()
+    private static async Task PreservesAnchorDuringPagingAndResetsItOnRefresh()
     {
         var inserted = false;
         var removed = false;
@@ -674,14 +684,12 @@ internal static class WidgetCursorResourceTests
 
         inserted = true;
         await widget.Resource.Refresh().Completion;
-        // A refresh whose current window no longer contains the old key uses
-        // a deterministic nearest visible fallback, never an ordinal identity.
-        Equal(new WidgetCollectionItemKey("item.150"), widget.Resource.Snapshot.Anchor);
+        Equal(new WidgetCollectionItemKey("item.inserted"), widget.Resource.Snapshot.Anchor);
+        Equal("item.inserted", widget.Resource.Snapshot.Items[0].Id);
         removed = true;
         inserted = false;
         await widget.Resource.Refresh().Completion;
-        True(widget.Resource.Snapshot.Anchor is not null,
-            "Deletion produced an unanchored non-empty collection.");
+        Equal(new WidgetCollectionItemKey("item.0"), widget.Resource.Snapshot.Anchor);
         await StopAsync(widget);
     }
 

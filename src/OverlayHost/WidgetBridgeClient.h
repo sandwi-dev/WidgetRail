@@ -439,6 +439,7 @@ struct WidgetNode final {
     std::wstring collectionAnchorKey;
     std::optional<std::int64_t> collectionStartIndex;
     std::optional<std::uint64_t> collectionGeneration;
+    std::optional<std::uint64_t> collectionResetGeneration;
     std::wstring collectionLoading;
     struct CollectionNavigationRequest {
         std::uint64_t requestId{};

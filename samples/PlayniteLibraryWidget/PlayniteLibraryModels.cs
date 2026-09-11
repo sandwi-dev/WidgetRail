@@ -68,7 +68,6 @@ internal sealed record PlayniteLibraryRenderState
     internal string? PendingRestoredSavedId { get; init; }
     internal bool PreferLibraryContentFocus { get; init; }
     internal bool SearchExpanded { get; init; }
-    internal bool AlternateBrowseViewport { get; init; }
     internal string? BrowseInitialFocusId { get; init; }
     internal PlayniteLibraryBrowseReload? ActiveBrowseReload { get; init; }
     internal PlayniteLibraryQueryCount? HomeGameCount { get; init; }

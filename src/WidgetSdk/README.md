@@ -593,6 +593,18 @@ this value, including an identical refresh and nonvirtual cursor collections.
 Custom presentations must forward it too: item counts and edge keys alone
 cannot distinguish a refreshed window when intermediate views are coalesced.
 
+`Refresh()` requests the first page and keeps the current data during loading.
+A successful fresh load chooses the first item as its anchor and publishes
+protocol-v50 `CollectionResetGeneration` from snapshot `ResetGeneration`.
+Adjacent pages retain this value even when their intermediate presentations
+are coalesced. The host resets collection scroll and remembered item focus once;
+focus outside the collection is preserved. Failure or cancellation retains the
+previous reset identity and position. `Reset()` clears data without fetching;
+the next successful load creates a new reset identity. `EnsureLoaded()` reuses
+ready data. Widgets do not need to change scroll IDs to reset collections.
+Custom cursor presentations must forward the reset metadata, including through
+retained loading views. The default `Capture().Present()` does this automatically.
+
 `WidgetAppLibraryItem` has one authoritative normalized `Presentation` value;
 there are no duplicate scalar title/kind/source/artwork accessors. It contains
 the sanitized display name and closed kind, one opaque source reference, one

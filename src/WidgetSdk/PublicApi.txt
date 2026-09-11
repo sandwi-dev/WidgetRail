@@ -2418,6 +2418,7 @@ property long WidgetRail.WidgetSdk.WidgetActionEvent.MonotonicTimestampMicroseco
 property long WidgetRail.WidgetSdk.WidgetActionEvent.Sequence { get; set; }
 property long WidgetRail.WidgetSdk.WidgetAppLibraryMetadataAttribution.RetrievedAtUnixMilliseconds { get; set; }
 property long WidgetRail.WidgetSdk.WidgetAppLibrarySource.Revision { get; set; }
+property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.ResetGeneration { get; set; }
 property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.StartIndex { get; set; }
 property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.WindowGeneration { get; set; }
@@ -2442,6 +2443,7 @@ property long WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.Revision { get; se
 property long WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetTestPrivateState.Revision { get; }
 property long? WidgetRail.WidgetSdk.ScrollElement.CollectionGeneration { get; set; }
+property long? WidgetRail.WidgetSdk.ScrollElement.CollectionResetGeneration { get; set; }
 property long? WidgetRail.WidgetSdk.ScrollElement.CollectionStartIndex { get; set; }
 property long? WidgetRail.WidgetSdk.WidgetAppLibraryMetadata.LastPlayedAtUnixMilliseconds { get; set; }
 property long? WidgetRail.WidgetSdk.WidgetAppLibraryMetadata.PlaytimeMinutes { get; set; }
