@@ -98,6 +98,14 @@ public:
         const std::uint64_t timestamp,
         const bool reducedMotion,
         const bool compositionAvailable) noexcept {
+        if (compositionAvailable) {
+            // Drawing the destination must not consume its animation duration.
+            // An existing compositor motion keeps running until replacement is ready.
+            pendingCompositionFrom_ = from;
+            pendingCompositionRetarget_ = pendingCompositionRetarget_ || finalCompositionPlacement_.has_value();
+            animatedExtentDip_.reset();
+            return;
+        }
         extentTransition_.Begin(
             timestamp,
             static_cast<float>(from.widthDip),
@@ -121,6 +129,8 @@ public:
         const OverlayPresentationExtent extent,
         const std::uint64_t timestamp,
         const bool reducedMotion) noexcept {
+        pendingCompositionFrom_.reset();
+        pendingCompositionRetarget_ = false;
         extentTransition_.Begin(
             timestamp,
             static_cast<float>(extent.widthDip),
@@ -134,11 +144,11 @@ public:
 
     [[nodiscard]] bool hasActiveExtent() const noexcept {
         return extentTransition_.active() || animatedExtentDip_ ||
-            finalCompositionPlacement_;
+            finalCompositionPlacement_ || pendingCompositionFrom_;
     }
 
     [[nodiscard]] bool extentTransitionActive() const noexcept {
-        return extentTransition_.active();
+        return extentTransition_.active() || pendingCompositionFrom_.has_value();
     }
 
     [[nodiscard]] OverlayPresentationExtent AdvanceFallbackExtent(
@@ -163,6 +173,22 @@ public:
         const std::uint64_t timestamp,
         const bool reducedMotion,
         const bool wasVisible) noexcept {
+        if (pendingCompositionFrom_) {
+            auto from = *pendingCompositionFrom_;
+            if (pendingCompositionRetarget_) {
+                // Retarget from the old motion at publication time, not from
+                // the last UI timer sample taken before a potentially slow draw.
+                const auto current = extentTransition_.Sample(timestamp, reducedMotion);
+                from = {static_cast<int>(std::lround(current.widthDip)),
+                        static_cast<int>(std::lround(current.heightDip))};
+            }
+            extentTransition_.Begin(timestamp,
+                static_cast<float>(from.widthDip), static_cast<float>(from.heightDip),
+                static_cast<float>(destinationExtentDip.widthDip),
+                static_cast<float>(destinationExtentDip.heightDip), reducedMotion);
+            pendingCompositionFrom_.reset();
+            pendingCompositionRetarget_ = false;
+        }
         CompositionAdmissionDirective directive{
             destinationPlacement,
             containerPlacement,
@@ -256,6 +282,9 @@ public:
     }
 
     void RejectCompositionAdmission() noexcept {
+        pendingCompositionFrom_.reset();
+        pendingCompositionRetarget_ = false;
+        extentTransition_.Cancel();
         finalCompositionPlacement_.reset();
         motionContainerPlacement_.reset();
         settledContainerPlacement_.reset();
@@ -359,8 +388,10 @@ public:
 
     [[nodiscard]] bool RetireHidden() noexcept {
         const bool inFlight = extentTransition_.active() ||
-            finalCompositionPlacement_ || compositionPresentedExtentDip_;
+            finalCompositionPlacement_ || compositionPresentedExtentDip_ || pendingCompositionFrom_;
         extentTransition_.Cancel();
+        pendingCompositionFrom_.reset();
+        pendingCompositionRetarget_ = false;
         animatedExtentDip_.reset();
         finalCompositionPlacement_.reset();
         motionContainerPlacement_.reset();
@@ -382,6 +413,8 @@ public:
     }
 
 private:
+    bool pendingCompositionRetarget_{};
+    std::optional<OverlayPresentationExtent> pendingCompositionFrom_;
     bool retainedSurfaceAvailable_{};
     std::optional<WidgetSurfaceRequest> retainedSurfaceRequest_;
     std::optional<RetainedWidgetPresentation> retainedPresentation_;

@@ -155,6 +155,13 @@ public:
         float offsetY{};
         float clipWidth{};
         float clipHeight{};
+        // Zero commits a static transform. Otherwise the compositor owns the
+        // complete cubic motion, including while the UI thread is rendering.
+        std::uint64_t durationMilliseconds{};
+        float targetScaleX{1.0F};
+        float targetScaleY{1.0F};
+        float targetOffsetX{};
+        float targetOffsetY{};
     };
     struct BackgroundPresentation final {
         bool visible{};
@@ -225,7 +232,8 @@ public:
     HRESULT CommitFrames(
         std::span<Frame*> frames, bool waitForCompletion, CommitTiming& timing,
         const VisualPresentation* presentation = nullptr,
-        const BackgroundPresentation* background = nullptr) noexcept;
+        const BackgroundPresentation* background = nullptr,
+        bool revealContent = false) noexcept;
     HRESULT CommitPreparedBackground(
         std::wstring_view key, std::uint64_t generation,
         CommitTiming& timing) noexcept;
@@ -237,6 +245,7 @@ public:
     HRESULT CommitChromePresentation(
         const ChromePresentation& presentation, CommitTiming& timing) noexcept;
     HRESULT CommitOpacity(float opacity, CommitTiming& timing) noexcept;
+    HRESULT SnapContentVisible() noexcept;
     // Creates the only external content slot under this HWND's existing root.
     // The caller may connect a composition-hosted renderer to the returned
     // visual, but this class remains the sole visual-tree/presentation owner.
@@ -335,6 +344,8 @@ private:
     PaintCounters paintCounters_{};
     BackgroundPresentation backgroundPresentation_{};
     Microsoft::WRL::ComPtr<IDCompositionAnimation> backgroundIncomingAnimation_;
+    Microsoft::WRL::ComPtr<IDCompositionMatrixTransform> presentationTransform_;
+    Microsoft::WRL::ComPtr<IDCompositionAnimation> contentRevealAnimation_;
 
     HRESULT ApplyPresentation(const VisualPresentation& presentation) noexcept;
     HRESULT ApplyBackgroundPresentation(

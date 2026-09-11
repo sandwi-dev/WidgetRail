@@ -957,6 +957,37 @@ void CheckFixedChromeWindowPolicy() {
               composition, content, chrome, compositionFactory.Get(),
               compositionError),
           "real paired composition endpoints initialize for runtime recovery");
+    widgetrail::OverlayCompositionSurface::Frame animatedFrame;
+    Check(SUCCEEDED(composition.BeginFrame(400, 300, animatedFrame)),
+          "resize fixture acquires a real compositor surface");
+    animatedFrame.target->Clear(D2D1::ColorF(0.1F, 0.2F, 0.3F, 1.0F));
+    Check(SUCCEEDED(composition.EndFrame(animatedFrame)), "destination frame is complete before motion");
+    widgetrail::OverlayCompositionSurface::VisualPresentation motion{
+        0.5F, 0.5F, 100.0F, 150.0F, 400.0F, 300.0F,
+        140, 1.0F, 1.0F, 0.0F, 0.0F};
+    widgetrail::OverlayCompositionSurface::CommitTiming motionTiming;
+    std::array<widgetrail::OverlayCompositionSurface::Frame*, 1> motionFrames{&animatedFrame};
+    Check(SUCCEEDED(composition.CommitFrames(motionFrames, true, motionTiming, &motion, nullptr, true)),
+          "real compositor accepts bounded resize and content opacity animations together");
+    const auto paintsBefore = composition.paintCounters().content;
+    Check(SUCCEEDED(composition.SnapContentVisible()), "focus can settle compositor opacity without repaint");
+    Check(composition.paintCounters().content == paintsBefore,
+          "compositor opacity does not rasterize the widget again");
+    widgetrail::OverlayCompositionSurface::Frame repaint;
+    Check(SUCCEEDED(composition.BeginFrame(400, 300, repaint)), "same-size repaint is admitted during motion");
+    repaint.target->Clear(D2D1::ColorF(0.3F, 0.2F, 0.1F, 1.0F));
+    Check(SUCCEEDED(composition.EndFrame(repaint)) &&
+          SUCCEEDED(composition.CommitFrame(repaint, true, motionTiming)),
+          "content-only commit preserves an independently owned animated transform");
+    auto invalidMotion = motion;
+    invalidMotion.durationMilliseconds = 201;
+    Check(FAILED(composition.CommitPresentation(invalidMotion, motionTiming)),
+          "compositor rejects unbounded animation durations");
+    motion.durationMilliseconds = 0;
+    motion.scaleX = motion.scaleY = 1.0F;
+    motion.offsetX = motion.offsetY = 0.0F;
+    Check(SUCCEEDED(composition.CommitPresentation(motion, motionTiming)),
+          "reduced motion settles to a static transform");
     ShowWindow(chrome, SW_SHOWNOACTIVATE);
     widgetrail::shell::ResetFixedChromeComposition(composition, chrome);
     Check(!composition.available() && !IsWindowVisible(chrome),

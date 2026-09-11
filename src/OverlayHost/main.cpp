@@ -6778,8 +6778,7 @@ private:
             CommitAdmittedWidgetPresentation(event.widgetId);
             if (pendingContentRevealWidget_ == event.widgetId) {
                 pendingContentRevealWidget_.clear();
-                overlayTransition_.BeginContentReveal(
-                    GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
+                BeginWidgetContentReveal(event.widgetId);
                 AdvanceOverlayTransition(GetTickCount64());
             }
             const std::wstring priorFocus = interactionSession_.focusedElementId();
@@ -7062,125 +7061,36 @@ private:
                 const auto step = presentationTransaction_.PrepareCompositionStep(
                     timestamp, CurrentAccessibilityPolicy().reducedMotion);
                 if (step) {
-                    const widgetrail::OverlayCompositionSurface::VisualPresentation
-                        presentation{
-                            step->presentation.scaleX,
-                            step->presentation.scaleY,
-                            step->presentation.offsetX,
-                            step->presentation.offsetY,
+                    // DirectComposition advances the committed transform. The UI
+                    // clock only mirrors geometry for hit testing and completion.
+                    // Never replace that animation with stale timer samples.
+                    if (CurrentAccessibilityPolicy().reducedMotion) {
+                        widgetrail::OverlayCompositionSurface::VisualPresentation settled{
+                            step->presentation.scaleX, step->presentation.scaleY,
+                            step->presentation.offsetX, step->presentation.offsetY,
                             static_cast<float>(step->destinationPlacement.width),
-                            static_cast<float>(step->destinationPlacement.height),
-                        };
-                    widgetrail::OverlayCompositionSurface::CommitTiming timing;
-                    const HRESULT result = compositionSurface_.CommitPresentation(
-                        presentation, timing);
-                    if (FAILED(result)) {
-                        DisableCompositionFallback(
-                            L"motion commit failed hresult=" +
-                            std::to_wstring(static_cast<unsigned long>(result)));
-                        presentationTransaction_.RejectCompositionAdmission();
-                    } else {
-                        AppendDiagnostic(
-                        L"Composition motion step index=" +
-                        std::to_wstring(step->index) +
-                        L" presented=" +
-                        std::to_wstring(static_cast<unsigned int>(
-                            std::lround(
-                                step->destinationPlacement.width *
-                                step->presentation.scaleX))) + L"x" +
-                        std::to_wstring(static_cast<unsigned int>(
-                            std::lround(
-                                step->destinationPlacement.height *
-                                step->presentation.scaleY))) +
-                        L" commit-us=" + std::to_wstring(timing.commitMicroseconds) +
-                        L" waited=false redraw=false");
-                        bool accepted = true;
-                        bool transactionAccepted = false;
-                        if (step->finalFrame) {
-                        const auto settledContainer = step->destinationPlacement;
-                        const widgetrail::OverlayCompositionSurface::VisualPresentation
-                            settledPresentation{
-                                1.0F, 1.0F,
-                                static_cast<float>(step->destinationPlacement.x -
-                                    settledContainer.x),
-                                static_cast<float>(step->destinationPlacement.y -
-                                    settledContainer.y),
-                                static_cast<float>(step->destinationPlacement.width),
-                                static_cast<float>(step->destinationPlacement.height),
-                            };
-                        widgetrail::OverlayCompositionSurface::CommitTiming settleTiming;
-                        const HRESULT settleResult =
-                            compositionSurface_.CommitPresentation(
-                                settledPresentation, settleTiming);
-                        BOOL placed = FALSE;
-                        if (SUCCEEDED(settleResult)) {
-                            // Publish settled transaction state before the
-                            // synchronous WM_WINDOWPOSCHANGED/UIA projection.
-                            presentationTransaction_.AcceptCompositionStep(*step);
-                            transactionAccepted = true;
-                            struct PlacementGuard final {
-                                bool& active;
-                                explicit PlacementGuard(bool& value)
-                                    : active(value) { active = true; }
-                                ~PlacementGuard() { active = false; }
-                            } guard(compositionPlacementInProgress_);
-                            placed = SetWindowPos(
-                                window_, nullptr,
-                                settledContainer.x,
-                                settledContainer.y,
-                                settledContainer.width,
-                                settledContainer.height,
-                                SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOREDRAW |
-                                    SWP_NOZORDER);
-                            if (placed)
-                                presentationTransaction_.SettleCompositionContainer(
-                                    settledContainer);
-                        }
-                        accepted = SUCCEEDED(settleResult) && placed;
-                        if (!accepted) {
-                            DisableCompositionFallback(
-                                L"motion settlement failed hresult=" +
-                                std::to_wstring(static_cast<unsigned long>(
-                                    settleResult)) +
-                                L" error=" + std::to_wstring(GetLastError()));
+                            static_cast<float>(step->destinationPlacement.height)};
+                        widgetrail::OverlayCompositionSurface::CommitTiming timing;
+                        if (FAILED(compositionSurface_.CommitPresentation(settled, timing))) {
+                            DisableCompositionFallback(L"reduced-motion settlement failed");
                             presentationTransaction_.RejectCompositionAdmission();
-                        }
-                        if (accepted) {
-                        AppendDiagnostic(
-                            L"Composition motion final steps=" +
-                            std::to_wstring(step->index) +
-                            L" geometry=destination-settled bounds=" +
-                            std::to_wstring(step->destinationPlacement.x) + L"," +
-                            std::to_wstring(step->destinationPlacement.y) + L"," +
-                            std::to_wstring(step->destinationPlacement.width) + L"," +
-                            std::to_wstring(step->destinationPlacement.height) +
-                            L" commit-us=" +
-                            std::to_wstring(settleTiming.commitMicroseconds) +
-                            L" waited=false redraw=false alpha=premultiplied-clear");
-                        }
-                        }
-                        if (accepted) {
-                            if (!transactionAccepted)
-                                presentationTransaction_.AcceptCompositionStep(*step);
-                            if (accessibilityActive_ &&
-                                !accessibilityTree_.widgetId.empty()) {
-                                const float pixelScale =
-                                    static_cast<float>(
-                                        step->destinationPlacement.width) /
-                                    static_cast<float>(std::max(
-                                        1, DesiredPresentationExtentDip().widthDip));
-                                (void)PublishAccessibilityTree(pixelScale);
-                            }
-                            AppendCompositionCoordinateSample(step->index);
-                            // The destination frame owns the final authored
-                            // MediaViewport, but the external plane is not a
-                            // child of the animated content visual. Reconcile
-                            // it only after the exact destination placement is
-                            // committed so fullscreen exit does not wait for a
-                            // later paint or input to restore the widget plane.
-                            ReconcileCommittedEmbeddedMediaSurface();
+                            return;
                         }
                     }
+                    presentationTransaction_.AcceptCompositionStep(*step);
+                    if (step->finalFrame) {
+                        // Keep the transparent container and its final transform
+                        // together. Shrinking the HWND separately from a compositor
+                        // commit can expose an earlier size for a displayed frame.
+                        AppendDiagnostic(L"Composition motion completed owner=compositor container=retained redraw=false");
+                    }
+                    if (accessibilityActive_ && !accessibilityTree_.widgetId.empty()) {
+                        const float pixelScale = static_cast<float>(step->destinationPlacement.width) /
+                            static_cast<float>(std::max(1, DesiredPresentationExtentDip().widthDip));
+                        (void)PublishAccessibilityTree(pixelScale);
+                    }
+                    AppendCompositionCoordinateSample(step->index);
+                    ReconcileCommittedEmbeddedMediaSurface();
                 }
             } else {
                 (void)presentationTransaction_.AdvanceFallbackExtent(
@@ -7197,7 +7107,7 @@ private:
             }
         }
         ApplyTransitionWindowOpacity(overlayTransitionSample_.shellOpacity);
-        if (state_.surface() != widgetrail::Surface::Hidden &&
+        if (!compositionSurface_.available() && state_.surface() != widgetrail::Surface::Hidden &&
             std::abs(previousContentOpacity -
                      overlayTransitionSample_.contentOpacity) > 0.0001F) {
             InvalidateRect(window_, nullptr, FALSE);
@@ -7208,12 +7118,32 @@ private:
         }
     }
 
+    void BeginWidgetContentReveal(const std::wstring_view widgetId) {
+        if (compositionSurface_.available()) {
+            pendingCompositionContentRevealWidget_ = CurrentAccessibilityPolicy().reducedMotion
+                ? std::wstring{} : std::wstring{widgetId};
+            overlayTransition_.SnapContentVisible();
+            if (CurrentAccessibilityPolicy().reducedMotion)
+                (void)compositionSurface_.SnapContentVisible();
+        } else {
+            overlayTransition_.BeginContentReveal(
+                GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
+        }
+    }
+
+    [[nodiscard]] bool CompositionContentRevealPending() const {
+        const auto widget = state_.activeWidget();
+        return !CurrentAccessibilityPolicy().reducedMotion &&
+            pendingCompositionContentRevealWidget_ == widget &&
+            !pendingCompositionContentRevealWidget_.empty() &&
+            sessions_.Presentation(widget).HasCommittedViewAuthority();
+    }
+
     void RequestWidgetContentReveal(const std::wstring_view widgetId) {
         if (widgetId.empty()) return;
         if (SnapshotFor(widgetId)) {
             pendingContentRevealWidget_.clear();
-            overlayTransition_.BeginContentReveal(
-                GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
+            BeginWidgetContentReveal(widgetId);
         } else {
             pendingContentRevealWidget_ = widgetId;
             // Retained content (or first-open startup status) is host
@@ -7226,6 +7156,8 @@ private:
 
     void SnapWidgetContentVisible() {
         pendingContentRevealWidget_.clear();
+        pendingCompositionContentRevealWidget_.clear();
+        if (compositionSurface_.available()) (void)compositionSurface_.SnapContentVisible();
         overlayTransition_.SnapContentVisible();
         AdvanceOverlayTransition(GetTickCount64());
     }
@@ -7277,12 +7209,18 @@ private:
             static_cast<float>(placement.width),
             static_cast<float>(placement.height),
         };
+        if (directive.animateMotion) {
+            presentation.durationMilliseconds = widgetrail::OverlayExtentTransitionTimeline::DurationMilliseconds;
+            presentation.targetOffsetX = static_cast<float>(placement.x - composedContainer.x);
+            presentation.targetOffsetY = static_cast<float>(placement.y - composedContainer.y);
+        }
         widgetrail::OverlayCompositionSurface::CommitTiming commitTiming;
         std::vector<widgetrail::OverlayCompositionSurface::Frame*> framePointers;
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
+        const bool revealContent = CompositionContentRevealPending();
         const HRESULT commitResult = compositionSurface_.CommitFrames(
-            framePointers, !wasVisible, commitTiming, &presentation);
+            framePointers, !wasVisible, commitTiming, &presentation, nullptr, revealContent);
         if (FAILED(commitResult)) {
             presentationTransaction_.RejectCompositionAdmission();
             DisableCompositionFallback(
@@ -7291,6 +7229,7 @@ private:
             return false;
         }
 
+        if (revealContent) pendingCompositionContentRevealWidget_.clear();
         const int containerWidth = composedContainer.width;
         const int containerHeight = composedContainer.height;
         const int containerX = composedContainer.x;
@@ -7446,15 +7385,19 @@ private:
             AppendDiagnostic(L"Unable to compute a safe overlay placement");
             return OverlayShowResult::Failed;
         }
+        RECT currentContainer{};
+        if (wasVisible) GetClientRect(window_, &currentContainer);
         auto compositionContainer = ComputePlatformPlacement(
             work, dpi,
             std::max(
                 desiredWidthDip * interfaceScale,
-                static_cast<float>(compositionSurface_.width()) * 96.0F /
+                static_cast<float>(std::max(compositionSurface_.width(),
+                    static_cast<unsigned int>(currentContainer.right))) * 96.0F /
                     static_cast<float>(dpi)),
             std::max(
                 desiredHeightDip * interfaceScale,
-                static_cast<float>(compositionSurface_.height()) * 96.0F /
+                static_cast<float>(std::max(compositionSurface_.height(),
+                    static_cast<unsigned int>(currentContainer.bottom))) * 96.0F /
                     static_cast<float>(dpi)));
         if (compositionSurface_.available() && !compositionContainer) {
             AppendDiagnostic(L"Unable to compute the composition host container");
@@ -7804,6 +7747,8 @@ private:
 
     void HideOverlay() {
         visibleSessionStartedAt_ = 0;
+        pendingCompositionContentRevealWidget_.clear();
+        if (compositionSurface_.available()) (void)compositionSurface_.SnapContentVisible();
         textEntryModal_.Close();
         localWidgetPackageImport_.CancelPicker();
         if (const auto operation = localWidgetPackageImport_.CancelActiveOperation()) {
@@ -16449,10 +16394,11 @@ private:
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
+        const bool revealContent = CompositionContentRevealPending();
         const HRESULT result = compositionSurface_.CommitFrames(
             framePointers, replacement, timing, nullptr,
             frames.backgroundPresentation
-                ? &*frames.backgroundPresentation : nullptr);
+                ? &*frames.backgroundPresentation : nullptr, revealContent);
         if (FAILED(result)) {
             if (frames.backgroundObservationTransaction)
                 compositorBackgroundCoordinator_.CancelObservation(
@@ -16462,6 +16408,7 @@ private:
                 std::to_wstring(static_cast<unsigned long>(result)));
             return false;
         }
+        if (revealContent) pendingCompositionContentRevealWidget_.clear();
         if (frames.backgroundObservationTransaction &&
             !compositorBackgroundCoordinator_.CommitObservation(
                 *frames.backgroundObservationTransaction)) {
@@ -17330,7 +17277,7 @@ private:
         if (bridgeWidget) {
             ComPtr<ID2D1Layer> contentLayer;
             bool contentLayerPushed = false;
-            if (overlayTransitionSample_.contentOpacity < 0.999F &&
+            if (!compositionSurface_.available() && overlayTransitionSample_.contentOpacity < 0.999F &&
                 SUCCEEDED(renderTarget_->CreateLayer(
                     nullptr, contentLayer.ReleaseAndGetAddressOf()))) {
                 auto layerParameters = D2D1::LayerParameters();
@@ -18191,6 +18138,7 @@ private:
     bool awaitingSuccessfulOpenPaint_{};
     ULONGLONG nextOpenPaintRetryAt_{};
     std::wstring pendingContentRevealWidget_;
+    std::wstring pendingCompositionContentRevealWidget_;
     mutable std::optional<WidgetSurfaceResolutionCache>
         widgetSurfaceResolutionCache_;
     std::wstring lastWidgetPresentationPaintKey_;

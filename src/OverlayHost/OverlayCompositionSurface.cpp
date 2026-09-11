@@ -14,6 +14,26 @@ using Microsoft::WRL::ComPtr;
 
 namespace widgetrail {
 
+namespace {
+HRESULT CreatePresentationAnimation(
+    IDCompositionDevice2* device, const float from, const float to,
+    const std::uint64_t milliseconds, IDCompositionAnimation** result) noexcept {
+    if (!device || !result || !std::isfinite(from) || !std::isfinite(to) ||
+        milliseconds == 0 || milliseconds > 200) return E_INVALIDARG;
+    const double duration = static_cast<double>(milliseconds) / 1000.0;
+    const double delta = static_cast<double>(to) - from;
+    ComPtr<IDCompositionAnimation> animation;
+    HRESULT hr = device->CreateAnimation(animation.GetAddressOf());
+    if (SUCCEEDED(hr)) hr = animation->AddCubic(0, from,
+        static_cast<float>(3 * delta / duration),
+        static_cast<float>(-3 * delta / (duration * duration)),
+        static_cast<float>(delta / (duration * duration * duration)));
+    if (SUCCEEDED(hr)) hr = animation->End(duration, to);
+    if (SUCCEEDED(hr)) *result = animation.Detach();
+    return hr;
+}
+}
+
 bool OverlayCompositionSurface::Initialize(
     const HWND window, ID2D1Factory1* factory, std::wstring& error) {
     Reset();
@@ -209,6 +229,8 @@ void OverlayCompositionSurface::Reset() noexcept {
     backgroundIncoming_ = {};
     backgroundPresentation_ = {};
     backgroundIncomingAnimation_.Reset();
+    presentationTransform_.Reset();
+    contentRevealAnimation_.Reset();
     content_ = {};
     externalContentVisual_.Reset();
     externalContentAttached_ = false;
@@ -871,7 +893,7 @@ HRESULT OverlayCompositionSurface::CommitFrame(
 HRESULT OverlayCompositionSurface::CommitFrames(
     const std::span<Frame*> frames, const bool waitForCompletion,
     CommitTiming& timing, const VisualPresentation* presentation,
-    const BackgroundPresentation* background) noexcept {
+    const BackgroundPresentation* background, const bool revealContent) noexcept {
     timing = {};
     if (!device_ || frames.empty()) return E_UNEXPECTED;
     for (const auto* frame : frames) {
@@ -896,6 +918,14 @@ HRESULT OverlayCompositionSurface::CommitFrames(
     }
     if (SUCCEEDED(result) && presentation) result = ApplyPresentation(*presentation);
     if (SUCCEEDED(result) && background) result = ApplyBackgroundPresentation(*background);
+    if (SUCCEEDED(result) && revealContent) {
+        ComPtr<IDCompositionAnimation> reveal;
+        ComPtr<IDCompositionVisual3> content;
+        result = content_.visual.As(&content);
+        if (SUCCEEDED(result)) result = CreatePresentationAnimation(device_.Get(), 0.78F, 1.0F, 100, reveal.GetAddressOf());
+        if (SUCCEEDED(result)) result = content->SetOpacity(reveal.Get());
+        if (SUCCEEDED(result)) contentRevealAnimation_ = std::move(reveal);
+    }
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result) && waitForCompletion) {
         result = device_->WaitForCommitCompletion();
@@ -938,8 +968,43 @@ HRESULT OverlayCompositionSurface::ApplyPresentation(
     const D2D_RECT_F clip{
         0.0F, 0.0F, presentation.clipWidth, presentation.clipHeight,
     };
-    HRESULT result = presentationVisual_->SetTransform(transform);
+    HRESULT result = S_OK;
+    if (presentation.durationMilliseconds != 0) {
+        if (presentation.targetScaleX <= 0 || presentation.targetScaleY <= 0)
+            return E_INVALIDARG;
+        ComPtr<IDCompositionMatrixTransform> animatedTransform;
+        result = device_->CreateMatrixTransform(animatedTransform.GetAddressOf());
+        if (SUCCEEDED(result)) result = animatedTransform->SetMatrix(transform);
+        const std::array<float, 4> from{presentation.scaleX, presentation.scaleY,
+            presentation.offsetX, presentation.offsetY};
+        const std::array<float, 4> to{presentation.targetScaleX, presentation.targetScaleY,
+            presentation.targetOffsetX, presentation.targetOffsetY};
+        constexpr std::array<int, 4> rows{0, 1, 2, 2};
+        constexpr std::array<int, 4> columns{0, 1, 0, 1};
+        for (std::size_t index = 0; SUCCEEDED(result) && index < from.size(); ++index) {
+            ComPtr<IDCompositionAnimation> animation;
+            result = CreatePresentationAnimation(device_.Get(), from[index], to[index],
+                presentation.durationMilliseconds, animation.GetAddressOf());
+            if (SUCCEEDED(result)) result = animatedTransform->SetMatrixElement(
+                rows[index], columns[index], animation.Get());
+        }
+        if (SUCCEEDED(result)) result = presentationVisual_->SetTransform(animatedTransform.Get());
+        if (SUCCEEDED(result)) presentationTransform_ = std::move(animatedTransform);
+    } else {
+        result = presentationVisual_->SetTransform(transform);
+        if (SUCCEEDED(result)) presentationTransform_.Reset();
+    }
     if (SUCCEEDED(result)) result = presentationVisual_->SetClip(clip);
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::SnapContentVisible() noexcept {
+    if (!device_ || !content_.visual) return E_UNEXPECTED;
+    ComPtr<IDCompositionVisual3> content;
+    HRESULT result = content_.visual.As(&content);
+    if (SUCCEEDED(result)) result = content->SetOpacity(1.0F);
+    if (SUCCEEDED(result)) result = device_->Commit();
+    if (SUCCEEDED(result)) contentRevealAnimation_.Reset();
     return result;
 }
 

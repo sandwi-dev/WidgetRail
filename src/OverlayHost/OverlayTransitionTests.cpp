@@ -518,6 +518,42 @@ void FullscreenExitSettlesBeforeCompositionAdmission() {
           "fullscreen exit schedules no later composition motion frame");
 }
 
+void SlowDrawingDoesNotConsumeMotionAndRetargetUsesCurrentProgress() {
+    widgetrail::OverlayPresentationTransaction transaction;
+    constexpr widgetrail::OverlayPresentationExtent small{400, 300};
+    constexpr widgetrail::OverlayPresentationExtent large{800, 600};
+    constexpr widgetrail::OverlayPlacement largePlacement{0, 0, 800, 600};
+    transaction.BeginExtentTransition(small, large, 100, false, true);
+    const auto first = transaction.PrepareCompositionAdmission(
+        400, 300, largePlacement, largePlacement, large, 1000, false, true);
+    Check(first.animateMotion, "slow destination draw retains a full resize animation");
+    Near(first.initialPresentation.scaleX, 0.5F, "animation starts at source after slow draw");
+    transaction.AcceptCompositionAdmission(first, L"games");
+    Check(!transaction.PrepareCompositionStep(1000, false)->finalFrame,
+        "time before destination publication cannot complete animation");
+
+    constexpr widgetrail::OverlayPresentationExtent medium{600, 450};
+    constexpr widgetrail::OverlayPlacement mediumPlacement{100, 150, 600, 450};
+    transaction.BeginExtentTransition(small, medium, 1040, false, true);
+    const auto next = transaction.PrepareCompositionAdmission(
+        800, 600, mediumPlacement, largePlacement, medium, 1100, false, true);
+    // Old compositor motion advances while the next destination is being drawn.
+    const float progress = 1.0F - std::pow(40.0F / 140.0F, 3.0F);
+    const float currentWidth = std::round(400.0F + 400.0F * progress);
+    Near(next.initialPresentation.scaleX, currentWidth / 600.0F,
+        "retarget samples old motion at publication rather than an old timer frame");
+    transaction.AcceptCompositionAdmission(next, L"playnite");
+    transaction.AcceptCompositionRepaint(L"playnite");
+    Check(!transaction.PrepareCompositionStep(1239, false)->finalFrame,
+        "repaint does not consume or restart the new resize duration");
+    auto final = transaction.PrepareCompositionStep(1240, false);
+    Check(final && final->finalFrame, "retarget ends after its own full duration");
+    transaction.AcceptCompositionStep(*final);
+    const auto settled = transaction.CurrentMotionPlan(800, 600, medium);
+    Check(settled && settled->scaleX == 1.0F && settled->offsetX == 100.0F &&
+        settled->offsetY == 150.0F, "completion retains container without an independent HWND resize");
+}
+
 void ClockAndDecisionsAreStable() {
     widgetrail::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(100, false);
@@ -562,6 +598,7 @@ int main() {
     ReducedMotionAdmissionCommitsDestinationDirectly();
     AnimationPreferencePathsPreserveContainerGeometry();
     FullscreenExitSettlesBeforeCompositionAdmission();
+    SlowDrawingDoesNotConsumeMotionAndRetargetUsesCurrentProgress();
     ClockAndDecisionsAreStable();
     std::cout << "OverlayTransitionTests: " << checks << " checks passed\n";
     return EXIT_SUCCESS;

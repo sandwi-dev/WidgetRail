@@ -113,6 +113,20 @@ Canceled idle-unload work is retained, boundedly drained, and observed through
 terminal retirement so a stale generation cannot unload or publish into its
 replacement.
 
+Native resize motion is owned by the existing DirectComposition surface owner.
+The destination is rendered at its final authored extent before a bounded
+140 ms cubic scale/offset animation is attached with that frame. Drawing does
+not consume the motion duration. The UI cadence mirrors progress for hit testing
+and accessibility; it never overwrites the compositor animation with timer
+samples. Retargeting samples the previous motion when the replacement frame is
+ready. Ordinary content or artwork repaints retain the existing transform.
+The transparent container keeps the union of current and destination bounds
+through completion, avoiding a separate HWND shrink racing the final transform.
+Fixed tray/guide anchors and destination layout remain independent of the motion.
+Content reveal opacity also runs on the existing content visual without repeated
+widget rasterization. Reduced motion snaps the transform and opacity; systems
+using the legacy layered fallback retain the existing UI-owned animation path.
+
 Generation replacement is one registry transition. A retiring registration
 remains the widget's reserved slot until its admitted publications, idle work,
 client, residency lease, and operation gate reach terminal cleanup; concurrent
