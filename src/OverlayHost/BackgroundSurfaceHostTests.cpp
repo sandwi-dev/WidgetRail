@@ -79,6 +79,16 @@ struct CompositorBackgroundSurfaceCoordinatorTestAccess final {
         const CompositorBackgroundSurfaceCoordinator& coordinator) {
         return coordinator.state_.generation;
     }
+    static std::wstring CommittedHandle(
+        const CompositorBackgroundSurfaceCoordinator& coordinator) {
+        return coordinator.state_.committed
+            ? coordinator.state_.committed->descriptor.artworkHandle : L"";
+    }
+    static std::wstring IncomingHandle(
+        const CompositorBackgroundSurfaceCoordinator& coordinator) {
+        return coordinator.state_.incoming
+            ? coordinator.state_.incoming->descriptor.artworkHandle : L"";
+    }
 };
 } // namespace widgetrail
 
@@ -932,6 +942,94 @@ int wmain() {
                         cancelledObservation->transactionId),
                 "failed/cancelled host transaction published live state");
             composition.AbandonFrame(cancelledContent);
+
+            // The blue fade has completed, but its pixels are still in the
+            // Incoming visual. Missing replacement artwork must neither clear
+            // that surface nor publish a presentation that hides it.
+            auto [missContent, missResult] = renderIntegrated(
+                L"background.retarget.blue", 4000);
+            auto missing = *missResult.compositorBackground;
+            missing.artworkHandle = L"background.retarget.uncached";
+            auto missObservation = coordinator.Observe(
+                missing, integratedRenderer, composition, 640, 360, 1.0F, 4000);
+            Require(missObservation && missObservation->frames.empty() &&
+                    !missObservation->presentation,
+                "completed-fade cache miss staged changes to displayed layers");
+            commitObservation(std::move(missContent), std::move(*missObservation));
+            using CoordinatorAccess =
+                widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess;
+            Require(CoordinatorAccess::CommittedHandle(coordinator) ==
+                        L"background.retarget.blue",
+                "completed-fade cache miss lost the latest committed image");
+            const auto beforeMissRetries = composition.paintCounters().content;
+            for (const auto now : {4200ULL, 4300ULL}) {
+                Require(coordinator.Advance(
+                            missing, integratedRenderer, composition,
+                            640, 360, 1.0F, now, advanceDiagnostic) ==
+                            widgetrail::CompositorBackgroundSurfaceCoordinator::
+                                AdvanceDisposition::HandledPending &&
+                        composition.paintCounters().content == beforeMissRetries,
+                    "cache-miss retry disturbed the retained presentation");
+            }
+            const auto missingKey = widgetrail::RemoteImageCache::TrustedArtworkKey(
+                retargetWidget, retargetSurface, missing.artworkHandle);
+            const widgetrail::TrustedArtworkDemandAuthority completionAuthority{
+                std::wstring{retargetWidget}, integratedOptions.artworkRuntimeGeneration,
+                integratedOptions.artworkPresentationGeneration};
+            Require(retargetCache.SupplyTrustedArtwork(
+                        retargetWidget, missing.artworkHandle, completionAuthority,
+                        L"image/png", std::wstring{greenPng}),
+                "cache-miss fixture rejected current artwork completion");
+            WaitForState(retargetCache, missingKey, widgetrail::RemoteImageState::Ready,
+                "cache-miss artwork did not become ready");
+            Require(coordinator.Advance(
+                        missing, integratedRenderer, composition,
+                        640, 360, 1.0F, 4400, advanceDiagnostic) ==
+                        widgetrail::CompositorBackgroundSurfaceCoordinator::
+                            AdvanceDisposition::Advanced &&
+                    CoordinatorAccess::CommittedHandle(coordinator) ==
+                        L"background.retarget.blue" &&
+                    CoordinatorAccess::IncomingHandle(coordinator) == missing.artworkHandle &&
+                    composition.paintCounters().content == beforeMissRetries,
+                "ready replacement did not transition directly from the last shown image");
+
+            auto nextMissing = missing;
+            nextMissing.artworkHandle = L"background.retarget.next-uncached";
+            auto duringFade = coordinator.Observe(
+                nextMissing, integratedRenderer, composition, 640, 360, 1.0F, 4450);
+            Require(duringFade && duringFade->frames.empty() &&
+                    !duringFade->presentation &&
+                    coordinator.CommitObservation(duringFade->transactionId),
+                "active-fade miss altered the visible transition");
+            Require(coordinator.Advance(
+                        nextMissing, integratedRenderer, composition,
+                        640, 360, 1.0F, 4650, advanceDiagnostic) ==
+                        widgetrail::CompositorBackgroundSurfaceCoordinator::
+                            AdvanceDisposition::HandledPending &&
+                    CoordinatorAccess::IncomingHandle(coordinator) == missing.artworkHandle,
+                "pending next artwork interrupted the active fade");
+
+            auto cached = missing;
+            cached.artworkHandle = L"background.retarget.red";
+            auto cachedObservation = coordinator.Observe(
+                cached, integratedRenderer, composition, 640, 360, 1.0F, 4660);
+            Require(cachedObservation &&
+                    coordinator.CommitObservation(cachedObservation->transactionId),
+                "cached selection did not supersede pending artwork");
+            Require(coordinator.Advance(
+                        cached, integratedRenderer, composition,
+                        640, 360, 1.0F, 4810, advanceDiagnostic) ==
+                        widgetrail::CompositorBackgroundSurfaceCoordinator::
+                            AdvanceDisposition::Advanced &&
+                    CoordinatorAccess::IncomingHandle(coordinator) == cached.artworkHandle,
+                "cached replacement did not retain normal transition behavior");
+            Require(coordinator.Advance(
+                        nextMissing, integratedRenderer, composition,
+                        640, 360, 1.0F, 4900, advanceDiagnostic) ==
+                        widgetrail::CompositorBackgroundSurfaceCoordinator::
+                            AdvanceDisposition::NotApplicableOrStale,
+                "superseded pending artwork regained presentation authority");
+            std::cout << "Compositor cache-miss retention checks passed\n";
             coordinator.Retire(composition);
             composition.Reset();
             DestroyWindow(compositionWindow);

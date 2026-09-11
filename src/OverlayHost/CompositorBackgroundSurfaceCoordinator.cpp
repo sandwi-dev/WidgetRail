@@ -183,6 +183,20 @@ CompositorBackgroundSurfaceCoordinator::Stage(
         !std::isfinite(pixelsPerDip) || pixelsPerDip <= 0.0F)
         return StageDisposition::Failed;
     auto& proposal = *next.proposal;
+    // A completed fade can still display the committed image in Incoming.
+    // Resolve readiness without opening any displayed surface for drawing.
+    if (!proposal.image.bitmap) {
+        ComPtr<ID2D1DeviceContext> resources;
+        if (FAILED(surface.CreateBitmapResourceContext(
+                resources.ReleaseAndGetAddressOf())))
+            return StageDisposition::Failed;
+        proposal.image.bitmap = renderer.ResolveCompositorBackgroundBitmap(
+            resources.Get(), proposal.image.descriptor);
+    }
+    if (!proposal.image.bitmap && next.committed) {
+        diagnostic = L"readiness=pending retained=displayed";
+        return StageDisposition::Pending;
+    }
     std::array<OverlayCompositionSurface::Frame, 3> frames;
     const auto begin = [&](const std::size_t index,
                            const OverlayCompositionSurface::Layer layer) {
@@ -191,25 +205,16 @@ CompositorBackgroundSurfaceCoordinator::Stage(
         if (FAILED(result)) return false;
         ConfigureTarget(frames[index].target.Get(), frames[index].updateArea,
             frames[index].updateOffset, pixelsPerDip);
-        frames[index].target->Clear(D2D1::ColorF(0, 0, 0, 0));
         return true;
     };
     if (!begin(0, OverlayCompositionSurface::Layer::BackgroundBase))
         return StageDisposition::Failed;
+    frames[0].target->Clear(D2D1::ColorF(0, 0, 0, 0));
     (void)renderer.PaintCompositorBackground(
         frames[0].target.Get(), proposal.image.descriptor, nullptr, true);
     if (FAILED(surface.EndFrame(frames[0]))) return StageDisposition::Failed;
     auto outgoing = next.committed;
-    const std::size_t candidateIndex = outgoing ? 2 : 1;
-    const auto candidateLayer = outgoing
-        ? OverlayCompositionSurface::Layer::BackgroundIncoming
-        : OverlayCompositionSurface::Layer::BackgroundOutgoing;
-    if (!begin(candidateIndex, candidateLayer)) return StageDisposition::Failed;
-    if (!proposal.image.bitmap)
-        proposal.image.bitmap = renderer.ResolveCompositorBackgroundBitmap(
-            frames[candidateIndex].target.Get(), proposal.image.descriptor);
     if (!proposal.image.bitmap) {
-        surface.AbandonFrame(frames[candidateIndex]);
         diagnostic = L"readiness=pending";
         staged.frames.push_back(std::move(frames[0]));
         staged.presentation = {
@@ -227,6 +232,12 @@ CompositorBackgroundSurfaceCoordinator::Stage(
         }
         return StageDisposition::Pending;
     }
+    const std::size_t candidateIndex = outgoing ? 2 : 1;
+    const auto candidateLayer = outgoing
+        ? OverlayCompositionSurface::Layer::BackgroundIncoming
+        : OverlayCompositionSurface::Layer::BackgroundOutgoing;
+    if (!begin(candidateIndex, candidateLayer)) return StageDisposition::Failed;
+    frames[candidateIndex].target->Clear(D2D1::ColorF(0, 0, 0, 0));
     (void)renderer.PaintCompositorBackground(
         frames[candidateIndex].target.Get(), proposal.image.descriptor,
         proposal.image.bitmap.Get(), false);
@@ -236,6 +247,8 @@ CompositorBackgroundSurfaceCoordinator::Stage(
     if (outgoing && !begin(
             1, OverlayCompositionSurface::Layer::BackgroundOutgoing))
         return StageDisposition::Failed;
+    if (outgoing)
+        frames[1].target->Clear(D2D1::ColorF(0, 0, 0, 0));
     if (activate && next.incoming) {
         Image rebased;
         if (!RebaseOutgoing(

@@ -823,6 +823,15 @@ HRESULT OverlayCompositionSurface::BeginFrame(
     return BeginFrame(Layer::Content, width, height, 0.0F, 0.0F, nullptr, frame);
 }
 
+HRESULT OverlayCompositionSurface::CreateBitmapResourceContext(
+    ID2D1DeviceContext** const context) noexcept {
+    if (!context) return E_POINTER;
+    *context = nullptr;
+    return d2dDevice_
+        ? d2dDevice_->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, context)
+        : E_UNEXPECTED;
+}
+
 HRESULT OverlayCompositionSurface::BeginFrame(
     const Layer layer, const unsigned int width, const unsigned int height,
     const float visualOffsetX, const float visualOffsetY,

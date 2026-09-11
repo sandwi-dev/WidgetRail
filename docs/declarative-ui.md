@@ -477,6 +477,9 @@ They reuse unrounded layout bounds and do not count outer margins twice.
 Artwork completions reuse the current snapshot's committed layout for a
 paint-only frame, merging with pending scroll layout when needed. A missing
 or stale checkpoint keeps the full-redraw fallback.
+An uncached background replacement leaves the displayed compositor image layers
+and opacity animation untouched until its bitmap is ready. This also applies
+after a fade finishes, while its final image still occupies the incoming layer.
 
 ## Focus-associated presentation (protocol v40)
 

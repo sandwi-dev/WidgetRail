@@ -200,6 +200,8 @@ public:
     [[nodiscard]] unsigned int width(Layer layer) const noexcept;
     [[nodiscard]] unsigned int height(Layer layer) const noexcept;
     [[nodiscard]] PaintCounters paintCounters() const noexcept { return paintCounters_; }
+    // Resource loading must not begin an update on a currently displayed layer.
+    HRESULT CreateBitmapResourceContext(ID2D1DeviceContext** context) noexcept;
     [[nodiscard]] ExternalContentCommitCounters externalContentCommitCounters(
         ExternalContentEndpoint endpoint) const noexcept;
 
