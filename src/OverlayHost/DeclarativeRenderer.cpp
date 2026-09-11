@@ -445,6 +445,7 @@ struct DeclarativeRenderer::PreparedNode final {
     NativeRenderStyle baseStyle;
     NativeRenderStyle paintStyle;
     std::string narrowId;
+    std::optional<NativeColor> effectiveBackground;
 };
 
 struct DeclarativeRenderer::RenderPass final {
@@ -664,7 +665,8 @@ struct DeclarativeRenderer::RenderPass final {
             std::abs(style.scale() - 1.0F) > 0.001F ||
             std::abs(style.translateXPx()) > 0.001F ||
             std::abs(style.translateYPx()) > 0.001F || shown == presentation.end() ||
-            !SameRect(shown->second.visibleBox, bounds)) {
+            shown->second.visibleBox.width <= 0.0F ||
+            shown->second.visibleBox.height <= 0.0F) {
             AddBackgroundSurfaceTransitionDiagnostic(
                 surface, L"compositor-fallback",
                 L"unsupported-surface-style border=" + std::to_wstring(border) +
@@ -700,7 +702,8 @@ struct DeclarativeRenderer::RenderPass final {
             snapshot->instanceId, surface.id,
             focusedId, desired.imageSource, desired.artworkHandle,
             desired.imageFit, bounds, style, opacity,
-            snapshot->sequence, owner->bitmapResourceGeneration_};
+            snapshot->sequence, owner->bitmapResourceGeneration_,
+            shown->second.visibleBox};
         AddBackgroundSurfaceTransitionDiagnostic(surface, L"compositor-eligible");
         return true;
     }
@@ -841,6 +844,7 @@ struct DeclarativeRenderer::RenderPass final {
             paintedBackground,
             inheritedBackground.value_or(NativeColor{0, 0, 0, 1}),
             style.opacity());
+        prepared[narrowId].effectiveBackground = effectiveBackground;
         LayoutElement element;
         element.id = narrowId;
         if (node.kind == L"grid") {
@@ -2792,22 +2796,43 @@ struct DeclarativeRenderer::RenderPass final {
                 priorBox->borderBox.height <= 0.0F) {
                 return false;
             }
+            const auto localViewport = priorBox->unroundedBorderBox.width > 0.0F &&
+                    priorBox->unroundedBorderBox.height > 0.0F
+                ? priorBox->unroundedBorderBox : priorBox->borderBox;
             const auto parent = nodes.find(boundaryId);
             const auto narrowParent = parent == nodes.end()
                 ? std::string{}
                 : NarrowStableId(parent->second.parentId);
+            // Re-rooting a subtree does not make it a new style root. Resolve
+            // the same inherited font/background context as a full-tree pass
+            // before clearing preparation for the local layout.
+            PrepareAgainstCurrentLayout();
+            const auto preparedParent = prepared.find(narrowParent);
+            const float textScale = std::isfinite(options.accessibility.textScale) &&
+                    options.accessibility.textScale >= 0.85F &&
+                    options.accessibility.textScale <= 1.5F
+                ? options.accessibility.textScale : 1.0F;
+            const float parentFontSize = preparedParent != prepared.end()
+                ? preparedParent->second.baseStyle.fontSizePx() / textScale
+                : options.rootFontSizePx;
+            const auto parentBackground = preparedParent != prepared.end()
+                ? preparedParent->second.effectiveBackground
+                : options.surfaceBackground;
             auto recompute = [&]() {
                 prepared.clear();
                 auto root = PrepareNode(
                     *boundary,
                     narrowParent,
-                    priorBox->borderBox.width,
-                    priorBox->borderBox.height,
-                    options.rootFontSizePx,
-                    options.surfaceBackground);
+                    localViewport.width,
+                    localViewport.height,
+                    parentFontSize,
+                    parentBackground);
+                // The retained border box already excludes the parent's
+                // allocation for this node's margins.
+                root.margin = {};
                 return declarative::ComputeLayout(
                     root,
-                    priorBox->borderBox,
+                    localViewport,
                     [this](const LayoutElement& element,
                            const declarative::MeasureConstraints& constraints) {
                         return MeasureLeaf(element, constraints);
@@ -4577,22 +4602,29 @@ bool DeclarativeRenderer::PaintCompositorBackground(
     RenderPass pass;
     pass.owner = const_cast<DeclarativeRenderer*>(this);
     pass.target = renderTarget;
-    if (baseOnly) {
-        pass.DrawSurface(node, background.style, background.bounds,
-            background.opacity);
-        return true;
-    }
-    if (surfaceComposite && bitmap) {
+    if (!baseOnly && surfaceComposite && bitmap) {
         // A rebase already contains image fitting, clipping, and surface
         // opacity. Only the new transition's opacity belongs on this draw.
         renderTarget->DrawBitmap(bitmap, D2DRect(background.bounds), opacity,
             D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
         return true;
     }
-    return bitmap && pass.DrawResolvedImageLayers(
-        node, bitmap, false, nullptr, nullptr, 0.0F,
-        background.style, background.bounds,
-        background.opacity * opacity, false, false);
+    if (background.clipBounds)
+        renderTarget->PushAxisAlignedClip(
+            D2DRect(*background.clipBounds), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    bool painted;
+    if (baseOnly) {
+        pass.DrawSurface(node, background.style, background.bounds,
+            background.opacity);
+        painted = true;
+    } else {
+        painted = bitmap && pass.DrawResolvedImageLayers(
+            node, bitmap, false, nullptr, nullptr, 0.0F,
+            background.style, background.bounds,
+            background.opacity * opacity, false, false);
+    }
+    if (background.clipBounds) renderTarget->PopAxisAlignedClip();
+    return painted;
 }
 
 std::optional<IncrementalPresentationPlan>

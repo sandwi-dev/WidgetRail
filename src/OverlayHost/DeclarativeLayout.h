@@ -139,6 +139,8 @@ struct LayoutBox {
     ScrollAxis scrollAxis{ScrollAxis::None};
     float scrollOffset{};
     float maximumScrollOffset{};
+    // Retain the original pixel-grid phase when a subtree is laid out locally.
+    Rect unroundedBorderBox;
 };
 
 enum class LayoutIssueSeverity {

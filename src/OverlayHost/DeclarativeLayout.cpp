@@ -564,6 +564,7 @@ private:
             raw.content.height,
         };
         LayoutBox box;
+        box.unroundedBorderBox = border;
         box.borderBox = SnapRect(border);
         box.contentBox = SnapRect(content);
         box.visibleBox = SnapRect(Intersect(border, ancestorClip));

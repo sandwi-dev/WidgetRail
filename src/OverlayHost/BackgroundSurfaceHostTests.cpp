@@ -256,44 +256,50 @@ void VerifyCompositorRebasePixels(
         return result;
     };
     unsigned int retargetCount{};
-    for (const auto bounds : {widgetrail::declarative::Rect{16, 12, 80, 48},
-                             widgetrail::declarative::Rect{16.25F, 12.5F, 79.5F, 47.25F}}) {
-        for (const float scale : {1.0F, 1.25F, 1.5F, 2.0F}) {
-            for (const float opacity : {1.0F, 0.45F}) {
-                for (const auto fit : {L"cover", L"contain"}) {
-                    widgetrail::ComputedCompositorBackground descriptor;
-                    descriptor.bounds = bounds;
-                    descriptor.imageFit = fit;
+    for (const bool clipped : {false, true}) {
+        for (const auto bounds : {widgetrail::declarative::Rect{16, 12, 80, 48},
+                                 widgetrail::declarative::Rect{16.25F, 12.5F, 79.5F, 47.25F}}) {
+            for (const float scale : {1.0F, 1.05F, 1.25F, 1.5F, 2.0F}) {
+                for (const float opacity : {1.0F, 0.45F}) {
+                    for (const auto fit : {L"cover", L"contain"}) {
+                        widgetrail::ComputedCompositorBackground descriptor;
+                        descriptor.bounds = bounds;
+                        descriptor.imageFit = fit;
                     descriptor.opacity = opacity;
-                    Access::Image committed{descriptor, red};
-                    Access::Image incoming{descriptor, green};
-                    for (int retarget = 0; retarget < 3; ++retarget) {
-                        begin(scale);
-                        paint(committed, 1.0F);
-                        paint(incoming, 0.875F); // cubic ease-out at 200/400 ms
-                        end();
-                        const auto before = read();
-                        const auto composite = Access::Rebase(
-                            committed, incoming, renderer, target.Get(), scale);
-                        const auto size = composite.bitmap->GetPixelSize();
-                        Require(size.width == static_cast<UINT>(
-                                    std::ceil((bounds.x + bounds.width) * scale) -
-                                    std::floor(bounds.x * scale)) &&
-                                size.height == static_cast<UINT>(
-                                    std::ceil((bounds.y + bounds.height) * scale) -
-                                    std::floor(bounds.y * scale)),
-                            "rebase did not preserve physical resolution");
-                        begin(scale);
-                        paint(composite, 1.0F);
-                        end();
-                        const auto after = read();
-                        for (std::size_t p = 0; p < before.size(); ++p)
-                            for (std::size_t c = 0; c < 4; ++c)
-                                Require(std::abs(int(before[p][c]) - int(after[p][c])) <= 2,
-                                    "retarget changed presented pixels");
-                        committed = composite;
-                        incoming.bitmap = retarget % 2 == 0 ? red : green;
-                        ++retargetCount;
+                    if (clipped)
+                        descriptor.clipBounds = widgetrail::declarative::Rect{
+                            bounds.x + 0.2F, bounds.y + 0.3F,
+                            bounds.width - 0.8F, bounds.height - 0.6F};
+                        Access::Image committed{descriptor, red};
+                        Access::Image incoming{descriptor, green};
+                        for (int retarget = 0; retarget < 3; ++retarget) {
+                            begin(scale);
+                            paint(committed, 1.0F);
+                            paint(incoming, 0.875F); // cubic ease-out at 200/400 ms
+                            end();
+                            const auto before = read();
+                            const auto composite = Access::Rebase(
+                                committed, incoming, renderer, target.Get(), scale);
+                            const auto size = composite.bitmap->GetPixelSize();
+                            Require(size.width == static_cast<UINT>(
+                                        std::ceil((bounds.x + bounds.width) * scale) -
+                                        std::floor(bounds.x * scale)) &&
+                                    size.height == static_cast<UINT>(
+                                        std::ceil((bounds.y + bounds.height) * scale) -
+                                        std::floor(bounds.y * scale)),
+                                "rebase did not preserve physical resolution");
+                            begin(scale);
+                            paint(composite, 1.0F);
+                            end();
+                            const auto after = read();
+                            for (std::size_t p = 0; p < before.size(); ++p)
+                                for (std::size_t c = 0; c < 4; ++c)
+                                    Require(std::abs(int(before[p][c]) - int(after[p][c])) <= 2,
+                                        "retarget changed presented pixels");
+                            committed = composite;
+                            incoming.bitmap = retarget % 2 == 0 ? red : green;
+                            ++retargetCount;
+                        }
                     }
                 }
             }
@@ -313,6 +319,14 @@ void VerifyCompositorRebasePixels(
             ReadPixel(canvas.Get(), 12, 6)[3] == 0 &&
             ReadPixel(canvas.Get(), 27, 8)[3] == 0,
         "background draw ignored or scaled the backing-surface offset");
+    descriptor.clipBounds = widgetrail::declarative::Rect{2, 1, 4, 2};
+    begin(2.0F);
+    paint(Access::Image{descriptor, red}, 1.0F);
+    end();
+    Require(ReadPixel(canvas.Get(), 12, 8)[3] == 0 &&
+            ReadPixel(canvas.Get(), 16, 10)[3] == 255 &&
+            ReadPixel(canvas.Get(), 24, 10)[3] == 0,
+        "compositor artwork escaped the retained ancestor clip");
     std::cout << "Compositor background pixel continuity: "
               << retargetCount << " retargets passed\n";
 }
@@ -347,6 +361,11 @@ int wmain() {
             Require(widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
                         SameDestination(first, compatible),
                 "same destination did not dedupe across current-tree refresh");
+            auto clipped = compatible;
+            clipped.clipBounds = widgetrail::declarative::Rect{1, 1, 1278, 718};
+            Require(!widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
+                         SameDestination(first, clipped),
+                "changed viewport clip retained stale compositor pixels");
             auto changed = compatible;
             changed.artworkHandle = L"replacement";
             Require(!widgetrail::CompositorBackgroundSurfaceCoordinatorTestAccess::
@@ -753,6 +772,27 @@ int wmain() {
                     eligible.compositorBackground->artworkHandle ==
                         L"background.retarget.red",
                 "transparent current-tree surface did not emit exact compositor authority");
+            {
+                widgetrail::DeclarativeRenderer scaledRenderer{
+                    d2d.Get(), write.Get(), &retargetCache};
+                auto scaledOptions = compositorOptions;
+                scaledOptions.pixelScale = 1.05F;
+                const widgetrail::declarative::Rect insetViewport{1, 1, 598, 358};
+                target->BeginDraw();
+                const auto scaled = scaledRenderer.Render(
+                    target.Get(), *retargetSnapshot, L"background.retarget.red",
+                    insetViewport, scaledOptions);
+                Require(SUCCEEDED(target->EndDraw()) && scaled.succeeded &&
+                        scaled.compositorBackground &&
+                        scaled.compositorBackground->clipBounds,
+                    "105 percent layout rounding incorrectly selected raster fallback");
+                const auto& background = *scaled.compositorBackground;
+                Require(std::abs(background.bounds.x -
+                            background.clipBounds->x) > 0.01F &&
+                        background.clipBounds->x >= insetViewport.x &&
+                        background.clipBounds->y >= insetViewport.y,
+                    "scaled background did not retain separate image-fit and clip bounds");
+            }
 
             auto opaqueSnapshot = *retargetSnapshot;
             widgetrail::WidgetNode opaqueRoot;

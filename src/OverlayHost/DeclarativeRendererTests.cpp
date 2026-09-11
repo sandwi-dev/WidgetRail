@@ -3878,6 +3878,60 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
         anchored, L"anchor-item-2", anchoredViewport);
     const auto initialAnchorOffset =
         anchoredInitial.scrollOffsets.at(L"anchor.collection");
+    for (const auto [scale, horizontal, textScale] : {
+            std::tuple{1.0F, false, 1.0F}, std::tuple{1.05F, false, 1.0F},
+            std::tuple{1.5F, false, 1.25F}, std::tuple{1.0F, true, 1.0F},
+            std::tuple{1.05F, true, 1.0F}, std::tuple{1.5F, true, 1.25F}}) {
+        auto nested = anchored;
+        nested.instanceId = L"scroll.geometry";
+        nested.root.baseStyle = {
+            {L"height", Length(100)}, {L"margin", LengthList(L"4px")},
+            {L"padding", LengthList(L"0.5em 6px 1em")},
+        };
+        if (horizontal) {
+            nested.root.scrollAxis = L"horizontal";
+            nested.root.baseStyle[L"direction"] = Keyword(L"row");
+            for (auto& item : nested.root.children)
+                item.baseStyle[L"width"] = Length(80);
+        }
+        auto shell = Node(L"scroll.geometry.shell", L"stack");
+        shell.baseStyle = {
+            {L"padding", Length(11)}, {L"font-size", Length(24)},
+            {L"justify", Keyword(L"end")},
+        };
+        shell.children.push_back(nested.root);
+        nested.root = std::move(shell);
+        DeclarativeRenderer geometryRenderer{d2d.Get(), write.Get(), nullptr};
+        widgetrail::DeclarativeRenderOptions geometryOptions;
+        geometryOptions.pixelScale = scale;
+        geometryOptions.accessibility.textScale = textScale;
+        geometryOptions.suppressFocusedDescendantFollow = true;
+        const Rect geometryViewport{1, 1, 300, 200};
+        const auto drawGeometry = [&] {
+            target->BeginDraw();
+            const auto result = geometryRenderer.Render(
+                target.Get(), nested, L"anchor-item-2", geometryViewport, geometryOptions);
+            Check(SUCCEEDED(target->EndDraw()) && result.succeeded,
+                  "nested scroll geometry fixture renders");
+            return result;
+        };
+        (void)drawGeometry();
+        Check(geometryRenderer.PlanFocusedFreeScroll(
+            nested, L"anchor-item-2", horizontal
+                ? widgetrail::declarative::ScrollAxis::Horizontal
+                : widgetrail::declarative::ScrollAxis::Vertical,
+            13, geometryViewport, L"anchor.collection").has_value(),
+            "nested scroll geometry fixture plans movement");
+        const auto localGeometry = drawGeometry();
+        geometryRenderer.CancelPresentationUpdatePlan();
+        const auto fullGeometry = drawGeometry();
+        const auto localItem = localGeometry.elementRects.at(L"anchor-item-2");
+        const auto fullItem = fullGeometry.elementRects.at(L"anchor-item-2");
+        Near(localItem.x, fullItem.x, "free scroll keeps the same horizontal placement as full layout");
+        Near(localItem.y, fullItem.y, "free scroll keeps the same vertical placement as full layout");
+        Near(localItem.width, fullItem.width, "free scroll keeps the same item width as full layout");
+        Near(localItem.height, fullItem.height, "free scroll keeps the same item height as full layout");
+    }
     {
         // Exercise the controller tick's ordering: scroll, animation request,
         // then paint. Also cover broad artwork invalidation before that paint.

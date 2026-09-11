@@ -21,6 +21,8 @@ constexpr auto kMaximumRebaseBytes = background_surface_policy::MaximumRebaseByt
 bool CompositorBackgroundSurfaceCoordinator::SameDestination(
     const ComputedCompositorBackground& left,
     const ComputedCompositorBackground& right) noexcept {
+    const auto leftClip = left.clipBounds.value_or(left.bounds);
+    const auto rightClip = right.clipBounds.value_or(right.bounds);
     return left.authorityId == right.authorityId &&
         left.widgetInstanceId == right.widgetInstanceId &&
         left.nodeId == right.nodeId &&
@@ -38,7 +40,11 @@ bool CompositorBackgroundSurfaceCoordinator::SameDestination(
         std::abs(left.bounds.x - right.bounds.x) < 0.01F &&
         std::abs(left.bounds.y - right.bounds.y) < 0.01F &&
         std::abs(left.bounds.width - right.bounds.width) < 0.01F &&
-        std::abs(left.bounds.height - right.bounds.height) < 0.01F;
+        std::abs(left.bounds.height - right.bounds.height) < 0.01F &&
+        std::abs(leftClip.x - rightClip.x) < 0.01F &&
+        std::abs(leftClip.y - rightClip.y) < 0.01F &&
+        std::abs(leftClip.width - rightClip.width) < 0.01F &&
+        std::abs(leftClip.height - rightClip.height) < 0.01F;
 }
 
 std::wstring CompositorBackgroundSurfaceCoordinator::Key(
@@ -85,16 +91,23 @@ bool CompositorBackgroundSurfaceCoordinator::RebaseOutgoing(
     }
     // Keep the same physical pixel grid as the presented layers, including
     // fractional logical origins and any extent retained by an earlier rebase.
-    const double left = std::floor(
-        static_cast<double>(std::min(outgoingBounds.x, incomingBounds.x)) * pixelsPerDip);
-    const double top = std::floor(
-        static_cast<double>(std::min(outgoingBounds.y, incomingBounds.y)) * pixelsPerDip);
-    const double right = std::ceil(std::max(
+    // A retained pixel edge round-trips through float DIPs. Remove only that
+    // sub-millipixel noise before rounding outward, otherwise scales such as
+    // 1.05 can grow the capture by a pixel on every retarget.
+    const auto snapRoundoff = [](const double edge) {
+        const double rounded = std::round(edge);
+        return std::abs(edge - rounded) < 0.001 ? rounded : edge;
+    };
+    const double left = std::floor(snapRoundoff(
+        static_cast<double>(std::min(outgoingBounds.x, incomingBounds.x)) * pixelsPerDip));
+    const double top = std::floor(snapRoundoff(
+        static_cast<double>(std::min(outgoingBounds.y, incomingBounds.y)) * pixelsPerDip));
+    const double right = std::ceil(snapRoundoff(std::max(
         static_cast<double>(outgoingBounds.x) + outgoingBounds.width,
-        static_cast<double>(incomingBounds.x) + incomingBounds.width) * pixelsPerDip);
-    const double bottom = std::ceil(std::max(
+        static_cast<double>(incomingBounds.x) + incomingBounds.width) * pixelsPerDip));
+    const double bottom = std::ceil(snapRoundoff(std::max(
         static_cast<double>(outgoingBounds.y) + outgoingBounds.height,
-        static_cast<double>(incomingBounds.y) + incomingBounds.height) * pixelsPerDip);
+        static_cast<double>(incomingBounds.y) + incomingBounds.height) * pixelsPerDip));
     const double pixelWidth = right - left;
     const double pixelHeight = bottom - top;
     if (!std::isfinite(pixelsPerDip) || pixelsPerDip <= 0.0F ||

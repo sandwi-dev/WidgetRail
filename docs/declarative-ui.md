@@ -468,6 +468,12 @@ scrolling instead of restoring the collection's previous anchor position.
 Samples with duplicate or older timestamps add no elapsed-time movement.
 Compositor fallback diagnostics include the resolved border, effects, transform,
 and visible bounds so unsupported styling can be distinguished from clipping.
+Rectangular ancestor/viewport clipping is retained independently from image-fit
+bounds, so fractional layout rounding (for example at 105% interface scale)
+does not force a renderer-owned background fade.
+Partial scroll layouts inherit the same parent font and background context as
+full layouts, keeping relative spacing stable when entering or leaving free scroll.
+They reuse unrounded layout bounds and do not count outer margins twice.
 
 ## Focus-associated presentation (protocol v40)
 

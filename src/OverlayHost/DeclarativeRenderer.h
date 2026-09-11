@@ -125,6 +125,8 @@ struct ComputedCompositorBackground final {
     float opacity{1.0F};
     long long snapshotSequence{};
     std::uint64_t resourceGeneration{};
+    // Preserve the ancestor/viewport clip independently from image-fit bounds.
+    std::optional<declarative::Rect> clipBounds;
 };
 
 struct RenderResult final {
