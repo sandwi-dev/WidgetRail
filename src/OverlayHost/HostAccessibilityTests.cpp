@@ -170,7 +170,8 @@ int main() {
           "open host menu owns one focus identity without leaving tray focus duplicated");
 
     auto pinnedDashboard = dashboard;
-    pinnedDashboard.contextMenu.targetId = L"music";
+    // The menu is anchored to Performance, but all pin controls act on Music.
+    pinnedDashboard.contextMenu.targetId = L"performance";
     pinnedDashboard.contextMenu.items = {
         {L"host.tray.context.primary", L"Adjust pinned widget",
          L"Move with left stick or D-pad; resize with right stick", L"music",
@@ -203,6 +204,20 @@ int main() {
               firstMenuNode[1].bounds.y + firstMenuNode[1].bounds.height ==
                   firstMenuNode[2].bounds.y,
           "Adjust, Opacity, and Unpin retain top-to-bottom action and shared-row order");
+    Check(firstMenuNode[0].hostTargetId == L"music" &&
+              firstMenuNode[1].hostTargetId == L"music" &&
+              firstMenuNode[2].hostTargetId == L"music" &&
+              firstMenuNode[0].enabled && firstMenuNode[1].enabled &&
+              firstMenuNode[2].enabled &&
+              pinnedMenuTree.focusedNode &&
+              pinnedMenuTree.nodes[*pinnedMenuTree.focusedNode].id ==
+                  L"host.tray.context.opacity",
+          "pin controls retain the pinned target and menu focus from an unrelated tray icon");
+    auto replacedPin = pinnedDashboard;
+    for (auto& item : replacedPin.contextMenu.items) item.targetId = L"audio";
+    Check(widgetrail::accessibility::ComputeTraySemanticRevision(items, &pinnedDashboard) !=
+              widgetrail::accessibility::ComputeTraySemanticRevision(items, &replacedPin),
+          "changing the active pin invalidates action authority even when the menu anchor stays put");
 
     widgetrail::accessibility::Tree widgetTree;
     widgetTree.widgetId = L"music";

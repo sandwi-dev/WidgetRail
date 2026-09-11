@@ -9238,7 +9238,12 @@ private:
     [[nodiscard]] std::vector<CurrentPinActionState> CurrentTrayMenuActions() const {
         if (!trayContextMenu_ || trayContextMenu_->widgetId != state_.selectedWidget())
             return {};
-        const auto pin = PinActionFor(trayContextMenu_->widgetId);
+        // The selected icon anchors the menu. An existing pin is managed
+        // globally, including from icons that cannot themselves be pinned.
+        const auto target = pinnedSurfaceCoordinator_.pinned()
+            ? pinnedSurfaceCoordinator_.widgetId()
+            : std::wstring_view{trayContextMenu_->widgetId};
+        const auto pin = PinActionFor(target);
         if (!pin.selected) return {pin};
         CurrentPinActionState adjust;
         adjust.enabled = true;
@@ -9260,6 +9265,15 @@ private:
         unpin.value = L"Remove the pinned surface";
         unpin.targetId = pin.targetId;
         return {std::move(adjust), std::move(opacity), std::move(unpin)};
+    }
+
+    [[nodiscard]] static widgetrail::accessibility::HostAction TrayMenuHostAction(
+        const CurrentPinActionState& action, const std::size_t index) {
+        using widgetrail::accessibility::HostAction;
+        return !action.selected ? HostAction::PinTrayWidget
+            : index == 0 ? HostAction::AdjustPinnedSurface
+            : index == 1 ? HostAction::AdjustPinnedOpacity
+                         : HostAction::UnpinSurface;
     }
 
     [[nodiscard]] std::optional<TrayContextMenuLayout> CurrentTrayContextMenuLayout(
@@ -9289,13 +9303,7 @@ private:
             trayContextMenu_->selectedItem, actions.size() - 1);
         for (std::size_t index = 0; index < actions.size(); ++index) {
             const auto& action = actions[index];
-            const auto hostAction = !action.selected
-                ? widgetrail::accessibility::HostAction::PinTrayWidget
-                : index == 0
-                    ? widgetrail::accessibility::HostAction::AdjustPinnedSurface
-                    : index == 1
-                        ? widgetrail::accessibility::HostAction::AdjustPinnedOpacity
-                        : widgetrail::accessibility::HostAction::UnpinSurface;
+            const auto hostAction = TrayMenuHostAction(action, index);
             result.semantics.items.push_back({
                 index == 0 ? L"host.tray.context.primary"
                     : index == 1 ? L"host.tray.context.opacity"
@@ -9921,7 +9929,7 @@ private:
         const auto actions = CurrentTrayMenuActions();
         if (!trayContextMenu_ || itemIndex >= actions.size()) return;
         const auto action = actions[itemIndex];
-        const std::wstring widgetId = trayContextMenu_->widgetId;
+        const std::wstring widgetId = action.targetId;
         if (!action.enabled) {
             lastActionWidgetId_ = widgetId;
             lastActionMessage_ = action.value;
@@ -9934,6 +9942,8 @@ private:
             PinWidget(widgetId);
             return;
         }
+        if (!pinnedSurfaceCoordinator_.pinned() ||
+            pinnedSurfaceCoordinator_.widgetId() != widgetId) return;
         if (itemIndex == 0) {
             ResetPinnedPlacementNavigation();
             if (pinnedSurfaceCoordinator_.pinned() &&
@@ -12253,8 +12263,7 @@ private:
                                widgetrail::accessibility::HostAction::UnpinSurface) {
                     if (request.kind != widgetrail::accessibility::ActionKind::Invoke ||
                         !trayContextMenu_ ||
-                        request.hostTargetId != trayContextMenu_->widgetId ||
-                        request.hostTargetId != state_.selectedWidget())
+                        trayContextMenu_->widgetId != state_.selectedWidget())
                         continue;
                     const auto actions = CurrentTrayMenuActions();
                     const auto actionIndex = request.hostAction ==
@@ -12263,7 +12272,11 @@ private:
                         : request.hostAction ==
                               widgetrail::accessibility::HostAction::AdjustPinnedOpacity
                             ? 1U : 0U;
-                    if (actionIndex >= actions.size()) continue;
+                    if (actionIndex >= actions.size() ||
+                        request.hostTargetId != actions[actionIndex].targetId ||
+                        request.hostAction !=
+                            TrayMenuHostAction(actions[actionIndex], actionIndex))
+                        continue;
                     ActivateTrayContextMenuItem(actionIndex);
                 } else if (request.hostAction ==
                            widgetrail::accessibility::HostAction::CloseOverlay) {
