@@ -6,6 +6,7 @@ internal static class WidgetCursorResourceTests
     public static async Task Run()
     {
         await RefreshRejectsStalePaginationAndResumesAfterReopen();
+        await PendingLoadRetainsVirtualExtent();
         await CanceledReplacementRestoresSettledState();
         await EqualVisibleDemandJoinsPendingPage();
         await CapturedPresentationSurvivesConcurrentEviction();
@@ -57,6 +58,26 @@ internal static class WidgetCursorResourceTests
         await widget.Resource.Refresh().Completion;
         await widget.Resource.Prefetch(WidgetCursorDirection.After, "items.list").Completion;
         Equal(8, widget.Resource.Snapshot.Items.Count);
+        await StopAsync(widget);
+    }
+
+    private static async Task PendingLoadRetainsVirtualExtent()
+    {
+        var release = Signal();
+        var options = Options(40, pageSize: 4, maximumRetainedItems: 12,
+            async: async (cursor, direction, limit, token) =>
+            {
+                if (direction is not null) await release.Task.WaitAsync(token);
+                return Page(cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1)), limit, 40);
+            }) with { Viewports = [Viewport() with { EstimatedItemExtent = 44 }] };
+        var widget = await StartAsync(options);
+        await widget.Resource.EnsureLoaded().Completion;
+        var pending = widget.Resource.Prefetch(WidgetCursorDirection.After, "items.list");
+        var loading = widget.Resource.Capture().Present(UI.VerticalScroll("items.list"));
+        True(loading.VirtualCollectionWindow?.HasAfter == true,
+            "Withholding page actions must preserve the virtual extent while loading.");
+        Equal<string?>(null, loading.NearEndActionId);
+        release.SetResult(); await pending.Completion;
         await StopAsync(widget);
     }
 
