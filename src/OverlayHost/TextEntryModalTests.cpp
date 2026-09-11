@@ -422,10 +422,34 @@ void CheckKeyboardSession(HWND owner) {
     Check(GetPixel(pixels, 0, 0) == palette.panel && GetPixel(pixels, 63, 51) == palette.panel,
         "rounded key corners are painted with the panel color, without white artifacts");
     Check(GetPixel(pixels, 12, 12) == palette.control, "unfocused key uses its themed fill");
+    const auto hasBlendedPixels = [&](const int limit, const COLORREF background, const COLORREF foreground) {
+        for (int y = 0; y < limit; ++y) {
+            for (int x = 0; x < limit; ++x) {
+                const auto color = GetPixel(pixels, x, y);
+                if (GetRValue(color) > GetRValue(background) && GetRValue(color) < GetRValue(foreground) &&
+                    GetGValue(color) > GetGValue(background) && GetGValue(color) < GetGValue(foreground) &&
+                    GetBValue(color) > GetBValue(background) && GetBValue(color) < GetBValue(foreground))
+                    return true;
+            }
+        }
+        return false;
+    };
+    Check(hasBlendedPixels(12, palette.panel, palette.control),
+        "rounded key edge contains antialiased coverage pixels");
     draw.itemState = ODS_FOCUS;
     SendMessageW(window, WM_DRAWITEM, 1000, reinterpret_cast<LPARAM>(&draw));
     Check(GetPixel(pixels, 12, 12) == palette.controlFocused,
         "focused key paints its distinct fill without repainting the surrounding panel");
+    Check(hasBlendedPixels(12, palette.panel, palette.focus),
+        "focused outline retains antialiased coverage");
+    RECT suggested{0, 0, 1920, 1080};
+    for (const UINT dpi : {120U, 144U, 192U, 96U}) {
+        SendMessageW(window, WM_DPICHANGED, MAKEWPARAM(dpi, dpi), reinterpret_cast<LPARAM>(&suggested));
+        draw.itemState = 0;
+        SendMessageW(window, WM_DRAWITEM, 1000, reinterpret_cast<LPARAM>(&draw));
+        Check(GetPixel(pixels, 0, 0) == palette.panel && hasBlendedPixels(16, palette.panel, palette.control),
+            "DPI changes recreate drawing resources and preserve antialiased corners");
+    }
     SelectObject(pixels, previous);
     DeleteObject(bitmap);
     DeleteDC(pixels);

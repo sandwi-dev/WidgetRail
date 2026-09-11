@@ -1,6 +1,9 @@
 #pragma once
 
 #include <Windows.h>
+#include <d2d1.h>
+#include <dwrite.h>
+#include <wrl/client.h>
 
 #include <array>
 #include <cstddef>
@@ -128,6 +131,9 @@ private:
     void CreateControls();
     void CreateThemeResources();
     void ReleaseThemeResources() noexcept;
+    [[nodiscard]] bool EnsureDrawingResources();
+    [[nodiscard]] bool PaintSurface(HDC dc, const RECT& bounds,
+        std::optional<std::size_t> key, bool focused = false);
     void ApplyLayout();
     void UpdateKeyLabels();
     void Insert(wchar_t value);
@@ -170,6 +176,11 @@ private:
     HFONT bodyFont_{};
     HFONT keyFont_{};
     HFONT legendFont_{};
+    Microsoft::WRL::ComPtr<ID2D1Factory> drawingFactory_;
+    Microsoft::WRL::ComPtr<IDWriteFactory> textFactory_;
+    Microsoft::WRL::ComPtr<ID2D1DCRenderTarget> drawingTarget_;
+    Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> drawingBrush_;
+    Microsoft::WRL::ComPtr<IDWriteTextFormat> keyTextFormat_;
     unsigned long long controllerRepeatAt_{};
     RepeatAction controllerRepeatAction_{RepeatAction::None};
     std::size_t controllerRepeatFocusIndex_{};

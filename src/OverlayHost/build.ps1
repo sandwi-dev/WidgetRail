@@ -939,7 +939,8 @@ function Invoke-TextEntryModalTests {
         "/Fe:$outputDirectory\TextEntryModalTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
     ) + $libraryArguments + @(
-        'user32.lib', 'gdi32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib')
+        'user32.lib', 'gdi32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib',
+        'd2d1.lib', 'dwrite.lib')
     & $cl $arguments
     if ($LASTEXITCODE -ne 0) {
         throw "TextEntryModalTests build failed with exit code $LASTEXITCODE."

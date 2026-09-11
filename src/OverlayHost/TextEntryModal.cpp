@@ -246,6 +246,11 @@ void TextEntryModal::SetVisible(const bool visible) noexcept {
     }
 }
 
+D2D1_COLOR_F DrawingColor(const COLORREF color) noexcept {
+    return D2D1::ColorF(GetRValue(color) / 255.0F,
+        GetGValue(color) / 255.0F, GetBValue(color) / 255.0F);
+}
+
 void TextEntryModal::Focus() noexcept {
     if (!window_ || !visible_) return;
     if (IsChild(window_, GetFocus())) return;
@@ -285,12 +290,92 @@ void TextEntryModal::CreateThemeResources() {
 }
 
 void TextEntryModal::ReleaseThemeResources() noexcept {
+    drawingBrush_.Reset();
+    drawingTarget_.Reset();
+    keyTextFormat_.Reset();
     if (canvasBrush_) DeleteObject(std::exchange(canvasBrush_, nullptr));
     if (panelBrush_) DeleteObject(std::exchange(panelBrush_, nullptr));
     if (controlBrush_) DeleteObject(std::exchange(controlBrush_, nullptr));
     if (bodyFont_) DeleteObject(std::exchange(bodyFont_, nullptr));
     if (keyFont_) DeleteObject(std::exchange(keyFont_, nullptr));
     if (legendFont_) DeleteObject(std::exchange(legendFont_, nullptr));
+}
+
+bool TextEntryModal::EnsureDrawingResources() {
+    if (!drawingFactory_ && FAILED(D2D1CreateFactory(
+            D2D1_FACTORY_TYPE_SINGLE_THREADED, drawingFactory_.GetAddressOf()))) return false;
+    if (!textFactory_ && FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
+            __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(textFactory_.GetAddressOf()))))
+        return false;
+    if (!keyTextFormat_) {
+        const auto* family = theme_.fontFamily.empty() ? L"Segoe UI" : theme_.fontFamily.c_str();
+        if (FAILED(textFactory_->CreateTextFormat(family, nullptr,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+                static_cast<float>(PixelHeight(17.0, layout_.scale, theme_.textScale)), L"",
+                keyTextFormat_.GetAddressOf()))) return false;
+        keyTextFormat_->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+        keyTextFormat_->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        keyTextFormat_->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+        Microsoft::WRL::ComPtr<IDWriteInlineObject> ellipsis;
+        if (SUCCEEDED(textFactory_->CreateEllipsisTrimmingSign(keyTextFormat_.Get(), &ellipsis))) {
+            const DWRITE_TRIMMING trimming{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
+            keyTextFormat_->SetTrimming(&trimming, ellipsis.Get());
+        }
+    }
+    if (!drawingTarget_) {
+        // Native owner-draw supplies a DC. Render at physical-pixel DPI because
+        // layout and font sizes already include monitor and interface scaling.
+        const auto properties = D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE), 96.0F, 96.0F);
+        if (FAILED(drawingFactory_->CreateDCRenderTarget(&properties, &drawingTarget_))) return false;
+        drawingTarget_->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        // Grayscale text stays smooth when the owned overlay surface fades.
+        drawingTarget_->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+    }
+    if (!drawingBrush_ && FAILED(drawingTarget_->CreateSolidColorBrush(
+            DrawingColor(theme_.text), &drawingBrush_))) return false;
+    return true;
+}
+
+bool TextEntryModal::PaintSurface(HDC dc, const RECT& bounds,
+    const std::optional<std::size_t> key, const bool focused) {
+    if (!dc || bounds.right <= bounds.left || bounds.bottom <= bounds.top) return false;
+    // Recreate a discarded target once in this paint; repeated failure uses
+    // the native fallback so the keyboard remains usable without graphics.
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        if (!EnsureDrawingResources() || FAILED(drawingTarget_->BindDC(dc, &bounds))) {
+            drawingBrush_.Reset();
+            drawingTarget_.Reset();
+            continue;
+        }
+        const float width = static_cast<float>(bounds.right - bounds.left);
+        const float height = static_cast<float>(bounds.bottom - bounds.top);
+        const float scale = static_cast<float>(layout_.scale);
+        const float inset = key ? std::max(2.0F, 2.0F * scale) : 0.0F;
+        const float radius = key ? std::max(2.0F, 5.0F * scale) : std::max(4.0F, 6.0F * scale);
+        const auto rounded = D2D1::RoundedRect(
+            D2D1::RectF(inset, inset, width - inset, height - inset), radius, radius);
+        drawingTarget_->BeginDraw();
+        drawingTarget_->Clear(DrawingColor(theme_.panel));
+        drawingBrush_->SetColor(DrawingColor(focused ? theme_.controlFocused : theme_.control));
+        drawingTarget_->FillRoundedRectangle(rounded, drawingBrush_.Get());
+        if (key) {
+            drawingBrush_->SetColor(DrawingColor(focused ? theme_.focus : theme_.control));
+            drawingTarget_->DrawRoundedRectangle(rounded, drawingBrush_.Get(),
+                std::max(1.0F, (focused ? 3.0F : 1.0F) * scale));
+            drawingBrush_->SetColor(DrawingColor(theme_.text));
+            const auto label = KeyLabel(*key);
+            drawingTarget_->DrawText(label.data(), static_cast<UINT32>(label.size()),
+                keyTextFormat_.Get(), D2D1::RectF(inset, inset, width - inset, height - inset),
+                drawingBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+        }
+        const auto result = drawingTarget_->EndDraw();
+        if (SUCCEEDED(result)) return true;
+        drawingBrush_.Reset();
+        drawingTarget_.Reset();
+        if (result != D2DERR_RECREATE_TARGET) break;
+    }
+    return false;
 }
 
 void TextEntryModal::CreateControls() {
@@ -933,6 +1018,8 @@ LRESULT TextEntryModal::HandleMessage(
             item->CtlID >= kKeyBase + static_cast<UINT>(keys_.size())) return FALSE;
         const auto index = static_cast<std::size_t>(item->CtlID - kKeyBase);
         const bool focused = (item->itemState & ODS_FOCUS) != 0 || index == focusIndex_;
+        if (PaintSurface(item->hDC, item->rcItem, index, focused)) return TRUE;
+        // Emergency native painting is only used when Direct2D is unavailable.
         const COLORREF fill = focused ? theme_.controlFocused : theme_.control;
         HBRUSH brush = CreateSolidBrush(fill);
         HPEN pen = CreatePen(PS_SOLID,
@@ -984,6 +1071,10 @@ LRESULT TextEntryModal::HandleMessage(
         InflateRect(&panel, -inset, -inset);
         FillRect(dc, &panel, panelBrush_);
         RECT input = ScaleRect({28, 72, 732, 136}, layout_.scale);
+        if (PaintSurface(dc, input, std::nullopt)) {
+            EndPaint(window_, &paint);
+            return 0;
+        }
         const auto priorBrush = SelectObject(dc, controlBrush_);
         const auto priorPen = SelectObject(dc, GetStockObject(NULL_PEN));
         const int radius = std::max(8, static_cast<int>(std::lround(12 * layout_.scale)));
