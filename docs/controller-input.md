@@ -311,7 +311,14 @@ The default SDK routes against the most recently rendered snapshot:
 
 1. D-pad or two-dimensional left-stick movement normally changes the focused
    stable ID. An explicit directional neighbor wins; otherwise the host uses
-   the rendered focus rectangles to choose a deterministic spatial neighbor.
+   layout geometry to choose a deterministic spatial neighbor. It searches the
+   nearest responsive grid or matching-axis Scroll first, including offscreen
+   items that the host can reveal, before searching the rest of the surface.
+   Automatic Left/Right movement requires vertical overlap beyond subpixel
+   edge contact, so a narrower button above a rail cannot become its Left
+   destination. Up/Down prefers column alignment but allows diagonal fallback
+   for uneven grid rows and transitions between sections. Explicit authored
+   links retain priority over these geometric rules.
    There is no wraparound. A focused Slider is the exception: Left/Right is
    consumed for one-step value adjustment, while Up/Down remains navigation.
 2. Pressed A invokes the focused Button action or a Slider's optional

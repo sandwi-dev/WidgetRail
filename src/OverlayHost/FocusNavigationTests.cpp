@@ -32,6 +32,46 @@ int main() {
     using widgetrail::input::NavigationDirection;
     using widgetrail::input::ResolveResponsiveFocusPersistenceTarget;
     using widgetrail::input::ResolveVisibleFocusTarget;
+    // A narrower header can have its center left of the first poster while
+    // being entirely above it. Horizontal navigation must not jump rows.
+    for (const float scale : {0.85F, 1.0F, 1.05F, 1.5F, 2.0F}) {
+        widgetrail::RenderResult rail;
+        const auto rect = [scale](float x, float y, float w, float h) {
+            return widgetrail::declarative::Rect{x * scale, y * scale, w * scale, h * scale};
+        };
+        Add(rail, L"first", rect(40, 120, 150, 225));
+        Add(rail, L"last", rect(204, 120, 150, 225));
+        Add(rail, L"refresh", rect(40, 20, 96, 44));
+        Add(rail, L"header-right", rect(370, 20, 60, 44));
+        Check(!FindGeometricFocusTarget(L"first", NavigationDirection::Left, rail),
+            "Left at the first poster does not select the narrower header above it");
+        Check(!FindGeometricFocusTarget(L"last", NavigationDirection::Right, rail),
+            "Right at the last poster does not jump diagonally to the header");
+        Check(FindGeometricFocusTarget(L"first", NavigationDirection::Up, rail) == L"refresh",
+            "Up still reaches the header above the rail");
+        Check(FindGeometricFocusTarget(L"first", NavigationDirection::Right, rail) == L"last",
+            "horizontal movement within the poster row remains intact");
+        Add(rail, L"side-action", rect(-70, 200, 80, 44));
+        Check(FindGeometricFocusTarget(L"first", NavigationDirection::Left, rail) == L"side-action",
+            "an aligned action outside the rail remains horizontally reachable");
+        rail.navigationEnabled[L"side-action"] = false;
+        Check(!FindGeometricFocusTarget(L"first", NavigationDirection::Left, rail),
+            "a disabled side action does not make a diagonal header eligible");
+        rail.navigationRects[L"offscreen"] = rect(-124, 120, 150, 225);
+        rail.focusScopes[L"offscreen"] = L"root";
+        rail.navigationEnabled[L"offscreen"] = true;
+        rail.revealableFocusIds.insert(L"offscreen");
+        Check(FindGeometricFocusTarget(L"first", NavigationDirection::Left, rail) == L"offscreen",
+            "horizontal navigation still includes revealable offscreen posters");
+    }
+    widgetrail::RenderResult touchingRows;
+    Add(touchingRows, L"source", {100, 100, 100, 44});
+    Add(touchingRows, L"above-left", {0, 56, 100, 44});
+    Check(!FindGeometricFocusTarget(L"source", NavigationDirection::Left, touchingRows),
+        "merely touching vertical bounds do not count as the same row");
+    touchingRows.navigationRects[L"above-left"].y += 0.1F;
+    Check(!FindGeometricFocusTarget(L"source", NavigationDirection::Left, touchingRows),
+        "subpixel edge overlap does not turn an upper row into a Left target");
     widgetrail::RenderResult result;
     Add(result, L"play", {100, 50, 60, 60});
     Add(result, L"previous", {30, 55, 48, 48});

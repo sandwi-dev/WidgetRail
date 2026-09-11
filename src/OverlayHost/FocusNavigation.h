@@ -115,9 +115,10 @@ struct FocusedScrollResolution final {
     std::wstring_view activeScopeId,
     const RenderResult& renderResult);
 
-/// Finds the closest enabled focus target in a direction. Candidates whose
-/// perpendicular span overlaps the current control are preferred, producing
-/// stable row/column behavior before falling back across asymmetric layouts.
+/// Finds the closest enabled focus target in a direction. Left/Right requires
+/// vertical overlap beyond subpixel edge contact, preventing jumps to another
+/// row. Up/Down prefers horizontal overlap but permits diagonal fallback so
+/// ragged grids and transitions between differently sized sections stay usable.
 [[nodiscard]] std::optional<std::wstring> FindGeometricFocusTarget(
     std::wstring_view currentId,
     NavigationDirection direction,

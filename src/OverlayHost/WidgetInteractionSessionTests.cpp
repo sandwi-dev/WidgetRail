@@ -1131,6 +1131,72 @@ void ProvisionalOrdinalRestorePreservesRequestedGroupMemory() {
           "ordinary no-request restore still records its resolved first-child focus");
 }
 
+void HorizontalRailsKeepDirectionalBoundaries() {
+    using namespace widgetrail::input;
+    for (const float scale : {0.85F, 1.0F, 1.05F, 1.5F, 2.0F}) {
+        widgetrail::WidgetSnapshot snapshot;
+        snapshot.sequence = 1;
+        snapshot.instanceId = L"rail.instance";
+        snapshot.activeInputScopeId = L"root";
+        snapshot.initialFocusId = L"first";
+        snapshot.root.id = L"root";
+        snapshot.root.kind = L"stack";
+        widgetrail::WidgetNode header;
+        header.id = L"header";
+        header.kind = L"row";
+        header.initialChildFocusId = L"refresh";
+        header.children = {Button(L"refresh")};
+        widgetrail::WidgetNode rail;
+        rail.id = L"rail";
+        rail.kind = L"scroll";
+        rail.scrollAxis = L"horizontal";
+        rail.children = {Button(L"previous"), Button(L"first"), Button(L"next")};
+        snapshot.root.children = {std::move(header), Button(L"side-action"), std::move(rail)};
+        widgetrail::RenderResult render;
+        const auto rect = [scale](float x, float y, float w, float h) {
+            return widgetrail::declarative::Rect{x * scale, y * scale, w * scale, h * scale};
+        };
+        AddNavigationTarget(render, L"refresh", rect(100, 20, 96, 44), true);
+        AddNavigationTarget(render, L"side-action", rect(20, 180, 44, 44), true);
+        AddNavigationTarget(render, L"previous", rect(-64, 120, 150, 225), false);
+        AddNavigationTarget(render, L"first", rect(100, 120, 150, 225), true);
+        AddNavigationTarget(render, L"next", rect(264, 120, 150, 225), false);
+        render.scrollViewports[L"rail"] = widgetrail::RenderScrollViewport{
+            widgetrail::declarative::ScrollAxis::Horizontal, rect(90, 110, 180, 240), 0, 500};
+        WidgetInteractionSession session;
+        session.SetFocus(L"rail.widget", snapshot, L"first");
+        const auto move = [&](NavigationDirection direction) {
+            return session.ResolveDirectionalFocus(L"rail.widget", snapshot, direction, render);
+        };
+        auto result = move(NavigationDirection::Left);
+        Check(result.target == L"previous" && !result.requiresScrollBoundaryAdmission,
+            "existing rail-first search selects its offscreen previous item over a closer aligned external action");
+        result = move(NavigationDirection::Right);
+        Check(result.target == L"next" && !result.requiresScrollBoundaryAdmission,
+            "existing rail-first search selects its offscreen next item");
+
+        snapshot.root.children[2].children.erase(snapshot.root.children[2].children.begin());
+        render.navigationRects.erase(L"previous");
+        render.revealableFocusIds.erase(L"previous");
+        render.navigationEnabled.erase(L"previous");
+        result = move(NavigationDirection::Left);
+        Check(result.target == L"side-action" && result.requiresScrollBoundaryAdmission,
+            "an aligned external control remains reachable after the rail is exhausted");
+        render.navigationEnabled[L"side-action"] = false;
+        result = move(NavigationDirection::Left);
+        Check(result.disposition == DirectionalFocusDisposition::Boundary && !result.target &&
+            session.focusedElementId() == L"first",
+            "first poster remains focused instead of entering the Refresh group above it");
+        result = move(NavigationDirection::Up);
+        Check(result.disposition == DirectionalFocusDisposition::Geometric && result.target == L"refresh",
+            "Up can enter the header group through its remembered-child owner");
+        snapshot.root.children[2].children[0].focusLeft = L"header";
+        result = move(NavigationDirection::Left);
+        Check(result.disposition == DirectionalFocusDisposition::Explicit && result.target == L"refresh",
+            "explicit authored links retain priority over automatic row eligibility");
+    }
+}
+
 void ResponsiveGridScrollOwnsDirectionalPriority() {
     using namespace widgetrail::input;
     for (const float pixelScale : {1.0F, 1.5F}) {
@@ -2006,6 +2072,7 @@ int main() {
     OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority();
     DeferredFocusGroupEntryWaitsForReadyContent();
     ProvisionalOrdinalRestorePreservesRequestedGroupMemory();
+    HorizontalRailsKeepDirectionalBoundaries();
     ResponsiveGridScrollOwnsDirectionalPriority();
     FreeScrollAndRetainedRefreshLifecycle();
     ExactSliderRequestAuthorityAndRollback();

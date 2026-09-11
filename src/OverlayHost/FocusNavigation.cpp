@@ -206,18 +206,21 @@ GeometricFocusScore ScoreGeometricCandidate(
     bool inBeam{};
     switch (direction) {
     case NavigationDirection::Left:
-        inDirection = dx < -0.5F;
         primary = -dx;
         perpendicular = std::abs(dy);
-        inBeam = Overlaps(current.y, current.y + current.height,
-                          candidate.y, candidate.y + candidate.height);
+        inBeam = std::min(current.y + current.height, candidate.y + candidate.height) -
+            std::max(current.y, candidate.y) > 0.5F;
+        inDirection = dx < -0.5F && inBeam;
         break;
     case NavigationDirection::Right:
-        inDirection = dx > 0.5F;
         primary = dx;
         perpendicular = std::abs(dy);
-        inBeam = Overlaps(current.y, current.y + current.height,
-                          candidate.y, candidate.y + candidate.height);
+        // Left/Right stays within vertically overlapping controls. A narrower
+        // header above a poster is not a horizontal neighbor merely because
+        // their centers differ. Ignore subpixel edge contact as well.
+        inBeam = std::min(current.y + current.height, candidate.y + candidate.height) -
+            std::max(current.y, candidate.y) > 0.5F;
+        inDirection = dx > 0.5F && inBeam;
         break;
     case NavigationDirection::Up:
         inDirection = dy < -0.5F;
