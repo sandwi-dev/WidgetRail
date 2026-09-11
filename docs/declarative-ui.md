@@ -474,6 +474,9 @@ does not force a renderer-owned background fade.
 Partial scroll layouts inherit the same parent font and background context as
 full layouts, keeping relative spacing stable when entering or leaving free scroll.
 They reuse unrounded layout bounds and do not count outer margins twice.
+Artwork completions reuse the current snapshot's committed layout for a
+paint-only frame, merging with pending scroll layout when needed. A missing
+or stale checkpoint keeps the full-redraw fallback.
 
 ## Focus-associated presentation (protocol v40)
 

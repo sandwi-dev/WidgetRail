@@ -2635,6 +2635,9 @@ struct DeclarativeRenderer::RenderPass final {
         const bool fillAutoRoot = true,
         const CollectionAnchorPolicy collectionAnchorPolicy =
             CollectionAnchorPolicy::Reconcile) {
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        ++result.fullLayoutBuildCount;
+#endif
         // First pass gives percentage/em adaptation a deterministic parent estimate.
         prepared.clear();
         textMeasurements.clear();
@@ -5039,6 +5042,15 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
             FocusedFreeScrollPlanDisposition::MissingTarget;
     if (diagnostic) *diagnostic = localDiagnostic;
     return std::nullopt;
+}
+
+std::optional<IncrementalPresentationPlan>
+DeclarativeRenderer::PlanRetainedPaint(
+    const WidgetSnapshot& snapshot, const std::optional<Rect> requestedDamage) {
+    const auto& cache = incrementalLayoutCache_;
+    if (!cache || cache->instanceId != snapshot.instanceId ||
+        cache->sequence != snapshot.sequence) return std::nullopt;
+    return PlanBackgroundSurfaceAnimationFrame(requestedDamage.value_or(cache->viewport));
 }
 
 std::optional<IncrementalPresentationPlan>

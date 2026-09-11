@@ -3959,7 +3959,7 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
         Check(firstScroll && secondScroll && secondScroll->priorOffset == firstScroll->offset,
               "pending stick samples accumulate against the requested offset");
         const auto animation =
-            scrolling.PlanBackgroundSurfaceAnimationFrame(anchoredViewport);
+            scrolling.PlanRetainedPaint(anchored, anchoredViewport);
         Check(animation && animation->work ==
                   widgetrail::IncrementalPresentationWork::LocalLayout &&
                   animation->damage.height == anchoredViewport.height,
@@ -3968,7 +3968,7 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
         Near(shown.scrollOffsets.at(L"anchor.collection"), start + 16.0F,
              "animation scheduling does not undo an anchored rail scroll");
 
-        Check(scrolling.PlanBackgroundSurfaceAnimationFrame(anchoredViewport).has_value(),
+        Check(scrolling.PlanRetainedPaint(anchored, anchoredViewport).has_value(),
               "background paint can precede the next scroll sample");
         Check(scroll(5.0F).has_value(), "scroll merges into a pending background paint");
         const auto reverseOrder = draw();
@@ -5288,6 +5288,22 @@ void TrustedArtworkDemandDoesNotBlockTileRender() {
             return artworkReady;
         }), "released trusted artwork completes through the existing decoder owner");
     }
+    Check(pending.fullLayoutBuildCount > 0,
+        "the initial cold artwork frame establishes a complete layout");
+    auto staleImageSnapshot = snapshot;
+    ++staleImageSnapshot.sequence;
+    Check(!renderer.PlanRetainedPaint(staleImageSnapshot),
+        "artwork completion cannot reuse a layout for a different snapshot");
+    staleImageSnapshot = snapshot;
+    staleImageSnapshot.instanceId = L"retired-artwork.runtime";
+    Check(!renderer.PlanRetainedPaint(staleImageSnapshot),
+        "artwork completion cannot reuse another widget instance's layout");
+    const auto completionPaint = renderer.PlanRetainedPaint(snapshot);
+    const auto coalescedCompletion = renderer.PlanRetainedPaint(snapshot);
+    Check(completionPaint && coalescedCompletion &&
+          completionPaint->work == widgetrail::IncrementalPresentationWork::PaintOnly &&
+          coalescedCompletion->work == widgetrail::IncrementalPresentationWork::PaintOnly,
+        "completed artwork coalesces into a paint-only frame");
     target->BeginDraw();
     const auto ready = renderer.Render(
         target.Get(), snapshot, snapshot.initialFocusId,
@@ -5295,6 +5311,11 @@ void TrustedArtworkDemandDoesNotBlockTileRender() {
     Check(SUCCEEDED(target->EndDraw()) && ready.succeeded &&
           renderer.GetImageBitmapCacheStats().creates == 1,
         "current completion creates exactly one render-target bitmap");
+    Check(ready.fullLayoutBuildCount == 0,
+        "first artwork upload does not rebuild the widget layout");
+    Near(ready.elementRects.at(L"async-artwork.tile").y,
+         pending.elementRects.at(L"async-artwork.tile").y,
+         "paint-only artwork completion preserves tile geometry");
     const auto decodedBeforeRetirement = cache.GetStats();
     renderer.ReleaseCachedImages();
     Check(renderer.GetImageBitmapCacheStats().entries == 0 &&

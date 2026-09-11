@@ -165,6 +165,7 @@ struct RenderResult final {
     std::map<std::wstring, std::wstring, std::less<>> buttonStateCues;
     std::map<std::wstring, std::uint32_t, std::less<>> textLineCounts;
     std::map<std::wstring, std::wstring, std::less<>> backgroundArtworkHandles;
+    std::size_t fullLayoutBuildCount{};
     std::size_t focusFollowPassCount{};
     bool focusFollowConverged{};
     bool focusFollowNoProgress{};
@@ -447,8 +448,12 @@ public:
         std::wstring_view exactScrollId = {},
         FocusedFreeScrollPlanDiagnostic* diagnostic = nullptr);
 
-    /// Reuses the exact committed layout for a renderer-owned paint-only
-    /// animation frame. The caller remains responsible for the bounded wakeup.
+    /// Reuses current committed geometry for artwork or animation paints.
+    /// Omitted damage covers the widget; pending scroll layout is preserved.
+    [[nodiscard]] std::optional<IncrementalPresentationPlan>
+    PlanRetainedPaint(
+        const WidgetSnapshot& snapshot,
+        std::optional<declarative::Rect> damage = std::nullopt);
     [[nodiscard]] std::optional<IncrementalPresentationPlan>
     PlanBackgroundSurfaceAnimationFrame(declarative::Rect damage);
 

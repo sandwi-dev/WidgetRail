@@ -2059,9 +2059,10 @@ private:
             if (widgetrail::shell::RequiresImageReadyRepaint(
                     wParam != 0,
                     AdvanceCompositorBackground(GetTickCount64()))) {
+                if (wParam == 0 && SubmitRetainedWidgetPaint()) return 0;
                 // Newly ready images may lie outside a queued scroll's
-                // damage. Keep the full repaint, and retain requested scroll
-                // offsets through the full-layout free-scroll path.
+                // damage. Without a current layout (or for tray artwork),
+                // retain the full repaint and the free-scroll offset.
                 pendingContentRenderPlan_.reset();
                 if (declarativeRenderer_)
                     declarativeRenderer_->CancelPresentationUpdatePlan();
@@ -8084,18 +8085,24 @@ private:
 
     [[nodiscard]] bool SubmitBackgroundSurfaceDamage(
         const widgetrail::declarative::Rect damage) {
+        return SubmitRetainedWidgetPaint(damage);
+    }
+
+    [[nodiscard]] bool SubmitRetainedWidgetPaint(
+        const std::optional<widgetrail::declarative::Rect> damage = std::nullopt) {
         if (!window_ || !declarativeRenderer_ ||
             state_.surface() != widgetrail::Surface::Widget)
             return false;
         RECT pendingPaint{};
         // A full repaint or a snapshot update already owns this frame.
-        // Otherwise merge animation damage into any pending scroll layout.
+        // Otherwise merge artwork/animation damage into pending scroll layout.
         if (pendingWidgetPresentationImpact_ ||
             (!pendingContentRenderPlan_ &&
              GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE))
             return true;
-        const auto plan = declarativeRenderer_->PlanBackgroundSurfaceAnimationFrame(
-            damage);
+        const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
+        if (!snapshot) return false;
+        const auto plan = declarativeRenderer_->PlanRetainedPaint(*snapshot, damage);
         RECT client{};
         if (!plan || !GetClientRect(window_, &client)) return false;
         const UINT dpi = std::max(1U, GetDpiForWindow(window_));
