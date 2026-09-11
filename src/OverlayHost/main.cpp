@@ -11271,6 +11271,8 @@ private:
                 textEntryModal_.HandleController(L"B");
             else if ((pressed & XINPUT_GAMEPAD_Y) != 0)
                 textEntryModal_.HandleController(L"Y");
+            if (frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE)
+                textEntryModal_.HandleController(L"LT");
             textEntryModal_.UpdateControllerRepeat({
                 .activateDown = (buttons & XINPUT_GAMEPAD_A) != 0,
                 .activatePressed = (pressed & XINPUT_GAMEPAD_A) != 0,

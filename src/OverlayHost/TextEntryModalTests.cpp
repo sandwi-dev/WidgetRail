@@ -369,8 +369,6 @@ void CheckLayout(const RECT workArea, const UINT dpi, const char* name) {
     Check(IsInside(layout.promptBounds, client), "prompt remains inside modal bounds");
     for (const auto bounds : layout.keyBounds)
         Check(IsInside(bounds, client), "keyboard key remains inside modal bounds");
-    Check(IsInside(layout.legendBounds, client),
-        "controller legend remains inside modal bounds");
 }
 
 BOOL CALLBACK CollectChildren(const HWND child, const LPARAM value) {
@@ -407,6 +405,26 @@ void CheckKeyboardSession(HWND owner) {
     Check((GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) != 0,
         "keyboard is an owned overlay surface without its own task-switcher entry");
     Check(GetWindow(window, GW_OWNER) == owner, "overlay owns the keyboard lifetime and z-order");
+    const HWND initialKey = GetFocus();
+    keyboard.HandleController(L"LT");
+    Check(GetFocus() == initialKey && WindowText(initialKey) == L"Q" && WindowText(edit) == L"draft",
+        "left trigger toggles Shift without moving focus or inserting text");
+    Check(WindowText(GetDlgItem(window, 1030)) == L"ABC (LT)",
+        "shift key exposes the trigger shortcut and active layer to accessibility");
+    keyboard.UpdateControllerRepeat({.activateDown = true, .activatePressed = true}, 100);
+    keyboard.HandleController(L"LT");
+    keyboard.UpdateControllerRepeat({.activateDown = true}, 1000);
+    Check(WindowText(edit) == L"draftQ" && WindowText(initialKey) == L"q",
+        "changing Shift cancels a held character repeat and restores lowercase");
+    keyboard.HandleController(L"X");
+    const auto click = [&](int id) {
+        SendMessageW(window, WM_COMMAND, MAKEWPARAM(id, BN_CLICKED),
+            reinterpret_cast<LPARAM>(GetDlgItem(window, id)));
+    };
+    click(1040);
+    Check(EditSelection(edit) == std::pair<DWORD,DWORD>{4,4}, "Cursor left button moves the caret once");
+    click(1041);
+    Check(EditSelection(edit) == std::pair<DWORD,DWORD>{5,5}, "Cursor right button moves the caret once");
     HDC reference = GetDC(window);
     HDC pixels = CreateCompatibleDC(reference);
     HBITMAP bitmap = CreateCompatibleBitmap(reference, 64, 52);
@@ -456,15 +474,17 @@ void CheckKeyboardSession(HWND owner) {
     ReleaseDC(window, reference);
     Check(!keyboard.Begin(GetModuleHandleW(nullptr), owner, L"", L"duplicate", 96),
         "a second session cannot replace an unfinished draft");
+    SetFocus(edit);
+    SetFocus(initialKey);
     keyboard.HandleController(L"DPadLeft");
     Check(WindowText(CurrentFocus(window)) == L"p", "left edge wraps to end of its row");
     keyboard.HandleController(L"DPadRight");
     Check(WindowText(CurrentFocus(window)) == L"q", "right edge wraps to start of its row");
     keyboard.HandleController(L"DPadUp");
     keyboard.HandleController(L"DPadUp");
-    Check(WindowText(CurrentFocus(window)) == L"Clear", "top edge wraps to action row");
+    Check(WindowText(CurrentFocus(window)) == L"Backspace (X)", "top edge wraps to last action row");
     keyboard.HandleController(L"DPadLeft");
-    Check(WindowText(CurrentFocus(window)) == L"Done", "action row wraps at its own width");
+    Check(WindowText(CurrentFocus(window)) == L"Done (RT)", "action row wraps at its own width");
     keyboard.HandleController(L"DPadDown");
     Check(WindowText(CurrentFocus(window)) == L"9", "bottom edge wraps to aligned top key");
 
@@ -502,7 +522,7 @@ void CheckKeyboardSession(HWND owner) {
     SendMessageW(edit, EM_SETSEL, 96, 96);
     SendMessageW(edit, EM_SCROLLCARET, 0, 0);
     checkCaret("controller caret stays inside a horizontally scrolled full entry");
-    SendMessageW(window, WM_COMMAND, MAKEWPARAM(1040, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(window,1040)));
+    SendMessageW(window, WM_COMMAND, MAKEWPARAM(1042, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(window,1042)));
     Check(WindowText(edit).empty(), "visible Clear button clears without committing");
     keyboard.HandleController(L"RT");
     Check(!keyboard.Begin(GetModuleHandleW(nullptr), owner, L"", L"duplicate", 96),
@@ -626,10 +646,10 @@ int wmain() {
         Check(WaitUntil([&] {
             children.clear();
             EnumChildWindows(window, CollectChildren, reinterpret_cast<LPARAM>(&children));
-            return children.size() == 47;
+            return children.size() == 48;
         }), "all modal controls complete creation before accessibility inspection");
-        Check(children.size() == 47,
-            "prompt, edit, 40 character keys, four actions, and legend are present");
+        Check(children.size() == 48,
+            "prompt, edit, 40 character keys and six action buttons are present");
         const auto buttonCount = std::count_if(children.begin(), children.end(),
             [](const HWND child) { return WindowClass(child) == L"Button"; });
         Check(buttonCount == widgetrail::input::TextEntryKeyCount,
@@ -643,7 +663,7 @@ int wmain() {
                 "every native focus target supplies a UI Automation provider");
             if (provider) provider->Release();
             Check(!WindowText(child).empty(),
-                "prompt, edit, keyboard, and legend expose accessible text");
+                "prompt, edit, and keyboard buttons expose accessible text");
             const auto text = WindowText(child);
             Check(text != L"Commit", "commit action uses the friendly Done label");
         }
@@ -653,9 +673,14 @@ int wmain() {
         Check(prompt && WindowText(prompt) == L"Search installed games" &&
                 WindowText(edit) == L"ab",
             "prompt guidance and committed edit value remain distinct");
-        Check(legend && WindowText(legend).find(L"RT  Done") != std::wstring::npos &&
-                WindowText(legend).find(L"Commit") == std::wstring::npos,
-            "controller legend exposes Done and Clear shortcuts");
+        Check(!legend, "the separate controller text guide is removed");
+        Check(WindowText(GetDlgItem(window, 1040)) == L"Cursor left (LB)" &&
+            WindowText(GetDlgItem(window, 1041)) == L"Cursor right (RB)" &&
+            WindowText(GetDlgItem(window, 1042)) == L"Clear (Y)" &&
+            WindowText(GetDlgItem(window, 1043)) == L"Backspace (X)" &&
+            WindowText(GetDlgItem(window, 1044)) == L"Cancel (B)" &&
+            WindowText(GetDlgItem(window, 1045)) == L"Done (RT)",
+            "every editing action has a focusable native button and an accessible shortcut");
 
         HDC promptDc = GetDC(prompt);
         const auto panelBrush = reinterpret_cast<HBRUSH>(SendMessageW(
@@ -735,10 +760,10 @@ int wmain() {
         Check(modal.PostController(L"DPadLeft"), "controller returns to q");
         Check(modal.PostController(L"DPadDown"), "controller reaches a");
         Check(modal.PostController(L"DPadDown"), "controller reaches Shift");
-        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"Shift"; }),
+        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"Shift (LT)"; }),
             "layer key is controller reachable");
         Check(modal.PostController(L"A"), "A changes the keyboard layer");
-        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"ABC"; }),
+        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"ABC (LT)"; }),
             "uppercase layer is visibly named");
         Check(modal.PostController(L"DPadUp"), "controller returns to uppercase A");
         Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"A"; }),
@@ -852,16 +877,16 @@ int wmain() {
         Check(modal.PostController(L"DPadLeft"), "selection returns to q");
         Check(modal.PostController(L"DPadDown"), "selection reaches a");
         Check(modal.PostController(L"DPadDown"), "selection reaches Shift");
-        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"Shift"; }),
+        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"Shift (LT)"; }),
             "non-printable layer key is selected");
         modal.UpdateControllerRepeat({
             .activateDown = true,
             .activatePressed = true,
         }, 2600);
-        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"ABC"; }),
+        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"ABC (LT)"; }),
             "fresh A press activates a layer key once");
         modal.UpdateControllerRepeat({.activateDown = true}, 3000);
-        Check(WindowText(CurrentFocus(window)) == L"ABC",
+        Check(WindowText(CurrentFocus(window)) == L"ABC (LT)",
             "non-printable layer key remains one-shot while A is held");
         modal.UpdateControllerRepeat({}, 3010);
 

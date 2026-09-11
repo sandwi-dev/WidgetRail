@@ -40,7 +40,6 @@ namespace {
 constexpr wchar_t kClassName[] = L"WidgetRail.TextEntryModal";
 constexpr int kPromptId = 100;
 constexpr int kEditId = 101;
-constexpr int kLegendId = 102;
 constexpr int kKeyBase = 1000;
 constexpr UINT kControllerMessage = WM_APP + 1;
 constexpr int kBaseWidth = 760;
@@ -121,12 +120,12 @@ TextEntryModalLayout CalculateTextEntryModalLayout(
         result.keyBounds[index] = ScaleRect(
             {left, top, left + keyWidth, top + keyHeight}, scale);
     }
-    for (std::size_t action = 0; action < 4; ++action) {
-        const int left = 24 + static_cast<int>(action) * 180;
+    for (std::size_t action = 0; action < 6; ++action) {
+        const int left = 24 + static_cast<int>(action % 3) * 240;
+        const int top = 408 + static_cast<int>(action / 3) * 64;
         result.keyBounds[TextEntryCharacterKeyCount + action] =
-            ScaleRect({left, 408, left + 172, 460}, scale);
+            ScaleRect({left, top, left + 232, top + 52}, scale);
     }
-    result.legendBounds = ScaleRect({28, 484, 732, 540}, scale);
     return result;
 }
 
@@ -219,7 +218,6 @@ std::optional<TextEntryModalResult> TextEntryModal::TakeResult() {
     window_ = nullptr;
     prompt_ = nullptr;
     edit_ = nullptr;
-    legend_ = nullptr;
     keys_.fill(nullptr);
     priorEditWindowProc_ = nullptr;
     priorKeyWindowProc_ = nullptr;
@@ -283,22 +281,19 @@ void TextEntryModal::CreateThemeResources() {
         -PixelHeight(17.0, layout_.scale, theme_.textScale), 0, 0, 0,
         FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
         CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, family);
-    legendFont_ = CreateFontW(
-        -PixelHeight(13.0, layout_.scale, theme_.textScale), 0, 0, 0,
-        FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, family);
+
 }
 
 void TextEntryModal::ReleaseThemeResources() noexcept {
     drawingBrush_.Reset();
     drawingTarget_.Reset();
     keyTextFormat_.Reset();
+    hintTextFormat_.Reset();
     if (canvasBrush_) DeleteObject(std::exchange(canvasBrush_, nullptr));
     if (panelBrush_) DeleteObject(std::exchange(panelBrush_, nullptr));
     if (controlBrush_) DeleteObject(std::exchange(controlBrush_, nullptr));
     if (bodyFont_) DeleteObject(std::exchange(bodyFont_, nullptr));
     if (keyFont_) DeleteObject(std::exchange(keyFont_, nullptr));
-    if (legendFont_) DeleteObject(std::exchange(legendFont_, nullptr));
 }
 
 bool TextEntryModal::EnsureDrawingResources() {
@@ -321,6 +316,15 @@ bool TextEntryModal::EnsureDrawingResources() {
             const DWRITE_TRIMMING trimming{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
             keyTextFormat_->SetTrimming(&trimming, ellipsis.Get());
         }
+    }
+    if (!hintTextFormat_) {
+        if (FAILED(textFactory_->CreateTextFormat(L"Segoe UI", nullptr,
+                DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+                static_cast<float>(12.0 * layout_.scale), L"", hintTextFormat_.GetAddressOf())))
+            return false;
+        hintTextFormat_->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+        hintTextFormat_->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        hintTextFormat_->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
     }
     if (!drawingTarget_) {
         // Native owner-draw supplies a DC. Render at physical-pixel DPI because
@@ -355,22 +359,70 @@ bool TextEntryModal::PaintSurface(HDC dc, const RECT& bounds,
         const float radius = key ? std::max(2.0F, 5.0F * scale) : std::max(4.0F, 6.0F * scale);
         const auto rounded = D2D1::RoundedRect(
             D2D1::RectF(inset, inset, width - inset, height - inset), radius, radius);
+        bool labelPainted = !key;
         drawingTarget_->BeginDraw();
         drawingTarget_->Clear(DrawingColor(theme_.panel));
-        drawingBrush_->SetColor(DrawingColor(focused ? theme_.controlFocused : theme_.control));
+        const bool shiftActive = key && *key == 30 && layer_ == Layer::Uppercase;
+        drawingBrush_->SetColor(DrawingColor(focused || shiftActive ? theme_.controlFocused : theme_.control));
         drawingTarget_->FillRoundedRectangle(rounded, drawingBrush_.Get());
         if (key) {
             drawingBrush_->SetColor(DrawingColor(focused ? theme_.focus : theme_.control));
             drawingTarget_->DrawRoundedRectangle(rounded, drawingBrush_.Get(),
                 std::max(1.0F, (focused ? 3.0F : 1.0F) * scale));
             drawingBrush_->SetColor(DrawingColor(theme_.text));
-            const auto label = KeyLabel(*key);
-            drawingTarget_->DrawText(label.data(), static_cast<UINT32>(label.size()),
-                keyTextFormat_.Get(), D2D1::RectF(inset, inset, width - inset, height - inset),
-                drawingBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+            const auto label = *key == 30 && layer_ != Layer::Symbols
+                ? std::wstring(L"\x21e7") : KeyLabel(*key);
+            const auto hint = ControllerHint(*key, focused);
+            const bool face = hint.size() == 1;
+            const bool bumper = hint == L"LB" || hint == L"RB";
+            const float badgeWidth = hint.empty() ? 0.0F : (face ? 18.0F : bumper ? 32.0F : 26.0F) * scale;
+            const float badgeHeight = (face || bumper ? 18.0F : 22.0F) * scale;
+            const float gap = hint.empty() ? 0.0F : 6.0F * scale;
+            const float labelWidth = std::max(1.0F, width - 2.0F * inset - 4.0F * scale - badgeWidth - gap);
+            Microsoft::WRL::ComPtr<IDWriteTextLayout> textLayout;
+            if (SUCCEEDED(textFactory_->CreateTextLayout(label.data(), static_cast<UINT32>(label.size()),
+                    keyTextFormat_.Get(), 10000.0F, height - 2.0F * inset, &textLayout))) {
+                DWRITE_TEXT_METRICS metrics{};
+                textLayout->GetMetrics(&metrics);
+                // Compact character keys also fit a leading activation badge.
+                // Action buttons get full-width labels in their own two rows.
+                if (metrics.widthIncludingTrailingWhitespace > labelWidth) {
+                    textLayout->SetFontSize(keyTextFormat_->GetFontSize() *
+                        labelWidth / metrics.widthIncludingTrailingWhitespace,
+                        {0, static_cast<UINT32>(label.size())});
+                    textLayout->GetMetrics(&metrics);
+                }
+                const float textWidth = std::min(labelWidth, metrics.widthIncludingTrailingWhitespace);
+                const float left = (width - badgeWidth - gap - textWidth) * 0.5F;
+                if (!hint.empty()) {
+                    const auto badge = D2D1::RectF(left, (height - badgeHeight) * 0.5F,
+                        left + badgeWidth, (height + badgeHeight) * 0.5F);
+                    drawingBrush_->SetColor(DrawingColor(theme_.panel));
+                    if (face) {
+                        const auto circle = D2D1::Ellipse(D2D1::Point2F(left + badgeWidth * 0.5F, height * 0.5F),
+                            badgeWidth * 0.5F, badgeHeight * 0.5F);
+                        drawingTarget_->FillEllipse(circle, drawingBrush_.Get());
+                        drawingBrush_->SetColor(DrawingColor(theme_.text));
+                        drawingTarget_->DrawEllipse(circle, drawingBrush_.Get(), std::max(1.0F, scale));
+                    } else {
+                        const auto shape = D2D1::RoundedRect(badge, 4.0F * scale, (bumper ? 8.0F : 4.0F) * scale);
+                        drawingTarget_->FillRoundedRectangle(shape, drawingBrush_.Get());
+                        drawingBrush_->SetColor(DrawingColor(theme_.text));
+                        drawingTarget_->DrawRoundedRectangle(shape, drawingBrush_.Get(), std::max(1.0F, scale));
+                    }
+                    drawingTarget_->DrawText(hint.data(), static_cast<UINT32>(hint.size()),
+                        hintTextFormat_.Get(), badge, drawingBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+                }
+                textLayout->SetMaxWidth(textWidth + 0.5F);
+                textLayout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+                drawingBrush_->SetColor(DrawingColor(theme_.text));
+                drawingTarget_->DrawTextLayout(D2D1::Point2F(left + badgeWidth + gap, inset),
+                    textLayout.Get(), drawingBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+                labelPainted = true;
+            }
         }
         const auto result = drawingTarget_->EndDraw();
-        if (SUCCEEDED(result)) return true;
+        if (SUCCEEDED(result)) return labelPainted;
         drawingBrush_.Reset();
         drawingTarget_.Reset();
         if (result != D2DERR_RECREATE_TARGET) break;
@@ -426,14 +478,6 @@ void TextEntryModal::CreateControls() {
         if (!priorKeyWindowProc_) priorKeyWindowProc_ = prior;
     }
 
-    const auto legendBounds = createBounds(layout_.legendBounds);
-    legend_ = CreateWindowExW(
-        0, L"STATIC",
-        L"A  Select     X  Backspace     Y  Clear     B  Cancel     RT  Done\r\n"
-        L"LB / RB  Move caret     D-pad / Left stick  Move between keys",
-        WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
-        legendBounds[0], legendBounds[1], legendBounds[2], legendBounds[3],
-        window_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kLegendId)), instance_, nullptr);
     UpdateKeyLabels();
     ApplyLayout();
 }
@@ -449,10 +493,8 @@ void TextEntryModal::ApplyLayout() {
     for (std::size_t index = 0; index < keys_.size(); ++index) {
         move(keys_[index], layout_.keyBounds[index]);
     }
-    move(legend_, layout_.legendBounds);
     if (prompt_) SendMessageW(prompt_, WM_SETFONT, reinterpret_cast<WPARAM>(bodyFont_), TRUE);
     if (edit_) SendMessageW(edit_, WM_SETFONT, reinterpret_cast<WPARAM>(bodyFont_), TRUE);
-    if (legend_) SendMessageW(legend_, WM_SETFONT, reinterpret_cast<WPARAM>(legendFont_), TRUE);
     for (const auto key : keys_)
         if (key) SendMessageW(key, WM_SETFONT, reinterpret_cast<WPARAM>(keyFont_), TRUE);
     if (window_) {
@@ -486,10 +528,12 @@ std::optional<wchar_t> TextEntryModal::KeyValue(const std::size_t index) const n
 }
 
 std::wstring TextEntryModal::KeyLabel(const std::size_t index) const {
-    if (index == 40) return L"Clear";
-    if (index == 41) return L"Backspace";
-    if (index == 42) return L"Cancel";
-    if (index == 43) return L"Done";
+    if (index == 40) return L"Cursor left";
+    if (index == 41) return L"Cursor right";
+    if (index == 42) return L"Clear";
+    if (index == 43) return L"Backspace";
+    if (index == 44) return L"Cancel";
+    if (index == 45) return L"Done";
     if (index == 30)
         return layer_ == Layer::Symbols ? L"abc" :
             layer_ == Layer::Uppercase ? L"ABC" : L"Shift";
@@ -499,10 +543,23 @@ std::wstring TextEntryModal::KeyLabel(const std::size_t index) const {
     return *value == L' ' ? L"Space" : std::wstring(1, *value);
 }
 
+std::wstring_view TextEntryModal::ControllerHint(const std::size_t index, const bool focused) const noexcept {
+    if (index == 30) return L"LT";
+    if (index == 40) return L"LB";
+    if (index == 41) return L"RB";
+    if (index == 42) return L"Y";
+    if (index == 43) return L"X";
+    if (index == 44) return L"B";
+    if (index == 45) return L"RT";
+    return focused ? L"A" : L"";
+}
+
 void TextEntryModal::UpdateKeyLabels() {
     for (std::size_t index = 0; index < keys_.size(); ++index) {
         if (!keys_[index]) continue;
-        const auto label = KeyLabel(index);
+        auto label = KeyLabel(index);
+        const auto hint = ControllerHint(index, false);
+        if (!hint.empty()) label += L" (" + std::wstring(hint) + L")";
         SetWindowTextW(keys_[index], label.c_str());
         InvalidateRect(keys_[index], nullptr, TRUE);
     }
@@ -628,18 +685,21 @@ void TextEntryModal::MoveCaret(const int delta) {
     InvalidateRect(edit_, nullptr, TRUE);
 }
 
+void TextEntryModal::ToggleShift() {
+    ResetControllerRepeat();
+    layer_ = layer_ == Layer::Lowercase ? Layer::Uppercase : Layer::Lowercase;
+    UpdateKeyLabels();
+}
+
 void TextEntryModal::ActivateFocusedKey() {
     if (focusIndex_ >= keys_.size()) return;
-    if (focusIndex_ == 40) { Clear(); return; }
-    if (focusIndex_ == 41) { Backspace(); return; }
-    if (focusIndex_ == 42) { Complete(TextEntryModalOutcome::Cancelled); return; }
-    if (focusIndex_ == 43) { Complete(TextEntryModalOutcome::Committed); return; }
-    if (focusIndex_ == 30) {
-        layer_ = layer_ == Layer::Symbols ? Layer::Lowercase :
-            layer_ == Layer::Lowercase ? Layer::Uppercase : Layer::Lowercase;
-        UpdateKeyLabels();
-        return;
-    }
+    if (focusIndex_ == 40) { MoveCaret(-1); return; }
+    if (focusIndex_ == 41) { MoveCaret(1); return; }
+    if (focusIndex_ == 42) { Clear(); return; }
+    if (focusIndex_ == 43) { Backspace(); return; }
+    if (focusIndex_ == 44) { Complete(TextEntryModalOutcome::Cancelled); return; }
+    if (focusIndex_ == 45) { Complete(TextEntryModalOutcome::Committed); return; }
+    if (focusIndex_ == 30) { ToggleShift(); return; }
     if (focusIndex_ == 39) {
         layer_ = layer_ == Layer::Symbols ? Layer::Lowercase : Layer::Symbols;
         UpdateKeyLabels();
@@ -684,18 +744,19 @@ void TextEntryModal::SetKeyboardFocus(const std::size_t index) {
 
 void TextEntryModal::MoveFocus(const Direction direction) {
     const bool actionRow = focusIndex_ >= TextEntryCharacterKeyCount;
-    int row = actionRow ? 4 : static_cast<int>(focusIndex_) / kColumns;
-    int column = actionRow ? static_cast<int>(focusIndex_ - TextEntryCharacterKeyCount)
+    int row = actionRow ? 4 + static_cast<int>(focusIndex_ - TextEntryCharacterKeyCount) / 3
+                       : static_cast<int>(focusIndex_) / kColumns;
+    int column = actionRow ? static_cast<int>(focusIndex_ - TextEntryCharacterKeyCount) % 3
                            : static_cast<int>(focusIndex_) % kColumns;
     if (direction == Direction::Left || direction == Direction::Right) {
-        const int count = actionRow ? 4 : kColumns;
+        const int count = actionRow ? 3 : kColumns;
         column = (column + count + (direction == Direction::Left ? -1 : 1)) % count;
     } else {
-        row = (row + 5 + (direction == Direction::Up ? -1 : 1)) % 5;
-        if (actionRow) column = std::min(9, (column * 2 + 1) * 10 / 8);
-        else if (row == 4) column = std::min(3, (column * 2 + 1) * 4 / 20);
+        row = (row + 6 + (direction == Direction::Up ? -1 : 1)) % 6;
+        if (actionRow && row < 4) column = std::min(9, (column * 2 + 1) * 10 / 6);
+        else if (!actionRow && row >= 4) column = std::min(2, (column * 2 + 1) * 3 / 20);
     }
-    SetKeyboardFocus(row == 4 ? TextEntryCharacterKeyCount + column
+    SetKeyboardFocus(row >= 4 ? TextEntryCharacterKeyCount + (row - 4) * 3 + column
                              : static_cast<std::size_t>(row * kColumns + column));
 }
 
@@ -705,6 +766,7 @@ void TextEntryModal::HandleController(const std::wstring_view button) noexcept {
     else if (button == L"A") ActivateFocusedKey();
     else if (button == L"X") Backspace();
     else if (button == L"Y") Clear();
+    else if (button == L"LT") ToggleShift();
     else if (button == L"RT") Complete(TextEntryModalOutcome::Committed);
     else if (button == L"LB") MoveCaret(-1);
     else if (button == L"RB") MoveCaret(1);
@@ -807,7 +869,7 @@ bool TextEntryModal::PostController(const std::wstring_view button) noexcept {
         button == L"X" ? 3 : button == L"DPadLeft" ? 4 :
         button == L"DPadRight" ? 5 : button == L"DPadUp" ? 6 :
         button == L"DPadDown" ? 7 : button == L"LB" ? 8 :
-        button == L"RB" ? 9 : button == L"RT" ? 10 : button == L"Y" ? 11 : 0;
+        button == L"RB" ? 9 : button == L"RT" ? 10 : button == L"Y" ? 11 : button == L"LT" ? 12 : 0;
     return command != 0 && PostMessageW(window_, kControllerMessage, command, 0) != FALSE;
 }
 
@@ -986,7 +1048,7 @@ LRESULT TextEntryModal::HandleMessage(
             wParam == 3 ? L"X" : wParam == 4 ? L"DPadLeft" :
             wParam == 5 ? L"DPadRight" : wParam == 6 ? L"DPadUp" :
             wParam == 7 ? L"DPadDown" : wParam == 8 ? L"LB" :
-            wParam == 9 ? L"RB" : wParam == 11 ? L"Y" : L"RT");
+            wParam == 9 ? L"RB" : wParam == 11 ? L"Y" : wParam == 12 ? L"LT" : L"RT");
         return 0;
     case WM_CREATE:
         CreateControls();
@@ -1040,6 +1102,8 @@ LRESULT TextEntryModal::HandleMessage(
         SetTextColor(item->hDC, theme_.text);
         const auto priorFont = SelectObject(item->hDC, keyFont_);
         auto label = KeyLabel(index);
+        const auto hint = ControllerHint(index, focused);
+        if (!hint.empty()) label = L"[" + std::wstring(hint) + L"] " + label;
         RECT textBounds = item->rcItem;
         DrawTextW(item->hDC, label.data(), static_cast<int>(label.size()), &textBounds,
             DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
@@ -1048,8 +1112,7 @@ LRESULT TextEntryModal::HandleMessage(
     }
     case WM_CTLCOLORSTATIC: {
         const HDC dc = reinterpret_cast<HDC>(wParam);
-        SetTextColor(dc, reinterpret_cast<HWND>(lParam) == legend_
-            ? theme_.secondaryText : theme_.text);
+        SetTextColor(dc, theme_.text);
         SetBkColor(dc, theme_.panel);
         return reinterpret_cast<LRESULT>(panelBrush_);
     }

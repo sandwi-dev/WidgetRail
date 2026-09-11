@@ -34,7 +34,7 @@ private:
 };
 
 inline constexpr std::size_t TextEntryCharacterKeyCount = 40;
-inline constexpr std::size_t TextEntryKeyCount = 44;
+inline constexpr std::size_t TextEntryKeyCount = 46;
 inline constexpr UINT TextEntryCompletedMessage = WM_APP + 0x270;
 
 struct TextEntryModalTheme final {
@@ -78,7 +78,6 @@ struct TextEntryModalLayout final {
     RECT promptBounds{};
     RECT editBounds{};
     std::array<RECT, TextEntryKeyCount> keyBounds{};
-    RECT legendBounds{};
     double scale{1.0};
 };
 
@@ -140,12 +139,14 @@ private:
     [[nodiscard]] bool PasteClipboard();
     void Backspace();
     void Clear();
+    void ToggleShift();
     void ResetControllerRepeat() noexcept;
     void InvokeRepeatAction(RepeatAction action);
     void MoveCaret(int delta);
     void ActivateFocusedKey();
     [[nodiscard]] std::optional<wchar_t> KeyValue(std::size_t index) const noexcept;
     [[nodiscard]] std::wstring KeyLabel(std::size_t index) const;
+    [[nodiscard]] std::wstring_view ControllerHint(std::size_t index, bool focused) const noexcept;
     void Complete(TextEntryModalOutcome outcome);
     void MoveFocus(Direction direction);
     void SetKeyboardFocus(std::size_t index);
@@ -156,7 +157,6 @@ private:
     HWND window_{};
     HWND prompt_{};
     HWND edit_{};
-    HWND legend_{};
     HWND resumeFocus_{};
     std::array<HWND, TextEntryKeyCount> keys_{};
     WNDPROC priorEditWindowProc_{};
@@ -175,12 +175,12 @@ private:
     HBRUSH controlBrush_{};
     HFONT bodyFont_{};
     HFONT keyFont_{};
-    HFONT legendFont_{};
     Microsoft::WRL::ComPtr<ID2D1Factory> drawingFactory_;
     Microsoft::WRL::ComPtr<IDWriteFactory> textFactory_;
     Microsoft::WRL::ComPtr<ID2D1DCRenderTarget> drawingTarget_;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> drawingBrush_;
     Microsoft::WRL::ComPtr<IDWriteTextFormat> keyTextFormat_;
+    Microsoft::WRL::ComPtr<IDWriteTextFormat> hintTextFormat_;
     unsigned long long controllerRepeatAt_{};
     RepeatAction controllerRepeatAction_{RepeatAction::None};
     std::size_t controllerRepeatFocusIndex_{};
