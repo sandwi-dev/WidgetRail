@@ -1432,6 +1432,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
             .Where(item => !collectionState.FavoriteFilter ||
                 favoriteSavedIds.Contains(item.Value.SavedId))
             .ToArray();
+        var gameCount = new PlayniteLibraryQueryCount(queryAuthorityGeneration,
+            collectionState.FavoriteFilter && favoriteSavedIds.Count == 0 ? 0 :
+            items.Length == rawItems.Length ? result.MatchingGameCount : null);
         _model.Update(state =>
         {
             var current = direction is null && route == PlayniteLibraryRoute.Library &&
@@ -1445,11 +1448,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 : state;
             return current with
             {
+                HomeGameCount = route == PlayniteLibraryRoute.Library ? gameCount : current.HomeGameCount,
+                BrowseGameCount = route == PlayniteLibraryRoute.Browse ? gameCount : current.BrowseGameCount,
                 Status = !projectionSaved
                     ? "Games loaded · organization was not saved"
                     : items.Length == 0 && fixedRows.All.Any() ? "Saved games resolved" :
                         items.Length == 0 ? "No installed games" :
-                        $"{items.Length}{(page.After is null ? string.Empty : "+")} games in the current catalog window",
+                        "Games loaded",
             };
         });
         var emptyFavorites = collectionState.FavoriteFilter && favoriteSavedIds.Count == 0;
@@ -2059,6 +2064,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         var organization = PlayniteLibraryTitlePolicy.Project(
             PresentationOrganizationLocked());
+        var gameCount = route == PlayniteLibraryRoute.Browse ? local.BrowseGameCount : local.HomeGameCount;
         var sourceCollection = route switch
         {
             PlayniteLibraryRoute.Browse when
@@ -2114,6 +2120,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         SearchExpanded = local.SearchExpanded,
         AlternateBrowseViewport = local.AlternateBrowseViewport,
         BrowseInitialFocusId = local.BrowseInitialFocusId,
+        MatchingGameCount = gameCount?.Generation == QueryAuthorityGenerationLocked(route)
+            ? gameCount.Count : null,
         BrowseRetained = route == PlayniteLibraryRoute.Browse &&
             local.ActiveBrowseReload?.RetainedCollection is not null,
         Collections = PlayniteLibraryCollectionPolicy.Options(

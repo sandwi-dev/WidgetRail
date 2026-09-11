@@ -124,15 +124,11 @@ internal static class PlayniteLibraryHeroRailPolicy
         var catalog = snapshot.Items
             .Where(item => !used.Contains(item.Value.SavedId) &&
                 !excluded.Contains(item.Value.SavedId))
-            .Select((item, index) => (item, index))
-            .OrderBy(value => favorites.ContainsKey(value.item.Value.SavedId) ? 0 : 1)
-            .ThenBy(value => favorites.GetValueOrDefault(
-                value.item.Value.SavedId, int.MaxValue))
-            .ThenBy(value => preferred.ContainsKey(value.item.Value.SavedId) ? 0 : 1)
-            .ThenBy(value => value.index)
-            .Select(value => new RailRow(value.item, new(
-                value.item.Value.SavedId, value.item.Presentation.DisplayName,
-                value.item.Presentation.Source.DisplayName), CollectionItem: true))
+            // Ordering belongs to the provider before pagination. Sorting this
+            // retained slice would insert later favorites ahead of visible tiles.
+            .Select(item => new RailRow(item, new(
+                item.Value.SavedId, item.Presentation.DisplayName,
+                item.Presentation.Source.DisplayName), CollectionItem: true))
             .ToArray();
 
         var liveIds = state.FixedRows.All.Concat(snapshot.Items)
@@ -141,6 +137,9 @@ internal static class PlayniteLibraryHeroRailPolicy
         var fixedMembership = state.Organization.ManualSavedIds
             .ToHashSet(StringComparer.Ordinal);
         var unavailable = state.Organization.Items.Where(item =>
+                // A saved game outside the loaded window is not evidence that
+                // it is unavailable. Wait until the whole collection is known.
+                !snapshot.HasBefore && !snapshot.HasAfter &&
                 PlayniteLibraryOrganizationPolicy.ReferencedSavedIds(state.Organization)
                     .Contains(item.SavedId, StringComparer.Ordinal) &&
                 !fixedMembership.Contains(item.SavedId) &&

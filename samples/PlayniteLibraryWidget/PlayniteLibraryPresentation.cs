@@ -26,6 +26,7 @@ internal sealed record PlayniteLibraryPresentationState(
     internal bool AlternateBrowseViewport { get; init; }
     internal string? BrowseInitialFocusId { get; init; }
     internal bool BrowseRetained { get; init; }
+    internal int? MatchingGameCount { get; init; }
     internal IReadOnlyList<PlayniteLibraryCollectionOption> Collections { get; init; } = [];
     internal IReadOnlyDictionary<string, string?> CompletionStatuses { get; init; } =
         new Dictionary<string, string?>(StringComparer.Ordinal);
@@ -88,6 +89,8 @@ internal static class PlayniteLibraryPresentation
             PlayniteLibraryRoute.PlayniteConnection => "Playnite connection",
             _ => "Playnite Library",
         };
+        var headerStatus = state.Route == PlayniteLibraryRoute.Browse
+            ? BrowseStatus(state) : state.Status;
         WidgetElement header = state.Route == PlayniteLibraryRoute.Library
             ? UI.Row("playnite-library.home.actions",
                     UI.Row("playnite-library.home.utilities",
@@ -102,7 +105,7 @@ internal static class PlayniteLibraryPresentation
                 UI.Text(routeTitle, "playnite-library.compact.title", routeTitle)
                     .Classes("playnite-library-title")
                     .VisibleWhen(ResponsiveVisibility.CompactOnly),
-                UI.Text(state.Status, "playnite-library.compact.status", state.Status)
+                UI.Text(headerStatus, "playnite-library.compact.status", headerStatus)
                     .Classes("playnite-library-status")
                     .VisibleWhen(ResponsiveVisibility.CompactOnly),
                 UI.Stack("playnite-library.header.expanded",
@@ -110,7 +113,7 @@ internal static class PlayniteLibraryPresentation
                             .Classes("playnite-library-eyebrow"),
                         UI.Text(routeTitle, "playnite-library.title", routeTitle)
                             .Classes("playnite-library-title"),
-                        UI.Text(state.Status, "playnite-library.status", state.Status)
+                        UI.Text(headerStatus, "playnite-library.status", headerStatus)
                             .Classes("playnite-library-status"))
                     .Classes("playnite-library-header-expanded")
                     .VisibleWhen(ResponsiveVisibility.ExpandedOnly))
@@ -722,7 +725,7 @@ internal static class PlayniteLibraryPresentation
         }
         if (state.Route == PlayniteLibraryRoute.Browse &&
             state.BrowseInitialFocusId is null &&
-            (snapshot.Status is not WidgetPagedResourceStatus.Ready || !catalogPage))
+            !catalogPage)
             initialFocus = "playnite-library.search";
         return new WidgetView(root, initialFocus, Surface: state.Route switch
         {
@@ -730,6 +733,23 @@ internal static class PlayniteLibraryPresentation
             PlayniteLibraryRoute.Categories or PlayniteLibraryRoute.Hidden => CategoriesSurface,
             _ => Surface,
         });
+    }
+
+    private static string BrowseStatus(PlayniteLibraryPresentationState state)
+    {
+        if (state.BrowseRetained) return "Updating games…";
+        var snapshot = state.Collection;
+        if (snapshot.Items.Count == 0 && snapshot.Status is
+            WidgetPagedResourceStatus.NotLoaded or WidgetPagedResourceStatus.Loading or WidgetPagedResourceStatus.Refreshing)
+            return "Loading games…";
+        if (snapshot.Items.Count == 0 && snapshot.Status == WidgetPagedResourceStatus.Error)
+            return "Games could not be loaded";
+        var count = state.MatchingGameCount ?? snapshot.Items.Count;
+        var label = $"{count} {(count == 1 ? "game" : "games")}";
+        if (state.MatchingGameCount is null && (snapshot.HasBefore || snapshot.HasAfter))
+            label += " loaded";
+        if (snapshot.Error is not null) label += " · couldn't update";
+        return label;
     }
 
     private static bool HasActiveBrowseQuery(PlayniteLibraryPresentationState state) =>

@@ -5,6 +5,14 @@ user-installed Playnite Bridge instance. The package owns its bounded localhost
 client, protected credential prompt, presentation, and organization state. It
 does not copy a product app-library provider into the package.
 
+Home orders the full provider collection by favorites, most recently played,
+name, and stable game ID before splitting it into pages. The rail preserves
+that order as pages arrive. Saved games outside a partial cursor window are
+not presented as unavailable merely because their page has not loaded.
+Browse shows the total matching its current query, independently of retained
+page size. Adjacent loading preserves focus and uses the shared edge indicator;
+providers without a known total display an explicitly labeled loaded count.
+
 ## Setup and safety
 
 Open **Playnite setup** in the widget, paste the Playnite Bridge token, and save.

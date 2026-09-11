@@ -157,7 +157,10 @@ internal sealed class PlayniteLibraryApplicationService(
                 }).ToArray();
             var page = new WidgetAppLibraryPage(
                 pageItems, before, after, catalog.Revision) { Sources = sources };
-            return new(page, ProjectAuthority(catalog.Games, catalog.Categories), stale);
+            return new(page, ProjectAuthority(catalog.Games, catalog.Categories), stale)
+            {
+                MatchingGameCount = filtered.Length,
+            };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -523,7 +526,8 @@ internal sealed class PlayniteLibraryApplicationService(
                 .Take(PlayniteLibraryPrivateState.MaximumRecentItems);
         if (context.Scope == PlayniteLibraryQueryScope.Home)
             return values
-                .OrderBy(game => game.LastActivityUnixMilliseconds is null)
+                .OrderByDescending(game => game.Favorite)
+                .ThenBy(game => game.LastActivityUnixMilliseconds is null)
                 .ThenByDescending(game => game.LastActivityUnixMilliseconds)
                 .ThenBy(game => game.Name, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(game => game.Id, StringComparer.Ordinal);

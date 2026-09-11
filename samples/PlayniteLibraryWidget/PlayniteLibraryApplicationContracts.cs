@@ -28,7 +28,10 @@ internal sealed record PlayniteLibraryAuthorityProjection(
 internal sealed record PlayniteLibraryQueryResult(
     WidgetAppLibraryPage Page,
     PlayniteLibraryAuthorityProjection Authority,
-    bool RetainedLastGood = false);
+    bool RetainedLastGood = false)
+{
+    public int? MatchingGameCount { get; init; }
+}
 
 internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
 {

@@ -12,6 +12,23 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 [TestClass]
 public sealed class PlayniteLibraryTests
 {
+    [TestMethod, Timeout(30_000)]
+    public async Task BrowseCountUsesQueryTotalAcrossPages()
+    {
+        var host = new FakeHost(LauncherWidget.PageSize + 4);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.BrowseOpen, "playnite-library.library.menu"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "browse count initial");
+        string CountText() => Nodes(Snapshot(widget, 100).Root).Single(node => node.Id == "playnite-library.status").Text!;
+        Assert.AreEqual($"{LauncherWidget.PageSize + 4} games", CountText());
+        await widget.OnActionAsync(new("playnite-library.browse.cursor.after",
+            PlayniteLibraryPresentation.BrowseScrollId(widget.RenderState.Value.AlternateBrowseViewport)));
+        await Bounded(widget.WhenLibraryIdleAsync(), "browse count final page");
+        Assert.AreEqual($"{LauncherWidget.PageSize + 4} games", CountText());
+        await Background(widget);
+    }
 
 
 
@@ -4143,7 +4160,7 @@ public sealed class PlayniteLibraryTests
             {
                 Sources = SourceObservations,
             };
-            return new(page, authority, retainedLastGood);
+            return new(page, authority, retainedLastGood) { MatchingGameCount = values.Length };
         }
 
         private WidgetAppLibraryPage FilterPage(

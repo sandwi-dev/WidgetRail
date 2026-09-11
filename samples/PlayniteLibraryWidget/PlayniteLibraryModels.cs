@@ -42,6 +42,8 @@ internal sealed record PlayniteLibraryBrowseReload(
     long AttemptId,
     WidgetCursorResourceSnapshot<PlayniteLibraryItem>? RetainedCollection);
 
+internal sealed record PlayniteLibraryQueryCount(long Generation, int? Count);
+
 internal sealed class PlayniteLibraryCategoryFeedback(
     string message,
     bool succeeded,
@@ -69,6 +71,8 @@ internal sealed record PlayniteLibraryRenderState
     internal bool AlternateBrowseViewport { get; init; }
     internal string? BrowseInitialFocusId { get; init; }
     internal PlayniteLibraryBrowseReload? ActiveBrowseReload { get; init; }
+    internal PlayniteLibraryQueryCount? HomeGameCount { get; init; }
+    internal PlayniteLibraryQueryCount? BrowseGameCount { get; init; }
     internal string? HeroSavedId { get; init; }
     internal int HeroIndex { get; init; }
     internal string? BrowseHeroSavedId { get; init; }

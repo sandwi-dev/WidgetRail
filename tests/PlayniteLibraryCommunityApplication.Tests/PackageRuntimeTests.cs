@@ -11,6 +11,36 @@ namespace PlayniteLibraryCommunityApplication.Tests;
 [TestClass]
 public sealed class PackageRuntimeTests
 {
+    [TestMethod]
+    public async Task HomeOrdersWholeCatalogBeforePagingAndReportsMatchingTotal()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(10);
+        client.Games[0] = client.Games[0] with { Favorite = true, Name = "Zulu", LastActivityUnixMilliseconds = 1 };
+        client.Games[1] = client.Games[1] with { Favorite = true, Name = "Bravo", LastActivityUnixMilliseconds = 2 };
+        client.Games[2] = client.Games[2] with { Favorite = true, Name = "Alpha", LastActivityUnixMilliseconds = 2 };
+        await using var service = Service(directory.Path, client);
+        var all = new List<string>();
+        WidgetCollectionCursor? cursor = null;
+        do
+        {
+            var result = await service.QueryWithAuthorityAsync(AllGames, new(PlayniteLibraryQueryScope.Home),
+                cursor, cursor is null ? null : WidgetCursorDirection.After, 2, cursor is null, CancellationToken.None);
+            Assert.AreEqual(10, result.MatchingGameCount);
+            all.AddRange(result.Page.Items.Select(item => item.SavedId));
+            cursor = result.Page.After is { } after ? new(after) : null;
+        } while (cursor is not null);
+        CollectionAssert.AreEqual(new[] { 2, 1, 0, 9, 8, 7, 6, 5, 4, 3 }.Select(index => client.Games[index].Id).ToArray(), all.ToArray());
+        var filtered = await service.QueryWithAuthorityAsync(AllGames with { SearchText = "Alpha" },
+            new(PlayniteLibraryQueryScope.Library), null, null, 2, false, CancellationToken.None);
+        Assert.AreEqual(1, filtered.MatchingGameCount);
+        var serialized = System.Text.Json.JsonSerializer.Serialize(filtered);
+        Assert.AreEqual(1, System.Text.Json.JsonSerializer.Deserialize<PlayniteLibraryQueryResult>(serialized)!.MatchingGameCount);
+        var empty = await service.QueryWithAuthorityAsync(AllGames with { SearchText = "Nothing matches" },
+            new(PlayniteLibraryQueryScope.Library), null, null, 2, false, CancellationToken.None);
+        Assert.AreEqual(0, empty.MatchingGameCount);
+    }
+
     private static readonly WidgetAppLibraryQuery AllGames = new(
         InstalledOnly: false,
         Kind: WidgetAppLibraryKind.Game,

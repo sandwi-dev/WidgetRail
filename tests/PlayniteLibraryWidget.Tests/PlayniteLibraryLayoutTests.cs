@@ -11,6 +11,59 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 [TestClass]
 public sealed class PlayniteLibraryLayoutTests
 {
+    [TestMethod]
+    public void BrowsePagingPreservesFocusAndMatchingCount()
+    {
+        var items = Enumerable.Range(0, 6).Select(index => PlayniteLibraryItem.From(
+            Item($"app-page-{index}", $"saved-page-{index}", $"Game {index}", "Steam"))).ToArray();
+        var state = State(Snapshot(WidgetPagedResourceStatus.Ready, items, after: "next"),
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, []) with
+        {
+            HeroSavedId = items[2].Value.SavedId, HeroIndex = 2, MatchingGameCount = 34,
+            Status = "6+ games in the current catalog window",
+        };
+        var expected = PlayniteLibraryIdentity.FocusId("grid", items[2].Key);
+        foreach (var phase in new[] { WidgetPagedResourceStatus.Ready,
+                     WidgetPagedResourceStatus.LoadingAdjacent, WidgetPagedResourceStatus.Refreshing })
+        {
+            var view = PlayniteLibraryPresentation.Render(state with
+                { Collection = state.Collection with { Status = phase, LoadingDirection = WidgetCursorDirection.After } });
+            Assert.AreEqual(expected, view.InitialFocusId, phase.ToString());
+            var snapshot = new PresentationWidget(view).RenderSnapshot("browse.paging", 1);
+            Assert.AreEqual("34 games", Nodes(snapshot.Root).Single(node => node.Id == "playnite-library.status").Text);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        }
+        var finalPage = state with { Collection = Snapshot(WidgetPagedResourceStatus.Ready, items.Take(4).ToArray(), before: "prev") };
+        var finalSnapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(finalPage)).RenderSnapshot("browse.final", 2);
+        Assert.AreEqual("34 games", Nodes(finalSnapshot.Root).Single(node => node.Id == "playnite-library.status").Text);
+        var unknown = finalPage with { MatchingGameCount = null };
+        var unknownSnapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(unknown)).RenderSnapshot("browse.unknown", 3);
+        Assert.AreEqual("4 games loaded", Nodes(unknownSnapshot.Root).Single(node => node.Id == "playnite-library.status").Text);
+    }
+
+    [TestMethod]
+    public void HomePagingPreservesProviderOrderDespiteFavoriteAndVariantMetadata()
+    {
+        var items = Enumerable.Range(0, 8).Select(index => PlayniteLibraryItem.From(
+            Item($"app-order-{index}", $"saved-order-{index}", $"Game {index}", "Steam"))).ToArray();
+        var organization = PlayniteLibraryPrivateState.Empty with
+        {
+            Items = items.Select(item => new PlayniteLibraryDisplayItem(item.Value.SavedId,
+                item.Presentation.DisplayName, item.Presentation.Source.DisplayName)).ToArray(),
+            FavoriteSavedIds = [items[6].Value.SavedId, items[1].Value.SavedId],
+            VariantGroups = [new("variant.order", [items[4].Value.SavedId, items[5].Value.SavedId], items[5].Value.SavedId)],
+        };
+        var state = State(Snapshot(WidgetPagedResourceStatus.Ready, items.Take(4).ToArray(), after: "next"),
+            organization, PlayniteLibraryRoute.Library, []);
+        var first = PlayniteLibraryHeroRailPolicy.Project(state, null, 0);
+        var next = PlayniteLibraryHeroRailPolicy.Project(state with
+            { Collection = Snapshot(WidgetPagedResourceStatus.Ready, items) }, null, 0);
+        CollectionAssert.AreEqual(items.Select(item => item.Value.SavedId).ToArray(),
+            next.Items.Select(item => item.Display.SavedId).ToArray());
+        CollectionAssert.AreEqual(first.Items.Select(item => item.Display.SavedId).ToArray(),
+            next.Items.Take(4).Select(item => item.Display.SavedId).ToArray());
+    }
+
     [TestMethod, Timeout(30_000)]
     public void CurrentDeclarativeLibraryPreservesExactGameAuthorityAndSemanticRegions()
     {
