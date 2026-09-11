@@ -4,6 +4,7 @@ using WidgetRail.WindowsAppLibraryProvider;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Running icons are lazy unregistered and observation scoped", PortableRegistrationScenarios.RunningArtworkDoesNotRegisterAndRetires),
     ("Production composition automatically admits installed Epic and GOG sources",
         AutomaticInstalledSources),
     ("Catalog is lazy cached and refreshable", LazyAndRefreshable),
@@ -14,6 +15,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("AppsFolder rejects malformed launch identifiers", AppsFolderRejectsMalformedAumids),
     ("Steam manifests merge as games without exposing launcher identifiers", SteamCatalogIsOpaque),
     ("Steam launch exactly revalidates its manifest", SteamLaunchRevalidatesManifest),
+    ("Steam relaunch and icons survive playtime manifest updates", SteamArtworkScenarios.PlaytimeUpdatesPreserveLaunchAndArtwork),
     ("Steam manifest source reads registered libraries safely", SteamSourceReadsLibraries),
     ("Steam artwork is lazy bounded and opaque",
         SteamArtworkScenarios.LocalArtworkIsLazyBoundedAndOpaque),
@@ -431,6 +433,11 @@ static async Task SteamSourceReadsLibraries()
         Assert.Equal(apex, source.ReadExact("1172470", extraManifest, CancellationToken.None));
 
         File.AppendAllText(extraManifest, "\n\"StateFlags\" \"4\"");
+        Assert.True(string.Equals(apex.RevalidationKey,
+            source.ReadExact("1172470", extraManifest, CancellationToken.None)?.RevalidationKey,
+            StringComparison.Ordinal));
+        File.WriteAllText(extraManifest,
+            "\"AppState\" { \"appid\" \"1172470\" \"name\" \"Apex renamed\" }");
         Assert.False(string.Equals(apex.RevalidationKey,
             source.ReadExact("1172470", extraManifest, CancellationToken.None)?.RevalidationKey,
             StringComparison.Ordinal));

@@ -2149,6 +2149,7 @@ property WidgetRail.WidgetSdk.WidgetAppLaunchObservationState WidgetRail.WidgetS
 property WidgetRail.WidgetSdk.WidgetAppLibraryArtworkFallback WidgetRail.WidgetSdk.WidgetAppLibraryArtwork.Fallback { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibraryArtworkRole WidgetRail.WidgetSdk.WidgetAppLibraryArtwork.Role { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibraryArtworkSet WidgetRail.WidgetSdk.WidgetAppLibraryPresentation.Artwork { get; set; }
+property WidgetRail.WidgetSdk.WidgetAppLibraryArtworkSet WidgetRail.WidgetSdk.WidgetRunningAppCandidate.Artwork { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibraryAvailability WidgetRail.WidgetSdk.WidgetAppLibraryPresentation.Availability { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibraryAvailabilityState WidgetRail.WidgetSdk.WidgetAppLibraryAvailability.State { get; set; }
 property WidgetRail.WidgetSdk.WidgetAppLibraryCapabilitySet WidgetRail.WidgetSdk.WidgetAppLibraryPresentation.Capabilities { get; set; }

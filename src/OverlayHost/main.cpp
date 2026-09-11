@@ -2008,6 +2008,10 @@ private:
             }
             if (effect.kind ==
                 widgetrail::WidgetHostEffectKind::CloseOverlayAfterAppLaunch) {
+                if (!widgetrail::IsAppLaunchCloseCurrent(effect, visibleSessionStartedAt_)) {
+                    AppendDiagnostic(L"Dropped app-launch close from an earlier overlay session");
+                    continue;
+                }
                 AppendDiagnostic(
                     L"Closing overlay after confirmed app launch from " +
                     effect.widgetId);
@@ -7402,6 +7406,7 @@ private:
         } placementScope{placementRefreshGate_, window_};
 
         const bool wasVisible = IsWindowVisible(window_) != FALSE;
+        if (!wasVisible || visibleSessionStartedAt_ == 0) visibleSessionStartedAt_ = GetTickCount64();
         if (!wasVisible) {
             const HWND foreground = GetForegroundWindow();
             (void)WidgetRailOverlayPlatformObserveForegroundTarget(
@@ -7798,6 +7803,7 @@ private:
     }
 
     void HideOverlay() {
+        visibleSessionStartedAt_ = 0;
         textEntryModal_.Close();
         localWidgetPackageImport_.CancelPicker();
         if (const auto operation = localWidgetPackageImport_.CancelActiveOperation()) {
@@ -18052,6 +18058,7 @@ private:
     std::optional<std::wstring> performanceWidgetId_;
     std::optional<std::wstring> performanceDiagnosticsPath_;
     std::optional<long long> controllerPreferenceRevision_;
+    std::uint64_t visibleSessionStartedAt_{};
     widgetrail::input::ControllerOpenShortcut openShortcut_;
     bool viewMenuShortcutEnabled_{};
     bool controllerPreferenceEnabled_{};

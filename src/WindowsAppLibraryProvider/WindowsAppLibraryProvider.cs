@@ -47,6 +47,8 @@ public sealed class WindowsAppLibraryProvider :
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, PortableLaunchRegistration>
         _portableLaunchByOpaqueId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, WindowsRunningAppObservation>
+        _runningArtworkByOpaqueId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string?> _iconsByRevalidationKey =
         new(StringComparer.Ordinal);
     private TaskCompletionSource? _terminalCompletion;
@@ -334,6 +336,7 @@ public sealed class WindowsAppLibraryProvider :
             .Take(64)
             .ToArray();
         var result = new List<RunningAppBackendObservation>(observations.Length);
+        var runningArtwork = new Dictionary<string, WindowsRunningAppObservation>(StringComparer.Ordinal);
         var revisionEvidence = new StringBuilder();
         foreach (var group in observations)
         {
@@ -355,7 +358,11 @@ public sealed class WindowsAppLibraryProvider :
                 result.Add(new RunningAppBackendObservation(
                     exact.StableIdentity, instances[0],
                     displayName, ToBrokerKind(exact.Kind),
-                    exact.Attribution));
+                    exact.Attribution)
+                {
+                    ArtworkItem = exact.SupportedActions.HasFlag(GameLibrarySourceActions.Artwork)
+                        ? TryInstalledBackendItem(exact.StableIdentity) : null,
+                });
                 continue;
             }
 
@@ -368,17 +375,30 @@ public sealed class WindowsAppLibraryProvider :
                 continue;
             revisionEvidence.Append(portable.RegistrationIdentity).Append('\0')
                 .AppendJoin(',', instances).Append('\0');
+            string? artworkId;
+            lock (_stateGate)
+                artworkId = _runningArtworkByOpaqueId.FirstOrDefault(entry => entry.Value == portable).Key;
+            artworkId ??= "app-" + Guid.NewGuid().ToString("N");
+            runningArtwork.Add(artworkId, portable);
             result.Add(new RunningAppBackendObservation(
                 portable.RegistrationIdentity,
                 portable.InstanceEvidence,
                 portableDisplayName,
                 AppLibraryKind.Application,
-                "Portable"));
+                "Portable")
+            {
+                ArtworkItem = new AppLibraryBackendItemSummary(artworkId,
+                    portable.RegistrationIdentity, portableDisplayName, AppLibraryKind.Application,
+                    ArtworkRevision(portable.InstanceEvidence + "\0" + portable.PortableAuthority.FileIdentity), "Portable")
+                { IsLaunchable = false },
+            });
         }
         lock (_stateGate)
         {
             if (_catalogRevision != catalogRevision)
                 throw new BrokerException("stale_observation", "The app library changed during observation.");
+            _runningArtworkByOpaqueId.Clear();
+            foreach (var entry in runningArtwork) _runningArtworkByOpaqueId.Add(entry.Key, entry.Value);
         }
         cancellationToken.ThrowIfCancellationRequested();
         var revision = "running-" + Convert.ToHexString(SHA256.HashData(
@@ -941,6 +961,10 @@ public sealed class WindowsAppLibraryProvider :
             .ConfigureAwait(false);
         try
         {
+            WindowsRunningAppObservation? running;
+            lock (_stateGate) _runningArtworkByOpaqueId.TryGetValue(appId, out running);
+            if (running is not null)
+                return new AppLibraryIconSummary(await ResolveRunningIconAsync(appId, running, operation.Token).ConfigureAwait(false));
             PortableLaunchRegistration? portable;
             lock (_stateGate)
                 _portableLaunchByOpaqueId.TryGetValue(appId, out portable);
@@ -1008,6 +1032,27 @@ public sealed class WindowsAppLibraryProvider :
         finally
         {
             operation.Release(_artworkGate);
+        }
+    }
+
+    private async Task<string?> ResolveRunningIconAsync(
+        string appId, WindowsRunningAppObservation expected, CancellationToken cancellationToken)
+    {
+        var png = await _shellSta.RunAsync(token =>
+        {
+            if (expected.PortableAuthority is null || !_runningApps.Observe(token).Any(item =>
+                item.RegistrationIdentity == expected.RegistrationIdentity &&
+                item.InstanceEvidence == expected.InstanceEvidence &&
+                item.PortableAuthority == expected.PortableAuthority)) return null;
+            using var current = _executableAuthority.AcquireExact(expected.PortableAuthority.CanonicalPath);
+            if (current?.Authority != expected.PortableAuthority) return null;
+            token.ThrowIfCancellationRequested();
+            return _portableIconSource.TryRasterizePngBase64(current.Authority.CanonicalPath, token);
+        }, cancellationToken).ConfigureAwait(false);
+        lock (_stateGate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return _runningArtworkByOpaqueId.TryGetValue(appId, out var current) && current == expected ? png : null;
         }
     }
 
@@ -1425,6 +1470,7 @@ public sealed class WindowsAppLibraryProvider :
                         _snapshot = null;
                         _registrationsByOpaqueId = new(StringComparer.Ordinal);
                         _opaqueIdsByIdentity.Clear();
+                        _runningArtworkByOpaqueId.Clear();
                         _iconsByRevalidationKey.Clear();
                     }
                 }

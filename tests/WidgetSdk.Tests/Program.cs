@@ -790,6 +790,21 @@ static async Task AppLibraryPlatformService()
     Assert.Throws<WidgetCapabilityException>(() =>
         malformedRunning.AppLibrary.ObserveRunningAsync().GetAwaiter().GetResult());
 
+    var malformedRunningArtwork = WidgetTestHost.Attach(
+        new CapabilityWidget(),
+        new WidgetTestHostServicesBuilder()
+            .WithResponse(
+                WidgetAppLibraryCapabilities.ObserveRunning,
+                new WidgetRunningAppObservation(
+                    [new("saved-running", "Visible app", WidgetAppLibraryKind.Application, "Windows")
+                    {
+                        Artwork = new([new(WidgetAppLibraryArtworkRole.Tile,
+                            "C:\\private\\app.png", "revision", WidgetAppLibraryArtworkFallback.Application)]),
+                    }], "revision"))
+            .Build());
+    Assert.Throws<WidgetCapabilityException>(() =>
+        malformedRunningArtwork.AppLibrary.ObserveRunningAsync().GetAwaiter().GetResult());
+
     var malformedRegistration = WidgetTestHost.Attach(
         new CapabilityWidget(),
         new WidgetTestHostServicesBuilder()

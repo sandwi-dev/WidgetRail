@@ -72,6 +72,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unavailable and stale resolutions never authorize launch",
         UnavailableAndStaleNeverLaunch),
     ("Confirmed launches move the exact curated app to recent-first", SuccessfulLaunchOrdersRecentFirst),
+    ("Accepted launch recency survives external foreground closure", LaunchRecencySurvivesBackground),
     ("Confirmed launch with failed recents save stays open and truthful", LaunchSaveFailureIsTruthful),
     ("Failed launch keeps curated order and actionable focus", FailedLaunchKeepsOrder),
     ("Elevation launch outcomes keep the library and explain the result",
@@ -160,7 +161,10 @@ static async Task RunningAppRouteConfirmsCurrentIdentity()
     {
         RunningObservation = new([
             new("saved-running", "Visible app", WidgetAppLibraryKind.Application,
-                "Windows"),
+                "Windows")
+            {
+                Artwork = new([new(WidgetAppLibraryArtworkRole.Tile, "artwork-running", "revision-running", WidgetAppLibraryArtworkFallback.Application)]),
+            },
         ], "running-revision"),
         ConfirmRunningHandler = request => request.Revision == "running-revision"
             ? InstalledItem(
@@ -177,6 +181,8 @@ static async Task RunningAppRouteConfirmsCurrentIdentity()
         widget.ViewState == GamesAppsViewState.Ready);
     var tile = ActionSurfaces(Snapshot(widget, 900).Root).Single(candidate =>
         candidate.ActionId == "games.toggle-curation");
+    Assert.Equal("artwork-running", widget.Items.Single().Presentation.Artwork.Items.Single().Handle);
+    Assert.Equal(0, fake.RunningRegistrations.Count);
     await widget.OnActionAsync(new("games.toggle-curation", tile.Id));
 
     Assert.Equal(1, fake.RunningConfirmations.Count);
@@ -2104,6 +2110,42 @@ static async Task SuccessfulLaunchOrdersRecentFirst()
         Nodes(reordered.Root).Single(node => node.Id == "games.library.page")
             .InitialChildFocusId);
     await Background(widget);
+}
+
+static async Task LaunchRecencySurvivesBackground()
+{
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([App("opaque-a", "Alpha"), App("opaque-b", "Beta")], null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await OpenCatalog(widget);
+    await AddFromOpenCatalog(widget, "Alpha");
+    await AddFromOpenCatalog(widget, "Beta");
+    await BackToLibrary(widget);
+    var beta = ActionSurfaces(Snapshot(widget, 50).Root).Single(tile => TileTitle(tile) == "Beta");
+    fake.LaunchException = new WidgetCapabilityException("launch_cancelled", "Cancelled by user");
+    await widget.OnActionAsync(new("games.launch", beta.Id));
+    Assert.SequenceEqual(["opaque-a", "opaque-b"], widget.CuratedItems.Select(item => item.AppId));
+    fake.LaunchException = null;
+    using var action = new CancellationTokenSource();
+    fake.LaunchHandler = async (_, token) =>
+    {
+        await Background(widget);
+        action.Cancel(); // The native foreground close retires the active action.
+        token.ThrowIfCancellationRequested();
+        return new WidgetCapabilityAcknowledgement(true);
+    };
+    await widget.OnActionAsync(new("games.launch", beta.Id), action.Token);
+    using var saved = System.Text.Json.JsonDocument.Parse(fake.PrivateState.Json!);
+    Assert.SequenceEqual(["saved-opaque-b", "saved-opaque-a"],
+        saved.RootElement.GetProperty("SavedIds").EnumerateArray().Select(item => item.GetString()!));
+    var restarted = Create(fake);
+    await Interactive(restarted);
+    await WaitUntil(() => restarted.ViewState == GamesAppsViewState.Ready);
+    Assert.SequenceEqual(["opaque-b", "opaque-a"], restarted.CuratedItems.Select(item => item.AppId));
+    await Background(restarted);
 }
 
 static async Task LaunchSaveFailureIsTruthful()

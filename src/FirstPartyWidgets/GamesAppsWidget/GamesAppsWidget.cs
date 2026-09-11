@@ -1383,7 +1383,7 @@ public sealed class GamesAppsWidget : Widget
                         new WidgetAppLibraryAvailability(
                             WidgetAppLibraryAvailabilityState.StaleSource,
                             false, "confirmation_required"),
-                        new WidgetAppLibraryArtworkSet([]),
+                        item.Artwork,
                         Metadata: null,
                         new WidgetAppLibraryCapabilitySet([]),
                         ActiveOperation: null))).ToArray();
@@ -1827,10 +1827,13 @@ public sealed class GamesAppsWidget : Widget
             if (current is null || !GamesAppsAppLibraryPresentation.CanLaunch(current))
                 throw new WidgetCapabilityException(
                     "app_not_found", "The selected app is no longer available.");
+            commandLifetime.Token.ThrowIfCancellationRequested();
+            // Admission still requires the active user action. Once dispatched,
+            // external foreground/UAC closure must not discard the launch result.
             await HostServices.AppLibrary.LaunchAsync(
                     current.AppId,
                     WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess,
-                    commandLifetime.Token)
+                    WidgetLifetimeToken)
                 .ConfigureAwait(false);
             lock (_gate)
             {
@@ -1840,7 +1843,7 @@ public sealed class GamesAppsWidget : Widget
                     item => item.SavedId, StringComparer.Ordinal);
                 _libraryItems = desired.SavedIds.Where(bySaved.ContainsKey)
                     .Select(savedId => bySaved[savedId]).ToArray();
-                _items = _libraryItems;
+                if (Page == GamesAppsPage.Library) _items = _libraryItems;
                 persistedOrder = desired.SavedIds;
                 persistedAutoGames = desired.AutoGameSavedIds;
                 persistedExclusions = desired.ExcludedGameSavedIds;
@@ -1848,19 +1851,29 @@ public sealed class GamesAppsWidget : Widget
                 _launchingAppId = null;
                 _status = $"Opened {GamesAppsAppLibraryPresentation.DisplayName(selected)}";
             }
-            var persistence = await PersistLibraryAsync(
-                persistedOrder,
-                persistedAutoGames,
-                persistedExclusions,
-                selected.SavedId,
-                commandLifetime.Token,
-                persistenceCandidates).ConfigureAwait(false);
+            // Private state already permits Background access. Only this accepted
+            // launch's CAS merge gets a bounded tail, owned by the widget lifetime.
+            using var persistenceLifetime = CancellationTokenSource.CreateLinkedTokenSource(WidgetLifetimeToken);
+            persistenceLifetime.CancelAfter(TimeSpan.FromSeconds(5));
+            LibraryPersistenceResult persistence;
+            try
+            {
+                persistence = await PersistLibraryAsync(
+                    persistedOrder, persistedAutoGames, persistedExclusions,
+                    selected.SavedId, persistenceLifetime.Token,
+                    persistenceCandidates).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!WidgetLifetimeToken.IsCancellationRequested)
+            {
+                throw new PostLaunchPersistenceException(GamesAppsAppLibraryPresentation.DisplayName(selected));
+            }
             if (!persistence.Saved)
                 throw new PostLaunchPersistenceException(
                     GamesAppsAppLibraryPresentation.DisplayName(selected));
-            ShowToast("Application opened",
-                $"Opened {GamesAppsAppLibraryPresentation.DisplayName(selected)}",
-                ToastTone.Success);
+            if (!commandLifetime.IsCancellationRequested)
+                ShowToast("Application opened",
+                    $"Opened {GamesAppsAppLibraryPresentation.DisplayName(selected)}",
+                    ToastTone.Success);
         }
         catch (OperationCanceledException) when (commandLifetime.IsCancellationRequested)
         {

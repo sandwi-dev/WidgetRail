@@ -71,6 +71,11 @@ explicit game-library source, not a guess based on process or executable names.
   the front and the new order is persisted; failure preserves order and
   actionable focus. Removing a focused item selects the next surviving row, or
   the previous row when the removed item was last.
+  An already admitted launch can finish after the game or UAC backgrounds the
+  overlay. Its recent-order save uses the widget lifetime with a five-second
+  limit, so losing foreground does not discard an accepted launch. Revocation
+  and widget destruction still cancel the operation; new background launches
+  remain forbidden.
 - Curation, automatic-membership provenance, exclusions, recent-first order,
   selected SavedId, and a display-only last-good projection are stored in a
   schema-v3 document through
@@ -105,6 +110,9 @@ explicit game-library source, not a guess based on process or executable names.
   and reports that the app opened but recent order was not saved. Enqueueing,
   timeout, stale action or lifecycle generation, denial, cancellation, launch
   failure, or save failure never releases the close effect.
+  The native host also rejects close effects initiated before the current
+  overlay opening (including equal uptime ticks), so a delayed completion
+  cannot dismiss a later opening.
 - Add apps `Next page` requests another bounded page and moves selection to its
   first item; `Previous page` follows the provider's exact reverse cursor. The
   widget renders only the current 32-row page, so a large provider catalog
@@ -247,6 +255,13 @@ short-lived revision—never a PID, HWND, path, command, AUMID, package identity
 file identity, or retained process handle. The host visits at most 256 top-level
 windows before all eligibility filters and returns at most 64 deduplicated
 candidates.
+
+Each candidate may also provide optional Tile artwork through `Artwork`.
+Installed matches reuse their catalog artwork. Unregistered executables use
+bounded, temporary opaque handles: pixels are loaded only on demand, after
+rechecking the running instance and exact executable file authority. Observation
+does not register an app or grant launch access. A changed instance or file
+retires the old artwork; paths and process identifiers remain host-private.
 
 The observer may include an elevated same-user, same-session application when
 Windows permits its bounded limited-information inspection. Elevation, tokens,
@@ -422,9 +437,12 @@ elevation verb, or owner window. AppsFolder activation uses
 AUMID and null arguments; the returned PID is discarded. Missing, moved,
 changed, duplicated, or unknown registrations fail as `app_not_found`;
 platform and Shell failures are sanitized before returning to widget code.
-Steam launch also re-reads the exact manifest, requires the same identity,
-location, and content hash, then opens only
+Steam launch also re-reads the exact manifest, requires the same numeric app
+identity, registered location, and display name, then opens only
 `steam://rungameid/<numeric-id>` without widget-supplied arguments.
+Mutable bookkeeping such as last-played time, state flags, and last owner does
+not invalidate launch or artwork. A missing manifest or changed identity still
+rejects stale access.
 Epic launch likewise re-reads the exact current manifest and executable
 evidence, then constructs the fixed Epic launcher URI from validated
 provider-private catalog components. Widget code never supplies a URI, path,

@@ -227,7 +227,10 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
             displayName,
             appId!,
             Path.GetFullPath(manifestPath),
-            "acf-" + snapshot.Sha256);
+            // Launch authority is the registered manifest location and numeric
+            // AppId, not mutable Steam bookkeeping such as LastPlayed.
+            "acf-" + Convert.ToHexString(SHA256.HashData(
+                Encoding.UTF8.GetBytes(appId + "\0" + displayName))).ToLowerInvariant());
     }
 
     private SteamApplicationSourceCandidate StageArtwork(

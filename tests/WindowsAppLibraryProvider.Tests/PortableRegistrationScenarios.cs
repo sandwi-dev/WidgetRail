@@ -3,6 +3,36 @@ using WidgetRail.WindowsAppLibraryProvider;
 
 internal static class PortableRegistrationScenarios
 {
+    internal static async Task RunningArtworkDoesNotRegisterAndRetires()
+    {
+        using var temp = new PortableTemporaryDirectory();
+        var exact = Authority(Path.GetFullPath(Path.Combine(temp.Path, "Running.exe")), 1);
+        var observer = new MutableObserver();
+        observer.Set(exact, "instance-one");
+        var authority = new AuthorityReader(exact);
+        var png = Convert.ToBase64String(WindowsAppIconSource.EncodePng([0,0,0,0], 1, 1));
+        var icon = new PortableIconSource(png) { LeaseIsActive = () => authority.ActiveLeases == 1 };
+        var store = new WindowsPortableAppStore(Path.Combine(temp.Path, "registrations"));
+        await using var provider = Provider(observer, store, authority, new Launcher(), icon);
+        var observed = await provider.ObserveRunningAppsAsync(CancellationToken.None);
+        var item = observed.Items.Single().ArtworkItem!;
+        Assert.True(item is not null && !item.IsLaunchable);
+        Assert.Equal(0, icon.Calls);
+        Assert.Equal(0, (await store.ReadAsync(ProviderTestIdentity.Value, CancellationToken.None)).Items.Count);
+        Assert.Equal(png, (await provider.GetAppLibraryIconAsync(item!.ProviderAppId, CancellationToken.None)).PngBase64);
+        await ThrowsBroker("app_not_found", () => provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value, item.ProviderAppId, CancellationToken.None));
+        observer.Set(exact, "instance-two");
+        Assert.Equal<string?>(null, (await provider.GetAppLibraryIconAsync(item.ProviderAppId, CancellationToken.None)).PngBase64);
+        var refreshed = (await provider.ObserveRunningAppsAsync(CancellationToken.None)).Items.Single().ArtworkItem!;
+        Assert.False(item.ProviderAppId == refreshed.ProviderAppId);
+        Assert.Equal<string?>(null, (await provider.GetAppLibraryIconAsync(item.ProviderAppId, CancellationToken.None)).PngBase64);
+        Assert.Equal(png, (await provider.GetAppLibraryIconAsync(refreshed.ProviderAppId, CancellationToken.None)).PngBase64);
+        authority.Current = Authority(exact.CanonicalPath, 2);
+        Assert.Equal<string?>(null, (await provider.GetAppLibraryIconAsync(refreshed.ProviderAppId, CancellationToken.None)).PngBase64);
+        Assert.Equal(0, (await store.ReadAsync(ProviderTestIdentity.Value, CancellationToken.None)).Items.Count);
+    }
+
     internal static Task ExecutableAuthorityIsLocalAndLeased()
     {
         Assert.False(WindowsExecutableAuthorityReader.TryNormalizeLocalExecutablePath(

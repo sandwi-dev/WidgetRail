@@ -130,7 +130,7 @@ internal static class RunningAppScenarios
 
     internal static async Task MapsOnlyExactCurrentRegistrations()
     {
-        var source = new Source(2);
+        var source = new Source(2, hasArtwork: true);
         var observer = new Observer([
             new("stable-000", "instance-a"),
             new("missing", "instance-b"),
@@ -141,6 +141,8 @@ internal static class RunningAppScenarios
         var observed = await provider.ObserveRunningAppsAsync(CancellationToken.None);
         Assert.Equal(1, observed.Items.Count);
         Assert.Equal("stable-000", observed.Items[0].StableProviderIdentity);
+        Assert.Equal((await provider.GetAppsAsync()).Single(item => item.DisplayName == "App 000").AppId,
+            observed.Items[0].ArtworkItem!.ProviderAppId);
         Assert.False(System.Text.Json.JsonSerializer.Serialize(observed)
             .Contains("instance-a", StringComparison.Ordinal));
 
@@ -314,7 +316,7 @@ internal static class RunningAppScenarios
         }
     }
 
-    private sealed class Source(int count) : IGameLibrarySource
+    private sealed class Source(int count, bool hasArtwork = false) : IGameLibrarySource
     {
         private int _disposeCalls;
         internal string? RejectIdentity { get; set; }
@@ -331,7 +333,7 @@ internal static class RunningAppScenarios
             var items = Enumerable.Range(0, count).Select(index => new GameLibrarySourceItem(
                 SourceIdentity, Attribution, $"stable-{index:D3}", $"App {index:D3}",
                 WindowsAppLibraryKind.Application, true, true,
-                GameLibrarySourceActions.Launch, "none", $"item-{index:D3}"))
+                GameLibrarySourceActions.Launch | (hasArtwork ? GameLibrarySourceActions.Artwork : GameLibrarySourceActions.None), "none", $"item-{index:D3}"))
                 .ToArray();
             Snapshot = new(SourceIdentity, Attribution, Snapshot.SourceVersion + 1,
                 GameLibrarySourceHealth.Healthy, items);

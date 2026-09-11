@@ -2164,13 +2164,18 @@ int main() {
         "protocolVersion":1,
         "type":"widget-host-effect",
         "requestId":0,
-        "payload":{"widgetId":"games-apps","runtimeGeneration":"runtime-1","effect":"closeOverlayAfterAppLaunch","sequence":7}
+        "payload":{"widgetId":"games-apps","runtimeGeneration":"runtime-1","effect":"closeOverlayAfterAppLaunch","sequence":7,"initiatedAtMilliseconds":200}
     })json", error);
     CHECK(hostEffect && error.empty());
     CHECK(hostEffect->sequence == 7);
     CHECK(hostEffect->widgetId == L"games-apps");
     CHECK(hostEffect->runtimeGeneration == L"runtime-1");
     CHECK(hostEffect->kind == widgetrail::WidgetHostEffectKind::CloseOverlayAfterAppLaunch);
+    CHECK(hostEffect->initiatedAtMilliseconds == 200);
+    CHECK(widgetrail::IsAppLaunchCloseCurrent(*hostEffect, 100));
+    CHECK(!widgetrail::IsAppLaunchCloseCurrent(*hostEffect, 200));
+    CHECK(!widgetrail::IsAppLaunchCloseCurrent(*hostEffect, 201));
+    CHECK(!widgetrail::IsAppLaunchCloseCurrent(*hostEffect, 0));
 
     widgetrail::WidgetHostEffectQueue hostEffects;
     CHECK(hostEffects.Push(*hostEffect));

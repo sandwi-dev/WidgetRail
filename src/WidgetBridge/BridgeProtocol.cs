@@ -168,7 +168,8 @@ internal sealed record BridgeHostEffect(
     string WidgetId,
     string RuntimeGeneration,
     string Effect,
-    long Sequence);
+    long Sequence,
+    long InitiatedAtMilliseconds = 0);
 internal sealed record BridgeAppearanceChanged(long Revision);
 internal sealed record BridgeCatalogChangedEvent(long Revision);
 internal sealed record BridgeError(string Code, string Message);

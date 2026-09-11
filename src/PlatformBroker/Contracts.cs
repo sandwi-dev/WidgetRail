@@ -643,7 +643,10 @@ public sealed record RunningAppCandidateSummary(
     [property: JsonRequired] string SavedId,
     [property: JsonRequired] string DisplayName,
     [property: JsonRequired] AppLibraryKind Kind,
-    [property: JsonRequired] string SourceAttribution);
+    [property: JsonRequired] string SourceAttribution)
+{
+    public AppLibraryArtworkSet Artwork { get; init; } = new([]);
+}
 
 public sealed record RunningAppObservationSummary(
     [property: JsonRequired] IReadOnlyList<RunningAppCandidateSummary> Items,
@@ -690,7 +693,10 @@ public sealed record RunningAppBackendObservation(
     [property: JsonIgnore] string InstanceEvidence,
     string DisplayName,
     AppLibraryKind Kind,
-    string SourceAttribution);
+    string SourceAttribution)
+{
+    [JsonIgnore] public AppLibraryBackendItemSummary? ArtworkItem { get; init; }
+}
 
 public sealed record RunningAppBackendObservationPage(
     IReadOnlyList<RunningAppBackendObservation> Items,

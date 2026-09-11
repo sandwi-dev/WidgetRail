@@ -2720,7 +2720,8 @@ bool HandleAsyncEvent(
     if (type == L"widget-host-effect") {
         if (!HasOnlyProperties(
                 payload,
-                {L"widgetId", L"runtimeGeneration", L"effect", L"sequence"}) ||
+                {L"widgetId", L"runtimeGeneration", L"effect", L"sequence", L"initiatedAtMilliseconds"}) ||
+            payload.GetNamedValue(L"initiatedAtMilliseconds").ValueType() != JsonValueType::Number ||
             payload.GetNamedValue(L"runtimeGeneration").ValueType() != JsonValueType::String ||
             payload.GetNamedValue(L"effect").ValueType() != JsonValueType::String ||
             payload.GetNamedValue(L"sequence").ValueType() != JsonValueType::Number) {
@@ -2730,15 +2731,17 @@ bool HandleAsyncEvent(
         const auto runtimeGeneration = OptionalString(payload, L"runtimeGeneration");
         const auto effect = OptionalString(payload, L"effect");
         const double sequence = payload.GetNamedNumber(L"sequence");
+        const double initiatedAt = payload.GetNamedNumber(L"initiatedAtMilliseconds", 0);
         if (!IsIdentifier(runtimeGeneration) ||
             effect != L"closeOverlayAfterAppLaunch" ||
             !std::isfinite(sequence) || sequence <= 0 ||
             sequence > 9'007'199'254'740'991.0 || std::floor(sequence) != sequence ||
+            !std::isfinite(initiatedAt) || initiatedAt < 0 || initiatedAt > 9'007'199'254'740'991.0 || std::floor(initiatedAt) != initiatedAt ||
             !hostEffects.Push({
                 static_cast<long long>(sequence),
                 widgetId,
                 runtimeGeneration,
-                WidgetHostEffectKind::CloseOverlayAfterAppLaunch})) {
+                WidgetHostEffectKind::CloseOverlayAfterAppLaunch, static_cast<std::uint64_t>(initiatedAt)})) {
             status = L"WidgetBridge host effect is invalid.";
             return false;
         }

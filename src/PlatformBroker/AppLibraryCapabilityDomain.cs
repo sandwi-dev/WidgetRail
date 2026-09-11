@@ -67,10 +67,19 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         BrokerCapabilityDomains.DemandEmptyPayload(payload);
         var observed = ValidateRunningPage(await _backend.ObserveRunningAppsAsync(
             cancellationToken).ConfigureAwait(false));
+        var artworkHandles = _artwork?.RegisterPage(observed.Items
+            .Where(item => item.ArtworkItem is not null).Select(item => item.ArtworkItem!).ToArray()) ??
+            new Dictionary<string, string>(StringComparer.Ordinal);
         return new RunningAppObservationSummary(observed.Items.Select(item =>
             new RunningAppCandidateSummary(
                 _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
-                item.DisplayName, item.Kind, item.SourceAttribution)).ToArray(),
+                item.DisplayName, item.Kind, item.SourceAttribution)
+            {
+                Artwork = item.ArtworkItem is { } artwork && artworkHandles.TryGetValue(artwork.ProviderAppId, out var handle)
+                    ? new([new(AppLibraryArtworkRole.Tile, handle, artwork.ArtworkRevision,
+                        item.Kind == AppLibraryKind.Game ? AppLibraryArtworkFallback.Game : AppLibraryArtworkFallback.Application)])
+                    : new([]),
+            }).ToArray(),
             observed.Revision);
     }
 
@@ -127,6 +136,12 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
                 throw new BrokerException("invalid_backend_data", "Running-app observation is invalid.");
             ContractValidation.DisplayName(item.DisplayName);
             ContractValidation.DisplayName(item.SourceAttribution);
+            if (item.ArtworkItem is { } artwork)
+            {
+                _ = ValidatePage(new AppLibraryBackendCursorPage([artwork], null, null, "running-artwork"), 1);
+                if (!string.Equals(artwork.StableProviderIdentity, item.StableProviderIdentity, StringComparison.Ordinal))
+                    throw new BrokerException("invalid_backend_data", "Running artwork identity is invalid.");
+            }
         }
         return page with { Items = page.Items.ToArray() };
     }

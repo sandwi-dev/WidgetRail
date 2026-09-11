@@ -5,6 +5,7 @@ using WidgetRail.PlatformBroker;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Admitted launches retain completion across background but revoke and destroy cancel", AdmittedLaunchLifecycle),
     ("Capability vocabulary is closed and versioned", CapabilityVocabularyIsClosed),
     ("Composite backend keeps provider event domains separated", CompositeProviderDomainsAreSeparated),
     ("Missing and explicit consent fail closed", ConsentFailsClosed),
@@ -402,8 +403,11 @@ static Task CapabilityVocabularyIsClosed()
             capability.Id != PlatformCapabilities.MediaSessionsControlV1)
         .All(capability => !capability.AllowsDashboardGesture));
     Assert.True(PlatformCapabilities.All
+        .Where(capability => capability.Id != PlatformCapabilities.AppLibraryLaunchV1)
         .All(capability => capability.InFlightContinuationOperations is null ||
             capability.InFlightContinuationOperations.Count == 0));
+    Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.AppLibraryLaunchV1)
+        .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.AppLibraryLaunch, PlatformCapabilities.AppLibraryLaunchObserved]));
     var defaultControl = new BrokerCapabilityDefinition(
         "test.future.control.v1",
         1,
@@ -1258,11 +1262,16 @@ static async Task RunningAppContracts()
     ]);
     backend.SetRunningAppBackend([
         new("stable-current", "private-process-evidence", "Visible app",
-            AppLibraryKind.Application, "Windows"),
+            AppLibraryKind.Application, "Windows")
+        {
+            ArtworkItem = new("provider-running-icon", "stable-current", "Visible app",
+                AppLibraryKind.Application, "running-icon-revision", "Windows") { IsLaunchable = false },
+        },
     ]);
-    await using var broker = Broker(identity, store, backend,
-        PlatformCapabilities.AppLibraryReadV1,
-        PlatformCapabilities.AppRunningReadV1);
+    var artwork = new AppLibraryArtworkRegistry();
+    await using var broker = new PlatformCapabilityBroker(identity,
+        [PlatformCapabilities.AppLibraryReadV1, PlatformCapabilities.AppRunningReadV1], store, backend,
+        null, AppLibrarySavedIdIssuer.Shared, artwork.BeginSession(identity, backend));
     broker.SetLifecycle(BrokerLifecycleState.Visible);
 
     var denied = await broker.HandleAsync(Request(identity,
@@ -1284,6 +1293,9 @@ static async Task RunningAppContracts()
     var serialized = payload.GetRawText();
     Assert.True(!serialized.Contains("stable-current", StringComparison.Ordinal));
     Assert.True(!serialized.Contains("private-process-evidence", StringComparison.Ordinal));
+    Assert.True(!serialized.Contains("provider-running-icon", StringComparison.Ordinal));
+    Assert.True(AppLibraryArtworkRegistry.IsHandle(item.GetProperty("artwork").GetProperty("items")[0].GetProperty("handle").GetString()));
+    Assert.Equal(0, backend.AppLibraryIconCalls);
 
     var confirmed = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppRunningReadV1,
@@ -1551,6 +1563,56 @@ static async Task AppLibraryCursorBounds()
     Assert.Equal("provider-00000", backend.LastLaunchedAppId);
 }
 
+static async Task AdmittedLaunchLifecycle()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var consent = new ConsentStore(temp.Path);
+    foreach (var capability in new[] { PlatformCapabilities.AppLibraryReadV1, PlatformCapabilities.AppLibraryLaunchV1 })
+        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibraryBackend([new("provider-app", "stable-app", "App", AppLibraryKind.Application)]);
+    await using var broker = Broker(identity, consent, backend, PlatformCapabilities.AppLibraryReadV1, PlatformCapabilities.AppLibraryLaunchV1);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var list = await broker.HandleAsync(Request(identity, PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList, AppQuery(16)));
+    var appId = list.Payload!.Value.GetProperty("items")[0].GetProperty("appId").GetString()!;
+    foreach (var boundary in new[] { "background", "revoke", "destroy" })
+    {
+        broker.SetLifecycle(BrokerLifecycleState.Interactive);
+        await consent.SetDecisionAsync(identity, PlatformCapabilities.AppLibraryLaunchV1, ConsentDecision.Grant);
+        await broker.RefreshConsentAsync();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        backend.AppLibraryObservedLaunchHandler = async (_, token) =>
+        {
+            started.TrySetResult();
+            await release.Task.WaitAsync(token);
+            return new(AppLibraryLaunchObservationState.LauncherStarted, false, false);
+        };
+        var pending = broker.HandleAsync(Request(identity, PlatformCapabilities.AppLibraryLaunchV1,
+            PlatformCapabilities.AppLibraryLaunchObserved, new LaunchAppLibraryItemRequest(appId)));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        if (boundary == "background")
+        {
+            broker.SetLifecycle(BrokerLifecycleState.Background);
+            var denied = await broker.HandleAsync(Request(identity, PlatformCapabilities.AppLibraryLaunchV1,
+                PlatformCapabilities.AppLibraryLaunchObserved, new LaunchAppLibraryItemRequest(appId)));
+            Assert.Equal("lifecycle_denied", denied.ErrorCode);
+            release.TrySetResult();
+        }
+        else if (boundary == "revoke")
+        {
+            await consent.SetDecisionAsync(identity, PlatformCapabilities.AppLibraryLaunchV1, ConsentDecision.Deny);
+            await broker.RefreshConsentAsync();
+        }
+        else broker.SetLifecycle(BrokerLifecycleState.Destroying);
+        var result = await pending.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(boundary == "background", result.Succeeded);
+        if (boundary != "background") Assert.Equal(boundary == "revoke" ? "capability_revoked" : "lifecycle_denied", result.ErrorCode);
+    }
+}
+
 static async Task AppLaunchHostEffectIsSuccessBound()
 {
     using var temp = new TemporaryDirectory();
@@ -1589,6 +1651,7 @@ static async Task AppLaunchHostEffectIsSuccessBound()
         contextualHostEffectSink: (effect, executionId, _) =>
         {
             if (effect.Kind != BrokerHostEffectKind.CloseOverlayAfterAppLaunch) return;
+            Assert.True(effect.InitiatedAtMilliseconds > 0 && effect.InitiatedAtMilliseconds <= Environment.TickCount64);
             if (executionId is not null)
             {
                 actionIntent = executionId;

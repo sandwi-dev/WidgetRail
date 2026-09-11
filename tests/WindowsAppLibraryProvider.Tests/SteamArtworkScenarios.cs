@@ -8,6 +8,28 @@ internal static class SteamArtworkScenarios
     private static readonly string ModernHashA = new('a', 40);
     private static readonly string ModernHashB = new('b', 40);
 
+    internal static async Task PlaytimeUpdatesPreserveLaunchAndArtwork()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var layout = SteamLayout.Create("730", ".png", CreatePng(12, 18, 7));
+        await using var provider = CreateProvider(layout.Root, new WindowsSteamArtworkSource());
+        var item = (await Query(provider)).Items.Single();
+        var before = await provider.GetAppLibraryIconAsync(item.ProviderAppId, CancellationToken.None);
+        Assert.True(before.PngBase64 is not null);
+        await provider.LaunchAppLibraryItemAsync(ProviderTestIdentity.Value, item.ProviderAppId, CancellationToken.None);
+        var manifest = Path.Combine(layout.Root, "steamapps", "appmanifest_730.acf");
+        File.WriteAllText(manifest,
+            "\"AppState\" { \"appid\" \"730\" \"name\" \"Steam Game\" \"LastPlayed\" \"123456789\" \"StateFlags\" \"4\" \"LastOwner\" \"7656119\" }");
+        await provider.LaunchAppLibraryItemAsync(ProviderTestIdentity.Value, item.ProviderAppId, CancellationToken.None);
+        var after = await provider.GetAppLibraryIconAsync(item.ProviderAppId, CancellationToken.None);
+        Assert.Equal(before.PngBase64, after.PngBase64);
+        File.WriteAllText(manifest, "\"AppState\" { \"appid\" \"999\" \"name\" \"Steam Game\" }");
+        var rejected = await Assert.ThrowsAsync<BrokerException>(() => provider.LaunchAppLibraryItemAsync(
+            ProviderTestIdentity.Value, item.ProviderAppId, CancellationToken.None));
+        Assert.Equal("app_not_found", rejected.Code);
+        Assert.Equal<string?>(null, (await provider.GetAppLibraryIconAsync(item.ProviderAppId, CancellationToken.None)).PngBase64);
+    }
+
     internal static async Task LocalArtworkIsLazyBoundedAndOpaque()
     {
         if (!OperatingSystem.IsWindows()) return;

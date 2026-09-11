@@ -621,7 +621,10 @@ public sealed record WidgetRunningAppCandidate(
     [property: JsonRequired] string SavedId,
     [property: JsonRequired] string DisplayName,
     [property: JsonRequired] WidgetAppLibraryKind Kind,
-    [property: JsonRequired] string SourceAttribution);
+    [property: JsonRequired] string SourceAttribution)
+{
+    public WidgetAppLibraryArtworkSet Artwork { get; init; } = new([]);
+}
 
 public sealed record WidgetRunningAppObservation(
     [property: JsonRequired] IReadOnlyList<WidgetRunningAppCandidate> Items,
@@ -1489,7 +1492,8 @@ public sealed class WidgetAppLibraryService
             if (item is null || !IsValidSavedId(item.SavedId) ||
                 !seen.Add(item.SavedId) || !Enum.IsDefined(item.Kind) ||
                 !IsDisplayValue(item.DisplayName, 160) ||
-                !IsDisplayValue(item.SourceAttribution, 64))
+                !IsDisplayValue(item.SourceAttribution, 64) ||
+                !WidgetAppLibraryArtworkSetValidator.IsValid(item.Artwork))
                 throw MalformedRunningObservation();
         }
         return response with { Items = response.Items.ToArray() };

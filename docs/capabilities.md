@@ -239,7 +239,12 @@ or removed as a portable record. Each package has an explicit 64-record bound;
 capacity failure is visible and forgetting a record reclaims one slot—there is
 no silent eviction.
 
-Launch requires Interactive even if the widget has already listed the item.
+Launch admission requires Interactive even if the widget has already listed
+the item. Already admitted `launch` and `launchObserved` requests may finish
+across a transition to Visible or Background, so game activation or UAC does
+not discard their results. Caller cancellation, consent revocation, widget
+destruction, and the broker request timeout still apply. This continuation
+does not authorize new background launches.
 The broker validates the opaque ID and the trusted owning source revalidates its
 exact current shortcut, package/AUMID/game evidence, or launcher registration
 immediately before launch. The worker never receives the shortcut path, target,

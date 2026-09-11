@@ -43,7 +43,10 @@ public enum BrokerHostEffectKind
     CloseOverlayAfterAppLaunch,
 }
 
-public sealed record BrokerHostEffect(BrokerHostEffectKind Kind);
+public sealed record BrokerHostEffect(BrokerHostEffectKind Kind)
+{
+    public long InitiatedAtMilliseconds { get; init; }
+}
 
 internal static class BrokerPipeRequestTimeoutPolicy
 {
@@ -551,6 +554,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         CancellationTokenSource requestCancellation)
     {
         var request = BrokerJson.ParseRequest(requestBytes);
+        var initiatedAt = Environment.TickCount64;
         try
         {
             var response = await _broker.HandleAsync(requestBytes, requestCancellation.Token)
@@ -564,6 +568,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             var effect = response.Succeeded
                 ? ConfirmedHostEffect(requestBytes, response)
                 : null;
+            if (effect is not null) effect = effect with { InitiatedAtMilliseconds = initiatedAt };
             if (effect is not null && actionExecutionId is not null)
                 PublishHostEffect(
                     effect, actionExecutionId, actionLifecycleGeneration);

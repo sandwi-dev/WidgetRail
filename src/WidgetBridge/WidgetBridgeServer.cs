@@ -1124,12 +1124,13 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         BrokerHostEffect effect)
     {
         if (effect.Kind != BrokerHostEffectKind.CloseOverlayAfterAppLaunch) return;
-        _ = PublishHostEffectAsync(widgetId, expectedWorkerFingerprint);
+        _ = PublishHostEffectAsync(widgetId, expectedWorkerFingerprint, effect.InitiatedAtMilliseconds);
     }
 
     private async Task PublishHostEffectAsync(
         string widgetId,
-        string expectedWorkerFingerprint)
+        string expectedWorkerFingerprint,
+        long initiatedAtMilliseconds)
     {
         using var publication = _registry.TryAdmitHostEffect(
             widgetId, expectedWorkerFingerprint);
@@ -1141,7 +1142,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 widgetId,
                 descriptor.RuntimeGeneration,
                 "closeOverlayAfterAppLaunch",
-                Interlocked.Increment(ref _hostEffectSequence))).ConfigureAwait(false);
+                Interlocked.Increment(ref _hostEffectSequence), initiatedAtMilliseconds)).ConfigureAwait(false);
     }
 
     private async Task SendEventAsync<T>(string type, T payload)

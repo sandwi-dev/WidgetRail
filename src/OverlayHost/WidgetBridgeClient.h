@@ -224,7 +224,15 @@ struct WidgetHostEffect final {
     std::wstring widgetId;
     std::wstring runtimeGeneration;
     WidgetHostEffectKind kind{WidgetHostEffectKind::CloseOverlayAfterAppLaunch};
+    std::uint64_t initiatedAtMilliseconds{};
 };
+
+// Environment.TickCount64 and GetTickCount64 share Windows uptime. Equal ticks
+// are conservatively rejected; an old launch can never close a new session.
+[[nodiscard]] inline bool IsAppLaunchCloseCurrent(
+    const WidgetHostEffect& effect, const std::uint64_t visibleSessionStartedAt) noexcept {
+    return visibleSessionStartedAt != 0 && effect.initiatedAtMilliseconds > visibleSessionStartedAt;
+}
 
 /// Bounded replay-resistant queue for asynchronous broker-owned effects.
 class WidgetHostEffectQueue final {
