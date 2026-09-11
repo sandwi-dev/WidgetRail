@@ -418,7 +418,7 @@ field const int WidgetRail.WidgetSdk.WidgetCommunityPlatformLimits.MaximumPrivat
 field const int WidgetRail.WidgetSdk.WidgetCommunityPlatformLimits.MaximumPrivateStateInputUtf8Bytes = 262144
 field const int WidgetRail.WidgetSdk.WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes = 65536
 field const int WidgetRail.WidgetSdk.WidgetCommunityPlatformLimits.MinimumLoopbackPort = 1024
-field const int WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.MaximumCursorHistory = 256
+field const int WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.MaximumCursorHistory = 1024
 field const int WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.MaximumPageSize = 100
 field const int WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.MaximumRetainedItems = 256
 field const int WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.DefaultMaximumDepth = 8

@@ -97,7 +97,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
 {
     public const int MaximumPageSize = 100;
     public const int MaximumRetainedItems = 256;
-    public const int MaximumCursorHistory = 256;
+    // Supports bounded traversal of large libraries even with small pages.
+    public const int MaximumCursorHistory = 1024;
 
     private sealed record Intent(
         WidgetCollectionCursor? Cursor,

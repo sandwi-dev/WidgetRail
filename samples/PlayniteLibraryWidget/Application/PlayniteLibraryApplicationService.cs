@@ -18,7 +18,7 @@ internal sealed class PlayniteLibraryApplicationService(
          PlayniteLibraryPrivateState.MaximumExcludedItems) *
         RegisteredArtworkRolesPerGame;
     private const int MaximumArtworkTransitionEntries =
-        (PlayniteLibraryWidget.PageSize + WidgetAppLibraryService.MaximumSavedItems) *
+        (WidgetAppLibraryService.MaximumPageSize + WidgetAppLibraryService.MaximumSavedItems) *
         RegisteredArtworkRolesPerGame;
     private const int MaximumCategoryMemberships = PlayniteBridgeClient.MaximumGames;
     private readonly IPlayniteLibraryBridgeClient _client = client ??

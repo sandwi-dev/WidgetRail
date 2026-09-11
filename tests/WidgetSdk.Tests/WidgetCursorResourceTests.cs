@@ -871,7 +871,7 @@ internal static class WidgetCursorResourceTests
             LoadPage = (cursor, _, limit, _) =>
             {
                 var start = cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1));
-                return ValueTask.FromResult(Page(start, limit, 1_000));
+                return ValueTask.FromResult(Page(start, limit, WidgetCursorResource<Item>.MaximumCursorHistory + 10));
             },
         });
         await widget.Resource.EnsureLoaded().Completion;
