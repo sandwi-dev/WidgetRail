@@ -52,11 +52,12 @@ RightStickScrollUpdate RightStickScrollKinetics::Update(
             static_cast<float>(32'767 - kRightStickScrollDeadZone),
         0.0F,
         1.0F);
-    const std::uint64_t elapsed = !moving_ || lastSampleAt_ == 0 ||
-            now <= lastSampleAt_
+    const std::uint64_t elapsed = !moving_
         ? kRightStickInitialSampleMilliseconds
-        : std::min(now - lastSampleAt_, kRightStickMaximumSampleMilliseconds);
-    lastSampleAt_ = now;
+        : now > lastSampleAt_
+            ? std::min(now - lastSampleAt_, kRightStickMaximumSampleMilliseconds)
+            : 0;
+    lastSampleAt_ = std::max(lastSampleAt_, now);
     moving_ = true;
 
     float direction = 1.0F;

@@ -666,7 +666,22 @@ struct DeclarativeRenderer::RenderPass final {
             std::abs(style.translateYPx()) > 0.001F || shown == presentation.end() ||
             !SameRect(shown->second.visibleBox, bounds)) {
             AddBackgroundSurfaceTransitionDiagnostic(
-                surface, L"compositor-fallback", L"unsupported-surface-style");
+                surface, L"compositor-fallback",
+                L"unsupported-surface-style border=" + std::to_wstring(border) +
+                L" blur=" + std::to_wstring(style.backgroundBlurPx()) +
+                L" shadow=" + std::to_wstring(style.shadowBlurPx()) +
+                L" scale=" + std::to_wstring(style.scale()) +
+                L" translate=" + std::to_wstring(style.translateXPx()) +
+                    L"," + std::to_wstring(style.translateYPx()) +
+                L" bounds=" + std::to_wstring(bounds.x) + L"," +
+                    std::to_wstring(bounds.y) + L"," + std::to_wstring(bounds.width) +
+                    L"," + std::to_wstring(bounds.height) +
+                L" visible=" + (shown == presentation.end()
+                    ? std::wstring{L"missing"}
+                    : std::to_wstring(shown->second.visibleBox.x) + L"," +
+                        std::to_wstring(shown->second.visibleBox.y) + L"," +
+                        std::to_wstring(shown->second.visibleBox.width) + L"," +
+                        std::to_wstring(shown->second.visibleBox.height)));
             return false;
         }
         compositorBackgroundId = surface.id;
@@ -4861,7 +4876,6 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
     const Rect viewport,
     const std::wstring_view exactScrollId,
     FocusedFreeScrollPlanDiagnostic* diagnostic) {
-    pendingIncrementalPlan_.reset();
     FocusedFreeScrollPlanDiagnostic localDiagnostic;
     localDiagnostic.requestedViewport = viewport;
     localDiagnostic.requestedSequence = snapshot.sequence;
@@ -4931,35 +4945,49 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
                 FocusedFreeScrollPlanDisposition::EmptyScrollViewport;
             continue;
         }
-        const float next = std::clamp(
-            box->scrollOffset + deltaDip, 0.0F, box->maximumScrollOffset);
-        if (std::abs(next - box->scrollOffset) <= 0.001F) {
-            localDiagnostic.disposition =
-                FocusedFreeScrollPlanDisposition::OffsetBoundary;
-            continue;
-        }
-
         std::wstring stateKey(snapshot.instanceId);
         stateKey.push_back(L'\x1f');
         stateKey.append(snapshot.activeInputScopeId);
         stateKey.push_back(L'\x1f');
         stateKey.append(candidate.id);
+        // More than one input sample may arrive before the pending paint.
+        // Accumulate against the requested offset, not the older painted box.
+        const auto existing = scrollOffsets_.find(stateKey);
+        const float priorOffset = existing != scrollOffsets_.end()
+            ? existing->second.offset : box->scrollOffset;
+        const float next = std::clamp(
+            priorOffset + deltaDip, 0.0F, box->maximumScrollOffset);
+        if (std::abs(next - priorOffset) <= 0.001F) {
+            localDiagnostic.disposition =
+                FocusedFreeScrollPlanDisposition::OffsetBoundary;
+            continue;
+        }
+
+        auto damage = Intersection(visible->second.rect, viewport);
+        if (damage.width <= 0.0F || damage.height <= 0.0F) {
+            return reject(FocusedFreeScrollPlanDisposition::EmptyDamage);
+        }
+        std::vector<std::wstring> boundaries{candidate.id};
+        if (pendingIncrementalPlan_ &&
+            pendingIncrementalPlan_->instanceId == snapshot.instanceId &&
+            pendingIncrementalPlan_->baseSequence == cache->sequence &&
+            pendingIncrementalPlan_->sequence == snapshot.sequence &&
+            pendingIncrementalPlan_->work != IncrementalPresentationWork::NoRaster) {
+            damage = UnionRect(damage, pendingIncrementalPlan_->damage);
+            for (const auto& boundary : pendingIncrementalPlan_->layoutBoundaries)
+                if (std::ranges::find(boundaries, boundary) == boundaries.end())
+                    boundaries.push_back(boundary);
+        }
         auto& state = scrollOffsets_[stateKey];
         state.offset = next;
         state.lastAccess = ++scrollStateAccessClock_;
-
-        const auto damage = Intersection(visible->second.rect, viewport);
-        if (damage.width <= 0.0F || damage.height <= 0.0F) {
-            state.offset = box->scrollOffset;
-            return reject(FocusedFreeScrollPlanDisposition::EmptyDamage);
-        }
         pendingIncrementalPlan_ = PendingIncrementalPlan{
             snapshot.instanceId,
             snapshot.sequence,
             snapshot.sequence,
             IncrementalPresentationWork::LocalLayout,
             damage,
-            {candidate.id},
+            std::move(boundaries),
         };
         localDiagnostic.disposition = FocusedFreeScrollPlanDisposition::Planned;
         if (diagnostic) *diagnostic = localDiagnostic;
@@ -4969,7 +4997,7 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
             candidate.id,
             axis,
             visible->second.rect,
-            box->scrollOffset,
+            priorOffset,
             next,
             box->maximumScrollOffset,
         };
@@ -4983,11 +5011,20 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
 
 std::optional<IncrementalPresentationPlan>
 DeclarativeRenderer::PlanBackgroundSurfaceAnimationFrame(Rect damage) {
-    pendingIncrementalPlan_.reset();
     const auto& cache = incrementalLayoutCache_;
     if (!cache || !FiniteRect(damage)) return std::nullopt;
     damage = Intersection(damage, cache->viewport);
     if (damage.width <= 0.0F || damage.height <= 0.0F) return std::nullopt;
+    if (pendingIncrementalPlan_ &&
+        pendingIncrementalPlan_->instanceId == cache->instanceId &&
+        pendingIncrementalPlan_->baseSequence == cache->sequence &&
+        pendingIncrementalPlan_->sequence == cache->sequence &&
+        pendingIncrementalPlan_->work != IncrementalPresentationWork::NoRaster) {
+        pendingIncrementalPlan_->damage = UnionRect(
+            pendingIncrementalPlan_->damage, damage);
+        return IncrementalPresentationPlan{
+            pendingIncrementalPlan_->work, pendingIncrementalPlan_->damage};
+    }
     pendingIncrementalPlan_ = PendingIncrementalPlan{
         cache->instanceId,
         cache->sequence,
@@ -5115,7 +5152,11 @@ RenderResult DeclarativeRenderer::Render(
         }
         if (pass.layout.valid()) pass.SynchronizeScrollState();
     } else {
-        pass.BuildLayout(!options.suppressFocusedDescendantFollow);
+        pass.BuildLayout(
+            !options.suppressFocusedDescendantFollow, true,
+            options.suppressFocusedDescendantFollow
+                ? RenderPass::CollectionAnchorPolicy::PreserveFocusFollowOffsets
+                : RenderPass::CollectionAnchorPolicy::Reconcile);
     }
     const auto preparationFinished = std::chrono::steady_clock::now();
     pass.ResolvePresentationWithFocusFollow();

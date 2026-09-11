@@ -2058,8 +2058,15 @@ private:
         case kImageReadyMessage:
             if (widgetrail::shell::RequiresImageReadyRepaint(
                     wParam != 0,
-                    AdvanceCompositorBackground(GetTickCount64())))
+                    AdvanceCompositorBackground(GetTickCount64()))) {
+                // Newly ready images may lie outside a queued scroll's
+                // damage. Keep the full repaint, and retain requested scroll
+                // offsets through the full-layout free-scroll path.
+                pendingContentRenderPlan_.reset();
+                if (declarativeRenderer_)
+                    declarativeRenderer_->CancelPresentationUpdatePlan();
                 InvalidateRect(window_, nullptr, FALSE);
+            }
             return 0;
         case kCatalogRefreshMessage: {
             if (state_.surface() == widgetrail::Surface::Hidden &&
@@ -8081,9 +8088,12 @@ private:
             state_.surface() != widgetrail::Surface::Widget)
             return false;
         RECT pendingPaint{};
-        if (pendingContentRenderPlan_ ||
-            GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE)
-            return false;
+        // A full repaint or a snapshot update already owns this frame.
+        // Otherwise merge animation damage into any pending scroll layout.
+        if (pendingWidgetPresentationImpact_ ||
+            (!pendingContentRenderPlan_ &&
+             GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE))
+            return true;
         const auto plan = declarativeRenderer_->PlanBackgroundSurfaceAnimationFrame(
             damage);
         RECT client{};
@@ -10854,6 +10864,9 @@ private:
             }
             return false;
         }
+        // Buffered samples can share a millisecond. They still own the
+        // gesture, but do not manufacture another interval of movement.
+        if (std::abs(sample.deltaDip) <= 0.001F) return true;
         // Renderer-local motion can coexist with an exact retained scroll
         // plan. A pending widget impact cannot: its snapshot/layout authority
         // has not reached the retained cache that PlanFocusedFreeScroll checks.
@@ -10864,10 +10877,9 @@ private:
 
         RECT pendingPaint{};
         RECT client{};
-        if (GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE) {
-            reject(L"pending-host-paint");
-            return true;
-        }
+        const bool fullPaintPending =
+            GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE &&
+            !pendingContentRenderPlan_;
         if (!GetClientRect(window_, &client)) {
             reject(L"client-geometry-unavailable");
             return true;
@@ -10944,7 +10956,12 @@ private:
                     : std::wstring_view{});
             return true;
         }
-        if (!SubmitWidgetContentDamage(
+        if (fullPaintPending) {
+            // Preserve a broad artwork/host invalidation while retaining this
+            // sample's requested offset. The full layout respects free scroll.
+            pendingContentRenderPlan_.reset();
+            declarativeRenderer_->CancelPresentationUpdatePlan();
+        } else if (!SubmitWidgetContentDamage(
                 plan->render, metrics->physicalPixelsPerDip, client)) {
             declarativeRenderer_->CancelPresentationUpdatePlan();
             reject(L"damage-rejected", plan->scrollId);

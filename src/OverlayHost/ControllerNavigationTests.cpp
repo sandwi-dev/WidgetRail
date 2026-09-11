@@ -417,6 +417,15 @@ int main() {
     Check(verticalFull.moving && verticalFull.axis == FreeScrollAxis::Vertical &&
               std::abs(verticalFull.deltaDip - 35.2F) < 0.01F,
           "full vertical deflection uses the bounded initial sample rate");
+    const auto duplicate = freeScroll.Update(0, -32'767, 1'016);
+    Check(duplicate.moving && duplicate.deltaDip == 0.0F,
+          "duplicate timestamps retain gesture ownership without synthetic movement");
+    const auto older = freeScroll.Update(0, -32'767, 1'015);
+    Check(older.moving && older.deltaDip == 0.0F,
+          "older timestamps do not add movement or rewind the scroll clock");
+    const auto nextMillisecond = freeScroll.Update(0, -32'767, 1'017);
+    Check(std::abs(nextMillisecond.deltaDip - 2.2F) < 0.01F,
+          "the next fresh timestamp integrates only actual elapsed time");
     const auto verticalBounded = freeScroll.Update(0, -32'767, 1'200);
     Check(verticalBounded.moving && verticalBounded.deltaDip > verticalFull.deltaDip &&
               verticalBounded.deltaDip <= 110.01F,

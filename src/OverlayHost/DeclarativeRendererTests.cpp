@@ -3878,6 +3878,64 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
         anchored, L"anchor-item-2", anchoredViewport);
     const auto initialAnchorOffset =
         anchoredInitial.scrollOffsets.at(L"anchor.collection");
+    {
+        // Exercise the controller tick's ordering: scroll, animation request,
+        // then paint. Also cover broad artwork invalidation before that paint.
+        DeclarativeRenderer scrolling{d2d.Get(), write.Get(), nullptr};
+        widgetrail::DeclarativeRenderOptions options;
+        const auto draw = [&] {
+            target->BeginDraw();
+            const auto result = scrolling.Render(
+                target.Get(), anchored, L"anchor-item-2", anchoredViewport, options);
+            Check(SUCCEEDED(target->EndDraw()) && result.succeeded,
+                  "scroll scheduling fixture renders");
+            return result;
+        };
+        const auto initialScrollFrame = draw();
+        const float start = initialScrollFrame.scrollOffsets.at(L"anchor.collection");
+        options.suppressFocusedDescendantFollow = true;
+        const auto scroll = [&](float delta) {
+            return scrolling.PlanFocusedFreeScroll(
+                anchored, L"anchor-item-2",
+                widgetrail::declarative::ScrollAxis::Vertical,
+                delta, anchoredViewport, L"anchor.collection");
+        };
+        const auto firstScroll = scroll(7.0F);
+        const auto secondScroll = scroll(9.0F);
+        Check(firstScroll && secondScroll && secondScroll->priorOffset == firstScroll->offset,
+              "pending stick samples accumulate against the requested offset");
+        const auto animation =
+            scrolling.PlanBackgroundSurfaceAnimationFrame(anchoredViewport);
+        Check(animation && animation->work ==
+                  widgetrail::IncrementalPresentationWork::LocalLayout &&
+                  animation->damage.height == anchoredViewport.height,
+              "background animation broadens damage without replacing scroll layout");
+        const auto shown = draw();
+        Near(shown.scrollOffsets.at(L"anchor.collection"), start + 16.0F,
+             "animation scheduling does not undo an anchored rail scroll");
+
+        Check(scrolling.PlanBackgroundSurfaceAnimationFrame(anchoredViewport).has_value(),
+              "background paint can precede the next scroll sample");
+        Check(scroll(5.0F).has_value(), "scroll merges into a pending background paint");
+        const auto reverseOrder = draw();
+        Near(reverseOrder.scrollOffsets.at(L"anchor.collection"), start + 21.0F,
+             "animation-first ordering retains the requested scroll movement");
+
+        Check(scroll(6.0F).has_value(), "full paint fixture has a pending scroll");
+        scrolling.CancelPresentationUpdatePlan();
+        Check(scroll(8.0F).has_value(),
+              "later input accumulates across a full-window artwork invalidation");
+        scrolling.CancelPresentationUpdatePlan();
+        const auto full = draw();
+        Near(full.scrollOffsets.at(L"anchor.collection"), start + 35.0F,
+             "full-layout fallback preserves explicit scrolling instead of old anchor");
+
+        Check(scroll(4.0F).has_value(), "no-op sample fixture has pending scroll work");
+        Check(!scroll(0.0F), "zero-time movement does not schedule another scroll");
+        const auto afterNoOp = draw();
+        Near(afterNoOp.scrollOffsets.at(L"anchor.collection"), start + 39.0F,
+             "a rejected no-op sample does not discard earlier pending layout");
+    }
     const auto anchoredFocusPlan = renderer.PlanFocusUpdate(
         anchored,
         L"anchor-item-2",

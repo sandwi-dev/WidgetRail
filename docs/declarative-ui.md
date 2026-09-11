@@ -461,6 +461,14 @@ physical pixel alignment and resolution, including inset surfaces and display
 scaling. Image fitting, clipping, and authored opacity are baked into that blend
 once; subsequent retargets reuse it without applying those effects again.
 
+Right-stick free scrolling accumulates movement against the requested offset
+while a frame is pending. Background animation damage merges with that frame's
+scroll layout; a full redraw for newly loaded artwork preserves deliberate
+scrolling instead of restoring the collection's previous anchor position.
+Samples with duplicate or older timestamps add no elapsed-time movement.
+Compositor fallback diagnostics include the resolved border, effects, transform,
+and visible bounds so unsupported styling can be distinguished from clipping.
+
 ## Focus-associated presentation (protocol v40)
 
 `UI.FocusPresentationSurface(...)` reserves one ordinary content subtree and
