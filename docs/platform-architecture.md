@@ -127,18 +127,13 @@ Content reveal opacity also runs on the existing content visual without repeated
 widget rasterization. Reduced motion snaps the transform and opacity; systems
 using the legacy layered fallback retain the existing UI-owned animation path.
 
-Opening and closing add a subtle 92%-to-100% zoom on the existing content root,
+Opening and closing add a 12% zoom (88%-to-100%) on the existing content root,
 paired with compositor-owned shell opacity (140 ms open, 100 ms close). This
 transform is independent of the resize transform and is anchored at bottom
-center. Fixed tray/guide coordinates remain unchanged. Directional widget
-entrances use a separate content translation of 32 DIPs over 180 ms, alongside
-the content fade. Explicit left/right navigation preserves direction at rail
-wraparound; pointer selection uses relative slots. The selected direction waits
-for a cold widget's admitted frame and is retired with that selection, so later
-repaints cannot repeat it. Widget-switching animation off suppresses directional
-motion, and Reduced Motion snaps all added effects. Hit testing and accessibility
-mirror the zoom and entrance offsets without owning their compositor progress.
-
+center. Fixed tray/guide coordinates remain unchanged. Widget changes retain
+the existing fade and resize behavior without directional translation.
+Reduced Motion snaps the zoom and fade. Hit testing and accessibility mirror
+the zoom without owning compositor progress.
 Generation replacement is one registry transition. A retiring registration
 remains the widget's reserved slot until its admitted publications, idle work,
 client, residency lease, and operation gate reach terminal cleanup; concurrent

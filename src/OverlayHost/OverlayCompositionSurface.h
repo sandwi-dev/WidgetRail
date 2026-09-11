@@ -233,7 +233,7 @@ public:
         std::span<Frame*> frames, bool waitForCompletion, CommitTiming& timing,
         const VisualPresentation* presentation = nullptr,
         const BackgroundPresentation* background = nullptr,
-        bool revealContent = false, float entranceOffsetX = 0.0F) noexcept;
+        bool revealContent = false) noexcept;
     HRESULT CommitPreparedBackground(
         std::wstring_view key, std::uint64_t generation,
         CommitTiming& timing) noexcept;
@@ -350,7 +350,6 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionAnimation> contentRevealAnimation_;
     Microsoft::WRL::ComPtr<IDCompositionScaleTransform> shellZoomTransform_;
     Microsoft::WRL::ComPtr<IDCompositionAnimation> shellOpacityAnimation_;
-    Microsoft::WRL::ComPtr<IDCompositionTranslateTransform> contentEntranceTransform_;
 
     HRESULT ApplyPresentation(const VisualPresentation& presentation) noexcept;
     HRESULT ApplyBackgroundPresentation(

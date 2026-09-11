@@ -2102,9 +2102,9 @@ private:
                         correlationId != 0 ? widgetId : std::wstring_view{});
                     if (SnapshotFor(widgetId) && pendingContentRevealWidget_ == widgetId) {
                         pendingContentRevealWidget_.clear();
-                        // Start the retained direction only once its destination
-                        // frame exists; loading cannot animate an empty surface.
-                        BeginWidgetContentReveal(widgetId);
+                        // The last-good content was already fully visible.
+                        // Admission swaps identity without fading an empty frame.
+                        overlayTransition_.SnapContentVisible();
                         AdvanceOverlayTransition(GetTickCount64());
                         RestoreFocusForActiveSurface(widgetId);
                     }
@@ -5681,7 +5681,6 @@ private:
             : priorDesiredExtent;
         const auto priorPresentedExtent = PresentedPresentationExtentDip();
         const std::wstring priorSelected(state_.selectedWidget());
-        const auto priorSelectedSlot = state_.selectedSlot();
         const std::wstring priorActive(state_.activeWidget());
         const auto* priorSnapshot = InteractionSnapshotFor(priorActive);
         const std::wstring priorPendingWidget =
@@ -5847,17 +5846,10 @@ private:
         if (revealWidgetContent) {
             if (snapTrayDrivenWidgetSwitch)
                 SnapWidgetContentVisible();
-            else {
-                const int navigationDirection = command == widgetrail::Command::NavigateLeft ? -1 :
-                    command == widgetrail::Command::NavigateRight ? 1 : 0;
-                const auto direction = priorSurface == widgetrail::Surface::Widget
-                    ? widgetrail::ResolveWidgetEntranceDirection(priorSelectedSlot,
-                        state_.selectedSlot(), state_.order().size(), navigationDirection)
-                    : widgetrail::WidgetEntranceDirection::None;
-                RequestWidgetContentReveal(state_.activeWidget(), direction);
-            }
+            else
+                RequestWidgetContentReveal(state_.activeWidget());
         }
-        if (priorActive == state_.activeWidget() && widgetrail::ShouldSnapWidgetContentVisible(
+        if (widgetrail::ShouldSnapWidgetContentVisible(
                 state_.surface() == widgetrail::Surface::Widget,
                 priorFocusRegion == widgetrail::FocusRegion::Widget,
                 state_.focusRegion() == widgetrail::FocusRegion::Widget)) {
@@ -7097,8 +7089,6 @@ private:
         if (CurrentAccessibilityPolicy().reducedMotion && !lastCompositionReducedMotion_ &&
             compositionSurface_.available()) {
             (void)compositionSurface_.SnapContentVisible();
-            committedEntranceOffsetX_ = 0.0F;
-            pendingEntranceDirection_ = widgetrail::WidgetEntranceDirection::None;
         }
         lastCompositionReducedMotion_ = CurrentAccessibilityPolicy().reducedMotion;
         if (shellZoomNeedsSettlement_ && CurrentAccessibilityPolicy().reducedMotion &&
@@ -7190,22 +7180,8 @@ private:
             sessions_.Presentation(widget).HasCommittedViewAuthority();
     }
 
-    void CompleteCompositionContentReveal(const float entranceOffset) {
-        pendingCompositionContentRevealWidget_.clear();
-        pendingEntranceWidget_.clear();
-        pendingEntranceDirection_ = widgetrail::WidgetEntranceDirection::None;
-        committedEntranceOffsetX_ = entranceOffset;
-        committedEntranceStartedAt_ = GetTickCount64();
-        AppendDiagnostic(L"Widget entrance widget=" + std::wstring(state_.activeWidget()) +
-            L" offset-px=" + std::to_wstring(entranceOffset));
-    }
-
-    void RequestWidgetContentReveal(const std::wstring_view widgetId,
-        const widgetrail::WidgetEntranceDirection direction = widgetrail::WidgetEntranceDirection::None) {
+    void RequestWidgetContentReveal(const std::wstring_view widgetId) {
         if (widgetId.empty()) return;
-        pendingEntranceWidget_ = widgetId;
-        pendingEntranceDirection_ = WidgetSwitchAnimationEnabled()
-            ? direction : widgetrail::WidgetEntranceDirection::None;
         if (SnapshotFor(widgetId)) {
             pendingContentRevealWidget_.clear();
             BeginWidgetContentReveal(widgetId);
@@ -7220,9 +7196,6 @@ private:
     }
 
     void SnapWidgetContentVisible() {
-        committedEntranceOffsetX_ = 0.0F;
-        pendingEntranceWidget_.clear();
-        pendingEntranceDirection_ = widgetrail::WidgetEntranceDirection::None;
         pendingContentRevealWidget_.clear();
         pendingCompositionContentRevealWidget_.clear();
         if (compositionSurface_.available()) (void)compositionSurface_.SnapContentVisible();
@@ -7287,14 +7260,10 @@ private:
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
         const bool revealContent = CompositionContentRevealPending();
-        const auto entranceOffset = pendingEntranceWidget_ == state_.activeWidget()
-            ? widgetrail::WidgetEntranceOffset(pendingEntranceDirection_,
-                static_cast<float>(placement.width) / std::max(1, DesiredPresentationExtentDip().widthDip),
-                CurrentAccessibilityPolicy().reducedMotion) : 0.0F;
         HRESULT commitResult = compositionSurface_.SetShellZoomAnchor(
             static_cast<float>(composedContainer.width), static_cast<float>(composedContainer.height));
         if (SUCCEEDED(commitResult)) commitResult = compositionSurface_.CommitFrames(
-            framePointers, !wasVisible, commitTiming, &presentation, nullptr, revealContent, entranceOffset);
+            framePointers, !wasVisible, commitTiming, &presentation, nullptr, revealContent);
         if (FAILED(commitResult)) {
             presentationTransaction_.RejectCompositionAdmission();
             DisableCompositionFallback(
@@ -7303,7 +7272,7 @@ private:
             return false;
         }
 
-        if (revealContent) CompleteCompositionContentReveal(entranceOffset);
+        if (revealContent) pendingCompositionContentRevealWidget_.clear();
         const int containerWidth = composedContainer.width;
         const int containerHeight = composedContainer.height;
         const int containerX = composedContainer.x;
@@ -7819,9 +7788,6 @@ private:
     }
 
     void HideOverlay() {
-        committedEntranceOffsetX_ = 0.0F;
-        pendingEntranceWidget_.clear();
-        pendingEntranceDirection_ = widgetrail::WidgetEntranceDirection::None;
         visibleSessionStartedAt_ = 0;
         pendingCompositionContentRevealWidget_.clear();
         if (compositionSurface_.available()) (void)compositionSurface_.SnapContentVisible();
@@ -9343,10 +9309,6 @@ private:
             static_cast<unsigned int>(client.bottom - client.top),
             DesiredPresentationExtentDip());
         if (plan) {
-            const auto now = GetTickCount64();
-            const float entrance = widgetrail::SampleWidgetEntranceOffset(committedEntranceOffsetX_,
-                now >= committedEntranceStartedAt_ ? now - committedEntranceStartedAt_ : 0);
-            plan->offsetX += entrance * plan->scaleX;
             const float zoom = widgetrail::OverlayEntranceZoomScale(
                 overlayTransitionSample_.shellOpacity, CurrentAccessibilityPolicy().reducedMotion);
             plan->scaleX *= zoom;
@@ -16483,14 +16445,10 @@ private:
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
         const bool revealContent = CompositionContentRevealPending();
-        const auto entranceOffset = pendingEntranceWidget_ == state_.activeWidget()
-            ? widgetrail::WidgetEntranceOffset(pendingEntranceDirection_,
-                static_cast<float>(width) / std::max(1, DesiredPresentationExtentDip().widthDip),
-                CurrentAccessibilityPolicy().reducedMotion) : 0.0F;
         const HRESULT result = compositionSurface_.CommitFrames(
             framePointers, replacement, timing, nullptr,
             frames.backgroundPresentation
-                ? &*frames.backgroundPresentation : nullptr, revealContent, entranceOffset);
+                ? &*frames.backgroundPresentation : nullptr, revealContent);
         if (FAILED(result)) {
             if (frames.backgroundObservationTransaction)
                 compositorBackgroundCoordinator_.CancelObservation(
@@ -16500,7 +16458,7 @@ private:
                 std::to_wstring(static_cast<unsigned long>(result)));
             return false;
         }
-        if (revealContent) CompleteCompositionContentReveal(entranceOffset);
+        if (revealContent) pendingCompositionContentRevealWidget_.clear();
         if (frames.backgroundObservationTransaction &&
             !compositorBackgroundCoordinator_.CommitObservation(
                 *frames.backgroundObservationTransaction)) {
@@ -18231,13 +18189,9 @@ private:
     ULONGLONG nextOpenPaintRetryAt_{};
     std::wstring pendingContentRevealWidget_;
     std::wstring pendingCompositionContentRevealWidget_;
-    std::wstring pendingEntranceWidget_;
-    widgetrail::WidgetEntranceDirection pendingEntranceDirection_{widgetrail::WidgetEntranceDirection::None};
     bool shellZoomNeedsSettlement_{};
     bool compositorShellTransition_{};
     bool lastCompositionReducedMotion_{};
-    float committedEntranceOffsetX_{};
-    ULONGLONG committedEntranceStartedAt_{};
     mutable std::optional<WidgetSurfaceResolutionCache>
         widgetSurfaceResolutionCache_;
     std::wstring lastWidgetPresentationPaintKey_;

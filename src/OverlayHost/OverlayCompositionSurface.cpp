@@ -235,7 +235,6 @@ void OverlayCompositionSurface::Reset() noexcept {
     contentRevealAnimation_.Reset();
     shellZoomTransform_.Reset();
     shellOpacityAnimation_.Reset();
-    contentEntranceTransform_.Reset();
     content_ = {};
     externalContentVisual_.Reset();
     externalContentAttached_ = false;
@@ -898,8 +897,7 @@ HRESULT OverlayCompositionSurface::CommitFrame(
 HRESULT OverlayCompositionSurface::CommitFrames(
     const std::span<Frame*> frames, const bool waitForCompletion,
     CommitTiming& timing, const VisualPresentation* presentation,
-    const BackgroundPresentation* background, const bool revealContent,
-    const float entranceOffsetX) noexcept {
+    const BackgroundPresentation* background, const bool revealContent) noexcept {
     timing = {};
     if (!device_ || frames.empty()) return E_UNEXPECTED;
     for (const auto* frame : frames) {
@@ -925,22 +923,12 @@ HRESULT OverlayCompositionSurface::CommitFrames(
     if (SUCCEEDED(result) && presentation) result = ApplyPresentation(*presentation);
     if (SUCCEEDED(result) && background) result = ApplyBackgroundPresentation(*background);
     if (SUCCEEDED(result) && revealContent) {
-        if (!std::isfinite(entranceOffsetX) || std::abs(entranceOffsetX) > WidgetEntranceDistanceDip * 8.0F)
-            return E_INVALIDARG;
         ComPtr<IDCompositionAnimation> reveal;
         ComPtr<IDCompositionVisual3> content;
         result = content_.visual.As(&content);
         if (SUCCEEDED(result)) result = CreatePresentationAnimation(device_.Get(), 0.78F, 1.0F, 100, reveal.GetAddressOf());
         if (SUCCEEDED(result)) result = content->SetOpacity(reveal.Get());
         if (SUCCEEDED(result)) contentRevealAnimation_ = std::move(reveal);
-        ComPtr<IDCompositionTranslateTransform> entrance;
-        ComPtr<IDCompositionAnimation> slide;
-        if (SUCCEEDED(result)) result = device_->CreateTranslateTransform(entrance.GetAddressOf());
-        if (SUCCEEDED(result)) result = CreatePresentationAnimation(
-            device_.Get(), entranceOffsetX, 0.0F, WidgetEntranceDurationMilliseconds, slide.GetAddressOf());
-        if (SUCCEEDED(result)) result = entrance->SetOffsetX(slide.Get());
-        if (SUCCEEDED(result)) result = content_.visual->SetTransform(entrance.Get());
-        if (SUCCEEDED(result)) contentEntranceTransform_ = std::move(entrance);
     }
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result) && waitForCompletion) {
@@ -1019,11 +1007,9 @@ HRESULT OverlayCompositionSurface::SnapContentVisible() noexcept {
     ComPtr<IDCompositionVisual3> content;
     HRESULT result = content_.visual.As(&content);
     if (SUCCEEDED(result)) result = content->SetOpacity(1.0F);
-    if (SUCCEEDED(result)) result = content_.visual->SetTransform(D2D1::Matrix3x2F::Identity());
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result)) {
         contentRevealAnimation_.Reset();
-        contentEntranceTransform_.Reset();
     }
     return result;
 }
