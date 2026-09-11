@@ -7311,6 +7311,9 @@ private:
                 std::to_wstring(GetLastError()));
             return false;
         }
+        if (frames.contentRendererWork &&
+            *frames.contentRendererWork != widgetrail::IncrementalPresentationWork::NoRaster)
+            widgetContextMenuPixelsPending_ = frames.widgetContextMenuPainted;
         retainedGuidePaintKey_ = std::move(frames.guideKey);
         retainedTrayPaintState_ = std::move(frames.trayState);
         presentationTransaction_.AcceptCompositionAdmission(
@@ -15261,6 +15264,7 @@ private:
             BackgroundPresentation> backgroundPresentation;
         std::optional<std::uint64_t> backgroundObservationTransaction;
         bool retireBackground{};
+        bool widgetContextMenuPainted{};
         std::wstring panelBackgroundKey;
         std::optional<widgetrail::shell::RetainedTrayState> trayState;
         struct OverlayFullscreenGeometry final {
@@ -16221,7 +16225,12 @@ private:
             compositionSurface_.width() != width ||
             compositionSurface_.height() != height;
         if (replaceContent) DiscardGraphicsResources();
-        const bool retainPendingRefreshPixels =
+        // Native menus paint outside the widget renderer's damage geometry.
+        // Repaint the whole content surface while one is present, and once
+        // after dismissal. Keep that obligation until a frame is committed.
+        const bool repaintWidgetMenu = widgetContextMenu_.has_value() ||
+            widgetContextMenuPixelsPending_;
+        const bool retainPendingRefreshPixels = !repaintWidgetMenu &&
             !replaceContent && HasExactRefreshRetainedVisualCheckpoint();
         const CompositionLayerGeometry contentGeometry{
             width, height,
@@ -16278,6 +16287,10 @@ private:
             if (update.right > update.left && update.bottom > update.top)
                 contentUpdate = update;
         }
+        if (repaintWidgetMenu) {
+            contentUpdate.reset();
+            renderPlan.reset();
+        }
         // DirectComposition's partial surface path may defer preservation work
         // until the first D2D command. The retained production trace isolates
         // that cost to updates covering at least half the surface, while full
@@ -16322,6 +16335,7 @@ private:
                     &*trayLayout)) {
                 return false;
             }
+            set.widgetContextMenuPainted = WidgetContextMenuAuthorityCurrent();
             if (lastWidgetRenderResult_.compositorBackground && metrics) {
                 auto observation = compositorBackgroundCoordinator_.Observe(
                         *lastWidgetRenderResult_.compositorBackground,
@@ -16618,6 +16632,9 @@ private:
                         lastWidgetRenderResult_.compositorBackground->bounds,
                         *deadline};
         }
+        if (frames.contentRendererWork &&
+            *frames.contentRendererWork != widgetrail::IncrementalPresentationWork::NoRaster)
+            widgetContextMenuPixelsPending_ = frames.widgetContextMenuPainted;
         retainedGuidePaintKey_ = std::move(frames.guideKey);
         retainedTrayPaintState_ = std::move(frames.trayState);
         presentationTransaction_.AcceptCompositionRepaint(
@@ -17237,6 +17254,7 @@ private:
     void DrawWidgetContextMenu(const float width, const float height) {
         const auto menu = CurrentWidgetContextMenuLayout(width, height);
         if (!menu) return;
+        widgetContextMenuPixelsPending_ = true;
         const D2D1_ROUNDED_RECT panel{
             D2D1::RectF(
                 menu->bounds.x, menu->bounds.y,
@@ -18266,6 +18284,7 @@ private:
     ULONGLONG lastActionExpiresAt_{};
     std::optional<TrayContextMenuState> trayContextMenu_;
     std::optional<WidgetContextMenuState> widgetContextMenu_;
+    bool widgetContextMenuPixelsPending_{};
     widgetrail::input::StickNavigator placementMoveStickNavigator_{
         widgetrail::input::kPinnedPlacementNavigationOptions};
     widgetrail::input::StickNavigator placementDpadNavigator_{

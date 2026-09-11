@@ -44,11 +44,13 @@ internal sealed record PlayniteLibraryBrowseReload(
 
 internal sealed record PlayniteLibraryQueryCount(long Generation, int? Count);
 
-internal sealed class PlayniteLibraryCategoryFeedback(
+internal sealed class PlayniteLibraryActionFeedback(
+    string title,
     string message,
     bool succeeded,
     string scopeId)
 {
+    internal string Title { get; } = title;
     internal string Message { get; } = message;
     internal bool Succeeded { get; } = succeeded;
     internal string ScopeId { get; } = scopeId;
@@ -77,7 +79,7 @@ internal sealed record PlayniteLibraryRenderState
     internal string? BrowseHeroSavedId { get; init; }
     internal int BrowseHeroIndex { get; init; }
     internal bool OrganizationBusy { get; init; }
-    internal PlayniteLibraryCategoryFeedback? CategoryFeedback { get; init; }
+    internal PlayniteLibraryActionFeedback? ActionFeedback { get; init; }
     internal string Status { get; init; } = "Playnite Library loads when visible";
     internal string? LaunchingSavedId { get; init; }
     internal PlayniteBridgeConnectionKind PlayniteKind { get; init; } =

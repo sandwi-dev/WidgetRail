@@ -8,10 +8,13 @@ does not copy a product app-library provider into the package.
 Home uses non-focusable controller hints: Y refreshes and Menu opens Library,
 Categories, Hidden games, and Playnite connection. X opens the focused game's
 options, including Favorite. Browse also uses a Y hint for Refresh. Header
-hints do not interrupt navigation through the game collection.
+hints have a dark backing for readability and do not interrupt navigation through
+the game collection. Browse groups its hints in one horizontal, wrapping row.
 
 Browse includes installed and uninstalled games. Uninstalled games show "Not installed"
-and keep their game options, but cannot be launched. Home lists installed games only.
+on a visible poster badge and keep their game options, but cannot be launched.
+Pressing A shows a toast asking the user to install the game through Playnite and
+then refresh. Home lists installed games only.
 
 Home orders the full provider collection by favorites, most recently played,
 name, and stable game ID before splitting it into pages. The rail preserves

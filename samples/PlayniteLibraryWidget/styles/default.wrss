@@ -120,3 +120,11 @@
 .playnite-library-hidden-header { width: 100%; min-width: 0px; flex-grow: 0; flex-shrink: 0; align: center; justify: space-between; gap: 12px; background: rgba(0, 0, 0, 0); overflow: visible; }
 .playnite-library-hidden-heading { min-width: 0px; flex-grow: 1; flex-shrink: 1; gap: 2px; overflow: visible; }
 .playnite-library-hidden-back { flex-grow: 0; flex-shrink: 0; }
+
+/* Readable controller hints remain outside focus navigation. */
+.wrail-controller-hint { min-height: 40px; flex-grow: 0; flex-shrink: 0; align: center; gap: 10px; padding: 8px 12px; background: rgba(10, 17, 27, 0.96); border-color: rgba(231, 239, 249, 0.32); border-width: 1px; corner-radius: 10px; }
+.wrail-controller-hint__key { min-width: 26px; min-height: 26px; padding: 3px 6px; font-size: 13px; font-weight: 700; text-align: center; color: #ffffff; background: #34465e; border-color: #70849d; border-width: 1px; corner-radius: 6px; }
+.wrail-controller-hint__label { color: #f7f9fc; font-size: 14px; font-weight: 600; max-lines: 1; }
+.playnite-library-footer { width: 100%; align: center; gap: 10px; }
+.playnite-library-install-badge { height: 34px; min-height: 34px; padding: 7px 8px; background: rgba(10, 17, 27, 0.96); corner-radius: 0px; }
+.playnite-library-install-label { color: #ffffff; font-size: 12px; font-weight: 600; max-lines: 1; text-align: center; }

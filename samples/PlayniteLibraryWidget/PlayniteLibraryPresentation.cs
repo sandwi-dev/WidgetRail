@@ -29,8 +29,9 @@ internal sealed record PlayniteLibraryPresentationState(
     internal IReadOnlyList<PlayniteLibraryCollectionOption> Collections { get; init; } = [];
     internal IReadOnlyDictionary<string, string?> CompletionStatuses { get; init; } =
         new Dictionary<string, string?>(StringComparer.Ordinal);
-    internal string? CategoryFeedback { get; init; }
-    internal bool CategoryFeedbackSucceeded { get; init; }
+    internal string? ActionFeedbackTitle { get; init; }
+    internal string? ActionFeedback { get; init; }
+    internal bool ActionFeedbackSucceeded { get; init; }
 }
 
 internal static class PlayniteLibraryPresentation
@@ -404,10 +405,6 @@ internal static class PlayniteLibraryPresentation
                         : "playnite-library.library.cursor.after"
                     : null;
             }
-            var controls = UI.HorizontalScroll("playnite-library.actions",
-                    UI.ControllerHint(ControllerButton.Y, "Refresh", "playnite-library.browse.hint.refresh"))
-                .Classes("playnite-library-actions")
-                .VisibleWhen(ResponsiveVisibility.ExpandedOnly);
             var hasActionableGame = renderActionsEnabled && !state.OrganizationBusy &&
                 !state.BrowseRetained &&
                 state.LaunchingSavedId is null &&
@@ -418,11 +415,6 @@ internal static class PlayniteLibraryPresentation
                 hintItems.Add(StableControllerHint(
                     ControllerButton.X, "Game options", "playnite-library.hint.options",
                     hasActionableGame, hasActionableGame ? "Game options" : "Game options unavailable"));
-            }
-            else if (hasActionableGame)
-            {
-                hintItems.Add(UI.ControllerHint(
-                    ControllerButton.X, "Game options", "playnite-library.hint.options"));
             }
             WidgetElement catalog = state.Route switch
             {
@@ -437,8 +429,6 @@ internal static class PlayniteLibraryPresentation
             };
             var children = new List<WidgetElement>();
             children.Add(catalog);
-            if (state.Route != PlayniteLibraryRoute.Library)
-                children.Add(controls);
             if (hintItems.Count != 0)
                 children.Add(UI.Row(
                         "playnite-library.organization.hints", hintItems.ToArray())
@@ -567,32 +557,36 @@ internal static class PlayniteLibraryPresentation
             initialFocus = "playnite-library.empty.action";
         }
 
-        if (state.Route == PlayniteLibraryRoute.Browse &&
-            state.Organization.Categories.Count != 0 && renderActionsEnabled &&
-            !state.OrganizationBusy)
+        if (state.Route == PlayniteLibraryRoute.Browse)
         {
-            content = UI.Stack("playnite-library.collection.scope",
-                    content,
-                    UI.Row("playnite-library.collection.hints",
-                        UI.ControllerHint(ControllerButton.LeftTrigger,
-                            "Previous collection",
-                            "playnite-library.collection.hint.previous"),
-                        UI.ControllerHint(ControllerButton.RightTrigger,
-                            "Next collection",
-                            "playnite-library.collection.hint.next"))
+            var hints = new List<WidgetElement>
+            {
+                UI.ControllerHint(ControllerButton.Y, "Refresh", "playnite-library.browse.hint.refresh"),
+            };
+            if (snapshot.Items.Count != 0)
+                hints.Add(StableControllerHint(ControllerButton.X, "Game options",
+                    "playnite-library.hint.options", !state.OrganizationBusy && !state.BrowseRetained,
+                    "Game options"));
+            if (state.Organization.Categories.Count != 0 && renderActionsEnabled && !state.OrganizationBusy)
+            {
+                hints.Add(UI.ControllerHint(ControllerButton.LeftTrigger, "Previous collection",
+                    "playnite-library.collection.hint.previous"));
+                hints.Add(UI.ControllerHint(ControllerButton.RightTrigger, "Next collection",
+                    "playnite-library.collection.hint.next"));
+            }
+            content = UI.Stack("playnite-library.collection.scope", content,
+                    UI.Row("playnite-library.collection.hints", hints.ToArray())
                         .Classes("playnite-library-footer"))
                 .Classes("playnite-library-content");
         }
         content = content.AddClasses("playnite-library-main");
-        if (state.CategoryFeedback is { } categoryFeedback)
+        if (state.ActionFeedback is { } actionFeedback)
             content = UI.Stack("playnite-library.category.feedback.scope",
                     content,
                     UI.Toast(
-                        state.CategoryFeedbackSucceeded
-                            ? "Categories updated"
-                            : "Category update failed",
-                        categoryFeedback,
-                        state.CategoryFeedbackSucceeded
+                        state.ActionFeedbackTitle ?? "Playnite Library",
+                        actionFeedback,
+                        state.ActionFeedbackSucceeded
                             ? ToastTone.Success
                             : ToastTone.Warning,
                         "playnite-library.category.feedback"))
@@ -1041,6 +1035,19 @@ internal static class PlayniteLibraryPresentation
             .Busy(launching || availability.Busy)
             .Disabled(!interactive || !PlayniteLibraryAvailabilityPresentation.CanManage(current))
             .AddClasses("playnite-library-tile");
+        if (PlayniteLibraryAvailabilityPresentation.IsUninstalled(current))
+            tile = tile with
+            {
+                Children = tile.Children.Select(child =>
+                    child is StackElement scrim && scrim.StyleClasses.Contains("wrail-poster-tile__scrim")
+                        ? scrim with
+                        {
+                            Children = [UI.Text("Not installed", id + ".install-status", "Not installed")
+                                .Classes("playnite-library-install-label")],
+                            StyleClasses = ["playnite-library-install-badge"],
+                        }
+                        : child).ToArray(),
+            };
         if (focusSummaryContext)
             tile = tile.AddClasses("playnite-library-fixed-tile");
         if (browseLayout)

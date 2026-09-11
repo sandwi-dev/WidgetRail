@@ -537,7 +537,7 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.IsTrue(Nodes(browseQuery).Any(node =>
             node.Id == "playnite-library.search"));
         var browseActions = Nodes(browse.Root).Single(node =>
-            node.Id == "playnite-library.actions");
+            node.Id == "playnite-library.collection.hints");
         Assert.IsNull(browseActions.InitialChildFocusId);
         Assert.IsFalse(Nodes(browseActions).Any(node => node.IsFocusable));
         Assert.AreEqual(150D, browseGrid.GridMinimumColumnWidth);
@@ -752,7 +752,10 @@ public sealed class PlayniteLibraryLayoutTests
                 Assert.IsNull(grid.InitialChildFocusId,
                     phase + " mutable Browse results must not retain remembered focus.");
                 var actions = nodes.Single(node =>
-                    node.Id == "playnite-library.actions");
+                    node.Id == "playnite-library.collection.hints");
+                Assert.AreEqual(ViewNodeKind.Row, actions.Kind);
+                Assert.IsTrue(actions.Children.Any(node => node.Id == "playnite-library.browse.hint.refresh"));
+                Assert.IsTrue(actions.Children.Any(node => node.Id == "playnite-library.hint.options"));
                 Assert.IsNull(actions.InitialChildFocusId);
                 Assert.IsFalse(Nodes(actions).Any(node => node.IsFocusable));
                 Assert.IsTrue(nodes.Any(node => node.ActionId == "playnite-library.launch"),

@@ -29,7 +29,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private readonly object _gate = new();
     private readonly SemaphoreSlim _stateGate = new(1, 1);
     private readonly IPlayniteLibraryApplicationService _application;
-    private readonly WidgetTimedMutation _categoryFeedbackExpiry;
+    private readonly WidgetTimedMutation _actionFeedbackExpiry;
     private readonly WidgetTimedMutation _playniteFeedbackExpiry;
     private readonly WidgetCursorResource<PlayniteLibraryItem> _homeLibrary;
     private readonly WidgetCursorResource<PlayniteLibraryItem> _browseLibrary;
@@ -66,7 +66,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _application = application ?? throw new ArgumentNullException(nameof(application));
         _playniteClient = playniteClient;
         var clock = timeProvider ?? TimeProvider.System;
-        _categoryFeedbackExpiry = CreateTimedMutation(
+        _actionFeedbackExpiry = CreateTimedMutation(
             WidgetOperationLifetime.Active, clock);
         _playniteFeedbackExpiry = CreateTimedMutation(
             WidgetOperationLifetime.Active, clock);
@@ -181,9 +181,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         Operations.WhenIdleAsync("playnite-library.warm-state", cancellationToken);
     internal Task WhenHiddenRowsIdleAsync(CancellationToken cancellationToken = default) =>
         _hiddenRows.WhenIdleAsync(cancellationToken);
-    internal Task WhenCategoryFeedbackIdleAsync(
+    internal Task WhenActionFeedbackIdleAsync(
         CancellationToken cancellationToken = default) =>
-        _categoryFeedbackExpiry.WhenIdleAsync(cancellationToken);
+        _actionFeedbackExpiry.WhenIdleAsync(cancellationToken);
     internal Task WhenPlayniteFeedbackIdleAsync(
         CancellationToken cancellationToken = default) =>
         _playniteFeedbackExpiry.WhenIdleAsync(cancellationToken);
@@ -344,7 +344,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         ClearPendingBackFocus();
         RetirePlayniteConnection(clearPresentation: false);
-        _categoryFeedbackExpiry.Cancel();
+        _actionFeedbackExpiry.Cancel();
         lock (_gate)
         {
             _launchGeneration.Invalidate();
@@ -354,7 +354,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             LaunchingSavedId = null,
             PlayniteBusy = false,
             PlayniteFeedback = null,
-            CategoryFeedback = null,
+            ActionFeedback = null,
             ActiveBrowseReload = null,
         });
         return ValueTask.CompletedTask;
@@ -402,7 +402,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
-        var feedbackBeforeAction = _model.Value.CategoryFeedback;
+        var feedbackBeforeAction = _model.Value.ActionFeedback;
         try
         {
         if (action.ActionId.StartsWith(
@@ -718,10 +718,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 !string.Equals(feedbackBeforeAction.ScopeId,
                     _navigation.Value.InputScopeId, StringComparison.Ordinal))
             {
-                _categoryFeedbackExpiry.Cancel();
+                _actionFeedbackExpiry.Cancel();
                 _model.Update(state => ReferenceEquals(
-                        state.CategoryFeedback, feedbackBeforeAction)
-                    ? state with { CategoryFeedback = null }
+                        state.ActionFeedback, feedbackBeforeAction)
+                    ? state with { ActionFeedback = null }
                     : state);
             }
         }
@@ -1488,7 +1488,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         var selected = CurrentLibrary.Snapshot.Items.Concat(_model.Value.FixedRows.All)
             .FirstOrDefault(item => PlayniteLibraryIdentity.FocusId("grid", item.Key) == sourceElementId);
-        if (PlayniteLibraryAvailabilityPresentation.IsUninstalled(selected)) return;
+        if (PlayniteLibraryAvailabilityPresentation.IsUninstalled(selected))
+        {
+            ShowActionToast("Game not installed",
+                "Open Playnite and install this game first. Then refresh your library here.", succeeded: false);
+            return;
+        }
         var generationReady = new TaskCompletionSource<long>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var handle = Operations.RunSingleFlight(
@@ -2072,8 +2077,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 PlayniteLibraryTitlePolicy.Project(_organization, item.Value))).ToArray(),
             local.FixedRows.TitleMatches.Select(item => item.WithProjectedValue(
                 PlayniteLibraryTitlePolicy.Project(_organization, item.Value))).ToArray());
-        var categoryFeedback = local.CategoryFeedback;
-        var ownedCategoryFeedback = categoryFeedback is { } candidate &&
+        var actionFeedback = local.ActionFeedback;
+        var ownedActionFeedback = actionFeedback is { } candidate &&
             string.Equals(candidate.ScopeId, _navigation.Value.InputScopeId,
                 StringComparison.Ordinal)
             ? candidate
@@ -2114,8 +2119,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
             organization, ProvenSourcesLocked(),
             CollectionForRoute(route, local).Selection),
         CompletionStatuses = _presentationAuthority.CompletionStatuses,
-        CategoryFeedback = ownedCategoryFeedback?.Message,
-        CategoryFeedbackSucceeded = ownedCategoryFeedback?.Succeeded == true,
+        ActionFeedback = ownedActionFeedback?.Message,
+        ActionFeedbackTitle = ownedActionFeedback?.Title,
+        ActionFeedbackSucceeded = ownedActionFeedback?.Succeeded == true,
     };
     }
 
@@ -2217,7 +2223,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             var message =
                 $"Category name must be 1–{PlayniteLibraryPrivateState.MaximumCategoryNameLength} characters";
             _model.Update(state => state with { Status = message });
-            ShowCategoryFeedback(message, succeeded: false);
+            ShowActionFeedback(message, succeeded: false);
             return;
         }
         lock (_gate)
@@ -2227,7 +2233,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _model.Update(state => state with
         {
             OrganizationBusy = true,
-            CategoryFeedback = null,
+            ActionFeedback = null,
         });
         string? status = null;
         try
@@ -2252,7 +2258,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 Status = status ?? state.Status,
             });
             if (status is not null)
-                ShowCategoryFeedback(status, status.StartsWith(
+                ShowActionFeedback(status, status.StartsWith(
                     "Created category ", StringComparison.Ordinal));
         }
     }
@@ -2285,7 +2291,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _model.Update(state => state with
         {
             OrganizationBusy = true,
-            CategoryFeedback = null,
+            ActionFeedback = null,
         });
         string? status = null;
         try
@@ -2329,24 +2335,27 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 Status = status ?? state.Status,
             });
             if (status is not null)
-                ShowCategoryFeedback(status,
+                ShowActionFeedback(status,
                     status.StartsWith("Added ", StringComparison.Ordinal) ||
                     status.StartsWith("Removed ", StringComparison.Ordinal));
         }
     }
 
-    private void ShowCategoryFeedback(string message, bool succeeded)
+    private void ShowActionFeedback(string message, bool succeeded) =>
+        ShowActionToast(succeeded ? "Categories updated" : "Category update failed", message, succeeded);
+
+    private void ShowActionToast(string title, string message, bool succeeded)
     {
         var route = _navigation.Value;
         var scopeId = route.InputScopeId;
-        var feedback = new PlayniteLibraryCategoryFeedback(
-            message, succeeded, scopeId);
-        _model.Update(state => state with { CategoryFeedback = feedback });
-        _ = _categoryFeedbackExpiry.ScheduleLatest(
+        var feedback = new PlayniteLibraryActionFeedback(
+            title, message, succeeded, scopeId);
+        _model.Update(state => state with { ActionFeedback = feedback });
+        _ = _actionFeedbackExpiry.ScheduleLatest(
             UI.DefaultToastDuration,
             () => _model.Update(state =>
-                ReferenceEquals(state.CategoryFeedback, feedback)
-                    ? state with { CategoryFeedback = null }
+                ReferenceEquals(state.ActionFeedback, feedback)
+                    ? state with { ActionFeedback = null }
                     : state),
             route.RouteCancellationToken);
     }

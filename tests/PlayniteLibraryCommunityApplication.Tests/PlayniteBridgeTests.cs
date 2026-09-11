@@ -297,7 +297,7 @@ public sealed class PlayniteBridgeTests
         var value = manifest.RootElement;
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, value.GetProperty("optionalPermissions").GetArrayLength());
-        Assert.AreEqual("0.2.71", value.GetProperty("version").GetString());
+        Assert.AreEqual("0.2.72", value.GetProperty("version").GetString());
         var presentation = value.GetProperty("presentation");
         Assert.AreEqual("play", presentation.GetProperty("icon").GetString());
         var packageIcon = presentation.GetProperty("packageIcon");

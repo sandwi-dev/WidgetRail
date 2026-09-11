@@ -15,6 +15,7 @@ public sealed class PlayniteLibraryTests
     [TestMethod, Timeout(30_000)]
     public async Task BrowseIncludesUninstalledGamesWithOptionsButCannotLaunchThem()
     {
+        var clock = new ManualTimerTimeProvider();
         var host = new FakeHost(3);
         host.ItemFactory = index => index != 1 ? Item(index) : Item(index) with
         {
@@ -24,7 +25,7 @@ public sealed class PlayniteLibraryTests
                 Capabilities = new([]),
             },
         };
-        var widget = Create(host);
+        var widget = Create(host, clock);
         await Interactive(widget);
         await Ready(widget, host);
         Assert.IsTrue(host.Queries[0].Query.InstalledOnly);
@@ -37,9 +38,20 @@ public sealed class PlayniteLibraryTests
         StringAssert.Contains(tile.AccessibilityLabel!, "Not installed");
         Assert.AreEqual(ControllerButton.X, tile.ContextMenuButton);
         Assert.IsTrue(tile.ContextActions.All(action => !action.IsDisabled));
+        Assert.AreEqual("Not installed", Nodes(tile).Single(node => node.Id == tile.Id + ".install-status").Text);
+        var focusRequest = Snapshot(widget, 90_010_1).InitialFocusId;
         await widget.OnActionAsync(new(PlayniteLibraryActions.Launch, tile.Id));
         Assert.AreEqual(0, host.Launches.Count);
         Assert.IsNull(widget.RenderState.Value.LaunchingSavedId);
+        var feedback = Snapshot(widget, 90_011);
+        Assert.IsTrue(Nodes(feedback.Root).Any(node => node.Text == "Game not installed"));
+        Assert.IsTrue(Nodes(feedback.Root).Any(node => node.Text ==
+            "Open Playnite and install this game first. Then refresh your library here."));
+        Assert.AreEqual(focusRequest, feedback.InitialFocusId,
+            "Showing install guidance must not replace the current focus request.");
+        clock.Advance(UI.DefaultToastDuration);
+        await Bounded(widget.WhenActionFeedbackIdleAsync(), "install guidance expiry");
+        Assert.IsFalse(Nodes(Snapshot(widget, 90_012).Root).Any(node => node.Text == "Game not installed"));
         await widget.OnActionAsync(new(PlayniteLibraryActions.Favorite, tile.Id));
         CollectionAssert.Contains(host.Authority.FavoriteGameIds.ToArray(), "saved-00001");
         await widget.OnActionAsync(new(PlayniteLibraryActions.Hide, tile.Id));
@@ -1671,7 +1683,7 @@ public sealed class PlayniteLibraryTests
                 "Mutable Browse results must not retain native remembered-child authority.");
 
             var actions = Nodes(snapshot.Root).Single(node =>
-                node.Id == "playnite-library.actions");
+                node.Id == "playnite-library.collection.hints");
             Assert.IsNull(actions.InitialChildFocusId);
             Assert.IsFalse(Nodes(actions).Any(node => node.IsFocusable));
         }
@@ -1945,7 +1957,7 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task CategoryFeedbackIsLatestWinsAndExactRouteOwned()
+    public async Task ActionFeedbackIsLatestWinsAndExactRouteOwned()
     {
         var clock = new ManualTimerTimeProvider();
         var host = new FakeHost(1);
@@ -1968,14 +1980,14 @@ public sealed class PlayniteLibraryTests
             "playnite-library.category.create") { CommittedText = " " });
         var modelGate = ModelGate(widget);
         var expiry = PrivateField<WidgetTimedMutation>(
-            widget, "_categoryFeedbackExpiry");
+            widget, "_actionFeedbackExpiry");
         Monitor.Enter(modelGate);
         try
         {
             clock.Advance(TimeSpan.FromSeconds(5));
             Assert.IsTrue(SpinWait.SpinUntil(() => !expiry.IsScheduled, 1_000),
                 "The due category expiry did not reach its author callback.");
-            InvokePrivate(widget, "ShowCategoryFeedback",
+            InvokePrivate(widget, "ShowActionFeedback",
                 "Concurrent replacement", true);
         }
         finally
@@ -1988,7 +2000,7 @@ public sealed class PlayniteLibraryTests
             "A due category expiry cleared a concurrently published replacement.");
 
         clock.Advance(TimeSpan.FromSeconds(5));
-        await Bounded(widget.WhenCategoryFeedbackIdleAsync(), "category feedback expiry");
+        await Bounded(widget.WhenActionFeedbackIdleAsync(), "category feedback expiry");
         Assert.IsFalse(Nodes(Snapshot(widget, 40_112).Root).Any(node =>
             node.Id == "playnite-library.category.feedback"));
 
@@ -2005,7 +2017,7 @@ public sealed class PlayniteLibraryTests
             node.Id == "playnite-library.category.feedback"),
             "Identical category feedback did not receive a fresh full duration.");
         clock.Advance(TimeSpan.FromSeconds(4));
-        await Bounded(widget.WhenCategoryFeedbackIdleAsync(),
+        await Bounded(widget.WhenActionFeedbackIdleAsync(),
             "identical category feedback expiry");
         Assert.IsFalse(Nodes(Snapshot(widget, 40_112_2).Root).Any(node =>
             node.Id == "playnite-library.category.feedback"),
@@ -2036,7 +2048,7 @@ public sealed class PlayniteLibraryTests
             PlayniteLibraryActions.CategoryCreate,
             "playnite-library.category.create") { CommittedText = "" });
         await Background(widget);
-        Assert.IsNull(widget.RenderState.Value.CategoryFeedback,
+        Assert.IsNull(widget.RenderState.Value.ActionFeedback,
             "Deactivation retained canceled category feedback in the model.");
     }
 
@@ -2368,7 +2380,7 @@ public sealed class PlayniteLibraryTests
         {
             "_application", "_gate", "_launchGeneration", "_launchStateRecency",
             "_launchStates", "_homeLibrary", "_browseLibrary", "_hiddenRows", "_model", "_navigation", "_organization",
-            "_categoryFeedbackExpiry", "_playniteFeedbackExpiry",
+            "_actionFeedbackExpiry", "_playniteFeedbackExpiry",
             "_createdCategoriesPendingReconciliation", "_browseReloadAttempt",
             "_livePlayniteAuthority", "_presentationAuthority", "_homeQueryAuthorityGeneration",
             "_browseQueryAuthorityGeneration",
