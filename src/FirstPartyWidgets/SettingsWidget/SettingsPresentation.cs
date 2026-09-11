@@ -65,8 +65,10 @@ internal static class SettingsPresentation
                 .Classes("settings-header-row"),
         };
         if (state.Status != "Ready" && state.Status != "Settings load when this widget becomes visible")
-            children.Add(UI.Text(state.Status, "settings.status", state.Status)
-                .Classes("settings-status", state.Error ? "is-error" : "is-busy"));
+            children.Add(UI.Toast("Settings",
+                state.Status.Length <= UI.MaximumToastMessageCharacters ? state.Status : state.Status[..(UI.MaximumToastMessageCharacters - 1)] + "…",
+                state.Error ? ToastTone.Danger : state.Busy ? ToastTone.Info : ToastTone.Neutral,
+                "settings.toast").Classes("settings-toast"));
         return UI.Stack("settings.header", children.ToArray()).Classes("settings-header");
     }
 
@@ -98,7 +100,9 @@ internal static class SettingsPresentation
             if (element is ContainerElement group) return group with { Children = group.Children.Select(Link).ToArray() };
             return element;
         }
-        return UI.Stack("settings-root", Link(header), Link(content)).InputScope(scope)
+        var notifications = header.Children.OfType<ToastElement>().Cast<WidgetElement>().ToArray();
+        header = header with { Children = header.Children.Where(child => child is not ToastElement).ToArray() };
+        return UI.Stack("settings-root", [Link(header), Link(content), .. notifications]).InputScope(scope)
             .Classes("settings-widget") with { Shortcuts = shortcuts };
     }
 

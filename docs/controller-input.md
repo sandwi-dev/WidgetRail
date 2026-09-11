@@ -2,8 +2,8 @@
 
 ## Opening the overlay
 
-Settings → Controllers offers one active opening shortcut: Guide (the default)
-or View + Menu. The selected shortcut also closes the overlay. View + Menu uses
+Settings → Controllers offers one active opening shortcut: View + Menu (the default)
+or Guide. Explicit saved choices are preserved. The selected shortcut also closes the overlay. View + Menu uses
 an optional 25 ms background observer with GameInput device connection callbacks
 and public XInput state reads; it does not depend on the Windows Guide callback.
 Both buttons must be down on the same controller. Held input is ignored at

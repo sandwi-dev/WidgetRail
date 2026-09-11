@@ -11,6 +11,7 @@
 .theme-picker { gap: 8px; }
 
 .settings-header { flex-shrink: 0; }
+.settings-toast { flex-shrink: 0; }
 .settings-header-row { gap: 8px; }
 .header-title { flex-grow: 1; min-width: 0; }
 .header-action { flex-shrink: 0; padding: 8px 14px; }

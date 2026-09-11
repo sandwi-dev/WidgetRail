@@ -3,8 +3,9 @@
 ## Settings controls
 
 Controllers starts with a Controller shortcut option that switches between Guide
-and View + Menu. Exactly one is active, Guide is the default for existing settings
-as well as new installs, and choosing it does not require Exclusive control or
+and View + Menu. Exactly one is active; View + Menu is the default for new installs
+and older settings without an explicit shortcut. Existing choices are preserved,
+and choosing it does not require Exclusive control or
 its drivers. The host picks up changes through its controller-settings refresh.
 
 Quit and Restart are distinct buttons at the right end of the Settings header.
@@ -12,7 +13,9 @@ They control WidgetRail itself, not Windows. Quit uses the normal shutdown path;
 Restart finishes that cleanup and releases single-instance ownership before
 launching the same executable again. Initial focus stays on the first settings
 option, with controller navigation available to the header. The idle Ready line
-is omitted; operation feedback and errors remain available.
+is omitted. Operation feedback and errors use a non-focusable toast below the
+page content, expiring after five seconds. New feedback replaces the prior toast;
+expiry belongs to the active widget lifetime and is cancelled when hidden.
 
 Installed Widgets can disable or re-enable built-in widgets. Settings itself
 stays enabled so management and recovery remain reachable. The preference is

@@ -112,7 +112,7 @@ public sealed record ControllerSettings
 {
     public bool ExclusiveControl { get; init; }
     public long Revision { get; init; }
-    public ControllerOpenShortcut OpenShortcut { get; init; } = ControllerOpenShortcut.Guide;
+    public ControllerOpenShortcut OpenShortcut { get; init; } = ControllerOpenShortcut.ViewMenu;
 }
 
 public sealed record BuiltInWidgetSettings

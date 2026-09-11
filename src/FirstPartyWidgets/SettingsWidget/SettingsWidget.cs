@@ -72,7 +72,35 @@ public sealed class SettingsWidget : Widget
     private bool _settingsValid = true;
     private bool _busy;
     private bool _error;
-    private string _status = "Settings load when this widget becomes visible";
+    private readonly WidgetTimedMutation _toastExpiry;
+    private string _statusText = "Settings load when this widget becomes visible";
+    private bool _toastVisible;
+    private long _toastGeneration;
+    internal Task ToastExpiryTask => _toastExpiry.WhenIdleAsync();
+
+    // All status writes occur under _stateLock. Replacements retire the previous
+    // notification deadline, including repeated messages from separate actions.
+    private string StatusMessage
+    {
+        get => _statusText;
+        set
+        {
+            _statusText = value;
+            var generation = ++_toastGeneration;
+            _toastVisible = value is not "Ready" and not "Settings load when this widget becomes visible";
+            _toastExpiry.Cancel();
+            if (!_toastVisible) return;
+            _toastExpiry.ScheduleLatest(UI.DefaultToastDuration, () =>
+            {
+                lock (_stateLock)
+                {
+                    if (_toastGeneration != generation) return;
+                    _toastVisible = false;
+                }
+                Invalidate();
+            });
+        }
+    }
 
     public SettingsWidget(
         PlatformSettingsStore? store = null,
@@ -81,8 +109,10 @@ public sealed class SettingsWidget : Widget
         ConsentStore? consentStore = null,
         IPlatformDiagnosticsService? diagnostics = null,
         string? bundledWidgetRoot = null,
-        IPlatformDiagnosticsService? readinessDiagnostics = null)
+        IPlatformDiagnosticsService? readinessDiagnostics = null,
+        TimeProvider? timeProvider = null)
     {
+        _toastExpiry = CreateTimedMutation(timeProvider: timeProvider);
         var paths = store?.Paths ?? PlatformSettingsPaths.CreateDefault();
         _store = store ?? new PlatformSettingsStore(paths);
         _catalog = catalog ?? new ThemeCatalog(paths);
@@ -146,7 +176,7 @@ public sealed class SettingsWidget : Widget
             selectedAuthorityRecoveryId = _selectedAuthorityRecovery?.RecoveryId;
             selectedTheme = _selectedTheme;
             themePickerFocusId = _themePickerFocusId;
-            status = _status;
+            status = _toastVisible ? StatusMessage : "Ready";
         }
 
         var presentation = new SettingsPresentationState(
@@ -202,7 +232,7 @@ public sealed class SettingsWidget : Widget
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
         Interlocked.Increment(ref _activationLoadCount);
-        lock (_stateLock) { _initializing = true; _busy = true; _status = "Loading settings…"; }
+        lock (_stateLock) { _initializing = true; _busy = true; StatusMessage = "Loading settings…"; }
         _initializationTask = Task.Run(async () =>
         {
             try
@@ -229,6 +259,7 @@ public sealed class SettingsWidget : Widget
     {
         await _initializationTask.ConfigureAwait(false);
         await _controllerStatusTask.ConfigureAwait(false);
+        lock (_stateLock) _toastVisible = false;
     }
 
     private void EnsureControllerStatusPolling()
@@ -457,7 +488,7 @@ public sealed class SettingsWidget : Widget
                 _diagnostics = diagnostics;
                 _busy = false;
                 _error = warning is not null;
-                _status = warning ?? successStatus;
+                StatusMessage = warning ?? successStatus;
             }
             Invalidate();
         }
@@ -480,7 +511,7 @@ public sealed class SettingsWidget : Widget
                 entry.CatalogVersion);
             _themePickerFocusId = $"theme.item.{index}.action";
             _page = SettingsPage.ThemeVersion;
-            _status = $"Reviewing {entry.Descriptor.Name} {entry.Descriptor.Version}";
+            StatusMessage = $"Reviewing {entry.Descriptor.Name} {entry.Descriptor.Version}";
         }
         Invalidate();
     }
@@ -492,7 +523,7 @@ public sealed class SettingsWidget : Widget
             var entry = FindSelectedThemeLocked();
             if (entry is null || entry.Descriptor.IsBuiltIn || IsSelectedThemeLocked(entry)) return;
             _page = SettingsPage.ThemeRemoval;
-            _status = $"Confirm removal of {entry.Descriptor.Name} {entry.Descriptor.Version}";
+            StatusMessage = $"Confirm removal of {entry.Descriptor.Name} {entry.Descriptor.Version}";
         }
         Invalidate();
     }
@@ -516,7 +547,7 @@ public sealed class SettingsWidget : Widget
                 _page = SettingsPage.ThemePicker;
                 _busy = false;
                 _error = false;
-                _status = $"Selected {entry.Descriptor.Name} {entry.Descriptor.Version}";
+                StatusMessage = $"Selected {entry.Descriptor.Name} {entry.Descriptor.Version}";
             }
         }
         catch (PlatformSettingsException exception)
@@ -554,7 +585,7 @@ public sealed class SettingsWidget : Widget
                 _page = SettingsPage.ThemePicker;
                 _busy = false;
                 _error = result.CleanupPending;
-                _status = result.CleanupPending
+                StatusMessage = result.CleanupPending
                     ? "Theme removed; retired files are pending cleanup"
                     : $"Removed {result.Name} {result.Version}";
             }
@@ -604,7 +635,7 @@ public sealed class SettingsWidget : Widget
                 _page = SettingsPage.Root;
                 _busy = false;
                 _error = false;
-                _status = "Settings reset to defaults";
+                StatusMessage = "Settings reset to defaults";
             }
         }
         catch (PlatformSettingsException exception)
@@ -633,7 +664,7 @@ public sealed class SettingsWidget : Widget
                 _diagnostics = _diagnostics with { Controllers = result.Status };
                 _busy = false;
                 _error = !result.Accepted;
-                _status = result.Accepted ? "Controller preference saved" :
+                StatusMessage = result.Accepted ? "Controller preference saved" :
                     "Exclusive control could not be changed. Check the driver status and try again.";
             }
         }
@@ -674,7 +705,7 @@ public sealed class SettingsWidget : Widget
                 _settingsValid = true;
                 _busy = false;
                 _error = false;
-                _status = mutation.SuccessStatus;
+                StatusMessage = mutation.SuccessStatus;
             }
         }
         catch (PlatformSettingsException exception)
@@ -704,7 +735,7 @@ public sealed class SettingsWidget : Widget
                 _settingsValid = true;
                 _busy = false;
                 _error = false;
-                _status = "Ready";
+                StatusMessage = "Ready";
             }
         }
         catch (PlatformSettingsException exception)
@@ -768,7 +799,7 @@ public sealed class SettingsWidget : Widget
                 _settingsValid = true;
                 _busy = false;
                 _error = false;
-                _status = $"Surface preference saved for {widgetId}";
+                StatusMessage = $"Surface preference saved for {widgetId}";
             }
         }
         catch (PlatformSettingsException exception)
@@ -884,7 +915,7 @@ public sealed class SettingsWidget : Widget
         _selectedAuthorityRecovery = transition.Selection;
         _busy = false;
         _error = transition.IsError;
-        _status = transition.Status;
+        StatusMessage = transition.Status;
     }
 
     private void Navigate(SettingsPage page)
@@ -905,7 +936,7 @@ public sealed class SettingsWidget : Widget
     {
         lock (_stateLock)
         {
-            _status = status;
+            StatusMessage = status;
             _busy = busy;
             _error = error;
         }
@@ -1152,7 +1183,7 @@ public sealed class SettingsWidget : Widget
                 };
                 _busy = false;
                 _error = false;
-                _status = decision == ConsentDecision.Grant
+                StatusMessage = decision == ConsentDecision.Grant
                     ? $"Granted {SettingsPermissionPresentation.CapabilityName(capability.Id)}"
                     : $"Denied {SettingsPermissionPresentation.CapabilityName(capability.Id)}";
             }
@@ -1168,7 +1199,7 @@ public sealed class SettingsWidget : Widget
                     };
                 _busy = false;
                 _error = true;
-                _status = $"Permission change failed ({exception.Code})";
+                StatusMessage = $"Permission change failed ({exception.Code})";
             }
         }
         Invalidate();
@@ -1201,7 +1232,7 @@ public sealed class SettingsWidget : Widget
                     packageId,
                     out var transition))
             {
-                _status = "This widget does not request host permissions";
+                StatusMessage = "This widget does not request host permissions";
                 _error = false;
             }
             else
@@ -1345,7 +1376,7 @@ public sealed class SettingsWidget : Widget
                 _installedState = _installedState with { SelectedRepair = null };
                 _busy = false;
                 _error = warning is not null;
-                _status = warning ??
+                StatusMessage = warning ??
                     $"Removed inactive {result.Id} {result.Version}" +
                     (result.CleanupPending ? "; staging cleanup is pending" : string.Empty);
             }
@@ -1528,7 +1559,7 @@ public sealed class SettingsWidget : Widget
                     : SettingsPage.InstalledWidgetDetails;
                 _busy = false;
                 _error = warning is not null || execution.Error;
-                _status = warning ?? execution.Status;
+                StatusMessage = warning ?? execution.Status;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1580,7 +1611,7 @@ public sealed class SettingsWidget : Widget
                     _page = SettingsPage.InstalledWidgetDetails;
                     _busy = false;
                     _error = true;
-                    _status = "Local data changed; review and confirm again";
+                    StatusMessage = "Local data changed; review and confirm again";
                 }
                 Invalidate();
                 return;
@@ -1602,7 +1633,7 @@ public sealed class SettingsWidget : Widget
                 _error = result.Status is not (
                     PlatformWidgetLocalDataClearStatus.Cleared or
                     PlatformWidgetLocalDataClearStatus.NoState);
-                _status = result.Status switch
+                StatusMessage = result.Status switch
                 {
                     PlatformWidgetLocalDataClearStatus.Cleared => "Local data cleared; widget restarted",
                     PlatformWidgetLocalDataClearStatus.NoState => "No local data remained to clear",
@@ -1692,7 +1723,7 @@ public sealed class SettingsWidget : Widget
                 _page = transition.Page;
                 _busy = false;
                 _error = permissionWarning is not null;
-                _status = permissionWarning ??
+                StatusMessage = permissionWarning ??
                     $"{selected.Name} {requested.Version} selected; review its unsigned digest and capabilities before enabling";
             }
         }
@@ -1778,7 +1809,7 @@ public sealed class SettingsWidget : Widget
                 _page = transition.Page;
                 _busy = false;
                 _error = false;
-                _status = nextEnabled ? $"{selected.Name} enabled" : $"{selected.Name} disabled";
+                StatusMessage = nextEnabled ? $"{selected.Name} enabled" : $"{selected.Name} disabled";
             }
         }
         catch (WidgetPackageException exception)

@@ -19,6 +19,7 @@ if (args is ["--export-renderer-fixture", var rendererFixturePath])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Settings toast replaces feedback expires and retires without taking focus", SettingsToastScenarios.ExpiryAndReplacement),
     ("Controllers page separates input behavior and prerequisite status", ControllerSettingsScenarios.LayoutAndGates),
     ("Controller actions gate enable preserve disable and retry recovery", ControllerSettingsScenarios.ActionsAndRecovery),
     ("Root keeps widget permissions inside Installed Widgets", RootCategories),
@@ -131,7 +132,7 @@ static async Task HeaderActions()
     Assert.Equal("application.restart", Button(view.Root, "settings.restart").ActionId);
     Assert.Equal("category.appearance", Button(view.Root, "settings.restart").Focus!.Down);
     Assert.Equal("settings.restart", Button(view.Root, "category.appearance").Focus!.Up);
-    Assert.True(!Nodes(view.Root).Any(node => node.Id == "settings.status" && node.Text == "Ready"), "Ready subheader remained.");
+    Assert.True(!Nodes(view.Root).Any(node => node.Id == "settings.toast.message" && node.Text == "Ready"), "Ready subheader remained.");
     await Action(widget, "application.restart");
     Assert.SequenceEqual([true], service.Requests);
     Assert.Valid(view);
@@ -544,7 +545,7 @@ static async Task ThemeSelection()
     Assert.Equal("dev.test.slate", saved.Appearance.ThemeId);
     Assert.Equal("2.3.4", saved.Appearance.ThemeVersion);
     Assert.Equal(SettingsPage.ThemePicker, widget.CurrentPage);
-    Assert.Contains("Selected Slate 2.3.4", Text(Snapshot(widget).Root, "settings.status").Text!);
+    Assert.Contains("Selected Slate 2.3.4", Text(Snapshot(widget).Root, "settings.toast.message").Text!);
 }
 
 static async Task ThemeVersionManagement()
@@ -627,8 +628,8 @@ static async Task InvalidSettingsRecovery()
     var widget = Create(temp.Path);
     await Activate(widget);
     var snapshot = Snapshot(widget);
-    Assert.Contains("invalid", Text(snapshot.Root, "settings.status").Text!);
-    Assert.True(Text(snapshot.Root, "settings.status").StyleClasses.Contains("is-error"),
+    Assert.Contains("invalid", Text(snapshot.Root, "settings.toast.message").Text!);
+    Assert.True(Nodes(snapshot.Root).Single(node => node.Id == "settings.toast").StyleClasses.Contains("wrail-toast--danger"),
         "Invalid settings did not expose error styling.");
     await Action(widget, "open.reset");
     await Action(widget, "reset.confirm");
@@ -647,12 +648,12 @@ static async Task BusyFeedback()
     var save = widget.OnActionAsync(new WidgetActionEvent("motion.reduced", "motion.reduced")).AsTask();
     await Task.Delay(20);
     var busy = Snapshot(widget);
-    Assert.Contains("Saving", Text(busy.Root, "settings.status").Text!);
+    Assert.Contains("Saving", Text(busy.Root, "settings.toast.message").Text!);
     Assert.Equal(true, Button(busy.Root, "motion.reduced").IsBusy);
     await heldLock.DisposeAsync();
     await save;
     var complete = Snapshot(widget);
-    Assert.Contains("saved", Text(complete.Root, "settings.status").Text!);
+    Assert.Contains("saved", Text(complete.Root, "settings.toast.message").Text!);
     Assert.True(Button(complete.Root, "motion.reduced").IsBusy is not true,
         "Busy state remained after persistence completed.");
 }
@@ -865,7 +866,7 @@ static async Task AuthorityRecoveryResults()
     var recoveredView = Snapshot(recovered.Widget);
     Assert.Equal(SettingsPage.Diagnostics, recovered.Widget.CurrentPage);
     Assert.Contains("Recovered content authority for Package A",
-        Text(recoveredView.Root, "settings.status").Text!);
+        Text(recoveredView.Root, "settings.toast.message").Text!);
     Assert.Contains("no pending records",
         Text(recoveredView.Root, "diagnostics.authority.summary").Text!);
     Assert.SequenceEqual(new[] { recoveredItem.ConfirmationToken! }, recovered.Service.RetryTokens);
@@ -886,7 +887,7 @@ static async Task AuthorityRecoveryResults()
     var pendingView = Snapshot(pending.Widget);
     Assert.Equal(SettingsPage.AuthorityRecovery, pending.Widget.CurrentPage);
     Assert.Contains("remains pending (sharing_violation)",
-        Text(pendingView.Root, "settings.status").Text!);
+        Text(pendingView.Root, "settings.toast.message").Text!);
     Assert.Contains("sharing_violation",
         Text(pendingView.Root, "authority.recovery.status-code").Text!);
     Assert.Equal(2, pending.Service.SnapshotRequests);
@@ -901,7 +902,7 @@ static async Task AuthorityRecoveryResults()
     var staleView = Snapshot(stale.Widget);
     Assert.Equal(SettingsPage.Diagnostics, stale.Widget.CurrentPage);
     Assert.Contains("request changed (confirmation_stale)",
-        Text(staleView.Root, "settings.status").Text!);
+        Text(staleView.Root, "settings.toast.message").Text!);
     Assert.Equal(2, stale.Service.SnapshotRequests);
     Assert.Valid(staleView);
 
@@ -914,7 +915,7 @@ static async Task AuthorityRecoveryResults()
     var refusedView = Snapshot(refused.Widget);
     Assert.Equal(SettingsPage.AuthorityRecovery, refused.Widget.CurrentPage);
     Assert.Contains("was refused (repair_refused)",
-        Text(refusedView.Root, "settings.status").Text!);
+        Text(refusedView.Root, "settings.toast.message").Text!);
     Assert.Equal(2, refused.Service.SnapshotRequests);
     Assert.Valid(refusedView);
 
@@ -927,7 +928,7 @@ static async Task AuthorityRecoveryResults()
     var unavailableView = Snapshot(unavailable.Widget);
     Assert.Equal(SettingsPage.AuthorityRecovery, unavailable.Widget.CurrentPage);
     Assert.Contains("is unavailable (journal_locked)",
-        Text(unavailableView.Root, "settings.status").Text!);
+        Text(unavailableView.Root, "settings.toast.message").Text!);
     Assert.Equal(2, unavailable.Service.SnapshotRequests);
     Assert.Valid(unavailableView);
 }
@@ -963,7 +964,7 @@ static async Task AuthorityRecoveryCancellation()
             cancellation.Token).AsTask());
     var view = Snapshot(widget);
     Assert.Equal(SettingsPage.AuthorityRecovery, widget.CurrentPage);
-    Assert.Contains("was cancelled", Text(view.Root, "settings.status").Text!);
+    Assert.Contains("was cancelled", Text(view.Root, "settings.toast.message").Text!);
     Assert.True(Button(view.Root, "authority.recovery.retry").IsBusy != true,
         "Cancelled authority recovery left its confirmation action busy.");
     Assert.Equal(1, service.SnapshotRequests);
@@ -1276,7 +1277,7 @@ static async Task InstalledWidgetPackageUninstall()
     var stale = Snapshot(widget);
     Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
     Assert.Contains("changed; review and confirm again",
-        Text(stale.Root, "settings.status").Text!);
+        Text(stale.Root, "settings.toast.message").Text!);
     Assert.Equal(0, service.UninstallCount);
     Assert.Equal(3, (await catalog.DiscoverAsync()).Widgets
         .Single(item => item.Id == selectedId).Versions.Count);
@@ -1296,7 +1297,7 @@ static async Task InstalledWidgetPackageUninstall()
     Assert.Equal("retained", await File.ReadAllTextAsync(privateState));
     Assert.Equal(1, Buttons(list.Root).Count(item =>
         item.ActionId == "host.install-local-widget"));
-    Assert.Contains("package cleanup is pending", Text(list.Root, "settings.status").Text!);
+    Assert.Contains("package cleanup is pending", Text(list.Root, "settings.toast.message").Text!);
 
     await Action(widget, "installed.select.0");
     await Action(widget, "installed.toggle");
@@ -1419,13 +1420,13 @@ static async Task InstalledWidgetToggle()
     Assert.Equal(true, (await catalog.DiscoverAsync()).Widgets.Single().Enabled);
     var enabled = Snapshot(widget);
     Assert.Contains("Disable widget", Button(enabled.Root, "installed.details.toggle").Text!);
-    Assert.Contains("Toggle enabled", Text(enabled.Root, "settings.status").Text!);
+    Assert.Contains("Toggle enabled", Text(enabled.Root, "settings.toast.message").Text!);
 
     await Action(widget, "installed.toggle");
     Assert.Equal(false, (await catalog.DiscoverAsync()).Widgets.Single().Enabled);
     var disabled = Snapshot(widget);
     Assert.Contains("Enable unsigned widget", Button(disabled.Root, "installed.details.toggle").Text!);
-    Assert.Contains("Toggle disabled", Text(disabled.Root, "settings.status").Text!);
+    Assert.Contains("Toggle disabled", Text(disabled.Root, "settings.toast.message").Text!);
     Assert.Valid(enabled);
     Assert.Valid(disabled);
 }
@@ -1468,7 +1469,7 @@ static async Task InstalledWidgetVersionRollback()
     Assert.Equal(true, Button(rolledBack.Root, "installed.version.item.1").IsSelected);
     Assert.Contains("Select newer · 3.0.0", Button(rolledBack.Root, "installed.version.item.0").Text!);
     Assert.Contains("2.0.0 selected; review its unsigned digest and capabilities before enabling",
-        Text(rolledBack.Root, "settings.status").Text!);
+        Text(rolledBack.Root, "settings.toast.message").Text!);
 
     await Action(widget, "back");
     await Action(widget, "installed.toggle");
@@ -1480,7 +1481,7 @@ static async Task InstalledWidgetVersionRollback()
         .All(button => button.IsDisabled is true), "Enabled widget exposed a version-selection action.");
     await Action(widget, "installed.version.select.2");
     Assert.Equal("2.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
-    Assert.Contains("Disable the widget", Text(Snapshot(widget).Root, "settings.status").Text!);
+    Assert.Contains("Disable the widget", Text(Snapshot(widget).Root, "settings.toast.message").Text!);
     Assert.Valid(details);
     Assert.Valid(versions);
     Assert.Valid(rolledBack);
@@ -1542,7 +1543,7 @@ static async Task ExplicitRefresh()
         "Refreshed widget", [PlatformCapabilities.NetworkReadV1], []);
 
     await Action(widget, "refresh");
-    Assert.Contains("Settings refreshed", Text(Snapshot(widget).Root, "settings.status").Text!);
+    Assert.Contains("Settings refreshed", Text(Snapshot(widget).Root, "settings.toast.message").Text!);
     await Action(widget, "open.appearance");
     await Action(widget, "open.themes");
     Assert.True(Nodes(Snapshot(widget).Root).Any(node =>
@@ -1621,7 +1622,7 @@ static async Task InstalledWidgetCatalogRecovery()
     Assert.Equal(SettingsPage.InstalledWidgets, widget.CurrentPage);
     Assert.Contains("Recovery", Button(recovered.Root, "installed.item.0").Text!);
     Assert.Contains("Removed inactive dev.test.recovery 8.0.0",
-        Text(recovered.Root, "settings.status").Text!);
+        Text(recovered.Root, "settings.toast.message").Text!);
     Assert.True(!Directory.Exists(Path.Combine(
             catalogRoot, "packages", "dev.test.recovery", "8.0.0")),
         "Settings recovery retained the exact retired version.");

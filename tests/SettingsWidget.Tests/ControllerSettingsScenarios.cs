@@ -22,12 +22,12 @@ internal static class ControllerSettingsScenarios
             await widget.OnActionAsync(new WidgetActionEvent("open.controllers", "test"));
             await widget.OnActionAsync(new WidgetActionEvent("controllers.open-shortcut.toggle", "controllers.open-shortcut"));
             var shortcutSettings = await store.LoadAsync();
-            if (shortcutSettings.Controllers.OpenShortcut != ControllerOpenShortcut.ViewMenu ||
+            if (shortcutSettings.Controllers.OpenShortcut != ControllerOpenShortcut.Guide ||
                 shortcutSettings.Controllers.ExclusiveControl || shortcutSettings.Controllers.Revision != 0)
                 throw new Exception("Shortcut must save independently of driver readiness and exclusive ownership.");
             await widget.OnActionAsync(new WidgetActionEvent("controllers.open-shortcut.toggle", "controllers.open-shortcut"));
-            if ((await store.LoadAsync()).Controllers.OpenShortcut != ControllerOpenShortcut.Guide)
-                throw new Exception("Shortcut must switch back to Guide.");
+            if ((await store.LoadAsync()).Controllers.OpenShortcut != ControllerOpenShortcut.ViewMenu)
+                throw new Exception("Shortcut must switch back to View + Menu.");
             await widget.OnActionAsync(new WidgetActionEvent("controllers.exclusive-control.toggle", "controllers.exclusive-control"));
             if ((await store.LoadAsync()).Controllers.ExclusiveControl) throw new Exception("Unavailable enable persisted.");
             service.Status = new(ControllerControlState.Off, true, true, true);
@@ -87,9 +87,9 @@ internal static class ControllerSettingsScenarios
     public static Task LayoutAndGates()
     {
         var document = PlatformSettingsDocument.Default;
-        if (document.Controllers.OpenShortcut != ControllerOpenShortcut.Guide ||
-            JsonSerializer.Deserialize<ControllerSettings>("{\"ExclusiveControl\":true,\"Revision\":3}")?.OpenShortcut != ControllerOpenShortcut.Guide)
-            throw new Exception("Old settings and new installs must retain Guide as the default.");
+        if (document.Controllers.OpenShortcut != ControllerOpenShortcut.ViewMenu ||
+            JsonSerializer.Deserialize<ControllerSettings>("{\"ExclusiveControl\":true,\"Revision\":3}")?.OpenShortcut != ControllerOpenShortcut.ViewMenu)
+            throw new Exception("Older settings without a shortcut and new installs must default to View + Menu.");
         if (PlatformSettingsValidator.Validate(document with
             { Controllers = new() { OpenShortcut = (ControllerOpenShortcut)99 } }).Count == 0)
             throw new Exception("Unknown shortcut values must be rejected.");
