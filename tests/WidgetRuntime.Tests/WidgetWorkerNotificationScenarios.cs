@@ -71,6 +71,7 @@ internal static class WidgetWorkerNotificationScenarios
         var first = SnapshotJson.Deserialize(
             System.Text.Encoding.UTF8.GetBytes(render.Payload.GetRawText()));
         NotificationAssert.Equal(4, first.Root.Children.Count);
+        NotificationAssert.Equal(1L, first.Root.CollectionGeneration);
         NotificationAssert.True(first.Root.VirtualCollectionWindow is
         {
             RequestGeneration: 1,
