@@ -71,6 +71,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Launch revalidates a rotated opaque app ID from the selected SavedId", LaunchRevalidatesRotatedAppId),
     ("Unavailable and stale resolutions never authorize launch",
         UnavailableAndStaleNeverLaunch),
+    ("Unavailable and missing saved apps remain removable without launch authority",
+        UnavailableSavedAppsRemainRemovable),
     ("Confirmed launches move the exact curated app to recent-first", SuccessfulLaunchOrdersRecentFirst),
     ("Accepted launch recency survives external foreground closure", LaunchRecencySurvivesBackground),
     ("Confirmed launch with failed recents save stays open and truthful", LaunchSaveFailureIsTruthful),
@@ -559,7 +561,7 @@ static async Task PortableRemovalSaveFailureWithdrawsLaunch()
         .Select(value => value.GetString()!));
     var cleanup = ActionSurfaces(Snapshot(widget, 929).Root).Single(candidate =>
         candidate.ActionId == "games.launch");
-    Assert.True(cleanup.IsDisabled is true);
+    Assert.True(cleanup.IsDisabled is not true);
     Assert.True(cleanup.AccessibilityLabel?.Contains(
         "Checking availability", StringComparison.Ordinal) == true);
     await Background(widget);
@@ -752,7 +754,7 @@ static async Task GogGameProjectsTruthfully()
     Assert.Equal("GOG", current.Presentation.Source.DisplayName);
     var tile = ActionSurfaces(Snapshot(widget, 912).Root).Single(node =>
         node.AccessibilityLabel?.Contains("GOG", StringComparison.Ordinal) == true);
-    Assert.True(tile.IsDisabled is true, "Non-launchable GOG row exposed Play.");
+    Assert.True(tile.IsDisabled is not true, "Non-launchable GOG row must remain removable.");
     await widget.OnActionAsync(new("games.launch", tile.Id));
     Assert.Equal(0, fake.LaunchedIds.Count);
     await Background(widget);
@@ -886,7 +888,7 @@ static async Task DisappearanceRetainsOrder()
         widget.CuratedItems.Select(item => item.Presentation.DisplayName));
     var absent = Snapshot(widget, 219);
     var staleBeta = ActionSurfaces(absent.Root).Single(tile => TileTitle(tile) == "Beta");
-    Assert.True(staleBeta.IsDisabled == true);
+    Assert.True(staleBeta.IsDisabled != true);
     Assert.Equal("Checking availability", Text(absent.Root, staleBeta.Id + ".state").Text);
     Assert.Equal(beta.Id, staleBeta.Id);
     Assert.Equal(beta.Id, absent.InitialFocusId);
@@ -1868,7 +1870,7 @@ static async Task CatalogRemovalPreservesLibraryContinuity()
     var failed = AssertReadyLibrary(failedWorker, 345, "Alpha", "Beta");
     Assert.True(ActionSurfaces(failed.Root)
         .Where(tile => tile.ActionId == "games.launch")
-        .All(tile => tile.IsDisabled == true));
+        .All(tile => tile.IsDisabled != true));
     Assert.False(System.Text.Json.JsonSerializer.Serialize(failed)
         .Contains("private", StringComparison.Ordinal));
     await Background(failedWorker);
@@ -2077,6 +2079,53 @@ static async Task UnavailableAndStaleNeverLaunch()
 
         Assert.Equal(0, fake.LaunchedIds.Count);
         await Background(widget);
+    }
+}
+
+static async Task UnavailableSavedAppsRemainRemovable()
+{
+    foreach (var missing in new[] { false, true })
+    {
+        var original = App("explorer", "Explorer");
+        var fake = new FakeAppLibraryHost
+        {
+            Pages = { [0] = Page([original], null) },
+        };
+        var widget = Create(fake);
+        await Interactive(widget);
+        await AddFromCatalog(widget, "Explorer");
+        await BackToLibrary(widget);
+        var unavailable = original with
+        {
+            Presentation = original.Presentation with
+            {
+                Availability = new(WidgetAppLibraryAvailabilityState.Unavailable, false, "unavailable"),
+                Capabilities = new([]),
+            },
+        };
+        fake.Pages[0] = Page(missing ? [] : [unavailable], null);
+        await RefreshCurrentRouteAndWait(widget);
+        var snapshot = Snapshot(widget, 947);
+        var tile = ActionSurfaces(snapshot.Root).Single(row => TileTitle(row) == "Explorer");
+        Assert.Valid(snapshot);
+        Assert.True(tile.IsDisabled is not true, "Unavailable entries must retain controller actions.");
+        var remove = tile.Shortcuts.Single(shortcut => shortcut.Button == ControllerButton.X);
+        Assert.Equal("games.remove", remove.ActionId);
+        Assert.Equal("Remove", remove.Label);
+        await widget.OnActionAsync(new("games.launch", tile.Id));
+        Assert.Equal(0, fake.LaunchedIds.Count);
+        var resolves = fake.ResolveRequests.Count;
+        await widget.OnActionAsync(new(remove.ActionId, tile.Id));
+        Assert.Equal(resolves, fake.ResolveRequests.Count);
+        Assert.Equal(0, widget.CuratedItems.Count);
+        using var saved = System.Text.Json.JsonDocument.Parse(fake.PrivateState.Json!);
+        Assert.Equal(0, saved.RootElement.GetProperty("SavedIds").GetArrayLength());
+        await Background(widget);
+        var restarted = Create(fake);
+        await Interactive(restarted);
+        await WaitUntil(() => restarted.ViewState == GamesAppsViewState.Ready);
+        Assert.Equal(0, restarted.CuratedItems.Count);
+        await Background(restarted);
     }
 }
 
@@ -3023,7 +3072,7 @@ static async Task WarmStartSurvivesRefreshFailure()
         item => item.Presentation.DisplayName));
     var snapshot = Snapshot(widget, 304);
     var alpha = ActionSurfaces(snapshot.Root).Single(tile => TileTitle(tile) == "Alpha");
-    Assert.True(alpha.IsDisabled == true);
+    Assert.True(alpha.IsDisabled != true);
     Assert.False(System.Text.Json.JsonSerializer.Serialize(snapshot)
         .Contains("private", StringComparison.Ordinal));
     await Background(widget);

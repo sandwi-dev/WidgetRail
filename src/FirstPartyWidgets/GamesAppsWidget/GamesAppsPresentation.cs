@@ -304,8 +304,9 @@ internal static class GamesAppsPresentation
                 LibraryElementId(item.SavedId),
                 semanticState,
                 visibleState,
-                disabled: !isResolved || !canLaunch ||
-                    state.LaunchingAppId is not null ||
+                // Availability gates launch, not library ownership. Keep the
+                // surface selectable so X can remove unavailable/saved rows.
+                disabled: state.LaunchingAppId is not null ||
                     state.LibraryMutationBusy ||
                     state.LifecycleState != WidgetLifecycleState.Interactive,
                 busy: isOpening,

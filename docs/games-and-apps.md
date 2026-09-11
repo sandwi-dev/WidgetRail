@@ -89,14 +89,17 @@ explicit game-library source, not a guess based on process or executable names.
 - The last-good projection contains only SavedId, a sanitized 20-scalar display
   prefix, and the closed Game/Application/Unknown kind. It never stores AppId,
   icon pixels, path, AUMID, Steam ID, command, or other provider identity. A
-  fresh worker renders those rows immediately as disabled **Checking…** tiles.
+  fresh worker renders those rows immediately as **Checking…** tiles.
   Fresh provider resolution atomically replaces each tile with a short-lived
   AppId without changing SavedId-derived focus or order; unresolved rows cannot
   launch. Cached AppIds are discarded on each active-lifetime transition and
   after a failed authority refresh. Launch performs one final SavedId resolution,
   so a provider revision that retires the displayed AppId cannot authorize stale
   launch authority.
-- Missing SavedIds remain visible as bounded disabled order tombstones.
+- Missing SavedIds remain visible as bounded order tombstones. Unavailable and
+  unresolved Library tiles remain selectable for X **Remove**; launching still
+  requires fresh host validation. Busy operations and non-Interactive lifecycle
+  disable the complete tile.
   Reappearance with the same SavedId restores launch using a fresh short-lived
   AppId. A different SavedId is an independent new Game even when the display
   title is identical; no title matching occurs.
