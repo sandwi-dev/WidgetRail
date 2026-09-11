@@ -1,6 +1,7 @@
 #include "OverlayCompositionSurface.h"
 
 #include "BackgroundSurfaceTransitionPolicy.h"
+#include "OverlayEntrance.h"
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -17,7 +18,8 @@ namespace widgetrail {
 namespace {
 HRESULT CreatePresentationAnimation(
     IDCompositionDevice2* device, const float from, const float to,
-    const std::uint64_t milliseconds, IDCompositionAnimation** result) noexcept {
+    const std::uint64_t milliseconds, IDCompositionAnimation** result,
+    const bool easeIn = false) noexcept {
     if (!device || !result || !std::isfinite(from) || !std::isfinite(to) ||
         milliseconds == 0 || milliseconds > 200) return E_INVALIDARG;
     const double duration = static_cast<double>(milliseconds) / 1000.0;
@@ -25,8 +27,8 @@ HRESULT CreatePresentationAnimation(
     ComPtr<IDCompositionAnimation> animation;
     HRESULT hr = device->CreateAnimation(animation.GetAddressOf());
     if (SUCCEEDED(hr)) hr = animation->AddCubic(0, from,
-        static_cast<float>(3 * delta / duration),
-        static_cast<float>(-3 * delta / (duration * duration)),
+        easeIn ? 0.0F : static_cast<float>(3 * delta / duration),
+        easeIn ? 0.0F : static_cast<float>(-3 * delta / (duration * duration)),
         static_cast<float>(delta / (duration * duration * duration)));
     if (SUCCEEDED(hr)) hr = animation->End(duration, to);
     if (SUCCEEDED(hr)) *result = animation.Detach();
@@ -231,6 +233,9 @@ void OverlayCompositionSurface::Reset() noexcept {
     backgroundIncomingAnimation_.Reset();
     presentationTransform_.Reset();
     contentRevealAnimation_.Reset();
+    shellZoomTransform_.Reset();
+    shellOpacityAnimation_.Reset();
+    contentEntranceTransform_.Reset();
     content_ = {};
     externalContentVisual_.Reset();
     externalContentAttached_ = false;
@@ -893,7 +898,8 @@ HRESULT OverlayCompositionSurface::CommitFrame(
 HRESULT OverlayCompositionSurface::CommitFrames(
     const std::span<Frame*> frames, const bool waitForCompletion,
     CommitTiming& timing, const VisualPresentation* presentation,
-    const BackgroundPresentation* background, const bool revealContent) noexcept {
+    const BackgroundPresentation* background, const bool revealContent,
+    const float entranceOffsetX) noexcept {
     timing = {};
     if (!device_ || frames.empty()) return E_UNEXPECTED;
     for (const auto* frame : frames) {
@@ -919,12 +925,22 @@ HRESULT OverlayCompositionSurface::CommitFrames(
     if (SUCCEEDED(result) && presentation) result = ApplyPresentation(*presentation);
     if (SUCCEEDED(result) && background) result = ApplyBackgroundPresentation(*background);
     if (SUCCEEDED(result) && revealContent) {
+        if (!std::isfinite(entranceOffsetX) || std::abs(entranceOffsetX) > 96.0F)
+            return E_INVALIDARG;
         ComPtr<IDCompositionAnimation> reveal;
         ComPtr<IDCompositionVisual3> content;
         result = content_.visual.As(&content);
         if (SUCCEEDED(result)) result = CreatePresentationAnimation(device_.Get(), 0.78F, 1.0F, 100, reveal.GetAddressOf());
         if (SUCCEEDED(result)) result = content->SetOpacity(reveal.Get());
         if (SUCCEEDED(result)) contentRevealAnimation_ = std::move(reveal);
+        ComPtr<IDCompositionTranslateTransform> entrance;
+        ComPtr<IDCompositionAnimation> slide;
+        if (SUCCEEDED(result)) result = device_->CreateTranslateTransform(entrance.GetAddressOf());
+        if (SUCCEEDED(result)) result = CreatePresentationAnimation(
+            device_.Get(), entranceOffsetX, 0.0F, 120, slide.GetAddressOf());
+        if (SUCCEEDED(result)) result = entrance->SetOffsetX(slide.Get());
+        if (SUCCEEDED(result)) result = content_.visual->SetTransform(entrance.Get());
+        if (SUCCEEDED(result)) contentEntranceTransform_ = std::move(entrance);
     }
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result) && waitForCompletion) {
@@ -1003,8 +1019,55 @@ HRESULT OverlayCompositionSurface::SnapContentVisible() noexcept {
     ComPtr<IDCompositionVisual3> content;
     HRESULT result = content_.visual.As(&content);
     if (SUCCEEDED(result)) result = content->SetOpacity(1.0F);
+    if (SUCCEEDED(result)) result = content_.visual->SetTransform(D2D1::Matrix3x2F::Identity());
     if (SUCCEEDED(result)) result = device_->Commit();
-    if (SUCCEEDED(result)) contentRevealAnimation_.Reset();
+    if (SUCCEEDED(result)) {
+        contentRevealAnimation_.Reset();
+        contentEntranceTransform_.Reset();
+    }
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::SetShellZoomAnchor(const float width, const float height) noexcept {
+    if (!shellZoomTransform_) return S_OK;
+    if (!std::isfinite(width) || !std::isfinite(height) || width <= 0 || height <= 0)
+        return E_INVALIDARG;
+    HRESULT result = shellZoomTransform_->SetCenterX(width * 0.5F);
+    if (SUCCEEDED(result)) result = shellZoomTransform_->SetCenterY(height);
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::CommitShellZoom(
+    const float fromScale, const bool opening, const bool reducedMotion) noexcept {
+    if (!device_ || !rootVisual_ || !std::isfinite(fromScale) || fromScale < 0.97F || fromScale > 1.0F)
+        return E_INVALIDARG;
+    ComPtr<IDCompositionScaleTransform> zoom;
+    HRESULT result = device_->CreateScaleTransform(zoom.GetAddressOf());
+    RECT client{};
+    if (!GetClientRect(contentWindow_, &client)) return HRESULT_FROM_WIN32(GetLastError());
+    if (SUCCEEDED(result)) result = zoom->SetCenterX(static_cast<float>(client.right) * 0.5F);
+    if (SUCCEEDED(result)) result = zoom->SetCenterY(static_cast<float>(client.bottom));
+    if (reducedMotion) {
+        if (SUCCEEDED(result)) result = zoom->SetScaleX(1.0F);
+        if (SUCCEEDED(result)) result = zoom->SetScaleY(1.0F);
+        if (SUCCEEDED(result)) result = effect_->SetOpacity(opening ? 1.0F : 0.0F);
+        if (SUCCEEDED(result)) shellOpacityAnimation_.Reset();
+    } else {
+        ComPtr<IDCompositionAnimation> scale;
+        if (SUCCEEDED(result)) result = CreatePresentationAnimation(device_.Get(), fromScale,
+            opening ? 1.0F : 0.97F, opening ? 140 : 100, scale.GetAddressOf(), !opening);
+        if (SUCCEEDED(result)) result = zoom->SetScaleX(scale.Get());
+        if (SUCCEEDED(result)) result = zoom->SetScaleY(scale.Get());
+        ComPtr<IDCompositionAnimation> opacity;
+        const float fromOpacity = std::clamp((fromScale - 0.97F) / 0.03F, 0.0F, 1.0F);
+        if (SUCCEEDED(result)) result = CreatePresentationAnimation(device_.Get(), fromOpacity,
+            opening ? 1.0F : 0.0F, opening ? 140 : 100, opacity.GetAddressOf(), !opening);
+        if (SUCCEEDED(result)) result = effect_->SetOpacity(opacity.Get());
+        if (SUCCEEDED(result)) shellOpacityAnimation_ = std::move(opacity);
+    }
+    if (SUCCEEDED(result)) result = rootVisual_->SetTransform(zoom.Get());
+    if (SUCCEEDED(result)) result = device_->Commit();
+    if (SUCCEEDED(result)) shellZoomTransform_ = std::move(zoom);
     return result;
 }
 

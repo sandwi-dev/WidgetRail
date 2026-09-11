@@ -967,12 +967,23 @@ void CheckFixedChromeWindowPolicy() {
         140, 1.0F, 1.0F, 0.0F, 0.0F};
     widgetrail::OverlayCompositionSurface::CommitTiming motionTiming;
     std::array<widgetrail::OverlayCompositionSurface::Frame*, 1> motionFrames{&animatedFrame};
-    Check(SUCCEEDED(composition.CommitFrames(motionFrames, true, motionTiming, &motion, nullptr, true)),
-          "real compositor accepts bounded resize and content opacity animations together");
+    Check(SUCCEEDED(composition.CommitFrames(motionFrames, true, motionTiming, &motion, nullptr, true, 12.0F)),
+          "real compositor accepts resize, opacity and directional entrance together");
+    Check(SUCCEEDED(composition.CommitShellZoom(0.97F, true, false)),
+          "opening zoom can coexist with resize and entrance transforms");
+    Check(SUCCEEDED(composition.SetShellZoomAnchor(800, 600)),
+          "container changes update the zoom anchor without replacing its animation");
     const auto paintsBefore = composition.paintCounters().content;
     Check(SUCCEEDED(composition.SnapContentVisible()), "focus can settle compositor opacity without repaint");
     Check(composition.paintCounters().content == paintsBefore,
           "compositor opacity does not rasterize the widget again");
+    Check(SUCCEEDED(composition.CommitShellZoom(1.0F, false, false)) &&
+          SUCCEEDED(composition.CommitShellZoom(0.985F, true, false)),
+          "closing and immediate reopening replace zoom from its current scale");
+    Check(SUCCEEDED(composition.CommitShellZoom(1.0F, true, true)),
+          "reduced motion snaps zoom independently of resize");
+    Check(composition.paintCounters().content == paintsBefore,
+          "opening and closing zoom do not repaint content");
     widgetrail::OverlayCompositionSurface::Frame repaint;
     Check(SUCCEEDED(composition.BeginFrame(400, 300, repaint)), "same-size repaint is admitted during motion");
     repaint.target->Clear(D2D1::ColorF(0.3F, 0.2F, 0.1F, 1.0F));

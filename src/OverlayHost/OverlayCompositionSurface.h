@@ -233,7 +233,7 @@ public:
         std::span<Frame*> frames, bool waitForCompletion, CommitTiming& timing,
         const VisualPresentation* presentation = nullptr,
         const BackgroundPresentation* background = nullptr,
-        bool revealContent = false) noexcept;
+        bool revealContent = false, float entranceOffsetX = 0.0F) noexcept;
     HRESULT CommitPreparedBackground(
         std::wstring_view key, std::uint64_t generation,
         CommitTiming& timing) noexcept;
@@ -246,6 +246,8 @@ public:
         const ChromePresentation& presentation, CommitTiming& timing) noexcept;
     HRESULT CommitOpacity(float opacity, CommitTiming& timing) noexcept;
     HRESULT SnapContentVisible() noexcept;
+    HRESULT CommitShellZoom(float fromScale, bool opening, bool reducedMotion) noexcept;
+    HRESULT SetShellZoomAnchor(float width, float height) noexcept;
     // Creates the only external content slot under this HWND's existing root.
     // The caller may connect a composition-hosted renderer to the returned
     // visual, but this class remains the sole visual-tree/presentation owner.
@@ -346,6 +348,9 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionAnimation> backgroundIncomingAnimation_;
     Microsoft::WRL::ComPtr<IDCompositionMatrixTransform> presentationTransform_;
     Microsoft::WRL::ComPtr<IDCompositionAnimation> contentRevealAnimation_;
+    Microsoft::WRL::ComPtr<IDCompositionScaleTransform> shellZoomTransform_;
+    Microsoft::WRL::ComPtr<IDCompositionAnimation> shellOpacityAnimation_;
+    Microsoft::WRL::ComPtr<IDCompositionTranslateTransform> contentEntranceTransform_;
 
     HRESULT ApplyPresentation(const VisualPresentation& presentation) noexcept;
     HRESULT ApplyBackgroundPresentation(

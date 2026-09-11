@@ -1,5 +1,6 @@
 #include "OverlayTransition.h"
 #include "OverlayPresentationTransaction.h"
+#include "OverlayEntrance.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -554,6 +555,36 @@ void SlowDrawingDoesNotConsumeMotionAndRetargetUsesCurrentProgress() {
         settled->offsetY == 150.0F, "completion retains container without an independent HWND resize");
 }
 
+void EntrancePolicyHonorsDirectionAndReducedMotion() {
+    using widgetrail::WidgetEntranceDirection;
+    using widgetrail::ResolveWidgetEntranceDirection;
+    Check(ResolveWidgetEntranceDirection(0, 1, 4) == WidgetEntranceDirection::FromRight,
+        "moving to a later rail slot enters from the right");
+    Check(ResolveWidgetEntranceDirection(2, 1, 4) == WidgetEntranceDirection::FromLeft,
+        "moving to an earlier rail slot enters from the left");
+    Check(ResolveWidgetEntranceDirection(3, 0, 4, 1) == WidgetEntranceDirection::FromRight,
+        "rightward wrap does not reverse entrance direction");
+    Check(ResolveWidgetEntranceDirection(0, 3, 4, -1) == WidgetEntranceDirection::FromLeft,
+        "leftward wrap retains the requested direction");
+    Check(ResolveWidgetEntranceDirection(2, 2, 4) == WidgetEntranceDirection::None &&
+        ResolveWidgetEntranceDirection(0, 0, 0) == WidgetEntranceDirection::None,
+        "same-widget refresh and unavailable slots have no directional entrance");
+    Near(widgetrail::OverlayEntranceZoomScale(0.0F, false), 0.97F, "opening starts with subtle zoom");
+    Near(widgetrail::OverlayEntranceZoomScale(0.5F, false), 0.985F, "interruption retains intermediate zoom");
+    Near(widgetrail::OverlayEntranceZoomScale(1.0F, false), 1.0F, "open settles at authored size");
+    Near(widgetrail::OverlayEntranceZoomScale(0.0F, true), 1.0F, "reduced motion has no zoom");
+    Near(widgetrail::WidgetEntranceOffset(WidgetEntranceDirection::FromLeft, 1.5F, false), -18.0F,
+        "entrance distance follows DPI and interface scale");
+    Near(widgetrail::WidgetEntranceOffset(WidgetEntranceDirection::FromRight, 1.5F, true), 0.0F,
+        "reduced motion has no slide");
+    Near(widgetrail::SampleWidgetEntranceOffset(12.0F, 0), 12.0F,
+        "hit testing starts at the compositor entrance offset");
+    Near(widgetrail::SampleWidgetEntranceOffset(12.0F, 60), 1.5F,
+        "hit testing follows the cubic entrance curve");
+    Near(widgetrail::SampleWidgetEntranceOffset(-12.0F, 120), 0.0F,
+        "completed entrance restores authored hit testing coordinates");
+}
+
 void ClockAndDecisionsAreStable() {
     widgetrail::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(100, false);
@@ -600,6 +631,7 @@ int main() {
     FullscreenExitSettlesBeforeCompositionAdmission();
     SlowDrawingDoesNotConsumeMotionAndRetargetUsesCurrentProgress();
     ClockAndDecisionsAreStable();
+    EntrancePolicyHonorsDirectionAndReducedMotion();
     std::cout << "OverlayTransitionTests: " << checks << " checks passed\n";
     return EXIT_SUCCESS;
 }
