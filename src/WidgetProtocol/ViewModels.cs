@@ -505,6 +505,9 @@ public sealed record ViewNode
     /// position when children are appended, prepended, refreshed, or evicted.
     /// </summary>
     public string? CollectionAnchorKey { get; init; }
+    /// <summary>Stable relative position of the first retained collection item.</summary>
+    public long? CollectionStartIndex { get; init; }
+    public CollectionNavigationRequest? CollectionNavigation { get; init; }
     /// <summary>
     /// Protocol-v14 stable identity for one direct collection item. This key
     /// is presentation identity only and never authorizes an action.
@@ -549,6 +552,13 @@ public sealed record ViewSnapshot
     /// </summary>
     public EmbeddedMediaSession? EmbeddedMediaSession { get; init; }
     public required ViewNode Root { get; init; }
+}
+
+public sealed record CollectionNavigationRequest
+{
+    public required long RequestId { get; init; }
+    public string? OriginFocusId { get; init; }
+    public string? TargetFocusId { get; init; }
 }
 
 public sealed record FocusGroupEntryRequest

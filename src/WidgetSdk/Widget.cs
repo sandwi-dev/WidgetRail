@@ -111,6 +111,8 @@ public sealed record WidgetActionEvent(
     /// which identifies the node that declared the action or shortcut.
     /// </summary>
     public string? FocusedElementId { get; init; }
+    /// <summary>Host-observed visible collection keys protected by a pagination demand.</summary>
+    public IReadOnlyList<string>? VisibleCollectionKeys { get; init; }
 }
 
 public enum ControllerInputContext

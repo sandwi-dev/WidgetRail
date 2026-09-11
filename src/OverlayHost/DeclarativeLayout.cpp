@@ -423,6 +423,7 @@ private:
         input.gridMinimumColumnWidth = element.gridMinimumColumnWidth.value_or(0.0F);
         input.gridMaximumColumns = static_cast<std::uint32_t>(
             element.gridMaximumColumns.value_or(kMaximumGridColumns));
+        input.gridStartIndex = element.gridStartIndex;
         input.stretchCrossAxis = element.stretchCrossAxis ? 1U : 0U;
         if (element.layoutMode == LayoutMode::ResponsiveGrid &&
             parentScrollAxis == ScrollAxis::Horizontal &&

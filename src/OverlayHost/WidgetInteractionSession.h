@@ -562,6 +562,9 @@ public:
     }
     [[nodiscard]] bool SliderReconcileDue(std::uint64_t now) const noexcept;
 
+    [[nodiscard]] std::optional<std::wstring> ResolvePendingCollectionFocus(
+        const WidgetInteractionAuthority& authority, std::wstring_view focusedElementId,
+        const RenderResult& renderResult);
     [[nodiscard]] ScrollPaginationSessionOutcome ReconcileScrollPagination(
         const WidgetInteractionAuthority& authority,
         const RenderResult& renderResult,
@@ -708,6 +711,12 @@ private:
     PressedInteractionState pressed_;
     std::optional<SelectPopupBinding> selectPopup_;
     std::uint64_t sliderReconcileAt_{};
+    struct PendingCollectionFocus {
+        std::wstring widgetId, instanceId, runtime, presentation, scope, scrollId, focusId;
+        NavigationDirection direction{};
+        std::int64_t sequence{};
+    };
+    std::optional<PendingCollectionFocus> pendingCollectionFocus_;
     std::vector<ScrollPaginationDemandLatch> scrollPaginationLatches_;
     bool scrollPaginationRouteObserved_{};
     std::uint64_t scrollPaginationDemandGeneration_{};

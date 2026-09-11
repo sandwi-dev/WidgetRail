@@ -68,6 +68,8 @@ public enum PresentationProperty
     ScrollPaginationThreshold,
     VirtualCollectionWindow,
     CollectionAnchorKey,
+    CollectionStartIndex,
+    CollectionNavigation,
     CollectionItemKey,
     StyleClasses,
     Shortcuts,
@@ -225,6 +227,8 @@ public static class PresentationPropertyMetadata
         PresentationProperty.ScrollAxis or
         PresentationProperty.ScrollPaginationThreshold or
         PresentationProperty.VirtualCollectionWindow or
+        PresentationProperty.CollectionNavigation or
+        PresentationProperty.CollectionStartIndex or
         PresentationProperty.CollectionAnchorKey or
         PresentationProperty.CollectionItemKey or
         PresentationProperty.TextEntryMaximumLength =>

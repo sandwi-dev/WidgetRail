@@ -672,8 +672,8 @@ public sealed class PlayniteLibraryTests
             "The fixture must retain items admitted beyond Home's first provider page.");
         Assert.IsGreaterThanOrEqualTo(LauncherWidget.PageSize, host.MaximumObservedIndex,
             "The fixture did not request the adjacent Home provider page.");
-        Assert.IsNotNull(widget.HomeCollection.RequestedFocusId,
-            "Adjacent Home admission must retain its requested focus owner.");
+        Assert.IsNull(widget.HomeCollection.RequestedFocusId,
+            "Automatic Home prefetch must not request a focus move.");
         var homeItems = widget.HomeCollection.Items.Select(item => item.Value.SavedId).ToArray();
         var homeAnchor = widget.HomeCollection.Anchor ??
             throw new AssertFailedException("Paged Home must retain an anchor.");
@@ -2264,9 +2264,8 @@ public sealed class PlayniteLibraryTests
         var reversePageStart = finalPageStart - LauncherWidget.MaximumRetainedItems;
         Assert.AreEqual($"Game {reversePageStart:D5}",
             widget.Collection.Items[0].Presentation.DisplayName);
-        Assert.AreEqual(
-            PlayniteLibraryIdentity.FocusId("grid", widget.Collection.Items[63].Key),
-            widget.Collection.RequestedFocusId);
+        Assert.IsNull(widget.Collection.RequestedFocusId,
+            "Reverse prefetch preserves host-owned focus instead of requesting the incoming edge.");
         await Background(widget);
     }
 

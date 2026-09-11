@@ -2004,7 +2004,7 @@ static async Task SparsePlaylistPage()
         "spotify.playlists.cursor.after", "spotify.playlists.scroll"));
     await WaitUntil(() => harness.PlaylistCalls == 2);
     var next = widget.RenderSnapshot("spotify.playlists.sparse-next", 2);
-    Assert.Equal("spotify.page.sparse.playlist.shared", next.InitialFocusId);
+    Assert.Equal("spotify.playlists.empty.shared.action", next.InitialFocusId);
     Assert.NotNull(Find(next.Root, next.InitialFocusId!));
     await StopAsync(widget);
 }
@@ -2511,7 +2511,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.50", manifest.Version);
+    Assert.Equal("0.3.51", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);

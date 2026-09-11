@@ -1017,10 +1017,14 @@ method WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.Deconstruct(out System.Colle
 method WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetCursorPresentation<TItem>.Present(WidgetRail.WidgetSdk.ScrollElement scroll) -> WidgetRail.WidgetSdk.ScrollElement
+method WidgetRail.WidgetSdk.WidgetCursorPresentation<TItem>.PresentItem(TItem item, WidgetRail.WidgetSdk.WidgetElement element) -> WidgetRail.WidgetSdk.WidgetElement
+method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Capture() -> WidgetRail.WidgetSdk.WidgetCursorPresentation<TItem>
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.ClearRequestedFocus(bool invalidate = true) -> void
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.EnsureLoaded(bool forceRefresh = false) -> WidgetRail.WidgetSdk.WidgetOperationHandle
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Move(WidgetRail.WidgetSdk.WidgetCursorDirection direction, string sourceScrollId) -> WidgetRail.WidgetSdk.WidgetOperationHandle
-method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Present(WidgetRail.WidgetSdk.ScrollElement scroll) -> WidgetRail.WidgetSdk.ScrollElement
+method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Move(WidgetRail.WidgetSdk.WidgetCursorDirection direction, string sourceScrollId, WidgetRail.WidgetSdk.WidgetActionEvent action) -> WidgetRail.WidgetSdk.WidgetOperationHandle
+method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Prefetch(WidgetRail.WidgetSdk.WidgetCursorDirection direction, string sourceScrollId) -> WidgetRail.WidgetSdk.WidgetOperationHandle
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.PresentItem(TItem item, WidgetRail.WidgetSdk.WidgetElement element) -> WidgetRail.WidgetSdk.WidgetElement
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Refresh() -> WidgetRail.WidgetSdk.WidgetOperationHandle
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Reset(bool invalidate = true) -> void
@@ -2035,6 +2039,7 @@ property System.Collections.Generic.IReadOnlyList<string> WidgetRail.WidgetSdk.W
 property System.Collections.Generic.IReadOnlyList<string> WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.DefaultGateways { get; set; }
 property System.Collections.Generic.IReadOnlyList<string> WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.DnsServers { get; set; }
 property System.Collections.Generic.IReadOnlyList<string> WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.IpAddresses { get; set; }
+property System.Collections.Generic.IReadOnlyList<string>? WidgetRail.WidgetSdk.WidgetActionEvent.VisibleCollectionKeys { get; set; }
 property System.Exception WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.Exception { get; set; }
 property System.Exception WidgetRail.WidgetSdk.WidgetOperationFailedEventArgs.Exception { get; }
 property System.Exception WidgetRail.WidgetSdk.WidgetTimedMutationFailedEventArgs.Exception { get; }
@@ -2098,6 +2103,8 @@ property TState WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAu
 property TValue? WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Value { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfaceOrientation WidgetRail.WidgetSdk.ActionSurfaceElement.Orientation { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfacePresentation? WidgetRail.WidgetSdk.ActionSurfaceElement.Presentation { get; set; }
+property WidgetRail.WidgetProtocol.CollectionNavigationRequest? WidgetRail.WidgetSdk.ScrollElement.CollectionNavigation { get; set; }
+property WidgetRail.WidgetProtocol.CollectionNavigationRequest? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.NavigationRequest { get; set; }
 property WidgetRail.WidgetProtocol.ControllerButton WidgetRail.WidgetSdk.ControllerInputEvent.Button { get; set; }
 property WidgetRail.WidgetProtocol.ControllerButton? WidgetRail.WidgetSdk.WidgetActionEvent.ControllerButton { get; set; }
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.ControllerInputEvent.Phase { get; set; }
@@ -2190,6 +2197,7 @@ property WidgetRail.WidgetSdk.WidgetCollectionItemKey WidgetRail.WidgetSdk.Colle
 property WidgetRail.WidgetSdk.WidgetCollectionItemKey? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Anchor { get; set; }
 property WidgetRail.WidgetSdk.WidgetCommandPolicy WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Policy { get; set; }
 property WidgetRail.WidgetSdk.WidgetCursorDirection? WidgetRail.WidgetSdk.WidgetAppLibraryCursorRequest.Direction { get; set; }
+property WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> WidgetRail.WidgetSdk.WidgetCursorPresentation<TItem>.Snapshot { get; }
 property WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Snapshot { get; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.BackgroundSurfaceElement.Content { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.CollectionItemElement.Child { get; set; }
@@ -2396,6 +2404,7 @@ property int WidgetRail.WidgetSdk.WidgetScenarioOperationBarrier<TRequest,TRespo
 property int WidgetRail.WidgetSdk.WidgetScenarioResult.Version { get; }
 property int? WidgetRail.WidgetSdk.GridElement.MaximumColumns { get; set; }
 property int? WidgetRail.WidgetSdk.ScrollElement.PaginationThreshold { get; set; }
+property int? WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.RetainedItemTarget { get; set; }
 property int? WidgetRail.WidgetSdk.WidgetNetworkStatus.SignalPercent { get; set; }
 property int? WidgetRail.WidgetSdk.WidgetSavedNetworkProfile.SignalPercent { get; set; }
 property long WidgetRail.WidgetSdk.ControllerInputEvent.MonotonicTimestampMicroseconds { get; set; }
@@ -2407,6 +2416,7 @@ property long WidgetRail.WidgetSdk.WidgetActionEvent.Sequence { get; set; }
 property long WidgetRail.WidgetSdk.WidgetAppLibraryMetadataAttribution.RetrievedAtUnixMilliseconds { get; set; }
 property long WidgetRail.WidgetSdk.WidgetAppLibrarySource.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Revision { get; set; }
+property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.StartIndex { get; set; }
 property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.WindowGeneration { get; set; }
 property long WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetMediaSession.CapturedAtUnixMilliseconds { get; set; }
@@ -2428,6 +2438,7 @@ property long WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot.Revision { get; se
 property long WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetTestPrivateState.Revision { get; }
+property long? WidgetRail.WidgetSdk.ScrollElement.CollectionStartIndex { get; set; }
 property long? WidgetRail.WidgetSdk.WidgetAppLibraryMetadata.LastPlayedAtUnixMilliseconds { get; set; }
 property long? WidgetRail.WidgetSdk.WidgetAppLibraryMetadata.PlaytimeMinutes { get; set; }
 property long? WidgetRail.WidgetSdk.WidgetAppLibrarySource.LastSuccessfulRefreshAtUnixMilliseconds { get; set; }
@@ -2841,6 +2852,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetCapabilityUnavailableException : Sy
 type sealed class WidgetRail.WidgetSdk.WidgetCommandError : System.IEquatable<WidgetRail.WidgetSdk.WidgetCommandError>
 type sealed class WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs : System.IEquatable<WidgetRail.WidgetSdk.WidgetActionFailedEventArgs>, System.IEquatable<WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs>, WidgetRail.WidgetSdk.WidgetActionFailedEventArgs
 type sealed class WidgetRail.WidgetSdk.WidgetCursorPage<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorPage<TItem>>
+type sealed class WidgetRail.WidgetSdk.WidgetCursorPresentation<TItem>
 type sealed class WidgetRail.WidgetSdk.WidgetCursorResource<TItem>
 type sealed class WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>>

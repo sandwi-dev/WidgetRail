@@ -983,9 +983,30 @@ void OutputIsDeterministicAndOrdinal() {
     }
 }
 
+
+void RetainedGridKeepsLogicalColumns() {
+    for (const float width : {478.0F, 642.0F, 806.0F, 970.0F, 1134.0F}) {
+        const auto window = [&](int start) {
+            auto grid = Element("grid"); grid.layoutMode = LayoutMode::ResponsiveGrid;
+            grid.gridMinimumColumnWidth = 150; grid.gridMaximumColumns = 7;
+            grid.gridStartIndex = start; grid.gap = 14; grid.crossGap = 16;
+            for (int i = start; i < start + 192; ++i) {
+                auto item = Element("item." + std::to_string(i)); item.height = 225;
+                grid.children.push_back(item);
+            }
+            return ComputeLayout(grid, {0, 0, width, 10000});
+        };
+        const auto before = window(0); const auto after = window(64);
+        Check(before.valid() && after.valid(), "positioned grid windows are valid");
+        Near(before.Find("item.130")->borderBox.x, after.Find("item.130")->borderBox.x,
+            "page eviction preserves retained item columns at every responsive width");
+    }
+}
+
 } // namespace
 
 int main() {
+    RetainedGridKeepsLogicalColumns();
     MediaLayout1080p();
     FlexShrinkAndMinimums();
     FlexGrowHonorsMaximum();

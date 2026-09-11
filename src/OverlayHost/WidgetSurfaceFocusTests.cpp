@@ -207,9 +207,40 @@ widgetrail::RenderResult FocusGroupRender(
     return result;
 }
 
+
+void CursorRequestsAreExplicitAndOneShot() {
+    using widgetrail::input::WidgetSurfaceFocusMemory;
+    const auto window = [](int first, int count, int initial) {
+        widgetrail::WidgetSnapshot s; s.instanceId=L"cursor"; s.activeInputScopeId=L"items";
+        s.root.id=L"items"; s.root.kind=L"scroll"; s.root.scrollAxis=L"vertical";
+        s.root.collectionStartIndex=first; s.root.collectionAnchorKey=L"key."+std::to_wstring(first);
+        s.initialFocusId=L"item."+std::to_wstring(initial);
+        for(int i=first;i<first+count;++i) {
+            auto item=Button((L"item."+std::to_wstring(i)).c_str());
+            item.collectionItemKey=L"key."+std::to_wstring(i); s.root.children.push_back(item);
+        }
+        return s;
+    };
+    WidgetSurfaceFocusMemory memory;
+    auto before=window(0,64,0); memory.Remember(L"widget",before,L"item.60");
+    auto after=window(0,128,64);
+    Check(memory.Restore(L"widget",after)==L"item.60", "prefetch defaults never replace retained focus");
+    after.root.collectionNavigation=widgetrail::WidgetNode::CollectionNavigationRequest{1,L"item.60",L"item.64"};
+    Check(memory.Restore(L"widget",after)==L"item.64", "explicit page request can enter the next page");
+    memory.Remember(L"widget",after,L"item.64");
+    memory.Remember(L"widget",after,L"item.65");
+    Check(memory.Restore(L"widget",after)==L"item.65", "consumed navigation does not replay on refresh");
+    after.root.collectionNavigation=widgetrail::WidgetNode::CollectionNavigationRequest{2,L"item.60",L"item.64"};
+    Check(memory.Restore(L"widget",after)==L"item.65", "late completion cannot override newer focus");
+    memory.Remember(L"widget",before,L"item.20");
+    auto evicted=window(64,64,64);
+    Check(memory.Restore(L"widget",evicted)==L"item.64", "evicted focus recovers inside the same collection");
+}
+
 } // namespace
 
 int main() {
+    CursorRequestsAreExplicitAndOneShot();
     using widgetrail::input::ControllerActionContext;
     using widgetrail::input::ControllerActionRoute;
     using widgetrail::input::NavigationDirection;

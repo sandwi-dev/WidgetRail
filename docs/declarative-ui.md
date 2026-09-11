@@ -1407,3 +1407,20 @@ first-occurrence ordering before snapshot publication; the protocol independentl
 raw workers. The host parses no CSS; the managed bridge compiles safe WRSS and
 returns typed computed values. Read the [WRSS reference](wrss.md) for selectors,
 allowed properties, imports, safety limits, and renderer-state behavior.
+
+### Positioned cursor collections (protocol v47)
+
+A keyed Scroll may carry `collectionStartIndex`, a bounded signed relative index
+for its first retained item. The host uses this position with its measured grid
+column count to preserve row alignment across eviction. `collectionNavigation`
+is an optional one-shot request (`requestId`, `originFocusId`, `targetFocusId`);
+a pending request has no target yet. Cursor entry defaults alone do not replace
+remembered focus after prefetch. A completed request must still match its origin.
+
+SDK collection views come from one `WidgetCursorResource.Capture()` revision.
+Host pagination actions include `visibleCollectionKeys`; these protect visible
+pages from eviction. `RetainedItemTarget` can be smaller than the hard
+`MaximumRetainedItems` bound, allowing small-page collections to fill a viewport
+without eviction churn. Sequential free scrolling remains within the loaded
+window while more data is requested. Viewport anchoring and focus-follow are
+independent during page changes.

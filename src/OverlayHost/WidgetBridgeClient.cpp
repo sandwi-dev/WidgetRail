@@ -1214,6 +1214,31 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.scrollNearStartActionId = OptionalString(source, L"scrollNearStartActionId");
     node.scrollNearEndActionId = OptionalString(source, L"scrollNearEndActionId");
     node.collectionAnchorKey = OptionalString(source, L"collectionAnchorKey");
+    if (source.HasKey(L"collectionStartIndex")) {
+        const auto value = source.GetNamedNumber(L"collectionStartIndex");
+        if (!std::isfinite(value) || std::floor(value) != value ||
+            std::abs(value) > protocol_contract::MaximumVirtualCollectionItems ||
+            node.kind != L"scroll" || node.collectionAnchorKey.empty())
+            throw winrt::hresult_invalid_argument();
+        node.collectionStartIndex = static_cast<std::int64_t>(value);
+    }
+    if (source.HasKey(L"collectionNavigation")) {
+        const auto encoded = source.GetNamedObject(L"collectionNavigation");
+        const auto id = encoded.GetNamedNumber(L"requestId");
+        if (!node.collectionStartIndex || !std::isfinite(id) || std::floor(id) != id ||
+            id < 1 || id > protocol_contract::MaximumFocusGroupEntryRequestId ||
+            !HasNoUnknownProperties(encoded, {L"requestId", L"originFocusId", L"targetFocusId"}))
+            throw winrt::hresult_invalid_argument();
+        WidgetNode::CollectionNavigationRequest request;
+        request.requestId = static_cast<std::uint64_t>(id);
+        request.originFocusId = OptionalString(encoded, L"originFocusId");
+        request.targetFocusId = OptionalString(encoded, L"targetFocusId");
+        if (request.originFocusId.size() > kMaximumIdentifierLength || request.targetFocusId.size() > kMaximumIdentifierLength ||
+            (!request.originFocusId.empty() && !IsIdentifier(request.originFocusId)) ||
+            (!request.targetFocusId.empty() && !IsIdentifier(request.targetFocusId)))
+            throw winrt::hresult_invalid_argument();
+        node.collectionNavigation = std::move(request);
+    }
     node.collectionItemKey = OptionalString(source, L"collectionItemKey");
     if ((!node.collectionAnchorKey.empty() &&
          (node.collectionAnchorKey.size() > kMaximumIdentifierLength ||
@@ -1759,7 +1784,7 @@ void ValidateFocusPresentations(const WidgetNode& root, const int protocolVersio
             !node.focusPresentation.empty() || !node.defaultFocusPresentation.empty() ||
             !node.scrollAxis.empty() || !node.scrollNearStartActionId.empty() ||
             !node.scrollNearEndActionId.empty() || node.scrollPaginationThreshold != 0 ||
-            node.virtualCollectionWindow || !node.collectionAnchorKey.empty() ||
+            node.collectionStartIndex || node.virtualCollectionWindow || !node.collectionAnchorKey.empty() ||
             !node.collectionItemKey.empty() || !node.shortcuts.empty())
             throw winrt::hresult_invalid_argument(
                 L"Focus-associated presentation contains interactive authority.");
@@ -2264,6 +2289,14 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     if (usesVirtualWindow(usesVirtualWindow, snapshot.root) &&
         snapshot.protocolVersion < protocol_contract::VirtualCollectionWindowVersion)
         throw winrt::hresult_invalid_argument();
+    const auto usesCollectionPosition = [&](const auto& self, const WidgetNode& node) -> bool {
+        if (node.collectionStartIndex) return true;
+        return std::any_of(node.children.begin(), node.children.end(),
+            [&](const WidgetNode& child) { return self(self, child); });
+    };
+    if (snapshot.protocolVersion < protocol_contract::CollectionPositionVersion &&
+        usesCollectionPosition(usesCollectionPosition, snapshot.root))
+        throw winrt::hresult_invalid_argument();
     snapshot.documentJson = std::wstring(std::wstring_view(source.Stringify()));
     return snapshot;
 }
@@ -2305,7 +2338,7 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 48> properties{
+    static constexpr std::array<std::wstring_view, 50> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
@@ -2319,7 +2352,7 @@ bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
         L"defaultFocusPresentation", L"scrollAxis",
         L"scrollNearStartActionId", L"scrollNearEndActionId",
         L"scrollPaginationThreshold", L"virtualCollectionWindow",
-        L"collectionAnchorKey",
+        L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey",
         L"collectionItemKey", L"styleClasses",
         L"shortcuts"};
     return std::find(properties.begin(), properties.end(), property) != properties.end();
@@ -2364,7 +2397,7 @@ bool ValidateWidgetDocumentStructure(
                  L"scrollAxis", L"scrollNearStartActionId",
                  L"scrollNearEndActionId", L"scrollPaginationThreshold",
                  L"virtualCollectionWindow",
-                 L"collectionAnchorKey", L"collectionItemKey",
+                 L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey", L"collectionItemKey",
                  L"styleClasses", L"shortcuts",
                  L"children"})) {
             error = L"The materialized widget node contains an unknown property.";
@@ -2916,7 +2949,7 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         property == L"scrollAxis" ||
         property == L"scrollPaginationThreshold" ||
         property == L"virtualCollectionWindow" ||
-        property == L"collectionAnchorKey" ||
+        property == L"collectionNavigation" || property == L"collectionStartIndex" || property == L"collectionAnchorKey" ||
         property == L"collectionItemKey") {
         return Effect::MeasureLayout | Effect::Paint |
             Effect::Interaction | Effect::Accessibility;
@@ -4944,7 +4977,8 @@ std::optional<bool> WidgetBridgeClient::SendAction(
     const std::wstring_view actionId,
     const std::wstring_view sourceElementId,
     const std::wstring_view inputScopeId,
-    const std::optional<std::wstring_view> committedText) {
+    const std::optional<std::wstring_view> committedText,
+    const std::vector<std::wstring>* visibleCollectionKeys) {
     std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() || actionId.empty() ||
         sourceElementId.empty() || !IsIdentifier(widgetId) ||
@@ -4969,6 +5003,16 @@ std::optional<bool> WidgetBridgeClient::SendAction(
         if (committedText) {
             action.Insert(L"committedText",
                 JsonValue::CreateStringValue(winrt::hstring(*committedText)));
+        }
+        if (visibleCollectionKeys && !visibleCollectionKeys->empty()) {
+            if (visibleCollectionKeys->size() > protocol_contract::MaximumCursorCollectionItems)
+                throw winrt::hresult_invalid_argument();
+            JsonArray keys;
+            for (const auto& key : *visibleCollectionKeys) {
+                if (!IsIdentifier(key)) throw winrt::hresult_invalid_argument();
+                keys.Append(JsonValue::CreateStringValue(key));
+            }
+            action.Insert(L"visibleCollectionKeys", keys);
         }
         JsonObject payload;
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));

@@ -62,16 +62,17 @@ public sealed class FullApplicationReferenceWidget : Widget
 
     public override WidgetView Render()
     {
+        var capture = _documents.Capture();
         var navigation = _navigation.Value;
         var content = navigation.Route == ReferenceRoute.Details
             ? Details()
-            : Library();
+            : Library(capture);
         var root = _navigation.Scope(navigation,
             UI.Stack("full-app.root",
                 UI.Text("Reference Library", "full-app.heading"),
                 content).Classes("full-app-root"));
         return new(root,
-            navigation.InitialFocusId ?? InitialFocus(),
+            navigation.InitialFocusId ?? InitialFocus(capture.Snapshot),
             ActiveInputScopeId: navigation.InputScopeId,
             Surface: new WidgetSurfaceHints
             {
@@ -113,9 +114,9 @@ public sealed class FullApplicationReferenceWidget : Widget
         }
     }
 
-    private WidgetElement Library()
+    private WidgetElement Library(WidgetCursorPresentation<ReferenceDocument> capture)
     {
-        var snapshot = _documents.Snapshot;
+        var snapshot = capture.Snapshot;
         if (snapshot.Status is WidgetPagedResourceStatus.NotLoaded or WidgetPagedResourceStatus.Loading)
             return UI.Stack("full-app.loading",
                 UI.LoadingIndicator("full-app.loading.indicator", "Loading private library"));
@@ -124,14 +125,14 @@ public sealed class FullApplicationReferenceWidget : Widget
                 UI.Text(snapshot.Error?.Message ?? "The private library could not be loaded.",
                     "full-app.error.message"),
                 UI.Button("Retry", "full-app.retry", "full-app.retry"));
-        var rows = snapshot.Items.Select(item => _documents.PresentItem(item,
+        var rows = snapshot.Items.Select(item => capture.PresentItem(item,
             UI.Button($"{item.Title} · {item.Section}", "full-app.open", "full-app." + item.Id)
                 .Classes("full-app-document"))).ToArray();
         return UI.Stack("full-app.library",
             UI.Text($"{_library.Count:N0} private records · {snapshot.Items.Count} projected",
                 "full-app.summary"),
             UI.Button("Refresh", "full-app.refresh", "full-app.refresh"),
-            _documents.Present(UI.VerticalScroll("full-app.document-list", rows)));
+            capture.Present(UI.VerticalScroll("full-app.document-list", rows)));
     }
 
     private WidgetElement Details()
@@ -148,10 +149,9 @@ public sealed class FullApplicationReferenceWidget : Widget
                 UI.Button("Back", _navigation.Value.BackActionId!, "full-app.details.back"));
     }
 
-    private string? InitialFocus()
+    private string? InitialFocus(WidgetCursorResourceSnapshot<ReferenceDocument> snapshot)
     {
         if (_navigation.Value.Route == ReferenceRoute.Details) return "full-app.details.back";
-        var snapshot = _documents.Snapshot;
         if (snapshot.RequestedFocusId is { } requested) return requested;
         if (snapshot.Status is WidgetPagedResourceStatus.NotLoaded or WidgetPagedResourceStatus.Loading)
             return null;

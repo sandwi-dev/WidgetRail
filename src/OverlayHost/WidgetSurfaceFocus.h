@@ -60,6 +60,7 @@ private:
         std::wstring elementId;
         std::size_t ordinal{};
         std::wstring initialFocusId;
+        std::wstring collectionScrollId;
     };
 
     [[nodiscard]] static std::wstring Key(
@@ -67,6 +68,7 @@ private:
         std::wstring_view scopeId);
 
     std::unordered_map<std::wstring, Entry> entries_;
+    std::unordered_map<std::wstring, std::uint64_t> collectionNavigation_;
 };
 
 /// Remembers the last valid focused descendant of each explicitly authored

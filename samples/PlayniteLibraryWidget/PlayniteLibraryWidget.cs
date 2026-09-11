@@ -15,6 +15,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         "playnite-library.browse-reload-retirement";
     public const int PageSize = WidgetAppLibraryService.MaximumPageSize;
     public const int MaximumRetainedItems = 192;
+    // Candidate-only diagnostic opt-in; normal packages retain production limits.
+    private static bool CursorTestMode => Environment.GetEnvironmentVariable("WRAIL_CURSOR_TEST") == "1";
     internal const int MaximumRetainedLaunchStates = 32;
     internal const int MaximumKnownSourcesForCollections =
         PlayniteLibraryPrivateState.MaximumProvenSources;
@@ -72,8 +74,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _homeLibrary = CreateCursorResource<PlayniteLibraryItem>(
             "playnite-library.library", new()
         {
-            PageSize = PageSize,
+            PageSize = CursorTestMode ? 6 : PageSize,
             MaximumRetainedItems = MaximumRetainedItems,
+            RetainedItemTarget = CursorTestMode ? 24 : null,
             PaginationThreshold = 2,
             LoadPage = (cursor, direction, limit, cancellationToken) => LoadPageAsync(
                 PlayniteLibraryRoute.Library, cursor, direction, limit, cancellationToken),
@@ -91,8 +94,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _browseLibrary = CreateCursorResource<PlayniteLibraryItem>(
             "playnite-library.browse", new()
         {
-            PageSize = PageSize,
+            PageSize = CursorTestMode ? 6 : PageSize,
             MaximumRetainedItems = MaximumRetainedItems,
+            RetainedItemTarget = CursorTestMode ? 24 : null,
             PaginationThreshold = 2,
             LoadPage = (cursor, direction, limit, cancellationToken) => LoadPageAsync(
                 PlayniteLibraryRoute.Browse, cursor, direction, limit, cancellationToken),
@@ -780,7 +784,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             direction == WidgetCursorDirection.After && !snapshot.HasAfter)
             return;
         Operations.Cancel("playnite-library.launch-lifecycle");
-        _ = library.Move(direction, sourceScrollId);
+        _ = library.Move(direction, sourceScrollId, action);
     }
 
     private bool TryHandleBrowsePagination(WidgetActionEvent action)
@@ -1279,6 +1283,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         int limit,
         CancellationToken cancellationToken)
     {
+        if (CursorTestMode && direction is not null &&
+            int.TryParse(Environment.GetEnvironmentVariable("WRAIL_CURSOR_TEST_DELAY_MS"), out var delay) && delay > 0)
+            await Task.Delay(Math.Min(delay, 2000), cancellationToken).ConfigureAwait(false);
         var requestCursor = direction is null ? null : cursor;
         WidgetAppLibraryQuery query;
         PlayniteLibraryCollectionState collectionState;

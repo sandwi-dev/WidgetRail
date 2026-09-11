@@ -451,6 +451,7 @@ struct DeclarativeRenderer::PreparedNode final {
 struct DeclarativeRenderer::RenderPass final {
     enum class CollectionAnchorPolicy {
         Reconcile,
+        ReconcileContentChanges,
         PreserveFocusFollowOffsets,
     };
 
@@ -856,6 +857,17 @@ struct DeclarativeRenderer::RenderPass final {
             if (node.gridMinimumColumnWidth)
                 element.gridMinimumColumnWidth = static_cast<float>(*node.gridMinimumColumnWidth);
             element.gridMaximumColumns = node.gridMaximumColumns;
+            if (!node.children.empty() && std::ranges::all_of(node.children,
+                    [](const WidgetNode& child) { return !child.collectionItemKey.empty(); })) {
+                std::vector<const WidgetNode*> path;
+                if (FindNodePath(snapshot->root, node.id, path)) {
+                    for (auto parent = path.rbegin(); parent != path.rend(); ++parent) {
+                        if ((*parent)->kind != L"scroll") continue;
+                        element.gridStartIndex = static_cast<std::int32_t>((*parent)->collectionStartIndex.value_or(0));
+                        break;
+                    }
+                }
+            }
         }
         const auto semanticRow = node.kind == L"row" ||
             (node.kind == L"actionSurface" &&
@@ -1265,7 +1277,7 @@ struct DeclarativeRenderer::RenderPass final {
                 child, collectionRoot, scrollBox, observation);
     }
 
-    [[nodiscard]] bool ReconcileCollectionAnchors() {
+    [[nodiscard]] bool ReconcileCollectionAnchors(const bool contentChangesOnly = false) {
         bool changed{};
         VisitScrollNodes(snapshot->root, [&](const WidgetNode& scroll) {
             if (scroll.collectionAnchorKey.empty()) return;
@@ -1276,6 +1288,15 @@ struct DeclarativeRenderer::RenderPass final {
                 !scrollBox || scrollBox->scrollAxis == declarative::ScrollAxis::None) {
                 return;
             }
+
+            const auto* cached = owner->incrementalLayoutCache_ ? &*owner->incrementalLayoutCache_ : nullptr;
+            CollectionDiagnosticObservation observed;
+            CollectCollectionItems(scroll, scroll, scrollBox, observed);
+            const auto* priorCollection = cached && cached->instanceId == snapshot->instanceId &&
+                    cached->collections.contains(scroll.id)
+                ? &cached->collections.at(scroll.id) : nullptr;
+            const bool contentChanged = priorCollection && priorCollection->itemKeys != observed.itemKeys;
+            if (contentChangesOnly && !contentChanged) return;
 
             const auto apply = [&](const float position,
                                    const float priorPosition,
@@ -1306,7 +1327,7 @@ struct DeclarativeRenderer::RenderPass final {
                 changed = true;
             };
 
-            if (existing->second.hasAnchorPosition &&
+            if ((!contentChangesOnly || !contentChanged) && existing->second.hasAnchorPosition &&
                 existing->second.anchorKey == scroll.collectionAnchorKey) {
                 const auto* item = FindCollectionItem(
                     scroll, scroll.collectionAnchorKey);
@@ -2696,8 +2717,8 @@ struct DeclarativeRenderer::RenderPass final {
             }
             return;
         }
-        if (collectionAnchorPolicy == CollectionAnchorPolicy::Reconcile &&
-            ReconcileCollectionAnchors()) {
+        if (collectionAnchorPolicy != CollectionAnchorPolicy::PreserveFocusFollowOffsets &&
+            ReconcileCollectionAnchors(collectionAnchorPolicy == CollectionAnchorPolicy::ReconcileContentChanges)) {
             prepared.clear();
             textMeasurements.clear();
             auto anchoredRoot = PrepareNode(
@@ -2778,13 +2799,25 @@ struct DeclarativeRenderer::RenderPass final {
         const std::vector<std::wstring>& boundaryIds,
         const std::map<std::wstring, IncrementalNodeState, std::less<>>& nodes) {
         if (boundaryIds.empty()) return false;
+        bool collectionChanged{};
+        if (owner->incrementalLayoutCache_) {
+            VisitScrollNodes(snapshot->root, [&](const WidgetNode& scroll) {
+                if (scroll.collectionAnchorKey.empty()) return;
+                CollectionDiagnosticObservation current;
+                CollectCollectionItems(scroll, scroll, nullptr, current);
+                const auto& prior = owner->incrementalLayoutCache_->collections;
+                if (!prior.contains(scroll.id) || prior.at(scroll.id).itemKeys != current.itemKeys)
+                    collectionChanged = true;
+            });
+        }
+        if (collectionChanged) return false;
         if (std::find(boundaryIds.begin(), boundaryIds.end(), snapshot->root.id) !=
             boundaryIds.end()) {
             BuildLayout(
                 !options.suppressFocusedDescendantFollow,
                 true,
                 options.suppressFocusedDescendantFollow
-                    ? CollectionAnchorPolicy::PreserveFocusFollowOffsets
+                    ? CollectionAnchorPolicy::ReconcileContentChanges
                     : CollectionAnchorPolicy::Reconcile);
             return true;
         }
@@ -4994,8 +5027,27 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
         const auto existing = scrollOffsets_.find(stateKey);
         const float priorOffset = existing != scrollOffsets_.end()
             ? existing->second.offset : box->scrollOffset;
-        const float next = std::clamp(
-            priorOffset + deltaDip, 0.0F, box->maximumScrollOffset);
+        float minimumOffset = 0.0F;
+        float maximumOffset = box->maximumScrollOffset;
+        // Sequential cursors cannot seek into spacer-only ranges. Keep a real
+        // boundary item visible so the existing edge demand can load more.
+        if (candidate.virtualCollectionWindow && cache->collections.contains(candidate.id)) {
+            const auto& collection = cache->collections.at(candidate.id);
+            float first = std::numeric_limits<float>::max();
+            float last = std::numeric_limits<float>::lowest();
+            for (const auto& geometry : collection.itemGeometry) {
+                if (!geometry.valid) continue;
+                first = std::min(first, geometry.position + box->scrollOffset);
+                last = std::max(last, geometry.position + geometry.extent + box->scrollOffset);
+            }
+            if (first <= last) {
+                minimumOffset = std::clamp(first, 0.0F, maximumOffset);
+                const float extent = axis == declarative::ScrollAxis::Vertical
+                    ? box->contentBox.height : box->contentBox.width;
+                maximumOffset = std::clamp(last - extent, minimumOffset, maximumOffset);
+            }
+        }
+        const float next = std::clamp(priorOffset + deltaDip, minimumOffset, maximumOffset);
         if (std::abs(next - priorOffset) <= 0.001F) {
             localDiagnostic.disposition =
                 FocusedFreeScrollPlanDisposition::OffsetBoundary;
@@ -5195,7 +5247,7 @@ RenderResult DeclarativeRenderer::Render(
                 !options.suppressFocusedDescendantFollow,
                 true,
                 options.suppressFocusedDescendantFollow
-                    ? RenderPass::CollectionAnchorPolicy::PreserveFocusFollowOffsets
+                    ? RenderPass::CollectionAnchorPolicy::ReconcileContentChanges
                     : RenderPass::CollectionAnchorPolicy::Reconcile);
         }
         if (pass.layout.valid()) pass.SynchronizeScrollState();
@@ -5203,7 +5255,7 @@ RenderResult DeclarativeRenderer::Render(
         pass.BuildLayout(
             !options.suppressFocusedDescendantFollow, true,
             options.suppressFocusedDescendantFollow
-                ? RenderPass::CollectionAnchorPolicy::PreserveFocusFollowOffsets
+                ? RenderPass::CollectionAnchorPolicy::ReconcileContentChanges
                 : RenderPass::CollectionAnchorPolicy::Reconcile);
     }
     const auto preparationFinished = std::chrono::steady_clock::now();

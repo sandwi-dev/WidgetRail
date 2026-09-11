@@ -6,7 +6,7 @@ use taffy::geometry::{Point, Rect, Size};
 use taffy::prelude::*;
 use taffy::style::Overflow;
 
-const ABI_VERSION: u32 = 2;
+const ABI_VERSION: u32 = 3;
 const OK: i32 = 0;
 const INVALID_ARGUMENT: i32 = 1;
 const INVALID_TREE: i32 = 2;
@@ -57,6 +57,7 @@ pub struct NodeInput {
     flex_shrink: f32,
     grid_minimum_column_width: f32,
     grid_maximum_columns: u32,
+    grid_start_index: i32,
     stretch_cross_axis: u32,
 }
 
@@ -382,6 +383,20 @@ fn compute_impl(
             let natural = (((content_width + gap) / (minimum + gap)).floor() as u32).max(1);
             let maximum = input.grid_maximum_columns.max(1);
             let columns = natural.min(maximum).min(32) as u16;
+            // Place the first retained item at its logical column. Remaining
+            // children retain normal row-major auto placement.
+            if input.child_count > 0 {
+                let first = child_indices[input.child_start as usize] as usize;
+                let column = input.grid_start_index.rem_euclid(columns as i32) as i16 + 1;
+                let placement = Line { start: line(column), end: span(1) };
+                if styles[first].grid_column != placement {
+                    styles[first].grid_column = placement;
+                    if tree.set_style(node_ids[first], styles[first].clone()).is_err() {
+                        return LAYOUT_ERROR;
+                    }
+                    changed = true;
+                }
+            }
             let effective_minimum = minimum.min(content_width);
             let tracks = vec![repeat(
                 columns,
@@ -488,7 +503,7 @@ mod tests {
     fn c_abi_sizes_are_stable() {
         assert_eq!(core::mem::size_of::<OptionalFloat>(), 8);
         assert_eq!(core::mem::size_of::<Edges>(), 16);
-        assert_eq!(core::mem::size_of::<NodeInput>(), 156);
+        assert_eq!(core::mem::size_of::<NodeInput>(), 160);
         assert_eq!(core::mem::size_of::<MeasureInput>(), 32);
         assert_eq!(core::mem::size_of::<MeasuredSize>(), 8);
         assert_eq!(core::mem::size_of::<NodeOutput>(), 40);

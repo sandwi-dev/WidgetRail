@@ -529,30 +529,47 @@ messages up to 256 visible characters. The lifetime defaults to `Active`, cache
 duration to five minutes, and last-good retention to enabled. This API remains
 offset-based with replacement-window compatibility.
 
-For continuous feeds, use `WidgetCursorResource<TItem>` with typed
-`WidgetCollectionCursor` and `WidgetCollectionItemKey` values. Its
-`PresentItem`/`Present` helpers author protocol-v14 item keys and one viewport
-anchor; adjacent pages append/prepend, whole segments evict from the opposite
-edge, and refresh follows the segment containing the anchor. Page size is
-1–100, retention is at least two pages and at most 256 items, and cursor
-history is capped at 256. Duplicate keys, cursor loops, stale completions, and
-malformed pages fail without partial publication.
+For continuous feeds, use `WidgetCursorResource<TItem>` with opaque cursors and
+stable item keys. Capture one immutable presentation before constructing rows:
 
-For a large logical collection, opt a cursor viewport into protocol v19 by
-setting `WidgetCursorViewport<TItem>.EstimatedItemExtent` and returning the
-page's zero-based `FirstItemIndex` plus `TotalItemCount`. The SDK continues to
-retain and serialize at most 256 real keyed items; it adds one typed virtual
-window descriptor so the existing vertical or horizontal host Scroll can
-reserve the bounded off-window extent. Admitted rows keep normal measured
-layout, focus, hit testing, paint, and UIA semantics. Off-window private items
-are never serialized or materialized by the host. The estimate is 1–512 DIPs,
-the known total is at most 1,000,000, and their product is capped at 1,000,000
-DIPs. Missing metadata preserves protocol-v14 behavior, while malformed or
-stale windows retain the last valid complete checkpoint. Unknown-position and
-provider-mutation windows publish `replace`. Indexed append/prepend windows are
-admitted only when they move contiguously in the declared direction, keep the
-same known-total authority, and preserve every overlapping logical-position key.
-The monotonic request generation is bounded to JSON's exact integer range.
+```csharp
+var collection = resource.Capture();
+var rows = collection.Snapshot.Items.Select(item => collection.PresentItem(item,
+    UI.Button(item.Title, "open", item.FocusId))).ToArray();
+var scroll = collection.Present(UI.VerticalScroll("items", rows));
+```
+
+The capture owns one data revision; it never reselects a window or rereads the
+resource during presentation. `Resource.Present(scroll)` was removed because
+building children before its separate snapshot read could mix revisions.
+
+`TryHandlePagination` and `Prefetch` load adjacent data without moving focus.
+`Move(direction, scrollId, action)` represents explicit page navigation and
+includes its originating focus. Its versioned request is consumed once by the
+host; a late request cannot replace a different current focus. D-pad boundary
+navigation is retained by the host and resumes inside the owning scroll after
+admission. Ordinary offscreen navigation and responsive column measurement
+remain host-owned.
+
+Whole provider segments evict from the opposite end. `MaximumRetainedItems` is
+still a hard bound (at most 256); optional `RetainedItemTarget` is a lower eviction
+target. Host pagination actions include visible collection keys, so filling a
+large viewport may retain more than the target. A configured hard bound that
+cannot contain the protected window fails without partial publication or evicting
+those visible rows. Choose a hard bound sufficient for supported widget layouts;
+never use a tiny hard limit merely to force an eviction demonstration.
+
+Protocol v47 collection positions keep responsive-grid columns aligned after
+opposite-edge eviction. The SDK supplies a stable relative index even when the
+provider cursor has no absolute position; authors do not specify column counts
+or duplicate layout measurements. The host preserves a visible keyed item's
+viewport position when the retained content changes, separately from focus-follow.
+
+Optional v19 `EstimatedItemExtent` with provider `FirstItemIndex`/`TotalItemCount`
+still describes logical extent. Sequential right-stick scrolling is limited to
+the loaded window while adjacent data is requested; spacers alone do not grant
+random-access seeking into unloaded content. Existing per-page, item-count,
+cursor-history, identifier, and logical-extent bounds remain enforced.
 
 `WidgetAppLibraryItem` has one authoritative normalized `Presentation` value;
 there are no duplicate scalar title/kind/source/artwork accessors. It contains

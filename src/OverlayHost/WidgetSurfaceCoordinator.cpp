@@ -312,6 +312,7 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         admission_->initialContentHeightDip, layouts, snapshot,
         compactMediaSessionAvailable);
     if (!nextLayouts) return false;
+    collectionFocusMemory_.Remember(admission_->widgetId, SelectedSnapshot(), focusedElementId_);
     ++workCounters_.snapshots;
     const auto priorSurfaceAppearance = EffectiveSurfaceAppearance();
     const std::wstring priorLayoutId{SelectedLayoutId()};
@@ -352,8 +353,8 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     const auto& selectedSnapshot = SelectedSnapshot();
     const std::wstring priorFocus = focusedElementId_;
     if (focusedElementId_.empty() ||
-        !input::FindNodeInInputScope(
-            selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId))
+        (!freeScroll_.binding() && !input::FindNodeInInputScope(
+            selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId)))
         focusedElementId_ = selectedSnapshot.initialFocusId;
     focusGroupMemory_.Remember(
         admission_->widgetId, selectedSnapshot, focusedElementId_);
@@ -388,6 +389,14 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
             lastRenderResult_);
     if (!preserveFreeScrollBinding) {
         ClearFreeScroll();
+        const auto positioned = [&](const auto& self, const WidgetNode& node) -> bool {
+            if (node.collectionStartIndex) return true;
+            return std::ranges::any_of(node.children, [&](const WidgetNode& child) { return self(self, child); });
+        };
+        if (positioned(positioned, selectedSnapshot.root)) {
+            focusedElementId_ = collectionFocusMemory_.Restore(admission_->widgetId, selectedSnapshot);
+            collectionFocusMemory_.Remember(admission_->widgetId, selectedSnapshot, focusedElementId_);
+        }
     }
     const auto* retainedFocus = input::FindNodeInInputScope(
         selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId);
@@ -916,6 +925,7 @@ void WidgetSurfaceCoordinator::TransitionPinnedFocus(
     ClearFreeScroll();
     if (focusedElementId_ != target) RetireSliderInteraction();
     focusedElementId_ = target;
+    if (admission_) collectionFocusMemory_.Remember(admission_->widgetId, SelectedSnapshot(), focusedElementId_);
     if (admission_)
         focusGroupMemory_.Remember(
             admission_->widgetId, SelectedSnapshot(), focusedElementId_);
@@ -1699,6 +1709,7 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     if (admission_)
         sliderInteraction_.ForgetRuntime(admission_->instanceId);
     if (admission_) focusGroupMemory_.Forget(admission_->widgetId);
+    if (admission_) collectionFocusMemory_.Forget(admission_->widgetId);
     overlayVisible_ = false;
     pointerPlacement_ = false;
     pointerPlacementMode_ = PlacementMode::None;
@@ -2915,6 +2926,10 @@ void WidgetSurfaceCoordinator::Paint() {
         lastRenderResult_ = std::move(renderResult);
         paginationOutcome = sliderInteraction_.ReconcileScrollPagination(
             authority, lastRenderResult_, GetTickCount64());
+        if (auto next = sliderInteraction_.ResolvePendingCollectionFocus(authority, focusedElementId_, lastRenderResult_)) {
+            focusedElementId_ = *next;
+            RequestPaint();
+        }
         if (mediaViewportGeometryDirty_) {
             if (lastRenderResult_.succeeded &&
                 lastRenderResult_.mediaViewportRegions.size() == 1) {

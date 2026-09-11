@@ -30,41 +30,10 @@ internal sealed record SpotifyCursorPresentation<TItem>(
         string operationKey,
         string scrollId)
     {
-        const int maximumCaptureAttempts = 4;
-        for (var attempt = 0; attempt < maximumCaptureAttempts; attempt++)
-        {
-            var snapshot = resource.Snapshot;
-            var viewport = resource.Present(UI.VerticalScroll(scrollId, []));
-            if (snapshot.Revision == resource.Snapshot.Revision)
-                return new(snapshot, viewport);
-        }
-
-        // A provider completion can publish Loading -> Ready and busy-state
-        // invalidations while the worker is capturing both responsive shells.
-        // One unstable render safely omits virtual-window metadata rather than
-        // turning ordinary collection churn into a fatal render request.
-        var fallback = resource.Snapshot;
-        return new(
-            fallback,
-            FallbackScroll(scrollId, operationKey, fallback));
+        var capture = resource.Capture();
+        return new(capture.Snapshot, capture.Present(UI.VerticalScroll(scrollId, [])));
     }
 
-    private static ScrollElement FallbackScroll(
-        string scrollId,
-        string operationKey,
-        WidgetCursorResourceSnapshot<TItem> snapshot)
-    {
-        var scroll = UI.VerticalScroll(scrollId, []) with
-        {
-            CollectionAnchorKey = snapshot.Anchor?.Value,
-        };
-        return snapshot.HasBefore || snapshot.HasAfter
-            ? scroll.Paginate(
-                snapshot.HasBefore ? operationKey + ".cursor.before" : null,
-                snapshot.HasAfter ? operationKey + ".cursor.after" : null,
-                SpotifyCollectionPolicy.PaginationThreshold)
-            : scroll;
-    }
 }
 
 internal readonly record struct SpotifyPresentationRevision(

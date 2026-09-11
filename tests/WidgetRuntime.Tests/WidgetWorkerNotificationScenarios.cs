@@ -692,7 +692,8 @@ internal sealed class DiagnosticCursorNotificationWidget : Widget
 
     public override WidgetView Render()
     {
-        var rows = _items.Snapshot.Items.Select(item => _items.PresentItem(
+        var capture = _items.Capture();
+        var rows = capture.Snapshot.Items.Select(item => capture.PresentItem(
             item,
             UI.Button(
                 $"Item {item.Index}",
@@ -700,7 +701,7 @@ internal sealed class DiagnosticCursorNotificationWidget : Widget
                 $"diagnostic.item.{item.Index}")))
             .ToArray();
         return new WidgetView(
-            _items.Present(UI.VerticalScroll("diagnostic.scroll", rows)),
+            capture.Present(UI.VerticalScroll("diagnostic.scroll", rows)),
             rows.FirstOrDefault()?.Id);
     }
 

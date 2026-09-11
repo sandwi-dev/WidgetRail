@@ -329,6 +329,9 @@ public sealed record ScrollElement : ContainerElement
     public string? NearEndActionId { get; init; }
     public int? PaginationThreshold { get; init; }
     public string? CollectionAnchorKey { get; init; }
+    /// <summary>Stable relative position of the first retained collection item.</summary>
+    public long? CollectionStartIndex { get; init; }
+    public CollectionNavigationRequest? CollectionNavigation { get; init; }
     internal VirtualCollectionWindow? VirtualCollectionWindow { get; init; }
     public new ScrollElement InputScope(string scopeId) => this with { InputScopeId = RequireId(scopeId) };
     public new ScrollElement RememberChildFocus(string initialChildFocusId) => this with
@@ -383,6 +386,8 @@ public sealed record ScrollElement : ContainerElement
         ScrollPaginationThreshold = PaginationThreshold,
         VirtualCollectionWindow = VirtualCollectionWindow,
         CollectionAnchorKey = CollectionAnchorKey,
+        CollectionStartIndex = CollectionStartIndex,
+        CollectionNavigation = CollectionNavigation,
     };
 }
 

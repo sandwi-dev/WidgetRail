@@ -34,6 +34,8 @@ public sealed record WidgetCursorResourceOptions<TItem> where TItem : notnull
 {
     public required int PageSize { get; init; }
     public int MaximumRetainedItems { get; init; } = 256;
+    /// <summary>Optional eviction target. Visible pages may exceed it, up to MaximumRetainedItems.</summary>
+    public int? RetainedItemTarget { get; init; }
     public int PaginationThreshold { get; init; } = 2;
     public required Func<WidgetCollectionCursor?, WidgetCursorDirection?, int,
         CancellationToken, ValueTask<WidgetCursorPage<TItem>>> LoadPage { get; init; }
@@ -57,7 +59,24 @@ public sealed record WidgetCursorResourceSnapshot<TItem>(
     public long? FirstItemIndex { get; init; }
     public long? TotalItemCount { get; init; }
     public long WindowGeneration { get; init; }
+    /// <summary>Stable relative position of the retained window, including opaque-cursor providers.</summary>
+    public long StartIndex { get; init; }
+    public CollectionNavigationRequest? NavigationRequest { get; init; }
     public VirtualCollectionWindowChange WindowChange { get; init; }
+}
+
+/// <summary>One immutable collection revision used to construct both items and viewport metadata.</summary>
+public sealed class WidgetCursorPresentation<TItem> where TItem : notnull
+{
+    private readonly Func<ScrollElement, ScrollElement> _present;
+    private readonly Func<TItem, WidgetElement, WidgetElement> _presentItem;
+    internal WidgetCursorPresentation(WidgetCursorResourceSnapshot<TItem> snapshot,
+        Func<ScrollElement, ScrollElement> present,
+        Func<TItem, WidgetElement, WidgetElement> presentItem)
+    { Snapshot = snapshot; _present = present; _presentItem = presentItem; }
+    public WidgetCursorResourceSnapshot<TItem> Snapshot { get; }
+    public ScrollElement Present(ScrollElement scroll) => _present(scroll);
+    public WidgetElement PresentItem(TItem item, WidgetElement element) => _presentItem(item, element);
 }
 
 /// <summary>
@@ -76,15 +95,16 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         WidgetCollectionCursor? Cursor,
         WidgetCursorDirection? Direction,
         string? SourceScrollId,
-        bool Refresh);
+        bool Refresh, bool MoveFocus = false, string? OriginFocusId = null, IReadOnlySet<string>? ProtectedKeys = null);
     private sealed record Segment(
         WidgetCursorPage<TItem> Page,
-        WidgetCollectionCursor? RequestCursor);
+        WidgetCollectionCursor? RequestCursor, long StartIndex);
 
     private sealed class Request(Intent intent, long epoch,
-        WidgetCursorResourceSnapshot<TItem> before)
+        WidgetCursorResourceSnapshot<TItem> before, long focusIntentRevision)
     {
         internal Intent Intent { get; } = intent;
+        internal long FocusIntentRevision { get; } = focusIntentRevision;
         internal long Epoch { get; } = epoch;
         internal WidgetCursorResourceSnapshot<TItem> Before { get; } = before;
         internal TaskCompletionSource<WidgetOperationResult> Completion { get; } =
@@ -110,6 +130,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
     private Intent? _failed;
     private long _epoch;
     private long _windowGeneration;
+    private long _navigationRequestId;
+    private long _focusIntentRevision;
 
     internal WidgetCursorResource(string operationKey,
         WidgetCursorResourceOptions<TItem> options,
@@ -126,6 +148,9 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             options.MaximumRetainedItems > MaximumRetainedItems ||
             options.MaximumRetainedItems < Math.Min(MaximumRetainedItems, options.PageSize * 2))
             throw new ArgumentOutOfRangeException(nameof(options.MaximumRetainedItems));
+        if (options.RetainedItemTarget is { } target &&
+            (target < options.PageSize * 2 || target > options.MaximumRetainedItems))
+            throw new ArgumentOutOfRangeException(nameof(options.RetainedItemTarget));
         if (options.PaginationThreshold is < 1 or >
             WidgetRail.WidgetProtocol.ProtocolConstants.MaximumScrollPaginationThreshold)
             throw new ArgumentOutOfRangeException(nameof(options.PaginationThreshold));
@@ -193,7 +218,20 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         return Start(new(cursor, null, null, true));
     }
 
-    public WidgetOperationHandle Move(WidgetCursorDirection direction, string sourceScrollId)
+    /// <summary>Loads adjacent data without requesting a focus move.</summary>
+    public WidgetOperationHandle Prefetch(WidgetCursorDirection direction, string sourceScrollId) =>
+        MoveCore(direction, sourceScrollId, false);
+
+    public WidgetOperationHandle Move(WidgetCursorDirection direction, string sourceScrollId) =>
+        MoveCore(direction, sourceScrollId, true);
+
+    public WidgetOperationHandle Move(WidgetCursorDirection direction, string sourceScrollId, WidgetActionEvent action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        return MoveCore(direction, sourceScrollId, true, action.FocusedElementId ?? action.SourceElementId);
+    }
+
+    private WidgetOperationHandle MoveCore(WidgetCursorDirection direction, string sourceScrollId, bool moveFocus, string? originFocusId = null, IReadOnlySet<string>? protectedKeys = null)
     {
         if (!Enum.IsDefined(direction)) throw new ArgumentOutOfRangeException(nameof(direction));
         StableIdentifier.Validate(sourceScrollId, nameof(sourceScrollId));
@@ -204,7 +242,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                 throw new ArgumentException("The source is not a configured cursor viewport.", nameof(sourceScrollId));
             cursor = direction == WidgetCursorDirection.Before ? _snapshot.Before : _snapshot.After;
         }
-        return cursor is null ? Completed() : Start(new(cursor, direction, sourceScrollId, false));
+        return cursor is null ? Completed() : Start(new(cursor, direction, sourceScrollId, false, moveFocus, originFocusId, protectedKeys));
     }
 
     public WidgetOperationHandle Retry()
@@ -224,16 +262,29 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             operation = default;
             return false;
         }
-        operation = Move(direction.Value, action.SourceElementId);
+        IReadOnlySet<string>? protectedKeys = null;
+        if (action.VisibleCollectionKeys is { } visible)
+        {
+            if (visible.Count > MaximumRetainedItems)
+                throw new ArgumentException("Visible collection demand exceeds its bound.", nameof(action));
+            foreach (var key in visible) StableIdentifier.Validate(key, nameof(action));
+            protectedKeys = visible.ToHashSet(StringComparer.Ordinal);
+        }
+        operation = MoveCore(direction.Value, action.SourceElementId, false, protectedKeys: protectedKeys);
         return true;
     }
 
-    public ScrollElement Present(ScrollElement scroll)
+    public WidgetCursorPresentation<TItem> Capture()
+    {
+        var snapshot = Snapshot;
+        return new(snapshot, scroll => PresentSnapshot(scroll, snapshot), PresentItem);
+    }
+
+    private ScrollElement PresentSnapshot(ScrollElement scroll, WidgetCursorResourceSnapshot<TItem> snapshot)
     {
         ArgumentNullException.ThrowIfNull(scroll);
         if (!_viewports.ContainsKey(scroll.Id))
             throw new ArgumentException("The scroll is not a configured cursor viewport.", nameof(scroll));
-        var snapshot = Snapshot;
         var before = snapshot.Status != WidgetPagedResourceStatus.Error && snapshot.HasBefore
             ? _beforeActionId
             : null;
@@ -245,6 +296,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         return result with
         {
             CollectionAnchorKey = snapshot.Anchor?.Value,
+            CollectionStartIndex = snapshot.Items.Count == 0 ? null : snapshot.StartIndex,
+            CollectionNavigation = snapshot.Items.Count == 0 ? null : snapshot.NavigationRequest,
             VirtualCollectionWindow = _viewports[scroll.Id].EstimatedItemExtent is { } estimate &&
                 snapshot.Items.Count != 0 && snapshot.WindowGeneration > 0
                 ? new VirtualCollectionWindow
@@ -276,6 +329,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             if (!ContainsKey(_snapshot.Items, key)) return;
             changed = SetSnapshotLocked(_snapshot.Status, _snapshot.Items,
                 _snapshot.Before, _snapshot.After, key, _snapshot.RequestedFocusId, _snapshot.Error);
+            if (changed) ++_focusIntentRevision;
         }
         if (changed && invalidate) _invalidate();
     }
@@ -283,8 +337,17 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
     public void ClearRequestedFocus(bool invalidate = true)
     {
         bool changed;
-        lock (_gate) changed = SetSnapshotLocked(_snapshot.Status, _snapshot.Items,
-            _snapshot.Before, _snapshot.After, _snapshot.Anchor, null, _snapshot.Error);
+        lock (_gate)
+        {
+            ++_focusIntentRevision;
+            changed = SetSnapshotLocked(_snapshot.Status, _snapshot.Items,
+                _snapshot.Before, _snapshot.After, _snapshot.Anchor, null, _snapshot.Error);
+            if (_snapshot.NavigationRequest is not null)
+            {
+                _snapshot = _snapshot with { NavigationRequest = null, Revision = _snapshot.Revision + 1 };
+                changed = true;
+            }
+        }
         if (changed && invalidate) _invalidate();
     }
 
@@ -308,6 +371,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                     FirstItemIndex = null,
                     TotalItemCount = null,
                     WindowGeneration = 0,
+                    StartIndex = 0,
+                    NavigationRequest = null,
                     WindowChange = VirtualCollectionWindowChange.Replace,
                 };
             }
@@ -319,6 +384,11 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
     public Task WhenIdleAsync(CancellationToken token = default) =>
         _operations.WhenIdleAsync(_operationKey, token);
 
+    private static bool SameIntent(Intent left, Intent right) =>
+        (left with { ProtectedKeys = null }) == (right with { ProtectedKeys = null }) &&
+        (left.ProtectedKeys is null ? right.ProtectedKeys is null || right.ProtectedKeys.Count == 0 :
+            left.ProtectedKeys.SetEquals(right.ProtectedKeys ?? new HashSet<string>(StringComparer.Ordinal)));
+
     private WidgetOperationHandle Start(Intent intent)
     {
         lock (_admissionGate)
@@ -327,16 +397,22 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             bool changed;
             lock (_gate)
             {
-                if (_current is { } duplicate && duplicate.Intent == intent)
+                if (_current is { } duplicate && SameIntent(duplicate.Intent, intent))
                     return new(WidgetOperationAdmission.Joined, duplicate.Completion.Task);
+                if (intent.MoveFocus && _navigationRequestId >= ProtocolConstants.MaximumFocusGroupEntryRequestId)
+                    throw new InvalidOperationException("Navigation request generation exhausted.");
                 var before = _snapshot;
-                request = new(intent, _epoch, before);
+                request = new(intent, _epoch, before, _focusIntentRevision);
                 _current = request;
                 var status = before.Items.Count == 0 ? WidgetPagedResourceStatus.Loading :
                     intent.Direction is null ? WidgetPagedResourceStatus.Refreshing :
                     WidgetPagedResourceStatus.LoadingAdjacent;
                 changed = SetSnapshotLocked(status, before.Items, before.Before, before.After,
-                    before.Anchor, before.RequestedFocusId, null);
+                    before.Anchor, null, null);
+                _snapshot = _snapshot with { NavigationRequest = intent.MoveFocus ? new()
+                {
+                    RequestId = ++_navigationRequestId, OriginFocusId = intent.OriginFocusId,
+                } : null };
             }
             var underlying = _operations.RunLatest(_operationKey,
                 context => LoadCoreAsync(request, context), _options.Lifetime);
@@ -362,11 +438,16 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                 if (_usesVirtualCollectionWindows && _windowGeneration >=
                     WidgetRail.WidgetProtocol.ProtocolConstants.MaximumVirtualCollectionRequestGeneration)
                     throw new InvalidOperationException("Virtual collection request generation is exhausted.");
-                var merged = Merge(page, request.Intent.Cursor, request.Intent.Direction);
-                var anchor = ResolveAnchor(request.Before, merged, request.Intent.Direction);
-                var focus = ResolveFocus(page.Items, request.Intent);
-                var beforeCursor = _segments.First?.Value.Page.Before;
-                var afterCursor = _segments.Last?.Value.Page.After;
+                var proposed = Merge(page, request.Intent.Cursor, request.Intent.Direction, request.Intent.ProtectedKeys);
+                var merged = new ReadOnlyCollection<TItem>(proposed.SelectMany(segment => segment.Page.Items).ToArray());
+                var anchor = ResolveAnchor(_snapshot, merged, request.Intent.Direction);
+                var focus = request.FocusIntentRevision == _focusIntentRevision
+                    ? ResolveFocus(page.Items, request.Intent) : null;
+                var beforeCursor = proposed.FirstOrDefault()?.Page.Before;
+                var afterCursor = proposed.LastOrDefault()?.Page.After;
+                // Commit only after every author callback and invariant has succeeded.
+                _segments.Clear();
+                foreach (var segment in proposed) _segments.AddLast(segment);
                 CommitTraversalProgress(request.Intent, page);
                 _current = null;
                 _failed = null;
@@ -390,6 +471,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                 _snapshot = _snapshot with
                 {
                     FirstItemIndex = firstIndex,
+                    StartIndex = proposed.FirstOrDefault()?.StartIndex ?? 0,
+                    NavigationRequest = focus is not null && _snapshot.NavigationRequest is { } navigation ? navigation with { TargetFocusId = focus } : null,
                     TotalItemCount = total,
                     WindowGeneration = nextWindowGeneration,
                     WindowChange = windowChange,
@@ -406,8 +489,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                 _current = null;
                 _failed = request.Intent;
                 SetSnapshotLocked(WidgetPagedResourceStatus.Error, request.Before.Items,
-                    request.Before.Before, request.Before.After, request.Before.Anchor,
-                    request.Before.RequestedFocusId, MapError(exception));
+                    request.Before.Before, request.Before.After, _snapshot.Anchor,
+                    _snapshot.RequestedFocusId, MapError(exception));
                 committed = true;
             }
             throw;
@@ -452,12 +535,22 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         };
     }
 
-    private IReadOnlyList<TItem> Merge(WidgetCursorPage<TItem> page,
+    private IReadOnlyList<Segment> Merge(WidgetCursorPage<TItem> page,
         WidgetCollectionCursor? requestCursor,
-        WidgetCursorDirection? direction)
+        WidgetCursorDirection? direction, IReadOnlySet<string>? protectedKeys)
     {
         var proposed = direction is null ? new List<Segment>() : _segments.ToList();
-        var incoming = new Segment(page, requestCursor);
+        var start = page.FirstItemIndex ?? (direction switch
+        {
+            WidgetCursorDirection.After when _segments.Last is { } last =>
+                checked(last.Value.StartIndex + last.Value.Page.Items.Count),
+            WidgetCursorDirection.Before when _segments.First is { } first =>
+                checked(first.Value.StartIndex - page.Items.Count),
+            _ => 0,
+        });
+        if (Math.Abs(start) > ProtocolConstants.MaximumVirtualCollectionItems)
+            throw new InvalidOperationException("Cursor position exceeded its bound.");
+        var incoming = new Segment(page, requestCursor, start);
         if (direction == WidgetCursorDirection.Before) proposed.Insert(0, incoming);
         else proposed.Add(incoming);
         ValidateLogicalWindow(proposed);
@@ -469,18 +562,19 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                 throw new InvalidOperationException("Duplicate collection item key.");
         }
         var count = proposed.Sum(segment => segment.Page.Items.Count);
-        while (count > _options.MaximumRetainedItems && proposed.Count > 1)
+        while (count > (_options.RetainedItemTarget ?? _options.MaximumRetainedItems) && proposed.Count > 1)
         {
             var removed = direction == WidgetCursorDirection.Before
                 ? proposed[^1] : proposed[0];
+            if (protectedKeys is not null && removed.Page.Items.Any(item => protectedKeys.Contains(KeyOf(item).Value)))
+                break;
             if (direction == WidgetCursorDirection.Before) proposed.RemoveAt(proposed.Count - 1);
             else proposed.RemoveAt(0);
             count -= removed.Page.Items.Count;
         }
-        _segments.Clear();
-        foreach (var segment in proposed) _segments.AddLast(segment);
-        var result = proposed.SelectMany(segment => segment.Page.Items).ToList();
-        return new ReadOnlyCollection<TItem>(result);
+        if (count > _options.MaximumRetainedItems)
+            throw new InvalidOperationException("Visible collection exceeds the configured retained capacity.");
+        return proposed;
     }
 
     private static void ValidateLogicalWindow(IReadOnlyList<Segment> segments)
@@ -519,7 +613,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
 
     private string? ResolveFocus(IReadOnlyList<TItem> items, Intent intent)
     {
-        if (intent.Direction is null || intent.SourceScrollId is null) return null;
+        if (!intent.MoveFocus || intent.Direction is null || intent.SourceScrollId is null) return null;
         var viewport = _viewports[intent.SourceScrollId];
         if (items.Count == 0) return viewport.EmptyFocusId;
         var item = intent.Direction == WidgetCursorDirection.Before ? items[^1] : items[0];
@@ -606,7 +700,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                 _current = null;
                 var value = request.Before;
                 changed = SetSnapshotLocked(value.Status, value.Items, value.Before, value.After,
-                    value.Anchor, value.RequestedFocusId, value.Error);
+                    _snapshot.Anchor, _snapshot.RequestedFocusId, value.Error);
             }
         }
         if (changed) _invalidate();
@@ -624,6 +718,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             FirstItemIndex = previous.FirstItemIndex,
             TotalItemCount = previous.TotalItemCount,
             WindowGeneration = previous.WindowGeneration,
+            StartIndex = previous.StartIndex,
+            NavigationRequest = previous.NavigationRequest,
             WindowChange = previous.WindowChange,
         };
         return true;

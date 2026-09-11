@@ -224,6 +224,9 @@ internal sealed class ProtocolVersionRequirements
                             path,
                             $"Scroll pagination requires protocol version {ProtocolConstants.ScrollPaginationVersion} or later.");
                     }
+                    if (node.CollectionStartIndex is not null || node.CollectionNavigation is not null)
+                        Add("collection-position", ProtocolConstants.CollectionPositionVersion,
+                            $"{path}.collectionStartIndex", "Collection positions require protocol version 47 or later.");
                     if (node.CollectionAnchorKey is not null)
                         Add(
                             "cursor-collection-anchor",

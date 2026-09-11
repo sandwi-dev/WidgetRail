@@ -124,10 +124,32 @@ void WidgetSurfaceFocusMemory::Remember(
     CollectEnabledFocusNodes(snapshot.root, scope, RootInputScope(snapshot), focusNodes);
     const auto position = std::find(focusNodes.begin(), focusNodes.end(), node);
     if (position != focusNodes.end()) {
+        std::vector<const WidgetNode*> path;
+        (void)FindNodePath(snapshot.root, focusedElementId, scope, RootInputScope(snapshot), path);
+        std::wstring collectionScroll;
+        for (auto it = path.rbegin(); it != path.rend(); ++it) {
+            if ((*it)->kind == L"scroll" && (*it)->collectionStartIndex) {
+                collectionScroll = (*it)->id;
+                break;
+            }
+        }
+        const auto observe = [&](const auto& self, const WidgetNode& current) -> void {
+            if (current.collectionNavigation) {
+                const auto& request = *current.collectionNavigation;
+                if ((!request.targetFocusId.empty() && request.targetFocusId == focusedElementId) ||
+                    (!request.originFocusId.empty() && request.originFocusId != focusedElementId)) {
+                    auto& consumed = collectionNavigation_[Key(widgetId, scope) + L"\x1f" + current.id];
+                    consumed = std::max(consumed, request.requestId);
+                }
+            }
+            for (const auto& child : current.children) self(self, child);
+        };
+        observe(observe, snapshot.root);
         entries_[Key(widgetId, scope)] = {
             std::wstring(focusedElementId),
             static_cast<std::size_t>(position - focusNodes.begin()),
             snapshot.initialFocusId,
+            std::move(collectionScroll),
         };
     }
 }
@@ -137,7 +159,24 @@ std::wstring WidgetSurfaceFocusMemory::Restore(
     const WidgetSnapshot& snapshot) const {
     const auto scope = std::wstring_view(snapshot.activeInputScopeId);
     const auto memory = entries_.find(Key(widgetId, scope));
-    if (memory != entries_.end() &&
+    std::vector<const WidgetNode*> initialPath;
+    (void)FindNodePath(snapshot.root, snapshot.initialFocusId, scope, RootInputScope(snapshot), initialPath);
+    const WidgetNode* initialCollection{};
+    for (auto it = initialPath.rbegin(); it != initialPath.rend(); ++it) {
+        if ((*it)->kind == L"scroll" && (*it)->collectionStartIndex) { initialCollection = *it; break; }
+    }
+    // Cursor defaults are entry defaults, not navigation commands. Only a fresh
+    // explicitly authored request can replace existing focus after a load.
+    if (initialCollection && initialCollection->collectionNavigation) {
+        const auto& request = *initialCollection->collectionNavigation;
+        const auto consumed = collectionNavigation_.find(Key(widgetId, scope) + L"\x1f" + initialCollection->id);
+        if (!request.targetFocusId.empty() && request.targetFocusId == snapshot.initialFocusId &&
+            (consumed == collectionNavigation_.end() || consumed->second < request.requestId) &&
+            (request.originFocusId.empty() || (memory != entries_.end() && memory->second.elementId == request.originFocusId)) &&
+            IsEnabledFocusNode(FindNodeInInputScope(snapshot, request.targetFocusId, scope)))
+            return request.targetFocusId;
+    }
+    if (!initialCollection && memory != entries_.end() &&
         memory->second.initialFocusId != snapshot.initialFocusId &&
         !snapshot.initialFocusId.empty() &&
         IsEnabledFocusNode(FindNodeInInputScope(snapshot, snapshot.initialFocusId, scope))) {
@@ -146,6 +185,14 @@ std::wstring WidgetSurfaceFocusMemory::Restore(
     if (memory != entries_.end() &&
         IsEnabledFocusNode(FindNodeInInputScope(snapshot, memory->second.elementId, scope))) {
         return memory->second.elementId;
+    }
+    if (memory != entries_.end() && !memory->second.collectionScrollId.empty()) {
+        const auto* collection = FindNodeInInputScope(snapshot, memory->second.collectionScrollId, scope);
+        if (collection && collection->kind == L"scroll") {
+            // Eviction must not reinterpret a collection-local position as a
+            // whole-widget ordinal and move into another section.
+            if (const auto* first = FirstEnabledFocusNode(*collection, scope, scope)) return first->id;
+        }
     }
     if (memory != entries_.end()) {
         std::vector<const WidgetNode*> focusNodes;
@@ -167,6 +214,9 @@ std::wstring WidgetSurfaceFocusMemory::Restore(
 }
 
 void WidgetSurfaceFocusMemory::Forget(const std::wstring_view widgetId) {
+    std::erase_if(collectionNavigation_, [&](const auto& entry) {
+        return entry.first.starts_with(std::wstring{widgetId} + L"\x1f");
+    });
     if (widgetId.empty()) return;
     std::wstring prefix(widgetId);
     prefix.push_back(L'\x1f');

@@ -6085,6 +6085,51 @@ void BitmapRetentionPolicyIsBounded() {
         "bitmap cache uses the distinct aggregate GPU retention budget");
 }
 
+void CursorWindowRegression(bool suppress, bool virtualGap=false) {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write; ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> bitmap; ComPtr<ID2D1RenderTarget> target;
+    const auto ok=[](HRESULT hr) { if(FAILED(hr)) std::exit(3); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,d2d.ReleaseAndGetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(wic.ReleaseAndGetAddressOf())));
+    ok(wic->CreateBitmap(300,150,GUID_WICPixelFormat32bppPBGRA,WICBitmapCacheOnLoad,bitmap.ReleaseAndGetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(bitmap.Get(),D2D1::RenderTargetProperties(),target.ReleaseAndGetAddressOf()));
+    DeclarativeRenderer renderer(d2d.Get(),write.Get(),nullptr);
+    WidgetSnapshot snapshot; snapshot.instanceId=L"cursor.regression"; snapshot.activeInputScopeId=L"root";
+    snapshot.root=Node(L"root",L"scroll"); snapshot.sequence=1;
+    for(int i=0;i<12;++i) snapshot.root.children.push_back(Node((L"item."+std::to_wstring(i)).c_str(),L"button"));
+    snapshot.root.kind=L"scroll"; snapshot.root.scrollAxis=L"vertical";
+    snapshot.root.collectionAnchorKey=L"key.0";
+    if(virtualGap) {
+        snapshot.root.virtualCollectionWindow=widgetrail::VirtualCollectionWindow{1,widgetrail::VirtualCollectionWindowChange::Replace,0,100,false,true,50};
+        snapshot.root.scrollPaginationThreshold=2; snapshot.root.scrollNearEndActionId=L"after";
+    }
+    for(auto& n:snapshot.root.children) {
+        n.collectionItemKey=L"key."+n.id.substr(5);
+        n.baseStyle={{L"height",{L"length",L"50px",50,L"px"}}, {L"flex-shrink",{L"number",L"0",0,{}}}};
+    }
+    const Rect viewport{0,0,300,150};
+    widgetrail::DeclarativeRenderOptions options; options.suppressFocusedDescendantFollow=true;
+    const auto draw=[&]() { target->BeginDraw(); auto result=renderer.Render(target.Get(),snapshot,L"item.0",viewport,options); ok(target->EndDraw()); if(!result.succeeded) std::exit(4); return result; };
+    (void)draw();
+    auto plan=renderer.PlanFocusedFreeScroll(snapshot,L"item.0",widgetrail::declarative::ScrollAxis::Vertical,virtualGap ? 900.0F : 300.0F,viewport,L"root");
+    if(!plan) { std::cout << "SCROLL probe plan missing\n"; return; }
+    const auto before=draw();
+    if(virtualGap) {
+        Check(!before.focusRects.empty(), "virtual scroll never enters a spacer-only viewport");
+        Check(before.scrollViewports.at(L"root").offset <= 450.01F, "virtual scroll stops at the loaded trailing edge");
+        return;
+    }
+    snapshot.sequence=2; snapshot.root.children.erase(snapshot.root.children.begin(),snapshot.root.children.begin()+4);
+    snapshot.root.collectionAnchorKey=L"key.4";
+    for(int i=12;i<16;++i) { auto n=Node((L"item."+std::to_wstring(i)).c_str(),L"button"); n.collectionItemKey=L"key."+std::to_wstring(i); n.baseStyle=snapshot.root.children[0].baseStyle; snapshot.root.children.push_back(n); }
+    options.suppressFocusedDescendantFollow=suppress;
+    const auto after=draw();
+    Near(before.navigationRects.at(L"item.6").y, after.navigationRects.at(L"item.6").y,
+        "new window preserves visible position with focus-follow both enabled and disabled");
+}
+
 } // namespace
 
 int main() {
@@ -6112,6 +6157,9 @@ int main() {
     ClippedControlsAreNotFocusCandidates();
     ControllerScrollFollowsFocusAndRestoresState();
     FocusEntryPreparationIsGeometryOnlyAndStateIsolated();
+    CursorWindowRegression(true);
+    CursorWindowRegression(false);
+    CursorWindowRegression(true, true);
     CursorCollectionPreservesKeyedViewportAnchor();
     VirtualCollectionWindowKeepsNativeWorkBounded();
     WholeWidgetScrollRevealsAudioMixerControls();

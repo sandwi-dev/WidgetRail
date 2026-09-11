@@ -10213,7 +10213,7 @@ private:
                     pending.request.widgetId,
                     pending.request.action.actionId,
                     pending.request.action.sourceElementId,
-                    pending.request.inputScopeId);
+                    pending.request.inputScopeId, std::nullopt, &pending.request.action.visibleCollectionKeys);
                 dispatch.disposition = !handled
                     ? widgetrail::input::ScrollPaginationDispatchDisposition::
                         TransportFailure
@@ -12049,6 +12049,14 @@ private:
         if (!WidgetOwnsInputFocus(widgetId)) return;
         const auto* snapshot = InteractionSnapshotFor(widgetId);
         if (!snapshot || interactionSession_.focusedElementId().empty()) return;
+        if (const auto& binding = interactionSession_.freeScrollBinding(); binding &&
+            !lastWidgetRenderResult_.focusRects.contains(interactionSession_.focusedElementId())) {
+            const auto visible = widgetrail::input::FindFreeScrollReentryTarget(snapshot->root,
+                binding->scrollId, binding->axis, snapshot->activeInputScopeId, lastWidgetRenderResult_);
+            if (visible) {
+                interactionSession_.SetFocus(widgetId, *snapshot, *visible);
+            }
+        }
         interactionSession_.RememberFocus(widgetId, *snapshot);
     }
 
@@ -13232,7 +13240,7 @@ private:
                     request->widgetId,
                     request->action.actionId,
                     request->action.sourceElementId,
-                    request->inputScopeId);
+                    request->inputScopeId, std::nullopt, &request->action.visibleCollectionKeys);
                 dispatch.disposition = !handled
                     ? widgetrail::input::ScrollPaginationDispatchDisposition::
                         TransportFailure
@@ -18071,6 +18079,12 @@ private:
                 if (!inertRetainedSnapshot && result.succeeded) {
                     ReconcileScrollPaginationPrefetch(
                         widget, semanticSnapshot, *descriptor, result);
+                    if (auto next = interactionSession_.ResolvePendingCollectionFocus(
+                            {widget, &semanticSnapshot, descriptor->runtimeGeneration, descriptor->presentationGeneration, false},
+                            interactionSession_.focusedElementId(), result)) {
+                        const auto moved = interactionSession_.MoveFocus(widget, semanticSnapshot, *next);
+                        InvalidateWidgetFocusChange(moved.priorFocus, moved.sliderDamageNodeIds);
+                    }
                 }
                 if (!inertRetainedSnapshot && result.succeeded) {
                     committedWidgetVisualState_ = CommittedWidgetVisualState{

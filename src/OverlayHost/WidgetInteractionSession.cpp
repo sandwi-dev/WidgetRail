@@ -408,6 +408,7 @@ void WidgetInteractionSession::SetFocus(
     const std::wstring_view widgetId,
     const WidgetSnapshot& snapshot,
     const std::wstring_view target) {
+    if (focusedElementId_ != target) pendingCollectionFocus_.reset();
     focusedElementId_ = target;
     sliders_.RetainAdjustmentMode(
         snapshot.instanceId, snapshot.activeInputScopeId, focusedElementId_);
@@ -431,6 +432,7 @@ FocusMutation WidgetInteractionSession::MoveFocus(
     const std::wstring_view target,
     const bool retireSliderPresentations,
     const bool retirePressedPresentation) {
+    if (focusedElementId_ != target) pendingCollectionFocus_.reset();
     auto result = SurfaceInteractionTransactions::MoveFocus(
         focusedElementId_, target);
     sliders_.RetainAdjustmentMode(
@@ -476,6 +478,7 @@ std::wstring WidgetInteractionSession::RestoreFocus(
         return {};
     }
     focusedElementId_ = focusMemory_.Restore(widgetId, snapshot);
+    focusMemory_.Remember(widgetId, snapshot, focusedElementId_);
     sliders_.RetainAdjustmentMode(
         snapshot.instanceId, snapshot.activeInputScopeId, focusedElementId_);
     focusGroupMemory_.Remember(widgetId, snapshot, focusedElementId_);
@@ -1439,6 +1442,7 @@ WidgetInteractionSession::ObserveScrollPaginationIntent(
     const ScrollPaginationEdge edge,
     const ScrollPaginationIntentSource source,
     const std::uint64_t) {
+    if (source != ScrollPaginationIntentSource::DirectionalNavigation) pendingCollectionFocus_.reset();
     constexpr std::size_t maximumLatches = 16;
     ScrollPaginationSessionOutcome outcome;
     if (!authority.semantics || axis == declarative::ScrollAxis::None)
@@ -1489,6 +1493,7 @@ WidgetInteractionSession::ObserveScrollPaginationFocusIntent(
     const std::wstring_view nextFocus,
     const ScrollPaginationIntentSource source,
     const std::uint64_t now) {
+    if (priorFocus != nextFocus) pendingCollectionFocus_.reset();
     if (priorFocus.empty() || nextFocus.empty() || priorFocus == nextFocus)
         return {};
     const auto prior = renderResult.navigationRects.find(
@@ -1532,6 +1537,7 @@ WidgetInteractionSession::ObserveScrollPaginationBoundaryIntent(
     const ScrollPaginationIntentSource source,
     const std::uint64_t now) {
     ScrollPaginationBoundaryOutcome result;
+    if (pendingCollectionFocus_ && pendingCollectionFocus_->direction != direction) pendingCollectionFocus_.reset();
     if (!authority.semantics || focusedElementId.empty()) return result;
     const bool horizontal = direction == NavigationDirection::Left ||
         direction == NavigationDirection::Right;
@@ -1573,6 +1579,10 @@ WidgetInteractionSession::ObserveScrollPaginationBoundaryIntent(
     }
 
     result.retainFocus = true;
+    pendingCollectionFocus_ = PendingCollectionFocus{std::wstring{authority.widgetId},
+        authority.semantics->instanceId, std::wstring{authority.runtimeGeneration},
+        std::wstring{authority.presentationGeneration}, authority.semantics->activeInputScopeId,
+        owner.scrollId, std::wstring{focusedElementId}, direction, authority.semantics->sequence};
     result.pagination = ObserveScrollPaginationIntent(
         authority, owner.scrollId, axis, edge, source, now);
     auto reconciled = ReconcileScrollPagination(authority, renderResult, now);
@@ -1612,6 +1622,27 @@ DirectionalFocusAdmission AdmitDirectionalFocusResolution(
     result.pagination = std::move(boundary.pagination);
     result.retainFocus = boundary.retainFocus;
     return result;
+}
+
+std::optional<std::wstring> WidgetInteractionSession::ResolvePendingCollectionFocus(
+    const WidgetInteractionAuthority& authority, const std::wstring_view focusedElementId,
+    const RenderResult& renderResult) {
+    if (!pendingCollectionFocus_) return std::nullopt;
+    const auto pending = *pendingCollectionFocus_;
+    if (!authority.semantics || authority.widgetId != pending.widgetId ||
+        authority.semantics->instanceId != pending.instanceId ||
+        authority.runtimeGeneration != pending.runtime || authority.presentationGeneration != pending.presentation ||
+        authority.semantics->activeInputScopeId != pending.scope || focusedElementId != pending.focusId) {
+        pendingCollectionFocus_.reset(); return std::nullopt;
+    }
+    if (authority.semantics->sequence <= pending.sequence) return std::nullopt;
+    const auto next = FindDirectionalFocusTargetInOwningSubtrees(
+        authority.semantics->root, focusedElementId, pending.direction, renderResult, {});
+    if (!next.target || ClassifyDirectionalScrollExit(authority.semantics->root,
+            focusedElementId, *next.target, pending.direction, pending.scope, renderResult) !=
+            DirectionalScrollExitDisposition::InsideOwner) return std::nullopt;
+    pendingCollectionFocus_.reset();
+    return next.target;
 }
 
 ScrollPaginationSessionOutcome WidgetInteractionSession::ReconcileScrollPagination(
@@ -1815,6 +1846,14 @@ ScrollPaginationSessionOutcome WidgetInteractionSession::ReconcileScrollPaginati
             }
         }
 
+        // A small transport page is not necessarily a full viewport. This is
+        // bounded by forward progress and the provider's end cursor; visible
+        // keys accompany the request so filling cannot evict those same rows.
+        if (!latch.prefetch && afterResident && after->viewportUnderfilled && !latch.pendingIntentEdge) {
+            queue(*after, ScrollPaginationDemandReason::Initial,
+                ScrollPaginationIntentSource::None, ++scrollPaginationDemandGeneration_);
+        }
+
         if (!latch.prefetch && firstObservation && initialRouteObservation &&
             !initialQueued &&
             !latch.pendingIntentEdge) {
@@ -1961,6 +2000,7 @@ WidgetInteractionSession::ObserveScrollPaginationFailure(
 ScrollPaginationSessionOutcome WidgetInteractionSession::RetireScrollPagination(
     const std::wstring_view widgetId,
     const std::wstring_view reason) {
+    pendingCollectionFocus_.reset();
     ScrollPaginationSessionOutcome outcome;
     std::erase_if(scrollPaginationLatches_, [&](const auto& latch) {
         if (!widgetId.empty() && latch.widgetId != widgetId) return false;

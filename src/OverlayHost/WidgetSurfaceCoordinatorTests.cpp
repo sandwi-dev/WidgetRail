@@ -2049,10 +2049,8 @@ int main() {
                       }}),
                   "authoritative pinned successor admits the requested row");
             UpdateWindow(pagination.window());
-            Check(pagination.MoveControllerFocus(
-                      widgetrail::input::NavigationDirection::Down) &&
-                      pagination.focusedElementId() == L"pin.scroll.item.8",
-                  "the next pinned direction enters the newly admitted row");
+            Check(pagination.focusedElementId() == L"pin.scroll.item.8",
+                  "the pending pinned direction enters the newly admitted row exactly once");
 
             auto finite = ScrollSnapshot(3, false, 9);
             Check(pagination.UpdateSnapshot(

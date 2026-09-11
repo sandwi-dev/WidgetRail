@@ -62,6 +62,8 @@ struct ScrollPaginationAction final {
     std::size_t firstVisibleIndex{};
     std::size_t lastVisibleIndex{};
     std::size_t itemCount{};
+    std::vector<std::wstring> visibleCollectionKeys;
+    bool viewportUnderfilled{};
 };
 
 enum class FocusedScrollResolutionDisposition {

@@ -1730,6 +1730,38 @@ void PressedAndAdmissionReconciliation() {
           "idempotent lifecycle cleanup returns no unrelated damage");
 }
 
+void CursorBoundaryAndViewportDemand() {
+    using namespace widgetrail::input;
+    auto snapshot = PagedSnapshot(); snapshot.root.children[0].collectionStartIndex = 0;
+    auto authority = Authority(snapshot, L"paged.widget");
+    auto trailing = PagedRender(0, 136);
+    WidgetInteractionSession session;
+    session.SetFocus(L"paged.widget", snapshot, L"page.row.4");
+    const auto boundary = session.ObserveScrollPaginationBoundaryIntent(authority, trailing,
+        L"page.row.4", NavigationDirection::Down, ScrollPaginationIntentSource::DirectionalNavigation, 1);
+    Check(boundary.retainFocus, "cursor boundary retains the navigation intent while loading");
+    auto next = PagedSnapshot(3, 101); next.root.children[0].collectionStartIndex = 3;
+    auto nextAuthority = Authority(next, L"paged.widget");
+    auto nextRender = PagedRender(3, 0);
+    Check(session.ResolvePendingCollectionFocus(nextAuthority, L"page.row.4", nextRender) == L"page.row.5",
+        "page admission resumes the adjacent directional move instead of choosing a provider-page edge");
+    Check(!session.ResolvePendingCollectionFocus(nextAuthority, L"page.row.4", nextRender),
+        "boundary navigation is consumed once");
+    (void)session.ObserveScrollPaginationBoundaryIntent(authority, trailing,
+        L"page.row.4", NavigationDirection::Down, ScrollPaginationIntentSource::DirectionalNavigation, 2);
+    (void)session.MoveFocus(L"paged.widget", snapshot, L"page.row.3");
+    Check(!session.ResolvePendingCollectionFocus(nextAuthority, L"page.row.3", nextRender),
+        "newer focus cancels a delayed directional move");
+
+    auto roomy = PagedRender(0, 0); roomy.scrollViewports.at(L"page.scroll").rect.height = 500;
+    WidgetInteractionSession filling;
+    auto outcome = filling.ReconcileScrollPagination(authority, roomy, 10);
+    Check(outcome.dispatchReady, "a viewport larger than the transport page requests enough data to fill");
+    auto acquired = filling.AcquireScrollPaginationDispatch(authority, roomy, 11);
+    Check(acquired.first && acquired.first->action.visibleCollectionKeys.size() == 5,
+        "pagination demand protects every host-observed visible collection key");
+}
+
 void PaginationPrefetchLifecycle() {
     using namespace widgetrail::input;
     auto snapshot = PagedSnapshot();
@@ -2077,6 +2109,7 @@ int main() {
     FreeScrollAndRetainedRefreshLifecycle();
     ExactSliderRequestAuthorityAndRollback();
     PressedAndAdmissionReconciliation();
+    CursorBoundaryAndViewportDemand();
     PaginationPrefetchLifecycle();
     AnchoredSelectPopupIsExactAndBounded();
     std::cout << "WidgetInteractionSessionTests passed (" << checks

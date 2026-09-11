@@ -308,6 +308,8 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.CollectionItemKey => Read<string?>(change.Value),
                 PresentationProperty.TextEntryMaximumLength or PresentationProperty.GridMaximumColumns or
                 PresentationProperty.ScrollPaginationThreshold => Read<int?>(change.Value),
+                PresentationProperty.CollectionStartIndex => Read<long?>(change.Value),
+                PresentationProperty.CollectionNavigation => Read<CollectionNavigationRequest?>(change.Value),
                 PresentationProperty.VirtualCollectionWindow =>
                     Read<VirtualCollectionWindow?>(change.Value),
                 PresentationProperty.FocusPresentation or
@@ -473,6 +475,8 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ScrollNearEndActionId => node with { ScrollNearEndActionId = Read<string?>(change.Value) },
                 PresentationProperty.ScrollPaginationThreshold => node with { ScrollPaginationThreshold = Read<int?>(change.Value) },
                 PresentationProperty.VirtualCollectionWindow => node with { VirtualCollectionWindow = Read<VirtualCollectionWindow?>(change.Value) },
+                PresentationProperty.CollectionStartIndex => node with { CollectionStartIndex = Read<long?>(change.Value) },
+                PresentationProperty.CollectionNavigation => node with { CollectionNavigation = Read<CollectionNavigationRequest?>(change.Value) },
                 PresentationProperty.CollectionAnchorKey => node with { CollectionAnchorKey = Read<string?>(change.Value) },
                 PresentationProperty.CollectionItemKey => node with { CollectionItemKey = Read<string?>(change.Value) },
                 PresentationProperty.StyleClasses => node with { StyleClasses = ReadRequired<IReadOnlyList<string>>(change.Value) },

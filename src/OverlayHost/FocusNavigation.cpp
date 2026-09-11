@@ -391,6 +391,17 @@ void CollectScrollPaginationActions(
             *lastVisible,
             items.size(),
         });
+        if (edge == ScrollPaginationEdge::After && *firstVisible == 0 && *lastVisible + 1 == items.size()) {
+            const auto last = CollectionItemBounds(*items.back(), activeScopeId, renderResult);
+            const auto& rect = viewport->second.rect;
+            if (last) actions.back().viewportUnderfilled = viewport->second.axis == declarative::ScrollAxis::Vertical
+                ? last->y + last->height < rect.y + rect.height - 1.0F
+                : last->x + last->width < rect.x + rect.width - 1.0F;
+        }
+        for (auto index = *firstVisible; index <= *lastVisible; ++index) {
+            if (node.collectionStartIndex && !items[index]->collectionItemKey.empty())
+                actions.back().visibleCollectionKeys.push_back(items[index]->collectionItemKey);
+        }
     };
     if (*firstVisible < node.scrollPaginationThreshold) {
         append(ScrollPaginationEdge::Before,

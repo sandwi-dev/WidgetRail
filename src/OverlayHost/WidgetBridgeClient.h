@@ -437,6 +437,13 @@ struct WidgetNode final {
     std::size_t scrollPaginationThreshold{};
     std::optional<VirtualCollectionWindow> virtualCollectionWindow;
     std::wstring collectionAnchorKey;
+    std::optional<std::int64_t> collectionStartIndex;
+    struct CollectionNavigationRequest {
+        std::uint64_t requestId{};
+        std::wstring originFocusId;
+        std::wstring targetFocusId;
+    };
+    std::optional<CollectionNavigationRequest> collectionNavigation;
     std::wstring collectionItemKey;
     std::wstring actionSurfaceOrientation;
     // Protocol-v37 closed visual composition for an ActionSurface. Empty and
@@ -942,7 +949,8 @@ public:
         std::wstring_view actionId,
         std::wstring_view sourceElementId,
         std::wstring_view inputScopeId,
-        std::optional<std::wstring_view> committedText = std::nullopt);
+        std::optional<std::wstring_view> committedText = std::nullopt,
+        const std::vector<std::wstring>* visibleCollectionKeys = nullptr);
     [[nodiscard]] std::optional<std::wstring> ConnectProtectedWifi(
         std::wstring_view widgetId,
         std::wstring_view runtimeGeneration,

@@ -157,7 +157,8 @@ public sealed class SpotifyWidget : Widget
             "spotify.playlists", new()
         {
             PageSize = SpotifyCollectionPolicy.PageSize,
-            MaximumRetainedItems = SpotifyCollectionPolicy.MaximumRetainedItems,
+            MaximumRetainedItems = WidgetCursorResource<SpotifyMediaCollectionItem>.MaximumRetainedItems,
+            RetainedItemTarget = SpotifyCollectionPolicy.RetainedItemTarget,
             PaginationThreshold = SpotifyCollectionPolicy.PaginationThreshold,
             LoadPage = async (cursor, _, limit, token) =>
             {
@@ -186,7 +187,8 @@ public sealed class SpotifyWidget : Widget
             "spotify.playlist.items", new()
         {
             PageSize = SpotifyCollectionPolicy.PageSize,
-            MaximumRetainedItems = SpotifyCollectionPolicy.MaximumRetainedItems,
+            MaximumRetainedItems = WidgetCursorResource<SpotifyMediaCollectionItem>.MaximumRetainedItems,
+            RetainedItemTarget = SpotifyCollectionPolicy.RetainedItemTarget,
             PaginationThreshold = SpotifyCollectionPolicy.PaginationThreshold,
             LoadPage = LoadSelectedPlaylistCursorPageAsync,
             MapError = SpotifyResourceError,

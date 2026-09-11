@@ -275,7 +275,8 @@ public sealed partial class YouTubeVideoWidget
     {
         var search = state.Search;
         var draft = search.QueryDraft;
-        var snapshot = _searchResults.Snapshot;
+        var capture = _searchResults.Capture();
+        var snapshot = capture.Snapshot;
         var resultsEntry = SearchResultsEntry(snapshot);
         var query = UI.TextEntry(draft, "Search public YouTube videos", SearchCommitActionId,
                 "youtube.search.query", 96)
@@ -334,7 +335,7 @@ public sealed partial class YouTubeVideoWidget
                 var play = UI.Button("Play", SearchOpenActionId, ResultFocusId(item.VideoId))
                     .Classes("youtube-result-action");
                 if (index == 0) play = play.FocusUp("youtube.search.query");
-                return _searchResults.PresentItem(item,
+                return capture.PresentItem(item,
                     UI.Row("youtube.result.row." + item.VideoId,
                         UI.Image(item.ThumbnailUrl, "youtube.result.image." + item.VideoId,
                             $"Thumbnail for {item.Title}", ImageFit.Cover).Classes("youtube-result-image"),
@@ -348,7 +349,7 @@ public sealed partial class YouTubeVideoWidget
                         .Classes("youtube-result-copy"))
                     .Classes("youtube-result-row"));
             }).ToArray();
-            content = _searchResults.Present(UI.VerticalScroll(SearchScrollId, rows))
+            content = capture.Present(UI.VerticalScroll(SearchScrollId, rows))
                 .Classes("youtube-results");
         }
         var children = new List<WidgetElement> { searchTask };

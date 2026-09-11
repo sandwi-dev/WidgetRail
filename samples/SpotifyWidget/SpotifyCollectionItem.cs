@@ -19,7 +19,8 @@ internal static class SpotifyCollectionPolicy
     // logical stride. Twelve items cover at least two preferred-view heights;
     // retaining two pages keeps forward/back traversal bounded at 24 items.
     internal const int PageSize = 12;
-    internal const int MaximumRetainedItems = PageSize * 2;
+    internal const int RetainedItemTarget = PageSize * 2;
+    internal const int MaximumRetainedItems = 256;
     internal const int PaginationThreshold = 2;
     internal const double EstimatedItemExtent = 88d;
 }

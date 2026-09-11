@@ -5166,7 +5166,7 @@ static async Task VirtualCollectionWindowCrossesBridge()
     Assert.Equal(BridgeMessageTypes.Snapshot, firstResponse.Type);
     var first = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         firstResponse.Payload.GetProperty("snapshot").GetRawText()));
-    Assert.Equal(ProtocolConstants.VirtualCollectionWindowVersion, first.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.CollectionPositionVersion, first.ProtocolVersion);
     Assert.Equal(32, first.Root.Children.Count);
     Assert.Equal(10_000L, first.Root.VirtualCollectionWindow?.TotalItemCount);
     Assert.Equal(0L, first.Root.VirtualCollectionWindow?.FirstItemIndex);
@@ -6576,11 +6576,12 @@ file sealed class VirtualCollectionBridgeWidget : Widget
 
     public override WidgetView Render()
     {
-        var snapshot = _items.Snapshot;
-        var rows = snapshot.Items.Select(item => _items.PresentItem(item,
+        var capture = _items.Capture();
+        var snapshot = capture.Snapshot;
+        var rows = snapshot.Items.Select(item => capture.PresentItem(item,
             UI.Button($"Item {item.Index}", "virtual.open", $"virtual.item.{item.Index}")))
             .ToArray();
-        var scroll = _items.Present(UI.VerticalScroll("virtual.scroll", rows));
+        var scroll = capture.Present(UI.VerticalScroll("virtual.scroll", rows));
         return new WidgetView(
             scroll,
             snapshot.RequestedFocusId ?? rows.FirstOrDefault()?.Id,

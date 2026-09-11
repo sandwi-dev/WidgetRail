@@ -88,6 +88,7 @@ struct LayoutElement {
     // the column gap and crossGap is the row gap.
     std::optional<float> gridMinimumColumnWidth;
     std::optional<std::size_t> gridMaximumColumns;
+    std::int32_t gridStartIndex{};
 
     std::optional<float> width;
     std::optional<float> height;

@@ -1180,6 +1180,23 @@ void VerifyEmbeddedMediaBundleBoundary() {
     std::cout << "WidgetBridge embedded media native boundary cases passed=13\n";
 }
 
+void VerifyPositionedCollectionProtocol() {
+    const std::string json = R"json({"snapshot":{"protocolVersion":47,"sequence":1,
+        "widgetInstanceId":"positioned","activeInputScopeId":"items","initialFocusId":"item.1",
+        "root":{"id":"items","kind":"scroll","scrollAxis":"vertical","collectionAnchorKey":"key.1",
+            "collectionStartIndex":-6,"collectionNavigation":{"requestId":2,"originFocusId":"item.0","targetFocusId":"item.1"},
+            "children":[{"id":"item.1","kind":"button","text":"One","actionId":"open","collectionItemKey":"key.1","children":[]}]}}
+        ,"renderStyles":{}})json";
+    std::wstring error;
+    auto parsed = widgetrail::testing::ParseWidgetSnapshotResponse(json, error);
+    Require(parsed && parsed->root.collectionStartIndex == -6 && parsed->root.collectionNavigation &&
+        parsed->root.collectionNavigation->requestId == 2, "positioned collection and explicit navigation cross the native parser");
+    auto legacy = json; legacy.replace(legacy.find("47"), 2, "46"); error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(legacy, error), "old protocol cannot admit positioned collections");
+    auto invalid = json; invalid.replace(invalid.find("-6"), 2, "1000001"); error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(invalid, error), "collection positions remain bounded");
+}
+
 void VerifyVirtualCollectionProtocol() {
     std::wstring error;
     const auto snapshot = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
@@ -1328,6 +1345,7 @@ int main() {
     VerifyControllerShortcutLabelContract();
     VerifyEmbeddedMediaSnapshotContract();
     VerifyEmbeddedMediaBundleBoundary();
+    VerifyPositionedCollectionProtocol();
     VerifyVirtualCollectionProtocol();
     std::vector<wchar_t> secret(14);
     for (std::size_t index = 0; index < secret.size(); ++index)

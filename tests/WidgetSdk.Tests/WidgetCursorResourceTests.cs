@@ -5,6 +5,11 @@ internal static class WidgetCursorResourceTests
 {
     public static async Task Run()
     {
+        await EqualVisibleDemandJoinsPendingPage();
+        await CapturedPresentationSurvivesConcurrentEviction();
+        await PendingPagePreservesNewAnchor();
+        await FailedFocusMappingDoesNotCommitSegments();
+        await VisibleItemsCanExceedEvictionTarget();
         await TraversesTenThousandItemsWithinBound();
         await ProjectsVersionedTenThousandItemVirtualWindow();
         await HandlesEmptySparseFinalAndLastGoodError();
@@ -17,6 +22,107 @@ internal static class WidgetCursorResourceTests
         await ResetCancelsJoinedLoadAndAllowsFreshWork();
         await ActiveLifecycleDrainsJoinedLoad();
         ContractIsVersionedOpaqueAndBounded();
+    }
+
+    private static async Task EqualVisibleDemandJoinsPendingPage()
+    {
+        var started = Signal(); var release = Signal();
+        var widget = await StartAsync(Options(40, pageSize: 4, maximumRetainedItems: 8,
+            async: async (cursor, direction, limit, token) =>
+            {
+                if (direction is not null) { started.SetResult(); await release.Task.WaitAsync(token); }
+                return Page(cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1)), limit, 40);
+            }));
+        await widget.Resource.EnsureLoaded().Completion;
+        WidgetActionEvent Demand() => new("test.cursor.cursor.after", "items.list")
+            { VisibleCollectionKeys = widget.Resource.Snapshot.Items.Select(item => item.Id).ToArray() };
+        True(widget.Resource.TryHandlePagination(Demand(), out var first), "First protected demand is handled.");
+        await started.Task;
+        True(widget.Resource.TryHandlePagination(Demand(), out var second), "Second protected demand is handled.");
+        Equal(WidgetOperationAdmission.Joined, second.Admission);
+        True(ReferenceEquals(first.Completion, second.Completion), "Equivalent visible-key sets must join one pending page.");
+        release.SetResult(); await first.Completion;
+        await StopAsync(widget);
+    }
+
+    private static async Task CapturedPresentationSurvivesConcurrentEviction()
+    {
+        var widget = await StartAsync(Options(40, pageSize: 4, maximumRetainedItems: 8));
+        await widget.Resource.EnsureLoaded().Completion;
+        var capture = widget.Resource.Capture();
+        await widget.Resource.Prefetch(WidgetCursorDirection.After, "items.list").Completion;
+        await widget.Resource.Prefetch(WidgetCursorDirection.After, "items.list").Completion;
+        Equal<string?>(null, widget.Resource.Snapshot.RequestedFocusId);
+        Equal<CollectionNavigationRequest?>(null, widget.Resource.Snapshot.NavigationRequest);
+        var items = capture.Snapshot.Items.Select(item => capture.PresentItem(item,
+            UI.Button(item.Id, "select", "focus." + item.Id))).ToArray();
+        var snapshot = new WidgetView(capture.Present(UI.VerticalScroll("items.list", items)))
+            .CreateSnapshot("capture.test", 1);
+        Equal("item.0", snapshot.Root.CollectionAnchorKey);
+        Equal<long?>(0, snapshot.Root.CollectionStartIndex);
+        Equal(4L, widget.Resource.Snapshot.StartIndex);
+        var oldProtocol = snapshot with { ProtocolVersion = 46 };
+        True(ViewSnapshotValidator.Validate(oldProtocol).Any(error => error.Code == "feature_requires_version"),
+            "Collection positions must require their protocol version.");
+        await StopAsync(widget);
+    }
+
+    private static async Task PendingPagePreservesNewAnchor()
+    {
+        var started = Signal(); var release = Signal();
+        var widget = await StartAsync(Options(40, pageSize: 4, maximumRetainedItems: 8,
+            async: async (cursor, direction, limit, token) =>
+            {
+                if (direction is not null) { started.SetResult(); await release.Task.WaitAsync(token); }
+                return Page(cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1)), limit, 40);
+            }));
+        await widget.Resource.EnsureLoaded().Completion;
+        var pending = widget.Resource.Move(WidgetCursorDirection.After, "items.list");
+        await started.Task;
+        widget.Resource.SelectAnchor(new("item.2"));
+        release.SetResult(); await pending.Completion;
+        Equal(new WidgetCollectionItemKey("item.2"), widget.Resource.Snapshot.Anchor);
+        Equal<string?>(null, widget.Resource.Snapshot.RequestedFocusId);
+        Equal<CollectionNavigationRequest?>(null, widget.Resource.Snapshot.NavigationRequest);
+        await StopAsync(widget);
+    }
+
+    private static async Task FailedFocusMappingDoesNotCommitSegments()
+    {
+        bool fail = true;
+        var widget = await StartAsync(Options(40, pageSize: 4, maximumRetainedItems: 8) with
+        {
+            Viewports = [new("items.list", item => new(item.Id),
+                item => fail ? "invalid focus" : "focus." + item.Id)],
+        });
+        await widget.Resource.EnsureLoaded().Completion;
+        Equal(WidgetOperationStatus.Failed,
+            (await widget.Resource.Move(WidgetCursorDirection.After, "items.list").Completion).Status);
+        Equal(4, widget.Resource.Snapshot.Items.Count);
+        fail = false;
+        Equal(WidgetOperationStatus.Succeeded, (await widget.Resource.Retry().Completion).Status);
+        Equal(8, widget.Resource.Snapshot.Items.Count);
+        Equal("focus.item.4", widget.Resource.Snapshot.NavigationRequest?.TargetFocusId);
+        await StopAsync(widget);
+    }
+
+    private static async Task VisibleItemsCanExceedEvictionTarget()
+    {
+        var widget = await StartAsync(Options(34, pageSize: 6, maximumRetainedItems: 60) with
+            { RetainedItemTarget = 24 });
+        await widget.Resource.EnsureLoaded().Completion;
+        for (int i = 0; i < 5; ++i)
+        {
+            var visible = widget.Resource.Snapshot.Items.Select(item => item.Id).ToArray();
+            True(widget.Resource.TryHandlePagination(new("test.cursor.cursor.after", "items.list")
+                { VisibleCollectionKeys = visible }, out var pending), "Cursor prefetch was not handled.");
+            Equal(WidgetOperationStatus.Succeeded, (await pending.Completion).Status);
+            True(visible.All(key => widget.Resource.Snapshot.Items.Any(item => item.Id == key)),
+                "Filling a large viewport evicted a visible item.");
+        }
+        Equal(34, widget.Resource.Snapshot.Items.Count);
+        True(!widget.Resource.Snapshot.HasAfter, "The partial final page did not end traversal.");
+        await StopAsync(widget);
     }
 
     private static async Task IdenticalIntentJoinsOneLoad()
@@ -212,7 +318,7 @@ internal static class WidgetCursorResourceTests
         });
         await widget.Resource.EnsureLoaded().Completion;
         var initial = widget.Render().CreateSnapshot("virtual.fixture", 1);
-        Equal(ProtocolConstants.VirtualCollectionWindowVersion, initial.ProtocolVersion);
+        Equal(ProtocolConstants.CollectionPositionVersion, initial.ProtocolVersion);
         var window = initial.Root.Children[0].VirtualCollectionWindow!;
         Equal(1L, window.RequestGeneration);
         Equal(VirtualCollectionWindowChange.Replace, window.Change);
@@ -796,10 +902,11 @@ internal static class WidgetCursorResourceTests
         public WidgetCursorResource<Item> Resource { get; }
         public override WidgetView Render()
         {
-            var value = Resource.Snapshot;
-            var items = value.Items.Select(item => Resource.PresentItem(item,
+            var capture = Resource.Capture();
+            var value = capture.Snapshot;
+            var items = value.Items.Select(item => capture.PresentItem(item,
                 UI.Button(item.Id, "select", "focus." + item.Id))).ToArray();
-            var scroll = Resource.Present(UI.VerticalScroll("items.list", items));
+            var scroll = capture.Present(UI.VerticalScroll("items.list", items));
             return new(UI.Stack("root", scroll), value.RequestedFocusId);
         }
     }
