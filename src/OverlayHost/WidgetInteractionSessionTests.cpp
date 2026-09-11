@@ -1302,6 +1302,87 @@ void ResponsiveGridScrollOwnsDirectionalPriority() {
           "stale Scroll geometry fails closed instead of exposing an external focus target");
 }
 
+void FreeScrollSettlesOnceAfterPagesArrive() {
+    using namespace widgetrail::input;
+    using widgetrail::declarative::ScrollAxis;
+    for (const auto axis : {ScrollAxis::Vertical, ScrollAxis::Horizontal}) {
+        auto snapshot = Snapshot(41, L"fixture.instance", L"root",
+            axis == ScrollAxis::Vertical ? L"vertical" : L"horizontal");
+        auto authority = Authority(snapshot);
+        WidgetInteractionSession session;
+        session.SetFocus(L"fixture.widget", snapshot, L"row.second");
+        auto& scroll = session.freeScrollState();
+        (void)scroll.SampleRightStick(20'000, 0, 100);
+        (void)session.BindFreeScroll(authority, L"items.scroll", axis);
+        widgetrail::RenderResult render;
+        render.scrollViewports.emplace(L"items.scroll", widgetrail::RenderScrollViewport{
+            axis, {10, 20, 200, 120}, 500, 1000});
+        AddRenderTarget(render, L"row.partial", {5, 15, 80, 40});
+        AddRenderTarget(render, L"row.first", {20, 30, 80, 40});
+
+        // This is the host's snapshot-request memory update. It used to change
+        // live focus and thereby cancel the free-scroll binding at every page.
+        session.RememberFocus(L"fixture.widget", snapshot, L"row.first");
+        Check(session.focusedElementId() == L"row.second" &&
+                  session.EvaluateFreeScrollAuthority(authority).followSuppressed,
+              "remembering a visible return position never moves scrolling focus");
+        auto page = snapshot;
+        page.sequence++;
+        page.root.children[3].children.pop_back(); // Evict the offscreen focused row.
+        const auto next = Authority(page);
+        session.RememberFocus(L"fixture.widget", page, L"row.first");
+        Check(session.focusedElementId() == L"row.second" &&
+                  session.EvaluateFreeScrollAuthority(next).followSuppressed,
+              "page admission and eviction preserve the scrolling gesture and live focus key");
+        (void)scroll.SampleRightStick(0, 0, 200);
+        Check(!scroll.ShouldSettle(319) && scroll.ShouldSettle(320),
+              "neutral must persist for the bounded settlement delay");
+        auto retained = next;
+        retained.retainedRefresh = true;
+        Check(!scroll.SettleFocus(retained, session.focusedElementId(), render) &&
+                  scroll.ShouldSettle(400),
+              "retained refresh cannot supply action or settlement authority");
+        auto empty = render;
+        empty.focusRects.clear();
+        empty.navigationRects.clear();
+        empty.hitRegions.clear();
+        Check(!scroll.SettleFocus(next, session.focusedElementId(), empty) &&
+                  scroll.binding() && scroll.ShouldSettle(400),
+              "an empty or still-loading viewport retains pending settlement instead of selecting a header");
+        const auto target = scroll.SettleFocus(next, session.focusedElementId(), render);
+        Check(target == L"row.first", "settlement prefers a fully visible current item after eviction");
+        (void)session.MoveFocus(L"fixture.widget", page, *target);
+        Check(!scroll.ShouldSettle(1000) && session.EvaluateFreeScrollAuthority(next).followSuppressed &&
+                  render.scrollViewports.at(L"items.scroll").offset == 500,
+              "settlement happens once and retains viewport ownership without scrolling to focus");
+        ++page.sequence;
+        Check(!scroll.ShouldSettle(2000) &&
+                  session.EvaluateFreeScrollAuthority(Authority(page)).followSuppressed,
+              "later page notifications cannot repeatedly settle an idle gesture");
+        const auto reentry = session.ResolveFreeScrollReentry(Authority(page), render);
+        Check(reentry.disposition == FreeScrollReentryDisposition::ResumeDirectionalInput &&
+                  !scroll.binding(), "the next direction resumes ordinary navigation from settled focus");
+
+        (void)scroll.SampleRightStick(20'000, 0, 2100);
+        (void)session.BindFreeScroll(Authority(page), L"items.scroll", axis);
+        Check(!scroll.ShouldSettle(2300), "a held stick never settles automatically");
+        const auto actionTarget = scroll.SettleFocus(Authority(page), session.focusedElementId(), render);
+        Check(actionTarget == L"row.first", "an explicit action can settle the visible target before neutral");
+        (void)scroll.SampleRightStick(0, 0, 2400);
+        Check(!scroll.ShouldSettle(2600), "an action-settled gesture does not settle twice");
+        (void)scroll.SampleRightStick(20'000, 0, 2700);
+        (void)scroll.SampleRightStick(0, 0, 2800);
+        Check(!scroll.ShouldSettle(2919) && scroll.ShouldSettle(2920),
+              "renewed scrolling begins a fresh neutral interval");
+        auto reset = page;
+        reset.root.children[3].collectionResetGeneration = 1;
+        Check(!scroll.SettleFocus(Authority(reset), session.focusedElementId(), render),
+              "a true collection reset cannot settle using the previous collection");
+        (void)scroll.Clear();
+        Check(!scroll.ShouldSettle(5000), "cleared gesture has no delayed settlement work");
+    }
+}
+
 void FreeScrollAndRetainedRefreshLifecycle() {
     using namespace widgetrail::input;
     auto snapshot = Snapshot();
@@ -2240,6 +2321,7 @@ int main() {
     HorizontalRailsKeepDirectionalBoundaries();
     ResponsiveGridScrollOwnsDirectionalPriority();
     FreeScrollAndRetainedRefreshLifecycle();
+    FreeScrollSettlesOnceAfterPagesArrive();
     ExactSliderRequestAuthorityAndRollback();
     PressedAndAdmissionReconciliation();
     ColdCollectionAndReversePrefetch();

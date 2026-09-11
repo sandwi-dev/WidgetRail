@@ -106,6 +106,12 @@ public:
         declarative::ScrollAxis axis);
     [[nodiscard]] std::optional<FreeScrollBinding> Clear() noexcept;
     [[nodiscard]] bool SetRefreshDeferred(bool deferred) noexcept;
+    [[nodiscard]] bool ShouldSettle(std::uint64_t now) const noexcept;
+    // Retains viewport ownership after settling, so revealing the focus ring
+    // never scrolls the content. Explicit directional/pointer input retires it.
+    [[nodiscard]] std::optional<std::wstring> SettleFocus(
+        const WidgetInteractionAuthority& authority,
+        std::wstring_view focusedElementId, const RenderResult& renderResult);
     [[nodiscard]] const std::optional<FreeScrollBinding>& binding() const noexcept {
         return binding_;
     }
@@ -123,6 +129,8 @@ private:
     RightStickScrollKinetics kinetics_;
     std::optional<FreeScrollBinding> binding_;
     bool refreshDeferred_{};
+    std::optional<std::uint64_t> neutralSince_;
+    bool focusSettled_{};
 };
 
 /// Typed visual work returned when focus authority changes. OverlayApp remains
@@ -434,7 +442,8 @@ public:
     void ClearLiveFocus() noexcept;
     void RememberFocus(
         std::wstring_view widgetId,
-        const WidgetSnapshot& snapshot);
+        const WidgetSnapshot& snapshot,
+        std::wstring_view rememberedTarget = {});
     [[nodiscard]] std::wstring RestoreFocus(
         std::wstring_view widgetId,
         const WidgetSnapshot& snapshot);

@@ -10824,6 +10824,30 @@ private:
             binding.widgetId + L" scroll=" + binding.scrollId);
     }
 
+    [[nodiscard]] bool SettleRightStickFocus() {
+        if (!interactionSession_.freeScrollBinding()) return true;
+        const std::wstring widget{state_.activeWidget()};
+        const auto* snapshot = InteractionSnapshotFor(widget);
+        const auto* descriptor = sessions_.FindDescriptor(widget);
+        const auto rendered = renderedSnapshotSequences_.find(widget);
+        if (!WidgetOwnsInputFocus(widget) || !snapshot || !descriptor ||
+            pendingWidgetPresentationImpact_ || pendingContentRenderPlan_ ||
+            rendered == renderedSnapshotSequences_.end() || rendered->second != snapshot->sequence)
+            return false;
+        const widgetrail::input::WidgetInteractionAuthority authority{
+            widget, snapshot, descriptor->runtimeGeneration, descriptor->presentationGeneration, false};
+        const auto target = interactionSession_.freeScrollState().SettleFocus(
+            authority, interactionSession_.focusedElementId(), lastWidgetRenderResult_);
+        if (!target) return false;
+        const auto focus = interactionSession_.MoveFocus(widget, *snapshot, *target);
+        if (focus.changed) {
+            widgetAccessibilityProjection_.Clear();
+            InvalidateWidgetFocusChange(focus.priorFocus, focus.sliderDamageNodeIds);
+        }
+        AppendDiagnostic(L"Free scroll settled widget=" + widget + L" focus=" + *target);
+        return true;
+    }
+
     [[nodiscard]] bool HandleRightStickFreeScroll(
         const WidgetRailOverlayPlatformControllerFrame& frame,
         const ULONGLONG now) {
@@ -10909,6 +10933,8 @@ private:
             SetFreeScrollRefreshDeferred(false);
         if (!sample.moving) {
             FlushRightStickDropDiagnostic();
+            if (interactionSession_.freeScrollState().ShouldSettle(now))
+                (void)SettleRightStickFocus();
             if (sample.returnedToDeadZone &&
                 interactionSession_.freeScrollBinding()) {
                 const auto& binding = *interactionSession_.freeScrollBinding();
@@ -11454,6 +11480,17 @@ private:
             OpenTrayContextMenu(state_.selectedWidget());
             return;
         }
+        constexpr WORD focusActionButtons = XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_X |
+            XINPUT_GAMEPAD_Y | XINPUT_GAMEPAD_START | XINPUT_GAMEPAD_LEFT_SHOULDER |
+            XINPUT_GAMEPAD_RIGHT_SHOULDER | XINPUT_GAMEPAD_LEFT_THUMB;
+        const bool focusActionPressed = (pressed & focusActionButtons) != 0 ||
+            frame.leftTriggerPressed || frame.rightTriggerPressed;
+        if (!recoveryChordDown && !pinnedSurfaceCoordinator_.controllerFocused() &&
+            interactionSession_.freeScrollBinding() &&
+            focusActionPressed) {
+            if (!SettleRightStickFocus()) return;
+            ClearFreeScrollReentry(L"action-after-settlement");
+        }
         if (!recoveryChordDown && !pinnedSurfaceCoordinator_.controllerFocused() &&
             state_.surface() == widgetrail::Surface::Widget &&
             state_.focusRegion() == widgetrail::FocusRegion::Widget) {
@@ -11825,7 +11862,9 @@ private:
 
         const auto stickDirection = DecodeNavigation(frame.stickNavigation);
         const auto dpadDirection = DecodeNavigation(frame.dpadNavigation);
-        const bool rightStickMoving = HandleRightStickFreeScroll(frame, now);
+        // An action uses the settled visible target; do not scroll again on
+        // the same sample before dispatching it.
+        const bool rightStickMoving = !focusActionPressed && HandleRightStickFreeScroll(frame, now);
         const auto reentryDirection = stickDirection ? stickDirection : dpadDirection;
         const bool reentryConsumed = !rightStickMoving && reentryDirection &&
             ConsumeFreeScrollReentry(*reentryDirection);
@@ -12065,7 +12104,10 @@ private:
             const auto visible = widgetrail::input::FindFreeScrollReentryTarget(snapshot->root,
                 binding->scrollId, binding->axis, snapshot->activeInputScopeId, lastWidgetRenderResult_);
             if (visible) {
-                interactionSession_.SetFocus(widgetId, *snapshot, *visible);
+                // Snapshot requests may update remembered position, but must
+                // never move live focus during a right-stick gesture.
+                interactionSession_.RememberFocus(widgetId, *snapshot, *visible);
+                return;
             }
         }
         interactionSession_.RememberFocus(widgetId, *snapshot);
@@ -13981,6 +14023,11 @@ private:
         const WidgetRailOverlayPlatformControllerFrame& frame,
         const ULONGLONG now) {
         if (!heldActionAuthority_) return;
+        if (interactionSession_.freeScrollBinding()) {
+            heldActionRepeat_.Reset();
+            heldActionAuthority_.reset();
+            return;
+        }
         const auto key = heldActionRepeat_.button();
         const bool down = RepeatButtonDown(frame, key);
         std::wstring authorityReason;
@@ -14136,6 +14183,11 @@ private:
     void DispatchControllerAction(
         const std::wstring_view button,
         const bool physicalPress = false) {
+        if (button != L"B" && interactionSession_.freeScrollBinding() &&
+            WidgetOwnsInputFocus(state_.activeWidget())) {
+            if (!SettleRightStickFocus()) return;
+            ClearFreeScrollReentry(L"action-after-settlement");
+        }
         if (interactionSession_.selectPopup()) {
             if (button == L"A") CommitSelectPopup(
                 physicalPress

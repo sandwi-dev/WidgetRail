@@ -467,9 +467,11 @@ void WidgetInteractionSession::ClearLiveFocus() noexcept {
 
 void WidgetInteractionSession::RememberFocus(
     const std::wstring_view widgetId,
-    const WidgetSnapshot& snapshot) {
+    const WidgetSnapshot& snapshot,
+    const std::wstring_view rememberedTarget) {
     if (ProvisionalFocusGroupEntry(widgetId, snapshot)) return;
-    focusMemory_.Remember(widgetId, snapshot, focusedElementId_);
+    focusMemory_.Remember(widgetId, snapshot,
+        rememberedTarget.empty() ? std::wstring_view{focusedElementId_} : rememberedTarget);
 }
 
 std::wstring WidgetInteractionSession::RestoreFocus(
@@ -687,7 +689,37 @@ RightStickScrollUpdate FreeScrollInteractionState::SampleRightStick(
     const short x,
     const short y,
     const std::uint64_t now) noexcept {
-    return kinetics_.Update(x, y, now);
+    const auto sample = kinetics_.Update(x, y, now);
+    if (sample.moving) {
+        neutralSince_.reset();
+        focusSettled_ = false;
+    } else if (!neutralSince_) {
+        neutralSince_ = now;
+    }
+    return sample;
+}
+
+bool FreeScrollInteractionState::ShouldSettle(const std::uint64_t now) const noexcept {
+    constexpr std::uint64_t settleDelayMilliseconds = 120;
+    return binding_ && !focusSettled_ && neutralSince_ &&
+        now >= *neutralSince_ && now - *neutralSince_ >= settleDelayMilliseconds;
+}
+
+std::optional<std::wstring> FreeScrollInteractionState::SettleFocus(
+    const WidgetInteractionAuthority& authority,
+    const std::wstring_view focusedElementId, const RenderResult& renderResult) {
+    if (!binding_ || authority.retainedRefresh ||
+        !BindingMatches(*binding_, authority, focusedElementId) ||
+        !IsExactScrollAuthorityCurrent(authority.semantics->root,
+            binding_->scrollId, binding_->axis, renderResult)) return std::nullopt;
+    auto target = IsVisibleFreeScrollFocus(authority, *binding_, focusedElementId, renderResult)
+        ? std::optional<std::wstring>{std::wstring{focusedElementId}}
+        : FindFreeScrollReentryTarget(authority.semantics->root, binding_->scrollId,
+            binding_->axis, authority.semantics->activeInputScopeId, renderResult);
+    if (!target) return std::nullopt; // Keep the gesture pending until a page is rendered.
+    binding_->focusedElementId = *target;
+    focusSettled_ = true;
+    return target;
 }
 
 bool FreeScrollInteractionState::BindingMatches(
@@ -761,6 +793,8 @@ std::optional<FreeScrollBinding> FreeScrollInteractionState::Clear() noexcept {
     auto prior = std::move(binding_);
     binding_.reset();
     refreshDeferred_ = false;
+    neutralSince_.reset();
+    focusSettled_ = false;
     kinetics_.Reset();
     return prior;
 }
@@ -784,6 +818,8 @@ FreeScrollReentryRequest FreeScrollInteractionState::ResolveReentry(
     request.retiredBinding = std::move(binding_);
     binding_.reset();
     refreshDeferred_ = false;
+    neutralSince_.reset();
+    focusSettled_ = false;
     kinetics_.Reset();
     if (IsVisibleFreeScrollFocus(
             authority, *request.retiredBinding, focusedElementId,
