@@ -1434,11 +1434,12 @@ WidgetNode ParseNode(const JsonObject& source) {
             ParseNode(source.GetNamedObject(L"defaultFocusPresentation")));
     }
     if (node.virtualCollectionWindow) {
+        const bool loading = node.collectionLoading == L"before" || node.collectionLoading == L"after";
         if (node.kind != L"scroll" || node.collectionAnchorKey.empty() ||
-            node.virtualCollectionWindow->hasBefore !=
-                !node.scrollNearStartActionId.empty() ||
-            node.virtualCollectionWindow->hasAfter !=
-                !node.scrollNearEndActionId.empty())
+            (!node.scrollNearStartActionId.empty() && !node.virtualCollectionWindow->hasBefore) ||
+            (!node.scrollNearEndActionId.empty() && !node.virtualCollectionWindow->hasAfter) ||
+            (!loading && (node.virtualCollectionWindow->hasBefore != !node.scrollNearStartActionId.empty() ||
+                node.virtualCollectionWindow->hasAfter != !node.scrollNearEndActionId.empty())))
             throw winrt::hresult_invalid_argument();
         std::size_t itemCount{};
         const auto countItems = [&](const auto& self,

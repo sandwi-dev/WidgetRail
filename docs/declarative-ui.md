@@ -1435,6 +1435,12 @@ provide it automatically, and custom presentations can use the captured
 snapshot's `LoadingState`. The marker stays present as `idle` between requests
 so the required protocol version does not change on every fetch.
 
+While `collectionLoading` is `before` or `after`, a virtual collection may omit
+its page actions while retaining `hasBefore`/`hasAfter` and its logical extent.
+An action still cannot be advertised for a nonexistent boundary. At `idle`,
+availability and actions must match again. This keeps loading from changing
+scroll geometry while preventing overlapping fetches.
+
 For positioned collections, the host starts prefetching within two viewport
 lengths of the loaded edge. Only actually visible keys are protected from
 eviction; prefetch distance does not expand that protected set.

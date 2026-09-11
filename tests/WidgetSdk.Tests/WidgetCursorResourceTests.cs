@@ -73,10 +73,18 @@ internal static class WidgetCursorResourceTests
         var widget = await StartAsync(options);
         await widget.Resource.EnsureLoaded().Completion;
         var pending = widget.Resource.Prefetch(WidgetCursorDirection.After, "items.list");
-        var loading = widget.Resource.Capture().Present(UI.VerticalScroll("items.list"));
+        var capture = widget.Resource.Capture();
+        var rows = capture.Snapshot.Items.Select(item => capture.PresentItem(item,
+            UI.Button(item.Id, "select", "focus." + item.Id))).ToArray();
+        var loading = capture.Present(UI.VerticalScroll("items.list", rows));
         True(loading.VirtualCollectionWindow?.HasAfter == true,
             "Withholding page actions must preserve the virtual extent while loading.");
         Equal<string?>(null, loading.NearEndActionId);
+        var view = new WidgetView(loading).CreateSnapshot("loading.extent", 1);
+        Equal(0, ViewSnapshotValidator.Validate(view).Count);
+        True(ViewSnapshotValidator.Validate(view with { Root = view.Root with { CollectionLoading = CollectionLoadingState.Idle } })
+            .Any(error => error.Code == "virtual_collection_action_mismatch"),
+            "A settled virtual collection still requires its boundary actions.");
         release.SetResult(); await pending.Completion;
         await StopAsync(widget);
     }

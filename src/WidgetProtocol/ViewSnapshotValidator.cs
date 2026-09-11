@@ -898,8 +898,11 @@ public static class ViewSnapshotValidator
                         window.HasAfter)
                         Add($"{path}.virtualCollectionWindow.hasAfter", "inconsistent_virtual_collection_boundary",
                             "The final logical item cannot report following content.");
-                    if (window.HasBefore != (node.ScrollNearStartActionId is not null) ||
-                        window.HasAfter != (node.ScrollNearEndActionId is not null))
+                    var collectionIsLoading = node.CollectionLoading is CollectionLoadingState.Before or CollectionLoadingState.After;
+                    if ((node.ScrollNearStartActionId is not null && !window.HasBefore) ||
+                        (node.ScrollNearEndActionId is not null && !window.HasAfter) ||
+                        (!collectionIsLoading && (window.HasBefore != (node.ScrollNearStartActionId is not null) ||
+                            window.HasAfter != (node.ScrollNearEndActionId is not null))))
                         Add($"{path}.virtualCollectionWindow", "virtual_collection_action_mismatch",
                             "Virtual collection availability must match its admitted boundary actions.");
                 }

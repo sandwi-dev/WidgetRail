@@ -1208,6 +1208,22 @@ void VerifyPositionedCollectionProtocol() {
 
 void VerifyVirtualCollectionProtocol() {
     std::wstring error;
+    const std::string loadingJson = R"json({"snapshot":{"protocolVersion":48,"sequence":1,
+        "widgetInstanceId":"loading.virtual","activeInputScopeId":"items",
+        "root":{"id":"items","kind":"scroll","scrollAxis":"vertical","collectionAnchorKey":"key.1",
+            "collectionLoading":"after","virtualCollectionWindow":{"requestGeneration":1,"change":"replace",
+                "hasBefore":false,"hasAfter":true,"estimatedItemExtent":44},
+            "children":[{"id":"item.1","kind":"button","text":"One","actionId":"open","collectionItemKey":"key.1","children":[]}]}}
+        ,"renderStyles":{}})json";
+    Require(widgetrail::testing::ParseWidgetSnapshotResponse(loadingJson, error).has_value(),
+        "loading virtual collections retain their extent while page actions are withheld");
+    auto settledJson = loadingJson;
+    settledJson.replace(settledJson.find("\"collectionLoading\":\"after\""),
+        std::string("\"collectionLoading\":\"after\"").size(), "\"collectionLoading\":\"idle\"");
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(settledJson, error),
+        "settled virtual collections cannot omit their boundary actions");
+    error.clear();
     const auto snapshot = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "protocolVersion":19,
