@@ -12,6 +12,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Device switching is opaque confirmed and rejects stale queued controls", DeviceSwitchingIsSafe),
     ("Spatial read and control failures never disable ordinary audio", SpatialFailuresAreIsolated),
     ("Spatial device identity requires the exact enabled output interface", SpatialIdentityIsExact),
+    ("Spatial subtype resolution includes newer runtime DTS metadata", SpatialSubtypeResolution),
     ("Production spatial support agrees with the Windows interface query", ProductionSpatialSupportMatchesWindows),
     ("Default-device policy preserves communications and rolls back partial writes", DeviceSwitchPolicy),
     ("Native callbacks coalesce and the provider never polls", CallbacksCoalesceWithoutPolling),
@@ -44,6 +45,18 @@ foreach (var (name, run) in tests)
 
 Console.WriteLine($"Executed {tests.Length} Windows audio provider tests; {failures} failed.");
 return failures == 0 ? 0 : 1;
+
+static Task SpatialSubtypeResolution()
+{
+    Assert.Equal<string?>(null, WindowsSpatialAudioAdapter.ResolveFormatSubtype("UnknownSpatialFormat"));
+    Assert.Equal(Windows.Media.Audio.SpatialAudioFormatSubtype.WindowsSonic,
+        WindowsSpatialAudioAdapter.ResolveFormatSubtype("WindowsSonic"));
+    var available = Windows.Foundation.Metadata.ApiInformation.IsPropertyPresent(
+        "Windows.Media.Audio.SpatialAudioFormatSubtype", "DTSXForHomeTheater");
+    Assert.Equal(available ? "{10201B4A-3322-4967-BF40-2CAA9BAFCA44}" : null,
+        WindowsSpatialAudioAdapter.ResolveFormatSubtype("DTSXForHomeTheater"));
+    return Task.CompletedTask;
+}
 
 static Task SpatialIdentityIsExact()
 {
@@ -89,6 +102,10 @@ static Task ProductionSpatialSupportMatchesWindows()
                 actual.Formats.Any(format => format.FormatId == "sonic"));
             Assert.Equal(windows.IsSpatialAudioFormatSupported(Windows.Media.Audio.SpatialAudioFormatSubtype.DolbyAtmosForHeadphones),
                 actual.Formats.Any(format => format.FormatId == "atmos-headphones"));
+            if (Windows.Foundation.Metadata.ApiInformation.IsPropertyPresent(
+                    "Windows.Media.Audio.SpatialAudioFormatSubtype", "DTSXForHomeTheater"))
+                Assert.Equal(windows.IsSpatialAudioFormatSupported("{10201B4A-3322-4967-BF40-2CAA9BAFCA44}"),
+                    actual.Formats.Any(format => format.FormatId == "dts-home"));
         }
     }
     finally { if (initialized) CoreAudioInterop.Uninitialize(); }

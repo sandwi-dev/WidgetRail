@@ -98,3 +98,36 @@ SHA-256 verification, followed by complete managed-runtime republication.
 The corrected candidate also passes WidgetBridge.Tests 129/129 after coherent
 managed publication. Its packaged WindowsAudioProvider hash matches the tested
 provider. No widget, protocol, permission or native-renderer changes were needed.
+
+## DTS:X metadata and license distinction
+
+DTS:X for home theater was missing because its SpatialAudioFormatSubtype getter
+was introduced in Windows contract v12 / build 20348. The production 19041
+managed projection has no such property, so reflection returned null even when
+the installed Windows runtime supports it. A separate read-only 26100 SDK probe
+on SAMSUNG confirmed the getter returns {10201B4A-3322-4967-BF40-2CAA9BAFCA44}
+and IsSpatialAudioFormatSupported is true. Production now resolves that stable
+subtype when Windows ApiInformation advertises the newer getter, without raising
+the application's minimum Windows version or changing other project SDK targets.
+The normal endpoint support check still governs whether it is listed.
+
+IsSpatialAudioFormatSupported reports device-format support, not licensing.
+The documented SpatialAudioDeviceConfiguration surface has no read-only license
+validation method; SetDefaultSpatialAudioFormatAsync returns license outcomes.
+SpatialAudioFormatConfiguration provides companion-app license-change reporting,
+not a license query. Listing therefore cannot promise a supported format is
+licensed. The widget now explains that Windows checks licensing on selection.
+There is no automatic switch-through-format preflight and no license inference
+from an installed provider app. Failed selections keep the existing safe behavior.
+
+Verification: provider 22/22 and AudioMixerWidget 47/47 passed, including the new
+runtime-getter resolution and live DTS:X support equality check. The live read-only
+SDK probe observed the user's existing Atmos for home theater selection; no
+selection was changed by this correction.
+
+Reference: https://learn.microsoft.com/en-us/uwp/api/windows.media.audio.spatialaudioformatsubtype.dtsxforhometheater
+License API reference: https://learn.microsoft.com/en-us/uwp/api/windows.media.audio.spatialaudioformatconfiguration
+Full WidgetBridge.Tests also passed 129/129 after coherent runtime publication.
+Packaged provider/widget hashes match tested outputs; native production payloads
+were reused with hash verification. The corrected provider read confirms DTS:X
+for home theater is listed on SAMSUNG, with Atmos for home theater still selected.

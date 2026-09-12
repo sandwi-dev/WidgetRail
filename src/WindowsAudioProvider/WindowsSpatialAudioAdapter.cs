@@ -1,6 +1,7 @@
 using Windows.Devices.Enumeration;
 using Windows.Media.Devices;
 using Windows.Media.Audio;
+using Windows.Foundation.Metadata;
 using WidgetRail.PlatformBroker;
 
 namespace WidgetRail.WindowsAudioProvider;
@@ -57,12 +58,27 @@ internal sealed class WindowsSpatialAudioAdapter(Action changed) : IDisposable
             try
             {
                 // Optional getters vary with the installed Windows SDK/OS.
-                if (typeof(SpatialAudioFormatSubtype).GetProperty(property)?.GetValue(null) is string subtype &&
+                if (ResolveFormatSubtype(property) is string subtype &&
                     configuration.IsSpatialAudioFormatSupported(subtype))
                     _formats[id] = (name, subtype);
             }
             catch (Exception error) when (error is not OutOfMemoryException) { }
         }
+    }
+
+    // The 19041 managed projection predates the 20348 DTS:X getter. Format
+    // subtypes are stable identifiers: use the value returned by the newer
+    // documented getter only when Windows advertises that property at runtime.
+    // Verified against the 26100 projection on the affected SAMSUNG endpoint.
+    internal const string DtsXForHomeTheaterSubtype = "{10201B4A-3322-4967-BF40-2CAA9BAFCA44}";
+
+    internal static string? ResolveFormatSubtype(string property)
+    {
+        if (typeof(SpatialAudioFormatSubtype).GetProperty(property)?.GetValue(null) is string subtype)
+            return subtype;
+        return property == "DTSXForHomeTheater" && ApiInformation.IsPropertyPresent(
+            "Windows.Media.Audio.SpatialAudioFormatSubtype", property)
+                ? DtsXForHomeTheaterSubtype : null;
     }
 
     private string Token(string subtype) => _formats.FirstOrDefault(pair =>

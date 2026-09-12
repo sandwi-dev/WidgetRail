@@ -830,6 +830,7 @@ static async Task SpatialSelectionFailures()
     await ActivateReady(widget);
     await WaitUntil(() => Nodes(Snapshot(widget, 1).Root).Any(node => node.Id == "audio.spatial.select"));
     var initial = Snapshot(widget, 2);
+    Assert.Contains("license", Text(initial.Root, "audio.spatial.license.help").Text!);
     Assert.Equal("audio.spatial.select", Node(initial.Root, "audio.devices.output.select").Focus!.Down);
     foreach (var error in new Exception[] {
         new WidgetCapabilityException("spatial_license_required", "private-license-details"),
