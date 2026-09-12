@@ -130,6 +130,8 @@ internal static class SpotifyRouteActionPolicy
         SpotifyRoute.Queue => "spotify.page.queue",
         SpotifyRoute.Search => "spotify.page.search",
         SpotifyRoute.Devices => "spotify.page.devices",
+        SpotifyRoute.PlaylistDetail => "spotify.page.playlist-detail",
+        SpotifyRoute.Setup => "spotify.page.setup",
         _ => "spotify.page.playlists",
     };
 

@@ -11,6 +11,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Search starts first, pages typed results and routes playback", SearchResultsAndPlayback),
     ("Search drops late responses and preserves query across reopen", SearchLateResponses),
     ("Search accepts changing totals and repeated results without stale virtual windows", SearchMutablePaging),
+    ("Section round trips after search always target a rendered focus group", SearchSectionRoundTrips),
     ("Production cursor batches retain forward and reverse buffers", ProductionCursorBuffer),
     ("Opening the widget never starts OAuth", OpeningNeverConnects),
     ("Disconnected copy and paired actions remain bounded and centered", DisconnectedLayoutContract),
@@ -2515,7 +2516,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.58", manifest.Version);
+    Assert.Equal("0.3.59", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
@@ -2754,6 +2755,33 @@ static async Task SearchResultsAndPlayback()
     await widget.OnActionAsync(new("spotify.search.clear", "spotify.search.clear"));
     Assert.Equal(0, CollectionRows(widget.RenderSnapshot("spotify.search-test", 7).Root).Length);
     Assert.Equal(calls, harness.SearchCalls);
+    await StopAsync(widget);
+}
+
+static async Task SearchSectionRoundTrips()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness, search: true);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.search.query", "spotify.search.query") { CommittedText = "night" });
+    await WaitUntil(() => CollectionRows(widget.RenderSnapshot("search.sections", 1).Root).Length == 10);
+    long sequence = 2;
+    foreach (var direction in new[] { "next", "previous" })
+    {
+        for (var step = 0; step < 4; ++step)
+        {
+            var before = widget.RenderSnapshot("search.sections", sequence++);
+            await widget.OnActionAsync(new("spotify.nav." + direction + "-section", before.InitialFocusId!));
+            var after = widget.RenderSnapshot("search.sections", sequence++);
+            Assert.Equal(0, ViewSnapshotValidator.Validate(after).Count);
+            var request = after.FocusGroupEntryRequest;
+            Assert.NotNull(request);
+            Assert.NotNull(Find(after.Root, request!.GroupId));
+        }
+        Assert.Equal(SpotifyDestination.Search, widget.Destination);
+    }
+    Assert.Equal(1, harness.SearchCalls);
+    Assert.Equal(10, CollectionRows(widget.RenderSnapshot("search.sections", sequence).Root).Length);
     await StopAsync(widget);
 }
 

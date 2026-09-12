@@ -443,7 +443,7 @@ internal static class SpotifyPresentation
                 presentation.PageLoading,
                 presentation.PageError, "shared");
         var contentEntry = PageEntryFocusId(presentation, destination);
-        var pageGroup = UI.Stack(PageFocusGroupId(route.Route), page)
+        var pageGroup = UI.Stack(SpotifyRouteActionPolicy.FocusGroupId(route.Route), page)
             .RememberChildFocus(contentEntry)
             .Classes("spotify-page-group");
         NavigationShellDestination[] destinations =
@@ -537,15 +537,6 @@ internal static class SpotifyPresentation
         return new WidgetView(root, contentEntry,
             quickActions, Surface: StandardSurface);
     }
-
-    private static string PageFocusGroupId(SpotifyRoute route) => route switch
-    {
-        SpotifyRoute.Queue => "spotify.page.queue",
-        SpotifyRoute.Devices => "spotify.page.devices",
-        SpotifyRoute.PlaylistDetail => "spotify.page.playlist-detail",
-        SpotifyRoute.Setup => "spotify.page.setup",
-        _ => "spotify.page.playlists",
-    };
 
     private static string PageEntryFocusId(
         SpotifyPresentationState presentation,
