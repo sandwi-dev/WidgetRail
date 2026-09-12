@@ -107,6 +107,9 @@ those retained paths. The renderer suite now passes **6952 checks**; its playbac
 workload remains about 0.57 ms full preparation / 0.064 ms paint-only preparation.
 
 Build/test logs and unique managed binlogs are retained in the worktree's ignored
-`logs` directory. Physical acceptance remains pending: Spotify playback while navigating
-with D-pad, left stick and right stick, followed by Playnite Browse paging/scrolling.
-No integration or closure before acceptance.
+`logs` directory. Physical acceptance completed for performance and poster scrolling in candidate
+`4eac4a42`. The user authorized integration and closure. Latest live Spotify capture
+(176 logged frames) measured 4.83 ms median / 12.42 ms p95 draw time, compared with
+70.77 ms / 78.94 ms in the earlier 61-frame capture. These are sampled interaction
+windows, not a controlled continuous-FPS measurement. The separately observed raw
+controller snapshot-authority race is follow-up work.
