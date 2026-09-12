@@ -10695,16 +10695,11 @@ private:
             lastForegroundOwnership_ = confirmed;
             if (confirmed) {
                 AppendDiagnostic(
-                    WidgetRailOverlayPlatformHasGameInput(platform_) !=
-                            WRAIL_OVERLAY_PLATFORM_FALSE
-                        ? L"Overlay foreground confirmed; ordinary controller input is "
-                          L"GameInput foreground-exclusive"
-                        : L"Overlay foreground confirmed; GameInput unavailable, ordinary "
-                          L"controller input is non-exclusive XInput compatibility");
+                    L"Overlay foreground confirmed; controller ownership is reported by the active read path");
             } else {
                 AppendDiagnostic(
                     L"Overlay foreground acquisition was not confirmed; the visible "
-                    L"GameInput read lease remains active without exclusivity");
+                    L"controller read lease remains active without foreground exclusivity");
             }
         }
         return confirmed;

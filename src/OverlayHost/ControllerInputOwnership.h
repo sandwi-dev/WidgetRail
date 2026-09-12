@@ -33,9 +33,10 @@ DecideControllerInputOwnership(
     const bool overlayVisible,
     const bool visibleReadLease,
     const bool foregroundConfirmed,
-    const bool gameInputAvailable) noexcept {
+    const bool gameInputAvailable,
+    const bool gameInputReadingAvailable = true) noexcept {
     if (!overlayVisible || !visibleReadLease) return {};
-    if (gameInputAvailable) {
+    if (gameInputAvailable && gameInputReadingAvailable) {
         return {ControllerReadPath::GameInputVisibleLease, foregroundConfirmed};
     }
     return {ControllerReadPath::XInputCompatibility, false};

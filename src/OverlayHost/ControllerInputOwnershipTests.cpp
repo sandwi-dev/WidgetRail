@@ -29,6 +29,15 @@ int main() {
           "visible window without an active read lease remains dormant");
 
     const auto exclusive = DecideControllerInputOwnership(true, true, true, true);
+    Check(DecideControllerInputOwnership(true, true, true, true, false) ==
+              ControllerInputOwnershipDecision{ControllerReadPath::XInputCompatibility, false},
+          "a live GameInput client without readings uses shared XInput");
+    Check(DecideControllerInputOwnership(true, true, false, true, false) ==
+              ControllerInputOwnershipDecision{ControllerReadPath::XInputCompatibility, false},
+          "missing GameInput readings do not make navigation depend on foreground");
+    Check(DecideControllerInputOwnership(false, false, false, true, false) ==
+              ControllerInputOwnershipDecision{},
+          "fallback cannot grant a hidden controller lease");
     Check(exclusive.readPath == ControllerReadPath::GameInputVisibleLease &&
               exclusive.foregroundExclusive,
           "focused visible overlay uses foreground-exclusive GameInput");

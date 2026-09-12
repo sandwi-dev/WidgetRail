@@ -133,6 +133,7 @@ struct WidgetRailOverlayPlatformHandle final {
     widgetrail::ForegroundTargetTracker foregroundTarget;
     std::optional<widgetrail::input::ControllerReadPath> lastReadPath;
     std::optional<bool> lastForegroundExclusive;
+    bool gameInputReadFallback{};
     std::optional<HRESULT> lastGamepadReadResult;
     std::uintptr_t lastGamepadReadDevice{};
     GameInputDeviceStatus lastGamepadReadStatus{};
@@ -251,11 +252,43 @@ struct WidgetRailOverlayPlatformHandle final {
         WidgetRailOverlayPlatformRawControllerState& state,
         bool& connected,
         widgetrail::input::ControllerInputOwnershipDecision& decision) noexcept {
-        decision = widgetrail::input::DecideControllerInputOwnership(
-            visible, visible, foregroundConfirmed, gameInput.Get() != nullptr);
+        state = {};
+        connected = false;
+        const auto decide = [&] {
+            return widgetrail::input::DecideControllerInputOwnership(
+                visible, visible, foregroundConfirmed, gameInput.Get() != nullptr,
+                !gameInputReadFallback);
+        };
+        decision = decide();
+        if (decision.readPath == widgetrail::input::ControllerReadPath::GameInputVisibleLease) {
+            const auto result = TryReadGameInput(state);
+            connected = SUCCEEDED(result);
+            if (result == GAMEINPUT_E_READING_NOT_FOUND) {
+                // Keep one reader for this visible session; retry GameInput on
+                // the next open instead of alternating sources during a hold.
+                gameInputReadFallback = true;
+                decision = decide();
+            }
+        }
+        if (decision.readPath == widgetrail::input::ControllerReadPath::XInputCompatibility) {
+            for (DWORD index = 0; index < XUSER_MAX_COUNT; ++index) {
+                XINPUT_STATE input{};
+                if (XInputGetState(index, &input) != ERROR_SUCCESS) continue;
+                state.buttons = input.Gamepad.wButtons;
+                state.leftTrigger = input.Gamepad.bLeftTrigger;
+                state.rightTrigger = input.Gamepad.bRightTrigger;
+                state.leftThumbX = input.Gamepad.sThumbLX;
+                state.leftThumbY = input.Gamepad.sThumbLY;
+                state.rightThumbX = input.Gamepad.sThumbRX;
+                state.rightThumbY = input.Gamepad.sThumbRY;
+                connected = true;
+                break;
+            }
+        }
         if (!lastReadPath || *lastReadPath != decision.readPath ||
             !lastForegroundExclusive ||
             *lastForegroundExclusive != decision.foregroundExclusive) {
+            if (lastReadPath && *lastReadPath != decision.readPath) controllerTracker.Reset();
             lastReadPath = decision.readPath;
             lastForegroundExclusive = decision.foregroundExclusive;
             switch (decision.readPath) {
@@ -273,89 +306,70 @@ struct WidgetRailOverlayPlatformHandle final {
             }
         }
 
-        state = {};
-        connected = false;
-        if (decision.readPath ==
-            widgetrail::input::ControllerReadPath::GameInputVisibleLease) {
-            ComPtr<IGameInputReading> reading;
-            const HRESULT result = gameInput->GetCurrentReading(
-                GameInputKindGamepad, nullptr, reading.ReleaseAndGetAddressOf());
-            if (FAILED(result) || !reading) {
-                ObserveGamepadRead(FAILED(result) ? result : E_UNEXPECTED, nullptr);
-                return false;
-            }
-            ComPtr<IGameInputDevice> device;
-            reading->GetDevice(device.GetAddressOf());
-            GameInputGamepadState input{};
-            if (!reading->GetGamepadState(&input)) {
-                ObserveGamepadRead(E_FAIL, device.Get());
-                return false;
-            }
-            ObserveGamepadRead(S_OK, device.Get());
-            const auto has = [buttons = input.buttons](
-                                 const GameInputGamepadButtons button) {
-                return (static_cast<unsigned>(buttons) &
-                        static_cast<unsigned>(button)) != 0;
-            };
-            if (has(GameInputGamepadDPadUp))
-                state.buttons |= XINPUT_GAMEPAD_DPAD_UP;
-            if (has(GameInputGamepadDPadDown))
-                state.buttons |= XINPUT_GAMEPAD_DPAD_DOWN;
-            if (has(GameInputGamepadDPadLeft))
-                state.buttons |= XINPUT_GAMEPAD_DPAD_LEFT;
-            if (has(GameInputGamepadDPadRight))
-                state.buttons |= XINPUT_GAMEPAD_DPAD_RIGHT;
-            if (has(GameInputGamepadMenu)) state.buttons |= XINPUT_GAMEPAD_START;
-            if (has(GameInputGamepadView)) state.buttons |= XINPUT_GAMEPAD_BACK;
-            if (has(GameInputGamepadLeftThumbstick))
-                state.buttons |= XINPUT_GAMEPAD_LEFT_THUMB;
-            if (has(GameInputGamepadRightThumbstick))
-                state.buttons |= XINPUT_GAMEPAD_RIGHT_THUMB;
-            if (has(GameInputGamepadLeftShoulder))
-                state.buttons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
-            if (has(GameInputGamepadRightShoulder))
-                state.buttons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
-            if (has(GameInputGamepadA)) state.buttons |= XINPUT_GAMEPAD_A;
-            if (has(GameInputGamepadB)) state.buttons |= XINPUT_GAMEPAD_B;
-            if (has(GameInputGamepadX)) state.buttons |= XINPUT_GAMEPAD_X;
-            if (has(GameInputGamepadY)) state.buttons |= XINPUT_GAMEPAD_Y;
-            const auto thumb = [](const float value) {
-                const float clamped = std::clamp(value, -1.0F, 1.0F);
-                const float scale = clamped < 0.0F ? 32768.0F : 32767.0F;
-                return static_cast<std::int16_t>(std::lround(clamped * scale));
-            };
-            const auto trigger = [](const float value) {
-                return static_cast<std::uint8_t>(std::lround(
-                    std::clamp(value, 0.0F, 1.0F) * 255.0F));
-            };
-            state.leftTrigger = trigger(input.leftTrigger);
-            state.rightTrigger = trigger(input.rightTrigger);
-            state.leftThumbX = thumb(input.leftThumbstickX);
-            state.leftThumbY = thumb(input.leftThumbstickY);
-            state.rightThumbX = thumb(input.rightThumbstickX);
-            state.rightThumbY = thumb(input.rightThumbstickY);
-            connected = true;
-            return true;
-        }
-
-        if (decision.readPath ==
-            widgetrail::input::ControllerReadPath::XInputCompatibility) {
-            for (DWORD index = 0; index < XUSER_MAX_COUNT; ++index) {
-                XINPUT_STATE input{};
-                if (XInputGetState(index, &input) != ERROR_SUCCESS) continue;
-                state.buttons = input.Gamepad.wButtons;
-                state.leftTrigger = input.Gamepad.bLeftTrigger;
-                state.rightTrigger = input.Gamepad.bRightTrigger;
-                state.leftThumbX = input.Gamepad.sThumbLX;
-                state.leftThumbY = input.Gamepad.sThumbLY;
-                state.rightThumbX = input.Gamepad.sThumbRX;
-                state.rightThumbY = input.Gamepad.sThumbRY;
-                connected = true;
-                return true;
-            }
-        }
-        return false;
+        return connected;
     }
+
+    [[nodiscard]] HRESULT TryReadGameInput(WidgetRailOverlayPlatformRawControllerState& state) noexcept {
+        ComPtr<IGameInputReading> reading;
+        const HRESULT result = gameInput->GetCurrentReading(
+            GameInputKindGamepad, nullptr, reading.ReleaseAndGetAddressOf());
+        if (FAILED(result) || !reading) {
+            ObserveGamepadRead(FAILED(result) ? result : E_UNEXPECTED, nullptr);
+            return FAILED(result) ? result : E_UNEXPECTED;
+        }
+        ComPtr<IGameInputDevice> device;
+        reading->GetDevice(device.GetAddressOf());
+        GameInputGamepadState input{};
+        if (!reading->GetGamepadState(&input)) {
+            ObserveGamepadRead(E_FAIL, device.Get());
+            return E_FAIL;
+        }
+        ObserveGamepadRead(S_OK, device.Get());
+        const auto has = [buttons = input.buttons](
+                             const GameInputGamepadButtons button) {
+            return (static_cast<unsigned>(buttons) &
+                    static_cast<unsigned>(button)) != 0;
+        };
+        if (has(GameInputGamepadDPadUp))
+            state.buttons |= XINPUT_GAMEPAD_DPAD_UP;
+        if (has(GameInputGamepadDPadDown))
+            state.buttons |= XINPUT_GAMEPAD_DPAD_DOWN;
+        if (has(GameInputGamepadDPadLeft))
+            state.buttons |= XINPUT_GAMEPAD_DPAD_LEFT;
+        if (has(GameInputGamepadDPadRight))
+            state.buttons |= XINPUT_GAMEPAD_DPAD_RIGHT;
+        if (has(GameInputGamepadMenu)) state.buttons |= XINPUT_GAMEPAD_START;
+        if (has(GameInputGamepadView)) state.buttons |= XINPUT_GAMEPAD_BACK;
+        if (has(GameInputGamepadLeftThumbstick))
+            state.buttons |= XINPUT_GAMEPAD_LEFT_THUMB;
+        if (has(GameInputGamepadRightThumbstick))
+            state.buttons |= XINPUT_GAMEPAD_RIGHT_THUMB;
+        if (has(GameInputGamepadLeftShoulder))
+            state.buttons |= XINPUT_GAMEPAD_LEFT_SHOULDER;
+        if (has(GameInputGamepadRightShoulder))
+            state.buttons |= XINPUT_GAMEPAD_RIGHT_SHOULDER;
+        if (has(GameInputGamepadA)) state.buttons |= XINPUT_GAMEPAD_A;
+        if (has(GameInputGamepadB)) state.buttons |= XINPUT_GAMEPAD_B;
+        if (has(GameInputGamepadX)) state.buttons |= XINPUT_GAMEPAD_X;
+        if (has(GameInputGamepadY)) state.buttons |= XINPUT_GAMEPAD_Y;
+        const auto thumb = [](const float value) {
+            const float clamped = std::clamp(value, -1.0F, 1.0F);
+            const float scale = clamped < 0.0F ? 32768.0F : 32767.0F;
+            return static_cast<std::int16_t>(std::lround(clamped * scale));
+        };
+        const auto trigger = [](const float value) {
+            return static_cast<std::uint8_t>(std::lround(
+                std::clamp(value, 0.0F, 1.0F) * 255.0F));
+        };
+        state.leftTrigger = trigger(input.leftTrigger);
+        state.rightTrigger = trigger(input.rightTrigger);
+        state.leftThumbX = thumb(input.leftThumbstickX);
+        state.leftThumbY = thumb(input.leftThumbstickY);
+        state.rightThumbX = thumb(input.rightThumbstickX);
+        state.rightThumbY = thumb(input.rightThumbstickY);
+        return S_OK;
+    }
+
 };
 
 namespace {
@@ -744,6 +758,7 @@ WidgetRailOverlayPlatformSetWindowState(
         event.value = focused;
         handle->Queue(std::move(event));
     }
+    if (!visible) handle->gameInputReadFallback = false;
     if (!visible || !focused) handle->controllerTracker.Reset();
     if (!visible && handle->controllerIsolation.active())
         handle->controllerIsolation.CloseOverlay();
