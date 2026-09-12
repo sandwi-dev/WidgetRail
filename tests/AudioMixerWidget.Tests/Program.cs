@@ -325,7 +325,10 @@ static async Task ControllerRoutes()
     await ActivateReady(widget);
     var snapshot = widget.RenderSnapshot("audio.test", 42);
     Assert.Equal(3, snapshot.QuickActions.Count);
-    var scope = Node(snapshot.Root, "audio.root");
+    Assert.Equal(snapshot.Root.InputScopeId, snapshot.ActiveInputScopeId);
+    Assert.True(!await Route(widget, snapshot, ControllerButton.B, "audio.master.volume.slider"),
+        "The root mixer must leave B unhandled for the host tray exit.");
+    var scope = snapshot.Root;
     Assert.Equal(0, scope.Shortcuts.Count);
     Assert.True(!await Route(widget, snapshot, ControllerButton.LeftBumper, "audio.master.volume.slider"),
         "LB retained the removed session-cycle shortcut.");
@@ -842,6 +845,8 @@ static async Task SpatialToastLifetime()
     {
         await FailSelection();
         var failed = Snapshot(widget, 2);
+        Assert.True(!await Route(widget, failed, ControllerButton.B, "audio.spatial.select"),
+            "An error toast must not consume the root B exit.");
         var toast = Node(failed.Root, "audio.spatial.toast");
         Assert.Equal(toast, failed.Root.Children.Last());
         Assert.True(toast.StyleClasses.Contains("wrail-toast--danger"), "Error must use the themed danger tone.");
@@ -1772,8 +1777,15 @@ static WidgetAudioSession Session(
 
 static bool VolumesNear(double left, double right) => Math.Abs(left - right) <= 0.001;
 
-static ViewSnapshot Snapshot(AudioMixerWidget widget, long sequence) =>
-    widget.Render().CreateSnapshot("audio.test", sequence);
+static ViewSnapshot Snapshot(AudioMixerWidget widget, long sequence)
+{
+    var snapshot = widget.Render().CreateSnapshot("audio.test", sequence);
+    Assert.Equal(snapshot.Root.InputScopeId, snapshot.ActiveInputScopeId);
+    Assert.Equal("audio-mixer", snapshot.Root.InputScopeId);
+    Assert.True(Nodes(snapshot.Root).Skip(1).All(node => node.InputScopeId is null),
+        "Audio controls must share the root scope so unhandled B can return to the tray.");
+    return snapshot;
+}
 
 static IEnumerable<ViewNode> Nodes(ViewNode node)
 {

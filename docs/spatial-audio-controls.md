@@ -146,3 +146,14 @@ minimum dimensions preserved.
 AudioMixerWidget.Tests: 48/48 passed, including timed expiry, replacement,
 provider-update independence, successful recovery, focus and lifecycle cleanup.
 Native AudioMixerScrollHostTests also passed after coherent runtime publication.
+
+## Root Back navigation correction
+
+The toast wrapper initially left the active input scope on its inner scroll
+container. Host Back policy correctly treated this as a nested widget page and
+did not return to the tray. The outer Audio Mixer shell now owns the single
+audio-mixer input scope; the scroll container inherits it. No host Back policy or
+custom B handler was added. Managed coverage verifies the root-scope invariant
+through loading, ready, empty, failure and toast states, and verifies unhandled B
+with and without spatial error feedback. All 48 Audio Mixer tests pass.
+The earlier native scrolling gate used Escape and did not test controller B.

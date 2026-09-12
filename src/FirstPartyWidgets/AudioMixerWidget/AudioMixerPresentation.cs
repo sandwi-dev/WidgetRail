@@ -62,7 +62,11 @@ internal static class AudioMixerPresentation
         if (state.SpatialFeedback is { Length: > 0 } feedback)
             children.Add(UI.Toast("Spatial sound couldn't be changed", feedback,
                 ToastTone.Danger, "audio.spatial.toast").Classes("audio-toast"));
-        return view with { Root = UI.Stack("audio.shell", children.ToArray()).Classes("audio-shell"), ActiveInputScopeId = "audio-mixer" };
+        return view with
+        {
+            Root = UI.Stack("audio.shell", children.ToArray())
+                .InputScope("audio-mixer").Classes("audio-shell"),
+        };
     }
 
     private static WidgetView RenderContent(AudioMixerPresentationState state)
@@ -232,7 +236,6 @@ internal static class AudioMixerPresentation
                             .Classes("audio-help", "is-neutral"),
                         retry).Classes("audio-state-card"));
             var emptyRoot = UI.VerticalScroll("audio.root", emptyChildren.ToArray())
-                .InputScope("audio-mixer")
                 .Classes("audio-mixer-widget", "has-master", "has-state");
             return new WidgetView(emptyRoot, InitialFocusId: initialFocusId,
                 QuickActions: quickActions, Surface: CompactSurface);
@@ -260,7 +263,6 @@ internal static class AudioMixerPresentation
         rootChildren.Add(UI.Stack("audio.sessions.list", sessionRows)
             .Classes("audio-session-list"));
         var root = UI.VerticalScroll("audio.root", rootChildren.ToArray())
-            .InputScope("audio-mixer")
             .Classes("audio-mixer-widget", "has-sessions");
         return new WidgetView(root, InitialFocusId: initialFocusId,
             QuickActions: quickActions, Surface: CompactSurface);
@@ -433,7 +435,6 @@ internal static class AudioMixerPresentation
                     UI.Text(title, "audio.state.title", title).Classes("audio-state-title"),
                     UI.Text(help, "audio.state.help", help).Classes("audio-help", error ? "is-error" : "is-neutral"),
                     retry).Classes("audio-state-card"))
-            .InputScope("audio-mixer")
             .Classes("audio-mixer-widget", error ? "has-error" : "has-state");
         return new WidgetView(root, InitialFocusId: "audio.retry", Surface: CompactSurface);
     }
