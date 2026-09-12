@@ -356,7 +356,7 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task MissingCategoryMemberRetainsDisplayWithoutLaunchAuthority()
+    public async Task MissingCategoryMemberDoesNotRecreateGameFromCachedDisplay()
     {
         var display = new PlayniteLibraryDisplayItem(
             "saved-00001", "Temporarily missing", "Steam");
@@ -378,12 +378,13 @@ public sealed class PlayniteLibraryTests
             "playnite-library.category.open-button." + category.Id));
         await Bounded(widget.WhenLibraryIdleAsync(), "missing category member load");
         var snapshot = Snapshot(widget, 20);
-        var tile = Nodes(snapshot.Root).Single(node =>
-            node.ActionId == "playnite-library.launch");
-        StringAssert.Contains(tile.AccessibilityLabel!, "Temporarily missing");
-        StringAssert.Contains(tile.AccessibilityLabel!, "Play unavailable");
-        Assert.IsTrue(tile.IsDisabled);
-        await widget.OnActionAsync(new("playnite-library.launch", tile.Id));
+        Assert.IsFalse(Nodes(snapshot.Root).Any(node =>
+            node.ActionId == PlayniteLibraryActions.Launch),
+            "A cached display record must not recreate a game absent from the current category query.");
+        CollectionAssert.Contains(host.Authority.Categories.Single().SavedIds.ToArray(), display.SavedId,
+            "An empty current query must not erase provider-owned category membership.");
+        var staleTileId = PlayniteLibraryIdentity.FocusId("grid", PlayniteLibraryIdentity.Key(display.SavedId));
+        await widget.OnActionAsync(new(PlayniteLibraryActions.Launch, staleTileId));
         Assert.AreEqual(0, host.ResolveRequests.Count);
         Assert.AreEqual(0, host.Launches.Count);
         await Background(widget);
@@ -533,7 +534,11 @@ public sealed class PlayniteLibraryTests
             ExcludedSavedIds = [displays[0].SavedId],
         };
         var host = new FakeHost(32, new WidgetTestPrivateState(
-            JsonSerializer.Serialize(persisted), 1));
+            JsonSerializer.Serialize(persisted), 1))
+        {
+            ItemFactory = index => WithPresentation(Item(index),
+                source: index % 2 == 0 ? "Steam" : "Windows"),
+        };
         var widget = Create(host);
         await Interactive(widget);
         await Ready(widget, host);
@@ -565,8 +570,10 @@ public sealed class PlayniteLibraryTests
             Task terminal;
             if (optionId is not null)
             {
-                await widget.OnActionAsync(new(actionId, actionId));
-                terminal = widget.OnActionAsync(new(optionId, optionId)).AsTask();
+                var select = Nodes(Snapshot(widget, sequence++).Root).Single(node => node.Id == actionId);
+                Assert.IsTrue(select.SelectOptions.Any(option => option.ActionId == optionId),
+                    "The test must select an option published by the current Select control.");
+                terminal = widget.OnActionAsync(new(optionId, select.Id)).AsTask();
             }
             else
             {
@@ -578,7 +585,7 @@ public sealed class PlayniteLibraryTests
             AssertValidCollectionAnchor(Snapshot(widget, sequence++));
 
             release.TrySetResult(new(
-                [Item(0), Item(1), Item(2)], null, null, actionId));
+                [host.ItemFactory(0), host.ItemFactory(1), host.ItemFactory(2)], null, null, actionId));
             await Bounded(terminal, actionId + " terminal");
             await Bounded(widget.WhenLibraryIdleAsync(), actionId + " drain");
 
@@ -607,7 +614,8 @@ public sealed class PlayniteLibraryTests
         async Task AssertRoute(string actionId, PlayniteLibraryRoute expected)
         {
             var beforeQueries = host.Queries.Count;
-            var beforeRunning = host.RunningObservationCount;
+            var homeGeneration = widget.HomeCollection.WindowGeneration;
+            var beforeResolves = host.ResolveRequests.Count;
             await widget.OnActionAsync(new(actionId, actionId));
             await Bounded(widget.WhenLibraryIdleAsync(), actionId + " route load");
             if (expected == PlayniteLibraryRoute.Hidden)
@@ -618,10 +626,15 @@ public sealed class PlayniteLibraryTests
                 PlayniteLibraryRoute.Categories => "Categories",
                 _ => "Hidden games",
             };
-            Assert.AreEqual(expectedTitle, Nodes(route.Root).Single(node =>
-                node.Id == "playnite-library.compact.title").Text);
-            Assert.AreEqual(beforeQueries, host.Queries.Count,
+            var titleId = expected == PlayniteLibraryRoute.Categories
+                ? "playnite-library.categories.title" : "playnite-library.hidden.title";
+            Assert.AreEqual(expectedTitle, Nodes(route.Root).Single(node => node.Id == titleId).Text);
+            Assert.AreEqual(homeGeneration, widget.HomeCollection.WindowGeneration,
                 "Secondary navigation must not replace the Home cursor.");
+            Assert.AreEqual(beforeQueries, host.Queries.Count,
+                "Neither secondary route must fetch a new cursor page.");
+            Assert.AreEqual(beforeResolves + (expected == PlayniteLibraryRoute.Hidden ? 1 : 0), host.ResolveRequests.Count,
+                "Hidden resolves the exact saved identities; Categories uses the current provider catalog.");
             if (expected == PlayniteLibraryRoute.Categories)
             {
                 Assert.AreEqual(beforeQueries, host.Queries.Count);
@@ -639,9 +652,10 @@ public sealed class PlayniteLibraryTests
                 PlayniteLibraryRoute.Categories => "playnite-library.categories.back",
                 _ => "playnite-library.hidden.back",
             };
+            var queriesBeforeBack = host.Queries.Count;
             await widget.OnActionAsync(new(backId, backId));
             await Bounded(widget.WhenLibraryIdleAsync(), backId + " route load");
-            Assert.AreEqual(beforeQueries + 1, host.Queries.Count,
+            Assert.AreEqual(queriesBeforeBack + 1, host.Queries.Count,
                 "Returning Home must refresh exactly once.");
             AssertValidCollectionAnchor(Snapshot(widget, sequence++));
         }
@@ -1280,17 +1294,24 @@ public sealed class PlayniteLibraryTests
         var reopenedBrowse = AssertValidSnapshot(50_003, "directly reopened Browse");
         Assert.AreEqual(firstBrowseScrollId, BrowseScrollId(reopenedBrowse),
             "Reopening retained Browse keeps its stable viewport identity.");
-        await CommitSearch("Game", "retain all Browse results");
+        Assert.AreEqual(restoredTile.Id, reopenedBrowse.InitialFocusId,
+            "Reopening Browse without refreshing must preserve the navigator's return focus.");
+        var resetBeforeSearch = widget.BrowseCollection.ResetGeneration;
+        await CommitSearch("Game", "replace Browse query while retaining matching results");
         var restoredBrowse = AssertValidSnapshot(50_004, "navigator-owned restored Browse");
-        Assert.AreEqual(restoredTile.Id, restoredBrowse.InitialFocusId,
-            "A distinct still-rendered tile inside the Browse background must retain navigator-owned return focus after presentation preference retires.");
+        Assert.AreEqual("playnite-library.search", restoredBrowse.InitialFocusId,
+            "A new search must keep focus on Search even when the previous tile still matches.");
+        Assert.IsTrue(Nodes(restoredBrowse.Root).Any(node => node.Id == restoredTile.Id));
+        Assert.IsGreaterThan(resetBeforeSearch, widget.BrowseCollection.ResetGeneration,
+            "Changing the query must reset the collection rather than preserve its old position.");
 
         await CommitSearch("Game 00000", "matching search");
         var matching = AssertValidSnapshot(50_005, "matching search");
         Assert.AreNotEqual(restoredTile.Id, matching.InitialFocusId,
             "A filtered-out navigator target must not overwrite presentation focus.");
+        Assert.AreEqual("playnite-library.search", matching.InitialFocusId);
         Assert.AreEqual("Game 00000", Nodes(matching.Root).Single(node =>
-            node.Id == matching.InitialFocusId).AccessibilityLabel?.Split(',')[0]);
+            node.ActionId == PlayniteLibraryActions.Launch).AccessibilityLabel?.Split(',')[0]);
 
         await CommitSearch("No matching game", "zero-result search");
         var empty = AssertValidSnapshot(50_006, "zero-result search");
@@ -1300,8 +1321,11 @@ public sealed class PlayniteLibraryTests
             "playnite-library.query.clear"));
         await Bounded(widget.WhenLibraryIdleAsync(), "Browse query clear");
         var cleared = AssertValidSnapshot(50_007, "cleared Browse");
-        Assert.IsTrue(Nodes(cleared.Root).Any(node =>
-            node.Id == cleared.InitialFocusId && node.IsDisabled is not true));
+        Assert.AreEqual(PlayniteLibraryActions.QueryClear, cleared.InitialFocusId,
+            "Reset keeps focus on its invoking control even after there is nothing left to clear.");
+        Assert.IsTrue(Nodes(cleared.Root).Single(node => node.Id == cleared.InitialFocusId).IsDisabled);
+        Assert.AreEqual(3, Nodes(cleared.Root).Count(node => node.ActionId == PlayniteLibraryActions.Launch),
+            "Clearing the query restores all games without restoring the old tile focus.");
 
         var finalReturn = NextInvalidation(widget);
         Assert.IsTrue(await Route(widget, cleared, ControllerButton.B,
@@ -1730,7 +1754,7 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task BrowseFinalViewPreservesDisabledFocusableNavigationTarget()
+    public async Task BrowseReentryPreservesDisabledFocusUntilSearchResetsCollection()
     {
         var host = new FakeHost(3);
         var widget = Create(host);
@@ -1752,17 +1776,20 @@ public sealed class PlayniteLibraryTests
         _ = Snapshot(widget, 50_102);
         await widget.OnActionAsync(new("playnite-library.browse.open",
             "playnite-library.library.menu"));
+        var reopened = Snapshot(widget, 50_103);
+        Assert.AreEqual(disabledTarget, reopened.InitialFocusId,
+            "Ordinary Browse reentry retains a valid disabled-but-focusable target.");
         await widget.OnActionAsync(new WidgetActionEvent(
             "playnite-library.search.commit", "playnite-library.search")
             { CommittedText = "Game" });
         await Bounded(widget.WhenLibraryIdleAsync(), "retire Browse content preference");
 
-        var restored = Snapshot(widget, 50_103);
+        var restored = Snapshot(widget, 50_104);
         var errors = ViewSnapshotValidator.Validate(restored);
         Assert.AreEqual(0, errors.Count, string.Join(Environment.NewLine,
             errors.Select(error => $"{error.Path}: {error.Code}: {error.Message}")));
-        Assert.AreEqual(disabledTarget, restored.InitialFocusId,
-            "Disabled controls remain valid protocol focus targets and must retain navigation focus.");
+        Assert.AreEqual("playnite-library.search", restored.InitialFocusId,
+            "A new search supersedes remembered navigation focus, including disabled targets.");
         var restoredTarget = Nodes(restored.Root).Single(node => node.Id == disabledTarget);
         Assert.IsTrue(restoredTarget.IsFocusable);
         Assert.IsTrue(restoredTarget.IsDisabled);
@@ -2305,7 +2332,9 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task AdjacentPageCannotRegressNewerFavoriteAndCategoryAuthority()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task AdjacentPageCannotRegressNewerOrganizationAuthority(bool changeCategory)
     {
         var display = new PlayniteLibraryDisplayItem(
             "saved-00000", "Game 00000", "Steam");
@@ -2326,52 +2355,88 @@ public sealed class PlayniteLibraryTests
             (node.AccessibilityLabel ?? string.Empty).StartsWith(
                 display.DisplayName, StringComparison.Ordinal));
 
+        var initialCount = widget.Collection.Items.Count;
+        Assert.AreEqual(LauncherWidget.PageSize, initialCount);
+        var home = Snapshot(widget, 40_202);
+        var rail = Nodes(home.Root).Single(node => node.Id == PlayniteLibraryPresentation.HomeRailId);
+        Assert.IsNotNull(rail.ScrollNearEndActionId);
         var adjacentReturned = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var persistStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var persistRelease = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        var persistCancelled = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var writes = 0;
         host.QueryHandler = (request, token) =>
         {
             token.ThrowIfCancellationRequested();
-            adjacentReturned.TrySetResult();
+            if (request.Direction == WidgetCursorDirection.After)
+            {
+                adjacentReturned.TrySetResult();
+                return ValueTask.FromResult(new WidgetAppLibraryPage(
+                    [Item(initialCount)], "cursor.0", null, "adjacent-old-authority"));
+            }
             return ValueTask.FromResult(new WidgetAppLibraryPage(
-                [Item(64)], "cursor.0", null, "adjacent-old-authority"));
+                [Item(0), Item(1)], null, null, "refreshed-organization"));
         };
         host.StateWriteHandler = async (request, token) =>
         {
-            persistStarted.TrySetResult();
-            await persistRelease.Task.WaitAsync(token).ConfigureAwait(false);
+            if (Interlocked.Increment(ref writes) == 1)
+            {
+                persistStarted.TrySetResult();
+                try { await persistRelease.Task.WaitAsync(token).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    persistCancelled.TrySetResult();
+                    throw;
+                }
+            }
             return await host.State.WriteAsync(request, token).ConfigureAwait(false);
         };
 
-        await widget.OnActionAsync(new("playnite-library.next",
-            PlayniteLibraryPresentation.ScrollId));
-        await Bounded(adjacentReturned.Task, "adjacent provider return");
-        await Bounded(persistStarted.Task, "adjacent pre-publication persistence");
-        await widget.OnActionAsync(new("playnite-library.favorite", first.Id));
-        await widget.OnActionAsync(new("playnite-library.category." + category.Id, first.Id));
-        CollectionAssert.AreEqual(new[] { display.SavedId },
-            host.Authority.FavoriteGameIds.ToArray());
-        CollectionAssert.AreEqual(new[] { display.SavedId },
-            host.Authority.Categories.Single().SavedIds.ToArray());
-
-        persistRelease.TrySetResult();
-        await Bounded(widget.WhenLibraryIdleAsync(), "adjacent page publication");
-        var retained = Nodes(Snapshot(widget, 40_202).Root).Single(node => node.Id == first.Id);
-        CollectionAssert.Contains(retained.ContextActions.Select(action =>
-            action.Label).ToArray(), "Remove favorite");
-        CollectionAssert.Contains(retained.ContextActions.Select(action =>
-            action.Label).ToArray(), "Remove from Race");
-        Assert.AreEqual(65, widget.Collection.Items.Count,
-            "The current adjacent page must still merge after its stale authority is fenced.");
-        await Background(widget);
+        try
+        {
+            var pagination = widget.OnActionAsync(new(rail.ScrollNearEndActionId, rail.Id)).AsTask();
+            await Bounded(adjacentReturned.Task, "adjacent provider return");
+            await Bounded(persistStarted.Task, "adjacent pre-publication persistence");
+            await Bounded(widget.OnActionAsync(new("playnite-library.favorite", first.Id)).AsTask(),
+                "favorite mutation while adjacent page is pending");
+            CollectionAssert.AreEqual(new[] { display.SavedId }, host.Authority.FavoriteGameIds.ToArray());
+            if (changeCategory)
+            {
+                await Bounded(widget.OnActionAsync(new("playnite-library.category." + category.Id, first.Id)).AsTask(),
+                    "category mutation and replacement refresh");
+                await Bounded(persistCancelled.Task, "category refresh cancels old page");
+                CollectionAssert.AreEqual(new[] { display.SavedId }, host.Authority.Categories.Single().SavedIds.ToArray());
+            }
+            persistRelease.TrySetResult();
+            await Bounded(pagination, "published cursor pagination action");
+            await Bounded(widget.WhenLibraryIdleAsync(), "organization page publication");
+            var retained = Nodes(Snapshot(widget, 40_203).Root).Single(node => node.Id == first.Id);
+            CollectionAssert.Contains(retained.ContextActions.Select(action => action.Label).ToArray(), "Remove favorite");
+            CollectionAssert.Contains(retained.ContextActions.Select(action => action.Label).ToArray(),
+                changeCategory ? "Remove from Race" : "Add to Race");
+            if (changeCategory)
+            {
+                CollectionAssert.AreEqual(new[] { "saved-00000", "saved-00001" },
+                    widget.Collection.Items.Select(item => item.Value.SavedId).ToArray(),
+                    "Category refresh replaces the collection; the cancelled adjacent page must never merge back.");
+            }
+            else
+            {
+                Assert.AreEqual(initialCount + 1, widget.Collection.Items.Count,
+                    "The current adjacent page must merge while preserving newer favorite authority.");
+                Assert.IsTrue(widget.Collection.Items.Any(item => item.Value.SavedId == Item(initialCount).SavedId));
+            }
+        }
+        finally
+        {
+            persistRelease.TrySetResult();
+            await Background(widget);
+        }
     }
-
-
-
-
 
     private static void AssertIdenticalSourceObservationsDoNotReviseOrInvalidateTheModel()
     {
@@ -2836,12 +2901,17 @@ public sealed class PlayniteLibraryTests
         StringAssert.Contains(library[0].AccessibilityLabel!, hidden.DisplayName);
         await widget.OnActionAsync(new(
             "playnite-library.hidden.open", "playnite-library.hidden.open"));
-        await Bounded(widget.WhenLibraryIdleAsync(), "missing hidden route");
-        var unavailable = Nodes(Snapshot(widget, 312).Root).Single(node =>
-            node.ActionId == "playnite-library.restore");
-        StringAssert.Contains(unavailable.AccessibilityLabel!, "Unavailable · Restore");
-        Assert.AreEqual("playnite-library.item.hidden." +
-            PlayniteLibraryIdentity.Key(hidden.SavedId).Value, unavailable.Id);
+        await Bounded(widget.WhenHiddenRowsIdleAsync(), "missing hidden route");
+        CollectionAssert.AreEqual(new[] { hidden.SavedId }, host.ResolveRequests.Single().ToArray(),
+            "Hidden must resolve the saved identity rather than match the replacement by title.");
+        var missingHidden = Snapshot(widget, 312);
+        Assert.IsFalse(Nodes(missingHidden.Root).Any(node =>
+            node.ActionId == "playnite-library.restore"),
+            "Cached hidden metadata must not recreate a row absent from the current provider query.");
+        CollectionAssert.Contains(host.Authority.HiddenGameIds.ToArray(), hidden.SavedId,
+            "A replacement with the same display title must not clear the original hidden identity.");
+        Assert.IsFalse(host.Authority.HiddenGameIds.Contains("saved-00001", StringComparer.Ordinal),
+            "The replacement must not inherit hidden state by display title.");
         await Background(widget);
 
         var reclassifiedHost = new FakeHost(1, privateState)
@@ -2856,14 +2926,12 @@ public sealed class PlayniteLibraryTests
             node.ActionId == "playnite-library.launch"));
         await reclassified.OnActionAsync(new(
             "playnite-library.hidden.open", "playnite-library.hidden.open"));
-        await Bounded(reclassified.WhenLibraryIdleAsync(), "reclassified hidden route");
-        var current = Nodes(Snapshot(reclassified, 314).Root).Single(node =>
-            node.ActionId == "playnite-library.restore");
-        StringAssert.Contains(current.AccessibilityLabel!,
-            "Game 00000, Steam, Hidden · Restore");
-        Assert.IsFalse(Nodes(current).Any(node =>
-                node.ActionId == "playnite-library.launch"),
-            "A route-owned hidden display row must never inherit current launch authority.");
+        await Bounded(reclassified.WhenHiddenRowsIdleAsync(), "reclassified hidden route");
+        var reclassifiedHidden = Snapshot(reclassified, 314);
+        Assert.IsFalse(Nodes(reclassifiedHidden.Root).Any(node =>
+            node.ActionId is "playnite-library.restore" or "playnite-library.launch"),
+            "A current non-game must not inherit a cached game's hidden presentation or launch authority.");
+        CollectionAssert.Contains(reclassifiedHost.Authority.HiddenGameIds.ToArray(), hidden.SavedId);
         await Background(reclassified);
     }
 

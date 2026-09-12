@@ -73,15 +73,22 @@ surface 12/12 (including 240 retarget continuity cases); controller navigation, 
 slider, interaction, accessibility and composition suites. Renderer coverage includes
 cursor offsets, paging, focus-follow, responsive layouts, themes and artwork retention.
 
-Playnite: 75/81 passed on both candidate and unchanged baseline, with exactly the same
-six failing tests. No Playnite source or expectations were changed in this task:
+Playnite follow-up: **82/82 passed** after repairing six baseline test assumptions.
+No widget, SDK or host production behavior changed in this follow-up. Coverage now:
 
-- MissingCategoryMemberRetainsDisplayWithoutLaunchAuthority
-- EveryTopControlKeepsPendingAndCommittedSnapshotsValid
-- BrowseSearchFinalWidgetViewRetiresFilteredNavigationFocus
-- BrowseFinalViewPreservesDisabledFocusableNavigationTarget
-- AdjacentPageCannotRegressNewerFavoriteAndCategoryAuthority
-- MissingAndReplacementRowsRemainIndependentFromHiddenIdentity
+- Select option events originate from the published Select control and the fixture
+  actually supplies the source names it selects. Secondary-route checks use their
+  current headers; Hidden resolves saved identities without replacing the Home cursor.
+- Browse reentry preserves navigator focus, including disabled focusable controls;
+  committing a new search resets the collection and keeps focus on Search. Clear
+  retains its own focus after becoming disabled, and restores the complete results.
+- Cached display metadata cannot recreate games absent from current provider results
+  or transfer hidden state to a different saved identity with the same title. Hidden
+  assertions await the hidden resource, not an unrelated cursor.
+- The paging race uses Home's published pagination action and the current page size.
+  Separate cases cover an adjacent page merging after a newer favorite mutation and
+  cancellation/replacement when a category change triggers refresh. Both preserve the
+  newer organization authority; delayed writes have bounded waits and cleanup.
 
 Build/test logs and unique managed binlogs are retained in the worktree's ignored
 `logs` directory. Physical acceptance remains pending: Spotify playback while navigating
