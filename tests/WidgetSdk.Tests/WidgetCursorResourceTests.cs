@@ -8,6 +8,7 @@ internal static class WidgetCursorResourceTests
         await CommittedGenerationDistinguishesIdenticalRefreshedWindows();
         await RefreshRejectsStalePaginationAndResumesAfterReopen();
         await PendingLoadRetainsVirtualExtent();
+        await ErrorRetryCancellationAdvancesWindowMetadata();
         await CanceledReplacementRestoresSettledState();
         await EqualVisibleDemandJoinsPendingPage();
         await CapturedPresentationSurvivesConcurrentEviction();
@@ -26,6 +27,41 @@ internal static class WidgetCursorResourceTests
         await ResetCancelsJoinedLoadAndAllowsFreshWork();
         await ActiveLifecycleDrainsJoinedLoad();
         ContractIsVersionedOpaqueAndBounded();
+    }
+
+    private static async Task ErrorRetryCancellationAdvancesWindowMetadata()
+    {
+        var fail = false;
+        TaskCompletionSource<WidgetCursorPage<Item>>? pending = null;
+        var widget = await StartAsync(Options(total: 20, pageSize: 4, @async: async (cursor, _, limit, token) =>
+        {
+            if (fail) throw new InvalidOperationException("Page failed");
+            if (pending is not null) return await pending.Task.WaitAsync(token);
+            var start = cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1));
+            return Page(start, limit, 20) with { FirstItemIndex = start, TotalItemCount = 20 };
+        }) with { Viewports = [Viewport() with { EstimatedItemExtent = 56 }] });
+        await widget.Resource.EnsureLoaded().Completion;
+        var ready = widget.Resource.Snapshot;
+        fail = true;
+        await widget.Resource.Move(WidgetCursorDirection.After, "items.list").Completion;
+        var error = widget.Resource.Snapshot;
+        True(error.WindowGeneration > ready.WindowGeneration, "Error metadata reused the ready generation");
+        Equal(ready.ResetGeneration, error.ResetGeneration);
+        fail = false;
+        pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var retry = widget.Resource.Retry();
+        var loading = widget.Resource.Snapshot;
+        True(loading.WindowGeneration > error.WindowGeneration, "Retry metadata reused the error generation");
+        Equal(VirtualCollectionWindowChange.Replace, loading.WindowChange);
+        Equal(0, ViewSnapshotValidator.Validate(widget.Render().CreateSnapshot("retry.metadata", 1)).Count);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+        await retry.Completion;
+        var restored = widget.Resource.Snapshot;
+        Equal(WidgetPagedResourceStatus.Error, restored.Status);
+        True(restored.WindowGeneration > loading.WindowGeneration, "Canceled retry rolled back the metadata generation");
+        Equal(ready.ResetGeneration, restored.ResetGeneration);
+        Equal(0, ViewSnapshotValidator.Validate(widget.Render().CreateSnapshot("retry.metadata", 2)).Count);
+        await WidgetTestHost.DestroyAsync(widget);
     }
 
     private static async Task CommittedGenerationDistinguishesIdenticalRefreshedWindows()
@@ -589,8 +625,8 @@ internal static class WidgetCursorResourceTests
         var failedRefresh = await widget.Resource.Refresh().Completion;
         Equal(WidgetOperationStatus.Failed, failedRefresh.Status);
         Equal(WidgetPagedResourceStatus.Error, widget.Resource.Snapshot.Status);
-        Equal(4L, widget.Resource.Snapshot.WindowGeneration);
-        Equal(retained.WindowChange, widget.Resource.Snapshot.WindowChange);
+        Equal(5L, widget.Resource.Snapshot.WindowGeneration);
+        Equal(VirtualCollectionWindowChange.Replace, widget.Resource.Snapshot.WindowChange);
         Equal(retained.ResetGeneration, widget.Resource.Snapshot.ResetGeneration);
         Equal(96, widget.Resource.Snapshot.Items.Count);
         Equal(retained.Before, widget.Resource.Snapshot.Before);
@@ -606,6 +642,8 @@ internal static class WidgetCursorResourceTests
         Equal(retainedScroll.CollectionAnchorKey, errorScroll.CollectionAnchorKey);
         Equal(retainedScroll.VirtualCollectionWindow! with
             {
+                RequestGeneration = retainedScroll.VirtualCollectionWindow!.RequestGeneration + 1,
+                Change = VirtualCollectionWindowChange.Replace,
                 HasBefore = false,
                 HasAfter = false,
             }, errorScroll.VirtualCollectionWindow);
@@ -614,7 +652,7 @@ internal static class WidgetCursorResourceTests
         Equal(WidgetOperationAdmission.Started, retry.Admission);
         Equal(WidgetOperationStatus.Succeeded, (await retry.Completion).Status);
         Equal(WidgetPagedResourceStatus.Ready, widget.Resource.Snapshot.Status);
-        Equal(5L, widget.Resource.Snapshot.WindowGeneration);
+        Equal(7L, widget.Resource.Snapshot.WindowGeneration);
         var recoveredScroll = widget.Render().CreateSnapshot("virtual.fixture", 4).Root.Children[0];
         Equal<string?>(null, recoveredScroll.ScrollNearStartActionId);
         Equal("test.cursor.cursor.after", recoveredScroll.ScrollNearEndActionId);
@@ -632,7 +670,7 @@ internal static class WidgetCursorResourceTests
         Equal(0L, widget.Resource.Snapshot.WindowGeneration);
         mutation = 0;
         await widget.Resource.EnsureLoaded().Completion;
-        Equal(9L, widget.Resource.Snapshot.WindowGeneration);
+        Equal(11L, widget.Resource.Snapshot.WindowGeneration);
         Equal(VirtualCollectionWindowChange.Replace, widget.Resource.Snapshot.WindowChange);
         await StopAsync(widget);
 

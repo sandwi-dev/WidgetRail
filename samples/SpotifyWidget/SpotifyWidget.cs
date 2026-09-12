@@ -1878,10 +1878,14 @@ public sealed class SpotifyWidget : Widget
                 var page = await _spotify.SearchAsync(query, kind,
                     SpotifyCollectionIdentity.Offset(cursor), limit, token).AsTask().WaitAsync(token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
-                var items = page.Items.Select(item => new SpotifySearchCollectionItem(item,
-                    new WidgetCollectionItemKey("search." + generation + "." + SpotifyCollectionIdentity.Media(item.Uri).Value))).ToArray();
+                // Search rankings and totals are live, not a stable indexed
+                // library. Identify returned occurrences and keep remote offsets
+                // only in the request cursors, not in the host's virtual extent.
+                var items = page.Items.Select((item, index) => new SpotifySearchCollectionItem(item,
+                    new WidgetCollectionItemKey("search." + generation + "." + (page.Offset + index) + "." +
+                        SpotifyCollectionIdentity.Media(item.Uri).Value))).ToArray();
                 return SpotifyCollectionIdentity.Page(items, page.Offset, page.Limit,
-                    page.Total, page.HasAuthoritativeWindow);
+                    page.Total, hasAuthoritativeWindow: false);
             },
             MapError = SpotifyResourceError,
             Viewports =

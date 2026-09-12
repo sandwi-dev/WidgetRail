@@ -1,6 +1,6 @@
 # Spotify Web API integration
 
-## Search (0.3.57)
+## Search (0.3.58)
 
 Search is the first section and the initial route for a new widget instance.
 Submit a query through the controller keyboard, then choose Tracks, Albums,
@@ -11,6 +11,11 @@ availability and playback restrictions.
 The package owns a typed `/v1/search` endpoint and reuses the authenticated
 session without additional OAuth scopes. Queries run only when submitted.
 Pages contain at most ten items, within Spotify's 1,000-result search window.
+Search rankings and totals may change between requests. The cursor therefore
+uses unknown virtual extent and occurrence identities, rather than promising
+fixed absolute positions or rejecting repeated results across page boundaries.
+Paging errors retain existing rows and require an explicit retry; the shared
+SDK versions error/retry boundary metadata without resetting collection focus.
 Query/type changes reset the SDK cursor; late responses cannot replace current
 results. Closing/reopening preserves completed queries and results. Loading,
 empty, unavailable and retry states stay inside Search. Existing queue,

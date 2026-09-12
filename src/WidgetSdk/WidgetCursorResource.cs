@@ -725,16 +725,27 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             _snapshot.Before == before && _snapshot.After == after && _snapshot.Anchor == anchor &&
             _snapshot.RequestedFocusId == focus && Equals(_snapshot.Error, error)) return false;
         var previous = _snapshot;
+        // Error suppresses the virtual window's available edges. Entering or
+        // leaving it changes published window metadata even when every item is
+        // retained, so it must be a new replacement generation. The collection
+        // reset identity stays unchanged: this is not a refresh or focus reset.
+        var boundaryAvailabilityChanged = previous.WindowGeneration > 0 && items.Count > 0 &&
+            (previous.Status == WidgetPagedResourceStatus.Error) != (status == WidgetPagedResourceStatus.Error);
+        if (boundaryAvailabilityChanged) {
+            if (_windowGeneration >= ProtocolConstants.MaximumVirtualCollectionRequestGeneration)
+                throw new InvalidOperationException("Virtual collection request generation is exhausted.");
+            ++_windowGeneration;
+        }
         _snapshot = new(status, items, before, after, anchor, focus, error, previous.Revision + 1)
         {
             FirstItemIndex = previous.FirstItemIndex,
             TotalItemCount = previous.TotalItemCount,
-            WindowGeneration = previous.WindowGeneration,
+            WindowGeneration = boundaryAvailabilityChanged ? _windowGeneration : previous.WindowGeneration,
             ResetGeneration = previous.ResetGeneration,
             StartIndex = previous.StartIndex,
             NavigationRequest = previous.NavigationRequest,
             LoadingDirection = status == WidgetPagedResourceStatus.LoadingAdjacent ? previous.LoadingDirection : null,
-            WindowChange = previous.WindowChange,
+            WindowChange = boundaryAvailabilityChanged ? VirtualCollectionWindowChange.Replace : previous.WindowChange,
         };
         return true;
     }

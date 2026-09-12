@@ -10,6 +10,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Search starts first, pages typed results and routes playback", SearchResultsAndPlayback),
     ("Search drops late responses and preserves query across reopen", SearchLateResponses),
+    ("Search accepts changing totals and repeated results without stale virtual windows", SearchMutablePaging),
     ("Production cursor batches retain forward and reverse buffers", ProductionCursorBuffer),
     ("Opening the widget never starts OAuth", OpeningNeverConnects),
     ("Disconnected copy and paired actions remain bounded and centered", DisconnectedLayoutContract),
@@ -2514,7 +2515,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.57", manifest.Version);
+    Assert.Equal("0.3.58", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
@@ -2753,6 +2754,42 @@ static async Task SearchResultsAndPlayback()
     await widget.OnActionAsync(new("spotify.search.clear", "spotify.search.clear"));
     Assert.Equal(0, CollectionRows(widget.RenderSnapshot("spotify.search-test", 7).Root).Length);
     Assert.Equal(calls, harness.SearchCalls);
+    await StopAsync(widget);
+}
+
+static async Task SearchMutablePaging()
+{
+    var harness = SpotifyHarness.Ready();
+    var fail = false;
+    harness.SearchHandler = (_, kind, offset, limit, _) => fail
+        ? ValueTask.FromException<SpotifySearchPage>(new SpotifyApplicationException("spotify_network_error", "Connection lost"))
+        : ValueTask.FromResult(new SpotifySearchPage(Enumerable.Range(0, 10).Select(index =>
+            new SpotifySearchItem(kind, "same" + index, "Result " + index, "Artist", null,
+                "spotify:track:same" + index, "https://open.spotify.com/track/same" + index, true)).ToArray(),
+            offset, limit, offset == 0 ? 100 : 90));
+    var widget = await StartAsync(harness, search: true);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.search.query", "spotify.search.query") { CommittedText = "live rankings" });
+    await WaitUntil(() => CollectionRows(widget.RenderSnapshot("search.mutable", 1).Root).Length == 10);
+    await widget.OnActionAsync(new("spotify.search.cursor.after", "spotify.search.scroll"));
+    await WaitUntil(() => CollectionRows(widget.RenderSnapshot("search.mutable", 2).Root).Length == 20);
+    var ready = widget.RenderSnapshot("search.mutable", 3);
+    var scroll = Find(ready.Root, "spotify.search.scroll");
+    Assert.Equal<long?>(null, scroll.VirtualCollectionWindow!.TotalItemCount);
+    Assert.Equal(20, CollectionRows(ready.Root).Select(row => row.CollectionItemKey).Distinct().Count());
+    fail = true;
+    await widget.OnActionAsync(new("spotify.search.cursor.after", "spotify.search.scroll"));
+    await WaitUntil(() => ContainsId(widget.RenderSnapshot("search.mutable", 4).Root, "spotify.search.error"));
+    var error = widget.RenderSnapshot("search.mutable", 5);
+    var failedScroll = Find(error.Root, "spotify.search.scroll");
+    Assert.Equal(20, CollectionRows(error.Root).Length);
+    Assert.True(failedScroll.VirtualCollectionWindow!.RequestGeneration > scroll.VirtualCollectionWindow.RequestGeneration,
+        "Search error must publish a forward metadata transition.");
+    Assert.Equal(scroll.CollectionResetGeneration, failedScroll.CollectionResetGeneration);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(error).Count);
+    fail = false;
+    await widget.OnActionAsync(new("spotify.page.retry", "spotify.search.error.action"));
+    await WaitUntil(() => CollectionRows(widget.RenderSnapshot("search.mutable", 6).Root).Length == 30);
     await StopAsync(widget);
 }
 

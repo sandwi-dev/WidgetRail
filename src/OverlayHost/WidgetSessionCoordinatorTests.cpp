@@ -2618,6 +2618,43 @@ void VirtualWindowReplacementOwnsMutationAndUnknownPosition() {
     admits(std::move(unknown));
 }
 
+void VirtualWindowErrorAndRetryKeepForwardAuthority() {
+    FakeBridge bridge;
+    bridge.catalog = {Descriptor(L"alpha", L"alpha.one", L"runtime-1", L"view-1")};
+    bridge.snapshots[L"alpha"] = VirtualSnapshot(L"alpha.one", 1, 1, 100);
+    WidgetSessionCoordinator coordinator(bridge.Operations());
+    assert(coordinator.EstablishCatalog());
+    coordinator.SetLifecycleTargets({{L"alpha", WidgetLifecycleState::Visible}});
+    const auto wait = [&] {
+        (void)WaitEvents(coordinator, [](const auto& events) {
+            return std::any_of(events.begin(), events.end(), [](const auto& event) {
+                return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+            });
+        });
+    };
+    wait();
+    for (long long generation : {2LL, 3LL, 4LL}) {
+        auto next = VirtualSnapshot(L"alpha.one", generation, generation, 100);
+        // An error and a canceled retry suppress edges without replacing items.
+        if (generation != 3) {
+            next.root.virtualCollectionWindow->hasBefore = false;
+            next.root.virtualCollectionWindow->hasAfter = false;
+            next.root.scrollNearStartActionId.clear();
+            next.root.scrollNearEndActionId.clear();
+        }
+        bridge.snapshots[L"alpha"] = std::move(next);
+        assert(coordinator.RequestSnapshot(L"alpha", true));
+        wait();
+        assert(coordinator.Snapshot(L"alpha")->sequence == generation);
+    }
+    // Retry/loading snapshots may be coalesced before a successful append.
+    bridge.snapshots[L"alpha"] = VirtualSnapshot(L"alpha.one", 6, 6, 101,
+        VirtualCollectionWindowChange::Append);
+    assert(coordinator.RequestSnapshot(L"alpha", true));
+    wait();
+    assert(coordinator.Snapshot(L"alpha")->sequence == 6);
+}
+
 void VirtualWindowFreshSessionRequiresReplacement() {
     FakeBridge bridge;
     bridge.catalog = {Descriptor(
@@ -2717,5 +2754,6 @@ int main() {
     VirtualWindowAdmissionEnforcesDirectionalAuthority();
     VirtualWindowReplacementOwnsMutationAndUnknownPosition();
     VirtualWindowFreshSessionRequiresReplacement();
-    std::cout << "WidgetSessionCoordinatorTests passed (31 scenarios)\n";
+    VirtualWindowErrorAndRetryKeepForwardAuthority();
+    std::cout << "WidgetSessionCoordinatorTests passed (32 scenarios)\n";
 }
