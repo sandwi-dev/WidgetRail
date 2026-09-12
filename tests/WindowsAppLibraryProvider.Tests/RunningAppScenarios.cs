@@ -34,45 +34,6 @@ internal static class RunningAppScenarios
         return Task.CompletedTask;
     }
 
-    internal static Task WindowShapeExcludesOnlyDesktopShell()
-    {
-        var shell = (IntPtr)41;
-        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
-            shell, shell, true, IntPtr.Zero, false, "Progman", 7, 101, 202));
-        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
-            (IntPtr)42, shell, true, IntPtr.Zero, false,
-            "Shell_TrayWnd", 7, 101, 202));
-        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
-            (IntPtr)42, shell, true, IntPtr.Zero, false,
-            "Shell_SecondaryTrayWnd", 7, 101, 202));
-        Assert.True(WindowsRunningAppObserver.HasEligibleTopLevelShape(
-            (IntPtr)42, shell, true, IntPtr.Zero, false,
-            "CabinetWClass", 7, 101, 202));
-        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
-            (IntPtr)42, shell, true, IntPtr.Zero, false, null, 7, 101, 202));
-        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
-            (IntPtr)42, shell, false, IntPtr.Zero, false,
-            "CabinetWClass", 7, 101, 202));
-        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
-            (IntPtr)42, shell, true, (IntPtr)99, false,
-            "CabinetWClass", 7, 101, 202));
-        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
-            (IntPtr)42, shell, true, IntPtr.Zero, true,
-            "CabinetWClass", 7, 101, 202));
-        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
-            (IntPtr)42, shell, true, IntPtr.Zero, false,
-            "CabinetWClass", 0, 101, 202));
-        Assert.False(WindowsRunningAppObserver.HasEligibleTopLevelShape(
-            (IntPtr)42, shell, true, IntPtr.Zero, false,
-            "CabinetWClass", 7, 202, 202));
-        Assert.True(WindowsRunningAppObserver.IsTaskbarWindowClass("Shell_TrayWnd"));
-        Assert.True(WindowsRunningAppObserver.IsTaskbarWindowClass(
-            "Shell_SecondaryTrayWnd"));
-        Assert.False(WindowsRunningAppObserver.IsTaskbarWindowClass("shell_traywnd"));
-        Assert.False(WindowsRunningAppObserver.IsTaskbarWindowClass("CabinetWClass"));
-        return Task.CompletedTask;
-    }
-
     internal static Task WindowClassInteropIsExactWideAndBounded()
     {
         var method = typeof(WindowsRunningAppObserver).GetMethod(

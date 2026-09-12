@@ -446,8 +446,22 @@ request order, omits unavailable registrations, and returns fresh launch IDs.
 Another widget authority cannot correlate or resolve those SavedIds.
 
 The running-app observer also supports an explicit portable-registration lane.
-It admits only visible top-level windows whose process is in the current user
-session and belongs to the current user. An elevated instance remains eligible
+It approximates ordinary Alt+Tab applications using visible, non-cloaked
+top-level windows, including minimized windows. Tool/no-activate styles and
+owner/active-popup relationships filter helper windows; WS_EX_APPWINDOW can
+explicitly opt in an owned or no-activate window. Ownership and popup walks
+are bounded and reject cycles. No browser-tab or private Shell enumeration is
+used, and exact virtual-desktop parity is outside this contract.
+
+ApplicationFrameWindow candidates must belong to the same-user/session
+System32 ApplicationFrameHost executable. A bounded descendant scan resolves
+visible Windows.UI.Core.CoreWindow children through their actual process AUMID.
+Only one distinct packaged identity is accepted; missing, inaccessible,
+ambiguous or changing ownership is skipped. The frame host is never offered
+as a portable executable. Candidate and child metadata are rechecked after
+process inspection. Every application process must be in the current user
+session and belong to the current user. Recoverable per-window inspection
+failures skip that window rather than aborting the observation. An elevated instance remains eligible
 when Windows permits the same bounded limited-information inspection; its token,
 arguments, and elevation are neither retained nor reproduced. Packaged or
 installed identities retain the normal catalog owner. For an otherwise unmatched

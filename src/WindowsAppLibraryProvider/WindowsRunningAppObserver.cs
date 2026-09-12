@@ -34,7 +34,7 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     private const int ErrorInsufficientBuffer = 122;
     internal const int MaximumWindowClassCharacters = 256;
     private static readonly HashSet<string> ExcludedProcesses = new(
-        ["OverlayHost.exe", "WidgetWorkerHost.exe", "WidgetBridge.exe", "wrail.exe"],
+        ["OverlayHost.exe", "WidgetWorkerHost.exe", "WidgetBridge.exe", "wrail.exe", "ApplicationFrameHost.exe"],
         StringComparer.OrdinalIgnoreCase);
     private readonly IWindowsRunningWindowReader _windows;
     private static readonly IWindowsExecutableAuthorityReader ExecutableAuthority =
@@ -50,41 +50,45 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     {
         if (!OperatingSystem.IsWindows()) return [];
         var observations = new List<WindowsRunningAppObservation>();
-        var canceled = false;
         var visits = 0;
         _windows.Enumerate(window =>
         {
             visits++;
             if (cancellationToken.IsCancellationRequested)
             {
-                canceled = true;
                 return false;
             }
-            if (_windows.Inspect(window) is { } observation)
-                observations.Add(observation);
+            try
+            {
+                if (_windows.Inspect(window) is { } observation)
+                    observations.Add(observation);
+            }
+            catch (Exception error) when (IsUnavailableWindow(error))
+            {
+                // A disappearing/inaccessible window must not fail the entire list.
+            }
             return visits < MaximumTopLevelWindowVisits;
         });
-        if (canceled) cancellationToken.ThrowIfCancellationRequested();
+        cancellationToken.ThrowIfCancellationRequested();
         return observations;
     }
 
-    private static WindowsRunningAppObservation? InspectWindow(IntPtr window)
+    private static WindowsRunningAppObservation? InspectWindow(IntPtr window) =>
+        WindowsRunningWindowPolicy.Inspect(window, new NativeWindowMetadata(),
+            (uint)Environment.ProcessId);
+
+    private static bool IsUnavailableWindow(Exception error) => error is
+        System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException or
+        System.Security.SecurityException or ArgumentException or InvalidOperationException or
+        NotSupportedException or COMException;
+
+    private static WindowsRunningAppObservation? InspectProcess(uint processId, bool packagedOnly)
     {
-        if (!HasEligibleTopLevelShape(
-                window,
-                GetShellWindow(),
-                IsWindowVisible(window),
-                GetWindow(window, GwOwner),
-                IsCloaked(window),
-                WindowClassName(window),
-                GetWindowThreadProcessId(window, out var processId),
-                processId,
-                (uint)Environment.ProcessId))
-            return null;
         using var process = OpenProcess(ProcessQueryLimitedInformation, false, processId);
         if (process.IsInvalid || !IsSameUserAndSession(process, processId))
             return null;
         var packagedIdentity = PackagedIdentity(process);
+        if (packagedOnly && packagedIdentity is null) return null;
         var executable = packagedIdentity is null ? ExecutableIdentity(process) : null;
         var identity = packagedIdentity ?? executable?.Identity;
         if (identity is null ||
@@ -122,25 +126,6 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
         return WindowsAppsFolderApplicationSource.NormalizeAumid(
             new string(value, 0, checked((int)length - 1)));
     }
-
-    internal static bool HasEligibleTopLevelShape(
-        IntPtr window,
-        IntPtr shellWindow,
-        bool visible,
-        IntPtr owner,
-        bool cloaked,
-        string? windowClass,
-        uint threadId,
-        uint processId,
-        uint currentProcessId) =>
-        window != IntPtr.Zero && window != shellWindow && visible && windowClass is not null &&
-        owner == IntPtr.Zero && !cloaked && !IsTaskbarWindowClass(windowClass) &&
-        threadId != 0 && processId != 0 &&
-        processId != currentProcessId;
-
-    internal static bool IsTaskbarWindowClass(string? windowClass) =>
-        string.Equals(windowClass, "Shell_TrayWnd", StringComparison.Ordinal) ||
-        string.Equals(windowClass, "Shell_SecondaryTrayWnd", StringComparison.Ordinal);
 
     private static string? WindowClassName(IntPtr window)
     {
@@ -200,11 +185,75 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
         string DisplayName,
         WindowsExecutableAuthority? Authority);
 
-    private static bool IsCloaked(IntPtr window) =>
-        DwmGetWindowAttribute(window, DwmwaCloaked, out var cloaked, sizeof(int)) == 0 &&
-        cloaked != 0;
-
+    [return: MarshalAs(UnmanagedType.Bool)]
     private delegate bool EnumWindowsCallback(IntPtr window, IntPtr parameter);
+
+    private sealed class NativeWindowMetadata : IRunningWindowNative
+    {
+        public nint ShellWindow => GetShellWindow();
+
+        public RunningWindowInfo? Read(nint window)
+        {
+            var thread = GetWindowThreadProcessId(window, out var processId);
+            var name = WindowClassName(window);
+            if (thread == 0 || processId == 0 || name is null) return null;
+            var root = GetAncestor(window, 2);
+            // Cloaking is meaningful for top-level windows. Child CoreWindows can
+            // carry inherited cloaking metadata while their visible frame is active.
+            var cloaked = false;
+            if (root == window)
+            {
+                if (DwmGetWindowAttribute(window, DwmwaCloaked, out var value, sizeof(int)) != 0)
+                    return null;
+                cloaked = value != 0;
+            }
+            Marshal.SetLastPInvokeError(0);
+            var style = IntPtr.Size == 8
+                ? GetWindowLongPtrW(window, -20).ToInt64() : GetWindowLongW(window, -20);
+            if (style == 0 && Marshal.GetLastPInvokeError() != 0) return null;
+            return new(window, root, GetWindow(window, GwOwner), processId, name,
+                IsWindowVisible(window), cloaked, style);
+        }
+
+        public nint LastActivePopup(nint window) => GetLastActivePopup(window);
+
+        public bool IsApplicationFrameHost(uint processId)
+        {
+            using var process = OpenProcess(ProcessQueryLimitedInformation, false, processId);
+            if (process.IsInvalid || !IsSameUserAndSession(process, processId)) return false;
+            var length = 32_768u;
+            var path = new char[length];
+            return QueryFullProcessImageNameW(process, 0, path, ref length) && length > 0 &&
+                string.Equals(new string(path, 0, checked((int)length)),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+                        "ApplicationFrameHost.exe"), StringComparison.OrdinalIgnoreCase);
+        }
+
+        public IReadOnlyList<nint>? Descendants(nint window)
+        {
+            var children = new List<nint>();
+            ExceptionDispatchInfo? failure = null;
+            var truncated = false;
+            EnumChildWindows(window, (child, _) =>
+            {
+                return TryVisitWindow(value =>
+                {
+                    if (children.Count == WindowsRunningWindowPolicy.MaximumRelatedWindows)
+                    {
+                        truncated = true;
+                        return false;
+                    }
+                    children.Add(value);
+                    return true;
+                }, child, out failure);
+            }, 0);
+            failure?.Throw();
+            return truncated ? null : children;
+        }
+
+        public WindowsRunningAppObservation? Process(uint processId, bool packagedOnly) =>
+            InspectProcess(processId, packagedOnly);
+    }
 
     private sealed class NativeWindowReader : IWindowsRunningWindowReader
     {
@@ -243,6 +292,18 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
         }
     }
 
+    [DllImport("user32.dll", ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumChildWindows(IntPtr parent, EnumWindowsCallback callback, IntPtr parameter);
+    [DllImport("user32.dll", ExactSpelling = true)]
+    private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+    [DllImport("user32.dll", ExactSpelling = true)]
+    private static extern IntPtr GetLastActivePopup(IntPtr window);
+    [DllImport("user32.dll", ExactSpelling = true, SetLastError = true)]
+    private static extern IntPtr GetWindowLongPtrW(IntPtr window, int index);
+    [DllImport("user32.dll", ExactSpelling = true, SetLastError = true)]
+    private static extern int GetWindowLongW(IntPtr window, int index);
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr parameter);
@@ -268,6 +329,10 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern SafeProcessHandle OpenProcess(
         uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
+    [DllImport("kernel32.dll", ExactSpelling = true, CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageNameW(
+        SafeProcessHandle process, uint flags, [Out] char[] path, ref uint size);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool QueryFullProcessImageName(

@@ -257,7 +257,13 @@ widget receives a sanitized name, kind/source label, opaque SavedId, and
 short-lived revision—never a PID, HWND, path, command, AUMID, package identity,
 file identity, or retained process handle. The host visits at most 256 top-level
 windows before all eligibility filters and returns at most 64 deduplicated
-candidates.
+candidates. Switcher-style eligibility includes minimized application windows,
+honors tool/app/no-activate styles and owner/popup groups, and omits hidden,
+cloaked and desktop-shell windows. Hosted packaged windows resolve through the
+actual app's CoreWindow, not ApplicationFrameHost. Browser tabs are not
+enumerated; exact Shell ordering and virtual-desktop parity are not promised.
+Inaccessible, disappearing, ambiguous or unsupported windows are skipped without
+failing the list.
 
 Each candidate may also provide optional Tile artwork through `Artwork`.
 Installed matches reuse their catalog artwork. Unregistered executables use
