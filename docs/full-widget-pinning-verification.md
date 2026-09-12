@@ -29,7 +29,13 @@ revocation retires unsupported pins. Authoring documentation describes both flag
   denial of undeclared full-view actions, and full-trust/bundled catalog checks
   proving Spotify stays custom-only and Now Playing opts in.
 
-Physical acceptance is pending. Verify pinned layout choices for YouTube,
-Spotify and Now Playing: only Now Playing should offer Full widget. Existing
-custom and compact-media layouts should continue to work. No integration or
-push has been performed.
+## Physical acceptance and closure
+
+The user accepted candidate 34a1d54823a25ba8e1794d67ef47ad85864c9f31 on
+2026-09-12. Only Now Playing opts into Full widget; YouTube and Spotify retain
+their existing custom and compact-media layouts.
+
+The accepted production is unchanged. This documentation-only successor records
+acceptance and accompanies fast-forward integration into main and WIDGE-240
+closure. The automated results above remain the accepted candidate's evidence;
+no tests were rerun for this documentation-only change. No push was requested.
