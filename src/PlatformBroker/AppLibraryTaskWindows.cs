@@ -23,13 +23,16 @@ internal sealed partial class AppLibraryCapabilityDomain
                     throw new BrokerException("invalid_backend_data", "Window information is unavailable.");
                 var oldIds = _windowTargets.ToDictionary(pair => pair.Value, pair => pair.Key, StringComparer.Ordinal);
                 var next = new Dictionary<string, string>(StringComparer.Ordinal);
+                var previews = new Dictionary<string, NativeWindowPreviewTarget>(StringComparer.Ordinal);
                 var result = windows.Select(window =>
                 {
                     var id = oldIds.GetValueOrDefault(window.WindowId) ?? "window-" + Guid.NewGuid().ToString("N");
                     next.Add(id, window.WindowId);
+                    if (window.PreviewTarget is { } preview) previews.Add(id, preview);
                     return window with { WindowId = id };
                 }).ToArray();
                 _windowTargets = next;
+                WindowPreviewRegistry.Replace(this, _identity, previews);
                 return BrokerJson.ToElement(result);
             }
             var request = BrokerJson.ParsePayload<TaskWindowRequest>(payload);

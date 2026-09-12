@@ -25,7 +25,7 @@ std::optional<Role> ResolveRole(const WidgetNode& node) noexcept {
     if (node.kind == L"slider") return Role::Slider;
     if (node.kind == L"text") return Role::Text;
     if (node.kind == L"image" || node.kind == L"icon" ||
-        node.kind == L"mediaViewport") return Role::Image;
+        node.kind == L"mediaViewport" || node.kind == L"windowPreview") return Role::Image;
     if (node.kind == L"progress" || node.kind == L"loadingIndicator") return Role::Progress;
     return std::nullopt;
 }

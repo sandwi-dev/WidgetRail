@@ -41,7 +41,8 @@ param(
     [switch]$AudioMixerScrollHostTestsOnly,
     [switch]$RichMediaTestsOnly,
     [switch]$RichMediaContractTestsOnly,
-    [switch]$RichMediaPerformanceTestsOnly
+    [switch]$RichMediaPerformanceTestsOnly,
+    [switch]$WindowPreviewTestsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -82,6 +83,7 @@ $primaryTestSelectors = @(
     [pscustomobject]@{ Name = 'TrustedArtworkTestsOnly'; Selected = [bool]$TrustedArtworkTestsOnly }
     [pscustomobject]@{ Name = 'WidgetSessionTestsOnly'; Selected = [bool]$WidgetSessionTestsOnly }
     [pscustomobject]@{ Name = 'WidgetInteractionTestsOnly'; Selected = [bool]$WidgetInteractionTestsOnly }
+    [pscustomobject]@{ Name = 'WindowPreviewTestsOnly'; Selected = [bool]$WindowPreviewTestsOnly }
     [pscustomobject]@{ Name = 'WidgetBridgeCatalogTestsOnly'; Selected = [bool]$WidgetBridgeCatalogTestsOnly }
     [pscustomobject]@{ Name = 'LocalPackageImportTestsOnly'; Selected = [bool]$LocalPackageImportTestsOnly }
     [pscustomobject]@{ Name = 'WidgetSurfaceTestsOnly'; Selected = [bool]$WidgetSurfaceTestsOnly }
@@ -395,6 +397,22 @@ $libraryArguments = @(
 )
 $common = @('/nologo', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-', '/DUSING_GAMEINPUT', '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX') +
     $optimization + $includeArguments
+
+function Invoke-WindowPreviewTests {
+    $previewObjects = Join-Path $outputDirectory 'obj/window-preview-tests'
+    New-Item -ItemType Directory -Force -Path $previewObjects | Out-Null
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'WindowPreviewCaptureTests.cpp'),
+        (Join-Path $projectDirectory 'WindowPreviewCapture.cpp'),
+        "/Fo:$previewObjects\",
+        "/Fe:$outputDirectory\WindowPreviewCaptureTests.exe", '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('user32.lib', 'gdi32.lib', 'd3d11.lib', 'dxgi.lib', 'd2d1.lib', 'windowsapp.lib', 'ole32.lib')
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) { throw "Window preview tests failed to build." }
+    & (Join-Path $outputDirectory 'WindowPreviewCaptureTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw "Window preview tests failed." }
+}
+if ($WindowPreviewTestsOnly) { Invoke-WindowPreviewTests; return }
 
 function Invoke-ArtworkDecoderBuild {
     param([switch]$Testing)
@@ -1952,6 +1970,7 @@ $hostArguments = $hostCompileArguments + @(
     (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
     (Join-Path $projectDirectory 'CompositorBackgroundSurfaceCoordinator.cpp'),
     (Join-Path $projectDirectory 'RichMediaSurfaceCoordinator.cpp'),
+    (Join-Path $projectDirectory 'WindowPreviewCapture.cpp'),
     (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),
     (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),
     (Join-Path $projectDirectory 'OverlayState.cpp'),

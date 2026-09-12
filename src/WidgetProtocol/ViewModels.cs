@@ -23,6 +23,7 @@ public enum ViewNodeKind
     BackgroundSurface,
     FocusPresentationSurface,
     Select,
+    WindowPreview,
 }
 
 /// <summary>One bounded option in a host-owned anchored Select popup.</summary>
@@ -417,6 +418,8 @@ public sealed record ViewNode
     /// whose pixels are placed inside this native layout node.
     /// </summary>
     public string? MediaSessionId { get; init; }
+    public string? WindowId { get; init; }
+    public double? PreviewAspectRatio { get; init; }
     public ImageFit? ImageFit { get; init; }
     public WidgetGlyph? Glyph { get; init; }
     public WidgetPackageIcon? PackageIcon { get; init; }

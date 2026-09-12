@@ -22,6 +22,11 @@ static async Task Routing()
     var snapshot = Snapshot(widget);
     Check(snapshot.Root.InputScopeId == snapshot.ActiveInputScopeId && snapshot.ActiveInputScopeId == "tasks");
     Check(snapshot.InitialFocusId == "window-a");
+    Check(snapshot.ProtocolVersion == ProtocolConstants.WindowPreviewVersion);
+    Check(Nodes(snapshot.Root).Count(node => node.Kind == ViewNodeKind.WindowPreview) == 2);
+    Check(Nodes(snapshot.Root).Where(node => node.Kind == ViewNodeKind.WindowPreview)
+        .All(node => !node.IsFocusable && node.ImageFit == ImageFit.Contain));
+    Check(Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.Grid));
     Check(Nodes(snapshot.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface) == 2);
     Check(Nodes(snapshot.Root).Single(node => node.Id == "window-a").Shortcuts.Single().ActionId == "close.window-a");
     await widget.OnActionAsync(new("switch.window-b", "window-b"));

@@ -7,27 +7,29 @@ app resolution used by Games & Apps.
 
 A selects an existing window; X or the Close button posts a normal close request.
 Y refreshes, and unhandled root B returns to the tray. Close does not terminate a
-process or suppress save prompts. The row remains until observation reports
+process or suppress save prompts. The card remains until observation reports
 that the window has gone. Failures use an expiring, themed toast.
 
 The initial order follows Windows' front-to-back window enumeration, an
 approximation of recently active order. Two-second refreshes run only during
 the active widget lifetime and retain the existing order and stable identities,
 adding new windows at the end. Reopening or explicit Refresh recalculates order.
-There is no browser-tab enumeration, virtual-desktop integration or live preview.
+There is no browser-tab enumeration or virtual-desktop integration. Live previews
+use the reusable SDK content described below.
 
 ## Host and SDK contract
 
 WidgetHostServices.TaskSwitcher exposes GetWindowsAsync, SwitchAsync and
 CloseAsync. Dedicated capabilities are system.apps.windows.read.v1,
-system.apps.windows.switch.v1 and system.apps.windows.close.v1. Settings labels
+system.apps.windows.switch.v1, system.apps.windows.close.v1 and the optional
+system.apps.windows.preview.v1. Settings labels
 describe window titles, switching, and normal close. First-party status never
 auto-grants consent. Mutation operations require Interactive lifecycle; an
 already admitted switch may finish across foreground-driven deactivation.
 
 The SDK receives bounded text, minimized state and broker-session-scoped opaque
 WindowIds. Raw HWNDs, process IDs, process-lifetime evidence and executable
-identity remain in WindowsAppLibraryProvider. The broker translates only IDs
+identity remain in the trusted provider/host path. The broker translates only IDs
 from its latest list. The provider serializes observation/control, re-enumerates
 eligibility and checks window handle, owning process, window class, process
 lifetime evidence and application identity before dispatch. Native control
@@ -64,3 +66,11 @@ close. No force-close or process-kill path exists.
 
 Physical acceptance is pending: enable this widget's permissions, then test
 switching, minimized-window restoration, normal close/save prompts and root B.
+
+## Live preview cards
+
+Task Switcher uses a responsive grid of landscape preview posters. The app name,
+window title and state remain visible when capture is unavailable. The new
+optional `system.apps.windows.preview.v1` permission must be enabled by the user;
+it is independent of reading window titles, switching and closing. X still
+requests a normal close from the focused poster. See [live window previews](window-previews.md).

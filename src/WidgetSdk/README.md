@@ -922,3 +922,12 @@ support Menu, X and Y and require protocol v51. A focused action surface takes
 precedence over a container menu for the same button. Disabled/busy owners and
 other input scopes cannot capture the trigger. These declarations use the
 existing full-widget context menu and action-validation path.
+
+### Live window content
+
+Use `UI.WindowPreview` by itself or pass it to the content overload of
+`UI.PosterTile`. Window previews are view-only, use opaque IDs from
+`HostServices.TaskSwitcher.GetWindowsAsync`, and require the separate
+`system.apps.windows.preview.v1` permission. Existing artwork posters are
+unchanged. See [live window previews](../../docs/window-previews.md) for the
+complete authoring example, theme hooks, backend behavior and limits.

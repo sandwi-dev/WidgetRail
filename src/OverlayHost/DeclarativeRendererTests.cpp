@@ -88,6 +88,79 @@ widgetrail::WidgetStyleValue Color(const wchar_t* value) {
     return {L"color", value, std::nullopt, {}};
 }
 
+void WindowPreviewGeometryAndRetainedFrames() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "preview planning creates a D2D factory");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
+        "preview planning creates a DirectWrite factory");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "preview planning creates a WIC factory");
+    ComPtr<IWICBitmap> canvas;
+    Check(SUCCEEDED(wic->CreateBitmap(
+        240, 160, GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+        "preview planning creates a WIC canvas");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+        canvas.Get(), D2D1::RenderTargetProperties(),
+        target.ReleaseAndGetAddressOf())),
+        "preview planning creates a WIC render target");
+
+
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"window-preview.tests";
+    snapshot.sequence = 1;
+    snapshot.root = Node(L"previews", L"scroll");
+    snapshot.root.scrollAxis = L"vertical";
+    snapshot.root.baseStyle = {{L"width", Length(240)}, {L"height", Length(160)}};
+    for (int i = 0; i < 3; ++i) {
+        const auto id = L"poster-" + std::to_wstring(i);
+        auto tile = Node(id.c_str(), L"actionSurface");
+        tile.actionId = id;
+        tile.actionSurfaceOrientation = L"vertical";
+        tile.baseStyle = {{L"width", Length(240)}, {L"height", Length(180)},
+            {L"flex-shrink", Number(0)}};
+        auto preview = Node((id + L".preview").c_str(), L"windowPreview");
+        preview.windowId = L"window-" + std::to_wstring(i);
+        preview.previewAspectRatio = 16.0 / 9.0;
+        preview.imageFit = L"contain";
+        preview.baseStyle = {{L"width", Length(240)}, {L"flex-shrink", Number(0)}};
+        tile.children = {preview};
+        snapshot.root.children.push_back(std::move(tile));
+    }
+    DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
+    const auto render = [&](std::wstring_view focus) {
+        target->BeginDraw();
+        const auto result = renderer.Render(target.Get(), snapshot, focus, {0, 0, 240, 160});
+        Check(SUCCEEDED(target->EndDraw()), "preview rendering finishes");
+        return result;
+    };
+    auto result = render(L"poster-0");
+    Check(result.succeeded, "preview scene prepares without artwork or capture");
+    Check(result.windowPreviewRegions.size() == 1, "only visible previews demand live resources");
+    Near(result.windowPreviewRegions.front().bounds.height, 135, "preview respects contain aspect ratio");
+    Check(!result.navigationRects.contains(L"poster-0.preview"),
+        "preview is view-only; enclosing poster retains navigation authority");
+    const auto plan = renderer.PlanRetainedPaint(snapshot, result.windowPreviewRegions.front().clip);
+    Check(plan.has_value(), "live frames reuse accepted scene preparation");
+    result = render(L"poster-0");
+    Check(result.succeeded, "bounded preview frame retains scene");
+    result = render(L"poster-2");
+    Check(result.succeeded && !result.windowPreviewRegions.empty(), "focus-follow reveals later previews");
+    Check(std::none_of(result.windowPreviewRegions.begin(), result.windowPreviewRegions.end(),
+        [](const auto& region) { return region.windowId == L"window-0"; }),
+        "scrolling offscreen retires the first preview demand");
+}
+
 void ImagePlacementMath() {
     const Rect destination{10.0F, 20.0F, 100.0F, 100.0F};
     auto cover = DeclarativeRenderer::ComputeImagePlacement(
@@ -6608,6 +6681,7 @@ int main() {
     const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     Check(SUCCEEDED(initialized), "initialize COM");
     PlaybackPreparationWorkload();
+    WindowPreviewGeometryAndRetainedFrames();
     ImagePlacementMath();
     BackgroundImageFitAndDiagnosticsUseOneBoundedOwner();
     ButtonContentPlacementUsesSharedOpticalGeometry();

@@ -645,7 +645,11 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
         }
     }
 
-    public void Dispose() => _artwork?.Dispose();
+    public void Dispose()
+    {
+        WindowPreviewRegistry.Retire(this);
+        _artwork?.Dispose();
+    }
 
     private sealed record LaunchRegistration(string BackendAppId);
 }

@@ -22,6 +22,7 @@ if (args.Contains("--widget-pipe", StringComparer.Ordinal))
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Window previews require current manifest consent instance and snapshot authority", WindowPreviewScenarios.Authority),
     ("Settings controls retain Settings and consume application actions once", SettingsControlsScenarios.QueueAndCatalog),
     ("Bridge framing rejects oversized messages", OversizedFrameIsRejected),
     ("Protected Wi-Fi secret frames zero every mutable managed owner", ProtectedWifiSecretFramesAreZeroed),

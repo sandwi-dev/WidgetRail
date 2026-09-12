@@ -960,6 +960,8 @@ struct DeclarativeRenderer::RenderPass final {
         element.flexShrink = style.flexShrink();
         if (!style.flexBasisAuto()) element.flexBasis = style.flexBasisPx();
         element.aspectRatio = style.aspectRatio();
+        if (node.kind == L"windowPreview" && !element.aspectRatio)
+            element.aspectRatio = static_cast<float>(node.previewAspectRatio);
         if (node.kind == L"mediaViewport" && snapshot->embeddedMediaSession &&
             node.mediaSessionId == snapshot->embeddedMediaSession->id) {
             const auto& media = *snapshot->embeddedMediaSession;
@@ -1008,7 +1010,7 @@ struct DeclarativeRenderer::RenderPass final {
         element.overflow = style.overflow() == NativeOverflow::Clip
             ? declarative::OverflowBehavior::Clip
             : declarative::OverflowBehavior::Visible;
-        if (node.kind == L"actionSurface" || node.kind == L"mediaViewport" ||
+        if (node.kind == L"actionSurface" || node.kind == L"windowPreview" || node.kind == L"mediaViewport" ||
             node.kind == L"backgroundSurface")
             element.overflow = declarative::OverflowBehavior::Clip;
         if (node.kind == L"scroll") {
@@ -2702,6 +2704,7 @@ struct DeclarativeRenderer::RenderPass final {
                 static_cast<float>(snapshot->embeddedMediaSession->surface.preferredHeight.value_or(0.0)),
             };
         }
+        if (node.kind == L"windowPreview") return {240.0F, static_cast<float>(240.0 / node.previewAspectRatio)};
         if (node.kind == L"image") return {120.0F, 120.0F};
         if (node.kind == L"icon") return {24.0F, 24.0F};
         if (node.kind == L"loadingIndicator") {
@@ -4522,6 +4525,11 @@ struct DeclarativeRenderer::RenderPass final {
                     });
             }
         }
+        if (node.kind == L"windowPreview") {
+            const auto clip = Intersection(presented.contentBox, presented.ancestorClip);
+            if (clip.width > 0.5F && clip.height > 0.5F)
+                result.windowPreviewRegions.push_back({node.id, node.windowId, presented.contentBox, clip});
+        }
         if (node.kind == L"mediaViewport") {
             const auto mediaClip = Intersection(
                 presented.contentBox, presented.ancestorClip);
@@ -4540,7 +4548,7 @@ struct DeclarativeRenderer::RenderPass final {
             node.kind == L"button" || node.kind == L"slider" ||
             node.kind == L"actionSurface" || node.kind == L"image" ||
             node.kind == L"icon" || node.kind == L"loadingIndicator" ||
-            node.kind == L"progress" || node.kind == L"mediaViewport" ||
+            node.kind == L"progress" || node.kind == L"windowPreview" || node.kind == L"mediaViewport" ||
             (node.kind == L"text" &&
                 (!node.text.empty() || !node.accessibilityLabel.empty()));
         if (options.collectAccessibility && semanticNode &&
@@ -4675,6 +4683,22 @@ struct DeclarativeRenderer::RenderPass final {
                 // The shell owns the next-frame cadence. Invisible or
                 // reduced-motion indicators never keep it awake.
                 result.animationActive = true;
+            }
+        } else if (node.kind == L"windowPreview") {
+            if (visibleRect.width > 0.5F && visibleRect.height > 0.5F) {
+                auto bitmap = options.windowPreviewBitmap
+                    ? options.windowPreviewBitmap(target, node.windowId) : nullptr;
+                if (bitmap) {
+                    DrawResolvedImageLayers(node, bitmap.Get(), false, nullptr, nullptr, 0.0F,
+                        style, presented.contentBox, opacity, false, false);
+                } else {
+                    WidgetNode fallback;
+                    fallback.id = node.id + L".fallback";
+                    fallback.kind = L"text";
+                    fallback.text = L"Preview unavailable";
+                    DrawTextContent(fallback, style, presented.contentBox, opacity,
+                        NativeTextVerticalAlignment::Center);
+                }
             }
         } else if (node.kind == L"mediaViewport") {
             // The native GBSS surface is the deterministic loading/error and

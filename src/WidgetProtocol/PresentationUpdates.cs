@@ -78,6 +78,8 @@ public enum PresentationProperty
     SelectOptions,
     CollectionResetGeneration,
     ContextMenuButton,
+    WindowId,
+    PreviewAspectRatio,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -195,7 +197,8 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.MeasureLayout |
             PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Accessibility,
-        PresentationProperty.MediaSessionId =>
+        PresentationProperty.MediaSessionId or PresentationProperty.WindowId or
+        PresentationProperty.PreviewAspectRatio =>
             PresentationPropertyImpact.Authority |
             PresentationPropertyImpact.SurfacePlacement |
             PresentationPropertyImpact.MeasureLayout |

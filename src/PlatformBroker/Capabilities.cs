@@ -76,6 +76,7 @@ public static class PlatformCapabilities
     public const string NetworkBluetoothManageV1 = "system.network.bluetooth.manage.v1";
     public const string RecentActivityReadV1 = "system.activity.recent.read.v1";
     public const string AppLibraryReadV1 = "system.apps.library.read.v1";
+    public const string TaskWindowsPreviewV1 = "system.apps.windows.preview.v1";
     public const string TaskWindowsReadV1 = "system.apps.windows.read.v1";
     public const string TaskWindowsSwitchV1 = "system.apps.windows.switch.v1";
     public const string TaskWindowsCloseV1 = "system.apps.windows.close.v1";
@@ -208,6 +209,7 @@ public static class PlatformCapabilities
             [AppLibraryReadV1] = new(AppLibraryReadV1, 1,
                 BrokerCapabilityKind.Read,
                 Set(AppLibraryList, AppLibraryResolveSaved), Set()),
+            [TaskWindowsPreviewV1] = new(TaskWindowsPreviewV1, 1, BrokerCapabilityKind.Read, Set(), Set()),
             [TaskWindowsReadV1] = new(TaskWindowsReadV1, 1, BrokerCapabilityKind.Read,
                 Set(TaskWindowsList), Set()),
             [TaskWindowsSwitchV1] = new(TaskWindowsSwitchV1, 1, BrokerCapabilityKind.Control,

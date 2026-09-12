@@ -1027,6 +1027,11 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.id = std::wstring(std::wstring_view(source.GetNamedString(L"id")));
     node.kind = std::wstring(std::wstring_view(source.GetNamedString(L"kind")));
     const bool declaredSelect = node.kind == L"select";
+    if (node.kind == L"windowPreview" &&
+        !HasNoUnknownProperties(source, {L"id", L"kind", L"windowId", L"previewAspectRatio",
+            L"imageFit", L"accessibilityLabel", L"visibleWhen", L"styleClasses",
+            L"shortcuts", L"contextMenuButton", L"contextActions", L"children", L"selectOptions"}))
+        throw winrt::hresult_invalid_argument(L"WindowPreview contains unsupported properties.");
     if (node.kind == L"mediaViewport" &&
         !HasNoUnknownProperties(source,
             {L"id", L"kind", L"mediaSessionId", L"accessibilityLabel",
@@ -1191,6 +1196,15 @@ WidgetNode ParseNode(const JsonObject& source) {
          node.focusBackgroundArtworkHandle.size() > kMaximumIdentifierLength ||
          !IsIdentifier(node.focusBackgroundArtworkHandle)))
         throw winrt::hresult_invalid_argument();
+    node.windowId = OptionalString(source, L"windowId");
+    if (source.HasKey(L"previewAspectRatio"))
+        node.previewAspectRatio = source.GetNamedNumber(L"previewAspectRatio");
+    if (node.kind == L"windowPreview" && (node.windowId.empty() || node.windowId.size() > 128 ||
+        !std::isfinite(node.previewAspectRatio) || node.previewAspectRatio < 0.25 || node.previewAspectRatio > 4 ||
+        node.accessibilityLabel.empty() || !node.actionId.empty()))
+        throw winrt::hresult_invalid_argument(L"WindowPreview is invalid.");
+    if (node.kind != L"windowPreview" && (!node.windowId.empty() || source.HasKey(L"previewAspectRatio")))
+        throw winrt::hresult_invalid_argument(L"Window preview properties require a preview node.");
     node.mediaSessionId = OptionalString(source, L"mediaSessionId");
     if (!node.mediaSessionId.empty() &&
         (node.kind != L"mediaViewport" ||
@@ -1394,7 +1408,7 @@ WidgetNode ParseNode(const JsonObject& source) {
     }
     if (source.HasKey(L"shortcuts")) {
         const auto shortcuts = source.GetNamedArray(L"shortcuts");
-        if (node.kind == L"mediaViewport" && shortcuts.Size() != 0)
+        if ((node.kind == L"mediaViewport" || node.kind == L"windowPreview") && shortcuts.Size() != 0)
             throw winrt::hresult_invalid_argument(
                 L"MediaViewport shortcuts must be empty.");
         node.shortcuts.reserve(shortcuts.Size());
@@ -1543,6 +1557,9 @@ WidgetNode ParseNode(const JsonObject& source) {
         (node.children.size() != 1U || node.defaultFocusPresentation.size() != 1U))
         throw winrt::hresult_invalid_argument(
             L"FocusPresentationSurface requires one default and one content child.");
+    if (node.kind == L"windowPreview" && (!node.children.empty() ||
+        (node.imageFit != L"contain" && node.imageFit != L"cover")))
+        throw winrt::hresult_invalid_argument(L"WindowPreview must be view-only with a valid fit.");
     return node;
 }
 
@@ -2285,6 +2302,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     std::wstring mediaViewportAccessibleName;
     const auto collectMediaViewports = [&](const auto& self,
                                            const WidgetNode& node) -> void {
+        if (node.kind == L"windowPreview" && snapshot.protocolVersion < protocol_contract::WindowPreviewVersion)
+            throw winrt::hresult_invalid_argument(L"WindowPreview requires protocol version 52.");
         if (node.kind == L"mediaViewport") {
             ++mediaViewportCount;
             if (mediaViewportSessionId.empty())
@@ -2361,8 +2380,34 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     return snapshot;
 }
 
+std::vector<WindowPreviewSource> ParseWindowPreviews(const JsonObject& payload) {
+    std::vector<WindowPreviewSource> result;
+    if (!payload.HasKey(L"windowPreviews")) return result;
+    const auto targets = payload.GetNamedObject(L"windowPreviews");
+    if (targets.Size() > 64) throw winrt::hresult_invalid_argument();
+    const auto hex = [](const std::wstring& value) -> ULONGLONG {
+        if (value.empty() || value.size() > 16 ||
+            !std::all_of(value.begin(), value.end(), [](wchar_t c) {
+                return (c >= L'0' && c <= L'9') || (c >= L'A' && c <= L'F') || (c >= L'a' && c <= L'f');
+            })) throw winrt::hresult_invalid_argument();
+        return std::stoull(value, nullptr, 16);
+    };
+    for (const auto& pair : targets) {
+        const auto target = pair.Value().GetObject();
+        const auto pid = target.GetNamedNumber(L"processId");
+        if (pid < 1 || pid > MAXDWORD || std::floor(pid) != pid)
+            throw winrt::hresult_invalid_argument();
+        result.push_back({std::wstring(pair.Key()),
+            reinterpret_cast<HWND>(hex(std::wstring(target.GetNamedString(L"handle")))),
+            static_cast<DWORD>(pid), hex(std::wstring(target.GetNamedString(L"processCreated"))),
+            std::wstring(target.GetNamedString(L"className"))});
+    }
+    return result;
+}
+
 WidgetSnapshot ParseStyledSnapshotPayload(const JsonObject& payload) {
     auto snapshot = ParseSnapshot(payload.GetNamedObject(L"snapshot"));
+    snapshot.windowPreviews = ParseWindowPreviews(payload);
     if (payload.HasKey(L"renderStyles"))
         ApplyComputedStyles(snapshot, payload.GetNamedObject(L"renderStyles"));
     return snapshot;
@@ -2398,12 +2443,12 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 54> properties{
+    static constexpr std::array<std::wstring_view, 56> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextMenuButton", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
         L"valueChangedActionId", L"sliderInteractionMode", L"imageSource",
-        L"artworkHandle", L"focusBackgroundArtworkHandle", L"mediaSessionId",
+        L"artworkHandle", L"focusBackgroundArtworkHandle", L"windowId", L"previewAspectRatio", L"mediaSessionId",
         L"imageFit", L"glyph", L"packageIcon", L"indicatorSize",
         L"actionSurfaceOrientation", L"actionSurfacePresentation", L"gridMinimumColumnWidth",
         L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
@@ -2448,7 +2493,7 @@ bool ValidateWidgetDocumentStructure(
                  L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum",
                  L"step", L"valueChangedActionId", L"sliderInteractionMode",
                  L"imageSource", L"artworkHandle", L"focusBackgroundArtworkHandle",
-                 L"mediaSessionId", L"imageFit", L"glyph", L"packageIcon",
+                 L"mediaSessionId", L"windowId", L"previewAspectRatio", L"imageFit", L"glyph", L"packageIcon",
                  L"indicatorSize", L"actionSurfaceOrientation", L"actionSurfacePresentation",
                  L"gridMinimumColumnWidth", L"gridMaximumColumns", L"isDisabled",
                  L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
@@ -2537,8 +2582,8 @@ WidgetPresentationUpdate ParsePresentationUpdatePayload(
         ? HasNoUnknownProperties(
             payload,
             {L"widgetId", L"transactionKind", L"baseSequence",
-             L"recoveryOriginSequence", L"update", L"renderStyles"})
-        : HasNoUnknownProperties(payload, {L"widgetId", L"update", L"renderStyles"});
+             L"recoveryOriginSequence", L"update", L"renderStyles", L"windowPreviews"})
+        : HasNoUnknownProperties(payload, {L"widgetId", L"update", L"renderStyles", L"windowPreviews"});
     if (!payloadPropertiesCurrent ||
         !payload.HasKey(L"update") ||
         payload.GetNamedValue(L"update").ValueType() != JsonValueType::Object)
@@ -2659,6 +2704,7 @@ WidgetPresentationUpdate ParsePresentationUpdatePayload(
         if (!valid) throw winrt::hresult_invalid_argument();
         update.operations.push_back(std::move(operation));
     }
+    update.windowPreviews = ParseWindowPreviews(payload);
     if (payload.HasKey(L"renderStyles")) {
         if (payload.GetNamedValue(L"renderStyles").ValueType() != JsonValueType::Object)
             throw winrt::hresult_invalid_argument();
@@ -2968,7 +3014,7 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         property == L"defaultFocusPresentation")
         return Effect::Resource | Effect::MeasureLayout |
             Effect::Paint | Effect::Accessibility;
-    if (property == L"mediaSessionId") {
+    if (property == L"mediaSessionId" || property == L"windowId" || property == L"previewAspectRatio") {
         return Effect::Authority | Effect::SurfacePlacement |
             Effect::MeasureLayout | Effect::Paint | Effect::Accessibility;
     }
@@ -3491,6 +3537,10 @@ std::optional<WidgetPresentationImpact> CompareWidgetSnapshots(
             for (std::size_t i = 0; i < left.children.size(); ++i) self(self, left.children[i], right.children[i]);
         };
         styles(styles, previous.root, current.root);
+        if (previous.windowPreviews != current.windowPreviews) {
+            impact.effects |= WidgetPresentationEffect::Paint | WidgetPresentationEffect::Resource;
+            impact.affectedNodeIds.push_back(current.root.id);
+        }
         impact.comparisonMicroseconds = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - started).count());
         return impact;
@@ -3638,11 +3688,16 @@ MaterializeWidgetPresentationUpdate(
             return std::nullopt;
         }
         auto materialized = ParseSnapshot(candidate);
+        materialized.windowPreviews = update.windowPreviews;
         if (!update.renderStylesJson.empty()) {
             ApplyComputedStyles(materialized, JsonObject::Parse(
                 winrt::hstring(update.renderStylesJson)));
         }
         auto impact = ClassifyPresentationImpact(update);
+        if (checkpoint.windowPreviews != materialized.windowPreviews) {
+            impact.effects |= WidgetPresentationEffect::Paint | WidgetPresentationEffect::Resource;
+            impact.affectedNodeIds.push_back(materialized.root.id);
+        }
         error.clear();
         return WidgetPresentationMaterialization{
             std::move(materialized), std::move(impact)};
@@ -3956,6 +4011,7 @@ bool WidgetBridgeClient::Connect() {
 
     JsonObject payload;
     payload.Insert(L"clientName", JsonValue::CreateStringValue(L"OverlayHost"));
+    payload.Insert(L"windowPreviews", JsonValue::CreateBooleanValue(true));
     const auto response = [&]() -> std::optional<JsonObject> {
         const long long requestId = ++nextRequestId_;
         JsonObject envelope;
@@ -4135,6 +4191,51 @@ int WidgetBridgeClient::TakeApplicationControl() {
         }
     } catch (...) { Fail(L"Application control exchange failed."); }
     return 0;
+}
+
+std::optional<std::set<std::wstring>> WidgetBridgeClient::ReadWindowPreviewPermissions(std::wstring_view widgetId) {
+    std::scoped_lock lock(requestMutex_);
+    if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_) return std::nullopt;
+    winrt::handle deadline{CreateWaitableTimerW(nullptr, TRUE, nullptr)};
+    LARGE_INTEGER due{}; due.QuadPart = -20'000'000;
+    if (!deadline || !SetWaitableTimer(deadline.get(), &due, 0, nullptr, nullptr, FALSE)) return std::nullopt;
+    try {
+        JsonObject payload;
+        payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
+        const auto requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(L"window-preview-permissions"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()), deadline.get())) return std::nullopt;
+        while (const auto frame = ReadFrame(deadline.get())) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            long long responseId{};
+            if (response.GetNamedNumber(L"protocolVersion") != 1 || !ReadRequestId(response, responseId))
+                throw std::runtime_error("Invalid preview permission response");
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_))
+                    throw std::runtime_error("Invalid preview permission notification");
+                continue;
+            }
+            if (responseId != requestId || response.GetNamedString(L"type") != L"window-preview-permissions")
+                throw std::runtime_error("Unexpected preview permission response");
+            const auto result = response.GetNamedObject(L"payload");
+            const auto allowed = result.GetNamedArray(L"allowedWindowIds");
+            if (result.Size() != 1 || allowed.Size() > kMaximumWidgetDescriptors)
+                throw std::runtime_error("Invalid preview permissions");
+            std::set<std::wstring> widgets;
+            for (const auto& value : allowed) {
+                const std::wstring id{value.GetString()};
+                if (!IsIdentifier(id)) throw std::runtime_error("Invalid preview window");
+                widgets.insert(id);
+            }
+            return widgets;
+        }
+    } catch (...) { Fail(L"Window preview permission exchange failed."); }
+    return std::nullopt;
 }
 
 std::optional<ControllerControlPreference> WidgetBridgeClient::ExchangeControllerControl(

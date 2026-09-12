@@ -730,6 +730,20 @@ public static class ViewSnapshotValidator
             var isContainer = node.Kind is
                 ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid;
             var isActionSurface = node.Kind is ViewNodeKind.ActionSurface;
+            if (node.Kind is ViewNodeKind.WindowPreview)
+            {
+                CheckIdentifier(node.WindowId, $"{path}.windowId", "window ID");
+                if (node.PreviewAspectRatio is not { } ratio || !double.IsFinite(ratio) || ratio < 0.25 || ratio > 4 ||
+                    node.ImageFit is not { } fit || !Enum.IsDefined(fit) ||
+                    string.IsNullOrWhiteSpace(node.AccessibilityLabel))
+                    Add(path, "invalid_window_preview", "A window preview requires a label, fit and bounded aspect ratio.");
+                if (node.Children.Count != 0 || node.ActionId is not null || node.ValueChangedActionId is not null ||
+                    node.Focus is not null || node.InputScopeId is not null || node.Shortcuts.Count != 0 ||
+                    node.ImageSource is not null || node.ArtworkHandle is not null || node.Text is not null)
+                    Add(path, "invalid_window_preview", "Window previews are view-only and cannot declare artwork or children.");
+            }
+            else if (node.WindowId is not null || node.PreviewAspectRatio is not null)
+                Add(path, "window_preview_property_not_allowed", "Window preview properties apply only to WindowPreview.");
             if (node.Kind is ViewNodeKind.MediaViewport)
             {
                 mediaViewportCount++;
@@ -1304,7 +1318,7 @@ public static class ViewSnapshotValidator
                 Add($"{path}.imageSource", "required",
                     "An image requires an image source or opaque artwork handle.");
             }
-            else if (!supportsImageSource &&
+            else if (!supportsImageSource && node.Kind is not ViewNodeKind.WindowPreview &&
                 (node.ImageSource is not null || node.ImageFit is not null || node.ArtworkHandle is not null))
             {
                 Add(path, "image_property_not_allowed",

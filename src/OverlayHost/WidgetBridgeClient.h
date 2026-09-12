@@ -1,5 +1,8 @@
 #pragma once
 
+#include "WindowPreviewCapture.h"
+#include <set>
+
 #include <Windows.h>
 
 #include <algorithm>
@@ -418,6 +421,8 @@ struct WidgetNode final {
     // Protocol-v23 declarative binding from one native layout viewport to the
     // one current embedded-media declaration. It grants no browser authority.
     std::wstring mediaSessionId;
+    std::wstring windowId;
+    double previewAspectRatio{16.0 / 9.0};
     std::wstring imageFit;
     std::wstring glyph;
     std::optional<WidgetPackageIcon> packageIcon;
@@ -601,6 +606,7 @@ struct WidgetSnapshot final {
     // session owner. It is the immutable base for an atomic update candidate;
     // renderer-computed styles remain derived response data.
     std::wstring documentJson;
+    std::vector<WindowPreviewSource> windowPreviews;
 };
 
 enum class WidgetPresentationUpdateOperationKind {
@@ -635,6 +641,7 @@ struct WidgetPresentationUpdate final {
     long long sequence{};
     std::vector<WidgetPresentationUpdateOperation> operations;
     std::wstring renderStylesJson;
+    std::vector<WindowPreviewSource> windowPreviews;
 };
 
 enum class WidgetPresentationEffect : std::uint32_t {
@@ -881,6 +888,7 @@ public:
     [[nodiscard]] std::optional<ControllerControlPreference> ExchangeControllerControl(
         std::uint32_t state, std::uint32_t prerequisites);
     [[nodiscard]] int TakeApplicationControl();
+    [[nodiscard]] std::optional<std::set<std::wstring>> ReadWindowPreviewPermissions(std::wstring_view widgetId);
     /// Coalesced latest revision announced by platform-appearance-changed events.
     [[nodiscard]] std::optional<long long> TakePlatformAppearanceChangedRevision() noexcept;
     /// Coalesced latest catalog revision announced by widget-catalog-changed events.

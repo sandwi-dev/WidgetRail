@@ -10,6 +10,7 @@ internal enum BridgeRequestKind
     GetPlatformAppearance,
     ControllerControl,
     ApplicationControl,
+    WindowPreviewPermissions,
     GetSnapshot,
     ResolveArtwork,
     ResolvePackageIcon,
@@ -91,6 +92,14 @@ internal readonly record struct BridgeRequestKey
 /// </summary>
 internal static class BridgeRequestClassifier
 {
+    private static BridgeRequestKey WindowPreviewPermissions(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<WidgetIdRequest>(payload);
+        if (!BridgeRequestKey.IsBoundedIdentifier(request.WidgetId))
+            throw new BridgeProtocolException("Preview widget ID is invalid.");
+        return BridgeRequestKey.Global(BridgeRequestKind.WindowPreviewPermissions);
+    }
+
     private static BridgeRequestKey ControllerControl(JsonElement payload)
     {
         var status = BridgeJson.FromElement<WidgetRail.PlatformDiagnostics.ControllerControlStatus>(payload);
@@ -110,6 +119,7 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.GetPlatformAppearance => Empty(
                     request.Payload, BridgeRequestKind.GetPlatformAppearance),
                 BridgeMessageTypes.ControllerControl => ControllerControl(request.Payload),
+                BridgeMessageTypes.WindowPreviewPermissions => WindowPreviewPermissions(request.Payload),
                 BridgeMessageTypes.ApplicationControl => BridgeRequestKey.Global(BridgeRequestKind.ApplicationControl),
                 BridgeMessageTypes.GetSnapshot => Widget(
                     BridgeJson.FromElement<BridgePresentationRequest>(request.Payload).WidgetId,

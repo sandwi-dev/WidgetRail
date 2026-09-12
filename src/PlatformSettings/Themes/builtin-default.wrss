@@ -1044,3 +1044,10 @@ slider:focused {
   min-height: 0;
   gap: 8px 10px;
 }
+
+.wrail-window-preview {
+  width: 100%; min-width: 0; flex-shrink: 0; overflow: clip;
+  background: var(--surface); color: var(--text-muted);
+  corner-radius: 6px; font-size: 12px; text-align: center;
+}
+.wrail-preview-poster { flex-wrap: nowrap; gap: 8px; min-width: 0; }

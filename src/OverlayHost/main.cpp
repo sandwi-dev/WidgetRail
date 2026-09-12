@@ -90,6 +90,7 @@ constexpr UINT_PTR kActionFeedbackTimer = 6;
 constexpr UINT_PTR kPinnedSurfaceTimer = 7;
 constexpr UINT_PTR kBridgeControlPlaneTimer = 8;
 constexpr UINT_PTR kControllerSettingsTimer = 9;
+constexpr UINT_PTR kWindowPreviewTimer = 20;
 constexpr UINT_PTR kControllerOpenShortcutTimer = 10;
 constexpr UINT kVisibleControllerTimerMilliseconds = 15;
 constexpr UINT kPlatformEventMessage = WM_APP + 1;
@@ -2361,8 +2362,13 @@ private:
                 static_cast<float>(static_cast<short>(HIWORD(lParam))), true);
             return 0;
         case WM_TIMER:
+            if (wParam == kWindowPreviewTimer) {
+                PollWindowPreviews();
+                return 0;
+            }
             if (wParam == kControllerSettingsTimer) {
                 RefreshControllerSettings();
+                RefreshWindowPreviewPermissions();
                 const auto action = bridge_.TakeApplicationControl();
                 if (action == 1 || action == 2) {
                     restartRequested_ = action == 2;
@@ -5646,6 +5652,7 @@ private:
         (void)sessions_.DrainLifecycle(std::chrono::milliseconds(1000));
         sessions_.Shutdown();
         actionFailureFeedback_.Stop();
+        ResetWindowPreviews();
         bridge_.Stop();
         if (window_) {
             accessibilityProvider_.Detach();
@@ -7829,6 +7836,7 @@ private:
     }
 
     void HideOverlay() {
+        ResetWindowPreviews();
         visibleSessionStartedAt_ = 0;
         pendingCompositionContentRevealWidget_.clear();
         if (compositionSurface_.available()) (void)compositionSurface_.SnapContentVisible();
@@ -13140,6 +13148,90 @@ private:
         AppendDiagnostic(lastActionMessage_);
     }
 
+    bool WindowPreviewAllowed(std::wstring_view widget, std::wstring_view windowId) const {
+        return windowPreviewPermissionWidget_ != widget || !windowPreviewPermissions_ ||
+            windowPreviewPermissions_->contains(std::wstring(windowId));
+    }
+
+    void RefreshWindowPreviewPermissions() {
+        if (state_.surface() != widgetrail::Surface::Widget ||
+            lastWidgetRenderResult_.windowPreviewRegions.empty()) return;
+        const auto widget = state_.activeWidget();
+        auto allowed = bridge_.ReadWindowPreviewPermissions(widget).value_or(std::set<std::wstring>{});
+        if (windowPreviewPermissionWidget_ == widget && windowPreviewPermissions_ && *windowPreviewPermissions_ == allowed)
+            return;
+        const bool added = !windowPreviewPermissions_ || windowPreviewPermissionWidget_ != widget ||
+            std::any_of(allowed.begin(), allowed.end(), [&](const auto& id) { return !windowPreviewPermissions_->contains(id); });
+        windowPreviewPermissionWidget_ = widget;
+        windowPreviewPermissions_ = std::move(allowed);
+        if (const auto* snapshot = InteractionSnapshotFor(widget))
+            ReconcileWindowPreviews(*snapshot, lastWidgetRenderResult_);
+        pendingContentRenderPlan_.reset();
+        if (declarativeRenderer_) declarativeRenderer_->CancelPresentationUpdatePlan();
+        InvalidateRect(window_, nullptr, FALSE);
+        if (added) RefreshWidgetSnapshot(widget);
+    }
+
+    void ResetWindowPreviews() {
+        windowPreviews_.Reset();
+        windowPreviewInstance_.clear();
+        windowPreviewDirty_.clear();
+        if (window_) KillTimer(window_, kWindowPreviewTimer);
+        windowPreviewTimerArmed_ = false;
+    }
+
+    void ReconcileWindowPreviews(const widgetrail::WidgetSnapshot& snapshot,
+        const widgetrail::RenderResult& result) {
+        std::vector<widgetrail::WindowPreviewSource> sources;
+        for (const auto& source : snapshot.windowPreviews)
+            if (WindowPreviewAllowed(state_.activeWidget(), source.windowId) && std::any_of(result.windowPreviewRegions.begin(), result.windowPreviewRegions.end(),
+                    [&](const auto& region) { return region.windowId == source.windowId; }))
+                sources.push_back(source);
+        windowPreviews_.Reconcile(compositionSurface_.graphicsDevice(), sources);
+        if (!sources.empty() && !windowPreviewTimerArmed_)
+            windowPreviewTimerArmed_ = SetTimer(window_, kWindowPreviewTimer, 33, nullptr) != 0;
+        else if (sources.empty() && windowPreviewTimerArmed_) {
+            KillTimer(window_, kWindowPreviewTimer);
+            windowPreviewTimerArmed_ = false;
+        }
+    }
+
+    void PollWindowPreviews() {
+        const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
+        if (state_.surface() != widgetrail::Surface::Widget || !snapshot ||
+            snapshot->instanceId != windowPreviewInstance_) {
+            ResetWindowPreviews();
+            return;
+        }
+        ReconcileWindowPreviews(*snapshot, lastWidgetRenderResult_);
+        for (const auto& id : windowPreviews_.Poll()) windowPreviewDirty_.insert(id);
+        if (windowPreviewDirty_.empty()) return;
+        RECT pending{};
+        if (GetUpdateRect(window_, &pending, FALSE) || pendingContentRenderPlan_ ||
+            pendingWidgetPresentationImpact_) return;
+        std::optional<widgetrail::declarative::Rect> damage;
+        for (const auto& region : lastWidgetRenderResult_.windowPreviewRegions) {
+            if (!windowPreviewDirty_.contains(region.windowId)) continue;
+            if (!damage) { damage = region.clip; continue; }
+            const auto right = std::max(damage->x + damage->width, region.clip.x + region.clip.width);
+            const auto bottom = std::max(damage->y + damage->height, region.clip.y + region.clip.height);
+            damage->x = std::min(damage->x, region.clip.x);
+            damage->y = std::min(damage->y, region.clip.y);
+            damage->width = right - damage->x;
+            damage->height = bottom - damage->y;
+        }
+        if (damage && declarativeRenderer_) {
+            const auto plan = declarativeRenderer_->PlanRetainedPaint(*snapshot, damage);
+            RECT client{};
+            const float scale = static_cast<float>(GetDpiForWindow(window_)) / 96.0F *
+                (appearanceState_.current() ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F);
+            if (!plan || !GetClientRect(window_, &client) ||
+                !SubmitWidgetContentDamage(*plan, scale, client))
+                InvalidateRect(window_, nullptr, FALSE);
+        }
+        windowPreviewDirty_.clear();
+    }
+
     void InvalidateWidgetSliderValues(
         const widgetrail::WidgetSnapshot& snapshot,
         const std::vector<std::wstring>& nodeIds,
@@ -17664,6 +17756,17 @@ private:
                 const auto presentationTime = GetTickCount64();
                 widgetrail::DeclarativeRenderOptions options;
                 options.pixelScale = physicalPixelsPerDip;
+                if (windowPreviewInstance_ != snapshot->instanceId) {
+                    ResetWindowPreviews();
+                    windowPreviewInstance_ = snapshot->instanceId;
+                }
+                options.windowPreviewBitmap = [this, snapshot](ID2D1RenderTarget* target, std::wstring_view id) {
+                    if (!WindowPreviewAllowed(state_.activeWidget(), id) ||
+                        std::none_of(snapshot->windowPreviews.begin(), snapshot->windowPreviews.end(),
+                            [&](const auto& source) { return source.windowId == id; }))
+                        return Microsoft::WRL::ComPtr<ID2D1Bitmap1>{};
+                    return windowPreviews_.Bitmap(target, id);
+                };
                 options.responsiveViewport = widgetrail::declarative::Size{
                     geometry->panelWidth,
                     geometry->panelHeight,
@@ -18178,6 +18281,7 @@ private:
                     lastWidgetRenderResult_ = result;
                 }
                 if (!inertRetainedSnapshot && result.succeeded) {
+                    ReconcileWindowPreviews(*snapshot, result);
                     ReconcileScrollPaginationPrefetch(
                         widget, semanticSnapshot, *descriptor, result);
                     if (auto next = interactionSession_.ResolvePendingCollectionFocus(
@@ -18469,6 +18573,12 @@ private:
     ComPtr<ID2D1Factory1> d2dFactory_;
     ComPtr<IDWriteFactory> writeFactory_;
     widgetrail::OverlayCompositionSurface compositionSurface_;
+    widgetrail::WindowPreviewCapture windowPreviews_;
+    std::wstring windowPreviewInstance_;
+    std::set<std::wstring> windowPreviewDirty_;
+    bool windowPreviewTimerArmed_{};
+    std::optional<std::set<std::wstring>> windowPreviewPermissions_;
+    std::wstring windowPreviewPermissionWidget_;
     widgetrail::CompositorBackgroundSurfaceCoordinator
         compositorBackgroundCoordinator_;
     std::wstring retainedPanelBackgroundKey_;

@@ -27,6 +27,41 @@ void Require(const bool condition, const char* message) {
 
 #define CHECK(condition) Require(static_cast<bool>(condition), #condition)
 
+void VerifyWindowPreviewAuthority() {
+    std::wstring error;
+    const auto checkpoint = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+      "snapshot":{"protocolVersion":52,"sequence":1,"widgetInstanceId":"preview.test",
+        "activeInputScopeId":"root","root":{"id":"root","kind":"windowPreview",
+          "windowId":"window-test","previewAspectRatio":1.777778,"imageFit":"contain",
+          "accessibilityLabel":"Editor preview","children":[]}},
+      "windowPreviews":{"window-test":{"handle":"1234","processId":42,
+          "processCreated":"12345678","className":"EditorClass"}},"renderStyles":{}
+    })json", error);
+    CHECK(checkpoint && checkpoint->windowPreviews.size() == 1);
+    CHECK(checkpoint->root.windowId == L"window-test");
+    CHECK(checkpoint->documentJson.find(L"processCreated") == std::wstring::npos);
+    const auto update = widgetrail::testing::ParseWidgetPresentationUpdateResponse(R"json({
+      "widgetId":"preview","update":{"protocolVersion":18,"widgetInstanceId":"preview.test",
+        "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseSequence":1,
+        "sequence":2,"operations":[{"kind":"setProperties","targetId":"root",
+            "properties":[{"property":"previewAspectRatio","value":2}]}]},
+      "windowPreviews":{},"renderStyles":{}
+    })json", error);
+    CHECK(update);
+    const auto materialized = widgetrail::MaterializeWidgetPresentationUpdate(
+        *checkpoint, *update, L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error);
+    CHECK(materialized && materialized->snapshot.windowPreviews.empty());
+    CHECK(materialized->snapshot.root.previewAspectRatio == 2);
+    CHECK(widgetrail::HasWidgetPresentationEffect(materialized->impact.effects,
+        widgetrail::WidgetPresentationEffect::Resource));
+    auto sameDocument = *checkpoint;
+    sameDocument.sequence = 2;
+    sameDocument.windowPreviews.clear();
+    const auto impact = widgetrail::CompareWidgetSnapshots(*checkpoint, sameDocument);
+    CHECK(impact && widgetrail::HasWidgetPresentationEffect(impact->effects,
+        widgetrail::WidgetPresentationEffect::Paint));
+}
+
 void VerifySnapshotComparison() {
     widgetrail::WidgetSnapshot before;
     before.instanceId = L"compare"; before.sequence = 1;
@@ -1439,6 +1474,7 @@ int main() {
         Require(!widgetrail::testing::ParseWidgetSnapshotResponse(old,menuError), "legacy protocol rejects explicit menu trigger");
     }
 
+    VerifyWindowPreviewAuthority();
     VerifySnapshotComparison();
     MeasureFullSnapshotComparison();
     VerifyWidgetBridgePipeReadinessContract();

@@ -25,7 +25,7 @@ inline constexpr std::int32_t ContextMenuTriggerVersion = 51;
 inline constexpr std::int32_t ControllerShortcutLabelVersion = 43;
 inline constexpr std::int32_t CurrentHostApiMajor = 1;
 inline constexpr std::int32_t CurrentManifestVersion = 1;
-inline constexpr std::int32_t CurrentVersion = 51;
+inline constexpr std::int32_t CurrentVersion = 52;
 inline constexpr std::int32_t CursorCollectionVersion = 14;
 inline constexpr std::int32_t DashboardGestureAuthorityVersion = 4;
 inline constexpr double DefaultMediaSeekStepSeconds = 10.0;
@@ -138,6 +138,7 @@ inline constexpr std::int32_t SurfaceHintsVersion = 2;
 inline constexpr std::int32_t TextEntryVersion = 15;
 inline constexpr std::int32_t TrustedEncodedArtworkVersion = 36;
 inline constexpr std::int32_t VirtualCollectionWindowVersion = 19;
+inline constexpr std::int32_t WindowPreviewVersion = 52;
 
 struct ControllerShortcutRepeatMatchRule final {
     std::wstring_view inputPhase;

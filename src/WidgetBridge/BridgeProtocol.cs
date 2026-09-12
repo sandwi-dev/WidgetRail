@@ -21,6 +21,7 @@ internal static class BridgeMessageTypes
     public const string Widgets = "widgets";
     public const string GetPlatformAppearance = "get-platform-appearance";
     public const string ControllerControl = "controller-control";
+    public const string WindowPreviewPermissions = "window-preview-permissions";
     public const string ApplicationControl = "application-control";
     public const string PlatformAppearance = "platform-appearance";
     public const string AppearanceChanged = "platform-appearance-changed";
@@ -61,7 +62,7 @@ internal sealed record BridgeEnvelope
     public required JsonElement Payload { get; init; }
 }
 
-internal sealed record BridgeHello(string ClientName);
+internal sealed record BridgeHello(string ClientName, bool WindowPreviews = false);
 internal sealed record WidgetIdRequest(string WidgetId);
 internal sealed record BridgePresentationRequest(
     string WidgetId,

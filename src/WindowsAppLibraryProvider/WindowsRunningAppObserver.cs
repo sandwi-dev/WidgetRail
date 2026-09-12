@@ -130,6 +130,18 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
             new string(value, 0, checked((int)length - 1)));
     }
 
+    internal static WidgetRail.PlatformBroker.NativeWindowPreviewTarget? PreviewTarget(
+        WindowsRunningAppObservation observation)
+    {
+        if (observation.Window is not { } window) return null;
+        if (GetWindowThreadProcessId(window.Handle, out var pid) == 0 || pid != window.ProcessId)
+            return null;
+        using var process = OpenProcess(ProcessQueryLimitedInformation, false, pid);
+        if (process.IsInvalid || !IsSameUserAndSession(process, pid) ||
+            !GetProcessTimes(process, out var created, out _, out _, out _)) return null;
+        return new(window.Handle.ToString("X"), pid, created.ToString("X16"), window.ClassName);
+    }
+
     private static string? WindowClassName(IntPtr window)
     {
         var buffer = new char[MaximumWindowClassCharacters];

@@ -109,6 +109,13 @@ struct ResponsiveSurfacePresentation final {
 /// Exact final declarative geometry for the one host-owned embedded-media
 /// pixel plane. Bounds and clip are surface-local DIPs from the same Taffy
 /// layout/renderer pass that owns native paint and semantics.
+struct RenderWindowPreviewRegion final {
+    std::wstring nodeId;
+    std::wstring windowId;
+    declarative::Rect bounds;
+    declarative::Rect clip;
+};
+
 struct RenderMediaViewportRegion final {
     std::wstring nodeId;
     std::wstring mediaSessionId;
@@ -170,6 +177,7 @@ struct RenderResult final {
     /// accessibility snapshot. Decorative layout nodes are deliberately absent.
     std::vector<RenderAccessibilityRegion> accessibilityRegions;
     std::vector<RenderMediaViewportRegion> mediaViewportRegions;
+    std::vector<RenderWindowPreviewRegion> windowPreviewRegions;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     // Test-only exact geometry seam. Production results intentionally retain
     // only interactive geometry so ordinary paints do not allocate two maps
@@ -301,6 +309,7 @@ struct FocusedFreeScrollPlanDiagnostic final {
 };
 
 struct DeclarativeRenderOptions final {
+    std::function<Microsoft::WRL::ComPtr<ID2D1Bitmap1>(ID2D1RenderTarget*, std::wstring_view)> windowPreviewBitmap;
     float pixelScale{1.0F};
     float rootFontSizePx{16.0F};
     /// Semantic geometry is retained only while a native accessibility client

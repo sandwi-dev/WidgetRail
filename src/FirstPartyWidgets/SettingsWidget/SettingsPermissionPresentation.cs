@@ -428,6 +428,7 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.NetworkBluetoothManageV1 => "Open Bluetooth device settings",
         PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
         PlatformCapabilities.AppLibraryReadV1 => "See your app library",
+        PlatformCapabilities.TaskWindowsPreviewV1 => "Show live previews of open windows",
         PlatformCapabilities.TaskWindowsReadV1 => "See open windows and their titles",
         PlatformCapabilities.TaskWindowsSwitchV1 => "Switch to open windows",
         PlatformCapabilities.TaskWindowsCloseV1 => "Close open windows",
@@ -509,6 +510,8 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.AppLibraryReadV1 =>
             "See a bounded app library of current installed applications and this package's explicitly remembered apps, using conservative kinds and opaque IDs. " +
             "Widgets never receive paths, shortcuts, command lines, package identities, AUMIDs, or launch authority.",
+        PlatformCapabilities.TaskWindowsPreviewV1 =>
+            "Display window contents inside the overlay. Previews are view-only.",
         PlatformCapabilities.TaskWindowsReadV1 =>
             "See open application windows and their titles. Window handles and process IDs stay private to the host.",
         PlatformCapabilities.TaskWindowsSwitchV1 =>

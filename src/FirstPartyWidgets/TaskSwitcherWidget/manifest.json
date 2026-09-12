@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.task-switcher",
   "publisher": "widgetrail.firstparty",
   "name": "Task Switcher",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -29,6 +29,7 @@
     "system.apps.windows.read.v1"
   ],
   "optionalPermissions": [
+    "system.apps.windows.preview.v1",
     "system.apps.windows.switch.v1",
     "system.apps.windows.close.v1"
   ],

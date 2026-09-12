@@ -200,6 +200,7 @@ public:
     bool InitializePinnedExternalContentEndpoint(HWND window, std::wstring& error);
     void Reset() noexcept;
 
+    [[nodiscard]] ID3D11Device* graphicsDevice() const noexcept { return d3dDevice_.Get(); }
     [[nodiscard]] bool available() const noexcept { return device_ != nullptr; }
     [[nodiscard]] bool hasContent() const noexcept;
     [[nodiscard]] bool hasContent(Layer layer) const noexcept;

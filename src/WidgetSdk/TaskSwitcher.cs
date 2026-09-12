@@ -12,6 +12,8 @@ public sealed record WidgetTaskWindowRequest([property: JsonRequired] string Win
 
 public static class WidgetTaskSwitcherCapabilities
 {
+    /// <summary>Manifest consent for host-only live rendering; grants no pixel-reading operation.</summary>
+    public const string PreviewPermission = "system.apps.windows.preview.v1";
     public static WidgetCapabilityOperation<WidgetCapabilityQuery, IReadOnlyList<WidgetTaskWindow>> List { get; } =
         new("system.apps.windows.read.v1", "apps.windows.list");
     public static WidgetCapabilityOperation<WidgetTaskWindowRequest, WidgetCapabilityAcknowledgement> Switch { get; } =

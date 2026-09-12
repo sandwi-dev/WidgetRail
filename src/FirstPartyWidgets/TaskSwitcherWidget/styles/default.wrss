@@ -15,3 +15,9 @@
 .tasks-state { font-size: 10px; color: var(--text-muted); max-lines: 1; }
 .tasks-close { color: var(--warning); padding: 10px 14px; flex-shrink: 0; }
 .tasks-help { font-size: 14px; color: var(--text-muted); max-lines: 3; flex-shrink: 0; }
+
+.tasks-grid { gap: 12px; }
+.tasks-row { min-width: 0; gap: 6px; }
+.tasks-window { padding: 8px; gap: 8px; flex-grow: 1; }
+.tasks-preview { width: 100%; aspect-ratio: 1.777778; flex-shrink: 0; background: var(--surface); color: var(--text-muted); corner-radius: 6px; font-size: 12px; text-align: center; }
+.tasks-close { min-height: 36px; padding: 6px 12px; }

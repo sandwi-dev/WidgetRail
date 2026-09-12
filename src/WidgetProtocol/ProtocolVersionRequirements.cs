@@ -292,6 +292,10 @@ internal sealed class ProtocolVersionRequirements
                             $"{path}.textEntryInputKind",
                             $"Sensitive text entry requires protocol version {ProtocolConstants.SensitiveTextEntryVersion} or later.");
                     break;
+                case ViewNodeKind.WindowPreview:
+                    Add("window-preview", ProtocolConstants.WindowPreviewVersion, path,
+                        "WindowPreview requires protocol version 52 or later.");
+                    break;
                 case ViewNodeKind.MediaViewport:
                     Add(
                         "media-viewport",

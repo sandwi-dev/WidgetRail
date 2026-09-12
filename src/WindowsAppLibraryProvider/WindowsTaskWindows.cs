@@ -39,7 +39,10 @@ public sealed partial class WindowsAppLibraryProvider
                     var title = CleanWindowTitle(window.Window!.Title, name);
                     var id = priorIds.GetValueOrDefault(WindowKey(window)) ?? "target-" + Guid.NewGuid().ToString("N");
                     next.Add(id, window);
-                    summaries.Add(new(id, name, title, window.Window.IsMinimized));
+                    summaries.Add(new(id, name, title, window.Window.IsMinimized)
+                    {
+                        PreviewTarget = WindowsRunningAppObserver.PreviewTarget(window),
+                    });
                 }
                 _taskWindowTargets = next;
                 return summaries;

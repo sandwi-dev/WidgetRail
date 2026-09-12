@@ -385,6 +385,8 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.ArtworkHandle, before.ArtworkHandle, after.ArtworkHandle);
         Add(PresentationProperty.FocusBackgroundArtworkHandle, before.FocusBackgroundArtworkHandle, after.FocusBackgroundArtworkHandle);
         Add(PresentationProperty.MediaSessionId, before.MediaSessionId, after.MediaSessionId);
+        Add(PresentationProperty.WindowId, before.WindowId, after.WindowId);
+        Add(PresentationProperty.PreviewAspectRatio, before.PreviewAspectRatio, after.PreviewAspectRatio);
         Add(PresentationProperty.ImageFit, before.ImageFit, after.ImageFit);
         Add(PresentationProperty.Glyph, before.Glyph, after.Glyph);
         Add(PresentationProperty.PackageIcon, before.PackageIcon, after.PackageIcon);

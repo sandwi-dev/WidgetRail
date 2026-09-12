@@ -23,6 +23,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeDiagnosticsProjection _diagnostics;
     private readonly BridgeControllerControl _controllers;
     private int _pendingApplicationControl;
+    private bool _supportsWindowPreviews;
     private readonly BridgeAuthorityRecoveryProjection _authorityRecovery;
     private readonly BridgeWidgetLocalDataService _localData;
     private readonly BridgeWidgetPackageUninstallService _packageUninstall;
@@ -208,6 +209,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         var helloPayload = BridgeJson.FromElement<BridgeHello>(hello.Payload);
         if (string.IsNullOrWhiteSpace(helloPayload.ClientName) || helloPayload.ClientName.Length > 128)
             throw new BridgeProtocolException("Bridge client name is invalid.");
+        _supportsWindowPreviews = helloPayload.WindowPreviews;
         await SendAsync(new BridgeEnvelope
         {
             Type = BridgeMessageTypes.HelloAccepted,
@@ -360,6 +362,16 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     {
         switch (request.Type)
         {
+        case BridgeMessageTypes.WindowPreviewPermissions:
+            var previewRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);
+            var (previewCatalog, _) = _registry.CatalogSnapshot();
+            var allowedWindowIds = previewCatalog.Widgets.Any(widget => widget.Id == previewRequest.WidgetId)
+                ? await WindowPreviewResolver.AllowedWindowIdsAsync(_consentStore,
+                    previewCatalog.GetConfigured(previewRequest.WidgetId), cancellationToken).ConfigureAwait(false)
+                : [];
+            await ReplyAsync(BridgeMessageTypes.WindowPreviewPermissions, request.RequestId,
+                new { allowedWindowIds }, cancellationToken).ConfigureAwait(false);
+            return;
         case BridgeMessageTypes.ApplicationControl:
             if (request.Payload.ValueKind != JsonValueKind.Object || request.Payload.EnumerateObject().Any())
                 throw new BridgeProtocolException("Invalid application control request.");
@@ -1038,6 +1050,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             : _appearance.ResolveWidgetTheme(
                 configuredForStyle.Id, configuredForStyle.StylePackage);
         var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, theme);
+        var windowPreviews = _supportsWindowPreviews
+            ? await WindowPreviewResolver.ResolveAsync(_consentStore, configuredForStyle, snapshot, cancellationToken).ConfigureAwait(false)
+            : null;
         var snapshotBytes = SnapshotJson.Serialize(snapshot);
         using var document = JsonDocument.Parse(snapshotBytes);
         await SendAsync(new BridgeEnvelope
@@ -1052,6 +1067,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 recoveryOriginSequence,
                 snapshot = document.RootElement.Clone(),
                 renderStyles,
+                windowPreviews = windowPreviews is { Count: > 0 } ? windowPreviews : null,
             }),
         }, cancellationToken).ConfigureAwait(false);
     }
@@ -1081,6 +1097,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 presentation.Configured.Id,
                 presentation.Configured.StylePackage);
         var renderStyles = BridgeRenderStyleResolver.Resolve(presentation.Snapshot, theme);
+        var windowPreviews = _supportsWindowPreviews
+            ? await WindowPreviewResolver.ResolveAsync(_consentStore, presentation.Configured, presentation.Snapshot, cancellationToken).ConfigureAwait(false)
+            : null;
         var updateBytes = PresentationUpdateJson.Serialize(presentation.Update);
         using var document = JsonDocument.Parse(updateBytes);
         await SendAsync(new BridgeEnvelope
@@ -1095,6 +1114,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 recoveryOriginSequence = presentation.RecoveryOriginSequence,
                 update = document.RootElement.Clone(),
                 renderStyles,
+                windowPreviews = windowPreviews is { Count: > 0 } ? windowPreviews : null,
             }),
         }, cancellationToken).ConfigureAwait(false);
     }

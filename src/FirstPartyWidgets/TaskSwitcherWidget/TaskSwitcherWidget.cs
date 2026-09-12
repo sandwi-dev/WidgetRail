@@ -190,27 +190,17 @@ public sealed class TaskSwitcherWidget : Widget
             for (var index = 0; index < _windows.Count; index++)
             {
                 var window = _windows[index];
-                var tile = UI.ActionSurface("switch." + window.WindowId, window.WindowId,
-                    "Switch to " + window.ApplicationName + ": " + window.Title, ActionSurfaceOrientation.Horizontal,
-                    UI.Icon(WidgetGlyph.Fullscreen, window.WindowId + ".icon", "Application window").Classes("tasks-icon"),
-                    UI.Stack(window.WindowId + ".copy",
-                        UI.Text(window.ApplicationName, window.WindowId + ".app").Classes("tasks-app"),
-                        UI.Text(window.Title, window.WindowId + ".title").Classes("tasks-window-title"),
-                        UI.Text(window.IsMinimized ? "Minimized" : "Open", window.WindowId + ".state").Classes("tasks-state"))
-                        .Classes("tasks-copy"))
-                    .Busy(_busy).FocusRight(CloseId(window.WindowId))
-                    .FocusUp(index == 0 ? "tasks.refresh" : _windows[index - 1].WindowId)
-                    .Classes("tasks-window") with
+                var tile = UI.PosterTile(window.ApplicationName,
+                    window.IsMinimized ? "Minimized" : "Open", "switch." + window.WindowId, window.WindowId,
+                    UI.WindowPreview(window.WindowId, window.WindowId + ".preview",
+                        "Preview of " + window.ApplicationName).Classes("tasks-preview"),
+                    subtitle: window.Title,
+                    accessibilityLabel: "Switch to " + window.ApplicationName + ": " + window.Title)
+                    .Busy(_busy).Classes("tasks-window") with
                     { Shortcuts = [new(ControllerButton.X, "close." + window.WindowId, Label: "Close window")] };
                 var close = UI.Button("Close", "close." + window.WindowId, CloseId(window.WindowId))
-                    .Busy(_busy).FocusLeft(window.WindowId)
-                    .FocusUp(index == 0 ? "tasks.refresh" : CloseId(_windows[index - 1].WindowId)).Classes("tasks-close");
-                if (index + 1 < _windows.Count)
-                {
-                    tile = tile.FocusDown(_windows[index + 1].WindowId);
-                    close = close.FocusDown(CloseId(_windows[index + 1].WindowId));
-                }
-                rows.Add(UI.Row(window.WindowId + ".row", tile, close).Classes("tasks-row"));
+                    .Busy(_busy).Classes("tasks-close");
+                rows.Add(UI.Stack(window.WindowId + ".row", tile, close).Classes("tasks-row"));
             }
             if (rows.Count == 0)
                 rows.Add(UI.Text(_loadError ?? (_loaded ? "No other application windows are open." : "Loading windows..."),
@@ -218,7 +208,7 @@ public sealed class TaskSwitcherWidget : Widget
             var children = new List<WidgetElement>
             {
                 header,
-                UI.VerticalScroll("tasks.list", rows.ToArray()).Classes("tasks-list"),
+                UI.VerticalScroll("tasks.list", UI.ResponsiveGrid("tasks.grid", 240, 3, rows.ToArray()).Classes("tasks-grid")).Classes("tasks-list"),
             };
             if (_toast is not null)
                 children.Add(UI.Toast("Task Switcher", _toast, _toastTone, "tasks.toast"));
@@ -226,7 +216,7 @@ public sealed class TaskSwitcherWidget : Widget
                 .Shortcut(ControllerButton.Y, "refresh").Classes("tasks-widget"),
                 _focus ?? (_windows.Count == 0 ? "tasks.refresh" : _windows[0].WindowId),
                 Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard,
-                    PreferredWidth = 660, PreferredHeight = 560, MinimumWidth = 400, MinimumHeight = 360 });
+                    PreferredWidth = 900, PreferredHeight = 620, MinimumWidth = 400, MinimumHeight = 360 });
         }
     }
 }

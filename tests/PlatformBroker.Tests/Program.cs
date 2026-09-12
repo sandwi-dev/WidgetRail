@@ -172,7 +172,7 @@ static async Task TaskWindowBroker()
     foreach (var cap in capabilities)
         await consent.SetDecisionAsync(identity, cap, ConsentDecision.Grant);
     var backend = new SimulatedPlatformBrokerBackend
-    { TaskWindows = [new("native-target", "Editor", "Document", false)] };
+    { TaskWindows = [new("native-target", "Editor", "Document", false) { PreviewTarget = new("1234", 42, "12345678", "EditorClass") }] };
     string? switched = null;
     string? closed = null;
     backend.TaskWindowSwitch = (id, token) => { switched = id; return Task.CompletedTask; };
@@ -187,6 +187,9 @@ static async Task TaskWindowBroker()
         .Deserialize<TaskWindowSummary[]>(BrokerJson.StrictOptions)!;
     Assert.True(list[0].WindowId.StartsWith("window-", StringComparison.Ordinal));
     Assert.True(list[0].WindowId != "native-target");
+    Assert.True(list[0].PreviewTarget is null);
+    Assert.True(WindowPreviewRegistry.Resolve(identity, list[0].WindowId)?.Handle == "1234");
+    Assert.True(WindowPreviewRegistry.Resolve(identity with { InstanceId = "another.instance" }, list[0].WindowId) is null);
     await Send(broker, capabilities[1], PlatformCapabilities.TaskWindowsSwitch, new TaskWindowRequest(list[0].WindowId));
     Assert.Equal("native-target", switched);
     await using var other = new PlatformCapabilityBroker(identity, capabilities, consent, backend);
@@ -201,6 +204,7 @@ static async Task TaskWindowBroker()
     broker.SetLifecycle(BrokerLifecycleState.Interactive);
     backend.TaskWindows = [];
     await Send(broker, capabilities[0], PlatformCapabilities.TaskWindowsList, new {});
+    Assert.True(WindowPreviewRegistry.Resolve(identity, list[0].WindowId) is null);
     await Assert.ThrowsAsync<BrokerException>(() =>
         Send(broker, capabilities[2], PlatformCapabilities.TaskWindowsClose, new TaskWindowRequest(list[0].WindowId)));
     Assert.True(closed is null);
@@ -410,12 +414,14 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(34, PlatformCapabilities.All.Count);
+    Assert.Equal(35, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
         Assert.True(capability.Version == 1);
-        Assert.True(capability.Operations.Count != 0);
+        // Preview consent authorizes host rendering, without giving the worker a pixel-reading operation.
+        Assert.True(capability.Id == PlatformCapabilities.TaskWindowsPreviewV1
+            ? capability.Operations.Count == 0 : capability.Operations.Count != 0);
     }
     Assert.True(!PlatformCapabilities.TryGet("system.full-access.v1", out _));
     Assert.True(!PlatformCapabilities.TryGet("system.audio.sessions.read.v2", out _));
