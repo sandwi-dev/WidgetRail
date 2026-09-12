@@ -1,5 +1,15 @@
 # Spotify Web API integration
 
+## Playlist opening (0.3.61)
+
+Playlist selection is prepared before the navigator publishes the detail route.
+Concurrent progress renders may observe that intermediate state. Page content now
+follows the captured route, matching the navigation entry links: the list remains
+visible until detail navigation is published. This avoids a loading detail page
+whose header points at a removed playlist row. A deterministic intermediate-state
+test reproduces the production invalid_focus_target path, and slow-loading detail
+snapshots are validated before completion. No extra Spotify requests are added.
+
 ## Playback controls and request budget (0.3.60)
 
 X remains Play/Pause. Menu on a playable Search track or playlist track exposes

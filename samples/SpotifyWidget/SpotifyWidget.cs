@@ -1066,9 +1066,9 @@ public sealed class SpotifyWidget : Widget
 
     private SpotifyPresentationState CapturePresentationState()
     {
-        var navigation = _navigation.Value;
         lock (_gate)
         {
+            var navigation = _navigation.Value;
             var playlists = SpotifyCursorPresentation<SpotifyPlaylistCollectionItem>.Capture(
                 _playlists,
                 "spotify.playlists",

@@ -8,6 +8,7 @@ using System.Text;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Playlist route publication never mixes list focus with detail content", PlaylistRoutePublication),
     ("Queue selection preserves suffix and skips first item without replacing context", QueuePlaybackPreservesTail),
     ("Track menu adds once without changing X or fetching collections", TrackMenuRequestBudget),
     ("Play here follow-up reads stop after the bounded settlement budget", LocalStartSettlementBudget),
@@ -901,6 +902,9 @@ static async Task SlowPlaylistDetailBack()
         PlaylistOpen("playlist-one"), PlaylistFocus("wide", "playlist-one"))).AsTask();
     await acknowledgement.WaitAsync(TimeSpan.FromMilliseconds(250));
     await WaitUntil(() => harness.PlaylistDetailCalls == 1);
+    var loading = widget.RenderSnapshot("spotify.playlist.loading", 1);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(loading).Count);
+    Assert.NotNull(Find(loading.Root, "spotify.page.loading.shared.action"));
     await widget.OnActionAsync(new("spotify.playlist.back",
         PlaylistFocus("wide", "playlist-one")));
     completion.SetResult(harness.PlaylistDetail);
@@ -2524,7 +2528,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.60", manifest.Version);
+    Assert.Equal("0.3.61", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
@@ -2558,6 +2562,41 @@ static Task ManifestContract()
         AppContext.BaseDirectory, "package", "Build-CommunityPackage.ps1"));
     foreach (var expected in expectedAssets.Values)
         Assert.Equal(2, CountOccurrences(packageScript, Path.GetFileName(expected.Path)));
+    return Task.CompletedTask;
+}
+
+static Task PlaylistRoutePublication()
+{
+    var playlist = SpotifyHarness.Ready().Playlists.Items[0];
+    var key = SpotifyCollectionIdentity.Playlist(playlist.PlaylistId);
+    var media = new WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem>(
+        WidgetPagedResourceStatus.NotLoaded, [], null, null, null, null, null, 0);
+    var playlists = new WidgetCursorResourceSnapshot<SpotifyPlaylistCollectionItem>(
+        WidgetPagedResourceStatus.Ready, [new(playlist, key)], null, null, key, null, null, 1);
+    var navigation = new WidgetNavigationSnapshot<SpotifyRoute>(
+        SpotifyRoute.Playlists, SpotifyRoute.Playlists, 0,
+        "spotify.window", null, null, 0, CancellationToken.None);
+    // Selection is prepared before navigator publication. A concurrent progress
+    // render can observe this legitimate intermediate state.
+    var state = new SpotifyPresentationState(
+        new(1, 1, 0, 1), SpotifyWidgetViewState.Ready, SpotifyHarness.Ready().Playback, null,
+        "Ready", null, 0, false, navigation, media,
+        new(playlists, UI.VerticalScroll("spotify.playlists.scroll", []) with
+            { CollectionAnchorKey = key.Value }),
+        new(new(new(playlist.PlaylistId, 1), playlist),
+            new(media, UI.VerticalScroll("spotify.playlist.detail.scroll", []))),
+        null, null, false, null, false, null);
+    var handles = new SpotifyPresentationHandleFixture();
+    var list = SpotifyPresentation.Render(state, handles.Compact, handles.UpNext)
+        .CreateSnapshot("playlist-publication", 1);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(list).Count);
+    Assert.NotNull(Find(list.Root, PlaylistFocus("wide", playlist.PlaylistId)));
+    var detail = SpotifyPresentation.Render(state with
+    {
+        Navigation = navigation with { Route = SpotifyRoute.PlaylistDetail, Depth = 1 },
+    }, handles.Compact, handles.UpNext).CreateSnapshot("playlist-publication", 2);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(detail).Count);
+    Assert.NotNull(Find(detail.Root, "spotify.page.loading.shared.action"));
     return Task.CompletedTask;
 }
 

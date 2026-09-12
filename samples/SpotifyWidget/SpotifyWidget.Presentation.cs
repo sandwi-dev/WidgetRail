@@ -430,7 +430,10 @@ internal static class SpotifyPresentation
         var route = presentation.Navigation;
         var destination = SpotifyRouteActionPolicy.Destination(route.RootRoute);
         var playlists = presentation.Playlists;
-        var playlistDetail = presentation.PlaylistDetail;
+        // Selection can be prepared before the navigator publishes its route.
+        // Both page content and its entry links must follow the captured route.
+        var playlistDetail = route.Route == SpotifyRoute.PlaylistDetail
+            ? presentation.PlaylistDetail : null;
         var setup = route.Route == SpotifyRoute.Setup;
         var page = setup
             ? SetupContent(
