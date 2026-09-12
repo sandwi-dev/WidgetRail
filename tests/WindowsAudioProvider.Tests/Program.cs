@@ -11,6 +11,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Devices stay opaque and default microphone controls reconcile", DevicesAndInputAreSafe),
     ("Device switching is opaque confirmed and rejects stale queued controls", DeviceSwitchingIsSafe),
     ("Spatial read and control failures never disable ordinary audio", SpatialFailuresAreIsolated),
+    ("Spatial device identity requires the exact enabled output interface", SpatialIdentityIsExact),
+    ("Production spatial support agrees with the Windows interface query", ProductionSpatialSupportMatchesWindows),
     ("Default-device policy preserves communications and rolls back partial writes", DeviceSwitchPolicy),
     ("Native callbacks coalesce and the provider never polls", CallbacksCoalesceWithoutPolling),
     ("Live native failure and recovery publish explicit availability", ProviderAvailabilityEvents),
@@ -42,6 +44,56 @@ foreach (var (name, run) in tests)
 
 Console.WriteLine($"Executed {tests.Length} Windows audio provider tests; {failures} failed.");
 return failures == 0 ? 0 : 1;
+
+static Task SpatialIdentityIsExact()
+{
+    const string endpoint = "{0.0.0.00000000}.{11111111-2222-3333-4444-555555555555}";
+    var instance = "SWD\\MMDEVAPI\\" + endpoint;
+    Assert.Equal("interface-correct", SpatialAudioDeviceIdentity.Resolve(endpoint,
+        [new("interface-wrong-default", "SWD\\MMDEVAPI\\other", true),
+         new("interface-disabled", instance, false), new("interface-correct", instance.ToLowerInvariant(), true)]));
+    Assert.Equal<string?>(null, SpatialAudioDeviceIdentity.Resolve(endpoint,
+        [new("interface-name-only", null, true), new("interface-partial", instance + "suffix", true)]));
+    Assert.Equal<string?>(null, SpatialAudioDeviceIdentity.Resolve(endpoint,
+        [new("interface-a", instance, true), new("interface-b", instance, true)]));
+    Assert.Equal<string?>(null, SpatialAudioDeviceIdentity.Resolve("", [new("any", instance, true)]));
+    return Task.CompletedTask;
+}
+
+static Task ProductionSpatialSupportMatchesWindows()
+{
+    if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
+    var initialized = CoreAudioInterop.InitializeMta();
+    try
+    {
+        using var native = new CoreAudioNativeAdapter();
+        var endpoint = native.EnumerateDevices().FirstOrDefault(device =>
+            device.Direction == NativeAudioDeviceDirection.Output && device.IsDefault);
+        if (endpoint is null) return Task.CompletedTask;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var interfaces = Windows.Devices.Enumeration.DeviceInformation.FindAllAsync(
+                Windows.Media.Devices.MediaDevice.GetAudioRenderSelector(), new[] { SpatialAudioDeviceIdentity.InstanceIdProperty })
+            .AsTask(deadline.Token).GetAwaiter().GetResult();
+        var matches = interfaces.Where(item => item.IsEnabled &&
+            item.Properties.TryGetValue(SpatialAudioDeviceIdentity.InstanceIdProperty, out var value) &&
+            string.Equals(value as string, "SWD\\MMDEVAPI\\" + endpoint.NativeDeviceKey, StringComparison.OrdinalIgnoreCase)).ToArray();
+        Assert.Equal(1, matches.Length);
+        var windows = Windows.Media.Audio.SpatialAudioDeviceConfiguration.GetForDeviceId(matches[0].Id);
+        for (var index = 0; index < 2; index++)
+        {
+            var actual = native.GetSpatialAudio();
+            Assert.True(actual is not null);
+            Assert.Equal(endpoint.NativeDeviceKey, actual!.NativeDeviceKey);
+            Assert.Equal(windows.IsSpatialAudioSupported, actual.IsSupported);
+            Assert.Equal(windows.IsSpatialAudioFormatSupported(Windows.Media.Audio.SpatialAudioFormatSubtype.WindowsSonic),
+                actual.Formats.Any(format => format.FormatId == "sonic"));
+            Assert.Equal(windows.IsSpatialAudioFormatSupported(Windows.Media.Audio.SpatialAudioFormatSubtype.DolbyAtmosForHeadphones),
+                actual.Formats.Any(format => format.FormatId == "atmos-headphones"));
+        }
+    }
+    finally { if (initialized) CoreAudioInterop.Uninitialize(); }
+    return Task.CompletedTask;
+}
 
 static async Task SpatialFailuresAreIsolated()
 {

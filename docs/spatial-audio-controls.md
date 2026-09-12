@@ -66,3 +66,35 @@ Physical testing remains required before integration; no push. Enable Read
 spatial sound settings and Change spatial sound in Audio Mixer permissions.
 Test Off/Sonic selection, Atmos license failure, volume/mute after a failure,
 and switching outputs while checking the spatial format refresh.
+
+## SAMSUNG device identity correction
+
+The first candidate passed the MMDevice endpoint ID directly to the WinRT
+GetForDeviceId API. On SAMSUNG (NVIDIA High Definition Audio), that call returned
+a valid object reporting IsSpatialAudioSupported=false and only Off. The exact
+same output queried through its Windows device-interface ID reported Sonic,
+Dolby and DTS support. This was a host identity-mapping bug, not a widget or
+license failure. The original read-only smoke gate checked only for a returned
+object and Off, so it did not catch the silent unsupported result.
+
+The adapter now enumerates Windows audio-render interfaces and matches the
+OS-provided System.Devices.DeviceInstanceId to the exact SWD\MMDEVAPI devnode
+for the admitted MMDevice endpoint. It passes the matched interface ID to WinRT
+while retaining the original native endpoint ID for broker authority. Friendly
+names and Windows' potentially different default-device roles are never used to
+select a match. Missing, disabled or ambiguous matches return spatial unavailable.
+
+Supported formats are refreshed on authoritative reads and before setting so
+capabilities that settle after connection cannot remain cached as Off-only.
+Failure isolation, readback checks and existing permission contracts are unchanged.
+
+Validation: 21 provider tests passed, including exact/disabled/ambiguous identity
+matching and live equality of the provider's spatial support and Sonic/Atmos
+choices with the interface-based Windows query. The corrected read-only probe
+on SAMSUNG reports Off, Windows Sonic, Dolby Atmos variants and supported DTS
+variants. Selected and active formats remained Off throughout this correction.
+Native production code is unchanged; its candidate binaries were copied with
+SHA-256 verification, followed by complete managed-runtime republication.
+The corrected candidate also passes WidgetBridge.Tests 129/129 after coherent
+managed publication. Its packaged WindowsAudioProvider hash matches the tested
+provider. No widget, protocol, permission or native-renderer changes were needed.

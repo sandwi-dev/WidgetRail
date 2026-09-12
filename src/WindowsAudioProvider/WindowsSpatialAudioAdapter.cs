@@ -1,3 +1,5 @@
+using Windows.Devices.Enumeration;
+using Windows.Media.Devices;
 using Windows.Media.Audio;
 using WidgetRail.PlatformBroker;
 
@@ -17,10 +19,30 @@ internal sealed class WindowsSpatialAudioAdapter(Action changed) : IDisposable
         if (device == _device && _configuration is not null) return;
         Dispose();
         if (string.IsNullOrWhiteSpace(device)) return;
-        var configuration = SpatialAudioDeviceConfiguration.GetForDeviceId(device);
+        // GetForDeviceId requires a WinRT device-interface ID. Supplying the
+        // MMDevice endpoint ID may silently report no spatial support.
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var devices = DeviceInformation.FindAllAsync(MediaDevice.GetAudioRenderSelector(),
+                new[] { SpatialAudioDeviceIdentity.InstanceIdProperty })
+            .AsTask(deadline.Token).WaitAsync(deadline.Token).GetAwaiter().GetResult();
+        var interfaceId = SpatialAudioDeviceIdentity.Resolve(device, devices.Select(item =>
+            new SpatialAudioDeviceInterface(item.Id,
+                item.Properties.TryGetValue(SpatialAudioDeviceIdentity.InstanceIdProperty, out var instance)
+                    ? instance as string : null, item.IsEnabled)));
+        if (interfaceId is null) throw new InvalidOperationException("Spatial audio device interface is unavailable.");
+        var configuration = SpatialAudioDeviceConfiguration.GetForDeviceId(interfaceId);
         _configuration = configuration;
         _device = device;
         configuration.ConfigurationChanged += OnChanged;
+    }
+
+    private void RefreshFormats()
+    {
+        var configuration = _configuration;
+        if (configuration is null) return;
+        // Device capabilities can settle after connection or change without
+        // replacing the endpoint. Recompute from each authoritative refresh.
+        _formats.Clear();
         _formats["off"] = ("Off", Guid.Empty.ToString("B"));
         foreach (var (id, name, property) in new[] {
             ("sonic", "Windows Sonic for headphones", "WindowsSonic"),
@@ -52,6 +74,7 @@ internal sealed class WindowsSpatialAudioAdapter(Action changed) : IDisposable
         {
             Bind(device);
             if (_configuration is null || _device is null) return null;
+            RefreshFormats();
             var selected = Token(_configuration.DefaultSpatialAudioFormat);
             var formats = _formats.Select(pair => new AudioSpatialFormat(pair.Key, pair.Value.Name)).ToList();
             if (selected == "other") formats.Add(new("other", "Other spatial format"));
@@ -67,6 +90,7 @@ internal sealed class WindowsSpatialAudioAdapter(Action changed) : IDisposable
         {
             if (currentDevice() != device) return "resource_not_found";
             Bind(device);
+            RefreshFormats();
             if (_configuration is null || !_formats.TryGetValue(format, out var target))
                 return "spatial_not_supported";
             // The owner is not the UI thread. Cancellation bounds the WinRT
