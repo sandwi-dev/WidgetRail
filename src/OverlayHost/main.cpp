@@ -13,6 +13,7 @@
 #include "ControllerGuide.h"
 #include "ControllerGuideVisual.h"
 #include "FocusNavigation.h"
+#include "WidgetContextMenuAuthority.h"
 #include "HostAccessibility.h"
 #include "NativeIcons.h"
 #include "NativeStyle.h"
@@ -9049,6 +9050,7 @@ private:
         widgetrail::declarative::Rect anchor;
         std::vector<widgetrail::WidgetContextAction> actions;
         std::size_t selectedItem{};
+        widgetrail::input::WidgetContextMenuSource sourceIdentity;
     };
 
     struct WidgetContextMenuLayout final {
@@ -9240,26 +9242,11 @@ private:
             snapshot->instanceId != widgetContextMenu_->instanceId ||
             descriptor->runtimeGeneration != widgetContextMenu_->runtimeGeneration ||
             descriptor->presentationGeneration != widgetContextMenu_->presentationGeneration ||
-            snapshot->sequence != widgetContextMenu_->snapshotSequence ||
+            snapshot->sequence < widgetContextMenu_->snapshotSequence ||
             snapshot->activeInputScopeId != widgetContextMenu_->inputScopeId)
             return false;
-        const auto* node = widgetrail::input::FindNodeInInputScope(
-            *snapshot, widgetContextMenu_->sourceNodeId,
-            widgetContextMenu_->inputScopeId);
-        if (!node || (node->kind != L"actionSurface" && node->contextMenuButton.empty()) || node->isDisabled ||
-            node->isBusy || node->contextActions.size() !=
-                widgetContextMenu_->actions.size())
-            return false;
-        for (std::size_t index = 0; index < node->contextActions.size(); ++index) {
-            const auto& current = node->contextActions[index];
-            const auto& origin = widgetContextMenu_->actions[index];
-            if (current.actionId != origin.actionId ||
-                current.label != origin.label || current.style != origin.style ||
-                current.isDisabled != origin.isDisabled ||
-                current.isBusy != origin.isBusy)
-                return false;
-        }
-        return true;
+        return widgetrail::input::ContextMenuSourceCurrent(
+            *snapshot, widgetContextMenu_->sourceIdentity);
     }
 
     [[nodiscard]] std::optional<WidgetContextMenuLayout>
@@ -10003,6 +9990,8 @@ private:
             node->contextActions.empty() ||
             (!pointerAnchor && focusRect == rectangles.end()))
             return false;
+        const auto sourceIdentity = widgetrail::input::CaptureContextMenuSource(*snapshot, nodeId);
+        if (!sourceIdentity) return false;
         trayContextMenu_.reset();
         widgetContextMenu_ = WidgetContextMenuState{
             widget,
@@ -10015,6 +10004,7 @@ private:
             pointerAnchor ? *pointerAnchor : focusRect->second,
             node->contextActions,
             0,
+            *sourceIdentity,
         };
         (void)SetFocus(window_);
         InvalidateRect(window_, nullptr, FALSE);

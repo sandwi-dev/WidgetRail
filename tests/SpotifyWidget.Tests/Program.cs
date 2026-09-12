@@ -8,6 +8,9 @@ using System.Text;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Playlist snapshot versions reuse pages only after fresh metadata", PlaylistVersionCache),
+    ("Playlist cache evicts bounded pages and rejects obsolete writes", PlaylistCacheBounds),
+    ("Playlist reopen reuses pages while explicit refresh fetches again", PlaylistCacheNavigation),
     ("Playlist route publication never mixes list focus with detail content", PlaylistRoutePublication),
     ("Queue selection preserves suffix and skips first item without replacing context", QueuePlaybackPreservesTail),
     ("Track menu adds once without changing X or fetching collections", TrackMenuRequestBudget),
@@ -2528,7 +2531,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.61", manifest.Version);
+    Assert.Equal("0.3.62", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
@@ -2563,6 +2566,77 @@ static Task ManifestContract()
     foreach (var expected in expectedAssets.Values)
         Assert.Equal(2, CountOccurrences(packageScript, Path.GetFileName(expected.Path)));
     return Task.CompletedTask;
+}
+
+static async Task PlaylistVersionCache()
+{
+    var harness = SpotifyHarness.Ready();
+    var playlist = harness.Playlists.Items[0] with { SnapshotId = "version-ONE" };
+    harness.Playlists = harness.Playlists with { Items = [playlist] };
+    var cache = new SpotifyPlaylistCache();
+    var first = new SpotifySelectedPlaylistPageSource(harness, new(playlist.PlaylistId, 1), cache);
+    await first.LoadAsync(0, 24, default);
+    await first.LoadAsync(0, 24, default);
+    Assert.Equal(1, harness.PlaylistMetadataCalls);
+    Assert.Equal(1, harness.PlaylistDetailCalls);
+    var reopened = new SpotifySelectedPlaylistPageSource(harness, new(playlist.PlaylistId, 2), cache);
+    await reopened.LoadAsync(0, 24, default);
+    Assert.Equal(2, harness.PlaylistMetadataCalls);
+    Assert.Equal(1, harness.PlaylistDetailCalls);
+    await reopened.LoadAsync(24, 24, default);
+    Assert.Equal(2, harness.PlaylistDetailCalls);
+    harness.Playlists = harness.Playlists with { Items = [playlist with { SnapshotId = "version-TWO" }] };
+    await new SpotifySelectedPlaylistPageSource(harness, new(playlist.PlaylistId, 3), cache).LoadAsync(0, 24, default);
+    Assert.Equal(3, harness.PlaylistDetailCalls);
+    harness.Playlists = harness.Playlists with { Items = [playlist with { SnapshotId = null }] };
+    await new SpotifySelectedPlaylistPageSource(harness, new(playlist.PlaylistId, 4), cache).LoadAsync(0, 24, default);
+    await new SpotifySelectedPlaylistPageSource(harness, new(playlist.PlaylistId, 5), cache).LoadAsync(0, 24, default);
+    Assert.Equal(5, harness.PlaylistDetailCalls);
+}
+
+static Task PlaylistCacheBounds()
+{
+    var harness = SpotifyHarness.Ready();
+    var playlist = harness.Playlists.Items[0] with { SnapshotId = "one" };
+    var cache = new SpotifyPlaylistCache();
+    var entry = cache.Observe(playlist);
+    var page = harness.PlaylistDetail with { Items = Enumerable.Repeat(harness.PlaylistDetail.Items[0], 24).ToArray() };
+    for (var i = 0; i < 9; i++) cache.Put(entry, i * 24, 24, page);
+    Assert.True(cache.Get(entry, 0, 24) is null, "Oldest page exceeded the 192-item cache budget.");
+    Assert.NotNull(cache.Get(entry, 8 * 24, 24));
+    Assert.Equal(192, entry!.Pages.Values.Sum(value => value.Value.Items.Count));
+    var replacement = cache.Observe(playlist with { SnapshotId = "two" });
+    cache.Put(entry, 0, 24, page);
+    Assert.True(cache.Get(replacement, 0, 24) is null, "Old-version completion repopulated the cache.");
+    Assert.Equal(0, entry.Pages.Count);
+    for (var i = 0; i < 4; i++) cache.Observe(playlist with { PlaylistId = "other-" + i });
+    cache.Put(replacement, 0, 24, page);
+    Assert.True(cache.Get(replacement, 0, 24) is null, "Evicted playlist retained authority.");
+    var active = cache.Observe(playlist);
+    cache.Put(active, 0, 24, page);
+    cache.Clear();
+    cache.Put(active, 0, 24, page);
+    Assert.True(cache.Get(active, 0, 24) is null, "Cleared account cache accepted an old completion.");
+    Assert.Equal(0, active!.Pages.Count);
+    return Task.CompletedTask;
+}
+
+static async Task PlaylistCacheNavigation()
+{
+    var harness = SpotifyHarness.Ready();
+    harness.Playlists = harness.Playlists with { Items = [harness.Playlists.Items[0] with { SnapshotId = "same" }] };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => harness.PlaylistCalls == 1);
+    await widget.OnActionAsync(new(PlaylistOpen("playlist-one"), PlaylistFocus("wide", "playlist-one")));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 1);
+    await widget.OnActionAsync(new("spotify.playlist.back", "spotify.playlist.play.shared"));
+    await widget.OnActionAsync(new(PlaylistOpen("playlist-one"), PlaylistFocus("wide", "playlist-one")));
+    await WaitUntil(() => harness.PlaylistMetadataCalls == 2);
+    Assert.Equal(1, harness.PlaylistDetailCalls);
+    await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh"));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 2);
+    Assert.Equal(3, harness.PlaylistMetadataCalls);
+    await StopAsync(widget);
 }
 
 static Task PlaylistRoutePublication()
@@ -3267,6 +3341,7 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
     public int PlaybackCalls { get; private set; }
     public int QueueCalls { get; private set; }
     public int PlaylistCalls { get; private set; }
+    public int PlaylistMetadataCalls { get; private set; }
     public int LastPlaylistLimit { get; private set; }
     public int PlaylistDetailCalls { get; private set; }
     public int DeviceCalls { get; private set; }
@@ -3413,6 +3488,7 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        PlaylistMetadataCalls++;
         var playlist = Playlists.Items.FirstOrDefault(item =>
             string.Equals(item.PlaylistId, playlistId, StringComparison.Ordinal));
         return playlist is null

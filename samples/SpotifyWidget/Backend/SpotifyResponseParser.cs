@@ -305,7 +305,8 @@ internal static partial class SpotifyResponseParser
             ownerName,
             OptionalNullableBoolean(playlist, "collaborative") ?? false,
             OptionalNullableBoolean(playlist, "public"),
-            count);
+            count,
+            OptionalString(playlist, "snapshot_id", 256));
     }
 
     private static SpotifyMediaItemSummary? ParseMediaItem(JsonElement value)

@@ -188,7 +188,8 @@ public sealed record SpotifyPlaylistSummary(
     string OwnerName,
     bool IsCollaborative,
     bool? IsPublic,
-    int ItemCount);
+    int ItemCount,
+    string? SnapshotId = null);
 
 public sealed record SpotifyPlaylistPageSummary(
     IReadOnlyList<SpotifyPlaylistSummary> Items,

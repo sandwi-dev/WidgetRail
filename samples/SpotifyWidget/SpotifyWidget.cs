@@ -76,6 +76,7 @@ public sealed class SpotifyWidget : Widget
     private string? _pageError;
     private SpotifyPlaylistSelection? _playlistSelection;
     private SpotifySelectedPlaylistPageSource? _playlistPageSource;
+    private readonly SpotifyPlaylistCache _playlistCache = new();
     private long? _playlistItemsSelectionGeneration;
     private long _playlistSelectionGeneration;
     private long _presentationCaptureSequence;
@@ -707,7 +708,16 @@ public sealed class SpotifyWidget : Widget
             _search.Refresh();
         else if (route.RootRoute == SpotifyRoute.Playlists)
         {
-            if (detail) _playlistItems.Refresh();
+            if (detail)
+            {
+                lock (_gate)
+                    if (_playlistSelection is { } selection)
+                    {
+                        _playlistCache.Remove(selection.Key.PlaylistId);
+                        _playlistPageSource = new(_spotify, selection.Key, _playlistCache);
+                    }
+                _playlistItems.Refresh();
+            }
             else _playlists.Refresh();
         }
     }
@@ -1308,7 +1318,7 @@ public sealed class SpotifyWidget : Widget
             _pageError = null;
             _playlistSelection = new(
                 new(playlist.PlaylistId, generation), playlist);
-            _playlistPageSource = new(_spotify, _playlistSelection.Key);
+            _playlistPageSource = new(_spotify, _playlistSelection.Key, _playlistCache);
             _playlistItemsSelectionGeneration = generation;
         }
         var result = _navigation.PushFromAction(
@@ -1367,6 +1377,7 @@ public sealed class SpotifyWidget : Widget
 
     private void ClearPageCachesLocked()
     {
+        _playlistCache.Clear();
         _search.Reset(invalidate: false);
         _searchQuery = string.Empty;
         ++_searchGeneration;

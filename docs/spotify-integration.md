@@ -1,5 +1,28 @@
 # Spotify Web API integration
 
+## Versioned playlist cache (0.3.62)
+
+The package preserves Spotify's opaque snapshot_id on playlist summaries.
+Each new playlist entry still fetches metadata once. Matching versions reuse
+cached pages; a changed or missing version invalidates those pages. Metadata is
+not polled while browsing. Closing/reopening the overlay on the same detail route
+keeps the active cursor without another metadata check.
+
+The per-widget memory cache retains at most four playlists, sixteen pages and
+192 track records in total, evicting least recently used entries/pages. Page keys
+include offset and requested limit; no entire-playlist prefetch or disk cache is
+introduced. Explicit detail Refresh bypasses cached pages and rechecks metadata.
+Disconnect/configuration reset clears the cache. Canceled loads and writes with
+an obsolete cache entry cannot repopulate a replaced or cleared version. The API
+does not support reading historical track pages by snapshot_id; edits made during
+an active visit are discovered on the next entry or explicit refresh.
+
+Widget context menus now survive unrelated progress snapshots. The host checks
+the source node, scope, collection reset identity and exact context actions
+before keeping or dispatching a menu; it still rejects instance/runtime changes,
+removed or disabled sources, altered actions and navigation away. This is shared
+host behavior and does not pause Spotify's progress display.
+
 ## Playlist opening (0.3.61)
 
 Playlist selection is prepared before the navigator publishes the detail route.

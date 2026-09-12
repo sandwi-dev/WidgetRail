@@ -12,6 +12,7 @@ using BrokerSpotifyLocalPlaybackState =
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Playlist parser preserves the opaque snapshot version", PlaylistSnapshotVersion),
     ("Search encodes queries, bounds paging and parses every result type", SearchContract),
     ("PKCE authorization uses exact callback state S256 and no client secret", PkceContract),
     ("Client ID change invalidates package authorization", ClientChangeInvalidatesAuthorization),
@@ -199,6 +200,16 @@ static async Task ExactPlayerEndpoints()
     foreach (var command in commands)
         await backend.ControlPlaybackAsync(Identity(), command, default);
     Assert.Equal(0, expected.Count);
+}
+
+static Task PlaylistSnapshotVersion()
+{
+    var playlist = SpotifyResponseParser.ParsePlaylistDocument(
+        """{"id":"one","name":"Playlist","snapshot_id":"AbC123=="}""");
+    Assert.Equal("AbC123==", playlist.SnapshotId);
+    var unversioned = SpotifyResponseParser.ParsePlaylistDocument("""{"id":"one","name":"Playlist"}""");
+    Assert.Equal<string?>(null, unversioned.SnapshotId);
+    return Task.CompletedTask;
 }
 
 static async Task AmbiguousPlayerWriteRetry()

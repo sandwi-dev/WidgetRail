@@ -1,4 +1,5 @@
 #include "FocusNavigation.h"
+#include "WidgetContextMenuAuthority.h"
 #include "WidgetBridgeClient.h"
 
 #include <cstdlib>
@@ -28,6 +29,43 @@ void Add(widgetrail::RenderResult& result, std::wstring id, widgetrail::declarat
 } // namespace
 
 int main() {
+    {
+    widgetrail::WidgetSnapshot snapshot;
+    snapshot.sequence = 10;
+    snapshot.activeInputScopeId = L"root";
+    snapshot.root.id = L"root";
+    snapshot.root.kind = L"stack";
+    widgetrail::WidgetNode scroll;
+    scroll.id = L"tracks"; scroll.kind = L"scroll"; scroll.collectionResetGeneration = 1;
+    widgetrail::WidgetNode track;
+    track.id = L"track"; track.kind = L"actionSurface"; track.actionId = L"play.track";
+    track.collectionItemKey = L"track.key"; track.contextMenuButton = L"menu";
+    track.contextActions.push_back({L"enqueue.track", L"Add to queue"});
+    scroll.children.push_back(track); snapshot.root.children.push_back(scroll);
+    const auto origin = widgetrail::input::CaptureContextMenuSource(snapshot, L"track");
+    Check(origin.has_value(), "captures source");
+    ++snapshot.sequence;
+    snapshot.root.children[0].collectionGeneration = 25;
+    Check(widgetrail::input::ContextMenuSourceCurrent(snapshot, *origin), "survives progress and page append snapshots");
+    const auto baseline = snapshot;
+    auto& node = snapshot.root.children[0].children[0];
+    node.contextActions[0].actionId = L"other";
+    Check(!widgetrail::input::ContextMenuSourceCurrent(snapshot, *origin), "changed action closes menu");
+    snapshot = baseline; snapshot.root.children[0].children[0].contextActions[0].isDisabled = true;
+    Check(!widgetrail::input::ContextMenuSourceCurrent(snapshot, *origin), "disabled action closes menu");
+    snapshot = baseline; snapshot.root.children[0].children[0].collectionItemKey = L"other";
+    Check(!widgetrail::input::ContextMenuSourceCurrent(snapshot, *origin), "reused node for another item closes menu");
+    snapshot = baseline; snapshot.root.children[0].collectionResetGeneration = 2;
+    Check(!widgetrail::input::ContextMenuSourceCurrent(snapshot, *origin), "collection reset closes menu");
+    snapshot = baseline; snapshot.root.children[0].children.clear();
+    Check(!widgetrail::input::ContextMenuSourceCurrent(snapshot, *origin), "removed source closes menu");
+    snapshot = baseline; snapshot.root.children[0].inputScopeId = L"other";
+    Check(!widgetrail::input::ContextMenuSourceCurrent(snapshot, *origin), "scope change closes menu");
+    snapshot = baseline; snapshot.root.children[0].isDisabled = true;
+    Check(!widgetrail::input::ContextMenuSourceCurrent(snapshot, *origin), "disabled ancestor closes menu");
+    snapshot = baseline; snapshot.root.children[0].children[0].actionId = L"different.primary";
+    Check(!widgetrail::input::ContextMenuSourceCurrent(snapshot, *origin), "primary identity change closes menu");
+    }
     {
         widgetrail::WidgetSnapshot menus; menus.activeInputScopeId=L"root";
         menus.root.id=L"root"; menus.root.kind=L"stack";
