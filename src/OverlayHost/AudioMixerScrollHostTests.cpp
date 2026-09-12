@@ -31,6 +31,7 @@ constexpr wchar_t kMasterAutomationId[] = L"widget:audio.master.volume.slider";
 constexpr wchar_t kMicrophoneAutomationId[] = L"widget:audio.input.volume.slider";
 constexpr wchar_t kOutputDeviceAutomationId[] = L"widget:audio.devices.output.select";
 constexpr wchar_t kInputDeviceAutomationId[] = L"widget:audio.devices.input.select";
+constexpr wchar_t kSpatialAutomationId[] = L"widget:audio.spatial.retry";
 constexpr wchar_t kFirstSessionName[] =
     L"Application 00 volume, audible. Press A to mute";
 constexpr wchar_t kLastSessionName[] =
@@ -624,7 +625,7 @@ void ExerciseLiveFourReverseEdge(
     const auto semantic = ReadUtf8(semanticPath);
     RequireMicrophoneUpEdge(semantic);
 
-    for (const auto* target : {kOutputDeviceAutomationId, kInputDeviceAutomationId, kMicrophoneAutomationId}) {
+    for (const auto* target : {kOutputDeviceAutomationId, kSpatialAutomationId, kInputDeviceAutomationId, kMicrophoneAutomationId}) {
         SendKey(window, VK_DOWN);
         (void)WaitForFocus(automation, window, target, bounds);
     }
@@ -665,6 +666,8 @@ void ExerciseLiveFourReverseEdge(
     (void)WaitForFocus(automation, window, kMicrophoneAutomationId, bounds);
     SendKey(window, VK_UP);
     (void)WaitForFocus(automation, window, kInputDeviceAutomationId, bounds);
+    SendKey(window, VK_UP);
+    (void)WaitForFocus(automation, window, kSpatialAutomationId, bounds);
     SendKey(window, VK_UP);
     const auto microphone = WaitForFocus(
         automation, window, kOutputDeviceAutomationId, bounds);

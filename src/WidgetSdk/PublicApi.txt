@@ -28,6 +28,7 @@ ctor WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest(bool IsMuted)
 ctor WidgetRail.WidgetSdk.SetWidgetAudioOutputVolumeRequest(double Volume)
 ctor WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest(string SessionId, bool IsMuted)
 ctor WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest(string SessionId, double Volume)
+ctor WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest(string DeviceId, string FormatId)
 ctor WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest(bool Enabled)
 ctor WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest(bool Enabled)
 ctor WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest(string ProfileId)
@@ -58,6 +59,9 @@ ctor WidgetRail.WidgetSdk.WidgetAudioOutput(double Volume, bool IsMuted)
 ctor WidgetRail.WidgetSdk.WidgetAudioOutputChanged(WidgetRail.WidgetSdk.WidgetAudioOutput? Output, bool IsAvailable = true)
 ctor WidgetRail.WidgetSdk.WidgetAudioSession(string SessionId, string DisplayName, double Volume, bool IsMuted, bool IsActive)
 ctor WidgetRail.WidgetSdk.WidgetAudioSessionsChanged(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAudioSession> Sessions, bool IsAvailable = true)
+ctor WidgetRail.WidgetSdk.WidgetAudioSpatial(string DeviceId, bool IsSupported, string SelectedFormatId, string ActiveFormatId, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAudioSpatialFormat> Formats)
+ctor WidgetRail.WidgetSdk.WidgetAudioSpatialChanged(WidgetRail.WidgetSdk.WidgetAudioSpatial? Spatial, bool IsAvailable = true)
+ctor WidgetRail.WidgetSdk.WidgetAudioSpatialFormat(string FormatId, string DisplayName)
 ctor WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork(string NetworkId, string DisplayName, int SignalPercent, WidgetRail.WidgetSdk.WidgetWifiSecurityKind Security, bool CredentialRequired, bool IsConnected, bool HasSavedProfile)
 ctor WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks(WidgetRail.WidgetSdk.WidgetWifiScanState ScanState, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork> Networks)
 ctor WidgetRail.WidgetSdk.WidgetAvailableWifiNetworksChanged(WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks Snapshot)
@@ -722,6 +726,11 @@ method WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest.Deconstruct(out s
 method WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest.GetHashCode() -> int
 method WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest.ToString() -> string
+method WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.<Clone>$() -> WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest
+method WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.Deconstruct(out string DeviceId, out string FormatId) -> void
+method WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.GetHashCode() -> int
+method WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.ToString() -> string
 method WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.<Clone>$() -> WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest
 method WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.Deconstruct(out bool Enabled) -> void
 method WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.Equals(object? obj) -> bool
@@ -918,10 +927,12 @@ method WidgetRail.WidgetSdk.WidgetAudioService.GetDevicesAsync(System.Threading.
 method WidgetRail.WidgetSdk.WidgetAudioService.GetInputAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetAudioInput>
 method WidgetRail.WidgetSdk.WidgetAudioService.GetOutputAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetAudioOutput>
 method WidgetRail.WidgetSdk.WidgetAudioService.GetSessionsAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAudioSession>>
+method WidgetRail.WidgetSdk.WidgetAudioService.GetSpatialAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetAudioSpatial>
 method WidgetRail.WidgetSdk.WidgetAudioService.OpenDevicesSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetSdk.WidgetAudioDevicesChanged>>
 method WidgetRail.WidgetSdk.WidgetAudioService.OpenInputSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetSdk.WidgetAudioInputChanged>>
 method WidgetRail.WidgetSdk.WidgetAudioService.OpenOutputSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetSdk.WidgetAudioOutputChanged>>
 method WidgetRail.WidgetSdk.WidgetAudioService.OpenSessionsSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetSdk.WidgetAudioSessionsChanged>>
+method WidgetRail.WidgetSdk.WidgetAudioService.OpenSpatialSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetSdk.WidgetAudioSpatialChanged>>
 method WidgetRail.WidgetSdk.WidgetAudioService.SetDefaultInputDeviceAsync(string deviceId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetAudioService.SetDefaultOutputDeviceAsync(string deviceId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetAudioService.SetInputMutedAsync(bool isMuted, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
@@ -930,6 +941,7 @@ method WidgetRail.WidgetSdk.WidgetAudioService.SetOutputMutedAsync(bool isMuted,
 method WidgetRail.WidgetSdk.WidgetAudioService.SetOutputVolumeAsync(double volume, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetAudioService.SetSessionMutedAsync(string sessionId, bool isMuted, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetAudioService.SetSessionVolumeAsync(string sessionId, double volume, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetAudioService.SetSpatialFormatAsync(string deviceId, string formatId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetAudioService.WatchDevicesAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<WidgetRail.WidgetSdk.WidgetAudioDevicesChanged>
 method WidgetRail.WidgetSdk.WidgetAudioService.WatchInputAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<WidgetRail.WidgetSdk.WidgetAudioInputChanged>
 method WidgetRail.WidgetSdk.WidgetAudioService.WatchOutputAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<WidgetRail.WidgetSdk.WidgetAudioOutputChanged>
@@ -944,6 +956,21 @@ method WidgetRail.WidgetSdk.WidgetAudioSessionsChanged.Deconstruct(out System.Co
 method WidgetRail.WidgetSdk.WidgetAudioSessionsChanged.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetAudioSessionsChanged.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetAudioSessionsChanged.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetAudioSpatial.<Clone>$() -> WidgetRail.WidgetSdk.WidgetAudioSpatial
+method WidgetRail.WidgetSdk.WidgetAudioSpatial.Deconstruct(out string DeviceId, out bool IsSupported, out string SelectedFormatId, out string ActiveFormatId, out System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAudioSpatialFormat> Formats) -> void
+method WidgetRail.WidgetSdk.WidgetAudioSpatial.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetAudioSpatial.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetAudioSpatial.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetAudioSpatialChanged.<Clone>$() -> WidgetRail.WidgetSdk.WidgetAudioSpatialChanged
+method WidgetRail.WidgetSdk.WidgetAudioSpatialChanged.Deconstruct(out WidgetRail.WidgetSdk.WidgetAudioSpatial? Spatial, out bool IsAvailable) -> void
+method WidgetRail.WidgetSdk.WidgetAudioSpatialChanged.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetAudioSpatialChanged.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetAudioSpatialChanged.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetAudioSpatialFormat.<Clone>$() -> WidgetRail.WidgetSdk.WidgetAudioSpatialFormat
+method WidgetRail.WidgetSdk.WidgetAudioSpatialFormat.Deconstruct(out string FormatId, out string DisplayName) -> void
+method WidgetRail.WidgetSdk.WidgetAudioSpatialFormat.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetAudioSpatialFormat.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetAudioSpatialFormat.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.<Clone>$() -> WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork
 method WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.Deconstruct(out string NetworkId, out string DisplayName, out int SignalPercent, out WidgetRail.WidgetSdk.WidgetWifiSecurityKind Security, out bool CredentialRequired, out bool IsConnected, out bool HasSavedProfile) -> void
 method WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.Equals(object? obj) -> bool
@@ -1522,6 +1549,8 @@ method static WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest.op_Equality
 method static WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest.op_Inequality(WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest? left, WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest.op_Equality(WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest? left, WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest.op_Inequality(WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest? left, WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest? right) -> bool
+method static WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.op_Equality(WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest? left, WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest? right) -> bool
+method static WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.op_Inequality(WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest? left, WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.op_Equality(WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest? left, WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.op_Inequality(WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest? left, WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest.op_Equality(WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest? left, WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest? right) -> bool
@@ -1666,6 +1695,12 @@ method static WidgetRail.WidgetSdk.WidgetAudioSession.op_Equality(WidgetRail.Wid
 method static WidgetRail.WidgetSdk.WidgetAudioSession.op_Inequality(WidgetRail.WidgetSdk.WidgetAudioSession? left, WidgetRail.WidgetSdk.WidgetAudioSession? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetAudioSessionsChanged.op_Equality(WidgetRail.WidgetSdk.WidgetAudioSessionsChanged? left, WidgetRail.WidgetSdk.WidgetAudioSessionsChanged? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetAudioSessionsChanged.op_Inequality(WidgetRail.WidgetSdk.WidgetAudioSessionsChanged? left, WidgetRail.WidgetSdk.WidgetAudioSessionsChanged? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetAudioSpatial.op_Equality(WidgetRail.WidgetSdk.WidgetAudioSpatial? left, WidgetRail.WidgetSdk.WidgetAudioSpatial? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetAudioSpatial.op_Inequality(WidgetRail.WidgetSdk.WidgetAudioSpatial? left, WidgetRail.WidgetSdk.WidgetAudioSpatial? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetAudioSpatialChanged.op_Equality(WidgetRail.WidgetSdk.WidgetAudioSpatialChanged? left, WidgetRail.WidgetSdk.WidgetAudioSpatialChanged? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetAudioSpatialChanged.op_Inequality(WidgetRail.WidgetSdk.WidgetAudioSpatialChanged? left, WidgetRail.WidgetSdk.WidgetAudioSpatialChanged? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetAudioSpatialFormat.op_Equality(WidgetRail.WidgetSdk.WidgetAudioSpatialFormat? left, WidgetRail.WidgetSdk.WidgetAudioSpatialFormat? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetAudioSpatialFormat.op_Inequality(WidgetRail.WidgetSdk.WidgetAudioSpatialFormat? left, WidgetRail.WidgetSdk.WidgetAudioSpatialFormat? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.op_Equality(WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork? left, WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.op_Inequality(WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork? left, WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks.op_Equality(WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks? left, WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks? right) -> bool
@@ -1890,6 +1925,7 @@ method virtual WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest.Equals(Widg
 method virtual WidgetRail.WidgetSdk.SetWidgetAudioOutputVolumeRequest.Equals(WidgetRail.WidgetSdk.SetWidgetAudioOutputVolumeRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest.Equals(WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest.Equals(WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest? other) -> bool
+method virtual WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.Equals(WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.Equals(WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest.Equals(WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SliderElement.<Clone>$() -> WidgetRail.WidgetSdk.SliderElement
@@ -1938,6 +1974,9 @@ method virtual WidgetRail.WidgetSdk.WidgetAudioOutput.Equals(WidgetRail.WidgetSd
 method virtual WidgetRail.WidgetSdk.WidgetAudioOutputChanged.Equals(WidgetRail.WidgetSdk.WidgetAudioOutputChanged? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetAudioSession.Equals(WidgetRail.WidgetSdk.WidgetAudioSession? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetAudioSessionsChanged.Equals(WidgetRail.WidgetSdk.WidgetAudioSessionsChanged? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetAudioSpatial.Equals(WidgetRail.WidgetSdk.WidgetAudioSpatial? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetAudioSpatialChanged.Equals(WidgetRail.WidgetSdk.WidgetAudioSpatialChanged? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetAudioSpatialFormat.Equals(WidgetRail.WidgetSdk.WidgetAudioSpatialFormat? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.Equals(WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks.Equals(WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetAvailableWifiNetworksChanged.Equals(WidgetRail.WidgetSdk.WidgetAvailableWifiNetworksChanged? other) -> bool
@@ -2033,6 +2072,7 @@ property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetApp
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibrarySource> WidgetRail.WidgetSdk.WidgetAppLibraryPage.Sources { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAudioDevice> WidgetRail.WidgetSdk.WidgetAudioDevicesChanged.Devices { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAudioSession> WidgetRail.WidgetSdk.WidgetAudioSessionsChanged.Sessions { get; set; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAudioSpatialFormat> WidgetRail.WidgetSdk.WidgetAudioSpatial.Formats { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork> WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks.Networks { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetBluetoothDevice> WidgetRail.WidgetSdk.WidgetBluetoothSnapshot.Devices { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>> WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.Viewports { get; set; }
@@ -2201,6 +2241,7 @@ property WidgetRail.WidgetSdk.WidgetAudioDeviceDirection WidgetRail.WidgetSdk.Wi
 property WidgetRail.WidgetSdk.WidgetAudioInput? WidgetRail.WidgetSdk.WidgetAudioInputChanged.Input { get; set; }
 property WidgetRail.WidgetSdk.WidgetAudioOutput? WidgetRail.WidgetSdk.WidgetAudioOutputChanged.Output { get; set; }
 property WidgetRail.WidgetSdk.WidgetAudioService WidgetRail.WidgetSdk.WidgetHostServices.Audio { get; }
+property WidgetRail.WidgetSdk.WidgetAudioSpatial? WidgetRail.WidgetSdk.WidgetAudioSpatialChanged.Spatial { get; set; }
 property WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks WidgetRail.WidgetSdk.WidgetAvailableWifiNetworksChanged.Snapshot { get; set; }
 property WidgetRail.WidgetSdk.WidgetBluetoothDiscoveryState WidgetRail.WidgetSdk.WidgetBluetoothSnapshot.DiscoveryState { get; set; }
 property WidgetRail.WidgetSdk.WidgetBluetoothPairingOutcome WidgetRail.WidgetSdk.WidgetBluetoothPairingResult.Outcome { get; set; }
@@ -2317,6 +2358,8 @@ property bool WidgetRail.WidgetSdk.WidgetAudioOutputChanged.IsAvailable { get; s
 property bool WidgetRail.WidgetSdk.WidgetAudioSession.IsActive { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetAudioSession.IsMuted { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetAudioSessionsChanged.IsAvailable { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetAudioSpatial.IsSupported { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetAudioSpatialChanged.IsAvailable { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.CredentialRequired { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.HasSavedProfile { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.IsConnected { get; set; }
@@ -2475,6 +2518,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioInputChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.InputChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioOutputChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.OutputChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioSessionsChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SessionsChanged { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioSpatialChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SpatialChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAvailableWifiNetworksChanged> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.AvailableWifiChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetBluetoothChanged> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.BluetoothChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetMediaSessionsChanged> WidgetRail.WidgetSdk.WidgetMediaCapabilities.Changed { get; }
@@ -2500,6 +2544,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetAudioOutputVolumeRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SetOutputVolume { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SetSessionMuted { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SetSessionVolume { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SetSpatialFormat { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.SetBluetoothRadio { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.SetWifiRadio { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.SwitchSavedProfile { get; }
@@ -2512,6 +2557,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetSavedNetworkProfile>> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetSavedProfiles { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAudioInput> WidgetRail.WidgetSdk.WidgetAudioCapabilities.GetInput { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAudioOutput> WidgetRail.WidgetSdk.WidgetAudioCapabilities.GetOutput { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAudioSpatial> WidgetRail.WidgetSdk.WidgetAudioCapabilities.GetSpatial { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetAvailableWifi { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetBluetoothSnapshot> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetBluetooth { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.RequestWifiScan { get; }
@@ -2571,6 +2617,8 @@ property string WidgetRail.WidgetSdk.SelectOption.Label { get; set; }
 property string WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest.DeviceId { get; set; }
 property string WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest.SessionId { get; set; }
 property string WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest.SessionId { get; set; }
+property string WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.DeviceId { get; set; }
+property string WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.FormatId { get; set; }
 property string WidgetRail.WidgetSdk.SliderElement.AccessibilityLabel { get; set; }
 property string WidgetRail.WidgetSdk.SliderElement.AccessibilityValue { get; set; }
 property string WidgetRail.WidgetSdk.SliderElement.ValueChangedActionId { get; set; }
@@ -2607,6 +2655,11 @@ property string WidgetRail.WidgetSdk.WidgetAudioDevice.DeviceId { get; set; }
 property string WidgetRail.WidgetSdk.WidgetAudioDevice.DisplayName { get; set; }
 property string WidgetRail.WidgetSdk.WidgetAudioSession.DisplayName { get; set; }
 property string WidgetRail.WidgetSdk.WidgetAudioSession.SessionId { get; set; }
+property string WidgetRail.WidgetSdk.WidgetAudioSpatial.ActiveFormatId { get; set; }
+property string WidgetRail.WidgetSdk.WidgetAudioSpatial.DeviceId { get; set; }
+property string WidgetRail.WidgetSdk.WidgetAudioSpatial.SelectedFormatId { get; set; }
+property string WidgetRail.WidgetSdk.WidgetAudioSpatialFormat.DisplayName { get; set; }
+property string WidgetRail.WidgetSdk.WidgetAudioSpatialFormat.FormatId { get; set; }
 property string WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.DisplayName { get; set; }
 property string WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.NetworkId { get; set; }
 property string WidgetRail.WidgetSdk.WidgetBluetoothDevice.DeviceId { get; set; }
@@ -2824,6 +2877,7 @@ type sealed class WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest : System
 type sealed class WidgetRail.WidgetSdk.SetWidgetAudioOutputVolumeRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioOutputVolumeRequest>
 type sealed class WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest>
 type sealed class WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest>
+type sealed class WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest>
 type sealed class WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest>
 type sealed class WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest>
 type sealed class WidgetRail.WidgetSdk.SliderElement : System.IEquatable<WidgetRail.WidgetSdk.SliderElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
@@ -2861,6 +2915,9 @@ type sealed class WidgetRail.WidgetSdk.WidgetAudioOutputChanged : System.IEquata
 type sealed class WidgetRail.WidgetSdk.WidgetAudioService
 type sealed class WidgetRail.WidgetSdk.WidgetAudioSession : System.IEquatable<WidgetRail.WidgetSdk.WidgetAudioSession>
 type sealed class WidgetRail.WidgetSdk.WidgetAudioSessionsChanged : System.IEquatable<WidgetRail.WidgetSdk.WidgetAudioSessionsChanged>
+type sealed class WidgetRail.WidgetSdk.WidgetAudioSpatial : System.IEquatable<WidgetRail.WidgetSdk.WidgetAudioSpatial>
+type sealed class WidgetRail.WidgetSdk.WidgetAudioSpatialChanged : System.IEquatable<WidgetRail.WidgetSdk.WidgetAudioSpatialChanged>
+type sealed class WidgetRail.WidgetSdk.WidgetAudioSpatialFormat : System.IEquatable<WidgetRail.WidgetSdk.WidgetAudioSpatialFormat>
 type sealed class WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork : System.IEquatable<WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork>
 type sealed class WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks : System.IEquatable<WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks>
 type sealed class WidgetRail.WidgetSdk.WidgetAvailableWifiNetworksChanged : System.IEquatable<WidgetRail.WidgetSdk.WidgetAvailableWifiNetworksChanged>

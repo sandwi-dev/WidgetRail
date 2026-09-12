@@ -221,6 +221,21 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         return Task.FromResult<IReadOnlyList<AudioDeviceSummary>>(_audioDevices.ToArray());
     }
 
+    public AudioSpatialSummary? SpatialAudio { get; set; }
+    public Task<AudioSpatialSummary> GetAudioSpatialAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(SpatialAudio ?? throw new BrokerException("spatial_unavailable", "Spatial audio is unavailable."));
+    public Task SetAudioSpatialFormatAsync(string deviceId, string formatId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (SpatialAudio is null || SpatialAudio.DeviceId != deviceId)
+            throw new BrokerException("resource_not_found", "Output changed.");
+        if (formatId == "other" || !SpatialAudio.Formats.Any(format => format.FormatId == formatId))
+            throw new BrokerException("spatial_not_supported", "Format unavailable.");
+        AudioControlCalls++;
+        SpatialAudio = SpatialAudio with { SelectedFormatId = formatId, ActiveFormatId = formatId };
+        return Task.CompletedTask;
+    }
+
     public Task SetDefaultAudioOutputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>
         SetDefaultAudioDeviceAsync(deviceId, AudioDeviceDirection.Output, cancellationToken);
     public Task SetDefaultAudioInputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>

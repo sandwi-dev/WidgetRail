@@ -51,6 +51,17 @@ internal sealed class AudioCapabilityDomain(IPlatformBrokerBackend backend)
                     .ConfigureAwait(false);
                 return BrokerCapabilityDomains.Acknowledged();
             }
+            case PlatformCapabilities.AudioSpatialGet:
+                BrokerCapabilityDomains.DemandEmptyPayload(payload);
+                return BrokerJson.ToElement(ValidateSpatial(await backend.GetAudioSpatialAsync(cancellationToken).ConfigureAwait(false)));
+            case PlatformCapabilities.AudioSpatialSet:
+            {
+                var request = BrokerJson.ParsePayload<SetAudioSpatialFormatRequest>(payload);
+                ContractValidation.OpaqueId(request.DeviceId);
+                ContractValidation.OpaqueId(request.FormatId);
+                await backend.SetAudioSpatialFormatAsync(request.DeviceId, request.FormatId, cancellationToken).ConfigureAwait(false);
+                return BrokerCapabilityDomains.Acknowledged();
+            }
             case PlatformCapabilities.AudioDevicesList:
                 BrokerCapabilityDomains.DemandEmptyPayload(payload);
                 return BrokerJson.ToElement(ValidateDevices(
@@ -104,6 +115,10 @@ internal sealed class AudioCapabilityDomain(IPlatformBrokerBackend backend)
             PlatformCapabilities.AudioDevicesChanged when
                 payload is AudioDevicesChangedEvent change =>
                 BrokerJson.ToElement(ValidateDevicesEvent(change)),
+            PlatformCapabilities.AudioSpatialChanged when payload is AudioSpatialChangedEvent change =>
+                BrokerJson.ToElement(change.IsAvailable
+                    ? new AudioSpatialChangedEvent(ValidateSpatial(change.Spatial))
+                    : new AudioSpatialChangedEvent(null, false)),
             PlatformCapabilities.AudioInputChanged when
                 payload is AudioInputChangedEvent change =>
                 BrokerJson.ToElement(ValidateInputEvent(change)),
@@ -157,6 +172,26 @@ internal sealed class AudioCapabilityDomain(IPlatformBrokerBackend backend)
                     "invalid_backend_data", "Audio device result is inconsistent.");
         }
         return devices.ToArray();
+    }
+
+    internal static AudioSpatialSummary ValidateSpatial(AudioSpatialSummary? value)
+    {
+        if (value is null || value.Formats is null || value.Formats.Count is < 1 or > 16)
+            throw new BrokerException("invalid_backend_data", "Spatial sound data is invalid.");
+        ContractValidation.OpaqueId(value.DeviceId, "invalid_backend_data");
+        ContractValidation.OpaqueId(value.SelectedFormatId, "invalid_backend_data");
+        ContractValidation.OpaqueId(value.ActiveFormatId, "invalid_backend_data");
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var format in value.Formats)
+        {
+            if (format is null || !ids.Add(format.FormatId))
+                throw new BrokerException("invalid_backend_data", "Spatial sound formats are invalid.");
+            ContractValidation.OpaqueId(format.FormatId, "invalid_backend_data");
+            ContractValidation.DisplayName(format.DisplayName);
+        }
+        if (!ids.Contains(value.SelectedFormatId) || !ids.Contains("off"))
+            throw new BrokerException("invalid_backend_data", "Spatial sound selection is invalid.");
+        return value with { Formats = value.Formats.ToArray() };
     }
 
     internal static AudioInputSummary ValidateInput(AudioInputSummary? input)

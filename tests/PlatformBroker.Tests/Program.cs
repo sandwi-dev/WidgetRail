@@ -17,6 +17,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Master output capability validates payload lifecycle and events", MasterOutputContracts),
     ("Audio device and input permissions are granular opaque and lifecycle-gated", AudioDeviceInputContracts),
     ("Audio device selection requires its own control permission and current opaque device", AudioDeviceSelectionContracts),
+    ("Spatial audio is separately consented validated and lifecycle gated", SpatialAudioContracts),
     ("Network operations switch only opaque saved profiles", NetworkOperationsAreSanitized),
     ("Connection details are separately consented bounded and invalidation-only", NetworkConnectionDetailsContracts),
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
@@ -362,7 +363,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(29, PlatformCapabilities.All.Count);
+    Assert.Equal(31, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -2335,6 +2336,36 @@ static async Task MasterOutputContracts()
     Assert.Contains("0.8", change.Payload.GetRawText());
     Assert.Contains("true", change.Payload.GetRawText());
     await subscription.DisposeAsync();
+}
+
+static async Task SpatialAudioContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var backend = AudioBackend();
+    backend.SpatialAudio = new("output", true, "off", "off", [new("off", "Off"), new("sonic", "Windows Sonic")]);
+    await using var broker = Broker(identity, store, backend, PlatformCapabilities.AudioSpatialReadV1, PlatformCapabilities.AudioSpatialControlV1);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var request = Request(identity, PlatformCapabilities.AudioSpatialControlV1, PlatformCapabilities.AudioSpatialSet,
+        new { deviceId = "output", formatId = "sonic" });
+    Assert.True(!(await broker.HandleAsync(request)).Succeeded);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSpatialControlV1, ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSpatialReadV1, ConsentDecision.Grant);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    Assert.Equal("lifecycle_denied", (await broker.HandleAsync(request)).ErrorCode);
+    var read = await broker.HandleAsync(Request(identity, PlatformCapabilities.AudioSpatialReadV1, PlatformCapabilities.AudioSpatialGet, new { }));
+    Assert.True(read.Succeeded);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    Assert.True((await broker.HandleAsync(request)).Succeeded);
+    Assert.Equal("sonic", backend.SpatialAudio.SelectedFormatId);
+    var bad = await broker.HandleAsync(Request(identity, PlatformCapabilities.AudioSpatialControlV1, PlatformCapabilities.AudioSpatialSet,
+        new { deviceId = "output", formatId = "sonic", nativeDeviceId = "forged" }));
+    Assert.Equal("invalid_payload", bad.ErrorCode);
+    Assert.Equal(1, backend.AudioControlCalls);
+    backend.SpatialAudio = backend.SpatialAudio with { Formats = [new("off", "Off"), new("off", "Duplicate")] };
+    read = await broker.HandleAsync(Request(identity, PlatformCapabilities.AudioSpatialReadV1, PlatformCapabilities.AudioSpatialGet, new { }));
+    Assert.Equal("invalid_backend_data", read.ErrorCode);
 }
 
 static async Task AudioDeviceSelectionContracts()

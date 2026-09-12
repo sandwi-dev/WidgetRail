@@ -47,6 +47,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Master output updates immediately reconciles and rolls back", MasterOutputControls),
     ("Default devices and microphone controls are live controller-native and stable", DeviceAndInputControls),
     ("Device selectors keep confirmed selection focus and safe failure feedback", DeviceSelection),
+    ("Spatial licensing exceptions malformed data and retry leave the mixer alive", SpatialSelectionFailures),
     ("Optional audio stream revocation and completion clear only their own state", OptionalStreamTerminationIsIsolated),
     ("Optional audio startup failures cannot replace the working mixer with an error", OptionalStartupFailureIsIsolated),
     ("Optional permission denial recovers without restarting healthy mixer sections", OptionalPermissionRecoveryIsIndependent),
@@ -249,7 +250,8 @@ static async Task ExplicitFocusGraph()
         ["audio.master.volume.slider", "audio.input.volume.slider", $"{game}.volume.slider", $"{chat}.volume.slider"],
         sliders.Keys);
     Assert.Equal("audio.devices.output.select", sliders["audio.master.volume.slider"].Focus!.Down);
-    Assert.Equal("audio.devices.input.select", Node(snapshot.Root, "audio.devices.output.select").Focus!.Down);
+    Assert.Equal("audio.spatial.retry", Node(snapshot.Root, "audio.devices.output.select").Focus!.Down);
+    Assert.Equal("audio.devices.input.select", Node(snapshot.Root, "audio.spatial.retry").Focus!.Down);
     Assert.Equal("audio.input.volume.slider", Node(snapshot.Root, "audio.devices.input.select").Focus!.Down);
     Assert.Equal("audio.devices.input.select", sliders["audio.input.volume.slider"].Focus!.Up);
     Assert.Equal($"{game}.volume.slider", sliders["audio.input.volume.slider"].Focus!.Down);
@@ -278,6 +280,7 @@ static async Task WholeListFocusRestoration()
     {
         "audio.master.volume.slider",
         "audio.devices.output.select",
+        "audio.spatial.retry",
         "audio.devices.input.select",
         "audio.input.volume.slider",
     };
@@ -815,6 +818,56 @@ static async Task MasterOutputControls()
     await WaitUntil(() => widget.Output!.IsMuted == false);
     Assert.Equal(false, widget.Output!.IsMuted);
     Assert.Contains("permission denied", Text(Snapshot(widget, 5).Root, "audio.status").Text!);
+    await Background(widget);
+}
+
+static async Task SpatialSelectionFailures()
+{
+    var fake = new FakeCapabilityClient { Sessions = [Session("game", "Game", 0.5)],
+        Devices = [new("output", "Speakers", WidgetAudioDeviceDirection.Output, true)],
+        Spatial = new("output", true, "off", "off", [new("off", "Off"), new("sonic", "Windows Sonic"), new("atmos", "Dolby Atmos")]) };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    await WaitUntil(() => Nodes(Snapshot(widget, 1).Root).Any(node => node.Id == "audio.spatial.select"));
+    var initial = Snapshot(widget, 2);
+    Assert.Equal("audio.spatial.select", Node(initial.Root, "audio.devices.output.select").Focus!.Down);
+    foreach (var error in new Exception[] {
+        new WidgetCapabilityException("spatial_license_required", "private-license-details"),
+        new WidgetCapabilityException("spatial_access_denied", "private HRESULT"),
+        new WidgetCapabilityException("spatial_timeout", "private timeout"),
+        new InvalidOperationException("unexpected native private exception"),
+    })
+    {
+        fake.SpatialSetFailure = error;
+        await widget.OnActionAsync(new("spatial.set.output.atmos", "audio.spatial.select"));
+        var failed = Snapshot(widget, 3);
+        Assert.Equal(AudioMixerViewState.Ready, widget.ViewState);
+        Assert.Equal("Off", Node(failed.Root, "audio.spatial.select").AccessibilityValue);
+        Assert.True(Node(failed.Root, "audio.spatial.select").SelectOptions.All(option => !option.IsBusy), "Failure left spatial control busy.");
+        Assert.True(!Nodes(failed.Root).Any(node => node.Text?.Contains("private", StringComparison.Ordinal) == true), "Private details leaked.");
+        Assert.Valid(failed);
+        await widget.OnActionAsync(new("output.volume.set", "audio.master.volume.slider", RequestedValue: 0.6));
+        await widget.DrainCommandWorkersAsync();
+        Assert.Equal(0.6, widget.Output!.Volume);
+    }
+    fake.SpatialSetFailure = null;
+    await widget.OnActionAsync(new("spatial.set.output.sonic", "audio.spatial.select"));
+    Assert.Equal("Windows Sonic", Node(Snapshot(widget, 4).Root, "audio.spatial.select").AccessibilityValue);
+    // A provider/programming error during an optional read stays in that section.
+    fake.SpatialReadFailure = new InvalidOperationException("malformed private response");
+    await widget.OnActionAsync(new("spatial.retry", "audio.spatial.retry"));
+    await WaitUntil(() => Nodes(Snapshot(widget, 5).Root).Any(node => node.Id == "audio.spatial.retry"));
+    Assert.Equal(AudioMixerViewState.Ready, widget.ViewState);
+    fake.SpatialReadFailure = null;
+    fake.Spatial = fake.Spatial! with { Formats = [new("bad id", "Bad")] };
+    await widget.OnActionAsync(new("spatial.retry", "audio.spatial.retry"));
+    await Task.Delay(30);
+    Assert.Valid(Snapshot(widget, 6));
+    Assert.Equal(AudioMixerViewState.Ready, widget.ViewState);
+    fake.Spatial = new("output", true, "off", "off", [new("off", "Off"), new("sonic", "Windows Sonic")]);
+    await widget.OnActionAsync(new("spatial.retry", "audio.spatial.retry"));
+    await WaitUntil(() => Nodes(Snapshot(widget, 7).Root).Any(node => node.Id == "audio.spatial.select"));
+    Assert.Valid(Snapshot(widget, 8));
     await Background(widget);
 }
 
@@ -1408,6 +1461,8 @@ static async Task ShippedAssetsValidate()
         "system.audio.output.control.v1",
         "system.audio.devices.read.v1",
         "system.audio.devices.control.v1",
+        "system.audio.spatial.read.v1",
+        "system.audio.spatial.control.v1",
         "system.audio.input.read.v1",
         "system.audio.input.control.v1",
     ], manifest.OptionalPermissions);
@@ -1791,6 +1846,18 @@ file sealed class FakeCapabilityClient
     }
 
     public WidgetHostServices BuildServices() => new WidgetTestHostServicesBuilder()
+        .WithHandler(WidgetAudioCapabilities.GetSpatial, (request, token) =>
+        {
+            if (SpatialReadFailure is not null) throw SpatialReadFailure;
+            return ValueTask.FromResult(Spatial ?? throw new WidgetCapabilityException("spatial_unavailable", "No fixture"));
+        })
+        .WithHandler(WidgetAudioCapabilities.SetSpatialFormat, (request, token) =>
+        {
+            if (SpatialSetFailure is not null) throw SpatialSetFailure;
+            Spatial = Spatial! with { SelectedFormatId = request.FormatId, ActiveFormatId = request.FormatId };
+            return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+        })
+        .WithEventStream(WidgetAudioCapabilities.SpatialChanged, OpenSpatialStream)
         .WithHandler(WidgetAudioCapabilities.SetDefaultOutputDevice,
             (request, cancellationToken) => InvokeAsync(WidgetAudioCapabilities.SetDefaultOutputDevice, request, cancellationToken))
         .WithHandler(WidgetAudioCapabilities.SetDefaultInputDevice,
@@ -1848,6 +1915,15 @@ file sealed class FakeCapabilityClient
             WidgetAudioCapabilities.InputChanged,
             OpenInputEventStream)
         .Build();
+
+    public WidgetAudioSpatial? Spatial { get; set; }
+    public Exception? SpatialReadFailure { get; set; }
+    public Exception? SpatialSetFailure { get; set; }
+    private IAsyncEnumerable<WidgetAudioSpatialChanged> OpenSpatialStream(CancellationToken cancellationToken)
+    {
+        if (Spatial is null) throw new WidgetCapabilityException("permission_denied", "spatial disabled in fixture");
+        return Channel.CreateUnbounded<WidgetAudioSpatialChanged>().Reader.ReadAllAsync(cancellationToken);
+    }
 
     public List<string> DeviceRequests { get; } = [];
 

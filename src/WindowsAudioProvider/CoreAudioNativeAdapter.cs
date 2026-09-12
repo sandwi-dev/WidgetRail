@@ -46,10 +46,12 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
     private int _devicesDirty = 1;
     private IReadOnlyList<NativeAudioDeviceSnapshot> _cachedDevices = [];
     private int _disposed;
+    private readonly WindowsSpatialAudioAdapter _spatial;
     internal string? DeviceListDiagnostic { get; private set; }
 
     public CoreAudioNativeAdapter()
     {
+        _spatial = new WindowsSpatialAudioAdapter(InvalidateAudioTopology);
         _deviceEnumerator = (IMMDeviceEnumerator)(object)new MMDeviceEnumeratorComObject();
         _endpointNotifications = new EndpointNotificationClient(InvalidateAudioTopology);
         CoreAudioInterop.ThrowIfFailed(
@@ -264,6 +266,10 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
         }
         return true;
     }
+
+    public NativeSpatialAudioSnapshot? GetSpatialAudio() => _spatial.Read(GetDefaultDeviceId(EDataFlow.Render));
+    public string SetSpatialFormat(string nativeDeviceKey, string formatId) =>
+        _spatial.Set(nativeDeviceKey, formatId, () => GetDefaultDeviceId(EDataFlow.Render));
 
     public bool TrySetDefaultDevice(string nativeDeviceKey, NativeAudioDeviceDirection direction)
     {
@@ -722,6 +728,7 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
         catch (COMException) { }
         _createdSessions.DrainAll(CoreAudioInterop.ReleasePointer);
         while (_disconnectedSessions.TryDequeue(out _)) { }
+        _spatial.Dispose();
         CoreAudioInterop.ReleaseFinal(_deviceEnumerator);
     }
 

@@ -33,6 +33,10 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
             FullMode = BoundedChannelFullMode.DropOldest,
             AllowSynchronousContinuations = false,
         });
+    private readonly Channel<AudioSpatialChangedEvent> _spatialEvents = Channel.CreateBounded<AudioSpatialChangedEvent>(
+        new BoundedChannelOptions(1) { SingleReader = true, SingleWriter = true,
+            FullMode = BoundedChannelFullMode.DropOldest, AllowSynchronousContinuations = false });
+    private AudioSpatialSummary? _spatial;
     private readonly Channel<AudioDevicesChangedEvent> _deviceEvents = Channel.CreateBounded<AudioDevicesChangedEvent>(
         new BoundedChannelOptions(1)
         {
@@ -217,6 +221,19 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
             new ControlCommand(null, AudioControlTarget.Input, null, isMuted, cancellationToken), cancellationToken)
             .ConfigureAwait(false);
 
+    public async Task<AudioSpatialSummary> GetAudioSpatialAsync(CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        await _ready.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        ThrowIfDisposed();
+        if (_spatial is null && !_ownerUnavailable)
+            await EnqueueRetryRefreshAsync(cancellationToken).ConfigureAwait(false);
+        lock (_stateGate) return _spatial ?? throw new BrokerException("spatial_unavailable", "Spatial sound is temporarily unavailable.");
+    }
+    public Task SetAudioSpatialFormatAsync(string deviceId, string formatId, CancellationToken cancellationToken) =>
+        EnqueueControlAsync(new ControlCommand(deviceId, AudioControlTarget.Spatial, null, null, cancellationToken)
+            { FormatId = formatId }, cancellationToken);
+
     public Task SetDefaultAudioOutputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>
         EnqueueControlAsync(new ControlCommand(deviceId, AudioControlTarget.OutputDevice, null, null, cancellationToken), cancellationToken);
 
@@ -310,6 +327,7 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
             _events.Writer.TryComplete();
             _outputEvents.Writer.TryComplete();
             _deviceEvents.Writer.TryComplete();
+            _spatialEvents.Writer.TryComplete();
             _inputEvents.Writer.TryComplete();
             _ready.TrySetResult();
             _threadExited.TrySetResult();
@@ -325,7 +343,7 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
             if (_started != 0) return;
             _eventPump = Task.WhenAll(
                 DispatchEventsAsync(), DispatchOutputEventsAsync(),
-                DispatchDeviceEventsAsync(), DispatchInputEventsAsync());
+                DispatchDeviceEventsAsync(), DispatchInputEventsAsync(), DispatchSpatialEventsAsync());
             _ownerThread = new Thread(OwnerThreadMain)
             {
                 IsBackground = true,
@@ -351,8 +369,48 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
         }
     }
 
+    private void ExecuteSpatialControl(IWindowsAudioNativeAdapter adapter, ControlCommand command)
+    {
+        try
+        {
+            command.CancellationToken.ThrowIfCancellationRequested();
+            Refresh(adapter, publish: true);
+            NativeAudioDeviceSnapshot device;
+            lock (_stateGate)
+            {
+                if (_spatial is null || _spatial.DeviceId != command.SessionId || command.SessionId is null ||
+                    !_deviceKeysByOpaqueId.TryGetValue(command.SessionId, out device!) ||
+                    device.Direction != NativeAudioDeviceDirection.Output || !device.IsDefault)
+                    throw new BrokerException("resource_not_found", "The output device changed. Please try again.");
+                if (command.FormatId == "other" || !_spatial.Formats.Any(format => format.FormatId == command.FormatId))
+                    throw new BrokerException("spatial_not_supported", "This spatial format is unavailable.");
+            }
+            command.CancellationToken.ThrowIfCancellationRequested();
+            var result = adapter.SetSpatialFormat(device.NativeDeviceKey, command.FormatId!);
+            Refresh(adapter, publish: true);
+            if (result != "ok") throw new BrokerException(result, "Windows could not apply this spatial sound format.");
+            lock (_stateGate)
+                if (_spatial?.DeviceId != command.SessionId || _spatial.SelectedFormatId != command.FormatId)
+                    throw new BrokerException("spatial_unconfirmed", "Spatial sound selection could not be confirmed.");
+            command.Completion.TrySetResult();
+        }
+        catch (OperationCanceledException) when (command.CancellationToken.IsCancellationRequested)
+        { command.Completion.TrySetCanceled(command.CancellationToken); }
+        catch (BrokerException error) { command.Completion.TrySetException(error); }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            // A faulty optional provider must not poison master/session state.
+            command.Completion.TrySetException(new BrokerException("spatial_unavailable", "Spatial sound is temporarily unavailable."));
+        }
+    }
+
     private void ExecuteControl(IWindowsAudioNativeAdapter adapter, ControlCommand command)
     {
+        if (command.Target == AudioControlTarget.Spatial)
+        {
+            ExecuteSpatialControl(adapter, command);
+            return;
+        }
         if (command.CancellationToken.IsCancellationRequested)
         {
             command.Completion.TrySetCanceled(command.CancellationToken);
@@ -549,6 +607,18 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
             var inputUnavailable = inputReadFailed || adapter.IsInputDegraded || input is null;
             var sessionsChanged = false;
             var outputChanged = false;
+            AudioSpatialSummary? spatial = null;
+            try
+            {
+                var native = adapter.GetSpatialAudio();
+                var outputDevice = devices.FirstOrDefault(device => device.Direction == AudioDeviceDirection.Output && device.IsDefault);
+                if (native is not null && outputDevice is not null && !devicesUnavailable &&
+                    deviceKeys.TryGetValue(outputDevice.DeviceId, out var endpoint) && endpoint.NativeDeviceKey == native.NativeDeviceKey)
+                    spatial = new AudioSpatialSummary(outputDevice.DeviceId, native.IsSupported,
+                        native.SelectedFormatId, native.ActiveFormatId, native.Formats.ToArray());
+            }
+            catch (Exception error) when (error is not OutOfMemoryException) { }
+            var spatialChanged = false;
             var devicesChanged = false;
             var inputChanged = false;
             lock (_stateGate)
@@ -560,6 +630,8 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
                 devicesChanged = !DevicesEqual(_devices, devices) ||
                     _devicesUnavailable != devicesUnavailable;
                 inputChanged = _input != input || _inputUnavailable != inputUnavailable;
+                spatialChanged = !SpatialEqual(_spatial, spatial);
+                _spatial = spatial;
                 _sessions = summaries.ToArray();
                 _nativeKeysByOpaqueId = reverse;
                 _output = output;
@@ -579,6 +651,7 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
             _outputUnavailable = outputUnavailable;
             _devicesUnavailable = devicesUnavailable;
             _inputUnavailable = inputUnavailable;
+            if (publish && spatialChanged) _spatialEvents.Writer.TryWrite(new(spatial, spatial is not null));
             if (publish && sessionsChanged)
                 _events.Writer.TryWrite(new AudioSessionsChangedEvent(
                     unavailable ? [] : summaries.ToArray(), !unavailable));
@@ -613,6 +686,8 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
             _sessions = [];
             _nativeKeysByOpaqueId = new Dictionary<string, string>(StringComparer.Ordinal);
             _output = null;
+            _spatial = null;
+            _spatialEvents.Writer.TryWrite(new(null, false));
             _devices = [];
             _deviceKeysByOpaqueId = new Dictionary<string, NativeAudioDeviceSnapshot>(StringComparer.Ordinal);
             _outputDeviceGeneration++;
@@ -668,6 +743,17 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
                 catch { }
             }
         }
+    }
+
+    private static bool SpatialEqual(AudioSpatialSummary? a, AudioSpatialSummary? b) =>
+        ReferenceEquals(a, b) || a is not null && b is not null && a.DeviceId == b.DeviceId &&
+        a.IsSupported == b.IsSupported && a.SelectedFormatId == b.SelectedFormatId && a.ActiveFormatId == b.ActiveFormatId &&
+        a.Formats.SequenceEqual(b.Formats);
+
+    private async Task DispatchSpatialEventsAsync()
+    {
+        await foreach (var change in _spatialEvents.Reader.ReadAllAsync().ConfigureAwait(false))
+            PublishEvent(PlatformCapabilities.AudioSpatialReadV1, PlatformCapabilities.AudioSpatialChanged, change);
     }
 
     private async Task DispatchDeviceEventsAsync()
@@ -770,6 +856,7 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
                 _events.Writer.TryComplete();
                 _outputEvents.Writer.TryComplete();
                 _deviceEvents.Writer.TryComplete();
+                _spatialEvents.Writer.TryComplete();
                 _inputEvents.Writer.TryComplete();
                 _ready.TrySetResult();
                 _threadExited.TrySetResult();
@@ -804,6 +891,7 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
         public TaskCompletionSource Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         public long DeviceGeneration { get; set; }
+        public string? FormatId { get; init; }
     }
 
     private enum AudioControlTarget
@@ -811,6 +899,7 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
         Session,
         Output,
         Input,
+        Spatial,
         OutputDevice,
         InputDevice,
     }

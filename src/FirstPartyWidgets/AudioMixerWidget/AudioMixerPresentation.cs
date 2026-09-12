@@ -10,6 +10,7 @@ internal enum AudioMixerPreferredFocusTarget
     Session,
     OutputDevice,
     InputDevice,
+    Spatial,
 }
 
 internal sealed record AudioMixerSessionPresentation(
@@ -30,7 +31,11 @@ internal sealed record AudioMixerPresentationState(
     string? SelectedSessionId,
     string Status,
     bool StatusIsError,
-    bool DeviceSwitchPending = false);
+    bool DeviceSwitchPending = false,
+    WidgetAudioSpatial? Spatial = null,
+    AudioOptionalSectionState SpatialState = AudioOptionalSectionState.Initial,
+    bool SpatialPending = false,
+    string? SpatialFeedback = null);
 
 internal static class AudioMixerPresentation
 {
@@ -79,10 +84,14 @@ internal static class AudioMixerPresentation
             ? "audio.devices.output.select" : null;
         var inputDeviceId = state.Devices.Any(device => device.Direction == WidgetAudioDeviceDirection.Input)
             ? "audio.devices.input.select" : null;
-        var lastDeviceId = inputDeviceId ?? outputDeviceId ?? deviceRetryId;
+        var currentOutputId = state.Devices.FirstOrDefault(device => device.Direction == WidgetAudioDeviceDirection.Output && device.IsDefault)?.DeviceId;
+        var spatial = state.Spatial?.DeviceId == currentOutputId ? state.Spatial : null;
+        var spatialId = outputDeviceId is null ? null : spatial is not null ? "audio.spatial.select" : "audio.spatial.retry";
+        var lastDeviceId = inputDeviceId ?? spatialId ?? outputDeviceId ?? deviceRetryId;
         var firstFocusAfterMaster = outputDeviceId ?? inputDeviceId ?? deviceRetryId ?? inputFocusId ?? firstSessionFocusId ?? "audio.retry";
         var initialFocusId = state.PreferredFocusTarget switch
         {
+            AudioMixerPreferredFocusTarget.Spatial when spatialId is not null => spatialId,
             AudioMixerPreferredFocusTarget.OutputDevice when outputDeviceId is not null => outputDeviceId,
             AudioMixerPreferredFocusTarget.InputDevice when inputDeviceId is not null => inputDeviceId,
             AudioMixerPreferredFocusTarget.Microphone when state.Input is not null => "audio.input.volume.slider",
@@ -133,9 +142,11 @@ internal static class AudioMixerPresentation
         {
             supplemental.Add(UI.Stack("audio.devices.card",
                     DeviceSelector(state, WidgetAudioDeviceDirection.Output, "Output device",
-                        "audio.master.volume.slider", inputDeviceId ?? inputFocusId ?? firstSessionFocusId ?? "audio.retry"),
+                        "audio.master.volume.slider", spatialId ?? inputDeviceId ?? inputFocusId ?? firstSessionFocusId ?? "audio.retry"),
+                    SpatialControl(state, spatial, outputDeviceId,
+                        inputDeviceId ?? inputFocusId ?? firstSessionFocusId ?? "audio.retry"),
                     DeviceSelector(state, WidgetAudioDeviceDirection.Input, "Microphone",
-                        outputDeviceId ?? "audio.master.volume.slider", inputFocusId ?? firstSessionFocusId ?? "audio.retry"),
+                        spatialId ?? outputDeviceId ?? "audio.master.volume.slider", inputFocusId ?? firstSessionFocusId ?? "audio.retry"),
                     UI.Text("Apps with their own device setting may need to be updated or restarted.",
                         "audio.devices.help").Classes("audio-help", "is-neutral"))
                 .Classes("audio-device-card"));
@@ -320,6 +331,42 @@ internal static class AudioMixerPresentation
             .Classes("audio-session-card", isPending ? "is-pending" : "is-ready");
     }
 
+    private static WidgetElement SpatialControl(AudioMixerPresentationState state, WidgetAudioSpatial? spatial,
+        string? outputId, string down)
+    {
+        if (outputId is null) return UI.Text("Connect an output device to configure spatial sound.", "audio.spatial.unavailable").Classes("audio-help");
+        var children = new List<WidgetElement>();
+        if (spatial is not null)
+        {
+            children.Add(UI.Select("Spatial sound", spatial.Formats.Select(format => new SelectOption(
+                format.FormatId, format.DisplayName, $"spatial.set.{spatial.DeviceId}.{format.FormatId}",
+                IsSelected: format.FormatId == spatial.SelectedFormatId,
+                IsDisabled: format.FormatId == "other" || (!spatial.IsSupported && format.FormatId != "off"),
+                IsBusy: state.SpatialPending || state.DeviceSwitchPending)).ToArray(), "audio.spatial.select")
+                .FocusUp(outputId).FocusDown(down).Classes("audio-device-selector"));
+            if (spatial.ActiveFormatId != spatial.SelectedFormatId)
+            {
+                var active = spatial.Formats.FirstOrDefault(format => format.FormatId == spatial.ActiveFormatId)?.DisplayName ?? "another format";
+                children.Add(UI.Text($"Currently active: {active}", "audio.spatial.active").Classes("audio-help"));
+            }
+            if (!spatial.IsSupported) children.Add(UI.Text("Spatial sound isn't supported by this output.", "audio.spatial.unsupported").Classes("audio-help"));
+        }
+        else
+        {
+            var copy = state.SpatialState is AudioOptionalSectionState.PermissionDenied or AudioOptionalSectionState.Revoked
+                ? "Allow spatial sound information in Audio Mixer permissions, then check again."
+                : state.SpatialState is AudioOptionalSectionState.Initial or AudioOptionalSectionState.Loading
+                    ? "Loading spatial sound…"
+                    : "Spatial sound information is unavailable. Other audio controls still work.";
+            children.Add(UI.Text(copy, "audio.spatial.help").Classes("audio-help"));
+            children.Add(UI.Button("Check spatial sound", "spatial.retry", "audio.spatial.retry")
+                .FocusUp(outputId).FocusDown(down).Classes("audio-retry-action"));
+        }
+        if (state.SpatialFeedback is { Length: > 0 } feedback)
+            children.Add(UI.Text(feedback, "audio.spatial.feedback").Classes("audio-help"));
+        return UI.Stack("audio.spatial.card", children.ToArray()).Classes("audio-device-copy");
+    }
+
     private static WidgetElement DeviceSelector(AudioMixerPresentationState state,
         WidgetAudioDeviceDirection direction, string label, string up, string down)
     {
@@ -328,7 +375,7 @@ internal static class AudioMixerPresentation
         var selected = devices.FirstOrDefault(device => device.IsDefault)?.DeviceId;
         var options = devices.Take(selected is null ? 127 : 128).Select(device => new SelectOption(
             device.DeviceId, device.DisplayName, $"device.{suffix}.{device.DeviceId}",
-            IsSelected: device.DeviceId == selected, IsBusy: state.DeviceSwitchPending)).ToList();
+            IsSelected: device.DeviceId == selected, IsBusy: state.DeviceSwitchPending || state.SpatialPending)).ToList();
         if (selected is null)
             options.Insert(0, new SelectOption($"device.{suffix}.none", devices.Length == 0 ? "No device connected" : "Choose a device",
                 $"device.{suffix}.none", IsSelected: true, IsDisabled: true));

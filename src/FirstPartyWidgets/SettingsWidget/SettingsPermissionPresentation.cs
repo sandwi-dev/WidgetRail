@@ -409,6 +409,8 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.AudioOutputReadV1 => "Read master output state",
         PlatformCapabilities.AudioOutputControlV1 => "Control master output",
         PlatformCapabilities.AudioDevicesReadV1 => "Read audio device names",
+        PlatformCapabilities.AudioSpatialReadV1 => "Read spatial sound settings",
+        PlatformCapabilities.AudioSpatialControlV1 => "Change spatial sound",
         PlatformCapabilities.AudioDevicesControlV1 => "Change speakers and microphone",
         PlatformCapabilities.AudioInputReadV1 => "Read microphone level",
         PlatformCapabilities.AudioInputControlV1 => "Control microphone level",
@@ -453,6 +455,8 @@ internal static class SettingsPermissionPresentation
             "See volume and mute for the current default multimedia output; no device identity.",
         PlatformCapabilities.AudioOutputControlV1 =>
             "Change master volume or mute for the current default multimedia output while interactive. It cannot switch devices.",
+        PlatformCapabilities.AudioSpatialReadV1 => "See the current spatial sound format and formats supported by your output device.",
+        PlatformCapabilities.AudioSpatialControlV1 => "Choose spatial sound for your output device. Some formats require a separate license.",
         PlatformCapabilities.AudioDevicesControlV1 =>
             "Choose the speakers, headphones, or microphone Windows uses by default. Devices used specifically for calls stay unchanged.",
         PlatformCapabilities.AudioDevicesReadV1 =>

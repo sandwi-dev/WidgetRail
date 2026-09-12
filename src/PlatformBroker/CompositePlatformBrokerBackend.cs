@@ -67,6 +67,10 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     public Task<IReadOnlyList<AudioDeviceSummary>> GetAudioDevicesAsync(
         CancellationToken cancellationToken) => _audio.GetAudioDevicesAsync(cancellationToken);
 
+    public Task<AudioSpatialSummary> GetAudioSpatialAsync(CancellationToken cancellationToken) =>
+        _audio.GetAudioSpatialAsync(cancellationToken);
+    public Task SetAudioSpatialFormatAsync(string deviceId, string formatId, CancellationToken cancellationToken) =>
+        _audio.SetAudioSpatialFormatAsync(deviceId, formatId, cancellationToken);
     public Task SetDefaultAudioOutputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>
         _audio.SetDefaultAudioOutputDeviceAsync(deviceId, cancellationToken);
     public Task SetDefaultAudioInputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>
@@ -250,6 +254,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     {
         if (platformEvent.CapabilityId is PlatformCapabilities.AudioSessionsReadV1 or
             PlatformCapabilities.AudioOutputReadV1 or
+            PlatformCapabilities.AudioSpatialReadV1 or
             PlatformCapabilities.AudioDevicesReadV1 or
             PlatformCapabilities.AudioInputReadV1)
             EventPublished?.Invoke(this, platformEvent);

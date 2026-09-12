@@ -151,6 +151,12 @@ public sealed record WidgetAudioDevice(
     [property: JsonRequired] WidgetAudioDeviceDirection Direction,
     [property: JsonRequired] bool IsDefault);
 
+public sealed record WidgetAudioSpatialFormat(string FormatId, string DisplayName);
+public sealed record WidgetAudioSpatial(string DeviceId, bool IsSupported, string SelectedFormatId,
+    string ActiveFormatId, IReadOnlyList<WidgetAudioSpatialFormat> Formats);
+public sealed record WidgetAudioSpatialChanged(WidgetAudioSpatial? Spatial, bool IsAvailable = true);
+public sealed record SetWidgetAudioSpatialFormatRequest(string DeviceId, string FormatId);
+
 public sealed record SetDefaultWidgetAudioDeviceRequest([property: JsonRequired] string DeviceId);
 
 public sealed record WidgetAudioDevicesChanged(
@@ -761,6 +767,13 @@ public static class WidgetAudioCapabilities
     public static WidgetCapabilityOperation<SetDefaultWidgetAudioDeviceRequest, WidgetCapabilityAcknowledgement>
         SetDefaultInputDevice { get; } = new("system.audio.devices.control.v1", "audio.devices.set-default-input");
 
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery, WidgetAudioSpatial>
+        GetSpatial { get; } = new("system.audio.spatial.read.v1", "audio.spatial.get");
+    public static WidgetCapabilityOperation<SetWidgetAudioSpatialFormatRequest, WidgetCapabilityAcknowledgement>
+        SetSpatialFormat { get; } = new("system.audio.spatial.control.v1", "audio.spatial.set-format");
+    public static WidgetCapabilityEvent<WidgetAudioSpatialChanged> SpatialChanged { get; } =
+        new("system.audio.spatial.read.v1", "audio.spatial.changed");
+
     public static WidgetCapabilityEvent<WidgetAudioDevicesChanged> DevicesChanged { get; } =
         new("system.audio.devices.read.v1", "audio.devices.changed");
 
@@ -974,6 +987,18 @@ public sealed class WidgetAudioService
     public ValueTask<IReadOnlyList<WidgetAudioDevice>> GetDevicesAsync(
         CancellationToken cancellationToken = default) =>
         _client.InvokeAsync(WidgetAudioCapabilities.GetDevices, new WidgetCapabilityQuery(), cancellationToken);
+
+    public ValueTask<WidgetAudioSpatial> GetSpatialAsync(CancellationToken cancellationToken = default) =>
+        _client.InvokeAsync(WidgetAudioCapabilities.GetSpatial, new WidgetCapabilityQuery(), cancellationToken);
+    public ValueTask<IWidgetCapabilitySubscription<WidgetAudioSpatialChanged>> OpenSpatialSubscriptionAsync(
+        CancellationToken cancellationToken = default) =>
+        _client.OpenSubscriptionAsync(WidgetAudioCapabilities.SpatialChanged, cancellationToken);
+    public async ValueTask SetSpatialFormatAsync(string deviceId, string formatId, CancellationToken cancellationToken = default)
+    {
+        var response = await _client.InvokeAsync(WidgetAudioCapabilities.SetSpatialFormat,
+            new SetWidgetAudioSpatialFormatRequest(deviceId, formatId), cancellationToken).ConfigureAwait(false);
+        DemandAcknowledged(response);
+    }
 
     public async ValueTask SetDefaultOutputDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
     {

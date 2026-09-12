@@ -36,6 +36,9 @@ public sealed record NativeAudioInputSnapshot(
 /// Test seam around Core Audio. StateChanged may be raised from an arbitrary native callback
 /// thread and must contain no platform data; all other members are MTA-owner-thread only.
 /// </summary>
+public sealed record NativeSpatialAudioSnapshot(string NativeDeviceKey, bool IsSupported,
+    string SelectedFormatId, string ActiveFormatId, IReadOnlyList<WidgetRail.PlatformBroker.AudioSpatialFormat> Formats);
+
 public interface IWindowsAudioNativeAdapter : IDisposable
 {
     event EventHandler? StateChanged;
@@ -60,6 +63,8 @@ public interface IWindowsAudioNativeAdapter : IDisposable
     bool TrySetDefaultOutputMuted(bool isMuted);
     bool TrySetDefaultInputVolume(double volume);
     bool TrySetDefaultInputMuted(bool isMuted);
+    NativeSpatialAudioSnapshot? GetSpatialAudio() => null;
+    string SetSpatialFormat(string nativeDeviceKey, string formatId) => "spatial_unavailable";
     bool TrySetDefaultDevice(string nativeDeviceKey, NativeAudioDeviceDirection direction) => false;
 }
 

@@ -57,6 +57,11 @@ public sealed class AudioMixerWidget : Widget
     private string _status = "Audio sessions load when this widget becomes visible";
     private bool _statusIsError;
     private bool _deviceSwitchPending;
+    private WidgetAudioSpatial? _spatial;
+    private AudioOptionalSectionState _spatialState = AudioOptionalSectionState.Initial;
+    private bool _spatialPending;
+    private string? _spatialFeedback;
+    private string? _spatialFeedbackDevice;
     private string? _deviceFeedback;
     private bool _deviceFeedbackError;
     private WidgetAudioDevice? _deviceFeedbackTarget;
@@ -155,7 +160,7 @@ public sealed class AudioMixerWidget : Widget
                 _selectedSessionId,
                 _deviceFeedback ?? _status,
                 _deviceFeedback is not null ? _deviceFeedbackError : _statusIsError,
-                _deviceSwitchPending);
+                _deviceSwitchPending, _spatial, _spatialState, _spatialPending, _spatialFeedback);
         }
 
         return AudioMixerPresentation.Render(state);
@@ -184,9 +189,19 @@ public sealed class AudioMixerWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         lock (_stateLock)
         {
-            if (_deviceSwitchPending) return;
+            if (_deviceSwitchPending || _spatialPending) return;
             _deviceFeedback = null;
             _deviceFeedbackTarget = null;
+        }
+        if (action.ActionId == "spatial.retry")
+        {
+            lock (_stateLock) { _spatialFeedback = null; _providerSession?.Retry(AudioMixerProviderSection.Spatial); }
+            return;
+        }
+        if (action.ActionId.StartsWith("spatial.set.", StringComparison.Ordinal))
+        {
+            await SetSpatialAsync(action.ActionId, cancellationToken).ConfigureAwait(false);
+            return;
         }
         foreach (var (prefix, direction) in new[]
         {
@@ -253,6 +268,99 @@ public sealed class AudioMixerWidget : Widget
         cancellationToken.ThrowIfCancellationRequested();
         RememberFocusedControl(input);
         return base.OnControllerInputAsync(input, cancellationToken);
+    }
+
+    private async ValueTask SetSpatialAsync(string actionId, CancellationToken cancellationToken)
+    {
+        WidgetAudioSpatial spatial;
+        WidgetAudioSpatialFormat format;
+        long generation;
+        lock (_stateLock)
+        {
+            if (_spatial is null || _spatialPending || _deviceSwitchPending ||
+                !_devices.Any(device => device.IsDefault && device.Direction == WidgetAudioDeviceDirection.Output && device.DeviceId == _spatial.DeviceId)) return;
+            spatial = _spatial;
+            var selected = spatial.Formats.FirstOrDefault(value => value.FormatId != "other" &&
+                actionId == $"spatial.set.{spatial.DeviceId}.{value.FormatId}");
+            if (selected is null) return;
+            format = selected;
+            generation = _runGeneration;
+            _spatialPending = true;
+            _spatialFeedback = $"Applying {format.DisplayName}…";
+            _spatialFeedbackDevice = spatial.DeviceId;
+            _preferredFocusTarget = AudioMixerPreferredFocusTarget.Spatial;
+        }
+        Invalidate();
+        try
+        {
+            await DrainCommandWorkersAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            await HostServices.Audio.SetSpatialFormatAsync(spatial.DeviceId, format.FormatId, cancellationToken).ConfigureAwait(false);
+            var confirmed = await HostServices.Audio.GetSpatialAsync(cancellationToken).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                if (generation != _runGeneration) return;
+                ApplySpatialLocked(confirmed);
+                _spatialFeedback = _spatial?.DeviceId == spatial.DeviceId && _spatial.SelectedFormatId == format.FormatId
+                    ? null : "The output changed. Check the current spatial sound setting.";
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            lock (_stateLock)
+                if (generation == _runGeneration)
+                    _spatialFeedback = SpatialFailureMessage(error);
+            // The setter may have changed Windows before a timeout/failure.
+            // Re-query once, never retry the mutation; failure stays local.
+            try
+            {
+                var current = await HostServices.Audio.GetSpatialAsync(cancellationToken).ConfigureAwait(false);
+                lock (_stateLock) if (generation == _runGeneration) ApplySpatialLocked(current);
+            }
+            catch (Exception refreshError) when (refreshError is not OutOfMemoryException) { }
+        }
+        finally
+        {
+            lock (_stateLock) if (generation == _runGeneration) _spatialPending = false;
+            Invalidate();
+        }
+    }
+
+    internal static string SpatialFailureMessage(Exception error) =>
+        (error as WidgetCapabilityException)?.ErrorCode switch
+        {
+            "permission_denied" or "capability_revoked" => "Allow spatial sound control in Audio Mixer permissions, then try again.",
+            "spatial_license_required" => "This format isn't licensed for this output. Set it up in its audio app, or choose Windows Sonic.",
+            "spatial_license_expired" => "The license for this format has expired. Check its audio app, or choose another format.",
+            "spatial_access_denied" => "Windows didn't allow this change. Choose the format in Windows sound settings.",
+            "spatial_not_supported" => "This format isn't available for this output. Choose another format.",
+            "resource_not_found" => "The output device changed or disconnected. Choose a format for the current output.",
+            "spatial_timeout" or "spatial_unconfirmed" => "Windows hasn't confirmed the change. Check the current setting before trying again.",
+            _ => "Spatial sound couldn't be changed. Your other audio controls are still available.",
+        };
+
+    private void ApplySpatialLocked(WidgetAudioSpatial spatial)
+    {
+        // Optional provider data must never throw during Render.
+        if (spatial is null || string.IsNullOrWhiteSpace(spatial.DeviceId) || spatial.DeviceId.Length > 64 ||
+            spatial.DeviceId.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not ('-' or '_' or '.')) ||
+            spatial.Formats is null || spatial.Formats.Count is < 1 or > 16 ||
+            spatial.Formats.Any(value => value is null || string.IsNullOrWhiteSpace(value.FormatId) ||
+                value.FormatId.Length > 40 || value.FormatId.Any(character => !char.IsAsciiLetterOrDigit(character) && character != '-') ||
+                string.IsNullOrWhiteSpace(value.DisplayName) || value.DisplayName.Length > 100 || value.DisplayName.Any(char.IsControl)) ||
+            spatial.Formats.Select(value => value.FormatId).Distinct(StringComparer.Ordinal).Count() != spatial.Formats.Count ||
+            !spatial.Formats.Any(value => value.FormatId == spatial.SelectedFormatId))
+        {
+            _spatial = null;
+            _spatialState = AudioOptionalSectionState.Unavailable;
+            return;
+        }
+        if ((_spatialFeedbackDevice is not null && _spatialFeedbackDevice != spatial.DeviceId) ||
+            (!_spatialPending && _spatial is not null && _spatial.SelectedFormatId != spatial.SelectedFormatId))
+            _spatialFeedback = null;
+        _spatial = spatial with { Formats = spatial.Formats.ToArray() };
+        _spatialState = AudioOptionalSectionState.Healthy;
     }
 
     private async ValueTask SwitchDeviceAsync(string deviceId, WidgetAudioDeviceDirection direction,
@@ -350,6 +458,11 @@ public sealed class AudioMixerWidget : Widget
 
         lock (_stateLock)
         {
+            if (focusedId is "audio.spatial.select" or "audio.spatial.retry")
+            {
+                _preferredFocusTarget = AudioMixerPreferredFocusTarget.Spatial;
+                return;
+            }
             if (focusedId is "audio.devices.output.select" or "audio.devices.input.select")
             {
                 _preferredFocusTarget = focusedId == "audio.devices.output.select"
@@ -399,6 +512,11 @@ public sealed class AudioMixerWidget : Widget
             _input = null;
             _deviceState = AudioOptionalSectionState.Loading;
             _inputState = AudioOptionalSectionState.Loading;
+            _spatial = null;
+            _spatialState = AudioOptionalSectionState.Loading;
+            _spatialPending = false;
+            _spatialFeedback = null;
+            _spatialFeedbackDevice = null;
         }
         Invalidate();
         if (previous is not null)
@@ -426,6 +544,10 @@ public sealed class AudioMixerWidget : Widget
         {
             ++_runGeneration;
             _deviceSwitchPending = false;
+            _spatialPending = false;
+            _spatial = null;
+            _spatialState = AudioOptionalSectionState.Initial;
+            _spatialFeedback = null;
             _deviceFeedback = null;
             _deviceFeedbackTarget = null;
             session = _providerSession;
@@ -482,6 +604,14 @@ public sealed class AudioMixerWidget : Widget
             case AudioMixerProviderObservationKind.DevicesFailed:
                 SetOptionalFailure(AudioMixerProviderSection.Devices,
                     observation.OptionalState, session);
+                break;
+            case AudioMixerProviderObservationKind.SpatialChanged:
+                lock (_stateLock) ApplySpatialLocked(observation.Spatial!);
+                Invalidate();
+                break;
+            case AudioMixerProviderObservationKind.SpatialFailed:
+                lock (_stateLock) { _spatial = null; _spatialState = observation.OptionalState; }
+                Invalidate();
                 break;
             case AudioMixerProviderObservationKind.InputLoading:
                 SetOptionalLoading(AudioMixerProviderSection.Input, session);

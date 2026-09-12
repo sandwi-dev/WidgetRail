@@ -35,6 +35,8 @@ The current closed capability set is:
 | `system.audio.output.control.v1` | `SetOutputVolumeAsync` and `SetOutputMutedAsync` | Interactive, or one exact declared dashboard gesture while Visible |
 | `system.audio.devices.read.v1` | `GetDevicesAsync`, `OpenDevicesSubscriptionAsync`, and `WatchDevicesAsync`; sanitized input/output names and default markers only | Visible or Interactive |
 | `system.audio.devices.control.v1` | `SetDefaultOutputDeviceAsync` and `SetDefaultInputDeviceAsync`; choose a currently enumerated opaque device for normal Console/Multimedia roles, preserving communications | Interactive only |
+| `system.audio.spatial.read.v1` | `GetSpatialAsync`, `OpenSpatialSubscriptionAsync`; confirmed default/active formats and supported choices for current output | Visible or Interactive |
+| `system.audio.spatial.control.v1` | `SetSpatialFormatAsync(deviceId, formatId)`; choose a supported spatial format for the same output, subject to Windows licensing | Interactive only |
 | `system.audio.input.read.v1` | `GetInputAsync`, `OpenInputSubscriptionAsync`, and `WatchInputAsync` for current default microphone volume/mute | Visible or Interactive |
 | `system.audio.input.control.v1` | `SetInputVolumeAsync` and `SetInputMutedAsync` for the current default microphone | Interactive only |
 | `system.network.read.v1` | `HostServices.Network.GetStatusAsync`, `GetSavedProfilesAsync`, `OpenStatusSubscriptionAsync`, and `WatchStatusAsync` | Visible or Interactive |

@@ -54,6 +54,11 @@ public static class PlatformCapabilities
     public const string AudioOutputReadV1 = "system.audio.output.read.v1";
     public const string AudioOutputControlV1 = "system.audio.output.control.v1";
     public const string AudioDevicesReadV1 = "system.audio.devices.read.v1";
+    public const string AudioSpatialReadV1 = "system.audio.spatial.read.v1";
+    public const string AudioSpatialControlV1 = "system.audio.spatial.control.v1";
+    public const string AudioSpatialGet = "audio.spatial.get";
+    public const string AudioSpatialSet = "audio.spatial.set-format";
+    public const string AudioSpatialChanged = "audio.spatial.changed";
     public const string AudioDevicesControlV1 = "system.audio.devices.control.v1";
     public const string AudioInputReadV1 = "system.audio.input.read.v1";
     public const string AudioInputControlV1 = "system.audio.input.control.v1";
@@ -157,6 +162,10 @@ public static class PlatformCapabilities
                 AllowsDashboardGesture: true),
             [AudioDevicesReadV1] = new(AudioDevicesReadV1, 1, BrokerCapabilityKind.Read,
                 Set(AudioDevicesList), Set(AudioDevicesChanged)),
+            [AudioSpatialReadV1] = new(AudioSpatialReadV1, 1, BrokerCapabilityKind.Read,
+                Set(AudioSpatialGet), Set(AudioSpatialChanged)),
+            [AudioSpatialControlV1] = new(AudioSpatialControlV1, 1, BrokerCapabilityKind.Control,
+                Set(AudioSpatialSet), Set()),
             [AudioDevicesControlV1] = new(AudioDevicesControlV1, 1, BrokerCapabilityKind.Control,
                 Set(AudioDefaultOutputSet, AudioDefaultInputSet), Set()),
             [AudioInputReadV1] = new(AudioInputReadV1, 1, BrokerCapabilityKind.Read,

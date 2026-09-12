@@ -6,6 +6,7 @@ internal enum AudioMixerProviderSection
 {
     Devices,
     Input,
+    Spatial,
 }
 
 internal enum AudioMixerProviderObservationKind
@@ -17,6 +18,8 @@ internal enum AudioMixerProviderObservationKind
     DevicesLoading,
     DevicesChanged,
     DevicesFailed,
+    SpatialChanged,
+    SpatialFailed,
     InputLoading,
     InputChanged,
     InputCleared,
@@ -32,7 +35,8 @@ internal sealed record AudioMixerProviderObservation(
     WidgetAudioInput? Input = null,
     AudioOptionalSectionState OptionalState = AudioOptionalSectionState.Initial,
     AudioMixerViewState ViewState = AudioMixerViewState.Initial,
-    string? Status = null)
+    string? Status = null,
+    WidgetAudioSpatial? Spatial = null)
 {
     internal static AudioMixerProviderObservation RequiredFetchStarted() =>
         new(AudioMixerProviderObservationKind.RequiredFetchStarted);
@@ -97,6 +101,8 @@ internal sealed class AudioMixerProviderSession
     private readonly CancellationTokenSource _lifetime;
     private readonly SemaphoreSlim _devicesRetrySignal = new(0, 1);
     private readonly SemaphoreSlim _inputRetrySignal = new(0, 1);
+    private readonly SemaphoreSlim _spatialRetrySignal = new(0, 1);
+    private CancellationTokenSource? _spatialAttemptLifetime;
     private readonly TaskCompletionSource _initialPublication = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
     private CancellationTokenSource? _devicesAttemptLifetime;
@@ -142,6 +148,11 @@ internal sealed class AudioMixerProviderSession
                 attempt = _devicesAttemptLifetime;
                 signal = _devicesRetrySignal;
             }
+            else if (section == AudioMixerProviderSection.Spatial)
+            {
+                attempt = _spatialAttemptLifetime;
+                signal = _spatialRetrySignal;
+            }
             else
             {
                 attempt = _inputAttemptLifetime;
@@ -178,6 +189,7 @@ internal sealed class AudioMixerProviderSession
         }
         _devicesRetrySignal.Dispose();
         _inputRetrySignal.Dispose();
+        _spatialRetrySignal.Dispose();
         _lifetime.Dispose();
     }
 
@@ -237,6 +249,7 @@ internal sealed class AudioMixerProviderSession
 
             observerTasks.Add(ObserveOptionalDevicesAsync(observers.Token));
             observerTasks.Add(ObserveOptionalInputAsync(observers.Token));
+            observerTasks.Add(ObserveOptionalSpatialAsync(observers.Token));
             var sessionObserver = ObserveSessionChangesAsync(
                 sessionSubscription, observers.Token);
             var outputObserver = ObserveOutputChangesAsync(
@@ -307,6 +320,38 @@ internal sealed class AudioMixerProviderSession
                 ClearOptionalAttempt(AudioMixerProviderSection.Devices, attempt);
             }
             await _devicesRetrySignal.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task ObserveOptionalSpatialAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            SetOptionalAttempt(AudioMixerProviderSection.Spatial, attempt);
+            try
+            {
+                await using var subscription = await _audio.OpenSpatialSubscriptionAsync(attempt.Token).ConfigureAwait(false);
+                var spatial = await _audio.GetSpatialAsync(attempt.Token).ConfigureAwait(false);
+                attempt.Token.ThrowIfCancellationRequested();
+                Publish(new(AudioMixerProviderObservationKind.SpatialChanged, Spatial: spatial));
+                await foreach (var change in subscription.ReadAllAsync(attempt.Token).WithCancellation(attempt.Token).ConfigureAwait(false))
+                {
+                    attempt.Token.ThrowIfCancellationRequested();
+                    Publish(change.IsAvailable && change.Spatial is not null
+                        ? new(AudioMixerProviderObservationKind.SpatialChanged, Spatial: change.Spatial)
+                        : new(AudioMixerProviderObservationKind.SpatialFailed, OptionalState: AudioOptionalSectionState.Unavailable));
+                }
+                Publish(new(AudioMixerProviderObservationKind.SpatialFailed, OptionalState: AudioOptionalSectionState.Unavailable));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
+            catch (OperationCanceledException) when (attempt.IsCancellationRequested) { }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                Publish(new(AudioMixerProviderObservationKind.SpatialFailed, OptionalState: MapOptionalFailure(error)));
+            }
+            finally { ClearOptionalAttempt(AudioMixerProviderSection.Spatial, attempt); }
+            await _spatialRetrySignal.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -435,6 +480,8 @@ internal sealed class AudioMixerProviderSession
             }
             if (section == AudioMixerProviderSection.Devices)
                 _devicesAttemptLifetime = attempt;
+            else if (section == AudioMixerProviderSection.Spatial)
+                _spatialAttemptLifetime = attempt;
             else
                 _inputAttemptLifetime = attempt;
         }
@@ -449,6 +496,8 @@ internal sealed class AudioMixerProviderSession
             if (section == AudioMixerProviderSection.Devices &&
                 ReferenceEquals(_devicesAttemptLifetime, attempt))
                 _devicesAttemptLifetime = null;
+            else if (section == AudioMixerProviderSection.Spatial && ReferenceEquals(_spatialAttemptLifetime, attempt))
+                _spatialAttemptLifetime = null;
             else if (section == AudioMixerProviderSection.Input &&
                      ReferenceEquals(_inputAttemptLifetime, attempt))
                 _inputAttemptLifetime = null;

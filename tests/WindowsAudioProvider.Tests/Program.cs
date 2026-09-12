@@ -10,6 +10,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Master output controls reconcile and fail independently from sessions", MasterOutputIsIndependent),
     ("Devices stay opaque and default microphone controls reconcile", DevicesAndInputAreSafe),
     ("Device switching is opaque confirmed and rejects stale queued controls", DeviceSwitchingIsSafe),
+    ("Spatial read and control failures never disable ordinary audio", SpatialFailuresAreIsolated),
     ("Default-device policy preserves communications and rolls back partial writes", DeviceSwitchPolicy),
     ("Native callbacks coalesce and the provider never polls", CallbacksCoalesceWithoutPolling),
     ("Live native failure and recovery publish explicit availability", ProviderAvailabilityEvents),
@@ -41,6 +42,42 @@ foreach (var (name, run) in tests)
 
 Console.WriteLine($"Executed {tests.Length} Windows audio provider tests; {failures} failed.");
 return failures == 0 ? 0 : 1;
+
+static async Task SpatialFailuresAreIsolated()
+{
+    var adapter = new FakeNativeAdapter([new("session", "Game", 0.5, false, true)]);
+    adapter.Spatial = new("native-output", true, "off", "off", [new("off", "Off"), new("sonic", "Windows Sonic")]);
+    await using var backend = new WindowsAudioPlatformBackend(new FakeFactory(adapter));
+    var value = await backend.GetAudioSpatialAsync(CancellationToken.None);
+    Assert.True(value.DeviceId.StartsWith("device_", StringComparison.Ordinal));
+    await backend.SetAudioSpatialFormatAsync(value.DeviceId, "sonic", CancellationToken.None);
+    Assert.Equal("sonic", (await backend.GetAudioSpatialAsync(CancellationToken.None)).SelectedFormatId);
+    await Assert.ThrowsBrokerAsync(() => backend.SetAudioSpatialFormatAsync("old-output", "sonic", CancellationToken.None), "resource_not_found");
+    await Assert.ThrowsBrokerAsync(() => backend.SetAudioSpatialFormatAsync(value.DeviceId, "invented", CancellationToken.None), "spatial_not_supported");
+    foreach (var result in new[] { "spatial_license_required", "spatial_access_denied", "spatial_timeout", "spatial_not_supported" })
+    {
+        adapter.SpatialSetResult = result;
+        await Assert.ThrowsBrokerAsync(() => backend.SetAudioSpatialFormatAsync(value.DeviceId, "off", CancellationToken.None), result);
+        Assert.Equal(1, (await backend.GetAudioSessionsAsync(CancellationToken.None)).Count);
+        await backend.SetAudioOutputVolumeAsync(0.4, CancellationToken.None);
+        Assert.Equal(0.4, (await backend.GetAudioOutputAsync(CancellationToken.None)).Volume);
+        Assert.False(backend.IsDegraded);
+    }
+    adapter.ThrowSpatial = true;
+    await Assert.ThrowsBrokerAsync(() => backend.SetAudioSpatialFormatAsync(value.DeviceId, "off", CancellationToken.None), "resource_not_found");
+    await Assert.ThrowsBrokerAsync(() => backend.GetAudioSpatialAsync(CancellationToken.None), "spatial_unavailable");
+    Assert.Equal(1, (await backend.GetAudioSessionsAsync(CancellationToken.None)).Count);
+    Assert.False(backend.IsDegraded);
+    adapter.ThrowSpatial = false;
+    adapter.ThrowSpatialSet = true;
+    _ = await backend.GetAudioSpatialAsync(CancellationToken.None);
+    await Assert.ThrowsBrokerAsync(() => backend.SetAudioSpatialFormatAsync(value.DeviceId, "off", CancellationToken.None), "spatial_unavailable");
+    Assert.False(backend.IsDegraded);
+    adapter.ThrowSpatialSet = false;
+    adapter.SpatialSetResult = "ok";
+    await backend.SetAudioSpatialFormatAsync(value.DeviceId, "off", CancellationToken.None);
+    Assert.Equal("off", (await backend.GetAudioSpatialAsync(CancellationToken.None)).SelectedFormatId);
+}
 
 static Task DeviceSwitchPolicy()
 {
@@ -428,7 +465,13 @@ static async Task ProductionAdapterSmoke()
     try
     {
         using var native = new CoreAudioNativeAdapter();
-        _ = native.EnumerateDevices();
+        var nativeDevices = native.EnumerateDevices();
+        if (nativeDevices.Any(device => device.Direction == NativeAudioDeviceDirection.Output && device.IsDefault))
+        {
+            var spatial = native.GetSpatialAudio();
+            Assert.True(spatial is not null);
+            Assert.True(spatial!.Formats.Any(format => format.FormatId == "off"));
+        }
         if (native.IsDeviceListDegraded)
             throw new InvalidOperationException(
                 $"Native audio-device enumeration failed ({native.DeviceListDiagnostic}).");
@@ -697,6 +740,23 @@ sealed class FakeNativeAdapter(IEnumerable<NativeAudioSessionSnapshot> initial) 
         if (Input is null || IsInputDegraded) return false;
         Input = Input with { IsMuted = isMuted };
         return true;
+    }
+
+    public NativeSpatialAudioSnapshot? Spatial { get; set; }
+    public bool ThrowSpatial { get; set; }
+    public bool ThrowSpatialSet { get; set; }
+    public string SpatialSetResult { get; set; } = "ok";
+    public NativeSpatialAudioSnapshot? GetSpatialAudio()
+    {
+        if (ThrowSpatial) throw new InvalidOperationException("Injected native read failure");
+        return Spatial;
+    }
+    public string SetSpatialFormat(string nativeDeviceKey, string formatId)
+    {
+        if (ThrowSpatialSet) throw new InvalidOperationException("Injected native setter failure");
+        if (SpatialSetResult == "ok" && Spatial is not null)
+            Spatial = Spatial with { SelectedFormatId = formatId, ActiveFormatId = formatId };
+        return SpatialSetResult;
     }
 
     public int DeviceSwitchCalls { get; private set; }
