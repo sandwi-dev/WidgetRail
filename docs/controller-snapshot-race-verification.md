@@ -37,11 +37,13 @@ counting. These are covered by the final passing runtime suite.
 An intermediate bridge run correctly rejected a stale runtime DLL in candidate
 output. The final coherent build resolved it; the full bridge suite then passed.
 
-## Physical acceptance
+## Physical acceptance and integration
 
-Pending. Run Spotify playback while navigating with D-pad/left stick and pressing
-Back through nested and root scopes. Confirm input works without internal error
-toasts, unwanted navigation, or duplicate actions. Playnite's existing package
-also exercises the verified-declared-action legacy compatibility path.
+The user accepted candidate b4ca64f81a4d36f8b79b73c35a54653fb8900025 on
+2026-09-12 and requested integration and closure. Spotify 0.3.56 was the installed
+package, containing the shared runtime update and unchanged widget logic.
 
-Not integrated or closed; no push.
+The accepted production is unchanged. This documentation-only successor records
+acceptance and accompanies fast-forward integration into main and WIDGE-239
+closure. Automated results above remain the accepted candidate's verification;
+no tests were rerun for this documentation-only change. No push was requested.
