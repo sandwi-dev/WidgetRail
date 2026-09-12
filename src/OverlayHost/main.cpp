@@ -5653,6 +5653,10 @@ private:
         sessions_.Shutdown();
         actionFailureFeedback_.Stop();
         ResetWindowPreviews();
+        windowPreviewUpdating_ = true;
+        windowPreviews_.Reset();
+        if (window_) KillTimer(window_, kWindowPreviewTimer);
+        windowPreviewTimerArmed_ = false;
         bridge_.Stop();
         if (window_) {
             accessibilityProvider_.Detach();
@@ -13154,7 +13158,8 @@ private:
     }
 
     void RefreshWindowPreviewPermissions() {
-        if (state_.surface() != widgetrail::Surface::Widget ||
+        if (graphicsDrawDepth_ || windowPreviewUpdating_ ||
+            state_.surface() != widgetrail::Surface::Widget ||
             lastWidgetRenderResult_.windowPreviewRegions.empty()) return;
         const auto widget = state_.activeWidget();
         auto allowed = bridge_.ReadWindowPreviewPermissions(widget).value_or(std::set<std::wstring>{});
@@ -13173,11 +13178,19 @@ private:
     }
 
     void ResetWindowPreviews() {
-        windowPreviews_.Reset();
+        // Capture COM calls may pump window messages. Paint and hide paths
+        // only retire demand; the timer performs teardown outside drawing.
+        windowPreviewResetPending_ = true;
+        windowPreviewSources_.clear();
+        ++windowPreviewDemandRevision_;
         windowPreviewInstance_.clear();
         windowPreviewDirty_.clear();
-        if (window_) KillTimer(window_, kWindowPreviewTimer);
-        windowPreviewTimerArmed_ = false;
+        ArmWindowPreviewTimer();
+    }
+
+    void ArmWindowPreviewTimer() {
+        if (window_ && !windowPreviewTimerArmed_)
+            windowPreviewTimerArmed_ = SetTimer(window_, kWindowPreviewTimer, 33, nullptr) != 0;
     }
 
     void ReconcileWindowPreviews(const widgetrail::WidgetSnapshot& snapshot,
@@ -13187,24 +13200,51 @@ private:
             if (WindowPreviewAllowed(state_.activeWidget(), source.windowId) && std::any_of(result.windowPreviewRegions.begin(), result.windowPreviewRegions.end(),
                     [&](const auto& region) { return region.windowId == source.windowId; }))
                 sources.push_back(source);
-        windowPreviews_.Reconcile(compositionSurface_.graphicsDevice(), sources);
-        if (!sources.empty() && !windowPreviewTimerArmed_)
-            windowPreviewTimerArmed_ = SetTimer(window_, kWindowPreviewTimer, 33, nullptr) != 0;
-        else if (sources.empty() && windowPreviewTimerArmed_) {
-            KillTimer(window_, kWindowPreviewTimer);
-            windowPreviewTimerArmed_ = false;
+        if (sources != windowPreviewSources_) {
+            windowPreviewSources_ = std::move(sources);
+            ++windowPreviewDemandRevision_;
         }
+        ArmWindowPreviewTimer();
     }
 
     void PollWindowPreviews() {
-        const auto* snapshot = PresentationSnapshotFor(state_.activeWidget());
+        if (windowPreviewUpdating_ || graphicsDrawDepth_ || compositionPlacementInProgress_) return;
+        auto* snapshot = PresentationSnapshotFor(state_.activeWidget());
         if (state_.surface() != widgetrail::Surface::Widget || !snapshot ||
             snapshot->instanceId != windowPreviewInstance_) {
             ResetWindowPreviews();
+        } else {
+            ReconcileWindowPreviews(*snapshot, lastWidgetRenderResult_);
+        }
+        const auto revision = windowPreviewDemandRevision_;
+        // Own all inputs across capture calls: their message pumping can replace
+        // the snapshot, switch widgets, hide the overlay or revoke permission.
+        const auto sources = windowPreviewSources_;
+        ComPtr<ID3D11Device> device = compositionSurface_.graphicsDevice();
+        std::vector<std::wstring> changed;
+        {
+            struct UpdateGuard final {
+                bool& active;
+                explicit UpdateGuard(bool& value) : active(value) { active = true; }
+                ~UpdateGuard() { active = false; }
+            } guard(windowPreviewUpdating_);
+            if (std::exchange(windowPreviewResetPending_, false)) windowPreviews_.Reset();
+            if (revision != windowPreviewDemandRevision_) return;
+            windowPreviews_.Reconcile(device.Get(), sources);
+            if (revision != windowPreviewDemandRevision_) return;
+            changed = windowPreviews_.Poll();
+        }
+        if (revision != windowPreviewDemandRevision_) return;
+        if (sources.empty()) {
+            KillTimer(window_, kWindowPreviewTimer);
+            windowPreviewTimerArmed_ = false;
             return;
         }
-        ReconcileWindowPreviews(*snapshot, lastWidgetRenderResult_);
-        for (const auto& id : windowPreviews_.Poll()) windowPreviewDirty_.insert(id);
+        snapshot = PresentationSnapshotFor(state_.activeWidget());
+        if (!snapshot || snapshot->instanceId != windowPreviewInstance_) return;
+        if (std::exchange(windowPreviewPaintDeferred_, false))
+            for (const auto& source : sources) windowPreviewDirty_.insert(source.windowId);
+        for (const auto& id : changed) windowPreviewDirty_.insert(id);
         if (windowPreviewDirty_.empty()) return;
         RECT pending{};
         if (GetUpdateRect(window_, &pending, FALSE) || pendingContentRenderPlan_ ||
@@ -16362,6 +16402,7 @@ private:
         const widgetrail::shell::TrayLayout* trayLayout = nullptr,
         const widgetrail::declarative::Rect* guideBounds = nullptr,
         const bool deferFixedChromeAccessibilityPublication = false) {
+        GraphicsDrawGuard drawGuard(graphicsDrawDepth_);
         widgetrail::OverlayCompositionSurface::Frame frame;
         const auto beginStarted = std::chrono::steady_clock::now();
         HRESULT result = compositionSurface_.BeginFrame(
@@ -16949,6 +16990,7 @@ private:
     }
 
     void Paint() {
+        GraphicsDrawGuard drawGuard(graphicsDrawDepth_);
         PAINTSTRUCT paint{};
         BeginPaint(window_, &paint);
         if (state_.surface() == widgetrail::Surface::Hidden) {
@@ -17761,7 +17803,9 @@ private:
                     windowPreviewInstance_ = snapshot->instanceId;
                 }
                 options.windowPreviewBitmap = [this, snapshot](ID2D1RenderTarget* target, std::wstring_view id) {
-                    if (!WindowPreviewAllowed(state_.activeWidget(), id) ||
+                    if (windowPreviewUpdating_) windowPreviewPaintDeferred_ = true;
+                    if (windowPreviewUpdating_ || windowPreviewResetPending_ ||
+                        !WindowPreviewAllowed(state_.activeWidget(), id) ||
                         std::none_of(snapshot->windowPreviews.begin(), snapshot->windowPreviews.end(),
                             [&](const auto& source) { return source.windowId == id; }))
                         return Microsoft::WRL::ComPtr<ID2D1Bitmap1>{};
@@ -18574,6 +18618,17 @@ private:
     ComPtr<IDWriteFactory> writeFactory_;
     widgetrail::OverlayCompositionSurface compositionSurface_;
     widgetrail::WindowPreviewCapture windowPreviews_;
+    struct GraphicsDrawGuard final {
+        unsigned& depth;
+        explicit GraphicsDrawGuard(unsigned& value) : depth(value) { ++depth; }
+        ~GraphicsDrawGuard() { --depth; }
+    };
+    unsigned graphicsDrawDepth_{};
+    bool windowPreviewUpdating_{};
+    bool windowPreviewPaintDeferred_{};
+    bool windowPreviewResetPending_{};
+    std::vector<widgetrail::WindowPreviewSource> windowPreviewSources_;
+    std::uint64_t windowPreviewDemandRevision_{};
     std::wstring windowPreviewInstance_;
     std::set<std::wstring> windowPreviewDirty_;
     bool windowPreviewTimerArmed_{};

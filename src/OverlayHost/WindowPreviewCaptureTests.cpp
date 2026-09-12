@@ -1,5 +1,6 @@
 #include "WindowPreviewCapture.h"
 #include <d2d1_1.h>
+#include <dcomp.h>
 #include <winrt/base.h>
 #include <iostream>
 
@@ -56,10 +57,32 @@ int wmain() {
             (static_cast<ULONGLONG>(created.dwHighDateTime) << 32) | created.dwLowDateTime,
             cls.lpszClassName};
         widgetrail::WindowPreviewCapture capture;
+        Microsoft::WRL::ComPtr<IDCompositionDesktopDevice> composition;
+        winrt::check_hresult(DCompositionCreateDevice2(d2d.Get(), IID_PPV_ARGS(&composition)));
+        const auto drawComposedPreview = [&](UINT width, UINT height) {
+            Microsoft::WRL::ComPtr<IDCompositionSurface> surface;
+            winrt::check_hresult(composition->CreateSurface(width, height,
+                DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_ALPHA_MODE_PREMULTIPLIED, &surface));
+            Microsoft::WRL::ComPtr<ID2D1DeviceContext> target;
+            POINT offset{};
+            winrt::check_hresult(surface->BeginDraw(nullptr, IID_PPV_ARGS(&target), &offset));
+            target->SetTransform(D2D1::Matrix3x2F::Translation(
+                static_cast<float>(offset.x), static_cast<float>(offset.y)));
+            target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+            auto bitmap = capture.Bitmap(target.Get(), source.windowId);
+            if (bitmap) target->DrawBitmap(bitmap.Get(),
+                D2D1::RectF(0, 0, static_cast<float>(width), static_cast<float>(height)));
+            target.Reset();
+            winrt::check_hresult(surface->EndDraw());
+            winrt::check_hresult(composition->Commit());
+        };
         if (!capture.Validate(source)) return 4;
         auto wrong = source;
         ++wrong.processCreated;
         if (capture.Validate(wrong)) return 5;
+        // First paint records visible demand. Capture setup must follow EndDraw:
+        // WGC may pump messages and dispatch another composition paint.
+        drawComposedPreview(160, 90);
         capture.Reconcile(device.Get(), {&source, 1});
         int frames{};
         const auto deadline = GetTickCount64() + 3000;
@@ -78,6 +101,8 @@ int wmain() {
                     context->Clear(D2D1::ColorF(D2D1::ColorF::Black));
                     context->DrawBitmap(bitmap.Get(), D2D1::RectF(0, 0, 160, 90));
                     winrt::check_hresult(context->EndDraw());
+                    for (UINT size : {160U, 240U, 320U, 160U})
+                        drawComposedPreview(size, size * 9 / 16);
                     ++frames;
                 }
             }
@@ -87,9 +112,10 @@ int wmain() {
         (void)capture.Poll();
         if (capture.activeCount() != 0) return 6;
         capture.Reconcile(device.Get(), {});
+        drawComposedPreview(160, 90);
         if (capture.Bitmap(context.Get(), source.windowId)) return 7;
         std::cout << "Synthetic GPU frames: " << frames
-            << "; wrong-lifetime rejection, closure and retirement passed.\n";
+            << "; composed startup/resize/retirement, wrong-lifetime rejection and closure passed.\n";
         return frames > 0 ? 0 : 8;
     } catch (const winrt::hresult_error& error) {
         std::cerr << "Native preview check failed: " << std::hex << error.code().value << "\n";

@@ -406,7 +406,7 @@ function Invoke-WindowPreviewTests {
         (Join-Path $projectDirectory 'WindowPreviewCapture.cpp'),
         "/Fo:$previewObjects\",
         "/Fe:$outputDirectory\WindowPreviewCaptureTests.exe", '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @('user32.lib', 'gdi32.lib', 'd3d11.lib', 'dxgi.lib', 'd2d1.lib', 'windowsapp.lib', 'ole32.lib')
+    ) + $libraryArguments + @('user32.lib', 'gdi32.lib', 'd3d11.lib', 'dxgi.lib', 'd2d1.lib', 'dcomp.lib', 'windowsapp.lib', 'ole32.lib')
     & $cl $arguments
     if ($LASTEXITCODE -ne 0) { throw "Window preview tests failed to build." }
     & (Join-Path $outputDirectory 'WindowPreviewCaptureTests.exe')
