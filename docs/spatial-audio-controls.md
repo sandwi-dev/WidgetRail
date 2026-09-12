@@ -116,7 +116,7 @@ The documented SpatialAudioDeviceConfiguration surface has no read-only license
 validation method; SetDefaultSpatialAudioFormatAsync returns license outcomes.
 SpatialAudioFormatConfiguration provides companion-app license-change reporting,
 not a license query. Listing therefore cannot promise a supported format is
-licensed. The widget now explains that Windows checks licensing on selection.
+licensed. Licensing failures are reported when a selection is attempted.
 There is no automatic switch-through-format preflight and no license inference
 from an installed provider app. Failed selections keep the existing safe behavior.
 
@@ -131,3 +131,18 @@ Full WidgetBridge.Tests also passed 129/129 after coherent runtime publication.
 Packaged provider/widget hashes match tested outputs; native production payloads
 were reused with hash verification. The corrected provider read confirms DTS:X
 for home theater is listed on SAMSUNG, with Atmos for home theater still selected.
+
+## Audio Mixer feedback refinement
+
+The static licensing and application restart notes have been removed. Failed
+spatial selections use the shared danger toast with a theme-owned warning icon,
+surface and text. The notification sits outside the audio scroll container,
+does not accept focus, and expires five seconds after terminal feedback is
+published. New errors replace the deadline; provider snapshots do not renew it.
+Successful selection, retry and widget deactivation clear old feedback.
+The preferred widget height is 580 (previously 520), with the existing width and
+minimum dimensions preserved.
+
+AudioMixerWidget.Tests: 48/48 passed, including timed expiry, replacement,
+provider-update independence, successful recovery, focus and lifecycle cleanup.
+Native AudioMixerScrollHostTests also passed after coherent runtime publication.

@@ -1,4 +1,18 @@
+.audio-shell {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  gap: 0;
+  background: var(--surface);
+}
+
+.audio-toast {
+  margin: 0px 14px 14px 14px;
+}
+
 .audio-mixer-widget {
+  flex-grow: 1;
+  min-height: 0;
   width: 100%;
   min-width: 280px;
   max-width: 560px;

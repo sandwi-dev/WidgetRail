@@ -47,6 +47,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Master output updates immediately reconciles and rolls back", MasterOutputControls),
     ("Default devices and microphone controls are live controller-native and stable", DeviceAndInputControls),
     ("Device selectors keep confirmed selection focus and safe failure feedback", DeviceSelection),
+    ("Spatial error toast expires replaces and retires without stealing focus", SpatialToastLifetime),
     ("Spatial licensing exceptions malformed data and retry leave the mixer alive", SpatialSelectionFailures),
     ("Optional audio stream revocation and completion clear only their own state", OptionalStreamTerminationIsIsolated),
     ("Optional audio startup failures cannot replace the working mixer with an error", OptionalStartupFailureIsIsolated),
@@ -105,7 +106,7 @@ static Task PresentationIsRepeatable()
     Assert.Equal(JsonSerializer.Serialize(first), JsonSerializer.Serialize(second));
     Assert.Equal(controls.VolumeSlider, first.InitialFocusId);
     Assert.Equal("audio.input.volume.slider", Node(first.Root, controls.VolumeSlider).Focus!.Up);
-    Assert.Equal("audio.root", first.Root.Id);
+    Assert.Equal("audio.shell", first.Root.Id);
     Assert.Valid(first);
     Assert.Valid(second);
     return Task.CompletedTask;
@@ -206,7 +207,7 @@ static async Task StateSurfaces()
     Assert.Equal("audio.retry", initial.InitialFocusId);
     Assert.Equal(WidgetSurfaceMode.Compact, initial.Surface!.Mode);
     Assert.Equal(520D, initial.Surface.PreferredWidth);
-    Assert.Equal(520D, initial.Surface.PreferredHeight);
+    Assert.Equal(580D, initial.Surface.PreferredHeight);
     Assert.Equal(360D, initial.Surface.MinimumHeight);
     Assert.Valid(initial);
 
@@ -228,8 +229,8 @@ static async Task StateSurfaces()
     Assert.Equal(WidgetGlyph.Volume, Node(session.Root, $"{prefix}.mute.icon").Glyph);
     Assert.True(!Buttons(session.Root).Any(button => button.Text is "−" or "+" or "Mute" or "Unmute"),
         "The old stepper/mute pill controls are still rendered.");
-    Assert.Equal(ViewNodeKind.Scroll, session.Root.Kind);
-    Assert.Equal(ScrollAxis.Vertical, session.Root.ScrollAxis);
+    Assert.Equal(ViewNodeKind.Scroll, Node(session.Root, "audio.root").Kind);
+    Assert.Equal(ScrollAxis.Vertical, Node(session.Root, "audio.root").ScrollAxis);
     Assert.Equal(ViewNodeKind.Stack, Node(session.Root, "audio.sessions.list").Kind);
     Assert.Equal(1, Node(session.Root, "audio.sessions.list").Children.Count);
     Assert.Equal(1, Nodes(session.Root).Count(node => node.Kind == ViewNodeKind.Scroll));
@@ -821,6 +822,68 @@ static async Task MasterOutputControls()
     await Background(widget);
 }
 
+static async Task SpatialToastLifetime()
+{
+    var clock = new ManualTimerTimeProvider();
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("game", "Game", 0.5)],
+        Devices = [new("output", "Speakers", WidgetAudioDeviceDirection.Output, true)],
+        Spatial = new("output", true, "off", "off", [new("off", "Off"), new("atmos", "Dolby Atmos")]),
+        SpatialSetFailure = new WidgetCapabilityException("spatial_license_required", "private"),
+    };
+    var widget = WidgetTestHost.Attach(new AudioMixerWidget(clock), fake.BuildServices());
+    bool HasToast() => Nodes(Snapshot(widget, 1).Root).Any(node => node.Id == "audio.spatial.toast");
+    async Task FailSelection() =>
+        await widget.OnActionAsync(new("spatial.set.output.atmos", "audio.spatial.select"));
+    await ActivateReady(widget);
+    await WaitUntil(() => Nodes(Snapshot(widget, 1).Root).Any(node => node.Id == "audio.spatial.select"));
+    try
+    {
+        await FailSelection();
+        var failed = Snapshot(widget, 2);
+        var toast = Node(failed.Root, "audio.spatial.toast");
+        Assert.Equal(toast, failed.Root.Children.Last());
+        Assert.True(toast.StyleClasses.Contains("wrail-toast--danger"), "Error must use the themed danger tone.");
+        Assert.Equal(WidgetGlyph.Warning, Node(toast, "audio.spatial.toast.icon").Glyph);
+        Assert.True(!Nodes(toast).Any(node => node.Kind is ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.Select || node.InputScopeId is not null),
+            "Toast must never take controller focus.");
+        Assert.Equal("audio.spatial.select", failed.InitialFocusId);
+        clock.Advance(TimeSpan.FromSeconds(4));
+        fake.Emit([Session("game", "Game", 0.7)]);
+        await WaitUntil(() => widget.Sessions[0].Volume == 0.7);
+        Assert.True(HasToast(), "Provider update removed feedback early.");
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await widget.SpatialToastExpiryTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(!HasToast(), "Snapshot update renewed the toast deadline.");
+        Assert.Equal(failed.InitialFocusId, Snapshot(widget, 3).InitialFocusId);
+
+        await FailSelection();
+        clock.Advance(TimeSpan.FromSeconds(4));
+        await FailSelection();
+        clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(HasToast(), "Old deadline removed replacement feedback.");
+        clock.Advance(TimeSpan.FromSeconds(4));
+        await widget.SpatialToastExpiryTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(!HasToast(), "Replacement feedback did not expire.");
+
+        await FailSelection();
+        fake.SpatialSetFailure = null;
+        await widget.OnActionAsync(new("spatial.set.output.off", "audio.spatial.select"));
+        Assert.True(!HasToast(), "Successful selection left an old error.");
+
+        fake.SpatialSetFailure = new InvalidOperationException("private");
+        await FailSelection();
+        await Background(widget);
+        clock.Advance(TimeSpan.FromSeconds(10));
+        await widget.SpatialToastExpiryTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(!HasToast(), "Deactivated widget retained feedback.");
+        await ActivateReady(widget);
+        Assert.True(!HasToast(), "Reopening resurrected old feedback.");
+    }
+    finally { await Background(widget); }
+}
+
 static async Task SpatialSelectionFailures()
 {
     var fake = new FakeCapabilityClient { Sessions = [Session("game", "Game", 0.5)],
@@ -830,7 +893,7 @@ static async Task SpatialSelectionFailures()
     await ActivateReady(widget);
     await WaitUntil(() => Nodes(Snapshot(widget, 1).Root).Any(node => node.Id == "audio.spatial.select"));
     var initial = Snapshot(widget, 2);
-    Assert.Contains("license", Text(initial.Root, "audio.spatial.license.help").Text!);
+    Assert.True(!Nodes(initial.Root).Any(node => node.Id is "audio.spatial.license.help" or "audio.devices.help"), "Static setup notes remain.");
     Assert.Equal("audio.spatial.select", Node(initial.Root, "audio.devices.output.select").Focus!.Down);
     foreach (var error in new Exception[] {
         new WidgetCapabilityException("spatial_license_required", "private-license-details"),

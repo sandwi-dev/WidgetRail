@@ -61,7 +61,8 @@ public sealed class AudioMixerWidget : Widget
     private AudioOptionalSectionState _spatialState = AudioOptionalSectionState.Initial;
     private bool _spatialPending;
     private string? _spatialFeedback;
-    private string? _spatialFeedbackDevice;
+    private readonly WidgetTimedMutation _spatialToastExpiry;
+    private long _spatialToastGeneration;
     private string? _deviceFeedback;
     private bool _deviceFeedbackError;
     private WidgetAudioDevice? _deviceFeedbackTarget;
@@ -74,6 +75,33 @@ public sealed class AudioMixerWidget : Widget
     private long _runGeneration;
     private int _activationCount;
     private int _fetchCount;
+
+    public AudioMixerWidget() : this(TimeProvider.System) { }
+
+    internal AudioMixerWidget(TimeProvider timeProvider)
+    {
+        _spatialToastExpiry = CreateTimedMutation(timeProvider: timeProvider);
+    }
+
+    internal Task SpatialToastExpiryTask => _spatialToastExpiry.WhenIdleAsync();
+
+    // Called under the state lock. Snapshot updates never renew the deadline.
+    private void SetSpatialFeedbackLocked(string? message)
+    {
+        _spatialFeedback = message;
+        var generation = ++_spatialToastGeneration;
+        _spatialToastExpiry.Cancel();
+        if (message is null) return;
+        _spatialToastExpiry.ScheduleLatest(UI.DefaultToastDuration, () =>
+        {
+            lock (_stateLock)
+            {
+                if (generation != _spatialToastGeneration) return;
+                _spatialFeedback = null;
+            }
+            Invalidate();
+        });
+    }
 
     public AudioMixerViewState ViewState
     {
@@ -195,7 +223,7 @@ public sealed class AudioMixerWidget : Widget
         }
         if (action.ActionId == "spatial.retry")
         {
-            lock (_stateLock) { _spatialFeedback = null; _providerSession?.Retry(AudioMixerProviderSection.Spatial); }
+            lock (_stateLock) { SetSpatialFeedbackLocked(null); _providerSession?.Retry(AudioMixerProviderSection.Spatial); }
             return;
         }
         if (action.ActionId.StartsWith("spatial.set.", StringComparison.Ordinal))
@@ -286,8 +314,7 @@ public sealed class AudioMixerWidget : Widget
             format = selected;
             generation = _runGeneration;
             _spatialPending = true;
-            _spatialFeedback = $"Applying {format.DisplayName}…";
-            _spatialFeedbackDevice = spatial.DeviceId;
+            SetSpatialFeedbackLocked(null);
             _preferredFocusTarget = AudioMixerPreferredFocusTarget.Spatial;
         }
         Invalidate();
@@ -301,16 +328,13 @@ public sealed class AudioMixerWidget : Widget
             {
                 if (generation != _runGeneration) return;
                 ApplySpatialLocked(confirmed);
-                _spatialFeedback = _spatial?.DeviceId == spatial.DeviceId && _spatial.SelectedFormatId == format.FormatId
-                    ? null : "The output changed. Check the current spatial sound setting.";
+                SetSpatialFeedbackLocked(_spatial?.DeviceId == spatial.DeviceId && _spatial.SelectedFormatId == format.FormatId
+                    ? null : "The output changed. Check the current spatial sound setting.");
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
-            lock (_stateLock)
-                if (generation == _runGeneration)
-                    _spatialFeedback = SpatialFailureMessage(error);
             // The setter may have changed Windows before a timeout/failure.
             // Re-query once, never retry the mutation; failure stays local.
             try
@@ -319,6 +343,9 @@ public sealed class AudioMixerWidget : Widget
                 lock (_stateLock) if (generation == _runGeneration) ApplySpatialLocked(current);
             }
             catch (Exception refreshError) when (refreshError is not OutOfMemoryException) { }
+            lock (_stateLock)
+                if (generation == _runGeneration)
+                    SetSpatialFeedbackLocked(SpatialFailureMessage(error));
         }
         finally
         {
@@ -356,9 +383,6 @@ public sealed class AudioMixerWidget : Widget
             _spatialState = AudioOptionalSectionState.Unavailable;
             return;
         }
-        if ((_spatialFeedbackDevice is not null && _spatialFeedbackDevice != spatial.DeviceId) ||
-            (!_spatialPending && _spatial is not null && _spatial.SelectedFormatId != spatial.SelectedFormatId))
-            _spatialFeedback = null;
         _spatial = spatial with { Formats = spatial.Formats.ToArray() };
         _spatialState = AudioOptionalSectionState.Healthy;
     }
@@ -515,8 +539,7 @@ public sealed class AudioMixerWidget : Widget
             _spatial = null;
             _spatialState = AudioOptionalSectionState.Loading;
             _spatialPending = false;
-            _spatialFeedback = null;
-            _spatialFeedbackDevice = null;
+            SetSpatialFeedbackLocked(null);
         }
         Invalidate();
         if (previous is not null)
@@ -547,7 +570,7 @@ public sealed class AudioMixerWidget : Widget
             _spatialPending = false;
             _spatial = null;
             _spatialState = AudioOptionalSectionState.Initial;
-            _spatialFeedback = null;
+            SetSpatialFeedbackLocked(null);
             _deviceFeedback = null;
             _deviceFeedbackTarget = null;
             session = _providerSession;

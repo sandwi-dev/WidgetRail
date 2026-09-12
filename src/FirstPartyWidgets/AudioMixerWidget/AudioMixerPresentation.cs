@@ -50,12 +50,22 @@ internal static class AudioMixerPresentation
     {
         Mode = WidgetSurfaceMode.Compact,
         PreferredWidth = 520,
-        PreferredHeight = 520,
+        PreferredHeight = 580,
         MinimumWidth = 320,
         MinimumHeight = 360,
     };
 
     internal static WidgetView Render(AudioMixerPresentationState state)
+    {
+        var view = RenderContent(state);
+        var children = new List<WidgetElement> { view.Root };
+        if (state.SpatialFeedback is { Length: > 0 } feedback)
+            children.Add(UI.Toast("Spatial sound couldn't be changed", feedback,
+                ToastTone.Danger, "audio.spatial.toast").Classes("audio-toast"));
+        return view with { Root = UI.Stack("audio.shell", children.ToArray()).Classes("audio-shell"), ActiveInputScopeId = "audio-mixer" };
+    }
+
+    private static WidgetView RenderContent(AudioMixerPresentationState state)
     {
         var header = UI.Stack("audio.header",
             UI.Text("CONTROL CENTER", "audio.eyebrow", "Control Center").Classes("audio-eyebrow"),
@@ -146,9 +156,7 @@ internal static class AudioMixerPresentation
                     SpatialControl(state, spatial, outputDeviceId,
                         inputDeviceId ?? inputFocusId ?? firstSessionFocusId ?? "audio.retry"),
                     DeviceSelector(state, WidgetAudioDeviceDirection.Input, "Microphone",
-                        spatialId ?? outputDeviceId ?? "audio.master.volume.slider", inputFocusId ?? firstSessionFocusId ?? "audio.retry"),
-                    UI.Text("Apps with their own device setting may need to be updated or restarted.",
-                        "audio.devices.help").Classes("audio-help", "is-neutral"))
+                        spatialId ?? outputDeviceId ?? "audio.master.volume.slider", inputFocusId ?? firstSessionFocusId ?? "audio.retry"))
                 .Classes("audio-device-card"));
         }
         else if (IsRetryable(state.DeviceState))
@@ -344,9 +352,6 @@ internal static class AudioMixerPresentation
                 IsDisabled: format.FormatId == "other" || (!spatial.IsSupported && format.FormatId != "off"),
                 IsBusy: state.SpatialPending || state.DeviceSwitchPending)).ToArray(), "audio.spatial.select")
                 .FocusUp(outputId).FocusDown(down).Classes("audio-device-selector"));
-            if (spatial.Formats.Any(format => format.FormatId is not ("off" or "sonic" or "other")))
-                children.Add(UI.Text("Some formats require a license from their audio app. Windows checks it when you choose a format.",
-                    "audio.spatial.license.help").Classes("audio-help"));
             if (spatial.ActiveFormatId != spatial.SelectedFormatId)
             {
                 var active = spatial.Formats.FirstOrDefault(format => format.FormatId == spatial.ActiveFormatId)?.DisplayName ?? "another format";
@@ -365,8 +370,6 @@ internal static class AudioMixerPresentation
             children.Add(UI.Button("Check spatial sound", "spatial.retry", "audio.spatial.retry")
                 .FocusUp(outputId).FocusDown(down).Classes("audio-retry-action"));
         }
-        if (state.SpatialFeedback is { Length: > 0 } feedback)
-            children.Add(UI.Text(feedback, "audio.spatial.feedback").Classes("audio-help"));
         return UI.Stack("audio.spatial.card", children.ToArray()).Classes("audio-device-copy");
     }
 
