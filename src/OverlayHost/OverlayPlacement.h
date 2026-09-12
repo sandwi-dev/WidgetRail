@@ -5,6 +5,7 @@
 #include <optional>
 #include <functional>
 #include <span>
+#include <vector>
 #include <string>
 #include <string_view>
 
@@ -197,6 +198,14 @@ enum class ControllerGuideDensity {
     float availableWidthDip,
     float textScale) noexcept;
 
+struct ControllerGuideHint final {
+    std::wstring button;
+    std::wstring label;
+    float holdProgress{-1.0F};
+};
+using ControllerGuideHints = std::vector<ControllerGuideHint>;
+using MeasureControllerGuideHints = std::function<std::optional<float>(std::span<const ControllerGuideHint>)>;
+
 struct ControllerGuideAction final {
     std::wstring_view button;
     std::wstring_view label;
@@ -215,7 +224,9 @@ using MeasureControllerGuideText =
     bool selectedBridgeWidget,
     float availableWidth,
     const MeasureControllerGuideText& measureText,
-    std::span<const ControllerGuideAction> quickActions = {});
+    std::span<const ControllerGuideAction> quickActions = {},
+    ControllerGuideHints* hints = nullptr,
+    const MeasureControllerGuideHints& measureHints = {});
 
 /// Computes a bottom-centered physical-pixel window rectangle that is fully
 /// contained by the monitor work area. Logical dimensions and margins are

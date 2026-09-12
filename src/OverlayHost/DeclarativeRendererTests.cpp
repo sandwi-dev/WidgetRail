@@ -1,3 +1,4 @@
+#include "ControllerGuideVisual.h"
 #include "DeclarativeRenderer.h"
 #include "NativeIcons.h"
 #include "RemoteImageCache.h"
@@ -6283,6 +6284,61 @@ void VisibleArtworkAndChromeSurviveCachePressure() {
         "retained chrome bitmap survives GPU churn without re-creation");
 }
 
+void ControllerGuideGlyphsAndTheme() {
+    using namespace widgetrail::guide;
+    using Microsoft::WRL::ComPtr;
+    const std::array<std::wstring_view,24> names{L"A",L"B",L"X",L"Y",L"LB",L"RB",L"LT",L"RT",L"L3",L"R3",
+        L"left-stick-move",L"right-stick-move",L"dpad",L"dpad-horizontal",L"dpad-vertical",L"dPadUp",L"dPadDown",L"dPadLeft",L"dPadRight",L"View",L"Menu",L"Guide",L"leftStick",L"rightTrigger"};
+    ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write; ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas; ComPtr<ID2D1RenderTarget> target; ComPtr<IDWriteTextFormat> format;
+    Check(SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,d2d.ReleaseAndGetAddressOf())),"glyph D2D");
+    Check(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(write.GetAddressOf()))),"glyph text factory");
+    Check(SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&wic))),"glyph WIC");
+    Check(SUCCEEDED(wic->CreateBitmap(960,120,GUID_WICPixelFormat32bppPBGRA,WICBitmapCacheOnLoad,&canvas)),"glyph canvas");
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(canvas.Get(),D2D1::RenderTargetProperties(),&target)),"glyph target");
+    Check(SUCCEEDED(write->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,14,L"en-us",&format)),"glyph format");
+    ComPtr<ID2D1SolidColorBrush> ink; target->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White),&ink);
+    target->BeginDraw(); target->Clear(D2D1::ColorF(0,0));
+    format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+    for(std::size_t i=0;i<names.size();++i) {
+        Check(ResolveControl(names[i])!=Control::Unknown,"controller control has a known native shape");
+        DrawControl(target.Get(),format.Get(),ResolveControl(names[i]),{float(i*40+3),3,float(i*40+37),37},ink.Get());
+    }
+    Check(SUCCEEDED(target->EndDraw()),"all controller glyphs render with balanced D2D state");
+    std::vector<BYTE> pixels(960*120*4); canvas->CopyPixels(nullptr,960*4,static_cast<UINT>(pixels.size()),pixels.data());
+    for(std::size_t i=0;i<names.size();++i) {
+        bool painted=false;
+        for(int y=0;y<40;++y) for(int x=0;x<40;++x) painted|=pixels[(y*960+i*40+x)*4+3]!=0;
+        Check(painted,"every controller shape produces visible pixels");
+    }
+    Check(ControlParts(L"View + Menu").size()==2 && ControlParts(L"B / Menu").size()==2,
+        "chords and alternative buttons keep individually drawn glyphs");
+    const widgetrail::ControllerGuideHints hints{{L"A",L"Open"},{L"LB",L"Previous"},{L"View + Menu",L"Close"}};
+    const HintPalette palette{{.12F,.16F,.2F,1},{.8F,.9F,1,1},{.5F,.1F,.7F,1},{1,1,1,1},true};
+    const auto oldAlign=format->GetTextAlignment(); const auto oldParagraph=format->GetParagraphAlignment();
+    target->BeginDraw(); target->Clear(D2D1::ColorF(0,0));
+    const auto boxes=PaintHints(target.Get(),write.Get(),format.Get(),hints,{0,40,960,100},palette);
+    Check(SUCCEEDED(target->EndDraw()) && boxes.size()==3,"themed hint row paints whole cards");
+    Check(format->GetTextAlignment()==oldAlign && format->GetParagraphAlignment()==oldParagraph,"hint renderer restores shared text format state");
+    canvas->CopyPixels(nullptr,960*4,static_cast<UINT>(pixels.size()),pixels.data());
+    const auto pixel=[&](std::size_t i) {const auto& b=boxes[i]; return (std::size_t((b.top+b.bottom)*.5F)*960+std::size_t(b.left+4))*4;};
+    Check(std::abs(int(pixels[pixel(0)+2])-128)<=2 && std::abs(int(pixels[pixel(0)])-179)<=2,
+        "primary hint uses theme accent surface rather than a hardcoded controller color");
+    Check(std::abs(int(pixels[pixel(1)+2])-31)<=2 && std::abs(int(pixels[pixel(1)])-51)<=2,
+        "ordinary hint uses theme surface colors");
+    target->BeginDraw();
+    const auto narrow=PaintHints(target.Get(),write.Get(),format.Get(),hints,{10,40,230,100},palette);
+    Check(SUCCEEDED(target->EndDraw()) && narrow.back().right<=230.01F && narrow.front().left>=10,
+        "narrow guide bounds contain every hint and escape chord");
+    ComPtr<IDWriteTextFormat> large;
+    write->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,28,L"en-us",&large);
+    target->BeginDraw();
+    const auto largeBoxes=PaintHints(target.Get(),write.Get(),large.Get(),hints,{0,40,960,86},palette);
+    Check(SUCCEEDED(target->EndDraw()) && largeBoxes.size()==3 &&
+          std::abs((largeBoxes.back().right-largeBoxes.front().left)-MeasureHints(write.Get(),large.Get(),hints).value())<.1F,
+        "large-text guide preserves measured text scale inside the fixed guide row");
+}
+
 void BitmapRetentionPolicyIsBounded() {
     widgetrail::DeclarativeRenderer renderer(nullptr, nullptr, nullptr);
     const auto stats = renderer.GetImageBitmapCacheStats();
@@ -6422,6 +6478,7 @@ int main() {
     PosterArtworkLoadsAtDisplaySizeUnderPressure(false);
     PosterArtworkLoadsAtDisplaySizeUnderPressure(true);
     VisibleArtworkAndChromeSurviveCachePressure();
+    ControllerGuideGlyphsAndTheme();
     BitmapRetentionPolicyIsBounded();
     std::cout << "DeclarativeRendererTests: " << checks << " checks passed\n";
     CoUninitialize();

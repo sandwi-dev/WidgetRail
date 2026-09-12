@@ -1019,6 +1019,19 @@ int main() {
               {120.0F, 60.0F, 600.0F, 340.0F}, 0.0F),
           "media viewport rejects an invalid DPI scale");
 
+    {
+        ControllerGuideHints hints;
+        const auto measure=[](std::wstring_view text)->std::optional<float> {return static_cast<float>(text.size());};
+        const auto cards=[](std::span<const ControllerGuideHint> value)->std::optional<float> {return value.size()*100.0F;};
+        const std::array<ControllerGuideAction,2> actions{{{L"LB",L"Previous"},{L"RT",L"Next"}}};
+        (void)BuildTrayControllerGuide(ControllerGuideDensity::Full,false,true,400,measure,actions,&hints,cards);
+        Check(hints.size()==4 && hints.front().button==L"LB","tray card budget retains highest priority contextual action");
+        Check(hints[1].label==L"Reorder" && hints[2].button==L"B" && hints[3].button==L"Menu",
+            "tray keeps concise reorder, close and options controls");
+        (void)BuildTrayControllerGuide(ControllerGuideDensity::Full,true,true,400,measure,{},&hints,cards);
+        Check(hints.size()==3 && hints[0].button==L"dpad-horizontal" && hints[1].label==L"Done",
+            "reorder mode updates its structured hints without changing navigation");
+    }
     std::cout << "OverlayPlacementTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

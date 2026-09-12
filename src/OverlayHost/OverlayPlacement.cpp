@@ -431,8 +431,15 @@ std::wstring BuildTrayControllerGuide(
     const bool selectedBridgeWidget,
     const float availableWidth,
     const MeasureControllerGuideText& measureText,
-    const std::span<const ControllerGuideAction> quickActions) {
+    const std::span<const ControllerGuideAction> quickActions,
+    ControllerGuideHints* hints,
+    const MeasureControllerGuideHints& measureHints) {
+    if (hints) hints->clear();
     if (reorderMode) {
+        if (hints) {
+            if (density != ControllerGuideDensity::Minimal) hints->push_back({L"dpad-horizontal", L"Move"});
+            hints->push_back({L"Y",L"Done"}); hints->push_back({L"B",L"Close"});
+        }
         return density == ControllerGuideDensity::Minimal
             ? L"Y Done   B Close"
             : L"←→ Move   Y Done   B Close";
@@ -465,6 +472,9 @@ std::wstring BuildTrayControllerGuide(
         return result;
     };
 
+    const ControllerGuideHints requiredHints{{L"Y",L"Reorder"},{L"B",L"Close"},{L"Menu",L"Options"}};
+    ControllerGuideHints contextualHints;
+    ControllerGuideHints candidateHints;
     const auto join = [&](const std::vector<std::wstring>& contextual,
                           const bool includeEnter,
                           const bool includeSwitch) {
@@ -474,6 +484,12 @@ std::wstring BuildTrayControllerGuide(
             if (!result.empty()) result += L"   ";
             result += segment;
         };
+        candidateHints.clear();
+        if (includeSwitch) candidateHints.push_back({L"dpad-horizontal",L"Switch widget"});
+        candidateHints.insert(candidateHints.end(),contextualHints.begin(),contextualHints.begin()+contextual.size());
+        if (includeEnter) candidateHints.push_back({L"A",L"Open"});
+        candidateHints.insert(candidateHints.end(),requiredHints.begin(),requiredHints.end());
+        if (hints) *hints=candidateHints;
         if (includeSwitch) append(L"←→ Switch");
         for (const auto& segment : contextual) append(segment);
         if (includeEnter) append(L"↑/A Enter");
@@ -483,7 +499,7 @@ std::wstring BuildTrayControllerGuide(
     const auto fits = [&](const std::wstring_view value) {
         if (!std::isfinite(availableWidth) || availableWidth <= 0.0F ||
             !measureText) return false;
-        const auto measured = measureText(value);
+        const auto measured = measureHints ? measureHints(candidateHints) : measureText(value);
         return measured && std::isfinite(*measured) &&
             *measured <= availableWidth;
     };
@@ -496,6 +512,7 @@ std::wstring BuildTrayControllerGuide(
         const auto label = sanitize(action.label);
         if (button.empty() || label.empty()) continue;
         contextual.push_back(button + L" " + label);
+        contextualHints.push_back({button,label});
     }
 
     const bool genericEnter = density != ControllerGuideDensity::Minimal;
@@ -515,6 +532,7 @@ std::wstring BuildTrayControllerGuide(
     if (fits(result)) return result;
     result = join({}, genericEnter, false);
     if (fits(result)) return result;
+    if (hints) *hints=requiredHints;
     return required;
 }
 

@@ -155,10 +155,14 @@ OpenWidgetLine BuildOpenWidgetLine(
     const bool hasBack,
     const float availableWidth,
     const MeasureOpenWidgetText& measureText,
-    const bool viewMenuShortcut) {
+    const bool viewMenuShortcut,
+    const MeasureControllerGuideHints& measureHints) {
     OpenWidgetLine result;
     result.host = std::wstring(hasBack ? L"B Back   " : L"") +
         (viewMenuShortcut ? L"View + Menu Close" : L"Guide Close");
+    ControllerGuideHints hostHints;
+    if (hasBack) hostHints.push_back({L"B",L"Back"});
+    hostHints.push_back({viewMenuShortcut ? L"View + Menu" : L"Guide",L"Close"});
     const auto reserved = measureText
         ? measureText(result.host + L"   ")
         : std::nullopt;
@@ -180,9 +184,17 @@ OpenWidgetLine BuildOpenWidgetLine(
     labels.reserve(actions.size());
     for (const auto& action : actions) labels.push_back(action.label);
 
+    const auto fitsActions = [&](const std::vector<OpenWidgetAction>& proposed, std::wstring_view text) {
+        if (!measureHints) return Fits(text,contextualWidth,measureText);
+        ControllerGuideHints candidate;
+        for (const auto& action: proposed) candidate.push_back({action.button,action.label});
+        candidate.insert(candidate.end(),hostHints.begin(),hostHints.end());
+        const auto width=measureHints(candidate);
+        return width && std::isfinite(*width) && *width<=availableWidth;
+    };
     while (!actions.empty()) {
         const auto line = BuildContextual(actions, labels);
-        if (Fits(line, contextualWidth, measureText)) {
+        if (fitsActions(actions,line)) {
             result.contextual = line;
             break;
         }
@@ -194,10 +206,16 @@ OpenWidgetLine BuildOpenWidgetLine(
         auto withActivation = result.contextual;
         if (!withActivation.empty()) withActivation += L"   ";
         withActivation += L"A Select";
-        if (Fits(withActivation, contextualWidth, measureText))
+        auto proposed=actions;
+        proposed.push_back({L"a",L"Select"});
+        if (fitsActions(proposed,withActivation)) {
             result.contextual = std::move(withActivation);
+            actions=std::move(proposed);
+        }
     }
 
+    for (const auto& action : actions) result.hints.push_back({action.button,action.label});
+    result.hints.insert(result.hints.end(),hostHints.begin(),hostHints.end());
     result.accessible = result.contextual;
     if (!result.accessible.empty()) result.accessible += L"   ";
     result.accessible += result.host;

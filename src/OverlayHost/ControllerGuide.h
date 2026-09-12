@@ -31,6 +31,7 @@ struct OpenWidgetLine final {
     std::wstring contextual;
     std::wstring host;
     std::wstring accessible;
+    ControllerGuideHints hints;
 };
 
 using MeasureOpenWidgetText =
@@ -46,6 +47,7 @@ using MeasureOpenWidgetText =
     bool hasBack,
     float availableWidth,
     const MeasureOpenWidgetText& measureText,
-    bool viewMenuShortcut = false);
+    bool viewMenuShortcut = false,
+    const MeasureControllerGuideHints& measureHints = {});
 
 } // namespace widgetrail::guide

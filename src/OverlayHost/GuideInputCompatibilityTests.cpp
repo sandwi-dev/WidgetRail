@@ -167,6 +167,24 @@ int main() {
     Check(chordLine.host == L"B Back   View + Menu Close" &&
           chordLine.accessible.find(L"View + Menu Close") != std::wstring::npos,
           "selected chord owns both the visible and accessible close hint");
+    {
+        using namespace widgetrail;
+        guide::OpenWidgetAuthority authority;
+        authority.focusedActivation=true;
+        authority.actions={{L"leftBumper",L"Previous"},{L"rightTrigger",L"  Next\npage "},{L"view",L"Details"}};
+        const auto measure=[](std::wstring_view text)->std::optional<float> {return static_cast<float>(text.size());};
+        const auto cards=[](std::span<const ControllerGuideHint> hints)->std::optional<float> {return hints.size()*100.0F;};
+        const auto fitted=guide::BuildOpenWidgetLine(ControllerGuideDensity::Full,authority,true,400,measure,true,cards);
+        Check(fitted.hints.size()==4,"card measurement retains only whole contextual hints plus host escapes");
+        Check(fitted.hints[0].button==L"leftBumper" && fitted.hints[1].button==L"rightTrigger",
+            "structured hints preserve exact resolved button priority");
+        Check(fitted.hints[1].label==L"Next page","structured hints sanitize labels consistently");
+        Check(fitted.hints[2].button==L"B" && fitted.hints[3].button==L"View + Menu",
+            "host Back and configured Close chord remain separate structured hints");
+        const auto changed=guide::BuildOpenWidgetLine(ControllerGuideDensity::Full,{},false,400,measure,false,cards);
+        Check(changed.hints.size()==1 && changed.hints[0].button==L"Guide",
+            "changing focused authority cannot retain a stale contextual hint");
+    }
     std::cout << "GuideInputCompatibilityTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

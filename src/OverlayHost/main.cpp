@@ -10,6 +10,7 @@
 #include "ControllerShortcutResolver.h"
 #include "ControllerInputOwnership.h"
 #include "ControllerGuide.h"
+#include "ControllerGuideVisual.h"
 #include "FocusNavigation.h"
 #include "HostAccessibility.h"
 #include "NativeIcons.h"
@@ -15050,6 +15051,11 @@ private:
                                         DWRITE_FONT_STRETCH_NORMAL,
                                         fontSize(L"hint", hintStyle_, 14.0F), L"en-us",
                                         hintFormat_.ReleaseAndGetAddressOf());
+        writeFactory_->CreateTextFormat(fontFamily(L"hint", hintStyle_, L"Segoe UI Variable Text"), nullptr,
+            fontWeight(L"hint", hintStyle_, DWRITE_FONT_WEIGHT_SEMI_BOLD), DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL, fontSize(L"hint", hintStyle_, 16.0F), L"en-us",
+            guideFormat_.ReleaseAndGetAddressOf());
+        if (guideFormat_) guideFormat_->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
         if (hintFormat_) {
             // Host chrome has one reserved row. Wrapping controller mappings
             // into a clipped second line is never a valid responsive state;
@@ -15091,6 +15097,7 @@ private:
         committedFullscreenPresentation_.reset();
         iconFormat_.Reset();
         hintFormat_.Reset();
+        guideFormat_.Reset();
         bodyFormat_.Reset();
         titleFormat_.Reset();
         focusBrush_.Reset();
@@ -15135,6 +15142,18 @@ private:
         DWRITE_TEXT_METRICS metrics{};
         if (FAILED(layout->GetMetrics(&metrics))) return std::nullopt;
         return metrics.widthIncludingTrailingWhitespace;
+    }
+
+    [[nodiscard]] std::optional<float> MeasureGuideHints(std::span<const widgetrail::ControllerGuideHint> hints) const {
+        return widgetrail::guide::MeasureHints(writeFactory_.Get(),guideFormat_.Get(),hints);
+    }
+    std::vector<D2D1_RECT_F> PaintGuideHints(const widgetrail::ControllerGuideHints& hints,
+        const widgetrail::declarative::Rect bounds) {
+        if (!trayItemBrush_ || !trayItemTextBrush_ || !traySelectedBrush_ || !traySelectedTextBrush_) return {};
+        return widgetrail::guide::PaintHints(renderTarget_.Get(),writeFactory_.Get(),guideFormat_.Get(),hints,
+            {bounds.x,bounds.y,bounds.x+bounds.width,bounds.y+bounds.height},
+            {trayItemBrush_->GetColor(),trayItemTextBrush_->GetColor(),traySelectedBrush_->GetColor(),
+             traySelectedTextBrush_->GetColor(),HighContrastSurfacePolicy()});
     }
 
     enum class CompositionPaintLayer {
@@ -17028,10 +17047,14 @@ private:
         return std::nullopt;
     }
 
-    std::wstring DashboardHint(const float availableWidth) {
-        if (trayContextMenu_)
+    std::wstring DashboardHint(const float availableWidth, widgetrail::ControllerGuideHints* hints = nullptr) {
+        if (hints) hints->clear();
+        if (trayContextMenu_) {
+            if (hints) *hints={{L"dpad / left-stick-move",L"Navigate"},{L"A",L"Select"},{L"B / Menu",L"Close"}};
             return L"D-pad/left stick  Navigate    A  Select    B/Menu  Close";
+        }
         if (trayYGesture_.pendingRestart()) {
+            if (hints) hints->push_back({L"Y",L"Keep holding to restart",trayYGesture_.progressPercent(GetTickCount64())/100.0F});
             return L"Hold Y to restart " +
                 std::wstring(DisplayWidgetName(trayYGesture_.selectedWidget())) +
                 L" — " +
@@ -17056,7 +17079,7 @@ private:
             [this](const std::wstring_view text) {
                 return MeasureGuideTextWidth(text);
             },
-            quickActions);
+            quickActions, hints, [this](auto items) { return MeasureGuideHints(items); });
         return guide;
     }
 
@@ -17088,7 +17111,8 @@ private:
             ? L"Reorder widgets"
             : DisplayWidgetName(state_.selectedWidget());
         const auto status = DashboardStatus();
-        const std::wstring help = DashboardHint(contentRight - contentLeft);
+        widgetrail::ControllerGuideHints visualHints;
+        const std::wstring help = DashboardHint(contentRight - contentLeft, &visualHints);
         const std::wstring accessibleHelp = DashboardAccessibilityHint(help);
         const std::wstring displayedHint = status ? *status : help;
         const widgetrail::declarative::Rect hintBounds{
@@ -17107,9 +17131,9 @@ private:
             DrawTextLine(title, titleFormat_.Get(),
                          D2D1::RectF(contentLeft, titleTop, contentRight, titleBottom),
                          dashboardTextBrush_.Get());
-            DrawTextLine(displayedHint, hintFormat_.Get(),
-                         D2D1::RectF(contentLeft, hintTop, contentRight, hintBottom),
-                         dashboardSecondaryBrush_.Get());
+            if (status) DrawTextLine(displayedHint, hintFormat_.Get(),
+                         D2D1::RectF(contentLeft, hintTop, contentRight, hintBottom), dashboardSecondaryBrush_.Get());
+            else PaintGuideHints(visualHints,hintBounds);
         }
         if (layer == CompositionPaintLayer::Combined ||
             layer == CompositionPaintLayer::Tray) {
@@ -17164,7 +17188,7 @@ private:
             availableWidth,
             [this](const std::wstring_view text) {
                 return MeasureGuideTextWidth(text);
-            }, viewMenuShortcutEnabled_);
+            }, viewMenuShortcutEnabled_, [this](auto items) { return MeasureGuideHints(items); });
     }
 
     void DrawWidgetFooter(
@@ -17185,137 +17209,57 @@ private:
             ? fixedGuideBounds->y : geometry.footerY;
         const float guideHeight = fixedGuideBounds
             ? fixedGuideBounds->height : geometry.footerHeight;
-        const float textTop = guideTop +
-            std::min(15.0F, guideHeight * 0.35F);
-        const float textBottom = guideTop +
-            WidgetGuideContentBottomDip(guideHeight);
+        const float textTop = guideTop + 6.0F;
+        const float textBottom = guideTop + guideHeight - 6.0F;
         if (textBottom <= textTop + 1.0F) return;
         const widgetrail::declarative::Rect footerBounds{
-            contentLeft, textTop, contentRight - contentLeft, textBottom - textTop,
+            contentLeft,textTop,contentRight-contentLeft,textBottom-textTop};
+        openWidgetAccessibility_.title=std::wstring{DisplayWidgetName(state_.activeWidget())};
+        const auto rect=[](D2D1_RECT_F box) {
+            return widgetrail::declarative::Rect{box.left,box.top,box.right-box.left,box.bottom-box.top};
         };
-        openWidgetAccessibility_.title =
-            std::wstring{DisplayWidgetName(state_.activeWidget())};
-        if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
-            const auto status = DashboardStatus();
-            const std::wstring help = DashboardHint(contentRight - contentLeft);
-            const std::wstring accessibleHelp = DashboardAccessibilityHint(help);
-            const std::wstring footer = status ? *status : help;
-            const float footerWidth = MeasureGuideTextWidth(footer).value_or(
-                footerBounds.width);
-            const float footerLeft = contentLeft + std::max(
-                0.0F, (footerBounds.width - footerWidth) * 0.5F);
-            const widgetrail::declarative::Rect renderedBounds{
-                footerLeft, textTop,
-                std::min(footerWidth, footerBounds.width), textBottom - textTop,
-            };
-            openWidgetAccessibility_.closeBounds = renderedBounds;
-            if (status) {
-                openWidgetAccessibility_.status = *status;
-                openWidgetAccessibility_.statusBounds = renderedBounds;
+        if (state_.focusRegion()==widgetrail::FocusRegion::Tray) {
+            widgetrail::ControllerGuideHints hints;
+            const auto help=DashboardHint(footerBounds.width,&hints);
+            if (const auto status=DashboardStatus()) {
+                hints={{L"",*status}};
+                openWidgetAccessibility_.status=*status;
+                openWidgetAccessibility_.statusBounds=footerBounds;
             } else {
-                openWidgetAccessibility_.help = accessibleHelp;
-                openWidgetAccessibility_.helpBounds = renderedBounds;
+                openWidgetAccessibility_.help=DashboardAccessibilityHint(help);
+                openWidgetAccessibility_.helpBounds=footerBounds;
             }
-            DrawTextLine(footer, hintFormat_.Get(),
-                         D2D1::RectF(footerLeft, textTop, contentRight, textBottom),
-                         dashboardSecondaryBrush_.Get());
+            const auto boxes=PaintGuideHints(hints,footerBounds);
+            for(std::size_t i=0;i<boxes.size();++i)
+                if(hints[i].label==L"Close") openWidgetAccessibility_.closeBounds=rect(boxes[i]);
             return;
         }
-        const auto status = OpenWidgetStatus();
-        const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
-        const auto hostBack = NonCurrentHostRootBackAuthority();
-        const bool rootScope = snapshot &&
-            std::wstring_view(snapshot->activeInputScopeId) ==
-                widgetrail::input::RootInputScope(*snapshot);
-        const bool nestedBack = snapshot && !rootScope &&
-            widgetrail::accessibility::HasActiveScopeBackShortcut(
-                *snapshot, interactionSession_.focusedElementId());
-        const bool hasBack = rootScope || nestedBack || hostBack.has_value();
-        const auto guide = ResolveOpenWidgetGuide(contentRight - contentLeft);
-        const std::wstring& help = guide.accessible;
-        const std::wstring prompt = status ? *status : guide.contextual;
-        const std::wstring& hostPrompt = guide.host;
-        if (hasBack) {
-            openWidgetAccessibility_.backAction = rootScope || hostBack
-                ? widgetrail::accessibility::HostAction::BackToTray
-                : widgetrail::accessibility::HostAction::BackWithinWidget;
-            openWidgetAccessibility_.backTargetId = hostBack
-                ? hostBack->inputScopeId
-                : snapshot->activeInputScopeId;
+        const auto* snapshot=InteractionSnapshotFor(state_.activeWidget());
+        const auto hostBack=NonCurrentHostRootBackAuthority();
+        const bool rootScope=snapshot && std::wstring_view(snapshot->activeInputScopeId)==widgetrail::input::RootInputScope(*snapshot);
+        const bool nestedBack=snapshot && !rootScope && widgetrail::accessibility::HasActiveScopeBackShortcut(*snapshot,interactionSession_.focusedElementId());
+        const bool hasBack=rootScope || nestedBack || hostBack.has_value();
+        const auto guide=ResolveOpenWidgetGuide(footerBounds.width);
+        auto hints=guide.hints;
+        if(hasBack) {
+            openWidgetAccessibility_.backAction=rootScope || hostBack
+                ? widgetrail::accessibility::HostAction::BackToTray : widgetrail::accessibility::HostAction::BackWithinWidget;
+            openWidgetAccessibility_.backTargetId=hostBack?hostBack->inputScopeId:snapshot->activeInputScopeId;
         }
-        const std::wstring row = prompt.empty()
-            ? hostPrompt
-            : prompt + L"   " + hostPrompt;
-        const float rowWidth = std::min(
-            footerBounds.width,
-            MeasureGuideTextWidth(row).value_or(footerBounds.width));
-        const float rowLeft = contentLeft + std::max(
-            0.0F, (footerBounds.width - rowWidth) * 0.5F);
-        const widgetrail::declarative::Rect rowBounds{
-            rowLeft, textTop, rowWidth, textBottom - textTop,
-        };
-        const float promptWidth = prompt.empty()
-            ? 0.0F
-            : MeasureGuideTextWidth(prompt + L"   ").value_or(0.0F);
-        const float backPromptWidth = hasBack
-            ? MeasureGuideTextWidth(L"B Back   ").value_or(0.0F)
-            : 0.0F;
-        const float hostPromptLeft = rowLeft + promptWidth;
-        if (!prompt.empty()) {
-            const widgetrail::declarative::Rect promptBounds{
-                rowLeft, textTop, promptWidth,
-                textBottom - textTop,
-            };
-            if (status) {
-                openWidgetAccessibility_.status = *status;
-                openWidgetAccessibility_.statusBounds = promptBounds;
-            } else {
-                openWidgetAccessibility_.help = help;
-                openWidgetAccessibility_.helpBounds = rowBounds;
-            }
-            float actionLeft = hostPromptLeft;
-            if (hasBack) {
-                openWidgetAccessibility_.backBounds = {
-                    actionLeft, textTop, backPromptWidth, textBottom - textTop,
-                };
-                actionLeft += backPromptWidth;
-                openWidgetAccessibility_.closeBounds = {
-                    actionLeft, textTop, rowLeft + rowWidth - actionLeft,
-                    textBottom - textTop,
-                };
-            } else {
-                openWidgetAccessibility_.closeBounds = {
-                    actionLeft, textTop, rowLeft + rowWidth - actionLeft,
-                    textBottom - textTop,
-                };
-            }
-            DrawTextLine(row, hintFormat_.Get(),
-                         D2D1::RectF(rowLeft, textTop,
-                                     contentRight, textBottom),
-                         secondaryBrush_.Get());
-        } else {
-            openWidgetAccessibility_.help = help;
-            openWidgetAccessibility_.helpBounds = rowBounds;
-            float actionLeft = rowLeft;
-            if (hasBack) {
-                openWidgetAccessibility_.backBounds = {
-                    actionLeft, footerBounds.y, backPromptWidth, footerBounds.height,
-                };
-                actionLeft += backPromptWidth;
-                openWidgetAccessibility_.closeBounds = {
-                    actionLeft, footerBounds.y,
-                    rowLeft + rowWidth - actionLeft,
-                    footerBounds.height,
-                };
-            } else {
-                openWidgetAccessibility_.closeBounds = {
-                    actionLeft, footerBounds.y, rowWidth,
-                    footerBounds.height,
-                };
-            }
-            DrawTextLine(hostPrompt, hintFormat_.Get(),
-                         D2D1::RectF(rowLeft, textTop, contentRight, textBottom),
-                         secondaryBrush_.Get());
+        openWidgetAccessibility_.help=guide.accessible;
+        openWidgetAccessibility_.helpBounds=footerBounds;
+        if(const auto status=OpenWidgetStatus()) {
+            // Replace contextual hints only; escape controls remain available.
+            hints.clear(); hints.push_back({L"",*status});
+            if(hasBack) hints.push_back({L"B",L"Back"});
+            hints.push_back({viewMenuShortcutEnabled_?L"View + Menu":L"Guide",L"Close"});
+            openWidgetAccessibility_.status=*status;
+        }
+        const auto boxes=PaintGuideHints(hints,footerBounds);
+        for(std::size_t i=0;i<boxes.size();++i) {
+            if(hints[i].button==L"B" && hints[i].label==L"Back") openWidgetAccessibility_.backBounds=rect(boxes[i]);
+            if(hints[i].label==L"Close") openWidgetAccessibility_.closeBounds=rect(boxes[i]);
+            if(hints[i].button.empty()) openWidgetAccessibility_.statusBounds=rect(boxes[i]);
         }
     }
 
@@ -18489,6 +18433,7 @@ private:
     ComPtr<IDWriteTextFormat> titleFormat_;
     ComPtr<IDWriteTextFormat> bodyFormat_;
     ComPtr<IDWriteTextFormat> hintFormat_;
+    ComPtr<IDWriteTextFormat> guideFormat_;
     ComPtr<IDWriteTextFormat> iconFormat_;
 };
 
