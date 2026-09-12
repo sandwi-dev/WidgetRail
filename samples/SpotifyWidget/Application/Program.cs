@@ -28,7 +28,8 @@ var exitCode = await WidgetApplicationBootstrap.RunAsync(args, () =>
     return new SpotifyWidget(
         new SpotifyApplicationService(backend, identity),
         timeProvider: null,
-        runtimeDiagnostics: diagnostics);
+        runtimeDiagnostics: diagnostics,
+        playlistCacheRoot: SpotifyPlaylistDiskCache.DefaultRoot());
 });
 if (exitCode != 0) diagnostics.Record("worker-session", "exit-1");
 return exitCode;

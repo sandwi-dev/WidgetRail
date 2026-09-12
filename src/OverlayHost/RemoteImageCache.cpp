@@ -1,4 +1,5 @@
 #include "RemoteImageCache.h"
+#include "ArtworkDiskCache.h"
 #include "ArtworkDecoderProcessOwner.h"
 #include "EncodedArtworkEnvelope.h"
 
@@ -1331,6 +1332,13 @@ RemoteImageFetchResult RemoteImageCache::FetchAndDecodeSource(
     }
     const auto parsed = ParseHttpsUrl(url);
     if (!parsed) return Failure(E_INVALIDARG, L"Only credential-free HTTPS URLs are allowed.");
+    static ArtworkDiskCache disk(ArtworkDiskCache::DefaultRoot());
+    if (stopToken.stop_requested()) return Failure(E_ABORT, L"Image request was cancelled.");
+    if (auto cached = disk.Read(url)) {
+        auto decoded = DecodeWithWic(std::move(cached->bytes), std::move(cached->mime), limits);
+        if (decoded.succeeded()) return decoded;
+        disk.Erase(url); // Corrupt/undecodable files fall back to a fresh download.
+    }
 
     InternetHandle session(WinHttpOpen(
         L"WidgetRail/0.1",
@@ -1425,7 +1433,44 @@ RemoteImageFetchResult RemoteImageCache::FetchAndDecodeSource(
         bytes.resize(offset + read);
     }
     if (bytes.empty()) return Failure(HRESULT_FROM_WIN32(ERROR_INVALID_DATA), L"Image response was empty.");
-    return DecodeWithWic(std::move(bytes), std::move(mime), limits);
+    auto decoded = DecodeWithWic(bytes, mime, limits);
+    if (decoded.succeeded() && !stopToken.stop_requested()) {
+        const auto cacheControl = QueryHeader(request.get(), WINHTTP_QUERY_CACHE_CONTROL);
+        const auto vary = QueryHeader(request.get(), WINHTTP_QUERY_VARY);
+        const auto ageText = QueryHeader(request.get(), WINHTTP_QUERY_AGE);
+        std::uint64_t age{};
+        bool validAge = true;
+        if (!ageText.empty()) {
+            try {
+                validAge = ageText.find_first_not_of(L"0123456789") == ageText.npos;
+                if (validAge) age = std::stoull(ageText);
+            } catch (...) { validAge = false; }
+        }
+        SYSTEMTIME serverDate{};
+        DWORD dateBytes = sizeof(serverDate);
+        FILETIME serverFileTime{};
+        if (WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_DATE | WINHTTP_QUERY_FLAG_SYSTEMTIME,
+                WINHTTP_HEADER_NAME_BY_INDEX, &serverDate, &dateBytes, WINHTTP_NO_HEADER_INDEX) &&
+            SystemTimeToFileTime(&serverDate, &serverFileTime)) {
+            ULARGE_INTEGER encodedDate{};
+            encodedDate.LowPart = serverFileTime.dwLowDateTime;
+            encodedDate.HighPart = serverFileTime.dwHighDateTime;
+            constexpr std::uint64_t epochOffset = 11644473600ULL;
+            const auto epochSeconds = encodedDate.QuadPart / 10000000ULL;
+            if (epochSeconds >= epochOffset) {
+                const auto date = epochSeconds - epochOffset;
+                const auto now = ArtworkDiskCache::Now();
+                if (now > date) age = std::max<std::uint64_t>(age, now - date);
+            }
+        }
+        // Auto-redirects do not expose the intermediate caching policy. Avoid
+        // giving a temporary redirect the final image's potentially long TTL.
+        if (validAge && std::wstring_view(finalUrl.data()) == url &&
+            QueryHeader(request.get(), WINHTTP_QUERY_SET_COOKIE).empty())
+            if (const auto lifetime = ArtworkDiskCache::FreshSeconds(cacheControl, vary, age))
+                (void)disk.Write(url, bytes, mime, *lifetime);
+    }
+    return decoded;
 }
 
 } // namespace widgetrail

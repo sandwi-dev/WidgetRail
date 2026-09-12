@@ -29,13 +29,16 @@ internal sealed class SpotifySelectedPlaylistPageSource(
     {
         var playlist = await GetMetadataAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        if (_cache.Get(_cacheEntry, offset, limit) is { } cached)
+        if (await _cache.GetAsync(_cacheEntry, offset, limit, cancellationToken).ConfigureAwait(false) is { } cached)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             return new(playlist, cached);
+        }
         var items = await _spotify.GetPlaylistItemsAsync(
             _selectionKey.PlaylistId, offset, limit, cancellationToken)
             .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        _cache.Put(_cacheEntry, offset, limit, items);
+        await _cache.PutAsync(_cacheEntry, offset, limit, items, cancellationToken).ConfigureAwait(false);
         return new(playlist, items);
     }
 

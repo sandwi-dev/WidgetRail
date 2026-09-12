@@ -46,7 +46,8 @@ internal sealed class WindowsCredentialSpotifyTokenVault : ISpotifyTokenVault
                 return Task.FromResult<SpotifyRefreshCredential?>(new(
                     document.ClientId,
                     document.RefreshToken,
-                    document.GrantedScopes.ToHashSet(StringComparer.Ordinal)));
+                    document.GrantedScopes.ToHashSet(StringComparer.Ordinal),
+                    Guid.TryParseExact(document.CachePartitionId, "N", out _) ? document.CachePartitionId : null));
             }
             finally { CryptographicOperations.ZeroMemory(bytes); }
         }
@@ -75,7 +76,7 @@ internal sealed class WindowsCredentialSpotifyTokenVault : ISpotifyTokenVault
         var bytes = JsonSerializer.SerializeToUtf8Bytes(new CredentialDocument(
             credential.ClientId,
             credential.RefreshToken,
-            credential.GrantedScopes.Order(StringComparer.Ordinal).ToArray()));
+            credential.GrantedScopes.Order(StringComparer.Ordinal).ToArray(), credential.CachePartitionId));
         if (bytes.Length > MaximumRefreshTokenUtf8Bytes)
         {
             CryptographicOperations.ZeroMemory(bytes);
@@ -156,7 +157,7 @@ internal sealed class WindowsCredentialSpotifyTokenVault : ISpotifyTokenVault
             $"Windows Credential Manager could not {operation} Spotify authorization (error {error}).");
 
     private sealed record CredentialDocument(
-        string ClientId, string RefreshToken, string[] GrantedScopes);
+        string ClientId, string RefreshToken, string[] GrantedScopes, string? CachePartitionId = null);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NativeCredential

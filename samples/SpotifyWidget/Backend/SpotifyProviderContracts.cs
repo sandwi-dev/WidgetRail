@@ -29,7 +29,8 @@ public sealed record SpotifyProviderAuthorization(
     string Message,
     IReadOnlyList<string>? GrantedScopes = null,
     bool NeedsReconsent = false,
-    bool IsAuthorizing = false);
+    bool IsAuthorizing = false,
+    string? CachePartitionId = null);
 
 /// <summary>
 /// Host-process-only token lease for a trusted Spotify playback component.
@@ -103,7 +104,8 @@ internal sealed record SpotifyTokenResponse(
     string? RefreshToken,
     IReadOnlySet<string> GrantedScopes);
 internal sealed record SpotifyRefreshCredential(
-    string ClientId, string RefreshToken, IReadOnlySet<string> GrantedScopes);
+    string ClientId, string RefreshToken, IReadOnlySet<string> GrantedScopes,
+    string? CachePartitionId = null);
 
 internal sealed record SpotifyAuthorizationCallback(
     string? Code,

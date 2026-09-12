@@ -173,11 +173,34 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         var requested = ValidateScopes(requiredScopes ?? BaseScopes);
         var needsReconsent = refresh is not null &&
             requested.Any(scope => !granted.Contains(scope));
+        var cachePartition = refresh?.CachePartitionId;
+        if (refresh is not null && !Guid.TryParseExact(cachePartition, "N", out _))
+            cachePartition = await TryMigrateCachePartitionAsync(identity, state, configuration.ClientId, cancellationToken).ConfigureAwait(false);
         return new(true, refresh is not null,
             state.IsAuthorizing ? "Waiting for Spotify sign-in." :
             refresh is null ? "Spotify is not connected." :
                 needsReconsent ? "Spotify needs additional permission." : "Spotify is connected.",
-            granted, needsReconsent, state.IsAuthorizing);
+            granted, needsReconsent, state.IsAuthorizing, cachePartition);
+    }
+
+    private async Task<string?> TryMigrateCachePartitionAsync(
+        SpotifyIntegrationIdentity identity, IntegrationState state, string clientId, CancellationToken cancellationToken)
+    {
+        // Cache persistence must not block authorization or overwrite a rotated
+        // credential. Failure only disables the optional disk cache this time.
+        if (!await state.Gate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) return null;
+        try
+        {
+            var current = await _vault.ReadAsync(identity, cancellationToken).ConfigureAwait(false);
+            if (current is null || current.ClientId != clientId) return null;
+            if (Guid.TryParseExact(current.CachePartitionId, "N", out _)) return current.CachePartitionId;
+            var updated = current with { CachePartitionId = Guid.NewGuid().ToString("N") };
+            await _vault.SaveAsync(identity, updated, cancellationToken).ConfigureAwait(false);
+            return updated.CachePartitionId;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException and not OutOfMemoryException)
+        { return null; }
+        finally { state.Gate.Release(); }
     }
 
     public Task<SpotifyProviderAuthorization> GetAuthorizationAsync(
@@ -229,7 +252,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
                         "invalid_response", "Spotify did not return renewable authorization.");
                 await _vault.SaveAsync(identity,
                     new SpotifyRefreshCredential(
-                        configuration.ClientId, token.RefreshToken, token.GrantedScopes),
+                        configuration.ClientId, token.RefreshToken, token.GrantedScopes, Guid.NewGuid().ToString("N")),
                     cancellationToken)
                     .ConfigureAwait(false);
                 state.AccessToken = ToAccessToken(token);
@@ -730,7 +753,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         if (token.RefreshToken is { } rotated)
             await _vault.SaveAsync(identity,
                 new SpotifyRefreshCredential(
-                    configuration.ClientId, rotated, token.GrantedScopes), cancellationToken)
+                    configuration.ClientId, rotated, token.GrantedScopes, credential.CachePartitionId), cancellationToken)
                 .ConfigureAwait(false);
         current = ToAccessToken(token);
         EnsureScope(current.GrantedScopes, requiredScope);
@@ -992,7 +1015,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
             !authorization.IsConnected ? SpotifyAuthorizationState.Disconnected :
             authorization.NeedsReconsent ? SpotifyAuthorizationState.ReauthorizationRequired :
             SpotifyAuthorizationState.Connected;
-        return new(state, requested, granted, authorization.Message);
+        return new(state, requested, granted, authorization.Message, authorization.CachePartitionId);
     }
 
     private SpotifyPlaybackSummary MapPlayback(SpotifyProviderPlayback playback)

@@ -48,7 +48,8 @@ public sealed record SpotifyAuthorizationSummary(
     SpotifyAuthorizationState State,
     IReadOnlyList<SpotifyAuthorizationScope> RequestedScopes,
     IReadOnlyList<SpotifyAuthorizationScope> GrantedScopes,
-    string? DisplayMessage);
+    string? DisplayMessage,
+    string? CachePartitionId = null);
 
 public sealed record ConnectSpotifyRequest(
     IReadOnlyList<SpotifyAuthorizationScope> RequestedScopes);

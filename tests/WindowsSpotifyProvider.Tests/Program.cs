@@ -12,6 +12,7 @@ using BrokerSpotifyLocalPlaybackState =
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Cache partition survives token rotation and migration failure leaves authorization usable", CachePartitionPersistence),
     ("Playlist parser preserves the opaque snapshot version", PlaylistSnapshotVersion),
     ("Search encodes queries, bounds paging and parses every result type", SearchContract),
     ("PKCE authorization uses exact callback state S256 and no client secret", PkceContract),
@@ -200,6 +201,26 @@ static async Task ExactPlayerEndpoints()
     foreach (var command in commands)
         await backend.ControlPlaybackAsync(Identity(), command, default);
     Assert.Equal(0, expected.Count);
+}
+
+static async Task CachePartitionPersistence()
+{
+    var vault = new FakeVault("original-refresh");
+    var http = new FakeHttp(request => request.Uri.Host == "accounts.spotify.com"
+        ? Json(200, Token("access", "rotated-refresh")) : new SpotifyHttpResponse(204, "", EmptyHeaders()));
+    await using var backend = Backend(new FakeConfigurationStore("Client123456789"), vault, http, new NullBrowser(), new NullCallback());
+    var first = await backend.GetAuthorizationAsync(Identity(), default);
+    Assert.True(Guid.TryParseExact(first.CachePartitionId, "N", out _));
+    Assert.Equal("original-refresh", vault.Token);
+    await backend.GetPlaybackAsync(Identity(), default);
+    Assert.Equal("rotated-refresh", vault.Token);
+    Assert.Equal(first.CachePartitionId, (await backend.GetAuthorizationAsync(Identity(), default)).CachePartitionId);
+    var failedVault = new FakeVault("unchanged") { FailSave = true };
+    await using var failed = Backend(new FakeConfigurationStore("Client123456789"), failedVault, http, new NullBrowser(), new NullCallback());
+    var authorization = await failed.GetAuthorizationAsync(Identity(), default);
+    Assert.True(authorization.IsConnected);
+    Assert.Equal<string?>(null, authorization.CachePartitionId);
+    Assert.Equal("unchanged", failedVault.Token);
 }
 
 static Task PlaylistSnapshotVersion()
@@ -1524,6 +1545,7 @@ internal sealed class FakeVault(string? token = null, IReadOnlySet<string>? scop
             WindowsSpotifyPlatformBackend.PlaybackControlScope,
         });
     internal string? Token => _credential?.RefreshToken;
+    internal bool FailSave { get; init; }
     internal int SaveCalls { get; private set; }
     internal int DeleteCalls { get; private set; }
 
@@ -1536,6 +1558,7 @@ internal sealed class FakeVault(string? token = null, IReadOnlySet<string>? scop
         CancellationToken cancellationToken)
     {
         SaveCalls++;
+        if (FailSave) throw new IOException("Simulated credential write failure");
         _credential = credential;
         return Task.CompletedTask;
     }

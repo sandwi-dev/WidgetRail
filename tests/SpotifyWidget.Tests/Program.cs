@@ -8,6 +8,8 @@ using System.Text;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Playlist disk cache survives restart and isolates authorizations", PlaylistDiskPersistence),
+    ("Playlist disk failures corruption and quota limits remain cache misses", PlaylistDiskFailures),
     ("Playlist snapshot versions reuse pages only after fresh metadata", PlaylistVersionCache),
     ("Playlist cache evicts bounded pages and rejects obsolete writes", PlaylistCacheBounds),
     ("Playlist reopen reuses pages while explicit refresh fetches again", PlaylistCacheNavigation),
@@ -2531,7 +2533,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.62", manifest.Version);
+    Assert.Equal("0.3.63", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
@@ -2568,6 +2570,85 @@ static Task ManifestContract()
     return Task.CompletedTask;
 }
 
+static async Task PlaylistDiskPersistence()
+{
+    var root = Path.Combine(Path.GetTempPath(), "wrail-playlist-disk-" + Guid.NewGuid().ToString("N"));
+    try
+    {
+        var partition = Guid.NewGuid().ToString("N");
+        var harness = SpotifyHarness.Ready();
+        var playlist = harness.Playlists.Items[0] with { SnapshotId = "persistent-one" };
+        harness.Playlists = harness.Playlists with { Items = [playlist] };
+        var cache = new SpotifyPlaylistCache(root); cache.SetPartition(partition);
+        await new SpotifySelectedPlaylistPageSource(harness, new(playlist.PlaylistId, 1), cache).LoadAsync(0, 24, default);
+        await cache.WhenIdleAsync(); // Graceful application exit drains the optional writer.
+        var restarted = new SpotifyPlaylistCache(root); restarted.SetPartition(partition);
+        await new SpotifySelectedPlaylistPageSource(harness, new(playlist.PlaylistId, 2), restarted).LoadAsync(0, 24, default);
+        Assert.Equal(2, harness.PlaylistMetadataCalls);
+        Assert.Equal(1, harness.PlaylistDetailCalls);
+        var otherAccount = new SpotifyPlaylistCache(root); otherAccount.SetPartition(Guid.NewGuid().ToString("N"));
+        await new SpotifySelectedPlaylistPageSource(harness, new(playlist.PlaylistId, 3), otherAccount).LoadAsync(0, 24, default);
+        Assert.Equal(2, harness.PlaylistDetailCalls);
+        await otherAccount.WhenIdleAsync();
+        harness.Playlists = harness.Playlists with { Items = [playlist with { SnapshotId = "persistent-two" }] };
+        await new SpotifySelectedPlaylistPageSource(harness, new(playlist.PlaylistId, 4), restarted).LoadAsync(0, 24, default);
+        Assert.Equal(3, harness.PlaylistDetailCalls);
+        restarted.Clear(); await restarted.WhenIdleAsync();
+        Assert.True(!Directory.EnumerateDirectories(root).Any(path => Path.GetFileName(path).StartsWith(partition, StringComparison.Ordinal)),
+            "Disconnect retained the current authorization's pages.");
+        var disk = new SpotifyPlaylistDiskCache(root, partition);
+        Assert.True(await disk.ReadAsync(playlist.PlaylistId, "persistent-two", 0, 24, default) is null,
+            "Cleared disk pages survived restart.");
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+}
+
+static async Task PlaylistDiskFailures()
+{
+    var root = Path.Combine(Path.GetTempPath(), "wrail-playlist-failures-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    try
+    {
+        var partition = Guid.NewGuid().ToString("N");
+        var page = SpotifyHarness.Ready().PlaylistDetail;
+        var disk = new SpotifyPlaylistDiskCache(root, partition, maximumPlaylists: 2);
+        Assert.True(await disk.WriteAsync("one", "v1", 0, 24, page, default), "Initial disk write failed.");
+        var file = Directory.GetFiles(root, "*.page", SearchOption.AllDirectories).Single();
+        await File.WriteAllTextAsync(file, "broken JSON");
+        Assert.True(await disk.ReadAsync("one", "v1", 0, 24, default) is null, "Corrupt JSON was admitted.");
+        Assert.True(await disk.WriteAsync("one", "v1", 0, 24, page, default), "Corrupt entry could not be replaced.");
+        File.SetAttributes(file, FileAttributes.ReadOnly);
+        Assert.NotNull(await disk.ReadAsync("one", "v1", 0, 24, default));
+        Assert.True(!await disk.WriteAsync("one", "v1", 0, 24, page, default), "Locked cache entry was overwritten.");
+        File.SetAttributes(file, FileAttributes.Normal);
+        Assert.True(await disk.WriteAsync("two", "v1", 0, 24, page, default), "Second playlist failed.");
+        Assert.True(await disk.WriteAsync("three", "v1", 0, 24, page, default), "LRU playlist write failed.");
+        Assert.Equal(2, Directory.GetDirectories(root).Length);
+        var byteRoot = Path.Combine(root, "byte-budget");
+        var seed = new SpotifyPlaylistDiskCache(byteRoot, partition);
+        Assert.True(await seed.WriteAsync("one", "v1", 0, 24, page, default), "Byte fixture failed.");
+        var pageBytes = new FileInfo(Directory.GetFiles(byteRoot, "*.page", SearchOption.AllDirectories).Single()).Length;
+        var bounded = new SpotifyPlaylistDiskCache(byteRoot, partition, maximumBytes: pageBytes * 2 + 16);
+        Assert.True(await bounded.WriteAsync("two", "v1", 0, 24, page, default), "Budgeted second page failed.");
+        Assert.True(await bounded.WriteAsync("three", "v1", 0, 24, page, default), "Byte eviction failed.");
+        Assert.True(Directory.GetFiles(byteRoot, "*.page", SearchOption.AllDirectories)
+            .Sum(path => new FileInfo(path).Length) <= pageBytes * 2 + 16, "Disk byte budget was exceeded.");
+        var small = new SpotifyPlaylistDiskCache(Path.Combine(root, "small"), partition, maximumBytes: 16);
+        Assert.True(!await small.WriteAsync("one", "v1", 0, 24, page, default), "Over-budget entry was written.");
+        var blockedRoot = Path.Combine(root, "not-a-directory"); await File.WriteAllTextAsync(blockedRoot, "blocked");
+        var blocked = new SpotifyPlaylistDiskCache(blockedRoot, partition);
+        Assert.True(!await blocked.WriteAsync("one", "v1", 0, 24, page, default), "Unavailable disk accepted a write.");
+        Assert.True(await blocked.ReadAsync("one", "v1", 0, 24, default) is null, "Unavailable disk was not a miss.");
+        var harness = SpotifyHarness.Ready();
+        harness.Playlists = harness.Playlists with { Items = [harness.Playlists.Items[0] with { SnapshotId = "one" }] };
+        var fallback = new SpotifyPlaylistCache(blockedRoot); fallback.SetPartition(partition);
+        var loaded = await new SpotifySelectedPlaylistPageSource(harness, new("playlist-one", 1), fallback).LoadAsync(0, 24, default);
+        Assert.Equal(1, loaded.Items.Items.Count);
+        Assert.Equal(1, harness.PlaylistDetailCalls);
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+}
+
 static async Task PlaylistVersionCache()
 {
     var harness = SpotifyHarness.Ready();
@@ -2601,15 +2682,16 @@ static Task PlaylistCacheBounds()
     var cache = new SpotifyPlaylistCache();
     var entry = cache.Observe(playlist);
     var page = harness.PlaylistDetail with { Items = Enumerable.Repeat(harness.PlaylistDetail.Items[0], 24).ToArray() };
-    for (var i = 0; i < 9; i++) cache.Put(entry, i * 24, 24, page);
-    Assert.True(cache.Get(entry, 0, 24) is null, "Oldest page exceeded the 192-item cache budget.");
-    Assert.NotNull(cache.Get(entry, 8 * 24, 24));
-    Assert.Equal(192, entry!.Pages.Values.Sum(value => value.Value.Items.Count));
+    var retainedPages = SpotifyPlaylistCache.MaximumItems / 24;
+    for (var i = 0; i <= retainedPages; i++) cache.Put(entry, i * 24, 24, page);
+    Assert.True(cache.Get(entry, 0, 24) is null, "Oldest page exceeded the cache budget.");
+    Assert.NotNull(cache.Get(entry, retainedPages * 24, 24));
+    Assert.Equal(retainedPages * 24, entry!.Pages.Values.Sum(value => value.Value.Items.Count));
     var replacement = cache.Observe(playlist with { SnapshotId = "two" });
     cache.Put(entry, 0, 24, page);
     Assert.True(cache.Get(replacement, 0, 24) is null, "Old-version completion repopulated the cache.");
     Assert.Equal(0, entry.Pages.Count);
-    for (var i = 0; i < 4; i++) cache.Observe(playlist with { PlaylistId = "other-" + i });
+    for (var i = 0; i < SpotifyPlaylistCache.MaximumPlaylists; i++) cache.Observe(playlist with { PlaylistId = "other-" + i });
     cache.Put(replacement, 0, 24, page);
     Assert.True(cache.Get(replacement, 0, 24) is null, "Evicted playlist retained authority.");
     var active = cache.Observe(playlist);

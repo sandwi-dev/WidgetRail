@@ -104,7 +104,7 @@ struct RemoteImageLimits {
     // Each untrusted decoded image remains capped independently from the
     // bounded process-wide retention budget.
     std::size_t maximumDecodedImageBytes{64U * 1024U * 1024U};
-    std::size_t maximumDecodedBytes{192U * 1024U * 1024U};
+    std::size_t maximumDecodedBytes{160U * 1024U * 1024U};
     std::size_t maximumDownloadBytes{5U * 1024U * 1024U};
     std::size_t maximumEncodedArtworkBytes{8U * 1024U * 1024U};
     std::size_t maximumEncodedArtworkBytesPerWidget{32U * 1024U * 1024U};

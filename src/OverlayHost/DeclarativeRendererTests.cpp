@@ -6530,7 +6530,7 @@ void BitmapRetentionPolicyIsBounded() {
         "bitmap cache retains a bounded ready-entry working set");
     Check(stats.maximumEntryBytes == 32U * 1024U * 1024U,
         "bitmap cache preserves the per-image safety ceiling");
-    Check(stats.maximumBytes == 96U * 1024U * 1024U,
+    Check(stats.maximumBytes == 80U * 1024U * 1024U,
         "bitmap cache uses the distinct aggregate GPU retention budget");
 }
 

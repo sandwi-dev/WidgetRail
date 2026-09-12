@@ -1,4 +1,5 @@
 #include "RemoteImageCache.h"
+#include "ArtworkDiskCache.h"
 #include "ArtworkDecoderProcessOwner.h"
 
 #include <wincodec.h>
@@ -121,6 +122,52 @@ std::vector<std::uint8_t> AnimatedWebP() {
 } // namespace
 
 int main() {
+    {
+        using widgetrail::ArtworkDiskCache;
+        assert(ArtworkDiskCache::FreshSeconds(L"public, max-age=3600", L"", 100) == 3500);
+        assert(!ArtworkDiskCache::FreshSeconds(L"public, max-age=0", L""));
+        assert(!ArtworkDiskCache::FreshSeconds(L"no-store, max-age=9999", L""));
+        assert(!ArtworkDiskCache::FreshSeconds(L"private, max-age=9999", L""));
+        assert(!ArtworkDiskCache::FreshSeconds(L"no-cache, max-age=9999", L""));
+        assert(!ArtworkDiskCache::FreshSeconds(L"max-age=9999", L"Cookie"));
+        assert(!ArtworkDiskCache::FreshSeconds(L"max-age=invalid", L""));
+        assert(!ArtworkDiskCache::FreshSeconds(L"public", L""));
+        const auto root = std::filesystem::temp_directory_path() /
+            (L"wrail-artwork-cache-test-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()));
+        const std::vector<std::uint8_t> bytes{1, 2, 3, 4};
+        {
+            ArtworkDiskCache cache(root, 4096, 2);
+            assert(cache.Write(L"https://example.test/one", bytes, L"image/png", 60, 1000));
+            ArtworkDiskCache reopened(root, 4096, 2);
+            const auto found = reopened.Read(L"https://example.test/one", 1001);
+            assert(found && found->bytes == bytes && found->mime == L"image/png");
+            assert(!reopened.Read(L"https://example.test/other", 1001));
+            assert(!reopened.Read(L"https://example.test/one", 1060));
+            assert(cache.Write(L"https://example.test/one", bytes, L"image/png", 60, 1000));
+            assert(cache.Write(L"https://example.test/two", bytes, L"image/png", 60, 1000));
+            assert(cache.Read(L"https://example.test/one", 1001));
+            assert(cache.Write(L"https://example.test/three", bytes, L"image/png", 60, 1000));
+            assert(!cache.Read(L"https://example.test/two", 1001));
+            assert(cache.Read(L"https://example.test/one", 1001));
+            cache.Erase(L"https://example.test/one");
+            // Corrupt a persisted file: checksums/bounds turn it into a miss.
+            for (const auto& item : std::filesystem::directory_iterator(root)) {
+                if (item.path().extension() != L".art") continue;
+                std::fstream stream(item.path(), std::ios::binary | std::ios::in | std::ios::out);
+                stream.seekp(-1, std::ios::end); stream.put(99);
+            }
+            assert(!cache.Read(L"https://example.test/three", 1001));
+            ArtworkDiskCache tooSmall(root / L"small", 16);
+            assert(!tooSmall.Write(L"https://example.test/one", bytes, L"image/png", 60));
+            const auto blocker = root / L"blocked";
+            { std::ofstream file(blocker); file << "not a directory"; }
+            ArtworkDiskCache unavailable(blocker);
+            assert(!unavailable.Write(L"https://example.test/one", bytes, L"image/png", 60));
+            assert(!unavailable.Read(L"https://example.test/one"));
+        }
+        std::filesystem::remove_all(root);
+    }
+
     using namespace widgetrail;
     assert(RemoteImageCache::IsAllowedHttpsUrl(L"https://example.test/image.png"));
     assert(!RemoteImageCache::IsAllowedHttpsUrl(L"http://example.test/image.png"));
@@ -142,7 +189,7 @@ int main() {
     assert(defaultLimits.maximumReadyEntries == 256);
     assert(defaultLimits.maximumPendingEntries == 32);
     assert(defaultLimits.maximumDecodedImageBytes == 64U * 1024U * 1024U);
-    assert(defaultLimits.maximumDecodedBytes == 192U * 1024U * 1024U);
+    assert(defaultLimits.maximumDecodedBytes == 160U * 1024U * 1024U);
     assert(defaultLimits.maximumEncodedArtworkBytes == 8U * 1024U * 1024U);
     assert(defaultLimits.maximumArtworkDimension == 4'096);
     assert(defaultLimits.maximumArtworkPixels == 16'777'216);

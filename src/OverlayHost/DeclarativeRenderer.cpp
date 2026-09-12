@@ -38,7 +38,7 @@ struct PreparationTimer {
 constexpr std::size_t kMaximumDiagnostics = 256;
 constexpr std::size_t kMaximumBitmapEntries = 256;
 constexpr std::size_t kMaximumBitmapEntryBytes = 32U * 1024U * 1024U;
-constexpr std::size_t kMaximumBitmapBytes = 96U * 1024U * 1024U;
+constexpr std::size_t kMaximumBitmapBytes = 80U * 1024U * 1024U;
 constexpr auto kBackgroundSurfaceCrossfadeMilliseconds =
     background_surface_policy::FadeMilliseconds;
 constexpr auto kBackgroundSurfaceProposalSettleMilliseconds =

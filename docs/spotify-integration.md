@@ -1,5 +1,31 @@
 # Spotify Web API integration
 
+## Persistent page storage (0.3.63)
+
+Memory now retains up to 16 playlists, 1,024 track records and 64 pages. The
+optional disk tier retains visited pages within 100 playlists and 50 MiB total
+across saved authorization partitions, under LocalAppData/WidgetRail/community-apps/
+widgetrail.samples.spotify/cache/playlists-v1. Pages are checked against freshly
+fetched snapshot_id metadata before reuse; disk persistence introduces no new
+Spotify endpoint or eager collection fetch. Artwork URLs are stored, not audio.
+
+A random non-secret partition ID belongs to the saved OAuth grant. It survives
+refresh-token rotation and application restarts; new authorization gets a new ID.
+Legacy credentials acquire the optional ID without changing their token/scopes.
+A failed metadata-only credential write leaves authorization usable and disables
+disk persistence for that observation. No credentials are stored in cache files.
+Disconnect/configuration reset retires the partition and attempts to delete its
+pages. Normal widget/application shutdown preserves the cache and drains pending
+writes within the existing shutdown deadline.
+
+Disk work runs off the presentation thread. Reads have a 250 ms fallback deadline;
+fetched pages publish without waiting for disk writes, with at most four writes
+pending. JSON depth, file size, item count and media fields are checked before use.
+Writes replace files atomically, use a cross-process writer lock and evict least
+recently used entries. Storage corruption, locks, denied access and full disks
+remain cache misses. Optional writes stop below 64 MiB free space; cleanup failure
+never prevents playback or browsing. Add to queue remains individual-track only.
+
 ## Versioned playlist cache (0.3.62)
 
 The package preserves Spotify's opaque snapshot_id on playlist summaries.

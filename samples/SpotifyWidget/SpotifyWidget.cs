@@ -76,7 +76,7 @@ public sealed class SpotifyWidget : Widget
     private string? _pageError;
     private SpotifyPlaylistSelection? _playlistSelection;
     private SpotifySelectedPlaylistPageSource? _playlistPageSource;
-    private readonly SpotifyPlaylistCache _playlistCache = new();
+    private readonly SpotifyPlaylistCache _playlistCache;
     private long? _playlistItemsSelectionGeneration;
     private long _playlistSelectionGeneration;
     private long _presentationCaptureSequence;
@@ -115,9 +115,11 @@ public sealed class SpotifyWidget : Widget
         TimeProvider? timeProvider,
         ISpotifyRuntimeDiagnostics runtimeDiagnostics,
         int collectionPageSize = SpotifyCollectionPolicy.PageSize,
-        int collectionRetainedTarget = SpotifyCollectionPolicy.RetainedItemTarget)
+        int collectionRetainedTarget = SpotifyCollectionPolicy.RetainedItemTarget,
+        string? playlistCacheRoot = null)
     {
         _spotify = spotify ?? throw new ArgumentNullException(nameof(spotify));
+        _playlistCache = new(playlistCacheRoot);
         _timeProvider = timeProvider ?? TimeProvider.System;
         _runtimeDiagnostics = runtimeDiagnostics ??
             throw new ArgumentNullException(nameof(runtimeDiagnostics));
@@ -335,6 +337,7 @@ public sealed class SpotifyWidget : Widget
         {
             if (tasks.Length != 0)
                 await Task.WhenAll(tasks).WaitAsync(shutdownToken).ConfigureAwait(false);
+            await _playlistCache.WhenIdleAsync(shutdownToken).ConfigureAwait(false);
             await _spotify.DisposeAsync().AsTask().WaitAsync(shutdownToken)
                 .ConfigureAwait(false);
         }
@@ -974,6 +977,8 @@ public sealed class SpotifyWidget : Widget
             var authorization = await _spotify.GetAuthorizationAsync(cancellationToken)
                 .ConfigureAwait(false);
             lock (_gate) _authorizationState = authorization.State;
+            if (authorization.State == SpotifyAuthorizationState.Connected)
+                _playlistCache.SetPartition(authorization.CachePartitionId);
             switch (authorization.State)
             {
                 case SpotifyAuthorizationState.Unconfigured:
@@ -1022,6 +1027,8 @@ public sealed class SpotifyWidget : Widget
             var authorization = await _spotify.ConnectAsync(
                 SpotifyScopes, cancellationToken).ConfigureAwait(false);
             lock (_gate) _authorizationState = authorization.State;
+            if (authorization.State == SpotifyAuthorizationState.Connected)
+                _playlistCache.SetPartition(authorization.CachePartitionId);
             if (authorization.State != SpotifyAuthorizationState.Connected)
             {
                 SetState(Volatile.Read(ref _activeGeneration),
