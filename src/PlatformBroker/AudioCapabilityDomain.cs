@@ -55,6 +55,17 @@ internal sealed class AudioCapabilityDomain(IPlatformBrokerBackend backend)
                 BrokerCapabilityDomains.DemandEmptyPayload(payload);
                 return BrokerJson.ToElement(ValidateDevices(
                     await backend.GetAudioDevicesAsync(cancellationToken).ConfigureAwait(false)));
+            case PlatformCapabilities.AudioDefaultOutputSet:
+            case PlatformCapabilities.AudioDefaultInputSet:
+            {
+                var request = BrokerJson.ParsePayload<SetDefaultAudioDeviceRequest>(payload);
+                ContractValidation.OpaqueId(request.DeviceId);
+                if (operation == PlatformCapabilities.AudioDefaultOutputSet)
+                    await backend.SetDefaultAudioOutputDeviceAsync(request.DeviceId, cancellationToken).ConfigureAwait(false);
+                else
+                    await backend.SetDefaultAudioInputDeviceAsync(request.DeviceId, cancellationToken).ConfigureAwait(false);
+                return BrokerCapabilityDomains.Acknowledged();
+            }
             case PlatformCapabilities.AudioInputGet:
                 BrokerCapabilityDomains.DemandEmptyPayload(payload);
                 return BrokerJson.ToElement(ValidateInput(

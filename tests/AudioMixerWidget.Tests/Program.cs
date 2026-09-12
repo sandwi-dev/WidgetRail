@@ -46,6 +46,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Timed-out output command restores the authoritative value", TimeoutRollbackIsAuthoritative),
     ("Master output updates immediately reconciles and rolls back", MasterOutputControls),
     ("Default devices and microphone controls are live controller-native and stable", DeviceAndInputControls),
+    ("Device selectors keep confirmed selection focus and safe failure feedback", DeviceSelection),
     ("Optional audio stream revocation and completion clear only their own state", OptionalStreamTerminationIsIsolated),
     ("Optional audio startup failures cannot replace the working mixer with an error", OptionalStartupFailureIsIsolated),
     ("Optional permission denial recovers without restarting healthy mixer sections", OptionalPermissionRecoveryIsIndependent),
@@ -247,8 +248,10 @@ static async Task ExplicitFocusGraph()
     Assert.SequenceEqual(
         ["audio.master.volume.slider", "audio.input.volume.slider", $"{game}.volume.slider", $"{chat}.volume.slider"],
         sliders.Keys);
-    Assert.Equal("audio.input.volume.slider", sliders["audio.master.volume.slider"].Focus!.Down);
-    Assert.Equal("audio.master.volume.slider", sliders["audio.input.volume.slider"].Focus!.Up);
+    Assert.Equal("audio.devices.output.select", sliders["audio.master.volume.slider"].Focus!.Down);
+    Assert.Equal("audio.devices.input.select", Node(snapshot.Root, "audio.devices.output.select").Focus!.Down);
+    Assert.Equal("audio.input.volume.slider", Node(snapshot.Root, "audio.devices.input.select").Focus!.Down);
+    Assert.Equal("audio.devices.input.select", sliders["audio.input.volume.slider"].Focus!.Up);
     Assert.Equal($"{game}.volume.slider", sliders["audio.input.volume.slider"].Focus!.Down);
     Assert.Equal("audio.input.volume.slider", sliders[$"{game}.volume.slider"].Focus!.Up);
     Assert.Equal($"{chat}.volume.slider", sliders[$"{game}.volume.slider"].Focus!.Down);
@@ -274,6 +277,8 @@ static async Task WholeListFocusRestoration()
     var expected = new List<string>
     {
         "audio.master.volume.slider",
+        "audio.devices.output.select",
+        "audio.devices.input.select",
         "audio.input.volume.slider",
     };
     expected.AddRange(sessions.Select(session =>
@@ -813,6 +818,53 @@ static async Task MasterOutputControls()
     await Background(widget);
 }
 
+static async Task DeviceSelection()
+{
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("game", "Game", 0.5)],
+        Devices = [new("out", "Speakers", WidgetAudioDeviceDirection.Output, true),
+            new("headset", "Headphones", WidgetAudioDeviceDirection.Output, false),
+            new("mic", "Microphone", WidgetAudioDeviceDirection.Input, true),
+            new("usb", "USB microphone", WidgetAudioDeviceDirection.Input, false)],
+    };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    fake.ControlGate = gate.Task;
+    var switching = widget.OnActionAsync(new("device.output.headset", "audio.devices.output.select")).AsTask();
+    await WaitUntil(() => fake.DeviceRequests.Count == 1);
+    var busy = Snapshot(widget, 1);
+    Assert.Equal("Speakers", Node(busy.Root, "audio.devices.output.select").AccessibilityValue);
+    Assert.Equal("audio.devices.output.select", busy.InitialFocusId);
+    Assert.True(Node(busy.Root, "audio.devices.output.select").SelectOptions.All(option => option.IsBusy), "Pending device options must reject another commit.");
+    Assert.Valid(busy);
+    gate.SetResult();
+    await switching;
+    var switched = Snapshot(widget, 2);
+    Assert.Equal("Headphones", Node(switched.Root, "audio.devices.output.select").AccessibilityValue);
+    Assert.Equal("audio.devices.output.select", switched.InitialFocusId);
+    Assert.Equal("Microphone", Node(switched.Root, "audio.devices.input.select").AccessibilityValue);
+    fake.ControlGate = null;
+    fake.InputGetException = new WidgetCapabilityException("permission_denied", "private details");
+    await widget.OnActionAsync(new("device.input.usb", "audio.devices.input.select"));
+    Assert.Equal("USB microphone", Node(Snapshot(widget, 3).Root, "audio.devices.input.select").AccessibilityValue);
+    Assert.Contains("Using USB microphone", Text(Snapshot(widget, 4).Root, "audio.status").Text!);
+    fake.ControlException = new WidgetCapabilityException("permission_denied", "private details");
+    await widget.OnActionAsync(new("device.output.out", "audio.devices.output.select"));
+    var denied = Snapshot(widget, 5);
+    Assert.Equal("Headphones", Node(denied.Root, "audio.devices.output.select").AccessibilityValue);
+    Assert.Contains("widget permissions", Text(denied.Root, "audio.status").Text!);
+    Assert.Valid(denied);
+    fake.EmitDevices([new("out", "Speakers", WidgetAudioDeviceDirection.Output, true)]);
+    await WaitUntil(() => widget.Devices.Count == 1);
+    var removed = Snapshot(widget, 6);
+    Assert.Equal("Speakers", Node(removed.Root, "audio.devices.output.select").AccessibilityValue);
+    Assert.True(Node(removed.Root, "audio.devices.input.select").IsDisabled is true, "Disconnected microphone picker must be unavailable.");
+    Assert.Valid(removed);
+    await Background(widget);
+}
+
 static async Task DeviceAndInputControls()
 {
     var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -830,9 +882,9 @@ static async Task DeviceAndInputControls()
     var widget = Create(fake);
     await ActivateReady(widget);
     var ready = Snapshot(widget, 0);
-    Assert.Equal("Living room speakers", Text(ready.Root, "audio.devices.output.name").Text);
-    Assert.Equal("USB microphone", Text(ready.Root, "audio.devices.input.name").Text);
-    Assert.Equal("audio.input.volume.slider",
+    Assert.Equal("Living room speakers", Node(ready.Root, "audio.devices.output.select").AccessibilityValue);
+    Assert.Equal("USB microphone", Node(ready.Root, "audio.devices.input.select").AccessibilityValue);
+    Assert.Equal("audio.devices.output.select",
         Node(ready.Root, "audio.master.volume.slider").Focus!.Down);
     var game = SessionPrefix(ready.Root, "Game");
     Assert.Equal($"{game}.volume.slider", Node(ready.Root, "audio.input.volume.slider").Focus!.Down);
@@ -859,7 +911,7 @@ static async Task DeviceAndInputControls()
         new("safe-output", "Headphones", WidgetAudioDeviceDirection.Output, true),
         new("safe-input", "USB microphone", WidgetAudioDeviceDirection.Input, true),
     ]);
-    await WaitUntil(() => Text(Snapshot(widget, 3).Root, "audio.devices.output.name").Text == "Headphones");
+    await WaitUntil(() => Node(Snapshot(widget, 3).Root, "audio.devices.output.select").AccessibilityValue == "Headphones");
     Assert.Equal("audio.input.volume.slider", Node(Snapshot(widget, 4).Root,
         "audio.input.volume.slider").Id);
     await Background(widget);
@@ -973,8 +1025,8 @@ static async Task OptionalPermissionRecoveryIsIndependent()
     await widget.OnActionAsync(new("devices.retry", "audio.devices.retry"));
     await WaitUntil(() => widget.DeviceState == AudioOptionalSectionState.Healthy);
     var recovered = Snapshot(widget, 2);
-    Assert.Equal("Speakers", Text(recovered.Root, "audio.devices.output.name").Text);
-    Assert.Equal("audio.input.volume.slider",
+    Assert.Equal("Speakers", Node(recovered.Root, "audio.devices.output.select").AccessibilityValue);
+    Assert.Equal("audio.devices.output.select",
         Node(recovered.Root, "audio.master.volume.slider").Focus!.Down);
     Assert.Equal("game", widget.Sessions.Single().SessionId);
     Assert.Valid(recovered);
@@ -1001,7 +1053,7 @@ static async Task OptionalRevocationPreservesSemanticFocus()
     var revoked = Snapshot(widget, 11);
     Assert.Equal(AudioMixerViewState.Ready, widget.ViewState);
     Assert.Equal("audio.input.retry", revoked.InitialFocusId);
-    Assert.Equal("audio.master.volume.slider",
+    Assert.Equal("audio.devices.input.select",
         Node(revoked.Root, "audio.input.retry").Focus!.Up);
     Assert.True(Nodes(revoked.Root).Any(node => node.Id.EndsWith(".volume.slider") &&
                                                node.Id.StartsWith("audio.session.", StringComparison.Ordinal)),
@@ -1355,6 +1407,7 @@ static async Task ShippedAssetsValidate()
         "system.audio.sessions.control.v1",
         "system.audio.output.control.v1",
         "system.audio.devices.read.v1",
+        "system.audio.devices.control.v1",
         "system.audio.input.read.v1",
         "system.audio.input.control.v1",
     ], manifest.OptionalPermissions);
@@ -1738,6 +1791,10 @@ file sealed class FakeCapabilityClient
     }
 
     public WidgetHostServices BuildServices() => new WidgetTestHostServicesBuilder()
+        .WithHandler(WidgetAudioCapabilities.SetDefaultOutputDevice,
+            (request, cancellationToken) => InvokeAsync(WidgetAudioCapabilities.SetDefaultOutputDevice, request, cancellationToken))
+        .WithHandler(WidgetAudioCapabilities.SetDefaultInputDevice,
+            (request, cancellationToken) => InvokeAsync(WidgetAudioCapabilities.SetDefaultInputDevice, request, cancellationToken))
         .WithHandler(
             WidgetAudioCapabilities.GetSessions,
             (request, cancellationToken) => InvokeAsync(
@@ -1792,6 +1849,8 @@ file sealed class FakeCapabilityClient
             OpenInputEventStream)
         .Build();
 
+    public List<string> DeviceRequests { get; } = [];
+
     public async ValueTask<TResponse> InvokeAsync<TRequest, TResponse>(
         WidgetCapabilityOperation<TRequest, TResponse> operation,
         TRequest request,
@@ -1818,6 +1877,21 @@ file sealed class FakeCapabilityClient
         {
             if (DeviceGetException is not null) throw DeviceGetException;
             return (TResponse)(object)Devices.ToArray();
+        }
+        if (operation.OperationId == WidgetAudioCapabilities.SetDefaultOutputDevice.OperationId ||
+            operation.OperationId == WidgetAudioCapabilities.SetDefaultInputDevice.OperationId)
+        {
+            var id = ((SetDefaultWidgetAudioDeviceRequest)(object)request!).DeviceId;
+            DeviceRequests.Add(id);
+            if (ControlGate is not null) await ControlGate.WaitAsync(cancellationToken);
+            if (ControlException is not null) throw ControlException;
+            var direction = operation.OperationId == WidgetAudioCapabilities.SetDefaultOutputDevice.OperationId
+                ? WidgetAudioDeviceDirection.Output : WidgetAudioDeviceDirection.Input;
+            if (!Devices.Any(device => device.DeviceId == id && device.Direction == direction))
+                throw new WidgetCapabilityException("resource_not_found", "private native id");
+            EmitDevices(Devices.Select(device => device.Direction == direction
+                ? device with { IsDefault = device.DeviceId == id } : device).ToArray());
+            return (TResponse)(object)new WidgetCapabilityAcknowledgement(true);
         }
         if (operation.OperationId == WidgetAudioCapabilities.GetInput.OperationId)
         {

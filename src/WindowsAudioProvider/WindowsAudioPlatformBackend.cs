@@ -60,6 +60,10 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
         new Dictionary<string, string>(StringComparer.Ordinal);
     private AudioOutputSummary? _output;
     private IReadOnlyList<AudioDeviceSummary> _devices = [];
+    private IReadOnlyDictionary<string, NativeAudioDeviceSnapshot> _deviceKeysByOpaqueId =
+        new Dictionary<string, NativeAudioDeviceSnapshot>(StringComparer.Ordinal);
+    private long _outputDeviceGeneration;
+    private long _inputDeviceGeneration;
     private AudioInputSummary? _input;
     private Thread? _ownerThread;
     private Task _eventPump = Task.CompletedTask;
@@ -213,6 +217,12 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
             new ControlCommand(null, AudioControlTarget.Input, null, isMuted, cancellationToken), cancellationToken)
             .ConfigureAwait(false);
 
+    public Task SetDefaultAudioOutputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>
+        EnqueueControlAsync(new ControlCommand(deviceId, AudioControlTarget.OutputDevice, null, null, cancellationToken), cancellationToken);
+
+    public Task SetDefaultAudioInputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>
+        EnqueueControlAsync(new ControlCommand(deviceId, AudioControlTarget.InputDevice, null, null, cancellationToken), cancellationToken);
+
     private async Task EnqueueControlAsync(ControlCommand command, CancellationToken cancellationToken)
     {
         EnsureStarted();
@@ -220,6 +230,9 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
         ThrowIfDisposed();
         if (_ownerUnavailable)
             throw new BrokerException("platform_unavailable", "Windows audio is temporarily unavailable.");
+        lock (_stateGate)
+            command.DeviceGeneration = command.Target == AudioControlTarget.Output
+                ? _outputDeviceGeneration : _inputDeviceGeneration;
         try
         {
             if (!_commands.TryAdd(command))
@@ -348,6 +361,35 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
 
         try
         {
+            if (command.Target is AudioControlTarget.OutputDevice or AudioControlTarget.InputDevice)
+            {
+                Refresh(adapter, publish: true);
+                NativeAudioDeviceSnapshot device;
+                lock (_stateGate)
+                {
+                    if (_devicesUnavailable || command.SessionId is null ||
+                        !_deviceKeysByOpaqueId.TryGetValue(command.SessionId, out device!))
+                        throw new BrokerException("resource_not_found", "This audio device is no longer connected.");
+                }
+                var direction = command.Target == AudioControlTarget.OutputDevice
+                    ? NativeAudioDeviceDirection.Output : NativeAudioDeviceDirection.Input;
+                if (device.Direction != direction)
+                    throw new BrokerException("invalid_payload", "The audio device has the wrong direction.");
+                command.CancellationToken.ThrowIfCancellationRequested();
+                var switched = adapter.TrySetDefaultDevice(device.NativeDeviceKey, direction);
+                Refresh(adapter, publish: true);
+                bool confirmed;
+                lock (_stateGate) confirmed = !_devicesUnavailable && _devices.Any(value =>
+                    value.DeviceId == command.SessionId && value.IsDefault);
+                if (!switched || !confirmed)
+                    throw new BrokerException("platform_unavailable", "Windows could not switch to this audio device.");
+                command.Completion.TrySetResult();
+                return;
+            }
+            lock (_stateGate)
+                if ((command.Target == AudioControlTarget.Output && command.DeviceGeneration != _outputDeviceGeneration) ||
+                    (command.Target == AudioControlTarget.Input && command.DeviceGeneration != _inputDeviceGeneration))
+                    throw new BrokerException("resource_not_found", "The default audio device changed before this control was applied.");
             if (command.Target == AudioControlTarget.Output)
             {
                 var outputChanged = command.Volume is { } outputVolume
@@ -403,6 +445,10 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
             Refresh(adapter, publish: true);
             command.Completion.TrySetResult();
         }
+        catch (OperationCanceledException) when (command.CancellationToken.IsCancellationRequested)
+        {
+            command.Completion.TrySetCanceled(command.CancellationToken);
+        }
         catch (BrokerException exception)
         {
             command.Completion.TrySetException(exception);
@@ -434,6 +480,7 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
             var deviceReadFailed = false;
             try { nativeDevices = adapter.EnumerateDevices() ?? []; }
             catch { deviceReadFailed = true; }
+            var deviceKeys = new Dictionary<string, NativeAudioDeviceSnapshot>(StringComparer.Ordinal);
             var seenNativeDevices = new HashSet<string>(StringComparer.Ordinal);
             var devices = new List<AudioDeviceSummary>(Math.Min(nativeDevices.Count, MaximumDevices));
             foreach (var device in nativeDevices)
@@ -447,6 +494,7 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
                     deviceId = $"device_{Guid.NewGuid():N}";
                     _deviceOpaqueIds.Add(device.NativeDeviceKey, deviceId);
                 }
+                deviceKeys.Add(deviceId, device);
                 devices.Add(new AudioDeviceSummary(
                     deviceId,
                     SanitizeDeviceName(device.DisplayName, device.Direction),
@@ -515,6 +563,14 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
                 _sessions = summaries.ToArray();
                 _nativeKeysByOpaqueId = reverse;
                 _output = output;
+                if (_devices.FirstOrDefault(device => device.Direction == AudioDeviceDirection.Output && device.IsDefault)?.DeviceId !=
+                    devices.FirstOrDefault(device => device.Direction == AudioDeviceDirection.Output && device.IsDefault)?.DeviceId)
+                    _outputDeviceGeneration++;
+                if (_devices.FirstOrDefault(device => device.Direction == AudioDeviceDirection.Input && device.IsDefault)?.DeviceId !=
+                    devices.FirstOrDefault(device => device.Direction == AudioDeviceDirection.Input && device.IsDefault)?.DeviceId)
+                    _inputDeviceGeneration++;
+                _deviceKeysByOpaqueId = devicesUnavailable
+                    ? new Dictionary<string, NativeAudioDeviceSnapshot>(StringComparer.Ordinal) : deviceKeys;
                 _devices = devices.ToArray();
                 _input = input;
             }
@@ -558,6 +614,9 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
             _nativeKeysByOpaqueId = new Dictionary<string, string>(StringComparer.Ordinal);
             _output = null;
             _devices = [];
+            _deviceKeysByOpaqueId = new Dictionary<string, NativeAudioDeviceSnapshot>(StringComparer.Ordinal);
+            _outputDeviceGeneration++;
+            _inputDeviceGeneration++;
             _input = null;
         }
         _degraded = true;
@@ -744,6 +803,7 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
     {
         public TaskCompletionSource Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public long DeviceGeneration { get; set; }
     }
 
     private enum AudioControlTarget
@@ -751,5 +811,7 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
         Session,
         Output,
         Input,
+        OutputDevice,
+        InputDevice,
     }
 }

@@ -16,6 +16,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Audio operations expose sanitized task-shaped DTOs", AudioOperationsAreSanitized),
     ("Master output capability validates payload lifecycle and events", MasterOutputContracts),
     ("Audio device and input permissions are granular opaque and lifecycle-gated", AudioDeviceInputContracts),
+    ("Audio device selection requires its own control permission and current opaque device", AudioDeviceSelectionContracts),
     ("Network operations switch only opaque saved profiles", NetworkOperationsAreSanitized),
     ("Connection details are separately consented bounded and invalidation-only", NetworkConnectionDetailsContracts),
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
@@ -361,7 +362,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(28, PlatformCapabilities.All.Count);
+    Assert.Equal(29, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -2334,6 +2335,38 @@ static async Task MasterOutputContracts()
     Assert.Contains("0.8", change.Payload.GetRawText());
     Assert.Contains("true", change.Payload.GetRawText());
     await subscription.DisposeAsync();
+}
+
+static async Task AudioDeviceSelectionContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var backend = AudioBackend();
+    backend.SetAudioDevices([new("output", "Speakers", AudioDeviceDirection.Output, true),
+        new("headset", "Headphones", AudioDeviceDirection.Output, false),
+        new("input", "Microphone", AudioDeviceDirection.Input, true)]);
+    await using var broker = Broker(identity, store, backend, PlatformCapabilities.AudioDevicesControlV1);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var request = Request(identity, PlatformCapabilities.AudioDevicesControlV1,
+        PlatformCapabilities.AudioDefaultOutputSet, new { deviceId = "headset" });
+    Assert.True(!(await broker.HandleAsync(request)).Succeeded);
+    Assert.Equal(0, backend.AudioControlCalls);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AudioDevicesControlV1, ConsentDecision.Grant);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    Assert.Equal("lifecycle_denied", (await broker.HandleAsync(request)).ErrorCode);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    Assert.True((await broker.HandleAsync(request)).Succeeded);
+    var devices = await backend.GetAudioDevicesAsync(CancellationToken.None);
+    Assert.True(devices.Single(device => device.DeviceId == "headset").IsDefault);
+    Assert.True(devices.Single(device => device.DeviceId == "input").IsDefault);
+    var invalid = await broker.HandleAsync(Request(identity, PlatformCapabilities.AudioDevicesControlV1,
+        PlatformCapabilities.AudioDefaultOutputSet, new { deviceId = "missing" }));
+    Assert.True(!invalid.Succeeded);
+    var unknown = await broker.HandleAsync(Request(identity, PlatformCapabilities.AudioDevicesControlV1,
+        PlatformCapabilities.AudioDefaultOutputSet, new { deviceId = "headset", endpoint = "native-id" }));
+    Assert.Equal("invalid_payload", unknown.ErrorCode);
+    Assert.Equal(1, backend.AudioControlCalls);
 }
 
 static async Task AudioDeviceInputContracts()

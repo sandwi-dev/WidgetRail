@@ -1823,6 +1823,7 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.audio.output.read.v1` | get/watch master output | Visible or Interactive |
 | `system.audio.output.control.v1` | set master volume/mute | Interactive, or one exact declared dashboard gesture while Visible |
 | `system.audio.devices.read.v1` | list/watch sanitized input/output devices and default markers | Visible or Interactive |
+| `system.audio.devices.control.v1` | choose a default output or microphone using a current opaque device ID; communications roles stay unchanged | Interactive only |
 | `system.audio.input.read.v1` | get/watch current default microphone volume/mute | Visible or Interactive |
 | `system.audio.input.control.v1` | set current default microphone volume/mute | Interactive |
 | `system.network.read.v1` | status, saved profiles, status events | Visible or Interactive |

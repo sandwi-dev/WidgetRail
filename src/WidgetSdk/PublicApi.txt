@@ -21,6 +21,7 @@ ctor WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse(System.Colle
 ctor WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest(string Slot, string Secret)
 ctor WidgetRail.WidgetSdk.SegmentedTab(string Id, string Label, string ActionId, string? AccessibilityLabel = null, bool IsDisabled = false)
 ctor WidgetRail.WidgetSdk.SelectOption(string Id, string Label, string ActionId, bool IsSelected = false, WidgetRail.WidgetProtocol.WidgetGlyph? Glyph = null, string? AccessibilityLabel = null, bool IsDisabled = false, bool IsBusy = false)
+ctor WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest(string DeviceId)
 ctor WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest(bool IsMuted)
 ctor WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest(double Volume)
 ctor WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest(bool IsMuted)
@@ -686,6 +687,11 @@ method WidgetRail.WidgetSdk.SelectOption.Deconstruct(out string Id, out string L
 method WidgetRail.WidgetSdk.SelectOption.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.SelectOption.GetHashCode() -> int
 method WidgetRail.WidgetSdk.SelectOption.ToString() -> string
+method WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest.<Clone>$() -> WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest
+method WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest.Deconstruct(out string DeviceId) -> void
+method WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest.GetHashCode() -> int
+method WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest.ToString() -> string
 method WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.<Clone>$() -> WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest
 method WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.Deconstruct(out bool IsMuted) -> void
 method WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.Equals(object? obj) -> bool
@@ -916,6 +922,8 @@ method WidgetRail.WidgetSdk.WidgetAudioService.OpenDevicesSubscriptionAsync(Syst
 method WidgetRail.WidgetSdk.WidgetAudioService.OpenInputSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetSdk.WidgetAudioInputChanged>>
 method WidgetRail.WidgetSdk.WidgetAudioService.OpenOutputSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetSdk.WidgetAudioOutputChanged>>
 method WidgetRail.WidgetSdk.WidgetAudioService.OpenSessionsSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetSdk.WidgetAudioSessionsChanged>>
+method WidgetRail.WidgetSdk.WidgetAudioService.SetDefaultInputDeviceAsync(string deviceId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetAudioService.SetDefaultOutputDeviceAsync(string deviceId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetAudioService.SetInputMutedAsync(bool isMuted, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetAudioService.SetInputVolumeAsync(double volume, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetAudioService.SetOutputMutedAsync(bool isMuted, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
@@ -1500,6 +1508,8 @@ method static WidgetRail.WidgetSdk.SelectElement.op_Equality(WidgetRail.WidgetSd
 method static WidgetRail.WidgetSdk.SelectElement.op_Inequality(WidgetRail.WidgetSdk.SelectElement? left, WidgetRail.WidgetSdk.SelectElement? right) -> bool
 method static WidgetRail.WidgetSdk.SelectOption.op_Equality(WidgetRail.WidgetSdk.SelectOption? left, WidgetRail.WidgetSdk.SelectOption? right) -> bool
 method static WidgetRail.WidgetSdk.SelectOption.op_Inequality(WidgetRail.WidgetSdk.SelectOption? left, WidgetRail.WidgetSdk.SelectOption? right) -> bool
+method static WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest.op_Equality(WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest? left, WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest? right) -> bool
+method static WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest.op_Inequality(WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest? left, WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.op_Equality(WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest? left, WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.op_Inequality(WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest? left, WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest.op_Equality(WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest? left, WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest? right) -> bool
@@ -1873,6 +1883,7 @@ method virtual WidgetRail.WidgetSdk.SegmentedTab.Equals(WidgetRail.WidgetSdk.Seg
 method virtual WidgetRail.WidgetSdk.SelectElement.<Clone>$() -> WidgetRail.WidgetSdk.SelectElement
 method virtual WidgetRail.WidgetSdk.SelectElement.Equals(WidgetRail.WidgetSdk.SelectElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.SelectOption.Equals(WidgetRail.WidgetSdk.SelectOption? other) -> bool
+method virtual WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest.Equals(WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.Equals(WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest.Equals(WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest.Equals(WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest? other) -> bool
@@ -2481,6 +2492,8 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest,WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.RegisterRunning { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest,WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.ResolveSaved { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.Save { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SetDefaultInputDevice { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SetDefaultOutputDevice { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SetInputMuted { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SetInputVolume { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SetOutputMuted { get; }
@@ -2555,6 +2568,7 @@ property string WidgetRail.WidgetSdk.SelectElement.Label { get; set; }
 property string WidgetRail.WidgetSdk.SelectOption.ActionId { get; set; }
 property string WidgetRail.WidgetSdk.SelectOption.Id { get; set; }
 property string WidgetRail.WidgetSdk.SelectOption.Label { get; set; }
+property string WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest.DeviceId { get; set; }
 property string WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest.SessionId { get; set; }
 property string WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest.SessionId { get; set; }
 property string WidgetRail.WidgetSdk.SliderElement.AccessibilityLabel { get; set; }
@@ -2803,6 +2817,7 @@ type sealed class WidgetRail.WidgetSdk.ScrubberElement : System.IEquatable<Widge
 type sealed class WidgetRail.WidgetSdk.SegmentedTab : System.IEquatable<WidgetRail.WidgetSdk.SegmentedTab>
 type sealed class WidgetRail.WidgetSdk.SelectElement : System.IEquatable<WidgetRail.WidgetSdk.SelectElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.SelectOption : System.IEquatable<WidgetRail.WidgetSdk.SelectOption>
+type sealed class WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest : System.IEquatable<WidgetRail.WidgetSdk.SetDefaultWidgetAudioDeviceRequest>
 type sealed class WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest>
 type sealed class WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioInputVolumeRequest>
 type sealed class WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest>

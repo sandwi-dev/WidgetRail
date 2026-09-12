@@ -151,6 +151,8 @@ public sealed record WidgetAudioDevice(
     [property: JsonRequired] WidgetAudioDeviceDirection Direction,
     [property: JsonRequired] bool IsDefault);
 
+public sealed record SetDefaultWidgetAudioDeviceRequest([property: JsonRequired] string DeviceId);
+
 public sealed record WidgetAudioDevicesChanged(
     [property: JsonRequired] IReadOnlyList<WidgetAudioDevice> Devices,
     [property: JsonRequired] bool IsAvailable = true);
@@ -754,6 +756,11 @@ public static class WidgetAudioCapabilities
     public static WidgetCapabilityOperation<WidgetCapabilityQuery, IReadOnlyList<WidgetAudioDevice>>
         GetDevices { get; } = new("system.audio.devices.read.v1", "audio.devices.list");
 
+    public static WidgetCapabilityOperation<SetDefaultWidgetAudioDeviceRequest, WidgetCapabilityAcknowledgement>
+        SetDefaultOutputDevice { get; } = new("system.audio.devices.control.v1", "audio.devices.set-default-output");
+    public static WidgetCapabilityOperation<SetDefaultWidgetAudioDeviceRequest, WidgetCapabilityAcknowledgement>
+        SetDefaultInputDevice { get; } = new("system.audio.devices.control.v1", "audio.devices.set-default-input");
+
     public static WidgetCapabilityEvent<WidgetAudioDevicesChanged> DevicesChanged { get; } =
         new("system.audio.devices.read.v1", "audio.devices.changed");
 
@@ -967,6 +974,20 @@ public sealed class WidgetAudioService
     public ValueTask<IReadOnlyList<WidgetAudioDevice>> GetDevicesAsync(
         CancellationToken cancellationToken = default) =>
         _client.InvokeAsync(WidgetAudioCapabilities.GetDevices, new WidgetCapabilityQuery(), cancellationToken);
+
+    public async ValueTask SetDefaultOutputDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
+    {
+        var response = await _client.InvokeAsync(WidgetAudioCapabilities.SetDefaultOutputDevice,
+            new SetDefaultWidgetAudioDeviceRequest(deviceId), cancellationToken).ConfigureAwait(false);
+        DemandAcknowledged(response);
+    }
+
+    public async ValueTask SetDefaultInputDeviceAsync(string deviceId, CancellationToken cancellationToken = default)
+    {
+        var response = await _client.InvokeAsync(WidgetAudioCapabilities.SetDefaultInputDevice,
+            new SetDefaultWidgetAudioDeviceRequest(deviceId), cancellationToken).ConfigureAwait(false);
+        DemandAcknowledged(response);
+    }
 
     public ValueTask<WidgetAudioInput> GetInputAsync(
         CancellationToken cancellationToken = default) =>

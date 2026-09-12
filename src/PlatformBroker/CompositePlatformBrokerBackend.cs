@@ -67,6 +67,11 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     public Task<IReadOnlyList<AudioDeviceSummary>> GetAudioDevicesAsync(
         CancellationToken cancellationToken) => _audio.GetAudioDevicesAsync(cancellationToken);
 
+    public Task SetDefaultAudioOutputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>
+        _audio.SetDefaultAudioOutputDeviceAsync(deviceId, cancellationToken);
+    public Task SetDefaultAudioInputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>
+        _audio.SetDefaultAudioInputDeviceAsync(deviceId, cancellationToken);
+
     public Task<AudioInputSummary> GetAudioInputAsync(CancellationToken cancellationToken) =>
         _audio.GetAudioInputAsync(cancellationToken);
 

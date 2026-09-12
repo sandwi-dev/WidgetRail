@@ -29,6 +29,8 @@ constexpr DWORD kStepTimeoutMilliseconds = 5'000;
 constexpr wchar_t kTrayAutomationId[] = L"tray:tray.audio-mixer";
 constexpr wchar_t kMasterAutomationId[] = L"widget:audio.master.volume.slider";
 constexpr wchar_t kMicrophoneAutomationId[] = L"widget:audio.input.volume.slider";
+constexpr wchar_t kOutputDeviceAutomationId[] = L"widget:audio.devices.output.select";
+constexpr wchar_t kInputDeviceAutomationId[] = L"widget:audio.devices.input.select";
 constexpr wchar_t kFirstSessionName[] =
     L"Application 00 volume, audible. Press A to mute";
 constexpr wchar_t kLastSessionName[] =
@@ -565,7 +567,7 @@ void RequireMicrophoneUpEdge(const std::string_view json) {
     constexpr std::string_view microphone =
         "\"Id\": \"audio.input.volume.slider\"";
     constexpr std::string_view masterEdge =
-        "\"Up\": \"audio.master.volume.slider\"";
+        "\"Up\": \"audio.devices.input.select\"";
     const auto microphoneAt = json.find(microphone);
     Require(microphoneAt != std::string_view::npos,
             "Four-session snapshot omitted the Microphone slider.");
@@ -573,7 +575,7 @@ void RequireMicrophoneUpEdge(const std::string_view json) {
     const auto edgeAt = json.find(masterEdge, microphoneAt + microphone.size());
     Require(edgeAt != std::string_view::npos &&
                 (nextNode == std::string_view::npos || edgeAt < nextNode),
-            "Emitted Microphone.Up edge did not target Master.");
+            "Emitted Microphone.Up edge did not target its device selector.");
 }
 
 void RequireElementName(
@@ -622,8 +624,10 @@ void ExerciseLiveFourReverseEdge(
     const auto semantic = ReadUtf8(semanticPath);
     RequireMicrophoneUpEdge(semantic);
 
-    SendKey(window, VK_DOWN);
-    (void)WaitForFocus(automation, window, kMicrophoneAutomationId, bounds);
+    for (const auto* target : {kOutputDeviceAutomationId, kInputDeviceAutomationId, kMicrophoneAutomationId}) {
+        SendKey(window, VK_DOWN);
+        (void)WaitForFocus(automation, window, target, bounds);
+    }
     std::wstring firstSession;
     std::wstring lastSession;
     std::wstring previous = kMicrophoneAutomationId;
@@ -658,8 +662,12 @@ void ExerciseLiveFourReverseEdge(
             "Reverse traversal did not return to the exact first session.");
     RequireElementName(automation, window, firstSession, kFirstSessionName);
     SendKey(window, VK_UP);
+    (void)WaitForFocus(automation, window, kMicrophoneAutomationId, bounds);
+    SendKey(window, VK_UP);
+    (void)WaitForFocus(automation, window, kInputDeviceAutomationId, bounds);
+    SendKey(window, VK_UP);
     const auto microphone = WaitForFocus(
-        automation, window, kMicrophoneAutomationId, bounds);
+        automation, window, kOutputDeviceAutomationId, bounds);
     scroll = WaitForScrollEvidence(
         scrollEvidencePath, std::wstring_view(microphone).substr(7), 0, false);
 
@@ -667,21 +675,21 @@ void ExerciseLiveFourReverseEdge(
     WriteUtf8(controlPath, "full\n");
     WaitForSemantic(semanticPath, "Application 11");
     scroll = WaitForScrollEvidence(
-        scrollEvidencePath, L"audio.input.volume.slider", fourSequence + 1, false);
+        scrollEvidencePath, L"audio.devices.output.select", fourSequence + 1, false);
     WriteUtf8(controlPath, "live-four\n");
     WaitForSemantic(semanticPath, "Application 03", "Application 04");
     scroll = WaitForScrollEvidence(
-        scrollEvidencePath, L"audio.input.volume.slider", scroll.sequence + 1, false);
-    (void)WaitForFocus(automation, window, kMicrophoneAutomationId, bounds);
+        scrollEvidencePath, L"audio.devices.output.select", scroll.sequence + 1, false);
+    (void)WaitForFocus(automation, window, kOutputDeviceAutomationId, bounds);
     Require(scroll.rootOffset > 0.01F &&
                 scroll.rootOffset <= trailingOffset + 0.01F,
-            "Microphone setup did not retain the live nonzero scroll state.");
+            "Output selector setup did not retain the live nonzero scroll state.");
     Require(std::isfinite(scroll.rootOffset),
-            "Microphone retained a non-finite root offset.");
+            "Output selector retained a non-finite root offset.");
     const float microphoneOffset = scroll.rootOffset;
     Require(scroll.upTarget == L"audio.master.volume.slider" &&
                 scroll.upRevealable,
-            "Emitted Microphone.Up target was not natively revealable before input.");
+            "Emitted Output selector.Up target was not natively revealable before input.");
     Require(scroll.upNavigation[1] + scroll.upNavigation[3] <= 0.01F,
             "Master was not already above the rendered viewport before Up.");
     evidence.Record(L"live-four", L"microphone-before-up", 1,
@@ -691,9 +699,9 @@ void ExerciseLiveFourReverseEdge(
     Require(WaitUntil(500, [&] {
                 const auto current = ParseScrollEvidence(ReadUtf8(scrollEvidencePath));
                 return GetTickCount64() - stableSince >= 200 && current &&
-                    current->focus == L"audio.input.volume.slider" &&
+                    current->focus == L"audio.devices.output.select" &&
                     std::abs(current->rootOffset - microphoneOffset) <= 0.01F;
-            }), "Microphone retained state did not settle after full-motion transition.");
+            }), "Output selector retained state did not settle after full-motion transition.");
 
     SendKey(window, VK_UP);
     const auto focusedMaster = WaitForFocus(
@@ -702,7 +710,7 @@ void ExerciseLiveFourReverseEdge(
         scrollEvidencePath, std::wstring_view(focusedMaster).substr(7));
     Require(scroll.direction == L"up" &&
                 scroll.explicitTarget == L"audio.master.volume.slider",
-            "Native host did not consume the exact emitted Microphone.Up edge.");
+            "Native host did not consume the exact emitted Output selector.Up edge.");
     Require(scroll.rootOffset + 0.01F < microphoneOffset,
             "One Up did not decrease the retained Audio Mixer root offset.");
     Require(std::abs(scroll.rootOffset) <= 0.01F,

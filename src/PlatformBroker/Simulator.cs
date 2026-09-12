@@ -221,6 +221,22 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         return Task.FromResult<IReadOnlyList<AudioDeviceSummary>>(_audioDevices.ToArray());
     }
 
+    public Task SetDefaultAudioOutputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>
+        SetDefaultAudioDeviceAsync(deviceId, AudioDeviceDirection.Output, cancellationToken);
+    public Task SetDefaultAudioInputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>
+        SetDefaultAudioDeviceAsync(deviceId, AudioDeviceDirection.Input, cancellationToken);
+    private Task SetDefaultAudioDeviceAsync(string deviceId, AudioDeviceDirection direction, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_audioDevices.Any(device => device.DeviceId == deviceId && device.Direction == direction))
+            throw new BrokerException("resource_not_found", "The audio device is no longer available.");
+        AudioControlCalls++;
+        for (var index = 0; index < _audioDevices.Count; index++)
+            if (_audioDevices[index].Direction == direction)
+                _audioDevices[index] = _audioDevices[index] with { IsDefault = _audioDevices[index].DeviceId == deviceId };
+        return Task.CompletedTask;
+    }
+
     public Task<AudioInputSummary> GetAudioInputAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

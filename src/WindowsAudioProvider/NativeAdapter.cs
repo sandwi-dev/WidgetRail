@@ -60,6 +60,7 @@ public interface IWindowsAudioNativeAdapter : IDisposable
     bool TrySetDefaultOutputMuted(bool isMuted);
     bool TrySetDefaultInputVolume(double volume);
     bool TrySetDefaultInputMuted(bool isMuted);
+    bool TrySetDefaultDevice(string nativeDeviceKey, NativeAudioDeviceDirection direction) => false;
 }
 
 public interface IWindowsAudioNativeAdapterFactory

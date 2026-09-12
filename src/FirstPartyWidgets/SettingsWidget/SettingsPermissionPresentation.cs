@@ -409,6 +409,7 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.AudioOutputReadV1 => "Read master output state",
         PlatformCapabilities.AudioOutputControlV1 => "Control master output",
         PlatformCapabilities.AudioDevicesReadV1 => "Read audio device names",
+        PlatformCapabilities.AudioDevicesControlV1 => "Change speakers and microphone",
         PlatformCapabilities.AudioInputReadV1 => "Read microphone level",
         PlatformCapabilities.AudioInputControlV1 => "Control microphone level",
         PlatformCapabilities.NetworkReadV1 => "Read network status",
@@ -452,6 +453,8 @@ internal static class SettingsPermissionPresentation
             "See volume and mute for the current default multimedia output; no device identity.",
         PlatformCapabilities.AudioOutputControlV1 =>
             "Change master volume or mute for the current default multimedia output while interactive. It cannot switch devices.",
+        PlatformCapabilities.AudioDevicesControlV1 =>
+            "Choose the speakers, headphones, or microphone Windows uses by default. Devices used specifically for calls stay unchanged.",
         PlatformCapabilities.AudioDevicesReadV1 =>
             "See sanitized names for active audio outputs and inputs and which devices are currently default. Raw endpoint IDs are never exposed.",
         PlatformCapabilities.AudioInputReadV1 =>

@@ -265,12 +265,26 @@ internal sealed class CoreAudioNativeAdapter : IWindowsAudioNativeAdapter
         return true;
     }
 
-    private string? GetDefaultDeviceId(EDataFlow flow)
+    public bool TrySetDefaultDevice(string nativeDeviceKey, NativeAudioDeviceDirection direction)
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        if (!EnumerateDevices().Any(device => device.NativeDeviceKey == nativeDeviceKey && device.Direction == direction))
+            return false;
+        var flow = direction == NativeAudioDeviceDirection.Output ? EDataFlow.Render : EDataFlow.Capture;
+        var changed = WindowsDefaultAudioDevicePolicy.TrySwitch(nativeDeviceKey, role => GetDefaultDeviceId(flow, role));
+        // Rebind endpoint/session subscriptions on the owner thread even when
+        // only part of a failed policy operation changed Windows' state.
+        Interlocked.Exchange(ref _endpointDirty, 1);
+        Interlocked.Exchange(ref _inputDirty, 1);
+        return changed;
+    }
+
+    private string? GetDefaultDeviceId(EDataFlow flow, ERole role = ERole.Multimedia)
     {
         IMMDevice? device = null;
         try
         {
-            if (_deviceEnumerator.GetDefaultAudioEndpoint(flow, ERole.Multimedia, out device) < 0 ||
+            if (_deviceEnumerator.GetDefaultAudioEndpoint(flow, role, out device) < 0 ||
                 device is null || device.GetId(out var id) < 0)
                 return null;
             return id;

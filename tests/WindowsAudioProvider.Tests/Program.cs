@@ -9,6 +9,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Controls execute on the dedicated native owner thread", ControlsUseOwnerThread),
     ("Master output controls reconcile and fail independently from sessions", MasterOutputIsIndependent),
     ("Devices stay opaque and default microphone controls reconcile", DevicesAndInputAreSafe),
+    ("Device switching is opaque confirmed and rejects stale queued controls", DeviceSwitchingIsSafe),
+    ("Default-device policy preserves communications and rolls back partial writes", DeviceSwitchPolicy),
     ("Native callbacks coalesce and the provider never polls", CallbacksCoalesceWithoutPolling),
     ("Live native failure and recovery publish explicit availability", ProviderAvailabilityEvents),
     ("An explicit GET reports then retries one transient enumeration failure", ExplicitGetRecoversTransientFailure),
@@ -18,6 +20,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unavailable Core Audio is distinct from a healthy empty session list", UnavailableAudioIsDegraded),
     ("Disposal unregisters native resources on the owner thread", DisposalIsOwnerThreadSafe),
     ("Production Core Audio adapter initializes without leaking native identity", ProductionAdapterSmoke),
+    ("Windows default-device policy COM interface is available without changing devices", PolicyInterfaceProbe),
     ("Production Core Audio applies and restores opt-in per-session controls", ProductionSessionControlSmoke),
 };
 
@@ -38,6 +41,61 @@ foreach (var (name, run) in tests)
 
 Console.WriteLine($"Executed {tests.Length} Windows audio provider tests; {failures} failed.");
 return failures == 0 ? 0 : 1;
+
+static Task DeviceSwitchPolicy()
+{
+    var state = new Dictionary<ERole, string> { [ERole.Console] = "speakers", [ERole.Multimedia] = "speakers", [ERole.Communications] = "calls" };
+    var writes = new List<ERole>();
+    Assert.True(DefaultAudioDeviceSwitch.TrySwitch("headphones", role => state[role], (id, role) =>
+    { writes.Add(role); state[role] = id; return true; }));
+    Assert.Equal("calls", state[ERole.Communications]);
+    Assert.SequenceEqual(new[] { ERole.Console, ERole.Multimedia }, writes);
+    state[ERole.Console] = state[ERole.Multimedia] = "speakers";
+    Assert.False(DefaultAudioDeviceSwitch.TrySwitch("headphones", role => state[role], (id, role) =>
+    { if (role == ERole.Multimedia) return false; state[role] = id; return true; }));
+    Assert.Equal("speakers", state[ERole.Console]);
+    Assert.Equal("speakers", state[ERole.Multimedia]);
+    Assert.False(DefaultAudioDeviceSwitch.TrySwitch("headphones", role => state[role], (id, role) => true));
+    Assert.Equal("calls", state[ERole.Communications]);
+    Assert.False(DefaultAudioDeviceSwitch.TrySwitch("headphones", role => state[role], (id, role) =>
+    { if (role == ERole.Multimedia) { state[ERole.Console] = "external"; return false; } state[role] = id; return true; }));
+    Assert.Equal("external", state[ERole.Console]);
+    return Task.CompletedTask;
+}
+
+static async Task DeviceSwitchingIsSafe()
+{
+    var adapter = new FakeNativeAdapter([]);
+    adapter.Devices = [.. adapter.Devices, new("native-headset", "Headphones", NativeAudioDeviceDirection.Output, false),
+        new("native-mic", "USB mic", NativeAudioDeviceDirection.Input, false)];
+    await using var backend = new WindowsAudioPlatformBackend(new FakeFactory(adapter));
+    var devices = await backend.GetAudioDevicesAsync(CancellationToken.None);
+    var headset = devices.Single(device => device.DisplayName == "Headphones");
+    var mic = devices.Single(device => device.DisplayName == "USB mic");
+    await Assert.ThrowsBrokerAsync(() => backend.SetDefaultAudioOutputDeviceAsync(mic.DeviceId, CancellationToken.None), "invalid_payload");
+    await Assert.ThrowsBrokerAsync(() => backend.SetDefaultAudioOutputDeviceAsync("native-headset", CancellationToken.None), "resource_not_found");
+    Assert.Equal(0, adapter.DeviceSwitchCalls);
+    adapter.BlockDeviceSwitch = true;
+    var switching = backend.SetDefaultAudioOutputDeviceAsync(headset.DeviceId, CancellationToken.None);
+    Assert.True(adapter.DeviceSwitchEntered.Wait(TimeSpan.FromSeconds(2)));
+    var staleVolume = backend.SetAudioOutputVolumeAsync(0.9, CancellationToken.None);
+    adapter.AllowDeviceSwitch.Set();
+    await switching;
+    await Assert.ThrowsBrokerAsync(() => staleVolume, "resource_not_found");
+    Assert.Equal(0.5, adapter.Output!.Volume);
+    Assert.True((await backend.GetAudioDevicesAsync(CancellationToken.None)).Single(device => device.DeviceId == headset.DeviceId).IsDefault);
+    adapter.BlockDeviceSwitch = false;
+    await backend.SetDefaultAudioInputDeviceAsync(mic.DeviceId, CancellationToken.None);
+    Assert.True((await backend.GetAudioDevicesAsync(CancellationToken.None)).Single(device => device.DeviceId == mic.DeviceId).IsDefault);
+    Assert.Equal(1, adapter.NativeCallThreadIds.Distinct().Count());
+    adapter.Devices = adapter.Devices.Where(device => device.NativeDeviceKey != "native-headset").ToArray();
+    await Assert.ThrowsBrokerAsync(() => backend.SetDefaultAudioOutputDeviceAsync(headset.DeviceId, CancellationToken.None), "resource_not_found");
+    Assert.Equal(2, adapter.DeviceSwitchCalls);
+    // A successful HRESULT without the new default being observed is not success.
+    adapter.IgnoreDeviceSwitch = true;
+    var speakers = (await backend.GetAudioDevicesAsync(CancellationToken.None)).Single(device => device.DisplayName == "Speakers");
+    await Assert.ThrowsBrokerAsync(() => backend.SetDefaultAudioOutputDeviceAsync(speakers.DeviceId, CancellationToken.None), "platform_unavailable");
+}
 
 static async Task ConstructionIsLazy()
 {
@@ -338,6 +396,31 @@ static async Task DisposalIsOwnerThreadSafe()
         _ = await backend.GetAudioSessionsAsync(CancellationToken.None));
 }
 
+static Task PolicyInterfaceProbe()
+{
+    if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
+    var initialized = CoreAudioInterop.InitializeMta();
+    object? policy = null;
+    IntPtr unknown = IntPtr.Zero, contract = IntPtr.Zero;
+    try
+    {
+        var type = Type.GetTypeFromCLSID(new Guid("870AF99C-171D-4F9E-AF0D-E63DF40C2BC9"), true)!;
+        policy = Activator.CreateInstance(type);
+        unknown = System.Runtime.InteropServices.Marshal.GetIUnknownForObject(policy!);
+        var iid = new Guid("F8679F50-850A-41CF-9C72-430F290290C8");
+        Assert.Equal(0, System.Runtime.InteropServices.Marshal.QueryInterface(unknown, ref iid, out contract));
+        Assert.True(contract != IntPtr.Zero);
+    }
+    finally
+    {
+        if (contract != IntPtr.Zero) System.Runtime.InteropServices.Marshal.Release(contract);
+        if (unknown != IntPtr.Zero) System.Runtime.InteropServices.Marshal.Release(unknown);
+        CoreAudioInterop.Release(policy);
+        if (initialized) CoreAudioInterop.Uninitialize();
+    }
+    return Task.CompletedTask;
+}
+
 static async Task ProductionAdapterSmoke()
 {
     if (!OperatingSystem.IsWindows()) return;
@@ -613,6 +696,22 @@ sealed class FakeNativeAdapter(IEnumerable<NativeAudioSessionSnapshot> initial) 
         Interlocked.Increment(ref _controlCalls);
         if (Input is null || IsInputDegraded) return false;
         Input = Input with { IsMuted = isMuted };
+        return true;
+    }
+
+    public int DeviceSwitchCalls { get; private set; }
+    public bool BlockDeviceSwitch { get; set; }
+    public bool IgnoreDeviceSwitch { get; set; }
+    public ManualResetEventSlim DeviceSwitchEntered { get; } = new(false);
+    public ManualResetEventSlim AllowDeviceSwitch { get; } = new(false);
+    public bool TrySetDefaultDevice(string nativeDeviceKey, NativeAudioDeviceDirection direction)
+    {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
+        DeviceSwitchCalls++;
+        if (BlockDeviceSwitch) { DeviceSwitchEntered.Set(); AllowDeviceSwitch.Wait(TimeSpan.FromSeconds(3)); }
+        if (!IgnoreDeviceSwitch)
+            Devices = Devices.Select(device => device.Direction == direction
+                ? device with { IsDefault = device.NativeDeviceKey == nativeDeviceKey } : device).ToArray();
         return true;
     }
 

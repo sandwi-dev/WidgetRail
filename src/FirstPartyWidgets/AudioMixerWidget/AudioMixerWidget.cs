@@ -56,6 +56,10 @@ public sealed class AudioMixerWidget : Widget
     private AudioMixerPreferredFocusTarget _preferredFocusTarget = AudioMixerPreferredFocusTarget.MasterOutput;
     private string _status = "Audio sessions load when this widget becomes visible";
     private bool _statusIsError;
+    private bool _deviceSwitchPending;
+    private string? _deviceFeedback;
+    private bool _deviceFeedbackError;
+    private WidgetAudioDevice? _deviceFeedbackTarget;
     private readonly Dictionary<string, AudioMixerSessionCommandPolicy> _sessionPending =
         new(StringComparer.Ordinal);
     private readonly AudioMixerOutputCommandPolicy _outputPending = new();
@@ -149,8 +153,9 @@ public sealed class AudioMixerWidget : Widget
                 _inputState,
                 _preferredFocusTarget,
                 _selectedSessionId,
-                _status,
-                _statusIsError);
+                _deviceFeedback ?? _status,
+                _deviceFeedback is not null ? _deviceFeedbackError : _statusIsError,
+                _deviceSwitchPending);
         }
 
         return AudioMixerPresentation.Render(state);
@@ -177,6 +182,22 @@ public sealed class AudioMixerWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        lock (_stateLock)
+        {
+            if (_deviceSwitchPending) return;
+            _deviceFeedback = null;
+            _deviceFeedbackTarget = null;
+        }
+        foreach (var (prefix, direction) in new[]
+        {
+            ("device.output.", WidgetAudioDeviceDirection.Output),
+            ("device.input.", WidgetAudioDeviceDirection.Input),
+        })
+        {
+            if (!action.ActionId.StartsWith(prefix, StringComparison.Ordinal)) continue;
+            await SwitchDeviceAsync(action.ActionId[prefix.Length..], direction, cancellationToken).ConfigureAwait(false);
+            return;
+        }
         if (TryResolveSessionAction(action.ActionId, out var sessionId, out var sessionAction))
         {
             switch (sessionAction)
@@ -234,6 +255,92 @@ public sealed class AudioMixerWidget : Widget
         return base.OnControllerInputAsync(input, cancellationToken);
     }
 
+    private async ValueTask SwitchDeviceAsync(string deviceId, WidgetAudioDeviceDirection direction,
+        CancellationToken cancellationToken)
+    {
+        AudioMixerProviderSession? session;
+        long generation;
+        WidgetAudioDevice? device;
+        lock (_stateLock)
+        {
+            device = _devices.FirstOrDefault(value => value.DeviceId == deviceId && value.Direction == direction);
+            if (device is null || _deviceSwitchPending) return;
+            session = _providerSession;
+            if (session is null) return;
+            generation = _runGeneration;
+            _deviceSwitchPending = true;
+            _deviceFeedback = $"Switching to {device.DisplayName}…";
+            _deviceFeedbackError = false;
+            _preferredFocusTarget = direction == WidgetAudioDeviceDirection.Output
+                ? AudioMixerPreferredFocusTarget.OutputDevice : AudioMixerPreferredFocusTarget.InputDevice;
+        }
+        Invalidate();
+        try
+        {
+            // Finish already admitted slider changes before changing their target.
+            await DrainCommandWorkersAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_stateLock)
+            {
+                if (generation != _runGeneration) return;
+                _outputPending.Reset();
+                _inputPending.Reset();
+            }
+            if (direction == WidgetAudioDeviceDirection.Output)
+                await HostServices.Audio.SetDefaultOutputDeviceAsync(deviceId, cancellationToken).ConfigureAwait(false);
+            else
+                await HostServices.Audio.SetDefaultInputDeviceAsync(deviceId, cancellationToken).ConfigureAwait(false);
+            ApplyDevices(await HostServices.Audio.GetDevicesAsync(cancellationToken).ConfigureAwait(false), session);
+            try
+            {
+                if (direction == WidgetAudioDeviceDirection.Output)
+                {
+                    ApplyOutput(await HostServices.Audio.GetOutputAsync(cancellationToken).ConfigureAwait(false), session);
+                    ApplySessions(await HostServices.Audio.GetSessionsAsync(cancellationToken).ConfigureAwait(false), session);
+                }
+                else
+                    ApplyInput(await HostServices.Audio.GetInputAsync(cancellationToken).ConfigureAwait(false), session);
+            }
+            catch (WidgetCapabilityException)
+            {
+                // Optional control/read permissions are independent of choosing
+                // a device. Their subscriptions own availability feedback.
+            }
+            lock (_stateLock)
+                if (generation == _runGeneration)
+                {
+                    var confirmed = _devices.FirstOrDefault(value => value.DeviceId == deviceId && value.IsDefault);
+                    _deviceFeedbackTarget = confirmed;
+                    _deviceFeedback = confirmed is not null ? $"Using {confirmed.DisplayName}" : "The default device changed. Please choose it again.";
+                    _deviceFeedbackError = confirmed is null;
+                }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            lock (_stateLock) if (generation == _runGeneration) _deviceFeedback = null;
+        }
+        catch (WidgetCapabilityException exception)
+        {
+            lock (_stateLock)
+                if (generation == _runGeneration)
+                {
+                    _deviceFeedback = exception.ErrorCode switch
+                    {
+                        "permission_denied" => "Allow Audio Mixer to change speakers and microphone in widget permissions, then try again.",
+                        "resource_not_found" => "That device is no longer connected. Choose another device.",
+                        _ => "Couldn't switch the audio device. Check that it's connected and try again.",
+                    };
+                    _deviceFeedbackError = true;
+                }
+        }
+        finally
+        {
+            lock (_stateLock)
+                if (generation == _runGeneration) _deviceSwitchPending = false;
+            Invalidate();
+        }
+    }
+
     private void RememberFocusedControl(ControllerInputEvent input)
     {
         if (input.Context != ControllerInputContext.OpenWidget ||
@@ -243,6 +350,12 @@ public sealed class AudioMixerWidget : Widget
 
         lock (_stateLock)
         {
+            if (focusedId is "audio.devices.output.select" or "audio.devices.input.select")
+            {
+                _preferredFocusTarget = focusedId == "audio.devices.output.select"
+                    ? AudioMixerPreferredFocusTarget.OutputDevice : AudioMixerPreferredFocusTarget.InputDevice;
+                return;
+            }
             if (focusedId == "audio.master.volume.slider")
             {
                 _preferredFocusTarget = AudioMixerPreferredFocusTarget.MasterOutput;
@@ -312,6 +425,9 @@ public sealed class AudioMixerWidget : Widget
         lock (_stateLock)
         {
             ++_runGeneration;
+            _deviceSwitchPending = false;
+            _deviceFeedback = null;
+            _deviceFeedbackTarget = null;
             session = _providerSession;
             _providerSession = null;
             if (_sessions.Count != 0)
@@ -437,6 +553,12 @@ public sealed class AudioMixerWidget : Widget
         {
             if (!ReferenceEquals(_providerSession, session)) return;
             _devices = devices;
+            if (!_deviceSwitchPending && _deviceFeedbackTarget is { } prior &&
+                !devices.Any(device => device.DeviceId == prior.DeviceId && device.IsDefault && device.DisplayName == prior.DisplayName))
+            {
+                _deviceFeedback = null;
+                _deviceFeedbackTarget = null;
+            }
             _deviceState = devices.Length == 0
                 ? AudioOptionalSectionState.Empty
                 : AudioOptionalSectionState.Healthy;

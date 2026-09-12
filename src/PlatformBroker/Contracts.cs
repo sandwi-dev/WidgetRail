@@ -74,6 +74,8 @@ public sealed record AudioDeviceSummary(
     AudioDeviceDirection Direction,
     bool IsDefault);
 
+public sealed record SetDefaultAudioDeviceRequest([property: JsonRequired] string DeviceId);
+
 public sealed record AudioInputSummary(
     [property: JsonRequired] double Volume,
     [property: JsonRequired] bool IsMuted);
@@ -858,6 +860,10 @@ public interface IAudioPlatformBrokerBackend : IPlatformBrokerEventSource
     Task SetAudioOutputVolumeAsync(double volume, CancellationToken cancellationToken);
     Task SetAudioOutputMutedAsync(bool isMuted, CancellationToken cancellationToken);
     Task<IReadOnlyList<AudioDeviceSummary>> GetAudioDevicesAsync(CancellationToken cancellationToken);
+    Task SetDefaultAudioOutputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>
+        Task.FromException(new BrokerException("unsupported_operation", "Audio device switching is unavailable."));
+    Task SetDefaultAudioInputDeviceAsync(string deviceId, CancellationToken cancellationToken) =>
+        Task.FromException(new BrokerException("unsupported_operation", "Audio device switching is unavailable."));
     Task<AudioInputSummary> GetAudioInputAsync(CancellationToken cancellationToken);
     Task SetAudioInputVolumeAsync(double volume, CancellationToken cancellationToken);
     Task SetAudioInputMutedAsync(bool isMuted, CancellationToken cancellationToken);

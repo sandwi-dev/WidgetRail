@@ -28,6 +28,7 @@
     "system.audio.sessions.control.v1",
     "system.audio.output.control.v1",
     "system.audio.devices.read.v1",
+    "system.audio.devices.control.v1",
     "system.audio.input.read.v1",
     "system.audio.input.control.v1"
   ],

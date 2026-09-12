@@ -43,6 +43,7 @@ eventual widgets:
 | `system.audio.output.read.v1` | Read volume/mute for the current default multimedia render endpoint and subscribe to bounded changes; no endpoint identity. |
 | `system.audio.output.control.v1` | Set master volume/mute for the current default multimedia render endpoint while Interactive, or through one exact snapshot-bound dashboard gesture while Visible; no device switching. |
 | `system.audio.devices.read.v1` | Read sanitized endpoint names/direction/default markers and subscribe to changes; no raw endpoint IDs. |
+| `system.audio.devices.control.v1` | Switch Console/Multimedia output or capture defaults using a current opaque device ID; preserve communications, verify the result and refresh endpoint subscriptions. |
 | `system.audio.input.read.v1` | Read/watch volume and mute for the current default capture endpoint; no sample capture. |
 | `system.audio.input.control.v1` | Set volume/mute for the current default capture endpoint while Interactive. |
 | `system.network.read.v1` | Read sanitized connectivity/saved-profile state and subscribe to bounded network-change events. |

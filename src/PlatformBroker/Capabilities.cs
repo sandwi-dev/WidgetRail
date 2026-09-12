@@ -54,6 +54,7 @@ public static class PlatformCapabilities
     public const string AudioOutputReadV1 = "system.audio.output.read.v1";
     public const string AudioOutputControlV1 = "system.audio.output.control.v1";
     public const string AudioDevicesReadV1 = "system.audio.devices.read.v1";
+    public const string AudioDevicesControlV1 = "system.audio.devices.control.v1";
     public const string AudioInputReadV1 = "system.audio.input.read.v1";
     public const string AudioInputControlV1 = "system.audio.input.control.v1";
     public const string NetworkReadV1 = "system.network.read.v1";
@@ -89,6 +90,8 @@ public static class PlatformCapabilities
     public const string AudioOutputSetVolume = "audio.output.set-volume";
     public const string AudioOutputSetMuted = "audio.output.set-muted";
     public const string AudioDevicesList = "audio.devices.list";
+    public const string AudioDefaultOutputSet = "audio.devices.set-default-output";
+    public const string AudioDefaultInputSet = "audio.devices.set-default-input";
     public const string AudioInputGet = "audio.input.get";
     public const string AudioInputSetVolume = "audio.input.set-volume";
     public const string AudioInputSetMuted = "audio.input.set-muted";
@@ -154,6 +157,8 @@ public static class PlatformCapabilities
                 AllowsDashboardGesture: true),
             [AudioDevicesReadV1] = new(AudioDevicesReadV1, 1, BrokerCapabilityKind.Read,
                 Set(AudioDevicesList), Set(AudioDevicesChanged)),
+            [AudioDevicesControlV1] = new(AudioDevicesControlV1, 1, BrokerCapabilityKind.Control,
+                Set(AudioDefaultOutputSet, AudioDefaultInputSet), Set()),
             [AudioInputReadV1] = new(AudioInputReadV1, 1, BrokerCapabilityKind.Read,
                 Set(AudioInputGet), Set(AudioInputChanged)),
             [AudioInputControlV1] = new(AudioInputControlV1, 1, BrokerCapabilityKind.Control,

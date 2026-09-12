@@ -243,3 +243,9 @@
 }
 
 .audio-session-card.is-pending { background: var(--surface-subtle, rgba(39, 39, 36, 0.92)); }
+
+.audio-device-selector {
+  width: 100%;
+  min-height: 44px;
+  font-size: 14px;
+}

@@ -8,6 +8,8 @@ internal enum AudioMixerPreferredFocusTarget
     MasterOutput,
     Microphone,
     Session,
+    OutputDevice,
+    InputDevice,
 }
 
 internal sealed record AudioMixerSessionPresentation(
@@ -27,7 +29,8 @@ internal sealed record AudioMixerPresentationState(
     AudioMixerPreferredFocusTarget PreferredFocusTarget,
     string? SelectedSessionId,
     string Status,
-    bool StatusIsError);
+    bool StatusIsError,
+    bool DeviceSwitchPending = false);
 
 internal static class AudioMixerPresentation
 {
@@ -72,9 +75,16 @@ internal static class AudioMixerPresentation
             ? "audio.input.volume.slider"
             : IsRetryable(state.InputState) ? "audio.input.retry" : null;
         var firstSessionFocusId = firstControls?.VolumeSlider;
-        var firstFocusAfterMaster = deviceRetryId ?? inputFocusId ?? firstSessionFocusId ?? "audio.retry";
+        var outputDeviceId = state.Devices.Any(device => device.Direction == WidgetAudioDeviceDirection.Output)
+            ? "audio.devices.output.select" : null;
+        var inputDeviceId = state.Devices.Any(device => device.Direction == WidgetAudioDeviceDirection.Input)
+            ? "audio.devices.input.select" : null;
+        var lastDeviceId = inputDeviceId ?? outputDeviceId ?? deviceRetryId;
+        var firstFocusAfterMaster = outputDeviceId ?? inputDeviceId ?? deviceRetryId ?? inputFocusId ?? firstSessionFocusId ?? "audio.retry";
         var initialFocusId = state.PreferredFocusTarget switch
         {
+            AudioMixerPreferredFocusTarget.OutputDevice when outputDeviceId is not null => outputDeviceId,
+            AudioMixerPreferredFocusTarget.InputDevice when inputDeviceId is not null => inputDeviceId,
             AudioMixerPreferredFocusTarget.Microphone when state.Input is not null => "audio.input.volume.slider",
             AudioMixerPreferredFocusTarget.Microphone when inputFocusId is not null => inputFocusId,
             AudioMixerPreferredFocusTarget.Microphone when firstSessionFocusId is not null => firstSessionFocusId,
@@ -99,6 +109,7 @@ internal static class AudioMixerPresentation
                 $"Master output volume, {(output.IsMuted ? "muted" : "audible")}. Press A to {(output.IsMuted ? "unmute" : "mute")}",
                 accessibilityValue: $"{masterPercent}%",
                 activationAction: "output.mute.toggle")
+            .Busy(state.DeviceSwitchPending)
             .Classes("audio-volume-slider", "audio-master-slider")
             .FocusDown(firstFocusAfterMaster);
         var masterCard = UI.Stack("audio.master.card",
@@ -118,17 +129,15 @@ internal static class AudioMixerPresentation
             .Classes("audio-master-card");
 
         var supplemental = new List<WidgetElement>();
-        var defaultOutput = state.Devices.FirstOrDefault(device =>
-            device.Direction == WidgetAudioDeviceDirection.Output && device.IsDefault);
-        var defaultInput = state.Devices.FirstOrDefault(device =>
-            device.Direction == WidgetAudioDeviceDirection.Input && device.IsDefault);
-        if (defaultOutput is not null || defaultInput is not null)
+        if (state.Devices.Count > 0)
         {
             supplemental.Add(UI.Stack("audio.devices.card",
-                    DeviceRow("output", WidgetGlyph.Volume, "OUTPUT",
-                        defaultOutput?.DisplayName ?? "No default output"),
-                    DeviceRow("input", WidgetGlyph.Microphone, "MICROPHONE",
-                        defaultInput?.DisplayName ?? "No default microphone"))
+                    DeviceSelector(state, WidgetAudioDeviceDirection.Output, "Output device",
+                        "audio.master.volume.slider", inputDeviceId ?? inputFocusId ?? firstSessionFocusId ?? "audio.retry"),
+                    DeviceSelector(state, WidgetAudioDeviceDirection.Input, "Microphone",
+                        outputDeviceId ?? "audio.master.volume.slider", inputFocusId ?? firstSessionFocusId ?? "audio.retry"),
+                    UI.Text("Apps with their own device setting may need to be updated or restarted.",
+                        "audio.devices.help").Classes("audio-help", "is-neutral"))
                 .Classes("audio-device-card"));
         }
         else if (IsRetryable(state.DeviceState))
@@ -153,7 +162,8 @@ internal static class AudioMixerPresentation
                     $"Microphone volume, {(input.IsMuted ? "muted" : "live")}. Press A to {(input.IsMuted ? "unmute" : "mute")}",
                     accessibilityValue: $"{inputPercent}%",
                     activationAction: "input.mute.toggle")
-                .FocusUp(deviceRetryId ?? "audio.master.volume.slider")
+                .Busy(state.DeviceSwitchPending)
+                .FocusUp(lastDeviceId ?? "audio.master.volume.slider")
                 .Classes("audio-volume-slider", "audio-input-slider")
                 .FocusDown(firstControls?.VolumeSlider ?? "audio.retry");
             supplemental.Add(UI.Stack("audio.input.card",
@@ -178,7 +188,7 @@ internal static class AudioMixerPresentation
         {
             supplemental.Add(RenderOptionalState(
                 "input", "MICROPHONE", OptionalStateCopy(state.InputState, "microphone controls"),
-                "input.retry", "Retry microphone", deviceRetryId ?? "audio.master.volume.slider",
+                "input.retry", "Retry microphone", lastDeviceId ?? "audio.master.volume.slider",
                 firstSessionFocusId ?? "audio.retry"));
         }
         else if (state.InputState is AudioOptionalSectionState.Loading or AudioOptionalSectionState.Empty)
@@ -191,7 +201,7 @@ internal static class AudioMixerPresentation
         {
             var retry = UI.Button("Check again", "retry", "audio.retry")
                 .Icon(WidgetGlyph.Refresh, "Check for application audio")
-                .FocusUp(inputFocusId ?? deviceRetryId ?? "audio.master.volume.slider")
+                .FocusUp(inputFocusId ?? lastDeviceId ?? "audio.master.volume.slider")
                 .Classes("audio-retry-action");
             var emptyChildren = new List<WidgetElement> { header, masterCard };
             emptyChildren.AddRange(supplemental);
@@ -216,7 +226,7 @@ internal static class AudioMixerPresentation
             var next = index + 1 == state.Sessions.Count ? null : sessionControls[index + 1];
             sessionRows[index] = RenderSessionRow(
                 state.Sessions[index], previous, next,
-                inputFocusId ?? deviceRetryId ?? "audio.master.volume.slider");
+                inputFocusId ?? lastDeviceId ?? "audio.master.volume.slider");
         }
 
         var rootChildren = new List<WidgetElement> { header, masterCard };
@@ -310,14 +320,22 @@ internal static class AudioMixerPresentation
             .Classes("audio-session-card", isPending ? "is-pending" : "is-ready");
     }
 
-    private static RowElement DeviceRow(string suffix, WidgetGlyph glyph, string label, string displayName) =>
-        UI.Row($"audio.devices.{suffix}",
-                UI.Icon(glyph, $"audio.devices.{suffix}.icon", label).Classes("audio-device-icon"),
-                UI.Stack($"audio.devices.{suffix}.copy",
-                    UI.Text(label, $"audio.devices.{suffix}.label", label).Classes("audio-device-label"),
-                    UI.Text(displayName, $"audio.devices.{suffix}.name", displayName).Classes("audio-device-name"))
-                    .Classes("audio-device-copy"))
-            .Classes("audio-device-row");
+    private static WidgetElement DeviceSelector(AudioMixerPresentationState state,
+        WidgetAudioDeviceDirection direction, string label, string up, string down)
+    {
+        var suffix = direction == WidgetAudioDeviceDirection.Output ? "output" : "input";
+        var devices = state.Devices.Where(device => device.Direction == direction).ToArray();
+        var selected = devices.FirstOrDefault(device => device.IsDefault)?.DeviceId;
+        var options = devices.Take(selected is null ? 127 : 128).Select(device => new SelectOption(
+            device.DeviceId, device.DisplayName, $"device.{suffix}.{device.DeviceId}",
+            IsSelected: device.DeviceId == selected, IsBusy: state.DeviceSwitchPending)).ToList();
+        if (selected is null)
+            options.Insert(0, new SelectOption($"device.{suffix}.none", devices.Length == 0 ? "No device connected" : "Choose a device",
+                $"device.{suffix}.none", IsSelected: true, IsDisabled: true));
+        return UI.Select(label, options, $"audio.devices.{suffix}.select", label)
+            .Disabled(devices.Length == 0).FocusUp(up).FocusDown(down)
+            .Classes("audio-device-selector");
+    }
 
     private static StackElement RenderOptionalState(
         string suffix, string label, string copy, string action, string buttonLabel,
