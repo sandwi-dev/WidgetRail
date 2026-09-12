@@ -120,6 +120,7 @@ struct WidgetDescriptor final {
     std::wstring packageContentDigest;
     std::vector<WidgetPackageIconAsset> iconAssets;
     bool pinningSupported{};
+    bool fullWidgetPinningSupported{};
     bool protectedWifiPromptSupported{};
     std::vector<WidgetDescriptorQuickAction> quickActions;
 };

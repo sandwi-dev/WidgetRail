@@ -9246,6 +9246,19 @@ private:
         return result;
     }
 
+    [[nodiscard]] bool HasAvailablePinnedLayout(
+        const widgetrail::WidgetDescriptor& descriptor,
+        const widgetrail::WidgetSnapshot& snapshot) const {
+        if (descriptor.fullWidgetPinningSupported || !snapshot.pinnedLayouts.empty())
+            return true;
+        if (!snapshot.embeddedMediaSession || !widgetrail::SupportsMediaPresentation(
+                *snapshot.embeddedMediaSession, widgetrail::MediaPresentationKind::CompactPinned))
+            return false;
+        const auto key = CurrentEmbeddedMediaSessionKey(descriptor.id);
+        const auto* session = key ? mediaSessions_.Find(*key) : nullptr;
+        return session && session->authority && session->coordinator;
+    }
+
     [[nodiscard]] CurrentPinActionState PinActionFor(
         const std::wstring_view widgetId) const {
         CurrentPinActionState action;
@@ -9275,9 +9288,15 @@ private:
                 : L"The current widget is unavailable";
             return action;
         }
-        if (!SnapshotFor(action.targetId)) {
+        const auto* snapshot = SnapshotFor(action.targetId);
+        if (!snapshot) {
             action.name = L"Pin unavailable";
             action.value = L"The current widget is still loading";
+            return action;
+        }
+        if (!HasAvailablePinnedLayout(*descriptor, *snapshot)) {
+            action.name = L"Pin unavailable";
+            action.value = L"This widget has no pinned layouts available right now";
             return action;
         }
         action.enabled = true;
@@ -9851,6 +9870,7 @@ private:
                 pinnedSurface.panelWidthDip,
                 pinnedSurface.panelHeightDip,
             };
+        admission.fullWidgetPinningSupported = descriptor->fullWidgetPinningSupported;
         admission.surfaceAppearancePolicy = CurrentSurfaceAppearancePolicy();
         admission.packageContentDigest = descriptor->packageContentDigest;
         admission.packageIconAssets = descriptor->iconAssets;

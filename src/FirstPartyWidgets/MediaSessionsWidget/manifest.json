@@ -5,6 +5,7 @@
   "name": "Now Playing",
   "version": "0.1.2",
   "pinningSupported": true,
+  "fullWidgetPinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1

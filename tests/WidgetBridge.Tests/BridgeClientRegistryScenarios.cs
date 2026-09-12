@@ -54,9 +54,31 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(1, client.ControllerInputs.Count);
     }
 
+    internal static async Task FullWidgetPinningRequiresManifestAuthority()
+    {
+        var configured = Widget("custom-pinning", worker: 'c', catalog: 'c') with { PinningSupported = true };
+        await using var fixture = new RegistryFixture(Catalog(configured));
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Interactive);
+        var snapshot = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        RegistryAssert.True(configured.PublicDescriptor().PinningSupported);
+        RegistryAssert.True(!configured.PublicDescriptor().FullWidgetPinningSupported);
+        foreach (var context in new[] { ControllerInputContext.PinnedSurface, ControllerInputContext.PinnedLayoutSelection })
+        {
+            var input = new ControllerInputEvent(ControllerButton.A, ControllerEventPhase.Pressed,
+                context, snapshot.InitialFocusId, Sequence: 1,
+                ActiveInputScopeId: snapshot.ActiveInputScopeId, SnapshotSequence: snapshot.Sequence)
+            { PinnedLayoutId = "host.full-widget", IsPinnedLayoutSelected = true };
+            await RegistryAssert.ThrowsAsync<BridgeStalePinnedInputAuthorityException>(() =>
+                fixture.Registry.SendControllerInputAsync(configured.Id, input,
+                    configured.PublicDescriptor().RuntimeGeneration, CancellationToken.None, CancellationToken.None));
+        }
+        RegistryAssert.Equal(0, fixture.Clients.Single().ControllerInputs.Count);
+    }
+
     internal static async Task PinnedSurfaceInputRequiresExactAuthority()
     {
-        var configured = Widget("pinned-input", worker: 'i', catalog: 'i');
+        var configured = Widget("pinned-input", worker: 'i', catalog: 'i') with
+        { PinningSupported = true, FullWidgetPinningSupported = true };
         var selectedActionId = "compact-quality.high";
         var selectedOptionDisabled = false;
         var sliderMinimum = 0d;

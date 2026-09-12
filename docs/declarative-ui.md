@@ -35,8 +35,10 @@ updates are quantized and coalesced latest-wins per Slider. A real
 `IUIAutomation` client test covers `WM_GETOBJECT`, fragment traversal, names,
 geometry, patterns, and stale-generation rejection.
 
-Supporting manifests may also set `pinningSupported: true`. The host can then
-render the same validated immutable snapshot in one host-owned peer tool window.
+Supporting manifests may set `pinningSupported: true` to expose authored pinned
+layouts or supported compact media in one host-owned peer tool window. Set
+`fullWidgetPinningSupported: true` as well to offer the ordinary full widget;
+that separate option defaults to false.
 That projection does not add a declarative node kind or expose an HWND: catalog
 identity and exact runtime/presentation generations remain the admission seam.
 The pinned projection starts click-through, stays alive when the main overlay

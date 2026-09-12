@@ -15,11 +15,17 @@ public sealed record WidgetManifest
     public required HostApiRange HostApi { get; init; }
     public required WidgetEntrypoint Entrypoint { get; init; }
     /// <summary>
-    /// Declares that the ordinary declarative view may be hosted in a
-    /// platform-owned pinned surface. This grants no HWND, z-order, placement,
-    /// input, or compositor authority and defaults closed.
+    /// Declares support for platform-owned pinned surfaces. Authored pinned
+    /// layouts remain available without opting in the ordinary full view.
+    /// This grants no HWND, z-order, placement, input, or compositor authority
+    /// and defaults closed.
     /// </summary>
     public bool PinningSupported { get; init; }
+    /// <summary>
+    /// Adds the ordinary full widget to the pinned layout choices. Defaults
+    /// false and requires <see cref="PinningSupported"/> to be true.
+    /// </summary>
+    public bool FullWidgetPinningSupported { get; init; }
     /// <summary>
     /// Safe shell presentation metadata. A semantic glyph is always retained
     /// as fallback; an optional package icon references the declared inventory.
@@ -199,6 +205,9 @@ public static partial class WidgetManifestValidator
         ArgumentNullException.ThrowIfNull(manifest);
         var errors = new List<ManifestValidationError>();
 
+        if (manifest.FullWidgetPinningSupported && !manifest.PinningSupported)
+            Add("$.fullWidgetPinningSupported", "pinning_required",
+                "Full-widget pinning requires pinningSupported to be true.");
         if (manifest.ManifestVersion != ProtocolConstants.CurrentManifestVersion)
             Add("$.manifestVersion", "unsupported_version", $"Expected manifest version {ProtocolConstants.CurrentManifestVersion}.");
         if (!IsValidPackageIdentity(manifest.Id))

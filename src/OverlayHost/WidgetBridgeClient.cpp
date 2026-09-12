@@ -692,6 +692,18 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
             }
             descriptor.pinningSupported = source.GetNamedBoolean(L"pinningSupported");
         }
+        if (source.HasKey(L"fullWidgetPinningSupported")) {
+            if (source.GetNamedValue(L"fullWidgetPinningSupported").ValueType() !=
+                JsonValueType::Boolean) {
+                error = L"Widget descriptor property 'fullWidgetPinningSupported' must be a boolean.";
+                return std::nullopt;
+            }
+            descriptor.fullWidgetPinningSupported = source.GetNamedBoolean(L"fullWidgetPinningSupported");
+            if (descriptor.fullWidgetPinningSupported && !descriptor.pinningSupported) {
+                error = L"Full-widget pinning requires pinned surface support.";
+                return std::nullopt;
+            }
+        }
         if (source.HasKey(L"protectedWifiPromptSupported")) {
             if (source.GetNamedValue(L"protectedWifiPromptSupported").ValueType() !=
                 JsonValueType::Boolean) {

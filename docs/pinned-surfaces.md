@@ -2,7 +2,12 @@
 
 Status: the bounded generic lifecycle is available on the Win32 tool-window
 architecture selected by DLV-011. A widget opts in with the data-only
-`pinningSupported` manifest flag. The host alone creates, renders, orders,
+`pinningSupported` manifest flag. This enables its authored pinned layouts and
+supported compact-media presentation. The separate `fullWidgetPinningSupported`
+flag adds the ordinary **Full widget** option and defaults to `false`; it requires
+`pinningSupported: true`. Now Playing opts into Full widget. YouTube and Spotify
+use their authored layouts without that option. No package-name checks are used.
+The host alone creates, renders, orders,
 focuses, and destroys the native surface; no HWND or native authority is
 exposed to widget code.
 
@@ -50,8 +55,8 @@ Only one surface may be pinned in this first bounded release:
 1. focus a supporting widget in the tray and press controller Menu/Options, or
    right-click that exact tray item, then choose the host-owned **Pin** menu
    item. Pin immediately enters the host-owned setup transaction. `LT`/`RT`
-   cycles the visible bounded layout catalog (the host's **Full widget** choice
-   is always present), D-pad or left stick moves, right stick resizes, `A`
+   cycles the available bounded layout catalog (**Full widget** appears only
+   when explicitly declared), D-pad or left stick moves, right stick resizes, `A`
    commits and returns the surface to click-through, and `B` cancels a new pin
    and restores exact tray focus. The full menu is always stacked above the bottom tray, with its bottom
    edge anchored to that tray and its rows ordered consistently from top to
@@ -118,8 +123,13 @@ package-declared bumper, stick-click, trigger, or Menu action remains package
 input. View is always host-owned and authored View shortcuts or quick actions
 fail snapshot validation with an author-facing diagnostic. Unsupported widgets
 retain their existing behavior. Omitted
-`pinningSupported` is exactly `false`, a wrong JSON type fails manifest parsing,
-and admission failures produce bounded host diagnostics rather than a fallback
+`pinningSupported` and `fullWidgetPinningSupported` are exactly `false` by default;
+a wrong JSON type fails manifest parsing. Full-widget support without pinning
+support fails manifest validation. A widget with neither an opted-in full view
+nor an available authored/compact-media layout cannot be pinned. Losing the last
+available layout retires an existing pin; no ordinary-view fallback is created.
+Catalog revocation and bridge input admission enforce the full-view opt-in.
+Admission failures produce bounded host diagnostics rather than a fallback
 window. Worker loss, stale runtime or presentation generations, catalog
 removal, and host exit cannot leave an orphaned surface.
 
@@ -142,8 +152,9 @@ its own deployment/runtime contract; adopting it requires planner authority.
 Persisted placement is data, not window authority: schema version, monitor
 stable ID, normalized work-area X/Y anchors, logical width/height in DIPs, and
 bounded whole-surface opacity plus the selected stable layout ID. A missing or
-retired layout ID fails safely to the host-owned **Full widget** fallback without
-discarding otherwise valid placement.
+retired layout ID selects the first currently available layout without
+discarding otherwise valid placement. A saved Full widget choice cannot restore
+that option when the manifest no longer permits it.
 The host atomically replaces
 `%LOCALAPPDATA%\WidgetRail\pinned-surface-placement.ini`; at most 64
 bounded widget records are accepted. Resolution follows one deterministic rule:
@@ -236,7 +247,8 @@ any broader decomposition remains separate planner-authorized work.
 ## Explicit limitations
 
 - This is a generic declarative host surface, not an arbitrary-window or public
-  native-window API. The only public opt-in is `pinningSupported`.
+  native-window API. `pinningSupported` enables pinning;
+  `fullWidgetPinningSupported` separately enables the ordinary full-view option.
 - The fixed-video/WebView2 trust and resource feasibility gate remains DLV-062;
   generic pinning grants no browser, media, provider, or native-object authority.
 - No WebView2, YouTube, authentication, playback, new compositor, Windows App

@@ -644,7 +644,7 @@ widgetrail::WidgetSnapshot MediaTimelineSnapshot(
 }
 
 widgetrail::pinned::WidgetSurfaceAdmission Admission(const bool supported = true) {
-    return {
+    widgetrail::pinned::WidgetSurfaceAdmission result{
         L"widgetrail.samples.sdk-gallery",
         L"gallery.instance",
         L"runtime-1",
@@ -653,6 +653,8 @@ widgetrail::pinned::WidgetSurfaceAdmission Admission(const bool supported = true
         supported,
         Snapshot(),
     };
+    result.fullWidgetPinningSupported = supported;
+    return result;
 }
 
 widgetrail::WidgetDescriptor Descriptor(
@@ -665,6 +667,7 @@ widgetrail::WidgetDescriptor Descriptor(
     descriptor.runtimeGeneration = runtime;
     descriptor.presentationGeneration = L"presentation-1";
     descriptor.pinningSupported = supported;
+    descriptor.fullWidgetPinningSupported = supported;
     return descriptor;
 }
 
@@ -925,6 +928,45 @@ int main() {
         coordinator.OnOverlayShown();
         Check(!coordinator.Pin(Admission(false), error) && !error.empty(),
               "non-supporting widget is rejected safely");
+
+        {
+            widgetrail::pinned::WidgetSurfaceCoordinator customOnly;
+            Check(customOnly.Initialize(GetModuleHandleW(nullptr), nullptr, WM_APP + 0x416,
+                d2d.Get(), write.Get(), nullptr, error, placementRoot / L"custom-only.ini"),
+                "custom-only coordinator initializes");
+            auto admission = Admission();
+            // Save a formerly supported full-view selection first.
+            Check(customOnly.Pin(admission, error) && customOnly.CommitPlacement(error),
+                "full-widget selection is explicitly admitted and persisted");
+            Check(customOnly.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                "full-widget pin retires");
+            admission.fullWidgetPinningSupported = false;
+            Check(!customOnly.Pin(admission, error) && !customOnly.pinned(),
+                "pinning support alone cannot create a full-view fallback");
+            admission.pinnedLayouts = {{L"compact", L"Compact", 360.0F, 240.0F},
+                                      {L"details", L"Details", 480.0F, 300.0F}};
+            Check(customOnly.Pin(admission, error) && customOnly.layoutCount() == 2 &&
+                customOnly.selectedLayoutName() == L"Compact",
+                "a saved full-widget choice falls back only to an available authored layout");
+            Check(customOnly.CycleLayout(1) && customOnly.selectedLayoutName() == L"Details",
+                "custom-only pin cycles to the second authored layout");
+            Check(customOnly.CycleLayout(1) && customOnly.selectedLayoutName() == L"Compact",
+                "custom-only layout cycling never introduces Full widget");
+            Check(!customOnly.UpdateSnapshot(admission.widgetId, admission.runtimeGeneration,
+                admission.snapshot, {}, false) && !customOnly.pinned(),
+                "removing the last available layout retires the pin without a full-view fallback");
+            admission.pinnedLayouts = {{L"host.full-widget", L"Forged full", 360.0F, 240.0F}};
+            Check(!customOnly.Pin(admission, error),
+                "authored layouts cannot impersonate the reserved full-widget choice");
+            admission.pinnedLayouts.clear();
+            admission.fullWidgetPinningSupported = true;
+            Check(customOnly.Pin(admission, error), "full-widget opt-in admits pinning");
+            auto revoked = Descriptor();
+            revoked.fullWidgetPinningSupported = false;
+            customOnly.ReconcileCatalog({revoked});
+            Check(!customOnly.pinned(), "catalog revocation retires the unsupported pin");
+            customOnly.Dispose();
+        }
 
         {
             widgetrail::pinned::WidgetSurfaceCoordinator lifetime;

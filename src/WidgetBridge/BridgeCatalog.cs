@@ -40,6 +40,7 @@ public sealed record BridgeWidgetDescriptor
     public required string PackageContentDigest { get; init; }
     public IReadOnlyList<BridgePackageIconAssetDescriptor> IconAssets { get; init; } = [];
     public bool PinningSupported { get; init; }
+    public bool FullWidgetPinningSupported { get; init; }
     /// <summary>
     /// Trusted host policy for the bundled Network Controls credential prompt.
     /// This is derived by the bridge and cannot be declared by a widget package.
@@ -59,6 +60,7 @@ internal sealed record ConfiguredWidget
     public WidgetPackageIcon? PackageIcon { get; init; }
     /// <summary>Immutable declaration; native-window authority remains host-only.</summary>
     public bool PinningSupported { get; init; }
+    public bool FullWidgetPinningSupported { get; init; }
     public required string WorkerExecutable { get; init; }
     public string? StyleFile { get; init; }
     public IReadOnlyList<string> WorkerArguments { get; init; } = [];
@@ -150,6 +152,7 @@ internal sealed record ConfiguredWidget
                 asset.SourceBytes, asset.NormalizedBytes))
             .ToArray(),
         PinningSupported = PinningSupported,
+        FullWidgetPinningSupported = FullWidgetPinningSupported,
         ProtectedWifiPromptSupported =
             string.Equals(PackageId, "widgetrail.firstparty.network-controls", StringComparison.Ordinal) &&
             string.Equals(PublisherId, "widgetrail.firstparty", StringComparison.Ordinal) &&
@@ -559,6 +562,7 @@ public sealed class BridgeCatalog
                 Icon = manifest.Presentation.Icon,
                 PackageIcon = packageIcon,
                 PinningSupported = manifest.PinningSupported,
+                FullWidgetPinningSupported = manifest.FullWidgetPinningSupported,
                 WorkerExecutable = executionTrust == WidgetExecutionTrust.Sandboxed
                     ? workerHost
                     : entrypoint,
@@ -969,6 +973,7 @@ public sealed class BridgeCatalog
             Icon = manifest.Presentation.Icon,
             PackageIcon = packageIcon,
             PinningSupported = manifest.PinningSupported,
+            FullWidgetPinningSupported = manifest.FullWidgetPinningSupported,
             WorkerExecutable = workerHost,
             WorkerArguments =
             [

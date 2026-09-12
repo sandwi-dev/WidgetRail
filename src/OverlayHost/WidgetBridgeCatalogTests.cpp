@@ -1491,6 +1491,7 @@ int main() {
             "presentationGeneration": "presentation-1",
             "icon": "music",
             "pinningSupported": true,
+            "fullWidgetPinningSupported": true,
             "protectedWifiPromptSupported": true,
             "quickActions": [{
                 "id": "refresh",
@@ -1516,6 +1517,7 @@ int main() {
     CHECK((*valid)[0].presentationGeneration == L"presentation-1");
     CHECK((*valid)[0].icon == L"music");
     CHECK((*valid)[0].pinningSupported);
+    CHECK((*valid)[0].fullWidgetPinningSupported);
     CHECK((*valid)[0].protectedWifiPromptSupported);
     CHECK((*valid)[0].quickActions.size() == 2);
     CHECK((*valid)[0].quickActions[0].controllerButton == L"x");
@@ -1538,6 +1540,20 @@ int main() {
         }]
     })json", error);
     CHECK(defaultPinning && !(*defaultPinning)[0].pinningSupported);
+    CHECK(!(*defaultPinning)[0].fullWidgetPinningSupported);
+    const std::string customOnlyJson = R"json({"widgets":[{
+        "id":"dev.test.custom", "name":"Custom", "instanceId":"custom.instance",
+        "runtimeGeneration":"runtime-1", "presentationGeneration":"presentation-1",
+        "icon":"music", "pinningSupported":true, "quickActions":[]}]})json";
+    const auto customOnly = widgetrail::testing::ParseWidgetDescriptors(customOnlyJson, error);
+    CHECK(customOnly && (*customOnly)[0].pinningSupported && !(*customOnly)[0].fullWidgetPinningSupported);
+    for (const auto invalidFull : {std::string{"true"}, std::string{"\"yes\""}}) {
+        auto invalidJson = customOnlyJson;
+        const auto position = invalidJson.find("\"pinningSupported\":true");
+        invalidJson.replace(position, std::string{"\"pinningSupported\":true"}.size(),
+            "\"pinningSupported\":false,\"fullWidgetPinningSupported\":" + invalidFull);
+        CHECK(!widgetrail::testing::ParseWidgetDescriptors(invalidJson, error));
+    }
     CHECK(defaultPinning && !(*defaultPinning)[0].protectedWifiPromptSupported);
     CHECK(defaultPinning && (*defaultPinning)[0].packageContentDigest.empty());
     CHECK(defaultPinning && (*defaultPinning)[0].iconAssets.empty());

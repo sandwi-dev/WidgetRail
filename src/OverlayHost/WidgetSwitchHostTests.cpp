@@ -184,7 +184,8 @@ public:
                 "\"mode\":\"suspend-when-hidden\"},\"workerArguments\":["
                 "\"--first-snapshot-signal\",\"" + startupSignal + "\"" +
                 blockingArguments + actionArguments + "],"
-                "\"pinningSupported\":" + (pinnable ? "true" : "false") + ","
+                "\"pinningSupported\":" + (pinnable ? "true" : "false") + "," +
+                "\"fullWidgetPinningSupported\":" + (pinnable ? "true" : "false") + ","
                 "\"declaredCapabilities\":[],\"quickActions\":[]}";
         };
         if (pinnedSliderRoute) {

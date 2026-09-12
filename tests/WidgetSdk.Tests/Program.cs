@@ -3210,6 +3210,7 @@ static Task ManifestPinningIsExplicit()
 {
     var omittedDocument = JsonNode.Parse(ManifestJson.Serialize(ValidManifest()))!.AsObject();
     omittedDocument.Remove("pinningSupported");
+    omittedDocument.Remove("fullWidgetPinningSupported");
     var omitted = ManifestJson.Deserialize(
         Encoding.UTF8.GetBytes(omittedDocument.ToJsonString()));
     Assert.True(!omitted.PinningSupported,
@@ -3223,6 +3224,19 @@ static Task ManifestPinningIsExplicit()
     Assert.True(ManifestJson.Deserialize(payload).PinningSupported,
         "The explicit pinning declaration did not round-trip.");
     Assert.Equal(0, WidgetManifestValidator.Validate(supported).Count);
+    Assert.True(!omitted.FullWidgetPinningSupported && !supported.FullWidgetPinningSupported,
+        "Full-widget pinning must be a separate explicit opt-in.");
+    var full = supported with { FullWidgetPinningSupported = true };
+    Assert.True(ManifestJson.Deserialize(ManifestJson.Serialize(full)).FullWidgetPinningSupported,
+        "The full-widget opt-in did not round-trip.");
+    Assert.Equal(0, WidgetManifestValidator.Validate(full).Count);
+    Assert.True(WidgetManifestValidator.Validate(full with { PinningSupported = false })
+        .Any(error => error.Path == "$.fullWidgetPinningSupported" && error.Code == "pinning_required"),
+        "Full-widget support must not bypass the pinning declaration.");
+    var malformed = JsonNode.Parse(ManifestJson.Serialize(full))!.AsObject();
+    malformed["fullWidgetPinningSupported"] = "true";
+    Assert.Throws<JsonException>(() => ManifestJson.Deserialize(
+        Encoding.UTF8.GetBytes(malformed.ToJsonString())));
     return Task.CompletedTask;
 }
 

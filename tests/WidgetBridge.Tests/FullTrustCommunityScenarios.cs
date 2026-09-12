@@ -178,6 +178,9 @@ internal static class FullTrustCommunityScenarios
         var configured = load.Catalog.GetConfigured(installed.Id);
         var betaConfigured = load.Catalog.GetConfigured(beta.Id);
         AssertFullTrust(configured, "SpotifyApplication.exe");
+        Check(configured.PinningSupported && !configured.FullWidgetPinningSupported &&
+              !configured.PublicDescriptor().FullWidgetPinningSupported,
+            "Spotify must keep custom pinning without the full-widget option.");
         AssertFullTrust(betaConfigured, "FullTrustBetaFixture.exe");
         Check(configured.DeclaredCapabilities.Count == 0 &&
               configured.WorkerArguments.Count == 0,
@@ -190,6 +193,9 @@ internal static class FullTrustCommunityScenarios
                  })
         {
             var hostRuntime = load.Catalog.GetConfigured(widgetId);
+            Check(hostRuntime.FullWidgetPinningSupported == (widgetId == "media-sessions") &&
+                  hostRuntime.PublicDescriptor().FullWidgetPinningSupported == (widgetId == "media-sessions"),
+                "Only Now Playing should declare full-widget pinning among bundled widgets.");
             await using var hostClient = HostRuntimeClient(hostRuntime);
             await hostClient.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
             var firstSnapshot = await hostClient.GetSnapshotAsync();

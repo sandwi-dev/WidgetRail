@@ -104,6 +104,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Client registry observes retirement failures and disposes every client", BridgeClientRegistryScenarios.RetirementFailuresAreObservedAndDrained),
     ("Visible registry publication reaches its configured publisher once", BridgeClientRegistryScenarios.VisibleRegistrationPublishesInvalidationExactlyOnce),
     ("Pinned layout selection is exact current runtime generation", BridgeClientRegistryScenarios.PinnedLayoutSelectionIsGenerationBound),
+    ("Full widget pinning requires explicit manifest authority", BridgeClientRegistryScenarios.FullWidgetPinningRequiresManifestAuthority),
     ("Pinned surface input requires exact generation layout scope and focus", BridgeClientRegistryScenarios.PinnedSurfaceInputRequiresExactAuthority),
     ("Pinned shortcut availability belongs to its declaring owner", BridgeClientRegistryScenarios.PinnedShortcutAvailabilityBelongsToDeclaringOwner),
     ("Open widget input retains compatible committed authority across refresh", BridgeClientRegistryScenarios.OpenWidgetInputRetainsCompatibleCommittedAuthority),
@@ -1357,7 +1358,7 @@ static async Task EnumerationIsLazy()
     var widgets = response.Payload.GetProperty("widgets");
     Assert.Equal(1, widgets.GetArrayLength());
     var descriptor = widgets[0];
-    Assert.SequenceEqual(["icon", "iconAssets", "id", "instanceId", "name", "packageContentDigest", "pinningSupported", "presentationGeneration", "protectedWifiPromptSupported", "quickActions", "runtimeGeneration"],
+    Assert.SequenceEqual(["fullWidgetPinningSupported", "icon", "iconAssets", "id", "instanceId", "name", "packageContentDigest", "pinningSupported", "presentationGeneration", "protectedWifiPromptSupported", "quickActions", "runtimeGeneration"],
         descriptor.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("test-widget", descriptor.GetProperty("id").GetString());
     Assert.Equal("Test Widget", descriptor.GetProperty("name").GetString());
@@ -1367,6 +1368,8 @@ static async Task EnumerationIsLazy()
     Assert.Equal("music", descriptor.GetProperty("icon").GetString());
     Assert.Equal(0, descriptor.GetProperty("iconAssets").GetArrayLength());
     Assert.Equal(string.Empty, descriptor.GetProperty("packageContentDigest").GetString());
+    Assert.False(descriptor.GetProperty("fullWidgetPinningSupported").GetBoolean(),
+        "Omitted full-widget support must project closed.");
     Assert.False(descriptor.GetProperty("pinningSupported").GetBoolean(),
         "Omitted manifest pinning support must project closed.");
     Assert.False(descriptor.GetProperty("protectedWifiPromptSupported").GetBoolean(),

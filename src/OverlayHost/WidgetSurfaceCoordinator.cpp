@@ -173,14 +173,17 @@ WidgetSurfaceCoordinator::BuildLayoutOptions(
     const float fullHeightDip,
     const std::vector<PinnedLayoutOption>& authored,
     const WidgetSnapshot& snapshot,
-    const bool compactMediaSessionAvailable) {
+    const bool compactMediaSessionAvailable,
+    const bool fullWidgetPinningSupported) {
     std::vector<PinnedLayoutOption> result;
-    result.push_back({
-        std::wstring{kFullWidgetLayoutId}, L"Full widget",
-        fullWidthDip, fullHeightDip});
+    if (fullWidgetPinningSupported) {
+        result.push_back({
+            std::wstring{kFullWidgetLayoutId}, L"Full widget",
+            fullWidthDip, fullHeightDip});
+    }
     for (const auto& layout : authored) {
         if (layout.id.empty() || layout.name.empty() ||
-            layout.id == kCompactMediaLayoutId ||
+            layout.id == kCompactMediaLayoutId || layout.id == kFullWidgetLayoutId ||
             layout.kind != PinnedLayoutOption::Kind::Authored ||
             !std::isfinite(layout.contentWidthDip) ||
             !std::isfinite(layout.contentHeightDip) ||
@@ -247,9 +250,10 @@ bool WidgetSurfaceCoordinator::Pin(
     auto layouts = BuildLayoutOptions(
         admission.initialContentWidthDip, admission.initialContentHeightDip,
         admission.pinnedLayouts, admission.snapshot,
-        admission.compactMediaSessionAvailable);
-    if (!layouts) {
-        error = L"The current widget exposes an invalid pinned layout catalog.";
+        admission.compactMediaSessionAvailable, admission.fullWidgetPinningSupported);
+    if (!layouts || layouts->empty()) {
+        error = layouts ? L"This widget has no pinned layouts available right now."
+                        : L"The current widget exposes an invalid pinned layout catalog.";
         policy_.Stop(StopReason::Unpin);
         return false;
     }
@@ -310,8 +314,12 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     auto nextLayouts = BuildLayoutOptions(
         admission_->initialContentWidthDip,
         admission_->initialContentHeightDip, layouts, snapshot,
-        compactMediaSessionAvailable);
+        compactMediaSessionAvailable, admission_->fullWidgetPinningSupported);
     if (!nextLayouts) return false;
+    if (nextLayouts->empty()) {
+        (void)Unpin(WidgetSurfaceStopReason::Unpin);
+        return false;
+    }
     collectionFocusMemory_.Remember(admission_->widgetId, SelectedSnapshot(), focusedElementId_);
     focusGroupMemory_.Remember(admission_->widgetId, SelectedSnapshot(), focusedElementId_);
     ++workCounters_.snapshots;
@@ -1786,7 +1794,8 @@ void WidgetSurfaceCoordinator::ReconcileCatalog(
     }
     if (descriptor->instanceId != admission_->instanceId ||
         descriptor->runtimeGeneration != admission_->runtimeGeneration ||
-        descriptor->presentationGeneration != admission_->presentationGeneration) {
+        descriptor->presentationGeneration != admission_->presentationGeneration ||
+        descriptor->fullWidgetPinningSupported != admission_->fullWidgetPinningSupported) {
         (void)Unpin(WidgetSurfaceStopReason::RuntimeReplaced);
     }
 }

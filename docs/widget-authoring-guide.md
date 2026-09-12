@@ -2180,7 +2180,8 @@ scope, limits, errors, and tests. YT Music is the first migration consumer.
 | `publisher` | Lowercase reverse-DNS publisher claim. It is not cryptographic proof. |
 | `name` | 1–80 characters. |
 | `version` | Canonical dotted numeric `System.Version` text such as `1.0.0`. Installed versions are immutable. |
-| `pinningSupported` | Optional boolean, default `false`. When `true`, the host may project the widget's validated declarative snapshot into its own bounded pinned tool window. It grants no HWND, topmost, focus, input, renderer, provider, or compositor authority to the widget. |
+| `pinningSupported` | Optional boolean, default `false`. Enables authored pinned layouts and supported compact-media presentation in a host-owned pinned window. It grants no HWND, topmost, focus, input, renderer, provider, or compositor authority. |
+| `fullWidgetPinningSupported` | Optional boolean, default `false`. Requires `pinningSupported: true`. Adds **Full widget** to the layout choices. Leave it omitted or false when only your custom pinned layouts should be offered. |
 | `hostApi` | Current compatible range is minimum `1.0`, maximum major `1`. This is independent of additive snapshot protocol versions 1–13. |
 | `entrypoint.runtime` | Only `dotnet-worker`. |
 | `entrypoint.assembly` | Exact-case normalized package-relative path with `/`, no traversal. |

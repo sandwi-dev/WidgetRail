@@ -910,6 +910,12 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     StringComparison.Ordinal))
                 throw ControllerInputAuthorityException(input,
                     "Controller input runtime authority is stale or unavailable.");
+            if ((input.Context == ControllerInputContext.PinnedSurface ||
+                    (input.Context == ControllerInputContext.PinnedLayoutSelection && input.IsPinnedLayoutSelected is true)) &&
+                input.PinnedLayoutId == PinnedSurfaceContract.FullWidgetLayoutId &&
+                (!registration.Configured.PinningSupported || !registration.Configured.FullWidgetPinningSupported))
+                throw new BridgeStalePinnedInputAuthorityException(
+                    "The widget does not support full-widget pinning.");
             if (input.Context != ControllerInputContext.PinnedLayoutSelection)
                 DemandInteractionAllowed(registration);
             if (input.Context is ControllerInputContext.OpenWidget or ControllerInputContext.PinnedSurface &&

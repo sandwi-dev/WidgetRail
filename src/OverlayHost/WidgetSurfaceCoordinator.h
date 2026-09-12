@@ -159,6 +159,7 @@ struct WidgetSurfaceAdmission final {
     std::vector<PinnedLayoutOption> pinnedLayouts;
     surface_appearance::Policy surfaceAppearancePolicy;
     bool compactMediaSessionAvailable{true};
+    bool fullWidgetPinningSupported{};
     std::wstring packageContentDigest;
     std::vector<WidgetPackageIconAsset> packageIconAssets;
 };
@@ -381,7 +382,8 @@ private:
             float fullHeightDip,
             const std::vector<PinnedLayoutOption>& authored,
             const WidgetSnapshot& snapshot,
-            bool compactMediaSessionAvailable);
+            bool compactMediaSessionAvailable,
+            bool fullWidgetPinningSupported);
     [[nodiscard]] bool EnsureGraphicsResources();
     void Paint();
     void RequestPaint(const RECT* update = nullptr) noexcept;
