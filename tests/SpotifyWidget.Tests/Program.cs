@@ -8,6 +8,10 @@ using System.Text;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Queue selection preserves suffix and skips first item without replacing context", QueuePlaybackPreservesTail),
+    ("Track menu adds once without changing X or fetching collections", TrackMenuRequestBudget),
+    ("Play here follow-up reads stop after the bounded settlement budget", LocalStartSettlementBudget),
+    ("Play here reconciles stale idle playback without waiting for idle poll", LocalStartReconcilesIdle),
     ("Search starts first, pages typed results and routes playback", SearchResultsAndPlayback),
     ("Search drops late responses and preserves query across reopen", SearchLateResponses),
     ("Search accepts changing totals and repeated results without stale virtual windows", SearchMutablePaging),
@@ -700,7 +704,7 @@ static async Task LazyPageLoading()
     var queueSnapshot = widget.RenderSnapshot("spotify.queue", 1);
     var queueRow = QueueFocus("wide", "spotify:track:next");
     Assert.NotNull(Find(queueSnapshot.Root, queueRow));
-    Assert.Equal("3:21", Find(queueSnapshot.Root,
+    Assert.Equal("Next track \u00b7 3:21", Find(queueSnapshot.Root,
         queueRow + ".state").Text);
     Assert.True(!ContainsId(queueSnapshot.Root,
         queueRow + ".metadata"),
@@ -1105,6 +1109,8 @@ static async Task PollingRequestBudget()
             new SpotifyApplicationException(
                 "spotify_unavailable", "provider internals must not render"));
     await Task.Delay(TimeSpan.FromMilliseconds(2_250));
+    Assert.Equal(playbackCalls, harness.PlaybackCalls);
+    await Task.Delay(TimeSpan.FromMilliseconds(3_000));
     Assert.Equal(configurationCalls, harness.ConfigurationCalls);
     Assert.True(harness.PlaybackCalls > playbackCalls,
         "Adaptive playback polling did not refresh live state.");
@@ -1252,6 +1258,7 @@ static async Task RefreshPollingLifecycle()
 
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await Task.Delay(TimeSpan.FromMilliseconds(5_100));
     await WaitUntil(() => Volatile.Read(ref calls) == 2);
     var background = WidgetTestHost.SetLifecycleStateAsync(
         widget, WidgetLifecycleState.Background).AsTask();
@@ -2054,11 +2061,12 @@ static async Task MissingPlaybackDeviceGuidance()
     var harness = SpotifyHarness.Ready();
     harness.StartPlaybackError = new SpotifyApplicationException(
         "resource_not_found", "The platform capability request failed (resource_not_found).");
-    var widget = await StartAsync(harness);
+    var widget = await StartAsync(harness, search: true);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
-    await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.wide.queue"));
-    await widget.OnActionAsync(new(QueuePlay("spotify:track:next"),
-        QueueFocus("wide", "spotify:track:next")));
+    await widget.OnActionAsync(new("spotify.search.query", "spotify.search.query") { CommittedText = "night" });
+    await WaitUntil(() => CollectionRows(widget.RenderSnapshot("missing-device", 1).Root).Length > 0);
+    var selected = CollectionRows(widget.RenderSnapshot("missing-device", 2).Root)[0];
+    await widget.OnActionAsync(new(selected.ActionId!, selected.Id));
     await WaitUntil(() => widget.Status.Contains("Open Devices", StringComparison.Ordinal));
     Assert.Equal("No active Spotify device. Open Devices and choose where to play.",
         widget.Status);
@@ -2516,7 +2524,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.59", manifest.Version);
+    Assert.Equal("0.3.60", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
@@ -2720,6 +2728,98 @@ static async Task ProductionCursorBuffer()
     var retained = CollectionRows(Find(widget.RenderSnapshot("buffer.test", 5).Root, "spotify.playlists.scroll"));
     Assert.Equal(96, retained.Length);
     Assert.Equal(first, retained[0].Id);
+    await StopAsync(widget);
+}
+
+static async Task QueuePlaybackPreservesTail()
+{
+    var harness = SpotifyHarness.Ready();
+    var original = harness.Queue.Items[0];
+    harness.Queue = harness.Queue with { Items = [original,
+        original with { Uri = "spotify:track:second", Title = "Second" }, original] };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.queue"));
+    await WaitUntil(() => harness.QueueCalls == 1);
+    var rows = Find(widget.RenderSnapshot("queue-tail", 1).Root, "spotify.queue.scroll").Children;
+    await widget.OnActionAsync(new(rows[1].ActionId!, rows[1].Id));
+    Assert.SequenceEqual(new[] { "spotify:track:second", original.Uri }, harness.StartedPlayback.Single().ItemUris!);
+    Assert.Equal<string?>(null, harness.StartedPlayback.Single().ContextUri);
+    rows = Find(widget.RenderSnapshot("queue-tail", 2).Root, "spotify.queue.scroll").Children;
+    Assert.Equal(QueuePlay(original.Uri), rows[0].ActionId);
+    await widget.OnActionAsync(new(rows[0].ActionId!, rows[0].Id));
+    Assert.Equal(SpotifyPlaybackOperation.Next, harness.Commands.Last().Operation);
+    Assert.Equal(1, harness.StartedPlayback.Count);
+    await StopAsync(widget);
+}
+
+static async Task TrackMenuRequestBudget()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness, search: true);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.search.query", "spotify.search.query") { CommittedText = "night" });
+    await WaitUntil(() => harness.SearchCalls == 1);
+    var snapshot = widget.RenderSnapshot("track-menu", 1);
+    var row = CollectionRows(snapshot.Root)[0];
+    Assert.Equal(ControllerButton.Menu, row.ContextMenuButton);
+    Assert.Equal("Add to queue", row.ContextActions.Single().Label);
+    var playbackCalls = harness.PlaybackCalls;
+    await widget.OnActionAsync(new(row.ContextActions.Single().ActionId, row.Id));
+    Assert.SequenceEqual(new[] { "spotify:track:result0" }, harness.QueuedUris);
+    Assert.Equal(1, harness.SearchCalls);
+    Assert.Equal(0, harness.QueueCalls);
+    Assert.Equal(playbackCalls, harness.PlaybackCalls);
+    Assert.Equal(0, harness.StartedPlayback.Count);
+    var updated = widget.RenderSnapshot("track-menu", 2);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(updated).Count);
+    Assert.NotNull(Find(updated.Root, "spotify.action-toast"));
+    Assert.True(updated.QuickActions.Any(action => action.Button == ControllerButton.X && action.ActionId == "spotify.play-toggle"), "X changed meaning.");
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.playlists"));
+    await WaitUntil(() => harness.PlaylistCalls == 1);
+    await widget.OnActionAsync(new(PlaylistOpen("playlist-one"), PlaylistFocus("wide", "playlist-one")));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 1);
+    row = CollectionRows(widget.RenderSnapshot("track-menu", 3).Root)[0];
+    Assert.Equal(ControllerButton.Menu, row.ContextMenuButton);
+    await widget.OnActionAsync(new(row.ContextActions.Single().ActionId, row.Id));
+    Assert.Equal("spotify:track:next", harness.QueuedUris.Last());
+    Assert.Equal(1, harness.PlaylistDetailCalls);
+    await widget.OnActionAsync(new(row.ActionId!, row.Id));
+    Assert.Equal("spotify:playlist:playlist-one", harness.StartedPlayback.Single().ContextUri);
+    Assert.Equal("spotify:track:next", harness.StartedPlayback.Single().OffsetUri);
+    await StopAsync(widget);
+}
+
+static async Task LocalStartSettlementBudget()
+{
+    var harness = SpotifyHarness.Ready();
+    harness.Playback = harness.Playback with { IsAvailable = false, IsPlaying = false, Item = null };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.local.start", "spotify.local.start"));
+    await WaitUntil(() => harness.PlaybackCalls == 2);
+    await Task.Delay(TimeSpan.FromMilliseconds(8_100));
+    Assert.Equal(5, harness.PlaybackCalls);
+    Assert.Equal(1, harness.LocalCommands.Count);
+    await StopAsync(widget);
+}
+
+static async Task LocalStartReconcilesIdle()
+{
+    var harness = SpotifyHarness.Ready();
+    var playing = harness.Playback;
+    harness.Playback = playing with { IsAvailable = false, IsPlaying = false, Item = null };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.devices", "spotify.nav.devices"));
+    await WaitUntil(() => harness.DeviceCalls == 1);
+    var before = harness.PlaybackCalls;
+    await widget.OnActionAsync(new("spotify.local.start", "spotify.local.start"));
+    await WaitUntil(() => harness.PlaybackCalls == before + 1);
+    harness.Playback = playing;
+    await WaitUntil(() => widget.Playback?.IsPlaying == true, "Local transfer waited for idle polling.");
+    Assert.Equal(before + 2, harness.PlaybackCalls);
+    Assert.Equal(1, harness.LocalCommands.Count);
     await StopAsync(widget);
 }
 
@@ -3097,6 +3197,7 @@ file sealed record OptimisticControlScenario(
 
 file sealed class SpotifyHarness : ISpotifyApplicationService
 {
+    public List<string> QueuedUris { get; } = [];
     public int SearchCalls { get; private set; }
     public Func<string, SpotifySearchKind, int, int, CancellationToken, ValueTask<SpotifySearchPage>>? SearchHandler { get; set; }
     public ValueTask<SpotifySearchPage> SearchAsync(string query, SpotifySearchKind kind, int offset, int limit,
@@ -3366,6 +3467,7 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        QueuedUris.Add(uri);
         return ValueTask.CompletedTask;
     }
 

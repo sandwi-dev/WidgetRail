@@ -18,6 +18,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("External Client ID change invalidates stored authorization", ExternalClientChangeInvalidatesAuthorization),
     ("Refresh retains existing refresh token when Spotify omits rotation", RefreshRetainsToken),
     ("Player endpoints methods and parameters match the Web API contract", ExactPlayerEndpoints),
+    ("Ambiguous player writes are not replayed but reads and 429 can retry", AmbiguousPlayerWriteRetry),
     ("Rate limiting respects Retry-After with bounded retry", RateLimitPolicy),
     ("Retry policy rejects cancellation-ignoring transport completion", RetryPolicyCancellationWins),
     ("Canceled refresh cannot publish or rotate session credentials", CanceledRefreshCannotPublish),
@@ -198,6 +199,43 @@ static async Task ExactPlayerEndpoints()
     foreach (var command in commands)
         await backend.ControlPlaybackAsync(Identity(), command, default);
     Assert.Equal(0, expected.Count);
+}
+
+static async Task AmbiguousPlayerWriteRetry()
+{
+    foreach (var endpoint in new[] { "queue", "next", "previous" })
+    {
+        var calls = 0;
+        var delay = new FakeDelay();
+        var policy = new SpotifyHttpPolicy(new FakeHttp(_ =>
+        {
+            calls++;
+            return new SpotifyHttpResponse(503, "{}", EmptyHeaders());
+        }), delay, TimeProvider.System);
+        var response = await policy.SendAsync(new SpotifyHttpRequest(HttpMethod.Post,
+            new Uri("https://api.spotify.com/v1/me/player/" + endpoint)), default);
+        Assert.Equal(503, response.StatusCode);
+        Assert.Equal(1, calls);
+        Assert.Equal(0, delay.Delays.Count);
+    }
+    var readCalls = 0;
+    var readPolicy = new SpotifyHttpPolicy(new FakeHttp(_ =>
+    {
+        readCalls++;
+        return new SpotifyHttpResponse(503, "{}", EmptyHeaders());
+    }), new FakeDelay(), TimeProvider.System);
+    await readPolicy.SendAsync(new SpotifyHttpRequest(HttpMethod.Get,
+        new Uri("https://api.spotify.com/v1/me/player")), default);
+    Assert.Equal(3, readCalls);
+    var limitedCalls = 0;
+    var limitedDelay = new FakeDelay();
+    var limitedPolicy = new SpotifyHttpPolicy(new FakeHttp(_ => ++limitedCalls == 1
+        ? new SpotifyHttpResponse(429, "{}", new Dictionary<string, string> { ["Retry-After"] = "2" })
+        : new SpotifyHttpResponse(204, "", EmptyHeaders())), limitedDelay, TimeProvider.System);
+    await limitedPolicy.SendAsync(new SpotifyHttpRequest(HttpMethod.Post,
+        new Uri("https://api.spotify.com/v1/me/player/queue")), default);
+    Assert.Equal(2, limitedCalls);
+    Assert.SequenceEqual(new[] { TimeSpan.FromSeconds(2) }, limitedDelay.Delays);
 }
 
 static async Task RateLimitPolicy()

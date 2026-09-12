@@ -32,9 +32,9 @@ public enum SpotifyDestination
 /// </summary>
 public sealed class SpotifyWidget : Widget
 {
-    private static readonly TimeSpan PlayingPollInterval = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan PausedPollInterval = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan IdlePollInterval = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan PlayingPollInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan PausedPollInterval = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan IdlePollInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ErrorPollInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan SetupRefreshTimeout = TimeSpan.FromSeconds(5);
@@ -91,6 +91,12 @@ public sealed class SpotifyWidget : Widget
     private long _setupViewGeneration;
     private bool _setupBusy;
     private long _activeGeneration;
+    private readonly SemaphoreSlim _commandGate = new(1, 1);
+    private readonly SemaphoreSlim _pollWake = new(0, 1);
+    private int _playbackSettlementReads;
+    private string? _expectedPlaybackUri;
+    private ToastElement? _actionToast;
+    private readonly WidgetTimedMutation _toastExpiry;
     private Task? _pollTask;
     private Task? _progressTask;
     private readonly object _authorizationGate = new();
@@ -133,6 +139,7 @@ public sealed class SpotifyWidget : Widget
                     [SpotifyRoute.Setup] = "spotify.setup",
                 },
             });
+        _toastExpiry = CreateTimedMutation(WidgetOperationLifetime.Active, _timeProvider);
         _search = CreateSearchResource();
         _compactPinnedLayout = CreatePinnedLayoutHandle(
             SpotifyPresentation.CompactPinnedLayoutId,
@@ -301,7 +308,13 @@ public sealed class SpotifyWidget : Widget
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         Interlocked.Increment(ref _activeGeneration);
-        lock (_gate) ClearOptimisticReconciliationLocked();
+        _toastExpiry.Cancel();
+        lock (_gate)
+        {
+            ClearOptimisticReconciliationLocked();
+            _actionToast = null;
+            _playbackSettlementReads = 0;
+        }
         var tasks = new[] { _pollTask, _progressTask }
             .Where(task => task is not null).Cast<Task>().ToArray();
         _pollTask = null;
@@ -374,6 +387,7 @@ public sealed class SpotifyWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
         var intent = SpotifyRouteActionPolicy.Classify(action);
+        if (await TryHandleQueueAdditionAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (await TryHandleSearchActionAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (TryHandleNavigationBack(action)) return;
         if (TryHandlePageAction(action, intent)) return;
@@ -391,7 +405,7 @@ public sealed class SpotifyWidget : Widget
             case SpotifyActionKind.SetupDone:
                 _navigation.Back(action.FocusedElementId ?? action.SourceElementId);
                 if (IsActive)
-                    await RunCommandOperationAsync(CheckConfigurationAsync, cancellationToken)
+                    await RunCommandOperationAsync(CheckConfigurationAsync, cancellationToken, serialize: false)
                         .ConfigureAwait(false);
                 break;
             case SpotifyActionKind.SetupOpenDashboard:
@@ -421,7 +435,7 @@ public sealed class SpotifyWidget : Widget
                     .ConfigureAwait(false);
                 break;
             case SpotifyActionKind.Refresh:
-                await RunCommandOperationAsync(RefreshAsync, cancellationToken)
+                await RunCommandOperationAsync(RefreshAsync, cancellationToken, serialize: false)
                     .ConfigureAwait(false);
                 RefreshVisibleCollection(action.InputScopeId);
                 break;
@@ -639,10 +653,17 @@ public sealed class SpotifyWidget : Widget
 
     private async Task RunCommandOperationAsync(
         Func<CancellationToken, Task> operation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool serialize = true)
     {
+        if (serialize && !await _commandGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            SetCommandStatus("Wait for the current Spotify action to finish");
+            return;
+        }
         try
         {
+            if (serialize) lock (_gate) _playbackSettlementReads = 0;
             await operation(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
@@ -650,6 +671,7 @@ public sealed class SpotifyWidget : Widget
         {
             SetCommandStatus("Spotify could not complete that action");
         }
+        finally { if (serialize) _commandGate.Release(); }
     }
 
     private void StartPageOperation(
@@ -794,9 +816,20 @@ public sealed class SpotifyWidget : Widget
                         .ConfigureAwait(false);
                 }
 
-                var interval = PollInterval();
-                await Task.Delay(interval, _timeProvider, cancellationToken)
-                    .ConfigureAwait(false);
+                lock (_gate)
+                {
+                    if (_playbackSettlementReads > 0)
+                    {
+                        if (_playback is { IsAvailable: true, IsPlaying: true } &&
+                            (_expectedPlaybackUri is null || _playback.Item?.Uri == _expectedPlaybackUri))
+                            _playbackSettlementReads = 0;
+                        else _playbackSettlementReads--;
+                    }
+                }
+                // A command wakes and reschedules this one poller. It does not
+                // start another loop or leave the previous idle delay pending.
+                while (await _pollWake.WaitAsync(PollInterval(), cancellationToken)
+                           .ConfigureAwait(false)) { }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
@@ -807,6 +840,8 @@ public sealed class SpotifyWidget : Widget
         lock (_gate)
         {
             if (_refreshWarning is { } warning) return warning.RetryDelay;
+            if (_playbackSettlementReads > 0)
+                return TimeSpan.FromSeconds(1 << (3 - _playbackSettlementReads));
             if (_viewState is SpotifyWidgetViewState.Error or
                 SpotifyWidgetViewState.ServiceUnavailable or
                 SpotifyWidgetViewState.PermissionDenied or
@@ -1070,7 +1105,7 @@ public sealed class SpotifyWidget : Widget
                 _pageError,
                 new SpotifySearchPresentation(_searchQuery, _searchKind,
                     SpotifyCursorPresentation<SpotifySearchCollectionItem>.Capture(
-                        _search, "spotify.search", "spotify.search.scroll")));
+                        _search, "spotify.search", "spotify.search.scroll")), _actionToast);
         }
     }
 
@@ -1389,6 +1424,7 @@ public sealed class SpotifyWidget : Widget
             await RefreshPlaybackAsync(
                     Volatile.Read(ref _activeGeneration), cancellationToken)
                 .ConfigureAwait(false);
+            ReconcilePlaybackAfterStart(forceObservation: true);
         }
         catch (SpotifyApplicationException exception)
         {
@@ -1402,7 +1438,16 @@ public sealed class SpotifyWidget : Widget
         const string operationKey = "spotify.local-playback";
         var handle = Operations.RunSingleFlight(
             operationKey,
-            context => ControlLocalPlaybackAsync(command, context),
+            async context =>
+            {
+                await _commandGate.WaitAsync(context.CancellationToken).ConfigureAwait(false);
+                try
+                {
+                    lock (_gate) _playbackSettlementReads = 0;
+                    await ControlLocalPlaybackAsync(command, context).ConfigureAwait(false);
+                }
+                finally { _commandGate.Release(); }
+            },
             WidgetOperationLifetime.Active);
         if (!handle.IsAccepted)
             SetCommandStatus("Local Spotify playback is not available right now");
@@ -1456,10 +1501,13 @@ public sealed class SpotifyWidget : Widget
             }
             commandSucceeded = true;
             if (command.Operation == SpotifyLocalPlaybackOperation.StartAndTransfer)
+            {
                 await RefreshPlaybackAsync(
                         Volatile.Read(ref _activeGeneration),
                         operation.CancellationToken)
                     .ConfigureAwait(false);
+                ReconcilePlaybackAfterStart(forceObservation: true);
+            }
         }
         catch (SpotifyApplicationException exception)
         {
@@ -1538,12 +1586,27 @@ public sealed class SpotifyWidget : Widget
         WidgetCollectionItemKey key,
         CancellationToken cancellationToken)
     {
-        var item = _queue.Snapshot.Items.FirstOrDefault(candidate => candidate.Key == key)?.Value;
-        if (item is null || !item.IsPlayable) return;
+        var items = _queue.Snapshot.Items;
+        var index = items.ToList().FindIndex(candidate => candidate.Key == key);
+        if (index < 0 || !items[index].Value.IsPlayable) return;
         _queue.SelectAnchor(key, invalidate: false);
-        await StartPlaybackAsync(new(null, [item.Uri], DeviceId: PlaybackDeviceId()),
-            "Playing selected queue item",
-            cancellationToken).ConfigureAwait(false);
+        if (index == 0)
+        {
+            await _spotify.ControlPlaybackAsync(new(SpotifyPlaybackOperation.Next), cancellationToken)
+                .ConfigureAwait(false);
+            var refreshed = await RefreshPlaybackAsync(Volatile.Read(ref _activeGeneration),
+                cancellationToken, refreshDemandedQueueOnPlaybackChange: false).ConfigureAwait(false);
+            if (refreshed) InvalidateQueueCollection();
+            ReconcilePlaybackAfterStart(items[index].Value.Uri);
+            return;
+        }
+        // The API cannot seek to a queued occurrence. Preserve the bounded
+        // cached suffix, including duplicates, without guessing its context.
+        var uris = items.Skip(index).Where(candidate => candidate.Value.IsPlayable)
+            .Take(SpotifyApplicationContract.MaximumQueueItems)
+            .Select(candidate => candidate.Value.Uri).ToArray();
+        await StartPlaybackAsync(new(null, uris, DeviceId: PlaybackDeviceId()),
+            "Playing from here · using the loaded queue", cancellationToken).ConfigureAwait(false);
     }
 
     private async Task PlayPlaylistAsync(CancellationToken cancellationToken)
@@ -1586,10 +1649,11 @@ public sealed class SpotifyWidget : Widget
         {
             await _spotify.StartPlaybackAsync(request, cancellationToken)
                 .ConfigureAwait(false);
-            InvalidateQueueCollection();
             SetCommandStatus(successStatus);
-            await RefreshPlaybackAsync(Volatile.Read(ref _activeGeneration), cancellationToken)
-                .ConfigureAwait(false);
+            var refreshed = await RefreshPlaybackAsync(Volatile.Read(ref _activeGeneration), cancellationToken,
+                refreshDemandedQueueOnPlaybackChange: false).ConfigureAwait(false);
+            if (refreshed) InvalidateQueueCollection();
+            ReconcilePlaybackAfterStart(request.OffsetUri ?? request.ItemUris?.FirstOrDefault());
         }
         catch (SpotifyApplicationException exception)
         {
@@ -1941,6 +2005,69 @@ public sealed class SpotifyWidget : Widget
             if (_searchQuery.Length > 0) _search.EnsureLoaded();
         }
         Invalidate();
+    }
+
+    private void ReconcilePlaybackAfterStart(string? expectedUri = null, bool forceObservation = false)
+    {
+        lock (_gate)
+        {
+            _expectedPlaybackUri = expectedUri;
+            _playbackSettlementReads = !forceObservation && _playback is { IsAvailable: true, IsPlaying: true } &&
+                (expectedUri is null || _playback.Item?.Uri == expectedUri) ? 0 : 3;
+        }
+        if (_pollWake.CurrentCount == 0)
+            try { _pollWake.Release(); } catch (SemaphoreFullException) { }
+    }
+
+    private async ValueTask<bool> TryHandleQueueAdditionAsync(
+        WidgetActionEvent action, CancellationToken cancellationToken)
+    {
+        const string searchPrefix = "spotify.search.enqueue.";
+        const string playlistPrefix = "spotify.playlist.enqueue.";
+        string? uri;
+        if (action.ActionId.StartsWith(searchPrefix, StringComparison.Ordinal))
+        {
+            if (_navigation.Value.Route != SpotifyRoute.Search) return true;
+            var key = action.ActionId[searchPrefix.Length..];
+            var item = _search.Snapshot.Items.FirstOrDefault(item => item.Key.Value == key)?.Value;
+            uri = item is { IsPlayable: true, Kind: SpotifySearchKind.Track } ? item.Uri : null;
+        }
+        else if (action.ActionId.StartsWith(playlistPrefix, StringComparison.Ordinal))
+        {
+            if (_navigation.Value.Route != SpotifyRoute.PlaylistDetail) return true;
+            var key = action.ActionId[playlistPrefix.Length..];
+            var item = _playlistItems.Snapshot.Items.FirstOrDefault(item => item.Key.Value == key)?.Value;
+            uri = item is { IsPlayable: true } ? item.Uri : null;
+        }
+        else return false;
+        if (uri is null) return true;
+        await RunCommandOperationAsync(async token =>
+        {
+            try
+            {
+                await _spotify.AddToQueueAsync(uri, PlaybackDeviceId(), token).ConfigureAwait(false);
+                InvalidateQueueCollection();
+                ShowActionToast("Added to queue", "Your track is in Spotify’s queue.", ToastTone.Success);
+            }
+            catch (SpotifyApplicationException exception)
+            {
+                ShowActionToast("Could not add to queue", SpotifyPlaybackPolicy.SafeMessage(
+                    exception, "Check Spotify’s queue before trying again."), ToastTone.Warning);
+            }
+        }, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    private void ShowActionToast(string title, string message, ToastTone tone)
+    {
+        var toast = UI.Toast(title, message, tone, "spotify.action-toast");
+        lock (_gate) _actionToast = toast;
+        Invalidate();
+        _ = _toastExpiry.ScheduleLatest(UI.DefaultToastDuration, () =>
+        {
+            lock (_gate) if (ReferenceEquals(_actionToast, toast)) _actionToast = null;
+            Invalidate();
+        });
     }
 
 }

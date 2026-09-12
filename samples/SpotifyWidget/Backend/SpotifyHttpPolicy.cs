@@ -42,6 +42,12 @@ internal sealed class SpotifyHttpPolicy
             // not gain authority to turn caller cancellation into a late
             // successful retry/token publication.
             cancellationToken.ThrowIfCancellationRequested();
+            // A server failure may arrive after a queue addition or skip took
+            // effect. Replaying a POST player command could duplicate it.
+            if (request.Method == HttpMethod.Post &&
+                request.Uri.AbsolutePath.StartsWith("/v1/me/player/", StringComparison.Ordinal) &&
+                response.StatusCode is >= 500 and <= 599)
+                return response;
             var retryable = response.StatusCode == 429 ||
                 response.StatusCode is >= 500 and <= 599;
             if (!retryable) return response;

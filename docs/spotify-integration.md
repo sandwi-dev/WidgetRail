@@ -1,6 +1,37 @@
 # Spotify Web API integration
 
-## Search (0.3.58)
+## Playback controls and request budget (0.3.60)
+
+X remains Play/Pause. Menu on a playable Search track or playlist track exposes
+Add to queue with a themed, five-second confirmation toast. One selection sends
+one queue write; it does not load the whole collection. Album, artist and playlist
+Search results continue to start their Spotify context; playlist track selection
+uses the playlist context and track offset. Album track browsing is not currently
+a separate widget route.
+
+The first upcoming Queue entry uses Next. A later entry starts a new playback
+list containing that occurrence and the remaining playable cached entries (at
+most 50), preserving duplicates. Spotify has no public arbitrary queue-index jump:
+this replaces the original context and cannot preserve an unseen tail. It never
+infers a queue occurrence's origin from the current context or album metadata.
+
+Active playback polling waits 5 seconds playing, 15 paused, or 30 idle after a
+read; the 250 ms progress tick is local only. Device and collection caching stay
+unchanged. Starting playback or transferring to Play here reschedules the same
+poller after its immediate read. If playback is still stale, at most three extra
+reads use 1/2/4-second delays, ending early once the expected playing state appears.
+Transfers always request one follow-up observation. Failure backoff takes priority;
+deactivation cancels polling. There is no second background polling loop.
+
+Playback mutations share a single command gate. Overlapping ordinary mutations
+receive a wait message instead of being replayed later against a changed queue;
+read-only refresh remains independent. Playback-start follow-up reads refresh a
+demanded queue once, without a second invalidation from the same observation.
+Ambiguous 5xx responses to queue/skip POST commands are not retried; 429 retry
+delays and safe-read retries remain bounded. No new permissions or shared SDK or
+host changes are required.
+
+## Search (0.3.60)
 
 Search is the first section and the initial route for a new widget instance.
 Submit a query through the controller keyboard, then choose Tracks, Albums,

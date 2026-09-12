@@ -204,7 +204,8 @@ internal static class SpotifyPresentation
                 var row = MediaRow(item.Value,
                         $"spotify.queue.play.{item.Key.Value}", itemId,
                         SpotifyCollectionIdentity.FocusId(
-                            "spotify.queue.persist", "shared", item.Key))
+                            "spotify.queue.persist", "shared", item.Key),
+                        index == 0 ? "Next track" : "Play from here")
                     .FocusLeft(playerFocusId);
                 if (index != 0)
                     row = row.FocusUp(SpotifyCollectionIdentity.FocusId(
@@ -470,6 +471,7 @@ internal static class SpotifyPresentation
 
         var header = Header(presentation.Status, presentation.ViewState);
         var content = new List<WidgetElement> { header };
+        if (presentation.ActionToast is { } toast) content.Add(toast);
         if (!setup && presentation.RefreshWarning is { } warning)
             content.Add(UI.Alert(
                     warning.ConsecutiveFailures ==
@@ -889,7 +891,7 @@ internal static class SpotifyPresentation
         { CollectionAnchorKey = queue.Anchor?.Value };
         return UI.Stack($"spotify.queue.page.{mode}",
                 UI.SectionHeader("Up next", $"spotify.queue.header.{mode}", "QUEUE",
-                    $"{queue.Items.Count} upcoming items",
+                    $"{queue.Items.Count} upcoming items · Play from here uses the loaded queue",
                     SectionRefresh("queue", mode)),
                 scroll)
             .Classes("spotify-page");
@@ -1117,8 +1119,9 @@ internal static class SpotifyPresentation
         SpotifyMediaItemSummary item,
         string action,
         string id,
-        string focusPersistenceId) => UI.Tile(
-            item.Title, FormatTime(item.DurationMilliseconds),
+        string focusPersistenceId,
+        string? playbackLabel = null) => UI.Tile(
+            item.Title, (playbackLabel is null ? "" : playbackLabel + " · ") + FormatTime(item.DurationMilliseconds),
             action, id, item.Subtitle, null, Artwork(item.ArtworkUrl, item.Title),
             $"Play {item.Title} by {item.Subtitle}")
         .Disabled(!item.IsPlayable)
@@ -1134,7 +1137,9 @@ internal static class SpotifyPresentation
         var row = MediaRow(item.Value, $"spotify.queue.play.{item.Key.Value}",
                 SpotifyCollectionIdentity.FocusId("spotify.queue.item", mode, item.Key),
                 SpotifyCollectionIdentity.FocusId(
-                    "spotify.queue.persist", "shared", item.Key));
+                    "spotify.queue.persist", "shared", item.Key),
+                up is null ? "Next track" : "Play from here");
+        row = row with { AccessibilityLabel = (up is null ? "Next track: " : "Play from here: ") + item.Value.Title };
         if (up is not null) row = row.FocusUp(up);
         if (down is not null) row = row.FocusDown(down);
         return row.CollectionItem(item.Key);
@@ -1150,6 +1155,8 @@ internal static class SpotifyPresentation
             SpotifyCollectionIdentity.FocusId("spotify.playlist.track", mode, item.Key),
             SpotifyCollectionIdentity.FocusId(
                 "spotify.playlist.track.persist", "shared", item.Key));
+        row = row.ContextMenuShortcut(ControllerButton.Menu)
+            .ContextAction("spotify.playlist.enqueue." + item.Key.Value, "Add to queue");
         row = row.FocusUp(up);
         if (down is not null) row = row.FocusDown(down);
         return row.CollectionItem(item.Key);
@@ -1246,13 +1253,19 @@ internal static class SpotifyPresentation
                 .Classes("spotify-search-message"));
         else if (search is not null && results is not null)
         {
-            var rows = results.Items.Select(item => (WidgetElement)UI.Tile(
+            var rows = results.Items.Select(item =>
+            {
+                var row = UI.Tile(
                     item.Value.Title, item.Value.IsPlayable ? "Play " + item.Value.Kind.ToString().ToLowerInvariant() : "Unavailable",
                     "spotify.search.play." + item.Key.Value, "spotify.search.item." + item.Key.Value,
                     item.Value.Subtitle, artwork: Artwork(item.Value.ArtworkUrl, item.Value.Title),
                     accessibilityLabel: "Play " + item.Value.Kind.ToString().ToLowerInvariant() + " " + item.Value.Title)
-                .Disabled(!item.Value.IsPlayable).CollectionItem(item.Key).Classes("spotify-media-row"))
-                .ToList();
+                .Disabled(!item.Value.IsPlayable).Classes("spotify-media-row");
+                if (item.Value.Kind == SpotifySearchKind.Track)
+                    row = row.ContextMenuShortcut(ControllerButton.Menu)
+                        .ContextAction("spotify.search.enqueue." + item.Key.Value, "Add to queue");
+                return row.CollectionItem(item.Key);
+            }).ToList();
             if (rows.Count == 0)
                 rows.Add(UI.Text(results.Error is not null ? "Search couldn't finish. Try again." :
                     results.Status == WidgetPagedResourceStatus.Ready ? "No results. Try another search or result type." : "Searching Spotify…",
