@@ -1257,6 +1257,115 @@ WidgetSnapshot PosterAdmissionSnapshot(
     return snapshot;
 }
 
+void RetainedPosterPaintPreservesArtwork() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "retained poster native resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf())));
+    ok(wic->CreateBitmap(100, 450, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad,
+        canvas.ReleaseAndGetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(),
+        target.ReleaseAndGetAddressOf()));
+    RemoteImageCache cache({}, {}, [](std::wstring_view, std::stop_token, const RemoteImageLimits&) {
+        RemoteDecodedImage image;
+        image.width = image.height = 1; image.stride = 4;
+        image.premultipliedBgra = {0x20, 0x90, 0xe0, 0xff};
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    });
+    auto snapshot = PosterAdmissionSnapshot(L"retained", L"vertical");
+    for (const auto& poster : snapshot.root.children)
+        (void)cache.Request(poster.children.front().imageSource);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    for (const auto& poster : snapshot.root.children) {
+        const auto& source = poster.children.front().imageSource;
+        while (cache.GetState(source) != RemoteImageState::Ready && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Check(cache.GetState(source) == RemoteImageState::Ready, "retained poster artwork is ready");
+    }
+    const auto scrollId = snapshot.root.id;
+    snapshot.root.baseStyle[L"width"] = Length(100);
+    snapshot.root.baseStyle[L"height"] = Length(450);
+    auto scroll = std::move(snapshot.root);
+    snapshot.root = Node(L"retained.shell", L"stack");
+    snapshot.root.children.push_back(std::move(scroll));
+    auto& posters = snapshot.root.children.front().children;
+    DeclarativeRenderer renderer(d2d.Get(), write.Get(), &cache);
+    DeclarativeRenderOptions options;
+    options.accessibility.reducedMotion = true;
+    const Rect viewport{0, 0, 100, 450};
+    std::wstring focus = L"retained.poster.0";
+    const auto draw = [&]() {
+        target->BeginDraw();
+        target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        const auto result = renderer.Render(target.Get(), snapshot, focus, viewport, options);
+        ok(target->EndDraw());
+        Check(result.succeeded, "retained poster frame succeeds");
+        ComPtr<IWICBitmapLock> pixelsLock;
+        const WICRect area{0, 0, 100, 450};
+        ok(canvas->Lock(&area, WICBitmapLockRead, pixelsLock.ReleaseAndGetAddressOf()));
+        UINT stride{}, count{}; BYTE* pixels{};
+        ok(pixelsLock->GetStride(&stride));
+        ok(pixelsLock->GetDataPointer(&count, &pixels));
+        std::size_t sampled{};
+        for (const auto& poster : posters) {
+            Check(!result.elementRects.contains(poster.children.front().id),
+                "poster artwork remains outside independent layout geometry");
+            const auto bounds = result.elementVisibleRects.at(poster.id);
+            if (bounds.height < 20) continue;
+            const auto x = static_cast<UINT>(bounds.x + bounds.width * 0.5F);
+            const auto y = static_cast<UINT>(bounds.y + bounds.height * 0.5F);
+            const auto* pixel = pixels + y * stride + x * 4;
+            Check(std::abs(int(pixel[0]) - 0x20) <= 2 &&
+                  std::abs(int(pixel[1]) - 0x90) <= 2 &&
+                  std::abs(int(pixel[2]) - 0xe0) <= 2,
+                "visible poster pixels survive retained focus and scroll repaint");
+            ++sampled;
+        }
+        Check(sampled >= 3, "regression samples at least three visible poster rows");
+        return result;
+    };
+    (void)draw();
+    for (const auto next : {L"retained.poster.1", L"retained.poster.2", L"retained.poster.1"}) {
+        const auto plan = renderer.PlanFocusUpdate(snapshot, focus, next, viewport);
+        Check(plan && plan->work == IncrementalPresentationWork::PaintOnly,
+            "in-viewport focus uses retained paint-only preparation");
+        focus = next;
+        Check(draw().fullLayoutBuildCount == 0, "artwork retention does not restore full layout work");
+    }
+    options.suppressFocusedDescendantFollow = true;
+    for (const float delta : {30.0F, 30.0F, -30.0F}) {
+        const auto plan = renderer.PlanFocusedFreeScroll(snapshot, focus,
+            declarative::ScrollAxis::Vertical, delta, viewport, scrollId);
+        Check(plan.has_value(), "right-stick movement plans retained scrolling");
+        Check(draw().fullLayoutBuildCount == 0, "free-scroll artwork remains independent of full layout");
+    }
+    WidgetPresentationImpact impact{snapshot.sequence, snapshot.sequence + 1,
+        WidgetPresentationEffect::Paint, {L"retained.poster.1"}};
+    ++snapshot.sequence;
+    Check(renderer.PlanPresentationUpdate(snapshot, impact, viewport).has_value(),
+        "same-tree snapshot update plans retained paint");
+    Check(draw().fullLayoutBuildCount == 0, "snapshot paint keeps poster artwork without rebuilding layout");
+    impact = {snapshot.sequence, snapshot.sequence + 1,
+        WidgetPresentationEffect::MeasureLayout | WidgetPresentationEffect::Paint,
+        {L"retained.poster.1.scrim"}};
+    impact.hasNonTextMeasureLayout = true;
+    ++snapshot.sequence;
+    posters[1].children[1].baseStyle[L"height"] = Length(30);
+    const auto local = renderer.PlanPresentationUpdate(snapshot, impact, viewport);
+    Check(local && local->work == IncrementalPresentationWork::LocalLayout,
+        "poster content changes admit a local layout boundary");
+    Check(draw().fullLayoutBuildCount == 0, "local layout retains artwork without a whole-tree rebuild");
+}
+
 void PosterArtworkAdmissionUsesPresentedGeometry() {
     using Microsoft::WRL::ComPtr;
     ComPtr<ID2D1Factory> d2d;
@@ -6511,6 +6620,7 @@ int main() {
     SliderPlanningAndAccessibilityTargets();
     ActionSurfacePlanningAndInteractionGeometry();
     PosterTileUsesFixedFullBleedGeometry();
+    RetainedPosterPaintPreservesArtwork();
     PosterArtworkAdmissionUsesPresentedGeometry();
     BackgroundSurfacePreservesForegroundAuthority();
     ResponsiveGridFlowsThroughNativePlanning();

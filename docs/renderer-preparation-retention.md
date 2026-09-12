@@ -90,6 +90,22 @@ No widget, SDK or host production behavior changed in this follow-up. Coverage n
   cancellation/replacement when a category change triggers refresh. Both preserve the
   newer organization authority; delayed writes have bounded waits and cleanup.
 
+## Poster artwork regression follow-up
+
+Physical testing found that posters disappeared when moving focus between visible
+rows, while scrolling to an offscreen row restored them. Retained preparation had
+incorrectly used presence in the Taffy layout as a requirement for every paint node.
+Poster images deliberately have no independent layout box: they paint into the tile's
+box. The retained pass now prepares these images with their current semantic pointers
+and cached style, using the same child classification as full layout preparation.
+
+An offscreen pixel regression failed before the correction and passes afterward. It
+checks every visible row through focus moves, right-stick movement in a nested scroll,
+paint-only snapshot updates and local poster-content layout changes. Assertions also
+keep artwork outside independent layout geometry and reject full layout rebuilds on
+those retained paths. The renderer suite now passes **6952 checks**; its playback
+workload remains about 0.57 ms full preparation / 0.064 ms paint-only preparation.
+
 Build/test logs and unique managed binlogs are retained in the worktree's ignored
 `logs` directory. Physical acceptance remains pending: Spotify playback while navigating
 with D-pad, left stick and right stick, followed by Playnite Browse paging/scrolling.

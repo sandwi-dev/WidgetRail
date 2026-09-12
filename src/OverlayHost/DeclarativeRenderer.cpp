@@ -836,6 +836,13 @@ struct DeclarativeRenderer::RenderPass final {
         return spacer;
     }
 
+    [[nodiscard]] static bool IsPosterArtworkChild(
+        const WidgetNode& parent, const std::size_t childIndex) noexcept {
+        return parent.kind == L"actionSurface" &&
+            parent.actionSurfacePresentation == L"poster" &&
+            parent.children.size() == 2U && childIndex == 0U;
+    }
+
     void PrepareStyle(
         const WidgetNode& node, const std::string_view parentId,
         const float fallbackParentWidth, const float fallbackParentHeight,
@@ -1098,10 +1105,7 @@ struct DeclarativeRenderer::RenderPass final {
                 parentHeight,
                 style.fontSizePx() / textScale,
                 effectiveBackground);
-            const auto posterArtwork = node.kind == L"actionSurface" &&
-                node.actionSurfacePresentation == L"poster" &&
-                node.children.size() == 2U && childIndex == 0U;
-            if (!posterArtwork)
+            if (!IsPosterArtworkChild(node, childIndex))
                 element.children.push_back(std::move(preparedChild));
         }
         if (node.kind == L"scroll" && node.virtualCollectionWindow &&
@@ -2869,8 +2873,19 @@ struct DeclarativeRenderer::RenderPass final {
                     : !node.defaultFocusPresentation.empty() ? &node.defaultFocusPresentation.front() : nullptr;
                 if (fragment) self(self, *fragment, id, style.fontSizePx() / textScale, surface);
             }
-            for (const auto& child : node.children)
-                self(self, child, id, style.fontSizePx() / textScale, surface);
+            for (std::size_t index = 0; index < node.children.size(); ++index) {
+                const auto& child = node.children[index];
+                if (!IsResponsiveVisible(child)) continue;
+                if (IsPosterArtworkChild(node, index)) {
+                    // This image paints in its parent's box and intentionally
+                    // has no Taffy box. It still needs its own current style
+                    // and semantic pointer for DrawImage on retained paints.
+                    PrepareStyle(child, id, viewport.width, viewport.height,
+                        style.fontSizePx() / textScale, surface);
+                } else {
+                    self(self, child, id, style.fontSizePx() / textScale, surface);
+                }
+            }
         };
         visit(visit, snapshot->root, {}, options.rootFontSizePx, options.surfaceBackground);
     }
