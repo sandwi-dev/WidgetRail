@@ -3418,9 +3418,12 @@ struct DeclarativeRenderer::RenderPass final {
         return bitmap;
     }
 
+    std::map<std::wstring, Rect> posterArtworkBounds;
     ImageDecodeSize ImageSize(const WidgetNode& node) const {
         if (!options.sizeArtworkToDisplay || node.imageSource.starts_with(L"data:")) return {};
         if (options.artworkDecodeSize.width) return options.artworkDecodeSize;
+        if (const auto poster = posterArtworkBounds.find(node.id); poster != posterArtworkBounds.end())
+            return DisplayImageSize(poster->second.width, poster->second.height, options.pixelScale);
         const auto geometry = presentation.find(NarrowStableId(node.id));
         if (geometry == presentation.end()) return {};
         return DisplayImageSize(geometry->second.borderBox.width, geometry->second.borderBox.height, options.pixelScale);
@@ -3441,7 +3444,16 @@ struct DeclarativeRenderer::RenderPass final {
     std::set<std::wstring> visibleImageKeys;
     void GatherVisibleImages(const WidgetNode& node) {
         const auto geometry = presentation.find(NarrowStableId(node.id));
+        // Poster artwork is deliberately excluded from layout. Both its decode
+        // size and visibility come from the full-bleed parent tile used by DrawNode.
+        const WidgetNode* posterArtwork = node.kind == L"actionSurface" &&
+            node.actionSurfacePresentation == L"poster" && node.children.size() == 2U
+            ? &node.children.front() : nullptr;
+        if (posterArtwork && geometry != presentation.end())
+            posterArtworkBounds.insert_or_assign(posterArtwork->id, geometry->second.borderBox);
         if (geometry != presentation.end() && geometry->second.visibleBox.width > 0.5F && geometry->second.visibleBox.height > 0.5F) {
+            if (posterArtwork)
+                visibleImageKeys.insert(ImageKey(*posterArtwork, CachedImageSize(*posterArtwork)));
             const auto size = CachedImageSize(node);
             if (!node.imageSource.empty() || !node.artworkHandle.empty()) visibleImageKeys.insert(ImageKey(node, size));
             if (node.kind == L"backgroundSurface") {

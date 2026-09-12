@@ -6133,6 +6133,59 @@ void PackageSvgIconPaintUsesGenericRenderTargetAuthority() {
     cache.Shutdown();
 }
 
+void PosterArtworkLoadsAtDisplaySizeUnderPressure(bool trusted) {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write; ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas; ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,d2d.ReleaseAndGetAddressOf())),"poster pressure D2D");
+    Check(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),"poster pressure text");
+    Check(SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),"poster pressure WIC");
+    Check(SUCCEEDED(wic->CreateBitmap(200,150,GUID_WICPixelFormat32bppPBGRA,WICBitmapCacheOnLoad,canvas.ReleaseAndGetAddressOf())),"poster pressure canvas");
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(canvas.Get(),D2D1::RenderTargetProperties(),target.ReleaseAndGetAddressOf())),"poster pressure target");
+    RemoteImageLimits limits; limits.maximumDecodedBytes=8;
+    std::atomic<int> sizedRequests{};
+    RemoteImageCache cache(limits,{},[&](std::wstring_view,std::stop_token,const RemoteImageLimits& request) {
+        if(request.decodeSize.width==128 && request.decodeSize.height==192) ++sizedRequests;
+        RemoteDecodedImage image; image.width=image.height=1; image.stride=4;
+        image.premultipliedBgra={0x10,0x20,0x30,0xff};
+        return RemoteImageFetchResult{S_OK,std::move(image),{}};
+    });
+    const auto wait=[&](const std::wstring& key) {
+        const auto until=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+        while(cache.GetState(key)!=RemoteImageState::Ready && std::chrono::steady_clock::now()<until)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Check(cache.GetState(key)==RemoteImageState::Ready,"visible poster loads despite full cache");
+    };
+    (void)cache.Request(L"https://example.test/warm-1"); wait(L"https://example.test/warm-1");
+    (void)cache.Request(L"https://example.test/warm-2"); wait(L"https://example.test/warm-2");
+    Check(!cache.CanPrefetch(L"new"),"fixture starts above prefetch pressure threshold");
+    auto snapshot=PosterAdmissionSnapshot(L"pressure",L"horizontal");
+    if(trusted) for(auto& poster:snapshot.root.children) {
+        poster.children.front().artworkHandle=poster.id;
+        poster.children.front().imageSource.clear();
+    }
+    DeclarativeRenderer renderer(d2d.Get(),write.Get(),&cache);
+    DeclarativeRenderOptions options; options.sizeArtworkToDisplay=true; options.artworkWidgetId=L"poster-pressure";
+    const auto draw=[&]() {
+        target->BeginDraw(); auto result=renderer.Render(target.Get(),snapshot,{}, {0,0,200,150},options);
+        Check(SUCCEEDED(target->EndDraw()) && result.succeeded,"poster pressure frame renders");
+    };
+    draw();
+    const auto key=[&](int i) {
+        const auto& image=snapshot.root.children[i].children.front();
+        return trusted ? RemoteImageCache::TrustedArtworkKey(options.artworkWidgetId,image.id,image.artworkHandle,{128,192})
+                       : RemoteImageCache::VariantKey(image.imageSource,{128,192});
+    };
+    wait(key(0)); wait(key(1)); draw();
+    Check(sizedRequests==2,"visible poster children decode using parent tile dimensions");
+    Check(cache.GetState(key(2))==RemoteImageState::Missing,"offscreen poster prefetch remains throttled");
+    Check(cache.GetStats().decodedBytes==8,"visible poster admission preserves cache limit");
+    const auto initial=renderer.GetImageBitmapCacheStats().creates;
+    draw();
+    Check(renderer.GetImageBitmapCacheStats().creates==initial,"poster repaint uses retained display-sized bitmap");
+}
+
 void VisibleArtworkAndChromeSurviveCachePressure() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -6343,6 +6396,8 @@ int main() {
     ContentMeasurementUsesResponsiveTaffyGeometry();
     MediaViewportUsesFinalDeclarativeGeometry();
     PackageSvgIconPaintUsesGenericRenderTargetAuthority();
+    PosterArtworkLoadsAtDisplaySizeUnderPressure(false);
+    PosterArtworkLoadsAtDisplaySizeUnderPressure(true);
     VisibleArtworkAndChromeSurviveCachePressure();
     BitmapRetentionPolicyIsBounded();
     std::cout << "DeclarativeRendererTests: " << checks << " checks passed\n";
