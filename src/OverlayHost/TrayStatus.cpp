@@ -122,7 +122,7 @@ void DrawTrayStatus(ID2D1RenderTarget* target, IDWriteFactory* factory,
     const auto drawText = [&](const std::wstring& value, float y, float height, float size, ID2D1Brush* brush, bool bold) {
         Microsoft::WRL::ComPtr<IDWriteTextLayout> text;
         if (value.empty() || FAILED(factory->CreateTextLayout(value.data(), static_cast<UINT32>(value.size()),
-                format, textWidth, height, &text))) return;
+                format, textWidth, height, &text))) return textLeft;
         const DWRITE_TEXT_RANGE range{0, static_cast<UINT32>(value.size())};
         text->SetFontSize(size, range);
         if (bold) text->SetFontWeight(std::max(format->GetFontWeight(), DWRITE_FONT_WEIGHT_SEMI_BOLD), range);
@@ -130,18 +130,22 @@ void DrawTrayStatus(ID2D1RenderTarget* target, IDWriteFactory* factory,
         text->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
         text->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
         DWRITE_TEXT_METRICS metrics{};
-        if (SUCCEEDED(text->GetMetrics(&metrics)) && metrics.widthIncludingTrailingWhitespace > textWidth)
+        if (SUCCEEDED(text->GetMetrics(&metrics)) && metrics.widthIncludingTrailingWhitespace > textWidth) {
             text->SetFontSize(size * textWidth / metrics.widthIncludingTrailingWhitespace, range);
+            (void)text->GetMetrics(&metrics);
+        }
         target->DrawTextLayout(D2D1::Point2F(textLeft, y), text.Get(), brush, D2D1_DRAW_TEXT_OPTIONS_CLIP);
+        return textLeft + std::max(0.0F, textWidth - metrics.widthIncludingTrailingWhitespace);
     };
     const float scale = std::clamp(format->GetFontSize() / 14.0F, 1.0F, 1.5F);
     const bool dateVisible = bounds.height >= 44.0F;
-    drawText(status.time, bounds.y + (dateVisible ? 4.0F : 0), dateVisible ? bounds.height * .53F : bounds.height,
+    float textStart = drawText(status.time, bounds.y + (dateVisible ? 4.0F : 0), dateVisible ? bounds.height * .53F : bounds.height,
         (wide ? 22.0F : 19.0F) * scale, foreground, true);
-    if (dateVisible) drawText(status.date, bounds.y + bounds.height * .56F,
-        bounds.height * .34F, 11.0F * scale, secondary, false);
+    if (dateVisible) textStart = std::min(textStart, drawText(status.date, bounds.y + bounds.height * .56F,
+        bounds.height * .34F, 11.0F * scale, secondary, false));
     if (!wide) return;
-    const float x = bounds.x + 13.0F;
+    // Follow the actual text, not the unused width of its right-aligned box.
+    const float x = std::max(bounds.x + padding, textStart - 32.0F);
     const auto indicator = [&](WirelessStatus state, float y, bool bluetooth) {
         const bool lit = state == WirelessStatus::Connected || (bluetooth && state == WirelessStatus::On);
         auto* brush = lit ? accent : secondary;
