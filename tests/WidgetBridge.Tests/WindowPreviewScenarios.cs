@@ -2,9 +2,27 @@ using WidgetRail.PlatformBroker;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 
 internal static class WindowPreviewScenarios
 {
+    internal static Task ThemedRenderRoles()
+    {
+        var parsed = WrssParser.Parse("windowPreview { opacity: 0.75; } .wrail-window-preview { corner-radius: 8px; }", "preview.wrss");
+        var compiled = WrssThemeCompiler.Compile([parsed.Document]);
+        Check(compiled.IsValid, "Preview theme must compile.");
+        var snapshot = new WidgetView(UI.WindowPreview("window-test", "preview", "Window preview"))
+            .CreateSnapshot("preview.snapshot", 1);
+        var styles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
+        Check(styles["preview"].Base["opacity"].Number == 0.75, "Preview role selectors must resolve.");
+        Check(styles["preview"].Base["corner-radius"].Number == 8, "Preview theme classes must resolve.");
+        // Every protocol element must survive the themed publication path, even
+        // when the active theme has no selector specifically targeting it.
+        foreach (var kind in Enum.GetValues<ViewNodeKind>())
+            BridgeRenderStyleResolver.Resolve(snapshot with { Root = snapshot.Root with { Kind = kind } }, compiled.Theme);
+        return Task.CompletedTask;
+    }
+
     internal static async Task Authority()
     {
         Check(!BridgeJson.FromElement<BridgeHello>(BridgeJson.ToElement(new { clientName = "legacy" })).WindowPreviews,
