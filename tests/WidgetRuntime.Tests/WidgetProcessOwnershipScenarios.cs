@@ -177,10 +177,14 @@ internal static class WidgetProcessOwnershipScenarios
         var setupTokens = new ConcurrentQueue<(CancellationToken Token, bool WasCurrent)>();
         var handshakeTokens = new ConcurrentQueue<(CancellationToken Token, bool WasCurrent)>();
         var lifecycleTokens = new ConcurrentQueue<(CancellationToken Token, bool WasCurrent)>();
+        var observeStartupLifecycle = true;
         var replacementCompanion = new TrackingCompanion
         {
             LifecycleTokenObserved = token =>
-                lifecycleTokens.Enqueue((token, token.CanBeCanceled && !token.IsCancellationRequested)),
+            {
+                if (observeStartupLifecycle)
+                    lifecycleTokens.Enqueue((token, token.CanBeCanceled && !token.IsCancellationRequested));
+            },
         };
         var hooks = new WidgetProcessClientTestHooks
         {
@@ -205,12 +209,15 @@ internal static class WidgetProcessOwnershipScenarios
             var failed = new TaskCompletionSource<WidgetFailure>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             client.Failed += (_, failure) => failed.TrySetResult(failure);
-            _ = await client.AdmitActionAsync(new WidgetActionEvent("crash", "button"));
+            try { _ = await client.AdmitActionAsync(new WidgetActionEvent("crash", "button")); }
+            catch (WidgetProcessException) { } // Intentional exit may precede queue acknowledgement.
             _ = await failed.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
             var recovered = await client.GetSnapshotAsync();
             Equal("runtime.test", recovered.WidgetInstanceId);
             Equal(2, client.Starts);
+            // Record startup tokens only; disposal also sends Background.
+            observeStartupLifecycle = false;
         }
 
         Equal(2, setupTokens.Count);
@@ -244,7 +251,8 @@ internal static class WidgetProcessOwnershipScenarios
         var crashFailure = new TaskCompletionSource<WidgetFailure>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         timeoutClient.Failed += (_, failure) => crashFailure.TrySetResult(failure);
-        _ = await timeoutClient.AdmitActionAsync(new WidgetActionEvent("crash", "button"));
+        try { _ = await timeoutClient.AdmitActionAsync(new WidgetActionEvent("crash", "button")); }
+        catch (WidgetProcessException) { } // The deliberate crash may beat acknowledgement.
         _ = await crashFailure.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         var lifecycleFailure = new TaskCompletionSource<WidgetFailure>(

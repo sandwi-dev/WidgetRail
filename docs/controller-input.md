@@ -350,11 +350,34 @@ should be advertised need explicit labels because one element accessibility
 name cannot describe several button/action pairs. An absent label preserves an
 input-only shortcut. Dashboard QuickAction labels do not supply shortcut text.
 
-The runtime also requires the input's active-scope ID and snapshot sequence to
-match the latest rendered snapshot. Stale input, a mismatched scope, or a focus
-ID outside the active scope returns unhandled. Explicit focus-neighbor edges
-cannot cross scope boundaries, and initial focus must belong to the active
-scope.
+The SDK's direct controller callback still requires the input's active-scope ID
+and snapshot sequence to match its latest rendered snapshot. The shared bridge
+admission path handles a snapshot published between native input capture and
+worker delivery (WIDGE-239): it compares the retained origin and latest snapshot
+under the same per-widget gate used for presentation publication. A compatible
+input adopts that latest sequence without requesting another render. Runtime,
+scope, focused-node availability, action owner/binding and slider bounds must
+remain valid. Missing origin history or changed authority retires the event.
+
+A revalidated worker request checks that sequence again before invoking the
+callback once. Declared actions retain their existing override/bookkeeping
+behavior. Unbound input can cross a snapshot update only when the worker uses
+the SDK's standard controller handler; private raw override semantics cannot be
+proved from matching focus alone. Standard unbound B still returns unhandled,
+allowing the host's normal root-scope Back behavior. A rejected event is distinct
+from unhandled: it produces no toast and cannot trigger Back in a changed scope.
+The host requests an asynchronous presentation refresh after a rejection but
+never replays the event. Delivered input and transport failures are never retried.
+
+The existing strict runtime-v2 handshake and controller payload are unchanged.
+Older packaged workers reject the new request before dispatch; only a verified
+declared action may then use their existing input request, once. Unbound raw
+revalidation requires rebuilding the application package with the shared runtime.
+No widget routing changes or public SDK API changes are required.
+
+Explicit focus-neighbor edges cannot cross scope boundaries, and initial focus
+must belong to the active scope. Dashboard capability gestures and pinned-layout
+selection retain their separate exact-authority policies.
 
 `ActiveInputScopeId` is widget-published state, not a value the host derives
 from focus. `SnapshotSequence` correlates an input with the exact tree the user

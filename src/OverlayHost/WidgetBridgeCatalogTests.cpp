@@ -1426,6 +1426,10 @@ void VerifyVirtualCollectionProtocol() {
 } // namespace
 
 int main() {
+    CHECK(widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(L"stale_controller_input_authority"));
+    CHECK(widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(L"stale_pinned_input_authority"));
+    CHECK(!widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(L"request_failed"));
+    CHECK(!widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(L"unhandled"));
     {
         const std::string menu=R"json({"snapshot":{"protocolVersion":51,"sequence":1,"widgetInstanceId":"menu","activeInputScopeId":"root","root":{"id":"root","kind":"row","contextMenuButton":"menu","contextActions":[{"actionId":"library","label":"Library"}],"children":[]}},"renderStyles":{}})json";
         std::wstring menuError;

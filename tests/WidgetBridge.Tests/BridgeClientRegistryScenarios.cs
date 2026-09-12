@@ -282,10 +282,16 @@ internal static class BridgeClientRegistryScenarios
             (input, new string('f', 32)),
         })
         {
-            await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
-                fixture.Registry.SendControllerInputAsync(
-                    configured.Id, staleGeneration.Input, staleGeneration.Generation,
-                    CancellationToken.None, CancellationToken.None));
+            if (staleGeneration.Generation is null)
+                await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+                    fixture.Registry.SendControllerInputAsync(
+                        configured.Id, staleGeneration.Input, staleGeneration.Generation,
+                        CancellationToken.None, CancellationToken.None));
+            else
+                await RegistryAssert.ThrowsAsync<BridgeStalePinnedInputAuthorityException>(() =>
+                    fixture.Registry.SendControllerInputAsync(
+                        configured.Id, staleGeneration.Input, staleGeneration.Generation,
+                        CancellationToken.None, CancellationToken.None));
         }
         foreach (var staleAuthority in new ControllerInputEvent[]
         {
@@ -551,7 +557,7 @@ internal static class BridgeClientRegistryScenarios
         var latest = compatible;
         for (var index = 0; index < 17; index++)
             latest = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
             fixture.Registry.SendControllerInputAsync(
                 configured.Id, input with
                 {
@@ -576,19 +582,38 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(latest.Sequence,
             client.ControllerInputs[1].SnapshotSequence);
         var rawSuccessor = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
-            fixture.Registry.SendControllerInputAsync(
-                configured.Id, input with
-                {
-                    Button = ControllerButton.B,
-                    FocusedElementId = "open.raw",
-                    SnapshotSequence = latest.Sequence,
-                    Sequence = 4,
-                }, generation, CancellationToken.None, CancellationToken.None));
+        client.RevalidatedHandled = false;
+        using (var publication = await fixture.Registry.SendControllerInputAsync(
+                   configured.Id, input with
+                   {
+                       Button = ControllerButton.B,
+                       FocusedElementId = "open.raw",
+                       SnapshotSequence = latest.Sequence,
+                       Sequence = 4,
+                   }, generation, CancellationToken.None, CancellationToken.None))
+            RegistryAssert.True(!publication.Value);
+        RegistryAssert.Equal(3, client.ControllerInputs.Count);
+        RegistryAssert.Equal(rawSuccessor.Sequence, client.ControllerInputs[2].SnapshotSequence);
+        RegistryAssert.Equal(4L, client.ControllerInputs[2].Sequence);
+
+        // A worker with private raw semantics refuses before invocation. The
+        // bridge must neither retry it nor downgrade it to ordinary unhandled.
+        client.RevalidatedHandled = null;
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
+            fixture.Registry.SendControllerInputAsync(configured.Id, input with
+            {
+                Button = ControllerButton.B,
+                FocusedElementId = "open.raw",
+                SnapshotSequence = latest.Sequence,
+                Sequence = 9,
+            }, generation, CancellationToken.None, CancellationToken.None));
+        RegistryAssert.Equal(3, client.ControllerInputs.Count);
+        RegistryAssert.Equal(3, client.RevalidatedAttempts);
+        client.RevalidatedHandled = true;
 
         actionId = "open.retargeted";
         _ = await fixture.GetSnapshotAsync(configured.Id);
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
             fixture.Registry.SendControllerInputAsync(
                 configured.Id, input with
                 {
@@ -601,7 +626,7 @@ internal static class BridgeClientRegistryScenarios
         var restored = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
         focusedDisabled = true;
         var disabled = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
             fixture.Registry.SendControllerInputAsync(
                 configured.Id, input with
                 {
@@ -614,7 +639,7 @@ internal static class BridgeClientRegistryScenarios
         var enabled = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
         includeFocusedNode = false;
         _ = await fixture.GetSnapshotAsync(configured.Id);
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
             fixture.Registry.SendControllerInputAsync(
                 configured.Id, input with
                 {
@@ -627,14 +652,71 @@ internal static class BridgeClientRegistryScenarios
         var oldScope = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
         scopeId = "open.replaced-root";
         _ = await fixture.GetSnapshotAsync(configured.Id);
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
             fixture.Registry.SendControllerInputAsync(
                 configured.Id, input with
                 {
                     SnapshotSequence = oldScope.Sequence,
                     Sequence = 8,
                 }, generation, CancellationToken.None, CancellationToken.None));
-        RegistryAssert.Equal(2, client.ControllerInputs.Count);
+        RegistryAssert.Equal(3, client.ControllerInputs.Count);
+    }
+
+    internal static async Task InputAdmissionSerializesWithSnapshotPublication()
+    {
+        var configured = Widget("input-race", worker: 'r', catalog: 'r');
+        await using var fixture = new RegistryFixture(Catalog(configured), configure: (_, client) =>
+            client.SnapshotFactory = sequence => new ViewSnapshot
+            {
+                ProtocolVersion = ProtocolConstants.CurrentVersion, Sequence = sequence,
+                WidgetInstanceId = configured.InstanceId, ActiveInputScopeId = "root",
+                Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack,
+                    Children = [new ViewNode { Id = "focus", Kind = ViewNodeKind.Button, ActionId = "activate" }] },
+            });
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Interactive);
+        var origin = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        var client = fixture.Clients.Single();
+        client.RevalidatedHandled = false;
+        client.BlockSnapshots = true;
+        var publishing = fixture.GetSnapshotAsync(configured.Id);
+        await client.SnapshotEntered.WaitAsync(TimeSpan.FromSeconds(2));
+        var input = new ControllerInputEvent(ControllerButton.B, ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget, "focus", Sequence: 401,
+            ActiveInputScopeId: "root", SnapshotSequence: origin.Sequence);
+        var pending = fixture.Registry.SendControllerInputAsync(configured.Id, input,
+            configured.PublicDescriptor().RuntimeGeneration, CancellationToken.None, CancellationToken.None);
+        RegistryAssert.True(!pending.IsCompleted);
+        RegistryAssert.Equal(0, client.ControllerInputs.Count);
+        client.ReleaseSnapshot();
+        var latest = (await publishing).Snapshot;
+        using (var result = await pending) RegistryAssert.True(!result.Value);
+        RegistryAssert.Equal(1, client.ControllerInputs.Count);
+        RegistryAssert.Equal(401L, client.ControllerInputs[0].Sequence);
+        RegistryAssert.Equal(latest.Sequence, client.ControllerInputs[0].SnapshotSequence);
+        RegistryAssert.Equal(1, client.RevalidatedAttempts);
+        client.BlockSnapshots = false;
+        // Continuous visual updates must not turn into a retry loop or make
+        // valid unbound buttons disappear. Each event is delivered once.
+        foreach (var button in new[] { ControllerButton.B, ControllerButton.X, ControllerButton.Y, ControllerButton.Menu })
+        {
+            for (var index = 0; index < 25; index++)
+            {
+                origin = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+                latest = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+                input = input with { Button = button, Sequence = input.Sequence + 1,
+                    SnapshotSequence = origin.Sequence };
+                using var result = await fixture.Registry.SendControllerInputAsync(configured.Id, input,
+                    configured.PublicDescriptor().RuntimeGeneration, CancellationToken.None, CancellationToken.None);
+                RegistryAssert.True(!result.Value);
+                RegistryAssert.Equal(latest.Sequence, client.ControllerInputs[^1].SnapshotSequence);
+            }
+        }
+        RegistryAssert.Equal(101, client.ControllerInputs.Count);
+        RegistryAssert.Equal(101, client.ControllerInputs.Select(value => value.Sequence).Distinct().Count());
+        RegistryAssert.Equal(101, client.RevalidatedAttempts);
+        var failure = WidgetBridgeServer.CreateRequestFailure(
+            new BridgeStaleControllerInputAuthorityException("stale"));
+        RegistryAssert.Equal("stale_controller_input_authority", failure.Code);
     }
 
     internal static async Task EmbeddedMediaRequiresExactPublicationAuthority()
@@ -2332,6 +2414,16 @@ internal sealed class RegistryTestClient(
     internal List<(WidgetPresentationTransactionKind TransactionKind,
         long BaseSequence, long RecoveryOriginSequence)> PresentationRequests { get; } = [];
     internal List<ControllerInputEvent> ControllerInputs { get; } = [];
+    internal bool? RevalidatedHandled { get; set; } = true;
+    internal int RevalidatedAttempts { get; private set; }
+    public Task<bool?> SendRevalidatedControllerInputAsync(
+        ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        RevalidatedAttempts++;
+        if (RevalidatedHandled is not null) ControllerInputs.Add(input);
+        return Task.FromResult(RevalidatedHandled);
+    }
     internal List<WidgetActionEvent> ActionEvents { get; } = [];
     internal List<EmbeddedMediaPlaybackEvent> EmbeddedMediaPlaybackEvents { get; } = [];
     internal Func<long, ViewSnapshot>? SnapshotFactory { get; set; }

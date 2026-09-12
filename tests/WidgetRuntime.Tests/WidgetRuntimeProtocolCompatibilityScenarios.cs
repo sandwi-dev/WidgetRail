@@ -226,7 +226,7 @@ internal static class WidgetRuntimeProtocolCompatibilityScenarios
         await worker.WaitAsync(TimeSpan.FromSeconds(2));
     }
 
-    private static async Task<int> RunFrozenV2PeerAsync(
+    internal static async Task<int> RunFrozenV2PeerAsync(
         string pipeName,
         string instanceId,
         string sessionNonce,
@@ -303,7 +303,20 @@ internal static class WidgetRuntimeProtocolCompatibilityScenarios
                     FrozenV2Json.ToElement(new { }));
                 return 0;
             }
-            return 95;
+            if (request.Type == MessageTypes.ControllerInput)
+            {
+                // A legacy callback would fail if dispatched twice or for raw
+                // fallback after an unsupported revalidation request.
+                var input = RuntimeJson.FromElement<ControllerInputEvent>(request.Payload);
+                if (input.Button != ControllerButton.A || input.Sequence != 903)
+                    throw new InvalidOperationException("Unchecked legacy raw input was dispatched.");
+                await ReplyAsync(MessageTypes.ControllerInputResult, request.RequestId,
+                    FrozenV2Json.ToElement(new { handled = true }));
+                continue;
+            }
+            await ReplyAsync(MessageTypes.Error, request.RequestId,
+                FrozenV2Json.ToElement(new FrozenV2ErrorPayload("worker_request_failed",
+                    $"Unknown request type '{request.Type}'.")));
         }
 
         ValueTask ReplyAsync(string type, long requestId, JsonElement payload) =>

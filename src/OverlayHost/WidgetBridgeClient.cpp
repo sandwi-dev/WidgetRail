@@ -5103,7 +5103,8 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
                     IsIdentifier(code) && code.size() <= 64
                         ? std::move(code)
                         : L"bridge-error-invalid";
-                Fail(SafeBridgeError(response));
+                if (!IsStaleControllerInputResult(lastControllerInputResultCode_))
+                    Fail(SafeBridgeError(response));
                 return std::nullopt;
             }
             if (response.GetNamedString(L"type") != L"controller-input-result") {

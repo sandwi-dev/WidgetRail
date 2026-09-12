@@ -649,6 +649,9 @@ public abstract partial class Widget
         return ValueTask.CompletedTask;
     }
 
+    internal bool HasControllerInputSnapshot(long sequence) =>
+        Volatile.Read(ref _latestSnapshot)?.Sequence == sequence;
+
     /// <summary>
     /// Resolves raw input against the latest host-rendered snapshot. Override
     /// this for controls that are not represented by declarative shortcuts.

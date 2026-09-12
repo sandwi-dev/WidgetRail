@@ -357,6 +357,8 @@ internal sealed class BridgeProtectedWifiSecret : IDisposable
 public sealed class BridgeProtocolException(string message, Exception? innerException = null)
     : Exception(message, innerException);
 
+internal sealed class BridgeStaleControllerInputAuthorityException(string message)
+    : Exception(message);
 internal sealed class BridgeStalePinnedInputAuthorityException(string message)
     : Exception(message);
 internal sealed class BridgeStaleArtworkAuthorityException(string message)

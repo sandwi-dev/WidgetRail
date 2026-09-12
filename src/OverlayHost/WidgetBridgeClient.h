@@ -938,6 +938,12 @@ public:
         std::wstring_view presentationGeneration,
         long long sequence,
         const EmbeddedMediaPlaybackEvent& playbackEvent);
+    [[nodiscard]] static bool IsStaleControllerInputResult(
+        const std::wstring_view code) noexcept {
+        return code == L"stale_controller_input_authority" ||
+               code == L"stale_pinned_input_authority";
+    }
+
     [[nodiscard]] std::optional<bool> SendControllerInput(
         std::wstring_view widgetId,
         std::wstring_view button,

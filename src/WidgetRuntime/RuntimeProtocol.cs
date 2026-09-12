@@ -30,6 +30,10 @@ internal static class MessageTypes
     public const string Action = "action";
     public const string ControllerInput = "controller-input";
     public const string ControllerInputResult = "controller-input-result";
+    // Separate request keeps the strict runtime-v2 handshake and existing
+    // input payloads compatible with packaged application workers.
+    public const string RevalidatedControllerInput = "revalidated-controller-input";
+    public const string RevalidatedControllerInputResult = "revalidated-controller-input-result";
     public const string EmbeddedMediaPlaybackEvent = "embedded-media-playback-event";
     public const string ResolveArtwork = "resolve-artwork";
     public const string Artwork = "artwork";
@@ -90,6 +94,9 @@ internal sealed record ControllerActionFailurePayload(
     string Message);
 internal sealed record ErrorPayload(string Code, string Message);
 internal sealed record ControllerInputResultPayload(bool Handled);
+// Null means rejected before invoking any widget handler, never unhandled.
+internal sealed record RevalidatedControllerInputPayload(ControllerInputEvent Input, string? ActionId);
+internal sealed record RevalidatedControllerInputResultPayload(bool? Handled);
 internal sealed record ResolveArtworkPayload(string ArtworkHandle);
 internal sealed record EncodedArtworkPayload(string? ContentType, string? ContentBase64);
 internal sealed record DashboardGestureActivationRequestPayload(

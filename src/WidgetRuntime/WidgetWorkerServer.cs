@@ -458,6 +458,15 @@ internal sealed class WidgetWorkerServer
                     cancellationToken).ConfigureAwait(false);
             }
             break;
+        case MessageTypes.RevalidatedControllerInput:
+            var revalidatedRequest = RuntimeJson.FromElement<RevalidatedControllerInputPayload>(request.Payload);
+            ValidateControllerInput(revalidatedRequest.Input);
+            var revalidatedResult = await AdmitRevalidatedControllerInputAsync(
+                _widget, revalidatedRequest.Input, cancellationToken, revalidatedRequest.ActionId).ConfigureAwait(false);
+            await ReplyAsync(MessageTypes.RevalidatedControllerInputResult, request.RequestId,
+                new RevalidatedControllerInputResultPayload(revalidatedResult), cancellationToken)
+                .ConfigureAwait(false);
+            break;
         case MessageTypes.ControllerInput:
             var input = RuntimeJson.FromElement<ControllerInputEvent>(request.Payload);
             ValidateControllerInput(input);
@@ -488,6 +497,29 @@ internal sealed class WidgetWorkerServer
         default:
             throw new WidgetProtocolViolationException($"Unknown request type '{request.Type}'.");
         }
+    }
+
+    internal static async ValueTask<bool?> AdmitRevalidatedControllerInputAsync(
+        Widget widget, ControllerInputEvent input, CancellationToken cancellationToken,
+        string? admittedActionId = null)
+    {
+        // The bridge proved origin/current declarative bindings compatible.
+        // An explicit action binding keeps the existing declared-action contract.
+        // Unbound private override semantics cannot be established by focus alone.
+        // Check the actual virtual slot, including inherited overrides.
+        var baseHandler = typeof(Widget).GetMethod(nameof(Widget.OnControllerInputAsync),
+            [typeof(ControllerInputEvent), typeof(CancellationToken)])!;
+        var hasOverride = widget.GetType().GetMethods().Any(method =>
+            method.IsVirtual && method.GetBaseDefinition() == baseHandler &&
+            method.DeclaringType != typeof(Widget));
+        if (input.Context is not (ControllerInputContext.OpenWidget or
+                ControllerInputContext.PinnedSurface) ||
+            (hasOverride && string.IsNullOrWhiteSpace(admittedActionId)) ||
+            !widget.HasControllerInputSnapshot(input.SnapshotSequence))
+            return null;
+        // Worker requests are serialized: a render cannot slip between this
+        // check and the SDK's synchronous routing/admission. Invoke only once.
+        return await widget.OnControllerInputAsync(input, cancellationToken).ConfigureAwait(false);
     }
 
     private void OnInvalidated(object? sender, WidgetInvalidatedEventArgs args)

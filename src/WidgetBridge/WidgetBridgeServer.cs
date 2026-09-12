@@ -782,6 +782,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is BridgeProtocolException or
+            BridgeStaleControllerInputAuthorityException or
             BridgeStalePinnedInputAuthorityException or
             BridgeStaleArtworkAuthorityException or
             BridgeStalePackageIconAuthorityException or
@@ -840,6 +841,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             exception switch
             {
                 BridgeStalePresentationBaseException => "stale_presentation_base",
+                BridgeStaleControllerInputAuthorityException => "stale_controller_input_authority",
                 BridgeStalePinnedInputAuthorityException => "stale_pinned_input_authority",
                 BridgeStaleArtworkAuthorityException => "stale_artwork_authority",
                 BridgeStalePackageIconAuthorityException => "stale_package_icon_authority",
@@ -1301,7 +1303,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     {
         var message = exception is WidgetProcessException or
             WidgetProcessAdmissionException or BridgeProtocolException or
-            BridgeWidgetRequestException or BridgeStalePresentationBaseException
+            BridgeWidgetRequestException or BridgeStalePresentationBaseException or
+            BridgeStaleControllerInputAuthorityException or BridgeStalePinnedInputAuthorityException
             ? exception.Message
             : "Widget request failed.";
         if (message.Length > 512) message = message[..512];

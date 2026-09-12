@@ -10334,6 +10334,10 @@ private:
             if (!handled || !*handled)
                 pinnedSurfaceCoordinator_.RejectInputRequest(
                     request, GetTickCount64());
+            if (!handled && widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(replyCode)) {
+                RefreshWidgetSnapshot(request.widgetId);
+                continue;
+            }
             if (!handled) {
                 pinnedSurfaceCoordinator_.SetActionFeedback(
                     L"Pinned action failed. Reopen the overlay and try again.", true);
@@ -12336,7 +12340,10 @@ private:
                             widgetrail::ControllerInputOrigin::AccessibilityAutomation,
                             descriptor->runtimeGeneration, {}, std::nullopt,
                             request.actionId);
-                        if (!handled) {
+                        if (!handled && widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(
+                                bridge_.lastControllerInputResultCode())) {
+                            RefreshWidgetSnapshot(request.widgetId);
+                        } else if (!handled) {
                             AppendDiagnostic(
                                 L"Accessibility Back transport failed for " +
                                 request.widgetId);
@@ -12546,7 +12553,12 @@ private:
                     InvalidateWidgetSliderValues(
                         *snapshot, {requestedSlider->id}, true);
                 }
-                AppendDiagnostic(L"Accessibility action transport failed for " + request.widgetId);
+                if (widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(
+                        bridge_.lastControllerInputResultCode())) {
+                    RefreshWidgetSnapshot(request.widgetId);
+                } else {
+                    AppendDiagnostic(L"Accessibility action transport failed for " + request.widgetId);
+                }
             } else if (*handled) {
                 // A requested-value acknowledgement admits work to the widget's
                 // serial action queue; it does not mean OnActionAsync completed.
@@ -14613,6 +14625,12 @@ private:
                         GetTickCount64()).visualChanged) {
                     InvalidateWidgetSliderValues(
                         *snapshot, {requestedSlider->id}, true);
+                }
+                if (widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(replyCode)) {
+                    // Revalidation already ran under the bridge's render gate.
+                    // Retire this event without a toast, host fallback, or replay.
+                    RefreshWidgetSnapshot(widget);
+                    return;
                 }
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" input failed: " + bridge_.lastError();

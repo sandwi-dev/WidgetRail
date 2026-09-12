@@ -282,6 +282,9 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
         ControllerInputEvent input,
         WidgetDashboardGestureAuthority? authority,
         CancellationToken cancellationToken);
+    Task<bool?> SendRevalidatedControllerInputAsync(
+        ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null) =>
+        Task.FromResult<bool?>(null);
     Task UnloadAsync(CancellationToken cancellationToken);
 }
 
@@ -311,6 +314,10 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         add => client.LifetimeChanged += value;
         remove => client.LifetimeChanged -= value;
     }
+
+    public Task<bool?> SendRevalidatedControllerInputAsync(
+        ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null) =>
+        client.SendRevalidatedControllerInputAsync(input, cancellationToken, admittedActionId);
 
     public bool IsRunning => client.IsRunning;
     public int Starts => client.Starts;
@@ -901,10 +908,14 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     registration.Configured.PublicDescriptor().RuntimeGeneration,
                     expectedRuntimeGeneration,
                     StringComparison.Ordinal))
-                throw new BridgeProtocolException(
+                throw ControllerInputAuthorityException(input,
                     "Controller input runtime authority is stale or unavailable.");
             if (input.Context != ControllerInputContext.PinnedLayoutSelection)
                 DemandInteractionAllowed(registration);
+            if (input.Context is ControllerInputContext.OpenWidget or ControllerInputContext.PinnedSurface &&
+                !registration.HasCurrentInputWorker)
+                throw ControllerInputAuthorityException(input,
+                    "Controller input worker authority is no longer available.");
             var selectAction = DemandSelectActionAuthority(
                 registration, input, expectedSelectOptionActionId);
             if (selectAction is not null)
@@ -928,8 +939,27 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             // not-handled outcome. Open widgets retain their bounded raw-input
             // override path through an explicit origin/current binding.
             if (admitted is null) return AdmitPublication(registration, false);
+            var revalidated = admitted.SnapshotSequence != input.SnapshotSequence &&
+                input.Context is ControllerInputContext.OpenWidget or ControllerInputContext.PinnedSurface;
             input = admitted;
             registration.CancelIdleUnload();
+            if (revalidated)
+            {
+                // Adopt the already-published snapshot under the render gate.
+                // This is one admission attempt, not a replay of delivered input.
+                var binding = ResolveControllerInputBinding(registration.CachedSnapshot!, input, "current");
+                var actionId = binding is { IsRaw: false } ? binding.ActionId : null;
+                var result = await ExecuteClientOperationAsync(
+                    registration,
+                    (client, token) => client.SendRevalidatedControllerInputAsync(input, token, actionId),
+                    cancellationToken).ConfigureAwait(false);
+                DemandCurrent(registration);
+                ScheduleIdleUnload(registration, sessionCancellation);
+                if (result is null)
+                    throw ControllerInputAuthorityException(input,
+                        "Controller input could not be revalidated before delivery.");
+                return AdmitPublication(registration, result.Value);
+            }
             var handled = await ExecuteClientOperationAsync(
                     registration,
                     (client, token) => client.SendControllerInputAsync(
@@ -2137,9 +2167,6 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         if (originBinding != currentBinding)
             throw ControllerInputAuthorityException(input,
                 "Controller input action binding changed after admission.");
-        if (originBinding?.IsRaw is true && input.SnapshotSequence != snapshot.Sequence)
-            throw ControllerInputAuthorityException(input,
-                "Raw controller input cannot cross snapshot authority.");
         // An expected action ID is the host asserting one exact admitted
         // binding, so its absence stays an authority failure.
         if (expectedActionId is not null &&
@@ -2364,7 +2391,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         ControllerInputEvent input,
         string message) => input.Context == ControllerInputContext.PinnedSurface
             ? new BridgeStalePinnedInputAuthorityException(message)
-            : new BridgeProtocolException(message);
+            : input.Context == ControllerInputContext.OpenWidget
+                ? new BridgeStaleControllerInputAuthorityException(message)
+                : new BridgeProtocolException(message);
 
     private sealed record ControllerInputBinding(
         string ActionId,
@@ -2519,6 +2548,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             CachedSnapshot = snapshot;
             _cachedSnapshotWorkerStart = workerStart;
         }
+
+        internal bool HasCurrentInputWorker => Client.IsRunning &&
+            _cachedSnapshotWorkerStart > 0 && Client.Starts == _cachedSnapshotWorkerStart;
 
         internal ViewSnapshot? FindInputOriginSnapshot(long sequence)
         {

@@ -198,14 +198,15 @@ internal sealed class WidgetProcessSession(
 
     internal void Terminate()
     {
-        if (WindowsJob is not null)
+        var job = WindowsJob;
+        if (job is not null)
         {
-            try { WindowsJob.Terminate(); }
+            try { job.Terminate(); }
             catch (System.ComponentModel.Win32Exception) { }
         }
         try
         {
-            if (Process is { HasExited: false }) Process.Kill(entireProcessTree: true);
+            if (Process is { HasExited: false } process) process.Kill(entireProcessTree: true);
         }
         catch (InvalidOperationException)
         {

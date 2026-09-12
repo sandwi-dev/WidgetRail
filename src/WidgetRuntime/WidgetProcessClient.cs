@@ -394,6 +394,41 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         }
     }
 
+    internal async Task<bool?> SendRevalidatedControllerInputAsync(
+        ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        // Revalidation must never lazily start a replacement runtime.
+        var session = Volatile.Read(ref _session);
+        if (session is null || session.IsTerminal) return null;
+        try
+        {
+            var response = await RequestConnectedAsync(session,
+                MessageTypes.RevalidatedControllerInput,
+                new RevalidatedControllerInputPayload(input, admittedActionId), cancellationToken).ConfigureAwait(false);
+            if (response.Type != MessageTypes.RevalidatedControllerInputResult)
+                throw new WidgetProtocolViolationException("Expected revalidated controller input result.");
+            return RuntimeJson.FromElement<RevalidatedControllerInputResultPayload>(response.Payload).Handled;
+        }
+        catch (WidgetProcessException exception) when (
+            exception.RequestType == MessageTypes.RevalidatedControllerInput &&
+            exception.WorkerErrorCode == WorkerErrorCodes.RequestFailed &&
+            exception.WorkerDiagnosticMessage ==
+                $"Unknown request type '{MessageTypes.RevalidatedControllerInput}'.")
+        {
+            // Frozen runtime-v2 workers reject unknown requests before any
+            // callback. Preserve their existing declared-action admission;
+            // unbound raw handlers still require the new worker-side check.
+            if (string.IsNullOrWhiteSpace(admittedActionId) || session.IsTerminal ||
+                !ReferenceEquals(session, Volatile.Read(ref _session))) return null;
+            var response = await RequestConnectedAsync(session, MessageTypes.ControllerInput,
+                input, cancellationToken).ConfigureAwait(false);
+            if (response.Type != MessageTypes.ControllerInputResult)
+                throw new WidgetProtocolViolationException("Expected controller input result.");
+            return RuntimeJson.FromElement<ControllerInputResultPayload>(response.Payload).Handled;
+        }
+    }
+
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         await StopCoreAsync(markResidencyUnload: false, cancellationToken).ConfigureAwait(false);

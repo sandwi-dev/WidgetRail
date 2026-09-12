@@ -99,6 +99,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Retired sessions cannot grant gesture authority into replacements", WidgetProcessOwnershipScenarios.StaleGestureCannotGrantReplacementAuthority),
     ("Cancellation-ignoring retired gesture grants are revoked", WidgetProcessOwnershipScenarios.CancellationIgnoringGestureGrantIsRevoked),
     ("Worker launch is lazy and snapshot is validated", LazyLaunchAndSnapshot),
+    ("Revalidated input preserves standard routing and never invokes stale custom handlers", RevalidatedInputRouting),
+    ("Revalidated input checks inherited and hidden controller handlers", ControllerInputRevalidationScenarios.CustomHandlersAreConservative),
+    ("Frozen workers preserve declared input without raw replay", RevalidatedInputFrozenWorker),
     ("Trusted encoded artwork preserves exact bytes across the worker transport", TrustedArtworkTransportPreservesBytes),
     ("Negotiated presentation updates materialize against the exact runtime base", NegotiatedPresentationUpdates),
     ("Fresh-worker recovery rebases exactly and fails closed at exhaustion", RecoveryCheckpointSequenceAuthorityIsExact),
@@ -215,6 +218,9 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         RequiredValue(arguments, "--max-message-bytes"), CultureInfo.InvariantCulture);
     if (arguments.Contains("--malformed-worker", StringComparer.Ordinal))
         return await RunMalformedWorkerAsync(pipe, instance, sessionNonce, maximumBytes);
+    if (arguments.Contains("--frozen-input-worker", StringComparer.Ordinal))
+        return await WidgetRuntimeProtocolCompatibilityScenarios.RunFrozenV2PeerAsync(
+            pipe, instance, sessionNonce, maximumBytes);
     VerifyPrecreatedCompanionEndpoint(arguments);
 
     var usesGestureProbe = arguments.Contains("--gesture-queue-probe", StringComparer.Ordinal) ||
@@ -3002,6 +3008,51 @@ static async Task ControllerQueueIsBounded()
     Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1),
         $"Saturated acknowledgements blocked for {stopwatch.Elapsed.TotalMilliseconds:0} ms.");
     await client.SetActiveAsync(false);
+}
+
+static async Task RevalidatedInputFrozenWorker()
+{
+    await using var client = CreateClient(extraArguments: ["--frozen-input-worker"]);
+    var snapshot = await client.GetSnapshotAsync();
+    await client.SetActiveAsync(true);
+    Assert.True(await client.SendRevalidatedControllerInputAsync(
+        OpenInput(snapshot, ControllerButton.B, "frozen-v2", 902), CancellationToken.None) is null,
+        "An unsupported legacy raw request must be discarded.");
+    Assert.Equal<bool?>(true, await client.SendRevalidatedControllerInputAsync(
+        OpenInput(snapshot, ControllerButton.A, "frozen-v2", 903), CancellationToken.None, "declared.action"));
+    Assert.Equal(1, client.Starts);
+}
+
+static async Task RevalidatedInputRouting()
+{
+    await using var client = CreateClient();
+    var first = await client.GetSnapshotAsync();
+    await client.SetActiveAsync(true);
+    var latest = await client.GetSnapshotAsync();
+    // Exact stale SDK input is rejected before dispatch, never ordinary B fallback.
+    Assert.True(await client.SendRevalidatedControllerInputAsync(
+        OpenInput(first, ControllerButton.B, "button", 801), CancellationToken.None) is null, "Input must be rejected before dispatch.");
+    foreach (var button in new[] { ControllerButton.B, ControllerButton.X,
+                 ControllerButton.Y, ControllerButton.Menu })
+        Assert.Equal<bool?>(false, await client.SendRevalidatedControllerInputAsync(
+            OpenInput(latest, button, "button", 802), CancellationToken.None));
+    Assert.Equal<bool?>(true, await client.SendRevalidatedControllerInputAsync(
+        OpenInput(latest, ControllerButton.A, "button", 803), CancellationToken.None));
+    await Task.Delay(450);
+    var result = await client.GetSnapshotAsync();
+    Assert.Equal("803", Find(result.Root, "controller-history").Text);
+    await client.StopAsync();
+    var starts = client.Starts;
+    Assert.True(await client.SendRevalidatedControllerInputAsync(
+        OpenInput(result, ControllerButton.A, "button", 804), CancellationToken.None) is null, "Input must be rejected before dispatch.");
+    Assert.Equal(starts, client.Starts);
+
+    await using var custom = CreateClient(extraArguments: ["--gesture-custom-probe"]);
+    var customSnapshot = await custom.GetSnapshotAsync();
+    await custom.SetActiveAsync(true);
+    Assert.True(await custom.SendRevalidatedControllerInputAsync(
+        OpenInput(customSnapshot, ControllerButton.B, customSnapshot.InitialFocusId, 805),
+        CancellationToken.None) is null, "Input must be rejected before dispatch.");
 }
 
 static ControllerInputEvent OpenInput(
