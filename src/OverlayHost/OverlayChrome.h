@@ -118,8 +118,9 @@ struct RetainedTrayState final {
 
 [[nodiscard]] constexpr bool RequiresImageReadyRepaint(
     const bool currentTrayPackageIconCompleted,
-    const bool compositorBackgroundAdvanced) noexcept {
-    return currentTrayPackageIconCompleted || !compositorBackgroundAdvanced;
+    const bool compositorBackgroundAdvanced,
+    const bool visibleContentImageCompleted = false) noexcept {
+    return currentTrayPackageIconCompleted || visibleContentImageCompleted || !compositorBackgroundAdvanced;
 }
 
 /// A color-keyed layered HWND cannot represent partially transparent pixels at

@@ -3442,7 +3442,14 @@ struct DeclarativeRenderer::RenderPass final {
         return size;
     }
     std::set<std::wstring> visibleImageKeys;
+    std::set<std::wstring> visibleContentImageKeys;
+    std::map<std::wstring, std::set<std::wstring>> visibleBackgroundImageKeys;
     void GatherVisibleImages(const WidgetNode& node) {
+        const auto track = [&](std::wstring key) {
+            visibleImageKeys.insert(key);
+            if (node.kind == L"backgroundSurface") visibleBackgroundImageKeys[node.id].insert(std::move(key));
+            else visibleContentImageKeys.insert(std::move(key));
+        };
         const auto geometry = presentation.find(NarrowStableId(node.id));
         // Poster artwork is deliberately excluded from layout. Both its decode
         // size and visibility come from the full-bleed parent tile used by DrawNode.
@@ -3453,9 +3460,9 @@ struct DeclarativeRenderer::RenderPass final {
             posterArtworkBounds.insert_or_assign(posterArtwork->id, geometry->second.borderBox);
         if (geometry != presentation.end() && geometry->second.visibleBox.width > 0.5F && geometry->second.visibleBox.height > 0.5F) {
             if (posterArtwork)
-                visibleImageKeys.insert(ImageKey(*posterArtwork, CachedImageSize(*posterArtwork)));
+                track(ImageKey(*posterArtwork, CachedImageSize(*posterArtwork)));
             const auto size = CachedImageSize(node);
-            if (!node.imageSource.empty() || !node.artworkHandle.empty()) visibleImageKeys.insert(ImageKey(node, size));
+            if (!node.imageSource.empty() || !node.artworkHandle.empty()) track(ImageKey(node, size));
             if (node.kind == L"backgroundSurface") {
                 const auto focused = ResolveFocusBackgroundSelection(snapshot->root, focusedId);
                 const auto protect = [&](std::wstring_view url, std::wstring_view handle) {
@@ -3464,7 +3471,7 @@ struct DeclarativeRenderer::RenderPass final {
                     image.id = node.id;
                     image.imageSource = url;
                     image.artworkHandle = handle;
-                    visibleImageKeys.insert(ImageKey(image, CachedImageSize(image)));
+                    track(ImageKey(image, CachedImageSize(image)));
                 };
                 if (focused.surface == &node) protect(focused.imageSource, focused.artworkHandle);
                 for (const auto& [key, entry] : focusBackgrounds) {
@@ -4679,6 +4686,9 @@ void DeclarativeRenderer::SetChromeImageProtection(std::set<std::wstring> keys) 
     chromeImageKeys_ = std::move(keys);
     PublishImageProtection();
 }
+bool DeclarativeRenderer::VisibleContentImageCompleted(std::uint64_t resourceHash) const noexcept {
+    return visibleContentImageHashes_.contains(resourceHash);
+}
 bool DeclarativeRenderer::ImageProtected(std::wstring_view key) const {
     return protectedImageKeys_.contains(std::wstring{key}) || chromeImageKeys_.contains(std::wstring{key});
 }
@@ -5624,6 +5634,15 @@ RenderResult DeclarativeRenderer::Render(
 #endif
     pass.result.timing.collectionAdmissionSummary =
         std::move(collectionAdmissionSummary);
+    if (pass.result.succeeded) {
+        for (const auto& [surfaceId, keys] : pass.visibleBackgroundImageKeys) {
+            if (!pass.result.compositorBackground || pass.result.compositorBackground->nodeId != surfaceId)
+                pass.visibleContentImageKeys.insert(keys.begin(), keys.end());
+        }
+        visibleContentImageHashes_.clear();
+        for (const auto& key : pass.visibleContentImageKeys)
+            visibleContentImageHashes_.insert(RemoteImageCache::OpaqueDiagnosticHash(key));
+    }
     protectedImageKeys_ = pass.result.succeeded ? std::move(pass.visibleImageKeys) : priorImageProtection;
     PublishImageProtection();
     return pass.result;

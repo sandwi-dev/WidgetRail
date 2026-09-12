@@ -699,8 +699,10 @@ void CheckRetainedTrayInvalidation() {
     ++appearance.appearanceRevision;
     Check(widgetrail::shell::RequiresTrayRepaint(&provider, appearance),
           "appearance revision rebuilds the tray child surface");
+    Check(widgetrail::shell::RequiresImageReadyRepaint(false, true, true),
+          "visible poster completion repaints content even while background advancement owns the wake");
     Check(!widgetrail::shell::RequiresImageReadyRepaint(false, true),
-          "an independent background advance owns its ordinary image-ready wake");
+          "an independent background advance owns its background-only image-ready wake");
     Check(widgetrail::shell::RequiresImageReadyRepaint(false, false) &&
               widgetrail::shell::RequiresImageReadyRepaint(true, false) &&
               widgetrail::shell::RequiresImageReadyRepaint(true, true),

@@ -982,7 +982,8 @@ public:
                         L"wrail-package-icon\x1f";
                     PostMessageW(
                         window_, kImageReadyMessage,
-                        source.starts_with(packageIconPrefix) ? 1 : 0, 0);
+                        source.starts_with(packageIconPrefix) ? 1 : 0,
+                        static_cast<LPARAM>(widgetrail::RemoteImageCache::OpaqueDiagnosticHash(source)));
                 }
             },
             widgetrail::RemoteImageCache::FetchFunction{},
@@ -2059,7 +2060,9 @@ private:
         case kImageReadyMessage:
             if (widgetrail::shell::RequiresImageReadyRepaint(
                     wParam != 0,
-                    AdvanceCompositorBackground(GetTickCount64()))) {
+                    AdvanceCompositorBackground(GetTickCount64()),
+                    declarativeRenderer_ && declarativeRenderer_->VisibleContentImageCompleted(
+                        static_cast<std::uint64_t>(lParam)))) {
                 if (wParam == 0 && SubmitRetainedWidgetPaint()) return 0;
                 // Newly ready images may lie outside a queued scroll's
                 // damage. Without a current layout (or for tray artwork),

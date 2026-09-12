@@ -6168,8 +6168,9 @@ void PosterArtworkLoadsAtDisplaySizeUnderPressure(bool trusted) {
     DeclarativeRenderer renderer(d2d.Get(),write.Get(),&cache);
     DeclarativeRenderOptions options; options.sizeArtworkToDisplay=true; options.artworkWidgetId=L"poster-pressure";
     const auto draw=[&]() {
-        target->BeginDraw(); auto result=renderer.Render(target.Get(),snapshot,{}, {0,0,200,150},options);
+        target->BeginDraw(); auto result=renderer.Render(target.Get(),snapshot,L"pressure.poster.0", {0,0,200,150},options);
         Check(SUCCEEDED(target->EndDraw()) && result.succeeded,"poster pressure frame renders");
+        return result;
     };
     draw();
     const auto key=[&](int i) {
@@ -6177,6 +6178,11 @@ void PosterArtworkLoadsAtDisplaySizeUnderPressure(bool trusted) {
         return trusted ? RemoteImageCache::TrustedArtworkKey(options.artworkWidgetId,image.id,image.artworkHandle,{128,192})
                        : RemoteImageCache::VariantKey(image.imageSource,{128,192});
     };
+    Check(renderer.VisibleContentImageCompleted(RemoteImageCache::OpaqueDiagnosticHash(key(0))) &&
+          renderer.VisibleContentImageCompleted(RemoteImageCache::OpaqueDiagnosticHash(key(1))),
+        "new visible posters register repaint interest before asynchronous loads complete");
+    Check(!renderer.VisibleContentImageCompleted(RemoteImageCache::OpaqueDiagnosticHash(key(2))),
+        "offscreen poster completion cannot force a content repaint during background advancement");
     wait(key(0)); wait(key(1)); draw();
     Check(sizedRequests==2,"visible poster children decode using parent tile dimensions");
     Check(cache.GetState(key(2))==RemoteImageState::Missing,"offscreen poster prefetch remains throttled");
@@ -6184,6 +6190,23 @@ void PosterArtworkLoadsAtDisplaySizeUnderPressure(bool trusted) {
     const auto initial=renderer.GetImageBitmapCacheStats().creates;
     draw();
     Check(renderer.GetImageBitmapCacheStats().creates==initial,"poster repaint uses retained display-sized bitmap");
+    auto content = std::move(snapshot.root);
+    snapshot.root=Node(L"background",L"backgroundSurface");
+    snapshot.root.usesFocusedDescendantArtwork=true;
+    snapshot.root.imageSource=L"https://example.test/background";
+    snapshot.root.children.push_back(std::move(content));
+    options.compositorBackgroundAvailable=true;
+    auto composited=draw();
+    Check(composited.compositorBackground.has_value(),"fixture promotes its background to the compositor");
+    if (composited.compositorBackground) {
+        const auto backgroundKey=RemoteImageCache::VariantKey(snapshot.root.imageSource,composited.compositorBackground->decodeSize);
+        Check(!renderer.VisibleContentImageCompleted(RemoteImageCache::OpaqueDiagnosticHash(backgroundKey)),
+            "background-only completion stays on the compositor without repainting content");
+        options.compositorBackgroundAvailable=false;
+        draw();
+        Check(renderer.VisibleContentImageCompleted(RemoteImageCache::OpaqueDiagnosticHash(backgroundKey)),
+            "raster background completion retains its content repaint requirement");
+    }
 }
 
 void VisibleArtworkAndChromeSurviveCachePressure() {

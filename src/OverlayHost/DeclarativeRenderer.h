@@ -380,6 +380,7 @@ public:
 
     ~DeclarativeRenderer();
     void SetChromeImageProtection(std::set<std::wstring> keys);
+    [[nodiscard]] bool VisibleContentImageCompleted(std::uint64_t resourceHash) const noexcept;
     DeclarativeRenderer(const DeclarativeRenderer&) = delete;
     DeclarativeRenderer& operator=(const DeclarativeRenderer&) = delete;
 
@@ -662,6 +663,7 @@ private:
     bool ImageProtected(std::wstring_view key) const;
     std::set<std::wstring> protectedImageKeys_;
     std::set<std::wstring> chromeImageKeys_;
+    std::set<std::uint64_t> visibleContentImageHashes_;
     void RecalculateFocusBackgroundCompositeBytes() noexcept;
     void ReportArtworkRenderDiagnostic(
         const WidgetNode& node,
