@@ -436,6 +436,7 @@ internal static class SpotifyPresentation
                 presentation.SetupViewGeneration,
                 presentation.SetupBusy,
                 includeDisconnect: true)
+            : destination == SpotifyDestination.Search ? SearchPage(presentation.Search)
             : DestinationPage(destination, presentation.Queue, playlists,
                 playlistDetail, presentation.Devices, presentation.LocalPlayback,
                 presentation.LocalPlaybackBusy, presentation.LocalPlaybackFeedback,
@@ -447,6 +448,8 @@ internal static class SpotifyPresentation
             .Classes("spotify-page-group");
         NavigationShellDestination[] destinations =
         [
+            new("search", "Search", "spotify.nav.search", WidgetGlyph.Music,
+                IsDisabled: setup),
             new("queue", "Queue", "spotify.nav.queue", WidgetGlyph.Next,
                 IsDisabled: setup),
             new("playlists", "Playlists", "spotify.nav.playlists", WidgetGlyph.Music,
@@ -563,6 +566,7 @@ internal static class SpotifyPresentation
                 ? "spotify.page.loading.shared.action"
                 : "spotify.page.error.shared.action";
         }
+        if (destination == SpotifyDestination.Search) return "spotify.search.query";
         if (destination == SpotifyDestination.Queue)
         {
             var queue = presentation.Queue;
@@ -1227,4 +1231,47 @@ internal static class SpotifyPresentation
             ? $"{(long)span.TotalHours}:{span.Minutes:00}:{span.Seconds:00}"
             : $"{span.Minutes}:{span.Seconds:00}";
     }
+
+    private static WidgetElement SearchPage(SpotifySearchPresentation? search)
+    {
+        var query = search?.Query ?? string.Empty;
+        var kind = search?.Kind ?? SpotifySearchKind.Track;
+        var entry = UI.TextEntry(query, "Search Spotify", "spotify.search.query",
+                "spotify.search.query", ProtocolConstants.MaximumTextEntryLength)
+            .Classes("spotify-search-entry");
+        var kinds = Enum.GetValues<SpotifySearchKind>().Select(value => new SelectOption(
+            "spotify.search.type." + value, value + "s", "spotify.search.type." + value,
+            IsSelected: value == kind)).ToArray();
+        var selector = UI.Select("Results", kinds, "spotify.search.type", "Search result type")
+            .FocusUp("spotify.search.query").Classes("spotify-search-type");
+        var controls = UI.Row("spotify.search.controls", selector,
+            UI.Button("Clear", "spotify.search.clear", "spotify.search.clear")
+                .Disabled(query.Length == 0).Classes("spotify-page-action", "spotify-search-clear"))
+            .Classes("spotify-search-controls");
+        var children = new List<WidgetElement> { entry, controls };
+        var results = search?.Results.Snapshot;
+        if (query.Length == 0)
+            children.Add(UI.Text("Find tracks, albums, artists and playlists.", "spotify.search.prompt")
+                .Classes("spotify-search-message"));
+        else if (search is not null && results is not null)
+        {
+            var rows = results.Items.Select(item => (WidgetElement)UI.Tile(
+                    item.Value.Title, item.Value.IsPlayable ? "Play " + item.Value.Kind.ToString().ToLowerInvariant() : "Unavailable",
+                    "spotify.search.play." + item.Key.Value, "spotify.search.item." + item.Key.Value,
+                    item.Value.Subtitle, artwork: Artwork(item.Value.ArtworkUrl, item.Value.Title),
+                    accessibilityLabel: "Play " + item.Value.Kind.ToString().ToLowerInvariant() + " " + item.Value.Title)
+                .Disabled(!item.Value.IsPlayable).CollectionItem(item.Key).Classes("spotify-media-row"))
+                .ToList();
+            if (rows.Count == 0)
+                rows.Add(UI.Text(results.Error is not null ? "Search couldn't finish. Try again." :
+                    results.Status == WidgetPagedResourceStatus.Ready ? "No results. Try another search or result type." : "Searching Spotify…",
+                    "spotify.search.message").Classes("spotify-search-message"));
+            children.Add(search.Results.Present(rows).Classes("spotify-page-scroll"));
+            if (results.Error is { } error)
+                children.Add(UI.Alert("Search unavailable", error.Message, AlertTone.Warning, "spotify.search.error",
+                    new ComponentAction("Try again", "spotify.page.retry", WidgetGlyph.Refresh)));
+        }
+        return UI.Stack("spotify.search.page", children.ToArray()).Classes("spotify-page", "spotify-search-page");
+    }
+
 }

@@ -10,6 +10,7 @@ internal enum SpotifyRoute
     PlaylistDetail,
     Devices,
     Setup,
+    Search,
 }
 
 internal enum SpotifyActionKind
@@ -76,6 +77,7 @@ internal static class SpotifyRouteActionPolicy
             "spotify.shuffle" => Playback(SpotifyPlaybackOperation.SetShuffle),
             "spotify.repeat" => Playback(SpotifyPlaybackOperation.SetRepeat),
             "spotify.nav.queue" => Navigate(SpotifyDestination.Queue),
+            "spotify.nav.search" => Navigate(SpotifyDestination.Search),
             "spotify.nav.playlists" => Navigate(SpotifyDestination.Playlists),
             "spotify.nav.devices" => Navigate(SpotifyDestination.Devices),
             "spotify.nav.previous-section" => new(SpotifyActionKind.PreviousSection),
@@ -115,6 +117,7 @@ internal static class SpotifyRouteActionPolicy
     internal static SpotifyDestination Destination(SpotifyRoute route) => route switch
     {
         SpotifyRoute.Queue => SpotifyDestination.Queue,
+        SpotifyRoute.Search => SpotifyDestination.Search,
         SpotifyRoute.Devices => SpotifyDestination.Devices,
         _ => SpotifyDestination.Playlists,
     };
@@ -125,6 +128,7 @@ internal static class SpotifyRouteActionPolicy
     internal static string FocusGroupId(SpotifyRoute route) => route switch
     {
         SpotifyRoute.Queue => "spotify.page.queue",
+        SpotifyRoute.Search => "spotify.page.search",
         SpotifyRoute.Devices => "spotify.page.devices",
         _ => "spotify.page.playlists",
     };

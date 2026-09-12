@@ -114,4 +114,7 @@ internal sealed class SpotifyApplicationService(
             new SpotifyPlaylistItemsRequest(playlistId, offset, limit), cancellationToken));
 
     public ValueTask DisposeAsync() => _backend.DisposeAsync();
+    public ValueTask<SpotifySearchPage> SearchAsync(string query, SpotifySearchKind kind,
+        int offset, int limit, CancellationToken cancellationToken = default) => new(
+        _backend.SearchSpotifyAsync(_identity, query, kind, offset, limit, cancellationToken));
 }

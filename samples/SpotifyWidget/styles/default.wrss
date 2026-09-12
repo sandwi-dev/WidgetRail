@@ -638,3 +638,21 @@
 .spotify-local-feedback { width: 100%; min-width: 0px; flex-shrink: 0; }
 .spotify-device-row { width: 100%; min-width: 0px; flex-shrink: 0; }
 .spotify-playlist-detail { padding: 10px 12px 12px; }
+
+/* Persistent search controls stay outside the cursor viewport. */
+.spotify-search-entry {
+  width: 100%; min-width: 0px; height: 46px; flex-shrink: 0;
+  padding: 10px 12px; font-size: 15px;
+  color: var(--text); background: var(--surface);
+  border-width: 1px; border-color: var(--border, #343431); corner-radius: 8px;
+}
+.spotify-search-controls { width: 100%; min-width: 0px; gap: 10px; flex-shrink: 0; }
+.spotify-search-type {
+  min-width: 0px; flex-grow: 1; height: 40px; padding: 8px 12px;
+  color: var(--text); background: var(--surface); corner-radius: 8px;
+}
+.spotify-search-clear { width: 76px; flex-shrink: 0; }
+.spotify-search-entry:focused, .spotify-search-type:focused {
+  background: var(--surface-raised); border-color: var(--accent);
+}
+.spotify-search-message { color: var(--text-muted); font-size: 14px; padding: 14px 4px; }

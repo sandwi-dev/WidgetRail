@@ -12,6 +12,7 @@ using BrokerSpotifyLocalPlaybackState =
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Search encodes queries, bounds paging and parses every result type", SearchContract),
     ("PKCE authorization uses exact callback state S256 and no client secret", PkceContract),
     ("Client ID change invalidates package authorization", ClientChangeInvalidatesAuthorization),
     ("External Client ID change invalidates stored authorization", ExternalClientChangeInvalidatesAuthorization),
@@ -307,6 +308,42 @@ static async Task CanceledRefreshCannotPublish()
     Assert.Equal(1, apiCalls);
     Assert.Equal("durable-refresh", vault.Token);
     Assert.Equal(0, vault.SaveCalls);
+}
+
+static async Task SearchContract()
+{
+    foreach (var kind in Enum.GetValues<SpotifySearchKind>())
+    {
+        var type = kind.ToString().ToLowerInvariant();
+        var body = JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            [type + "s"] = new { offset = 0, limit = 10, total = 5000, items = new object?[]
+            {
+                new { id = "result1", type, name = "Result", artists = new[] { new { name = "Artist" } },
+                    owner = new { display_name = "Owner" }, images = new[] { new { url = "https://i.scdn.co/image/result" } },
+                    is_playable = false }, null,
+            } },
+        });
+        var sender = new FakeAuthorizedSender(_ => Json(200, body));
+        var api = new SpotifySearchApi(sender);
+        var page = await api.SearchAsync(Identity(), "A & B?type=album", kind, 0, 10, default);
+        var request = sender.Requests.Single();
+        Assert.Equal("/v1/search", request.Uri.AbsolutePath);
+        Assert.Contains("q=A%20%26%20B%3Ftype%3Dalbum", request.Uri.AbsoluteUri);
+        Assert.Contains("&type=" + type, request.Uri.AbsoluteUri);
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal(1000, page.Total);
+        Assert.Equal(kind, page.Items.Single().Kind);
+        Assert.Equal("spotify:" + type + ":result1", page.Items.Single().Uri);
+        Assert.True(!page.Items.Single().IsPlayable && !page.HasAuthoritativeWindow);
+        await Assert.ThrowsAsync<SpotifyProviderException>(() => api.SearchAsync(Identity(), " ", kind, 0, 10, default), "invalid_request");
+        await Assert.ThrowsAsync<SpotifyProviderException>(() => api.SearchAsync(Identity(), "a", kind, 1000, 10, default), "invalid_request");
+        Assert.Equal(1, sender.Requests.Count);
+    }
+    await Assert.ThrowsAsync<SpotifyProviderException>(() => Task.Run(() =>
+        SpotifyResponseParser.ParseSearchPage("{}", SpotifySearchKind.Track, 0, 10)), "invalid_response");
+    await Assert.ThrowsAsync<SpotifyProviderException>(() => Task.Run(() =>
+        SpotifyResponseParser.ParseSearchPage("{\"tracks\":{\"offset\":10,\"limit\":10,\"total\":50,\"items\":[]}}", SpotifySearchKind.Track, 0, 10)), "invalid_response");
 }
 
 static async Task EndpointFamiliesAreIndependent()

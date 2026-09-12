@@ -23,6 +23,7 @@ public enum SpotifyDestination
     Queue,
     Playlists,
     Devices,
+    Search,
 }
 
 /// <summary>
@@ -115,12 +116,13 @@ public sealed class SpotifyWidget : Widget
             throw new ArgumentNullException(nameof(runtimeDiagnostics));
         _navigation = CreateNavigatorWithOptions(
             "spotify.navigation",
-            SpotifyRoute.Playlists,
+            SpotifyRoute.Search,
             new WidgetNavigatorOptions<SpotifyRoute>
             {
                 SharedRootScopeId = SpotifyPresentation.InputScope,
                 RootRoutes =
                 [
+                    SpotifyRoute.Search,
                     SpotifyRoute.Queue,
                     SpotifyRoute.Playlists,
                     SpotifyRoute.Devices,
@@ -131,6 +133,7 @@ public sealed class SpotifyWidget : Widget
                     [SpotifyRoute.Setup] = "spotify.setup",
                 },
             });
+        _search = CreateSearchResource();
         _compactPinnedLayout = CreatePinnedLayoutHandle(
             SpotifyPresentation.CompactPinnedLayoutId,
             SpotifyPresentation.CompactPinnedLayoutName,
@@ -284,6 +287,8 @@ public sealed class SpotifyWidget : Widget
         {
             if (_playlistSelection is not null)
                 _playlistItems.EnsureLoaded();
+            else if (_navigation.Value.RootRoute == SpotifyRoute.Search && _searchQuery.Length > 0)
+                _search.EnsureLoaded();
             else if (_navigation.Value.RootRoute == SpotifyRoute.Playlists)
                 _playlists.EnsureLoaded();
             else if (_navigation.Value.RootRoute == SpotifyRoute.Queue ||
@@ -369,6 +374,7 @@ public sealed class SpotifyWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
         var intent = SpotifyRouteActionPolicy.Classify(action);
+        if (await TryHandleSearchActionAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (TryHandleNavigationBack(action)) return;
         if (TryHandlePageAction(action, intent)) return;
 
@@ -569,6 +575,7 @@ public sealed class SpotifyWidget : Widget
         var route = _navigation.Value;
         lock (_gate)
         {
+            if (route.RootRoute == SpotifyRoute.Search && _search.TryHandlePagination(action, out _)) return true;
             if (route.RootRoute == SpotifyRoute.Playlists)
             {
                 if (_playlistSelection is null &&
@@ -581,6 +588,10 @@ public sealed class SpotifyWidget : Widget
         }
         switch (intent.Kind)
         {
+            case SpotifyActionKind.Navigate when intent.Destination == SpotifyDestination.Search:
+                Navigate(SpotifyRoute.Search);
+                if (_searchQuery.Length > 0) _search.EnsureLoaded();
+                return true;
             case SpotifyActionKind.Navigate when
                 intent.Destination == SpotifyDestination.Queue:
                 Navigate(SpotifyRoute.Queue);
@@ -600,6 +611,7 @@ public sealed class SpotifyWidget : Widget
             case SpotifyActionKind.PageRetry:
                 lock (_gate)
                 {
+                    if (route.RootRoute == SpotifyRoute.Search) { _search.Retry(); return true; }
                     if (_playlistSelection is not null)
                     {
                         _playlistItems.Retry();
@@ -669,6 +681,8 @@ public sealed class SpotifyWidget : Widget
             _queue.Refresh();
         else if (route.RootRoute == SpotifyRoute.Queue)
             _queue.Refresh();
+        else if (route.RootRoute == SpotifyRoute.Search && _searchQuery.Length > 0)
+            _search.Refresh();
         else if (route.RootRoute == SpotifyRoute.Playlists)
         {
             if (detail) _playlistItems.Refresh();
@@ -1053,7 +1067,10 @@ public sealed class SpotifyWidget : Widget
                 _localPlaybackBusy,
                 _localPlaybackFeedback,
                 _pageLoading,
-                _pageError);
+                _pageError,
+                new SpotifySearchPresentation(_searchQuery, _searchKind,
+                    SpotifyCursorPresentation<SpotifySearchCollectionItem>.Capture(
+                        _search, "spotify.search", "spotify.search.scroll")));
         }
     }
 
@@ -1097,7 +1114,7 @@ public sealed class SpotifyWidget : Widget
         string? sourceFocusId = null,
         string? focusGroupId = null)
     {
-        if (destination is not (SpotifyRoute.Queue or SpotifyRoute.Playlists or
+        if (destination is not (SpotifyRoute.Search or SpotifyRoute.Queue or SpotifyRoute.Playlists or
                 SpotifyRoute.Devices)) return;
         CancelPageOperation();
         _playlists.ClearRequestedFocus(invalidate: false);
@@ -1122,6 +1139,7 @@ public sealed class SpotifyWidget : Widget
                 navigation.Route, navigation.Depth)) return;
         SpotifyRoute[] sections =
         [
+            SpotifyRoute.Search,
             SpotifyRoute.Queue,
             SpotifyRoute.Playlists,
             SpotifyRoute.Devices,
@@ -1134,6 +1152,9 @@ public sealed class SpotifyWidget : Widget
             focusGroupId: SpotifyRouteActionPolicy.FocusGroupId(destination));
         switch (_navigation.Value.RootRoute)
         {
+            case SpotifyRoute.Search:
+                if (_searchQuery.Length > 0) _search.EnsureLoaded();
+                break;
             case SpotifyRoute.Queue:
                 _queue.EnsureLoaded();
                 break;
@@ -1311,6 +1332,9 @@ public sealed class SpotifyWidget : Widget
 
     private void ClearPageCachesLocked()
     {
+        _search.Reset(invalidate: false);
+        _searchQuery = string.Empty;
+        ++_searchGeneration;
         _playlists.Reset(invalidate: false);
         ClearPlaylistSelectionLocked();
         _queue.Reset(invalidate: false);
@@ -1828,6 +1852,90 @@ public sealed class SpotifyWidget : Widget
     private void SetCommandStatus(string status)
     {
         lock (_gate) _status = status;
+        Invalidate();
+    }
+
+
+    private readonly WidgetCursorResource<SpotifySearchCollectionItem> _search;
+    private string _searchQuery = string.Empty;
+    private SpotifySearchKind _searchKind = SpotifySearchKind.Track;
+    private long _searchGeneration;
+
+    private WidgetCursorResource<SpotifySearchCollectionItem> CreateSearchResource() =>
+        CreateCursorResource<SpotifySearchCollectionItem>("spotify.search", new()
+        {
+            PageSize = 10,
+            MaximumRetainedItems = WidgetCursorResource<SpotifySearchCollectionItem>.MaximumRetainedItems,
+            RetainedItemTarget = 60,
+            PaginationThreshold = 2,
+            LoadPage = async (cursor, _, limit, token) =>
+            {
+                string query;
+                SpotifySearchKind kind;
+                long generation;
+                lock (_gate) { query = _searchQuery; kind = _searchKind; generation = _searchGeneration; }
+                if (query.Length == 0) return new WidgetCursorPage<SpotifySearchCollectionItem>([], null, null);
+                var page = await _spotify.SearchAsync(query, kind,
+                    SpotifyCollectionIdentity.Offset(cursor), limit, token).AsTask().WaitAsync(token).ConfigureAwait(false);
+                token.ThrowIfCancellationRequested();
+                var items = page.Items.Select(item => new SpotifySearchCollectionItem(item,
+                    new WidgetCollectionItemKey("search." + generation + "." + SpotifyCollectionIdentity.Media(item.Uri).Value))).ToArray();
+                return SpotifyCollectionIdentity.Page(items, page.Offset, page.Limit,
+                    page.Total, page.HasAuthoritativeWindow);
+            },
+            MapError = SpotifyResourceError,
+            Viewports =
+            [
+                new("spotify.search.scroll", item => item.Key,
+                    item => "spotify.search.item." + item.Key.Value, "spotify.search.query")
+                { EstimatedItemExtent = SpotifyCollectionPolicy.EstimatedItemExtent },
+            ],
+        });
+
+    private async ValueTask<bool> TryHandleSearchActionAsync(WidgetActionEvent action,
+        CancellationToken cancellationToken)
+    {
+        if (action.ActionId is not ("spotify.search.query" or "spotify.search.clear") && !action.ActionId.StartsWith("spotify.search.type.", StringComparison.Ordinal) && !action.ActionId.StartsWith("spotify.search.play.", StringComparison.Ordinal)) return false;
+        if (_navigation.Value.Route != SpotifyRoute.Search) return true;
+        lock (_gate) if (_viewState != SpotifyWidgetViewState.Ready) return true;
+        if (action.ActionId == "spotify.search.query" && action.CommittedText is { } text)
+        {
+            var query = text.Trim();
+            if (query.Length > ProtocolConstants.MaximumTextEntryLength || query.Any(char.IsControl)) return true;
+            ResetSearch(query, null);
+        }
+        else if (action.ActionId == "spotify.search.clear") ResetSearch(string.Empty, null);
+        else if (action.ActionId.StartsWith("spotify.search.type.", StringComparison.Ordinal) &&
+            Enum.TryParse<SpotifySearchKind>(action.ActionId["spotify.search.type.".Length..], out var kind) &&
+            Enum.IsDefined(kind))
+        {
+            lock (_gate) if (kind == _searchKind) return true;
+            ResetSearch(null, kind);
+        }
+        else if (action.ActionId.StartsWith("spotify.search.play.", StringComparison.Ordinal))
+        {
+            var key = action.ActionId["spotify.search.play.".Length..];
+            var item = _search.Snapshot.Items.FirstOrDefault(item => item.Key.Value == key)?.Value;
+            if (item is not { IsPlayable: true }) return true;
+            await RunCommandOperationAsync(token => StartPlaybackAsync(
+                item.Kind == SpotifySearchKind.Track
+                    ? new(null, [item.Uri], DeviceId: PlaybackDeviceId())
+                    : new(item.Uri, null, DeviceId: PlaybackDeviceId()),
+                "Playing " + item.Title, token), cancellationToken).ConfigureAwait(false);
+        }
+        return true;
+    }
+
+    private void ResetSearch(string? query, SpotifySearchKind? kind)
+    {
+        lock (_gate)
+        {
+            if (query is not null) _searchQuery = query;
+            if (kind is { } value) _searchKind = value;
+            ++_searchGeneration;
+            _search.Reset(invalidate: false);
+            if (_searchQuery.Length > 0) _search.EnsureLoaded();
+        }
         Invalidate();
     }
 

@@ -27,8 +27,8 @@ internal static class SpotifyResponsiveLayoutTests
         var compactNavigation = FindClass(snapshot.Root,
             "wrail-navigation-shell__compact");
         Equal(ResponsiveVisibility.Always, compactNavigation.VisibleWhen);
-        Equal(5, compactNavigation.Children.Count);
-        Equal(3, compactNavigation.Children.Count(child => child.ActionId is not null));
+        Equal(6, compactNavigation.Children.Count);
+        Equal(4, compactNavigation.Children.Count(child => child.ActionId is not null));
         Equal(2, compactNavigation.Children.Count(child => child.ActionId is null));
         Equal<string?>(null, Find(snapshot.Root,
             "spotify.section.previous.hint").ActionId);
@@ -37,7 +37,7 @@ internal static class SpotifyResponsiveLayoutTests
         MissingAction(snapshot.Root, "spotify.nav.player");
         foreach (var action in new[]
                  {
-                     "spotify.nav.queue", "spotify.nav.playlists", "spotify.nav.devices",
+                     "spotify.nav.search", "spotify.nav.queue", "spotify.nav.playlists", "spotify.nav.devices",
                  })
         {
             _ = FindAction(compactNavigation, action);

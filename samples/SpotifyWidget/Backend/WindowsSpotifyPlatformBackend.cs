@@ -59,6 +59,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
     private readonly SpotifyLocalPlaybackManager _localPlayback;
     private readonly SpotifyPlaybackApi _playbackApi;
     private readonly SpotifyCollectionApi _collectionApi;
+    private readonly SpotifySearchApi _searchApi;
     private readonly ISpotifyRuntimeDiagnostics _runtimeDiagnostics;
     private readonly ConcurrentDictionary<string, IntegrationState> _states = new();
     private int _disposed;
@@ -105,6 +106,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
             SendAuthorizedRequestAsync);
         _playbackApi = new SpotifyPlaybackApi(authorizedSender);
         _collectionApi = new SpotifyCollectionApi(authorizedSender);
+        _searchApi = new SpotifySearchApi(authorizedSender);
     }
 
     public async Task<SpotifyProviderConfiguration> GetConfigurationAsync(
@@ -520,6 +522,11 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
                 identity, request.Offset, request.Limit,
                 cancellationToken).ConfigureAwait(false);
         });
+
+    public Task<SpotifySearchPage> SearchSpotifyAsync(SpotifyIntegrationIdentity identity,
+        string query, SpotifySearchKind kind, int offset, int limit,
+        CancellationToken cancellationToken) => ApplicationCallAsync(() =>
+            _searchApi.SearchAsync(identity, query, kind, offset, limit, cancellationToken));
 
     public Task<SpotifyPlaylistSummary> GetSpotifyPlaylistAsync(
         SpotifyIntegrationIdentity identity,

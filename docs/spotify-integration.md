@@ -1,5 +1,22 @@
 # Spotify Web API integration
 
+## Search (0.3.57)
+
+Search is the first section and the initial route for a new widget instance.
+Submit a query through the controller keyboard, then choose Tracks, Albums,
+Artists or Playlists from Results. A plays a track or starts the selected album,
+artist or playlist on the existing playback device, subject to Spotify's normal
+availability and playback restrictions.
+
+The package owns a typed `/v1/search` endpoint and reuses the authenticated
+session without additional OAuth scopes. Queries run only when submitted.
+Pages contain at most ten items, within Spotify's 1,000-result search window.
+Query/type changes reset the SDK cursor; late responses cannot replace current
+results. Closing/reopening preserves completed queries and results. Loading,
+empty, unavailable and retry states stay inside Search. Existing queue,
+playlist, device, setup and pinned behavior is preserved. No Spotify-specific
+host or SDK changes are required.
+
 Status: **autonomous full-trust Community application 0.3.3 implemented;
 live-account and WebView2 playback proof remains manual as of 2026-08-13**.
 

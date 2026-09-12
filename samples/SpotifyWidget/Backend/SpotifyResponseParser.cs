@@ -8,7 +8,7 @@ namespace WidgetRail.WindowsSpotifyProvider;
 /// Strict bounded parsing for Spotify Web API responses. This owner has no
 /// transport, OAuth, vault, integration identity, or local-playback authority.
 /// </summary>
-internal static class SpotifyResponseParser
+internal static partial class SpotifyResponseParser
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 

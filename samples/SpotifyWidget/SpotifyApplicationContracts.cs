@@ -230,6 +230,10 @@ public sealed class SpotifyApplicationException : Exception
 
 public interface ISpotifyApplicationService : IAsyncDisposable
 {
+    ValueTask<SpotifySearchPage> SearchAsync(string query, SpotifySearchKind kind,
+        int offset, int limit, CancellationToken cancellationToken = default) =>
+        ValueTask.FromException<SpotifySearchPage>(new SpotifyApplicationException(
+            "search_unavailable", "Search is unavailable. Update the Spotify widget and try again."));
     ValueTask<SpotifyConfigurationSummary> ConfigureClientAsync(
         string clientId,
         CancellationToken cancellationToken = default) =>

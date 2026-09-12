@@ -8,6 +8,8 @@ using System.Text;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Search starts first, pages typed results and routes playback", SearchResultsAndPlayback),
+    ("Search drops late responses and preserves query across reopen", SearchLateResponses),
     ("Production cursor batches retain forward and reverse buffers", ProductionCursorBuffer),
     ("Opening the widget never starts OAuth", OpeningNeverConnects),
     ("Disconnected copy and paired actions remain bounded and centered", DisconnectedLayoutContract),
@@ -618,10 +620,10 @@ static async Task ResponsiveNavigation()
         "Responsive navigation did not negotiate focus-persistence support.");
     var compact = FindClass(snapshot.Root, "wrail-navigation-shell__compact");
     Assert.Equal(ResponsiveVisibility.Always, compact.VisibleWhen);
-    Assert.Equal(5, compact.Children.Count);
+    Assert.Equal(6, compact.Children.Count);
     Assert.SequenceEqual(new[]
     {
-        "spotify.nav.queue", "spotify.nav.playlists", "spotify.nav.devices",
+        "spotify.nav.search", "spotify.nav.queue", "spotify.nav.playlists", "spotify.nav.devices",
     }, compact.Children
         .Where(child => child.ActionId is not null)
         .Select(child => child.ActionId!));
@@ -2512,7 +2514,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.55", manifest.Version);
+    Assert.Equal("0.3.57", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
@@ -2719,11 +2721,74 @@ static async Task ProductionCursorBuffer()
     await StopAsync(widget);
 }
 
+static async Task SearchResultsAndPlayback()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness, search: true);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    Assert.Equal(SpotifyDestination.Search, widget.Destination);
+    Assert.Equal(0, harness.SearchCalls);
+    var initial = widget.RenderSnapshot("spotify.search-test", 1);
+    Assert.Equal("spotify.search.query", initial.InitialFocusId);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(initial).Count);
+    await widget.OnActionAsync(new("spotify.search.query", "spotify.search.query") { CommittedText = "night" });
+    await WaitUntil(() => CollectionRows(widget.RenderSnapshot("spotify.search-test", 2).Root).Length == 10);
+    var first = CollectionRows(widget.RenderSnapshot("spotify.search-test", 3).Root)[0];
+    await widget.OnActionAsync(new(first.ActionId!, first.Id));
+    Assert.Equal("spotify:track:result0", harness.StartedPlayback.Single().ItemUris!.Single());
+    await widget.OnActionAsync(new("spotify.search.cursor.after", "spotify.search.scroll"));
+    await WaitUntil(() => CollectionRows(widget.RenderSnapshot("spotify.search-test", 4).Root).Length == 20,
+        "Search cursor pagination was swallowed by authored action handling.");
+    foreach (var kind in new[] { SpotifySearchKind.Album, SpotifySearchKind.Artist, SpotifySearchKind.Playlist })
+    {
+        await widget.OnActionAsync(new("spotify.search.type." + kind, "spotify.search.type"));
+        await WaitUntil(() => CollectionRows(widget.RenderSnapshot("spotify.search-test", 5).Root).Length == 10);
+        var snapshot = widget.RenderSnapshot("spotify.search-test", 6);
+        Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        var row = CollectionRows(snapshot.Root)[0];
+        await widget.OnActionAsync(new(row.ActionId!, row.Id));
+        Assert.Equal("spotify:" + kind.ToString().ToLowerInvariant() + ":result0", harness.StartedPlayback[^1].ContextUri);
+    }
+    var calls = harness.SearchCalls;
+    await widget.OnActionAsync(new("spotify.search.clear", "spotify.search.clear"));
+    Assert.Equal(0, CollectionRows(widget.RenderSnapshot("spotify.search-test", 7).Root).Length);
+    Assert.Equal(calls, harness.SearchCalls);
+    await StopAsync(widget);
+}
+
+static async Task SearchLateResponses()
+{
+    var pending = new TaskCompletionSource<SpotifySearchPage>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var harness = SpotifyHarness.Ready();
+    harness.SearchHandler = (query, kind, offset, limit, token) => query == "old"
+        ? new(pending.Task) : ValueTask.FromResult(new SpotifySearchPage(
+            [new(kind, "new", "New result", "Artist", null, "spotify:track:new", "https://open.spotify.com/track/new", true)], 0, 10, 1));
+    var widget = await StartAsync(harness, search: true);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.search.query", "spotify.search.query") { CommittedText = "old" });
+    await WaitUntil(() => harness.SearchCalls == 1, "Old search did not start");
+    await widget.OnActionAsync(new("spotify.search.query", "spotify.search.query") { CommittedText = "new" });
+    await WaitUntil(() => CollectionRows(widget.RenderSnapshot("spotify.search-stale", 1).Root).Length == 1, "New search results did not replace the pending query");
+    pending.SetResult(new SpotifySearchPage([], 0, 10, 0));
+    await Task.Delay(50);
+    var view = widget.RenderSnapshot("spotify.search-stale", 2);
+    Assert.Equal(1, CollectionRows(view.Root).Length);
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    Assert.Equal("new", Find(widget.RenderSnapshot("spotify.search-stale", 3).Root, "spotify.search.query").TextEntryValue);
+    Assert.Equal(2, harness.SearchCalls);
+    harness.SearchHandler = (_, _, _, _, _) => ValueTask.FromException<SpotifySearchPage>(new SpotifyApplicationException("search_unavailable", "Search is unavailable."));
+    await widget.OnActionAsync(new("spotify.search.query", "spotify.search.query") { CommittedText = "failure" });
+    await WaitUntil(() => ContainsId(widget.RenderSnapshot("spotify.search-stale", 4).Root, "spotify.search.error"), "Search failure did not show feedback");
+    Assert.Equal(0, ViewSnapshotValidator.Validate(widget.RenderSnapshot("spotify.search-stale", 5)).Count);
+    await StopAsync(widget);
+}
+
 static async Task<SpotifyWidget> StartAsync(
     SpotifyHarness harness,
     TimeProvider? timeProvider = null,
     ISpotifyRuntimeDiagnostics? diagnostics = null,
-    bool productionPaging = false)
+    bool productionPaging = false, bool search = false)
 {
     // Small deterministic windows keep the boundary/eviction regressions concise.
     // A separate test exercises the actual production batching configuration.
@@ -2732,6 +2797,9 @@ static async Task<SpotifyWidget> StartAsync(
         : new SpotifyWidget(harness, timeProvider, diagnostics ?? SpotifyRuntimeDiagnostics.None, 12, 24);
     await WidgetTestHost.InitializeAsync(widget);
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    // Existing scenarios exercise the Library route; Search has its own entry tests.
+    if (!search && harness.Configured && harness.Connected && harness.ConfigurationError is null)
+        await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.compact.playlists"));
     return widget;
 }
 
@@ -2964,6 +3032,18 @@ file sealed record OptimisticControlScenario(
 
 file sealed class SpotifyHarness : ISpotifyApplicationService
 {
+    public int SearchCalls { get; private set; }
+    public Func<string, SpotifySearchKind, int, int, CancellationToken, ValueTask<SpotifySearchPage>>? SearchHandler { get; set; }
+    public ValueTask<SpotifySearchPage> SearchAsync(string query, SpotifySearchKind kind, int offset, int limit,
+        CancellationToken cancellationToken = default)
+    {
+        ++SearchCalls;
+        if (SearchHandler is not null) return SearchHandler(query, kind, offset, limit, cancellationToken);
+        var type = kind.ToString().ToLowerInvariant();
+        return ValueTask.FromResult(new SpotifySearchPage(Enumerable.Range(offset, Math.Min(limit, 25-offset)).Select(index =>
+            new SpotifySearchItem(kind, "result" + index, query + index, "Artist", null,
+                "spotify:" + type + ":result" + index, "https://open.spotify.com/" + type + "/result" + index, true)).ToArray(), offset, limit, 25));
+    }
     public bool Configured { get; set; } = true;
     public bool Connected { get; set; } = true;
     public Exception? ConfigurationError { get; set; }

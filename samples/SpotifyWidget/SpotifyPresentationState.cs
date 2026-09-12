@@ -64,4 +64,5 @@ internal sealed record SpotifyPresentationState(
     bool LocalPlaybackBusy,
     string? LocalPlaybackFeedback,
     bool PageLoading,
-    string? PageError);
+    string? PageError,
+    SpotifySearchPresentation? Search = null);
